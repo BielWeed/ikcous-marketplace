@@ -46,7 +46,12 @@ const compraBase = {
   totalAmount: 50,
   shippingCost: 10,
   destinationCep: "38500000",
-  shippingOptionId: "flat-fee-1",
+  // EMENDA FRETE V2 (03/09): era "flat-fee-1" — a taxa fixa morreu na edge E
+  // na RPC do pedido (migration 20261081000000 emendada: flat-fee-% é
+  // exception). A fixture agora usa um id de transportadora, que é uma opção
+  // válida de verdade. O que este teste prova não muda: a impressão da compra
+  // muda quando a opção de frete muda.
+  shippingOptionId: "melhor-envio-1",
   couponCode: null,
   addressId: null,
   cepDoEndereco: "38500000",

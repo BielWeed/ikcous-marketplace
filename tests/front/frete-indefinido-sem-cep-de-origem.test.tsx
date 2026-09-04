@@ -8,12 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // @vitest-environment jsdom
 //
 // Laudo caça-bugs 31/08 (B1): loja recém-clonada nasce SEM CEP de origem e
-// com taxa fixa — e a calculate-shipping recusa cotar QUALQUER coisa sem
-// origem (`validarOrigemEFrete` checa a origem ANTES da taxa). O carrinho,
-// porém, mostrava "Frete R$ 15,00" como preço real, porque a bandeira
-// `freteIndefinido` excluía flat_fee de propósito. O R$ 15 só é preço real
-// QUANDO a loja tem origem configurada; sem origem é "a calcular" — e o
-// Finalizar fica travado (a loja está fechada para venda até configurar).
+// com taxa fixa — e o carrinho mostrava "Frete R$ 15,00" como preço real.
+//
+// FRETE V2 (PR #424, 03/09): a taxa fixa morreu em TODAS as camadas — a
+// calculate-shipping recusa `flat_fee` MESMO COM origem configurada
+// ("o frete de taxa fixa foi descontinuado") e o servidor do pedido recusa
+// a opção com EXCEPTION. Logo o fallback `config.shippingFee` nunca é mais
+// cobrável: `freteIndefinido` é TRUE sempre que não há cotação escolhida e
+// não é grátis, com ou sem origem (regra viva comentada no CartContext).
+// A guarda de `originCep` sobreviveu SÓ no CheckoutView, decidindo a
+// MENSAGEM do bloqueio ("loja ainda configurando" vs "volte ao carrinho").
 //
 // Mesmo harness de cart-context-variant-names.test.tsx: provider de
 // verdade, contextos vizinhos dublês, config mutável por teste.
@@ -71,7 +75,7 @@ function FreteIndefinidoReader({
   return <button onClick={() => addToCart(produto(), 1)}>adicionar</button>;
 }
 
-describe("freteIndefinido — taxa fixa sem CEP de origem também é 'a calcular'", () => {
+describe("freteIndefinido — taxa fixa é 'a calcular' (origem decide só a mensagem)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let valor: boolean | undefined;
@@ -134,10 +138,10 @@ describe("freteIndefinido — taxa fixa sem CEP de origem também é 'a calcular
     expect(valor).toBe(true);
   });
 
-  it("flat_fee COM origem -> freteIndefinido FALSE (o R$ 15 é preço real)", async () => {
+  it("flat_fee COM origem -> freteIndefinido TRUE (a taxa fixa morreu na edge; o R$ 15 não é cobrável nem com origem)", async () => {
     mockConfig.originCep = "38500-000";
     await montarEAdicionar();
-    expect(valor).toBe(false);
+    expect(valor).toBe(true);
   });
 
   it("provedor de cotação COM origem e sem opção escolhida -> TRUE (comportamento de 30/08, continua)", async () => {

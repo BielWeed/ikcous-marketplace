@@ -146,12 +146,21 @@ describe("CartView — bloco do convidado não promete pontos nem frete grátis 
     expect(texto).not.toContain("frete grátis");
   });
 
-  it("com a regra LIGADA: a promessa de frete grátis aparece (com o valor de cima)", async () => {
+  it("com a regra LIGADA: o bloco do convidado NÃO promete frete grátis por login (onda D-1)", async () => {
+    // FRETE V2 (onda D-1, 03/09): este teste antes ESPERAVA a promessa —
+    // "Faça login ... e ativar o frete grátis (acima de R$ 100,00)". A
+    // promessa morreu com a trava `&& user` da regra (frente B no
+    // CartContext; onda D-1 na CartView): convidado tem o MESMO direito do
+    // logado, então dizer que o login libera frete é promessa falsa — o
+    // mesmo corte que a frente B fez no "Faça login para liberar o Frete
+    // VIP" do CartReminder.
     configDaLoja = { shippingFee: 10, freeShippingMin: 100 };
     const texto = await renderizarCarrinho();
 
     expect(texto).toContain("Identificar-se e Entrar");
-    expect(texto).toContain("frete grátis");
-    expect(texto).toContain("100,00");
+    expect(texto).toContain("Faça login para salvar seus itens");
+    expect(texto).not.toContain("ativar o frete grátis");
+    // O texto exato da promessa morta, com o valor da regra ligada.
+    expect(texto).not.toContain("acima de R$ 100,00");
   });
 });

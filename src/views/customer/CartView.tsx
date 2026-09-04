@@ -92,6 +92,7 @@ export function CartView({
     cart: ctxCart,
     shippingFee: ctxShippingFee,
     freteIndefinido,
+    freteGratis,
     updateQuantity,
     removeFromCart,
     clearCart,
@@ -273,11 +274,6 @@ export function CartView({
     [cart],
   );
 
-  const hasFreeShippingItem = useMemo(
-    () => cart.some((item) => item?.product?.freeShipping),
-    [cart],
-  );
-
   const {
     progressPercent,
     amountToFree,
@@ -296,18 +292,40 @@ export function CartView({
         isNearlyThere: false,
       };
 
-    if (hasFreeShippingItem) {
+    // FRETE V2 (onda D-1, 03/09): o grátis do carrinho é o VEREDITO ÚNICO do
+    // CartContext (`freteGratis` — presets de presets-de-frete-gratis.ts,
+    // modelo exclusivo). Até hoje este memo mantinha a cópia ANTIGA da regra,
+    // morta duas vezes aqui:
+    //  1. leitura INCONDICIONAL de `product.freeShipping` (mostrava
+    //     "Economizou"/grátis com item marcado mesmo com o preset desligado
+    //     — a marcação só vale dentro do preset "por_produto");
+    //  2. trava `&& !!user` no limiar (convidado tem o MESMO direito do
+    //     logado — a entrega dele é local e o frete local entra na mesma
+    //     regra; lição #53: regra copiada diverge).
+    //
+    // REVISÃO A3 (frete v2, 03/09): `savings` ZEROU nos dois caminhos. Ele
+    // comparava contra `config.shippingFee` — a taxa fixa que MORREU nesta
+    // branch (campo órfão no banco; o edge não cota mais por ela), então
+    // "Economizou R$ X" media a economia contra um preço que não existe. O
+    // que de fato deixaria de ser cobrado é a cotação/entrega local — e, com
+    // o grátis ativo, não há cotação em mãos para citar número nenhum. Sem
+    // número honesto, sem número: o selo diz "Frete grátis aplicado".
+    if (freteGratis) {
       return {
         progressPercent: 100,
         amountToFree: 0,
         shipping: 0,
         total: subtotal,
-        savings: config.shippingFee || 0,
+        savings: 0,
         isNearlyThere: false,
       };
     }
 
-    const isRuleActive = (config.freeShippingMin || 0) > 0 && !!user;
+    // Barra de progresso segue o limiar do preset de valor, SEM trava de
+    // login (mesmo padrão do CartReminder na frente B). "desligado" (0) e
+    // "por_produto" (sentinela -1) não têm barra de valor — quem comunica o
+    // grátis é a marcação no produto dentro do próprio preset.
+    const isRuleActive = (config.freeShippingMin || 0) > 0;
     const progress = isRuleActive
       ? Math.min((subtotal / config.freeShippingMin) * 100, 100)
       : 0;
@@ -317,9 +335,11 @@ export function CartView({
     // FRETE INDEFINIDO (laudo caça-bugs 30/08, achado 7): com provedor de
     // cotação real e nenhuma cotação escolhida, `ctxShippingFee` é o chute de
     // fábrica — exibir `null` ("A calcular") e NÃO somar frete ao total.
+    // REVISÃO A3: `save` zerou junto — comparava contra `config.shippingFee`,
+    // o preço morto da taxa fixa (ver o comentário acima).
     const ship = freteIndefinido ? null : ctxShippingFee;
     const tot = subtotal + (ship ?? 0);
-    const save = ship === 0 ? config.shippingFee || 0 : 0;
+    const save = 0;
     const nearly = Boolean(isRuleActive && progress >= 70 && progress < 100);
 
     return {
@@ -332,13 +352,11 @@ export function CartView({
     };
   }, [
     subtotal,
-    config.shippingFee,
     config.freeShippingMin,
-    hasFreeShippingItem,
+    freteGratis,
     cart.length,
     ctxShippingFee,
     freteIndefinido,
-    user,
   ]);
 
   const freeShippingProducts = useMemo(() => {
@@ -447,12 +465,14 @@ export function CartView({
                       handleClearCart={handleClearCart}
                     />
 
-                    {cart.length > 0 && !hasFreeShippingItem && (
+                    {/* FRETE V2 (onda D-1): o grátis agora é o veredito
+                        único do CartContext (`freteGratis` — a cópia antiga
+                        `hasFreeShippingItem` lia a marcação incondicional e
+                        escondia a calculadora mesmo com o preset desligado). */}
+                    {cart.length > 0 && !freteGratis && (
                       <div className="mt-3">
                         <ShippingCalculator
                           cart={cart}
-                          subtotal={subtotal}
-                          freeShippingMin={config.freeShippingMin || 0}
                           selectedOption={selectedShippingOption}
                           onSelectOption={setSelectedShippingOption}
                           onCepValidated={setShippingCep}
@@ -508,24 +528,18 @@ export function CartView({
                                   Identificar-se (Entrar)
                                 </p>
                                 <p className="mt-0.5 text-[9px] font-medium leading-relaxed text-slate-500">
-                                  {/* "Acumular pontos" nunca existiu no app,
-                                      e frete grátis por valor é regra que a
-                                      loja LIGA (freeShippingMin > 0 — ver
-                                      regra-de-frete.ts): prometer o que a
-                                      loja não oferece é o mesmo defeito que
-                                      os selos do rodapé já corrigiram. A
-                                      promessa só aparece com a regra ligada,
-                                      como FreeShippingBlock e
-                                      ShippingProgress já fazem. */}
-                                  Faça login para salvar seus itens
-                                  {config.freeShippingMin > 0 && (
-                                    <>
-                                      {" "}
-                                      e ativar o frete grátis (acima de{" "}
-                                      {formatCurrency(config.freeShippingMin)})
-                                    </>
-                                  )}
-                                  .
+                                  {/* FRETE V2 (onda D-1, 03/09): a promessa
+                                      "e ativar o frete grátis (acima de
+                                      R$ X)" morreu com a trava de login da
+                                      regra — convidado tem o MESMO direito
+                                      do logado (frente B no CartContext;
+                                      mesmo corte do "Faça login para
+                                      liberar o Frete VIP" no CartReminder).
+                                      "Acumular pontos" nunca existiu no app.
+                                      Prometer ao convidado que o login
+                                      libera o que ele JÁ ganha é promessa
+                                      falsa. */}
+                                  Faça login para salvar seus itens.
                                 </p>
                               </div>
                             </div>
@@ -666,8 +680,12 @@ export function CartView({
                         </span>
                       </div>
                       {shipping === 0 && (
+                        /* REVISÃO A3 (frete v2, 03/09): o selo dizia
+                           "Economizou R$ X" contra `config.shippingFee` —
+                           preço morto da taxa fixa. Sem cotação alternativa
+                           em mãos não há número honesto: só o fato. */
                         <span className="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-emerald-700">
-                          Economizou {formatCurrency(savings)}
+                          Frete grátis aplicado
                         </span>
                       )}
                     </div>

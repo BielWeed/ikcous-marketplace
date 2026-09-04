@@ -3,13 +3,11 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   buscarComTempo,
   calculateSmartFallback,
-  flatFeeConfigurada,
   getCartHash,
   handler,
   isLocalCep,
   nomeAmigavelDoServico,
   precoDeContingenciaDoTopo,
-  montarLogDaCotacaoFlatFee,
   precoResolvidoSemCache,
   validarOrigemEFrete,
 } from "./index.ts";
@@ -148,7 +146,7 @@ Deno.test("contingência do topo - sem taxa da loja conhecida, a escada ainda va
   assertEquals(precoDeContingenciaDoTopo("38500000", "69000000", undefined), 38);
 });
 
-// --- Origem e taxa fixa: falhar fechado, nunca assumir Monte Carmelo -------
+// --- Origem: falhar fechado, nunca assumir Monte Carmelo -------------------
 //
 // Mesmo defeito que a 1.4.0 corrigiu na contingência do topo, um andar
 // acima: até 18/08/2026, `storeConfig.origin_cep || '38500-000'` e
@@ -158,68 +156,29 @@ Deno.test("contingência do topo - sem taxa da loja conhecida, a escada ainda va
 // errados. `validarOrigemEFrete` é a decisão isolada — string de erro
 // quando falta o que é preciso para cotar honestamente, `null` quando pode
 // seguir.
+//
+// FRETE V2 (03/09/2026): a exigência de taxa fixa que vivia aqui (quando o
+// provedor era `flat_fee`) saiu junto com o caminho de taxa fixa — fora da
+// cidade é SÓ cotação real de transportadora, e a origem é o único pré-
+// requisito que falta para pedi-la.
 
 Deno.test("sem CEP de origem configurado, nao devolve opcao de frete", () => {
-  const erro = validarOrigemEFrete(null, 15, "flat_fee");
+  const erro = validarOrigemEFrete(null);
   assertEquals(typeof erro, "string");
 });
 
 Deno.test("CEP de origem vazio conta como ausente, nao so' null", () => {
-  const erro = validarOrigemEFrete("", 15, "flat_fee");
+  const erro = validarOrigemEFrete("");
   assertEquals(typeof erro, "string");
 });
 
-Deno.test("sem taxa configurada, nao inventa R$ 15 (provedor flat_fee)", () => {
-  const erro = validarOrigemEFrete("38500-000", null, "flat_fee");
-  assertEquals(typeof erro, "string");
-});
-
-Deno.test("com CEP de origem e taxa configurados, permite cotar", () => {
-  const erro = validarOrigemEFrete("38500-000", 15, "flat_fee");
-  assertEquals(erro, null);
-});
-
-Deno.test("sem taxa configurada mas provedor nao e flat_fee, ainda permite cotar", () => {
-  // Quem decide o preco e' a API do transportador; o piso fixo da loja nao
-  // entra nessa conta.
-  const erro = validarOrigemEFrete("38500-000", null, "melhor_envio");
-  assertEquals(erro, null);
-});
-
-// --- flatFeeConfigurada: o zero de ausencia nao pode virar frete gratis ----
-//
-// `validarOrigemEFrete` so exige `shipping_fee` quando `provider ===
-// 'flat_fee'` -- de proposito, porque nos demais provedores quem cota e a
-// API do transportador. Mas `getFlatFeeResponse` (dentro do handler HTTP)
-// cai na taxa fixa mesmo assim quando faltam credenciais do transportador,
-// e ate 18/08/2026 isso usava `Number(storeConfig.shipping_fee || 15)`,
-// depois trocado para `Number(storeConfig.shipping_fee)` pela Tarefa 7.
-// `Number(null)` e `0`: loja com Melhor Envio ou Frenet sem credencial
-// cadastrada E sem taxa configurada cotava frete GRATIS para o Brasil
-// inteiro em vez de recusar -- pior que o R$ 15 inventado que existia antes.
-// `flatFeeConfigurada` e a checagem isolada que fecha esse buraco.
-
-Deno.test("flatFeeConfigurada - taxa nula (nunca configurada) nao e utilizavel", () => {
-  assertEquals(flatFeeConfigurada(null), false);
-});
-
-Deno.test("flatFeeConfigurada - taxa indefinida nao e utilizavel", () => {
-  assertEquals(flatFeeConfigurada(undefined), false);
-});
-
-Deno.test("flatFeeConfigurada - taxa nao numerica (NaN) nao e utilizavel", () => {
-  assertEquals(flatFeeConfigurada(Number("abc")), false);
-});
-
-Deno.test("flatFeeConfigurada - zero CONFIGURADO pela loja e utilizavel (frete gratis de verdade)", () => {
-  // Loja pode legitimamente escolher taxa fixa R$ 0. Isso e diferente do
-  // zero que nasce de `Number(null)` -- e por isso a checagem olha o valor
-  // original, nao o numero ja convertido.
-  assertEquals(flatFeeConfigurada(0), true);
-});
-
-Deno.test("flatFeeConfigurada - taxa positiva e utilizavel", () => {
-  assertEquals(flatFeeConfigurada(15), true);
+Deno.test("com CEP de origem, permite cotar — a taxa fixa não é mais exigida (nem usada)", () => {
+  // O fim do flat_fee levou embora a checagem de taxa que vivia aqui: quem
+  // decide o preço de fora da cidade é a API da transportadora. Loja com
+  // `shipping_fee` nulo e origem configurada pode cotar (pela
+  // transportadora), e loja COM taxa configurada também não cota mais por
+  // ela — o valor ficou órfão no banco de propósito.
+  assertEquals(validarOrigemEFrete("38500-000"), null);
 });
 
 // --- A cotação só sai depois de GRAVADA -------------------------------------
@@ -409,6 +368,19 @@ function clienteFalso(opts: {
    * sido lida), sem depender do caminho de falha da transportadora.
    */
   falhaAoLerCredenciais?: boolean;
+  /**
+   * Loja SEM linha em `store_shipping_credentials` para o provedor — o caso
+   * real da transportadora não conectada. FRETE V2: a resposta tem que ser
+   * "sem opções" com o motivo no histórico (a taxa fixa que servia de plano
+   * B aqui foi removida).
+   */
+  semCredencial?: boolean;
+  /**
+   * Linhas de `produtos` devolvidas pela leitura `.in('id', …)` — é por aqui
+   * que a marcação `frete_gratis` chega à edge (revisão A1: ela só vale no
+   * preset por_produto).
+   */
+  produtos?: any[];
 }) {
   const { registro } = opts;
   const config = opts.config ?? CONFIG_DA_LOJA;
@@ -419,13 +391,18 @@ function clienteFalso(opts: {
         case "store_config":
           return Promise.resolve({ data: config, error: null });
         case "produtos":
-          return Promise.resolve({ data: [], error: null });
+          return Promise.resolve({ data: opts.produtos ?? [], error: null });
         case "shipping_quotes_cache":
           // Cache miss: é o caminho que cota na transportadora e grava.
           return Promise.resolve({ data: null, error: null });
         case "store_shipping_credentials":
           if (opts.falhaAoLerCredenciais) {
             return Promise.reject(new Error("conexão perdida ao buscar credenciais"));
+          }
+          if (opts.semCredencial) {
+            // Sem linha para o provedor: `maybeSingle` devolve data nula
+            // sem erro — é o `!credsData` do handler.
+            return Promise.resolve({ data: null, error: null });
           }
           return Promise.resolve({
             data: { credentials: { token: "token-de-teste" } },
@@ -524,6 +501,8 @@ async function cotar(
   cacheInsert: () => Promise<any>,
   config?: typeof CONFIG_DA_LOJA,
   logInsert?: () => Promise<any>,
+  semCredencial = false,
+  produtos?: any[],
 ) {
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
@@ -541,7 +520,7 @@ async function cotar(
     )) as any;
   try {
     const resposta = await handler(requisicaoDeCotacao(), {
-      supabase: clienteFalso({ registro, cacheInsert, logInsert, config }),
+      supabase: clienteFalso({ registro, cacheInsert, logInsert, config, semCredencial, produtos }),
     });
     // Instantâneo tirado no momento EXATO em que o handler respondeu. Depois
     // do `finally` abaixo (que drena o que ficou em voo) essa medida já não
@@ -676,12 +655,14 @@ Deno.test("gravação OK -> o log continua registrando sucesso (controle)", asyn
 //
 // Verificado no ramo de frete das DUAS RPCs que o checkout chama —
 // `create_marketplace_order_v23` e `create_marketplace_order_v24` (a v24 no
-// pagamento online; a escolha está em `useOrders.ts:1060`). A definição viva
-// das duas é `supabase/migrations/20260821000200_cupom_sem_limite_e_ilimitado.sql`,
-// v23 a partir de :138 e v24 a partir de :383, e os dois ramos são hoje
-// idênticos. Neles: `local-delivery` sai de `store_config.local_delivery_fee`
-// e `flat-fee-%` sai de `store_config.shipping_fee` — nenhum dos dois consulta
-// `shipping_quotes_cache`. Só a cotação de transportadora
+// pagamento online; a escolha está em `useOrders.ts:1060`). A definição das
+// duas é a `supabase/migrations/20261081000000_a_regra_do_frete_gratis_mora_
+// no_servidor.sql` (corpos verbatim da 20261040000000) e os dois ramos são
+// idênticos. EMENDA FRETE V2 (03/09, "entrega fixa não faz sentido existir"):
+// a ÚNICA opção resolvida sem cache é a ENTREGA LOCAL
+// (`store_config.local_delivery_fee`). `flat-fee-%`, pedido sem opção e id
+// não reconhecido viraram RAISE EXCEPTION no servidor — nunca mais
+// `COALESCE(shipping_fee, 0)`. Só a cotação de transportadora
 // (`melhor-envio-*`, `frenet-*`) cai no SELECT do cache e é recusada sem ele.
 //
 // Loja nacional com faixa local configurada devolve `local-delivery` JUNTO das
@@ -696,10 +677,13 @@ const CONFIG_COM_ENTREGA_LOCAL = {
 };
 
 Deno.test("precoResolvidoSemCache espelha, um a um, os ramos da RPC", () => {
-  // Resolvidos pela config, sem tocar em shipping_quotes_cache:
+  // Resolvida pela config, sem tocar em shipping_quotes_cache:
   assertEquals(precoResolvidoSemCache("local-delivery"), true);
-  assertEquals(precoResolvidoSemCache("flat-fee-contingency"), true);
-  assertEquals(precoResolvidoSemCache("flat-fee-standard"), true);
+  // EMENDA 03/09: `flat-fee-%` deixou de ser resolvido pela loja — a RPC o
+  // RECUSA com exception (era este classificador que o mantinha "vendável"
+  // numa resposta de falha de cache, para o pedido morrer no último clique).
+  assertEquals(precoResolvidoSemCache("flat-fee-contingency"), false);
+  assertEquals(precoResolvidoSemCache("flat-fee-standard"), false);
   // Precisam da linha gravada:
   assertEquals(precoResolvidoSemCache("melhor-envio-1"), false);
   assertEquals(precoResolvidoSemCache("frenet-04014"), false);
@@ -900,31 +884,288 @@ Deno.test("cliente local com gravação OK: ainda SÓ a Entrega Local (decisão 
   );
 });
 
-// --- O campo viaja nas rotas que respondem ANTES da cotação ----------------
+// --- FRETE V2: o fim do flat_fee -------------------------------------------
 //
-// `cotacaoIncompleta` nasceu no `return` final — o caminho que fala com a
-// transportadora. Mas a maioria das respostas 200 sai antes dele: taxa fixa,
-// cobertura só-local, frete grátis, acerto de cache e credencial ausente. A
-// loja em `flat_fee` responde SEMPRE por uma dessas, então o campo nunca
-// apareceria em nenhuma resposta real, e quem consome concluiria que ele não
-// existe — valor ausente é falso em JavaScript e a tela "funciona".
+// Ordem do dono (03/09/2026): "entrega fixa não faz sentido existir, parece
+// opção duplicada". O caminho de taxa fixa da edge (`getFlatFeeResponse`,
+// opção "Entrega Padrão" com `store_config.shipping_fee`) foi REMOVIDO. A
+// verdade nova: fora da cidade o preço vem SÓ de cotação real de
+// transportadora (melhor_envio/frenet com credencial). Sem transportadora —
+// por provedor `flat_fee` remanescente no config de loja antiga ou por
+// credencial ausente — a resposta é a lista vazia e honesta, com o motivo no
+// histórico (`shipping_calculation_logs`, status 'error') para a lojista
+// entender que precisa conectar. NENHUM preço inventado em caminho nenhum.
 //
-// Estas rotas estão completas por construção: nada foi removido delas. Por
-// isso o valor é `false`, e ele precisa estar ESCRITO — é a diferença entre
-// "esta lista está inteira" e "esta é uma versão da função que não sabia
-// responder isso".
+// A ENTREGA LOCAL (R$ 10 etc.) fica INTACTA — provada logo abaixo.
 
-Deno.test("taxa fixa responde antes da cotação e mesmo assim declara a lista completa", async () => {
-  const { resposta, corpo } = await cotar(
+Deno.test("provedor flat_fee remanescente (loja antiga) -> 200 SEM opções de fora, sem chamar transportadora, com log explicando", async () => {
+  // O fetch falso REJEITA: se o handler chegasse a chamar a transportadora,
+  // a resposta não seria a lista vazia limpa — o teste prova que a decisão
+  // sai antes dela, sem explodir.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.reject(new Error("NÃO DEVE SER CHAMADO: sem transportadora não há cotação"))) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, shipping_provider: "flat_fee" },
+      }),
+    });
+    const corpo = await resposta.json();
+
+    // Resposta honesta: lista vazia, completa por construção.
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options, []);
+    assertEquals(corpo.cotacaoIncompleta, false);
+    // Nenhuma cotação gravada — não há cotação.
+    assertEquals(
+      registro.inserts.filter((i) => i.tabela === "shipping_quotes_cache").length,
+      0,
+    );
+    // O motivo claro para a lojista vai para o histórico, como erro.
+    const log = logDaCotacao(registro);
+    assertEquals(typeof log, "object");
+    assertEquals(log.status, "error");
+    assertEquals(typeof log.error_message, "string");
+    assertEquals(log.error_message.includes("transportadora"), true);
+    assertEquals(log.provider, "flat_fee");
+    // E a taxa fixa do config NÃO vaza por caminho nenhum.
+    assertEquals(JSON.stringify(corpo).includes("15"), false);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+});
+
+Deno.test("provedor AUSENTE no config (default) -> mesmo tratamento do flat_fee remanescente", async () => {
+  // `storeConfig.shipping_provider || 'flat_fee'` — loja sem provedor salvo
+  // cai no mesmo caminho honesto, sem explodir.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() => Promise.reject(new Error("NÃO DEVE SER CHAMADO"))) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, shipping_provider: null as any },
+      }),
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options, []);
+    const log = logDaCotacao(registro);
+    assertEquals(log.status, "error");
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+});
+
+Deno.test("melhor_envio SEM credencial cadastrada -> 200 sem opções + log com o motivo (conectar transportadora)", async () => {
+  // Até 03/09 este ramo devolvia a taxa fixa como "Entrega Padrão" (ou, sem
+  // taxa configurada, uma lista vazia muda). Agora: lista vazia SEMPRE, com
+  // o motivo no histórico — e nunca um preço que a transportadora não cotou.
+  // O `cotar()` stuba o fetch devolvendo PAC: se o handler chegasse a chamar
+  // a transportadora (defeito), a resposta viria COM opção e o teste cairia.
+  const { resposta, corpo, registro } = await cotar(
     () => Promise.resolve({ error: null }),
-    { ...CONFIG_DA_LOJA, shipping_provider: "flat_fee" },
+    undefined,
+    undefined,
+    true,
   );
 
   assertEquals(resposta.status, 200);
-  // Confirma que a resposta veio mesmo pela saída antecipada da taxa fixa, e
-  // não pelo `return` final que já carregava o campo.
-  assertEquals(corpo.options.map((o: any) => o.id), ["flat-fee-standard"]);
+  assertEquals(corpo.options, []);
   assertEquals(corpo.cotacaoIncompleta, false);
+  assertEquals(
+    registro.inserts.filter((i) => i.tabela === "shipping_quotes_cache").length,
+    0,
+  );
+  const log = logDaCotacao(registro);
+  assertEquals(typeof log, "object");
+  assertEquals(log.status, "error");
+  assertEquals(typeof log.error_message, "string");
+  assertEquals(log.error_message.includes("credencial"), true);
+});
+
+Deno.test("carrinho vazio -> 200 sem opções, sem explodir e SEM log de erro (nada a consertar)", async () => {
+  // O ramo antigo devolvia a taxa fixa para carrinho vazio de qualquer
+  // provedor. Sem flat_fee, não há o que cotar — a transportadora cobra por
+  // item. E não é erro da lojista: o histórico não pode ficar vermelho por
+  // um carrinho vazio.
+  for (const corpoDoPedido of [
+    JSON.stringify({ cep: "01001-000", cart: [] }),
+    JSON.stringify({ cep: "01001-000" }),
+  ]) {
+    const req = new Request("http://localhost/calculate-shipping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: corpoDoPedido,
+    });
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(req, {
+      supabase: clienteFalso({ registro, cacheInsert: () => Promise.resolve({ error: null }) }),
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options, []);
+    assertEquals(corpo.cotacaoIncompleta, false);
+    assertEquals(logDaCotacao(registro), undefined);
+  }
+});
+
+Deno.test("ENTREGA LOCAL INTACTA: provedor flat_fee remanescente + CEP da cidade -> só a Entrega Local R$ 10", async () => {
+  // A prova de que o fim do flat_fee não tocou a entrega local: mesmo na
+  // loja antiga com provedor `flat_fee` salvo, quem é da cidade continua
+  // recebendo a opção local com o valor configurado — a decisão de 02/09
+  // (cliente local não vê transportadora) e o valor de
+  // `local_delivery_fee` intocados.
+  const { resposta, corpo, registro } = await cotar(
+    () => Promise.resolve({ error: null }),
+    { ...CONFIG_DA_LOJA, shipping_provider: "flat_fee", local_cep_range: "01001" },
+  );
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.length, 1);
+  assertEquals(corpo.options[0].id, "local-delivery");
+  assertEquals(corpo.options[0].name, "Entrega Local");
+  assertEquals(corpo.options[0].price, 10);
+  assertEquals(corpo.options[0].provider, "local");
+  assertEquals(corpo.cotacaoIncompleta, false);
+  // A entrega local não grava cotação no cache (retorno cedo) e o registro
+  // no histórico é de SUCESSO, provider 'local'.
+  assertEquals(
+    registro.inserts.filter((i) => i.tabela === "shipping_quotes_cache").length,
+    0,
+  );
+  const logLocal = registro.inserts.find(
+    (i) => i.tabela === "shipping_calculation_logs",
+  );
+  assertEquals((logLocal as any).linha.provider, "local");
+  assertEquals((logLocal as any).linha.status, "success");
+});
+
+// --- Revisão A1 (frete v2, 03/09): a marcação só vale no por_produto -------
+//
+// A edge honrava `produtos.frete_gratis` INCONDICIONALMENTE: loja com o frete
+// grátis DESLIGADO (free_shipping_min = 0) e item marcado recebia "Frete
+// Grátis (Promoção)" R$ 0 — preço que a RPC do pedido NÃO honra (ela cobra a
+// entrega local real no último clique). O modelo é EXCLUSIVO: a marcação vale
+// SÓ no preset por_produto (free_shipping_min < 0), mesma regra da RPC
+// (20261081000000) e do carrinho — fonte única em
+// src/lib/presets-de-frete-gratis.ts.
+
+/** Item do carrinho com a marcação `frete_gratis` gravada no BANCO. */
+const PRODUTO_MARCADO = [{ id: "p1", nome: "Caneca", frete_gratis: true, preco_venda: 100 }];
+
+Deno.test("preset DESLIGADO + item marcado, CEP da cidade -> Entrega Local R$ 10, NUNCA R$ 0", async () => {
+  const { resposta, corpo } = await cotar(
+    () => Promise.resolve({ error: null }),
+    { ...CONFIG_DA_LOJA, free_shipping_min: 0, local_cep_range: "01001" },
+    undefined,
+    false,
+    PRODUTO_MARCADO,
+  );
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  assertEquals(corpo.options[0].name, "Entrega Local");
+  assertEquals(corpo.options[0].price, 10);
+  assertEquals(JSON.stringify(corpo).includes("free-shipping-promo"), false);
+  assertEquals(JSON.stringify(corpo).includes('"price":0'), false);
+});
+
+Deno.test("preset DESLIGADO + item marcado, fora da cidade -> cotação real, NUNCA free-shipping-promo R$ 0", async () => {
+  const { resposta, corpo, texto } = await cotar(
+    () => Promise.resolve({ error: null }),
+    { ...CONFIG_DA_LOJA, free_shipping_min: 0 },
+    undefined,
+    false,
+    PRODUTO_MARCADO,
+  );
+
+  assertEquals(resposta.status, 200);
+  // A cotação REAL da transportadora (o PAC de R$ 25,50 do fetch falso), não
+  // a opção de grátis inventada.
+  assertEquals(corpo.options.map((o: any) => o.id), ["melhor-envio-1"]);
+  assertEquals(corpo.options[0].price, 25.5);
+  assertEquals(texto.includes("free-shipping-promo"), false);
+  assertEquals(texto.includes("Frete Grátis (Promoção)"), false);
+});
+
+Deno.test("controle: preset por_produto (-1) + item marcado -> o grátis CONTINUA (fora vira free-shipping-promo)", async () => {
+  // O conserto da A1 não pode desligar a estratégia: com a sentinela -1
+  // gravada, a marcação volta a valer e o carrinho todo-grátis recebe a
+  // promoção de R$ 0 como antes.
+  const { resposta, corpo } = await cotar(
+    () => Promise.resolve({ error: null }),
+    { ...CONFIG_DA_LOJA, free_shipping_min: -1 },
+    undefined,
+    false,
+    PRODUTO_MARCADO,
+  );
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["free-shipping-promo"]);
+  assertEquals(corpo.options[0].price, 0);
+});
+
+// --- O campo viaja nas rotas que respondem ANTES da cotação ----------------
+//
+// `cotacaoIncompleta` nasceu no `return` final — o caminho que fala com a
+// transportadora. Mas a maioria das respostas 200 sai antes dele: cobertura
+// só-local, entrega local, frete grátis, carrinho vazio, sem transportadora,
+// acerto de cache e carrinho todo-grátis. O campo precisa estar ESCRITO
+// (`false`) em todas — é a diferença entre "esta lista está inteira" e
+// "esta é uma versão da função que não sabia responder isso".
+
+Deno.test("resposta sem cotação de fora (flat_fee remanescente) declara a lista completa", async () => {
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() => Promise.reject(new Error("NÃO DEVE SER CHAMADO"))) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, shipping_provider: "flat_fee" },
+      }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options, []);
+    // Confirma que a resposta saiu com o campo escrito, e não por omissão.
+    assertEquals(corpo.cotacaoIncompleta, false);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
 });
 
 Deno.test("cobertura só-local responde antes da cotação e mesmo assim declara a lista completa", async () => {
@@ -950,14 +1191,10 @@ Deno.test("cobertura só-local responde antes da cotação e mesmo assim declara
 // cliente preenchia tudo, clicava em Finalizar, e ouvia "os valores do
 // pedido mudaram".
 //
-// A correção: o preço mostrado no fallback só pode ser um preço que a RPC
-// REALMENTE vai cobrar. Isso só existe quando a loja configurou uma taxa
-// fixa de verdade (`flatFeeConfigurada`) — aí o fallback mostra ESSA taxa,
-// não a estimativa por região. Sem taxa fixa configurada não há preço
-// honesto: a função falha fechado (erro, sem `options`), e o carrinho do
-// cliente volta a usar a taxa que a própria loja definiu no painel (ver
-// `ShippingCalculator.tsx`, comentário "COTAÇÃO QUE FALHA NÃO VIRA PREÇO
-// INVENTADO").
+// A correção de 25/08 mostrava a taxa fixa da loja como plano B. FRETE V2
+// (03/09/2026) matou o flat_fee — e com ele o plano B inteiro: fora da
+// cidade só preço de transportadora REAL. Transportadora fora do ar = falha
+// fechado (503), COM ou SEM taxa fixa no config.
 
 /** Roda o handler com a transportadora FALHANDO (o `fetch` rejeita). */
 async function cotarComTransportadoraFora(config?: typeof CONFIG_DA_LOJA) {
@@ -986,29 +1223,31 @@ async function cotarComTransportadoraFora(config?: typeof CONFIG_DA_LOJA) {
   }
 }
 
-// CONFIG_DA_LOJA.shipping_fee é 15 — e 15 também é o PISO que
-// `calculateSmartFallback` devolve para região remota com baseFee baixo (ver
-// o teste "mesma região usa o piso de 15" lá em cima). Comparar o preço da
-// resposta contra o literal 15 não prova que a função LEU
-// `store_config.shipping_fee`: um código que tivesse cravado `price: 15` no
-// lugar da leitura passaria pelo mesmo jeito. `CONFIG_TAXA_NAO_TRIVIAL` usa um
-// valor que não coincide com NENHUM piso da escada antiga (15/22/38) nem com
-// o baseFee default dela (10) — só ele distingue "leu da config" de "cravou
-// um número parecido".
+// CONFIG_DA_LOJA.shipping_fee é 15 — valor que coincide com o PISO que
+// `calculateSmartFallback` devolve para região remota com baseFee baixo. Este
+// config usa um valor que não coincide com NENHUM piso da escada antiga
+// (15/22/38) nem com o baseFee default dela (10). No teste abaixo ele prova o
+// contrário do que provava antes de 03/09: a taxa NÃO é mais cotada em
+// caminho nenhum — nem como plano B, nem como contingência.
 const CONFIG_TAXA_NAO_TRIVIAL = { ...CONFIG_DA_LOJA, shipping_fee: 27.5 };
 
-Deno.test("transportadora fora do ar, loja COM taxa fixa: preço mostrado é o configurado (lido de store_config), não um valor cravado no código (controle: continua cotando)", async () => {
-  // Destino da requisição de teste é "01001-000" a partir de "38500-000" —
-  // regiões remotas, então a escada por região (`calculateSmartFallback`)
-  // daria um valor bem diferente do configurado. Se a função ainda usasse a
-  // escada, a RPC cobraria a taxa da loja mesmo assim e o pedido seria
-  // recusado.
-  const { resposta, corpo } = await cotarComTransportadoraFora(CONFIG_TAXA_NAO_TRIVIAL);
+Deno.test("transportadora fora do ar, loja COM taxa fixa no config: falha fechado (503) — a taxa não é mais cotada", async () => {
+  // Até 03/09 este cenário devolvia 200 com "Entrega Padrão" a R$ 27,50. O
+  // flat_fee morreu: sem cotação real de transportadora não há preço honesto
+  // para fora da cidade — erro, sem options, sem fallback.
+  const { resposta, corpo, texto, registro } = await cotarComTransportadoraFora(CONFIG_TAXA_NAO_TRIVIAL);
 
-  assertEquals(resposta.status, 200);
-  assertEquals(corpo.options.length, 1);
-  assertEquals(corpo.options[0].price, CONFIG_TAXA_NAO_TRIVIAL.shipping_fee);
-  assertEquals(corpo.options[0].id.startsWith("flat-fee-"), true);
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo.options, undefined);
+  assertEquals(corpo.fallback, undefined);
+  assertEquals(typeof corpo.error, "string");
+  // Nem o valor da taxa (27.5) nem preço nenhum vaza na resposta.
+  assertEquals(texto.includes("27.5"), false);
+  assertEquals(texto.includes('"price"'), false);
+  // O log registra o ERRO (vermelho no painel), não um sucesso.
+  const log = logDaCotacao(registro);
+  assertEquals(typeof log, "object");
+  assertEquals(log.status, "error");
 });
 
 Deno.test("transportadora fora do ar, loja SEM taxa fixa configurada: falha fechado, sem preço inventado", async () => {
@@ -1036,18 +1275,18 @@ Deno.test("transportadora fora do ar, loja SEM taxa fixa configurada: falha fech
 
 // --- O mesmo defeito, na OUTRA metade: o catch de topo da função -----------
 //
-// `precoDeContingenciaDoTopo` roda quando a função inteira estoura DEPOIS de
-// `store_config` já ter sido lida (não é falha de transportadora — é
-// qualquer exceção inesperada no meio do caminho). Mesmo defeito: a escada
-// por região não bate com o que a RPC cobra para um id `flat-fee-%`.
+// Quando a função inteira estoura DEPOIS de `store_config` já ter sido lida
+// (não é falha de transportadora — é qualquer exceção inesperada no meio do
+// caminho), o `catch` de topo responde. Até 25/08 ele devolvia a escada por
+// região (`precoDeContingenciaDoTopo`); até 03/09 ele devolvia a taxa fixa
+// da loja como `flat-fee-fallback`. FRETE V2: sem flat_fee não há plano B de
+// preço nenhum — exceção inesperada é 500 falha fechado, SEMPRE.
 
-Deno.test("catch de topo: erro inesperado após ler a config, loja COM taxa fixa -> preço é o configurado (lido de store_config), não um valor cravado no código", async () => {
-  // Mesmo cuidado do teste equivalente acima: `CONFIG_TAXA_NAO_TRIVIAL`
+Deno.test("catch de topo: erro inesperado após ler a config, loja COM taxa fixa -> 500 falha fechado (a taxa não é mais contingência)", async () => {
+  // Mesmo cuidado do teste equivalente de baixo: `CONFIG_TAXA_NAO_TRIVIAL`
   // (27,5) não coincide com nenhum piso da escada antiga (15/22/38) nem com
-  // o literal que este `catch` de topo cravava até 18/08/2026. Comparar
-  // contra `CONFIG_TAXA_NAO_TRIVIAL.shipping_fee`, e não contra um número
-  // solto, é o que prova que o valor veio de `taxaDaLoja` e não de um
-  // literal reescrito no meio do caminho.
+  // o literal que este `catch` já cravou no passado. Se QUALQUER preço
+  // inventado voltar a vazar aqui, o teste cai.
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
@@ -1064,10 +1303,11 @@ Deno.test("catch de topo: erro inesperado após ler a config, loja COM taxa fixa
   });
   const corpo = await resposta.json();
 
-  assertEquals(resposta.status, 200);
-  assertEquals(corpo.fallback, true);
-  assertEquals(corpo.options.length, 1);
-  assertEquals(corpo.options[0].price, CONFIG_TAXA_NAO_TRIVIAL.shipping_fee);
+  assertEquals(resposta.status, 500);
+  assertEquals(corpo.options, undefined);
+  assertEquals(corpo.fallback, undefined);
+  assertEquals(typeof corpo.error, "string");
+  assertEquals(JSON.stringify(corpo).includes("27.5"), false);
 });
 
 Deno.test("catch de topo: erro inesperado após ler a config, loja SEM taxa fixa -> falha fechado", async () => {
@@ -1093,44 +1333,24 @@ Deno.test("catch de topo: erro inesperado após ler a config, loja SEM taxa fixa
   assertEquals(corpo.fallback, undefined);
 });
 
-// --- A guarda da contingência tem que autenticar o MESMO campo que usa -----
+// --- A entrega local não depende de taxa fixa nem de transportadora --------
 //
-// `getFlatFeeResponse()` devolve `local-delivery` quando `isLocal`, e só cai
-// na taxa fixa (`flatFeeConfigurada`) quando não é local. Mas a guarda que
-// decide se a contingência tem preço para entregar (perto de `index.ts:1003`)
-// checava `flatFeeConfigurada(storeConfig.shipping_fee)` direto — o campo
-// ERRADO quando o que importa é isLocal. Loja nacional com faixa local
-// configurada e SEM taxa fixa, cuja transportadora não devolve nenhuma opção
-// habilitada, teria a entrega local disponível e honesta (a RPC lê
-// `local_delivery_fee`, `NOT NULL DEFAULT 10.00`) recusada mesmo assim.
-//
-// ⚠️ Ressalva de alcance: `shipping_fee` tem `DEFAULT 15` e o
-// `upsert_store_config` faz `COALESCE(...,15)` no INSERT, então `null` exige
-// alguém mandar `shipping_fee: null` explicitamente — estreito, mas o mesmo
-// estreito que o ramo inteiro atende.
-//
-// ⚠️ Achado ao escrever este teste (histórico): no código ANTES desta
-// correção, o bloco que preparava `local-delivery` (o prepend no fim do
-// handler, hoje substituído pelo retorno cedo de `isLocal`) já rodava ANTES
-// da guarda, e era incondicional — sempre que `isLocal` era `true`, ele
-// colocava a opção local em `shippingOptions`, então `shippingOptions.length`
-// nunca chegava a 0 nesse cenário e a guarda de `flatFeeConfigurada` nunca
-// era alcançada. E desde o retorno cedo de 02/09 (decisão do Gabriel: o
-// cliente da cidade não vê transportadora), quando `isLocal` é `true` o
-// handler responde ANTES da transportadora e esta contingência nem é
-// alcançada; quando é `false`, a guarda e a função leem o mesmo campo. A
-// troca por `getFlatFeeResponse().length > 0` segue valendo como correção
-// defensiva — ela autentica o que a função REALMENTE vai devolver, e deixa
-// de ser um contrato implícito que se quebraria em silêncio numa
-// reordenação futura — mas não é a correção de um 503 que eu tenha
-// conseguido reproduzir na árvore de então nem na atual.
+// Até 03/09 este cenário exigia cuidado com a guarda da contingência de taxa
+// fixa (ver histórico no git). FRETE V2: com o retorno cedo de `isLocal`
+// (decisão de 02/09 — o cliente da cidade não vê transportadora) e o fim do
+// flat_fee, a prova ficou direta: loja SEM taxa fixa configurada
+// (`shipping_fee` nulo, valor órfão no banco), SEM credencial que sirva de
+// algo e com transportadora que não devolveria opção habilitada — quem é da
+// cidade recebe a Entrega Local do mesmo jeito, com o preço que a lojista
+// configurou. `shipping_fee` NÃO entra nessa conta.
 
-Deno.test("loja SEM taxa fixa mas com entrega local disponível, transportadora sem opção habilitada -> 200 com local-delivery, nunca 503", async () => {
+Deno.test("loja SEM taxa fixa e SEM transportadora útil, CEP da cidade -> 200 com local-delivery, nunca 503", async () => {
   const configLocalSemTaxa = {
     ...CONFIG_COM_ENTREGA_LOCAL,
     shipping_fee: null,
     // Nenhum método habilitado casa com "PAC" (o que a transportadora falsa
-    // devolve em `cotar()`) — a lista da transportadora fica vazia.
+    // devolve em `cotar()`) — a lista da transportadora ficaria vazia SE ela
+    // fosse consultada. Não é: o retorno cedo do cliente local vence antes.
     enabled_shipping_methods: ["sedex"],
   };
   const { resposta, corpo } = await cotar(() => Promise.resolve({ error: null }), configLocalSemTaxa);
@@ -1138,49 +1358,12 @@ Deno.test("loja SEM taxa fixa mas com entrega local disponível, transportadora 
   assertEquals(resposta.status, 200);
   assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
   assertEquals(corpo.options[0].price, configLocalSemTaxa.local_delivery_fee);
-  // Controle: sem taxa fixa configurada, `flatFeeConfigurada` sozinha
-  // continua `false` aqui — a diferença é isLocal, não o valor da taxa.
-  assertEquals(flatFeeConfigurada(configLocalSemTaxa.shipping_fee), false);
 });
 
-// ── Achado 9 do laudo de 29/08: o ramo de TAXA FIXA respondia antes de
-// gravar log — o "Histórico de Cotações" nunca mostrava o provedor padrão.
-// O montarLogDaCotacaoFlatFee monta o registro com o MESMO formato dos
-// outros logs; estas provas fixam o formato que o painel lê.
-Deno.test("montarLogDaCotacaoFlatFee - taxa fixa de verdade: provider limpo e status success", () => {
-  const log = montarLogDaCotacaoFlatFee(
-    "38500000",
-    "35000000",
-    "flat_fee",
-    [{ productId: "p1", quantity: 2 }],
-    1,
-  );
-  assertEquals(log.provider, "flat_fee");
-  assertEquals(log.status, "success");
-  assertEquals(log.origin_cep, "38500000");
-  assertEquals(log.destination_cep, "35000000");
-  assertEquals(log.cart_items.length, 1);
-});
-
-Deno.test("montarLogDaCotacaoFlatFee - carrinho vazio de OUTRO provider: sufixo honesto", () => {
-  // Este ramo também atende carrinho ausente/vazio de qualquer provedor —
-  // dizer só "flat_fee" mentiria sobre quem respondeu.
-  const log = montarLogDaCotacaoFlatFee("38500000", "35000000", "melhor_envio", [], 1);
-  assertEquals(log.provider, "flat_fee (sem itens)");
-  assertEquals(log.status, "success");
-});
-
-Deno.test("montarLogDaCotacaoFlatFee - resposta SEM opção nenhuma: status empty, não success", () => {
-  // Taxa fixa não configurada e sem entrega local: a lista vem vazia — o
-  // histórico não pode confundir com uma cotação bem sucedida.
-  const log = montarLogDaCotacaoFlatFee("38500000", "35000000", "flat_fee", [], 0);
-  assertEquals(log.status, "empty");
-});
-
-Deno.test("montarLogDaCotacaoFlatFee - cart ausente vira [] (a coluna é NOT NULL)", () => {
-  const log = montarLogDaCotacaoFlatFee("38500000", "35000000", "flat_fee", null, 1);
-  assertEquals(log.cart_items, []);
-});
+// FRETE V2 (03/09/2026): os testes de `montarLogDaCotacaoFlatFee` saíram
+// junto com a função — o log da taxa fixa só existia para o ramo que morreu.
+// O formato do log "sem cotação de fora" (status 'error' com motivo) é
+// provado pelos testes de handler da seção FRETE V2, logo acima.
 
 // LAUDO 31/08 (D2): o Melhor Envio/Frenet podia pendurar a cotação para
 // sempre (sem timeout — o DNS do ME já caiu de verdade, #356) e o catch de
