@@ -373,10 +373,15 @@ describe("trocar de produto pela vitrine de recomendados", () => {
     vi.unstubAllGlobals();
   });
 
+  // Assentar inclui macrotask (setTimeout real, não fake): desde o F1
+  // (glm-perf-1paint-0309) a view secundária mora num shell lazy — o
+  // `import()` dinâmico dele atravessa I/O de verdade no vitest e microtask
+  // sozinha não espera ele resolver.
   const assentar = async (voltas = 10) => {
     for (let i = 0; i < voltas; i++) {
       await act(async () => {
         await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
       });
     }
   };
