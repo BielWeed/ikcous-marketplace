@@ -49,7 +49,7 @@ function acharChamadores() {
   const chamadas = new Map();
   const citacoes = new Map();
   const raizes = ["src", "supabase/functions"];
-  const exts = /\.(ts|tsx|js|jsx|deno)$/;
+  const exts = /\.(ts|tsx|js|jsx|mjs|cjs|deno)$/;
 
   function registrar(mapa, nome, onde) {
     if (!mapa.has(nome)) mapa.set(nome, []);
@@ -66,17 +66,24 @@ function acharChamadores() {
         varrer(caminho);
       } else if (exts.test(entrada.name)) {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- idem
-        const conteudo = fs.readFileSync(caminho, "utf8");
+        const bruto = fs.readFileSync(caminho, "utf8");
+        // A passada de CITAÇÃO ignora comentários: código documenta função
+        // MORTA citando o nome (medido: AuthContext.tsx:976 explica por que
+        // check_user_confirmation_status saiu — sem o strip, o mapa mentia).
+        // Chamada real nunca mora em comentário.
+        const conteudo = bruto
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .replace(/^\s*(\/\/|#).*$/gm, "");
         // Varrer o arquivo INTEIRO (não linha a linha): a casa escreve
         // .rpc(\n  "nome", ... — o nome mora na linha seguinte, e um varredor
         // por linha perde mais da metade das chamadas (aviso da própria #114).
         const padroes = [
-          [/\.rpc\(\s*["']([^"']+)["']/g, "chamada"],
+          [/\.rpc\(\s*["'`]([^"'`]+)["'`]/g, "chamada"],
           // Nome em VARIÁVEL (ternário/const) não dá para rastrear por regex;
           // a rede de segurança é a passada de "citação": qualquer string com
           // o nome de uma RPC do banco conta como USO POTENCIAL (lado seguro
           // do erro: sobra no mapa, nunca falta).
-          [/["']([a-z0-9_]{4,})["']/g, "citacao"],
+          [/["'`]([a-z0-9_]{4,})["'`]/g, "citacao"],
         ];
         for (const [padrao, tipo] of padroes) {
           let m;
@@ -131,7 +138,7 @@ async function main() {
     .query(`
     SELECT jobname, command FROM cron.job
   `)
-    .catch(() => ({ rows: [] }));
+    .catch((e) => { console.warn("  [AVISO] cron.job ilegível — checagem de cron CEGA: " + e.message); return { rows: [] }; });
   const views = await client.query(`
     SELECT viewname, definition FROM pg_views WHERE schemaname = 'public';
   `);
@@ -150,7 +157,7 @@ async function main() {
     JOIN pg_class c ON c.oid = i.indexrelid
     WHERE i.indexprs IS NOT NULL;
   `)
-    .catch(() => ({ rows: [] }));
+    .catch((e) => { console.warn("  [AVISO] índices ilegíveis — checagem CEGA: " + e.message); return { rows: [] }; });
   const corpos = await client.query(`
     SELECT p2.proname AS dona, p2.prosrc AS corpo
     FROM pg_proc p2

@@ -118,7 +118,13 @@ function acharUsosNoCodigo() {
   const chamadas = new Map();
   const citacoes = new Map();
   const raizes = ["src", "supabase/functions"];
-  const exts = /\.(ts|tsx|js|jsx|deno)$/;
+  const exts = /\.(ts|tsx|js|jsx|mjs|cjs|deno)$/;
+  // A passada de CITAÇÃO ignora comentários: código documenta FUNÇÃO MORTA
+  // citando o nome dela (medido em 04/09: AuthContext.tsx:976 explica por que
+  // check_user_confirmation_status saiu — sem o strip, a P1 abortava com a
+  // citação de um comentário histórico). Chamada real nunca mora em comentário.
+  const stripComentarios = (t) =>
+    t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*(\/\/|#).*$/gm, "");
   function registrar(mapa, nome, onde) {
     if (!mapa.has(nome)) mapa.set(nome, []);
     if (!mapa.get(nome).includes(onde)) mapa.get(nome).push(onde);
@@ -133,10 +139,14 @@ function acharUsosNoCodigo() {
         varrer(caminho);
       } else if (exts.test(entrada.name)) {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- idem
-        const conteudo = fs.readFileSync(caminho, "utf8");
+        const bruto = fs.readFileSync(caminho, "utf8");
+        const conteudo = stripComentarios(bruto);
         for (const [padrao, tipo] of [
-          [/\.rpc\(\s*["']([^"']+)["']/g, "chamada"],
-          [/["']([a-z0-9_]{4,})["']/g, "citacao"],
+          // Aspas-simples/aspas-duplas/CRASE do template literal no MESMO
+          // conjunto de caracteres (laudo 20260904-0935: a crase faltava e o
+          // docstring prometia cobertura que não existia).
+          [/\.rpc\(\s*["'`]([^"'`]+)["'`]/g, "chamada"],
+          [/["'`]([a-z0-9_]{4,})["'`]/g, "citacao"],
         ]) {
           let m;
           while ((m = padrao.exec(conteudo)) !== null) {
@@ -190,52 +200,86 @@ async function main() {
     preOk ? `${ORFAS.length} nomes conferidos` : "ver acima",
   );
 
-  const refsPolicies = await client.query(
-    `SELECT count(*)::int AS n FROM pg_policies
-     WHERE schemaname='public' AND (qual ~ $1 OR with_check ~ $1)`,
-    ["(get_sales_analytics|get_retention_analytics)"],
+  // P2 falha FECHADA (laudo 20260904-0935, bloqueio 1): "não consegui ler"
+  // nunca pode valer "zero" no portão que autoriza DROP FUNCTION. Cada
+  // checagem mede; se a consulta lança, P2 FALHA com o erro na frente.
+  // Cron por proveniência: pg_cron ausente do banco é MEDIDO (to_regclass),
+  // não capturado por catch.
+  const PADRAO = "(get_sales_analytics|get_retention_analytics)";
+  async function contar(rotulo, sql, params = []) {
+    try {
+      const r = await client.query(sql, params);
+      return { rotulo, n: r.rows[0].n, nota: "" };
+    } catch (e) {
+      return { rotulo, n: 1, nota: `ERRO ao medir (${e.message}) — vale FALHA` };
+    }
+  }
+  const cronExiste = await client.query(
+    "SELECT to_regclass('cron.job') IS NOT NULL AS ok",
   );
-  const refsViews = await client.query(
-    `SELECT count(*)::int AS n FROM pg_views
-     WHERE schemaname='public' AND definition ~ $1`,
-    ["(get_sales_analytics|get_retention_analytics)"],
-  );
-  const refsCron = await client
-    .query("SELECT count(*)::int AS n FROM cron.job WHERE command ~ $1", [
-      "(get_sales_analytics|get_retention_analytics)",
-    ])
-    .catch(() => ({ rows: [{ n: 0 }] }));
-  const refsDefaults = await client.query(
-    `SELECT count(*)::int AS n FROM pg_attrdef d
-     JOIN pg_class c ON c.oid = d.adrelid
-     JOIN pg_namespace n2 ON n2.oid = c.relnamespace
-     WHERE n2.nspname='public' AND pg_get_expr(d.adbin, d.adrelid) ~ $1`,
-    ["(get_sales_analytics|get_retention_analytics)"],
-  );
-  const refsCorpos = await client.query(
-    `SELECT count(*)::int AS n FROM pg_proc p
-     JOIN pg_namespace n2 ON n2.oid = p.pronamespace
-     WHERE n2.nspname='public' AND p.prosrc ~ $1
-       AND p.proname !~ '(get_sales_analytics|get_retention_analytics)'`,
-    ["(get_sales_analytics|get_retention_analytics)"],
-  );
-  const p2 =
-    refsPolicies.rows[0].n === 0 &&
-    refsViews.rows[0].n === 0 &&
-    refsCron.rows[0].n === 0 &&
-    refsDefaults.rows[0].n === 0 &&
-    refsCorpos.rows[0].n === 0;
-  // Nota da revisão de 04/09: P2 não consulta pg_matviews nem pg_depend —
-  // hoje é indiferente (0 matviews e 0 dependências pg_depend deptype='n'
-  // medidas pelo revisor), e o DROP aqui é sem CASCADE, que FALHA (não quebra
-  // em cascata) se dependência existir. Se o banco ganhar views
-  // materializadas, estender P2 aqui.
+  const checagens = [
+    await contar(
+      "policies (TODOS os schemas)",
+      `SELECT count(*)::int AS n FROM pg_policies WHERE qual ~ $1 OR with_check ~ $1`,
+      [PADRAO],
+    ),
+    await contar(
+      "views (TODOS os schemas)",
+      `SELECT count(*)::int AS n FROM pg_views WHERE definition ~ $1`,
+      [PADRAO],
+    ),
+    await contar(
+      "views materializadas",
+      `SELECT count(*)::int AS n FROM pg_matviews WHERE definition ~ $1`,
+      [PADRAO],
+    ),
+    cronExiste.rows[0].ok
+      ? await contar(
+          "cron jobs",
+          "SELECT count(*)::int AS n FROM cron.job WHERE command ~ $1",
+          [PADRAO],
+        )
+      : { rotulo: "cron jobs", n: 0, nota: "pg_cron ausente deste banco (to_regclass mediu)" },
+    await contar(
+      "defaults de coluna",
+      `SELECT count(*)::int AS n FROM pg_attrdef d
+       JOIN pg_class c ON c.oid = d.adrelid
+       JOIN pg_namespace n2 ON n2.oid = c.relnamespace
+       WHERE n2.nspname='public' AND pg_get_expr(d.adbin, d.adrelid) ~ $1`,
+      [PADRAO],
+    ),
+    await contar(
+      "índices com expressão",
+      `SELECT count(*)::int AS n FROM pg_index i
+       JOIN pg_class c ON c.oid = i.indexrelid
+       WHERE i.indexprs IS NOT NULL AND pg_get_expr(i.indexprs, i.indrelid) ~ $1`,
+      [PADRAO],
+    ),
+    await contar(
+      "corpos de outras funções (exclusão ANCORADA: só as próprias, não a família de nomes)",
+      `SELECT count(*)::int AS n FROM pg_proc p
+       JOIN pg_namespace n2 ON n2.oid = p.pronamespace
+       WHERE n2.nspname='public' AND p.prosrc ~ $1
+         AND p.proname !~ '^(get_sales_analytics|get_retention_analytics)$'`,
+      [PADRAO],
+    ),
+    await contar(
+      "pg_depend (deptype n)",
+      `SELECT count(*)::int AS n FROM pg_depend d
+       WHERE d.deptype = 'n'
+         AND d.refobjid IN (
+           SELECT p.oid FROM pg_proc p JOIN pg_namespace n2 ON n2.oid = p.pronamespace
+           WHERE n2.nspname='public' AND p.proname IN ('get_sales_analytics','get_retention_analytics')
+         )`,
+    ),
+  ];
+  const p2 = checagens.every((c) => c.n === 0);
   afirmar(
-    "P2: as 2 DROPadas não têm policy/view/cron/default/corpo apontando",
+    "P2: as 2 DROPadas não têm NADA apontando (policies/views/matviews/cron/defaults/índices/corpos/pg_depend)",
     p2,
     p2
-      ? "zero referências"
-      : `policies=${refsPolicies.rows[0].n} views=${refsViews.rows[0].n} cron=${refsCron.rows[0].n} defaults=${refsDefaults.rows[0].n} corpos=${refsCorpos.rows[0].n}`,
+      ? checagens.map((c) => `${c.rotulo}=0${c.nota ? ` [${c.nota}]` : ""}`).join("; ")
+      : checagens.filter((c) => c.n > 0).map((c) => `${c.rotulo}=${c.n}${c.nota ? ` [${c.nota}]` : ""}`).join("; "),
   );
 
   if (!preOk || !p2) {
@@ -247,14 +291,20 @@ async function main() {
   }
 
   // ---------- FOTOGRAFIA DE EXECUTE (por papel) ---------------------------
+  // proacl NULL significa "ACL default" (EXECUTE para PUBLIC, entre outros) —
+  // e aclexplode(NULL) devolve ZERO linhas, o que faria a função SUMIR da
+  // fotografia e a A5 passar sem compará-la (laudo 20260904-0935). O
+  // COALESCE com acldefault materializa o default: função sem GRANT/REVOKE
+  // explícito entra na foto com o que efetivamente vale.
   async function fotoExecute(nomes) {
     const r = await client.query(
       `SELECT p.proname AS nome,
               pg_get_function_identity_arguments(p.oid) AS args,
-              coalesce(g.grantee::regrole::text,'PUBLIC') AS grantee
+              coalesce(pg_get_userbyid(nullif(g.grantee, 0)), 'PUBLIC') AS grantee
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
-       CROSS JOIN LATERAL aclexplode(p.proacl) g(grantor, grantee, privilege_type, is_grantable)
+       CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner)))
+            g(grantor, grantee, privilege_type, is_grantable)
        WHERE n.nspname='public' AND p.proname = ANY($1::text[])
          AND g.privilege_type='EXECUTE'
        ORDER BY p.proname, args, grantee`,
@@ -292,6 +342,14 @@ async function main() {
     "\n=== Simulação do DEPOIS (REVOKE/DROP dentro de transação) ===",
   );
   await client.query("BEGIN");
+  // Limites da transação (laudo 20260904-0935, item 6): a tx segura
+  // AccessExclusiveLock sobre ~21 objetos por 10-20 s de round-trips. Os
+  // três timeouts abaixo são DO SERVIDOR — cobrem inclusive o processo
+  // hibernando ou a conexão caindo sem FIN (idle in transaction > 15 s é
+  // abortado pelo backend, soltando os locks em vez de pendurá-los por horas).
+  await client.query("SET LOCAL lock_timeout = '3s'");
+  await client.query("SET LOCAL statement_timeout = '30s'");
+  await client.query("SET LOCAL idle_in_transaction_session_timeout = '15s'");
   await client.query(
     `REVOKE EXECUTE ON FUNCTION public.create_marketplace_order_v22(${V22.args}) FROM anon, authenticated`,
   );
@@ -379,7 +437,7 @@ async function main() {
          AND g.privilege_type='EXECUTE' AND g.grantee = 0`,
       [nome, args],
     );
-    return r.rows[0].n > 0;
+    return { tem: r.rows[0].n > 0, n: r.rows[0].n };
   }
 
   console.log("\n=== Afirmativas do critério de aceite (#114) ===");
@@ -396,14 +454,16 @@ async function main() {
     "A1: v22 MANTÉM EXECUTE para service_role",
     (await temExec(V22.nome, V22.args, "service_role")) === true,
   );
-  // A2: v23/v24
+  // A2: v23/v24 (as vivas do checkout) — TODOS os papéis que precisam
+  // continuar (laudo 20260904-0935: A2 não verificava service_role/postgres
+  // nelas — assimetria sem motivo com a A1 da v22).
   for (const v of [
     "create_marketplace_order_v23",
     "create_marketplace_order_v24",
   ]) {
     afirmar(
       `A2: ${v} SEM PUBLIC`,
-      (await publicTemExecute(v, V23_24_ARGS)) === false,
+      (await publicTemExecute(v, V23_24_ARGS)).tem === false,
     );
     afirmar(
       `A2: ${v} MANTÉM EXECUTE para anon (checkout de convidado)`,
@@ -412,6 +472,14 @@ async function main() {
     afirmar(
       `A2: ${v} MANTÉM EXECUTE para authenticated`,
       (await temExec(v, V23_24_ARGS, "authenticated")) === true,
+    );
+    afirmar(
+      `A2: ${v} MANTÉM EXECUTE para service_role (edges)`,
+      (await temExec(v, V23_24_ARGS, "service_role")) === true,
+    );
+    afirmar(
+      `A2: ${v} MANTÉM EXECUTE para postgres`,
+      (await temExec(v, V23_24_ARGS, "postgres")) === true,
     );
   }
   // A3: órfãs
@@ -442,39 +510,87 @@ async function main() {
     const args = argsParen.slice(1, -1);
     const anonSem = (await temExec(nome, args, "anon")) === false;
     const authSem = (await temExec(nome, args, "authenticated")) === false;
+    // Rotular o no-op (laudo 20260904-0935): 4 destas órfãs JÁ estavam sem
+    // anon/authenticated — a afirmativa passa igual se o REVOKE sumir. O
+    // rótulo usa a fotografia ANTES, não adivinhação.
+    const tinhamNoAntes = (antes[`${nome}(${args})`] ?? []).some(
+      (p) => p === "anon" || p === "authenticated",
+    );
+    // A ressalva gêmea: a migration declara "postgres e service_role ficam"
+    // — a prova confere em CADA uma (um FROM a mais digitado por engano
+    // passaria sem isto).
+    const svcMantem = (await temExec(nome, args, "service_role")) === true;
+    const pgMantem = (await temExec(nome, args, "postgres")) === true;
     afirmar(
-      `A3: ${nome}${argsParen} fora do alcance de anon e authenticated`,
-      anonSem && authSem,
+      `A3: ${nome}${argsParen} fora do alcance de anon e authenticated${tinhamNoAntes ? "" : " (no-op: já estava fechada — o REVOKE aqui não muda nada)"}`,
+      anonSem && authSem && svcMantem && pgMantem,
     );
   }
-  // A4: sobrecargas
+  // A4: sobrecargas — conta E PINA a assinatura do sobrevivente (laudo
+  // 20260904-0935: contar por nome não diz QUAL sobreviveu; se as
+  // assinaturas tivessem sido trocadas, "tem 1" continuava verde).
   const sobreg = await client.query(
-    `SELECT p.proname, count(*)::int AS n
+    `SELECT p.proname, count(*)::int AS n,
+            (array_agg(pg_get_function_identity_arguments(p.oid) ORDER BY pg_get_function_identity_arguments(p.oid)))[1] AS args_sobrevivente
      FROM pg_proc p JOIN pg_namespace n2 ON n2.oid=p.pronamespace
      WHERE n2.nspname='public' AND p.proname IN ('get_sales_analytics','get_retention_analytics')
      GROUP BY p.proname`,
   );
-  const conta = Object.fromEntries(sobreg.rows.map((r) => [r.proname, r.n]));
+  const conta = Object.fromEntries(sobreg.rows.map((r) => [r.proname, r]));
   afirmar(
-    "A4: exatamente UMA get_sales_analytics no catálogo",
-    conta.get_sales_analytics === 1,
-    `tem ${conta.get_sales_analytics ?? 0}`,
+    "A4: exatamente UMA get_sales_analytics e é a (timestamptz, timestamptz)",
+    conta.get_sales_analytics?.n === 1 &&
+      conta.get_sales_analytics?.args_sobrevivente ===
+        "start_date timestamp with time zone, end_date timestamp with time zone",
+    `tem ${conta.get_sales_analytics?.n ?? 0}: ${conta.get_sales_analytics?.args_sobrevivente ?? "(nenhuma)"}`,
   );
   afirmar(
-    "A4: exatamente UMA get_retention_analytics no catálogo",
-    conta.get_retention_analytics === 1,
-    `tem ${conta.get_retention_analytics ?? 0}`,
+    "A4: exatamente UMA get_retention_analytics e é a () RETURNS TABLE",
+    conta.get_retention_analytics?.n === 1 &&
+      conta.get_retention_analytics?.args_sobrevivente === "",
+    `tem ${conta.get_retention_analytics?.n ?? 0}: ${conta.get_retention_analytics?.args_sobrevivente ?? "(nenhuma)"}`,
   );
-  // A5: não-regressão das chamadas pelo código
+  // A5: não-regressão das chamadas pelo código — nomeia cada alvo e PROVA
+  // que o comparou (laudo 20260904-0935: com proacl NULL a função sumia da
+  // fotografia e a afirmativa passava sem comparar nada; a foto agora
+  // materializa o default com acldefault e a guarda abaixo exige chaves
+  // para todo nome que existe no catálogo). v23/v24 entram na lista mesmo
+  // sendo chamadas por ternário (o vão das funções do dinheiro).
+  const alvosA5 = [...new Set([...nomesChamados, "create_marketplace_order_v23", "create_marketplace_order_v24"])];
+  const funcoesExistentes = new Set(
+    (
+      await client.query(
+        `SELECT DISTINCT p.proname AS nome FROM pg_proc p
+         JOIN pg_namespace n2 ON n2.oid = p.pronamespace WHERE n2.nspname='public'`,
+      )
+    ).rows.map((r) => r.nome),
+  );
+  let comparadas = 0;
   let regressoes = 0;
-  for (const nome of nomesChamados) {
+  for (const nome of alvosA5) {
+    if (!funcoesExistentes.has(nome)) {
+      regressoes += 1;
+      console.log(`  [FALHOU] A5: ${nome} NÃO EXISTE no catálogo — o código chama um fantasma`);
+      continue;
+    }
     const chavesAntes = Object.keys(antes).filter((k) =>
       k.startsWith(`${nome}(`),
     );
+    if (chavesAntes.length === 0) {
+      regressoes += 1;
+      console.log(`  [FALHOU] A5: ${nome} existe mas não entrou na fotografia — comparação vazia é verde falso`);
+      continue;
+    }
     for (const chave of chavesAntes) {
-      const _args = chave.slice(nome.length + 1, -1);
+      comparadas += 1;
       const depoisSet = (depois[chave] ?? []).slice().sort().join(",");
       const antesSet = antes[chave].slice().sort().join(",");
+      // v23/v24 PERDEM PUBLIC de propósito (é a migration): a não-regressão
+      // delas é sobre os papéis que ficam (A2), não sobre PUBLIC.
+      const esperado =
+        chave.startsWith("create_marketplace_order_v2") &&
+        chave.endsWith("uuid)");
+      if (esperado) continue;
       if (antesSet !== depoisSet) {
         regressoes += 1;
         console.log(
@@ -484,7 +600,7 @@ async function main() {
     }
   }
   afirmar(
-    `A5: nenhuma RPC chamada pelo código (${nomesChamados.length} nomes) mudou de ACL`,
+    `A5: nenhuma RPC chamada pelo código (${alvosA5.length} nomes, ${comparadas} assinaturas comparadas — inclui v23/v24 do ternário) mudou de ACL`,
     regressoes === 0,
   );
 
@@ -517,7 +633,9 @@ async function main() {
 
 main().catch((e) => {
   // Se a explosão aconteceu com a tx de simulação aberta, o Postgres descarta
-  // a transação órfã com ROLLBACK quando a conexão cai — nada é gravado.
-  console.error(e.message);
+  // a transação órfã com ROLLBACK quando a conexão cai (e o
+  // idle_in_transaction_session_timeout do servidor recolhe os locks). A
+  // mensagem diz a fase para um log truncado não parecer sucesso parcial.
+  console.error(`[ERRO na prova — nada é gravado; a tx órfã é descartada pelo servidor] ${e.message}`);
   process.exit(1);
 });
