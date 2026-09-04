@@ -1,3 +1,8 @@
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.177.0/testing/asserts.ts";
 // @ts-nocheck
 /**
  * scripts/db-check-objetos-do-codigo.mjs — o detector de "objeto que o código
@@ -19,15 +24,10 @@
  *   INALCANÇÁVEL — está, mas nenhum papel da origem tem SELECT/EXECUTE.
  */
 import {
-  extrairDeConteudo,
   avaliar,
+  extrairDeConteudo,
   formatar,
 } from "../scripts/db-check-objetos-do-codigo.mjs";
-import {
-  assert,
-  assertEquals,
-  assertStringIncludes,
-} from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const CATÁLOGO = () => ({
   relacoes: new Map([
@@ -67,8 +67,18 @@ const t = await supabase.from("produtos").select("*");`;
 
 Deno.test("CASO DA ISSUE semeado: view usada pelo código e ausente do banco vira AUSENTE", () => {
   const refs = [
-    { tipo: "from", nome: "vw_produtos_admin", onde: "src/hooks/useProducts.ts:228", papeis: ["anon", "authenticated"] },
-    { tipo: "from", nome: "vw_produtos_public", onde: "src/contexts/StoreContext.tsx:398", papeis: ["anon", "authenticated"] },
+    {
+      tipo: "from",
+      nome: "vw_produtos_admin",
+      onde: "src/hooks/useProducts.ts:228",
+      papeis: ["anon", "authenticated"],
+    },
+    {
+      tipo: "from",
+      nome: "vw_produtos_public",
+      onde: "src/contexts/StoreContext.tsx:398",
+      papeis: ["anon", "authenticated"],
+    },
   ];
   const r = avaliar(refs, CATÁLOGO());
   assertEquals(r.ausentes.length, 1);
@@ -81,7 +91,12 @@ Deno.test("CASO DA ISSUE semeado: view usada pelo código e ausente do banco vir
 
 Deno.test("DISTINÇÃO: existe no banco mas papel da origem não alcança vira INALCANÇÁVEL (não AUSENTE)", () => {
   const refs = [
-    { tipo: "from", nome: "produtos", onde: "src/hooks/useProducts.ts:166", papeis: ["anon", "authenticated"] },
+    {
+      tipo: "from",
+      nome: "produtos",
+      onde: "src/hooks/useProducts.ts:166",
+      papeis: ["anon", "authenticated"],
+    },
   ];
   const r = avaliar(refs, CATÁLOGO());
   assertEquals(r.ausentes.length, 0);
@@ -93,11 +108,31 @@ Deno.test("DISTINÇÃO: existe no banco mas papel da origem não alcança vira I
 
 Deno.test("RPC ausente, RPC inalcançável pela origem e RPC ok são separados", () => {
   const refs = [
-    { tipo: "rpc", nome: "create_marketplace_order_v25", onde: "src/hooks/useOrders.ts:10", papeis: ["anon", "authenticated"] },
-    { tipo: "rpc", nome: "confirmar_pagamento", onde: "supabase/functions/webhook-mercadopago/index.ts:20", papeis: ["service_role"] },
-    { tipo: "rpc", nome: "get_admin_analytics_v2", onde: "src/hooks/useAnalytics.ts:336", papeis: ["anon", "authenticated"] },
+    {
+      tipo: "rpc",
+      nome: "create_marketplace_order_v25",
+      onde: "src/hooks/useOrders.ts:10",
+      papeis: ["anon", "authenticated"],
+    },
+    {
+      tipo: "rpc",
+      nome: "confirmar_pagamento",
+      onde: "supabase/functions/webhook-mercadopago/index.ts:20",
+      papeis: ["service_role"],
+    },
+    {
+      tipo: "rpc",
+      nome: "get_admin_analytics_v2",
+      onde: "src/hooks/useAnalytics.ts:336",
+      papeis: ["anon", "authenticated"],
+    },
     // A MESMA RPC do webhook, chamada de src: service_role não vale para src.
-    { tipo: "rpc", nome: "confirmar_pagamento", onde: "src/hooks/useX.ts:1", papeis: ["anon", "authenticated"] },
+    {
+      tipo: "rpc",
+      nome: "confirmar_pagamento",
+      onde: "src/hooks/useX.ts:1",
+      papeis: ["anon", "authenticated"],
+    },
   ];
   const r = avaliar(refs, CATÁLOGO());
   assertEquals(r.ausentes.length, 1);
@@ -111,8 +146,18 @@ Deno.test("RPC ausente, RPC inalcançável pela origem e RPC ok são separados",
 
 Deno.test("bucket ausente do storage é AUSENTE; bucket presente é ok (sem análise de permissão)", () => {
   const refs = [
-    { tipo: "bucket", nome: "products", onde: "src/hooks/useProducts.ts:35", papeis: ["anon", "authenticated"] },
-    { tipo: "bucket", nome: "banners-velhos", onde: "src/x.ts:1", papeis: ["anon", "authenticated"] },
+    {
+      tipo: "bucket",
+      nome: "products",
+      onde: "src/hooks/useProducts.ts:35",
+      papeis: ["anon", "authenticated"],
+    },
+    {
+      tipo: "bucket",
+      nome: "banners-velhos",
+      onde: "src/x.ts:1",
+      papeis: ["anon", "authenticated"],
+    },
   ];
   const r = avaliar(refs, CATÁLOGO());
   assertEquals(r.ausentes.length, 1);
@@ -123,9 +168,24 @@ Deno.test("bucket ausente do storage é AUSENTE; bucket presente é ok (sem aná
 
 Deno.test("catálogo limpo com tudo presente: zero ausentes, zero inalcançáveis (o verde de hoje)", () => {
   const refs = [
-    { tipo: "from", nome: "vw_produtos_public", onde: "a:1", papeis: ["anon", "authenticated"] },
-    { tipo: "rpc", nome: "get_admin_analytics_v2", onde: "b:1", papeis: ["anon", "authenticated"] },
-    { tipo: "bucket", nome: "products", onde: "c:1", papeis: ["anon", "authenticated"] },
+    {
+      tipo: "from",
+      nome: "vw_produtos_public",
+      onde: "a:1",
+      papeis: ["anon", "authenticated"],
+    },
+    {
+      tipo: "rpc",
+      nome: "get_admin_analytics_v2",
+      onde: "b:1",
+      papeis: ["anon", "authenticated"],
+    },
+    {
+      tipo: "bucket",
+      nome: "products",
+      onde: "c:1",
+      papeis: ["anon", "authenticated"],
+    },
   ];
   const r = avaliar(refs, CATÁLOGO());
   assertEquals(r.ausentes.length, 0);
@@ -154,8 +214,18 @@ Deno.test("edge function consulta com service_role alcança o que src não alcan
   // A MESMA tabela, duas origens: src (anon/auth → inalcançável) e edge
   // (service_role → ok). O detector decide por ORIGEM, não por objeto.
   const refs = [
-    { tipo: "from", nome: "produtos", onde: "src/a.ts:1", papeis: ["anon", "authenticated"] },
-    { tipo: "from", nome: "produtos", onde: "supabase/functions/calculate-shipping/index.ts:706", papeis: ["service_role"] },
+    {
+      tipo: "from",
+      nome: "produtos",
+      onde: "src/a.ts:1",
+      papeis: ["anon", "authenticated"],
+    },
+    {
+      tipo: "from",
+      nome: "produtos",
+      onde: "supabase/functions/calculate-shipping/index.ts:706",
+      papeis: ["service_role"],
+    },
   ];
   const r = avaliar(refs, CATÁLOGO());
   assertEquals(r.inalcançaveis.length, 1);

@@ -45,12 +45,15 @@
  */
 
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PROJECT_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 /* eslint-disable security/detect-object-injection --
  * Índices dinâmicos são chaves internas do próprio varredor (família do
@@ -102,7 +105,11 @@ export function extrairDeConteudo(conteudo, ondePrefixo = "") {
       } else {
         const antes = conteudo.slice(Math.max(0, m.index - 30), m.index);
         if (/storage\s*$/.test(antes)) continue; // storage.from(ident) idem
-        achados.dinamicas.push({ nome: m[1], onde, chamada: tipo.replace("-ident", "") });
+        achados.dinamicas.push({
+          nome: m[1],
+          onde,
+          chamada: tipo.replace("-ident", ""),
+        });
       }
     }
   }
@@ -121,10 +128,16 @@ export function extrairDoRepo(raiz = PROJECT_ROOT) {
       const caminho = path.join(dir, entrada.name);
       if (entrada.isDirectory()) {
         varrer(caminho, origem, papeis);
-      } else if (exts.test(entrada.name) && !/_test\.|\.test\./.test(entrada.name)) {
+      } else if (
+        exts.test(entrada.name) &&
+        !/_test\.|\.test\./.test(entrada.name)
+      ) {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- idem
         const conteudo = fs.readFileSync(caminho, "utf8");
-        const achados = extrairDeConteudo(conteudo, path.relative(raiz, caminho));
+        const achados = extrairDeConteudo(
+          conteudo,
+          path.relative(raiz, caminho),
+        );
         for (const tipo of ["from", "rpc", "bucket"]) {
           for (const ref of achados[tipo])
             referencias.push({ tipo, ...ref, papeis });
@@ -274,14 +287,20 @@ function lerDatabaseUrlDeArquivo() {
 export function formatar(resultado) {
   const linhas = [];
   if (resultado.ausentes.length > 0) {
-    linhas.push("AUSENTE — o código usa e o banco NÃO TEM (o caso da view sumida #139):");
+    linhas.push(
+      "AUSENTE — o código usa e o banco NÃO TEM (o caso da view sumida #139):",
+    );
     for (const a of resultado.ausentes)
       linhas.push(`  - ${a.objeto} "${a.nome}" usada em ${a.onde}`);
   }
   if (resultado.inalcançaveis.length > 0) {
-    linhas.push("INALCANÇÁVEL — existe, mas nenhum papel do app alcança (defeito de GRANT, correção diferente):");
+    linhas.push(
+      "INALCANÇÁVEL — existe, mas nenhum papel do app alcança (defeito de GRANT, correção diferente):",
+    );
     for (const i of resultado.inalcançaveis)
-      linhas.push(`  - ${i.objeto} "${i.nome}" usada em ${i.onde} — ${i.detalhe}`);
+      linhas.push(
+        `  - ${i.objeto} "${i.nome}" usada em ${i.onde} — ${i.detalhe}`,
+      );
   }
   return linhas.join("\n");
 }
@@ -305,7 +324,9 @@ async function main() {
     );
     process.exit(0);
   }
-  console.log(`Conectado em ${new URL(url).hostname} — só leitura de catálogo.`);
+  console.log(
+    `Conectado em ${new URL(url).hostname} — só leitura de catálogo.`,
+  );
   const { referencias, dinamicas } = extrairDoRepo();
   const catalogo = await lerCatalogo(url);
   if (!catalogo.bucketsAcessivel) {
@@ -332,7 +353,8 @@ async function main() {
 
 // Roda como script apenas quando invocado diretamente (import.meta.url === argv[1])
 const scriptInvocado =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (scriptInvocado) {
   main().catch((e) => {
     console.error(e.message);

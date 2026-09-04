@@ -100,7 +100,8 @@ function lerMigration() {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo versionado no repo
   const sql = fs.readFileSync(MIGRATION, "utf8");
   const i = sql.lastIndexOf("DO $$");
-  if (i < 0) throw new Error("trava DO $$ não encontrada na migration — arquivo mudou?");
+  if (i < 0)
+    throw new Error("trava DO $$ não encontrada na migration — arquivo mudou?");
   const trava = sql.slice(i);
   if (!/^DO \$\$[\s\S]*END\s*\$\$;\s*$/.test(trava)) {
     throw new Error(
@@ -121,7 +122,14 @@ const PRIVILEGIOS = [
   "MAINTAIN",
 ];
 
-const ESCRITA_ANON = ["INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "MAINTAIN"];
+const ESCRITA_ANON = [
+  "INSERT",
+  "UPDATE",
+  "DELETE",
+  "TRUNCATE",
+  "TRIGGER",
+  "MAINTAIN",
+];
 const RESIDUO_AUTH = ["TRUNCATE", "TRIGGER", "MAINTAIN"];
 const OBJETOS = ["produtos", "vw_produtos_admin", "vw_produtos_public"];
 
@@ -180,15 +188,16 @@ async function sondar(client, papel, sql, claims = "", emTx = false) {
     else await client.query("SAVEPOINT sonda");
     try {
       await client.query(`SET LOCAL ROLE ${papel}`);
-      await client.query(
-        "SELECT set_config('request.jwt.claims', $1, true)",
-        [claims],
-      );
+      await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+        claims,
+      ]);
       const r = await client.query(sql);
       // rows[0].linhas = valor do count(*) (SELECT devolve 1 linha com o
       // total — rowCount seria sempre 1); rowCount vale para INSERT/UPDATE.
       const linhas =
-        r.rows?.[0] && "linhas" in r.rows[0] ? r.rows[0].linhas : (r.rowCount ?? null);
+        r.rows?.[0] && "linhas" in r.rows[0]
+          ? r.rows[0].linhas
+          : (r.rowCount ?? null);
       return { ok: true, linhas };
     } finally {
       if (!emTx) await client.query("ROLLBACK");
@@ -227,9 +236,7 @@ async function main() {
     console.log(
       "\nINCONCLUSIVO: Postgres < 17 — a sintaxe MAINTAIN desta migration não existe aqui; banco errado ou ambiente divergente.",
     );
-    client
-      .end()
-      .finally(() => process.exit(2));
+    client.end().finally(() => process.exit(2));
     return;
   }
   console.log("  [OK  ] ambiente: PG>=17 (MAINTAIN existe nesta sintaxe)");
@@ -257,25 +264,35 @@ async function main() {
 
   function abortar(motivo) {
     console.log(`\nINCONCLUSIVO: ${motivo}`);
-    client
-      .end()
-      .finally(() => process.exit(2));
+    client.end().finally(() => process.exit(2));
   }
 
   if (!MODO_DEPOIS) {
     const faltandoTabela = ESCRITA_ANON.filter((p) => !antes.produtos.anon[p]);
-    const faltandoAdmin = ESCRITA_ANON.filter((p) => !antes.vw_produtos_admin.anon[p]);
-    const faltandoAuth = RESIDUO_AUTH.filter((p) => !antes.produtos.authenticated[p]);
-    if (faltandoTabela.length > 0 || faltandoAdmin.length > 0 || faltandoAuth.length > 0) {
+    const faltandoAdmin = ESCRITA_ANON.filter(
+      (p) => !antes.vw_produtos_admin.anon[p],
+    );
+    const faltandoAuth = RESIDUO_AUTH.filter(
+      (p) => !antes.produtos.authenticated[p],
+    );
+    if (
+      faltandoTabela.length > 0 ||
+      faltandoAdmin.length > 0 ||
+      faltandoAuth.length > 0
+    ) {
       return abortar(
         `o estado não é o pré-migration esperado (tabela sem: ${faltandoTabela.join("/") || "—"}; view admin sem: ${faltandoAdmin.join("/") || "—"}; authenticated sem: ${faltandoAuth.join("/") || "—"}). Ou a migration já foi aplicada (rode com --depois), ou este banco divergiu do molde.`,
       );
     }
     if (publicInsert.rows[0].tem || publicMaintain.rows[0].tem) {
-      return abortar("PUBLIC tem INSERT/MAINTAIN em produtos — REVOKE só de anon seria cosmético.");
+      return abortar(
+        "PUBLIC tem INSERT/MAINTAIN em produtos — REVOKE só de anon seria cosmético.",
+      );
     }
     if (colunasAnon.rows[0].n > 0) {
-      return abortar("anon (ou PUBLIC) tem grant de COLUNA em produtos — o desenho presume que não há.");
+      return abortar(
+        "anon (ou PUBLIC) tem grant de COLUNA em produtos — o desenho presume que não há.",
+      );
     }
     console.log("  Pré-condições de pré-migration: OK");
   } else {
@@ -283,11 +300,19 @@ async function main() {
     // versão anterior (laudo 2ª rodada, B2): sem isto o modo criava na tx o
     // estado que ia asseverar e ficava verde num banco intacto.
     const restouTabela = ESCRITA_ANON.filter((p) => antes.produtos.anon[p]);
-    const restouAdmin = ESCRITA_ANON.filter((p) => antes.vw_produtos_admin.anon[p]);
-    const restouPublica = ["TRUNCATE", "TRIGGER", "MAINTAIN"].filter(
-      (p) => antes.vw_produtos_public.anon[p] || antes.vw_produtos_public.authenticated[p],
+    const restouAdmin = ESCRITA_ANON.filter(
+      (p) => antes.vw_produtos_admin.anon[p],
     );
-    const restouAuth = RESIDUO_AUTH.filter((p) => antes.produtos.authenticated[p] || antes.vw_produtos_admin.authenticated[p]);
+    const restouPublica = ["TRUNCATE", "TRIGGER", "MAINTAIN"].filter(
+      (p) =>
+        antes.vw_produtos_public.anon[p] ||
+        antes.vw_produtos_public.authenticated[p],
+    );
+    const restouAuth = RESIDUO_AUTH.filter(
+      (p) =>
+        antes.produtos.authenticated[p] ||
+        antes.vw_produtos_admin.authenticated[p],
+    );
     if (
       restouTabela.length > 0 ||
       restouAdmin.length > 0 ||
@@ -298,7 +323,9 @@ async function main() {
         `a migration parece NÃO aplicada (anon ainda tem: tabela=${restouTabela.join("/") || "—"} admin=${restouAdmin.join("/") || "—"}; pública=${restouPublica.join("/") || "—"}; authenticated=${restouAuth.join("/") || "—"}). Rode no modo padrão.`,
       );
     }
-    console.log("  Pré-condições de pós-migration: OK (estado já blindado no vivo)");
+    console.log(
+      "  Pré-condições de pós-migration: OK (estado já blindado no vivo)",
+    );
   }
 
   // ---------- SONDAS DO ESTADO VIVO (antes da tx) -----------------------------
@@ -326,7 +353,9 @@ async function main() {
   }
 
   // ---------- SIMULAÇÃO: a migration do disco roda na tx ----------------------
-  titulo("1. A migration roda INTEIRA do disco (corpo + trava), dentro de transação");
+  titulo(
+    "1. A migration roda INTEIRA do disco (corpo + trava), dentro de transação",
+  );
   const { corpo, trava } = lerMigration();
   await client.query("BEGIN");
   // O arquivo inteiro: os REVOKEs E a trava DO $$ — se a trava explodir aqui,
@@ -338,7 +367,7 @@ async function main() {
 
   const depois = await fotografar(client);
   afirmar(
-    "A4: a trava DO \$\$ do arquivo PASSOU ao rodar o arquivo inteiro na tx (explodir = exit 1 no catch)",
+    "A4: a trava DO $$ do arquivo PASSOU ao rodar o arquivo inteiro na tx (explodir = exit 1 no catch)",
     !fotosIguais(depois, antes), // e o estado MUDOU mesmo (não é vermelho-vácuo)
     "estado mudou em relação à entrada",
   );
@@ -390,7 +419,10 @@ async function main() {
     "A3: PUBLIC sem INSERT na tabela (REVOKE de anon não é cosmético)",
     publicInsert.rows[0].tem === false,
   );
-  afirmar("A3: PUBLIC sem MAINTAIN na tabela", publicMaintain.rows[0].tem === false);
+  afirmar(
+    "A3: PUBLIC sem MAINTAIN na tabela",
+    publicMaintain.rows[0].tem === false,
+  );
   afirmar(
     "A3: vizinho intocado — anon MANTÉM REFERENCES na tabela (fora do critério)",
     depois.produtos.anon.REFERENCES === antes.produtos.anon.REFERENCES &&
@@ -399,11 +431,13 @@ async function main() {
   afirmar(
     "A3: sobrevivente — service_role MANTÉM INSERT na tabela (backend não tranca)",
     depois.produtos.service_role.INSERT === true &&
-      depois.produtos.service_role.INSERT === antes.produtos.service_role.INSERT,
+      depois.produtos.service_role.INSERT ===
+        antes.produtos.service_role.INSERT,
   );
   afirmar(
     "A3: anon NÃO ganha SELECT na tabela (não tinha, não tem)",
-    depois.produtos.anon.SELECT === false && antes.produtos.anon.SELECT === false,
+    depois.produtos.anon.SELECT === false &&
+      antes.produtos.anon.SELECT === false,
   );
   afirmar(
     "A3: anon tem ZERO grants de coluna (nem anon nem PUBLIC) em produtos — não há volta por coluna",
@@ -412,7 +446,7 @@ async function main() {
   );
 
   // ---------- INVERSÕES da trava (mutação de verdade sobre a guarda) ----------
-  titulo("3. Inversões da trava DO \$\$ — cada reconcessão TEM que explodi-la");
+  titulo("3. Inversões da trava DO $$ — cada reconcessão TEM que explodi-la");
   async function inversaoDaTrava(rotulo, reconcessao) {
     await client.query("SAVEPOINT inversao");
     await client.query(reconcessao);
@@ -511,7 +545,13 @@ async function main() {
     insertAnonView.erro,
   );
 
-  const insertAuth = await sondar(client, "authenticated", INSERT_TABELA, "", true);
+  const insertAuth = await sondar(
+    client,
+    "authenticated",
+    INSERT_TABELA,
+    "",
+    true,
+  );
   afirmar(
     "S3 PAINEL: authenticated INSERT na tabela mantém o privilégio — recusa é da POLICY (row-level security), nunca permission denied",
     !insertAuth.ok &&
@@ -522,11 +562,19 @@ async function main() {
 
   // S4: mensagem PRENDIDA — comparar antes==depois sem valor esperado deixa
   // "relation does not exist" passar por verde (laudo 2ª rodada).
-  const cadastroSemAdmin = await sondar(client, "authenticated", INSERT_VIEW, "", true);
+  const cadastroSemAdmin = await sondar(
+    client,
+    "authenticated",
+    INSERT_VIEW,
+    "",
+    true,
+  );
   afirmar(
     'S4 CADASTRO sem admin: authenticated INSERT na view morre no CHECK OPTION (mensagem presa: check option for view "vw_produtos_admin"), nunca permission denied',
     !cadastroSemAdmin.ok &&
-      /check option for view "vw_produtos_admin"/i.test(cadastroSemAdmin.erro) &&
+      /check option for view "vw_produtos_admin"/i.test(
+        cadastroSemAdmin.erro,
+      ) &&
       !/permission denied/i.test(cadastroSemAdmin.erro),
     cadastroSemAdmin.erro,
   );
@@ -548,7 +596,13 @@ async function main() {
   }
   const sub = admin.rows[0].id;
   const claims = JSON.stringify({ sub, role: "authenticated" });
-  const cadastroAdmin = await sondar(client, "authenticated", INSERT_VIEW, claims, true);
+  const cadastroAdmin = await sondar(
+    client,
+    "authenticated",
+    INSERT_VIEW,
+    claims,
+    true,
+  );
   afirmar(
     `S5 CADASTRO COM ADMIN (sub=${sub.slice(0, 8)}…): INSERT na view FUNCIONA — produto cadastrado e desfeito no savepoint`,
     cadastroAdmin.ok === true,

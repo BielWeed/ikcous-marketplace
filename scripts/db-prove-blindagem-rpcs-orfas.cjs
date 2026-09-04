@@ -101,8 +101,7 @@ const DROPADAS = [
 
 const V22 = {
   nome: "create_marketplace_order_v22",
-  args:
-    "p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb",
+  args: "p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb",
 };
 const V23_24_ARGS =
   "p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb, p_destination_cep text, p_shipping_option_id text, p_idempotency_key uuid";
@@ -129,7 +128,8 @@ function acharUsosNoCodigo() {
     for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
       const caminho = path.join(dir, entrada.name);
       if (entrada.isDirectory()) {
-        if (entrada.name === "node_modules" || entrada.name === ".git") continue;
+        if (entrada.name === "node_modules" || entrada.name === ".git")
+          continue;
         varrer(caminho);
       } else if (exts.test(entrada.name)) {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- idem
@@ -180,7 +180,7 @@ async function main() {
     if (c.length > 0 || t.length > 0) {
       preOk = false;
       console.log(
-        `  [FALHOU] ${nome} passou a ser usada no código: ${(c[0] ?? t[0])}`,
+        `  [FALHOU] ${nome} passou a ser usada no código: ${c[0] ?? t[0]}`,
       );
     }
   }
@@ -201,7 +201,7 @@ async function main() {
     ["(get_sales_analytics|get_retention_analytics)"],
   );
   const refsCron = await client
-    .query(`SELECT count(*)::int AS n FROM cron.job WHERE command ~ $1`, [
+    .query("SELECT count(*)::int AS n FROM cron.job WHERE command ~ $1", [
       "(get_sales_analytics|get_retention_analytics)",
     ])
     .catch(() => ({ rows: [{ n: 0 }] }));
@@ -269,7 +269,14 @@ async function main() {
     return foto;
   }
 
-  const ALVO = [...new Set([...ORFAS, V22.nome, "create_marketplace_order_v23", "create_marketplace_order_v24"])];
+  const ALVO = [
+    ...new Set([
+      ...ORFAS,
+      V22.nome,
+      "create_marketplace_order_v23",
+      "create_marketplace_order_v24",
+    ]),
+  ];
   const nomesChamados = [...chamadas.keys()];
   const TODOS = [...new Set([...ALVO, ...nomesChamados])];
 
@@ -281,7 +288,9 @@ async function main() {
   }
 
   // ---------- SIMULAÇÃO (dentro de tx) -------------------------------------
-  console.log("\n=== Simulação do DEPOIS (REVOKE/DROP dentro de transação) ===");
+  console.log(
+    "\n=== Simulação do DEPOIS (REVOKE/DROP dentro de transação) ===",
+  );
   await client.query("BEGIN");
   await client.query(
     `REVOKE EXECUTE ON FUNCTION public.create_marketplace_order_v22(${V22.args}) FROM anon, authenticated`,
@@ -293,9 +302,7 @@ async function main() {
     `REVOKE EXECUTE ON FUNCTION public.create_marketplace_order_v24(${V23_24_ARGS}) FROM PUBLIC`,
   );
   for (const d of DROPADAS) {
-    await client.query(
-      `DROP FUNCTION IF EXISTS public.${d.nome}(${d.args})`,
-    );
+    await client.query(`DROP FUNCTION IF EXISTS public.${d.nome}(${d.args})`);
   }
   const revokes = [
     "check_is_admin()",
@@ -335,8 +342,20 @@ async function main() {
         const palavras = parte.trim().split(/\s+/);
         // Se o primeiro token não é um tipo conhecido, é nome de parâmetro.
         const tiposConhecidos = new Set([
-          "jsonb","numeric","text","uuid","integer","bigint","boolean",
-          "timestamp","timestamptz","date","json","real","double","interval",
+          "jsonb",
+          "numeric",
+          "text",
+          "uuid",
+          "integer",
+          "bigint",
+          "boolean",
+          "timestamp",
+          "timestamptz",
+          "date",
+          "json",
+          "real",
+          "double",
+          "interval",
         ]);
         if (tiposConhecidos.has(palavras[0])) return parte.trim();
         return palavras.slice(1).join(" ");
@@ -378,7 +397,10 @@ async function main() {
     (await temExec(V22.nome, V22.args, "service_role")) === true,
   );
   // A2: v23/v24
-  for (const v of ["create_marketplace_order_v23", "create_marketplace_order_v24"]) {
+  for (const v of [
+    "create_marketplace_order_v23",
+    "create_marketplace_order_v24",
+  ]) {
     afirmar(
       `A2: ${v} SEM PUBLIC`,
       (await publicTemExecute(v, V23_24_ARGS)) === false,
@@ -394,33 +416,36 @@ async function main() {
   }
   // A3: órfãs
   const comArgs = {
-    "check_is_admin": "()",
-    "check_user_confirmation_status": "(p_email text)",
-    "decrement_stock": "(p_id uuid, quantity integer)",
-    "get_active_products_internal": "()",
-    "get_admin_dashboard_stats": "()",
-    "get_admin_dashboard_summary": "()",
-    "get_admin_executive_summary": "()",
-    "get_admin_list_paginated":
+    check_is_admin: "()",
+    check_user_confirmation_status: "(p_email text)",
+    decrement_stock: "(p_id uuid, quantity integer)",
+    get_active_products_internal: "()",
+    get_admin_dashboard_stats: "()",
+    get_admin_dashboard_summary: "()",
+    get_admin_executive_summary: "()",
+    get_admin_list_paginated:
       "(p_table_name text, p_page_size integer, p_page_number integer, p_search_query text, p_filter_status text)",
-    "get_category_sales": "(start_date text, end_date text)",
-    "get_customer_intelligence": "()",
-    "get_inventory_health": "()",
-    "get_product_optimization_data": "()",
-    "get_product_stats": "()",
-    "get_products_with_variants": "()",
-    "validate_coupon_secure": "(p_code text, p_subtotal numeric)",
-    "get_retention_analytics": "()",
-    "get_sales_analytics":
+    get_category_sales: "(start_date text, end_date text)",
+    get_customer_intelligence: "()",
+    get_inventory_health: "()",
+    get_product_optimization_data: "()",
+    get_product_stats: "()",
+    get_products_with_variants: "()",
+    validate_coupon_secure: "(p_code text, p_subtotal numeric)",
+    get_retention_analytics: "()",
+    get_sales_analytics:
       "(start_date timestamp with time zone, end_date timestamp with time zone)",
-    "handle_order_item_stock": "()",
-    "tr_prevent_role_change": "()",
+    handle_order_item_stock: "()",
+    tr_prevent_role_change: "()",
   };
   for (const [nome, argsParen] of Object.entries(comArgs)) {
     const args = argsParen.slice(1, -1);
     const anonSem = (await temExec(nome, args, "anon")) === false;
     const authSem = (await temExec(nome, args, "authenticated")) === false;
-    afirmar(`A3: ${nome}${argsParen} fora do alcance de anon e authenticated`, anonSem && authSem);
+    afirmar(
+      `A3: ${nome}${argsParen} fora do alcance de anon e authenticated`,
+      anonSem && authSem,
+    );
   }
   // A4: sobrecargas
   const sobreg = await client.query(
@@ -432,20 +457,22 @@ async function main() {
   const conta = Object.fromEntries(sobreg.rows.map((r) => [r.proname, r.n]));
   afirmar(
     "A4: exatamente UMA get_sales_analytics no catálogo",
-    conta["get_sales_analytics"] === 1,
-    `tem ${conta["get_sales_analytics"] ?? 0}`,
+    conta.get_sales_analytics === 1,
+    `tem ${conta.get_sales_analytics ?? 0}`,
   );
   afirmar(
     "A4: exatamente UMA get_retention_analytics no catálogo",
-    conta["get_retention_analytics"] === 1,
-    `tem ${conta["get_retention_analytics"] ?? 0}`,
+    conta.get_retention_analytics === 1,
+    `tem ${conta.get_retention_analytics ?? 0}`,
   );
   // A5: não-regressão das chamadas pelo código
   let regressoes = 0;
   for (const nome of nomesChamados) {
-    const chavesAntes = Object.keys(antes).filter((k) => k.startsWith(`${nome}(`));
+    const chavesAntes = Object.keys(antes).filter((k) =>
+      k.startsWith(`${nome}(`),
+    );
     for (const chave of chavesAntes) {
-      const args = chave.slice(nome.length + 1, -1);
+      const _args = chave.slice(nome.length + 1, -1);
       const depoisSet = (depois[chave] ?? []).slice().sort().join(",");
       const antesSet = antes[chave].slice().sort().join(",");
       if (antesSet !== depoisSet) {
@@ -466,9 +493,20 @@ async function main() {
   await client.query("ROLLBACK");
   const apos = await fotoExecute(TODOS);
   const igual =
-    JSON.stringify(Object.keys(apos).sort().map((k) => [k, apos[k].sort()])) ===
-    JSON.stringify(Object.keys(antes).sort().map((k) => [k, antes[k].sort()]));
-  afirmar("ACL pós-ROLLBACK idêntico ao de entrada (prova não gravou nada)", igual);
+    JSON.stringify(
+      Object.keys(apos)
+        .sort()
+        .map((k) => [k, apos[k].sort()]),
+    ) ===
+    JSON.stringify(
+      Object.keys(antes)
+        .sort()
+        .map((k) => [k, antes[k].sort()]),
+    );
+  afirmar(
+    "ACL pós-ROLLBACK idêntico ao de entrada (prova não gravou nada)",
+    igual,
+  );
 
   await client.end();
   console.log(

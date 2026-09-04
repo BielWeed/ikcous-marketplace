@@ -61,7 +61,8 @@ function acharChamadores() {
     for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
       const caminho = path.join(dir, entrada.name);
       if (entrada.isDirectory()) {
-        if (entrada.name === "node_modules" || entrada.name === ".git") continue;
+        if (entrada.name === "node_modules" || entrada.name === ".git")
+          continue;
         varrer(caminho);
       } else if (exts.test(entrada.name)) {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- idem
@@ -126,9 +127,11 @@ async function main() {
     SELECT policyname, tablename, cmd, coalesce(qual,'') AS qual, coalesce(with_check,'') AS chk
     FROM pg_policies WHERE schemaname = 'public';
   `);
-  const crons = await client.query(`
+  const crons = await client
+    .query(`
     SELECT jobname, command FROM cron.job
-  `).catch(() => ({ rows: [] }));
+  `)
+    .catch(() => ({ rows: [] }));
   const views = await client.query(`
     SELECT viewname, definition FROM pg_views WHERE schemaname = 'public';
   `);
@@ -140,12 +143,14 @@ async function main() {
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public';
   `);
-  const indexExprs = await client.query(`
+  const indexExprs = await client
+    .query(`
     SELECT c.relname AS indice, pg_get_expr(i.indexprs, i.indrelid) AS expr
     FROM pg_index i
     JOIN pg_class c ON c.oid = i.indexrelid
     WHERE i.indexprs IS NOT NULL;
-  `).catch(() => ({ rows: [] }));
+  `)
+    .catch(() => ({ rows: [] }));
   const corpos = await client.query(`
     SELECT p2.proname AS dona, p2.prosrc AS corpo
     FROM pg_proc p2
@@ -161,7 +166,9 @@ async function main() {
     const chamadasDiretas = chamadas.get(f.nome) ?? [];
     const citadas = citacoes.get(f.nome) ?? [];
     const usadaPorPolicy = policies.rows.filter(
-      (p) => f.nome.length > 3 && (p.qual.includes(f.nome) || p.chk.includes(f.nome)),
+      (p) =>
+        f.nome.length > 3 &&
+        (p.qual.includes(f.nome) || p.chk.includes(f.nome)),
     );
     // Trigger usa a função se o trigger FOI criado a partir dela (tgfoid):
     const triggerDaFuncao = await client.query(
@@ -179,13 +186,18 @@ async function main() {
     const usadaPorView = views.rows.filter(
       (v) => f.nome.length > 3 && v.definition.includes(f.nome),
     );
-    const usadaPorDefault = defaults.rows.filter((d) => d.expr.includes(f.nome));
-    const usadaPorIndice = indexExprs.rows.filter((i) => i.expr.includes(f.nome));
+    const usadaPorDefault = defaults.rows.filter((d) =>
+      d.expr.includes(f.nome),
+    );
+    const usadaPorIndice = indexExprs.rows.filter((i) =>
+      i.expr.includes(f.nome),
+    );
     const citadaEmCorpo = corpos.rows.filter(
       (c) => c.dona !== f.nome && c.corpo.includes(f.nome),
     );
 
-    const marcador = chamadasDiretas.length === 0 ? " ÓRFÃ-de-chamada-direta" : "";
+    const marcador =
+      chamadasDiretas.length === 0 ? " ÓRFÃ-de-chamada-direta" : "";
     // ACL de EXECUTE (grantee vazio no proacl = PUBLIC):
     const acl = await client.query(
       `SELECT coalesce(g.grantee::regrole::text,'PUBLIC') AS grantee
@@ -198,7 +210,7 @@ async function main() {
       [f.nome, f.args],
     );
     const executores = acl.rows.map((r) => r.grantee);
-    console.log(`------------------------------------------------------------`);
+    console.log("------------------------------------------------------------");
     console.log(`${f.nome}(${f.args})${marcador}`);
     console.log(
       `  retorno: ${f.retorno} | dono: ${f.dono} | secdef: ${f.security_definer}`,
@@ -231,7 +243,9 @@ async function main() {
       );
     }
     if (usadaPorView.length > 0) {
-      console.log(`  VIEW USA: ${usadaPorView.map((v) => v.viewname).join("; ")}`);
+      console.log(
+        `  VIEW USA: ${usadaPorView.map((v) => v.viewname).join("; ")}`,
+      );
     }
     if (usadaPorDefault.length > 0) {
       console.log(
@@ -239,11 +253,16 @@ async function main() {
       );
     }
     if (usadaPorIndice.length > 0) {
-      console.log(`  ÍNDICE USA: ${usadaPorIndice.map((i) => i.indice).join("; ")}`);
+      console.log(
+        `  ÍNDICE USA: ${usadaPorIndice.map((i) => i.indice).join("; ")}`,
+      );
     }
     if (citadaEmCorpo.length > 0) {
       console.log(
-        `  CORPO DE OUTRA FUNÇÃO cita: ${citadaEmCorpo.map((c) => c.dona).slice(0, 8).join("; ")}`,
+        `  CORPO DE OUTRA FUNÇÃO cita: ${citadaEmCorpo
+          .map((c) => c.dona)
+          .slice(0, 8)
+          .join("; ")}`,
       );
     }
     if (
@@ -257,7 +276,7 @@ async function main() {
       usadaPorIndice.length === 0 &&
       citadaEmCorpo.length === 0
     ) {
-      console.log(`  >>> ÓRFÃ COMPLETA: nenhum uso em lugar nenhum <<<`);
+      console.log("  >>> ÓRFÃ COMPLETA: nenhum uso em lugar nenhum <<<");
     }
   }
 

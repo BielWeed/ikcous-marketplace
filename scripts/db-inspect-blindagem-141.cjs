@@ -124,7 +124,8 @@ async function main() {
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname='public' AND c.relname IN ('produtos','vw_produtos_public','vw_produtos_admin');
   `);
-  for (const o of owners.rows) console.log(`  ${o.relname.padEnd(22)} dono: ${o.dono}`);
+  for (const o of owners.rows)
+    console.log(`  ${o.relname.padEnd(22)} dono: ${o.dono}`);
 
   await client.end();
 }
