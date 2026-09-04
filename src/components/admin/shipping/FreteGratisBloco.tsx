@@ -1,5 +1,5 @@
-import type { PresetFreteGratis } from "@/lib/presets-de-frete-gratis";
 import { CabecaDeSecao } from "@/components/admin/shipping/primitivas-direcao-d";
+import type { PresetFreteGratis } from "@/lib/presets-de-frete-gratis";
 import { memo } from "react";
 
 /**
@@ -50,12 +50,15 @@ const PRESETS: readonly {
 ];
 
 /** Estado à direita do cabeçalho — a estratégia que o formulário segura. */
-const ESTRATEGIA: Record<PresetFreteGratis, string> = {
-  desligado: "desligado",
-  acima_de_valor: "acima de um valor",
-  sempre: "sempre grátis",
-  por_produto: "por produto",
-};
+// Map (não Record indexado por variável): indexação dinâmica dispara
+// `security/detect-object-injection` do eslint e o teto do lint reprova
+// warning novo — `.get()` devolve o mesmo rótulo para cada preset.
+const ESTRATEGIA = new Map<PresetFreteGratis, string>([
+  ["desligado", "desligado"],
+  ["acima_de_valor", "acima de um valor"],
+  ["sempre", "sempre grátis"],
+  ["por_produto", "por produto"],
+]);
 
 export const FreteGratisBloco = memo(function FreteGratisBloco({
   preset,
@@ -82,7 +85,9 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
         estado={
           <>
             estratégia:{" "}
-            <b className="font-semibold text-zinc-200">{ESTRATEGIA[preset]}</b>
+            <b className="font-semibold text-zinc-200">
+              {ESTRATEGIA.get(preset)}
+            </b>
           </>
         }
       />
@@ -168,8 +173,8 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
             o cliente ganha frete grátis a partir deste valor, no carrinho
           </span>
           <p className="w-full text-[11px] font-medium leading-snug text-amber-300/90">
-            Atenção: valor vazio desliga o frete grátis ao salvar (o mínimo é
-            R$ 0,01). Para desligar de propósito, escolha "Desligado" acima.
+            Atenção: valor vazio desliga o frete grátis ao salvar (o mínimo é R$
+            0,01). Para desligar de propósito, escolha "Desligado" acima.
           </p>
         </div>
       )}

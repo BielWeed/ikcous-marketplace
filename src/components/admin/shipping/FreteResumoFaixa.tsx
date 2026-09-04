@@ -77,7 +77,7 @@ export const FreteResumoFaixa = memo(function FreteResumoFaixa({
                 )}
                 {item.rotulo}
               </div>
-              <div className="text-right text-lg font-bold tracking-tight tabular-nums text-zinc-100 md:mt-2 md:text-left md:text-[26px] md:leading-tight">
+              <div className="text-right text-lg font-bold tabular-nums tracking-tight text-zinc-100 md:mt-2 md:text-left md:text-[26px] md:leading-tight">
                 {item.valor}
               </div>
               {item.detalhe && (

@@ -104,8 +104,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
         dica={
           estado === "conectado" ? (
             <>
-              Conectado ao {provedorNome} — PAC e SEDEX com preço real, na
-              hora.
+              Conectado ao {provedorNome} — PAC e SEDEX com preço real, na hora.
             </>
           ) : estado === "indeterminado" ? (
             <>
@@ -178,9 +177,9 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
       {!originCep && (
         <p className="-mt-2 flex items-start gap-2 pb-4 text-[12px] font-bold leading-snug text-amber-300 duration-200 animate-in fade-in">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          SEM ISSO A LOJA NÃO VENDE: sem o CEP da loja nenhum frete é
-          calculado e o botão "Finalizar Pedido" fica bloqueado para todo
-          cliente. Preencha e salve para abrir as vendas.
+          SEM ISSO A LOJA NÃO VENDE: sem o CEP da loja nenhum frete é calculado
+          e o botão "Finalizar Pedido" fica bloqueado para todo cliente.
+          Preencha e salve para abrir as vendas.
         </p>
       )}
 

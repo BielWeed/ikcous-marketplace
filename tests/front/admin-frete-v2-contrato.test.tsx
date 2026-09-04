@@ -264,9 +264,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     expect(
-      hospedeiro
-        .querySelector('[role="switch"]')
-        ?.getAttribute("aria-checked"),
+      hospedeiro.querySelector('[role="switch"]')?.getAttribute("aria-checked"),
     ).toBe("true");
   });
 
@@ -299,8 +297,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
 
     await escolherPreset(/Sempre grátis/);
     expect(
-      hospedeiro
-        .querySelector('[role="radio"][aria-checked="true"]')
+      hospedeiro.querySelector('[role="radio"][aria-checked="true"]')
         ?.textContent,
     ).toMatch(/Sempre grátis/);
 

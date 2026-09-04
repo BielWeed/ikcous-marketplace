@@ -18,21 +18,26 @@ import type { ReactNode } from "react";
  *   transportadora, que esta tela só LÊ — quem grava é Ajustes).
  */
 
-const PONTO_TOM = {
-  positivo: "bg-admin-accent shadow-[0_0_8px] shadow-admin-accent/60",
-  atencao: "bg-amber-400 shadow-[0_0_8px] shadow-amber-400/50",
-  neutro: "bg-zinc-600",
-} as const;
+type TomDoPonto = "positivo" | "atencao" | "neutro";
+
+// Map (não Record indexado por variável): indexação dinâmica dispara
+// `security/detect-object-injection` do eslint e o teto do lint reprova
+// warning novo — `.get()` devolve a mesma cor para cada tom.
+const PONTO_TOM = new Map<TomDoPonto, string>([
+  ["positivo", "bg-admin-accent shadow-[0_0_8px] shadow-admin-accent/60"],
+  ["atencao", "bg-amber-400 shadow-[0_0_8px] shadow-amber-400/50"],
+  ["neutro", "bg-zinc-600"],
+]);
 
 export function PontoEstado({
   tom,
 }: {
-  readonly tom: keyof typeof PONTO_TOM;
+  readonly tom: TomDoPonto;
 }) {
   return (
     <span
       aria-hidden="true"
-      className={`size-1.5 shrink-0 rounded-full ${PONTO_TOM[tom]}`}
+      className={`size-1.5 shrink-0 rounded-full ${PONTO_TOM.get(tom)}`}
     />
   );
 }

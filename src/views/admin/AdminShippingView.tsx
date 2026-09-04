@@ -111,8 +111,11 @@ export const AdminShippingView = memo(function AdminShippingView({
 
   // Leitura da credencial de transportadora (mesma tabela que Ajustes
   // grava) — só para dizer a VERDADE sobre a conexão na faixa e na seção
-  // "Fora da cidade". Esta tela nunca grava credencial.
-  const [credsMapa, setCredsMapa] = useState<{ [key: string]: any }>({});
+  // "Fora da cidade". Esta tela nunca grava credencial. Map (não Record
+  // indexado por variável): indexação dinâmica dispara
+  // `security/detect-object-injection` do eslint e o teto do lint reprova
+  // warning novo.
+  const [credsMapa, setCredsMapa] = useState<Map<string, any>>(() => new Map());
   const [credsErro, setCredsErro] = useState(false);
 
   const fetchCreds = useCallback(async () => {
@@ -122,9 +125,9 @@ export const AdminShippingView = memo(function AdminShippingView({
         .from("store_shipping_credentials")
         .select("*");
       if (!error && data) {
-        const mapa: { [key: string]: any } = {};
+        const mapa = new Map<string, any>();
         data.forEach((row: { provider: string; credentials: any }) => {
-          mapa[row.provider] = row.credentials;
+          mapa.set(row.provider, row.credentials);
         });
         setCredsMapa(mapa);
       } else {
@@ -197,7 +200,7 @@ export const AdminShippingView = memo(function AdminShippingView({
         ? "desconectado"
         : credsErro
           ? "indeterminado"
-          : credsMapa[provedorSalvo]?.token
+          : credsMapa.get(provedorSalvo)?.token
             ? "conectado"
             : "desconectado";
     return { estado, provedorNome: nome };
@@ -522,10 +525,9 @@ export const AdminShippingView = memo(function AdminShippingView({
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
-            A entrega da sua loja tem três partes, cada uma com a seção dela
-            na tela: o{" "}
-            <span className="font-bold text-zinc-200">frete local</span> (você
-            mesmo entrega na cidade), o{" "}
+            A entrega da sua loja tem três partes, cada uma com a seção dela na
+            tela: o <span className="font-bold text-zinc-200">frete local</span>{" "}
+            (você mesmo entrega na cidade), o{" "}
             <span className="font-bold text-zinc-200">frete nacional</span> (a
             transportadora cotada na hora) e o{" "}
             <span className="font-bold text-zinc-200">frete grátis</span> (você
@@ -556,8 +558,8 @@ export const AdminShippingView = memo(function AdminShippingView({
               <span className="font-bold text-zinc-200">
                 Ajustes &gt; Transportadoras
               </span>
-              . O botão "Abrir Ajustes" da seção Fora da cidade leva direto
-              para lá.
+              . O botão "Abrir Ajustes" da seção Fora da cidade leva direto para
+              lá.
             </p>
           </div>
           <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
@@ -568,8 +570,8 @@ export const AdminShippingView = memo(function AdminShippingView({
             <p className="text-xs leading-relaxed text-zinc-400">
               O CEP da loja é obrigatório: sem ele o app não consegue calcular
               frete nenhum e o cliente não finaliza a compra. Mexeu em algo
-              aqui? Clique em "Salvar alterações" na barra que aparece no
-              rodapé — nada é aplicado antes disso.
+              aqui? Clique em "Salvar alterações" na barra que aparece no rodapé
+              — nada é aplicado antes disso.
             </p>
           </div>
         </div>
