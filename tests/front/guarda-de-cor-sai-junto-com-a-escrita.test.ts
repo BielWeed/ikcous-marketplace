@@ -74,8 +74,9 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
       "lê do banco (mapConfig) e aplica em runtime — inclusive updateConfig",
   },
   "src/types/database.types.ts": {
-    n: 6,
-    porque: "declaração do schema do banco (tipos gerados)",
+    n: 9,
+    porque:
+      "declaração do schema do banco (tipos gerados) — regen 04/09: +_retrato_primary_color_20260980 (tabela do retrato, migration 20260980 já aplicada no banco vivo), 3× Row/Insert/Update",
   },
   "src/types/supabase.ts": {
     n: 6,

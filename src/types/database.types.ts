@@ -35,6 +35,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      _retrato_business_hours_20261029: {
+        Row: {
+          business_hours: string | null;
+          id: number | null;
+        };
+        Insert: {
+          business_hours?: string | null;
+          id?: number | null;
+        };
+        Update: {
+          business_hours?: string | null;
+          id?: number | null;
+        };
+        Relationships: [];
+      };
+      _retrato_primary_color_20260980: {
+        Row: {
+          id: number | null;
+          primary_color: string | null;
+        };
+        Insert: {
+          id?: number | null;
+          primary_color?: string | null;
+        };
+        Update: {
+          id?: number | null;
+          primary_color?: string | null;
+        };
+        Relationships: [];
+      };
       analytics_events: {
         Row: {
           created_at: string | null;
@@ -118,6 +148,33 @@ export type Database = {
           },
         ];
       };
+      answers_dedup_backup_20260812: {
+        Row: {
+          answer: string;
+          apagado_em: string;
+          created_at: string;
+          id: string;
+          question_id: string;
+          user_id: string;
+        };
+        Insert: {
+          answer: string;
+          apagado_em?: string;
+          created_at: string;
+          id: string;
+          question_id: string;
+          user_id: string;
+        };
+        Update: {
+          answer?: string;
+          apagado_em?: string;
+          created_at?: string;
+          id?: string;
+          question_id?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       app_settings: {
         Row: {
           created_at: string | null;
@@ -160,13 +217,13 @@ export type Database = {
           overlay_opacity: number | null;
           position: string | null;
           product_id: string | null;
+          show_text_overlay: boolean | null;
           start_date: string | null;
           subtitle: string | null;
           subtitle_color: string | null;
           template_type: string | null;
           title: string | null;
           title_color: string | null;
-          show_text_overlay: boolean | null;
         };
         Insert: {
           active?: boolean | null;
@@ -185,13 +242,13 @@ export type Database = {
           overlay_opacity?: number | null;
           position?: string | null;
           product_id?: string | null;
+          show_text_overlay?: boolean | null;
           start_date?: string | null;
           subtitle?: string | null;
           subtitle_color?: string | null;
           template_type?: string | null;
           title?: string | null;
           title_color?: string | null;
-          show_text_overlay?: boolean | null;
         };
         Update: {
           active?: boolean | null;
@@ -210,37 +267,15 @@ export type Database = {
           overlay_opacity?: number | null;
           position?: string | null;
           product_id?: string | null;
+          show_text_overlay?: boolean | null;
           start_date?: string | null;
           subtitle?: string | null;
           subtitle_color?: string | null;
           template_type?: string | null;
           title?: string | null;
           title_color?: string | null;
-          show_text_overlay?: boolean | null;
         };
-        Relationships: [
-          {
-            foreignKeyName: "banners_product_id_fkey";
-            columns: ["product_id"];
-            isOneToOne: false;
-            referencedRelation: "produtos";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "banners_product_id_fkey";
-            columns: ["product_id"];
-            isOneToOne: false;
-            referencedRelation: "vw_produtos_admin";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "banners_product_id_fkey";
-            columns: ["product_id"];
-            isOneToOne: false;
-            referencedRelation: "vw_produtos_public";
-            referencedColumns: ["id"];
-          },
-        ];
+        Relationships: [];
       };
       cart_items: {
         Row: {
@@ -493,11 +528,52 @@ export type Database = {
           },
         ];
       };
+      marketplace_order_payment_history: {
+        Row: {
+          acao: string;
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          order_id: string;
+          payment_status_antes: string | null;
+          payment_status_depois: string | null;
+        };
+        Insert: {
+          acao: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          order_id: string;
+          payment_status_antes?: string | null;
+          payment_status_depois?: string | null;
+        };
+        Update: {
+          acao?: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          order_id?: string;
+          payment_status_antes?: string | null;
+          payment_status_depois?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_order_payment_history_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       marketplace_orders: {
         Row: {
           address_id: string | null;
+          cancelled_after_shipping: boolean;
+          confirmation_email_sent_at: string | null;
           coupon_code: string | null;
           coupon_id: string | null;
+          coupon_usage_returned: boolean;
           created_at: string;
           customer_data: Json;
           customer_name: string;
@@ -506,13 +582,21 @@ export type Database = {
           expires_at: string | null;
           gateway_payment_id: string | null;
           id: string;
+          idempotency_key: string | null;
           notes: string | null;
           observation: string | null;
+          pagamento_recebido_em: string | null;
+          pagamento_recebido_por: string | null;
+          paid_at: string | null;
           payment_method: string | null;
           payment_status: string | null;
+          returned_to_seller_at: string | null;
           shipping: number | null;
           shipping_cost: number | null;
-          status: string | null;
+          shipping_label_id: string | null;
+          shipping_label_url: string | null;
+          status: string;
+          stock_returned_at: string | null;
           subtotal: number;
           total: number;
           total_amount: number | null;
@@ -522,8 +606,11 @@ export type Database = {
         };
         Insert: {
           address_id?: string | null;
+          cancelled_after_shipping?: boolean;
+          confirmation_email_sent_at?: string | null;
           coupon_code?: string | null;
           coupon_id?: string | null;
+          coupon_usage_returned?: boolean;
           created_at?: string;
           customer_data: Json;
           customer_name: string;
@@ -532,13 +619,21 @@ export type Database = {
           expires_at?: string | null;
           gateway_payment_id?: string | null;
           id?: string;
+          idempotency_key?: string | null;
           notes?: string | null;
           observation?: string | null;
+          pagamento_recebido_em?: string | null;
+          pagamento_recebido_por?: string | null;
+          paid_at?: string | null;
           payment_method?: string | null;
           payment_status?: string | null;
+          returned_to_seller_at?: string | null;
           shipping?: number | null;
           shipping_cost?: number | null;
-          status?: string | null;
+          shipping_label_id?: string | null;
+          shipping_label_url?: string | null;
+          status?: string;
+          stock_returned_at?: string | null;
           subtotal: number;
           total: number;
           total_amount?: number | null;
@@ -548,8 +643,11 @@ export type Database = {
         };
         Update: {
           address_id?: string | null;
+          cancelled_after_shipping?: boolean;
+          confirmation_email_sent_at?: string | null;
           coupon_code?: string | null;
           coupon_id?: string | null;
+          coupon_usage_returned?: boolean;
           created_at?: string;
           customer_data?: Json;
           customer_name?: string;
@@ -558,13 +656,21 @@ export type Database = {
           expires_at?: string | null;
           gateway_payment_id?: string | null;
           id?: string;
+          idempotency_key?: string | null;
           notes?: string | null;
           observation?: string | null;
+          pagamento_recebido_em?: string | null;
+          pagamento_recebido_por?: string | null;
+          paid_at?: string | null;
           payment_method?: string | null;
           payment_status?: string | null;
+          returned_to_seller_at?: string | null;
           shipping?: number | null;
           shipping_cost?: number | null;
-          status?: string | null;
+          shipping_label_id?: string | null;
+          shipping_label_url?: string | null;
+          status?: string;
+          stock_returned_at?: string | null;
           subtotal?: number;
           total?: number;
           total_amount?: number | null;
@@ -625,35 +731,96 @@ export type Database = {
         };
         Relationships: [];
       };
+      order_shipping_events: {
+        Row: {
+          created_at: string;
+          error_message: string | null;
+          event_type: string;
+          id: string;
+          label_url: string | null;
+          order_id: string;
+          payload: Json;
+          protocol: string | null;
+          provider: string;
+          tracking_code: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          error_message?: string | null;
+          event_type: string;
+          id?: string;
+          label_url?: string | null;
+          order_id: string;
+          payload?: Json;
+          protocol?: string | null;
+          provider?: string;
+          tracking_code?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          error_message?: string | null;
+          event_type?: string;
+          id?: string;
+          label_url?: string | null;
+          order_id?: string;
+          payload?: Json;
+          protocol?: string | null;
+          provider?: string;
+          tracking_code?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_shipping_events_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       otp_verifications: {
         Row: {
+          attempts: number;
           created_at: string | null;
           email: string;
           expires_at: string;
           id: string;
+          order_id: string;
           otp_code: string;
           verified: boolean | null;
           whatsapp: string;
         };
         Insert: {
+          attempts?: number;
           created_at?: string | null;
           email: string;
           expires_at: string;
           id?: string;
+          order_id: string;
           otp_code: string;
           verified?: boolean | null;
           whatsapp: string;
         };
         Update: {
+          attempts?: number;
           created_at?: string | null;
           email?: string;
           expires_at?: string;
           id?: string;
+          order_id?: string;
           otp_code?: string;
           verified?: boolean | null;
           whatsapp?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "otp_verifications_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       product_variants: {
         Row: {
@@ -724,6 +891,7 @@ export type Database = {
           categoria: string | null;
           codigo: string | null;
           comprimento_cm: number | null;
+          custo: number | null;
           data_cadastro: string;
           deleted_at: string | null;
           descricao: string | null;
@@ -755,6 +923,7 @@ export type Database = {
           categoria?: string | null;
           codigo?: string | null;
           comprimento_cm?: number | null;
+          custo?: number | null;
           data_cadastro?: string;
           deleted_at?: string | null;
           descricao?: string | null;
@@ -786,6 +955,7 @@ export type Database = {
           categoria?: string | null;
           codigo?: string | null;
           comprimento_cm?: number | null;
+          custo?: number | null;
           data_cadastro?: string;
           deleted_at?: string | null;
           descricao?: string | null;
@@ -811,43 +981,6 @@ export type Database = {
           ultima_atualizacao?: string;
         };
         Relationships: [];
-      };
-      produtos_custo: {
-        Row: {
-          custo: number;
-          product_id: string;
-        };
-        Insert: {
-          custo?: number;
-          product_id: string;
-        };
-        Update: {
-          custo?: number;
-          product_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "produtos_custo_product_id_fkey";
-            columns: ["product_id"];
-            isOneToOne: true;
-            referencedRelation: "produtos";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "produtos_custo_product_id_fkey";
-            columns: ["product_id"];
-            isOneToOne: true;
-            referencedRelation: "vw_produtos_admin";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "produtos_custo_product_id_fkey";
-            columns: ["product_id"];
-            isOneToOne: true;
-            referencedRelation: "vw_produtos_public";
-            referencedColumns: ["id"];
-          },
-        ];
       };
       profiles: {
         Row: {
@@ -1040,6 +1173,35 @@ export type Database = {
           },
         ];
       };
+      review_votes: {
+        Row: {
+          created_at: string;
+          id: string;
+          review_id: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          review_id: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          review_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "review_votes_review_id_fkey";
+            columns: ["review_id"];
+            isOneToOne: false;
+            referencedRelation: "reviews";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       reviews: {
         Row: {
           comment: string | null;
@@ -1050,6 +1212,7 @@ export type Database = {
           merchant_reply_at: string | null;
           product_id: string;
           rating: number;
+          status: string;
           user_id: string;
           verified: boolean | null;
         };
@@ -1062,6 +1225,7 @@ export type Database = {
           merchant_reply_at?: string | null;
           product_id: string;
           rating: number;
+          status?: string;
           user_id: string;
           verified?: boolean | null;
         };
@@ -1074,6 +1238,7 @@ export type Database = {
           merchant_reply_at?: string | null;
           product_id?: string;
           rating?: number;
+          status?: string;
           user_id?: string;
           verified?: boolean | null;
         };
@@ -1132,7 +1297,7 @@ export type Database = {
           created_at?: string;
           destination_cep: string;
           error_message?: string | null;
-          id: number;
+          id?: number;
           origin_cep: string;
           provider: string;
           response_time_ms: number;
@@ -1200,6 +1365,9 @@ export type Database = {
           shipping_coverage: string;
           shipping_fee: number | null;
           shipping_provider: string;
+          store_city: string | null;
+          store_name: string | null;
+          store_state: string | null;
           theme_mode: string | null;
           updated_at: string | null;
           whatsapp_number: string | null;
@@ -1211,7 +1379,7 @@ export type Database = {
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
           free_shipping_min?: number | null;
-          home_sections?: Json;
+          home_sections?: Json | null;
           id: number;
           local_cep_range?: string | null;
           local_delivery_fee?: number;
@@ -1225,6 +1393,9 @@ export type Database = {
           shipping_coverage?: string;
           shipping_fee?: number | null;
           shipping_provider?: string;
+          store_city?: string | null;
+          store_name?: string | null;
+          store_state?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           whatsapp_number?: string | null;
@@ -1236,7 +1407,7 @@ export type Database = {
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
           free_shipping_min?: number | null;
-          home_sections?: Json;
+          home_sections?: Json | null;
           id?: number;
           local_cep_range?: string | null;
           local_delivery_fee?: number;
@@ -1250,6 +1421,9 @@ export type Database = {
           shipping_coverage?: string;
           shipping_fee?: number | null;
           shipping_provider?: string;
+          store_city?: string | null;
+          store_name?: string | null;
+          store_state?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           whatsapp_number?: string | null;
@@ -1395,6 +1569,9 @@ export type Database = {
           shipping_coverage: string | null;
           shipping_fee: number | null;
           shipping_provider: string | null;
+          store_city: string | null;
+          store_name: string | null;
+          store_state: string | null;
           theme_mode: string | null;
           updated_at: string | null;
           whatsapp_number: string | null;
@@ -1420,6 +1597,9 @@ export type Database = {
           shipping_coverage?: string | null;
           shipping_fee?: number | null;
           shipping_provider?: string | null;
+          store_city?: string | null;
+          store_name?: string | null;
+          store_state?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           whatsapp_number?: string | null;
@@ -1445,6 +1625,9 @@ export type Database = {
           shipping_coverage?: string | null;
           shipping_fee?: number | null;
           shipping_provider?: string | null;
+          store_city?: string | null;
+          store_name?: string | null;
+          store_state?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           whatsapp_number?: string | null;
@@ -1483,6 +1666,70 @@ export type Database = {
           sold: number | null;
           tags: string[] | null;
           ultima_atualizacao: string | null;
+        };
+        Insert: {
+          altura_cm?: number | null;
+          ativo?: boolean | null;
+          calculated_points?: number | null;
+          categoria?: string | null;
+          codigo?: string | null;
+          comprimento_cm?: number | null;
+          custo?: number | null;
+          data_cadastro?: string | null;
+          deleted_at?: string | null;
+          descricao?: string | null;
+          estoque?: number | null;
+          estoque_minimo?: number | null;
+          fornecedor_id?: string | null;
+          frete_gratis?: boolean | null;
+          id?: string | null;
+          imagem_url?: string | null;
+          imagem_urls?: string[] | null;
+          is_bestseller?: boolean | null;
+          largura_cm?: number | null;
+          meta_description?: string | null;
+          meta_title?: string | null;
+          nome?: string | null;
+          peso_kg?: number | null;
+          preco_original?: number | null;
+          preco_venda?: number | null;
+          rating?: number | null;
+          review_count?: number | null;
+          sold?: number | null;
+          tags?: string[] | null;
+          ultima_atualizacao?: string | null;
+        };
+        Update: {
+          altura_cm?: number | null;
+          ativo?: boolean | null;
+          calculated_points?: number | null;
+          categoria?: string | null;
+          codigo?: string | null;
+          comprimento_cm?: number | null;
+          custo?: number | null;
+          data_cadastro?: string | null;
+          deleted_at?: string | null;
+          descricao?: string | null;
+          estoque?: number | null;
+          estoque_minimo?: number | null;
+          fornecedor_id?: string | null;
+          frete_gratis?: boolean | null;
+          id?: string | null;
+          imagem_url?: string | null;
+          imagem_urls?: string[] | null;
+          is_bestseller?: boolean | null;
+          largura_cm?: number | null;
+          meta_description?: string | null;
+          meta_title?: string | null;
+          nome?: string | null;
+          peso_kg?: number | null;
+          preco_original?: number | null;
+          preco_venda?: number | null;
+          rating?: number | null;
+          review_count?: number | null;
+          sold?: number | null;
+          tags?: string[] | null;
+          ultima_atualizacao?: string | null;
         };
         Relationships: [];
       };
@@ -1638,12 +1885,6 @@ export type Database = {
       };
     };
     Functions: {
-      // Laudo varredura #2 (L-2): porta manual do balde "Devolver agora" —
-      // o lojista registra o estorno que fez no painel do Mercado Pago.
-      registrar_estorno_manual: {
-        Args: { p_order_id: string };
-        Returns: { ok: boolean; payment_status: string };
-      };
       answer_question_atomic:
         | {
             Args: { p_answer: string; p_question_id: string };
@@ -1658,16 +1899,16 @@ export type Database = {
             Returns: undefined;
           };
       check_is_admin: { Args: never; Returns: boolean };
-      check_stock_v1: {
-        Args: {
-          p_product_id: string;
-          p_quantity: number;
-          p_variant_id: string;
-        };
-        Returns: boolean;
-      };
       check_user_confirmation_status: {
         Args: { p_email: string };
+        Returns: Json;
+      };
+      confirmar_pagamento: {
+        Args: { p_order_id: string; p_payment_id: string; p_status: string };
+        Returns: string;
+      };
+      confirmar_retorno_do_produto: {
+        Args: { p_order_id: string };
         Returns: Json;
       };
       create_marketplace_order: {
@@ -1697,13 +1938,59 @@ export type Database = {
         };
         Returns: string;
       };
+      create_marketplace_order_v23: {
+        Args: {
+          p_address_data: Json;
+          p_address_id: string;
+          p_coupon_code: string;
+          p_customer_name: string;
+          p_customer_phone: string;
+          p_destination_cep: string;
+          p_idempotency_key?: string;
+          p_items: Json;
+          p_observation: string;
+          p_payment_method: string;
+          p_shipping_cost: number;
+          p_shipping_option_id: string;
+          p_total_amount: number;
+        };
+        Returns: string;
+      };
+      create_marketplace_order_v24: {
+        Args: {
+          p_address_data: Json;
+          p_address_id: string;
+          p_coupon_code: string;
+          p_customer_name: string;
+          p_customer_phone: string;
+          p_destination_cep: string;
+          p_idempotency_key?: string;
+          p_items: Json;
+          p_observation: string;
+          p_payment_method: string;
+          p_shipping_cost: number;
+          p_shipping_option_id: string;
+          p_total_amount: number;
+        };
+        Returns: string;
+      };
       decrement_stock: {
         Args: { p_id: string; quantity: number };
         Returns: undefined;
       };
+      devolver_cupons_de_pedidos_mortos: { Args: never; Returns: number };
+      devolver_estoque: { Args: { p_order_id: string }; Returns: number };
+      devolver_uso_cupom: { Args: { p_order_id: string }; Returns: number };
+      expirar_pedidos_vencidos: { Args: never; Returns: number };
+      f_digitos: { Args: { "": string }; Returns: string };
+      f_unaccent: { Args: { "": string }; Returns: string };
       generate_order_otp_v1: {
         Args: { p_email: string; p_order_fragment: string; p_whatsapp: string };
         Returns: boolean;
+      };
+      generate_order_otp_v2: {
+        Args: { p_email: string; p_order_fragment: string; p_whatsapp: string };
+        Returns: Json;
       };
       get_active_products_internal: {
         Args: never;
@@ -1714,6 +2001,7 @@ export type Database = {
           categoria: string | null;
           codigo: string | null;
           comprimento_cm: number | null;
+          custo: number | null;
           data_cadastro: string;
           deleted_at: string | null;
           descricao: string | null;
@@ -1777,6 +2065,7 @@ export type Database = {
           p_end_date?: string;
           p_page?: number;
           p_page_size?: number;
+          p_payment_status?: string;
           p_search?: string;
           p_start_date?: string;
           p_status?: string;
@@ -1899,6 +2188,7 @@ export type Database = {
           categoria: string | null;
           codigo: string | null;
           comprimento_cm: number | null;
+          custo: number | null;
           data_cadastro: string;
           deleted_at: string | null;
           descricao: string | null;
@@ -1971,6 +2261,14 @@ export type Database = {
               ticket: number;
             }[];
           };
+      get_segmented_push_count: {
+        Args: {
+          p_days_inactive?: number;
+          p_min_ltv?: number;
+          p_segment?: string;
+        };
+        Returns: number;
+      };
       get_segmented_push_targets: {
         Args: {
           p_days_inactive?: number;
@@ -1986,6 +2284,25 @@ export type Database = {
       };
       increment_helpful: { Args: { review_id: string }; Returns: undefined };
       is_admin: { Args: never; Returns: boolean };
+      is_local_cep: {
+        Args: {
+          p_dest_cep: string;
+          p_local_cep_range: string;
+          p_origin_cep: string;
+        };
+        Returns: boolean;
+      };
+      liberar_email_de_confirmacao: {
+        Args: { p_order_id: string };
+        Returns: undefined;
+      };
+      pagamentos_a_reconciliar: {
+        Args: never;
+        Returns: {
+          gateway_payment_id: string;
+          order_id: string;
+        }[];
+      };
       record_vor_action: {
         Args: {
           p_action_type: string;
@@ -1994,6 +2311,15 @@ export type Database = {
           p_proof_hash: string;
         };
         Returns: undefined;
+      };
+      registrar_estorno_manual: { Args: { p_order_id: string }; Returns: Json };
+      registrar_pagamento_recebido: {
+        Args: { p_order_id: string; p_recebido: boolean };
+        Returns: Json;
+      };
+      reivindicar_email_de_confirmacao: {
+        Args: { p_order_id: string };
+        Returns: boolean;
       };
       reply_review_atomic:
         | { Args: { p_reply: string; p_review_id: string }; Returns: undefined }
