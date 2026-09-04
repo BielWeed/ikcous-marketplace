@@ -1,7 +1,30 @@
-import { BottomNav } from "@/components/ui/custom/BottomNav";
-import { CartReminder } from "@/components/ui/custom/CartReminder";
-import { Header } from "@/components/ui/custom/Header";
-import { AnimatePresence, motion } from "framer-motion";
+// F1 "loja abre mais rápido" (frente glm-perf-1paint-0309, 04/09/2026):
+// Header, BottomNav e CartReminder usam framer-motion e eram importados
+// estaticamente — junto com o import de framer-motion do próprio App, isso
+// puxava o chunk vendor-motion (~123 KB brutos / ~40 KB gzip) para o pacote
+// que o navegador baixa no primeiro paint de toda loja. Agora são chunks
+// lazy: o entry não parseia nem executa a biblioteca antes do primeiro
+// conteúdo. O DOWNLOAD dos chunks do chrome continua acontecendo logo após
+// o primeiro render (o Header lazy montado pede o dele, e o dele puxa o
+// vendor-motion) — em cascata, não em paralelo com o entry; por isso os
+// fallbacks do Header e do BottomNav reservam a GEOMETRIA (sem salto de
+// layout na janela em que o splash não cobre — ele é 1× por sessão).
+// Este arquivo NÃO pode voltar a importar framer-motion (nem módulo que o
+// importe estaticamente) — cavalca o teste
+// tests/front/perf-entrada-sem-animacao-no-1o-paint.test.ts.
+const Header = React.lazy(() =>
+  import("@/components/ui/custom/Header").then((m) => ({ default: m.Header })),
+);
+const BottomNav = React.lazy(() =>
+  import("@/components/ui/custom/BottomNav").then((m) => ({
+    default: m.BottomNav,
+  })),
+);
+const CartReminder = React.lazy(() =>
+  import("@/components/ui/custom/CartReminder").then((m) => ({
+    default: m.CartReminder,
+  })),
+);
 import React, {
   useState,
   useEffect,
@@ -110,6 +133,32 @@ const DebugPanel = React.lazy(() =>
   })),
 );
 
+// F1 (glm-perf-1paint-0309): os três usos de framer-motion que viviam no
+// corpo do App (wrapper das abas, troca de view secundária e barra de
+// progresso de rota) moram agora no módulo abaixo — fora do gráfico estático
+// do entry, junto com o vendor-motion. Animações idênticas, movidas
+// verbatim. No ramo SEM View Transitions os shells participam do primeiro
+// render das abas/views e pedem o chunk no primeiro paint (em cascata —
+// coberto pelo splash na 1ª visita; no reload da mesma sessão há uma
+// janela curta com o fallback de mesma geometria). A barra de rota é a
+// única renderizada SOB DEMANDA (`isRouteLoading`), para não pedir chunk
+// nenhum por conta própria no boot.
+const MainTabsMotionShell = lazyWithPreload(() =>
+  import("@/components/layouts/AppMotionFallbacks").then((m) => ({
+    default: m.MainTabsMotionShell,
+  })),
+);
+const SecondaryViewMotionShell = lazyWithPreload(() =>
+  import("@/components/layouts/AppMotionFallbacks").then((m) => ({
+    default: m.SecondaryViewMotionShell,
+  })),
+);
+const RouteLoadingProgress = lazyWithPreload(() =>
+  import("@/components/layouts/AppMotionFallbacks").then((m) => ({
+    default: m.RouteLoadingProgress,
+  })),
+);
+
 const VIEW_COMPONENTS = {
   home: HomeView,
   cart: CartView,
@@ -181,7 +230,6 @@ import { useNetworkAdaptive } from "@/hooks/useNetworkAdaptive";
 import { usePredictiveNavigation } from "@/hooks/usePredictiveNavigation";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useSwipeBack } from "@/hooks/useSwipeBack";
-import { useUpdateCheck } from "@/hooks/useUpdateCheck";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { useWebVitals } from "@/hooks/useWebVitals";
 
@@ -298,14 +346,19 @@ function AdminAccessDenied({
 
   return <AdminRouteLoading />;
 }
-import { PushNotificationBanner } from "@/components/pwa/PushNotificationBanner";
-import { UpdateNotification } from "@/components/pwa/UpdateNotification";
+// F1 (glm-perf-1paint-0309): PushNotificationBanner usa framer-motion —
+// sai do import estático e vira chunk lazy (o banner só nasce quando chega
+// push, bem depois do boot). Nada muda na cara dele.
+const PushNotificationBanner = React.lazy(() =>
+  import("@/components/pwa/PushNotificationBanner").then((m) => ({
+    default: m.PushNotificationBanner,
+  })),
+);
 import { corPrimariaEfetiva } from "@/config/cor-da-loja";
 import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import { useCartActions, useCartState } from "@/hooks/useCart";
-import { useRealtimeUpdate } from "@/hooks/useRealtimeUpdate";
 import type { Product, SortOption, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 
@@ -326,7 +379,6 @@ export default function App() {
       <CartProvider>
         <FavoritesProvider>
           <AppContent />
-          <PWAUpdateManager />
         </FavoritesProvider>
       </CartProvider>
     </StoreProvider>
@@ -402,45 +454,9 @@ const getNavigationDirection = (
   return "forward";
 };
 
-const pageVariants = {
-  initial: (custom: any) => {
-    const direction =
-      typeof custom === "string" ? custom : custom?.direction || "forward";
-    if (direction === "none") return { opacity: 0 };
-    return {
-      x: direction === "forward" ? "100%" : "-30%",
-      opacity: direction === "forward" ? 1 : 0.5,
-      y: 0,
-      willChange: "transform, opacity",
-    };
-  },
-  animate: {
-    x: 0,
-    opacity: 1,
-    y: 0,
-    transitionEnd: {
-      willChange: "auto",
-    },
-  },
-  exit: (custom: any) => {
-    const direction =
-      typeof custom === "string" ? custom : custom?.direction || "forward";
-    const oldScroll = typeof custom === "string" ? 0 : custom?.oldScroll || 0;
-    const newScroll = typeof custom === "string" ? 0 : custom?.newScroll || 0;
-    if (direction === "none") return { opacity: 0 };
-    const offset = newScroll - oldScroll;
-    return {
-      x: direction === "forward" ? "-30%" : "100%",
-      opacity: direction === "forward" ? 0.5 : 0,
-      y: offset,
-      position: "absolute" as const,
-      width: "100%",
-      top: 0,
-      left: 0,
-      willChange: "transform, opacity",
-    };
-  },
-};
+// pageVariants saiu daqui: virou morador de
+// src/components/layouts/AppMotionFallbacks.tsx junto do SecondaryViewMotionShell
+// (F1 — framer-motion fora do gráfico do entry), sem mudar uma linha de animação.
 
 const ADMIN_TABS_SET = new Set([
   "admin-dashboard",
@@ -471,6 +487,7 @@ const AppContent = () => {
   const { products, loading: productsLoading } = useProducts();
   const { navigate: startTransition, isSupported: isTransitionSupported } =
     useViewTransition();
+
   const { addToCart } = useCartActions();
   const {
     favorites,
@@ -2382,135 +2399,123 @@ const AppContent = () => {
             </TabWrapper>
           </div>
         ) : (
-          <motion.div
-            className="absolute left-0 top-0 size-full overflow-hidden"
-            initial={false}
-            animate={
-              isMainTab
-                ? {
-                    opacity: 1,
-                    y: 0,
-                    pointerEvents: "auto",
-                    visibility: "visible",
-                  }
-                : {
-                    opacity: 0,
-                    y: -8,
-                    pointerEvents: "none",
-                    transitionEnd: { visibility: "hidden" },
-                  }
+          <React.Suspense
+            fallback={
+              <div className="absolute left-0 top-0 size-full overflow-hidden" />
             }
-            transition={{
-              duration: getFramerMotionDuration(),
-              ease: [0.16, 1, 0.3, 1],
-            }}
           >
-            <TabWrapper
-              active={currentView === "home"}
-              isTransitionSupported={isTransitionSupported}
-              index={0}
-              activeIndex={activeTabIdx}
+            <MainTabsMotionShell
+              isMainTab={isMainTab}
+              duration={getFramerMotionDuration()}
             >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "home"}>
-                  <PreloadedOrLazy
-                    component={HomeView}
-                    props={{
-                      products: products,
-                      favorites: favoriteIds,
-                      onToggleFavorite: handleToggleFavorite,
-                      onProductClick: handleProductClick,
-                      onNavigate: handleNavigate,
-                      searchQuery: searchQuery,
-                      onAddToCart: handleAddToCart,
-                      onQuickBuy: handleQuickBuy,
-                      scrollProgress: scrollProgress,
-                      isLoading: productsLoading,
-                      selectedProductId: selectedProductId || undefined,
-                      selectedCategory: selectedCategory,
-                      onCategoryChange: handleCategoryChange,
-                      sortBy: sortBy,
-                      onSortByChange: setSortBy,
-                      onHeaderDockChange: setIsHeaderDocked,
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
+              <TabWrapper
+                active={currentView === "home"}
+                isTransitionSupported={isTransitionSupported}
+                index={0}
+                activeIndex={activeTabIdx}
+              >
+                <LocalErrorBoundary>
+                  <DeferredTabContent active={currentView === "home"}>
+                    <PreloadedOrLazy
+                      component={HomeView}
+                      props={{
+                        products: products,
+                        favorites: favoriteIds,
+                        onToggleFavorite: handleToggleFavorite,
+                        onProductClick: handleProductClick,
+                        onNavigate: handleNavigate,
+                        searchQuery: searchQuery,
+                        onAddToCart: handleAddToCart,
+                        onQuickBuy: handleQuickBuy,
+                        scrollProgress: scrollProgress,
+                        isLoading: productsLoading,
+                        selectedProductId: selectedProductId || undefined,
+                        selectedCategory: selectedCategory,
+                        onCategoryChange: handleCategoryChange,
+                        sortBy: sortBy,
+                        onSortByChange: setSortBy,
+                        onHeaderDockChange: setIsHeaderDocked,
+                      }}
+                    />
+                  </DeferredTabContent>
+                </LocalErrorBoundary>
+              </TabWrapper>
 
-            <TabWrapper
-              active={currentView === "favorites"}
-              isTransitionSupported={isTransitionSupported}
-              index={1}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "favorites"}>
-                  <PreloadedOrLazy
-                    component={FavoritesView}
-                    props={{
-                      key: user?.id
-                        ? `favorites-${user.id}`
-                        : "favorites-guest",
-                      favorites: favorites,
-                      loading: favoritesLoading,
-                      onToggleFavorite: handleToggleFavorite,
-                      onProductClick: handleProductClick,
-                      onNavigate: handleNavigate,
-                      selectedProductId: selectedProductId || undefined,
-                      isActive: currentView === "favorites",
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
+              <TabWrapper
+                active={currentView === "favorites"}
+                isTransitionSupported={isTransitionSupported}
+                index={1}
+                activeIndex={activeTabIdx}
+              >
+                <LocalErrorBoundary>
+                  <DeferredTabContent active={currentView === "favorites"}>
+                    <PreloadedOrLazy
+                      component={FavoritesView}
+                      props={{
+                        key: user?.id
+                          ? `favorites-${user.id}`
+                          : "favorites-guest",
+                        favorites: favorites,
+                        loading: favoritesLoading,
+                        onToggleFavorite: handleToggleFavorite,
+                        onProductClick: handleProductClick,
+                        onNavigate: handleNavigate,
+                        selectedProductId: selectedProductId || undefined,
+                        isActive: currentView === "favorites",
+                      }}
+                    />
+                  </DeferredTabContent>
+                </LocalErrorBoundary>
+              </TabWrapper>
 
-            <TabWrapper
-              active={currentView === "cart" || currentView === "orders"}
-              isTransitionSupported={isTransitionSupported}
-              index={2}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent
-                  active={currentView === "cart" || currentView === "orders"}
-                >
-                  <PreloadedOrLazy
-                    component={CartView}
-                    props={{
-                      key: user?.id
-                        ? `cart-orders-${user.id}`
-                        : "cart-orders-guest",
-                      onNavigate: handleNavigate,
-                      onAddToCart: handleAddToCart,
-                      initialTab: currentView === "orders" ? "orders" : "cart",
-                      isActive:
-                        currentView === "cart" || currentView === "orders",
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
+              <TabWrapper
+                active={currentView === "cart" || currentView === "orders"}
+                isTransitionSupported={isTransitionSupported}
+                index={2}
+                activeIndex={activeTabIdx}
+              >
+                <LocalErrorBoundary>
+                  <DeferredTabContent
+                    active={currentView === "cart" || currentView === "orders"}
+                  >
+                    <PreloadedOrLazy
+                      component={CartView}
+                      props={{
+                        key: user?.id
+                          ? `cart-orders-${user.id}`
+                          : "cart-orders-guest",
+                        onNavigate: handleNavigate,
+                        onAddToCart: handleAddToCart,
+                        initialTab:
+                          currentView === "orders" ? "orders" : "cart",
+                        isActive:
+                          currentView === "cart" || currentView === "orders",
+                      }}
+                    />
+                  </DeferredTabContent>
+                </LocalErrorBoundary>
+              </TabWrapper>
 
-            <TabWrapper
-              active={currentView === "profile"}
-              isTransitionSupported={isTransitionSupported}
-              index={3}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "profile"}>
-                  <PreloadedOrLazy
-                    component={ProfileView}
-                    props={{
-                      key: user?.id ? `profile-${user.id}` : "profile-guest",
-                      onNavigate: handleNavigate,
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-          </motion.div>
+              <TabWrapper
+                active={currentView === "profile"}
+                isTransitionSupported={isTransitionSupported}
+                index={3}
+                activeIndex={activeTabIdx}
+              >
+                <LocalErrorBoundary>
+                  <DeferredTabContent active={currentView === "profile"}>
+                    <PreloadedOrLazy
+                      component={ProfileView}
+                      props={{
+                        key: user?.id ? `profile-${user.id}` : "profile-guest",
+                        onNavigate: handleNavigate,
+                      }}
+                    />
+                  </DeferredTabContent>
+                </LocalErrorBoundary>
+              </TabWrapper>
+            </MainTabsMotionShell>
+          </React.Suspense>
         )}
 
         {/* Secondary Views (Rendered on demand with View Transitions or Framer Motion) */}
@@ -2524,30 +2529,17 @@ const AppContent = () => {
             </div>
           )
         ) : (
-          <AnimatePresence
-            mode="popLayout"
-            custom={{ direction: navigationDirection, ...transitionScroll }}
-          >
-            {!isMainTab && (
-              <motion.div
-                key={currentView}
-                custom={{ direction: navigationDirection, ...transitionScroll }}
-                variants={pageVariants}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-                transition={{
-                  type: "tween",
-                  ease: [0.16, 1, 0.3, 1],
-                  duration: getFramerMotionDuration(),
-                  y: { duration: 0 },
-                }}
-                className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none"
-              >
-                {renderCustomerSecondaryView()}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <React.Suspense fallback={null}>
+            <SecondaryViewMotionShell
+              active={!isMainTab}
+              viewKey={currentView}
+              direction={navigationDirection}
+              transitionScroll={transitionScroll}
+              duration={getFramerMotionDuration()}
+            >
+              {renderCustomerSecondaryView()}
+            </SecondaryViewMotionShell>
+          </React.Suspense>
         )}
       </div>
     );
@@ -2608,53 +2600,54 @@ const AppContent = () => {
   // renderView has been extracted to AdminArea.tsx to ensure layouts are only parsed post-verification.
 
   return (
-    <div className="flex size-full min-h-[100dvh] h-[100dvh] flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex size-full h-dvh min-h-dvh flex-col overflow-hidden bg-background text-foreground">
       <AppBadgeSynchronizer />
-      <AnimatePresence>
-        {isRouteLoading && (
-          <motion.div
-            initial={{ width: "0%", opacity: 1 }}
-            animate={{
-              width: ["0%", "35%", "70%", "90%"],
-              transition: {
-                times: [0, 0.2, 0.6, 0.9],
-                duration: 1.5,
-                ease: "easeOut",
-              },
-            }}
-            exit={{
-              width: "100%",
-              opacity: 0,
-              transition: { duration: 0.25, ease: "easeOut" },
-            }}
-            className="fixed left-0 top-0 z-[99999] h-[3px] bg-gradient-to-r from-admin-gold via-amber-400 to-yellow-300 shadow-[0_1px_10px_rgba(212,175,55,0.6)]"
-          />
-        )}
-      </AnimatePresence>
+      {/* Barra de rota SOB DEMANDA: render condicional para o Suspense não
+          pedir o chunk das animações no boot por conta própria (F1). */}
+      {isRouteLoading && (
+        <React.Suspense fallback={null}>
+          <RouteLoadingProgress active={isRouteLoading} />
+        </React.Suspense>
+      )}
       {!currentView.startsWith("admin") && (
-        <div className="gpu-accelerated flex-shrink-0 relative z-[100]">
-          <Header
-            onNavigate={handleNavigate}
-            showBackButton={
-              currentView !== "home" &&
-              currentView !== "favorites" &&
-              currentView !== "cart" &&
-              currentView !== "orders" &&
-              currentView !== "profile" &&
-              currentView !== "auth" &&
-              currentView !== "login"
+        <div className="gpu-accelerated relative z-[100] flex-shrink-0">
+          {/* Fallback com a GEOMETRIA do header (safe-area + 52px + borda):
+              sem isto o <main> sobe ~53px e volta quando o chunk chega —
+              salto de layout no topo, onde o olho está (achado b2 do laudo
+              Claude de 04/09). */}
+          <React.Suspense
+            fallback={
+              <header
+                className="relative inset-x-0 top-0 flex-shrink-0 border-b border-transparent bg-white"
+                style={{ paddingTop: "var(--safe-area-top)" }}
+              >
+                <div className="h-[var(--header-height)]" />
+              </header>
             }
-            onBack={handleBack}
-            onOpenNotifications={handleOpenNotifications}
-            // "checkout" some daqui: a busca navega para product-detail
-            // (alçapão) e o formulário do checkout convidado só persiste o
-            // CEP — sair da tela apaga nome, WhatsApp, rua, número e
-            // complemento já digitados.
-            hideSearch={["address-form", "checkout"].includes(currentView)}
-            searchQuery={searchQuery}
-            onSearch={setSearchQuery}
-            scrollProgress={scrollProgress}
-          />
+          >
+            <Header
+              onNavigate={handleNavigate}
+              showBackButton={
+                currentView !== "home" &&
+                currentView !== "favorites" &&
+                currentView !== "cart" &&
+                currentView !== "orders" &&
+                currentView !== "profile" &&
+                currentView !== "auth" &&
+                currentView !== "login"
+              }
+              onBack={handleBack}
+              onOpenNotifications={handleOpenNotifications}
+              // "checkout" some daqui: a busca navega para product-detail
+              // (alçapão) e o formulário do checkout convidado só persiste o
+              // CEP — sair da tela apaga nome, WhatsApp, rua, número e
+              // complemento já digitados.
+              hideSearch={["address-form", "checkout"].includes(currentView)}
+              searchQuery={searchQuery}
+              onSearch={setSearchQuery}
+              scrollProgress={scrollProgress}
+            />
+          </React.Suspense>
         </div>
       )}
 
@@ -2727,21 +2720,40 @@ const AppContent = () => {
       </main>
 
       {currentView === "home" && !isKeyboardOpen && (
-        <CartReminder
-          onAction={() => handleNavigate("cart")}
-          docked={isHeaderDocked}
-        />
+        <React.Suspense fallback={null}>
+          <CartReminder
+            onAction={() => handleNavigate("cart")}
+            docked={isHeaderDocked}
+          />
+        </React.Suspense>
       )}
 
       {!currentView.startsWith("admin") &&
         currentView !== "order-success" &&
         !isKeyboardOpen && (
           <>
-            <PushNotificationBanner
-              currentView={currentView}
-              isKeyboardOpen={isKeyboardOpen}
-            />
-            <BottomNav currentView={currentView} onNavigate={handleNavigate} />
+            <React.Suspense fallback={null}>
+              <PushNotificationBanner
+                currentView={currentView}
+                isKeyboardOpen={isKeyboardOpen}
+              />
+            </React.Suspense>
+            {/* Fallback com a GEOMETRIA da barra (fixed bottom + 64px +
+                safe-area + fundo): a barra é fixed e não salta, mas sem
+                reserva o toque no lugar do carrinho cedia no card por
+                baixo durante a janela do chunk (achado b3 do laudo). */}
+            <React.Suspense
+              fallback={
+                <nav className="pb-safe fixed inset-x-0 bottom-0 z-[120] border-t border-zinc-100 bg-white/95">
+                  <div className="h-[64px]" />
+                </nav>
+              }
+            >
+              <BottomNav
+                currentView={currentView}
+                onNavigate={handleNavigate}
+              />
+            </React.Suspense>
           </>
         )}
 
@@ -2791,33 +2803,20 @@ const AppContent = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      <React.Suspense fallback={null}>
+        <PWAUpdateManager currentView={currentView} />
+      </React.Suspense>
       <Toaster />
     </div>
   );
 };
 
-function PWAUpdateManager() {
-  const { user } = useAuth();
-  const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } =
-    useUpdateCheck();
-
-  const handleUpdate = useCallback(
-    (newVer?: string) => {
-      console.log(
-        `[RealtimeUpdate] Update ping detected (${newVer || "no-ver"}). Triggering deep checkUpdate...`,
-      );
-      checkUpdate(newVer);
-    },
-    [checkUpdate],
-  );
-
-  useRealtimeUpdate(handleUpdate, user?.id);
-
-  return (
-    <UpdateNotification
-      show={updateAvailable}
-      onUpdate={() => performNuclearPurge(true)}
-      newVersion={newVersion}
-    />
-  );
-}
+// O gerente do aviso de atualização (useUpdateCheck + realtime + o modal)
+// vive em @/components/pwa/PWAUpdateGate: desde 04/09/2026 ele recebe a view
+// atual e segura o aviso nas telas de compra (cart/checkout/address-form).
+// F1: o modal dele usa framer-motion — o gate inteiro é chunk lazy.
+const PWAUpdateManager = React.lazy(() =>
+  import("@/components/pwa/PWAUpdateGate").then((m) => ({
+    default: m.PWAUpdateManager,
+  })),
+);
