@@ -70,7 +70,9 @@ describe("achado 9 — recusas anunciadas: cupom e frete pendente", () => {
     expect(src).toMatch(/<p\s+id="erro-cupom"\s+role="alert"/);
     // Enquanto houver erro, o input se declara inválido e aponta a mensagem.
     expect(src).toContain("aria-invalid={error ? true : undefined}");
-    expect(src).toContain('aria-describedby={error ? "erro-cupom" : undefined}');
+    expect(src).toContain(
+      'aria-describedby={error ? "erro-cupom" : undefined}',
+    );
   });
 
   it("classes originais do cupom preservadas (nada de visual mudou)", () => {
