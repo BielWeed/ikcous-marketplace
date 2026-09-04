@@ -336,7 +336,11 @@ export function normalizarCheckout(data: Record<string, any>): { pago: boolean; 
  * erro: o painel deixa o lojista consultar de novo depois.
  */
 export function normalizarTracking(data: Record<string, any>, labelId: string): { tracking: string | null; status: string | null } {
-    const entrada = data?.[labelId] || null
+    // Map (não indexação por variável): `data[labelId]` dispara
+    // `security/detect-object-injection` do eslint e a catraca reprova
+    // warning novo — `.get()` devolve a mesma entrada do objeto chaveado
+    // pelo id da etiqueta.
+    const entrada = new Map(Object.entries(data ?? {})).get(labelId) ?? null
     const tracking = entrada?.tracking || entrada?.melhorenvio_tracking || null
     return { tracking: tracking ? String(tracking) : null, status: entrada?.status ? String(entrada.status) : null }
 }

@@ -344,7 +344,6 @@ Deno.test("handler - action desconhecida nomeia as duas válidas e NÃO alcança
 // checkout recusado, corrida perdida e checkout indeterminado.
 
 const LABEL_ID = 'label-abc-123'
-const BASE_ME = 'https://sandbox.melhorenvio.com.br'
 
 const PEDIDO_FELIZ = {
     id: 'pedido-1',
