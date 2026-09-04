@@ -17,7 +17,9 @@ const TELAS_DE_COMPRA: ReadonlySet<View> = new Set([
 
 // Viveu dentro do App.tsx até 04/09/2026; ganhou arquivo próprio para a
 // regra do "não interromper a compra" ser testável sem montar o App inteiro.
-export function PWAUpdateManager({ currentView }: { readonly currentView: View }) {
+export function PWAUpdateManager({
+  currentView,
+}: { readonly currentView: View }) {
   const { user } = useAuth();
   const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } =
     useUpdateCheck();
