@@ -120,6 +120,39 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.acao).toBe("trocar_entrega");
   });
 
+  // 🔴 REVISÃO A8 (frete v2, 03/09): as três recusas NOVAS do portão de
+  // entrega da RPC emendada (20261081000000). Antes viravam `conferir_antes`
+  // com texto cru — sem botão de saída no último clique. O verbo do banco
+  // manda: "escolha uma entrega" -> trocar_entrega; "calcule o frete" ->
+  // recotar_frete.
+  it("pedido sem opção de entrega -> trocar a entrega (o banco diz 'escolha uma opção')", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("Escolha uma opção de entrega antes de finalizar o pedido."),
+    );
+    expect(r.acao).toBe("trocar_entrega");
+    expect(r.mensagem).toBe(
+      "Escolha uma opção de entrega antes de finalizar o pedido.",
+    );
+  });
+
+  it("id de taxa fixa (payload velho) -> trocar a entrega (o banco diz 'escolha uma entrega válida')", () => {
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.",
+      ),
+    );
+    expect(r.acao).toBe("trocar_entrega");
+  });
+
+  it("id não reconhecido -> recotar o frete (o banco diz 'calcule o frete')", () => {
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "Opção de entrega não reconhecida. Volte ao carrinho, calcule o frete e finalize de novo.",
+      ),
+    );
+    expect(r.acao).toBe("recotar_frete");
+  });
+
   it("endereco invalido -> trocar endereco", () => {
     const r = classificarRecusaDoPedido(
       p0001("Endereço inválido ou não pertence ao usuário."),

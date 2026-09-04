@@ -5,9 +5,21 @@
 // (4,5:1) de texto normal. `text-emerald-700` mede 5,21:1 e passa.
 //
 // POR QUE RENDER DE VERDADE: a classe de cor vive no elemento renderizado.
-// `hasFreeShippingItem=true` (produto com `freeShipping: true` no carrinho)
-// é o caminho mais curto para `shipping === 0` sem precisar de sessão nem de
-// `config.freeShippingMin` -- CartView.tsx, useMemo de `shipping`/`savings`.
+//
+// FRETE V2 (onda D-1, 03/09): o caminho para `shipping === 0` mudou — a
+// cópia antiga da regra (`hasFreeShippingItem`, item marcado incondicional)
+// morreu e o grátis do carrinho agora é o veredito ÚNICO do CartContext
+// (`freteGratis`, presets de presets-de-frete-gratis.ts). O dublê do
+// `useCart` entrega o veredito GRÁTIS diretamente, que é o cenário honesto
+// mais curto para o selo aparecer sem sessão nem limiar de valor.
+//
+// REVISÃO A3 (frete v2, 03/09): o selo dizia "Economizou R$ X" com X =
+// `config.shippingFee` — a taxa fixa que morreu nesta branch (o edge não
+// cota mais por ela; o campo ficou órfão no banco). Medir economia contra
+// preço que não existe mente; sem cotação alternativa em mãos não há número
+// honesto, então o selo virou "Frete grátis aplicado" — SEM NÚMERO. Este
+// teste continua prendendo o MESMO elemento (mesma cor, mesmo contraste AA
+// de 5,21:1); o que mudou é o texto dentro dele.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +42,10 @@ vi.mock("@/hooks/useCart", () => ({
   useCart: () => ({
     cart: [],
     shippingFee: 0,
+    // FRETE V2 (onda D-1): o selo aparece quando o VEREDITO do CartContext
+    // é grátis (`freteGratis`) — a leitura antiga de `product.freeShipping`
+    // na CartView morreu com o modelo de presets.
+    freteGratis: true,
     updateQuantity: vi.fn(),
     removeFromCart: vi.fn(),
     clearCart: vi.fn(),
@@ -78,7 +94,7 @@ const itemComFreteGratis: CartItem = {
   quantity: 1,
 };
 
-describe("CartView — selo 'Economizou R$ X' usa text-emerald-700 (contraste AA), não mais text-emerald-600", () => {
+describe("CartView — selo de frete grátis do resumo usa text-emerald-700 (contraste AA), não mais text-emerald-600", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -95,7 +111,7 @@ describe("CartView — selo 'Economizou R$ X' usa text-emerald-700 (contraste AA
     hospedeiro.remove();
   });
 
-  it("item com freeShipping: o selo 'Economizou' troca de tom", async () => {
+  it("item com freeShipping: o selo honesto troca de tom", async () => {
     const { CartView } = await import("@/views/customer/CartView");
 
     await act(async () => {
@@ -105,12 +121,17 @@ describe("CartView — selo 'Economizou R$ X' usa text-emerald-700 (contraste AA
     });
 
     // A armadilha precisa estar de fato presente: sem o selo renderizado de
-    // verdade, o par abaixo não prova nada sobre este defeito.
-    expect(hospedeiro.textContent).toContain("Economizou");
+    // verdade, o par abaixo não prova nada sobre este defeito. REVISÃO A3:
+    // o texto é "Frete grátis aplicado" — sem número contra preço morto — e
+    // SEM dígito nenhum no selo (o número velho não pode voltar calado).
+    expect(hospedeiro.textContent).toContain("Frete grátis aplicado");
 
     const spans = Array.from(hospedeiro.querySelectorAll("span"));
-    const selo = spans.find((el) => el.textContent?.startsWith("Economizou"));
+    const selo = spans.find((el) =>
+      el.textContent?.startsWith("Frete grátis aplicado"),
+    );
     expect(selo).not.toBeUndefined();
+    expect(selo?.textContent).not.toMatch(/R\$|Economizou/);
     expect(selo?.classList.contains("text-emerald-700")).toBe(true);
     expect(selo?.classList.contains("text-emerald-600")).toBe(false);
   });

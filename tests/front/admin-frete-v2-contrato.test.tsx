@@ -1,0 +1,462 @@
+import type { View } from "@/types";
+// @vitest-environment jsdom
+//
+// CONTRATO da tela de Frete v2 na DIREÇÃO D (frente frete-v2-0309, 03/09/2026
+// — o dono reprovou o visual do PR #414 e, depois, a primeira casca nova;
+// a direção D aprovada tem faixa-resumo, seções como linhas finas sem
+// caixa, presets em pills e barra de salvar FIXA no rodapé). Este arquivo
+// prende o que a tela É, não só como ela parece:
+//
+//   1. a FAIXA descreve o estado REAL salvo no config (local com cidade,
+//      nacional com transportadora conectada, grátis pelo preset);
+//   2. a taxa fixa MORREU: nenhum card, campo ou payload dela;
+//   3. os presets de frete grátis são EXCLUSIVOS (escolher um é desligar os
+//      outros) e gravam via `valorDoPreset` — inclusive as sentinelas do
+//      contrato final: 0,01 do "sempre" e -1 do "por produto"
+//      (FRETE_GRATIS_POR_PRODUTO; a estratégia mora na marcação do produto,
+//      o negativo no config é só o marcador dela);
+//   4. CHAVES só onde há estado real: "Só entregar na cidade" grava
+//      `shippingCoverage` (role="switch"); a credencial da transportadora é
+//      de Ajustes, então "Cotação na hora" é EXIBIÇÃO — nenhum botão finge
+//      salvar o que não salva;
+//   5. a BARRA DE SALVAR FIXA só existe com alteração pendente, e salvar
+//      aqui NÃO envia campo da seção de Transportadoras.
+//
+// Os companheiros desta prova: admin-shipping-nao-inventa-cep-de-origem
+// (CEP de origem), admin-shipping-trocar-de-aba (guarda de dirty),
+// admin-visual-frete (divisão de território).
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { estadoDaLoja, estadoDoBanco, updateConfig } = vi.hoisted(() => ({
+  estadoDaLoja: {
+    atual: {
+      freeShippingMin: 100,
+      shippingCoverage: "national" as "local" | "national",
+      shippingProvider: "melhor_envio" as
+        | "flat_fee"
+        | "melhor_envio"
+        | "frenet",
+      originCep: "38400-000",
+      enabledShippingMethods: ["sedex", "pac"] as string[],
+      localDeliveryFee: 10,
+      localCepRange: "",
+      storeCity: "Uberlândia" as string | null,
+      storeState: "MG" as string | null,
+    },
+  },
+  estadoDoBanco: {
+    credenciais: [
+      {
+        provider: "melhor_envio",
+        credentials: { token: "tok-salvo", sandbox: false },
+      },
+    ] as any[],
+  },
+  updateConfig: vi.fn(),
+}));
+
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: estadoDaLoja.atual,
+    isLoaded: true,
+    updateConfig,
+  }),
+}));
+
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: (tabela: string) => {
+      if (tabela === "store_shipping_credentials") {
+        return {
+          select: () =>
+            Promise.resolve({ data: estadoDoBanco.credenciais, error: null }),
+        };
+      }
+      return {
+        select: () => Promise.resolve({ data: [], error: null }),
+      };
+    },
+    functions: { invoke: vi.fn() },
+  },
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+// @ts-expect-error flag interna do React, sem tipo público.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+function esperarMicrotarefas(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function digitarNoCampo(
+  campo: HTMLInputElement,
+  texto: string,
+): Promise<void> {
+  const setter = Object.getOwnPropertyDescriptor(
+    globalThis.HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  await act(async () => {
+    setter?.call(campo, texto);
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    await esperarMicrotarefas();
+  });
+}
+
+describe("Contrato da tela de Frete v2 (direção D)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+  // Tipada pela IMPLEMENTAÇÃO (padrão de
+  // ficha-do-pedido-pergunta-se-recebeu-ao-entregar): `ReturnType<typeof
+  // vi.fn>` solto infere um mock genérico demais e o typecheck reprova ao
+  // passar o mock como prop.
+  let onNavigate: ReturnType<typeof vi.fn<(view: View) => void>>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    estadoDaLoja.atual = {
+      freeShippingMin: 100,
+      shippingCoverage: "national",
+      shippingProvider: "melhor_envio",
+      originCep: "38400-000",
+      enabledShippingMethods: ["sedex", "pac"],
+      localDeliveryFee: 10,
+      localCepRange: "",
+      storeCity: "Uberlândia",
+      storeState: "MG",
+    };
+    estadoDoBanco.credenciais = [
+      {
+        provider: "melhor_envio",
+        credentials: { token: "tok-salvo", sandbox: false },
+      },
+    ];
+    updateConfig.mockResolvedValue(true);
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    vi.restoreAllMocks();
+  });
+
+  async function abrirTela() {
+    onNavigate = vi.fn<(view: View) => void>();
+    const { AdminShippingView } = await import(
+      "@/views/admin/AdminShippingView"
+    );
+    await act(async () => {
+      raiz.render(
+        <AdminShippingView
+          active={true}
+          onSetDirty={vi.fn()}
+          onNavigate={onNavigate}
+        />,
+      );
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+  }
+
+  const texto = () => hospedeiro.textContent ?? "";
+
+  const textoDaFaixa = () =>
+    hospedeiro.querySelector('[aria-label="Como a entrega funciona hoje"]')
+      ?.textContent ?? "";
+
+  function botaoComTexto(padrao: RegExp): HTMLButtonElement | undefined {
+    return [...hospedeiro.querySelectorAll("button")].find((b) =>
+      padrao.test(b.textContent || ""),
+    ) as HTMLButtonElement | undefined;
+  }
+
+  async function escolherPreset(nome: RegExp) {
+    const pill = [...hospedeiro.querySelectorAll('[role="radio"]')].find((r) =>
+      nome.test(r.textContent || ""),
+    );
+    expect(pill).toBeDefined();
+    await act(async () => {
+      (pill as HTMLElement).click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+  }
+
+  async function salvar() {
+    const botaoSalvar = botaoComTexto(/salvar alterações/i);
+    expect(botaoSalvar).toBeDefined();
+    expect(botaoSalvar!.disabled).toBe(false);
+    await act(async () => {
+      botaoSalvar!.click();
+      await esperarMicrotarefas();
+    });
+  }
+
+  it("a faixa descreve o estado REAL salvo: local com cidade, nacional conectado, grátis pelo preset", async () => {
+    await abrirTela();
+
+    expect(textoDaFaixa()).toContain("R$ 10 por entrega");
+    expect(textoDaFaixa()).toContain("Uberlândia/MG");
+    expect(textoDaFaixa()).toContain("Melhor Envio conectado");
+    expect(textoDaFaixa()).toContain("Acima de R$ 100");
+    // Nada foi mexido: sem aviso de pendência em lugar nenhum.
+    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+  });
+
+  it("a taxa fixa morreu: nenhum card, campo ou interruptor dela na tela", async () => {
+    await abrirTela();
+
+    expect(texto()).not.toMatch(/taxa de entrega fixa|taxa fixa/i);
+    expect(hospedeiro.querySelector("#shipping-fee-switch")).toBeNull();
+    expect(hospedeiro.querySelector("#shipping-flat-fee")).toBeNull();
+  });
+
+  it("a chave 'Só entregar na cidade' é o ÚNICO interruptor da tela e grava a cobertura de verdade", async () => {
+    estadoDaLoja.atual = {
+      ...estadoDaLoja.atual,
+      shippingCoverage: "national",
+    };
+    await abrirTela();
+
+    // A credencial da transportadora NÃO tem chave clicável (é de Ajustes —
+    // aqui é exibição). A única chave interativa é a da cobertura, com
+    // campo gravável real por trás.
+    const chaves = hospedeiro.querySelectorAll('[role="switch"]');
+    expect(chaves).toHaveLength(1);
+    expect(chaves[0].getAttribute("aria-checked")).toBe("false");
+
+    await act(async () => {
+      (chaves[0] as HTMLElement).click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    expect(chaves[0].getAttribute("aria-checked")).toBe("true");
+
+    await salvar();
+    expect(updateConfig.mock.calls[0][0]).toHaveProperty(
+      "shippingCoverage",
+      "local",
+    );
+  });
+
+  it("cobertura 'local' salva volta como a chave ligada (o estado vem do config)", async () => {
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, shippingCoverage: "local" };
+    await abrirTela();
+
+    expect(
+      hospedeiro.querySelector('[role="switch"]')?.getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("'Cotação na hora' é EXIBIÇÃO de estado: a frase do estado existe, mas nenhum botão com esse nome (nada salva credencial daqui)", async () => {
+    await abrirTela();
+
+    // O estado aparece em texto (dica/cabeçalho)…
+    expect(texto()).toMatch(/Conectado ao Melhor Envio/i);
+    // …mas NÃO existe botão "Cotação na hora" — chave decorativa que não
+    // salvaria nada é proibida nesta tela.
+    expect(botaoComTexto(/cota[çc][ãa]o na hora/i)).toBeUndefined();
+  });
+
+  it("a barra de salvar fixa: NÃO existe quando está limpo, aparece com o aviso e o botão habilitado quando há mudança", async () => {
+    await abrirTela();
+
+    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+    expect(botaoComTexto(/salvar alterações/i)).toBeUndefined();
+
+    await escolherPreset(/Sempre grátis/);
+
+    expect(texto()).toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+    const botao = botaoComTexto(/salvar alterações/i) as HTMLButtonElement;
+    expect(botao).toBeDefined();
+    expect(botao.disabled).toBe(false);
+  });
+
+  it("preset 'Sempre grátis' grava a sentinela 0,01 (0 sempre significou desligado)", async () => {
+    await abrirTela();
+
+    await escolherPreset(/Sempre grátis/);
+    expect(
+      hospedeiro.querySelector('[role="radio"][aria-checked="true"]')
+        ?.textContent,
+    ).toMatch(/Sempre grátis/);
+
+    await salvar();
+
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updateConfig.mock.calls[0][0]).toHaveProperty(
+      "freeShippingMin",
+      0.01,
+    );
+  });
+
+  it("preset 'acima de um valor': o valor editado é o que vai para o config", async () => {
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0 };
+    await abrirTela();
+
+    await escolherPreset(/Grátis acima de um valor/);
+
+    const campoValor = hospedeiro.querySelector(
+      "#frete-gratis-acima-de",
+    ) as HTMLInputElement;
+    expect(campoValor).toBeDefined();
+    // Semente de R$ 100 (a mesma que a tela antiga usava ao ligar o
+    // interruptor) — visível e editável ANTES de salvar, nunca gravada às
+    // escondidas.
+    expect(campoValor.value).toBe("100");
+
+    await digitarNoCampo(campoValor, "250");
+    await salvar();
+
+    expect(updateConfig.mock.calls[0][0]).toHaveProperty(
+      "freeShippingMin",
+      250,
+    );
+  });
+
+  it("REVISÃO A7: o campo do 'acima de' trava 0/negativo e avisa que valor vazio desliga o grátis", async () => {
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 100 };
+    await abrirTela();
+
+    await escolherPreset(/Grátis acima de um valor/);
+
+    const campoValor = hospedeiro.querySelector(
+      "#frete-gratis-acima-de",
+    ) as HTMLInputElement;
+    // `min="0.01"`: 0 é "desligado" no contrato de presets — nunca é limiar.
+    expect(campoValor.min).toBe("0.01");
+    // E a consequência é dita ANTES do salvar, não no susto da reabertura.
+    expect(texto()).toMatch(/valor vazio desliga o frete gr[áa]tis/i);
+  });
+
+  it("preset 'Por produto marcado' grava a sentinela -1 e NÃO envia campo alheio", async () => {
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0 };
+    await abrirTela();
+
+    await escolherPreset(/Por produto marcado/);
+    await salvar();
+
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    const payload = updateConfig.mock.calls[0][0];
+    // FRETE_GRATIS_POR_PRODUTO (contrato final em presets-de-frete-gratis.ts):
+    // a estratégia mora na marcação `product.freeShipping`; o -1 no config é
+    // o marcador dela — `0` já significava "desligado" e não podia servir.
+    expect(payload).toHaveProperty("freeShippingMin", -1);
+    // Campos da seção de Transportadoras NUNCA saem daqui.
+    expect(payload).not.toHaveProperty("shippingProvider");
+    expect(payload).not.toHaveProperty("enabledShippingMethods");
+    // A taxa fixa morta também não.
+    expect(payload).not.toHaveProperty("shippingFee");
+  });
+
+  it("preset 'por produto' salvo (-1) volta como o ativo no seletor e na faixa (a sentinela preserva a escolha)", async () => {
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: -1 };
+    await abrirTela();
+
+    expect(textoDaFaixa()).toContain("Por produto marcado");
+    const marcado = hospedeiro.querySelector(
+      '[role="radio"][aria-checked="true"]',
+    )?.textContent;
+    expect(marcado).toMatch(/Por produto marcado/);
+    // Nada foi mexido: o config já descreve o preset escolhido.
+    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+  });
+
+  it("escolher 'Desligado' sobre um config de grátis-por-valor grava 0 (presets são exclusivos)", async () => {
+    await abrirTela();
+
+    await escolherPreset(/Desligado/);
+    await salvar();
+
+    expect(updateConfig.mock.calls[0][0]).toHaveProperty("freeShippingMin", 0);
+  });
+
+  it("preset 'sempre' salvo no config volta como o ativo no seletor e na faixa", async () => {
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0.01 };
+    await abrirTela();
+
+    expect(textoDaFaixa()).toContain("Em toda a loja");
+    const marcado = hospedeiro.querySelector(
+      '[role="radio"][aria-checked="true"]',
+    )?.textContent;
+    expect(marcado).toMatch(/Sempre grátis/);
+  });
+
+  it("sem transportadora conectada: aviso BEM VISÍVEL de loja-só-cidade + caminho para Ajustes", async () => {
+    estadoDoBanco.credenciais = [];
+    await abrirTela();
+
+    expect(texto()).toMatch(/Nenhuma transportadora conectada/i);
+    expect(texto()).toMatch(/s[óo] entrega na/i);
+
+    const cta = botaoComTexto(/conectar transportadora/i);
+    expect(cta).toBeDefined();
+    await act(async () => {
+      (cta as HTMLElement).click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+  });
+
+  it("com transportadora conectada: o aviso de sem-conexão NÃO aparece, e o atalho de Ajustes segue existindo", async () => {
+    await abrirTela();
+
+    expect(texto()).not.toMatch(/Nenhuma transportadora conectada/i);
+    expect(texto()).toMatch(/Conectado ao Melhor Envio/i);
+
+    const botaoAjustes = botaoComTexto(/abrir ajustes/i);
+    expect(botaoAjustes).toBeDefined();
+    await act(async () => {
+      (botaoAjustes as HTMLElement).click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+  });
+
+  it("REVISÃO A5: provedor flat_fee (sem nome) diz 'conecte uma transportadora', nunca 'conecte o uma transportadora'", async () => {
+    // Loja antiga com `flat_fee` remanescente (ou provedor ausente): o nome
+    // é indefinido, então a frase do aviso troca o artigo em vez de costurar
+    // "o" + "uma transportadora".
+    estadoDaLoja.atual = {
+      ...estadoDaLoja.atual,
+      shippingProvider: "flat_fee",
+    };
+    await abrirTela();
+
+    expect(texto()).toMatch(/conecte uma transportadora em Ajustes/);
+    expect(texto()).not.toMatch(/conecte o uma transportadora/i);
+  });
+
+  it("REVISÃO A5: provedor nomeado sem credencial mantém o artigo 'o' ('conecte o Melhor Envio')", async () => {
+    estadoDoBanco.credenciais = [];
+    await abrirTela();
+
+    expect(texto()).toMatch(/conecte o Melhor Envio em Ajustes/);
+  });
+
+  it("CEP da loja vazio no config: a faixa diz que a entrega está PARADA (não inventa funcionamento)", async () => {
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, originCep: "" };
+    await abrirTela();
+
+    expect(textoDaFaixa()).toMatch(/Parado/i);
+    expect(textoDaFaixa()).toMatch(/falta o CEP da loja/i);
+  });
+});

@@ -197,11 +197,20 @@ export function mapOrderFromDB(
 ): Order {
   const customerData = (row.customer_data as any) || {};
 
-  // Prioritize direct joined address, then snapshotted addressData, then customerData root fields
+  // O endereço do pedido é o da COMPRA (laudo 02/09, achado #4 — onda 2):
+  // o snapshot gravado no `customer_data` (`addressData`, ou `address`-objeto —
+  // o formato que a RPC create_marketplace_order_v24 grava em
+  // jsonb_build_object('address', p_address_data)) é verdade de compra e vence
+  // SEMPRE. Antes, o JOIN vivo (`row.address`, o endereço ATUAL do perfil)
+  // vinha primeiro: editar/apagar o endereço no perfil reescrevia/apagava o
+  // "Endereço de Entrega" de pedido antigo — comprovante e mediação de disputa
+  // perdiam a verdade. Sem snapshot, o JOIN continua sendo usado
+  // (comportamento de hoje preservado). Prendado por
+  // tests/front/mappers-endereco-snapshot-vence.test.ts.
   const addressSource =
-    row.address ||
     customerData.addressData ||
     (typeof customerData.address === "object" ? customerData.address : null) ||
+    row.address ||
     customerData ||
     {};
 

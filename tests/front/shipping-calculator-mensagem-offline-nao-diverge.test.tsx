@@ -35,6 +35,13 @@ vi.mock("@/lib/supabase", () => ({
 }));
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
+// FRETE V2 (onda D-1, 03/09): a regra de grátis do componente tem FONTE ÚNICA
+// no CartContext — o componente consome o veredito `freteGratis` do contexto
+// (a cópia antiga da regra, com item incondicional + trava Boolean(user),
+// morreu). Mock seco: nenhum cenário destes arquivos é grátis.
+vi.mock("@/contexts/CartContext", () => ({
+  useCartState: () => ({ freteGratis: false }),
+}));
 // `isOffline` = true — o ramo sob prova (`calculateShipping` nunca chega a
 // chamar `supabase.functions.invoke`; lança antes, por conta própria).
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => true }));
@@ -104,8 +111,6 @@ describe("ShippingCalculator — offline não pode virar o genérico (as duas fr
       raiz.render(
         <ShippingCalculator
           cart={carrinho}
-          subtotal={100}
-          freeShippingMin={0}
           selectedOption={null}
           onSelectOption={(opt) => selecionadas.push(opt)}
         />,

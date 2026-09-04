@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 //
-// A DIVISÃO DE TERRITÓRIO da frente glm-visual-admin-0209 (pedido do Gabriel
-// em 02/09/2026: "as chaves da transportadora e o histórico de cotação não
-// fazem sentido onde estão"):
+// A DIVISÃO DE TERRITÓRIO da frente glm-visual-admin-0209, mantida pela
+// frente frete-v2-0309 (03/09/2026 — a tela de Frete foi redesenhada, a
+// divisão NÃO mudou):
 //
 //   Tela de FRETE (AdminShippingView) ── dona das REGRAS:
-//     frete grátis, taxa fixa, CEP de origem, cobertura, entrega local.
+//     presets de frete grátis, CEP de origem, cobertura, entrega local.
 //   Ajustes > TRANSPORTADORAS (TransportadorasSection) ── dona da API:
 //     `shippingProvider`, `enabledShippingMethods`, credenciais, teste.
 //   Ajustes > HISTÓRICO (HistoricoCotacoesSection) ── dona do diagnóstico.
@@ -23,7 +23,6 @@ const { estadoDaLoja, estadoDoBanco, updateConfig } = vi.hoisted(() => ({
   estadoDaLoja: {
     atual: {
       freeShippingMin: 100,
-      shippingFee: 10,
       shippingCoverage: "national" as "local" | "national",
       shippingProvider: "melhor_envio" as
         | "flat_fee"
@@ -130,7 +129,7 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     vi.restoreAllMocks();
   });
 
-  it("Salvar a tela de Frete NÃO envia transportadora nem serviços (campo alheio reverteria a escolha salva)", async () => {
+  it("Salvar a tela de Frete NÃO envia transportadora, serviços nem a taxa fixa morta (campo alheio reverteria a escolha salva)", async () => {
     const { AdminShippingView } = await import(
       "@/views/admin/AdminShippingView"
     );
@@ -162,6 +161,9 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     // O coração do teste: estes campos são DA SEÇÃO DE TRANSPORTADORAS.
     expect(payload).not.toHaveProperty("shippingProvider");
     expect(payload).not.toHaveProperty("enabledShippingMethods");
+    // A taxa fixa morreu na frete-v2 (o campo fica órfão no banco de
+    // propósito) — o save da tela nova também não a ressuscita.
+    expect(payload).not.toHaveProperty("shippingFee");
   });
 
   it("a tela de Frete não tem mais token nem histórico, e o atalho leva a Ajustes", async () => {
@@ -181,14 +183,16 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     await act(async () => {
       await esperarMicrotarefas();
     });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
 
     // As chaves mudaram de casa: nada de campo de senha nesta tela.
     expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
     // O histórico também: nada de tabela de cotações.
     expect(hospedeiro.querySelector("table")).toBeNull();
 
-    // Com cobertura nacional, o resumo diz onde a configuração foi parar e
-    // oferece o caminho curto.
+    // O bloco de frete nacional sempre oferece o caminho curto para lá.
     const botaoAjustes = [...hospedeiro.querySelectorAll("button")].find((b) =>
       /abrir ajustes/i.test(b.textContent || ""),
     ) as HTMLButtonElement;

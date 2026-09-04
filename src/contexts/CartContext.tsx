@@ -3,6 +3,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { mapProductFromDB } from "@/lib/mappers";
 import { precoVendido } from "@/lib/preco-vendido";
+// FRETE V2 (frente B, 03/09): a estratégia de frete grátis passa a ser a
+// ÚNICA que o lojista selecionou na tela de Frete — fonte única da regra em
+// presets-de-frete-gratis.ts (a tela admin escreve, o carrinho/checkout lê).
+import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, Product, ShippingOption } from "@/types";
 import React, {
@@ -40,6 +44,13 @@ export interface CartState {
    *  calcular" em vez de pregarrar `config.shippingFee` no total (laudo
    *  caça-bugs 30/08, achado 7). */
   freteIndefinido: boolean;
+  /** FRETE V2 (onda D-1, 03/09): o VEREDITO ÚNICO de "este carrinho sai
+   *  grátis?" — o mesmo memo que zera `shippingFee`, agora exposto para a UI
+   *  consumir SEM recopiar a regra (lição #53: regra de negócio escrita em
+   *  dois lugares diverge; a cópia antiga no ShippingCalculator mostrava
+   *  preço cheio ao convidado no limite enquanto o total saia grátis).
+   *  Mudança ADITIVA: nenhum consumidor atual quebra. */
+  freteGratis: boolean;
   selectedShippingOption: ShippingOption | null;
   /** CEP para o qual a cotação de frete escolhida foi calculada. O banco precisa
    *  dele para localizar a cotação gravada e confirmar o valor do frete. */
@@ -771,63 +782,58 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return cart.reduce((count, item) => count + item.quantity, 0);
   }, [cart]);
 
+  // FRETE V2 (frente B, 03/09 — dossiê frete-v2-0309): o grátis do carrinho
+  // é ditado pelo PRESET escolhido pelo lojista na tela de Frete, lido via
+  // `presetDoConfig` — modelo EXCLUSIVO de presets, a estratégia escolhida é
+  // a única que vale. Duas mortes aqui:
+  //  1. A leitura INCONDICIONAL de `product.freeShipping` (zerava o frete com
+  //     qualquer item marcado, qualquer config): a marcação agora só zera
+  //     dentro do preset "por_produto" (sentinela -1 em freeShippingMin,
+  //     decisão da orquestração 03/09 — a tela grava -1 via valorDoPreset e o
+  //     banco aceita: upsert_store_config grava numeric sem CHECK de faixa).
+  //  2. A trava `&& user`: convidado também tem direito ao grátis da loja —
+  //     a entrega dele é local de qualquer forma, e o frete local entra na
+  //     MESMA regra de grátis.
+  const freteGratis = React.useMemo(() => {
+    if (cart.length === 0) return false;
+    const preset = presetDoConfig(config.freeShippingMin);
+    if (preset === "sempre") return true;
+    if (preset === "acima_de_valor") return cartTotal >= config.freeShippingMin;
+    if (preset === "por_produto")
+      return cart.some((item) => item.product.freeShipping);
+    // "desligado": nada é grátis pela loja.
+    return false;
+  }, [cart, cartTotal, config.freeShippingMin]);
+
   const shippingFee = React.useMemo(() => {
     if (cart.length === 0) return 0;
 
-    const hasFreeShippingItem = cart.some((item) => item.product.freeShipping);
-    if (hasFreeShippingItem) return 0;
-
-    if (
-      config.freeShippingMin > 0 &&
-      cartTotal >= config.freeShippingMin &&
-      user
-    )
-      return 0;
+    if (freteGratis) return 0;
 
     if (selectedShippingOption) {
       return selectedShippingOption.price;
     }
 
     return config.shippingFee;
-  }, [
-    cart,
-    cartTotal,
-    config.freeShippingMin,
-    config.shippingFee,
-    selectedShippingOption,
-    user,
-  ]);
+  }, [cart.length, freteGratis, selectedShippingOption, config.shippingFee]);
 
   // FRETE CHUTADO (laudo caça-bugs 30/08, achado 7): com provedor de cotação
   // real e nenhuma cotação escolhida, o número em `shippingFee` é o fallback
   // de fábrica — não é preço. A tela usa esta bandeira para dizer "a
   // calcular" em vez de apresentar um total que vai mudar depois.
+  //
+  // FRETE V2 (frente B, 03/09): com o fim do flat_fee (a edge calculate-
+  // shipping deixa de cotar taxa fixa), SEM cotação escolhida e SEM grátis
+  // não existe preço na mesa — o fallback `config.shippingFee` deixou de ser
+  // cobrável também, então o estado é "a calcular" sempre. A guarda de
+  // `originCep` continua viva no CheckoutView (ela decide a MENSAGEM do
+  // bloqueio: "loja ainda configurando" vs "volte ao carrinho e calcule").
   const freteIndefinido = React.useMemo(() => {
     if (cart.length === 0) return false;
-    const hasFreeShippingItem = cart.some((item) => item.product.freeShipping);
-    if (hasFreeShippingItem) return false;
-    if (
-      config.freeShippingMin > 0 &&
-      cartTotal >= config.freeShippingMin &&
-      user
-    )
-      return false;
+    if (freteGratis) return false;
     if (selectedShippingOption) return false;
-    // Laudo caça-bugs 31/08 (B1): sem CEP de origem a calculate-shipping
-    // recusa cotar QUALQUER coisa — taxa fixa incluída
-    // (`validarOrigemEFrete` checa a origem ANTES da taxa). O "R$ 15,00"
-    // exibido era preço mentiroso: sem origem o frete é "a calcular" mesmo,
-    // e o Finalizar fica travado até o lojista configurar.
-    return !config.originCep?.trim() || config.shippingProvider !== "flat_fee";
-  }, [
-    cart,
-    cartTotal,
-    config.freeShippingMin,
-    config.originCep,
-    config.shippingProvider,
-    selectedShippingOption,
-    user,
-  ]);
+    return true;
+  }, [cart.length, freteGratis, selectedShippingOption]);
 
   const cartTotalRef = useRef(cartTotal);
   const cartCountRef = useRef(cartCount);
@@ -847,6 +853,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartTotal,
       cartCount,
       shippingFee,
+      freteGratis,
       freteIndefinido,
       selectedShippingOption,
       shippingCep,
@@ -857,6 +864,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartTotal,
       cartCount,
       shippingFee,
+      freteGratis,
       freteIndefinido,
       selectedShippingOption,
       shippingCep,

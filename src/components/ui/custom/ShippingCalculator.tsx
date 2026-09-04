@@ -1,4 +1,4 @@
-import { useAuth } from "@/hooks/useAuth";
+import { useCartState } from "@/contexts/CartContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { opcaoMaisBarata } from "@/lib/auto-selecao-de-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
@@ -117,8 +117,6 @@ export function cotacaoCacheadaQueAindaServe(
 
 interface ShippingCalculatorProps {
   cart: CartItem[];
-  subtotal: number;
-  freeShippingMin: number;
   selectedOption: ShippingOption | null;
   onSelectOption: (option: ShippingOption | null) => void;
   onCepValidated?: (cep: string) => void;
@@ -126,20 +124,22 @@ interface ShippingCalculatorProps {
 
 export function ShippingCalculator({
   cart,
-  subtotal,
-  freeShippingMin,
   selectedOption,
   onSelectOption,
   onCepValidated,
 }: ShippingCalculatorProps) {
   const isOffline = useOnlineStatus();
-  const { user } = useAuth();
   const [cep, setCep] = useState(() => {
     return localStorage.getItem("ikcous_last_shipping_cep") || "";
   });
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // HONESTIDADE (onda D-1): guarda se a ÚLTIMA cotação concluída voltou sem
+  // opção nenhuma (edge devolve `options: []` — loja sem transportadora
+  // conectada, frente C). É o que permite mostrar o estado "A calcular" em
+  // vez de silêncio abaixo do formulário.
+  const [cotouSemOpcoes, setCotouSemOpcoes] = useState(false);
 
   // Lacre de sequência: cada `calculateShipping` tira um número; só quem tem
   // o número MAIS RECENTE pode escrever o resultado na tela. Sem isso, duas
@@ -273,6 +273,9 @@ export function ShippingCalculator({
       const calculatedOptions: ShippingOption[] = data.options;
       if (meuId !== reqRef.current) return;
       setOptions(calculatedOptions);
+      // HONESTIDADE (onda D-1): cotação concluída VAZIA (loja sem credencial/
+      // origem — frente C) não pode ficar em silêncio; ver `cotouSemOpcoes`.
+      setCotouSemOpcoes(calculatedOptions.length === 0);
 
       // Save to cache — junto com de QUAL carrinho esta cotação é e QUANDO ela
       // foi feita. Sem esses dois campos a leitura acima não tem como recusar
@@ -414,14 +417,18 @@ export function ShippingCalculator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartSignature]);
 
-  // Regra de frete grátis. Espelha `shippingFee` em CartContext.tsx:740-757 e a RPC
-  // `create_marketplace_order_v23`, que só zera o frete quando `v_user_id IS NOT NULL`.
-  // Sem a checagem de `user`, o convidado via todas as opções a R$ 0,00 aqui e era
-  // cobrado o valor cheio no fechamento do pedido. Unificar as cópias desta regra é a FRETE-020.
-  const hasFreeShippingItem = cart.some((item) => item.product?.freeShipping);
-  const reachedFreeShippingGoal =
-    freeShippingMin > 0 && subtotal >= freeShippingMin && Boolean(user);
-  const isFree = hasFreeShippingItem || reachedFreeShippingGoal;
+  // FRETE V2 (onda D-1, 03/09 — dossiê frete-v2-0309): a regra de grátis tem
+  // FONTE ÚNICA — o memo `freteGratis` do CartContext, que lê o preset do
+  // lojista via `presetDoConfig` (presets-de-frete-gratis.ts; modelo
+  // EXCLUSIVO: a estratégia escolhida é a única que vale). Até hoje este
+  // componente mantinha a cópia ANTIGA da regra (item marcado INCONDICIONAL
+  // + trava `Boolean(user)`): com o preset "acima_de_valor", um convidado no
+  // limite via as opções a preço cheio aqui enquanto o total saía grátis —
+  // regra escrita em dois lugares diverge (lição #53). A trava de login
+  // morre junto: convidado tem o MESMO direito do logado na exibição (a
+  // entrega dele é local de qualquer forma, e o frete local entra na mesma
+  // regra — decisão da frente B no CartContext).
+  const { freteGratis: isFree } = useCartState();
 
   return (
     <div className="w-full space-y-4 rounded-3xl border border-zinc-100 bg-zinc-50/50 p-4">
@@ -538,6 +545,25 @@ export function ShippingCalculator({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Exibição honesta (onda D-1): sem opção de entrega E sem grátis da
+          loja, o estado é "A calcular" — nunca silêncio nem preço inventado.
+          Aparece só depois de uma cotação real que voltou vazia (loja sem
+          transportadora conectada, resposta honesta da edge da frente C);
+          com erro na tela, o erro já é o aviso. */}
+      {!isFree &&
+        cotouSemOpcoes &&
+        !loading &&
+        !error &&
+        options.length === 0 && (
+          <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[9.5px] font-medium text-zinc-500">
+            <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
+            <span>
+              A calcular: nenhuma opção de entrega para este CEP — combine a
+              entrega com a loja.
+            </span>
+          </div>
+        )}
     </div>
   );
 }

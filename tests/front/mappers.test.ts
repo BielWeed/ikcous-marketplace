@@ -321,7 +321,13 @@ describe("mapVariantFromDB", () => {
 });
 
 describe("mapOrderFromDB", () => {
-  it("prefere o endereço do join ao que está no snapshot", () => {
+  it("o snapshot do customer_data vence ao endereço do join (laudo #4, onda 2)", () => {
+    // Era "prefere o endereço do join" — e era o defeito: o JOIN traz o
+    // endereço ATUAL do perfil; deixá-lo vencer fazia editar/apagar endereço
+    // no perfil reescrever/apagar o "Endereço de Entrega" de pedido antigo.
+    // O snapshot gravado na compra é a verdade do comprovante (laudo
+    // cliente-pós-compra 02/09, #4 — onda 2). Prova completa em
+    // mappers-endereco-snapshot-vence.test.ts.
     const endereco: Address = {
       id: "end-1",
       user_id: "u-1",
@@ -345,9 +351,8 @@ describe("mapOrderFromDB", () => {
         },
       }),
     );
-    expect(o.customer.address).toBe("Rua das Flores");
-    expect(o.customer.city).toBe("Monte Carmelo");
-    expect(o.customer.reference).toBe("ao lado da praça");
+    expect(o.customer.address).toBe("Rua Antiga");
+    expect(o.customer.city).toBe("Outra Cidade");
   });
 
   it("sem join, usa o snapshot addressData do customer_data", () => {
