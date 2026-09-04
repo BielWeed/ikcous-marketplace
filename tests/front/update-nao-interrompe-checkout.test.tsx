@@ -80,40 +80,78 @@ describe("aviso de atualização não interrompe a compra", () => {
     });
   }
 
+  // O dano é o backdrop bloqueando a tela, não o texto dele — as negativas
+  // olham o body INTEIRO (à prova de portal: container é filho do body, então
+  // cobre os dois; um modal migrado para portal no futuro não vaza).
+  function textoNaTela() {
+    return document.body.textContent ?? "";
+  }
+
   // (a) update disponível DURANTE o checkout: o aviso não nasce.
   it("no CHECKOUT com update disponível, o aviso NÃO aparece", () => {
     montar("checkout");
-    expect(container.textContent).not.toContain(TEXTO_DO_AVISO);
+    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
   });
 
   // (b) a compra termina e a loja chega em tela segura: o aviso que estava
   // armado aparece (a atualização não se perde pelo caminho).
   it("update que chegou no checkout APARECE quando a loja volta pra home", () => {
     montar("checkout");
-    expect(container.textContent).not.toContain(TEXTO_DO_AVISO);
+    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
 
     act(() => {
       root.render(<PWAUpdateManager currentView={"home" as View} />);
     });
-    expect(container.textContent).toContain(TEXTO_DO_AVISO);
+    expect(textoNaTela()).toContain(TEXTO_DO_AVISO);
   });
 
   // (c) update disponível fora da compra: comportamento de hoje — nasce.
   it("controle: em tela segura com update disponível, o aviso aparece como hoje", () => {
     montar("home");
-    expect(container.textContent).toContain(TEXTO_DO_AVISO);
+    expect(textoNaTela()).toContain(TEXTO_DO_AVISO);
   });
 
-  // As outras duas telas do caminho do dinheiro: mesma proteção.
+  // As outras telas do caminho do dinheiro: mesma proteção.
   it("no CARRINHO com update disponível, o aviso NÃO aparece", () => {
     montar("cart");
-    expect(container.textContent).not.toContain(TEXTO_DO_AVISO);
+    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
   });
 
   it("no ENDEREÇO com update disponível, o aviso NÃO aparece", () => {
     montar("address-form");
-    expect(container.textContent).not.toContain(TEXTO_DO_AVISO);
+    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
   });
+
+  // Confirmação do pedido: o pedido só está fechado quando o cliente VÊ essa
+  // tela — o aviso armado no checkout não pode estourar aqui (achado 1 do
+  // laudo Claude de 04/09).
+  it("na CONFIRMAÇÃO DO PEDIDO (order-success), o aviso armado NÃO aparece", () => {
+    montar("order-success");
+    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+  });
+
+  // Convidado bloqueado no pagamento online vai ao login no meio da compra
+  // (CheckoutView: escolha bloqueada -> onNavigate("auth")); sair do checkout
+  // apaga o formulário — login também é tela protegida.
+  it("no LOGIN (auth) no meio da compra, o aviso NÃO aparece", () => {
+    montar("auth");
+    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+  });
+
+  it("no LOGIN (login) no meio da compra, o aviso NÃO aparece", () => {
+    montar("login");
+    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+  });
+
+  // NOTA (tentativa registrada, 04/09): a direção true->false (aviso ABERTO
+  // na home + cliente entra no carrinho) foi tentada duas vezes e não é
+  // assertível aqui — o card mora num AnimatePresence e só deixa o DOM
+  // quando a animação de exit TERMINA; no jsdom o relógio do framer-motion
+  // não anda nem com vi.useFakeTimers + advanceTimersByTime (testado). Em
+  // produção a saída é animada e leva décimos de segundo; o clique que
+  // navegou já foi processado antes dela, então nada é bloqueado. O
+  // essencial do gate (o aviso NÃO NASCE nas telas de compra) está coberto
+  // pelos seis casos negativos acima.
 
   // Sem update disponível o modal nunca nasce — nem em tela segura (o gate
   // não inventa aviso onde o hook não viu update).
@@ -125,6 +163,6 @@ describe("aviso de atualização não interrompe a compra", () => {
       performNuclearPurge: vi.fn(),
     });
     montar("home");
-    expect(container.textContent).not.toContain(TEXTO_DO_AVISO);
+    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
   });
 });
