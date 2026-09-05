@@ -661,7 +661,10 @@ export const HomeView = React.memo(function HomeView({
 /** Espelho do ProductCarousel (new_arrivals, bestsellers e seções custom). */
 function SecaoCarrosselEsqueleto() {
   return (
-    <div className="overflow-hidden px-5 py-4 sm:px-6">
+    <div
+      data-testid="esqueleto-carrossel"
+      className="overflow-hidden px-5 py-4 sm:px-6"
+    >
       {/* Mesmo header do real: mb-6 + h2 text-3xl leading-[0.9] = 27px. */}
       <div className="mb-6 flex flex-col">
         <Skeleton className="h-[27px] w-56" />
@@ -685,7 +688,9 @@ function SecaoCarrosselEsqueleto() {
 /** Espelho do PremiumOffers (seção offers): header compacto + card herói. */
 function SecaoOfertasEsqueleto() {
   return (
-    <div className="px-5 py-4 sm:px-6">
+    // data-testid: âncora do teste comportamental "sem ofertas → nenhum
+    // esqueleto de ofertas montado" (laudo edj3ka, E2) — sem efeito visual.
+    <div data-testid="esqueleto-ofertas" className="px-5 py-4 sm:px-6">
       {/* Header do real: mb-4 + dot size-2 + h2 text-xl leading-none = 20px. */}
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">

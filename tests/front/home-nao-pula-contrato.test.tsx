@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 //
 // CONTRATO da frente cls-home-0409 ("A HOME PARA DE PULAR", dossiê
 // 20260904-2148): o CLS ~0,78 medido na vitrine vinha de conteúdo que
@@ -23,6 +24,88 @@
 // com productIds, new_arrivals); offers/bestsellers derivadas por filtro
 // não reservam espaço até ter dado.
 import { describe, expect, it } from "vitest";
+
+// ── Caso comportamental (laudo edj3ka, E2): montar o HomeView DE VERDADE ──
+// O teste de fonte acima é catraca contra deletar a guarda; este aqui prova
+// o efeito no DOM — "sem ofertas → nenhum esqueleto de ofertas montado",
+// literalmente. Mesmo padrão de produto-pausado-nao-aparece-na-vitrine.
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, vi } from "vitest";
+
+import type { Product, View } from "@/types";
+
+// @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
+// de produto-pausado-nao-aparece-na-vitrine.test.tsx.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+class IntersectionObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+const matchMediaStub = (consulta: string) => ({
+  matches: false,
+  media: consulta,
+  onchange: null,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  addListener: () => {},
+  removeListener: () => {},
+  dispatchEvent: () => false,
+});
+
+let configDaLoja: Record<string, unknown> = {};
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: configDaLoja }),
+}));
+
+vi.mock("@/lib/supabase", () => {
+  const consulta: Record<string, unknown> = {};
+  consulta.select = () => consulta;
+  consulta.eq = () => consulta;
+  consulta.single = () => Promise.resolve({ data: null, error: null });
+  return {
+    supabase: {
+      from: () => consulta,
+      rpc: () => Promise.resolve({ data: false, error: null }),
+      auth: { getSession: () => Promise.resolve({ data: { session: null } }) },
+      channel: () => ({
+        on: () => ({ subscribe: () => ({}) }),
+        subscribe: () => ({}),
+      }),
+      removeChannel: () => {},
+    },
+  };
+});
+
+vi.mock("@/hooks/useBanners", () => ({
+  useBanners: () => ({
+    getBannersByPosition: () => [],
+    isLoaded: true,
+  }),
+}));
+
+vi.mock("@/hooks/useCategories", () => ({
+  useCategories: () => ({ categories: [], isLoading: false }),
+}));
+
+vi.mock("@/components/ui/custom/CategoryFilter", () => ({
+  CategoryFilter: () => null,
+}));
+
+vi.mock("@/components/ui/custom/ProductList", () => ({
+  ProductList: () => null,
+}));
+
+vi.mock("@/components/ui/custom/ProductCarousel", () => ({
+  ProductCarousel: () => null,
+}));
 
 const FONTES_HOME = import.meta.glob<string>("/src/views/customer/*.tsx", {
   query: "?raw",
@@ -263,5 +346,98 @@ describe("barra de categorias: altura estável sem dados", () => {
     // buraco 2): sem ela, um py-3 no botão real envelhece o pill h-8 do
     // esqueleto em silêncio.
     expect(src).toMatch(/rounded-full px-5 py-2 text-\[10px\]/);
+  });
+});
+
+// ── Comportamental (laudo edj3ka, E2): montar o HomeView de verdade e ──────
+// olhar o DOM. O teste de fonte acima é a catraca; este é a prova de efeito:
+// "sem ofertas → nenhum esqueleto de ofertas montado", literalmente.
+describe("ressalva 1, comportamental: o DOM durante o load", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    configDaLoja = {};
+    vi.stubGlobal("CSS", { escape: (v: string) => v });
+    vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    vi.stubGlobal("matchMedia", matchMediaStub);
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    vi.unstubAllGlobals();
+  });
+
+  const montar = async (products: Product[], isLoading = false) => {
+    const { HomeView } = await import("@/views/customer/HomeView");
+    await act(async () => {
+      raiz.render(
+        <HomeView
+          products={products}
+          favorites={[]}
+          onToggleFavorite={() => {}}
+          onProductClick={() => {}}
+          onNavigate={(_view: View) => {}}
+          searchQuery=""
+          isLoading={isLoading}
+          selectedCategory="Todas"
+          onCategoryChange={() => {}}
+          sortBy="default"
+          onSortByChange={() => {}}
+        />,
+      );
+    });
+  };
+
+  const criarProduto = (
+    overrides: Partial<Product> & { id: string },
+  ): Product => ({
+    name: overrides.id,
+    description: "produto de teste",
+    price: 100,
+    images: [],
+    category: "geral",
+    stock: 10,
+    sold: 0,
+    isActive: true,
+    isBestseller: false,
+    freeShipping: false,
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  });
+
+  it("produtos ainda não chegaram: NENHUM esqueleto de ofertas no DOM", async () => {
+    // O estado da ressalva 1: isLoading, lista vazia, loja sem promoção.
+    // O esqueleto de ofertas (~600px de herói) não pode nascer — mas o de
+    // carrossel PRECISA continuar nascendo (new_arrivals tem sinal de
+    // conteúdo): é o controle negativo de que a ausência é a guarda, e
+    // não um render quebrado.
+    await montar([], true);
+
+    expect(
+      hospedeiro.querySelector('[data-testid="esqueleto-ofertas"]'),
+    ).toBeNull();
+    expect(
+      hospedeiro.querySelector('[data-testid="esqueleto-carrossel"]'),
+    ).not.toBeNull();
+  });
+
+  it("com ofertas na mão: a seção real nasce, sem esqueleto", async () => {
+    // Dados já chegaram (products é prop): a seção offers renderiza o
+    // PremiumOffers de verdade, com o título — nunca o esqueleto.
+    const comOferta = criarProduto({ id: "p-oferta", originalPrice: 130 });
+    await montar([comOferta], true);
+
+    expect(hospedeiro.textContent).toContain("Ofertas Imperdíveis");
+    expect(
+      hospedeiro.querySelector('[data-testid="esqueleto-ofertas"]'),
+    ).toBeNull();
   });
 });
