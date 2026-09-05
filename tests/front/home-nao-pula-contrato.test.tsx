@@ -16,6 +16,12 @@
 // Quem mudar a geometria real (ProductCarousel, PremiumOffers, banner,
 // barra de categorias) sem atualizar o espelho quebra aqui — e quem
 // devolver o `return null` da seção durante o load também.
+//
+// RESSALVA 1 do PR #431 (frente cls-ressalva1-0409, dossiê 0240): o
+// esqueleto de ofertas (~600px) não pode nascer para morrer na loja sem
+// promoção — esqueleto só onde há sinal de conteúdo previsível (curada
+// com productIds, new_arrivals); offers/bestsellers derivadas por filtro
+// não reservam espaço até ter dado.
 import { describe, expect, it } from "vitest";
 
 const FONTES_HOME = import.meta.glob<string>("/src/views/customer/*.tsx", {
@@ -132,11 +138,55 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     const home = fonte(HOME);
     // O ramo antigo era `if (secProducts.length === 0) return null;` —
     // a seção nascia depois do load e empurrava o Catálogo ~0,676 de CLS.
+    // (Ressalva 1: este ramo agora é alcançável só com sinal de conteúdo
+    // — ver describe abaixo.)
     expect(home).toMatch(
       /if \(secProducts\.length === 0\) \{\s*\n\s*if \(!isLoading\) return null;/,
     );
     expect(home).toContain("<SecaoOfertasEsqueleto key={section.id} />");
     expect(home).toContain("<SecaoCarrosselEsqueleto key={section.id} />");
+  });
+
+  it("ressalva 1 (laudo 20260904-2228): sem ofertas → nenhum esqueleto de ofertas montado", () => {
+    const home = fonte(HOME);
+    // offers/bestsellers nascem de FILTRO sobre os produtos
+    // (`originalPrice > price`, `isBestseller`): antes dos dados chegarem
+    // não existe sinal barato de que a seção terá conteúdo. Sem sinal, a
+    // seção não renderiza NADA durante o load — o esqueleto de ofertas
+    // (~600px de herói) não pode nascer para morrer na loja sem promoção.
+    expect(home).toMatch(
+      /const secaoCurada =\s*\n\s*!!section\.productIds && section\.productIds\.length > 0;/,
+    );
+    expect(home).toMatch(
+      /const derivadaPorFiltroSemSinal =\s*\n\s*!secaoCurada &&\s*\n\s*\(section\.id === "offers" \|\| section\.id === "bestsellers"\);/,
+    );
+    // A guarda devolve null DEPOIS do !isLoading e ANTES de qualquer
+    // esqueleto: a ordem no fonte é parte do contrato (guarda solta no
+    // fim não protege ninguém).
+    const idxIsLoading = home.indexOf("if (!isLoading) return null;");
+    const idxGuarda = home.indexOf(
+      "if (derivadaPorFiltroSemSinal) return null;",
+    );
+    const idxEsqueletoOfertas = home.indexOf(
+      "<SecaoOfertasEsqueleto key={section.id} />",
+    );
+    expect(idxIsLoading).toBeGreaterThan(-1);
+    expect(idxGuarda).toBeGreaterThan(idxIsLoading);
+    expect(idxEsqueletoOfertas).toBeGreaterThan(idxGuarda);
+  });
+
+  it("seção curada (productIds) e new_arrivals continuam reservando espaço", () => {
+    const home = fonte(HOME);
+    // Conteúdo PREVISÍVEL mantém esqueleto: curada tem productIds
+    // escolhidos pela lojista; new_arrivals acompanha o Catálogo (se a
+    // loja tem produto ativo, tem lançamentos). O esqueleto de ofertas
+    // segue vivo para a offers CURADA — a troca esqueleto→PremiumOffers
+    // real continua 1:1.
+    expect(home).toMatch(
+      /section\.productIds && section\.productIds\.length > 0/,
+    );
+    expect(home).toContain("function SecaoOfertasEsqueleto() {");
+    expect(home).toContain("function SecaoCarrosselEsqueleto() {");
   });
 
   it("esqueleto de carrossel espelha o padding do ProductCarousel real", () => {

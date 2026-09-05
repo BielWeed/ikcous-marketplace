@@ -401,8 +401,31 @@ export const HomeView = React.memo(function HomeView({
           // padding/estrutura da seção real, então a troca esqueleto→real
           // não desloca o que está abaixo. Depois de carregado, seção sem
           // conteúdo continua sem renderizar NADA (comportamento de antes).
+          //
+          // RESSALVA 1 do PR #431 (laudo 20260904-2228, frente
+          // cls-ressalva1-0409, dossiê 0240): offers e bestsellers nascem
+          // de FILTRO sobre os produtos (`originalPrice > price`,
+          // `isBestseller`) — antes dos dados chegarem não existe sinal
+          // barato de que a seção terá conteúdo. Reservar ~600px (herói de
+          // ofertas) para uma seção que pode nascer vazia faz o esqueleto
+          // aparecer e sumir na primeira visita da loja sem promoção —
+          // troca brusca em cima do que o usuário está vendo (medido: o
+          // colapso não devolve CLS-métrico, tudo que se move está abaixo
+          // do fold, mas o contrato desta frente proíbe o esqueleto de
+          // nascer sem sinal de conteúdo). Esqueleto só onde há conteúdo
+          // PREVISÍVEL: seção curada (`productIds` escolhidos pela lojista)
+          // e new_arrivals (acompanha o Catálogo — se a loja tem produto
+          // ativo, ela tem lançamentos). As derivadas por filtro não
+          // renderizam nada até ter dado.
+          const secaoCurada =
+            !!section.productIds && section.productIds.length > 0;
+          const derivadaPorFiltroSemSinal =
+            !secaoCurada &&
+            (section.id === "offers" || section.id === "bestsellers");
+
           if (secProducts.length === 0) {
             if (!isLoading) return null;
+            if (derivadaPorFiltroSemSinal) return null;
             return section.id === "offers" ? (
               <SecaoOfertasEsqueleto key={section.id} />
             ) : (
