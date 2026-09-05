@@ -566,7 +566,11 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     // falha fechado (`Number(memo.gravadoEm) || 0` → 0 → "muito velho" →
     // null); este teste trava a regressão.
     for (const bruto of [
-      JSON.stringify({ temBanner: false, temOfertas: false, temBestsellers: false }),
+      JSON.stringify({
+        temBanner: false,
+        temOfertas: false,
+        temBestsellers: false,
+      }),
       '{"temBanner":false,"temOfertas"', // truncado
     ]) {
       window.localStorage.setItem("ikcous_home_memoria", bruto);
