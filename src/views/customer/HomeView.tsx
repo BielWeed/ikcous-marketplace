@@ -19,8 +19,10 @@ import React, { useCallback, useState, useMemo } from "react";
 import { FreeShippingBlock } from "@/components/ui/custom/FreeShippingBlock";
 import { InfoBlockCarousel } from "@/components/ui/custom/InfoBlockCarousel";
 import { PremiumOffers } from "@/components/ui/custom/PremiumOffers";
+import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
 import { ProductCarousel } from "@/components/ui/custom/ProductCarousel";
 import { ProductList } from "@/components/ui/custom/ProductList";
+import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
 import { LIMITE_MAX_ITENS_CARROSSEL } from "@/config/carrossel";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
@@ -68,7 +70,7 @@ export const HomeView = React.memo(function HomeView({
   onSortByChange,
   onHeaderDockChange,
 }: HomeViewProps) {
-  const { config } = useStore();
+  const { config, isLoaded: configLoaded } = useStore();
   const [showSortMenu, setShowSortMenu] = useState(false);
   const { categories, isLoading: isLoadingCategories } = useCategories();
   const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
@@ -294,6 +296,26 @@ export const HomeView = React.memo(function HomeView({
     jsonLdId: "home-structured-data",
   });
 
+  // ── CLS da home (frente cls-home-0409, dossiê 2148) ─────────────────────
+  // O bloco de frete grátis da home entra com altura estável desde a
+  // primeira pintura: enquanto o config da loja não chegou, um esqueleto
+  // de 74px ocupa exatamente o lugar do bloco real (p-3.5 + ícone de 44px
+  // + borda). Sem isto, o bloco "aparece depois" e empurra os lançamentos
+  // — o segundo maior salto medido (0,074 do "Últimos Lançamentos").
+  // Trade-off conhecido: loja que DESLIGOU o frete grátis paga um recuo
+  // de ~74px quando o config chega (o default de fábrica é min 350, e o
+  // caso medido da vitrine — loja COM frete — fica em Δ=0 de ponta a
+  // ponta).
+  const blocoFrete = configLoaded ? (
+    <InfoBlockCarousel>
+      <FreeShippingBlock onNavigate={onNavigate} />
+    </InfoBlockCarousel>
+  ) : (
+    <div className="relative mt-2 w-full px-4">
+      <div className="h-[74px] w-full animate-pulse rounded-[24px] bg-zinc-100" />
+    </div>
+  );
+
   return (
     <div className="pb-customer min-h-full">
       {/* Top Banners - Full Width */}
@@ -303,12 +325,24 @@ export const HomeView = React.memo(function HomeView({
           // Laudo de acessibilidade 03/09, achado 12: o banner vazio era
           // silêncio para leitor de tela — role="status" + sr-only
           // anunciam "Carregando banners" sem mudar o visual.
-          <div
-            role="status"
-            className="mb-2 flex h-[200px] w-full animate-pulse items-center justify-center bg-zinc-100 sm:h-[400px]"
-          >
-            <span className="sr-only">Carregando banners</span>
-            <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />
+          //
+          // CLS (frente cls-home-0409): o esqueleto usa a MESMA geometria
+          // do BannerCarousel real (`aspect-[2/1] md:aspect-[4/1]`, mínimo
+          // 200px). Antes era `h-[200px] sm:h-[400px]` — desalinhado em
+          // toda largura — e tudo abaixo pulava quando o banner chegava.
+          // O wrapper `mb-2` espelha o do banner real, e o bloco de frete
+          // já entra aqui (esqueleto → real sem mudar de altura), para a
+          // troca banner esqueleto→real ser 1:1.
+          <div className="mb-2 w-full">
+            <div
+              role="status"
+              className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-[4/1]"
+              style={{ minHeight: "200px" }}
+            >
+              <span className="sr-only">Carregando banners</span>
+              <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />
+            </div>
+            {blocoFrete}
           </div>
         ) : topBanners.length > 0 ? (
           <div className="relative mb-2 w-full">
@@ -319,9 +353,7 @@ export const HomeView = React.memo(function HomeView({
             />
 
             {/* Premium Info Carousel */}
-            <InfoBlockCarousel>
-              <FreeShippingBlock onNavigate={onNavigate} />
-            </InfoBlockCarousel>
+            {blocoFrete}
           </div>
         ) : null)}
 
@@ -362,7 +394,21 @@ export const HomeView = React.memo(function HomeView({
             secProducts = newArrivals.slice(0, max);
           }
 
-          if (secProducts.length === 0) return null;
+          // CLS (frente cls-home-0409, dossiê 2148): enquanto os produtos
+          // carregam, a seção não pode simplesmente NÃO existir — quando
+          // ela nasce, empurra o Catálogo visível centenas de pixels para
+          // baixo (87% do salto medido, 0,676). O esqueleto replica o
+          // padding/estrutura da seção real, então a troca esqueleto→real
+          // não desloca o que está abaixo. Depois de carregado, seção sem
+          // conteúdo continua sem renderizar NADA (comportamento de antes).
+          if (secProducts.length === 0) {
+            if (!isLoading) return null;
+            return section.id === "offers" ? (
+              <SecaoOfertasEsqueleto key={section.id} />
+            ) : (
+              <SecaoCarrosselEsqueleto key={section.id} />
+            );
+          }
 
           if (section.id === "offers") {
             return (
@@ -581,3 +627,99 @@ export const HomeView = React.memo(function HomeView({
     </div>
   );
 });
+
+// ── Esqueletos de seção (CLS da home, frente cls-home-0409) ────────────────
+// Cada classe de padding/altura abaixo espelha byte a byte a contraparte
+// real (ProductCarousel / PremiumOffers): o esqueleto ocupa EXATAMENTE o
+// lugar que a seção carregada vai ocupar, para a troca não deslocar o
+// Catálogo que está na viewport. Mudou a geometria da seção real? Este
+// espelho precisa acompanhar — o teste home-nao-pula-contrato trava isso.
+
+/** Espelho do ProductCarousel (new_arrivals, bestsellers e seções custom). */
+function SecaoCarrosselEsqueleto() {
+  return (
+    <div className="overflow-hidden px-5 py-4 sm:px-6">
+      {/* Mesmo header do real: mb-6 + h2 text-3xl leading-[0.9] = 27px. */}
+      <div className="mb-6 flex flex-col">
+        <Skeleton className="h-[27px] w-56" />
+      </div>
+      {/* Mesma faixa do real: -mx-6, scroll com pb-2 e padding lateral 24px,
+          card w-[260px] com py-2. */}
+      <div className="relative -mx-6">
+        <div
+          className="flex pb-2"
+          style={{ paddingLeft: "24px", paddingRight: "24px" }}
+        >
+          <div className="w-[260px] flex-shrink-0 py-2">
+            <ProductCardSkeleton />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Espelho do PremiumOffers (seção offers): header compacto + card herói. */
+function SecaoOfertasEsqueleto() {
+  return (
+    <div className="px-5 py-4 sm:px-6">
+      {/* Header do real: mb-4 + dot size-2 + h2 text-xl leading-none = 20px. */}
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-zinc-200" />
+          <Skeleton className="h-5 w-40" />
+        </div>
+      </div>
+      <div className="flex flex-col gap-6">
+        {/* Mesma moldura do embla real: -mx-1 -my-3 px-1 py-3 + p-1.5. */}
+        <div className="-mx-1 -my-3 w-full px-1 py-3">
+          <div className="flex">
+            <div className="flex min-w-0 flex-[0_0_100%] flex-col p-1.5">
+              <HeroOfertaEsqueleto />
+            </div>
+          </div>
+        </div>
+        {/* Dots do real: mt-2 mb-1 + h-1.5. */}
+        <div className="mb-1 mt-2 flex items-center justify-center gap-1.5">
+          <span className="h-1.5 w-6 rounded-full bg-zinc-200" />
+          <span className="size-1.5 rounded-full bg-zinc-200" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Espelho do HeroOfferCard (mobile: imagem 4/3 em cima, conteúdo embaixo). */
+function HeroOfertaEsqueleto() {
+  return (
+    <div className="flex flex-col gap-4 rounded-[2rem] border border-zinc-100/40 p-4 sm:p-5">
+      {/* Tag header do real: border-b pb-3 + pill de ~21px. */}
+      <div className="flex w-full items-center justify-center border-b border-zinc-100/50 pb-3">
+        <Skeleton className="h-[21px] w-44 rounded-full" />
+      </div>
+      <div className="flex flex-1 flex-col gap-4 md:flex-row">
+        {/* Imagem do real: aspect-[4/3] w-full (md: aspect-square md:w-2/5). */}
+        <Skeleton className="aspect-[4/3] w-full rounded-2xl md:aspect-square md:w-2/5" />
+        {/* Conteúdo do real: mesmas margens (mb-1.5/3/3.5/4) e alturas de
+            linha — categoria ~20, título 2 linhas ~50, selos ~20, preço
+            De/Por ~40, barra de escassez, CTAs py-2.5. */}
+        <div className="flex flex-1 flex-col justify-between py-0.5">
+          <div>
+            <Skeleton className="mb-1.5 h-5 w-28" />
+            <Skeleton className="mb-1.5 h-[50px] w-full" />
+            <Skeleton className="mb-3 h-5 w-36 rounded-full" />
+            <Skeleton className="mb-3.5 h-10 w-48" />
+            <div className="mb-4 space-y-1">
+              <Skeleton className="h-3.5 w-full rounded-full" />
+              <Skeleton className="h-1.5 w-full rounded-full" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-[35px] flex-[2] rounded-full" />
+            <Skeleton className="h-[35px] flex-1 rounded-full" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
