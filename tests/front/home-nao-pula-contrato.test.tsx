@@ -18,11 +18,13 @@
 // barra de categorias) sem atualizar o espelho quebra aqui — e quem
 // devolver o `return null` da seção durante o load também.
 //
-// RESSALVA 1 do PR #431 (frente cls-ressalva1-0409, dossiê 0240): o
-// esqueleto de ofertas (~600px) não pode nascer para morrer na loja sem
-// promoção — esqueleto só onde há sinal de conteúdo previsível (curada
-// com productIds, new_arrivals); offers/bestsellers derivadas por filtro
-// não reservam espaço até ter dado.
+// RESSALVA 1 do PR #431 → DESENHO DA MEMÓRIA (frente cls-ressalva1-0409,
+// laudo 6ab5s4 + mesa #476): esqueleto só onde há sinal de conteúdo —
+// curada com productIds e new_arrivals sempre; offers/bestsellers
+// derivadas por filtro reservam quando a MEMÓRIA da última visita dizia
+// que havia conteúdo, e nada reservam quando dizia que não havia. O
+// banner segue o mesmo princípio (memória dizia sem banner → esqueleto
+// do banner não nasce). Primeira visita = aposta de hoje (develop).
 import { describe, expect, it } from "vitest";
 
 // ── Caso comportamental (laudo edj3ka, E2): montar o HomeView DE VERDADE ──
@@ -65,6 +67,21 @@ vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: configDaLoja }),
 }));
 
+// Banners controláveis por caso: `bannersDaLoja.isLoaded` decide se o
+// esqueleto do banner entra em cena (memória da última visita decide se
+// ele NASCE).
+let bannersDaLoja: { isLoaded: boolean; banners: unknown[] } = {
+  isLoaded: true,
+  banners: [],
+};
+vi.mock("@/hooks/useBanners", () => ({
+  useBanners: () => ({
+    getBannersByPosition: (pos: string) =>
+      pos === "home_top" ? bannersDaLoja.banners : [],
+    isLoaded: bannersDaLoja.isLoaded,
+  }),
+}));
+
 vi.mock("@/lib/supabase", () => {
   const consulta: Record<string, unknown> = {};
   consulta.select = () => consulta;
@@ -83,13 +100,6 @@ vi.mock("@/lib/supabase", () => {
     },
   };
 });
-
-vi.mock("@/hooks/useBanners", () => ({
-  useBanners: () => ({
-    getBannersByPosition: () => [],
-    isLoaded: true,
-  }),
-}));
 
 vi.mock("@/hooks/useCategories", () => ({
   useCategories: () => ({ categories: [], isLoading: false }),
@@ -230,25 +240,28 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     expect(home).toContain("<SecaoCarrosselEsqueleto key={section.id} />");
   });
 
-  it("ressalva 1 (laudo 20260904-2228): sem ofertas → nenhum esqueleto de ofertas montado", () => {
+  it("memória dizia sem ofertas → nenhum esqueleto de ofertas montado (laudo 6ab5s4)", () => {
     const home = fonte(HOME);
-    // offers/bestsellers nascem de FILTRO sobre os produtos
-    // (`originalPrice > price`, `isBestseller`): antes dos dados chegarem
-    // não existe sinal barato de que a seção terá conteúdo. Sem sinal, a
-    // seção não renderiza NADA durante o load — o esqueleto de ofertas
-    // (~600px de herói) não pode nascer para morrer na loja sem promoção.
+    // offers/bestsellers nascem de FILTRO sobre os produtos: o único sinal
+    // antes dos dados é a MEMÓRIA da última visita (localStorage síncrono,
+    // lido no primeiro render). A última visita sem ofertas = a próxima
+    // também não reserva — o esqueleto de ~600px não nasce para morrer.
+    // Primeira visita (sem memória) reserva: aposta de hoje (develop).
     expect(home).toMatch(
       /const secaoCurada =\s*\n\s*!!section\.productIds && section\.productIds\.length > 0;/,
     );
     expect(home).toMatch(
-      /const derivadaPorFiltroSemSinal =\s*\n\s*!secaoCurada &&\s*\n\s*\(section\.id === "offers" \|\| section\.id === "bestsellers"\);/,
+      /const derivadaPorFiltro =\s*\n\s*!secaoCurada &&\s*\n\s*\(section\.id === "offers" \|\| section\.id === "bestsellers"\);/,
+    );
+    expect(home).toMatch(
+      /const ultimaVisitaTinhaConteuto =\s*\n\s*section\.id === "offers"\s*\n\s*\? memoriaDaUltimaVisita\?\.temOfertas\s*\n\s*: memoriaDaUltimaVisita\?\.temBestsellers;/,
     );
     // A guarda devolve null DEPOIS do !isLoading e ANTES de qualquer
     // esqueleto: a ordem no fonte é parte do contrato (guarda solta no
     // fim não protege ninguém).
     const idxIsLoading = home.indexOf("if (!isLoading) return null;");
     const idxGuarda = home.indexOf(
-      "if (derivadaPorFiltroSemSinal) return null;",
+      "if (derivadaPorFiltro && ultimaVisitaTinhaConteuto === false)",
     );
     const idxEsqueletoOfertas = home.indexOf(
       "<SecaoOfertasEsqueleto key={section.id} />",
@@ -256,6 +269,21 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     expect(idxIsLoading).toBeGreaterThan(-1);
     expect(idxGuarda).toBeGreaterThan(idxIsLoading);
     expect(idxEsqueletoOfertas).toBeGreaterThan(idxGuarda);
+  });
+
+  it("banner: memória dizia sem banner → esqueleto do banner não nasce", () => {
+    const home = fonte(HOME);
+    // O colapso do esqueleto do banner em loja sem banner é o defeito
+    // dominante medido (0,33-0,53 de CLS, ressalva 2 do laudo 2228): quem
+    // já visitou a loja e ela não tinha banner não ganha o esqueleto —
+    // quando `bannersLoaded` confirmar o vazio, nada colapsa.
+    expect(home).toMatch(
+      /memoriaDaUltimaVisita !== null &&\s*\n\s*!memoriaDaUltimaVisita\.temBanner \? null : \(/,
+    );
+    // E a memória é gravada quando dados e banners da visita resolveram.
+    expect(home).toMatch(
+      /if \(isLoading \|\| !bannersLoaded\) return;\s*\n\s*gravarMemoriaDaHome\(\{/,
+    );
   });
 
   it("seção curada (productIds) e new_arrivals continuam reservando espaço", () => {
@@ -349,15 +377,30 @@ describe("barra de categorias: altura estável sem dados", () => {
   });
 });
 
-// ── Comportamental (laudo edj3ka, E2): montar o HomeView de verdade e ──────
-// olhar o DOM. O teste de fonte acima é a catraca; este é a prova de efeito:
-// "sem ofertas → nenhum esqueleto de ofertas montado", literalmente.
-describe("ressalva 1, comportamental: o DOM durante o load", () => {
+// ── Comportamental (laudo edj3ka E2 + desenho da memória 6ab5s4): montar ───
+// o HomeView de verdade e olhar o DOM. O teste de fonte acima é a catraca;
+// este é a prova de efeito — quem volta à loja não vê esqueleto nascer para
+// morrer; primeira visita vê exatamente o que o build de hoje mostra.
+describe("memória da última visita, comportamental: o DOM durante o load", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
     configDaLoja = {};
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    // O jsdom deste runner não entrega localStorage funcional (o hook lê
+    // dentro de try/catch e cairia sempre em "1ª visita"): um fake por
+    // caso dá o storage que os casos de memória precisam.
+    const dados = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (chave: string) => dados.get(chave) ?? null,
+      setItem: (chave: string, valor: string) => {
+        dados.set(chave, String(valor));
+      },
+      removeItem: (chave: string) => {
+        dados.delete(chave);
+      },
+    });
     vi.stubGlobal("CSS", { escape: (v: string) => v });
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
@@ -374,6 +417,17 @@ describe("ressalva 1, comportamental: o DOM durante o load", () => {
     hospedeiro.remove();
     vi.unstubAllGlobals();
   });
+
+  const semearMemoria = (memoria: {
+    temBanner: boolean;
+    temOfertas: boolean;
+    temBestsellers: boolean;
+  }) => {
+    window.localStorage.setItem(
+      "ikcous_home_memoria",
+      JSON.stringify({ ...memoria, gravadoEm: Date.now() }),
+    );
+  };
 
   const montar = async (products: Product[], isLoading = false) => {
     const { HomeView } = await import("@/views/customer/HomeView");
@@ -413,20 +467,52 @@ describe("ressalva 1, comportamental: o DOM durante o load", () => {
     ...overrides,
   });
 
-  it("produtos ainda não chegaram: NENHUM esqueleto de ofertas no DOM", async () => {
-    // O estado da ressalva 1: isLoading, lista vazia, loja sem promoção.
-    // O esqueleto de ofertas (~600px de herói) não pode nascer — mas o de
-    // carrossel PRECISA continuar nascendo (new_arrivals tem sinal de
-    // conteúdo): é o controle negativo de que a ausência é a guarda, e
-    // não um render quebrado.
+  const esqueletoDeOfertas = () =>
+    hospedeiro.querySelector('[data-testid="esqueleto-ofertas"]');
+  const esqueletoDeCarrossel = () =>
+    hospedeiro.querySelector('[data-testid="esqueleto-carrossel"]');
+  const esqueletoDeBanner = () =>
+    hospedeiro.querySelector('[data-testid="esqueleto-banner"]');
+
+  it("1ª visita (sem memória): esqueleto de ofertas nasce — aposta de hoje (develop)", async () => {
+    // Primeira visita: localStorage sem snapshot. O comportamento é o do
+    // build atual da develop: banner e ofertas reservam espaço otimista.
+    bannersDaLoja = { isLoaded: false, banners: [] };
     await montar([], true);
 
-    expect(
-      hospedeiro.querySelector('[data-testid="esqueleto-ofertas"]'),
-    ).toBeNull();
-    expect(
-      hospedeiro.querySelector('[data-testid="esqueleto-carrossel"]'),
-    ).not.toBeNull();
+    expect(esqueletoDeOfertas()).not.toBeNull();
+    expect(esqueletoDeCarrossel()).not.toBeNull();
+    expect(esqueletoDeBanner()).not.toBeNull();
+  });
+
+  it("volta a loja SEM ofertas e SEM banner: nenhum esqueleto de ofertas/banner nasce", async () => {
+    // Quem volta não vê nada nascer para morrer: a memória dizia que não
+    // tinha banner nem ofertas — os esqueletos não montam; quando os dados
+    // confirmarem o vazio, NADA colapsa. O carrossel de lançamentos segue
+    // reservando (new_arrivals tem sinal de conteúdo) — controle negativo.
+    semearMemoria({
+      temBanner: false,
+      temOfertas: false,
+      temBestsellers: false,
+    });
+    bannersDaLoja = { isLoaded: false, banners: [] };
+    await montar([], true);
+
+    expect(esqueletoDeOfertas()).toBeNull();
+    expect(esqueletoDeBanner()).toBeNull();
+    expect(esqueletoDeCarrossel()).not.toBeNull();
+  });
+
+  it("volta a loja COM ofertas: esqueleto de ofertas reserva (troca 1:1, sem nascimento)", async () => {
+    semearMemoria({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+    });
+    bannersDaLoja = { isLoaded: false, banners: [] };
+    await montar([], true);
+
+    expect(esqueletoDeOfertas()).not.toBeNull();
   });
 
   it("com ofertas na mão: a seção real nasce, sem esqueleto", async () => {
@@ -436,8 +522,22 @@ describe("ressalva 1, comportamental: o DOM durante o load", () => {
     await montar([comOferta], true);
 
     expect(hospedeiro.textContent).toContain("Ofertas Imperdíveis");
-    expect(
-      hospedeiro.querySelector('[data-testid="esqueleto-ofertas"]'),
-    ).toBeNull();
+    expect(esqueletoDeOfertas()).toBeNull();
+  });
+
+  it("a visita carregada grava a memória para a próxima", async () => {
+    // isLoading=false + banners carregados: os três booleanos da home viva
+    // viram o snapshot da próxima visita.
+    const comOferta = criarProduto({ id: "p-oferta", originalPrice: 130 });
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([comOferta], false);
+
+    const bruto = window.localStorage.getItem("ikcous_home_memoria");
+    expect(bruto).not.toBeNull();
+    expect(JSON.parse(bruto!)).toMatchObject({
+      temBanner: false,
+      temOfertas: true,
+      temBestsellers: false,
+    });
   });
 });

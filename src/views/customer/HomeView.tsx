@@ -26,6 +26,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
 import { LIMITE_MAX_ITENS_CARROSSEL } from "@/config/carrossel";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
+import {
+  gravarMemoriaDaHome,
+  useMemoriaDaHome,
+} from "@/hooks/useMemoriaDaHome";
 import { haptic } from "@/utils/haptic";
 
 interface HomeViewProps {
@@ -75,6 +79,10 @@ export const HomeView = React.memo(function HomeView({
   const { categories, isLoading: isLoadingCategories } = useCategories();
   const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
   const sentinelRef = React.useRef<HTMLDivElement>(null);
+  // Memória da última visita (desenho da frente cls-ressalva1-0409): lida
+  // NO PRIMEIRO RENDER (localStorage síncrono) — decide a reserva do banner
+  // e das seções derivadas por filtro antes de qualquer paint.
+  const memoriaDaUltimaVisita = useMemoriaDaHome();
 
   React.useEffect(() => {
     if (!onHeaderDockChange) return;
@@ -227,6 +235,26 @@ export const HomeView = React.memo(function HomeView({
       .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
   }, [produtosAVenda]);
 
+  // Grava a memória desta visita (frente cls-ressalva1-0409): quando dados
+  // E banners resolveram, os três booleanos da home viva viram o snapshot
+  // que a PRÓXIMA visita lê no primeiro render para reservar espaço certo.
+  // Sem isto a próxima visita cai na aposta da 1ª visita (comportamento de
+  // hoje) — memória é otimização, nunca fonte de verdade.
+  React.useEffect(() => {
+    if (isLoading || !bannersLoaded) return;
+    gravarMemoriaDaHome({
+      temBanner: topBanners.length > 0,
+      temOfertas: offerProducts.length > 0,
+      temBestsellers: bestsellerProducts.length > 0,
+    });
+  }, [
+    isLoading,
+    bannersLoaded,
+    topBanners.length,
+    offerProducts.length,
+    bestsellerProducts.length,
+  ]);
+
   const sortOptions: {
     value: SortOption;
     label: string;
@@ -322,28 +350,37 @@ export const HomeView = React.memo(function HomeView({
       {!searchQuery &&
         selectedCategory === "Todas" &&
         (!bannersLoaded && topBanners.length === 0 ? (
-          // Laudo de acessibilidade 03/09, achado 12: o banner vazio era
-          // silêncio para leitor de tela — role="status" + sr-only
-          // anunciam "Carregando banners" sem mudar o visual.
-          //
-          // CLS (frente cls-home-0409): o esqueleto usa a MESMA geometria
-          // do BannerCarousel real (`aspect-[2/1] md:aspect-[4/1]`, mínimo
-          // 200px). Antes era `h-[200px] sm:h-[400px]` — desalinhado em
-          // toda largura — e tudo abaixo pulava quando o banner chegava.
-          // O wrapper `mb-2` espelha o do banner real, e o bloco de frete
-          // já entra aqui (esqueleto → real sem mudar de altura), para a
-          // troca banner esqueleto→real ser 1:1.
-          <div className="mb-2 w-full">
-            <div
-              role="status"
-              className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-[4/1]"
-              style={{ minHeight: "200px" }}
-            >
-              <span className="sr-only">Carregando banners</span>
-              <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />
+          // Memória da última visita (frente cls-ressalva1-0409, laudo
+          // 6ab5s4): loja cuja última visita NÃO tinha banner não ganha
+          // esqueleto — quando `bannersLoaded` confirmar o vazio, nada
+          // colapsa (o colapso do esqueleto em loja sem banner era o
+          // defeito dominante medido: 0,33-0,53 de CLS). Sem memória
+          // (1ª visita) a aposta continua a de hoje: esqueleto.
+          memoriaDaUltimaVisita !== null &&
+          !memoriaDaUltimaVisita.temBanner ? null : (
+            // Laudo de acessibilidade 03/09, achado 12: o banner vazio era
+            // silêncio para leitor de tela — role="status" + sr-only
+            // anunciam "Carregando banners" sem mudar o visual.
+            //
+            // CLS (frente cls-home-0409): o esqueleto usa a MESMA geometria
+            // do BannerCarousel real (`aspect-[2/1] md:aspect-[4/1]`, mínimo
+            // 200px). Antes era `h-[200px] sm:h-[400px]` — desalinhado em
+            // toda largura — e tudo abaixo pulava quando o banner chegava.
+            // O wrapper `mb-2` espelha o do banner real, e o bloco de frete
+            // já entra aqui (esqueleto → real sem mudar de altura), para a
+            // troca banner esqueleto→real ser 1:1.
+            <div data-testid="esqueleto-banner" className="mb-2 w-full">
+              <div
+                role="status"
+                className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-[4/1]"
+                style={{ minHeight: "200px" }}
+              >
+                <span className="sr-only">Carregando banners</span>
+                <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />
+              </div>
+              {blocoFrete}
             </div>
-            {blocoFrete}
-          </div>
+          )
         ) : topBanners.length > 0 ? (
           <div className="relative mb-2 w-full">
             <BannerCarousel
@@ -402,30 +439,33 @@ export const HomeView = React.memo(function HomeView({
           // não desloca o que está abaixo. Depois de carregado, seção sem
           // conteúdo continua sem renderizar NADA (comportamento de antes).
           //
-          // RESSALVA 1 do PR #431 (laudo 20260904-2228, frente
-          // cls-ressalva1-0409, dossiê 0240): offers e bestsellers nascem
+          // RESSALVA 1 do PR #431 → desenho da MEMÓRIA (laudo 6ab5s4,
+          // mesa #476, contrato final do hub): offers e bestsellers nascem
           // de FILTRO sobre os produtos (`originalPrice > price`,
-          // `isBestseller`) — antes dos dados chegarem não existe sinal
-          // barato de que a seção terá conteúdo. Reservar ~600px (herói de
-          // ofertas) para uma seção que pode nascer vazia faz o esqueleto
-          // aparecer e sumir na primeira visita da loja sem promoção —
-          // troca brusca em cima do que o usuário está vendo (medido: o
-          // colapso não devolve CLS-métrico, tudo que se move está abaixo
-          // do fold, mas o contrato desta frente proíbe o esqueleto de
-          // nascer sem sinal de conteúdo). Esqueleto só onde há conteúdo
-          // PREVISÍVEL: seção curada (`productIds` escolhidos pela lojista)
-          // e new_arrivals (acompanha o Catálogo — se a loja tem produto
-          // ativo, ela tem lançamentos). As derivadas por filtro não
-          // renderizam nada até ter dado.
+          // `isBestseller`) — antes dos dados chegarem, o único sinal é a
+          // MEMÓRIA da última visita (localStorage síncrono, lido no
+          // primeiro render). Regra: seção curada (`productIds`) e
+          // new_arrivals sempre reservam (conteúdo previsível); derivadas
+          // por filtro reservam quando a última visita TINHA conteúdo
+          // (troca esqueleto→real 1:1, zero nascimento) e não reservam
+          // nada quando a última visita NÃO tinha (nada nasce, nada
+          // morre). Primeira visita (sem memória) = aposta de hoje
+          // (develop): esqueleto — ninguém piora em relação ao build
+          // atual; quem VOLTA fica estável nas duas pontas.
           const secaoCurada =
             !!section.productIds && section.productIds.length > 0;
-          const derivadaPorFiltroSemSinal =
+          const derivadaPorFiltro =
             !secaoCurada &&
             (section.id === "offers" || section.id === "bestsellers");
+          const ultimaVisitaTinhaConteuto =
+            section.id === "offers"
+              ? memoriaDaUltimaVisita?.temOfertas
+              : memoriaDaUltimaVisita?.temBestsellers;
 
           if (secProducts.length === 0) {
             if (!isLoading) return null;
-            if (derivadaPorFiltroSemSinal) return null;
+            if (derivadaPorFiltro && ultimaVisitaTinhaConteuto === false)
+              return null;
             return section.id === "offers" ? (
               <SecaoOfertasEsqueleto key={section.id} />
             ) : (
