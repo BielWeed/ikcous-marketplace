@@ -54,6 +54,7 @@ const BANNER_CAROUSEL = "/src/components/ui/custom/BannerCarousel.tsx";
 const PRODUCT_CAROUSEL = "/src/components/ui/custom/ProductCarousel.tsx";
 const PREMIUM_OFFERS = "/src/components/ui/custom/PremiumOffers.tsx";
 const INFO_BLOCK = "/src/components/ui/custom/InfoBlockCarousel.tsx";
+const FREE_SHIPPING_BLOCK = "/src/components/ui/custom/FreeShippingBlock.tsx";
 
 describe("o glob casou os arquivos da home (nada de prova vazia)", () => {
   const esperados = [
@@ -66,8 +67,9 @@ describe("o glob casou os arquivos da home (nada de prova vazia)", () => {
     PRODUCT_CAROUSEL,
     PREMIUM_OFFERS,
     INFO_BLOCK,
+    FREE_SHIPPING_BLOCK,
   ];
-  it("os 9 fontes existem no glob", () => {
+  it("os 10 fontes existem no glob", () => {
     for (const caminho of esperados) {
       expect(FONTES, `falta o fonte de ${caminho}`).toHaveProperty(caminho);
     }
@@ -98,6 +100,18 @@ describe("bloco de frete: altura estável da primeira pintura ao config", () => 
     // tem a altura do bloco real (p-3.5 + ícone 44px + borda = 74px).
     expect(home).toMatch(/const blocoFrete = configLoaded \?/);
     expect(home).toContain("h-[74px] w-full animate-pulse rounded-[24px]");
+  });
+
+  it("o 74px é assertado CONTRA o bloco real, não solto (laudo da ponte)", () => {
+    const frete = fonte(FREE_SHIPPING_BLOCK);
+    // O cálculo do esqueleto (74px) deriva destas três declarações do
+    // bloco real: p-3.5 (28px) + ícone size-11 (44px) + borda (2px).
+    // Se a loja mudar o bloco (p-5, ícone maior), este teste força a
+    // revisão do espelho. Folga conhecida e aceita: o real vira sm:p-4
+    // (78px) em telas >= 640px — 4px de recuo no desktop, fora do alvo
+    // mobile medido.
+    expect(frete).toMatch(/p-3\.5 shadow-md/);
+    expect(frete).toContain("size-11");
   });
 
   it("o bloco real carregado continua vindo pelo InfoBlockCarousel", () => {
@@ -195,5 +209,9 @@ describe("barra de categorias: altura estável sem dados", () => {
       '"scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5"',
     );
     expect(src).toContain("h-8 w-24");
+    // A altura do botão REAL também é parte do contrato (laudo da ponte,
+    // buraco 2): sem ela, um py-3 no botão real envelhece o pill h-8 do
+    // esqueleto em silêncio.
+    expect(src).toMatch(/rounded-full px-5 py-2 text-\[10px\]/);
   });
 });
