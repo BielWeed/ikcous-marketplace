@@ -119,8 +119,12 @@ describe("achado 12 — carregando em silêncio: skeletons viram status", () => 
 
   it("skeleton do banner da home anuncia Carregando banners", () => {
     const src = fonte(HOME);
+    // Frente cls-home-0409: o esqueleto ganhou a GEOMETRIA do banner real
+    // (aspect-[2/1] md:aspect-[4/1] + minHeight 200px); o contrato de
+    // acessibilidade deste teste (role="status" + sr-only + o texto)
+    // permanece intacto.
     expect(src).toMatch(
-      /<div\s+role="status"\s+className="mb-2 flex h-\[200px\] w-full animate-pulse items-center justify-center bg-zinc-100 sm:h-\[400px\]"/,
+      /<div\s+role="status"\s+className="flex aspect-\[2\/1\] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-\[4\/1\]"/,
     );
     expect(src).toContain("Carregando banners");
   });
@@ -137,8 +141,12 @@ describe("achado 12 — carregando em silêncio: skeletons viram status", () => 
 
   it("skeleton do filtro de categorias anuncia Carregando categorias", () => {
     const src = fonte(CATEGORY_FILTER);
+    // Frente cls-home-0409: o esqueleto perdeu o sticky/borda própria e
+    // passou a espelhar o wrapper da barra carregada (flex w-full
+    // items-center); o contrato de acessibilidade (role="status" +
+    // sr-only + o texto) permanece intacto.
     expect(src).toMatch(
-      /<div\s+role="status"\s+className="sticky top-\[72px\] z-40 border-b border-gray-100 bg-white"/,
+      /<div\s+role="status"\s+className="flex w-full items-center"/,
     );
     expect(src).toContain("Carregando categorias");
     // SÓ o skeleton muda — o filtro real fica intocado (aria-pressed da
