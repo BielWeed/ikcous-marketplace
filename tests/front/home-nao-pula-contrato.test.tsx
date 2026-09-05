@@ -560,6 +560,24 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     expect(esqueletoDeOfertas()).not.toBeNull();
   });
 
+  it("memória sem gravadoEm (ou corrompida) é descartada — falha FECHADA (laudo 1ejbs7, R2)", async () => {
+    // O laudo pediu o endurecimento: registro sem gravadoEm, truncado ou
+    // gravado por versão anterior NÃO pode sobreviver à validade. O disco
+    // falha fechado (`Number(memo.gravadoEm) || 0` → 0 → "muito velho" →
+    // null); este teste trava a regressão.
+    for (const bruto of [
+      JSON.stringify({ temBanner: false, temOfertas: false, temBestsellers: false }),
+      '{"temBanner":false,"temOfertas"', // truncado
+    ]) {
+      window.localStorage.setItem("ikcous_home_memoria", bruto);
+      bannersDaLoja = { isLoaded: false, banners: [] };
+      await montar([], true);
+
+      // Inválida = 1ª visita: aposta de hoje.
+      expect(esqueletoDeOfertas()).not.toBeNull();
+    }
+  });
+
   it("a visita carregada grava a memória para a próxima", async () => {
     // isLoading=false + banners carregados: os três booleanos da home viva
     // viram o snapshot da próxima visita.
