@@ -26,6 +26,17 @@ export interface MemoriaDaHome {
 }
 
 const CHAVE = "ikcous_home_memoria";
+// ESCOPO (parecer b7yj9l): a chave não leva id de loja porque a entrega da
+// casa é app único por cliente (lição #9 do núcleo operacional, ADR 0002) —
+// cada loja é um deploy com origem própria e o navegador já isola o
+// localStorage por origem. Se o modelo de entrega um dia abrigar duas
+// lojas no MESMO host por caminho, a chave passa a levar o id da loja.
+
+// Parecer b7yj9l (frente cls-ressalva1-0409): memória velha é a que mais
+// mente (lojista criou banner/promoção desde então — o estado divergente
+// que este desenho inventa). Mais de 7 dias sem visita: descarta e cai na
+// aposta de hoje (1ª visita), cortando o pior caso do estado divergente.
+const VALIDADE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function parseMemoria(bruto: string | null): MemoriaDaHome | null {
   if (!bruto) return null;
@@ -38,11 +49,13 @@ function parseMemoria(bruto: string | null): MemoriaDaHome | null {
     ) {
       return null;
     }
+    const gravadoEm = Number(memo.gravadoEm) || 0;
+    if (Date.now() - gravadoEm > VALIDADE_MS) return null;
     return {
       temBanner: memo.temBanner,
       temOfertas: memo.temOfertas,
       temBestsellers: memo.temBestsellers,
-      gravadoEm: Number(memo.gravadoEm) || 0,
+      gravadoEm,
     };
   } catch {
     return null;

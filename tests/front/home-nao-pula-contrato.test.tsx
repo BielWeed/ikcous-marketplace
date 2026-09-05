@@ -128,9 +128,16 @@ const FONTES_COMPONENTES = import.meta.glob<string>(
   { query: "?raw", import: "default", eager: true },
 );
 
+const FONTES_HOOKS = import.meta.glob<string>("/src/hooks/*.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
 const FONTES: Record<string, string> = {
   ...FONTES_HOME,
   ...FONTES_COMPONENTES,
+  ...FONTES_HOOKS,
 };
 
 function fonte(caminho: string): string {
@@ -283,6 +290,13 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     // E a memória é gravada quando dados e banners da visita resolveram.
     expect(home).toMatch(
       /if \(isLoading \|\| !bannersLoaded\) return;\s*\n\s*gravarMemoriaDaHome\(\{/,
+    );
+    // Parecer b7yj9l: memória tem validade (7 dias) — velha demais é
+    // descartada e a home cai na aposta de hoje.
+    const hook = fonte("/src/hooks/useMemoriaDaHome.ts");
+    expect(hook).toMatch(/VALIDADE_MS = 7 \* 24 \* 60 \* 60 \* 1000/);
+    expect(hook).toMatch(
+      /if \(Date\.now\(\) - gravadoEm > VALIDADE_MS\) return null;/,
     );
   });
 
@@ -523,6 +537,27 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
 
     expect(hospedeiro.textContent).toContain("Ofertas Imperdíveis");
     expect(esqueletoDeOfertas()).toBeNull();
+  });
+
+  it("memória velha (mais de 7 dias) é descartada — cai na aposta de hoje", async () => {
+    // Parecer b7yj9l: memória velha é a que mais mente (lojista criou
+    // banner/promoção desde então). Sem validade, o estado divergente
+    // duraria para sempre; com 7 dias, o pior caso dura uma semana.
+    window.localStorage.setItem(
+      "ikcous_home_memoria",
+      JSON.stringify({
+        temBanner: false,
+        temOfertas: false,
+        temBestsellers: false,
+        gravadoEm: Date.now() - 8 * 24 * 60 * 60 * 1000,
+      }),
+    );
+    bannersDaLoja = { isLoaded: false, banners: [] };
+    await montar([], true);
+
+    // Memória expirada = 1ª visita: esqueleto de ofertas nasce (aposta de
+    // hoje), igual ao develop.
+    expect(esqueletoDeOfertas()).not.toBeNull();
   });
 
   it("a visita carregada grava a memória para a próxima", async () => {
