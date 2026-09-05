@@ -30,16 +30,18 @@ export const CategoryFilter = memo(function CategoryFilter({
       // Laudo de acessibilidade 03/09, achado 12: o skeleton era silêncio
       // para leitor de tela — role="status" + sr-only anunciam "Carregando
       // categorias" sem mudar o visual (sr-only não renderiza).
-      <div
-        role="status"
-        className="sticky top-[72px] z-40 border-b border-gray-100 bg-white"
-      >
+      //
+      // CLS (frente cls-home-0409): os paddings/pills do esqueleto espelham
+      // a barra carregada (px-1 py-0.5 + botões py-2 text-[10px] ≈ 31px —
+      // pill h-8). Antes era px-4 py-3 + h-9: ~25px a mais, que deslocava a
+      // grade do catálogo quando as categorias chegavam.
+      <div role="status" className="flex w-full items-center">
         <span className="sr-only">Carregando categorias</span>
-        <div className="scrollbar-hide flex gap-2 overflow-x-auto px-4 py-3">
+        <div className="scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5">
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className="h-9 w-24 flex-shrink-0 animate-pulse rounded-full bg-gray-100"
+              className="h-8 w-24 flex-shrink-0 animate-pulse rounded-full bg-gray-100"
             />
           ))}
         </div>
