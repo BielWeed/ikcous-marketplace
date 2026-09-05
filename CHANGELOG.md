@@ -7,6 +7,20 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.21.1] - 2026-09-05
+
+A versão que faz a home parar de pular. Uma correção, um PR (#431), zero
+migrations e zero funções de servidor — só vitrine.
+
+### Para quem COMPRA (vitrine)
+
+- **A home para de pular** (PR #431): enquanto produtos e categorias carregam,
+  a página reserva o espaço exato de cada bloco (banner, barra de categorias,
+  seções, catálogo) — o conteúdo não empurra mais o resto para baixo. O pulo
+  medido caiu de 0,765 para 0,028 (alvo: menos de 0,10; medição Lighthouse
+  mobile, 10 rodadas de cada lado, mesma janela). Depois de carregada, a loja
+  fica idêntica ao que era. Teste de contrato novo trava a regressão.
+
 ## [1.21.0] - 2026-09-04
 
 A versão que refaz o frete do zero, imprime a etiqueta de envio com um
