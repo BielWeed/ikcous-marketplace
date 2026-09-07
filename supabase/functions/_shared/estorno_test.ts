@@ -3,6 +3,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  confirmarPorConsulta,
   executarEstorno,
   guardaAntesDeChamar,
   interpretarResposta,
@@ -13,7 +14,11 @@ import {
 
 /**
  * Suíte da Task 2 da frente "estorno pelo app" (plano
- * 20260907-plano-estorno-pelo-app.md): E1–E20, um por afirmativa do plano.
+ * 20260907-plano-estorno-pelo-app.md): E1–E25 — E1–E20, um por afirmativa do
+ * plano; E21–E25 do conserto da reprovação Opus do PR #438 (laudo
+ * 20260907-laudo-opus-pr438-t2-executor-do-estorno.md): fórmula acumulada,
+ * credencial 401/403, "não sei" na confirmação, chave+corpo do POST e 2xx
+ * desconhecido.
  *
  * NENHUMA chamada real ao Mercado Pago acontece aqui: todo `fetch` é dublê
  * (rota por método+trecho de URL) e a consulta da transação da order é uma
@@ -28,6 +33,9 @@ import {
  * confirmação dublado — é ele quem move o I/O.
  * E19–E20: o contrato do executor (nunca lança; não gasta chamada quando a
  * guarda recusa).
+ * E21–E25: correções do laudo (fórmula acumulada × incremental, 401/403 →
+ * tentar_depois, campo ausente na consulta → tentar_depois, asserções de
+ * chave e corpo do POST, 2xx desconhecido → tentar_depois).
  */
 
 const AGORA = new Date("2026-09-07T12:00:00.000Z");
@@ -59,8 +67,15 @@ function pedidoPagoCom(extras: Partial<PedidoParaEstorno> = {}): PedidoParaEstor
   };
 }
 
-function pedidoOrder(): PedidoParaEstorno {
-  return pedidoPagoCom({ gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01" });
+function pedidoOrder(extras: Partial<PedidoParaEstorno> = {}): PedidoParaEstorno {
+  // I6 do laudo: esta função aceita extras DE VERDADE — `pedidoOrder({ total:
+  // 100 })` no E20 era argumento descartado numa função de zero parâmetros, e
+  // o E20 passava por coincidência (o pedido default, de total 100, também
+  // recusava o amount 150).
+  return pedidoPagoCom({
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    ...extras,
+  });
 }
 
 function erroPayments(code: number): Record<string, unknown> {
@@ -80,7 +95,9 @@ type RotaDuble = {
 };
 
 function fetchDuble(rotas: RotaDuble[]) {
-  const chamadas: { url: string; metodo: string; chave?: string }[] = [];
+  // I4/I5 do laudo: o dublê também captura o CORPO do POST — sem isso, a
+  // mutação que manda `{"transactions":[{"id":""}]}` sobrevive (M2 do laudo).
+  const chamadas: { url: string; metodo: string; chave?: string; corpo?: string }[] = [];
   // Sem `async` de propósito: a função não espera nada (é tudo síncrono) e o
   // `require-await` do deno lint reprova async sem await — o dublê devolve a
   // Promise já resolvida.
@@ -90,7 +107,12 @@ function fetchDuble(rotas: RotaDuble[]) {
       : String(entrada instanceof URL ? entrada.href : entrada.url);
     const metodo = (init?.method ?? "GET").toUpperCase();
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    chamadas.push({ url, metodo, chave: headers["X-Idempotency-Key"] });
+    chamadas.push({
+      url,
+      metodo,
+      chave: headers["X-Idempotency-Key"],
+      corpo: typeof init?.body === "string" ? init.body : undefined,
+    });
     const rota = rotas.find((r) => r.metodo === metodo && url.includes(r.trecho));
     return Promise.resolve(
       !rota
@@ -166,6 +188,25 @@ Deno.test("E2 - guarda do saldo: amount acima do disponivel recusa, igual ao sal
       AGORA,
     ).ok,
     true,
+  );
+  // C1 do laudo: o restante EXATO não pode ser recusado por aritmética de
+  // float — R$50 − R$4,23 = 45,769999… em float cru, e o executor recusava
+  // o 45,77 que a RPC (numeric, exata) tinha acabado de aceitar.
+  assertEquals(
+    guardaAntesDeChamar(
+      linhaCom({ amount: 45.77 }),
+      pedidoPagoCom({ total: 50, valor_estornado: 4.23 }),
+      AGORA,
+    ).ok,
+    true,
+  );
+  assertEquals(
+    guardaAntesDeChamar(
+      linhaCom({ amount: 45.78 }),
+      pedidoPagoCom({ total: 50, valor_estornado: 4.23 }),
+      AGORA,
+    ).ok,
+    false,
   );
 });
 
@@ -599,4 +640,345 @@ Deno.test("E20 - executar NUNCA chama o fetch quando a guarda recusa", async () 
   assertEquals(resultado.tipo, "recusado");
   assertEquals(duble.chamadas.length, 0);
   assertEquals(consultas, 0);
+});
+
+// ---------------------------------------------------------------------------
+// E21–E25 — correções do laudo Opus do PR #438 (07/09)
+// ---------------------------------------------------------------------------
+
+Deno.test("E21 - confirmacao compara o ACUMULADO do MP com o ACUMULADO do ledger, nao com a linha incremental (I2)", async () => {
+  // Pedido de R$100 com R$30 ja somados no ledger; linha nova de R$20.
+  // O acumulado exigido do MP e' 30 + 20 = 50 — MP ainda em 30 NAO conclui.
+  const linha = linhaCom({ amount: 20 });
+  const pedido = pedidoPagoCom({ total: 100, valor_estornado: 30 });
+  const post4296 = {
+    metodo: "POST",
+    trecho: "/v1/payments/123456789/refunds",
+    status: 404,
+    corpo: erroPayments(4296),
+  };
+
+  const mpEm30 = fetchDuble([
+    post4296,
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 30,
+      },
+    },
+  ]);
+  assertEquals(
+    (await executarEstorno({ linha, pedido, token: TOKEN, buscar: mpEm30.f }))
+      .tipo,
+    "falhou",
+  );
+
+  const mpEm50 = fetchDuble([
+    post4296,
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 50,
+        // Ordem de proposito: o refund de OUTRA linha (30) por ULTIMO — o
+        // id gravado tem de ser o desta linha (M3), nao o ultimo da lista.
+        refunds: [{ id: 888, amount: 20 }, { id: 777, amount: 30 }],
+      },
+    },
+  ]);
+  const concluido = await executarEstorno({
+    linha,
+    pedido,
+    token: TOKEN,
+    buscar: mpEm50.f,
+  });
+  assertEquals(concluido.tipo, "concluido");
+  assertEquals((concluido as { mp_refund_id: string }).mp_refund_id, "888");
+
+  // I1: a funcao e' exportada e decide SOZINHA — e' o contrato da T4, que a
+  // chama direto para linhas em_processamento (concluir SEM novo POST).
+  const direto = await confirmarPorConsulta({
+    buscar: mpEm50.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(direto.tipo, "concluido");
+
+  // Orders: a mesma conta pela soma de refunds[] da order.
+  const pedidoCom30 = pedidoOrder({ total: 100, valor_estornado: 30 });
+  const postJaRefunded = {
+    metodo: "POST",
+    trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+    status: 409,
+    corpo: erroOrders("order_already_refunded"),
+  };
+  const orderEm30 = fetchDuble([
+    postJaRefunded,
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: [{ refunds: [{ id: "REEMB1", amount: "30.00" }] }],
+      },
+    },
+  ]);
+  assertEquals(
+    (await executarEstorno({
+      linha,
+      pedido: pedidoCom30,
+      token: TOKEN,
+      buscar: orderEm30.f,
+      consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    })).tipo,
+    "falhou",
+  );
+
+  const orderEm50 = fetchDuble([
+    postJaRefunded,
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: [{
+          refunds: [{ id: "REEMB1", amount: "30.00" }, {
+            id: "REEMB2",
+            amount: "20.00",
+          }],
+        }],
+      },
+    },
+  ]);
+  const concluida = await executarEstorno({
+    linha,
+    pedido: pedidoCom30,
+    token: TOKEN,
+    buscar: orderEm50.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+  });
+  assertEquals(concluida.tipo, "concluido");
+  assertEquals((concluida as { mp_refund_id: string }).mp_refund_id, "REEMB2");
+});
+
+Deno.test("E22 - 401/403 de credencial vira tentar_depois nas duas APIs, sem jargao de HTTP; forbidden NOMEADO continua falhou (C2/I3)", async () => {
+  const p401 = fetchDuble([
+    {
+      metodo: "POST",
+      trecho: "/v1/payments/123456789/refunds",
+      status: 401,
+      corpo: { message: "invalid token", error: "unauthorized" },
+    },
+  ]);
+  const payments = await executarEstorno({
+    linha: linhaCom(),
+    pedido: pedidoPagoCom(),
+    token: TOKEN,
+    buscar: p401.f,
+  });
+  assertEquals(payments.tipo, "tentar_depois");
+  assertStringIncludes((payments as { motivo: string }).motivo, "autenticar");
+  // I3: o lojista nao le numero de HTTP no texto.
+  assertEquals(
+    (payments as { motivo: string }).motivo.includes("401"),
+    false,
+  );
+
+  const o403 = fetchDuble([
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 403,
+      corpo: { error: "forbidden" }, // sem codigo NOMEADO: e' a credencial
+    },
+  ]);
+  const orders = await executarEstorno({
+    linha: linhaCom(),
+    pedido: pedidoOrder(),
+    token: TOKEN,
+    buscar: o403.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+  });
+  assertEquals(orders.tipo, "tentar_depois");
+  assertStringIncludes((orders as { motivo: string }).motivo, "autenticar");
+
+  // Payments 403 sem codigo tambem e' credencial.
+  assertEquals(
+    interpretarResposta(
+      403,
+      { message: "forbidden" },
+      linhaCom(),
+      pedidoPagoCom(),
+    ).tipo,
+    "tentar_depois",
+  );
+
+  // O forbidden NOMEADO da Orders e' codigo do PAGAMENTO (permissao sobre a
+  // cobranca), nao da credencial: continua falhou definitivo (C2 do laudo).
+  assertEquals(
+    interpretarResposta(
+      403,
+      erroOrders("forbidden"),
+      linhaCom(),
+      pedidoOrder(),
+    ).tipo,
+    "falhou",
+  );
+});
+
+Deno.test("E23 - consulta que nao esclarece (valor ausente/ilegivel) vira tentar_depois, nunca falhou (C3)", async () => {
+  // Payments: MP disse 4296, o GET volta SEM transaction_amount_refunded.
+  const semCampo = fetchDuble([
+    {
+      metodo: "POST",
+      trecho: "/v1/payments/123456789/refunds",
+      status: 404,
+      corpo: erroPayments(4296),
+    },
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: { id: 123456789, status: "approved" },
+    },
+  ]);
+  assertEquals(
+    (await executarEstorno({
+      linha: linhaCom(),
+      pedido: pedidoPagoCom(),
+      token: TOKEN,
+      buscar: semCampo.f,
+    })).tipo,
+    "tentar_depois",
+  );
+
+  // Orders: order refunded SEM refunds[] materializados (consistencia
+  // eventual do MP logo apos o refund).
+  const semRefunds = fetchDuble([
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 409,
+      corpo: erroOrders("order_already_refunded"),
+    },
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: [{}],
+      },
+    },
+  ]);
+  assertEquals(
+    (await executarEstorno({
+      linha: linhaCom(),
+      pedido: pedidoOrder(),
+      token: TOKEN,
+      buscar: semRefunds.f,
+      consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    })).tipo,
+    "tentar_depois",
+  );
+});
+
+Deno.test("E24 - POST sai com a chave de idempotencia da LINHA e o corpo certo nas duas APIs (I4/I5)", async () => {
+  // Payments feliz (total): body vazio e chave = id da linha (I4).
+  const payments = fetchDuble([
+    {
+      metodo: "POST",
+      trecho: "/v1/payments/123456789/refunds",
+      status: 201,
+      corpo: { id: 111, payment_id: 123456789, amount: 100, status: "approved" },
+    },
+  ]);
+  const linhaPayments = linhaCom();
+  await executarEstorno({
+    linha: linhaPayments,
+    pedido: pedidoPagoCom(),
+    token: TOKEN,
+    buscar: payments.f,
+  });
+  assertEquals(payments.chamadas[0].chave, linhaPayments.id);
+  assertEquals(JSON.parse(payments.chamadas[0].corpo ?? "null"), {});
+
+  // Orders feliz (total): transactions[0].id == o que
+  // consultarTransacaoDaOrder devolveu (I5) e a mesma chave (I4).
+  const orders = fetchDuble([
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 201,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        status_detail: "refunded",
+      },
+    },
+  ]);
+  const linhaOrders = linhaCom();
+  await executarEstorno({
+    linha: linhaOrders,
+    pedido: pedidoOrder(),
+    token: TOKEN,
+    buscar: orders.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+  });
+  assertEquals(orders.chamadas[0].chave, linhaOrders.id);
+  assertEquals(JSON.parse(orders.chamadas[0].corpo ?? "null"), {
+    transactions: [{ id: "PAY01XYZEXEMPLODETRANSA1" }],
+  });
+});
+
+Deno.test("E25 - 2xx desconhecido vira tentar_depois nas duas APIs (M4)", async () => {
+  const payments = fetchDuble([
+    {
+      metodo: "POST",
+      trecho: "/v1/payments/123456789/refunds",
+      status: 200,
+      corpo: { id: 111, status: "pendente_de_algo_novo" },
+    },
+  ]);
+  assertEquals(
+    (await executarEstorno({
+      linha: linhaCom(),
+      pedido: pedidoPagoCom(),
+      token: TOKEN,
+      buscar: payments.f,
+    })).tipo,
+    "tentar_depois",
+  );
+
+  const orders = fetchDuble([
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 201,
+      corpo: { id: "ORD01ABCDEFOLUIMWQKDXYZ01", status: "processing" },
+    },
+  ]);
+  assertEquals(
+    (await executarEstorno({
+      linha: linhaCom(),
+      pedido: pedidoOrder(),
+      token: TOKEN,
+      buscar: orders.f,
+      consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    })).tipo,
+    "tentar_depois",
+  );
 });

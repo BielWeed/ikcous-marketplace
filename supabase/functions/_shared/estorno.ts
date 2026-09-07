@@ -23,7 +23,7 @@
  * é o que o cron faz quando a consulta não mostra o refund (T4).
  */
 
-import { fetchComTempo, idEhClassico } from "./mercadopago.ts";
+import { BASE_URL_PADRAO, fetchComTempo, idEhClassico } from "./mercadopago.ts";
 
 export type LinhaEstorno = {
   id: string;
@@ -60,9 +60,22 @@ export type ResultadoEstorno =
   // 429/5xx/rede/resposta não reconhecida: o cron re-tenta com a MESMA chave.
   | { tipo: "tentar_depois"; motivo: string; retryAfterS?: number };
 
-const API_MP = "https://api.mercadopago.com";
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 const PRAZO_DE_ESTORNO_MS = 180 * MS_POR_DIA;
+
+/**
+ * Dinheiro deste arquivo é comparado e somado em CENTAVOS inteiros (C1 do
+ * laudo do PR #438, 07/09). A fonte é `numeric(12,2)` do Postgres, exata em
+ * centavos — mas o `number` do JS NÃO é: `50 - 4.23` dá `45.769999999999996`,
+ * e a guarda do saldo recusava o restante EXATO (o lojista pedia R$45,77 de
+ * um pedido de R$50 com R$4,23 já devolvidos e ouvia "valor maior que o
+ * disponível" — ~28% dos pares de centavos com estorno anterior caem nesse
+ * lado da subtração de float). `Math.round(x*100)` fecha a volta: o numeric
+ * de 2 casas sempre representa centavos exatos.
+ */
+function emCentavos(valor: number): number {
+  return Math.round(valor * 100);
+}
 
 /**
  * Guarda de pré-condições, ANTES de chamar o MP. Tudo o que ela recusa nem
@@ -118,7 +131,13 @@ export function guardaAntesDeChamar(
       motivo: "pagamento com mais de 180 dias não pode mais ser devolvido",
     };
   }
-  if (linha.amount > pedido.total - pedido.valor_estornado) {
+  // C1 (laudo PR #438): subtração de float recusava o restante EXATO
+  // (50 − 4,23 → 45,7699… recusava 45,77). Em centavos inteiros o saldo é
+  // exato porque a fonte (`numeric(12,2)`) é.
+  if (
+    emCentavos(linha.amount) >
+      emCentavos(pedido.total) - emCentavos(pedido.valor_estornado)
+  ) {
     return { ok: false, motivo: "valor maior que o disponível para devolver" };
   }
   return { ok: true };
@@ -157,20 +176,23 @@ export function montarRequisicao(
 
   if (idEhClassico(pedido.gateway_payment_id)) {
     return {
-      url: `${API_MP}/v1/payments/${pedido.gateway_payment_id}/refunds`,
+      url: `${BASE_URL_PADRAO}/v1/payments/${pedido.gateway_payment_id}/refunds`,
       // Body vazio = devolução TOTAL do pagamento (documentado). Parcial
-      // diz o valor — nunca deixar o MP adivinhar "o resto".
-      body: linha.amount === pedido.total ? {} : { amount: linha.amount },
+      // diz o valor — nunca deixar o MP adivinhar "o resto". Total × parcial
+      // em CENTAVOS (C1): float cru trairia o mesmo par que a guarda.
+      body: emCentavos(linha.amount) === emCentavos(pedido.total)
+        ? {}
+        : { amount: linha.amount },
       headers: { ...headers, "X-Render-In-Process-Refunds": "true" },
     };
   }
 
   const transacao: Record<string, string> = { id: transacaoDaOrder ?? "" };
-  if (linha.amount !== pedido.total) {
+  if (emCentavos(linha.amount) !== emCentavos(pedido.total)) {
     transacao.amount = linha.amount.toFixed(2);
   }
   return {
-    url: `${API_MP}/v1/orders/${pedido.gateway_payment_id}/refund`,
+    url: `${BASE_URL_PADRAO}/v1/orders/${pedido.gateway_payment_id}/refund`,
     body: { transactions: [transacao] },
     headers,
   };
@@ -264,6 +286,19 @@ function interpretarPayments(
     };
   }
 
+  // C2 do laudo (PR #438): 401/403 é a CREDENCIAL (token errado ou
+  // rotacionado no deploy), não o estado do dinheiro — marcar `falhou`
+  // definitivo aqui mataria até 20 linhas por ciclo do cron em silêncio,
+  // sem retry em lugar nenhum. `tentar_depois` mantém a linha viva; repetir
+  // o POST depois é seguro (mesma chave de idempotência). O motivo é texto
+  // leigo — o status HTTP vive em log (M2) e em `codigo`, nunca no motivo.
+  if (status === 401 || status === 403) {
+    return {
+      tipo: "tentar_depois",
+      motivo: "não consegui autenticar no Mercado Pago agora",
+    };
+  }
+
   switch (codigo) {
     case "2063":
       return {
@@ -306,7 +341,9 @@ function interpretarPayments(
     default:
       return {
         tipo: "falhou",
-        motivo: `erro não reconhecido do Mercado Pago (HTTP ${status})`,
+        // I3 do laudo: motivo é o que o lojista LÊ (a T3 mostra cru) — nada
+        // de "HTTP 401"; o número mora em `codigo`.
+        motivo: "erro não reconhecido do Mercado Pago",
         codigo: codigo ?? `http_${status}`,
       };
   }
@@ -413,9 +450,22 @@ function interpretarOrders(
     };
   }
 
+  // C2 do laudo (PR #438): o mesmo 401/403 da Payments — credencial, não
+  // dinheiro. Fica DEPOIS do switch nomeado de propósito: `forbidden` é
+  // código do PAGAMENTO (permissão sobre aquela cobrança, lido pelo switch
+  // acima como `falhou`) mesmo quando chega com HTTP 403; 401/403 SEM código
+  // nomeado é a credencial e vira `tentar_depois`.
+  if (status === 401 || status === 403) {
+    return {
+      tipo: "tentar_depois",
+      motivo: "não consegui autenticar no Mercado Pago agora",
+    };
+  }
+
   return {
     tipo: "falhou",
-    motivo: `erro não reconhecido do Mercado Pago (HTTP ${status})`,
+    // I3 do laudo: sem "HTTP xxx" no motivo — número mora em `codigo`.
+    motivo: "erro não reconhecido do Mercado Pago",
     codigo: codigo ?? `http_${status}`,
   };
 }
@@ -483,7 +533,21 @@ function somarRefundsDaOrder(order: Record<string, unknown>): number | null {
 function refundIdDaConsulta(
   corpo: Record<string, unknown>,
   refunds: Array<Record<string, unknown>>,
+  linha: LinhaEstorno,
 ): string {
+  // M3 do laudo (PR #438): a lista de refunds é do PEDIDO inteiro — o último
+  // item pode ser de OUTRA linha (devolução anterior). O refund DESTA linha
+  // é o que tem o valor dela (em centavos, C1); não achando (par somado a
+  // outro, grafia nova do MP), cai no último como antes — nunca `""`, que
+  // gravaria id vazio no ledger.
+  const centavosDaLinha = emCentavos(linha.amount);
+  const destaLinha = refunds.find((r) => {
+    const valor = Number(r.amount);
+    return Number.isFinite(valor) && emCentavos(valor) === centavosDaLinha;
+  });
+  if (destaLinha?.id !== undefined && destaLinha.id !== null) {
+    return idComoString(destaLinha.id);
+  }
   const ultimo = refunds.length > 0 ? refunds[refunds.length - 1] : null;
   return idComoString(ultimo?.id ?? corpo.id);
 }
@@ -493,20 +557,41 @@ function refundIdDaConsulta(
  * order_already_refunded / idempotency_key_already_used e só a consulta do
  * objeto prova se o valor desta linha está coberto (Payments:
  * `transaction_amount_refunded`; Orders: soma de `transactions.refunds[]`).
- * Consulta que falha ou não esclarece vira `tentar_depois` — nunca matar
- * linha por falta de confirmação.
+ *
+ * EXPORTADA (I1 do laudo, PR #438): a T4 (cron) chama esta função DIRETO
+ * para linhas `em_processamento` — conclui SEM POST. Uma decisão, dois
+ * chamadores; reimplementá-la lá seria o segundo produtor de `concluido`
+ * que esta frente existe para não ter.
+ *
+ * TRÊS DESFECHOS (C3 do laudo): valor presente e cobre → `concluido`;
+ * presente e não cobre → `falhou`; AUSENTE/ilegível → `tentar_depois` —
+ * "não sei" não é prova de falha, e é depois de o MP já ter dito "já
+ * devolvida": matar a linha aqui seria divergência no caso em que o
+ * dinheiro provavelmente saiu. A T4 tem o teto de 5 tentativas e o texto
+ * honesto; a dúvida morre lá, não aqui.
+ *
+ * O COMPARATIVO é ACUMULADO × ACUMULADO (I2 do laudo): o MP devolve o
+ * total JÁ devolvido do pagamento; a linha é INCREMENTAL. Cobrado ⇔
+ * devolvido_no_MP >= `pedido.valor_estornado` (o que o ledger já somou
+ * ANTES desta linha) + `linha.amount` (esta linha) — tudo em centavos (C1).
  */
-async function confirmarPelaConsulta(
-  buscar: typeof fetch,
-  token: string,
-  linha: LinhaEstorno,
-  pedido: PedidoParaEstorno,
-  preliminar: { tipo: "falhou"; motivo: string; codigo: string },
-): Promise<ResultadoEstorno> {
+export async function confirmarPorConsulta(args: {
+  buscar: typeof fetch;
+  token: string;
+  linha: LinhaEstorno;
+  pedido: PedidoParaEstorno;
+  codigo?: string;
+}): Promise<ResultadoEstorno> {
+  const { buscar, token, linha, pedido } = args;
+  // Código do pré-veredito que trouxe até aqui (4296,
+  // order_already_refunded, idempotency_key_already_used). Chamado direto
+  // pela T4 não há pré-veredito — o `falhou` de "não cobre" precisa de um
+  // código mesmo assim (é campo obrigatório do tipo).
+  const codigoFinal = args.codigo ?? "confirmacao_insuficiente";
   const ehPayments = idEhClassico(pedido.gateway_payment_id);
   const url = ehPayments
-    ? `${API_MP}/v1/payments/${pedido.gateway_payment_id}`
-    : `${API_MP}/v1/orders/${pedido.gateway_payment_id}`;
+    ? `${BASE_URL_PADRAO}/v1/payments/${pedido.gateway_payment_id}`
+    : `${BASE_URL_PADRAO}/v1/orders/${pedido.gateway_payment_id}`;
 
   let resposta: Response;
   try {
@@ -514,32 +599,55 @@ async function confirmarPelaConsulta(
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
     });
-  } catch (_err) {
+  } catch (err) {
+    // M2 do laudo: falha de rede some em silêncio sem log — o padrão da
+    // casa (`mercadopago.ts`) é logar. O erro de rede não carrega token.
+    console.error("estorno: falha de rede na confirmação", err);
     return {
       tipo: "tentar_depois",
       motivo: "falha de rede ao confirmar o estorno com o Mercado Pago",
     };
   }
   if (resposta.status !== 200) {
+    // I3: o status HTTP vai no LOG (aqui) e nunca no motivo que o lojista lê.
+    console.error(
+      "estorno: consulta de confirmação recusada",
+      resposta.status,
+    );
     return {
       tipo: "tentar_depois",
-      motivo:
-        `não consegui confirmar o estorno com o Mercado Pago (HTTP ${resposta.status})`,
+      motivo: "não consegui confirmar o estorno com o Mercado Pago agora",
     };
   }
   let corpo: Record<string, unknown>;
   try {
     corpo = comoObjeto(await resposta.json());
-  } catch (_err) {
+  } catch (err) {
+    console.error("estorno: confirmação com corpo ilegível", err);
     return {
       tipo: "tentar_depois",
       motivo: "resposta ilegível ao confirmar o estorno",
     };
   }
 
+  const precisoEmCentavos = emCentavos(pedido.valor_estornado) +
+    emCentavos(linha.amount);
+
   if (ehPayments) {
-    const devolvido = Number(corpo.transaction_amount_refunded);
-    if (Number.isFinite(devolvido) && devolvido >= linha.amount) {
+    // C3: campo presente e legível decide; AUSENTE é "não sei" → depois.
+    // `Number(null)` seria 0 (falso "nada devolvido") — por isso a checagem
+    // de tipo ANTES da conversão.
+    const bruto = corpo.transaction_amount_refunded;
+    const devolvido = typeof bruto === "number" || typeof bruto === "string"
+      ? Number(bruto)
+      : NaN;
+    if (!Number.isFinite(devolvido)) {
+      return {
+        tipo: "tentar_depois",
+        motivo: "não consegui confirmar o estorno com o Mercado Pago agora",
+      };
+    }
+    if (emCentavos(devolvido) >= precisoEmCentavos) {
       const refunds = Array.isArray(corpo.refunds)
         ? corpo.refunds.filter((r) => r && typeof r === "object") as Array<
           Record<string, unknown>
@@ -547,7 +655,7 @@ async function confirmarPelaConsulta(
         : [];
       return {
         tipo: "concluido",
-        mp_refund_id: refundIdDaConsulta(corpo, refunds),
+        mp_refund_id: refundIdDaConsulta(corpo, refunds, linha),
         mp_status: idComoString(corpo.status),
         mp_status_detail: detailOuNull(corpo),
         valor: linha.amount,
@@ -557,15 +665,23 @@ async function confirmarPelaConsulta(
       tipo: "falhou",
       motivo:
         "o Mercado Pago informa que o pagamento já foi estornado, mas o valor confirmado não cobre esta devolução",
-      codigo: preliminar.codigo,
+      codigo: codigoFinal,
     };
   }
 
   const soma = somarRefundsDaOrder(corpo);
-  if (soma !== null && soma >= linha.amount) {
+  if (soma === null) {
+    // C3: order `refunded` sem `refunds[]` materializado (consistência
+    // eventual do MP) não é prova de NADA — "não sei" vira depois, não falhou.
+    return {
+      tipo: "tentar_depois",
+      motivo: "não consegui confirmar o estorno com o Mercado Pago agora",
+    };
+  }
+  if (emCentavos(soma) >= precisoEmCentavos) {
     return {
       tipo: "concluido",
-      mp_refund_id: refundIdDaConsulta(corpo, refundsDaOrder(corpo)),
+      mp_refund_id: refundIdDaConsulta(corpo, refundsDaOrder(corpo), linha),
       mp_status: idComoString(corpo.status),
       mp_status_detail: detailOuNull(corpo),
       valor: linha.amount,
@@ -575,7 +691,7 @@ async function confirmarPelaConsulta(
     tipo: "falhou",
     motivo:
       "a cobrança já foi devolvida no Mercado Pago, mas o valor confirmado não cobre esta devolução",
-    codigo: preliminar.codigo,
+    codigo: codigoFinal,
   };
 }
 
@@ -605,7 +721,7 @@ export async function executarEstorno(args: {
   const guarda = guardaAntesDeChamar(linha, pedido, new Date());
   if (!guarda.ok) return { tipo: "recusado", motivo: guarda.motivo };
 
-  let transacaoDaOrder: string | undefined;
+  let transacaoDaOrder: string | null | undefined;
   if (!idEhClassico(pedido.gateway_payment_id)) {
     if (!args.consultarTransacaoDaOrder) {
       return {
@@ -617,7 +733,8 @@ export async function executarEstorno(args: {
       transacaoDaOrder = await args.consultarTransacaoDaOrder(
         pedido.gateway_payment_id,
       );
-    } catch (_err) {
+    } catch (err) {
+      console.error("estorno: falha ao consultar a transação da order", err);
       transacaoDaOrder = null;
     }
     if (!transacaoDaOrder) {
@@ -628,7 +745,7 @@ export async function executarEstorno(args: {
     }
   }
 
-  const req = montarRequisicao(linha, pedido, transacaoDaOrder);
+  const req = montarRequisicao(linha, pedido, transacaoDaOrder ?? undefined);
   let resposta: Response;
   try {
     resposta = await buscar(req.url, {
@@ -636,7 +753,10 @@ export async function executarEstorno(args: {
       headers: { ...req.headers, Authorization: `Bearer ${token}` },
       body: JSON.stringify(req.body),
     });
-  } catch (_err) {
+  } catch (err) {
+    // M2 do laudo: sem log, falha de rede some — o padrão da casa
+    // (`mercadopago.ts`) é logar. O `err` de rede não carrega o token.
+    console.error("estorno: falha de rede no POST", err);
     return {
       tipo: "tentar_depois",
       motivo: "falha de rede ao falar com o Mercado Pago",
@@ -646,8 +766,14 @@ export async function executarEstorno(args: {
   let corpo: unknown = null;
   try {
     corpo = await resposta.json();
-  } catch (_err) {
+  } catch (err) {
+    console.error("estorno: resposta com corpo ilegível", resposta.status, err);
     corpo = null;
+  }
+  if (!resposta.ok) {
+    // M2: o corpo do erro do MP vai para o log da função (padrão da casa),
+    // nunca para o texto do lojista — e sem ele o POST reprovado some.
+    console.error("estorno: mercado pago recusou o POST", resposta.status, corpo);
   }
 
   let resultado = interpretarResposta(resposta.status, corpo, linha, pedido);
@@ -666,7 +792,15 @@ export async function executarEstorno(args: {
     resultado.tipo === "falhou" &&
     CODIGOS_QUE_EXIGEM_CONFIRMACAO.has(resultado.codigo)
   ) {
-    return confirmarPelaConsulta(buscar, token, linha, pedido, resultado);
+    // I1 do laudo: a MESMA decisão que a T4 chama direto (sem POST) para
+    // linhas `em_processamento` — uma função, dois chamadores.
+    return confirmarPorConsulta({
+      buscar,
+      token,
+      linha,
+      pedido,
+      codigo: resultado.codigo,
+    });
   }
   return resultado;
 }
