@@ -4,6 +4,7 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   confirmarPorConsulta,
+  consultarTransacaoDaOrder,
   executarEstorno,
   guardaAntesDeChamar,
   interpretarResposta,
@@ -980,5 +981,88 @@ Deno.test("E25 - 2xx desconhecido vira tentar_depois nas duas APIs (M4)", async 
       consultarTransacaoDaOrder: consultaTransacaoFalsa,
     })).tipo,
     "tentar_depois",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// E28–E31 — conserto do laudo do PR #439 (07/09): a edge estornar-pagamento
+// não passava `consultarTransacaoDaOrder` ao executor — todo estorno de PIX
+// (Orders API, único método vivo da loja) devolvia `tentar_depois` para
+// sempre e o dinheiro nunca voltava. Estas cobrem a função exportada
+// diretamente (dublê de fetch por rota, mesmo padrão de `fetchDuble` acima).
+// ---------------------------------------------------------------------------
+
+Deno.test("E28 - consultarTransacaoDaOrder feliz: um pagamento na order -> o id dele", async () => {
+  const { f } = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        transactions: { payments: [{ id: "PAY_X", status: "processed" }] },
+      },
+    },
+  ]);
+  assertEquals(
+    await consultarTransacaoDaOrder({
+      orderId: "ORD01ABCDEFOLUIMWQKDXYZ01",
+      token: TOKEN,
+      buscar: f,
+    }),
+    "PAY_X",
+  );
+});
+
+Deno.test("E29 - consultarTransacaoDaOrder sem transactions no corpo -> null", async () => {
+  const { f } = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD02SEMTRANSACAO",
+      status: 200,
+      corpo: { id: "ORD02SEMTRANSACAO" },
+    },
+  ]);
+  assertEquals(
+    await consultarTransacaoDaOrder({ orderId: "ORD02SEMTRANSACAO", token: TOKEN, buscar: f }),
+    null,
+  );
+});
+
+Deno.test("E30 - consultarTransacaoDaOrder com HTTP 500 -> null (nunca lanca)", async () => {
+  const { f } = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD03INSTAVEL",
+      status: 500,
+      corpo: { message: "erro interno" },
+    },
+  ]);
+  assertEquals(
+    await consultarTransacaoDaOrder({ orderId: "ORD03INSTAVEL", token: TOKEN, buscar: f }),
+    null,
+  );
+});
+
+Deno.test("E31 - dois pagamentos aprovados sem discriminador -> null (nunca chuta)", async () => {
+  const { f } = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD04DUPLICADO",
+      status: 200,
+      corpo: {
+        id: "ORD04DUPLICADO",
+        transactions: {
+          payments: [
+            { id: "PAY_A", status: "processed" },
+            { id: "PAY_B", status: "processed" },
+          ],
+        },
+      },
+    },
+  ]);
+  assertEquals(
+    await consultarTransacaoDaOrder({ orderId: "ORD04DUPLICADO", token: TOKEN, buscar: f }),
+    null,
   );
 });
