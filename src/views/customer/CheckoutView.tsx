@@ -2541,7 +2541,7 @@ export function CheckoutView({
                         // ele consome ~96px fixos do painel; os 5vh extras
                         // devolvem à lista de itens o espaço que o bloco
                         // ocupa, mantendo a lista rolável útil.
-                        className="mx-auto mb-2 max-h-[50vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white px-4 pt-3 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] outline-none"
+                        className="mx-auto mb-2 max-h-[50vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white px-4 pt-3 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50"
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">

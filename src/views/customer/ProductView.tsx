@@ -781,14 +781,16 @@ export const ProductView = React.memo(function ProductView({
               // Laudo de acessibilidade 03/09, achado 2: botões de ícone sem
               // nome nenhum para o leitor de tela.
               aria-label="Foto anterior"
-              className="pointer-events-auto flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
+              // Laudo 05/09, M4: `after:-inset-1.5` amplia o alvo de toque
+              // de 32px para 44px (recomendado mobile) sem mudar o visual.
+              className="pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95"
             >
               <ChevronLeft className="size-4" />
             </button>
             <button
               onClick={nextImage}
               aria-label="Próxima foto"
-              className="pointer-events-auto flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
+              className="pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95"
             >
               <ChevronRight className="size-4" />
             </button>
@@ -807,7 +809,16 @@ export const ProductView = React.memo(function ProductView({
                 // é a atual (`aria-current`).
                 aria-label={`Foto ${index + 1} de ${product.images?.length ?? 0}`}
                 aria-current={index === currentImageIndex ? "true" : undefined}
-                className={`h-1 rounded-full transition-all duration-500 ${
+                // Laudo 05/09, M4: bolinha de 4px (h-1) era alvo de toque
+                // abaixo do mínimo WCAG de 24px — pseudo-elemento invisível
+                // amplia a área SEM mudar o visual. Laudo Opus 07/09 (C1):
+                // o inset é 10px só na VERTICAL (4+20 = 24px); na horizontal
+                // fica em 3px porque as bolinhas ficam a 6px uma da outra
+                // (gap-1.5) — o inset quadrado de 10px fazia a área da
+                // bolinha seguinte cobrir a anterior e ROUBAR o toque
+                // (regressão medida no preview do PR #437). Alvo de 24px de
+                // LARGURA exige aumentar o gap — decisão visual do dono.
+                className={`relative h-1 rounded-full transition-all duration-500 after:absolute after:-inset-y-2.5 after:inset-x-[-3px] after:content-[''] ${
                   index === currentImageIndex
                     ? "w-6 bg-white"
                     : "w-1.5 bg-white/30 hover:bg-white/50"
@@ -1148,7 +1159,9 @@ export const ProductView = React.memo(function ProductView({
                 <button
                   key={tab.id}
                   onClick={() => handleTabClick(tab.id as any)}
-                  className="relative flex-1 rounded-full p-1 text-[9px] font-bold uppercase tracking-wider outline-none transition-colors duration-300"
+                  // Laudo 05/09, M3: `outline-none` apagava o anel de foco
+                  // sem repor — padrão do BottomNav (onda 1 do laudo 03/09).
+                  className="relative flex-1 rounded-full p-1 text-[9px] font-bold uppercase tracking-wider outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-zinc-900/50"
                 >
                   {isActive && (
                     <motion.div
@@ -1427,7 +1440,9 @@ export const ProductView = React.memo(function ProductView({
                       }
                     }}
                     alt={product.name}
-                    className="border-zinc-150/50 size-10 flex-shrink-0 rounded-xl border bg-zinc-50 object-cover"
+                    // Laudo 05/09, M6: a classe de borda da thumb NÃO
+                    // existia no Tailwind — nunca aplicava; token real.
+                    className="size-10 flex-shrink-0 rounded-xl border border-zinc-200/50 bg-zinc-50 object-cover"
                   />
                   <div className="flex min-w-0 flex-col justify-center">
                     <p className="max-w-[80px] truncate text-[11px] font-bold leading-tight text-zinc-900 sm:max-w-[110px]">

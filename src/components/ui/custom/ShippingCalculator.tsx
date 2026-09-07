@@ -449,6 +449,10 @@ export function ShippingCalculator({
             onChange={(e) => handleCepChange(e.target.value)}
             placeholder="00000-000"
             maxLength={9}
+            // Laudo de acessibilidade 05/09, M2: o campo se explicava só pelo
+            // placeholder "00000-000", que some ao digitar — para leitor de
+            // tela era "edição, texto" sem dizer o quê.
+            aria-label="CEP de destino"
             className="w-full rounded-2xl border border-zinc-200 bg-white py-2.5 pl-9 pr-4 text-xs font-semibold text-zinc-800 transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
           />
           <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-400" />
@@ -463,7 +467,13 @@ export function ShippingCalculator({
       </form>
 
       {error && (
-        <div className="flex items-start gap-1.5 rounded-2xl border border-amber-100 bg-amber-50 p-2.5 text-[9.5px] font-medium text-amber-800">
+        // Laudo de acessibilidade 05/09, M1: o erro do frete aparecia em
+        // pixels, em silêncio — `role="alert"` fala na hora (mesmo
+        // tratamento da recusa do cupom em CouponInput.tsx).
+        <div
+          role="alert"
+          className="flex items-start gap-1.5 rounded-2xl border border-amber-100 bg-amber-50 p-2.5 text-[9.5px] font-medium text-amber-800"
+        >
           <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
           <span>{error}</span>
         </div>
@@ -486,6 +496,12 @@ export function ShippingCalculator({
                 <button
                   key={option.id}
                   type="button"
+                  // Laudo de acessibilidade 05/09, A1 (ALTA): escolher
+                  // PAC/SEDEX/GRÁTIS não era anunciado — o "selecionado" era
+                  // só borda/fundo colorido. `aria-pressed` no botão da opção
+                  // é o MESMO padrão que a onda 1 (03/09) aplicou às
+                  // variantes e que o pagamento resolveu com radiogroup.
+                  aria-pressed={isSelected}
                   onClick={() => {
                     haptic.light();
                     onSelectOption(option);

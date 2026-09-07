@@ -78,7 +78,9 @@ export const CouponInput = memo(function CouponInput({
           // declara inválido e aponta a mensagem (id abaixo).
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "erro-cupom" : undefined}
-          className="flex-1 bg-transparent text-sm focus:outline-none"
+          // Laudo 05/09, M3: o override que apagava o anel de foco global
+          // morreu — anel só para teclado, padrão do BottomNav.
+          className="flex-1 rounded-md bg-transparent text-sm outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50"
         />
         <button
           type="submit"
