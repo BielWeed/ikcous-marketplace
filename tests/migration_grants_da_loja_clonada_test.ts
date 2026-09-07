@@ -12,6 +12,12 @@
 // É puro REVOKE. O que se prende aqui é textual e específico dela: "cada
 // linha da tabela função×papel vira EXATAMENTE um REVOKE, e o rollback tem
 // o GRANT simétrico" — o exemplo que o próprio brief autorizou.
+
+/* eslint-disable security/detect-object-injection --
+ * Índices dinâmicos são posições `i` de dois arrays que este próprio arquivo
+ * construiu (revokes/grants, extraídos do disco por regex fixa). Nunca há
+ * payload de terceiro — mesma disciplina dos scripts db-prove-*.cjs. */
+
 import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
   assert,
