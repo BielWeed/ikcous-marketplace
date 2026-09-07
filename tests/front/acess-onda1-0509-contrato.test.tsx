@@ -210,9 +210,12 @@ describe("M6 — tokens de cor: mortos zerados, vivos de volta", () => {
 
   it("tokens vivos zinc-550/650 de volta onde o PR #437 os trocou", () => {
     // Ícone Copy do ID, hover do nome do item e X de fechar avaliação.
+    // (laudo Opus 07/09, I1: "text-zinc-650" solto casa também com o
+    // group-hover do nome do item — asserção fixada no contexto do botão de
+    // fechar avaliação, que é o único que tem "font-bold text-zinc-650".)
     expect(fonte(ORDER_DETAILS)).toContain("text-zinc-550");
     expect(fonte(ORDER_DETAILS)).toContain("group-hover:text-zinc-650");
-    expect(fonte(ORDER_DETAILS)).toContain("text-zinc-650");
+    expect(fonte(ORDER_DETAILS)).toContain("font-bold text-zinc-650");
   });
 });
 
