@@ -20,6 +20,9 @@
 //       chamada ao fetch do MP
 //   F10 X-Idempotency-Key recebido pelo fetch == refund_id (a chave é o id
 //       da linha, nunca um id inventado aqui)
+//   F11 desfecho terminal recusado/falhou grava estado+motivo com update
+//       CONDICIONAL (só 'em_processamento') — e 0 linhas no desfecho
+//       responde 409 estorno_ja_tratado (M1/M2 do laudo do PR #439)
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts"
 
 // ── Costura de REDE para a porta de admin (verifyIsAdmin monta os PRÓPRIOS
@@ -135,11 +138,13 @@ async function comEnv(extra: Record<string, string>, executar: () => Promise<voi
 // ── Cliente Supabase falso (padrão melhor-envio: from() registra ação e
 // filtros; o rpc() é o assento da RPC concluir_estorno — padrão
 // reconciliar-pagamentos). A MARCA se reconhece por valores.status ===
-// 'em_processamento': é o único update que a edge faz com esse status.
+// 'em_processamento': é o único update que a edge faz com esse status; o
+// DESFECHO terminal (falhou/recusado) é o único com outro status.
 function clienteSupaFalso(opts: {
     linha?: any
     pedido?: any
     marcas?: number[]
+    finais?: number[]
     rpcResultado?: any
     rpcErro?: any
 } = {}) {
@@ -147,10 +152,12 @@ function clienteSupaFalso(opts: {
         leiturasLinha: 0,
         leiturasPedido: 0,
         marcas: [] as any[],
+        finais: [] as any[],
         atualizacoes: [] as any[],
         rpcs: [] as any[],
     }
     let chamadasDeMarca = 0
+    let chamadasDeFim = 0
     const promessa = (valor: any) => Promise.resolve(valor)
     const cliente: any = {
         rpc(nome: string, args?: any) {
@@ -200,8 +207,17 @@ function clienteSupaFalso(opts: {
         }
         if (no.acao === "update" && no.valores?.status === "em_processamento") {
             registro.marcas.push({ valores: no.valores, filtros: [...no.filtros] })
-            const linhas = opts.marcas?.[chamadasDeMarca] ?? 1
+            // .at(i) em vez de [i]: a indexação dinâmica de objeto é o único
+            // warning que o eslint viu nesta suíte (catraca do PR #439, C2a).
+            const linhas = opts.marcas?.at(chamadasDeMarca) ?? 1
             chamadasDeMarca++
+            const resposta = Array.from({ length: linhas }, () => ({ id: REFUND_ID }))
+            return promessa({ data: resposta, error: null })
+        }
+        if (no.acao === "update" && (no.valores?.status === "falhou" || no.valores?.status === "recusado")) {
+            registro.finais.push({ valores: no.valores, filtros: [...no.filtros] })
+            const linhas = opts.finais?.at(chamadasDeFim) ?? 1
+            chamadasDeFim++
             const resposta = Array.from({ length: linhas }, () => ({ id: REFUND_ID }))
             return promessa({ data: resposta, error: null })
         }
@@ -376,6 +392,13 @@ Deno.test("F5 - fluxo feliz conclui via RPC e responde {status, valor, texto} se
     assertEquals(registro.marcas.length, 1)
     assertEquals(registro.marcas[0].valores.status, "em_processamento")
     assertEquals(registro.marcas[0].valores.tentativas, 1)
+    // E a marca é CONDICIONAL (I2 do laudo do PR #439): os filtros exigem o id
+    // E o estado vivo — sem o .in de status, dois cliques simultâneos chamam o
+    // MP duas vezes; apagar esta linha da edge derruba esta asserção.
+    assertEquals(registro.marcas[0].filtros, [
+        { metodo: "eq", coluna: "id", valor: REFUND_ID },
+        { metodo: "in", coluna: "status", valores: ["solicitado", "em_processamento"] },
+    ])
     // E a conclusão é ATÔMICA pela RPC (a edge não soma valor_estornado na mão).
     assertEquals(registro.rpcs.length, 1)
     assertEquals(registro.rpcs[0].nome, "concluir_estorno")
@@ -502,6 +525,13 @@ Deno.test("F9 - segunda chamada que perde a marca responde 409 e o MP so' e' cha
     assertEquals(mp.registro.chamadas, 1)
     assertEquals(executor.registro.chamadas.length, 1)
     assertEquals(registro.rpcs.length, 1)
+    // As DUAS marcas foram condicionais (I2): a segunda chamada também pediu o
+    // .in de status — foi ele que devolveu 0 linhas, e não um acidente do dublê.
+    assertEquals(registro.marcas.length, 2)
+    assertEquals(registro.marcas[1].filtros, [
+        { metodo: "eq", coluna: "id", valor: REFUND_ID },
+        { metodo: "in", coluna: "status", valores: ["solicitado", "em_processamento"] },
+    ])
 })
 
 // ── F10: X-Idempotency-Key == refund_id ───────────────────────────────────
@@ -547,4 +577,92 @@ Deno.test("extra - sem MP_ACCESS_TOKEN a edge falha 500 ANTES de marcar a linha 
     assertEquals(resposta.status, 500)
     assertEquals(registro.marcas.length, 0)
     assertEquals(executor.registro.chamadas.length, 0)
+})
+
+// ── F11: desfecho terminal falhou/recusado — o único ramo que grava estado
+// TERMINAL numa linha de dinheiro (M2 do laudo do PR #439: nenhum dos 13
+// testes passava por ele). O update é condicional como a MARCA (M1): só
+// substitui 'em_processamento'.
+
+Deno.test("F11 - recusado grava estado terminal com motivo e o update so' pega linha em_processamento", async () => {
+    const { cliente, registro } = clienteSupaFalso({ linha: LINHA_SOLICITADA, pedido: PEDIDO_PAGO })
+    const executor = executorFalso({ tipo: "recusado", motivo: "o cartão do estorno foi negado pelo banco emissor" })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    const corpo = await resposta.json()
+    assertEquals(corpo.status, "recusado")
+    assertEquals(corpo.valor, 100)
+    assertEquals(corpo.texto, "A devolução não foi feita: o cartão do estorno foi negado pelo banco emissor")
+    // O desfecho terminal foi gravado COM o motivo leigo...
+    assertEquals(registro.finais.length, 1)
+    assertEquals(registro.finais[0].valores.status, "recusado")
+    assertEquals(registro.finais[0].valores.ultimo_erro, "o cartão do estorno foi negado pelo banco emissor")
+    // ...e é CONDICIONAL (M1): id E status='em_processamento' — estado
+    // terminal só substitui a marca; concluído por cron/webhook no meio
+    // NÃO é sobrescrito.
+    assertEquals(registro.finais[0].filtros, [
+        { metodo: "eq", coluna: "id", valor: REFUND_ID },
+        { metodo: "in", coluna: "status", valores: ["em_processamento"] },
+    ])
+    // Estado terminal não passa pela RPC de soma — recusado é recusado.
+    assertEquals(registro.rpcs.length, 0)
+})
+
+Deno.test("F11b - falhou grava estado terminal com motivo", async () => {
+    const { cliente, registro } = clienteSupaFalso({ linha: LINHA_SOLICITADA, pedido: PEDIDO_PAGO })
+    const executor = executorFalso({ tipo: "falhou", motivo: "o Mercado Pago não respondeu sobre o estorno", codigo: "mp_sem_resposta" })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    const corpo = await resposta.json()
+    assertEquals(corpo.status, "falhou")
+    assertEquals(corpo.texto, "A devolução não foi concluída: o Mercado Pago não respondeu sobre o estorno")
+    assertEquals(registro.finais.length, 1)
+    assertEquals(registro.finais[0].valores.status, "falhou")
+    assertEquals(registro.finais[0].valores.ultimo_erro, "o Mercado Pago não respondeu sobre o estorno")
+    assertEquals(registro.rpcs.length, 0)
+})
+
+Deno.test("F11c - desfecho que perde a linha (cron concluiu no meio) responde 409 estorno_ja_tratado", async () => {
+    // marcas[0] = 1 (a marca pega), finais[0] = 0 (o cron concluiu a linha
+    // entre o executor e o desfecho): o update terminal não pega ninguém e a
+    // edge responde o REAL, não o seu resultado (M1 do laudo do PR #439).
+    const { cliente, registro } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        marcas: [1],
+        finais: [0],
+    })
+    const executor = executorFalso({ tipo: "falhou", motivo: "timeout" })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 409)
+    const corpo = await resposta.json()
+    assertEquals(corpo.erro, "estorno_ja_tratado")
+    assertEquals(registro.marcas.length, 1)
 })

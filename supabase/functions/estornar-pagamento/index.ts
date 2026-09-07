@@ -24,7 +24,10 @@
 //     2026110000100): status da linha + soma de valor_estornado +
 //     virada condicional de payment_status numa transação só — a edge NUNCA
 //     soma valor_estornado na mão. A mesma RPC serve ao cron (T4) e ao
-//     webhook (T5).
+//     webhook (T5). No banco a RPC NÃO tem grant a authenticated (régua
+//     confirmar_pagamento, laudo C1 do PR #439): esta edge chama com
+//     SERVICE ROLE — a autorização do clique do lojista é AQUI (porta de
+//     admin acima), não no banco.
 //   * MP_ACCESS_TOKEN só via Deno.env; SEM token a function falha ANTES de
 //     marcar a linha (nada fica preso em_processamento por falta de
 //     configuração). Nunca se decide NADA de dinheiro pelo prefixo do token.
@@ -281,8 +284,18 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                 status: pedido.status,
             },
             token,
-            buscar: (url: string, init?: RequestInit) =>
-                fetchComTempo(deps.buscar ?? fetch, url, init),
+            // Assinatura LARGA (URL | RequestInfo, a mesma de typeof fetch):
+            // o executor da Task 2 declara buscar?: typeof fetch, e uma
+            // lambda de (url: string) não é atribuível a ele — o deno check
+            // da integração real (I3 do laudo) pegou exatamente isto. O
+            // fetchComTempo quer string: Request vira .url, URL/string
+            // viram String(input).
+            buscar: (input: URL | RequestInfo, init?: RequestInit) =>
+                fetchComTempo(
+                    deps.buscar ?? fetch,
+                    input instanceof Request ? input.url : String(input),
+                    init,
+                ),
         })
 
         // 7. O resultado vira estado + resposta. Nenhum texto carrega
@@ -347,7 +360,10 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         if (resultado.tipo === 'falhou' || resultado.tipo === 'recusado') {
             // Definitivo: guarda o estado e o motivo leigo (a T6 mostra o
             // botão "Tentar de novo" só para falhou — nova linha, nova chave).
-            const { error: erroFim } = await supabase
+            // O update é CONDICIONAL como a MARCA (M1 do laudo do PR #439):
+            // estado terminal só substitui 'em_processamento' — se a T4/T5
+            // concluiu no meio, 0 linhas voltam e NADA é sobrescrito.
+            const { data: fim, error: erroFim } = await supabase
                 .from('order_refunds')
                 .update({
                     status: resultado.tipo,
@@ -355,9 +371,16 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                     updated_at: new Date().toISOString(),
                 })
                 .eq('id', refundId)
+                .in('status', ['em_processamento'])
+                .select()
             if (erroFim) {
                 console.error('[estornar-pagamento] Falha ao gravar o desfecho:', erroFim)
                 return json({ erro: 'A devolução terminou, mas o registro falhou. Atualize a página para ver o estado real.' }, 500)
+            }
+            if (!Array.isArray(fim) || fim.length === 0) {
+                // Outro executor (cron/webhook) mudou a linha no meio: o
+                // estado terminal DELE fica — responder o real, não o nosso.
+                return json({ erro: 'estorno_ja_tratado' }, 409)
             }
             const valor = Number(linha.amount)
             return json({
