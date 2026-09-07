@@ -810,10 +810,15 @@ export const ProductView = React.memo(function ProductView({
                 aria-label={`Foto ${index + 1} de ${product.images?.length ?? 0}`}
                 aria-current={index === currentImageIndex ? "true" : undefined}
                 // Laudo 05/09, M4: bolinha de 4px (h-1) era alvo de toque
-                // abaixo do mínimo WCAG de 24px — `after:-inset-2.5` amplia
-                // a área para 24px de altura SEM mudar o visual (truque do
-                // Header/CouponInput: pseudo-elemento invisível).
-                className={`relative h-1 rounded-full transition-all duration-500 after:absolute after:-inset-2.5 after:content-[''] ${
+                // abaixo do mínimo WCAG de 24px — pseudo-elemento invisível
+                // amplia a área SEM mudar o visual. Laudo Opus 07/09 (C1):
+                // o inset é 10px só na VERTICAL (4+20 = 24px); na horizontal
+                // fica em 3px porque as bolinhas ficam a 6px uma da outra
+                // (gap-1.5) — o inset quadrado de 10px fazia a área da
+                // bolinha seguinte cobrir a anterior e ROUBAR o toque
+                // (regressão medida no preview do PR #437). Alvo de 24px de
+                // LARGURA exige aumentar o gap — decisão visual do dono.
+                className={`relative h-1 rounded-full transition-all duration-500 after:absolute after:-inset-y-2.5 after:inset-x-[-3px] after:content-[''] ${
                   index === currentImageIndex
                     ? "w-6 bg-white"
                     : "w-1.5 bg-white/30 hover:bg-white/50"

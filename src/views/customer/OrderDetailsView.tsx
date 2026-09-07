@@ -495,10 +495,11 @@ export function OrderDetailsView({
         {/* Quick Info Bar */}
         <div className="flex items-center justify-between gap-4 rounded-xl bg-zinc-950 p-3 text-white">
           <div className="flex flex-col">
-            {/* Laudo 05/09, M6: os rótulos desta barra usavam classes de cor
-                que NÃO existem no Tailwind — a cor nunca aplicava e o texto
-                herdava o branco cru do fundo escuro; tokens reais dão o
-                cinza sutil que a barra pede. */}
+            {/* Laudo 05/09, M6: `text-zinc-505` não existe no Tailwind — a
+                cor nunca aplicava e o rótulo herdava o branco cru do fundo
+                escuro; token real dá o cinza sutil que a barra pede. (Só o
+                505 é morto aqui: 550/650 existem no tailwind.config.js —
+                ver comentário do ícone Copy.) */}
             <span className="mb-0.5 text-[8px] font-black uppercase tracking-widest text-zinc-400">
               ID do Pedido
             </span>
@@ -517,7 +518,11 @@ export function OrderDetailsView({
               <span className="text-[10px] font-black uppercase tracking-widest">
                 #{order.id.slice(0, 8)}
               </span>
-              <Copy className="size-2.5 text-zinc-500" />
+              {/* Laudo Opus 07/09 (C2): `zinc-550` e `zinc-650` são tokens
+                  VIVOS — o tailwind.config.js define os tons intermediários
+                  550/650/750/850 de propósito. A troca por zinc-500/600 no
+                  PR #437 mudava a cor que era aplicada; revertida. */}
+              <Copy className="size-2.5 text-zinc-550" />
             </div>
           </div>
           <div className="h-6 w-px bg-zinc-800" />
@@ -711,7 +716,7 @@ export function OrderDetailsView({
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <h5 className="truncate text-[11px] font-black uppercase leading-none tracking-tight text-zinc-900 transition-colors group-hover:text-zinc-600">
+                  <h5 className="truncate text-[11px] font-black uppercase leading-none tracking-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
                     {item.name}
                   </h5>
                   <div className="mt-1 flex items-center gap-2">
@@ -896,7 +901,7 @@ export function OrderDetailsView({
                   // Laudo 05/09, M5: o nome acessível era "✕" — agora diz
                   // o que fecha.
                   aria-label="Fechar avaliação"
-                  className="flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-600 transition-colors hover:bg-zinc-300 hover:text-zinc-900"
+                  className="flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-650 transition-colors hover:bg-zinc-300 hover:text-zinc-900"
                 >
                   ✕
                 </button>

@@ -15,6 +15,12 @@
 // `import.meta.glob` com `?raw` lê os arquivos em tempo de build do vitest,
 // sem API de Node — senão o typecheck (tsconfig sem "node" para tests/front)
 // e o lint:ratchet reprovam.
+//
+// Laudo Opus 07/09 (I2): 4 asserções deste arquivo passavam com a
+// implementação APAGADA — casavam a string no comentário escrito logo acima
+// do código (provado por mutação). A partir daqui `fonte()` devolve o fonte
+// SEM comentários: o contrato lê só código. As mutações foram repetidas e
+// agora derrubam os testes (ver relatório da frente glm-a11y-onda1-0509).
 import { describe, expect, it } from "vitest";
 
 const FONTES_CUSTOMER = import.meta.glob<string>("/src/views/customer/*.tsx", {
@@ -33,9 +39,15 @@ const FONTES: Record<string, string> = {
   ...FONTES_COMPONENTES,
 };
 
+function semComentarios(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, " ") // blocos /* ... */ (JSX inclusive)
+    .replace(/^[ \t]*\/\/.*$/gm, " "); // linhas // no início da linha
+}
+
 function fonte(caminho: string): string {
   expect(FONTES, `falta o fonte de ${caminho}`).toHaveProperty(caminho);
-  return FONTES[caminho] as string;
+  return semComentarios(FONTES[caminho] as string);
 }
 
 const SHIPPING = "/src/components/ui/custom/ShippingCalculator.tsx";
@@ -140,9 +152,17 @@ describe("M3 — anel de foco reposto nos 11 pontos que apagavam", () => {
 });
 
 describe("M4 — alvos de toque ampliados sem mudar o visual", () => {
-  it("bolinhas da galeria (4px) ganham área >= 24px via pseudo-elemento", () => {
+  it("bolinhas da galeria (4px) ganham 24px de ALTURA sem roubar a vizinha", () => {
     const src = fonte(PRODUCT_VIEW);
-    expect(src).toContain("after:-inset-2.5");
+    // Inset vertical de 10px: 4+20 = 24px de altura (mínimo WCAG).
+    expect(src).toContain("after:-inset-y-2.5");
+    // Inset horizontal de 3px (grafia canônica do linter, sem warning
+    // novo): as bolinhas ficam a 6px uma da outra (gap-1.5) — mais que
+    // isso e a área da seguinte cobre a anterior.
+    expect(src).toContain("after:inset-x-[-3px]");
+    // O inset quadrado de 10px fazia a bolinha seguinte roubar o toque
+    // (regressão medida no preview do PR #437 — laudo Opus 07/09, C1).
+    expect(src).not.toContain("after:-inset-2.5");
   });
 
   it("setas da galeria (32px) ganham área de 44px", () => {
@@ -150,9 +170,12 @@ describe("M4 — alvos de toque ampliados sem mudar o visual", () => {
     expect(src).toContain("after:-inset-1.5");
   });
 
-  it("X de limpar a busca (20px) ganha área via pseudo-elemento", () => {
+  it("X de limpar a busca (20px) ganha área sem invadir o campo", () => {
     const src = fonte(SEARCH_BAR);
-    expect(src).toContain("after:-inset-2");
+    // O X mora dentro do campo: inset horizontal de 8px invadia o input e
+    // "tocar a borda direita" apagava o texto (laudo Opus 07/09, M1).
+    expect(src).toContain("after:-inset-x-1");
+    expect(src).toContain("after:-inset-y-2");
   });
 });
 
@@ -166,19 +189,13 @@ describe("M5 — três botões de ícone com nome", () => {
   });
 });
 
-describe("M6 — classes de cor inexistentes zeradas na loja do cliente", () => {
-  // zinc-505/550/650/905/150 e red-655 não existem no Tailwind: a cor
-  // NUNCA aplicava e o elemento herdava outra — o CANCELAR PEDIDO perdeu o
-  // vermelho de ação destrutiva. Teste de substring crua: se voltar em
-  // className OU em comentário, alguém precisa rever este arquivo.
-  const tokensMortos = [
-    "zinc-505",
-    "zinc-550",
-    "red-655",
-    "zinc-650",
-    "zinc-905",
-    "zinc-150",
-  ];
+describe("M6 — tokens de cor: mortos zerados, vivos de volta", () => {
+  // Laudo Opus 07/09 (C2): a lista original proibia também zinc-550/650, sob
+  // a premissa de "classe inexistente" — PREMISSA FALSA. O tailwind.config.js
+  // DEFINE os tons intermediários 550/650/750/850 (compilados, geram CSS);
+  // o PR #437 trocou 3 cores vivas por achá-las mortas. Mortos de verdade
+  // (nenhuma regra no CSS compilado do config): os quatro abaixo.
+  const tokensMortos = ["zinc-505", "red-655", "zinc-905", "zinc-150"];
 
   it("nenhum token morto sobra nas telas de pedido e produto", () => {
     for (const token of tokensMortos) {
@@ -189,6 +206,13 @@ describe("M6 — classes de cor inexistentes zeradas na loja do cliente", () => 
 
   it("o botão de CANCELAR PEDIDO é vermelho de novo (token real)", () => {
     expect(fonte(ORDER_DETAILS)).toContain("text-red-600");
+  });
+
+  it("tokens vivos zinc-550/650 de volta onde o PR #437 os trocou", () => {
+    // Ícone Copy do ID, hover do nome do item e X de fechar avaliação.
+    expect(fonte(ORDER_DETAILS)).toContain("text-zinc-550");
+    expect(fonte(ORDER_DETAILS)).toContain("group-hover:text-zinc-650");
+    expect(fonte(ORDER_DETAILS)).toContain("text-zinc-650");
   });
 });
 

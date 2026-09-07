@@ -265,10 +265,13 @@ export function SearchBar({
             type="button"
             onClick={handleClear}
             // Laudo 05/09, M4: X de 20px (size-5) era alvo de toque abaixo
-            // do mínimo WCAG de 24px — `after:-inset-2` amplia para 36px sem
-            // mudar o visual (mesmo truque do X do cupom em CouponInput; o
-            // botão já é `absolute`, então o pseudo-elemento ancora nele).
-            className="absolute right-3 z-30 flex size-5 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-900 hover:text-white active:scale-90"
+            // do mínimo WCAG de 24px — pseudo-elemento invisível amplia a
+            // área SEM mudar o visual. Laudo Opus 07/09 (M1): o X mora
+            // DENTRO do campo, então o inset horizontal fica em 4px — com
+            // 8px a área invadia o input e tocar a borda direita do campo
+            // APAGAVA o texto em vez de focar. 20+8=28px de largura,
+            // 20+16=36px de altura (mesma grafia do Header).
+            className="absolute right-3 z-30 flex size-5 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-all after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] hover:bg-zinc-900 hover:text-white active:scale-90"
             aria-label="Limpar busca"
           >
             <X className="size-3" />

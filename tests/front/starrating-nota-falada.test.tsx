@@ -63,4 +63,16 @@ describe("StarRating — a nota é falada (laudo 05/09, M8)", () => {
     // o bloco mudo é quem carrega os SVGs das estrelas
     expect(estrelas?.querySelectorAll("svg").length).toBe(5);
   });
+
+  it("o sr-only vem DEPOIS do bloco de estrelas (space-x não as empurra)", () => {
+    // Laudo Opus 07/09 (I1, PR #437): o span sr-only como PRIMEIRO filho
+    // fazia o seletor do `space-x-1` dar 4px de margem ao bloco de estrelas
+    // (irmão seguinte) — todas as estrelas do app andaram 4px. A ordem DOM
+    // é o que o space-x enxerga; leitura não muda (estrelas são mudas).
+    montar({ rating: 4 });
+    const bloco = hospedeiro.querySelector('[aria-hidden="true"]');
+    const falado = hospedeiro.querySelector(".sr-only");
+    expect(bloco?.previousElementSibling).toBeNull();
+    expect(falado?.previousElementSibling).toBe(bloco);
+  });
 });

@@ -38,7 +38,11 @@ export const StarRating = memo(function StarRating({
 
   return (
     <div className={cn("flex space-x-1", className)}>
-      <span className="sr-only">{`${notaFalada} de ${maxRating}`}</span>
+      {/* Laudo Opus 07/09 (I1, PR #437): o span sr-only era o PRIMEIRO filho
+          e o `space-x-1` dava 4px de margem ao bloco de estrelas (irmão
+          seguinte) — todas as estrelas do app andaram 4px para a direita.
+          Depois do bloco, a margem cai sobre o span, que é absoluto e não
+          ocupa fluxo; a leitura não muda porque as estrelas são mudas. */}
       <div aria-hidden="true" className="flex space-x-1">
         {Array.from({ length: maxRating }).map((_, index) => {
           const starValue = index + 1;
@@ -60,6 +64,7 @@ export const StarRating = memo(function StarRating({
           );
         })}
       </div>
+      <span className="sr-only">{`${notaFalada} de ${maxRating}`}</span>
     </div>
   );
 });
