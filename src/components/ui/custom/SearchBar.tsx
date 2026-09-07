@@ -255,7 +255,7 @@ export function SearchBar({
           onKeyDown={handleKeyDown}
           aria-label="Buscar produtos"
           title="Buscar produtos"
-          className="relative pl-12 pr-10 border-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-full text-sm font-bold tracking-tight text-zinc-900 placeholder:font-medium placeholder:text-zinc-500 rounded-full z-20 bg-transparent focus:outline-none focus:ring-0 focus-visible:outline-none"
+          className="relative z-20 h-full rounded-full border-transparent bg-transparent pl-12 pr-10 text-sm font-bold tracking-tight text-zinc-900 shadow-none placeholder:font-medium placeholder:text-zinc-500 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
           placeholder={placeholder}
           autoComplete="off"
         />
@@ -264,7 +264,11 @@ export function SearchBar({
           <button
             type="button"
             onClick={handleClear}
-            className="absolute right-3 z-30 flex size-5 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-all hover:bg-zinc-900 hover:text-white active:scale-90"
+            // Laudo 05/09, M4: X de 20px (size-5) era alvo de toque abaixo
+            // do mínimo WCAG de 24px — `after:-inset-2` amplia para 36px sem
+            // mudar o visual (mesmo truque do X do cupom em CouponInput; o
+            // botão já é `absolute`, então o pseudo-elemento ancora nele).
+            className="absolute right-3 z-30 flex size-5 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-900 hover:text-white active:scale-90"
             aria-label="Limpar busca"
           >
             <X className="size-3" />
@@ -285,11 +289,11 @@ export function SearchBar({
                 setIsOpen(false);
               }
             }}
-            className="fixed inset-x-0 bottom-0 top-[calc(var(--header-height)+var(--safe-area-top))] z-[80] bg-black/25 backdrop-blur-xs animate-in fade-in duration-200 cursor-default border-none p-0 w-full text-left"
+            className="backdrop-blur-xs fixed inset-x-0 bottom-0 top-[calc(var(--header-height)+var(--safe-area-top))] z-[80] w-full cursor-default border-none bg-black/25 p-0 text-left duration-200 animate-in fade-in"
           />
 
           {/* Floating Solid White Card directly under Search Input */}
-          <div className="fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto w-[calc(100vw-24px)] max-w-lg max-h-[72vh] overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 sm:p-5 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto max-h-[72vh] w-[calc(100vw-24px)] max-w-lg overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] duration-200 animate-in fade-in slide-in-from-top-2 sm:p-5">
             {/* 1. PREDICTIVE AUTOCOMPLETE TERMS */}
             {predictedTerms.length > 0 && (
               <div className="mb-4 border-b border-zinc-100 pb-3">
@@ -305,7 +309,7 @@ export function SearchBar({
                       key={term}
                       type="button"
                       onClick={() => handleSuggestionClick(term)}
-                      className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-bold text-zinc-800 transition-all hover:border-zinc-900 hover:bg-zinc-900 hover:text-white active:scale-95 shadow-2xs"
+                      className="shadow-2xs flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-bold text-zinc-800 transition-all hover:border-zinc-900 hover:bg-zinc-900 hover:text-white active:scale-95"
                     >
                       <Search className="size-3 opacity-60" />
                       <span>{term}</span>
@@ -330,7 +334,7 @@ export function SearchBar({
                       key={cat}
                       type="button"
                       onClick={() => handleSuggestionClick(cat)}
-                      className="flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-white active:scale-95 shadow-2xs"
+                      className="shadow-2xs flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-white active:scale-95"
                     >
                       <Tag className="size-3" />
                       <span>{cat}</span>
@@ -358,10 +362,10 @@ export function SearchBar({
                       key={item.id}
                       type="button"
                       onClick={() => handleSuggestionClick(item.name, item.id)}
-                      className="group flex w-full items-center justify-between py-2.5 px-2 text-left transition-colors hover:bg-zinc-50 rounded-xl"
+                      className="group flex w-full items-center justify-between rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-zinc-50"
                     >
-                      <div className="flex items-center gap-3.5 min-w-0 pr-2">
-                        <div className="relative flex-shrink-0 size-12 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-100 shadow-2xs">
+                      <div className="flex min-w-0 items-center gap-3.5 pr-2">
+                        <div className="shadow-2xs relative size-12 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-100">
                           <img
                             src={
                               item.images[0] ||
@@ -372,14 +376,14 @@ export function SearchBar({
                             loading="lazy"
                           />
                           {item.isBestseller && (
-                            <span className="absolute top-0.5 right-0.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" />
+                            <span className="absolute right-0.5 top-0.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" />
                           )}
                         </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-[9px] font-extrabold uppercase tracking-wider text-zinc-400 truncate">
+                        <div className="flex min-w-0 flex-col">
+                          <span className="truncate text-[9px] font-extrabold uppercase tracking-wider text-zinc-400">
                             {item.category}
                           </span>
-                          <span className="text-xs font-bold text-zinc-900 truncate group-hover:text-primary transition-colors">
+                          <span className="truncate text-xs font-bold text-zinc-900 transition-colors group-hover:text-primary">
                             {item.name}
                           </span>
                           <span className="text-xs font-black text-zinc-800">
@@ -388,7 +392,7 @@ export function SearchBar({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <div className="flex flex-shrink-0 items-center gap-1.5">
                         <ArrowRight className="size-4 text-zinc-400 transition-transform group-hover:translate-x-1 group-hover:text-zinc-900" />
                       </div>
                     </button>
@@ -399,7 +403,7 @@ export function SearchBar({
                   <p className="text-xs font-bold text-zinc-700">
                     Nenhum produto encontrado para "{localValue}"
                   </p>
-                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                  <p className="mt-0.5 text-[11px] text-zinc-400">
                     Tente pesquisar por categorias ou termos mais genéricos.
                   </p>
                 </div>
@@ -407,7 +411,7 @@ export function SearchBar({
             </div>
 
             {/* 4. ACTION BANNER FOR FULL SEARCH RESULTS */}
-            <div className="mt-3 pt-2.5 border-t border-zinc-100">
+            <div className="mt-3 border-t border-zinc-100 pt-2.5">
               <button
                 type="button"
                 onClick={() => {
@@ -415,7 +419,7 @@ export function SearchBar({
                   onChange(localValue);
                   setIsOpen(false);
                 }}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 py-3 px-4 text-xs font-bold text-white transition-all hover:bg-zinc-800 active:scale-[0.98] shadow-md"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3 text-xs font-bold text-white shadow-md transition-all hover:bg-zinc-800 active:scale-[0.98]"
               >
                 <Search className="size-3.5" />
                 <span>Ver todos os resultados para "{localValue}"</span>

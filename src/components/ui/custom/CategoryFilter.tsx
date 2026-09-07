@@ -63,7 +63,10 @@ export const CategoryFilter = memo(function CategoryFilter({
               }}
               aria-label={`Selecionar categoria ${category.name}`}
               aria-pressed={isActive}
-              className="relative flex-shrink-0 rounded-full px-5 py-2 text-[10px] font-black uppercase tracking-widest outline-none transition-all duration-150 active:scale-95"
+              // Laudo 05/09, M3: `outline-none` apagava o anel de foco sem
+              // repor — anel visível só para quem navega por TECLADO, no
+              // padrão do BottomNav (onda 1 do laudo 03/09).
+              className="relative flex-shrink-0 rounded-full px-5 py-2 text-[10px] font-black uppercase tracking-widest outline-none transition-all duration-150 focus-visible:ring-2 focus-visible:ring-zinc-900/50 active:scale-95"
             >
               {isActive && (
                 <motion.div
