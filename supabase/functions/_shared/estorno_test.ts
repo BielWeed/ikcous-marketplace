@@ -14,11 +14,15 @@ import {
 
 /**
  * Suíte da Task 2 da frente "estorno pelo app" (plano
- * 20260907-plano-estorno-pelo-app.md): E1–E25 — E1–E20, um por afirmativa do
+ * 20260907-plano-estorno-pelo-app.md): E1–E27 — E1–E20, um por afirmativa do
  * plano; E21–E25 do conserto da reprovação Opus do PR #438 (laudo
  * 20260907-laudo-opus-pr438-t2-executor-do-estorno.md): fórmula acumulada,
  * credencial 401/403, "não sei" na confirmação, chave+corpo do POST e 2xx
- * desconhecido.
+ * desconhecido; E21 (rodada 2) e E26–E27 da alternativa B do I-A e do M-A
+ * (laudo 20260907-laudo-opus-pr438-t2-executor-do-estorno-rodada2.md): o
+ * caminho direto de `confirmarPorConsulta` (sem `codigo`) vira tentar_depois
+ * em vez de falhou, e `refundIdDaConsulta` desempata por `date_created` e
+ * nunca devolve o id do pagamento.
  *
  * NENHUMA chamada real ao Mercado Pago acontece aqui: todo `fetch` é dublê
  * (rota por método+trecho de URL) e a consulta da transação da order é uma
@@ -671,11 +675,31 @@ Deno.test("E21 - confirmacao compara o ACUMULADO do MP com o ACUMULADO do ledger
       },
     },
   ]);
+  // Com pré-veredito (o POST voltou 4296: o MP AFIRMOU "já devolvido"),
+  // insuficiente é definitivo — falhou, com o marcador único do achado.
+  const comCodigo = await executarEstorno({
+    linha,
+    pedido,
+    token: TOKEN,
+    buscar: mpEm30.f,
+  });
+  assertEquals(comCodigo.tipo, "falhou");
   assertEquals(
-    (await executarEstorno({ linha, pedido, token: TOKEN, buscar: mpEm30.f }))
-      .tipo,
-    "falhou",
+    (comCodigo as { codigo: string }).codigo,
+    "confirmacao_insuficiente",
   );
+
+  // Alternativa B do I-A (laudo #438 rodada 2): o caminho DIRETO — sem
+  // pré-veredito, é o que a T4 usa para linha em_processamento — nunca
+  // conclui "falhou" por consistência eventual: vira tentar_depois, para o
+  // cron poder repetir o POST com a mesma chave (R3).
+  const semCodigo = await confirmarPorConsulta({
+    buscar: mpEm30.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(semCodigo.tipo, "tentar_depois");
 
   const mpEm50 = fetchDuble([
     post4296,
@@ -733,16 +757,27 @@ Deno.test("E21 - confirmacao compara o ACUMULADO do MP com o ACUMULADO do ledger
       },
     },
   ]);
+  const ordersComCodigo = await executarEstorno({
+    linha,
+    pedido: pedidoCom30,
+    token: TOKEN,
+    buscar: orderEm30.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+  });
+  assertEquals(ordersComCodigo.tipo, "falhou");
   assertEquals(
-    (await executarEstorno({
-      linha,
-      pedido: pedidoCom30,
-      token: TOKEN,
-      buscar: orderEm30.f,
-      consultarTransacaoDaOrder: consultaTransacaoFalsa,
-    })).tipo,
-    "falhou",
+    (ordersComCodigo as { codigo: string }).codigo,
+    "confirmacao_insuficiente",
   );
+
+  // Mesma alternativa B, agora na Orders API: caminho direto -> tentar_depois.
+  const ordersSemCodigo = await confirmarPorConsulta({
+    buscar: orderEm30.f,
+    token: TOKEN,
+    linha,
+    pedido: pedidoCom30,
+  });
+  assertEquals(ordersSemCodigo.tipo, "tentar_depois");
 
   const orderEm50 = fetchDuble([
     postJaRefunded,
@@ -980,5 +1015,134 @@ Deno.test("E25 - 2xx desconhecido vira tentar_depois nas duas APIs (M4)", async 
       consultarTransacaoDaOrder: consultaTransacaoFalsa,
     })).tipo,
     "tentar_depois",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// E26–E27 — M-A do laudo (PR #438 rodada 2): refundIdDaConsulta desempata
+// pelo date_created mais recente e nunca devolve o id do pagamento.
+// ---------------------------------------------------------------------------
+
+Deno.test("E26 - refundIdDaConsulta desempata dois refunds do MESMO valor pelo date_created mais RECENTE (M-A)", async () => {
+  const linha = linhaCom({ amount: 20 });
+  const pedido = pedidoPagoCom({ total: 100, valor_estornado: 0 });
+  // O mais recente vem PRIMEIRO na lista de propósito: um desempate por
+  // posição (e nao por data) devolveria o id errado aqui.
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 20,
+        refunds: [
+          { id: 222, amount: 20, date_created: "2026-09-05T00:00:00.000Z" },
+          { id: 111, amount: 20, date_created: "2026-09-01T00:00:00.000Z" },
+        ],
+      },
+    },
+  ]);
+  const concluido = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(concluido.tipo, "concluido");
+  assertEquals((concluido as { mp_refund_id: string | null }).mp_refund_id, "222");
+
+  // Orders: mesma conta pela soma de refunds[] da order.
+  const pedidoOrd = pedidoOrder({ total: 100, valor_estornado: 0 });
+  const mpOrders = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: [{
+          refunds: [
+            {
+              id: "REEMB_NOVO",
+              amount: "20.00",
+              date_created: "2026-09-05T00:00:00.000Z",
+            },
+            {
+              id: "REEMB_VELHO",
+              amount: "20.00",
+              date_created: "2026-09-01T00:00:00.000Z",
+            },
+          ],
+        }],
+      },
+    },
+  ]);
+  const concluidaOrders = await confirmarPorConsulta({
+    buscar: mpOrders.f,
+    token: TOKEN,
+    linha,
+    pedido: pedidoOrd,
+  });
+  assertEquals(concluidaOrders.tipo, "concluido");
+  assertEquals(
+    (concluidaOrders as { mp_refund_id: string | null }).mp_refund_id,
+    "REEMB_NOVO",
+  );
+});
+
+Deno.test("E27 - sem refunds[] materializado, concluido grava mp_refund_id NULL — nunca o id do pagamento (M-A)", async () => {
+  const linha = linhaCom({ amount: 20 });
+  const pedido = pedidoPagoCom({ total: 100, valor_estornado: 0 });
+
+  // Payments: transaction_amount_refunded confirma o valor, mas refunds[]
+  // ainda não veio (consistência eventual do MP) — SEM o campo.
+  const semCampo = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: { id: 123456789, status: "approved", transaction_amount_refunded: 20 },
+    },
+  ]);
+  const concluidoSemCampo = await confirmarPorConsulta({
+    buscar: semCampo.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(concluidoSemCampo.tipo, "concluido");
+  assertEquals(
+    (concluidoSemCampo as { mp_refund_id: string | null }).mp_refund_id,
+    null,
+  );
+
+  // Payments: refunds[] presente mas VAZIO — mesmo desfecho, nunca o id do
+  // pagamento (123456789) no campo do refund.
+  const listaVazia = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 20,
+        refunds: [],
+      },
+    },
+  ]);
+  const concluidoListaVazia = await confirmarPorConsulta({
+    buscar: listaVazia.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(concluidoListaVazia.tipo, "concluido");
+  assertEquals(
+    (concluidoListaVazia as { mp_refund_id: string | null }).mp_refund_id,
+    null,
   );
 });
