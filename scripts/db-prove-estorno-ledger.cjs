@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Prova a migration 2026110000000_o_estorno_nasce_no_ledger.sql — Task 1 da
- * frente "estorno de dinheiro pelo app" (plano 20260907, T1).
+ * frente "estorno de dinheiro pelo app" (plano 20260907, T1) — e, desde a
+ * Task 3, a migration 2026110000100_concluir_estorno.sql (P12-P13).
  *
  * TUDO roda em UMA transacao terminada em ROLLBACK. Nada e gravado — nem os
  * produtos/pedidos de teste, nem o CREATE TABLE, nem as RPCs recriadas. Isso
@@ -50,9 +51,24 @@
  *   P11 GRANT/REVOKE da RPC como as demais da casa: EXECUTE so' para
  *       authenticated; nada para PUBLIC nem anon.
  *
- * TESTE DE ROLLBACK (plano T1 Step 5): ao final, com a migration aplicada
- * DENTRO desta mesma transacao, aplica o rollback-manual e confere que a
- * tabela, a coluna e a RPC somem e que update_order_status_atomic volta
+ * AS AFIRMATIVAS DA TASK 3 (concluir_estorno, plano T3 Step 3, adicionadas
+ * em 07/09 pela frente estorno-t3-impl):
+ *   P12 concluir_estorno soma valor_estornado e muda payment_status para
+ *       'estornado' SO' no total: (P12a) linha total de R$ 100 concluida
+ *       -> valor_estornado=100 e payment_status='estornado'; (P12b) linha
+ *       parcial de R$ 30 -> valor_estornado=30 e payment_status SEGUE
+ *       'pago'; (P12c) grants no mesmo formato das demais da casa.
+ *   P13 chamada repetida NAO soma duas vezes — o UPDATE so' pega linha com
+ *       (status <> 'concluido' OR concluido_em IS NULL): (P13a) chamar de
+ *       novo na linha concluida do P12a mantem valor_estornado=100 e
+ *       devolve ja_concluida; (P13b) linha nascida 'concluido' com
+ *       concluido_em NULL (o caminho do webhook na Task 5 — estorno feito
+ *       fora do app) soma UMA vez, e a repetida nao soma.
+ *
+ * TESTE DE ROLLBACK (plano T1 Step 5): ao final, com as migrations aplicadas
+ * DENTRO desta mesma transacao, aplica o rollback-manual da T3 (a funcao
+ * concluir_estorno some) e depois o da T1, e confere que a tabela, a coluna
+ * e a RPC somem e que update_order_status_atomic volta
  * sem nenhuma referencia a order_refunds. Depois o ROLLBACK final devolve
  * o banco ao estado inicial.
  *
@@ -71,6 +87,9 @@ const { Client } = require("pg");
 const RAIZ = path.resolve(__dirname, "..");
 const MIGRATION = "2026110000000_o_estorno_nasce_no_ledger.sql";
 const ROLLBACK = "rollback-manual-2026110000000_o_estorno_nasce_no_ledger.sql";
+// Task 3 (estorno-t3-impl): a RPC concluir_estorno nasce em migration PROPIA.
+const MIGRATION_T3 = "2026110000100_concluir_estorno.sql";
+const ROLLBACK_T3 = "rollback-manual-2026110000100_concluir_estorno.sql";
 
 // Cenario fixo (filho do padrao do db-prove-devolucao-de-uso-de-cupom.cjs):
 // 1 unidade de um produto de R$ 100,00 com frete GRATIS "sempre" (sentinela
@@ -372,6 +391,39 @@ async function main() {
     } else {
       console.log(
         `banco: ${MIGRATION} AINDA NAO EXISTE no disco — nada foi aplicado; P1-P11 correm contra o estado atual (vermelho do TDD)\n`,
+      );
+    }
+
+    // Task 3: concluir_estorno em migration PROPIA, aplicada junto (a prova
+    // dela precisa do ledger da T1 vivo DENTRO da transacao). Se a T1 nao
+    // foi aplicada aqui, a T3 tampouco roda — P12/P13 falham no vermelho.
+    const caminhoMigrationT3 = path.join(
+      RAIZ,
+      "supabase",
+      "migrations",
+      MIGRATION_T3,
+    );
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    const migrationT3Existe = fs.existsSync(caminhoMigrationT3);
+    if (migrationT3Existe && migrationExiste) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      const sqlT3 = fs.readFileSync(caminhoMigrationT3, "utf8");
+      if (/^\s*(BEGIN|COMMIT)\s*;/im.test(sqlT3)) {
+        throw new Error(
+          `${MIGRATION_T3} tem BEGIN/COMMIT embutido: o ROLLBACK desta prova viraria no-op. Abortando.`,
+        );
+      }
+      await client.query(sqlT3);
+      console.log(
+        `banco: ${MIGRATION_T3} aplicada DENTRO da transacao (ROLLBACK no final)\n`,
+      );
+    } else if (migrationT3Existe && !migrationExiste) {
+      console.log(
+        `banco: ${MIGRATION_T3} existe mas ${MIGRATION} nao — T3 nao aplicada (o ledger e' pre-requisito); P12/P13 falham no vermelho\n`,
+      );
+    } else {
+      console.log(
+        `banco: ${MIGRATION_T3} AINDA NAO EXISTE no disco — P12/P13 correm contra o estado atual (vermelho do TDD da Task 3)\n`,
       );
     }
 
@@ -911,9 +963,314 @@ async function main() {
     }
 
     // =========================================================================
-    // TESTE DE ROLLBACK (T1 Step 5): migration + rollback + P1 invertida,
+    // P12/P13 — concluir_estorno (Task 3, migration 2026110000100): a soma
+    // atômica de valor_estornado + a virada condicional de payment_status +
+    // a idempotência da chamada repetida.
+    // =========================================================================
+    console.log(
+      "\n=== P12: concluir_estorno soma e vira payment_status so' no total ===",
+    );
+    // P12a — linha TOTAL nasce pelo caminho REAL: cliente cancela pedido
+    // processing pago de R$ 100 (a linha nasce na MESMA transacao, T1 P3).
+    const p12a = await criarPedidoPago(client, {
+      produtoId,
+      clienteId: cliente.id,
+      gatewayId: "PAY_PROVA_P12A",
+      status: "processing",
+    });
+    await cancelarComo(client, cliente.id, false, p12a);
+    const { rows: linhaP12a } = await client.query(
+      "SELECT id, amount, status FROM public.order_refunds WHERE order_id = $1",
+      [p12a],
+    );
+    const refundP12a = linhaP12a[0]?.id;
+    const rP12a = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.concluir_estorno($1::uuid, '111222333'::text, 'approved'::text, NULL::text) AS r",
+      [refundP12a],
+    );
+    conferir(
+      "P12a: chamada aceita (sem erro)",
+      rP12a.ok === true,
+      rP12a.ok ? "" : `msg=${rP12a.erro?.message}`,
+    );
+    if (rP12a.ok) {
+      const r = rP12a.rows[0].r;
+      conferir(
+        "P12a: retorno {concluido:true, ja_concluida:false}",
+        r.concluido === true && r.ja_concluida === false,
+        `r=${JSON.stringify(r)}`,
+      );
+      const { rows: posP12a } = await client.query(
+        `SELECT (SELECT status FROM public.order_refunds WHERE id = $1) AS status,
+                (SELECT mp_refund_id FROM public.order_refunds WHERE id = $1) AS mp_refund_id,
+                (SELECT concluido_em IS NOT NULL FROM public.order_refunds WHERE id = $1) AS tem_carimbo,
+                (SELECT valor_estornado FROM public.marketplace_orders WHERE id = $2) AS valor_estornado,
+                (SELECT payment_status FROM public.marketplace_orders WHERE id = $2) AS payment_status`,
+        [refundP12a, p12a],
+      );
+      conferir(
+        "P12a: linha concluida com mp_refund_id e concluido_em carimbados",
+        posP12a[0].status === "concluido" &&
+          posP12a[0].mp_refund_id === "111222333" &&
+          posP12a[0].tem_carimbo === true,
+        `pos=${JSON.stringify(posP12a[0])}`,
+      );
+      conferir(
+        "P12a: valor_estornado somou 100 e payment_status virou 'estornado' (total)",
+        Number(posP12a[0].valor_estornado) === TOTAL &&
+          posP12a[0].payment_status === "estornado",
+        `valor=${posP12a[0].valor_estornado} ps=${posP12a[0].payment_status}`,
+      );
+    }
+
+    // P12b — PARCIAL: pedido enviado cancelado com produto de volta, linha de
+    // R$ 30 pelo botao (solicitar_estorno) -> concluida -> soma 30 e
+    // payment_status SEGUE 'pago' (30 < 100 — o CASE so' vira no total).
+    const p12b = await criarPedidoPago(client, {
+      produtoId,
+      clienteId: cliente.id,
+      gatewayId: "PAY_PROVA_P12B",
+      status: "shipping",
+    });
+    await cancelarComo(client, cliente.id, false, p12b);
+    await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.confirmar_retorno_do_produto($1::uuid) AS r",
+      [p12b],
+    );
+    const rP12bSol = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.solicitar_estorno($1::uuid, $2::numeric, NULL::text) AS r",
+      [p12b, 30],
+    );
+    const refundP12b = rP12bSol.ok ? rP12bSol.rows[0].r.refund_id : null;
+    const rP12b = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.concluir_estorno($1::uuid, '444555666'::text, 'approved'::text, 'partially_refunded'::text) AS r",
+      [refundP12b],
+    );
+    conferir(
+      "P12b: chamada aceita (sem erro)",
+      rP12b.ok === true,
+      rP12b.ok ? "" : `msg=${rP12b.erro?.message}`,
+    );
+    if (rP12b.ok) {
+      const { rows: posP12b } = await client.query(
+        `SELECT (SELECT status FROM public.order_refunds WHERE id = $1) AS status,
+                (SELECT valor_estornado FROM public.marketplace_orders WHERE id = $2) AS valor_estornado,
+                (SELECT payment_status FROM public.marketplace_orders WHERE id = $2) AS payment_status`,
+        [refundP12b, p12b],
+      );
+      conferir(
+        "P12b: linha concluida",
+        posP12b[0].status === "concluido",
+        `pos=${JSON.stringify(posP12b[0])}`,
+      );
+      conferir(
+        "P12b: valor_estornado somou 30 e payment_status SEGUE 'pago' (parcial nao vira)",
+        Number(posP12b[0].valor_estornado) === 30 &&
+          posP12b[0].payment_status === "pago",
+        `valor=${posP12b[0].valor_estornado} ps=${posP12b[0].payment_status}`,
+      );
+    }
+
+    // P12c — grants no mesmo formato das demais da casa (regua: a propria
+    // solicitar_estorno, conferida no P11).
+    console.log(
+      "\n=== P12c: EXECUTE so' para authenticated (regua da casa) ===",
+    );
+    const { rows: grantsT3 } = await client.query(
+      `SELECT routine_name, grantee, privilege_type
+         FROM information_schema.routine_privileges
+        WHERE routine_schema = 'public'
+          AND routine_name IN ('concluir_estorno', 'solicitar_estorno')
+        ORDER BY routine_name, grantee`,
+    );
+    const daConcluir = grantsT3.filter(
+      (g) => g.routine_name === "concluir_estorno",
+    );
+    const daSolicitar = grantsT3.filter(
+      (g) => g.routine_name === "solicitar_estorno",
+    );
+    conferir(
+      "P12c: concluir_estorno tem EXECUTE para authenticated e para NINGUEM de fora",
+      daConcluir.some((g) => g.grantee === "authenticated") &&
+        daConcluir.every((g) =>
+          ["authenticated", "postgres", "service_role"].includes(g.grantee),
+        ),
+      `grants=${JSON.stringify(daConcluir)}`,
+    );
+    conferir(
+      "P12c: o mesmo formato de grants de solicitar_estorno (a regua da casa)",
+      daConcluir
+        .map((g) => `${g.grantee}:${g.privilege_type}`)
+        .sort()
+        .join(",") ===
+        daSolicitar
+          .map((g) => `${g.grantee}:${g.privilege_type}`)
+          .sort()
+          .join(","),
+      `concluir=[${daConcluir.map((g) => g.grantee)}] solicitar=[${daSolicitar.map((g) => g.grantee)}]`,
+    );
+
+    // =========================================================================
+    // P13 — idempotencia: chamada repetida NAO soma duas vezes.
+    // =========================================================================
+    console.log("\n=== P13: chamada repetida nao soma duas vezes ===");
+    // P13a — a MESMA linha do P12a, chamada de novo (o webhook e o cron podem
+    // completar o que a edge ja completou): o UPDATE nao pega (status =
+    // 'concluido' E concluido_em preenchido), nada soma, nada sobrescreve.
+    const rP13a = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.concluir_estorno($1::uuid, '999000999'::text, 'refunded'::text, NULL::text) AS r",
+      [refundP12a],
+    );
+    conferir(
+      "P13a: chamada repetida aceita (idempotente, sem erro)",
+      rP13a.ok === true,
+      rP13a.ok ? "" : `msg=${rP13a.erro?.message}`,
+    );
+    if (rP13a.ok) {
+      const r = rP13a.rows[0].r;
+      conferir(
+        "P13a: retorno diz ja_concluida=true",
+        r.ja_concluida === true,
+        `r=${JSON.stringify(r)}`,
+      );
+      const { rows: posP13a } = await client.query(
+        `SELECT (SELECT valor_estornado FROM public.marketplace_orders WHERE id = $2) AS valor_estornado,
+                (SELECT mp_refund_id FROM public.order_refunds WHERE id = $1) AS mp_refund_id`,
+        [refundP12a, p12a],
+      );
+      conferir(
+        "P13a: valor_estornado continua 100 (NAO somou de novo) e o mp_refund_id nao foi sobrescrito",
+        Number(posP13a[0].valor_estornado) === TOTAL &&
+          posP13a[0].mp_refund_id === "111222333",
+        `valor=${posP13a[0].valor_estornado} mp=${posP13a[0].mp_refund_id}`,
+      );
+    }
+
+    // P13b — linha NASCIDA 'concluido' com concluido_em NULL: e' o caminho do
+    // webhook na Task 5 (estorno feito FORA do app: a linha e' inserida ja'
+    // concluida e a RPC e' chamada na sequencia para somar). A guarda
+    // (status <> 'concluido' OR concluido_em IS NULL) deixa esta SOMAR uma
+    // vez — e a repetida, nao. Sem a segunda clausula, o plano da T5 nasceria
+    // quebrado por construcao (linha concluida que nunca soma).
+    const p13b = await criarPedidoPago(client, {
+      produtoId,
+      clienteId: cliente.id,
+      gatewayId: "PAY_PROVA_P13B",
+      status: "processing",
+    });
+    await cancelarComo(client, cliente.id, false, p13b);
+    const { rows: insP13b } = await client.query(
+      `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status, mp_status)
+       VALUES ($1, 40, 'estorno feito fora do app (prova P13b)', 'sistema', 'concluido', 'refunded')
+       RETURNING id`,
+      [p13b],
+    );
+    const refundP13b = insP13b[0].id;
+    const rP13b = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.concluir_estorno($1::uuid, '777888'::text, 'refunded'::text, NULL::text) AS r",
+      [refundP13b],
+    );
+    conferir(
+      "P13b: linha nascida concluida (webhook, T5) SOMA na primeira chamada",
+      rP13b.ok === true && rP13b.ok && rP13b.rows[0].r.ja_concluida === false,
+      rP13b.ok
+        ? `r=${JSON.stringify(rP13b.rows[0].r)}`
+        : `msg=${rP13b.erro?.message}`,
+    );
+    const rP13b2 = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.concluir_estorno($1::uuid, '777888'::text, 'refunded'::text, NULL::text) AS r",
+      [refundP13b],
+    );
+    const { rows: posP13b } = await client.query(
+      `SELECT (SELECT valor_estornado FROM public.marketplace_orders WHERE id = $2) AS valor_estornado,
+              (SELECT payment_status FROM public.marketplace_orders WHERE id = $2) AS payment_status,
+              (SELECT concluido_em IS NOT NULL FROM public.order_refunds WHERE id = $1) AS tem_carimbo`,
+      [refundP13b, p13b],
+    );
+    conferir(
+      "P13b: somou UMA vez (40) e a repetida nao somou (segue 40, nao 80)",
+      Number(posP13b[0].valor_estornado) === 40,
+      `valor=${posP13b[0].valor_estornado}`,
+    );
+    conferir(
+      "P13b: payment_status segue 'pago' (40 < 100) e concluido_em foi carimbado",
+      posP13b[0].payment_status === "pago" && posP13b[0].tem_carimbo === true,
+      `ps=${posP13b[0].payment_status} carimbo=${posP13b[0].tem_carimbo}`,
+    );
+    conferir(
+      "P13b: a repetida devolve ja_concluida=true",
+      rP13b2.ok === true && rP13b2.rows[0].r.ja_concluida === true,
+      rP13b2.ok
+        ? `r=${JSON.stringify(rP13b2.rows[0].r)}`
+        : `msg=${rP13b2.erro?.message}`,
+    );
+
+    // =========================================================================
+    // TESTE DE ROLLBACK (T1 Step 5): migration + rollback-manual + P1 invertida,
     // tudo dentro desta MESMA transacao (o ROLLBACK final devolve tudo).
     // =========================================================================
+    // =========================================================================
+    // TESTE DE ROLLBACK da Task 3 (concluir_estorno): aplicado ANTES do
+    // rollback da T1 (ordem inversa da aplicacao), a funcao some.
+    // =========================================================================
+    console.log("\n=== rollback T3: rollback-manual da concluir_estorno ===");
+    const caminhoRollbackT3 = path.join(
+      RAIZ,
+      "supabase",
+      "migrations",
+      ROLLBACK_T3,
+    );
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    if (!fs.existsSync(caminhoRollbackT3)) {
+      conferir(
+        "rollback T3: arquivo rollback-manual versionado existe",
+        false,
+        caminhoRollbackT3,
+      );
+    } else {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      const sqlRollbackT3 = fs.readFileSync(caminhoRollbackT3, "utf8");
+      if (/^\s*(BEGIN|COMMIT)\s*;/im.test(sqlRollbackT3)) {
+        throw new Error(
+          `${ROLLBACK_T3} tem BEGIN/COMMIT embutido: o ROLLBACK desta prova viraria no-op. Abortando.`,
+        );
+      }
+      if (!(migrationT3Existe && migrationExiste)) {
+        conferir(
+          "rollback T3: aplicado apos a migration (pulado — T3 nao aplicada no vermelho)",
+          false,
+          "sem migration aplicada nao ha o que desfazer",
+        );
+      } else {
+        await client.query(sqlRollbackT3);
+        const { rows: posT3 } = await client.query(`
+          SELECT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                          WHERE n.nspname='public' AND p.proname='concluir_estorno') AS rpc`);
+        conferir("rollback T3: concluir_estorno some", posT3[0].rpc === false);
+      }
+    }
+
     console.log(
       "\n=== rollback: migration + rollback-manual + P1 invertida ===",
     );
