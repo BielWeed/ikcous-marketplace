@@ -393,11 +393,16 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                 // Unifica o formato com o 409 de cima (passo 2, {erro, status}
                 // — anotado no laudo do PR #439): uma releitura rápida diz
                 // qual é esse estado real (a T6 consome o campo).
-                const { data: linhaAtual } = await supabase
+                const { data: linhaAtual, error: erroReleitura } = await supabase
                     .from('order_refunds')
                     .select('status')
                     .eq('id', refundId)
                     .maybeSingle()
+                if (erroReleitura) {
+                    // Sem isto, `status: null` teria dois significados (linha sumiu
+                    // × não consegui ler) e nenhum rastro no log (laudo rodada 3).
+                    console.error('[estornar-pagamento] Erro ao reler a linha para o 409:', erroReleitura)
+                }
                 return json({ erro: 'estorno_ja_tratado', status: linhaAtual?.status ?? null }, 409)
             }
             const valor = Number(linha.amount)
