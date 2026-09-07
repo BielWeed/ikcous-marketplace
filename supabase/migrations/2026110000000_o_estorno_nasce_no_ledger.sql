@@ -164,6 +164,11 @@ COMMENT ON COLUMN public.marketplace_orders.valor_estornado IS
 -- 4. solicitar_estorno: o botao do lojista (regra 24/08, lado do enviado)
 -- ============================================================================
 
+-- Padrao da casa tambem para funcao nova (M3 do laudo do PR #436): DROP IF
+-- EXISTS antes do CREATE — re-aplicar TROCA a funcao em vez de criar uma
+-- segunda sobrecarga; os grants sao recasados explicitos logo abaixo.
+DROP FUNCTION IF EXISTS public.solicitar_estorno(uuid, numeric, text);
+
 CREATE OR REPLACE FUNCTION public.solicitar_estorno(
     p_order_id uuid,
     p_amount numeric,
@@ -242,7 +247,8 @@ BEGIN
     END IF;
 
     IF p_amount > v_saldo THEN
-        RAISE EXCEPTION 'O valor pedido (%) é maior que o valor disponível para devolver (%).', p_amount, v_saldo
+        RAISE EXCEPTION 'O valor pedido (R$ %) é maior que o valor disponível para devolver (R$ %).',
+            to_char(p_amount, 'FM999G999D00'), to_char(v_saldo, 'FM999G999D00')
             USING ERRCODE = 'P0001';
     END IF;
 
@@ -273,7 +279,10 @@ GRANT EXECUTE ON FUNCTION public.solicitar_estorno(uuid, numeric, text) TO authe
 -- ver o cabecalho desta migration para o porquê de nao copiar da
 -- 20260970000000. Mudas: (a) o SELECT do topo le' tambem payment_status,
 -- paid_at e total; (b) o bloco do LEDGER logo apos o bloco
--- cancelled_after_shipping. Mais NADA.
+-- cancelled_after_shipping, ja' nascendo com a MESMA guarda
+-- NOT v_cancelled_after_shipping do bloco de estoque (laudo C2 do PR
+-- #436: o ciclo enviado->cancela->reativa->cancela nao pode gerar linha
+-- com o produto na mao do cliente). Mais NADA.
 --
 -- DROP antes + GRANTs explicitos depois (regra da casa: recriacao de
 -- funcao recasa os grants — nunca confiar no default).
@@ -358,6 +367,14 @@ BEGIN
     --   v_old_status IN ('pending','processing'): pedido que NAO saiu.
     --     Shipping fica FORA — estorno manual do lojista, depois do retorno
     --     (solicitar_estorno e' a porta; a regra de 24/08 do lado do enviado).
+    --   NOT v_cancelled_after_shipping (laudo C2 do PR #436): "nao enviado"
+    --     NAO e' so' o status antigo. Pedido enviado, cancelado e REATIVADO
+    --     pela loja para processing tem v_old_status='processing' com o
+    --     produto NA MAO DO CLIENTE — a coluna nunca volta a false. E' a
+    --     MESMA guarda que o bloco de estoque la' embaixo ja' usa; sem ela,
+    --     este ciclo nasceria linha automatica com returned_to_seller_at
+    --     NULL (estorno com o produto fora da loja — exatamente o que
+    --     solicitar_estorno recusa no lado manual da regra).
     --   payment_status IN ('pago','pago_apos_expirar') AND paid_at IS NOT
     --     NULL: as DUAS condicoes (o plano exigiu as duas — dado legado pode
     --     ter payment_status='pago' sem paid_at, e esse nao gera linha).
@@ -372,6 +389,7 @@ BEGIN
        AND v_old_status IN ('pending', 'processing')
        AND v_payment_status IN ('pago', 'pago_apos_expirar')
        AND v_paid_at IS NOT NULL
+       AND NOT v_cancelled_after_shipping
        AND NOT EXISTS (
             SELECT 1 FROM public.order_refunds
              WHERE order_id = p_order_id

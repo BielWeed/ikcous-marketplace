@@ -27,10 +27,22 @@
  *       (a guarda NOT EXISTS e' o que segura; v_old_status sozinho nao).
  *   P5  cancelar pedido shipping PAGO NAO cria linha (estorno manual,
  *       depois do retorno — regra 24/08 do lado do enviado).
+ *   P3b (laudo C2 do PR #436; o laudo chama este check de P5b) o ciclo
+ *       enviado -> cancela (zero linhas, P5) -> loja REATIVA para
+ *       processing -> cancela DE NOVO: continua ZERO linhas. Sem o bloco
+ *       do ledger ler cancelled_after_shipping (como o bloco de estoque
+ *       ja le'), este segundo cancelamento nasceria linha automatica com
+ *       o produto na mao do cliente e returned_to_seller_at NULL.
  *   P6  cancelar pedido pending NAO pago NAO cria linha.
  *   P7  solicitar_estorno como nao-admin lanca 42501.
  *   P8  solicitar_estorno com p_amount maior que o saldo lanca erro com
  *       texto "maior que o valor disponivel".
+ *   P8b (laudo I1 do PR #436) o termo "em curso" do saldo tem controle:
+ *       com linha viva de R$ 30 num pedido de R$ 100, pedir R$ 80 RECUSA
+ *       ("maior que o valor disponivel") e R$ 70 (o saldo exato) ACEITA;
+ *       e num pedido que ja tem R$ 100 em curso (pos-P10), pedir R$ 0,01
+ *       RECUSA. Sem o "- em curso" da formula do saldo, estas aceitariam
+ *       dinheiro a mais — apagar o termo mantinha a suite verde.
  *   P9  solicitar_estorno em pedido cancelado apos envio SEM
  *       returned_to_seller_at lanca "produto ainda nao voltou".
  *   P10 com returned_to_seller_at preenchido, cria a linha 'lojista' e
@@ -90,6 +102,7 @@ function lerDatabaseUrl() {
     const caminho = path.join(RAIZ, arquivo);
     // eslint-disable-next-line security/detect-non-literal-fs-filename
     if (!fs.existsSync(caminho)) continue;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     const linha = fs
       .readFileSync(caminho, "utf8")
       .split(/\r?\n/)
@@ -179,7 +192,7 @@ async function conferirIsAdmin(client, sub, email, esperado) {
  * UPDATE manual de cenario. Depois amarra o gateway e confirma o pagamento
  * pela RPC oficial, para payment_status/paid_at nascerem pelo caminho real.
  */
-async function criarPedidoBase(client, { produtoId, clienteId, gatewayId }) {
+async function criarPedidoBase(client, { produtoId, clienteId }) {
   const itens = JSON.stringify([{ product_id: produtoId, quantity: 1 }]);
   await client.query("SET LOCAL ROLE authenticated");
   await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
@@ -213,8 +226,15 @@ async function criarPedidoBase(client, { produtoId, clienteId, gatewayId }) {
   return orderId;
 }
 
-async function criarPedidoPago(client, { produtoId, clienteId, gatewayId, status }) {
-  const orderId = await criarPedidoBase(client, { produtoId, clienteId, gatewayId });
+async function criarPedidoPago(
+  client,
+  { produtoId, clienteId, gatewayId, status },
+) {
+  const orderId = await criarPedidoBase(client, {
+    produtoId,
+    clienteId,
+    gatewayId,
+  });
   await client.query(
     "UPDATE public.marketplace_orders SET gateway_payment_id = $2 WHERE id = $1",
     [orderId, gatewayId],
@@ -224,7 +244,9 @@ async function criarPedidoPago(client, { produtoId, clienteId, gatewayId, status
     [orderId, gatewayId],
   );
   if (pagos[0].r !== "pago" && pagos[0].r !== "ja_pago") {
-    throw new Error(`confirmar_pagamento devolveu '${pagos[0].r}' — cenario quebrado.`);
+    throw new Error(
+      `confirmar_pagamento devolveu '${pagos[0].r}' — cenario quebrado.`,
+    );
   }
   if (status) {
     await client.query(
@@ -237,7 +259,10 @@ async function criarPedidoPago(client, { produtoId, clienteId, gatewayId, status
 
 /** Pedido NAO pago (payment_status 'aguardando'), dono = cliente. */
 async function criarPedidoNaoPago(client, { produtoId, clienteId, status }) {
-  const orderId = await criarPedidoBase(client, { produtoId, clienteId, gatewayId: null });
+  const orderId = await criarPedidoBase(client, {
+    produtoId,
+    clienteId,
+  });
   if (status) {
     await client.query(
       "UPDATE public.marketplace_orders SET status = $2 WHERE id = $1",
@@ -324,7 +349,12 @@ async function main() {
       );
     }
 
-    const caminhoMigration = path.join(RAIZ, "supabase", "migrations", MIGRATION);
+    const caminhoMigration = path.join(
+      RAIZ,
+      "supabase",
+      "migrations",
+      MIGRATION,
+    );
     // eslint-disable-next-line security/detect-non-literal-fs-filename
     const migrationExiste = fs.existsSync(caminhoMigration);
     if (migrationExiste) {
@@ -332,8 +362,7 @@ async function main() {
       const sql = fs.readFileSync(caminhoMigration, "utf8");
       if (/^\s*(BEGIN|COMMIT)\s*;/im.test(sql)) {
         throw new Error(
-          `${MIGRATION} tem BEGIN/COMMIT embutido: o ROLLBACK desta prova viraria no-op ` +
-            "e a mudanca ficaria gravada. Abortando.",
+          `${MIGRATION} tem BEGIN/COMMIT embutido: o ROLLBACK desta prova viraria no-op e a mudanca ficaria gravada. Abortando.`,
         );
       }
       await client.query(sql);
@@ -342,8 +371,7 @@ async function main() {
       );
     } else {
       console.log(
-        `banco: ${MIGRATION} AINDA NAO EXISTE no disco — nada foi aplicado; ` +
-          "P1-P11 correm contra o estado atual (vermelho do TDD)\n",
+        `banco: ${MIGRATION} AINDA NAO EXISTE no disco — nada foi aplicado; P1-P11 correm contra o estado atual (vermelho do TDD)\n`,
       );
     }
 
@@ -384,12 +412,20 @@ async function main() {
       const checkStatus = checks.find(
         (c) => c.d.includes("status") && c.d.includes("solicitado"),
       );
-      const cinco = ["solicitado", "em_processamento", "concluido", "falhou", "recusado"];
+      const cinco = [
+        "solicitado",
+        "em_processamento",
+        "concluido",
+        "falhou",
+        "recusado",
+      ];
       conferir(
         "P1: CHECK de status admite os EXATOS 5 estados da maquina do plano",
-        cinco.every((s) => checkStatus && checkStatus.d.includes(`'${s}'`)) &&
-          !checkStatus.d.includes("'xpto_nunca'"),
-        checkStatus ? `def: ${checkStatus.d}` : "check de status nao encontrado",
+        cinco.every((s) => checkStatus?.d.includes(`'${s}'`)) &&
+          !checkStatus?.d.includes("'xpto_nunca'"),
+        checkStatus
+          ? `def: ${checkStatus.d}`
+          : "check de status nao encontrado",
       );
 
       // INSERT com status invalido TEM de violar (a prova negativa do CHECK).
@@ -411,12 +447,23 @@ async function main() {
       await client.query("ROLLBACK TO SAVEPOINT tentativa");
       conferir(
         "P1: INSERT com status fora dos 5 e REJEITADO (check negativo)",
-        ruim !== null && /order_refunds_status_check|check constraint/i.test(String(ruim?.message)),
+        ruim !== null &&
+          /order_refunds_status_check|check constraint/i.test(
+            String(ruim?.message),
+          ),
         ruim ? `erro: ${ruim.message}` : "aceitou status invalido!",
       );
     } else {
-      conferir("P1: CHECK de status admite os EXATOS 5 estados", false, "tabela inexistente");
-      conferir("P1: INSERT com status fora dos 5 e REJEITADO", false, "tabela inexistente");
+      conferir(
+        "P1: CHECK de status admite os EXATOS 5 estados",
+        false,
+        "tabela inexistente",
+      );
+      conferir(
+        "P1: INSERT com status fora dos 5 e REJEITADO",
+        false,
+        "tabela inexistente",
+      );
     }
 
     // =========================================================================
@@ -443,7 +490,9 @@ async function main() {
     // =========================================================================
     // P3 — cancelar processing pago como CLIENTE cria a linha
     // =========================================================================
-    console.log("\n=== P3: cancelamento pago SEM envio (cliente) nasce no ledger ===");
+    console.log(
+      "\n=== P3: cancelamento pago SEM envio (cliente) nasce no ledger ===",
+    );
     const p3 = await criarPedidoPago(client, {
       produtoId,
       clienteId: cliente.id,
@@ -472,7 +521,9 @@ async function main() {
     // =========================================================================
     // P4 — cancelar DE NAO cria segunda linha (ciclo forte: reativar e cancelar)
     // =========================================================================
-    console.log("\n=== P4: segunda linha nao existe (nem reativando e cancelando) ===");
+    console.log(
+      "\n=== P4: segunda linha nao existe (nem reativando e cancelando) ===",
+    );
     // (a) cancelar DE NOVO, direto — como admin (cliente e' barrado pela guarda
     // de status, que e' justamente o comportamento certo; o segundo cancela-
     // mento valido so' existe pela mao da loja).
@@ -492,7 +543,9 @@ async function main() {
     // =========================================================================
     // P5 — pedido shipping pago cancelado NAO cria linha
     // =========================================================================
-    console.log("\n=== P5: cancelamento pago JA ENVIADO nao nasce linha (regra 24/08) ===");
+    console.log(
+      "\n=== P5: cancelamento pago JA ENVIADO nao nasce linha (regra 24/08) ===",
+    );
     const p5 = await criarPedidoPago(client, {
       produtoId,
       clienteId: cliente.id,
@@ -515,6 +568,37 @@ async function main() {
       estadoP5[0].status === "cancelled" &&
         estadoP5[0].cancelled_after_shipping === true &&
         estadoP5[0].returned_to_seller_at === null,
+    );
+
+    // =========================================================================
+    // P3b — o ciclo do C2 (laudo do PR #436; o laudo chama de P5b): enviado
+    // > cancela (zero linhas, acima) > loja REATIVA para processing >
+    // cancela DE NOVO -> TEM de continuar ZERO. v_old_status volta a ser
+    // 'processing' e a coluna cancelled_after_shipping CONTINUA true (ela
+    // nunca volta a false): sem a guarda NOT v_cancelled_after_shipping no
+    // bloco do ledger — a mesma que o bloco de estoque ja usa —, este
+    // segundo cancelamento nasceria linha automatica de R$ 100 com o
+    // produto na mao do cliente e returned_to_seller_at NULL.
+    // =========================================================================
+    console.log(
+      "\n=== P3b: reativado e cancelado de novo, enviado continua sem linha ===",
+    );
+    await mudarStatusComoAdmin(client, admin.id, p5, "processing");
+    const { rows: reativadoP3b } = await client.query(
+      "SELECT status, cancelled_after_shipping FROM public.marketplace_orders WHERE id = $1",
+      [p5],
+    );
+    conferir(
+      "P3b (cenario): reativado para processing, cancelled_after_shipping CONTINUA true",
+      reativadoP3b[0].status === "processing" &&
+        reativadoP3b[0].cancelled_after_shipping === true,
+    );
+    await cancelarComo(client, cliente.id, false, p5);
+    const linhasP3b = tabelaExiste ? await linhasDeEstorno(client, p5) : [];
+    conferir(
+      "P3b: enviado->cancela->reativa->cancela NAO cria linha (guarda cancelled_after_shipping do ledger)",
+      linhasP3b.length === 0,
+      `linhas=${linhasP3b.length}`,
     );
 
     // =========================================================================
@@ -548,7 +632,9 @@ async function main() {
     conferir(
       "P7: nao-admin recebe 42501",
       p7.ok === false && p7.erro?.code === "42501",
-      p7.ok ? "nao lançou erro" : `code=${p7.erro?.code} msg=${p7.erro?.message}`,
+      p7.ok
+        ? "nao lançou erro"
+        : `code=${p7.erro?.code} msg=${p7.erro?.message}`,
     );
 
     // =========================================================================
@@ -556,7 +642,9 @@ async function main() {
     // (antes do P8 de proposito: a guarda da regra 24/08 vem antes da de
     // saldo, e o P8 so' mede saldo de verdade em pedido COM retorno.)
     // =========================================================================
-    console.log("\n=== P9: enviado sem retorno — o lojista nao devolve antes do produto voltar ===");
+    console.log(
+      "\n=== P9: enviado sem retorno — o lojista nao devolve antes do produto voltar ===",
+    );
     const p9 = await tentarComo(
       client,
       admin.id,
@@ -605,7 +693,9 @@ async function main() {
     // =========================================================================
     // P10 — com retorno confirmado, cria a linha do lojista
     // =========================================================================
-    console.log("\n=== P10: enviado, produto voltou — o lojista pede a devolucao ===");
+    console.log(
+      "\n=== P10: enviado, produto voltou — o lojista pede a devolucao ===",
+    );
     const p10 = await tentarComo(
       client,
       admin.id,
@@ -613,7 +703,11 @@ async function main() {
       "SELECT public.solicitar_estorno($1::uuid, $2::numeric, 'devolucao combinada'::text) AS r",
       [p5, TOTAL],
     );
-    conferir("P10: chamada aceita (sem erro)", p10.ok === true, p10.ok ? "" : `msg=${p10.erro?.message}`);
+    conferir(
+      "P10: chamada aceita (sem erro)",
+      p10.ok === true,
+      p10.ok ? "" : `msg=${p10.erro?.message}`,
+    );
     if (p10.ok) {
       const r = p10.rows[0].r;
       const linhasP10 = await linhasDeEstorno(client, p5);
@@ -643,9 +737,93 @@ async function main() {
     }
 
     // =========================================================================
+    // P8b — o termo "em curso" do saldo tem controle (laudo I1 do PR #436).
+    // O P8 acima mediu recusa num pedido com ZERO linhas vivas: apagar o
+    // "- v_em_curso" da formula do saldo mantinha a suite inteira verde.
+    // Aqui a linha viva EXISTE e reserva saldo — nos dois sentidos: pedir
+    // acima do saldo restante recusa, pedir o exato aceita.
+    // =========================================================================
+    console.log(
+      "\n=== P8b: linha em andamento reserva saldo (o termo em curso) ===",
+    );
+    const p8b = await criarPedidoPago(client, {
+      produtoId,
+      clienteId: cliente.id,
+      gatewayId: "PAY_PROVA_P8B",
+      status: "shipping",
+    });
+    await cancelarComo(client, cliente.id, false, p8b);
+    const retorno8b = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.confirmar_retorno_do_produto($1::uuid) AS r",
+      [p8b],
+    );
+    conferir(
+      "P8b (cenario): produto do pedido novo voltou (retorno confirmado)",
+      retorno8b.ok === true,
+      retorno8b.ok ? "" : `msg=${retorno8b.erro?.message}`,
+    );
+    const p8b30 = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.solicitar_estorno($1::uuid, $2::numeric, NULL::text) AS r",
+      [p8b, 30],
+    );
+    conferir(
+      "P8b: devolucao parcial de R$ 30 ACEITA — nasce a linha viva que reserva saldo",
+      p8b30.ok === true,
+      p8b30.ok ? "" : `msg=${p8b30.erro?.message}`,
+    );
+    const p8b80 = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.solicitar_estorno($1::uuid, $2::numeric, NULL::text) AS r",
+      [p8b, 80],
+    );
+    conferir(
+      'P8b: pedir R$ 80 RECUSA com "maior que o valor disponivel" (saldo = 100 - 30 em curso)',
+      p8b80.ok === false &&
+        /maior que o valor dispon/i.test(String(p8b80.erro?.message)),
+      p8b80.ok ? "nao lançou erro" : `msg=${p8b80.erro?.message}`,
+    );
+    const p8b70 = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.solicitar_estorno($1::uuid, $2::numeric, NULL::text) AS r",
+      [p8b, 70],
+    );
+    conferir(
+      "P8b: pedir R$ 70 (o saldo exato) ACEITA — o termo em curso nao subestima o saldo",
+      p8b70.ok === true,
+      p8b70.ok ? "" : `msg=${p8b70.erro?.message}`,
+    );
+    // A letra do laudo I1: pos-P10, o p5 ja tem R$ 100 pedidos e ZERO de
+    // saldo — ate' R$ 0,01 tem de recusar pelo mesmo texto.
+    const p8b001 = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.solicitar_estorno($1::uuid, $2::numeric, NULL::text) AS r",
+      [p5, 0.01],
+    );
+    conferir(
+      "P8b: pedido com R$ 100 em curso (pos-P10), pedir R$ 0,01 RECUSA (saldo zero)",
+      p8b001.ok === false &&
+        /maior que o valor dispon/i.test(String(p8b001.erro?.message)),
+      p8b001.ok ? "nao lançou erro" : `msg=${p8b001.erro?.message}`,
+    );
+
+    // =========================================================================
     // P11 — GRANT/REVOKE como as demais
     // =========================================================================
-    console.log("\n=== P11: EXECUTE so' para authenticated (padrao da casa) ===");
+    console.log(
+      "\n=== P11: EXECUTE so' para authenticated (padrao da casa) ===",
+    );
     const { rows: grants } = await client.query(
       `SELECT routine_name, grantee, privilege_type
          FROM information_schema.routine_privileges
@@ -654,11 +832,15 @@ async function main() {
         ORDER BY routine_name, grantee`,
     );
     const daNova = grants.filter((g) => g.routine_name === "solicitar_estorno");
-    const daVelha = grants.filter((g) => g.routine_name === "update_order_status_atomic");
+    const daVelha = grants.filter(
+      (g) => g.routine_name === "update_order_status_atomic",
+    );
     conferir(
       "P11: solicitar_estorno tem EXECUTE para authenticated e para NINGUEM de fora",
       daNova.some((g) => g.grantee === "authenticated") &&
-        daNova.every((g) => ["authenticated", "postgres", "service_role"].includes(g.grantee)),
+        daNova.every((g) =>
+          ["authenticated", "postgres", "service_role"].includes(g.grantee),
+        ),
       `grants=${JSON.stringify(daNova)}`,
     );
     conferir(
@@ -667,7 +849,10 @@ async function main() {
         .map((g) => `${g.grantee}:${g.privilege_type}`)
         .sort()
         .join(",") ===
-        daVelha.map((g) => `${g.grantee}:${g.privilege_type}`).sort().join(","),
+        daVelha
+          .map((g) => `${g.grantee}:${g.privilege_type}`)
+          .sort()
+          .join(","),
       `nova=[${daNova.map((g) => g.grantee)}] velha=[${daVelha.map((g) => g.grantee)}]`,
     );
 
@@ -691,13 +876,17 @@ async function main() {
         pols.some(
           (p) =>
             p.cmd === "SELECT" &&
-            /user_id = auth.uid\(\)|auth.uid\(\) = user_id/.test(String(p.qual || "")),
+            /user_id = auth.uid\(\)|auth.uid\(\) = user_id/.test(
+              String(p.qual || ""),
+            ),
         ),
         `policies=${JSON.stringify(pols)}`,
       );
       conferir(
         "rls: policy admin (ALL por is_admin) presente",
-        pols.some((p) => p.cmd === "ALL" && /is_admin/.test(String(p.qual || ""))),
+        pols.some(
+          (p) => p.cmd === "ALL" && /is_admin/.test(String(p.qual || "")),
+        ),
       );
       const { rows: tg } = await client.query(
         `SELECT privilege_type FROM information_schema.table_privileges
@@ -714,18 +903,28 @@ async function main() {
       );
       conferir("rls: anon/PUBLIC sem privilegio nenhum", anon.length === 0);
     } else {
-      conferir("rls: Row Level Security ATIVA na tabela", false, "tabela inexistente");
+      conferir(
+        "rls: Row Level Security ATIVA na tabela",
+        false,
+        "tabela inexistente",
+      );
     }
 
     // =========================================================================
     // TESTE DE ROLLBACK (T1 Step 5): migration + rollback + P1 invertida,
     // tudo dentro desta MESMA transacao (o ROLLBACK final devolve tudo).
     // =========================================================================
-    console.log("\n=== rollback: migration + rollback-manual + P1 invertida ===");
+    console.log(
+      "\n=== rollback: migration + rollback-manual + P1 invertida ===",
+    );
     const caminhoRollback = path.join(RAIZ, "supabase", "migrations", ROLLBACK);
     // eslint-disable-next-line security/detect-non-literal-fs-filename
     if (!fs.existsSync(caminhoRollback)) {
-      conferir("rollback: arquivo rollback-manual versionado existe", false, caminhoRollback);
+      conferir(
+        "rollback: arquivo rollback-manual versionado existe",
+        false,
+        caminhoRollback,
+      );
     } else {
       // eslint-disable-next-line security/detect-non-literal-fs-filename
       const sqlRollback = fs.readFileSync(caminhoRollback, "utf8");
@@ -754,7 +953,10 @@ async function main() {
           "rollback: order_refunds some (P1 invertida)",
           pos[0].tabela === false,
         );
-        conferir("rollback: valor_estornado some (P2 invertida)", pos[0].coluna === false);
+        conferir(
+          "rollback: valor_estornado some (P2 invertida)",
+          pos[0].coluna === false,
+        );
         conferir("rollback: solicitar_estorno some", pos[0].rpc === false);
         const { rows: def } = await client.query(
           `SELECT pg_get_functiondef(p.oid) AS d
