@@ -44,10 +44,18 @@ function fetchConsulta(status: number, corpo: Record<string, unknown>) {
 }
 
 /**
- * Cliente Supabase falso: distingue as duas RPCs pelo nome. `rpc("pagamentos_a_reconciliar")`
- * devolve os `candidatos` configurados; `rpc("confirmar_pagamento", args)` registra os
- * argumentos em `registro.chamadasConfirmar` — o que os testes conferem — e devolve
+ * Cliente Supabase falso: distingue as duas RPCs de pagamento pelo nome.
+ * `rpc("pagamentos_a_reconciliar")` devolve os `candidatos` configurados;
+ * `rpc("confirmar_pagamento", args)` registra os argumentos em
+ * `registro.chamadasConfirmar` — o que os testes conferem — e devolve
  * `rpcConfirmarResultado`.
+ *
+ * Task 4 (fila de `order_refunds`) acrescenta, sem tocar o comportamento
+ * acima: `rpc("concluir_estorno")`, e as tabelas `order_refunds` (fila +
+ * marca + desfecho) e `marketplace_orders` roteada por NOME (a leitura do
+ * "pedido fresco" só troca de forma quando `resolverPedidoFresco` é
+ * passado — sem ele, `marketplace_orders` continua devolvendo exatamente o
+ * que a conferência de valor da reconciliação de pagamentos sempre esperou).
  */
 function clienteFalso(opts: {
   candidatos?: Array<{ order_id: string; gateway_payment_id: string }>;
@@ -60,7 +68,36 @@ function clienteFalso(opts: {
   // conferência deles nem roda). `erroFrom` injeta falha de leitura.
   pedidoTotal?: number | null;
   erroFrom?: unknown;
-  registro: { chamadasConfirmar: Array<{ args: Record<string, unknown> }>; chamouCandidatos: boolean };
+  registro: {
+    chamadasConfirmar: Array<{ args: Record<string, unknown> }>;
+    chamouCandidatos: boolean;
+    chamadasConcluirEstorno?: Array<{ args: Record<string, unknown> }>;
+    atualizacoesOrderRefunds?: Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >;
+  };
+
+  // --- Task 4: fila de order_refunds pendentes ---------------------------
+  // Fila devolvida por `.from('order_refunds').select(...).in(...).lt(...)
+  // .order(...).limit(20)`. O filtro `lt('updated_at', limite)` é SIMULADO
+  // de verdade (não ignorado): item com `updated_at` >= limite some da
+  // lista — é assim que R6 prova a janela de 2 minutos sem reimplementar a
+  // query, só reagindo ao valor que o handler calculou.
+  refundsPendentes?: Array<Record<string, unknown>>;
+  erroRefundsPendentes?: unknown;
+  // Pedido "fresco" por order_id — FUNÇÃO, não mapa estático: R7 precisa que
+  // o valor mude ENTRE as duas iterações do laço (a RPC do dublê sobe
+  // `valor_estornado` depois da 1ª linha concluir), e uma função é o único
+  // jeito de expressar isso sem reimplementar o handler.
+  resolverPedidoFresco?: (orderId: string) => Record<string, unknown> | null;
+  erroPedidoFrescoPorOrderId?: Record<string, unknown>;
+  atualizarOrderRefunds?: (
+    id: string,
+    valores: Record<string, unknown>,
+    statusFiltro: string[],
+  ) => { data: unknown; error: unknown };
+  aoConcluirEstorno?: (args: Record<string, unknown>) => void;
+  erroConcluirEstorno?: unknown;
 }) {
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
@@ -74,26 +111,103 @@ function clienteFalso(opts: {
         if (opts.rpcConfirmarError) return { data: null, error: opts.rpcConfirmarError };
         return { data: opts.rpcConfirmarResultado ?? "pago", error: null };
       }
+      if (nome === "concluir_estorno") {
+        opts.registro.chamadasConcluirEstorno?.push({ args: args ?? {} });
+        opts.aoConcluirEstorno?.(args ?? {});
+        if (opts.erroConcluirEstorno) return { data: null, error: opts.erroConcluirEstorno };
+        return { data: { payment_status: "pago" }, error: null };
+      }
       throw new Error(`rpc inesperada nos testes: ${nome}`);
     },
-    from(_tabela: string) {
-      return {
-        select(_colunas: string) {
-          return {
-            eq(_coluna: string, _valor: unknown) {
-              return {
-                maybeSingle: async () =>
-                  opts.erroFrom
-                    ? { data: null, error: opts.erroFrom }
-                    : {
+    from(tabela: string) {
+      if (tabela === "order_refunds") {
+        return {
+          select(_colunas: string) {
+            return {
+              in(_coluna: string, _valores: string[]) {
+                return {
+                  lt(_colunaData: string, valorLimite: string) {
+                    return {
+                      order(_colunaOrdem: string, _o?: unknown) {
+                        return {
+                          limit: async (_n: number) => {
+                            if (opts.erroRefundsPendentes) {
+                              return { data: null, error: opts.erroRefundsPendentes };
+                            }
+                            const todos = opts.refundsPendentes ?? [];
+                            const filtrados = todos.filter((r) => {
+                              const upd = (r as Record<string, unknown>).updated_at;
+                              return typeof upd !== "string" || upd < valorLimite;
+                            });
+                            return { data: filtrados, error: null };
+                          },
+                        };
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+          update(valores: Record<string, unknown>) {
+            return {
+              eq(_coluna: string, id: string) {
+                return {
+                  in(_coluna2: string, statusFiltro: string[]) {
+                    const executar = async () => {
+                      opts.registro.atualizacoesOrderRefunds?.push({ id, valores, statusFiltro });
+                      if (opts.atualizarOrderRefunds) {
+                        return opts.atualizarOrderRefunds(id, valores, statusFiltro);
+                      }
+                      return { data: [{ id }], error: null };
+                    };
+                    return {
+                      select: () => executar(),
+                      then: (
+                        res: (v: { data: unknown; error: unknown }) => void,
+                        rej?: (e: unknown) => void,
+                      ) => executar().then(res, rej),
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+
+      if (tabela === "marketplace_orders") {
+        return {
+          select(_colunas: string) {
+            return {
+              eq(_coluna: string, id: string) {
+                return {
+                  maybeSingle: async () => {
+                    if (opts.resolverPedidoFresco) {
+                      if (
+                        opts.erroPedidoFrescoPorOrderId &&
+                        id in opts.erroPedidoFrescoPorOrderId
+                      ) {
+                        return { data: null, error: opts.erroPedidoFrescoPorOrderId[id] };
+                      }
+                      const pedido = opts.resolverPedidoFresco(id);
+                      return pedido ? { data: pedido, error: null } : { data: null, error: null };
+                    }
+                    return opts.erroFrom
+                      ? { data: null, error: opts.erroFrom }
+                      : {
                         data: { total: opts.pedidoTotal ?? 149.9, total_amount: null },
                         error: null,
-                      },
-              };
-            },
-          };
-        },
-      };
+                      };
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+
+      throw new Error(`from inesperado nos testes: ${tabela}`);
     },
   };
 }
@@ -693,4 +807,344 @@ Deno.test("invariante confirmados + ignorados + falhas === verificados, com cand
     urlsChamadas.some((u) => u.includes("/v1/orders/777") || u.includes("/v1/orders/666")),
     false,
   );
+});
+
+// =============================================================================
+// R1–R7 — Task 4 da frente "estorno pelo app": a reconciliação processa a
+// fila de `order_refunds` pendentes (plano 20260907-plano-estorno-pelo-app.md;
+// laudo 20260907-laudo-opus-pr438-t2-executor-do-estorno-rodada2.md — I-A/I-B).
+//
+// Todos os candidatos de PAGAMENTO ficam vazios nestes testes: o que se prova
+// aqui é só o passo NOVO, isolado do laço que já existia.
+// =============================================================================
+
+const AGORA_MS = Date.now();
+const UM_DIA_MS = 24 * 60 * 60 * 1000;
+const PAID_AT_FRESCO = new Date(AGORA_MS - UM_DIA_MS).toISOString();
+
+/**
+ * Dublê de fetch por ROTA (método + trecho da URL) — mesmo padrão de
+ * `estorno_test.ts`. Cada chamada fica registrada (URL, método, corpo, chave
+ * de idempotência) para as asserções de R3/R4 (a chave é a mesma; nenhum POST
+ * quando não deveria haver).
+ */
+function fetchDubleReconciliacao(
+  rotas: Array<{ metodo: string; trecho: string; status: number; corpo: unknown }>,
+) {
+  const chamadas: Array<{ url: string; metodo: string; chave?: string }> = [];
+  const f = (entrada: string | URL | Request, init?: RequestInit) => {
+    const url = typeof entrada === "string"
+      ? entrada
+      : entrada instanceof URL
+      ? entrada.href
+      : entrada.url;
+    const metodo = (init?.method ?? "GET").toUpperCase();
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    chamadas.push({ url, metodo, chave: headers["X-Idempotency-Key"] });
+    const rota = rotas.find((r) => r.metodo === metodo && url.includes(r.trecho));
+    return Promise.resolve(
+      new Response(JSON.stringify(rota?.corpo ?? {}), { status: rota?.status ?? 500 }),
+    );
+  };
+  return { f, chamadas };
+}
+
+function pedidoFrescoPara(extras: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "20000000-0000-4000-8000-000000000001",
+    gateway_payment_id: "123456789",
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: PAID_AT_FRESCO,
+    status: "cancelled",
+    ...extras,
+  };
+}
+
+Deno.test("R1 - linha solicitado antiga -> marca em_processamento, chama o executor e conclui pela RPC concluir_estorno", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 50 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r1", order_id: pedido.id, amount: 50, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 999, status: "approved", amount: 50 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "r1");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "999");
+  // A marca: UPDATE condicional em 'solicitado' antes de chamar o MP.
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some(
+      (a) => a.id === "r1" && a.statusFiltro.includes("solicitado") && a.valores.status === "em_processamento",
+    ),
+    true,
+  );
+  assertEquals(mp.chamadas[0].chave, "r1");
+});
+
+Deno.test("R2 - linha em_processamento com consulta mostrando refund >= soma -> conclui SEM novo POST", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 30, valor_estornado: 0 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r2", order_id: pedido.id, amount: 30, status: "em_processamento", tentativas: 1, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  // SÓ a rota de GET existe: se o código tentasse repetir o POST, o dublê
+  // devolveria 500 (rota inexistente) e o teste cairia por causa clara.
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved", transaction_amount_refunded: 30 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(mp.chamadas.length, 1);
+  assertEquals(mp.chamadas[0].metodo, "GET");
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});
+
+Deno.test("R3 - consulta sem refund e tentativas=2 -> repete o POST com a MESMA chave (X-Idempotency-Key = id)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 20, valor_estornado: 0 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r3", order_id: pedido.id, amount: 20, status: "em_processamento", tentativas: 2, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    // GET da confirmação direta: sem transaction_amount_refunded -> "não sei".
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    // POST do retry: em_process (PIX em contingência) — não conclui, mas
+    // prova que o retry aconteceu com a MESMA chave.
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "in_process" } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.chamadas.length, 2);
+  assertEquals(mp.chamadas[0].metodo, "GET");
+  assertEquals(mp.chamadas[1].metodo, "POST");
+  assertEquals(mp.chamadas[1].chave, "r3");
+  assertEquals(corpo.estornos.concluidos, 0);
+  assertEquals(corpo.estornos.adiados, 1);
+  // tentativas foi incrementada ANTES do retry (marca da nova tentativa).
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.id === "r3" && a.valores.tentativas === 3),
+    true,
+  );
+});
+
+Deno.test("R4 - tentativas=5 -> falhou com o texto exato, SEM novo POST", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 10, valor_estornado: 0 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r4", order_id: pedido.id, amount: 10, status: "em_processamento", tentativas: 5, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 0, falhos: 1 });
+  // Só a consulta (GET) — nenhum POST depois do teto de 5 tentativas.
+  assertEquals(mp.chamadas.length, 1);
+  assertEquals(mp.chamadas[0].metodo, "GET");
+  const gravado = registro.atualizacoesOrderRefunds.find((a) => a.id === "r4" && a.valores.status === "falhou");
+  assertEquals(
+    gravado?.valores.ultimo_erro,
+    "não consegui confirmar a devolução no Mercado Pago depois de 5 tentativas; confira no painel do MP",
+  );
+});
+
+Deno.test("R5 - item que lança (pedido não encontrado) não impede o seguinte (falhos:1, o outro concluído)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedidoBom = pedidoFrescoPara({ id: "20000000-0000-4000-8000-000000000002", total: 15 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      // 1ª linha: order_id sem pedido nenhum -> lança dentro do try do item.
+      { id: "rSabotada", order_id: "20000000-0000-4000-8000-00000000dead", amount: 5, status: "solicitado", tentativas: 0, mp_refund_id: null },
+      { id: "rBoa", order_id: pedidoBom.id, amount: 15, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    erroPedidoFrescoPorOrderId: { "20000000-0000-4000-8000-00000000dead": { message: "erro de leitura" } },
+    resolverPedidoFresco: (orderId) => (orderId === pedidoBom.id ? pedidoBom : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 321, status: "approved", amount: 15 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 2, concluidos: 1, adiados: 0, falhos: 1 });
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "rBoa");
+});
+
+Deno.test("R6 - linha atualizada há 30s NÃO é tocada (janela de 2 minutos evita disputar com a edge do clique)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara();
+  const trintaSegundosAtras = new Date(AGORA_MS - 30 * 1000).toISOString();
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      {
+        id: "r6",
+        order_id: pedido.id,
+        amount: 10,
+        status: "solicitado",
+        tentativas: 0,
+        mp_refund_id: null,
+        updated_at: trintaSegundosAtras,
+      },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 0, concluidos: 0, adiados: 0, falhos: 0 });
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(registro.atualizacoesOrderRefunds.length, 0);
+});
+
+Deno.test("R7 - duas linhas do MESMO pedido no lote: a 1ª conclui e sobe valor_estornado; a 2ª só conclui se a consulta mostrar a SOMA das duas (I-B)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const orderId = "20000000-0000-4000-8000-000000000099";
+  // Estado do ledger SIMULADO: sobe quando a RPC concluir_estorno "grava" —
+  // é o que torna a releitura FRESCA (dentro do laço, por item) observável:
+  // sem ela, as duas iterações veriam sempre valor_estornado = 0.
+  let valorEstornadoSimulado = 0;
+  const AMOUNT_POR_LINHA: Record<string, number> = { rA: 30, rB: 20 };
+
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "rA", order_id: orderId, amount: 30, status: "solicitado", tentativas: 0, mp_refund_id: null },
+      { id: "rB", order_id: orderId, amount: 20, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (id) =>
+      id === orderId
+        ? pedidoFrescoPara({ id: orderId, total: 100, valor_estornado: valorEstornadoSimulado })
+        : null,
+    aoConcluirEstorno: (args) => {
+      const refundId = String(args.p_refund_id);
+      valorEstornadoSimulado += AMOUNT_POR_LINHA[refundId] ?? 0;
+    },
+  });
+
+  let chamada = 0;
+  const mp = { f: (_entrada: string | URL | Request, _init?: RequestInit) => {
+    chamada++;
+    // 1: POST de A -> aprovado direto (sem consulta).
+    if (chamada === 1) {
+      return Promise.resolve(new Response(JSON.stringify({ id: 111, status: "approved", amount: 30 }), { status: 201 }));
+    }
+    // 2: POST de B -> o MP diz "já estornado" (4296): manda confirmar.
+    if (chamada === 2) {
+      return Promise.resolve(new Response(JSON.stringify({ message: "erro", cause: [{ code: 4296 }] }), { status: 404 }));
+    }
+    // 3: GET de confirmação de B -> só os R$30 de A aparecem no MP; os R$20
+    // de B nunca saíram (o cenário exato do achado I-B).
+    return Promise.resolve(new Response(JSON.stringify({ id: 123456789, status: "approved", transaction_amount_refunded: 30 }), { status: 200 }));
+  } };
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // A conclui; B NÃO conclui (o MP só confirma os R$30 de A — com a
+  // releitura fresca, B exige 30+20=50 e falha; com snapshot velho B exigiria
+  // só 0+20=20 e concluiria ERRADO, dobrando o ledger sem o dinheiro sair).
+  assertEquals(corpo.estornos.concluidos, 1);
+  assertEquals(corpo.estornos.falhos, 1);
+  const desfechoB = registro.atualizacoesOrderRefunds.find((a) => a.id === "rB" && a.valores.status === "falhou");
+  assertEquals(desfechoB !== undefined, true);
 });
