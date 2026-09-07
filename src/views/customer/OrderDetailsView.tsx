@@ -482,6 +482,9 @@ export function OrderDetailsView({
           {lojaTemWhatsappAgora && (
             <button
               onClick={handleWhatsAppSupport}
+              // Laudo 05/09, M5: botão só-ícone era "botão" para o leitor
+              // de tela — sem nome, pedir ajuda ficava sem significado.
+              aria-label="Falar com a loja no WhatsApp"
               className="flex size-10 items-center justify-center rounded-xl border border-emerald-100/50 bg-emerald-50 text-emerald-600 transition-all active:scale-90"
             >
               <MessageCircle className="size-5" />
@@ -492,7 +495,11 @@ export function OrderDetailsView({
         {/* Quick Info Bar */}
         <div className="flex items-center justify-between gap-4 rounded-xl bg-zinc-950 p-3 text-white">
           <div className="flex flex-col">
-            <span className="text-zinc-505 mb-0.5 text-[8px] font-black uppercase tracking-widest">
+            {/* Laudo 05/09, M6: os rótulos desta barra usavam classes de cor
+                que NÃO existem no Tailwind — a cor nunca aplicava e o texto
+                herdava o branco cru do fundo escuro; tokens reais dão o
+                cinza sutil que a barra pede. */}
+            <span className="mb-0.5 text-[8px] font-black uppercase tracking-widest text-zinc-400">
               ID do Pedido
             </span>
             <div
@@ -510,12 +517,12 @@ export function OrderDetailsView({
               <span className="text-[10px] font-black uppercase tracking-widest">
                 #{order.id.slice(0, 8)}
               </span>
-              <Copy className="size-2.5 text-zinc-550" />
+              <Copy className="size-2.5 text-zinc-500" />
             </div>
           </div>
           <div className="h-6 w-px bg-zinc-800" />
           <div className="flex flex-col items-end">
-            <span className="text-zinc-505 mb-0.5 text-[8px] font-black uppercase tracking-widest">
+            <span className="mb-0.5 text-[8px] font-black uppercase tracking-widest text-zinc-400">
               Data de Realização
             </span>
             <span className="text-[10px] font-black tracking-tight">
@@ -662,7 +669,11 @@ export function OrderDetailsView({
                 <button
                   onClick={handleCancelOrder}
                   disabled={isCancelling}
-                  className="text-red-655 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-red-50 text-[9px] font-black uppercase tracking-widest transition-all hover:bg-red-100 active:scale-[0.98] disabled:bg-zinc-50 disabled:text-zinc-400"
+                  // Laudo 05/09, M6: a classe de cor vermelha deste botão
+                  // NÃO existia no Tailwind — a ação DESTRUTIVA de cancelar
+                  // pedido perdeu o vermelho e herdou cor de botão comum.
+                  // Token real de volta.
+                  className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-red-50 text-[9px] font-black uppercase tracking-widest text-red-600 transition-all hover:bg-red-100 active:scale-[0.98] disabled:bg-zinc-50 disabled:text-zinc-400"
                 >
                   {isCancelling ? (
                     <Loader2 className="size-3 animate-spin" />
@@ -700,7 +711,7 @@ export function OrderDetailsView({
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <h5 className="truncate text-[11px] font-black uppercase leading-none tracking-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
+                  <h5 className="truncate text-[11px] font-black uppercase leading-none tracking-tight text-zinc-900 transition-colors group-hover:text-zinc-600">
                     {item.name}
                   </h5>
                   <div className="mt-1 flex items-center gap-2">
@@ -882,7 +893,10 @@ export function OrderDetailsView({
                 </div>
                 <button
                   onClick={() => setReviewingItem(null)}
-                  className="hover:text-zinc-905 flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-650 transition-colors hover:bg-zinc-300"
+                  // Laudo 05/09, M5: o nome acessível era "✕" — agora diz
+                  // o que fecha.
+                  aria-label="Fechar avaliação"
+                  className="flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-600 transition-colors hover:bg-zinc-300 hover:text-zinc-900"
                 >
                   ✕
                 </button>
