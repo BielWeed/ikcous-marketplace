@@ -330,7 +330,12 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
 
         if (resultado.tipo === 'em_processamento') {
             // O MP ficou de processar (PIX em contingência é 201 in_process):
-            // a linha JÁ está marcada; grava só o diagnóstico.
+            // a linha JÁ está marcada; grava só o diagnóstico. CONDICIONAL
+            // (M1-resto do laudo do PR #439): na era T4/T5 o webhook pode
+            // concluir a linha no meio (RPC concluir_estorno) — sem o .in,
+            // esta escrita de diagnóstico sobrescreveria mp_status de uma
+            // linha já concluída. Sem asserção de linhas (é diagnóstico,
+            // não dinheiro): 0 linhas afetadas é silenciosamente aceitável.
             const { error: erroDiag } = await supabase
                 .from('order_refunds')
                 .update({
@@ -339,6 +344,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                     updated_at: new Date().toISOString(),
                 })
                 .eq('id', refundId)
+                .in('status', ['em_processamento'])
             if (erroDiag) console.error('[estornar-pagamento] Falha ao gravar diagnóstico do MP (suave):', erroDiag)
             return json({ status: 'em_processamento', texto: TEXTO_EM_PROCESSAMENTO }, 202)
         }
@@ -346,6 +352,9 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         if (resultado.tipo === 'tentar_depois') {
             // 429/5xx/rede: NÃO é falha definitiva. Mantém em_processamento
             // com o erro registrado — o cron (T4) repete com a MESMA chave.
+            // Mesma condição do ramo acima (M1-resto): o webhook pode ter
+            // concluído a linha no meio, e sem o .in este UPDATE gravaria
+            // ultimo_erro numa linha já concluída.
             const { error: erroAdio } = await supabase
                 .from('order_refunds')
                 .update({
@@ -353,6 +362,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                     updated_at: new Date().toISOString(),
                 })
                 .eq('id', refundId)
+                .in('status', ['em_processamento'])
             if (erroAdio) console.error('[estornar-pagamento] Falha ao gravar o adiamento (suave):', erroAdio)
             return json({ status: 'em_processamento', texto: TEXTO_EM_PROCESSAMENTO }, 202)
         }
@@ -380,7 +390,15 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             if (!Array.isArray(fim) || fim.length === 0) {
                 // Outro executor (cron/webhook) mudou a linha no meio: o
                 // estado terminal DELE fica — responder o real, não o nosso.
-                return json({ erro: 'estorno_ja_tratado' }, 409)
+                // Unifica o formato com o 409 de cima (passo 2, {erro, status}
+                // — anotado no laudo do PR #439): uma releitura rápida diz
+                // qual é esse estado real (a T6 consome o campo).
+                const { data: linhaAtual } = await supabase
+                    .from('order_refunds')
+                    .select('status')
+                    .eq('id', refundId)
+                    .maybeSingle()
+                return json({ erro: 'estorno_ja_tratado', status: linhaAtual?.status ?? null }, 409)
             }
             const valor = Number(linha.amount)
             return json({

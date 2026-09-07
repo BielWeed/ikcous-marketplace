@@ -1140,10 +1140,7 @@ async function main() {
       (g) => g.routine_name === "confirmar_pagamento",
     );
     console.log(
-      `  grants medidos (a pergunta obrigatoria do PR #439 responde DAQUI,\n` +
-        `  do routine_privileges, nao de leitura):\n` +
-        `    concluir_estorno  = [${daConcluir.map((g) => g.grantee).join(", ")}]\n` +
-        `    confirmar_pagamento = [${daConfirmar.map((g) => g.grantee).join(", ")}]`,
+      `  grants medidos (a pergunta obrigatoria do PR #439 responde DAQUI, do routine_privileges, nao de leitura):\n    concluir_estorno  = [${daConcluir.map((g) => g.grantee).join(", ")}]\n    confirmar_pagamento = [${daConfirmar.map((g) => g.grantee).join(", ")}]`,
     );
     conferir(
       "P12c: concluir_estorno NAO tem EXECUTE para authenticated, anon nem PUBLIC",
@@ -1164,6 +1161,30 @@ async function main() {
           .sort()
           .join(","),
       `concluir=[${daConcluir.map((g) => g.grantee)}] confirmar=[${daConfirmar.map((g) => g.grantee)}]`,
+    );
+
+    // I1 do laudo da rodada 2 (PR #439): has_function_privilege() le o
+    // pg_catalog direto, ao contrario de information_schema.routine_privileges
+    // (essa view e' filtrada pelo papel HABILITADO na sessao, entao um vazio
+    // dela pode parecer zero sem ser). ASSINATURA DE 4 ARGUMENTOS: a migration
+    // derruba a sobrecarga de 1 argumento (DROP FUNCTION concluir_estorno(uuid)),
+    // entao (uuid) sozinho levantaria undefined_function.
+    const { rows: execT3 } = await client.query(
+      `SELECT
+         has_function_privilege('authenticated',
+           'public.concluir_estorno(uuid, text, text, text)', 'EXECUTE') AS auth_exec,
+         has_function_privilege('anon',
+           'public.concluir_estorno(uuid, text, text, text)', 'EXECUTE') AS anon_exec`,
+    );
+    conferir(
+      "P12c: has_function_privilege (pg_catalog) confirma authenticated SEM EXECUTE em concluir_estorno",
+      execT3[0].auth_exec === false,
+      `auth_exec=${execT3[0].auth_exec}`,
+    );
+    conferir(
+      "P12c: has_function_privilege (pg_catalog) confirma anon SEM EXECUTE em concluir_estorno",
+      execT3[0].anon_exec === false,
+      `anon_exec=${execT3[0].anon_exec}`,
     );
 
     // =========================================================================

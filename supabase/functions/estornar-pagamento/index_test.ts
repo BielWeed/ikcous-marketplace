@@ -142,6 +142,7 @@ async function comEnv(extra: Record<string, string>, executar: () => Promise<voi
 // DESFECHO terminal (falhou/recusado) é o único com outro status.
 function clienteSupaFalso(opts: {
     linha?: any
+    linhaFinal?: any
     pedido?: any
     marcas?: number[]
     finais?: number[]
@@ -203,6 +204,13 @@ function clienteSupaFalso(opts: {
         }
         if (no.acao === null) {
             registro.leiturasLinha++
+            // A 2a+ leitura simples (409 unificado do laudo do PR #439:
+            // index.ts releu o status quando o UPDATE terminal perdeu a
+            // linha) devolve linhaFinal se configurada — representa o que
+            // o cron/webhook gravou no meio, não a linha original.
+            if (registro.leiturasLinha > 1 && "linhaFinal" in opts) {
+                return promessa({ data: opts.linhaFinal ?? null, error: null })
+            }
             return promessa({ data: opts.linha ?? null, error: null })
         }
         if (no.acao === "update" && no.valores?.status === "em_processamento") {
@@ -466,8 +474,15 @@ Deno.test("F7 - in_process responde 202 com o texto exato e mantem a linha em pr
     // edge só grava o diagnóstico do MP — nenhum update de status final.
     const statusGravado = registro.atualizacoes.some((u) => u.valores?.status && u.valores.status !== "em_processamento")
     assertEquals(statusGravado, false)
-    const mpStatusGravado = registro.atualizacoes.some((u) => u.valores?.mp_status === "in_process")
-    assertEquals(mpStatusGravado, true)
+    const diagnostico = registro.atualizacoes.find((u) => u.valores?.mp_status === "in_process")
+    assertEquals(Boolean(diagnostico), true)
+    // E é CONDICIONAL (M1-resto do laudo do PR #439): sem o .in de status, o
+    // webhook concluindo a linha no meio faria este UPDATE sobrescrever
+    // mp_status de uma linha já concluída; apagar o .in derruba esta asserção.
+    assertEquals(diagnostico.filtros, [
+        { metodo: "eq", coluna: "id", valor: REFUND_ID },
+        { metodo: "in", coluna: "status", valores: ["em_processamento"] },
+    ])
 })
 
 // ── F8: 429/tentar_depois → 202, ultimo_erro gravado, tentativas=1 ────────
@@ -493,6 +508,12 @@ Deno.test("F8 - 429 (tentar_depois) responde 202, grava ultimo_erro e a marca co
     const comErro = registro.atualizacoes.find((u) => u.valores?.ultimo_erro === "O Mercado Pago está limitando as chamadas agora.")
     assertEquals(Boolean(comErro), true)
     assertEquals(comErro.valores.status, undefined)
+    // E é CONDICIONAL (M1-resto do laudo do PR #439), mesma razão do F7:
+    // apagar o .in derruba esta asserção.
+    assertEquals(comErro.filtros, [
+        { metodo: "eq", coluna: "id", valor: REFUND_ID },
+        { metodo: "in", coluna: "status", valores: ["em_processamento"] },
+    ])
     assertEquals(registro.marcas.length, 1)
     assertEquals(registro.marcas[0].valores.tentativas, 1)
 })
@@ -646,6 +667,10 @@ Deno.test("F11c - desfecho que perde a linha (cron concluiu no meio) responde 40
     // edge responde o REAL, não o seu resultado (M1 do laudo do PR #439).
     const { cliente, registro } = clienteSupaFalso({
         linha: LINHA_SOLICITADA,
+        // O que o cron/webhook gravou no meio — a releitura do 409
+        // unificado (anotado no laudo do PR #439) tem de trazer ESTE
+        // status, não o da linha original.
+        linhaFinal: { ...LINHA_SOLICITADA, status: "concluido" },
         pedido: PEDIDO_PAGO,
         marcas: [1],
         finais: [0],
@@ -664,5 +689,7 @@ Deno.test("F11c - desfecho que perde a linha (cron concluiu no meio) responde 40
     assertEquals(resposta.status, 409)
     const corpo = await resposta.json()
     assertEquals(corpo.erro, "estorno_ja_tratado")
+    // O 409 novo agora tem o mesmo formato do 409 do passo 2 ({erro, status}).
+    assertEquals(corpo.status, "concluido")
     assertEquals(registro.marcas.length, 1)
 })
