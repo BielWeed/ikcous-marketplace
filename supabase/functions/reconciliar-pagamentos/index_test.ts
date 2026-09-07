@@ -90,7 +90,7 @@ function clienteFalso(opts: {
   // `valor_estornado` depois da 1ª linha concluir), e uma função é o único
   // jeito de expressar isso sem reimplementar o handler.
   resolverPedidoFresco?: (orderId: string) => Record<string, unknown> | null;
-  erroPedidoFrescoPorOrderId?: Record<string, unknown>;
+  erroPedidoFrescoPorOrderId?: ReadonlyMap<string, unknown>;
   atualizarOrderRefunds?: (
     id: string,
     valores: Record<string, unknown>,
@@ -184,11 +184,8 @@ function clienteFalso(opts: {
                 return {
                   maybeSingle: async () => {
                     if (opts.resolverPedidoFresco) {
-                      if (
-                        opts.erroPedidoFrescoPorOrderId &&
-                        id in opts.erroPedidoFrescoPorOrderId
-                      ) {
-                        return { data: null, error: opts.erroPedidoFrescoPorOrderId[id] };
+                      if (opts.erroPedidoFrescoPorOrderId?.has(id)) {
+                        return { data: null, error: opts.erroPedidoFrescoPorOrderId.get(id) };
                       }
                       const pedido = opts.resolverPedidoFresco(id);
                       return pedido ? { data: pedido, error: null } : { data: null, error: null };
@@ -1041,7 +1038,7 @@ Deno.test("R5 - item que lança (pedido não encontrado) não impede o seguinte 
       { id: "rSabotada", order_id: "20000000-0000-4000-8000-00000000dead", amount: 5, status: "solicitado", tentativas: 0, mp_refund_id: null },
       { id: "rBoa", order_id: pedidoBom.id, amount: 15, status: "solicitado", tentativas: 0, mp_refund_id: null },
     ],
-    erroPedidoFrescoPorOrderId: { "20000000-0000-4000-8000-00000000dead": { message: "erro de leitura" } },
+    erroPedidoFrescoPorOrderId: new Map([["20000000-0000-4000-8000-00000000dead", { message: "erro de leitura" }]]),
     resolverPedidoFresco: (orderId) => (orderId === pedidoBom.id ? pedidoBom : null),
   });
   const mp = fetchDubleReconciliacao([
@@ -1108,7 +1105,7 @@ Deno.test("R7 - duas linhas do MESMO pedido no lote: a 1ª conclui e sobe valor_
   // é o que torna a releitura FRESCA (dentro do laço, por item) observável:
   // sem ela, as duas iterações veriam sempre valor_estornado = 0.
   let valorEstornadoSimulado = 0;
-  const AMOUNT_POR_LINHA: Record<string, number> = { rA: 30, rB: 20 };
+  const AMOUNT_POR_LINHA: ReadonlyMap<string, number> = new Map([["rA", 30], ["rB", 20]]);
 
   const supabase = clienteFalso({
     candidatos: [],
@@ -1123,7 +1120,7 @@ Deno.test("R7 - duas linhas do MESMO pedido no lote: a 1ª conclui e sobe valor_
         : null,
     aoConcluirEstorno: (args) => {
       const refundId = String(args.p_refund_id);
-      valorEstornadoSimulado += AMOUNT_POR_LINHA[refundId] ?? 0;
+      valorEstornadoSimulado += AMOUNT_POR_LINHA.get(refundId) ?? 0;
     },
   });
 
