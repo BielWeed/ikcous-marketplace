@@ -23,7 +23,12 @@
  * é o que o cron faz quando a consulta não mostra o refund (T4).
  */
 
-import { BASE_URL_PADRAO, fetchComTempo, idEhClassico } from "./mercadopago.ts";
+import {
+  BASE_URL_PADRAO,
+  consultarOrder,
+  fetchComTempo,
+  idEhClassico,
+} from "./mercadopago.ts";
 
 export type LinhaEstorno = {
   id: string;
@@ -693,6 +698,93 @@ export async function confirmarPorConsulta(args: {
       "a cobrança já foi devolvida no Mercado Pago, mas o valor confirmado não cobre esta devolução",
     codigo: codigoFinal,
   };
+}
+
+/**
+ * Status de PAGAMENTO (não de order) que este arquivo aceita como "cobrança
+ * aprovada" dentro de `transactions.payments[]`. Cobre as duas grafias
+ * conhecidas da casa: a clássica (`approved`, ver `interpretarPayments`) e a
+ * da Orders API (par status/status_detail "processed"/"accredited" da RAIZ
+ * da order, `MAPA_STATUS_ORDER` em mercadopago.ts) — o campo por-PAGAMENTO
+ * nunca foi medido contra a API real (Restrição Global veda fetch real em
+ * teste), então as duas entram por precaução. Se a T8 (sandbox) achar uma
+ * terceira grafia, é AQUI que se acrescenta.
+ */
+const STATUS_DE_PAGAMENTO_APROVADO = new Set(["approved", "processed", "accredited"]);
+
+/**
+ * Escolhe, dentro de `order.transactions.payments[]`, o id da transação de
+ * pagamento que o refund-order da Orders API exige no corpo
+ * (`transactions:[{id}]`) — NUNCA `order.id` (esse é o id da ORDER, campo
+ * diferente; ver o comentário grande em `webhook-mercadopago/index.ts` sobre
+ * por que a raiz da order e `payments[0]` não são a mesma coisa).
+ *
+ * Um pagamento só (o caso comum: um PIX, uma tentativa): usa o id dele sem
+ * checar status — é o mesmo que `extrairQrCode`/`extrairDataExpiracaoOrder`
+ * já fazem em `mercadopago.ts`. MAIS DE UM (retry do cliente, PIX reemitido):
+ * escolhe o único com status de pagamento aprovado; em empate (0 ou 2+
+ * candidatos) devolve `null` com log — nunca chuta qual id é o certo.
+ */
+function transacaoPagaDaOrder(order: Record<string, unknown>): string | null {
+  const transacoes = order.transactions as Record<string, unknown> | undefined;
+  const pagamentos = transacoes?.payments;
+  if (!Array.isArray(pagamentos) || pagamentos.length === 0) return null;
+
+  if (pagamentos.length === 1) {
+    const unico = pagamentos[0] as Record<string, unknown> | null;
+    return idComoString(unico?.id) || null;
+  }
+
+  const aprovados = pagamentos.filter((p) => {
+    const status = (p as Record<string, unknown> | null)?.status;
+    return typeof status === "string" && STATUS_DE_PAGAMENTO_APROVADO.has(status);
+  });
+  if (aprovados.length !== 1) {
+    console.error(
+      "estorno: order com múltiplos pagamentos sem discriminador claro",
+      pagamentos.length,
+      aprovados.length,
+    );
+    return null;
+  }
+  return idComoString((aprovados[0] as Record<string, unknown>).id) || null;
+}
+
+/**
+ * `consultarTransacaoDaOrder` — o `GET /v1/orders/{orderId}` que o executor
+ * (`executarEstorno`, abaixo) precisa ANTES de montar o refund de uma order
+ * (PIX, único método vivo da loja): `pedido.gateway_payment_id` guarda o id
+ * da ORDER, não o da transação de pagamento dentro dela.
+ *
+ * Reusa `consultarOrder` (mercadopago.ts) — mesmo GET que o webhook e a
+ * reconciliação já fazem contra a Orders API; escrever um segundo cliente
+ * HTTP para a mesma chamada seria a doença do #53 (regra repetida) de novo.
+ * O `buscar` default de `consultarOrder` é o `fetch` cru envolvido pelo
+ * PRÓPRIO `fetchComTempo` (15 s) — o teste passa um dublê e nunca toca rede.
+ *
+ * Nunca lança: HTTP não-2xx, corpo ilegível, `order` sem `transactions` ou
+ * timeout viram `null` — o executor já trata `null` como `tentar_depois`
+ * (nunca chama o MP às cegas).
+ */
+export async function consultarTransacaoDaOrder(args: {
+  orderId: string;
+  token: string;
+  buscar?: typeof fetch;
+}): Promise<string | null> {
+  const resultado = await consultarOrder({
+    token: args.token,
+    orderId: args.orderId,
+    fetchImpl: args.buscar,
+  });
+  if (!resultado.ok) {
+    console.error(
+      "estorno: consultarTransacaoDaOrder não conseguiu consultar a order",
+      resultado.status,
+      resultado.erro,
+    );
+    return null;
+  }
+  return transacaoPagaDaOrder(resultado.order);
 }
 
 /**
