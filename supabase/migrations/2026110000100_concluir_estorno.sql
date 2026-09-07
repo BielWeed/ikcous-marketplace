@@ -23,15 +23,22 @@
 --     Apos a primeira conclusao, concluido_em fica preenchido para sempre
 --     e nenhuma chamada soma de novo.
 --
--- GRANTS: EXECUTE so' para authenticated (regra da casa). As edges chamam
--- com service_role (EXECUTE pelos default privileges do schema — o mesmo
--- estado medido das demais RPC em producao, ver a prova P12c).
+-- GRANTS: NENHUM para authenticated/anon/PUBLIC (laudo C1 do PR #439). A
+-- regua da casa para RPC que SO' o servidor chama e' confirmar_pagamento
+-- (20260810000000: REVOKE e nenhum GRANT depois). Quem chama aqui e' so' a
+-- service role (edge estornar-pagamento, cron da Task 4, webhook da Task 5);
+-- a autorizacao do CLIQUE do lojista ja' aconteceu na edge (JWT + papel).
+-- Dar EXECUTE a authenticated abriria a porta medida no laudo: o cliente le
+-- o id da propria linha pela RLS e conclui a devolucao SEM dinheiro sair do
+-- MP — e nem is_admin() por dentro fecha isso (o lojista tambem nao carimba
+-- devolucao que o MP nao confirmou).
 --
 -- SEM BEGIN/COMMIT (regra da casa: com eles o ROLLBACK do script de prova
 -- vira no-op e a mudanca fica gravada).
 --
 -- PROVA (transacao com ROLLBACK, vermelho primeiro):
---   node scripts/db-prove-estorno-ledger.cjs   (P12-P13)
+--   node scripts/db-prove-estorno-ledger.cjs   (P12-P14: soma, idempotencia,
+--   grants de servidor e a recusa do acima do total)
 -- ROLLBACK MANUAL: rollback-manual-2026110000100_concluir_estorno.sql
 --
 -- NAO APLICADA NO BANCO VIVO: aplicacao e' pendencia do dono, com este SQL
@@ -103,6 +110,10 @@ BEGIN
     -- do Mercado Pago (o chamador atestou). payment_status vira 'estornado'
     -- apenas quando o acumulado alcanca o total — parcial mantem o que era
     -- (o CASE le o valor ANTIGO da linha, regra do UPDATE do Postgres).
+    -- A condicao valor_estornado + v_amount <= total e' a M3 do laudo do
+    -- PR #439: a RPC e' o UNICO ponto por onde a soma passa (a Task 5 vai
+    -- inserir linhas 'sistema' de estorno feito FORA do app) — o acumulado
+    -- NUNCA passa do total do pedido.
     UPDATE public.marketplace_orders
        SET valor_estornado = valor_estornado + v_amount,
            payment_status = CASE
@@ -111,7 +122,17 @@ BEGIN
            END,
            updated_at = now()
      WHERE id = v_order_id
+       AND valor_estornado + v_amount <= total
     RETURNING valor_estornado, payment_status INTO v_valor_estornado, v_payment_status;
+
+    IF v_valor_estornado IS NULL THEN
+        -- Soma que passaria do total: RECUSA com erro nomeado (a Task 5
+        -- decide o que fazer com estorno externo maior que o pago). A
+        -- excecao desfaz tambem a conclusao da linha acima — mesma
+        -- transacao, nada fica meio-concluido. Prova: P14b.
+        RAISE EXCEPTION 'estorno_acima_do_total: a linha % somaria % e o acumulado passaria do total do pedido %.',
+            p_refund_id, v_amount, v_order_id;
+    END IF;
 
     RETURN jsonb_build_object(
         'concluido', true,
@@ -123,10 +144,11 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.concluir_estorno(uuid, text, text, text) IS
-  'Fecha a devolucao CONFIRMADA pelo Mercado Pago (edge estornar-pagamento, cron reconciliar-pagamentos e webhook-mercadopago chamam): conclui a linha de order_refunds e soma valor_estornado no pedido NUMA transacao so'', virando payment_status=''estornado'' so'' quando o acumulado alcanca o total. Idempotente: o UPDATE exige (status <> ''concluido'' OR concluido_em IS NULL) — chamada repetida nao soma duas vezes (prova P13), e linha nascida concluida pelo webhook (estorno fora do app) soma uma unica vez.';
+  'Fecha a devolucao CONFIRMADA pelo Mercado Pago (edge estornar-pagamento, cron reconciliar-pagamentos e webhook-mercadopago chamam, todos com service role — SEM grant a authenticated, regua confirmar_pagamento): conclui a linha de order_refunds e soma valor_estornado no pedido NUMA transacao so'', virando payment_status=''estornado'' so'' quando o acumulado alcanca o total. Recusa com erro nomeado estorno_acima_do_total soma que passaria do total. Idempotente: o UPDATE exige (status <> ''concluido'' OR concluido_em IS NULL) — chamada repetida nao soma duas vezes (prova P13), e linha nascida concluida pelo webhook (estorno fora do app) soma uma unica vez.';
 
--- Padrao da casa (REVOKE nomeia anon/authenticated porque o REVOKE FROM
--- PUBLIC nao alcanc,a os default privileges do Supabase): EXECUTE so' para
--- authenticated.
+-- Padrao da casa para RPC de SERVIDOR (regua: confirmar_pagamento,
+-- 20260810000000:236 — REVOKE e NENHUM GRANT depois). O REVOKE nomeia
+-- anon/authenticated porque o REVOKE FROM PUBLIC nao alcanc,a os default
+-- privileges do Supabase; a service role executa pelos default privileges
+-- do schema. Prova: P12c/P14 do db-prove-estorno-ledger.cjs.
 REVOKE ALL ON FUNCTION public.concluir_estorno(uuid, text, text, text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.concluir_estorno(uuid, text, text, text) TO authenticated;

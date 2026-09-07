@@ -52,18 +52,34 @@
  *       authenticated; nada para PUBLIC nem anon.
  *
  * AS AFIRMATIVAS DA TASK 3 (concluir_estorno, plano T3 Step 3, adicionadas
- * em 07/09 pela frente estorno-t3-impl):
+ * em 07/09 pela frente estorno-t3-impl; C1/I1 do laudo do PR #439 mudaram
+ * a régua de grants em 07/09 — RPC de SERVIDOR não tem grant a
+ * authenticated, régua confirmar_pagamento):
  *   P12 concluir_estorno soma valor_estornado e muda payment_status para
  *       'estornado' SO' no total: (P12a) linha total de R$ 100 concluida
  *       -> valor_estornado=100 e payment_status='estornado'; (P12b) linha
  *       parcial de R$ 30 -> valor_estornado=30 e payment_status SEGUE
- *       'pago'; (P12c) grants no mesmo formato das demais da casa.
+ *       'pago'; (P12c) grants no formato de confirmar_pagamento (a regua
+ *       da casa para RPC que so' o servidor chama): NADA para
+ *       authenticated/anon/PUBLIC.
+ *       P12a/P12b/P13 chamam por client.query DIRETO (sem SET ROLE) — o
+ *       padrao da casa para provar RPC de service role, o mesmo do
+ *       db-prove-devolucao-de-uso-de-cupom.cjs com confirmar_pagamento.
  *   P13 chamada repetida NAO soma duas vezes — o UPDATE so' pega linha com
  *       (status <> 'concluido' OR concluido_em IS NULL): (P13a) chamar de
  *       novo na linha concluida do P12a mantem valor_estornado=100 e
  *       devolve ja_concluida; (P13b) linha nascida 'concluido' com
  *       concluido_em NULL (o caminho do webhook na Task 5 — estorno feito
  *       fora do app) soma UMA vez, e a repetida nao soma.
+ *   P14 (C1 do laudo do PR #439) o caminho do ataque, fechado: cliente
+ *       comum dono do pedido le o id da propria linha pela RLS e chama
+ *       concluir_estorno com o JWT dele -> 42501, linha continua
+ *       'solicitado', valor_estornado continua 0. O ADMIN (lojista)
+ *       tambem recebe 42501 — o caminho legitimo e' service role (edge,
+ *       cron, webhook), e o clique do lojista ja' foi autorizado pela edge.
+ *   P14b (M3 do laudo) soma que passaria do total e' RECUSADA com erro
+ *       nomeado 'estorno_acima_do_total' — e nada fica meio-concluido (a
+ *       excecao desfaz tambem a conclusao da linha, mesma transacao).
  *
  * TESTE DE ROLLBACK (plano T1 Step 5): ao final, com as migrations aplicadas
  * DENTRO desta mesma transacao, aplica o rollback-manual da T3 (a funcao
@@ -340,6 +356,26 @@ async function tentarComo(client, sub, admin, sql, params) {
     // posteriores ao savepoint sao revertidos pelo proprio ROLLBACK TO).
     await client.query("ROLLBACK TO SAVEPOINT tentativa");
     await client.query("RESET ROLE");
+    return { ok: false, erro: e };
+  }
+}
+
+/**
+ * Chama uma RPC de SERVIDOR pela conexao DIRETA (sem SET ROLE) e captura o
+ * erro sem abortar a transacao da prova — o padrao da casa para provar RPC
+ * de service role (o mesmo do db-prove-devolucao-de-uso-de-cupom.cjs com
+ * confirmar_pagamento). Desde o C1 do laudo do PR #439, concluir_estorno
+ * NAO tem grant a authenticated: chama-la com SET LOCAL ROLE authenticated
+ * (o tentarComo antigo) daria 42501 por desenho, nao por defeito.
+ */
+async function tentarDireto(client, sql, params) {
+  await client.query("SAVEPOINT tentativa");
+  try {
+    const r = await client.query(sql, params);
+    await client.query("RELEASE SAVEPOINT tentativa");
+    return { ok: true, rows: r.rows };
+  } catch (e) {
+    await client.query("ROLLBACK TO SAVEPOINT tentativa");
     return { ok: false, erro: e };
   }
 }
@@ -984,10 +1020,11 @@ async function main() {
       [p12a],
     );
     const refundP12a = linhaP12a[0]?.id;
-    const rP12a = await tentarComo(
+    // Chamada pela conexao DIRETA (padrao da casa para RPC de service role):
+    // desde o C1 do laudo do PR #439, authenticated (mesmo admin) nao tem
+    // EXECUTE em concluir_estorno — e nao deve ter.
+    const rP12a = await tentarDireto(
       client,
-      admin.id,
-      true,
       "SELECT public.concluir_estorno($1::uuid, '111222333'::text, 'approved'::text, NULL::text) AS r",
       [refundP12a],
     );
@@ -1051,10 +1088,8 @@ async function main() {
       [p12b, 30],
     );
     const refundP12b = rP12bSol.ok ? rP12bSol.rows[0].r.refund_id : null;
-    const rP12b = await tentarComo(
+    const rP12b = await tentarDireto(
       client,
-      admin.id,
-      true,
       "SELECT public.concluir_estorno($1::uuid, '444555666'::text, 'approved'::text, 'partially_refunded'::text) AS r",
       [refundP12b],
     );
@@ -1083,43 +1118,164 @@ async function main() {
       );
     }
 
-    // P12c — grants no mesmo formato das demais da casa (regua: a propria
-    // solicitar_estorno, conferida no P11).
+    // P12c — grants NO FORMATO DE confirmar_pagamento (C1/I1 do laudo do
+    // PR #439): concluir_estorno e' RPC de SERVIDOR (edge/cron/webhook com
+    // service role), e a regua da casa para essa classe e' confirmar_pagamento
+    // (20260810000000: REVOKE e nenhum GRANT). A versao anterior desta prova
+    // exigia o grant a authenticated — gravava a vulnerabilidade como requisito.
     console.log(
-      "\n=== P12c: EXECUTE so' para authenticated (regua da casa) ===",
+      "\n=== P12c: grants de SERVIDOR (regua: confirmar_pagamento) ===",
     );
     const { rows: grantsT3 } = await client.query(
       `SELECT routine_name, grantee, privilege_type
          FROM information_schema.routine_privileges
         WHERE routine_schema = 'public'
-          AND routine_name IN ('concluir_estorno', 'solicitar_estorno')
+          AND routine_name IN ('concluir_estorno', 'confirmar_pagamento')
         ORDER BY routine_name, grantee`,
     );
     const daConcluir = grantsT3.filter(
       (g) => g.routine_name === "concluir_estorno",
     );
-    const daSolicitar = grantsT3.filter(
-      (g) => g.routine_name === "solicitar_estorno",
+    const daConfirmar = grantsT3.filter(
+      (g) => g.routine_name === "confirmar_pagamento",
+    );
+    console.log(
+      `  grants medidos (a pergunta obrigatoria do PR #439 responde DAQUI,\n` +
+        `  do routine_privileges, nao de leitura):\n` +
+        `    concluir_estorno  = [${daConcluir.map((g) => g.grantee).join(", ")}]\n` +
+        `    confirmar_pagamento = [${daConfirmar.map((g) => g.grantee).join(", ")}]`,
     );
     conferir(
-      "P12c: concluir_estorno tem EXECUTE para authenticated e para NINGUEM de fora",
-      daConcluir.some((g) => g.grantee === "authenticated") &&
-        daConcluir.every((g) =>
-          ["authenticated", "postgres", "service_role"].includes(g.grantee),
+      "P12c: concluir_estorno NAO tem EXECUTE para authenticated, anon nem PUBLIC",
+      daConcluir.length > 0 &&
+        daConcluir.every(
+          (g) => !["authenticated", "anon", "PUBLIC"].includes(g.grantee),
         ),
       `grants=${JSON.stringify(daConcluir)}`,
     );
     conferir(
-      "P12c: o mesmo formato de grants de solicitar_estorno (a regua da casa)",
+      "P12c: o mesmo formato de grants de confirmar_pagamento (a regua da casa para RPC de servidor)",
       daConcluir
         .map((g) => `${g.grantee}:${g.privilege_type}`)
         .sort()
         .join(",") ===
-        daSolicitar
+        daConfirmar
           .map((g) => `${g.grantee}:${g.privilege_type}`)
           .sort()
           .join(","),
-      `concluir=[${daConcluir.map((g) => g.grantee)}] solicitar=[${daSolicitar.map((g) => g.grantee)}]`,
+      `concluir=[${daConcluir.map((g) => g.grantee)}] confirmar=[${daConfirmar.map((g) => g.grantee)}]`,
+    );
+
+    // =========================================================================
+    // P14 — o ataque do C1, fechado (laudo do PR #439): o cliente comum le o
+    // id da propria linha pela RLS e chama concluir_estorno com o JWT dele.
+    // Sem o grant, e' 42501 — e o pedido NAO "estorna" sem dinheiro sair do
+    // MP. O admin (lojista) tambem nao carimba: o caminho legitimo e' service
+    // role (edge com a porta de admin, cron da T4, webhook da T5).
+    // =========================================================================
+    console.log(
+      "\n=== P14: cliente (e lojista) NAO chamam concluir_estorno ===",
+    );
+    const p14 = await criarPedidoPago(client, {
+      produtoId,
+      clienteId: cliente.id,
+      gatewayId: "PAY_PROVA_P14",
+      status: "processing",
+    });
+    await cancelarComo(client, cliente.id, false, p14);
+    const { rows: linhaP14 } = await client.query(
+      "SELECT id FROM public.order_refunds WHERE order_id = $1",
+      [p14],
+    );
+    const refundP14 = linhaP14[0]?.id;
+    const rP14cliente = await tentarComo(
+      client,
+      cliente.id,
+      false,
+      "SELECT public.concluir_estorno($1::uuid, 'ataque'::text, 'approved'::text, NULL::text) AS r",
+      [refundP14],
+    );
+    conferir(
+      "P14: cliente dono da linha recebe 42501 (permissao negada)",
+      rP14cliente.ok === false && rP14cliente.erro?.code === "42501",
+      rP14cliente.ok
+        ? "ACEITOU — a porta do C1 esta aberta"
+        : `code=${rP14cliente.erro?.code} msg=${rP14cliente.erro?.message}`,
+    );
+    const rP14admin = await tentarComo(
+      client,
+      admin.id,
+      true,
+      "SELECT public.concluir_estorno($1::uuid, 'ataque'::text, 'approved'::text, NULL::text) AS r",
+      [refundP14],
+    );
+    conferir(
+      "P14: admin (lojista) TAMBEM recebe 42501 — carimbo de devolucao e' so' da service role",
+      rP14admin.ok === false && rP14admin.erro?.code === "42501",
+      rP14admin.ok
+        ? "ACEITOU — o lojista carimbaria devolucao sem o MP confirmar"
+        : `code=${rP14admin.erro?.code} msg=${rP14admin.erro?.message}`,
+    );
+    const { rows: posP14 } = await client.query(
+      `SELECT (SELECT status FROM public.order_refunds WHERE id = $1) AS status,
+              (SELECT valor_estornado FROM public.marketplace_orders WHERE id = $2) AS valor_estornado,
+              (SELECT payment_status FROM public.marketplace_orders WHERE id = $2) AS payment_status`,
+      [refundP14, p14],
+    );
+    conferir(
+      "P14: a linha SEGUE 'solicitado' e o pedido SEGUE valor_estornado=0/pago — nada aconteceu",
+      posP14[0].status === "solicitado" &&
+        Number(posP14[0].valor_estornado) === 0 &&
+        posP14[0].payment_status === "pago",
+      `pos=${JSON.stringify(posP14[0])}`,
+    );
+
+    // =========================================================================
+    // P14b — M3 do laudo: soma que passaria do total e' recusada com erro
+    // nomeado, e nada fica meio-concluido (a excecao desfaz a conclusao da
+    // linha — mesma transacao).
+    // =========================================================================
+    console.log(
+      "\n=== P14b: estorno acima do total e' recusado com erro nomeado ===",
+    );
+    const p14b = await criarPedidoPago(client, {
+      produtoId,
+      clienteId: cliente.id,
+      gatewayId: "PAY_PROVA_P14B",
+      status: "processing",
+    });
+    // A linha 'sistema' da Task 5 (estorno feito FORA do app) e' o gatilho
+    // real do M3: ela nasce sem passar pela guarda de saldo de solicitar_estorno.
+    const { rows: insP14b } = await client.query(
+      `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
+       VALUES ($1, 150, 'estorno externo maior que o pago (prova P14b)', 'sistema', 'solicitado')
+       RETURNING id`,
+      [p14b],
+    );
+    const refundP14b = insP14b[0].id;
+    const rP14b = await tentarDireto(
+      client,
+      "SELECT public.concluir_estorno($1::uuid, '555666'::text, 'refunded'::text, NULL::text) AS r",
+      [refundP14b],
+    );
+    conferir(
+      "P14b: erro nomeado 'estorno_acima_do_total'",
+      rP14b.ok === false &&
+        /estorno_acima_do_total/.test(String(rP14b.erro?.message)),
+      rP14b.ok ? "ACEITOU soma acima do total" : `msg=${rP14b.erro?.message}`,
+    );
+    const { rows: posP14b } = await client.query(
+      `SELECT (SELECT status FROM public.order_refunds WHERE id = $1) AS status,
+              (SELECT concluido_em IS NOT NULL FROM public.order_refunds WHERE id = $1) AS tem_carimbo,
+              (SELECT valor_estornado FROM public.marketplace_orders WHERE id = $2) AS valor_estornado`,
+      [refundP14b, p14b],
+    );
+    conferir(
+      "P14b: a excecao desfaz TUDO — linha segue 'solicitado' sem carimbo e valor_estornado segue 0",
+      posP14b[0].status === "solicitado" &&
+        posP14b[0].tem_carimbo === false &&
+        Number(posP14b[0].valor_estornado) === 0,
+      `pos=${JSON.stringify(posP14b[0])}`,
     );
 
     // =========================================================================
@@ -1129,10 +1285,8 @@ async function main() {
     // P13a — a MESMA linha do P12a, chamada de novo (o webhook e o cron podem
     // completar o que a edge ja completou): o UPDATE nao pega (status =
     // 'concluido' E concluido_em preenchido), nada soma, nada sobrescreve.
-    const rP13a = await tentarComo(
+    const rP13a = await tentarDireto(
       client,
-      admin.id,
-      true,
       "SELECT public.concluir_estorno($1::uuid, '999000999'::text, 'refunded'::text, NULL::text) AS r",
       [refundP12a],
     );
@@ -1181,10 +1335,8 @@ async function main() {
       [p13b],
     );
     const refundP13b = insP13b[0].id;
-    const rP13b = await tentarComo(
+    const rP13b = await tentarDireto(
       client,
-      admin.id,
-      true,
       "SELECT public.concluir_estorno($1::uuid, '777888'::text, 'refunded'::text, NULL::text) AS r",
       [refundP13b],
     );
@@ -1195,10 +1347,8 @@ async function main() {
         ? `r=${JSON.stringify(rP13b.rows[0].r)}`
         : `msg=${rP13b.erro?.message}`,
     );
-    const rP13b2 = await tentarComo(
+    const rP13b2 = await tentarDireto(
       client,
-      admin.id,
-      true,
       "SELECT public.concluir_estorno($1::uuid, '777888'::text, 'refunded'::text, NULL::text) AS r",
       [refundP13b],
     );
