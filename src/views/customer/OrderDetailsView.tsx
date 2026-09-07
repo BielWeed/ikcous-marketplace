@@ -482,6 +482,9 @@ export function OrderDetailsView({
           {lojaTemWhatsappAgora && (
             <button
               onClick={handleWhatsAppSupport}
+              // Laudo 05/09, M5: botão só-ícone era "botão" para o leitor
+              // de tela — sem nome, pedir ajuda ficava sem significado.
+              aria-label="Falar com a loja no WhatsApp"
               className="flex size-10 items-center justify-center rounded-xl border border-emerald-100/50 bg-emerald-50 text-emerald-600 transition-all active:scale-90"
             >
               <MessageCircle className="size-5" />
@@ -492,7 +495,12 @@ export function OrderDetailsView({
         {/* Quick Info Bar */}
         <div className="flex items-center justify-between gap-4 rounded-xl bg-zinc-950 p-3 text-white">
           <div className="flex flex-col">
-            <span className="text-zinc-505 mb-0.5 text-[8px] font-black uppercase tracking-widest">
+            {/* Laudo 05/09, M6: `text-zinc-505` não existe no Tailwind — a
+                cor nunca aplicava e o rótulo herdava o branco cru do fundo
+                escuro; token real dá o cinza sutil que a barra pede. (Só o
+                505 é morto aqui: 550/650 existem no tailwind.config.js —
+                ver comentário do ícone Copy.) */}
+            <span className="mb-0.5 text-[8px] font-black uppercase tracking-widest text-zinc-400">
               ID do Pedido
             </span>
             <div
@@ -510,12 +518,16 @@ export function OrderDetailsView({
               <span className="text-[10px] font-black uppercase tracking-widest">
                 #{order.id.slice(0, 8)}
               </span>
+              {/* Laudo Opus 07/09 (C2): `zinc-550` e `zinc-650` são tokens
+                  VIVOS — o tailwind.config.js define os tons intermediários
+                  550/650/750/850 de propósito. A troca por zinc-500/600 no
+                  PR #437 mudava a cor que era aplicada; revertida. */}
               <Copy className="size-2.5 text-zinc-550" />
             </div>
           </div>
           <div className="h-6 w-px bg-zinc-800" />
           <div className="flex flex-col items-end">
-            <span className="text-zinc-505 mb-0.5 text-[8px] font-black uppercase tracking-widest">
+            <span className="mb-0.5 text-[8px] font-black uppercase tracking-widest text-zinc-400">
               Data de Realização
             </span>
             <span className="text-[10px] font-black tracking-tight">
@@ -662,7 +674,11 @@ export function OrderDetailsView({
                 <button
                   onClick={handleCancelOrder}
                   disabled={isCancelling}
-                  className="text-red-655 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-red-50 text-[9px] font-black uppercase tracking-widest transition-all hover:bg-red-100 active:scale-[0.98] disabled:bg-zinc-50 disabled:text-zinc-400"
+                  // Laudo 05/09, M6: a classe de cor vermelha deste botão
+                  // NÃO existia no Tailwind — a ação DESTRUTIVA de cancelar
+                  // pedido perdeu o vermelho e herdou cor de botão comum.
+                  // Token real de volta.
+                  className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-red-50 text-[9px] font-black uppercase tracking-widest text-red-600 transition-all hover:bg-red-100 active:scale-[0.98] disabled:bg-zinc-50 disabled:text-zinc-400"
                 >
                   {isCancelling ? (
                     <Loader2 className="size-3 animate-spin" />
@@ -882,7 +898,10 @@ export function OrderDetailsView({
                 </div>
                 <button
                   onClick={() => setReviewingItem(null)}
-                  className="hover:text-zinc-905 flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-650 transition-colors hover:bg-zinc-300"
+                  // Laudo 05/09, M5: o nome acessível era "✕" — agora diz
+                  // o que fecha.
+                  aria-label="Fechar avaliação"
+                  className="flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-650 transition-colors hover:bg-zinc-300 hover:text-zinc-900"
                 >
                   ✕
                 </button>

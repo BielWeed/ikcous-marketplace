@@ -26,27 +26,45 @@ export const StarRating = memo(function StarRating({
   size = 20,
   className,
 }: StarRatingProps) {
+  // Laudo de acessibilidade 05/09, M8: a nota (ex.: 4,5) nunca era falada —
+  // as estrelas são desenho puro e "é bem avaliado?" ficava sem resposta em
+  // TODOS os usos (ProductCard, PremiumOffers, ProductView, ReviewCard,
+  // UserProfileView). Resolvido AQUI, no componente: texto `sr-only` com a
+  // nota em pt-BR (vírgula decimal) junto às estrelas, que ficam
+  // `aria-hidden` para o leitor não anunciar "gráfico" vazio.
+  const notaFalada = Number.isInteger(rating)
+    ? `${rating}`
+    : rating.toFixed(1).replace(".", ",");
+
   return (
     <div className={cn("flex space-x-1", className)}>
-      {Array.from({ length: maxRating }).map((_, index) => {
-        const starValue = index + 1;
-        const isFilled = starValue <= rating;
+      {/* Laudo Opus 07/09 (I1, PR #437): o span sr-only era o PRIMEIRO filho
+          e o `space-x-1` dava 4px de margem ao bloco de estrelas (irmão
+          seguinte) — todas as estrelas do app andaram 4px para a direita.
+          Depois do bloco, a margem cai sobre o span, que é absoluto e não
+          ocupa fluxo; a leitura não muda porque as estrelas são mudas. */}
+      <div aria-hidden="true" className="flex space-x-1">
+        {Array.from({ length: maxRating }).map((_, index) => {
+          const starValue = index + 1;
+          const isFilled = starValue <= rating;
 
-        return (
-          <Star
-            key={index}
-            size={size}
-            className={cn(
-              "transition-colors",
-              isFilled
-                ? "fill-yellow-400 text-yellow-400"
-                : "fill-transparent text-gray-300",
-              !readonly && "cursor-pointer hover:text-yellow-500",
-            )}
-            onClick={() => !readonly && onRatingChange?.(starValue)}
-          />
-        );
-      })}
+          return (
+            <Star
+              key={index}
+              size={size}
+              className={cn(
+                "transition-colors",
+                isFilled
+                  ? "fill-yellow-400 text-yellow-400"
+                  : "fill-transparent text-gray-300",
+                !readonly && "cursor-pointer hover:text-yellow-500",
+              )}
+              onClick={() => !readonly && onRatingChange?.(starValue)}
+            />
+          );
+        })}
+      </div>
+      <span className="sr-only">{`${notaFalada} de ${maxRating}`}</span>
     </div>
   );
 });
