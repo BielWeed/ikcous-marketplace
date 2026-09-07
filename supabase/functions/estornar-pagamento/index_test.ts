@@ -487,6 +487,11 @@ Deno.test("F5b - pedido PIX (order): a edge passa consultarTransacaoDaOrder e o 
     assertEquals(gets.length, 1)
     assertEquals(posts.length, 1)
 
+    // O GET da order sai AUTENTICADO com o token da edge (laudo Opus rodada 4,
+    // mutante M-C: sem esta linha, token vazio passava verde e o PIX voltava a
+    // "tentar_depois" para sempre com CI verde).
+    assertEquals(gets[0].init.headers.Authorization, "Bearer TEST-0000000000000000-000000")
+
     // O corpo do POST leva o id do PAGAMENTO (PAY_X), nunca o id da order.
     const corpoPost = JSON.parse(posts[0].init.body)
     assertEquals(corpoPost.transactions[0].id, "PAY_X")
