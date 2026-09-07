@@ -88,6 +88,7 @@ export type ExecutorEstorno = (args: {
     pedido: PedidoParaEstorno
     token: string
     buscar?: typeof fetch
+    consultarTransacaoDaOrder?: (orderId: string) => Promise<string | null>
 }) => Promise<ResultadoEstorno>
 
 /** Texto EXATO do plano (T3) para 202 — o lojista sabe quem confere e quando. */
@@ -260,11 +261,19 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             return json({ erro: 'estorno_em_execucao' }, 409)
         }
 
-        // 6. O executor único (Task 2). O buscar entregue JÁ tem o corte de
-        //    15 s do fetchComTempo — o freio vale mesmo se o executor
-        //    confiar no fetch cru.
-        const executar = deps.executarEstorno
-            ?? (await import('../_shared/estorno.ts')).executarEstorno
+        // 6. O executor único (Task 2) e a consulta da transação da order —
+        //    PIX (único método vivo da loja) vem pela Orders API, que grava
+        //    o id da ORDER em gateway_payment_id, não o da transação de
+        //    pagamento que o refund-order exige no corpo; SEM esta consulta
+        //    o executor devolve tentar_depois para sempre e o clique do
+        //    lojista nunca devolve dinheiro em pedido PIX (achado da T4,
+        //    confirmado no laudo do PR #439). O buscar entregue JÁ tem o
+        //    corte de 15 s do fetchComTempo — o freio vale mesmo se o
+        //    executor confiar no fetch cru.
+        const moduloEstorno = deps.executarEstorno
+            ? null
+            : await import('../_shared/estorno.ts')
+        const executar = deps.executarEstorno ?? moduloEstorno!.executarEstorno
         const resultado = await executar({
             linha: {
                 id: linha.id,
@@ -296,6 +305,19 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                     input instanceof Request ? input.url : String(input),
                     init,
                 ),
+            // Closure com o token e o buscar desta edge (fetch cru — a
+            // própria consultarTransacaoDaOrder já embute o fetchComTempo de
+            // 15 s por dentro de consultarOrder). Só existe quando o módulo
+            // real foi carregado: um executor injetado por teste não
+            // precisa desta consulta (o dublê ignora ou não a chama).
+            consultarTransacaoDaOrder: moduloEstorno
+                ? (orderId: string) =>
+                    moduloEstorno!.consultarTransacaoDaOrder({
+                        orderId,
+                        token,
+                        buscar: deps.buscar ?? fetch,
+                    })
+                : undefined,
         })
 
         // 7. O resultado vira estado + resposta. Nenhum texto carrega
@@ -393,11 +415,16 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                 // Unifica o formato com o 409 de cima (passo 2, {erro, status}
                 // — anotado no laudo do PR #439): uma releitura rápida diz
                 // qual é esse estado real (a T6 consome o campo).
-                const { data: linhaAtual } = await supabase
+                const { data: linhaAtual, error: erroReleitura } = await supabase
                     .from('order_refunds')
                     .select('status')
                     .eq('id', refundId)
                     .maybeSingle()
+                if (erroReleitura) {
+                    // Sem isto, `status: null` teria dois significados (linha sumiu
+                    // × não consegui ler) e nenhum rastro no log (laudo rodada 3).
+                    console.error('[estornar-pagamento] Erro ao reler a linha para o 409:', erroReleitura)
+                }
                 return json({ erro: 'estorno_ja_tratado', status: linhaAtual?.status ?? null }, 409)
             }
             const valor = Number(linha.amount)

@@ -4,6 +4,7 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   confirmarPorConsulta,
+  consultarTransacaoDaOrder,
   executarEstorno,
   guardaAntesDeChamar,
   interpretarResposta,
@@ -14,7 +15,7 @@ import {
 
 /**
  * Suíte da Task 2 da frente "estorno pelo app" (plano
- * 20260907-plano-estorno-pelo-app.md): E1–E27 — E1–E20, um por afirmativa do
+ * 20260907-plano-estorno-pelo-app.md): E1–E31 — E1–E20, um por afirmativa do
  * plano; E21–E25 do conserto da reprovação Opus do PR #438 (laudo
  * 20260907-laudo-opus-pr438-t2-executor-do-estorno.md): fórmula acumulada,
  * credencial 401/403, "não sei" na confirmação, chave+corpo do POST e 2xx
@@ -22,7 +23,9 @@ import {
  * (laudo 20260907-laudo-opus-pr438-t2-executor-do-estorno-rodada2.md): o
  * caminho direto de `confirmarPorConsulta` (sem `codigo`) vira tentar_depois
  * em vez de falhou, e `refundIdDaConsulta` desempata por `date_created` e
- * nunca devolve o id do pagamento.
+ * nunca devolve o id do pagamento; E28–E31 do conserto do laudo do PR #439
+ * (07/09): `consultarTransacaoDaOrder` (PIX via Orders API) exportada e
+ * testada diretamente.
  *
  * NENHUMA chamada real ao Mercado Pago acontece aqui: todo `fetch` é dublê
  * (rota por método+trecho de URL) e a consulta da transação da order é uma
@@ -1143,6 +1146,89 @@ Deno.test("E27 - sem refunds[] materializado, concluido grava mp_refund_id NULL 
   assertEquals(concluidoListaVazia.tipo, "concluido");
   assertEquals(
     (concluidoListaVazia as { mp_refund_id: string | null }).mp_refund_id,
+    null,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// E28–E31 — conserto do laudo do PR #439 (07/09): a edge estornar-pagamento
+// não passava `consultarTransacaoDaOrder` ao executor — todo estorno de PIX
+// (Orders API, único método vivo da loja) devolvia `tentar_depois` para
+// sempre e o dinheiro nunca voltava. Estas cobrem a função exportada
+// diretamente (dublê de fetch por rota, mesmo padrão de `fetchDuble` acima).
+// ---------------------------------------------------------------------------
+
+Deno.test("E28 - consultarTransacaoDaOrder feliz: um pagamento na order -> o id dele", async () => {
+  const { f } = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        transactions: { payments: [{ id: "PAY_X", status: "processed" }] },
+      },
+    },
+  ]);
+  assertEquals(
+    await consultarTransacaoDaOrder({
+      orderId: "ORD01ABCDEFOLUIMWQKDXYZ01",
+      token: TOKEN,
+      buscar: f,
+    }),
+    "PAY_X",
+  );
+});
+
+Deno.test("E29 - consultarTransacaoDaOrder sem transactions no corpo -> null", async () => {
+  const { f } = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD02SEMTRANSACAO",
+      status: 200,
+      corpo: { id: "ORD02SEMTRANSACAO" },
+    },
+  ]);
+  assertEquals(
+    await consultarTransacaoDaOrder({ orderId: "ORD02SEMTRANSACAO", token: TOKEN, buscar: f }),
+    null,
+  );
+});
+
+Deno.test("E30 - consultarTransacaoDaOrder com HTTP 500 -> null (nunca lanca)", async () => {
+  const { f } = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD03INSTAVEL",
+      status: 500,
+      corpo: { message: "erro interno" },
+    },
+  ]);
+  assertEquals(
+    await consultarTransacaoDaOrder({ orderId: "ORD03INSTAVEL", token: TOKEN, buscar: f }),
+    null,
+  );
+});
+
+Deno.test("E31 - dois pagamentos aprovados sem discriminador -> null (nunca chuta)", async () => {
+  const { f } = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD04DUPLICADO",
+      status: 200,
+      corpo: {
+        id: "ORD04DUPLICADO",
+        transactions: {
+          payments: [
+            { id: "PAY_A", status: "processed" },
+            { id: "PAY_B", status: "processed" },
+          ],
+        },
+      },
+    },
+  ]);
+  assertEquals(
+    await consultarTransacaoDaOrder({ orderId: "ORD04DUPLICADO", token: TOKEN, buscar: f }),
     null,
   );
 });

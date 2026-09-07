@@ -419,6 +419,85 @@ Deno.test("F5 - fluxo feliz conclui via RPC e responde {status, valor, texto} se
     assertEquals(executor.registro.chamadas[0].pedido.gateway_payment_id, "123456789")
 })
 
+// ── F5b: PIX (Orders API) → a edge PRECISA de consultarTransacaoDaOrder ────
+// Conserto do laudo do PR #439 (07/09): sem passar consultarTransacaoDaOrder
+// ao executor, todo estorno de pedido cujo gateway_payment_id é de ORDER (o
+// caminho do PIX, único método vivo da loja) devolvia tentar_depois PARA
+// SEMPRE — o clique do lojista nunca devolvia dinheiro. Este teste NÃO
+// injeta deps.executarEstorno: usa o módulo real (_shared/estorno.ts) via o
+// import dinâmico da edge, e o dublê de fetch responde às DUAS chamadas
+// (GET da order, depois POST do refund-order).
+
+const PEDIDO_ORDER = {
+    id: "99999999-9999-4999-8999-999999999999",
+    gateway_payment_id: "ORDTST05ABCDEFGHIJKLMNOPQR",
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "cancelled",
+}
+
+/** Fetch falso que discrimina por MÉTODO: GET = consulta da order, POST = refund-order. */
+function fetchOrderRefundFalso() {
+    const registro = { chamadas: [] as any[] }
+    const buscar = ((input: any, init?: any) => {
+        const url = String(input instanceof Request ? input.url : input)
+        const metodo = String(init?.method ?? "GET").toUpperCase()
+        registro.chamadas.push({ url, metodo, init })
+        if (metodo === "GET") {
+            return new Response(
+                JSON.stringify({
+                    id: "ORDTST05ABCDEFGHIJKLMNOPQR",
+                    status: "processed",
+                    status_detail: "accredited",
+                    transactions: { payments: [{ id: "PAY_X", status: "processed" }] },
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            )
+        }
+        return new Response(
+            JSON.stringify({ id: "ORDTST05ABCDEFGHIJKLMNOPQR", status: "refunded" }),
+            { status: 201, headers: { "Content-Type": "application/json" } },
+        )
+    }) as any
+    return { buscar, registro }
+}
+
+Deno.test("F5b - pedido PIX (order): a edge passa consultarTransacaoDaOrder e o corpo do refund leva o id do PAGAMENTO", async () => {
+    const { cliente, registro } = clienteSupaFalso({ linha: LINHA_SOLICITADA, pedido: PEDIDO_ORDER })
+    const mp = fetchOrderRefundFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                buscar: mp.buscar,
+                // SEM executarEstorno: força a edge a usar o módulo real.
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    const corpo = await resposta.json()
+    assertEquals(corpo.status, "concluido")
+    assertEquals(corpo.valor, 100)
+
+    // Uma chamada GET (consulta da transação) e uma POST (refund-order).
+    const gets = mp.registro.chamadas.filter((c: any) => c.metodo === "GET")
+    const posts = mp.registro.chamadas.filter((c: any) => c.metodo === "POST")
+    assertEquals(gets.length, 1)
+    assertEquals(posts.length, 1)
+
+    // O corpo do POST leva o id do PAGAMENTO (PAY_X), nunca o id da order.
+    const corpoPost = JSON.parse(posts[0].init.body)
+    assertEquals(corpoPost.transactions[0].id, "PAY_X")
+
+    // A chave de idempotência do POST é o refund_id da linha.
+    assertEquals(posts[0].init.headers["X-Idempotency-Key"], REFUND_ID)
+
+    assertEquals(registro.rpcs.length, 1)
+    assertEquals(registro.rpcs[0].nome, "concluir_estorno")
+})
+
 // ── F6: parcial → valor parcial na resposta ────────────────────────────────
 
 Deno.test("F6 - devolucao parcial devolve o valor parcial e a decisao de payment_status e' da RPC", async () => {

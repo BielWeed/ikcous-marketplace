@@ -1140,7 +1140,7 @@ async function main() {
       (g) => g.routine_name === "confirmar_pagamento",
     );
     console.log(
-      `  grants medidos (a pergunta obrigatoria do PR #439 responde DAQUI, do routine_privileges, nao de leitura):\n    concluir_estorno  = [${daConcluir.map((g) => g.grantee).join(", ")}]\n    confirmar_pagamento = [${daConfirmar.map((g) => g.grantee).join(", ")}]`,
+      `  grants medidos (a pergunta obrigatoria do PR #439 responde DAQUI: routine_privileges + has_function_privilege do pg_catalog logo abaixo, nao de leitura):\n    concluir_estorno  = [${daConcluir.map((g) => g.grantee).join(", ")}]\n    confirmar_pagamento = [${daConfirmar.map((g) => g.grantee).join(", ")}]`,
     );
     conferir(
       "P12c: concluir_estorno NAO tem EXECUTE para authenticated, anon nem PUBLIC",
