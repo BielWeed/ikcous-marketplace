@@ -53,6 +53,7 @@ import {
 import { readKey } from "../_shared/webpush.ts";
 import {
   confirmarPorConsulta,
+  consultarTransacaoDaOrder,
   executarEstorno,
   type LinhaEstorno,
   type PedidoParaEstorno,
@@ -488,6 +489,20 @@ async function handler(
         init,
       );
 
+    // PIX = ORDER: `gateway_payment_id` guarda o id da ORDER, não o da
+    // transação de pagamento que o refund-order exige no corpo — sem esta
+    // consulta o executor devolve `tentar_depois` para sempre e o dinheiro
+    // nunca volta (mesmo achado do laudo do PR #439, agora aqui no cron).
+    // Buscar CRU (`deps.fetchImpl ?? fetch`, nunca `buscarEstorno`):
+    // `consultarTransacaoDaOrder` já embute o próprio `fetchComTempo` por
+    // dentro de `consultarOrder` — envolver de novo duplicaria o timeout.
+    const consultarTransacaoDaOrderDoCron = (orderId: string) =>
+      consultarTransacaoDaOrder({
+        orderId,
+        token: mpToken,
+        buscar: deps.fetchImpl ?? fetch,
+      });
+
     for (const refund of refundsPendentes ?? []) {
       refundsVistos++;
       // Cada linha no seu próprio try: a reconciliação de estornos existe
@@ -563,6 +578,7 @@ async function handler(
             pedido,
             token: mpToken,
             buscar: buscarEstorno,
+            consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
           });
           const desfecho = await gravarDesfechoDoEstorno(supabase, String(refund.id), resultado);
           if (desfecho === "concluido") refundsConcluidos++;
@@ -640,6 +656,7 @@ async function handler(
           pedido,
           token: mpToken,
           buscar: buscarEstorno,
+          consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
         });
         const desfechoRetry = await gravarDesfechoDoEstorno(
           supabase,

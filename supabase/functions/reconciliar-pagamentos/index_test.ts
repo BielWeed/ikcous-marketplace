@@ -831,7 +831,9 @@ const PAID_AT_FRESCO = new Date(AGORA_MS - UM_DIA_MS).toISOString();
 function fetchDubleReconciliacao(
   rotas: Array<{ metodo: string; trecho: string; status: number; corpo: unknown }>,
 ) {
-  const chamadas: Array<{ url: string; metodo: string; chave?: string }> = [];
+  const chamadas: Array<
+    { url: string; metodo: string; chave?: string; corpoEnviado?: unknown }
+  > = [];
   const f = (entrada: string | URL | Request, init?: RequestInit) => {
     const url = typeof entrada === "string"
       ? entrada
@@ -840,7 +842,12 @@ function fetchDubleReconciliacao(
       : entrada.url;
     const metodo = (init?.method ?? "GET").toUpperCase();
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    chamadas.push({ url, metodo, chave: headers["X-Idempotency-Key"] });
+    chamadas.push({
+      url,
+      metodo,
+      chave: headers["X-Idempotency-Key"],
+      corpoEnviado: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
     const rota = rotas.find((r) => r.metodo === metodo && url.includes(r.trecho));
     return Promise.resolve(
       new Response(JSON.stringify(rota?.corpo ?? {}), { status: rota?.status ?? 500 }),
@@ -1147,4 +1154,66 @@ Deno.test("R7 - duas linhas do MESMO pedido no lote: a 1ª conclui e sobe valor_
   assertEquals(corpo.estornos.falhos, 1);
   const desfechoB = registro.atualizacoesOrderRefunds.find((a) => a.id === "rB" && a.valores.status === "falhou");
   assertEquals(desfechoB !== undefined, true);
+});
+
+// =============================================================================
+// R8 — complemento da T4 (merge com o conserto do PR #439): PIX = ORDER, e o
+// cron precisa da MESMA injeção de `consultarTransacaoDaOrder` que a edge do
+// clique já tem — sem ela `executarEstorno` devolve `tentar_depois` para
+// sempre para toda linha de order (achado do laudo do PR #439).
+// =============================================================================
+
+Deno.test("R8 - linha solicitado de pedido PIX (gateway_payment_id de ORDER) -> consulta a transação, refunda pela order e conclui", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    total: 20,
+    valor_estornado: 0,
+  });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r8", order_id: pedido.id, amount: 20, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        transactions: { payments: [{ id: "PAY_X", status: "processed" }] },
+      },
+    },
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 201,
+      corpo: { id: "REFUND01", status: "refunded" },
+    },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(mp.chamadas.length, 2);
+  assertEquals(mp.chamadas[0].metodo, "GET");
+  assertEquals(mp.chamadas[1].metodo, "POST");
+  const post = mp.chamadas[1].corpoEnviado as { transactions: Array<{ id: string }> };
+  assertEquals(post.transactions[0].id, "PAY_X");
+  assertEquals(mp.chamadas[1].chave, "r8");
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "r8");
 });
