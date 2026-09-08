@@ -194,7 +194,7 @@ async function main() {
   if (semArquivoPos.length > 0 || foraDoPadrao.length > 0) {
     if (foraDoPadrao.length > 0) {
       console.error(
-        `\nREPROVADO: nome fora do padrão AAAAMMDDhhmmss_; renomeie ANTES de aplicar em qualquer loja: ${foraDoPadrao.join(", ")}`,
+        `\nREPROVADO: nome fora do padrão AAAAMMDDhhmmss_: ${foraDoPadrao.join(", ")}. Se AINDA NÃO foi aplicado em loja nenhuma, renomeie ANTES de aplicar. Se JÁ está no ledger de alguma loja, NÃO renomeie (viraria órfã lá): acrescente o nome à lista fechada NOMES_13_DIGITOS_COM_EXCECAO neste script.`,
       );
     }
     if (semArquivoPos.length > 0) {
