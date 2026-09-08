@@ -7,6 +7,61 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.23.0] - 2026-09-08
+
+A versão em que o lojista devolve o dinheiro pelo painel e o banco para de
+divergir do Mercado Pago. 5 PRs de produto (#447, #450, #449, #448 e os tipos
+do #446) mais 2 de ferramenta (#444, #445); ZERO migration nova (as do
+estorno já estão nas duas lojas desde a 1.22.0) e 4 edge functions republicadas
+(3 alteradas de verdade, 1 só pelo módulo compartilhado).
+
+### Para quem COMPRA (vitrine)
+
+- **A devolução nunca conclui com o dinheiro de outra** (PRs #447, #450):
+  quando um pedido tem mais de uma devolução, a loja só dá uma por concluída
+  quando o Mercado Pago confirma o refund DAQUELA linha, e a soma que prova a
+  saída de caixa só conta refund ainda não reivindicado por outra devolução.
+  Antes, duas devoluções pendentes no mesmo pedido poderiam creditar o
+  dinheiro de uma à outra (era o "só anotado" da 1.22.0).
+- **Devolução feita fora do app também aparece** (PR #449): se o lojista
+  devolver pelo painel do Mercado Pago, o webhook registra a linha como feita
+  pelo sistema e o pedido passa a mostrar o valor devolvido de verdade.
+
+### Para quem VENDE (painel admin)
+
+- **Botão "Devolver dinheiro" na ficha do pedido** (PR #448): cartão
+  "Devolução de dinheiro" com o saldo disponível, valor total ou outro valor
+  (piso de R$ 0,01, teto no disponível), confirmação antes de mandar, e o
+  estado verdadeiro de cada devolução (pendente, concluída, falhou, com o
+  último erro em português). Pedido já enviado continua exigindo confirmar o
+  retorno do produto na lista de cancelados antes.
+- **O saldo não mente na carga** (PR #448): enquanto a lista de devoluções
+  não chega, a tela não afirma saldo nenhum; se a consulta falhar, mostra o
+  erro em vez de "Carregando" para sempre.
+- **Chargeback não vira devolução** (PR #449): contestação que o Mercado Pago
+  reembolsa por conta própria fica registrada sem somar ao valor devolvido.
+
+### Para quem OPERA (banco, servidor, lojas clonadas)
+
+- **Nenhuma migration.** `2026110000000` e `2026110000100` já estão nas duas
+  lojas (07/09). Tipos regenerados do banco vivo (PR #446).
+- **Edge functions:** `webhook-mercadopago` (registra o desfecho do estorno,
+  inclusive o externo; `verify_jwt = false`), `reconciliar-pagamentos`
+  (ignora a linha do sistema na fila; `verify_jwt = false`, é cron) e
+  `estornar-pagamento` (exclui refunds já reivindicados por outra linha;
+  `verify_jwt = true`). `criar-pagamento` é republicada só para não ficar
+  com uma cópia velha do `_shared/mercadopago.ts` (mudança aditiva, o
+  checkout não muda). Ordem de publicação: edges → front, nas DUAS lojas.
+- **Ferramenta:** o passo 0 da aplicação de migrations enxerga as de 13
+  dígitos por lista fechada de nomes (PR #445); a publicação deixou de ser
+  proibida no settings do repositório (PR #444).
+- **Só anotado para a próxima versão** (laudos Opus rodada 3): guarda
+  `settled` do webhook sem teste próprio; ordem erro/carga da T6 e teto
+  `<= disponivel` sem teste; a ficha renderiza o cartão para `estornado`
+  (a RPC recusa, nenhum dinheiro se move); índice único parcial em
+  `mp_refund_id` não criado; tela do cliente (T7) e prova em sandbox do MP
+  (T8) não feitas — os textos ao lojista são leitura de doc.
+
 ## [1.22.0] - 2026-09-07
 
 A versão em que o cancelamento devolve o dinheiro sozinho. 5 PRs de produto
