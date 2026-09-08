@@ -177,7 +177,9 @@ export const Header = memo(function Header({
           )}
 
           <button
-            className="relative flex shrink-0 cursor-pointer appearance-none items-center gap-2 border-none bg-transparent p-0 text-left outline-none transition-all duration-150 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] hover:opacity-80 active:scale-95"
+            // Laudo 05/09, M3: `outline-none` apagava o anel de foco sem
+            // repor — anel só para teclado, padrão do BottomNav (onda 1).
+            className="relative flex shrink-0 cursor-pointer appearance-none items-center gap-2 border-none bg-transparent p-0 text-left outline-none transition-all duration-150 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] hover:opacity-80 focus-visible:ring-2 focus-visible:ring-zinc-900/50 active:scale-95"
             onClick={() => {
               haptic.light();
               onNavigate("home");

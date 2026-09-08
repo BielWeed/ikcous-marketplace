@@ -75,10 +75,15 @@ describe("achado 9 — recusas anunciadas: cupom e frete pendente", () => {
     );
   });
 
-  it("classes originais do cupom preservadas (nada de visual mudou)", () => {
+  it("classes do cupom preservadas além do anel de foco (M3 do laudo 05/09)", () => {
     const src = fonte(COUPON_INPUT);
+    // A onda 2 (03/09) congelava a classe ORIGINAL do input para provar que
+    // nada de visual mudou. O M3 do laudo 05/09 trocou de propósito o
+    // override que apagava o anel de foco global pelo padrão do BottomNav
+    // (anel visível só para teclado). O restante da classe segue igual — é
+    // isso que continua provado aqui.
     expect(src).toContain(
-      'className="flex-1 bg-transparent text-sm focus:outline-none"',
+      'className="flex-1 rounded-md bg-transparent text-sm outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50"',
     );
     expect(src).toContain(
       'className="flex items-center gap-1 text-xs text-red-500"',
@@ -119,8 +124,12 @@ describe("achado 12 — carregando em silêncio: skeletons viram status", () => 
 
   it("skeleton do banner da home anuncia Carregando banners", () => {
     const src = fonte(HOME);
+    // Frente cls-home-0409: o esqueleto ganhou a GEOMETRIA do banner real
+    // (aspect-[2/1] md:aspect-[4/1] + minHeight 200px); o contrato de
+    // acessibilidade deste teste (role="status" + sr-only + o texto)
+    // permanece intacto.
     expect(src).toMatch(
-      /<div\s+role="status"\s+className="mb-2 flex h-\[200px\] w-full animate-pulse items-center justify-center bg-zinc-100 sm:h-\[400px\]"/,
+      /<div\s+role="status"\s+className="flex aspect-\[2\/1\] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-\[4\/1\]"/,
     );
     expect(src).toContain("Carregando banners");
   });
@@ -137,8 +146,12 @@ describe("achado 12 — carregando em silêncio: skeletons viram status", () => 
 
   it("skeleton do filtro de categorias anuncia Carregando categorias", () => {
     const src = fonte(CATEGORY_FILTER);
+    // Frente cls-home-0409: o esqueleto perdeu o sticky/borda própria e
+    // passou a espelhar o wrapper da barra carregada (flex w-full
+    // items-center); o contrato de acessibilidade (role="status" +
+    // sr-only + o texto) permanece intacto.
     expect(src).toMatch(
-      /<div\s+role="status"\s+className="sticky top-\[72px\] z-40 border-b border-gray-100 bg-white"/,
+      /<div\s+role="status"\s+className="flex w-full items-center"/,
     );
     expect(src).toContain("Carregando categorias");
     // SÓ o skeleton muda — o filtro real fica intocado (aria-pressed da

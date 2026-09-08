@@ -95,3 +95,10 @@ verify_jwt = false
 # pior caso ao vazar e' alguem disparar uma reconciliacao idempotente.
 [functions."reconciliar-pagamentos"]
 verify_jwt = false
+
+# Chamada pelo painel do lojista logado: JWT obrigatório no portão do
+# Supabase E porta interna de admin (JWT+papel via service role) na função —
+# devolução de dinheiro não aceita tráfego sem identidade (I4 do laudo do
+# PR #439; o bloco faltando deixava o verify_jwt invisível em revisão).
+[functions."estornar-pagamento"]
+verify_jwt = true

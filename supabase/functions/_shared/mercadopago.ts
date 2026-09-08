@@ -13,7 +13,10 @@
  * `fetch` entra por parâmetro para o teste não tocar rede.
  */
 
-const BASE_URL_PADRAO = "https://api.mercadopago.com";
+// Exportada pelo M1 do laudo do PR #438 (07/09): o executor de estorno
+// (`estorno.ts`) precisava da MESMA base e a redeclarava — segunda cópia da
+// mesma URL é o defeito #53 (regra em dois lugares) esperando para divergir.
+export const BASE_URL_PADRAO = "https://api.mercadopago.com";
 
 /**
  * Teto de espera para todo fetch deste arquivo, em milissegundos.

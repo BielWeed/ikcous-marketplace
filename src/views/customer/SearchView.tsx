@@ -223,6 +223,9 @@ export const SearchView = React.memo(function SearchView({
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
+              // Laudo 05/09, M5: botão de voltar só-ícone era "botão" para
+              // o leitor de tela — sem nome, voltar ficava sem significado.
+              aria-label="Voltar"
               className="flex size-10 items-center justify-center rounded-2xl border border-zinc-100 bg-zinc-50 transition-all hover:bg-zinc-100 active:scale-90"
             >
               <ArrowLeft className="size-5 text-zinc-900" />
