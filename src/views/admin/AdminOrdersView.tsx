@@ -42,6 +42,7 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { horarioRelativo } from "@/lib/horario-relativo";
 import { mapOrderFromDB } from "@/lib/mappers";
+import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
@@ -69,12 +70,6 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  pix: "PIX Instantâneo",
-  card: "Crédito Seguro",
-  cash: "Dinheiro",
-};
 
 const STATUS_ORDER_COLORS: Record<string, string> = {
   pending: "bg-blue-500",
@@ -858,6 +853,29 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [orders, paymentFilter],
   );
 
+  const exportarCsv = () => {
+    if (paginatedOrders.length === 0) return;
+    const agora = new Date();
+    const doisDigitos = (numero: number) => String(numero).padStart(2, "0");
+    const data = `${agora.getFullYear()}-${doisDigitos(agora.getMonth() + 1)}-${doisDigitos(agora.getDate())}`;
+    const hora = `${doisDigitos(agora.getHours())}-${doisDigitos(agora.getMinutes())}`;
+    const arquivo = new Blob([pedidosParaCsv(paginatedOrders)], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(arquivo);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pedidos-${data}-${hora}.csv`;
+    document.body.appendChild(link);
+    try {
+      link.click();
+    } finally {
+      link.remove();
+      // Aguarda o navegador iniciar o download antes de liberar o endereço.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  };
+
   // Achado 2 do lote 1 (caça-defeitos): `currentPage` vem do localStorage e
   // sobrevive entre sessões. Se a lojista fechou o painel na página 2 e, até
   // reabrir, os pedidos que a preenchiam saíram do filtro (entregues,
@@ -1238,6 +1256,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             block. O id="admin-pedidos-lista" (âncora do scroll do botão
             "Ver pedidos") fica no bloco da lista, mais abaixo. */}
         <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="mb-2 flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={exportarCsv}
+              disabled={paginatedOrders.length === 0}
+            >
+              Exportar CSV
+            </Button>
+          </div>
           <div className="flex w-full items-center gap-3">
             <div className="group relative w-full flex-1">
               <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
@@ -1908,7 +1936,7 @@ const AdminOrderCard = memo(function AdminOrderCard({
               </span>
               <div className="size-1 rounded-full bg-zinc-800" />
               <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                {PAYMENT_METHOD_LABELS[order.paymentMethod] || "Outro"}
+                {rotuloDaFormaDePagamento(order.paymentMethod)}
               </span>
             </div>
           </div>
