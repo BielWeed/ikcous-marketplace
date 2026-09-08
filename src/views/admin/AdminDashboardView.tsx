@@ -14,6 +14,7 @@ import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -41,17 +42,6 @@ interface CategoryData {
   orders?: number;
 }
 
-// Gêmeo de AdminSettingsView.tsx:40-44 (StatusPagamentoPix): a chave pública
-// do Mercado Pago também vem do build, e o placeholder do .env.example é o
-// "não configurada". Duplicado aqui de propósito — unificar os dois exige
-// tocar em AdminSettingsView.tsx, fora do escopo desta frente.
-const CHAVE_PUBLICA_MP_DASHBOARD = import.meta.env.VITE_MP_PUBLIC_KEY as
-  | string
-  | undefined;
-const CHAVE_PUBLICA_MP_OK_DASHBOARD =
-  !!CHAVE_PUBLICA_MP_DASHBOARD &&
-  CHAVE_PUBLICA_MP_DASHBOARD !== "YOUR_MP_PUBLIC_KEY_HERE";
-
 /**
  * Ponte entre os dados vivos (useStore) e o componente PURO
  * LojaProntaEEstoqueBaixo. Separada do corpo de AdminDashboardView e SEMPRE
@@ -78,7 +68,7 @@ function SecaoLojaProntaEEstoqueBaixo({
       stats={stats}
       originCep={config.originCep}
       ligado={PAGAMENTO_ONLINE_LIGADO}
-      chaveOk={CHAVE_PUBLICA_MP_OK_DASHBOARD}
+      chaveOk={pixConfiguradoNoBuild(import.meta.env.VITE_MP_PUBLIC_KEY)}
       produtos={products}
       configCarregando={!isLoaded}
       produtosCarregando={loadingProducts}

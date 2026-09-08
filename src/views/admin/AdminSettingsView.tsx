@@ -26,6 +26,7 @@ import { corPrimariaEfetiva, validaCorDaLoja } from "@/config/cor-da-loja";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -37,12 +38,6 @@ import type { View } from "@/types";
 // pagamento — o lojista descobria que a loja não aceita PIX pela queixa do
 // cliente. A flag vem do build (src/lib/flags.ts); a chave pública também
 // (mesmo deploy). Placeholder do .env.example é o "não configurada".
-const CHAVE_PUBLICA_MP = import.meta.env.VITE_MP_PUBLIC_KEY as
-  | string
-  | undefined;
-const CHAVE_PUBLICA_MP_OK =
-  !!CHAVE_PUBLICA_MP && CHAVE_PUBLICA_MP !== "YOUR_MP_PUBLIC_KEY_HERE";
-
 interface AdminSettingsViewProps {
   onNavigate: (view: View) => void;
   active?: boolean;
@@ -908,7 +903,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               <div className="space-y-3">
                 <StatusPagamentoPix
                   ligado={PAGAMENTO_ONLINE_LIGADO}
-                  chaveOk={CHAVE_PUBLICA_MP_OK}
+                  chaveOk={pixConfiguradoNoBuild(
+                    import.meta.env.VITE_MP_PUBLIC_KEY,
+                  )}
                 />
                 <ConnectionDiagnosticsSection />
               </div>
