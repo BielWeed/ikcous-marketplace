@@ -2623,7 +2623,14 @@ const AppContent = () => {
           da barra de progresso (z-[99999]) e do Header (z-[100]). */}
       <a
         href="#conteudo"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100000] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-zinc-900 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-admin-gold"
+        onClick={(e) => {
+          // Foco por JS, sem navegar: o hash dispararia popstate e o app trata
+          // popstate como "Voltar" (backOverrideRef no checkout; diálogo de
+          // descarte no admin com formulário sujo). Laudo Opus do PR #455.
+          e.preventDefault();
+          mainRef.current?.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100000] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-zinc-900 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
       >
         Pular para o conteúdo
       </a>

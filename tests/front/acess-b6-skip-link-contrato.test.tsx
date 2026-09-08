@@ -6,10 +6,16 @@
 // leitor de tela aperta Tab uma vez ao abrir a loja e recebe o link; Enter
 // leva o foco para a área principal, sem passar pelo cabeçalho inteiro.
 //
-// Por que lê FONTE e não renderiza App: App.tsx arrasta supabase e
-// framer-motion (mesma decisão de acess-onda2-contrato.test.tsx, cujo
-// padrão este arquivo espelha). O que se prova aqui é a marcação — ordem
-// no fonte decide a ordem de Tab.
+// Rodada 2 (laudo Opus do PR #455, 08/09): este arquivo lê FONTE e prova a
+// MARCAÇÃO — ordem no fonte decide a ordem de Tab, atributos do <main>. A
+// justificativa antiga ("App.tsx arrasta supabase/framer-motion") caiu: o
+// vizinho tests/front/barra-de-rota-fica-montada-para-o-exit.test.tsx já
+// renderiza o App de verdade, e é isso que
+// acess-b6-skip-link-render.test.tsx faz para provar o COMPORTAMENTO — que
+// o link é de fato o primeiro focável do documento e que ativá-lo foca o
+// <main> sem navegar (sem popstate, sem somar entrada de histórico). O
+// contrato textual continua útil como trava BARATA de marcação; a trava de
+// comportamento é o teste de render.
 import { describe, expect, it } from "vitest";
 
 const FONTES = import.meta.glob<string>("/src/App.tsx", {
@@ -34,8 +40,11 @@ describe("o glob casou /src/App.tsx (nada de prova vazia)", () => {
 describe("B6 — skip link é o primeiro focável do app", () => {
   it('existe <a href="#conteudo"> com o texto "Pular para o conteúdo", invisível até focar', () => {
     const src = fonte(APP);
+    // Entre `href` e `className` mora o `onClick` (rodada 2: preventDefault +
+    // foco por JS, para não navegar) — `[\s\S]*?` não-guloso pula esse bloco
+    // até achar o `className` da própria tag de abertura.
     const match = src.match(
-      /<a\s+href="#conteudo"\s+className="([^"]+)"\s*>\s*Pular para o conteúdo\s*<\/a>/,
+      /<a\s+href="#conteudo"[\s\S]*?className="([^"]+)"\s*>\s*Pular para o conteúdo\s*<\/a>/,
     );
     expect(
       match,
