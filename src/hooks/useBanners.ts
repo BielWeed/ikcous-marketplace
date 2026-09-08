@@ -521,65 +521,68 @@ export function useBanners(adminMode = false) {
     const overBanner = banners.find((b) => b.id === overBannerId);
     if (!activeBanner || !overBanner) return;
 
-    // Resolve any clashing/duplicate order issues in the database first
-    const activePosition = activeBanner.position;
-    const samePosBanners = banners.filter((b) => b.position === activePosition);
-    const hasOrderCollision = samePosBanners.some((b, idx) => {
-      const matchIndex = samePosBanners.findIndex((x) => x.order === b.order);
-      return matchIndex !== idx;
-    });
+    const previousBanners = banners.map((b) => ({ ...b }));
+    let newBanners = [...banners];
 
-    if (hasOrderCollision) {
-      console.log(
-        `[Banners] Collision detected in ${activePosition}. Normalizing before swap.`,
+    try {
+      // Resolve any clashing/duplicate order issues in the database first
+      const activePosition = activeBanner.position;
+      const samePosBanners = banners.filter(
+        (b) => b.position === activePosition,
       );
-      try {
+      const hasOrderCollision = samePosBanners.some((b, idx) => {
+        const matchIndex = samePosBanners.findIndex((x) => x.order === b.order);
+        return matchIndex !== idx;
+      });
+
+      if (hasOrderCollision) {
+        console.log(
+          `[Banners] Collision detected in ${activePosition}. Normalizing before swap.`,
+        );
         const sorted = [...samePosBanners].sort((a, b) => {
           if ((a.order ?? 0) !== (b.order ?? 0))
             return (a.order ?? 0) - (b.order ?? 0);
           return a.id.localeCompare(b.id);
         });
-        const updates = sorted.map((b, idx) => {
-          b.order = idx + 1;
-          return supabase
-            .from("banners")
-            .update({ order: idx + 1 })
-            .eq("id", b.id);
-        });
-        await Promise.all(updates);
-      } catch (err) {
-        console.error("[Banners] Collision normalization failed:", err);
+        const normalized = sorted.map((b, idx) => ({ ...b, order: idx + 1 }));
+        const results = await Promise.all(
+          normalized.map((b) =>
+            supabase.from("banners").update({ order: b.order }).eq("id", b.id),
+          ),
+        );
+        for (const { error } of results) {
+          if (error) throw error;
+        }
+        newBanners = newBanners.map(
+          (b) => normalized.find((item) => item.id === b.id) ?? b,
+        );
       }
-    }
 
-    // 1. Optimistic Update
-    const previousBanners = [...banners];
-    const newBanners = [...banners];
-    const activeIndex = newBanners.findIndex((b) => b.id === activeBannerId);
-    const overIndex = newBanners.findIndex((b) => b.id === overBannerId);
+      // 1. Optimistic Update
+      const activeIndex = newBanners.findIndex((b) => b.id === activeBannerId);
+      const overIndex = newBanners.findIndex((b) => b.id === overBannerId);
 
-    if (activeIndex !== -1 && overIndex !== -1) {
-      const activeB = { ...newBanners[activeIndex] };
-      const overB = { ...newBanners[overIndex] };
+      if (activeIndex !== -1 && overIndex !== -1) {
+        const activeB = { ...newBanners[activeIndex] };
+        const overB = { ...newBanners[overIndex] };
 
-      // Swap the 'order' values
-      const tempOrder = activeB.order;
-      activeB.order = overB.order;
-      overB.order = tempOrder;
+        // Swap the 'order' values
+        const tempOrder = activeB.order;
+        activeB.order = overB.order;
+        overB.order = tempOrder;
 
-      newBanners[activeIndex] = overB;
-      newBanners[overIndex] = activeB;
+        newBanners[activeIndex] = overB;
+        newBanners[overIndex] = activeB;
 
-      // Sort by order
-      const cachedBanners = [...banners];
-      cachedBanners[activeIndex] = overB;
-      cachedBanners[overIndex] = activeB;
-      cachedBanners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        // Sort by order
+        const cachedBanners = [...newBanners];
+        cachedBanners[activeIndex] = overB;
+        cachedBanners[overIndex] = activeB;
+        cachedBanners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-      applyLocalBanners(cachedBanners);
-    }
+        applyLocalBanners(cachedBanners);
+      }
 
-    try {
       const { error } = await (supabase.rpc as any)("swap_banner_order", {
         banner_id_1: activeBannerId,
         banner_id_2: overBannerId,
