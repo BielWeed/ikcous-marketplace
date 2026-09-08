@@ -4,6 +4,7 @@ import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
+import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -357,8 +358,19 @@ export function OrderDetailsView({
     checkIfReviewed();
   }, [user, order]);
 
-  const handleCopyId = () => {
-    navigator.clipboard.writeText(orderId);
+  // Brief "o app não mente quando copia" (08/09/2026): copiava sem
+  // await/catch e já comemorava mesmo quando a cópia falhava (permissão
+  // negada, janela sem foco, API ausente) — mesma família do laudo 0109 (A-8)
+  // que corrigiu OrderDetail.tsx (painel). `copiarParaClipboard` devolve
+  // `false` quando a API recusa, e aí o aviso é de erro, não de sucesso.
+  const handleCopyId = async () => {
+    const ok = await copiarParaClipboard(orderId);
+    if (!ok) {
+      toast.error(
+        "Não foi possível copiar. Selecione o texto e copie manualmente.",
+      );
+      return;
+    }
     toast.success("ID do pedido copiado!");
     haptic.light();
   };
@@ -372,9 +384,15 @@ export function OrderDetailsView({
    */
   const codigoDeRastreio = order?.trackingCode?.trim() || null;
 
-  const handleCopyTracking = () => {
+  const handleCopyTracking = async () => {
     if (!codigoDeRastreio) return;
-    navigator.clipboard.writeText(codigoDeRastreio);
+    const ok = await copiarParaClipboard(codigoDeRastreio);
+    if (!ok) {
+      toast.error(
+        "Não foi possível copiar. Selecione o texto e copie manualmente.",
+      );
+      return;
+    }
     setCopiedTracking(true);
     toast.success("Código de rastreio copiado!");
     haptic.light();
