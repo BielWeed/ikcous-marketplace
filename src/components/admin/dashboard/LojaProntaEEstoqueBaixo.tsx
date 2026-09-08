@@ -96,9 +96,8 @@ export function LojaProntaEEstoqueBaixo({
   // (ex.: um refresh em segundo plano com o número anterior em cache).
   const estoqueEstaCarregando = estoqueCarregando && !numeroDeAlertasValido;
 
-  // "Preenchido" = string com conteúdo após trim() — a mesma regra do
-  // formulário de endereço; CEP só de espaço em branco não conta.
-  const cepPreenchido = !!originCep?.trim();
+  // CEP completo: oito dígitos, com ou sem o hífen após o quinto.
+  const cepPreenchido = /^\d{5}-?\d{3}$/.test(originCep?.trim() ?? "");
   // `.some(isActive)`, nunca `produtos.length`: o cofre do admin também
   // guarda produto desativado (realtimeSyncEngine.ts seleciona `ativo` e só
   // filtra `deleted_at`).
