@@ -395,6 +395,7 @@ export function CartView({
           role="tablist"
         >
           <motion.div
+            aria-hidden="true"
             className="absolute inset-y-1 rounded-xl border border-zinc-200/50 bg-white shadow-sm"
             initial={false}
             animate={{
