@@ -242,8 +242,8 @@ const getProcessedPreviewText = (
     nome_produto: sample.name,
     preco: formattedPrice,
     preco_produto: formattedPrice,
-    link: `ikcous.com/produtos?id=${sample.id || "1"}`,
-    link_produto: `ikcous.com/produtos?id=${sample.id || "1"}`,
+    link: `${window.location.origin}/produtos?id=${sample.id || "1"}`,
+    link_produto: `${window.location.origin}/produtos?id=${sample.id || "1"}`,
   };
 
   let processed = text;
@@ -996,7 +996,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                           {/* Domain footer block */}
                           <div className="flex items-center justify-between px-2.5 py-1 bg-black/20 border-t border-[#004d40]">
                             <span className="text-[8px] font-medium text-[#8696a0]">
-                              ikcous.com
+                              {window.location.host}
                             </span>
                             <ExternalLink className="size-2.5 text-[#8696a0]" />
                           </div>

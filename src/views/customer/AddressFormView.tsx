@@ -1,5 +1,7 @@
 import { AddressForm } from "@/components/ui/custom/AddressForm";
+import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
+import { nomeDaLoja } from "@/lib/nome-da-loja";
 import type { Address } from "@/types";
 import { MapPin, Sparkles } from "lucide-react";
 import { useEffect } from "react";
@@ -10,6 +12,7 @@ interface AddressFormViewProps {
 }
 
 export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
+  const { config } = useStore();
   const { addresses, fetchAddresses, addAddress, updateAddress } =
     useAddresses();
 
@@ -56,7 +59,7 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
               <p className="text-[10px] font-black uppercase leading-tight tracking-[0.2em] text-zinc-400">
                 {addressId
                   ? "Atualize os dados para entrega"
-                  : "Onde entregaremos seu produto da IKCOUS?"}
+                  : `Onde entregaremos seu produto da ${nomeDaLoja(config)}?`}
               </p>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
 import { Button } from "@/components/ui/button";
-import { branding } from "@/config/branding";
+import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
@@ -12,6 +12,7 @@ import {
   isViewTransitionSupported,
   useViewTransition,
 } from "@/hooks/useViewTransition";
+import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -89,6 +90,7 @@ export function AdminLayout({
   onNavigate,
   onBack,
 }: AdminLayoutProps) {
+  const { config } = useStore();
   const { isSupported: isTransitionSupported } = useViewTransition();
   const { prefetchView } = usePrefetchOnHover();
   const { fetchExecutiveSummary, fetchCategoryAnalytics } = useAnalytics();
@@ -692,9 +694,9 @@ export function AdminLayout({
   const isSubView = parentView !== "profile" || isOrderDetailsSubView;
 
   useDocumentMeta({
-    title: `${branding.appName} | Admin Dashboard`,
+    title: `${nomeDaLoja(config)} | Admin Dashboard`,
     names: { description: "Sistema de navegação unificada e operação." },
-    properties: { "og:title": `${branding.appName} Admin` },
+    properties: { "og:title": `${nomeDaLoja(config)} Admin` },
   });
 
   // Missão 06 (C3): a medição de conexão fica AQUI (uma instância só) e é
@@ -731,7 +733,8 @@ export function AdminLayout({
           <div className="flex select-none flex-col">
             <div className="flex items-center justify-between gap-2">
               <h1 className="text-xl font-black leading-none tracking-tight text-white">
-                IKCOUS <span className="text-admin-gold">Admin</span>
+                {nomeDaLoja(config)}{" "}
+                <span className="text-admin-gold">Admin</span>
               </h1>
               <div
                 className={cn(

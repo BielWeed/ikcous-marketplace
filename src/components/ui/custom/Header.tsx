@@ -15,9 +15,9 @@ import {
 import { memo, useEffect, useRef, useState } from "react";
 import { SearchBar } from "./SearchBar";
 
-import { branding } from "@/config/branding";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { useStore } from "@/contexts/StoreContext";
+import { nomeDaLoja } from "@/lib/nome-da-loja";
 
 interface HeaderProps {
   onNavigate: (view: View, id?: string) => void;
@@ -63,14 +63,10 @@ export const Header = memo(function Header({
     logoSrc = "/branding/logo.png";
   }
 
-  // O nome vem do banco primeiro (o que o lojista configurou em
-  // `store_name`); `branding.appName` é fallback — a mesma preferência que
-  // a logo (`config.logoUrl`) já segue neste componente. Sem separador
-  // "|" ou "-", o nome inteiro vira o título e o subtítulo some.
-  const nomeDaLoja =
-    config.storeName?.trim() || branding.appName || "IKCOUS Marketplace";
-  const parts = nomeDaLoja.split(/[|-]/);
-  const mainName = parts[0]?.trim() || "IKCOUS";
+  // A regra comum prefere o nome configurado pela loja à marca do build.
+  const storeName = nomeDaLoja(config);
+  const parts = storeName.split(/[|-]/);
+  const mainName = parts[0]?.trim() || storeName;
   const subName =
     parts[1]?.trim() || (parts[0]?.includes(" ") ? "" : "imports");
   const storeLetter = mainName.charAt(0).toUpperCase();
@@ -190,7 +186,7 @@ export const Header = memo(function Header({
               <div className="flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]">
                 <img
                   src={logoSrc}
-                  alt={nomeDaLoja || "Store Logo"}
+                  alt={storeName}
                   className="size-full object-contain"
                   onError={() => {
                     if (logoState === "db") {
