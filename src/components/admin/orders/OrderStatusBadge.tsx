@@ -257,6 +257,24 @@ const PAGO_E_CANCELADO: PaymentStatusEntry = {
   needsAttention: true,
 };
 
+function configDoPagamento(
+  paymentStatus: PaymentStatus | null | undefined,
+  orderStatus?: OrderStatus | null,
+): PaymentStatusEntry {
+  const key = paymentStatusKey(paymentStatus);
+  return (key === "pago" || key === "recebido_na_entrega") &&
+    orderStatus === "cancelled"
+    ? PAGO_E_CANCELADO
+    : getPaymentStatusConfig(key);
+}
+
+export function rotuloDoPagamento(
+  paymentStatus: PaymentStatus | null | undefined,
+  orderStatus?: OrderStatus | null,
+): string {
+  return configDoPagamento(paymentStatus, orderStatus).label;
+}
+
 /**
  * Badge de `payment_status` para a fila de atenção do admin (Task 9, Fase
  * 3). `null`/`undefined` caem em "Sem cobrança online" — nunca em uma
@@ -273,20 +291,16 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   className,
   compact = false,
 }: Readonly<PaymentStatusBadgeProps>) {
-  const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` (Task 3b de
   // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md) entra no
   // mesmo cruzamento que `pago`: dinheiro que entrou fora do gateway e o
   // pedido morreu depois é exatamente o mesmo alerta.
-  const cfg =
-    (key === "pago" || key === "recebido_na_entrega") &&
-    orderStatus === "cancelled"
-      ? PAGO_E_CANCELADO
-      : getPaymentStatusConfig(key);
+  const cfg = configDoPagamento(paymentStatus, orderStatus);
+  const label = rotuloDoPagamento(paymentStatus, orderStatus);
 
   return (
     <div
-      title={compact ? cfg.label : undefined}
+      title={compact ? label : undefined}
       className={`flex max-w-full items-center rounded-full border px-2 py-0.5 ${cfg.bgColor} ${cfg.borderColor} ${
         cfg.needsAttention ? "animate-pulse ring-1 ring-red-500/60" : ""
       } ${className || ""}`}
@@ -294,7 +308,7 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
       <span
         className={`truncate text-[9px] font-black uppercase tracking-widest ${cfg.color}`}
       >
-        {compact ? (cfg.shortLabel ?? cfg.label) : cfg.label}
+        {compact ? (cfg.shortLabel ?? label) : label}
       </span>
     </div>
   );

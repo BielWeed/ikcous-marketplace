@@ -9,6 +9,8 @@ import { ProductCardSkeleton } from "./ProductCardSkeleton";
 
 interface ProductListProps {
   products: Product[];
+  /** Reinicia a paginação quando muda; ausente, reinicia ao trocar products. */
+  resetKey?: string;
   isLoading: boolean;
   favorites: string[];
   onToggleFavorite: (product: Product) => void;
@@ -26,6 +28,7 @@ interface ProductListProps {
 
 export const ProductList = React.memo(function ProductList({
   products,
+  resetKey,
   isLoading,
   favorites,
   onToggleFavorite,
@@ -39,10 +42,11 @@ export const ProductList = React.memo(function ProductList({
   const { prefetchView } = usePrefetchOnHover();
   const [visibleCount, setVisibleCount] = useState(12);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const resetDependency = resetKey ?? products;
 
   useEffect(() => {
     setVisibleCount(12);
-  }, [products]);
+  }, [resetDependency]);
 
   const observerTargetRef = useCallback(
     (node: HTMLDivElement | null) => {
