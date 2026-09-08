@@ -2,6 +2,7 @@ import { LazyImage } from "@/components/LazyImage";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { imagemRedimensionada } from "@/lib/imageUrl";
+import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -330,12 +331,8 @@ export const ProductCard = memo(function ProductCard({
               e.stopPropagation();
               onToggleFavorite(product, e);
             }}
-            aria-label={
-              isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"
-            }
-            title={
-              isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"
-            }
+            aria-label={rotuloDeFavoritar(product.name, isFavorite)}
+            title={rotuloDeFavoritar(product.name, isFavorite)}
             className={cn(
               "p-2.5 rounded-full glass transition-all active:scale-75",
               isFavorite

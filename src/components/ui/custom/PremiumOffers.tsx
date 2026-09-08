@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -338,9 +339,7 @@ function HeroOfferCard({
               ? "text-red-500 bg-red-50/50 shadow-sm"
               : "text-slate-400 hover:text-red-500 bg-slate-50/40",
           )}
-          aria-label={
-            isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"
-          }
+          aria-label={rotuloDeFavoritar(product.name, isFavorite)}
         >
           <Heart className={`size-4 ${isFavorite ? "fill-current" : ""}`} />
         </button>

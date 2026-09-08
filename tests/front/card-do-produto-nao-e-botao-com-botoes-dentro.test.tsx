@@ -239,7 +239,7 @@ describe("ProductCard — o card não é um botão com botões dentro (B3)", () 
     await renderizarCard({ onClick, onToggleFavorite });
 
     const favoritar = hospedeiro.querySelector<HTMLButtonElement>(
-      'button[aria-label="Adicionar aos favoritos"]',
+      'button[aria-label="Adicionar Camiseta Azul Marinho aos favoritos"]',
     )!;
     expect(favoritar.tabIndex).not.toBe(-1);
 
@@ -380,7 +380,7 @@ describe("PremiumOffers/HeroOfferCard — o card não é um botão com botões d
     await renderizarOferta({ onProductClick, onToggleFavorite });
 
     const favoritar = hospedeiro.querySelector<HTMLButtonElement>(
-      'button[aria-label="Adicionar aos favoritos"]',
+      'button[aria-label="Adicionar Tênis Corrida Pro aos favoritos"]',
     )!;
     await act(async () => {
       favoritar.click();
