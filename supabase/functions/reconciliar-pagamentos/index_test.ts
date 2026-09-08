@@ -1466,6 +1466,10 @@ Deno.test("R11 - concluido cuja RPC concluir_estorno levanta: incrementa tentati
 // `20260908-laudo-opus-pr440-t4-reconciliacao-rodada2.md`: `confirmarPorConsulta`
 // credita à linha avaliada QUALQUER refund processed do pedido — com duas
 // linhas pendentes, uma é dada por devolvida com o dinheiro da outra.
+// R15 — AC-3 da rodada 2 do laudo Opus do PR #447 (08/09/2026): a linha que
+// JÁ carrega o próprio `mp_refund_id` (PIX em contingência) não pode ler a
+// si mesma como "já reivindicada por outra linha" — o `.neq("id", refund.id)`
+// é quem garante isso.
 // =============================================================================
 
 Deno.test("R12 - experimento do laudo ponta a ponta: com a ordenação tentativas ASC (b primeiro), b NÃO conclui com o refund de a; a conclui pela consulta", async () => {
@@ -1625,4 +1629,82 @@ Deno.test("R13 - idsJaReivindicados: duas linhas do MESMO valor no mesmo lote �
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "c1");
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "ref-x");
+});
+
+Deno.test("R15 - linha em_processamento que JÁ carrega o PRÓPRIO mp_refund_id (PIX em contingência): o .neq exclui a si mesma e ela CONCLUI (AC-3, laudo #447 rodada 2)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const orderId = "20000000-0000-4000-8000-0000000000cc";
+  const pedido = pedidoFrescoPara({
+    id: orderId,
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    total: 10,
+    valor_estornado: 0,
+  });
+
+  // A ÚNICA linha do lote: em_processamento, já com o PRÓPRIO mp_refund_id
+  // gravado numa passada anterior (`gravarDesfechoDoEstorno` grava o id na
+  // linha `em_processamento` quando o POST devolve o assíncrono do PIX em
+  // contingência — `resultado.tipo === "em_processamento"`, index.ts:~154).
+  const linhasDoPedido = [
+    { id: "rf-self-linha", order_id: orderId, mp_refund_id: "rf-self" },
+  ];
+
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      {
+        id: "rf-self-linha",
+        order_id: orderId,
+        amount: 10,
+        status: "em_processamento",
+        tentativas: 1,
+        mp_refund_id: "rf-self",
+      },
+    ],
+    resolverPedidoFresco: (id) => (id === orderId ? pedido : null),
+    // Simula a query real (`.eq("order_id", x).neq("id", idAtual)
+    // .not("mp_refund_id", "is", null)`): SÓ exclui a linha cujo id bate com
+    // `idAtual`. Sem essa exclusão (mutação m3: `.neq("id", refund.id)` ->
+    // `.neq("id", "0000...")`), a linha leria o PRÓPRIO mp_refund_id como já
+    // reivindicado por OUTRA linha e nunca concluiria — morre de fome até o
+    // teto com o dinheiro já devolvido (o cenário do AC-3).
+    idsJaReivindicadosPorPedido: (oid, idAtual) =>
+      linhasDoPedido
+        .filter((l) => l.order_id === oid && l.id !== idAtual)
+        .map((l) => l.mp_refund_id)
+        .filter((id): id is string => typeof id === "string"),
+  });
+
+  // A order do MP mostra o refund `rf-self` (o mesmo id JÁ gravado na
+  // linha) processed, do valor exato dela.
+  const corpoOrder = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+      refunds: [{ id: "rf-self", amount: "10.00", status: "processed" }],
+    },
+  };
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: corpoOrder },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // Conclui SEM POST nenhum (nenhuma rota POST no dublê acima) — o `.neq`
+  // exclui a si mesma, e "rf-self" nunca entra em idsJaReivindicados.
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "rf-self-linha");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "rf-self");
 });
