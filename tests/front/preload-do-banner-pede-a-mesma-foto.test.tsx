@@ -52,6 +52,7 @@ const LARGURAS = [200, 320, 480, 640, 960, 1280];
 class ImagemRegistrada {
   static instancias: ImagemRegistrada[] = [];
   atribuicoes: string[] = [];
+  onerror: (() => void) | null = null;
   private fonte = "";
   private conjunto = "";
   private tamanho = "";
@@ -208,6 +209,57 @@ describe("preload do topo e carrossel pedem a mesma foto", () => {
     await montarHome();
     expect(ImagemRegistrada.instancias).toHaveLength(0);
     expect(hospedeiro.querySelector("img")).toBeNull();
+  });
+});
+
+describe("preload tenta a original quando a transformação falha", () => {
+  it("erro cria uma segunda imagem com a URL crua e sem nova recuperação", async () => {
+    dados.rede = [criarBanner()];
+    await montarHome();
+    const preload = imagemDoPreload();
+
+    preload.onerror?.();
+
+    expect(ImagemRegistrada.instancias).toHaveLength(2);
+    const original = ImagemRegistrada.instancias[1];
+    expect(original.src).toBe(URL_BANNER);
+    expect(original.srcset).toBe("");
+    expect(original.sizes).toBe("");
+    expect(original.atribuicoes).toEqual(["src"]);
+    expect(original.onerror).toBeNull();
+    original.onerror?.();
+    expect(ImagemRegistrada.instancias).toHaveLength(2);
+  });
+
+  it("dois erros no preload criam apenas uma tentativa da original", async () => {
+    dados.rede = [criarBanner()];
+    await montarHome();
+    const preload = imagemDoPreload();
+
+    preload.onerror?.();
+    preload.onerror?.();
+
+    expect(ImagemRegistrada.instancias).toHaveLength(2);
+    expect(ImagemRegistrada.instancias[1].src).toBe(URL_BANNER);
+  });
+
+  it("sem erro mantém só o preload redimensionado", async () => {
+    dados.rede = [criarBanner()];
+    await montarHome();
+
+    expect(imagemDoPreload().src).not.toBe(URL_BANNER);
+    expect(ImagemRegistrada.instancias).toHaveLength(1);
+  });
+
+  it("URL não transformável não registra recuperação nem repete a original", async () => {
+    dados.rede = [criarBanner({ imageUrl: "https://cdn.exemplo.com/a.png" })];
+    await montarHome();
+    const preload = imagemDoPreload();
+
+    expect(preload.onerror).toBeNull();
+    preload.onerror?.();
+
+    expect(ImagemRegistrada.instancias).toHaveLength(1);
   });
 });
 

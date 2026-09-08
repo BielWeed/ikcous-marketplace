@@ -19,6 +19,13 @@ const preloadTopBanner = (items: Banner[]) => {
   if (topBanner?.imageUrl && typeof window !== "undefined") {
     const atributos = atributosDeImagem(topBanner.imageUrl, IMAGEM_DO_BANNER);
     const img = new Image();
+    if (atributos.src !== topBanner.imageUrl) {
+      img.onerror = () => {
+        img.onerror = null;
+        const original = new Image();
+        original.src = topBanner.imageUrl;
+      };
+    }
     img.sizes = atributos.sizes ?? "";
     img.srcset = atributos.srcSet ?? "";
     img.src = atributos.src;
