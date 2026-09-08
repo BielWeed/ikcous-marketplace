@@ -408,6 +408,36 @@ Deno.test("consultarPagamento devolve o external_reference da resposta do MP —
   }
 });
 
+Deno.test("consultarPagamento devolve `corpo` com o JSON cru — item (b) do brief da T5 (webhook lê refunds[]/status_detail sem 2o GET)", async () => {
+  const fetchStub = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 999,
+          status: "refunded",
+          status_detail: "refunded",
+          transaction_amount_refunded: 100,
+          refunds: [{ id: "r1", amount: 100, status: "approved" }],
+        }),
+        { status: 200 },
+      ),
+    )) as unknown as typeof fetch;
+
+  const r = await consultarPagamento({
+    token: "TEST-token",
+    paymentId: "999",
+    fetchImpl: fetchStub,
+  });
+
+  assertEquals(r.ok, true);
+  if (r.ok) {
+    assertEquals(r.corpo?.status_detail, "refunded");
+    assertEquals(r.corpo?.transaction_amount_refunded, 100);
+    assertEquals(Array.isArray(r.corpo?.refunds), true);
+    assertEquals((r.corpo?.refunds as unknown[])[0], { id: "r1", amount: 100, status: "approved" });
+  }
+});
+
 Deno.test("consultarPagamento não vaza o corpo do erro quando o MP devolve 404", async () => {
   const fetchStub = (() =>
     Promise.resolve(
