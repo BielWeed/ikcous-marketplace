@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,27 @@ interface EstornoCardProps {
 }
 
 const VALOR_MINIMO = 0.01;
+
+// ANOTADO do laudo 08/09: "1.500,00" (pt-BR com separador de milhar) virava
+// NaN — `Number("1.500,00".replace(",", "."))` = `Number("1.500.00")`. Regra:
+// só remove os pontos de milhar e troca a vírgula por ponto quando o texto
+// CASA o padrão pt-BR completo; fora disso, mantém o comportamento simples
+// (vírgula única -> ponto), o que já aceitava "1500,50" e "1500.50". Texto
+// com letra ("1e2") ou qualquer outro formato cai em `NaN` — o campo é
+// SEMPRE um valor em reais, nunca notação científica.
+const RE_VALOR_MILHAR_PT_BR = /^\d{1,3}(\.\d{3})*(,\d{1,2})?$/;
+const RE_VALOR_SIMPLES = /^\d+([.,]\d+)?$/;
+
+function paraNumero(valorBruto: string): number {
+  const texto = valorBruto.trim();
+  if (RE_VALOR_MILHAR_PT_BR.test(texto)) {
+    return Number(texto.replace(/\./g, "").replace(",", "."));
+  }
+  if (RE_VALOR_SIMPLES.test(texto)) {
+    return Number(texto.replace(",", "."));
+  }
+  return Number.NaN;
+}
 
 function formatarDataHora(iso: string): string {
   const data = new Date(iso);
@@ -136,6 +157,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
     devolvido,
     disponivel,
     carregando,
+    pedidoCarregado,
     erro,
     recarregar,
     solicitarEstorno,
@@ -144,6 +166,16 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
 
   const [campoAberto, setCampoAberto] = useState(false);
   const [valorCampo, setValorCampo] = useState("");
+  const inputValorRef = useRef<HTMLInputElement>(null);
+
+  // Acessibilidade (ANOTADO do laudo 08/09): ao abrir o campo o foco vai
+  // para o input — sem isso quem navega por teclado/leitor de tela não
+  // percebe que um campo novo apareceu. `autoFocus` é reprovado pelo
+  // eslint-plugin-jsx-a11y (`no-autofocus`) mesmo sendo aberto por gesto do
+  // próprio lojista — por isso o foco é feito à mão, no efeito.
+  useEffect(() => {
+    if (campoAberto) inputValorRef.current?.focus();
+  }, [campoAberto]);
 
   if (erro) {
     return (
@@ -163,11 +195,27 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
     );
   }
 
+  // BLOQUEIA 2 do laudo 08/09: enquanto a primeira leitura do banco não
+  // voltou (`pedido === null` no hook), `pago`/`devolvido`/`disponivel`
+  // ainda são só os zeros de default — "ainda não sei" é diferente de "o
+  // saldo é zero", e afirmar qualquer coisa aqui (inclusive "R$ 0,00") seria
+  // mentir para o lojista sobre dinheiro.
+  if (carregando && !pedidoCarregado) {
+    return (
+      <div className="admin-glass space-y-4 rounded-[2rem] border border-white/5 p-5 text-white">
+        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+          Devolução de dinheiro
+        </h3>
+        <p className="text-[10px] font-bold text-zinc-600">Carregando…</p>
+      </div>
+    );
+  }
+
   const estado = estadoDoCartao(order, disponivel);
   const mostrarBotao = estado !== "tudo_devolvido";
   const podeAbrirCampo = estado === "normal";
 
-  const valorNumericoDoCampo = Number(valorCampo.replace(",", "."));
+  const valorNumericoDoCampo = paraNumero(valorCampo);
   const campoValido =
     !campoAberto ||
     (Number.isFinite(valorNumericoDoCampo) &&
@@ -210,8 +258,8 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
       )}
       {estado === "bloqueado_retorno" && (
         <p className="text-xs font-bold text-amber-400">
-          Para devolver o dinheiro, primeiro confirme que o produto voltou
-          (botão acima).
+          Para devolver o dinheiro, primeiro confirme que o produto voltou, no
+          aviso de pedidos cancelados (ícone ao lado do título Pedidos).
         </p>
       )}
       {estado === "tudo_devolvido" && (
@@ -255,13 +303,23 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
               </label>
               <Input
                 id={`valor-outro-estorno-${order.id}`}
+                ref={inputValorRef}
                 inputMode="decimal"
                 value={valorCampo}
                 onChange={(e) => setValorCampo(e.target.value)}
+                aria-invalid={!campoValido}
+                aria-describedby={
+                  !campoValido
+                    ? `valor-outro-estorno-aviso-${order.id}`
+                    : undefined
+                }
                 className="h-9 w-32 rounded-lg border-white/10 bg-zinc-950 text-xs text-white"
               />
               {!campoValido && (
-                <p className="text-[10px] font-bold text-red-400">
+                <p
+                  id={`valor-outro-estorno-aviso-${order.id}`}
+                  className="text-[10px] font-bold text-red-400"
+                >
                   O valor tem de ficar entre {formatCurrency(VALOR_MINIMO)} e{" "}
                   {formatCurrency(disponivel)}
                 </p>

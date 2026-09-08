@@ -42,6 +42,12 @@ interface EstornosDoPedido {
   /** `pago - devolvido - emCurso`. */
   disponivel: number;
   carregando: boolean;
+  /** O pedido já foi lido pelo menos uma vez. Distingue "ainda não sei o
+   * saldo" (primeira carga, `false`) de "o saldo é zero" (`true` com
+   * `disponivel === 0`) — BLOQUEIA 2 do laudo 08/09: `pago`/`devolvido`/
+   * `disponivel` vêm zerados por default ANTES da primeira resposta do
+   * banco, e isso não pode se confundir com "tudo devolvido". */
+  pedidoCarregado: boolean;
   /** A leitura falhou; `pago`/`devolvido`/`disponivel` não são confiáveis. */
   erro: boolean;
   recarregar: () => void;
@@ -96,6 +102,12 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
   const [erro, setErro] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const ativoRef = useRef(true);
+  // Trava de clique duplo (ANOTADO do laudo 08/09): `enviando` (estado) só
+  // reflete no DOM depois do próximo render — duas chamadas de
+  // `solicitarEstorno` no MESMO tick (antes de qualquer render) passariam
+  // as duas pela checagem se ela lesse `enviando`. O ref é síncrono: a
+  // segunda chamada já encontra `true` antes de disparar a RPC.
+  const enviandoRef = useRef(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -166,6 +178,10 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
 
   const solicitarEstorno = useCallback(
     async ({ amount, motivo }: { amount: number; motivo: string }) => {
+      // Clique duplo no mesmo tick: a segunda chamada já encontra a trava
+      // ligada (síncrona, antes de qualquer `await`) e sai sem tocar a RPC.
+      if (enviandoRef.current) return;
+      enviandoRef.current = true;
       setEnviando(true);
       try {
         const { data, error } = await supabase.rpc("solicitar_estorno", {
@@ -178,6 +194,10 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
         // migration que a cria — não se traduz de novo aqui.
         if (error) {
           toast.error(error.message);
+          // AC 3 do laudo 08/09: a recusa prova que o snapshot em tela está
+          // velho (outra aba/sessão já mexeu no saldo) — recarrega mesmo no
+          // erro, senão o saldo errado e o botão continuam na tela.
+          await carregar();
           return;
         }
 
@@ -205,6 +225,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
 
         await carregar();
       } finally {
+        enviandoRef.current = false;
         setEnviando(false);
       }
     },
@@ -218,6 +239,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
     emCurso: centavosEmCurso / 100,
     disponivel: centavosDisponivel / 100,
     carregando,
+    pedidoCarregado: pedido !== null,
     erro,
     recarregar: () => void carregar(),
     solicitarEstorno,

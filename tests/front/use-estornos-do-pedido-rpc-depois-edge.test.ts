@@ -167,12 +167,13 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     });
   });
 
-  it("H2: RPC falha — o invoke NÃO é chamado, e o erro leigo vai para o toast", async () => {
+  it("H2: RPC falha — o invoke NÃO é chamado, o erro leigo vai para o toast, e recarrega", async () => {
     RESPOSTA_RPC = {
       data: null,
       error: { message: "o valor pedido é maior que o disponível" },
     };
     const { atual } = await montarSonda();
+    const consultasAntes = tabelasConsultadas.length;
 
     await act(async () => {
       await atual().solicitarEstorno({ amount: 999, motivo: "teste" });
@@ -183,6 +184,38 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(toastMock.error).toHaveBeenCalledWith(
       "o valor pedido é maior que o disponível",
     );
+    // AC 3 do laudo 08/09: a recusa da RPC prova que o snapshot está velho
+    // — `carregar()` roda de novo mesmo no ramo de erro.
+    expect(tabelasConsultadas.length).toBeGreaterThan(consultasAntes);
+  });
+
+  it("guarda !refundId: RPC devolve sem id — nenhum invoke, erro visível ao lojista", async () => {
+    RESPOSTA_RPC = { data: { amount: 50 }, error: null };
+    const { atual } = await montarSonda();
+
+    await act(async () => {
+      await atual().solicitarEstorno({ amount: 50, motivo: "teste" });
+    });
+
+    expect(CHAMADAS).toHaveLength(1);
+    expect(CHAMADAS[0].tipo).toBe("rpc");
+    expect(toastMock.error).toHaveBeenCalledWith(
+      "Não consegui registrar o pedido de devolução.",
+    );
+  });
+
+  it("clique duplo no mesmo tick: a segunda chamada é travada — só UMA RPC", async () => {
+    const { atual } = await montarSonda();
+
+    await act(async () => {
+      await Promise.all([
+        atual().solicitarEstorno({ amount: 50, motivo: "a" }),
+        atual().solicitarEstorno({ amount: 50, motivo: "b" }),
+      ]);
+    });
+
+    const chamadasRpc = CHAMADAS.filter((c) => c.tipo === "rpc");
+    expect(chamadasRpc).toHaveLength(1);
   });
 
   it("H3: invoke falha depois da RPC — não lança, avisa o cron de 10 minutos e recarrega", async () => {

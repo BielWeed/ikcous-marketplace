@@ -81,6 +81,10 @@ function hookPadrao(
     emCurso: 0,
     disponivel: 100,
     carregando: false,
+    // Data já leu pelo menos uma vez (primeira carga concluída) — os 11
+    // testes originais assumem saldo confiável na tela. O caso "ainda não
+    // sei" (BLOQUEIA 2) põe isto em `false` explicitamente.
+    pedidoCarregado: true,
     erro: false,
     recarregar: recarregarMock,
     solicitarEstorno: solicitarEstornoMock,
@@ -156,9 +160,14 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
 
     const botao = botaoComTexto("Devolver R$ 100,00");
     expect(botao?.disabled).toBe(true);
+    // BLOQUEIA 1 do laudo 08/09: o texto antigo mandava clicar num "botão
+    // acima" que não existe nesta tela — o botão de retorno vive no alerta
+    // de pedidos cancelados, ao lado do título "Pedidos"
+    // (`AlertasCancelados.tsx`), não na ficha do pedido.
     expect(texto()).toContain(
-      "Para devolver o dinheiro, primeiro confirme que o produto voltou (botão acima).",
+      "Para devolver o dinheiro, primeiro confirme que o produto voltou, no aviso de pedidos cancelados (ícone ao lado do título Pedidos).",
     );
+    expect(texto()).not.toContain("acima");
   });
 
   it("U3: clique confirma e chama solicitarEstorno UMA vez; recusar o confirm não chama nada", async () => {
@@ -393,5 +402,223 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
 
     expect(texto()).toContain("Cancele o pedido antes de devolver o dinheiro.");
     expect(botaoComTexto("Devolver R$ 100,00")?.disabled).toBe(true);
+  });
+
+  it("BLOQUEIA 2: durante a primeira carga, não afirma nada sobre saldo", async () => {
+    // `pedido === null` (`pedidoCarregado: false`) + `carregando: true` —
+    // ainda NÃO SEI o saldo, o que é diferente de "saldo é zero".
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        carregando: true,
+        pedidoCarregado: false,
+        pago: 0,
+        devolvido: 0,
+        disponivel: 0,
+        linhas: [],
+      }),
+    );
+
+    await montar();
+
+    const domCarregando = texto();
+    expect(domCarregando).not.toContain("já foi devolvido");
+    expect(domCarregando).not.toContain("R$ 0,00");
+    expect(domCarregando).toContain("Carregando");
+
+    // Resolve: mesmo componente, novo retorno do hook (sem remontar).
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        carregando: false,
+        pedidoCarregado: true,
+        pago: 100,
+        devolvido: 0,
+        disponivel: 100,
+      }),
+    );
+    const { EstornoCard } = await import(
+      "@/components/admin/orders/EstornoCard"
+    );
+    await act(async () => {
+      raiz.render(<EstornoCard order={pedidoBase} />);
+    });
+
+    expect(texto()).toContain("Pago: R$ 100,00");
+    expect(botaoComTexto("Devolver R$ 100,00")).toBeDefined();
+  });
+
+  it("AC4-A (mutação A): disponível zero (100% estornado) NÃO mostra botão de devolver", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 100, devolvido: 100, disponivel: 0 }),
+    );
+
+    await montar();
+
+    expect(texto()).toContain("Todo o valor pago já foi devolvido.");
+    expect(botaoComTexto("Devolver")).toBeUndefined();
+  });
+
+  it("AC4-B (mutação B): 'falhou' com saldo insuficiente NÃO oferece 'Tentar de novo'", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        disponivel: 10,
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            amount: 30,
+            ultimo_erro: "erro qualquer",
+          }),
+        ],
+      }),
+    );
+
+    await montar();
+
+    expect(texto()).toContain("A devolução de R$ 30,00 não foi concluída");
+    expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+  });
+
+  async function abrirCampoDeOutroValor(): Promise<HTMLInputElement> {
+    const abrir = botaoComTexto("devolver outro valor");
+    await act(async () => {
+      abrir?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const input = hospedeiro.querySelector("input");
+    if (!input) throw new Error("input do campo não encontrado");
+    return input as HTMLInputElement;
+  }
+
+  // Escrever num input controlado por React em jsdom exige o setter nativo +
+  // evento de input; atribuir `.value` direto não avisa o React (mesmo
+  // padrão de `admin-shipping-trocar-de-aba-nao-apaga-o-que-foi-digitado`).
+  async function digitar(input: HTMLInputElement, valor: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+      globalThis.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(input, valor);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+  }
+
+  it("campo 'outro valor': '10,50' habilita 'Devolver R$ 10,50' e a RPC recebe 10.5", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 45.77, devolvido: 0, disponivel: 45.77 }),
+    );
+    confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+
+    await montar();
+    const input = await abrirCampoDeOutroValor();
+    await digitar(input, "10,50");
+
+    const botao = botaoComTexto("Devolver R$ 10,50");
+    expect(botao?.disabled).toBe(false);
+
+    await act(async () => {
+      botao?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(solicitarEstornoMock).toHaveBeenCalledWith({
+      amount: 10.5,
+      motivo: expect.any(String),
+    });
+  });
+
+  it("campo 'outro valor': acima do disponível desabilita com a mensagem de faixa", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 45.77, devolvido: 0, disponivel: 45.77 }),
+    );
+
+    await montar();
+    const input = await abrirCampoDeOutroValor();
+    await digitar(input, "100");
+
+    expect(texto()).toContain("O valor tem de ficar entre R$ 0,01 e R$ 45,77");
+    expect(botaoComTexto("Devolver R$ 100,00")?.disabled).toBe(true);
+  });
+
+  it("campo 'outro valor': vazio desabilita o botão", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 45.77, devolvido: 0, disponivel: 45.77 }),
+    );
+
+    await montar();
+    await abrirCampoDeOutroValor();
+
+    expect(botaoComTexto("Devolver R$ 0,00")?.disabled).toBe(true);
+  });
+
+  it("campo 'outro valor': '1.500,00' (milhar pt-BR) vira 1500 e habilita", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 2000, devolvido: 0, disponivel: 2000 }),
+    );
+
+    await montar();
+    const input = await abrirCampoDeOutroValor();
+    await digitar(input, "1.500,00");
+
+    expect(botaoComTexto("Devolver R$ 1.500,00")?.disabled).toBe(false);
+  });
+
+  it("campo 'outro valor': '1500.50' (ponto decimal) continua aceito como 1500,50", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 2000, devolvido: 0, disponivel: 2000 }),
+    );
+
+    await montar();
+    const input = await abrirCampoDeOutroValor();
+    await digitar(input, "1500.50");
+
+    expect(botaoComTexto("Devolver R$ 1.500,50")?.disabled).toBe(false);
+  });
+
+  it("campo 'outro valor': '1500,50' (vírgula sem milhar) continua aceito", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 2000, devolvido: 0, disponivel: 2000 }),
+    );
+
+    await montar();
+    const input = await abrirCampoDeOutroValor();
+    await digitar(input, "1500,50");
+
+    expect(botaoComTexto("Devolver R$ 1.500,50")?.disabled).toBe(false);
+  });
+
+  it("campo 'outro valor': '1e2' é recusado por FORMATO, mesmo com saldo generoso", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 2000, devolvido: 0, disponivel: 2000 }),
+    );
+
+    await montar();
+    const input = await abrirCampoDeOutroValor();
+    await digitar(input, "1e2");
+
+    // NaN de propósito: cai no rótulo de 0 e fica desabilitado — se o
+    // parser aceitasse notação científica, "1e2" viraria 100 (< 2000) e
+    // o botão apareceria habilitado com "Devolver R$ 100,00".
+    expect(botaoComTexto("Devolver R$ 0,00")?.disabled).toBe(true);
+    expect(botaoComTexto("Devolver R$ 100,00")).toBeUndefined();
+  });
+
+  it("acessibilidade do campo: aria-invalid, aria-describedby e foco ao abrir", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 45.77, devolvido: 0, disponivel: 45.77 }),
+    );
+
+    await montar();
+    const input = await abrirCampoDeOutroValor();
+
+    expect(document.activeElement).toBe(input);
+
+    await digitar(input, "100");
+
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    const describedBy = input.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    const aviso = describedBy ? document.getElementById(describedBy) : null;
+    expect(aviso?.textContent).toContain("O valor tem de ficar entre");
   });
 });
