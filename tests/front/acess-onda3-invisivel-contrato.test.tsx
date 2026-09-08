@@ -79,7 +79,14 @@ describe("item 2 — B1: h1 oculto na home e no carrinho", () => {
 
   it("CartView ganha um h1 sr-only 'Carrinho'", () => {
     const src = fonte(CART);
-    expect(src).toMatch(/<h1\s+className="sr-only">Carrinho<\/h1>/);
+    // Rodada 2 (Codex, 08/09, item 4) trocou o texto fixo por um ternário
+    // que também diz "Meus Pedidos" com initialTab="orders" — a checagem
+    // aqui só confirma que o h1 sr-only continua existindo e mencionando
+    // "Carrinho"; o contrato completo do ternário está no bloco da rodada 2.
+    const inicio = src.indexOf('<h1 className="sr-only">');
+    const fim = src.indexOf("</h1>", inicio);
+    expect(inicio).toBeGreaterThan(-1);
+    expect(src.slice(inicio, fim)).toContain("Carrinho");
   });
 });
 
@@ -112,16 +119,32 @@ describe("item 3 — B2: abas semânticas do carrinho e do produto", () => {
     expect(src).toContain('aria-labelledby="tab-orders"');
   });
 
-  it("ProductView: Detalhes/Avaliações/Perguntas viram tablist ligada aos painéis", () => {
+  // Revisado na rodada 2 (Codex, 08/09): as três seções do produto ficam
+  // SEMPRE visíveis ao mesmo tempo (rolagem de página, não troca de
+  // painel) — role="tab" prometia um widget que não existe (sem painel
+  // escondido, sem roving tabIndex, sem setas). O CartView (Carrinho/Meus
+  // Pedidos) continua tablist de verdade logo abaixo: lá os painéis se
+  // alternam.
+  it("ProductView: nav simples com aria-current — SEM semântica de abas", () => {
     const src = fonte(PRODUCT);
-    expect(src).toContain('role="tablist"');
-    expect(src).toContain('role="tab"');
-    expect(src).toMatch(/aria-selected=\{isActive\}/);
+    expect(src).toContain("<nav");
+    expect(src).toContain('aria-label="Seções do produto"');
+    expect(src).not.toContain('role="tablist"');
+    expect(src).not.toContain('role="tab"');
+    expect(src).not.toContain('role="tabpanel"');
+    expect(src).not.toContain("aria-selected=");
+    expect(src).not.toContain('aria-labelledby="tab-description"');
+    expect(src).not.toContain('aria-labelledby="tab-reviews"');
+    expect(src).not.toContain('aria-labelledby="tab-questions"');
+  });
+
+  it("ProductView: botão ativo ganha aria-current, aria-controls aponta para a seção real", () => {
+    const src = fonte(PRODUCT);
+    expect(src).toMatch(/aria-current=\{isActive \? "true" : undefined\}/);
     expect(src).toMatch(/aria-controls=\{painelDaAba\(tabId\)\}/);
-    expect(src).toContain('role="tabpanel"');
-    expect(src).toContain('aria-labelledby="tab-description"');
-    expect(src).toContain('aria-labelledby="tab-reviews"');
-    expect(src).toContain('aria-labelledby="tab-questions"');
+    expect(src).toContain('id="details-section"');
+    expect(src).toContain('id="reviews-section"');
+    expect(src).toContain('id="chat-section"');
   });
 
   it("classes visuais dos botões de aba do produto preservadas byte a byte", () => {
@@ -185,5 +208,74 @@ describe("item 6 — B9: aviso do topo do Header alcançável por teclado", () =
     expect(src).toContain(
       'className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rodada 2 (revisor automático Codex, 08/09): 4 apontamentos P2 sobre o que
+// a onda 3 tinha deixado pela metade — a marcação existia, mas teclado e
+// leitor de tela não chegavam nela de fato.
+// ---------------------------------------------------------------------------
+
+describe("Codex rodada 2, item 1 — a folha de avaliação recebe o foco e prende o Tab", () => {
+  it("um useEffect foca a folha ao abrir (o foco não fica mais preso no botão 'Avaliar' de fora)", () => {
+    const src = fonte(ORDER_DETAILS);
+    expect(src).toContain("avaliacaoFolhaRef");
+    expect(src).toMatch(/ref=\{avaliacaoFolhaRef\}/);
+    expect(src).toMatch(/tabIndex=\{-1\}/);
+    expect(src).toMatch(
+      /useEffect\(\(\) => \{\s*if \(!reviewingItem\) return;\s*avaliacaoFolhaRef\.current\?\.focus\(\);/,
+    );
+  });
+
+  it("o Tab fica preso dentro da folha enquanto ela está aberta (trap simples)", () => {
+    const src = fonte(ORDER_DETAILS);
+    const inicio = src.indexOf("ref={avaliacaoFolhaRef}");
+    const fim = src.indexOf("{/* Header */}", inicio);
+    expect(inicio).toBeGreaterThan(-1);
+    expect(fim).toBeGreaterThan(inicio);
+    const abertura = src.slice(inicio, fim);
+    expect(abertura).toMatch(/e\.key === "Tab"/);
+    expect(abertura).toMatch(/shiftKey/);
+    // O Esc continua fechando — a folha não perdeu o item 4 da onda 3.
+    expect(abertura).toMatch(/e\.key === "Escape"/);
+    expect(abertura).toContain("fecharAvaliacao");
+  });
+});
+
+describe("Codex rodada 2, item 2 — o menu de ordenar recebe foco ao abrir; Esc funciona também no gatilho", () => {
+  it("o listbox ganha ref e um useEffect foca ele quando o menu abre", () => {
+    const src = fonte(HOME);
+    expect(src).toContain("listboxOrdenarRef");
+    expect(src).toMatch(/ref=\{listboxOrdenarRef\}/);
+    expect(src).toMatch(
+      /useEffect\(\(\) => \{\s*if \(showSortMenu\) \{\s*listboxOrdenarRef\.current\?\.focus\(\);/,
+    );
+  });
+
+  it("o botão gatilho (sortButtonRef) também escuta Escape enquanto o menu está aberto", () => {
+    const src = fonte(HOME);
+    const inicio = src.indexOf("ref={sortButtonRef}");
+    const fim = src.indexOf("</button>", inicio);
+    expect(inicio).toBeGreaterThan(-1);
+    expect(fim).toBeGreaterThan(inicio);
+    const blocoBotao = src.slice(inicio, fim);
+    expect(blocoBotao).toMatch(/e\.key === "Escape"/);
+    expect(blocoBotao).toContain("setShowSortMenu(false)");
+  });
+});
+
+describe("Codex rodada 2, item 4 — o h1 do carrinho acompanha a aba ativa", () => {
+  it("fonte: o h1 sr-only deixa de ser fixo 'Carrinho' — depende de activeTab", () => {
+    const src = fonte(CART);
+    const inicio = src.indexOf('<h1 className="sr-only">');
+    const fim = src.indexOf("</h1>", inicio);
+    expect(inicio).toBeGreaterThan(-1);
+    const blocoH1 = src.slice(inicio, fim);
+    expect(blocoH1).toContain('activeTab === "orders"');
+    expect(blocoH1).toContain('"Meus Pedidos"');
+    expect(blocoH1).toContain('"Carrinho"');
+    // O antigo h1 fixo (sem depender de activeTab) não pode sobreviver.
+    expect(src).not.toMatch(/<h1 className="sr-only">Carrinho<\/h1>/);
   });
 });

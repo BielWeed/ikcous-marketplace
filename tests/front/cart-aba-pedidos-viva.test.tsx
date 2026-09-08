@@ -239,4 +239,13 @@ describe("CartView — a aba Meus Pedidos reflete o estado VIVO do hook (laudo #
     // E a mudança veio do estado VIVO, não de uma nova busca.
     expect(duble.chamadasFetch).toBe(1);
   });
+
+  // Rodada 2 (Codex, 08/09), item 4: com initialTab="orders" a tela visível
+  // é "Meus Pedidos", mas o h1 (sr-only, só para leitor de tela) continuava
+  // dizendo "Carrinho" — este mesmo harness já monta a aba de pedidos, então
+  // a prova de comportamento cabe aqui em vez de duplicar os mocks.
+  it("o h1 sr-only diz 'Meus Pedidos' quando a aba inicial é orders", async () => {
+    await montarAbaPedidos();
+    expect(hospedeiro.querySelector("h1")?.textContent).toBe("Meus Pedidos");
+  });
 });

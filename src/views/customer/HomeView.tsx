@@ -79,6 +79,15 @@ export const HomeView = React.memo(function HomeView({
   // Laudo de acessibilidade 05/09 (onda 3, item B5): guarda o botão que abriu
   // o menu de ordenar para devolver o foco a ele quando o Esc fechar.
   const sortButtonRef = React.useRef<HTMLButtonElement>(null);
+  // Rodada 2 (Codex, 08/09, item 2): o listener de Escape vivia no
+  // listbox, mas ele nunca RECEBIA foco — Esc não fazia nada até a
+  // pessoa tabular até uma opção. O menu agora se autofoca ao abrir.
+  const listboxOrdenarRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (showSortMenu) {
+      listboxOrdenarRef.current?.focus();
+    }
+  }, [showSortMenu]);
   const { categories, isLoading: isLoadingCategories } = useCategories();
   const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
   const sentinelRef = React.useRef<HTMLDivElement>(null);
@@ -571,6 +580,13 @@ export const HomeView = React.memo(function HomeView({
                     haptic.light();
                     setShowSortMenu(!showSortMenu);
                   }}
+                  // Rodada 2 (Codex, 08/09, item 2): antes de tabular até
+                  // uma opção, o próprio gatilho já responde ao Esc.
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape" && showSortMenu) {
+                      setShowSortMenu(false);
+                    }
+                  }}
                   className="flex size-10 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
                   aria-expanded={showSortMenu}
                   aria-haspopup="listbox"
@@ -594,12 +610,15 @@ export const HomeView = React.memo(function HomeView({
                       }}
                     />
                     <div
+                      ref={listboxOrdenarRef}
                       className="absolute right-0 top-full z-50 mt-3 w-56 rounded-3xl border border-white/20 bg-white/95 p-2 shadow-2xl backdrop-blur-2xl duration-300 animate-in fade-in zoom-in"
                       role="listbox"
                       // tabIndex={-1}: programaticamente focável (exigência
                       // do jsx-a11y para role interativo com onKeyDown) sem
                       // entrar na ordem de Tab — quem navega chega pelas
-                      // opções (role="option") dentro dele.
+                      // opções (role="option") dentro dele. Rodada 2 (Codex,
+                      // 08/09, item 2): o próprio -1 também é o que permite
+                      // o .focus() programático do useEffect logo acima.
                       tabIndex={-1}
                       // Laudo de acessibilidade 05/09 (onda 3, item B5): o
                       // Esc vivia no overlay acima (tabIndex={-1}, nunca

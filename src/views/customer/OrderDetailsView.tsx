@@ -197,6 +197,15 @@ export function OrderDetailsView({
     setReviewingItem(null);
     avaliarTriggerRef.current?.focus();
   }, []);
+  // Rodada 2 (Codex, 08/09, item 1): o foco continuava no botão "Avaliar"
+  // de fora depois de abrir a folha — Esc não chegava a ela e o Tab
+  // seguia percorrendo o fundo apesar do aria-modal. A folha agora se
+  // autofoca ao montar e prende o Tab enquanto está aberta.
+  const avaliacaoFolhaRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!reviewingItem) return;
+    avaliacaoFolhaRef.current?.focus();
+  }, [reviewingItem]);
 
   const handleCancelOrder = async () => {
     if (!order) return;
@@ -896,17 +905,39 @@ export function OrderDetailsView({
             />
             {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- padrão APG de dialog: Esc no próprio container fecha (mesmo precedente em ImageAdjuster.tsx:1151) */}
             <div
+              ref={avaliacaoFolhaRef}
+              tabIndex={-1}
               className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom"
               role="dialog"
               aria-modal="true"
               aria-labelledby="titulo-avaliacao"
               // Laudo de acessibilidade 05/09 (onda 3, item B5): o Esc vivia
               // no backdrop acima (tabIndex={-1}, nunca alcançado por
-              // teclado — o mesmo bug do menu de ordenar da home). Sem trap
-              // de foco elaborado: só o Esc e o retorno do foco a quem abriu.
+              // teclado — o mesmo bug do menu de ordenar da home).
+              // Rodada 2 (Codex, 08/09, item 1): trap simples de Tab — no
+              // último focável, Tab volta ao primeiro; no primeiro,
+              // Shift+Tab vai ao último. Sem isso o foco escapava para o
+              // fundo da tela apesar do aria-modal.
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
                   fecharAvaliacao();
+                  return;
+                }
+                if (e.key === "Tab") {
+                  const focaveis =
+                    e.currentTarget.querySelectorAll<HTMLElement>(
+                      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                    );
+                  if (focaveis.length === 0) return;
+                  const primeiro = focaveis[0];
+                  const ultimo = focaveis[focaveis.length - 1];
+                  if (e.shiftKey && document.activeElement === primeiro) {
+                    e.preventDefault();
+                    ultimo.focus();
+                  } else if (!e.shiftKey && document.activeElement === ultimo) {
+                    e.preventDefault();
+                    primeiro.focus();
+                  }
                 }
               }}
             >

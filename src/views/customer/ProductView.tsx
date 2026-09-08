@@ -37,10 +37,12 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
-// Laudo de acessibilidade 05/09 (onda 3, item B2): as abas Detalhes/
-// Avaliações/Perguntas viram role="tab" ligadas ao painel correspondente
-// por aria-controls/aria-labelledby — sem mexer no comportamento de scroll
-// que já existe (as três seções continuam sempre montadas).
+// Revisado na rodada 2 (Codex, 08/09, item 3): os botões Detalhes/
+// Avaliações/Perguntas não são abas de verdade — as três seções ficam
+// SEMPRE visíveis (rolagem de página), sem painel escondido, sem roving
+// tabIndex, sem setas. O role de aba prometia um widget que não existe.
+// Voltaram a ser <button> normais dentro de um <nav>, com aria-current no
+// ativo e aria-controls ainda ligado à seção correspondente.
 // `switch`, não lookup em objeto por chave dinâmica (`obj[tabId]` dispara o
 // security/detect-object-injection do eslint — subiria a catraca do lint).
 function painelDaAba(tabId: "description" | "reviews" | "questions"): string {
@@ -1161,9 +1163,9 @@ export const ProductView = React.memo(function ProductView({
               : "bg-transparent border-transparent",
           )}
         >
-          <div
+          <nav
+            aria-label="Seções do produto"
             className="mx-auto flex w-full max-w-[290px] items-center gap-0.5 rounded-full border border-zinc-200/40 bg-zinc-100/60 p-0.5"
-            role="tablist"
           >
             {[
               { id: "description", label: "Detalhes" },
@@ -1179,9 +1181,7 @@ export const ProductView = React.memo(function ProductView({
               return (
                 <button
                   key={tab.id}
-                  id={`tab-${tab.id}`}
-                  role="tab"
-                  aria-selected={isActive}
+                  aria-current={isActive ? "true" : undefined}
                   aria-controls={painelDaAba(tabId)}
                   onClick={() => handleTabClick(tab.id as any)}
                   // Laudo 05/09, M3: `outline-none` apagava o anel de foco
@@ -1212,15 +1212,13 @@ export const ProductView = React.memo(function ProductView({
                 </button>
               );
             })}
-          </div>
+          </nav>
         </div>
 
         {/* Sequential Sections */}
         <div
           id="details-section"
           ref={detailsSectionRef}
-          role="tabpanel"
-          aria-labelledby="tab-description"
           className="mb-12 scroll-mt-[64px]"
         >
           <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
@@ -1260,8 +1258,6 @@ export const ProductView = React.memo(function ProductView({
           <div
             id="reviews-section"
             ref={reviewsSectionRef}
-            role="tabpanel"
-            aria-labelledby="tab-reviews"
             className="mb-12 scroll-mt-[64px] border-t border-zinc-100 pt-8"
           >
             <div className="space-y-4 duration-300 animate-in fade-in slide-in-from-bottom-2">
@@ -1384,8 +1380,6 @@ export const ProductView = React.memo(function ProductView({
         <div
           id="chat-section"
           ref={chatSectionRef}
-          role="tabpanel"
-          aria-labelledby="tab-questions"
           className="mb-6 scroll-mt-[64px] border-t border-zinc-100 pt-8"
         >
           <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
