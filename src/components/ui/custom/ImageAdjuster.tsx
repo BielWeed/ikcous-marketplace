@@ -1,3 +1,4 @@
+import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
@@ -753,6 +754,16 @@ export function ImageAdjuster({
           className="absolute inset-0 transition-opacity"
           style={overlayStyle}
         />
+
+        {classeDoScrimDoBanner(templateType) !== "" && (
+          <div
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-0",
+              classeDoScrimDoBanner(templateType),
+            )}
+          />
+        )}
 
         {/* Content wrapper */}
         <div
