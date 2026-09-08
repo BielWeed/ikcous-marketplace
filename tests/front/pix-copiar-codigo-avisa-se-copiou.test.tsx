@@ -219,14 +219,21 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
 
     await renderComPix();
 
+    // A região viva tem de EXISTIR ANTES da falha (vazia): leitor de tela só
+    // anuncia mudança em região que já estava no DOM. Guardar o nó antes do
+    // clique e assertar no MESMO nó depois é o que derruba a versão que só
+    // inseria a região quando a cópia falhava (re-revisão Opus 08/09).
+    const regiao = hospedeiro.querySelector('[role="status"]');
+    expect(regiao).toBeTruthy();
+    expect(regiao!.textContent).toBe("");
+
     const botao = botaoCopiar();
     await act(async () => {
       botao!.click();
       await esperarMicrotarefas();
     });
 
-    const regiao = hospedeiro.querySelector('[role="status"]');
-    expect(regiao).toBeTruthy();
+    expect(regiao!.isConnected).toBe(true);
     expect(regiao!.textContent).toContain(
       "Não consegui copiar sozinho. Toque no código abaixo, segure e copie.",
     );
@@ -246,7 +253,9 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
     expect(botaoCopiar()!.textContent).toContain("Copiado!");
 
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 2100));
+      // 2500 e não 2100: o timer de 2000 ms do componente começa ANTES desta
+      // espera, e a folga medida com 2100 era de ~85 ms (re-revisão Opus).
+      await new Promise((resolve) => setTimeout(resolve, 2500));
     });
     expect(botaoCopiar()!.textContent).toContain("Copiar código PIX");
   }, 10000);
