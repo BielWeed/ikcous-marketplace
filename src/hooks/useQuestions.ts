@@ -10,7 +10,10 @@ import { toast } from "sonner";
 
 export interface Question {
   id: string;
-  userId: string;
+  // I-3 (brief hub-0809-g 08/09/2026): sem sessão, o autor não vem mais do
+  // banco (`vw_questions_public` nunca teve `user_id`) — o visitante
+  // continua vendo a pergunta, só sem o id de quem escreveu.
+  userId?: string;
   productId: string;
   productName?: string;
   productImage?: string;
@@ -160,7 +163,102 @@ export function useQuestions() {
       productQuestionsAbortControllerRef.current = new AbortController();
       const signal = productQuestionsAbortControllerRef.current.signal;
 
+      // I-3 (brief hub-0809-g 08/09/2026): sem sessão, a leitura vai pela
+      // vitrine pública (`vw_questions_public`, migration 20261110000000) —
+      // ela nunca teve `user_id` para vazar. O selo "Comprador" NÃO vem da
+      // view (correção B2 do laudo Opus PR#484, 08/09/2026): calculá-lo lá
+      // dentro exigia um `EXISTS` sobre `marketplace_orders`/
+      // `marketplace_order_items` rodando com o crachá do dono da view — e
+      // isso atravessava a RLS de pedidos, que hoje NEGA `anon` nas duas
+      // tabelas (sem policy para o papel). O visitante nunca via o selo
+      // antes desta frente (a consulta que o calcula sempre devolvia zero
+      // linhas para ele); o selo sem sessão fica sempre `false`, mesmo
+      // comportamento de hoje. As respostas da loja vêm de uma segunda
+      // consulta em `answers` (tabela já 100% pública, inalterada nesta
+      // frente). Quem está logado (inclusive admin) continua na tabela, sem
+      // mudança — o selo dele segue calculado pelo caminho de sempre.
+      const anonimo = !user;
+
       try {
+        if (anonimo) {
+          const { data, error } = await supabase
+            .from("vw_questions_public" as any)
+            .select("*")
+            .eq("product_id", productId)
+            .order("created_at", { ascending: false })
+            .abortSignal(signal);
+
+          if (error) throw error;
+          if (!data) return;
+
+          let productInfo: { nome: string; imagem_url: string } | null = null;
+          const query = supabase
+            .from("vw_produtos_public" as any)
+            .select("nome, imagem_url")
+            .eq("id", productId)
+            .maybeSingle();
+          const { data: prodData } = await (query as any).abortSignal(signal);
+          if (prodData) {
+            productInfo = prodData as any;
+          }
+
+          const questionIds = data.map((q: any) => q.id);
+          const answersByQuestion = new Map<string, any[]>();
+          if (questionIds.length > 0) {
+            const { data: answersData, error: answersError } = await supabase
+              .from("answers" as any)
+              .select("id, question_id, answer, created_at")
+              .in("question_id", questionIds)
+              .abortSignal(signal);
+            if (!answersError && answersData) {
+              for (const ans of answersData as any[]) {
+                const lista = answersByQuestion.get(ans.question_id) || [];
+                lista.push(ans);
+                answersByQuestion.set(ans.question_id, lista);
+              }
+            }
+          }
+
+          const formattedQuestions: Question[] = data.map((item: any) => ({
+            id: item.id,
+            userId: undefined,
+            productId: item.product_id,
+            productName: productInfo?.nome,
+            productImage: productInfo?.imagem_url,
+            customerName: item.author_name || "Usuário Anônimo",
+            customerAvatar: item.author_avatar_url || undefined,
+            question: item.question,
+            createdAt: item.created_at,
+            // B2 (laudo Opus PR#484, 08/09/2026): `vw_questions_public` não
+            // tem `is_verified_buyer` — o selo do visitante fica sempre
+            // desligado, reproduzindo o que a RLS de pedidos já nega hoje
+            // ao anônimo (ver o comentário acima da bifurcação `anonimo`).
+            isVerified: false,
+            answers: (answersByQuestion.get(item.id) || [])
+              .map((ans: any) => ({
+                id: ans.id,
+                questionId: ans.question_id,
+                answer: ans.answer,
+                createdAt: ans.created_at,
+              }))
+              .sort(
+                (a: any, b: any) =>
+                  new Date(a.createdAt).getTime() -
+                  new Date(b.createdAt).getTime(),
+              ),
+          }));
+
+          if (latestProductIdRef.current === productId) {
+            questionIdsDoProdutoRef.current = new Set(
+              formattedQuestions.map((q) => q.id),
+            );
+            setQuestions(formattedQuestions);
+            setError(null);
+          }
+          updateQuestionsCache(productId, formattedQuestions);
+          return;
+        }
+
         const selectQuery = isAdmin
           ? `
           *,
@@ -303,7 +401,17 @@ export function useQuestions() {
         }
       }
     },
-    [isAdmin],
+    // B1 (laudo Opus PR#484, 08/09/2026): `user?.id`, não `user`. O ramo só
+    // lê `!user`; o objeto `user` do AuthContext ganha identidade nova a
+    // cada `setUser` (login/logout, mas também renovação de token), o que
+    // dava a `getQuestionsByProduct` uma identidade nova a cada render —
+    // derrubando e recriando à toa o canal de realtime do consumidor
+    // (`ProductQA.tsx`) e quebrando o duble de teste que usa um objeto
+    // literal novo por chamada. `user?.id` é a chave estável; incluir
+    // `user` inteiro reintroduziria o bug (mesma disciplina de
+    // `useDataVault.ts:35`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isAdmin, user?.id],
   );
 
   const addQuestion = useCallback(

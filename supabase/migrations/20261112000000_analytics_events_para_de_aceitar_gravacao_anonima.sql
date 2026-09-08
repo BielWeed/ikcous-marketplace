@@ -1,0 +1,83 @@
+-- `analytics_events` para de aceitar gravação ANÔNIMA, sem limite (I-4,
+-- brief hub-0809-g 08/09/2026:
+-- equipe/entregas/20260908-brief-i3-i4-anon-nao-le-autor-nem-grava-analytics.md).
+--
+-- NÃO ADITIVA — RESTRINGE PERMISSÃO (RLS + GRANT). NÃO aplicar em banco
+-- nenhum sem o SQL abaixo MOSTRADO ao Gabriel e ele dizer "pode aplicar"
+-- (carta branca de 07/09 cobre só migration ADITIVA).
+--
+-- O DEFEITO, PROVADO NO ESTADO VIVO (medido em 08/09/2026, pg_policy +
+-- information_schema.role_table_grants — DOIS bancos, principal e o clone
+-- Savy, idênticos neste ponto):
+--   analytics_events_insert_policy WITH CHECK (((auth.uid() IS NULL AND
+--   user_id IS NULL) OR auth.uid() = user_id)) — o primeiro ramo aceita
+--   QUALQUER INSERT sem sessão (`auth.uid() IS NULL`), contanto que o
+--   payload também mande `user_id: null`. E `anon` carrega GRANT INSERT
+--   DIRETO na tabela (medido: `analytics_events | anon | INSERT`), então a
+--   policy é a ÚNICA fechadura — sem limite de taxa, sem CAPTCHA, sem custo
+--   por chamada, e SEM NENHUM gravador legítimo no app usando este ramo:
+--   `grep -rn analytics_events src supabase/functions` só acha os tipos
+--   gerados (`src/types/database.types.ts:68`, `src/types/supabase.ts:38`)
+--   — `useAnalytics.ts`/`useWebVitals.ts` e os demais consumidores só LEEM
+--   por RPC (`grep -rn "analytics_events" supabase/migrations/*.sql` atrás
+--   de função SQL que insira: nenhuma). Confirmado nesta frente: NENHUM
+--   caminho do app grava aqui — o remédio é revogação, não limite de taxa.
+--
+-- O QUE ESTA MIGRATION FAZ:
+--   1. `analytics_events_insert_policy` some o ramo anônimo — só
+--      `authenticated` com `auth.uid() = user_id` (mesmo molde de
+--      `reviews_insert_policy`/`questions_insert_policy`, `TO
+--      authenticated`, reforço em cima do REVOKE abaixo: duas fechaduras
+--      independentes, GRANT e RLS, nenhuma sozinha decide).
+--   2. `REVOKE INSERT ON public.analytics_events FROM anon` — fecha
+--      também a porta do GRANT (sem isto, `anon` continuaria com o
+--      privilégio de tabela; é só a RLS, sem policy aplicável ao seu papel,
+--      que passaria a negar por padrão — redundante de propósito, mesma
+--      disciplina de "GRANT e RLS não são a mesma fechadura" da
+--      20261090000000).
+--
+-- FORA DO ESCOPO DESTA MIGRATION, REGISTRADO SEM CONSERTO (mesma classe do
+-- achado "fora do escopo" da 20261090000000, pendência do dono, issue
+-- própria): `anon` também carrega DELETE/SELECT/TRIGGER/TRUNCATE/UPDATE
+-- direto na tabela (o pacote inteiro do privilégio padrão de objeto novo em
+-- `public`) — SELECT já é negado pela RLS (`analytics_events_select_policy`
+-- é `TO authenticated`, sem ramo para `anon`, então SELECT como `anon`
+-- devolve zero linhas mesmo com o GRANT); UPDATE/DELETE não têm NENHUMA
+-- policy own nesta tabela (nem para `authenticated`), então RLS nega os
+-- dois por padrão para QUALQUER papel — os GRANTs residuais são
+-- inofensivos hoje (a RLS já barra), mas continuam sendo superfície maior
+-- que o necessário. Mesma raiz da 20261090000000 (`ALTER DEFAULT
+-- PRIVILEGES`), não desta frente.
+--
+-- SEM BEGIN/COMMIT (regra da casa).
+--
+-- FICHA DE VERIFICAÇÃO pós-aplicação (rodar contra o banco; não rodada por
+-- este agente):
+--
+--   -- 1. A policy exige authenticated e não tem mais o ramo anônimo:
+--   SELECT polroles::regrole[], pg_get_expr(polwithcheck, polrelid)
+--   FROM pg_policy WHERE polname = 'analytics_events_insert_policy';
+--   -- esperado: {authenticated}; expressão só com "auth.uid() = user_id".
+--
+--   -- 2. anon não grava mais (SET ROLE anon):
+--   INSERT INTO public.analytics_events (event_type) VALUES ('teste');
+--   -- esperado: erro 42501 (nem chega a avaliar a policy — o GRANT já barra).
+--
+--   -- 3. authenticated grava com o próprio user_id (SET ROLE authenticated
+--   --    + request.jwt.claims do usuário de teste):
+--   INSERT INTO public.analytics_events (event_type, user_id)
+--     VALUES ('teste', '<uuid-do-usuario-de-teste>');
+--   -- esperado: INSERT 0 1 (dentro de transação com ROLLBACK — apagar
+--   -- depois se rodado fora dela).
+--
+-- ROLLBACK: rollback-manual-20261112000000_*.sql versionado junto, com o
+-- corpo VIVO byte a byte (medido em pg_get_expr contra os DOIS bancos) e o
+-- GRANT devolvido.
+
+DROP POLICY IF EXISTS analytics_events_insert_policy ON public.analytics_events;
+
+CREATE POLICY analytics_events_insert_policy ON public.analytics_events
+  FOR INSERT TO authenticated
+  WITH CHECK ((SELECT auth.uid()) = user_id);
+
+REVOKE INSERT ON public.analytics_events FROM anon;
