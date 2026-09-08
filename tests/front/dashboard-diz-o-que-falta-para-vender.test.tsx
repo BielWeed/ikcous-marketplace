@@ -631,10 +631,46 @@ describe("equivalência: o limiar do front é o MESMO literal gravado na migrati
     ).toBe(true);
   });
 
+  // ── Guarda 2 (laudo da revisão, 08/09): carimbo tem de ter 14 dígitos ──
+  //
+  // "ordem alfabética é ordem cronológica" (comentário acima do `.sort`) só
+  // vale se TODO nome começar com carimbo do mesmo tamanho. O repositório já
+  // tem exceção: supabase/migrations/2026110000000_o_estorno_nasce_no_ledger.sql
+  // e .../2026110000100_concluir_estorno.sql usam carimbo de 13 dígitos.
+  // Hoje é inofensivo — nenhum dos dois redefine get_admin_analytics_v2 —,
+  // mas se uma migration futura redefinir a função com carimbo fora do
+  // padrão de 14 dígitos, a ordenação lexicográfica erra em silêncio e o
+  // teste passaria a medir contra a definição errada sem avisar. Esta guarda
+  // valida o FORMATO de cada arquivo aceito antes de confiar na ordenação.
+  it("cada migration aceita na lista de redefinições começa com carimbo de exatamente 14 dígitos", () => {
+    const foraDoPadrao = CAMINHOS_DAS_REDEFINICOES.filter((caminho) => {
+      const nomeBase = caminho.split("/").at(-1) ?? "";
+      return !/^\d{14}_/.test(nomeBase);
+    });
+    expect(
+      foraDoPadrao,
+      `arquivo(s) com carimbo fora do padrão de 14 dígitos (ordenação alfabética deixa de ser cronológica): ${foraDoPadrao.join(", ")}`,
+    ).toEqual([]);
+  });
+
   it("a definição VIVA é a de maior carimbo — hoje, 20261062000000", () => {
     expect(CAMINHO_DA_VIVA).toContain(
       "20261062000000_o_hoje_do_painel_e_o_dia_do_lojista.sql",
     );
+  });
+
+  // ── Guarda 1 (laudo da revisão, 08/09): a viva não pode ser um rollback ──
+  //
+  // A asserção acima ("a viva é a de maior carimbo") só prova o carimbo — e
+  // `rollback-manual-20261062000000_o_hoje_do_painel_e_o_dia_do_lojista.sql`
+  // CONTÉM esse mesmo carimbo como substring, ordena DEPOIS ("r" > dígito em
+  // ASCII) e hoje redefine a função com o MESMO COALESCE. Se o filtro
+  // `!caminho.includes("/rollback-manual-")` (acima) sumir numa refatoração
+  // futura, o teste anterior continuaria verde apontando para o rollback —
+  // essa é exatamente a coincidência que esta linha fecha: ela não depende
+  // do filtro existir, então acusa sozinha se ele sumir.
+  it("a viva NÃO é um arquivo de rollback — mesmo que o filtro acima sumisse, esta linha acusaria", () => {
+    expect(CAMINHO_DA_VIVA).not.toMatch(/rollback-manual/);
   });
 
   it("COALESCE(estoque_minimo, N) do SQL VIVO é o MESMO N de LIMIAR_PADRAO_DE_ESTOQUE", async () => {
