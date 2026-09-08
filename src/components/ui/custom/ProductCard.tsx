@@ -16,7 +16,7 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import { memo, useId, useMemo, useState } from "react";
+import { memo, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { StarRating } from "./StarRating";
 
@@ -83,6 +83,12 @@ export const ProductCard = memo(function ProductCard({
 }: Readonly<ProductCardProps>) {
   const instanceId = useId();
   const { prefetchImage } = usePrefetchOnHover();
+  // B3 (laudo de acessibilidade, 08/09): o alvo que abre o produto por
+  // teclado/leitor de tela virou o botão do NOME -- o clique nele não passa
+  // mais pelo wrapper (`e.currentTarget` seria o botão, sem <img> dentro).
+  // O `ref` do card inteiro é o que garante achar a foto DESTE card, venha o
+  // clique de onde vier.
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const discount = product.originalPrice
     ? Math.round(
@@ -249,7 +255,12 @@ export const ProductCard = memo(function ProductCard({
     });
   };
 
-  const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Uma função só, chamada pelo wrapper (clique/toque em área vazia) e pelo
+  // botão do nome (clique + Enter/Espaço, de graça por ser <button> nativo)
+  // -- haptic (não há aqui), activeTransitionCardId, view-transition-name e
+  // onClick(product.id) acontecem exatamente UMA vez por abertura, venha ela
+  // de onde vier.
+  const abrirProduto = () => {
     activeTransitionCardId = instanceId;
     if (isViewTransitionSupported) {
       // Só IMAGENS: é o único nome que troca de dono entre telas
@@ -259,7 +270,9 @@ export const ProductCard = memo(function ProductCard({
       document.querySelectorAll<HTMLElement>("img").forEach((el) => {
         el.style.removeProperty("view-transition-name");
       });
-      const img = e.currentTarget.querySelector("img");
+      // `ref` do CARD, não `e.currentTarget`: o clique pode vir do botão do
+      // nome, que não tem <img> dentro dele.
+      const img = cardRef.current?.querySelector("img");
       if (img) {
         img.style.setProperty("view-transition-name", "product-image");
       }
@@ -267,28 +280,16 @@ export const ProductCard = memo(function ProductCard({
     onClick(product.id);
   };
 
-  const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      activeTransitionCardId = instanceId;
-      if (isViewTransitionSupported) {
-        document.querySelectorAll<HTMLElement>("img").forEach((el) => {
-          el.style.removeProperty("view-transition-name");
-        });
-        const img = e.currentTarget.querySelector("img");
-        if (img) {
-          img.style.setProperty("view-transition-name", "product-image");
-        }
-      }
-      onClick(product.id);
-    }
-  };
-
   return (
+    // B3 (laudo de acessibilidade, 08/09): este wrapper é INTENCIONALMENTE
+    // um div não-interativo (sem role/tabIndex) -- o teclado é servido pelo
+    // <button> do nome, logo abaixo. O `onClick` aqui cobre só mouse/toque
+    // em área vazia do card; o eslint-disable é o mesmo padrão já usado em
+    // AdminWhatsAppConfigView.tsx para overlay clicável sem foco próprio.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
-      role="button"
-      tabIndex={0}
-      onClick={handleCardClick}
+      ref={cardRef}
+      onClick={abrirProduto}
       onMouseEnter={() => {
         prefetchImage(imagemRedimensionada(srcImagem, { width: 640 }));
         if (onMouseEnter) onMouseEnter(product.id);
@@ -301,7 +302,6 @@ export const ProductCard = memo(function ProductCard({
         prefetchImage(imagemRedimensionada(srcImagem, { width: 640 }));
         if (onTouchStart) onTouchStart(product.id);
       }}
-      onKeyDown={handleCardKeyDown}
       className={cn(
         "group bg-zinc-50/30 rounded-[2rem] overflow-hidden hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:bg-white transition-[transform,box-shadow,background-color] duration-300 ease-out cursor-pointer border border-zinc-200/60 flex flex-col relative active:scale-[0.98] h-full flex-1 gpu-accelerated",
         className,
@@ -373,8 +373,23 @@ export const ProductCard = memo(function ProductCard({
               </div>
             )}
           </div>
-          <h3 className="line-clamp-2 text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-[14px]">
-            {product.name}
+          {/* B3 (laudo de acessibilidade, 08/09): o wrapper do card deixou
+              de ser `role="button"` -- o nome vira o ÚNICO alvo focável, um
+              <button> nativo dentro do <h3> (nome acessível = nome do
+              produto, ativação por Enter/Espaço de graça). O
+              `stopPropagation` evita abrir o produto duas vezes (o clique
+              bolhando pro wrapper, que também tem onClick). */}
+          <h3>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                abrirProduto();
+              }}
+              className="line-clamp-2 w-full text-left text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-[14px]"
+            >
+              {product.name}
+            </button>
           </h3>
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
             {/* LOJA-01 (auditoria 26/08/2026): `produtos.rating` nasce com

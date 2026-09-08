@@ -299,18 +299,16 @@ function HeroOfferCard({
     : 0;
 
   return (
+    // B3 (laudo de acessibilidade, 08/09): mesmo raciocínio do ProductCard --
+    // wrapper INTENCIONALMENTE não-interativo (sem role/tabIndex), teclado
+    // servido pelo <button> do nome logo abaixo; onClick aqui é só
+    // mouse/toque. eslint-disable no mesmo padrão de
+    // AdminWhatsAppConfigView.tsx.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
-      role="button"
-      tabIndex={0}
       onClick={handleCardClick}
       onMouseEnter={onMouseEnter}
       onTouchStart={onTouchStart}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          handleCardClick();
-        }
-      }}
       className="gpu-accelerated group relative flex h-full flex-1 cursor-pointer flex-col gap-4 overflow-hidden rounded-[2rem] border border-zinc-100/40 bg-gradient-to-br from-zinc-50/60 via-orange-50/15 to-white p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_48px_-15px_rgba(24,24,27,0.06)] active:scale-[0.995] sm:p-5"
     >
       {/* Floating Sparkle / Highlight elements */}
@@ -381,8 +379,21 @@ function HeroOfferCard({
               )}
             </div>
 
-            <h3 className="mb-1.5 line-clamp-2 text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-xl">
-              {product.name}
+            {/* B3 (laudo de acessibilidade, 08/09): mesmo desenho do
+                ProductCard -- o wrapper deixou de ser `role="button"` e o
+                nome vira o único alvo focável, um <button> nativo dentro do
+                <h3>. `stopPropagation` evita abrir o produto duas vezes. */}
+            <h3 className="mb-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCardClick();
+                }}
+                className="line-clamp-2 w-full text-left text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-xl"
+              >
+                {product.name}
+              </button>
             </h3>
 
             <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
