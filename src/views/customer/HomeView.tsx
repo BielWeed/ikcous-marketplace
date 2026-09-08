@@ -76,6 +76,9 @@ export const HomeView = React.memo(function HomeView({
 }: HomeViewProps) {
   const { config, isLoaded: configLoaded } = useStore();
   const [showSortMenu, setShowSortMenu] = useState(false);
+  // Laudo de acessibilidade 05/09 (onda 3, item B5): guarda o botão que abriu
+  // o menu de ordenar para devolver o foco a ele quando o Esc fechar.
+  const sortButtonRef = React.useRef<HTMLButtonElement>(null);
   const { categories, isLoading: isLoadingCategories } = useCategories();
   const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
   const sentinelRef = React.useRef<HTMLDivElement>(null);
@@ -346,6 +349,10 @@ export const HomeView = React.memo(function HomeView({
 
   return (
     <div className="pb-customer min-h-full">
+      {/* Laudo de acessibilidade 05/09 (onda 3, item B1): a home começava em
+          h2 — sem h1 nenhum na página, o leitor de tela nunca anuncia o
+          nome da loja como título do documento. sr-only: zero pixel muda. */}
+      <h1 className="sr-only">{nomeDaLoja}</h1>
       {/* Top Banners - Full Width */}
       {!searchQuery &&
         selectedCategory === "Todas" &&
@@ -559,6 +566,7 @@ export const HomeView = React.memo(function HomeView({
             <div className="flex flex-shrink-0 items-center gap-2">
               <div className="relative">
                 <button
+                  ref={sortButtonRef}
                   onClick={() => {
                     haptic.light();
                     setShowSortMenu(!showSortMenu);
@@ -580,11 +588,7 @@ export const HomeView = React.memo(function HomeView({
                       aria-label="Fechar menu"
                       tabIndex={-1}
                       onKeyDown={(e) => {
-                        if (
-                          e.key === "Escape" ||
-                          e.key === "Enter" ||
-                          e.key === " "
-                        ) {
+                        if (e.key === "Enter" || e.key === " ") {
                           setShowSortMenu(false);
                         }
                       }}
@@ -592,6 +596,23 @@ export const HomeView = React.memo(function HomeView({
                     <div
                       className="absolute right-0 top-full z-50 mt-3 w-56 rounded-3xl border border-white/20 bg-white/95 p-2 shadow-2xl backdrop-blur-2xl duration-300 animate-in fade-in zoom-in"
                       role="listbox"
+                      // tabIndex={-1}: programaticamente focável (exigência
+                      // do jsx-a11y para role interativo com onKeyDown) sem
+                      // entrar na ordem de Tab — quem navega chega pelas
+                      // opções (role="option") dentro dele.
+                      tabIndex={-1}
+                      // Laudo de acessibilidade 05/09 (onda 3, item B5): o
+                      // Esc vivia no overlay acima (tabIndex={-1}, nunca
+                      // alcançado por teclado — o bug real). A escuta que
+                      // funciona de verdade mora aqui, ligada aos itens
+                      // focáveis do próprio menu, e devolve o foco a quem
+                      // abriu.
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setShowSortMenu(false);
+                          sortButtonRef.current?.focus();
+                        }
+                      }}
                     >
                       <div className="mb-1 border-b border-zinc-50 px-4 py-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">

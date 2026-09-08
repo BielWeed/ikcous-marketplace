@@ -189,6 +189,14 @@ export function OrderDetailsView({
     productId: string;
     productName: string;
   } | null>(null);
+  // Laudo de acessibilidade 05/09 (onda 3, item B5): guarda o botão
+  // "Avaliar" que abriu a folha (há um por item do pedido) para devolver o
+  // foco a ele quando a folha fechar.
+  const avaliarTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const fecharAvaliacao = useCallback(() => {
+    setReviewingItem(null);
+    avaliarTriggerRef.current?.focus();
+  }, []);
 
   const handleCancelOrder = async () => {
     if (!order) return;
@@ -742,12 +750,13 @@ export function OrderDetailsView({
                       </span>
                     ) : (
                       <button
-                        onClick={() =>
+                        onClick={(e) => {
+                          avaliarTriggerRef.current = e.currentTarget;
                           setReviewingItem({
                             productId: item.productId,
                             productName: item.name,
-                          })
-                        }
+                          });
+                        }}
                         className="flex items-center gap-1 rounded-full border border-zinc-200/60 bg-zinc-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider text-zinc-800 shadow-sm transition-all duration-300 hover:bg-zinc-100 hover:text-zinc-950 hover:shadow active:scale-95"
                       >
                         <Star className="size-2.5 fill-amber-400 text-amber-400" />
@@ -875,29 +884,47 @@ export function OrderDetailsView({
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
             <div
               className="fixed inset-0"
-              onClick={() => setReviewingItem(null)}
+              onClick={fecharAvaliacao}
               role="button"
               aria-label="Fechar avaliacao"
               tabIndex={-1}
               onKeyDown={(e) => {
-                if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
-                  setReviewingItem(null);
+                if (e.key === "Enter" || e.key === " ") {
+                  fecharAvaliacao();
                 }
               }}
             />
-            <div className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom">
+            {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- padrão APG de dialog: Esc no próprio container fecha (mesmo precedente em ImageAdjuster.tsx:1151) */}
+            <div
+              className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="titulo-avaliacao"
+              // Laudo de acessibilidade 05/09 (onda 3, item B5): o Esc vivia
+              // no backdrop acima (tabIndex={-1}, nunca alcançado por
+              // teclado — o mesmo bug do menu de ordenar da home). Sem trap
+              // de foco elaborado: só o Esc e o retorno do foco a quem abriu.
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  fecharAvaliacao();
+                }
+              }}
+            >
               {/* Header */}
               <div className="mb-6 flex items-center justify-between">
                 <div>
                   <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
                     Avaliação do Produto
                   </span>
-                  <h3 className="mt-0.5 max-w-[280px] truncate text-base font-extrabold uppercase leading-tight text-zinc-900">
+                  <h3
+                    id="titulo-avaliacao"
+                    className="mt-0.5 max-w-[280px] truncate text-base font-extrabold uppercase leading-tight text-zinc-900"
+                  >
                     {reviewingItem.productName}
                   </h3>
                 </div>
                 <button
-                  onClick={() => setReviewingItem(null)}
+                  onClick={fecharAvaliacao}
                   // Laudo 05/09, M5: o nome acessível era "✕" — agora diz
                   // o que fecha.
                   aria-label="Fechar avaliação"
@@ -915,7 +942,7 @@ export function OrderDetailsView({
                     next.add(reviewingItem.productId);
                     return next;
                   });
-                  setReviewingItem(null);
+                  fecharAvaliacao();
                 }}
               />
             </div>
