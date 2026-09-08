@@ -2017,8 +2017,16 @@ const AppContent = () => {
               );
               setCurrentView("home");
               // Sync URL back to home
-              if (globalThis.location.pathname !== "/") {
-                globalThis.history.replaceState({ view: "home" }, "", "/");
+              const caminhoDaHome = caminhoDaHomeRef.current();
+              if (
+                globalThis.location.pathname + globalThis.location.search !==
+                caminhoDaHome
+              ) {
+                globalThis.history.replaceState(
+                  { view: "home" },
+                  "",
+                  caminhoDaHome,
+                );
               }
             }
           }
