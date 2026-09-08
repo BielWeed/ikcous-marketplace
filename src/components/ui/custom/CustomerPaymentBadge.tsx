@@ -151,9 +151,28 @@ const customerPaymentConfigByKey = new Map(
 // de `pago_apos_expirar` acima: não existe rótulo próprio para "recebido na
 // entrega, cancelado depois" em lugar nenhum do app — sem essa entrada aqui,
 // o selo mostraria "Pagamento confirmado" verde para um pedido morto.
+// `recebido_na_entrega` fica FORA do Mercado Pago (brief T7): a devolução
+// sempre depende da loja, enviado ou não — por isso este rótulo continua
+// valendo pra ele em qualquer estado de envio (ver `customerPaymentStatusEntry`).
 const PAGO_MAS_CANCELADO: CustomerPaymentEntry = {
   label: "Pago — fale com a loja",
   tone: "atencao",
+};
+
+// Rodada 2 (laudo Opus PR#457, BLOQUEIA 1): caso `pago`/`pago_apos_expirar` +
+// cancelado + NÃO enviado — desde 07/09/2026 (Task 1 do plano-mãe de estorno
+// pelo app) esse cancelamento grava a linha de devolução em `order_refunds`
+// na MESMA transação e o cron/edge tocam o Mercado Pago sozinhos. Antes desta
+// rodada o selo continuava mostrando `PAGO_MAS_CANCELADO` ("fale com a
+// loja") para ESTE caso também, contradizendo a linha nova de devolução
+// (`textoDevolucao`, logo abaixo do selo na tela) e a description do card de
+// status — as três diziam coisas opostas sobre o mesmo dinheiro. Tom
+// `confirmado` (verde), não `atencao` (laranja): o cliente não precisa agir,
+// é boa notícia — contraste já medido para este tom (emerald-700/emerald-50:
+// 5,21, ver `toneStyles`).
+const PAGO_MAS_CANCELADO_DEVOLUCAO_AUTOMATICA: CustomerPaymentEntry = {
+  label: "Pago — devolução automática",
+  tone: "confirmado",
 };
 
 // Caso oposto de `PAGO_MAS_CANCELADO`: o cliente cancelou um PIX que ainda
@@ -177,18 +196,28 @@ const AGUARDANDO_MAS_CANCELADO: CustomerPaymentEntry = {
  * Traduz `payment_status` (e, quando o pedido morreu com o dinheiro dentro,
  * também `status`) para o texto que o comprador vê. `null` para
  * `sem_cobranca` — quem renderiza não desenha nada nesse caso.
+ *
+ * `cancelledAfterShipping` só decide algo para `pago` (rodada 2, BLOQUEIA
+ * 1): `=== false` (o chamador SABE que o pedido não foi enviado) devolve o
+ * rótulo de devolução automática; `undefined` (chamador não tem o pedido) OU
+ * `true` (enviado) mantêm `PAGO_MAS_CANCELADO` — o comportamento de antes
+ * desta correção, que é o correto para "enviado" e o mais seguro para
+ * "não sei".
  */
 export function customerPaymentStatusEntry(
   paymentStatus: PaymentStatus | null | undefined,
   orderStatus?: OrderStatus | null,
+  cancelledAfterShipping?: boolean,
 ): CustomerPaymentEntry | null {
   const key = paymentStatusKey(paymentStatus);
   if (key === "sem_cobranca") return null;
-  if (
-    (key === "pago" || key === "recebido_na_entrega") &&
-    orderStatus === "cancelled"
-  )
+  if (key === "recebido_na_entrega" && orderStatus === "cancelled")
     return PAGO_MAS_CANCELADO;
+  if (key === "pago" && orderStatus === "cancelled") {
+    return cancelledAfterShipping === false
+      ? PAGO_MAS_CANCELADO_DEVOLUCAO_AUTOMATICA
+      : PAGO_MAS_CANCELADO;
+  }
   if (key === "aguardando" && orderStatus === "cancelled")
     return AGUARDANDO_MAS_CANCELADO;
   // `Map.get` não é indexação dinâmica para o eslint, e o Record acima é
@@ -202,6 +231,11 @@ interface CustomerPaymentBadgeProps {
   // Opcional para não quebrar chamador nenhum: sem ela, o comportamento é
   // idêntico ao de antes desta correção.
   orderStatus?: OrderStatus | null;
+  // Opcional pelo mesmo motivo — ausência vira `undefined`, que
+  // `customerPaymentStatusEntry` trata como "enviado" (mantém "fale com a
+  // loja"). Só passe `false` quando o pedido está disponível e comprovadamente
+  // NÃO foi enviado.
+  cancelledAfterShipping?: boolean;
   className?: string;
 }
 
@@ -213,9 +247,14 @@ interface CustomerPaymentBadgeProps {
 export const CustomerPaymentBadge = memo(function CustomerPaymentBadge({
   paymentStatus,
   orderStatus,
+  cancelledAfterShipping,
   className,
 }: Readonly<CustomerPaymentBadgeProps>) {
-  const entry = customerPaymentStatusEntry(paymentStatus, orderStatus);
+  const entry = customerPaymentStatusEntry(
+    paymentStatus,
+    orderStatus,
+    cancelledAfterShipping,
+  );
   if (!entry) return null;
   const styles = toneStyles[entry.tone];
 

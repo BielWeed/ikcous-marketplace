@@ -75,8 +75,16 @@ export function textoConfirmarCancelamento({
   pagamentoNaEntrega = false,
 }: ParametrosConfirmarCancelamento): string {
   if (!pagamentoJaEntrou) return TEXTO_NAO_PAGO;
-  if (pagamentoNaEntrega) return TEXTO_PAGO_NA_ENTREGA;
+  // Rodada 2 (laudo Opus PR#457, BLOQUEIA 2): `jaFoiEnviado` vem ANTES de
+  // `pagamentoNaEntrega`. O estado é alcançável hoje pela interface
+  // (`podeRegistrarPagamento` não exige `delivered`, e o botão "Marcar como
+  // recebido" existe também para pedido `shipping`) — pago na entrega COM o
+  // produto já enviado precisa do MESMO aviso de devolver o produto que
+  // qualquer outro pedido enviado, não do texto de "combine com a loja" que
+  // some o dever de devolver a mercadoria. Ordem antiga (pagamentoNaEntrega
+  // primeiro) perdia esse aviso.
   if (jaFoiEnviado) return TEXTO_PAGO_JA_ENVIADO;
+  if (pagamentoNaEntrega) return TEXTO_PAGO_NA_ENTREGA;
   return TEXTO_PAGO_NAO_ENVIADO;
 }
 

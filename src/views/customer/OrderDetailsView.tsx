@@ -154,20 +154,41 @@ function pendingDescription(
  * pagamento" — a tela inteira convidava o cliente a pagar um pedido morto com
  * o QR do PIX ainda aberto no banco dele. Não há estorno automático neste
  * app.
+ *
+ * Rodada 2 (laudo Opus PR#457, BLOQUEIA 1): `pago`/`pago_apos_expirar` deixou
+ * de ser um único texto — recebe `cancelledAfterShipping` porque desde
+ * 07/09/2026 (Task 1 do plano-mãe de estorno pelo app) só o caso NÃO enviado
+ * tem devolução automática (a RPC grava `order_refunds` na mesma transação
+ * do cancelamento); o caso enviado continua dependendo da loja e do produto
+ * físico voltar, e mandar "fale com a loja" ali é verdade — misturar os dois
+ * num texto só fazia a tela contradizer o selo e a linha de devolução no
+ * caminho principal da feature.
  */
 function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
+  cancelledAfterShipping: boolean,
 ): string {
   const key = paymentStatusKey(paymentStatus);
-  // `recebido_na_entrega` entra na mesma frase de `pago`/`pago_apos_expirar`
-  // (Task 3b de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md):
-  // dinheiro que a loja já confirmou ter recebido, e o pedido morreu depois.
-  if (
-    key === "pago" ||
-    key === "pago_apos_expirar" ||
-    key === "recebido_na_entrega"
-  ) {
+  // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
+  // depende sempre da loja, enviado ou não — por isso não entra no ramo de
+  // baixo, que só existe para dinheiro que passou pelo MP e tem cron/edge
+  // devolvendo sozinho.
+  if (key === "recebido_na_entrega") {
     return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
+  }
+  if (key === "pago" || key === "pago_apos_expirar") {
+    // Rodada 2 (laudo Opus PR#457, BLOQUEIA 1): pago + JÁ enviado continua
+    // dependendo da loja e do produto físico voltar — "fale com a loja"
+    // continua verdade aqui. Pago + NÃO enviado é o caminho principal desta
+    // feature: desde 07/09/2026 (Task 1 do plano-mãe) o cancelamento grava a
+    // linha de devolução em `order_refunds` na MESMA transação e o cron/edge
+    // tocam o Mercado Pago sozinhos — "fale com a loja" deixou de ser
+    // verdade para este ramo, e dizer isso ao lado de "o dinheiro volta
+    // sozinho" (selo + linha de devolução) contradizia a própria tela.
+    if (cancelledAfterShipping) {
+      return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
+    }
+    return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
   }
   if (key === "aguardando") {
     return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
@@ -510,7 +531,10 @@ export function OrderDetailsView({
     order.status === "pending"
       ? pendingDescription(order.paymentStatus)
       : order.status === "cancelled"
-        ? cancelledDescription(order.paymentStatus)
+        ? cancelledDescription(
+            order.paymentStatus,
+            order.cancelledAfterShipping,
+          )
         : currentStatus.description;
   const textoDaDevolucao = mostrarDevolucao
     ? textoDevolucao({
@@ -917,12 +941,15 @@ export function OrderDetailsView({
                 <CustomerPaymentBadge
                   paymentStatus={order.paymentStatus}
                   orderStatus={order.status}
+                  cancelledAfterShipping={order.cancelledAfterShipping}
                 />
-                {/* T7 do plano-mãe de estorno pelo app: o que o selo acima
-                    resume num rótulo curto ("Pago — fale com a loja"), esta
-                    linha explica por extenso — de onde vem o estado da
-                    devolução (`order_refunds`, via `useDevolucaoDoPedidoCliente`,
-                    T7) e nunca de um id do Mercado Pago ou de um texto
+                {/* T7 do plano-mãe de estorno pelo app, corrigido na rodada 2
+                    (laudo Opus PR#457, BLOQUEIA 1): o selo acima e esta linha
+                    contam a MESMA história, nunca uma resumo da outra — pago
+                    + não enviado, os dois dizem que a devolução é automática
+                    ("Pago — devolução automática" / "o dinheiro volta
+                    sozinho"); pago + já enviado, os dois mandam falar com a
+                    loja. Esta linha nunca mostra id do Mercado Pago nem texto
                     técnico de erro (ver `textoDevolucao`). */}
                 {textoDaDevolucao && (
                   <p className="text-[9px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">

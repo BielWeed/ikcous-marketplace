@@ -82,13 +82,21 @@ describe("textoConfirmarCancelamento — a tabela inteira", () => {
     expect(texto).not.toMatch(/fatura/i);
   });
 
-  it("recebido_na_entrega ganha prioridade mesmo se jaFoiEnviado for true", () => {
+  it("já enviado ganha prioridade sobre recebido_na_entrega (rodada 2, BLOQUEIA 2)", () => {
+    // Estado alcançável hoje: pedido `shipping` + `payment_status`
+    // `recebido_na_entrega` (o botão "Marcar como recebido" não exige
+    // `delivered`). O produto já saiu — o aviso de devolvê-lo não pode
+    // sumir atrás do texto de "combine com a loja". Mutação: voltar a
+    // ordem antiga (pagamentoNaEntrega antes de jaFoiEnviado) derruba
+    // este teste.
     const texto = textoConfirmarCancelamento({
       pagamentoJaEntrou: true,
       jaFoiEnviado: true,
       pagamentoNaEntrega: true,
     });
-    expect(texto).toContain("pagou este pedido na entrega");
+    expect(texto).toContain("já foi enviado");
+    expect(texto).toContain("depois que o produto chegar de volta");
+    expect(texto).not.toContain("pagou este pedido na entrega");
   });
 });
 
@@ -531,6 +539,68 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     expect(texto).toContain("pagou este pedido na entrega");
     expect(texto).not.toMatch(/pix/i);
     expect(texto).not.toMatch(/fatura/i);
+  });
+
+  // BLOQUEIA 1 (laudo Opus PR#457, rodada 2): pago + cancelado + NÃO
+  // enviado (o caminho principal desta feature) não pode mandar "fale com a
+  // loja" em NENHUMA superfície (card de status, selo, linha de devolução) —
+  // o dinheiro volta sozinho, e a tela inteira precisa dizer só isso.
+  // Cobre os dois estados possíveis: sem linha ainda (janela entre o
+  // cancelamento e a primeira leitura do hook) e com linha `solicitado`.
+  it("BLOQUEIA 1: pago cancelado NÃO enviado, SEM linha ainda — nenhuma superfície manda falar com a loja", async () => {
+    linhasOrderRefundsMock = [];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).not.toContain("fale com a loja");
+    expect(texto).not.toContain("Fale com a loja");
+    expect(texto).toContain("volta sozinho");
+  });
+
+  it("BLOQUEIA 1: pago cancelado NÃO enviado, COM linha 'solicitado' — nenhuma superfície manda falar com a loja", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "solicitado",
+        solicitado_por: "cliente",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).not.toContain("fale com a loja");
+    expect(texto).not.toContain("Fale com a loja");
+    expect(texto).toContain("volta sozinho");
+  });
+
+  // Inverso: pago cancelado APÓS o envio continua dependendo da loja e do
+  // produto voltar — "fale com a loja" aqui é verdade, e "volta sozinho" não
+  // pode aparecer (o dinheiro NÃO volta sozinho nesse caso).
+  it("BLOQUEIA 1 (inverso): pago cancelado APÓS o envio — 'fale com a loja' aparece, 'volta sozinho' não", async () => {
+    linhasOrderRefundsMock = [];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: true,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(
+      texto.includes("fale com a loja") || texto.includes("Fale com a loja"),
+    ).toBe(true);
+    expect(texto).not.toContain("volta sozinho");
   });
 
   // C9 — varredura do DOM em cada estado: nenhum indício de id do MP.

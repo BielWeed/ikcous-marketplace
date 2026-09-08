@@ -269,23 +269,37 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
     });
   }
 
-  it("status 'cancelled' + pago_apos_expirar: mostra 'Pago após o vencimento', orienta a falar com a loja, e NÃO mostra 'Pagamento confirmado'", async () => {
+  // Rodada 2 (laudo Opus PR#457, BLOQUEIA 1): `pedidoBase.cancelledAfterShipping`
+  // é `false` (pedido NÃO enviado) — desde 07/09/2026 (Task 1 do plano-mãe de
+  // estorno pelo app) esse é exatamente o caminho principal da feature, onde
+  // "fale com a loja" deixou de ser verdade (a RPC já grava `order_refunds` e
+  // o cron/edge devolvem sozinhos). Asserção trocada de "Fale com a loja para
+  // resolver" para "volta sozinho".
+  it("status 'cancelled' + pago_apos_expirar + NÃO enviado: mostra 'Pago após o vencimento', e a devolução é automática", async () => {
     pedidoAtual = pedidoCanceladoComPagamento("pago_apos_expirar");
 
     await renderizar();
 
     expect(hospedeiro.textContent).toContain("Pago após o vencimento");
-    expect(hospedeiro.textContent).toContain("Fale com a loja para resolver");
+    expect(hospedeiro.textContent).toContain("volta sozinho");
+    expect(hospedeiro.textContent).not.toContain(
+      "Fale com a loja para resolver",
+    );
     expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
   });
 
-  it("status 'cancelled' + pago: mostra a mesma orientação de cancelado-mas-pago", async () => {
+  // Rodada 2 (mesmo motivo do teste acima): asserção trocada de "Fale com a
+  // loja para resolver" para o novo texto de devolução automática.
+  it("status 'cancelled' + pago + NÃO enviado: mostra a devolução automática, sem 'fale com a loja'", async () => {
     pedidoAtual = pedidoCanceladoComPagamento("pago");
 
     await renderizar();
 
     expect(hospedeiro.textContent).toContain(
-      "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.",
+      "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "Fale com a loja para resolver",
     );
   });
 
@@ -297,14 +311,23 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
   // Rótulo mudou de "Pago — pedido cancelado" para "Pago — fale com a loja"
   // numa revisão seguinte: o original quebra em duas linhas a 375px (achado
   // de largura) e o novo orienta em vez de só informar.
-  it("status 'cancelled' + pago: o selo mostra 'Pago — fale com a loja', e NÃO o verde 'Pagamento confirmado' nem o rótulo antigo", async () => {
+  //
+  // Rodada 2 (laudo Opus PR#457, BLOQUEIA 1): `pedidoBase.cancelledAfterShipping`
+  // é `false` — pago + cancelado + NÃO enviado é o caminho principal desta
+  // feature, e o selo passa a mostrar "Pago — devolução automática" (mesma
+  // história que a descrição do card e a linha de devolução, sem contradizer
+  // nenhuma das duas). O par "enviado → continua 'fale com a loja'" está
+  // coberto em `cliente-cancela-pedido-pago-le-a-verdade.test.tsx`
+  // ("BLOQUEIA 1 (inverso)").
+  it("status 'cancelled' + pago + NÃO enviado: o selo mostra 'Pago — devolução automática', e NÃO 'fale com a loja'", async () => {
     pedidoAtual = pedidoCanceladoComPagamento("pago");
 
     await renderizar();
 
-    expect(hospedeiro.textContent).toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).toContain("Pago — devolução automática");
     expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
     expect(hospedeiro.textContent).not.toContain("Pago — pedido cancelado");
+    expect(hospedeiro.textContent).not.toContain("Pago — fale com a loja");
   });
 
   // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
@@ -436,7 +459,12 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
   //
   // Rótulo mudou de "Pago — pedido cancelado" para "Pago — fale com a loja"
   // (achado de largura: o original quebra em duas linhas a 375px).
-  it("status 'cancelled' + pago: o card mostra 'Pago — fale com a loja', e NÃO o verde 'Pagamento confirmado' nem o rótulo antigo", async () => {
+  //
+  // Rodada 2 (laudo Opus PR#457, BLOQUEIA 1): `pedidoComPagamento` usa
+  // `pedidoBase.cancelledAfterShipping = false` (NÃO enviado) — o card passa
+  // a mostrar "Pago — devolução automática", coerente com a mesma correção
+  // de `OrderDetailsView`.
+  it("status 'cancelled' + pago + NÃO enviado: o card mostra 'Pago — devolução automática', e NÃO 'fale com a loja'", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const order: Order = {
       ...pedidoComPagamento("pago"),
@@ -447,9 +475,29 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
       raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
     });
 
-    expect(hospedeiro.textContent).toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).toContain("Pago — devolução automática");
     expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
     expect(hospedeiro.textContent).not.toContain("Pago — pedido cancelado");
+    expect(hospedeiro.textContent).not.toContain("Pago — fale com a loja");
+  });
+
+  // Controle inverso: mesmo caso, mas ENVIADO (`cancelledAfterShipping:
+  // true`) — o card continua mandando falar com a loja, porque a devolução
+  // ainda depende dela e do produto voltar.
+  it("status 'cancelled' + pago + ENVIADO: o card mostra 'Pago — fale com a loja', não 'devolução automática'", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order: Order = {
+      ...pedidoComPagamento("pago"),
+      status: "cancelled",
+      cancelledAfterShipping: true,
+    };
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    expect(hospedeiro.textContent).toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).not.toContain("Pago — devolução automática");
   });
 
   // Controle: o pedido segue vivo (status 'pending'), mesmo pago. O selo tem

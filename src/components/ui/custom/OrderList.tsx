@@ -295,6 +295,7 @@ export const OrderList = memo(function OrderList({
                   <CustomerPaymentBadge
                     paymentStatus={order.paymentStatus}
                     orderStatus={order.status}
+                    cancelledAfterShipping={order.cancelledAfterShipping}
                   />
                 </div>
               </div>
