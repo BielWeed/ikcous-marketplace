@@ -214,6 +214,15 @@ describe("GlobalErrorBoundary — chunk sem trava (prazo finito + saída manual)
     expect(localStorage.getItem("marketplace_cart_v1")).toBe(
       JSON.stringify([{ id: 1 }]),
     );
+    // O motivo gravado pelo CLIQUE tem de sobrescrever o "recuperacao-crash"
+    // que o log forense do componentDidCatch já gravou ao capturar o erro.
+    // Sem isso, quem clica num botão que promete "recarregar a página" cai,
+    // depois do boot, no toast de alarme "O aplicativo se recuperou —
+    // Ocorreu um erro inesperado" (tom warning) em vez do "Aplicativo
+    // recarregado" honesto (tom info) — ver src/lib/motivo-de-recarga.ts.
+    expect(localStorage.getItem("pwa_reload_reason")).toBe(
+      "recuperacao-erro-modulo",
+    );
   });
 
   it("c) segunda falha de chunk na mesma sessão não recarrega sozinha — cai na tela com botão", async () => {
