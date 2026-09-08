@@ -431,7 +431,7 @@ async function registrarDesfechoDoEstorno(args: {
   const { data: refundsRowsBrutos, error: erroRefundsRows } = await supabase
     .from("order_refunds")
     .select(
-      "id, amount, status, solicitado_por, mp_refund_id, tentativas, concluido_em, created_at",
+      "id, amount, status, solicitado_por, mp_refund_id, mp_status, tentativas, concluido_em, created_at",
     )
     .eq("order_id", orderId);
   if (erroRefundsRows) throw erroRefundsRows;
@@ -619,14 +619,17 @@ async function registrarDesfechoDoEstorno(args: {
     if (!refundId || reivindicados.has(refundId)) continue;
 
     const valorRefundBruto = Number(refund.amount);
-    // ANTES-DE-CRESCER-1 (laudo Opus rodada 2, PR #449): valor ilegível é
-    // "não sei", NUNCA "zero" — `amount: 0` violaria `CHECK (amount > 0)` no
-    // banco (500 em laço, o MP reenvia para sempre). Pula este refund (nenhum
-    // insert, nenhuma RPC); o resto do handler continua (confirmar_pagamento
-    // do status atual roda do mesmo jeito).
-    if (!Number.isFinite(valorRefundBruto)) {
+    // ANTES-DE-CRESCER-1 (laudo Opus rodada 2, PR #449): valor ilegível OU
+    // não-positivo é "não sei", NUNCA "zero" — `amount: 0` violaria
+    // `CHECK (amount > 0)` no banco (500 em laço, o MP reenvia para
+    // sempre); `amount <= 0` também violaria o mesmo CHECK, e não-positivo
+    // não tem leitura de negócio aqui (refund de valor zero/negativo não é
+    // um refund). Pula este refund (nenhum insert, nenhuma RPC); o resto do
+    // handler continua (confirmar_pagamento do status atual roda do mesmo
+    // jeito).
+    if (!Number.isFinite(valorRefundBruto) || valorRefundBruto <= 0) {
       console.error(
-        "webhook-mercadopago: refund sem valor legível — pulando (não é 'não sei' = 0)",
+        "webhook-mercadopago: refund sem valor legível ou não-positivo — pulando (não é 'não sei' = 0)",
         orderId,
         refundId,
       );
@@ -673,11 +676,13 @@ async function registrarDesfechoDoEstorno(args: {
     // Valor pago: payment → transaction_amount (do corpo cru); order →
     // extrairValorDaOrder — MESMO clamp do item A4.
     const valorPagoBruto = ehPayments ? Number(corpo.transaction_amount) : extrairValorDaOrder(corpo);
-    // ANTES-DE-CRESCER-1: valor ilegível é "não sei", nunca "zero" — só
-    // afeta os DOIS ramos que nascem uma linha NOVA com `amountCb` (in_process
-    // sem linha, settled sem linha); a linha EXISTENTE (settled/reimbursed)
-    // usa o próprio `linhaChargeback.amount`, já gravado, e não lê valorPago.
-    const valorPagoValido = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto);
+    // ANTES-DE-CRESCER-1: valor ilegível OU não-positivo é "não sei", nunca
+    // "zero" — só afeta os DOIS ramos que nascem uma linha NOVA com
+    // `amountCb` (in_process sem linha, settled sem linha); a linha
+    // EXISTENTE (settled/reimbursed) usa o próprio `linhaChargeback.amount`,
+    // já gravado, e não lê valorPago.
+    const valorPagoValido = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto) &&
+      valorPagoBruto > 0;
     const valorPago = valorPagoValido ? valorPagoBruto : 0;
     const disponivelCb = Number(
       (pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2),
