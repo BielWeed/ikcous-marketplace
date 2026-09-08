@@ -2760,12 +2760,18 @@ const AppContent = () => {
               />
             </React.Suspense>
             {/* Fallback com a GEOMETRIA da barra (fixed bottom + 64px +
-                safe-area + fundo): a barra é fixed e não salta, mas sem
-                reserva o toque no lugar do carrinho cedia no card por
-                baixo durante a janela do chunk (achado b3 do laudo). */}
+                safe-area + fundo, e as mesmas classes md: da barra real,
+                para o desktop não ver a faixa virar pílula): a barra é
+                fixed e não salta, mas sem reserva o toque no lugar do
+                carrinho cedia no card por baixo durante a janela do chunk
+                (achado b3 do laudo). As classes são cópia literal do
+                <nav> de BottomNav.tsx — se ele mudar, este fallback muda. */}
             <React.Suspense
               fallback={
-                <nav className="pb-safe fixed inset-x-0 bottom-0 z-[120] border-t border-zinc-100 bg-white/95">
+                <nav
+                  aria-label="Navegação principal"
+                  className="pb-safe fixed inset-x-0 bottom-0 z-[120] flex-shrink-0 border-t border-zinc-100 bg-white/95 shadow-sm backdrop-blur-xl md:bottom-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-2xl md:border md:border-zinc-200 md:shadow-md"
+                >
                   <div className="h-[64px]" />
                 </nav>
               }
