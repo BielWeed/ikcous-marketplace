@@ -645,9 +645,7 @@ describe("equivalência: o limiar do front é o MESMO literal gravado na migrati
     const casado = SQL_DA_VIVA.match(/COALESCE\(estoque_minimo,\s*(\d+)\)/);
     expect(
       casado,
-      "o literal COALESCE(estoque_minimo, N) sumiu ou mudou de forma na " +
-        `migration VIVA (${CAMINHO_DA_VIVA}) — confira à mão antes de mexer ` +
-        "no limiar do front",
+      `o literal COALESCE(estoque_minimo, N) sumiu ou mudou de forma na migration VIVA (${CAMINHO_DA_VIVA}) — confira à mão antes de mexer no limiar do front`,
     ).toBeTruthy();
 
     const limiarDoBanco = Number(casado![1]);
