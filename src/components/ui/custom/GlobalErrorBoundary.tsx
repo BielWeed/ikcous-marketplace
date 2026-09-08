@@ -16,7 +16,20 @@ interface State {
    * não versão nova. Mostra tela honesta de offline em vez de recarregar em
    * loop sob a mentira "Instalando uma nova versão". */
   chunkSemInternet: boolean;
+  /** Prazo da tela "Atualizando o Aplicativo" vencido: revela a saída manual
+   * (botão) para quem a recarga automática não salvou. */
+  saidaChunkLiberada: boolean;
 }
+
+/** Quanto tempo a tela de espera do chunk pode ficar só com a rodinha antes
+ * de oferecer uma saída manual. Espera curta é honesta; espera sem fim é
+ * trava — a pessoa só saía fechando o app na marra. */
+const PRAZO_SAIDA_CHUNK_MS = 4000;
+
+/** Guarda BOOLEANA de uma recarga automática por sessão. A anterior era uma
+ * janela de 10 s (`pwa_chunk_reload_time`): duas falhas de chunk separadas
+ * por mais de 10 s recarregavam de novo, cada vez, sem limite. */
+const CHAVE_CHUNK_RELOAD_SESSAO = "pwa_chunk_reload_done";
 
 function isChunkLoadError(error: Error | null | undefined): boolean {
   if (!error?.message) return false;
@@ -37,7 +50,10 @@ export class GlobalErrorBoundary extends Component<Props, State> {
     hasError: false,
     error: null,
     chunkSemInternet: false,
+    saidaChunkLiberada: false,
   };
+
+  private temporizadorSaidaChunk: ReturnType<typeof setTimeout> | null = null;
 
   public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
@@ -67,12 +83,11 @@ export class GlobalErrorBoundary extends Component<Props, State> {
         "[GlobalErrorBoundary] Dynamic chunk import error caught. Attempting silent reload for update recovery...",
       );
       try {
-        const lastReload = Number(
-          sessionStorage.getItem("pwa_chunk_reload_time") || "0",
-        );
-        const now = Date.now();
-        if (now - lastReload > 10000) {
-          sessionStorage.setItem("pwa_chunk_reload_time", String(now));
+        // UMA recarga automática por sessão, e só. Se a sessão já gastou a
+        // dela, recarregar de novo não conserta nada e prende a pessoa na
+        // rodinha; daqui em diante quem decide é ela, pelo botão.
+        if (sessionStorage.getItem(CHAVE_CHUNK_RELOAD_SESSAO) !== "1") {
+          sessionStorage.setItem(CHAVE_CHUNK_RELOAD_SESSAO, "1");
           // Laudo #2 (P-1): motivo NOMINAL — recuperação de erro de módulo
           // não é atualização; o boot não anuncia "Sistema Atualizado".
           gravaMotivoDeRecarga("recuperacao-erro-modulo");
@@ -80,8 +95,15 @@ export class GlobalErrorBoundary extends Component<Props, State> {
           return;
         }
       } catch (e) {
+        // Storage indisponível: não dá para saber se a sessão já recarregou,
+        // então NÃO se recarrega (falha fechado, sem loop) e a saída manual
+        // é armada logo abaixo.
         console.error("Failed to execute chunk error auto-reload", e);
       }
+
+      // Chegou aqui = a recarga automática não vai acontecer. Sem prazo, o
+      // render() ficaria na rodinha "Atualizando o Aplicativo" para sempre.
+      this.armaPrazoDeSaidaChunk();
     }
 
     // Log to PWA forensics if available
@@ -107,6 +129,33 @@ export class GlobalErrorBoundary extends Component<Props, State> {
       console.error("Failed to write forensic log", e);
     }
   }
+
+  public componentWillUnmount() {
+    if (this.temporizadorSaidaChunk !== null) {
+      clearTimeout(this.temporizadorSaidaChunk);
+      this.temporizadorSaidaChunk = null;
+    }
+  }
+
+  /** Só existe na tela de chunk com internet: passado o prazo, a espera vira
+   * escolha (o botão aparece). Nunca é armado no caminho feliz. */
+  private readonly armaPrazoDeSaidaChunk = () => {
+    if (this.temporizadorSaidaChunk !== null) return;
+    this.temporizadorSaidaChunk = setTimeout(() => {
+      this.temporizadorSaidaChunk = null;
+      this.setState({ saidaChunkLiberada: true });
+    }, PRAZO_SAIDA_CHUNK_MS);
+  };
+
+  private readonly handleRecarregarPagina = () => {
+    // Saída manual da espera: SÓ recarrega. Nada de handleReset nem de purga
+    // — carrinho e sessão do cliente não podem morrer por um chunk que não
+    // baixou.
+    // Motivo nominal: a causa é o módulo que não carregou, e não o crash
+    // genérico que o log forense gravou no caminho de fall-through.
+    gravaMotivoDeRecarga("recuperacao-erro-modulo");
+    window.location.reload();
+  };
 
   private readonly handleReset = () => {
     // Purga SELETIVA: `localStorage.clear()` puro apagava a sessão do
@@ -176,6 +225,29 @@ export class GlobalErrorBoundary extends Component<Props, State> {
               Instalando uma nova versão do marketplace. Isso levará apenas um
               instante...
             </p>
+            {/* Região viva sempre montada: o leitor de tela precisa dela no ar
+                ANTES de o conteúdo aparecer para conseguir anunciá-lo. */}
+            <div
+              aria-live="polite"
+              className="flex flex-col items-center justify-center"
+            >
+              {this.state.saidaChunkLiberada && (
+                <>
+                  <p className="mt-6 max-w-xs text-xs leading-relaxed text-zinc-400">
+                    A atualização está demorando mais do que o normal. Você pode
+                    recarregar a página — seu carrinho e seu login continuam
+                    salvos.
+                  </p>
+                  <Button
+                    onClick={this.handleRecarregarPagina}
+                    className="mt-6 h-12 rounded-full bg-white px-8 font-bold tracking-wide text-black hover:bg-zinc-200"
+                  >
+                    <RefreshCcw className="mr-2 size-4" />
+                    Recarregar a página
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         );
       }
