@@ -68,7 +68,12 @@ export function useUpdateCheck() {
   const fetchServerVersion = useCallback(async () => {
     if (import.meta.env.DEV) return SAFE_APP_VERSION;
     try {
-      const response = await fetch(`/version.json?t=${Date.now()}`);
+      // SEM carimbo de tempo: cada URL diferente virava uma entrada nova no
+      // cache do Service Worker (20 polls = 20 entradas, medido em
+      // 08/09/2026). O sw.ts agora ignora /version.json — ela é sonda de
+      // frescor —, então quem fura o cache HTTP do navegador é o "no-store",
+      // que não inventa URL nova a cada busca.
+      const response = await fetch("/version.json", { cache: "no-store" });
       if (response.ok) {
         const data = await response.json();
         return data.version as string;
