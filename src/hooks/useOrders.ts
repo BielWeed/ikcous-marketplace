@@ -119,7 +119,31 @@ const statusConfigByKey = new Map(
   ][],
 );
 
-async function syncOfflineOrderUpdates(): Promise<boolean> {
+export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  // P0001 também é usado para falhas de autenticação: só a mensagem
+  // identifica o estado terminal. 23514 é a violação de CHECK do banco.
+  if ("code" in err && err.code === "23514") return true;
+  if (!("message" in err) || typeof err.message !== "string") return false;
+  const mensagem = err.message.toLowerCase();
+  return (
+    mensagem.includes("apenas pedidos pendentes") ||
+    mensagem.includes("não pode mais ser cancelado") ||
+    mensagem.includes("não pode ser cancelado")
+  );
+}
+
+let sincronizacaoEmVoo: Promise<boolean> | null = null;
+
+function syncOfflineOrderUpdates(): Promise<boolean> {
+  if (sincronizacaoEmVoo) return sincronizacaoEmVoo;
+  sincronizacaoEmVoo = processarFilaOfflineDePedidos().finally(() => {
+    sincronizacaoEmVoo = null;
+  });
+  return sincronizacaoEmVoo;
+}
+
+async function processarFilaOfflineDePedidos(): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const queueStr = localStorage.getItem("orders_offline_updates_queue");
   if (!queueStr) return false;
@@ -129,6 +153,7 @@ async function syncOfflineOrderUpdates(): Promise<boolean> {
     if (!Array.isArray(queue) || queue.length === 0) return false;
 
     const remainingQueue: any[] = [];
+    let houveErroTerminal = false;
     const toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
     );
@@ -148,6 +173,10 @@ async function syncOfflineOrderUpdates(): Promise<boolean> {
 
         if (error) throw error;
       } catch (err) {
+        if (erroDeSincronizacaoEhTerminal(err)) {
+          houveErroTerminal = true;
+          continue;
+        }
         console.error(
           "[Offline Sync] Failed to sync order status %s:",
           orderId,
@@ -171,10 +200,17 @@ async function syncOfflineOrderUpdates(): Promise<boolean> {
     } else {
       localStorage.removeItem("orders_offline_updates_queue");
       clearAnalyticsCache();
-      toast.success(
-        "Todas as atualizações de status de pedidos foram sincronizadas!",
-        { id: toastId },
-      );
+      if (houveErroTerminal) {
+        toast.info(
+          "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.",
+          { id: toastId },
+        );
+      } else {
+        toast.success(
+          "Todas as atualizações de status de pedidos foram sincronizadas!",
+          { id: toastId },
+        );
+      }
     }
 
     return syncedAny;
@@ -2659,7 +2695,7 @@ export function useOrders(
 
   // Synchronize queued offline order status updates when coming back online
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!enabled || typeof window === "undefined") return;
     const handleOnlineSync = () => {
       setTimeout(() => {
         syncOfflineOrderUpdates().then((synced) => {
@@ -2681,7 +2717,7 @@ export function useOrders(
     return () => {
       window.removeEventListener("online", handleOnlineSync);
     };
-  }, [user?.id, isAdmin, loadOrders, fetchUserOrders]);
+  }, [enabled, user?.id, isAdmin, loadOrders, fetchUserOrders]);
 
   useEffect(() => {
     return () => {
