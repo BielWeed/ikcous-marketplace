@@ -3,10 +3,15 @@ import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadg
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
+import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
 import { useOrders } from "@/hooks/useOrders";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { supabase } from "@/lib/supabase";
+import {
+  textoConfirmarCancelamento,
+  textoDevolucao,
+} from "@/lib/texto-estorno-do-cliente";
 import { cn } from "@/lib/utils";
 import type {
   Order,
@@ -217,16 +222,18 @@ export function OrderDetailsView({
     // tela da mesma trava do servidor (validateStatusUpdate, useOrders.ts, e
     // update_order_status_atomic no banco).
     //
-    // O aviso, por sua vez, ainda depende do pagamento — e este app não tem
-    // estorno automático em lugar nenhum. Quem já pagou (`pago`,
-    // `pago_apos_expirar` ou `recebido_na_entrega` — Task 3b de
-    // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md — via
-    // `paymentStatusKey` — a ÚNICA fonte que decide "null vira sem_cobranca")
-    // precisa saber, ANTES de confirmar, que o dinheiro fica com a loja até
-    // alguém devolver à mão — e se o pedido já foi enviado, até o PRODUTO
-    // voltar à loja. Quem ainda não pagou (aguardando/recusado/expirado/
-    // estornado/nulo) continua vendo o texto original: cancelar ali é
-    // inofensivo, e falar em dinheiro assustaria à toa.
+    // O aviso, por sua vez, ainda depende do pagamento. Desde 07/09/2026
+    // (Task 1 do plano-mãe `20260907-plano-estorno-pelo-app.md`) o
+    // cancelamento de um pedido PAGO e NÃO ENVIADO grava a linha de
+    // devolução em `order_refunds` na MESMA transação, e o cron/edge
+    // (`estornar-pagamento`, `reconciliar-pagamentos`) tocam o Mercado Pago
+    // sozinhos a partir dela — a frase antiga ("o dinheiro NÃO volta
+    // automaticamente") deixou de ser verdade para esse caso. O que
+    // continua dependendo de alguém é o caso oposto: pedido JÁ ENVIADO,
+    // onde a loja só devolve o dinheiro depois que o PRODUTO físico voltar.
+    // `textoConfirmarCancelamento` (texto-estorno-do-cliente.ts) é a fonte
+    // única dos quatro textos possíveis (não pago / pago não enviado / pago
+    // já enviado / pago na entrega).
     // `===` e nao `.includes()`: o array seria inferido como `string[]` e
     // aceitaria qualquer coisa, entao um rename futuro de `PaymentStatus`
     // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
@@ -238,23 +245,12 @@ export function OrderDetailsView({
       chavePagamento === "pago_apos_expirar" ||
       chavePagamento === "recebido_na_entrega";
     const jaFoiEnviado = order.status === "shipping";
-    // Achado da auditoria de 26/08/2026 (PEDIDO-03): este ramo prometia "o
-    // dinheiro volta depois que ele chegar de volta" — como se a devolução
-    // fosse automática assim que o produto chegasse na loja. Não existe
-    // ESSE nem NENHUM outro mecanismo de estorno automático no repositório
-    // (busca por `refund`/`estorn` em src/ e supabase/functions/ só acha
-    // rótulo de tela e tradução de status do Mercado Pago), e
-    // `confirmar_retorno_do_produto` não toca `payment_status` nem fala com
-    // o gateway. A frase agora usa o MESMO vocabulário honesto do ramo "não
-    // enviado" logo abaixo ("NÃO volta automaticamente" + "falar com a
-    // loja"), só acrescentando o fato físico de que a loja precisa do
-    // produto de volta antes dessa conversa fazer sentido — é isso, e só
-    // isso, que muda entre os dois ramos.
-    const textoConfirm = !pagamentoJaEntrou
-      ? "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita."
-      : jaFoiEnviado
-        ? "Este pedido já foi enviado. Se cancelar, você precisa devolver o produto à loja — o dinheiro NÃO volta automaticamente, você vai precisar combinar a devolução com a loja depois que o produto chegar de volta. Tem certeza?"
-        : "Você já pagou este pedido. Se cancelar, ele não será entregue e o dinheiro NÃO volta automaticamente — você vai precisar falar com a loja para pedir a devolução. Tem certeza?";
+    const pagamentoNaEntrega = chavePagamento === "recebido_na_entrega";
+    const textoConfirm = textoConfirmarCancelamento({
+      pagamentoJaEntrou,
+      jaFoiEnviado,
+      pagamentoNaEntrega,
+    });
     const confirmCancel = globalThis.confirm(textoConfirm);
     if (!confirmCancel) return;
 
@@ -448,6 +444,22 @@ export function OrderDetailsView({
     }
   };
 
+  // Só pedido `cancelled` com pagamento ONLINE confirmado (`pago` ou
+  // `pago_apos_expirar` — via `paymentStatusKey`) tem devolução para
+  // mostrar: `recebido_na_entrega` nunca passou pelo Mercado Pago, e para
+  // qualquer outro estado a pergunta "cadê meu dinheiro?" nem se aplica. O
+  // hook é chamado INCONDICIONAL (regra do React: hook não vai atrás de
+  // `if`) — `order` pode ser `null` no primeiro render, antes de qualquer
+  // pedido ter carregado, e é por isso que `mostrarDevolucao` usa `order?.`.
+  const chaveDoPagamento = paymentStatusKey(order?.paymentStatus);
+  const mostrarDevolucao =
+    order?.status === "cancelled" &&
+    (chaveDoPagamento === "pago" || chaveDoPagamento === "pago_apos_expirar");
+  const { linhas: linhasDevolucao } = useDevolucaoDoPedidoCliente(
+    orderId,
+    mostrarDevolucao,
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center space-y-4 bg-zinc-50/30">
@@ -500,6 +512,13 @@ export function OrderDetailsView({
       : order.status === "cancelled"
         ? cancelledDescription(order.paymentStatus)
         : currentStatus.description;
+  const textoDaDevolucao = mostrarDevolucao
+    ? textoDevolucao({
+        linhas: linhasDevolucao,
+        cancelledAfterShipping: order.cancelledAfterShipping,
+        returnedToSellerAt: order.returnedToSellerAt,
+      })
+    : null;
 
   return (
     <div className="pb-customer min-h-full bg-zinc-50/50">
@@ -899,6 +918,17 @@ export function OrderDetailsView({
                   paymentStatus={order.paymentStatus}
                   orderStatus={order.status}
                 />
+                {/* T7 do plano-mãe de estorno pelo app: o que o selo acima
+                    resume num rótulo curto ("Pago — fale com a loja"), esta
+                    linha explica por extenso — de onde vem o estado da
+                    devolução (`order_refunds`, via `useDevolucaoDoPedidoCliente`,
+                    T7) e nunca de um id do Mercado Pago ou de um texto
+                    técnico de erro (ver `textoDevolucao`). */}
+                {textoDaDevolucao && (
+                  <p className="text-[9px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
+                    {textoDaDevolucao}
+                  </p>
+                )}
               </div>
             </div>
           </div>

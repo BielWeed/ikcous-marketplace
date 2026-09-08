@@ -12,6 +12,19 @@
 // pagamento ENTROU ('pago' ou 'pago_apos_expirar') ganha aviso próprio;
 // qualquer outro valor mantém o texto original, palavra por palavra.
 //
+// T7 (08/09/2026, plano-mãe `20260907-plano-estorno-pelo-app.md`): desde
+// 07/09 o cancelamento de um pedido PAGO e NÃO ENVIADO grava a linha de
+// devolução em `order_refunds` na mesma transação, e o cron/edge tocam o
+// Mercado Pago sozinhos a partir dela — "o dinheiro NÃO volta
+// automaticamente" deixou de ser verdade para esse caso. As duas primeiras
+// asserções (`toContain("NÃO volta automaticamente")`) trocaram para o novo
+// texto ("volta sozinho... PIX... cartão..."), vindo agora de
+// `textoConfirmarCancelamento` (texto-estorno-do-cliente.ts). A cobertura
+// completa da tabela nova mora em
+// cliente-cancela-pedido-pago-le-a-verdade.test.tsx (C1, C8); este arquivo
+// mantém as MESMAS quatro regras de sempre (pago avisa, aguardando/nulo não
+// avisa, recusar o confirm não cancela).
+//
 // POR QUE RENDER DE VERDADE: mesmo raciocínio de
 // pedido-mostra-pagamento-confirmado.test.tsx, cujo dublê de hooks este
 // arquivo reaproveita.
@@ -135,7 +148,7 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
     });
   }
 
-  it("paymentStatus 'pago': o confirm avisa que o dinheiro não volta automaticamente e cita a loja", async () => {
+  it("paymentStatus 'pago': o confirm diz que o dinheiro volta sozinho (PIX/cartão) — T7, 08/09", async () => {
     confirmMock = vi.fn().mockReturnValue(true);
     vi.stubGlobal("confirm", confirmMock);
     pedidoAtual = pedidoComPagamento("pago");
@@ -145,15 +158,18 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
 
     expect(confirmMock).toHaveBeenCalledTimes(1);
     const texto = confirmMock.mock.calls[0][0] as string;
-    expect(texto).toContain("NÃO volta automaticamente");
-    expect(texto).toContain("falar com a loja");
+    expect(texto).toContain("volta sozinho");
+    expect(texto).not.toContain("NÃO volta automaticamente");
   });
 
   // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
   // (ponto 7, `pagamentoJaEntrou`): antes desta correção, um pedido recebido
   // na entrega lia o texto genérico de cancelamento, sem avisar que o
-  // dinheiro já está com a loja.
-  it("paymentStatus 'recebido_na_entrega': o confirm avisa que o dinheiro não volta automaticamente e cita a loja", async () => {
+  // dinheiro já está com a loja. `recebido_na_entrega` nunca passou pelo
+  // Mercado Pago — T7 (08/09) dá a ele um texto PRÓPRIO ("combine a
+  // devolução... com a loja"), distinto do "volta sozinho" de quem pagou
+  // online.
+  it("paymentStatus 'recebido_na_entrega': o confirm pede para combinar com a loja — T7, 08/09", async () => {
     confirmMock = vi.fn().mockReturnValue(true);
     vi.stubGlobal("confirm", confirmMock);
     pedidoAtual = pedidoComPagamento("recebido_na_entrega");
@@ -163,8 +179,11 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
 
     expect(confirmMock).toHaveBeenCalledTimes(1);
     const texto = confirmMock.mock.calls[0][0] as string;
-    expect(texto).toContain("NÃO volta automaticamente");
-    expect(texto).toContain("falar com a loja");
+    expect(texto).toContain("pagou este pedido na entrega");
+    expect(texto).toContain(
+      "combine a devolução do dinheiro diretamente com a loja",
+    );
+    expect(texto).not.toContain("NÃO volta automaticamente");
   });
 
   it("CONTROLE — paymentStatus 'aguardando': o confirm recebe o texto original, sem falar em dinheiro", async () => {
