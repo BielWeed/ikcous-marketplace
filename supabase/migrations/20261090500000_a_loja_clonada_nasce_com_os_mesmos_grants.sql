@@ -30,8 +30,9 @@
 -- ORDEM DELIBERADA (número escolhido por isto, não por estética): esta
 -- migration roda ANTES da `20261091000000` de propósito — `20261090500000`
 -- é MENOR que `20261091000000` como string de 14 dígitos
--- (`20261090000000 < 20261090500000 < 20261091000000`), então o ledger
--- aplica esta primeiro. A `091` só PASSA na loja clonada DEPOIS desta:
+-- (`20261090000000 < 20261090500000 < 20261091000000`). APLIQUE NESTA
+-- ORDEM: o `db-apply.cjs` roda os arquivos na ordem dos argumentos e nao
+-- reordena nada — a `091` DEPENDE desta. A `091` só PASSA na loja clonada DEPOIS desta:
 -- o `REVOKE ... FROM anon, authenticated` da `091` nunca alcança o `=X` de
 -- PUBLIC (REVOKE de um papel não revoga o que PUBLIC concede a todo mundo),
 -- e é esta migration que fecha o PUBLIC (`REVOKE ... FROM PUBLIC, anon,
@@ -41,11 +42,13 @@
 -- check_is_admin'`, `db-apply` faria ROLLBACK e `exit 1`); CENÁRIO com esta
 -- antes da `091` PASSA nas duas.
 --
--- A CURA — o que esta migration FAZ: só `REVOKE EXECUTE`, um statement por
+-- A CURA — o que esta migration FAZ: `REVOKE EXECUTE`, um statement por
 -- função, agrupando os papéis que diferem (PUBLIC, anon, authenticated
 -- conforme o caso — nunca service_role nem postgres). As 58 funções e os
 -- papéis exatos vêm da comparação função a função entre os dois bancos; a
--- lista abaixo é essa comparação, não um recorte por nome.
+-- lista abaixo é essa comparação, não um recorte por nome. No fim, um bloco
+-- `DO $$` confere as 58 assinaturas e levanta exceção se alguma porta
+-- continuar aberta (migration inerte não passa em verde).
 --
 -- O QUE NÃO MUDA:
 --   * secdef, dono, corpo e demais grants (service_role, postgres) de
@@ -55,7 +58,7 @@
 --     (integer)` e `get_sales_analytics(timestamp without time zone,
 --     timestamp without time zone)` — NÃO entram aqui: são exatamente as
 --     duas sobrecargas ambíguas que a migration `20261091000000` (que roda
---     ANTES desta no ledger) já DROPa. Nada de `IF EXISTS` inventado: se
+--     DEPOIS desta no ledger) DROPa. Nada de `IF EXISTS` inventado: se
 --     alguma das 58 funções abaixo não existir num banco, o REVOKE falha e a
 --     transação inteira desfaz — é o comportamento desejado (banco divergiu
 --     do molde, tem que parar em vermelho).
