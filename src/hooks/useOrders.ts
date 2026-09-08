@@ -119,7 +119,37 @@ const statusConfigByKey = new Map(
   ][],
 );
 
-async function syncOfflineOrderUpdates(): Promise<boolean> {
+// Mensagens de update_order_status_atomic em
+// supabase/migrations/2026110000000_o_estorno_nasce_no_ledger.sql:
+// RAISE nas linhas 317–346; pedido inexistente (328) e cancelamento terminal (346).
+// "Apenas pedidos pendentes podem ser cancelados pelo usuário." é da versão
+// anterior da função, mantida para loja que ainda não aplicou essa migration.
+export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  // P0001 também é usado para falhas de autenticação: só a mensagem
+  // identifica o estado terminal. 23514 é a violação de CHECK do banco.
+  if ("code" in err && err.code === "23514") return true;
+  if (!("message" in err) || typeof err.message !== "string") return false;
+  const mensagem = err.message.toLowerCase();
+  return (
+    mensagem.includes("apenas pedidos pendentes") ||
+    mensagem.includes("não pode mais ser cancelado") ||
+    mensagem.includes("não pode ser cancelado") ||
+    mensagem.includes("pedido não encontrado")
+  );
+}
+
+let sincronizacaoEmVoo: Promise<boolean> | null = null;
+
+function syncOfflineOrderUpdates(): Promise<boolean> {
+  if (sincronizacaoEmVoo) return sincronizacaoEmVoo;
+  sincronizacaoEmVoo = processarFilaOfflineDePedidos().finally(() => {
+    sincronizacaoEmVoo = null;
+  });
+  return sincronizacaoEmVoo;
+}
+
+async function processarFilaOfflineDePedidos(): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const queueStr = localStorage.getItem("orders_offline_updates_queue");
   if (!queueStr) return false;
@@ -129,6 +159,7 @@ async function syncOfflineOrderUpdates(): Promise<boolean> {
     if (!Array.isArray(queue) || queue.length === 0) return false;
 
     const remainingQueue: any[] = [];
+    let houveErroTerminal = false;
     const toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
     );
@@ -148,6 +179,10 @@ async function syncOfflineOrderUpdates(): Promise<boolean> {
 
         if (error) throw error;
       } catch (err) {
+        if (erroDeSincronizacaoEhTerminal(err)) {
+          houveErroTerminal = true;
+          continue;
+        }
         console.error(
           "[Offline Sync] Failed to sync order status %s:",
           orderId,
@@ -171,10 +206,17 @@ async function syncOfflineOrderUpdates(): Promise<boolean> {
     } else {
       localStorage.removeItem("orders_offline_updates_queue");
       clearAnalyticsCache();
-      toast.success(
-        "Todas as atualizações de status de pedidos foram sincronizadas!",
-        { id: toastId },
-      );
+      if (houveErroTerminal) {
+        toast.info(
+          "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.",
+          { id: toastId },
+        );
+      } else {
+        toast.success(
+          "Todas as atualizações de status de pedidos foram sincronizadas!",
+          { id: toastId },
+        );
+      }
     }
 
     return syncedAny;
@@ -2657,7 +2699,9 @@ export function useOrders(
     [],
   );
 
-  // Synchronize queued offline order status updates when coming back online
+  // Revisão do PR #498 (08/09/2026): AdminLayout usa enabled=false e é o único
+  // sincronizador do painel fora da aba Pedidos; o listener precisa continuar ativo.
+  // sincronizacaoEmVoo serializa N listeners em uma só passada, sem duplicação.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleOnlineSync = () => {
