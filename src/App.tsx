@@ -1883,7 +1883,7 @@ const AppContent = () => {
         // Re-push the state to prevent URL getting out of sync with current locked view
         const path =
           currentView === "home"
-            ? "/"
+            ? caminhoDaHomeRef.current()
             : [
                   "product-detail",
                   "user-profile",

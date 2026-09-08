@@ -388,6 +388,62 @@ describe("a categoria da home sobrevive ao voltar", () => {
     expect.soft(globalThis.location.search).toBe("?category=Bebidas");
   });
 
+  it("preserva a categoria ao voltar durante a ida ao carrinho, inclusive Todas", async () => {
+    const moduloDePrefetch = await import("@/hooks/usePrefetchOnHover");
+    const prefetchOriginal = moduloDePrefetch.usePrefetchOnHover();
+    let esperaDoCarrinho: Promise<unknown> = Promise.resolve();
+    vi.spyOn(moduloDePrefetch, "usePrefetchOnHover").mockReturnValue({
+      ...prefetchOriginal,
+      prefetchViewPromise: () => esperaDoCarrinho,
+    });
+    const avisar = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const empurrar = vi.spyOn(globalThis.history, "pushState");
+    await abrir();
+
+    for (const [escolha, busca] of [
+      ["Todas", ""],
+      ["Bebidas", "?category=Bebidas"],
+    ]) {
+      await clicar(escolha);
+      expect(categoria()).toBe(escolha);
+      expect(globalThis.location.search).toBe(busca);
+      // Garante uma entrada anterior da home para o history.back() real.
+      const estadoAnterior = globalThis.history.state;
+      globalThis.history.pushState(null, "", `/${busca}`);
+      let liberarCarrinho = () => {};
+      esperaDoCarrinho = new Promise((resolve) => {
+        liberarCarrinho = () => resolve(undefined);
+      });
+
+      try {
+        // O App liga a trava antes de aguardar o carregamento do carrinho.
+        // Seguramos só esse carregamento, sem alterar o roteador ou seus refs.
+        await clicar("carrinho");
+        expect(categoria()).toBe(escolha);
+        avisar.mockClear();
+        empurrar.mockClear();
+        await voltar();
+        expect(avisar).toHaveBeenCalledWith(
+          "[App] Popstate blocked by transition lock. Reverting history to maintain sync.",
+        );
+        expect(empurrar).toHaveBeenCalledTimes(1);
+        expect(globalThis.history.state).toEqual(
+          estadoAnterior || { view: "home" },
+        );
+        expect(globalThis.location.pathname).toBe("/");
+        expect.soft(globalThis.location.search).toBe(busca);
+      } finally {
+        liberarCarrinho();
+        await assentar();
+      }
+      await clicar("inicio");
+      // Não deixa o encerramento da transição anterior liberar a próxima.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      });
+    }
+  });
+
   it("mantém a armadilha empurrando uma nova entrada ao voltar à base", async () => {
     await abrir();
     await irAoCarrinho();
