@@ -5,6 +5,7 @@ import { ProductQA } from "@/components/ui/custom/ProductQA";
 import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { ReviewCard } from "@/components/ui/custom/ReviewCard";
 import { StarRating } from "@/components/ui/custom/StarRating";
+import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
@@ -729,10 +730,11 @@ export const ProductView = React.memo(function ProductView({
   const metaDescription =
     product.metaDescription || product.description?.substring(0, 150) || "";
   const metaTitle = product.metaTitle || product.name;
+  const nomeDaLoja = config.storeName?.trim() || branding.appName;
   const metaImage = product.images?.[0] || "";
 
   useDocumentMeta({
-    title: product.metaTitle || `${product.name} | Loja`,
+    title: product.metaTitle || `${product.name} | ${nomeDaLoja}`,
     names: {
       description: metaDescription,
       "twitter:card": "summary_large_image",
