@@ -359,7 +359,9 @@ Deno.test("E11 - Payments 404 code 4296 -> consulta o payment: coberto conclui, 
         id: 123456789,
         status: "approved",
         transaction_amount_refunded: 100,
-        refunds: [{ id: 555, amount: 100 }],
+        // status "approved" (item 3 do brief P0, 08/09/2026): a regra por
+        // refund da Payments exige o terminal individual, não só a soma.
+        refunds: [{ id: 555, amount: 100, status: "approved" }],
       },
     },
   ]);
@@ -730,7 +732,12 @@ Deno.test("E21 - confirmacao compara o ACUMULADO do MP com o ACUMULADO do ledger
         transaction_amount_refunded: 50,
         // Ordem de proposito: o refund de OUTRA linha (30) por ULTIMO — o
         // id gravado tem de ser o desta linha (M3), nao o ultimo da lista.
-        refunds: [{ id: 888, amount: 20 }, { id: 777, amount: 30 }],
+        // status "approved" (item 3 do brief P0, 08/09/2026): terminal
+        // individual exigido pela regra por refund da Payments.
+        refunds: [
+          { id: 888, amount: 20, status: "approved" },
+          { id: 777, amount: 30, status: "approved" },
+        ],
       },
     },
   ]);
@@ -1058,9 +1065,11 @@ Deno.test("E26 - refundIdDaConsulta desempata dois refunds do MESMO valor pelo d
         id: 123456789,
         status: "approved",
         transaction_amount_refunded: 20,
+        // status "approved" (item 3 do brief P0, 08/09/2026): terminal
+        // individual exigido pela regra por refund da Payments.
         refunds: [
-          { id: 222, amount: 20, date_created: "2026-09-05T00:00:00.000Z" },
-          { id: 111, amount: 20, date_created: "2026-09-01T00:00:00.000Z" },
+          { id: 222, amount: 20, status: "approved", date_created: "2026-09-05T00:00:00.000Z" },
+          { id: 111, amount: 20, status: "approved", date_created: "2026-09-01T00:00:00.000Z" },
         ],
       },
     },
@@ -1440,5 +1449,224 @@ Deno.test("E34 - forma ARRAY de transactions (defensiva, não é o formato real 
   assertEquals(
     (await confirmarPorConsulta({ buscar: mp.f, token: TOKEN, linha, pedido })).tipo,
     "concluido",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// E35–E39 — brief P0 de 08/09/2026 (pré-requisito da T5/T6), achado 1 do
+// laudo `20260908-laudo-opus-pr440-t4-reconciliacao-rodada2.md`:
+// `confirmarPorConsulta` credita à linha avaliada QUALQUER refund
+// `processed` do pedido — com duas linhas pendentes, uma é dada por
+// devolvida com o dinheiro da outra, e a outra fica presa para sempre. A
+// regra passa a ser POR REFUND: só conclui com um refund do MESMO valor da
+// linha, ainda não reivindicado por outra.
+// ---------------------------------------------------------------------------
+
+Deno.test("E35 - experimento A/B do laudo: refund processed credita só a linha do MESMO valor, nunca a de outro valor (achado 1)", async () => {
+  // Pedido R$30, valor_estornado 0; MP mostra UM refund processed de 20.
+  const pedido = pedidoOrder({ total: 30, valor_estornado: 0 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "ref-a", amount: "20.00", status: "processed" }],
+        },
+      },
+    },
+  ]);
+
+  // Linha b (R$10): não há refund de 10 no MP — NUNCA concluído com o
+  // dinheiro dos R$20 de outra linha (o bug do laudo: ledger 10 x 30).
+  const b = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 10 }),
+    pedido,
+  });
+  assertEquals(b.tipo, "tentar_depois");
+
+  // Linha a (R$20): o refund É dela.
+  const a = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 20 }),
+    pedido,
+  });
+  assertEquals(a.tipo, "concluido");
+  assertEquals((a as { mp_refund_id: string }).mp_refund_id, "ref-a");
+});
+
+Deno.test("E36 - idsJaReivindicados exclui o refund já creditado a OUTRA linha do MESMO valor", async () => {
+  const pedido = pedidoOrder({ total: 10, valor_estornado: 0 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "ref-x", amount: "10.00", status: "processed" }],
+        },
+      },
+    },
+  ]);
+  const linha = linhaCom({ amount: 10 });
+
+  const semLista = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(semLista.tipo, "concluido");
+  assertEquals((semLista as { mp_refund_id: string }).mp_refund_id, "ref-x");
+
+  const comLista = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha,
+    pedido,
+    idsJaReivindicados: ["ref-x"],
+  });
+  assertEquals(comLista.tipo, "tentar_depois");
+});
+
+Deno.test("E37 - ledger maior que o que o MP mostra não conclui, mesmo com refund do valor da linha (guarda b)", async () => {
+  // valor_estornado já é 30; a linha pede mais 10 (precisa de 40 acumulado).
+  // O MP só mostra um processed de 10 (do valor da linha) — a SOMA (10) não
+  // cobre o acumulado esperado (40): não conclui.
+  const pedido = pedidoOrder({ total: 40, valor_estornado: 30 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "ref-y", amount: "10.00", status: "processed" }],
+        },
+      },
+    },
+  ]);
+  const resultado = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 10 }),
+    pedido,
+  });
+  assertEquals(resultado.tipo, "tentar_depois");
+});
+
+Deno.test("E38 - com pré-veredito e sem refund do valor da linha, falhou definitivo (o ramo confirmacao_insuficiente continua vivo)", async () => {
+  const pedido = pedidoOrder({ total: 30, valor_estornado: 0 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "ref-z", amount: "20.00", status: "processed" }],
+        },
+      },
+    },
+  ]);
+  const resultado = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 10 }),
+    pedido,
+    codigo: "order_already_refunded",
+  });
+  assertEquals(resultado.tipo, "falhou");
+  assertEquals(
+    (resultado as { codigo: string }).codigo,
+    "confirmacao_insuficiente",
+  );
+});
+
+Deno.test("E39 - Payments com refunds[] aplica a MESMA regra por refund (terminal approved); sem refunds[] mantém o fallback acumulado", async () => {
+  const pedido = pedidoPagoCom({ total: 20, valor_estornado: 0 });
+
+  // refund approved do valor exato, não reivindicado -> concluido com o id dele.
+  const aprovado = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 20,
+        refunds: [{ id: "rp-1", amount: 20, status: "approved" }],
+      },
+    },
+  ]);
+  const concluido = await confirmarPorConsulta({
+    buscar: aprovado.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 20 }),
+    pedido,
+  });
+  assertEquals(concluido.tipo, "concluido");
+  assertEquals((concluido as { mp_refund_id: string }).mp_refund_id, "rp-1");
+
+  // só in_process (nenhum approved do valor) -> tentar_depois.
+  const emCurso = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "in_process",
+        transaction_amount_refunded: 20,
+        refunds: [{ id: "rp-2", amount: 20, status: "in_process" }],
+      },
+    },
+  ]);
+  const pendente = await confirmarPorConsulta({
+    buscar: emCurso.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 20 }),
+    pedido,
+  });
+  assertEquals(pendente.tipo, "tentar_depois");
+
+  // sem refunds[] e transaction_amount_refunded cobrindo -> concluido com
+  // mp_refund_id NULL (fallback documentado até a T8).
+  const semLista = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: { id: 123456789, status: "approved", transaction_amount_refunded: 20 },
+    },
+  ]);
+  const concluidoFallback = await confirmarPorConsulta({
+    buscar: semLista.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 20 }),
+    pedido,
+  });
+  assertEquals(concluidoFallback.tipo, "concluido");
+  assertEquals(
+    (concluidoFallback as { mp_refund_id: string | null }).mp_refund_id,
+    null,
   );
 });

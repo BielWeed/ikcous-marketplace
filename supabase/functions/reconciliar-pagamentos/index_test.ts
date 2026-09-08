@@ -98,6 +98,16 @@ function clienteFalso(opts: {
   ) => { data: unknown; error: unknown };
   aoConcluirEstorno?: (args: Record<string, unknown>) => void;
   erroConcluirEstorno?: unknown;
+  // --- item 1 do brief P0 (08/09/2026): ids já reivindicados por OUTRAS
+  // linhas do mesmo pedido -------------------------------------------------
+  // `.select("mp_refund_id").eq("order_id", x).neq("id", y).not("mp_refund_id",
+  // "is", null)`. FUNÇÃO (não mapa estático), pelo MESMO motivo de
+  // `resolverPedidoFresco`: R13 precisa que o valor mude ENTRE as duas
+  // iterações do lote (a 1ª linha grava o id que a 2ª tem de ver). Default
+  // `[]`: os testes que não passam esta opção preservam o comportamento de
+  // antes (nenhum id excluído).
+  idsJaReivindicadosPorPedido?: (orderId: string, idAtual: string) => string[];
+  erroIdsJaReivindicados?: unknown;
 }) {
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
@@ -124,6 +134,34 @@ function clienteFalso(opts: {
         return {
           select(_colunas: string) {
             return {
+              // item 1 do brief P0: `.select("mp_refund_id").eq("order_id",
+              // x).neq("id", y).not("mp_refund_id", "is", null)` — chain
+              // IRMÃ de `.in()` abaixo (a fila pendente), diferenciada pelo
+              // método que vem em seguida.
+              eq(_coluna: string, orderId: string) {
+                return {
+                  neq(_coluna2: string, idAtual: string) {
+                    return {
+                      not(_coluna3: string, _op: string, _valor: unknown) {
+                        if (opts.erroIdsJaReivindicados) {
+                          return Promise.resolve({
+                            data: null,
+                            error: opts.erroIdsJaReivindicados,
+                          });
+                        }
+                        const ids = opts.idsJaReivindicadosPorPedido?.(
+                          orderId,
+                          idAtual,
+                        ) ?? [];
+                        return Promise.resolve({
+                          data: ids.map((mp_refund_id) => ({ mp_refund_id })),
+                          error: null,
+                        });
+                      },
+                    };
+                  },
+                };
+              },
               in(_coluna: string, _valores: string[]) {
                 return {
                   lt(_colunaData: string, valorLimite: string) {
@@ -1421,4 +1459,170 @@ Deno.test("R11 - concluido cuja RPC concluir_estorno levanta: incrementa tentati
   assertEquals(typeof gravado?.valores.ultimo_erro, "string");
   assertEquals(gravado?.valores.status, undefined, "nunca falhou: o MP já confirmou o dinheiro");
   assertEquals(gravado?.statusFiltro, ["em_processamento"]);
+});
+
+// =============================================================================
+// R12–R13 — brief P0 de 08/09/2026 (pré-requisito da T5/T6), achado 1 do laudo
+// `20260908-laudo-opus-pr440-t4-reconciliacao-rodada2.md`: `confirmarPorConsulta`
+// credita à linha avaliada QUALQUER refund processed do pedido — com duas
+// linhas pendentes, uma é dada por devolvida com o dinheiro da outra.
+// =============================================================================
+
+Deno.test("R12 - experimento do laudo ponta a ponta: com a ordenação tentativas ASC (b primeiro), b NÃO conclui com o refund de a; a conclui pela consulta", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const orderId = "20000000-0000-4000-8000-0000000000aa";
+  const pedido = pedidoFrescoPara({
+    id: orderId,
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    total: 30,
+    valor_estornado: 0,
+  });
+
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      // a: R$20, tentativas 5 (a que TEM o refund no MP). b: R$10,
+      // tentativas 1 — vem PRIMEIRO na fila (tentativas ASC, D4).
+      { id: "a", order_id: orderId, amount: 20, status: "em_processamento", tentativas: 5, mp_refund_id: null },
+      { id: "b", order_id: orderId, amount: 10, status: "em_processamento", tentativas: 1, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (id) => (id === orderId ? pedido : null),
+  });
+
+  // A order do MP mostra UM refund processed de 20 (o de `a`) — nunca muda
+  // entre as consultas (mesmo objeto, sempre a mesma resposta).
+  const corpoOrder = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+      refunds: [{ id: "ref-a", amount: "20.00", status: "processed" }],
+    },
+  };
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: corpoOrder },
+    // Retry de b (POST com a chave dela): o MP diz "já em curso" — b fica
+    // em_processamento (adiada), NUNCA concluída sem o refund dela aparecer.
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 409,
+      corpo: { error: "invalid_request", error_messages: [{ code: "order_refund_already_in_process" }] },
+    },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // b (avaliada primeiro) NÃO conclui: nem com o dinheiro de a (achado 1),
+  // nem sem POST — o POST com a chave DELA saiu (`mp.chamadas` abaixo) e o
+  // resultado é "em_processamento" (adiada). a conclui SEM POST, pela
+  // consulta, com o refund que é exatamente do valor dela.
+  assertEquals(corpo.estornos, { vistos: 2, concluidos: 1, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "a");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "ref-a");
+  // O POST de b saiu com a chave DELA (idempotência por linha) — nunca a de a.
+  const postDeB = mp.chamadas.find((c) => c.metodo === "POST");
+  assertEquals(postDeB?.chave, "b");
+});
+
+Deno.test("R13 - idsJaReivindicados: duas linhas do MESMO valor no mesmo lote — a 1ª conclui com o refund, a 2ª (vendo o id já gravado) NÃO conclui", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const orderId = "20000000-0000-4000-8000-0000000000bb";
+  const pedido = pedidoFrescoPara({
+    id: orderId,
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    total: 10,
+    valor_estornado: 0,
+  });
+
+  // Estado SIMULADO do que cada linha já reivindicou — a 2ª iteração tem de
+  // ver o que a 1ª gravou NO MESMO lote (a leitura é DENTRO do laço, por
+  // item; um SELECT único antes do laço veria as duas ainda sem id).
+  const reivindicadosPorOrder = new Map<string, string[]>();
+
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      // Mesmas tentativas — desempata por created_at (c1 antes de c2).
+      {
+        id: "c1",
+        order_id: orderId,
+        amount: 10,
+        status: "em_processamento",
+        tentativas: 1,
+        mp_refund_id: null,
+        created_at: "2026-09-01T00:00:00.000Z",
+      },
+      {
+        id: "c2",
+        order_id: orderId,
+        amount: 10,
+        status: "em_processamento",
+        tentativas: 1,
+        mp_refund_id: null,
+        created_at: "2026-09-02T00:00:00.000Z",
+      },
+    ],
+    resolverPedidoFresco: (id) => (id === orderId ? pedido : null),
+    idsJaReivindicadosPorPedido: (id) => reivindicadosPorOrder.get(id) ?? [],
+    aoConcluirEstorno: (args) => {
+      const lista = reivindicadosPorOrder.get(orderId) ?? [];
+      lista.push(String(args.p_mp_refund_id));
+      reivindicadosPorOrder.set(orderId, lista);
+    },
+  });
+
+  // A order do MP mostra UM único refund processed de 10 (`ref-x`) — o
+  // MESMO valor das duas linhas.
+  const corpoOrder = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+      refunds: [{ id: "ref-x", amount: "10.00", status: "processed" }],
+    },
+  };
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: corpoOrder },
+    // Retry de c2 (o único caminho que sobra depois de excluído ref-x): o MP
+    // diz "já em curso" — c2 fica em_processamento (adiada).
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 409,
+      corpo: { error: "invalid_request", error_messages: [{ code: "order_refund_already_in_process" }] },
+    },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // c1 conclui com ref-x; c2 (mesmo valor, MESMO refund já reivindicado por
+  // c1) NÃO conclui — é exatamente o achado 1 do laudo, agora com DUAS
+  // linhas do MESMO valor em vez de valores diferentes (E36 cobre a unidade;
+  // este teste cobre o CONTRATO do cron ponta a ponta).
+  assertEquals(corpo.estornos, { vistos: 2, concluidos: 1, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "c1");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "ref-x");
 });

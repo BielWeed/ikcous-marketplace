@@ -582,6 +582,26 @@ async function handler(
           status: String((pedidoRow as Record<string, unknown>).status),
         };
 
+        // PRÉ-REQUISITO DA T5/T6 (achado 1, laudo rodada 2 do PR #440,
+        // 08/09/2026): `confirmarPorConsulta` só credita à linha um refund do
+        // MESMO valor dela, ainda não reivindicado por OUTRA linha do mesmo
+        // pedido — sem isto, um refund `processed` podia dar uma linha por
+        // devolvida com o dinheiro de outra. Leitura DENTRO do laço, por
+        // item, pelo MESMO motivo do I-B: a 1ª linha do lote conclui e grava
+        // o `mp_refund_id`; a 2ª tem de vê-lo — um SELECT único antes do laço
+        // veria o lote inteiro sem id nenhum gravado ainda.
+        const { data: linhasReivindicadas, error: erroIdsReivindicados } =
+          await supabase
+            .from("order_refunds")
+            .select("mp_refund_id")
+            .eq("order_id", refund.order_id)
+            .neq("id", refund.id)
+            .not("mp_refund_id", "is", null);
+        if (erroIdsReivindicados) throw erroIdsReivindicados;
+        const idsJaReivindicados = (linhasReivindicadas ?? [])
+          .map((r) => (r as Record<string, unknown>).mp_refund_id)
+          .filter((id): id is string => typeof id === "string");
+
         if (refund.status === "solicitado") {
           // A MARCA — mesmo UPDATE condicional da edge do clique (T3): se 0
           // linhas voltarem, o clique do lojista já pegou esta linha.
@@ -615,6 +635,7 @@ async function handler(
             token: mpToken,
             buscar: buscarEstorno,
             consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
+            idsJaReivindicados,
           });
           const desfecho = await gravarDesfechoDoEstorno(
             supabase,
@@ -645,6 +666,7 @@ async function handler(
           token: mpToken,
           linha: linhaAtual,
           pedido,
+          idsJaReivindicados,
         });
 
         if (confirmacao.tipo === "concluido") {
@@ -714,6 +736,7 @@ async function handler(
           token: mpToken,
           buscar: buscarEstorno,
           consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
+          idsJaReivindicados,
         });
         const desfechoRetry = await gravarDesfechoDoEstorno(
           supabase,
