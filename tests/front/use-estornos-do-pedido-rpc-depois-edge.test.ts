@@ -87,6 +87,7 @@ interface LeituraDoHook {
   emCurso: number;
   disponivel: number;
   carregando: boolean;
+  pedidoCarregado: boolean;
   erro: boolean;
   recarregar: () => void;
   solicitarEstorno: (args: {
@@ -117,7 +118,7 @@ async function montarSonda(orderId = "pedido-1") {
   });
   await act(async () => {});
 
-  return { atual: () => leituras[leituras.length - 1] };
+  return { atual: () => leituras[leituras.length - 1], todas: () => leituras };
 }
 
 beforeEach(() => {
@@ -293,5 +294,17 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
 
     expect(atual().erro).toBe(true);
     expect(atual().carregando).toBe(false);
+  });
+
+  it("AC 2 — pedidoCarregado: false enquanto a leitura ainda está pendente, true depois que resolve", async () => {
+    const { todas } = await montarSonda();
+
+    const sequenciaDePedidoCarregado = todas().map((l) => l.pedidoCarregado);
+
+    // Primeira leitura (render inicial, antes de qualquer resposta do
+    // banco): "ainda não sei" tem de ser `false`, nunca `true` fixo.
+    expect(sequenciaDePedidoCarregado[0]).toBe(false);
+    // Última leitura (depois do Promise.all resolver): `true`.
+    expect(sequenciaDePedidoCarregado.at(-1)).toBe(true);
   });
 });

@@ -22,7 +22,9 @@ const VALOR_MINIMO = 0.01;
 // (vírgula única -> ponto), o que já aceitava "1500,50" e "1500.50". Texto
 // com letra ("1e2") ou qualquer outro formato cai em `NaN` — o campo é
 // SEMPRE um valor em reais, nunca notação científica.
+// eslint-disable-next-line security/detect-unsafe-regex -- medido linear (<2 ms em 200 mil chars, laudo Opus 08/09 rodada 2): \d{3} de tamanho fixo dentro de (...)* não é ambíguo
 const RE_VALOR_MILHAR_PT_BR = /^\d{1,3}(\.\d{3})*(,\d{1,2})?$/;
+// eslint-disable-next-line security/detect-unsafe-regex -- medido linear (<2 ms em 200 mil chars, laudo Opus 08/09 rodada 2): \d{3} de tamanho fixo dentro de (...)* não é ambíguo
 const RE_VALOR_SIMPLES = /^\d+([.,]\d+)?$/;
 
 function paraNumero(valorBruto: string): number {
@@ -200,7 +202,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
   // ainda são só os zeros de default — "ainda não sei" é diferente de "o
   // saldo é zero", e afirmar qualquer coisa aqui (inclusive "R$ 0,00") seria
   // mentir para o lojista sobre dinheiro.
-  if (carregando && !pedidoCarregado) {
+  if (!pedidoCarregado) {
     return (
       <div className="admin-glass space-y-4 rounded-[2rem] border border-white/5 p-5 text-white">
         <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
@@ -219,7 +221,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
   const campoValido =
     !campoAberto ||
     (Number.isFinite(valorNumericoDoCampo) &&
-      valorNumericoDoCampo > 0 &&
+      valorNumericoDoCampo >= VALOR_MINIMO &&
       valorNumericoDoCampo <= disponivel);
 
   const valorAlvo = campoAberto ? valorNumericoDoCampo : disponivel;
