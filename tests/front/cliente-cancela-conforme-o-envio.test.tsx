@@ -67,13 +67,30 @@ vi.mock("@/contexts/StoreContext", () => ({
   }),
 }));
 
+// T7 (08/09/2026): `order_refunds` entra no dublê porque
+// `useDevolucaoDoPedidoCliente` (ligado quando o pedido é `cancelled` e
+// pago online) chama `.eq(...).order(...)` — sem este ramo, o hook
+// encontraria `.order` indefinido no builder de `reviews` e cairia calado
+// no próprio `catch` (`erro=true`), testando um caminho de falha em vez do
+// caminho real.
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: () => ({
-      select: () => ({
-        eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }),
-      }),
-    }),
+    from: (tabela: string) => {
+      if (tabela === "order_refunds") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => Promise.resolve({ data: [], error: null }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }),
+        }),
+      };
+    },
   },
 }));
 
@@ -115,6 +132,12 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     await act(async () => {
       await Promise.resolve();
     });
+    // Segunda volta de microtarefa: resolve a leitura de `order_refunds`
+    // que `useDevolucaoDoPedidoCliente` dispara depois que `order` (e
+    // portanto `mostrarDevolucao`) se assenta (T7, 08/09/2026).
+    await act(async () => {
+      await Promise.resolve();
+    });
   }
 
   function botaoCancelar() {
@@ -131,23 +154,32 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     expect(botaoCancelar()).toBeDefined();
   });
 
-  it("pedido já enviado (shipping) e pago: o botão aparece e o aviso NÃO promete estorno automático", async () => {
+  it("pedido já enviado (shipping) e pago: o botão aparece e o aviso diz que a LOJA devolve depois do produto voltar", async () => {
     // Achado da auditoria de 26/08/2026 (PEDIDO-03): a redação antiga —
     // "o dinheiro volta depois que ele chegar de volta" — descrevia uma
     // automação que não existe em lugar nenhum do repositório. A tela
     // precisa dizer o que o sistema FAZ (nada sozinho; alguém combina com a
-    // loja), não o que seria bom que fizesse. Cada `expect` abaixo mata um
-    // jeito diferente de a promessa falsa voltar disfarçada:
+    // loja), não o que seria bom que fizesse.
+    //
+    // T7 (08/09/2026, plano-mãe `20260907-plano-estorno-pelo-app.md`): desde
+    // 07/09 o pedido PAGO e NÃO ENVIADO ganhou estorno automático — mas o
+    // caso "já enviado" continua igual, porque a devolução física do
+    // produto precisa acontecer ANTES de qualquer estorno fazer sentido.
+    // O texto agora vem de `textoConfirmarCancelamento`
+    // (texto-estorno-do-cliente.ts) e trocou de forma ("NÃO volta
+    // automaticamente" + "combinar a devolução com a loja") para "e o
+    // dinheiro é devolvido pela loja depois que o produto chegar de volta"
+    // — mesmo fato (ninguém devolve sozinho, o produto tem que voltar
+    // primeiro), palavras diferentes. Cada `expect` abaixo mata um jeito
+    // diferente de a promessa falsa (automação sem o produto voltar) surgir
+    // disfarçada:
     //   - "toContain('já foi enviado')": ainda fala do envio (não virou o
     //     texto genérico do ramo "não enviado", que perderia essa distinção).
-    //   - "toContain('NÃO volta automaticamente')": nega a automação de
-    //     forma explícita — sem isto, "o dinheiro volta depois" ainda passa.
-    //   - "toContain('combinar a devolução com a loja')": diz QUEM resolve
-    //     (a pessoa falando com a loja), não "sozinho".
-    //   - "not.toContain('automaticamente' logo após 'volta ')" via regex:
-    //     a frase antiga tinha "dinheiro volta depois" sem o "NÃO" — testar
-    //     só a AUSÊNCIA da frase antiga inteira garante que ela não
-    //     sobrevive escondida atrás de um texto extra.
+    //   - "toContain('a loja')": mantém CLARO quem executa a devolução.
+    //   - "toContain('depois que o produto chegar de volta')": a condição
+    //     física continua explícita, não sumiu na reescrita.
+    //   - "not.toMatch('volta sozinho')": o texto de quem NÃO enviou (T7)
+    //     não pode vazar para o ramo "já enviado" — são casos opostos.
     const confirmMock = vi.fn().mockReturnValue(true);
     vi.stubGlobal("confirm", confirmMock);
     pedidoAtual = {
@@ -168,9 +200,9 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     expect(confirmMock).toHaveBeenCalledTimes(1);
     const texto = confirmMock.mock.calls[0][0] as string;
     expect(texto).toContain("já foi enviado");
-    expect(texto).toContain("NÃO volta automaticamente");
-    expect(texto).toContain("combinar a devolução com a loja");
-    expect(texto).not.toMatch(/dinheiro volta depois/i);
+    expect(texto).toContain("a loja");
+    expect(texto).toContain("depois que o produto chegar de volta");
+    expect(texto).not.toMatch(/volta sozinho/i);
   });
 
   it("pedido cancelado depois de enviado e pago: o texto da ficha NÃO contradiz o aviso de confirmação — nenhum dos dois promete estorno automático", async () => {
@@ -181,6 +213,9 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     // afirmar automação. Este teste prova que, depois da correção do
     // `confirm`, as duas superfícies contam a MESMA história: nenhuma cita
     // devolução automática, e as duas mandam a pessoa falar com a loja.
+    // (T7, 08/09: sem linha em `order_refunds` — mockada vazia — o novo
+    // bloco "Devolução: a loja faz depois de receber o produto de volta."
+    // também aparece, e não contradiz nada disto: ver asserção nova abaixo.)
     pedidoAtual = {
       ...pedidoBase,
       status: "cancelled",
@@ -195,6 +230,12 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     expect(textoDaTela).toContain("Fale com a loja");
     expect(textoDaTela).not.toMatch(/dinheiro volta/i);
     expect(textoDaTela).not.toMatch(/estorno automático/i);
+    // T7 (08/09): novo bloco "Devolução: …" — sem linha em `order_refunds`
+    // e cancelado depois do envio, o estado é "a loja ainda não recebeu o
+    // produto de volta".
+    expect(textoDaTela).toContain(
+      "Devolução: a loja faz depois de receber o produto de volta.",
+    );
   });
 
   it("pedido entregue (delivered): o botão Cancelar NÃO aparece", async () => {

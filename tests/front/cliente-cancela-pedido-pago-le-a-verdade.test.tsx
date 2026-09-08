@@ -1,0 +1,1015 @@
+// @vitest-environment jsdom
+//
+// T7 do plano-mãe de estorno pelo app
+// (`C:/Users/Gabriel/equipe/entregas/20260907-plano-estorno-pelo-app.md`,
+// corrigida pelo brief `20260908-brief-t7-tela-do-cliente-verdade-sobre-o-
+// dinheiro.md`): desde 07/09/2026 o cancelamento de um pedido PAGO e NÃO
+// ENVIADO grava a linha de devolução em `order_refunds` na MESMA transação, e
+// o cron/edge tocam o Mercado Pago sozinhos a partir dela — a tela do
+// cliente precisa parar de dizer "o dinheiro NÃO volta automaticamente"
+// nesse caso, e passar a mostrar o ESTADO da devolução depois do
+// cancelamento.
+//
+// Três blocos, UM único `vi.mock("@/lib/supabase")` para o arquivo inteiro
+// (vitest içça `vi.mock` para o topo do módulo — dois mocks do MESMO
+// caminho no mesmo arquivo colidem, por isso todo mundo aqui compartilha
+// `linhasOrderRefundsMock` e `contadorDeLeituraOrderRefunds`):
+//   A. Testes PUROS de texto-estorno-do-cliente.ts — a tabela inteira, sem
+//      montar componente nenhum.
+//   B. Testes de RENDER de OrderDetailsView (C1, C2, C4, C6, C7, C8, C9) —
+//      mesmo dublê de hooks que cancelar-pedido-pago-avisa-do-dinheiro.test.tsx
+//      e cliente-cancela-conforme-o-envio.test.tsx.
+//   C. Testes do HOOK useDevolucaoDoPedidoCliente isolado — polling de 15s
+//      para quando não há mais linha ativa, e o intervalo é limpo ao
+//      desmontar (fake timers).
+import { act, createElement } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  desfechoDaDevolucao,
+  textoConfirmarCancelamento,
+  textoDevolucao,
+} from "@/lib/texto-estorno-do-cliente";
+import { formatCurrency } from "@/lib/utils";
+import type { Order, PaymentStatus } from "@/types";
+
+// ---------------------------------------------------------------------------
+// A. Testes puros — tabela inteira de texto-estorno-do-cliente.ts
+// ---------------------------------------------------------------------------
+describe("textoConfirmarCancelamento — a tabela inteira", () => {
+  it("não pago: texto original, byte a byte", () => {
+    expect(
+      textoConfirmarCancelamento({
+        pagamentoJaEntrou: false,
+        jaFoiEnviado: false,
+      }),
+    ).toBe(
+      "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.",
+    );
+  });
+
+  it("pago e NÃO enviado: o dinheiro volta sozinho (PIX/cartão)", () => {
+    const texto = textoConfirmarCancelamento({
+      pagamentoJaEntrou: true,
+      jaFoiEnviado: false,
+    });
+    expect(texto).toContain("volta sozinho");
+    expect(texto).toContain("PIX cai na sua conta");
+    expect(texto).toContain("cartão aparece como crédito na fatura");
+    expect(texto).not.toContain("NÃO volta automaticamente");
+  });
+
+  it("pago e JÁ enviado: a loja devolve depois que o produto voltar", () => {
+    const texto = textoConfirmarCancelamento({
+      pagamentoJaEntrou: true,
+      jaFoiEnviado: true,
+    });
+    expect(texto).toContain("já foi enviado");
+    expect(texto).toContain("depois que o produto chegar de volta");
+  });
+
+  it("recebido_na_entrega: combina com a loja, sem falar de PIX/fatura", () => {
+    const texto = textoConfirmarCancelamento({
+      pagamentoJaEntrou: true,
+      jaFoiEnviado: false,
+      pagamentoNaEntrega: true,
+    });
+    expect(texto).toContain("pagou este pedido na entrega");
+    expect(texto).toContain(
+      "combine a devolução do dinheiro diretamente com a loja",
+    );
+    expect(texto).not.toMatch(/pix/i);
+    expect(texto).not.toMatch(/fatura/i);
+  });
+
+  it("já enviado ganha prioridade sobre recebido_na_entrega (rodada 2, BLOQUEIA 2)", () => {
+    // Estado alcançável hoje: pedido `shipping` + `payment_status`
+    // `recebido_na_entrega` (o botão "Marcar como recebido" não exige
+    // `delivered`). O produto já saiu — o aviso de devolvê-lo não pode
+    // sumir atrás do texto de "combine com a loja". Mutação: voltar a
+    // ordem antiga (pagamentoNaEntrega antes de jaFoiEnviado) derruba
+    // este teste.
+    const texto = textoConfirmarCancelamento({
+      pagamentoJaEntrou: true,
+      jaFoiEnviado: true,
+      pagamentoNaEntrega: true,
+    });
+    expect(texto).toContain("já foi enviado");
+    expect(texto).toContain("depois que o produto chegar de volta");
+    expect(texto).not.toContain("pagou este pedido na entrega");
+  });
+});
+
+// Rodada 4 (laudo Opus PR#457, decisão da hub): predicado ÚNICO, ao lado de
+// `ESTADOS_EM_CURSO`, que `textoDevolucao` e o card de `OrderDetailsView`
+// passam a consumir os DOIS — para os dois não poderem mais divergir sobre
+// "o dinheiro está em movimento?".
+describe("desfechoDaDevolucao — os três desfechos, e a precedência entre eles", () => {
+  function linha(
+    status:
+      | "solicitado"
+      | "em_processamento"
+      | "concluido"
+      | "falhou"
+      | "recusado",
+  ) {
+    return {
+      amount: 50,
+      status,
+      solicitado_por: "cliente",
+      concluido_em: null,
+    };
+  }
+
+  it("sem linha nenhuma: sem devolução automática", () => {
+    expect(desfechoDaDevolucao([])).toBe("sem_devolucao_automatica");
+  });
+
+  it("só falhou: sem devolução automática", () => {
+    expect(desfechoDaDevolucao([linha("falhou")])).toBe(
+      "sem_devolucao_automatica",
+    );
+  });
+
+  it("só recusado: sem devolução automática", () => {
+    expect(desfechoDaDevolucao([linha("recusado")])).toBe(
+      "sem_devolucao_automatica",
+    );
+  });
+
+  it("falhou e recusado juntas, sem nenhuma linha viva: sem devolução automática", () => {
+    expect(desfechoDaDevolucao([linha("falhou"), linha("recusado")])).toBe(
+      "sem_devolucao_automatica",
+    );
+  });
+
+  it("só solicitado: em curso", () => {
+    expect(desfechoDaDevolucao([linha("solicitado")])).toBe("em_curso");
+  });
+
+  it("só em_processamento: em curso", () => {
+    expect(desfechoDaDevolucao([linha("em_processamento")])).toBe("em_curso");
+  });
+
+  it("só concluido: concluída", () => {
+    expect(desfechoDaDevolucao([linha("concluido")])).toBe("concluida");
+  });
+
+  it("precedência: em curso vence concluída (solicitado + concluido juntas)", () => {
+    expect(desfechoDaDevolucao([linha("concluido"), linha("solicitado")])).toBe(
+      "em_curso",
+    );
+  });
+
+  it("precedência: em curso vence sem-devolução-automática (falhou + solicitado juntas)", () => {
+    expect(desfechoDaDevolucao([linha("falhou"), linha("solicitado")])).toBe(
+      "em_curso",
+    );
+  });
+
+  it("precedência: concluída vence sem-devolução-automática (falhou + concluido juntas)", () => {
+    expect(desfechoDaDevolucao([linha("falhou"), linha("concluido")])).toBe(
+      "concluida",
+    );
+  });
+});
+
+describe("textoDevolucao — a tabela inteira", () => {
+  it("linha solicitado: em andamento", () => {
+    const texto = textoDevolucao({
+      linhas: [
+        {
+          amount: 50,
+          status: "solicitado",
+          solicitado_por: "cliente",
+          concluido_em: null,
+        },
+      ],
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBe(
+      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
+    );
+  });
+
+  it("linha em_processamento: em andamento", () => {
+    const texto = textoDevolucao({
+      linhas: [
+        {
+          amount: 50,
+          status: "em_processamento",
+          solicitado_por: "cliente",
+          concluido_em: null,
+        },
+      ],
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBe(
+      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
+    );
+  });
+
+  it("linha concluido de 100: soma e formata em R$", () => {
+    const texto = textoDevolucao({
+      linhas: [
+        {
+          amount: 100,
+          status: "concluido",
+          solicitado_por: "cliente",
+          concluido_em: "2026-09-08T00:00:00Z",
+        },
+      ],
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBe(`Devolução concluída: ${formatCurrency(100)}`);
+  });
+
+  it("duas linhas concluídas: soma as duas", () => {
+    const texto = textoDevolucao({
+      linhas: [
+        {
+          amount: 30,
+          status: "concluido",
+          solicitado_por: "cliente",
+          concluido_em: "2026-09-08T00:00:00Z",
+        },
+        {
+          amount: 20,
+          status: "concluido",
+          solicitado_por: "sistema",
+          concluido_em: "2026-09-08T01:00:00Z",
+        },
+      ],
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBe(`Devolução concluída: ${formatCurrency(50)}`);
+  });
+
+  it("concluído + falhou juntos: soma SÓ a concluída, ignora a que falhou", () => {
+    // Mutação m3 do brief ("somar linhas não concluídas em 'concluída'") só
+    // é pega por um cenário com concluído E outro status juntos — C4/C6 do
+    // brief têm um único status cada, então uma soma quebrada em `linhas`
+    // em vez de `concluidas` dá o MESMO resultado nos dois. Este teste é o
+    // que efetivamente mata a mutação.
+    const texto = textoDevolucao({
+      linhas: [
+        {
+          amount: 100,
+          status: "concluido",
+          solicitado_por: "cliente",
+          concluido_em: "2026-09-08T00:00:00Z",
+        },
+        {
+          amount: 50,
+          status: "falhou",
+          solicitado_por: "sistema",
+          concluido_em: null,
+        },
+      ],
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBe(`Devolução concluída: ${formatCurrency(100)}`);
+  });
+
+  it("sem linha, cancelado após envio, produto ainda não voltou: a loja faz depois", () => {
+    const texto = textoDevolucao({
+      linhas: [],
+      cancelledAfterShipping: true,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBe(
+      "Devolução: a loja faz depois de receber o produto de volta.",
+    );
+  });
+
+  it("sem linha, cancelado após envio, produto já voltou: a loja vai devolver", () => {
+    const texto = textoDevolucao({
+      linhas: [],
+      cancelledAfterShipping: true,
+      returnedToSellerAt: "2026-09-08T00:00:00Z",
+    });
+    expect(texto).toBe(
+      "Devolução: a loja já recebeu o produto e vai devolver o dinheiro.",
+    );
+  });
+
+  it("sem linha e NÃO cancelado após envio: nada a mostrar (null)", () => {
+    const texto = textoDevolucao({
+      linhas: [],
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBeNull();
+  });
+
+  it("linha falhou, sem outra linha viva: fala com a loja, nunca o texto técnico", () => {
+    const texto = textoDevolucao({
+      linhas: [
+        {
+          amount: 50,
+          status: "falhou",
+          solicitado_por: "sistema",
+          concluido_em: null,
+        },
+      ],
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBe(
+      "Devolução: a loja está cuidando disso — fale com ela se demorar.",
+    );
+  });
+
+  it("linha recusada, sem outra linha viva: mesmo texto de 'falhou'", () => {
+    const texto = textoDevolucao({
+      linhas: [
+        {
+          amount: 50,
+          status: "recusado",
+          solicitado_por: "lojista",
+          concluido_em: null,
+        },
+      ],
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBe(
+      "Devolução: a loja está cuidando disso — fale com ela se demorar.",
+    );
+  });
+
+  it("linha em_processamento tem prioridade sobre linha concluída antiga", () => {
+    const texto = textoDevolucao({
+      linhas: [
+        {
+          amount: 30,
+          status: "concluido",
+          solicitado_por: "cliente",
+          concluido_em: "2026-09-01T00:00:00Z",
+        },
+        {
+          amount: 20,
+          status: "em_processamento",
+          solicitado_por: "cliente",
+          concluido_em: null,
+        },
+      ],
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+    expect(texto).toBe(
+      "Devolução: em andamento — o dinheiro volta sozinho (PIX na conta; cartão na fatura).",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dublê ÚNICO de `@/lib/supabase` para os blocos B e C (içado para o topo do
+// módulo pelo vitest — dois `vi.mock` do mesmo caminho neste arquivo
+// colidiriam).
+// ---------------------------------------------------------------------------
+let linhasOrderRefundsMock: Array<{
+  amount: number;
+  status: string;
+  solicitado_por: string;
+  concluido_em: string | null;
+}> = [];
+let contadorDeLeituraOrderRefunds = 0;
+
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: (tabela: string) => {
+      if (tabela === "order_refunds") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => {
+                contadorDeLeituraOrderRefunds += 1;
+                return Promise.resolve({
+                  data: linhasOrderRefundsMock,
+                  error: null,
+                });
+              },
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }),
+        }),
+      };
+    },
+  },
+}));
+
+// @ts-expect-error flag interna do React, sem tipo público.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// ---------------------------------------------------------------------------
+// B. Render de OrderDetailsView
+// ---------------------------------------------------------------------------
+const pedidoBase: Order = {
+  id: "pedido-verdade",
+  customer: { name: "Cliente Teste", whatsapp: "34999999999" },
+  items: [
+    {
+      productId: "prod-1",
+      name: "Blusa Teste",
+      price: 100,
+      quantity: 1,
+      image: "",
+    },
+  ],
+  subtotal: 100,
+  shipping: 20,
+  discount: 0,
+  total: 120,
+  paymentMethod: "pix",
+  status: "pending",
+  createdAt: new Date(0).toISOString(),
+  updatedAt: new Date(0).toISOString(),
+  cancelledAfterShipping: false,
+};
+
+let pedidoAtual: Order = pedidoBase;
+const updateOrderStatusMock = vi.fn();
+
+vi.mock("@/hooks/useOrders", () => ({
+  useOrders: () => ({
+    orders: [pedidoAtual],
+    fetchUserOrders: vi.fn().mockResolvedValue([pedidoAtual]),
+    updateOrderStatus: updateOrderStatusMock,
+  }),
+}));
+
+const usuario = { id: "user-1" };
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: usuario }) }));
+
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { enableReviews: false, whatsappNumber: "34999999999" },
+  }),
+}));
+
+function pedidoComPagamento(
+  status: Order["status"],
+  paymentStatus: PaymentStatus | null | undefined,
+  extra: Partial<Order> = {},
+): Order {
+  return { ...pedidoBase, status, paymentStatus, ...extra };
+}
+
+describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro (T7)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    updateOrderStatusMock.mockClear();
+    linhasOrderRefundsMock = [];
+    contadorDeLeituraOrderRefunds = 0;
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    vi.unstubAllGlobals();
+  });
+
+  async function renderizar(orderId = "pedido-verdade") {
+    const { OrderDetailsView } = await import(
+      "@/views/customer/OrderDetailsView"
+    );
+    await act(async () => {
+      raiz.render(
+        createElement(OrderDetailsView, {
+          orderId,
+          onBack: () => {},
+          onNavigate: () => {},
+        }),
+      );
+    });
+    // Duas voltas de microtarefa: a primeira resolve `fetchUserOrders`
+    // (loadOrder), a segunda resolve a leitura de `order_refunds` que o
+    // hook dispara depois que `order` (e portanto `mostrarDevolucao`) se
+    // assenta.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+
+  function clicarCancelar() {
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Cancelar Pedido"),
+    );
+    expect(botao).toBeDefined();
+    return act(async () => {
+      botao?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+  }
+
+  // C1
+  it("C1: processing pago — confirm 'volta sozinho' e NÃO 'NÃO volta automaticamente'", async () => {
+    const confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    pedidoAtual = pedidoComPagamento("processing", "pago");
+
+    await renderizar();
+    await clicarCancelar();
+
+    const texto = confirmMock.mock.calls[0][0] as string;
+    expect(texto).toContain("volta sozinho");
+    expect(texto).not.toContain("NÃO volta automaticamente");
+  });
+
+  // C2
+  it("C2: shipping pago — confirm 'depois que o produto chegar de volta'", async () => {
+    const confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    pedidoAtual = pedidoComPagamento("shipping", "pago");
+
+    await renderizar();
+    await clicarCancelar();
+
+    const texto = confirmMock.mock.calls[0][0] as string;
+    expect(texto).toContain("depois que o produto chegar de volta");
+  });
+
+  // C4
+  it("C4: cancelado, linha concluido de 100 — 'Devolução concluída: R$ 100,00'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "concluido",
+        solicitado_por: "cliente",
+        concluido_em: "2026-09-08T00:00:00Z",
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago");
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).toContain(
+      `Devolução concluída: ${formatCurrency(100)}`,
+    );
+  });
+
+  // C6
+  it("C6: cancelado, linha em_processamento — 'em andamento'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "em_processamento",
+        solicitado_por: "cliente",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago");
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).toContain("Devolução: em andamento");
+  });
+
+  // C7
+  it("C7: cancelado após envio, sem linha e sem retorno — 'depois de receber o produto'", async () => {
+    linhasOrderRefundsMock = [];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: true,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).toContain(
+      "depois de receber o produto de volta",
+    );
+  });
+
+  // C8
+  it("C8: recebido_na_entrega — confirm fala da entrega, sem PIX/fatura", async () => {
+    const confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    pedidoAtual = pedidoComPagamento("processing", "recebido_na_entrega");
+
+    await renderizar();
+    await clicarCancelar();
+
+    const texto = confirmMock.mock.calls[0][0] as string;
+    expect(texto).toContain("pagou este pedido na entrega");
+    expect(texto).not.toMatch(/pix/i);
+    expect(texto).not.toMatch(/fatura/i);
+  });
+
+  // BLOQUEIA A/B (laudo Opus PR#457, rodada 3): a decisão virou "existe
+  // linha em `linhasDevolucao`?", nunca mais `payment_status` +
+  // `cancelledAfterShipping`. SEM linha observada — pago + cancelado + NÃO
+  // enviado, mas a RPC ainda não gravou nada (convidado por rastreio, cache
+  // velho, ou simplesmente a leitura do hook ainda não voltou) — a tela
+  // manda falar com a loja, a frase verdadeira da rodada 1: prometer "volta
+  // sozinho" sem ter observado a linha é exatamente a mentira que o laudo
+  // travou (BLOQUEIA A: `pago_apos_expirar` nunca ganha linha; BLOQUEIA B:
+  // convidado nunca carrega `cancelled_after_shipping`).
+  it("cenário (c): pago cancelado NÃO enviado, SEM linha observada — 'Fale com a loja', NUNCA 'volta sozinho'", async () => {
+    linhasOrderRefundsMock = [];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(
+      texto.includes("fale com a loja") || texto.includes("Fale com a loja"),
+    ).toBe(true);
+    expect(texto).not.toContain("volta sozinho");
+  });
+
+  // Cenário (b): COM linha observada (a mesma linha que a RPC grava na
+  // transação do cancelamento) — a tela afirma "volta sozinho" em TODAS as
+  // superfícies, e nenhuma manda falar com a loja.
+  it("cenário (b): pago cancelado NÃO enviado, COM linha 'solicitado' — nenhuma superfície manda falar com a loja", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "solicitado",
+        solicitado_por: "cliente",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).not.toContain("fale com a loja");
+    expect(texto).not.toContain("Fale com a loja");
+    expect(texto).toContain("volta sozinho");
+  });
+
+  // Cancelado APÓS o envio, SEM linha — a RPC nunca grava para este caso
+  // (guarda `NOT v_cancelled_after_shipping`), então "fale com a loja"
+  // continua sendo o desfecho normal aqui, e "volta sozinho" não pode
+  // aparecer.
+  it("cenário: pago cancelado APÓS o envio, SEM linha — 'fale com a loja' aparece, 'volta sozinho' não", async () => {
+    linhasOrderRefundsMock = [];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: true,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(
+      texto.includes("fale com a loja") || texto.includes("Fale com a loja"),
+    ).toBe(true);
+    expect(texto).not.toContain("volta sozinho");
+  });
+
+  // Caso-limite: cancelado APÓS o envio, mas COM linha (a lojista abriu um
+  // estorno manual pelo painel depois de conversar com o cliente —
+  // `solicitar_estorno_do_pedido`, fora da RPC automática). Prova que a
+  // regra é MESMO "existe linha?", nunca "`cancelledAfterShipping`
+  // disfarçado": uma vez que a linha existe, o processo automático (cron/
+  // edge) já está tocando o Mercado Pago, e a tela tem que dizer isso — não
+  // pode continuar mandando "fale com a loja" para um dinheiro que já está
+  // em movimento.
+  it("caso-limite: pago cancelado APÓS o envio, COM linha (estorno manual da loja) — 'volta sozinho', NUNCA 'fale com a loja'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "solicitado",
+        solicitado_por: "lojista",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: true,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).not.toContain("fale com a loja");
+    expect(texto).not.toContain("Fale com a loja");
+    expect(texto).toContain("volta sozinho");
+  });
+
+  // (d) BLOQUEIA 1 do laudo rodada 3, agora fechado pela rodada 4: uma linha
+  // MORTA (`falhou`) sozinha não pode virar promessa de "volta sozinho" no
+  // card — o predicado único classifica isso como
+  // `sem_devolucao_automatica`, igual a "sem linha nenhuma".
+  it("(d) cancelado + pago + única linha 'falhou': card manda 'Fale com a loja', nunca 'volta sozinho'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "falhou",
+        solicitado_por: "sistema",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).toContain("Fale com a loja para resolver");
+    expect(texto).not.toContain("volta sozinho");
+  });
+
+  // (e) mesmo caso, com 'recusado' — mesma família da rodada 3, outro estado
+  // terminal (webhook do Mercado Pago grava 'recusado').
+  it("(e) cancelado + pago + única linha 'recusado': card manda 'Fale com a loja', nunca 'volta sozinho'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "recusado",
+        solicitado_por: "lojista",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).toContain("Fale com a loja para resolver");
+    expect(texto).not.toContain("volta sozinho");
+  });
+
+  // (f) devolução JÁ concluída: o card não pode falar de dinheiro em nenhuma
+  // direção (nem "volta sozinho" — já voltou; nem "fale com a loja" — não há
+  // o que resolver). Quem afirma o valor é o parágrafo `textoDevolucao`, logo
+  // abaixo, no tempo PASSADO ("Devolução concluída: R$ X").
+  it("(f) cancelado + pago + única linha 'concluido': card SEM 'volta sozinho' e SEM 'Fale com a loja', parágrafo com 'Devolução concluída'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "concluido",
+        solicitado_por: "cliente",
+        concluido_em: "2026-09-08T00:00:00Z",
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).not.toContain("volta sozinho");
+    expect(texto).not.toContain("Fale com a loja para resolver");
+    expect(texto).toContain(`Devolução concluída: ${formatCurrency(100)}`);
+  });
+
+  // (g) linha EM CURSO ao lado de uma linha MORTA: o automático ainda está
+  // tentando (ex.: primeira tentativa `falhou`, o cron reabriu como
+  // `solicitado` para retry) — em curso vence, "volta sozinho" continua
+  // verdade.
+  it("(g) cancelado + pago + linhas 'solicitado' e 'falhou' juntas: card mostra 'volta sozinho' (em curso vence)", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "solicitado",
+        solicitado_por: "sistema",
+        concluido_em: null,
+      },
+      {
+        amount: 100,
+        status: "falhou",
+        solicitado_por: "sistema",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).toContain("volta sozinho");
+    expect(texto).not.toContain("Fale com a loja para resolver");
+  });
+
+  // C9 — varredura do DOM em cada estado: nenhum indício de id do MP.
+  it("C9: nenhum texto na tela cita id do MP, PAY, api. ou refund_id", async () => {
+    const cenarios: Array<[Order, typeof linhasOrderRefundsMock]> = [
+      [pedidoComPagamento("processing", "pago"), []],
+      [pedidoComPagamento("shipping", "pago"), []],
+      [
+        pedidoComPagamento("cancelled", "pago"),
+        [
+          {
+            amount: 100,
+            status: "concluido",
+            solicitado_por: "cliente",
+            concluido_em: "2026-09-08T00:00:00Z",
+          },
+        ],
+      ],
+      [
+        pedidoComPagamento("cancelled", "pago"),
+        [
+          {
+            amount: 100,
+            status: "em_processamento",
+            solicitado_por: "cliente",
+            concluido_em: null,
+          },
+        ],
+      ],
+      [
+        pedidoComPagamento("cancelled", "pago"),
+        [
+          {
+            amount: 100,
+            status: "falhou",
+            solicitado_por: "sistema",
+            concluido_em: null,
+          },
+        ],
+      ],
+      [pedidoComPagamento("processing", "recebido_na_entrega"), []],
+    ];
+
+    for (const [pedido, linhas] of cenarios) {
+      pedidoAtual = pedido;
+      linhasOrderRefundsMock = linhas;
+      await renderizar();
+
+      const texto = hospedeiro.textContent || "";
+      expect(texto).not.toMatch(/PAY-/i);
+      expect(texto).not.toMatch(/mp_[a-z_]*id/i);
+      expect(texto).not.toMatch(/api\./i);
+      expect(texto).not.toMatch(/refund_id/i);
+
+      act(() => {
+        raiz.unmount();
+      });
+      hospedeiro.remove();
+      hospedeiro = document.createElement("div");
+      document.body.appendChild(hospedeiro);
+      raiz = createRoot(hospedeiro);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C. Hook useDevolucaoDoPedidoCliente isolado — polling e limpeza
+// ---------------------------------------------------------------------------
+describe("useDevolucaoDoPedidoCliente — polling de 15s", () => {
+  const raizesDoHook: Array<{ unmount: () => void }> = [];
+
+  beforeEach(() => {
+    linhasOrderRefundsMock = [];
+    contadorDeLeituraOrderRefunds = 0;
+  });
+
+  afterEach(() => {
+    for (const raiz of raizesDoHook.splice(0)) {
+      act(() => {
+        raiz.unmount();
+      });
+    }
+    document.body.innerHTML = "";
+    vi.useRealTimers();
+  });
+
+  async function montarSonda(orderId = "pedido-hook", habilitado = true) {
+    const { useDevolucaoDoPedidoCliente } = await import(
+      "@/hooks/useDevolucaoDoPedidoCliente"
+    );
+    const leituras: Array<{ linhas: unknown[]; carregando: boolean }> = [];
+
+    function Sonda() {
+      leituras.push(
+        useDevolucaoDoPedidoCliente(orderId, habilitado) as unknown as {
+          linhas: unknown[];
+          carregando: boolean;
+        },
+      );
+      return null;
+    }
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    raizesDoHook.push(root);
+
+    await act(async () => {
+      root.render(createElement(Sonda));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    return leituras;
+  }
+
+  it("com linha em_processamento: recarrega de novo depois de 15s", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    linhasOrderRefundsMock = [
+      {
+        amount: 50,
+        status: "em_processamento",
+        solicitado_por: "cliente",
+        concluido_em: null,
+      },
+    ];
+
+    await montarSonda();
+    const chamadasAntes = contadorDeLeituraOrderRefunds;
+    expect(chamadasAntes).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+
+    expect(contadorDeLeituraOrderRefunds).toBeGreaterThan(chamadasAntes);
+  });
+
+  it("sem linha ativa (só concluído): o polling NÃO dispara depois de 15s", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    linhasOrderRefundsMock = [
+      {
+        amount: 50,
+        status: "concluido",
+        solicitado_por: "cliente",
+        concluido_em: "2026-09-08T00:00:00Z",
+      },
+    ];
+
+    await montarSonda();
+    const chamadasAntes = contadorDeLeituraOrderRefunds;
+    expect(chamadasAntes).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+
+    expect(contadorDeLeituraOrderRefunds).toBe(chamadasAntes);
+  });
+
+  it("desmontar com linha ativa: o intervalo é limpo (nenhuma leitura extra depois do unmount)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    linhasOrderRefundsMock = [
+      {
+        amount: 50,
+        status: "solicitado",
+        solicitado_por: "cliente",
+        concluido_em: null,
+      },
+    ];
+
+    await montarSonda();
+    const chamadasAntes = contadorDeLeituraOrderRefunds;
+
+    for (const raiz of raizesDoHook.splice(0)) {
+      act(() => {
+        raiz.unmount();
+      });
+    }
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(contadorDeLeituraOrderRefunds).toBe(chamadasAntes);
+  });
+
+  it("habilitado=false: nunca lê order_refunds", async () => {
+    await montarSonda("pedido-hook", false);
+
+    expect(contadorDeLeituraOrderRefunds).toBe(0);
+  });
+});
