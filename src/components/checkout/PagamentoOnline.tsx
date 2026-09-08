@@ -1,4 +1,5 @@
 import { useOrders } from "@/hooks/useOrders";
+import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { useEffect, useRef, useState } from "react";
 
 const SDK_URL = "https://sdk.mercadopago.com/js/v2";
@@ -426,6 +427,27 @@ export function PagamentoOnline({
     // `criarPagamento` (useCallback(..., []) em useOrders.ts) não mudarem.
   }, [orderId, valor, criarPagamento]);
 
+  // Brief "o app não mente quando copia" (08/09/2026): o botão chamava
+  // `navigator.clipboard.writeText(...)` sem await, sem catch e sem NENHUM
+  // aviso — nem quando dava certo. Agora `copiarParaClipboard` (mesma peça do
+  // painel) diz o que aconteceu de verdade: sucesso muda o próprio texto do
+  // botão por ~2s (o botão está no centro da atenção nesta tela — um toast
+  // sumiria sem ninguém notar); falha mostra o código num campo selecionável,
+  // porque sem cópia automática o cliente ainda precisa conseguir pagar.
+  const [pixCopiado, setPixCopiado] = useState(false);
+  const [pixFalhouCopia, setPixFalhouCopia] = useState(false);
+
+  const handleCopiarPix = async (codigo: string) => {
+    const ok = await copiarParaClipboard(codigo);
+    if (!ok) {
+      setPixFalhouCopia(true);
+      return;
+    }
+    setPixFalhouCopia(false);
+    setPixCopiado(true);
+    setTimeout(() => setPixCopiado(false), 2000);
+  };
+
   if (pix) {
     return (
       <div className="space-y-4 rounded-2xl border border-zinc-100 bg-white p-4">
@@ -438,11 +460,28 @@ export function PagamentoOnline({
         )}
         <button
           type="button"
-          onClick={() => navigator.clipboard.writeText(pix.qrCode ?? "")}
+          onClick={() => handleCopiarPix(pix.qrCode ?? "")}
           className="w-full rounded-xl bg-zinc-900 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white"
         >
-          Copiar código PIX
+          <span aria-live="polite">
+            {pixCopiado ? "Copiado!" : "Copiar código PIX"}
+          </span>
         </button>
+        {pixFalhouCopia && (
+          <div className="space-y-1.5">
+            <p className="text-center text-xs text-zinc-500">
+              Não consegui copiar sozinho. Toque no código abaixo, segure e
+              copie.
+            </p>
+            <textarea
+              readOnly
+              value={pix.qrCode ?? ""}
+              onFocus={(e) => e.currentTarget.select()}
+              rows={3}
+              className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-[10px] text-zinc-900"
+            />
+          </div>
+        )}
         {pix.ticketUrl && (
           <a
             href={pix.ticketUrl}
