@@ -140,7 +140,7 @@ function clienteFalso(opts: {
               // método que vem em seguida.
               eq(_coluna: string, orderId: string) {
                 return {
-                  neq(_coluna2: string, idAtual: string) {
+                  neq(coluna2: string, idAtual: string) {
                     return {
                       not(_coluna3: string, _op: string, _valor: unknown) {
                         if (opts.erroIdsJaReivindicados) {
@@ -149,6 +149,17 @@ function clienteFalso(opts: {
                             error: opts.erroIdsJaReivindicados,
                           });
                         }
+                        // AC3-a (laudo Opus #447 rodada 2, 08/09/2026): o
+                        // dublê tem de CONFERIR a coluna real que a produção
+                        // passou a `.neq()`, não descartá-la e reimplementar
+                        // a exclusão pelo `id` na mão — sem isso, trocar a
+                        // coluna em produção (ex.: "id" -> "mp_refund_id",
+                        // R15) passa batido porque o mock nunca olhava para
+                        // ela. `assertEquals` é a prova: mutar
+                        // reconciliar-pagamentos/index.ts:598 para
+                        // `.neq("mp_refund_id", refund.id)` faz este assert
+                        // (e R15) falharem.
+                        assertEquals(coluna2, "id");
                         const ids = opts.idsJaReivindicadosPorPedido?.(
                           orderId,
                           idAtual,

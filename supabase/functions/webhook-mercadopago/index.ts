@@ -516,6 +516,10 @@ async function registrarDesfechoDoEstorno(args: {
       >
       : [])
     : refundsDaOrder(corpo);
+  // UMA passagem só (ANOTADO do laudo Opus rodada 2): loga o que NÃO é
+  // terminal (item 2 do passo A) e já separa o que é, sem percorrer
+  // `refundsBrutos` duas vezes.
+  const refundsConcluidos: Array<Record<string, unknown>> = [];
   for (const r of refundsBrutos) {
     if (r.status !== statusTerminal) {
       // Refund em outro status (in_process, rejected, …) não conta ainda —
@@ -525,9 +529,10 @@ async function registrarDesfechoDoEstorno(args: {
         orderId,
         r.status,
       );
+      continue;
     }
+    refundsConcluidos.push(r);
   }
-  const refundsConcluidos = refundsBrutos.filter((r) => r.status === statusTerminal);
 
   // Linhas PENDENTES do pedido (mais velha primeiro) — nunca 'sistema'
   // (dinheiro que já saiu por fora, não em curso pelo app).
@@ -585,6 +590,17 @@ async function registrarDesfechoDoEstorno(args: {
       if (resultado.mp_refund_id) reivindicados.add(resultado.mp_refund_id);
       // I-B: acumulado EM MEMÓRIA — a próxima linha do lote decide com ele.
       pedido.valor_estornado = Number((pedido.valor_estornado + linha.amount).toFixed(2));
+      // BLOQUEIA-1 (laudo Opus rodada 2, PR #449): `somaEmCurso` (abaixo)
+      // percorre `linhasBanco` como foi lida no INÍCIO do passo — sem
+      // marcar esta linha como concluída AQUI, no objeto local, ela
+      // continua contando como 'solicitado'/'em_processamento' nesse
+      // array, e o valor dela seria descontado DUAS vezes do `disponivel`
+      // do estorno externo (uma via `pedido.valor_estornado`, acima; outra
+      // via `somaEmCurso`). Mutar o objeto local é seguro: `linhaBanco` é a
+      // MESMA referência que `linhasBanco` guarda (ambos vêm do mesmo
+      // SELECT desta chamada) — `somaEmCurso`, chamada mais abaixo NESTE
+      // MESMO lote, já enxerga o status atualizado.
+      linhaBanco.status = "concluido";
     }
     // tentar_depois → nada (o cron continua com ela).
   }
@@ -603,7 +619,20 @@ async function registrarDesfechoDoEstorno(args: {
     if (!refundId || reivindicados.has(refundId)) continue;
 
     const valorRefundBruto = Number(refund.amount);
-    const valorRefund = Number.isFinite(valorRefundBruto) ? valorRefundBruto : 0;
+    // ANTES-DE-CRESCER-1 (laudo Opus rodada 2, PR #449): valor ilegível é
+    // "não sei", NUNCA "zero" — `amount: 0` violaria `CHECK (amount > 0)` no
+    // banco (500 em laço, o MP reenvia para sempre). Pula este refund (nenhum
+    // insert, nenhuma RPC); o resto do handler continua (confirmar_pagamento
+    // do status atual roda do mesmo jeito).
+    if (!Number.isFinite(valorRefundBruto)) {
+      console.error(
+        "webhook-mercadopago: refund sem valor legível — pulando (não é 'não sei' = 0)",
+        orderId,
+        refundId,
+      );
+      continue;
+    }
+    const valorRefund = valorRefundBruto;
     const disponivel = Number(
       (pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2),
     );
@@ -644,9 +673,12 @@ async function registrarDesfechoDoEstorno(args: {
     // Valor pago: payment → transaction_amount (do corpo cru); order →
     // extrairValorDaOrder — MESMO clamp do item A4.
     const valorPagoBruto = ehPayments ? Number(corpo.transaction_amount) : extrairValorDaOrder(corpo);
-    const valorPago = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto)
-      ? valorPagoBruto
-      : 0;
+    // ANTES-DE-CRESCER-1: valor ilegível é "não sei", nunca "zero" — só
+    // afeta os DOIS ramos que nascem uma linha NOVA com `amountCb` (in_process
+    // sem linha, settled sem linha); a linha EXISTENTE (settled/reimbursed)
+    // usa o próprio `linhaChargeback.amount`, já gravado, e não lê valorPago.
+    const valorPagoValido = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto);
+    const valorPago = valorPagoValido ? valorPagoBruto : 0;
     const disponivelCb = Number(
       (pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2),
     );
@@ -654,7 +686,12 @@ async function registrarDesfechoDoEstorno(args: {
 
     if (statusDetail === "in_process") {
       if (!linhaChargeback) {
-        if (disponivelCb <= 0) {
+        if (!valorPagoValido) {
+          console.error(
+            "webhook-mercadopago: chargeback (in_process) sem valor pago legível — pulando (não é 'não sei' = 0)",
+            orderId,
+          );
+        } else if (disponivelCb <= 0) {
           console.error(
             "webhook-mercadopago: chargeback além do que o pedido pode reservar",
             orderId,
@@ -699,6 +736,11 @@ async function registrarDesfechoDoEstorno(args: {
             throw erroConcluirCb;
           }
         }
+      } else if (!valorPagoValido) {
+        console.error(
+          "webhook-mercadopago: chargeback (settled) sem valor pago legível — pulando (não é 'não sei' = 0)",
+          orderId,
+        );
       } else if (disponivelCb <= 0) {
         console.error(
           "webhook-mercadopago: chargeback (settled) além do que o pedido pode registrar",
@@ -1021,7 +1063,13 @@ async function handler(
   // vem DEPOIS do passo novo (`registrarDesfechoDoEstorno`, chamado logo
   // abaixo) porque `processed:partially_refunded` mapeia para `null` DE
   // PROPÓSITO (PEDIDO-05) — sem esta troca, todo estorno PARCIAL saía por
-  // "status desconhecido" sem registrar nada no ledger.
+  // "status desconhecido" sem registrar nada no ledger. Efeito colateral da
+  // ORDEM: o `pareceUuid` agora decide PRIMEIRO — um evento com status
+  // desconhecido (nem estorno, nem par mapeado) E `external_reference` sem
+  // forma de UUID responde "external_reference inválido" (o `return` abaixo),
+  // nunca chega no "status desconhecido" mais adiante. Nenhum dos dois é
+  // silencioso (os dois logam e devolvem 200), só muda QUAL rótulo aparece no
+  // log quando as duas condições coincidem.
   if (!pareceUuid(externalReference)) {
     console.warn(
       "webhook-mercadopago: external_reference sem forma de UUID",
