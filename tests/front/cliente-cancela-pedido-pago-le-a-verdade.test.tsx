@@ -27,6 +27,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  desfechoDaDevolucao,
   textoConfirmarCancelamento,
   textoDevolucao,
 } from "@/lib/texto-estorno-do-cliente";
@@ -97,6 +98,80 @@ describe("textoConfirmarCancelamento — a tabela inteira", () => {
     expect(texto).toContain("já foi enviado");
     expect(texto).toContain("depois que o produto chegar de volta");
     expect(texto).not.toContain("pagou este pedido na entrega");
+  });
+});
+
+// Rodada 4 (laudo Opus PR#457, decisão da hub): predicado ÚNICO, ao lado de
+// `ESTADOS_EM_CURSO`, que `textoDevolucao` e o card de `OrderDetailsView`
+// passam a consumir os DOIS — para os dois não poderem mais divergir sobre
+// "o dinheiro está em movimento?".
+describe("desfechoDaDevolucao — os três desfechos, e a precedência entre eles", () => {
+  function linha(
+    status:
+      | "solicitado"
+      | "em_processamento"
+      | "concluido"
+      | "falhou"
+      | "recusado",
+  ) {
+    return {
+      amount: 50,
+      status,
+      solicitado_por: "cliente",
+      concluido_em: null,
+    };
+  }
+
+  it("sem linha nenhuma: sem devolução automática", () => {
+    expect(desfechoDaDevolucao([])).toBe("sem_devolucao_automatica");
+  });
+
+  it("só falhou: sem devolução automática", () => {
+    expect(desfechoDaDevolucao([linha("falhou")])).toBe(
+      "sem_devolucao_automatica",
+    );
+  });
+
+  it("só recusado: sem devolução automática", () => {
+    expect(desfechoDaDevolucao([linha("recusado")])).toBe(
+      "sem_devolucao_automatica",
+    );
+  });
+
+  it("falhou e recusado juntas, sem nenhuma linha viva: sem devolução automática", () => {
+    expect(desfechoDaDevolucao([linha("falhou"), linha("recusado")])).toBe(
+      "sem_devolucao_automatica",
+    );
+  });
+
+  it("só solicitado: em curso", () => {
+    expect(desfechoDaDevolucao([linha("solicitado")])).toBe("em_curso");
+  });
+
+  it("só em_processamento: em curso", () => {
+    expect(desfechoDaDevolucao([linha("em_processamento")])).toBe("em_curso");
+  });
+
+  it("só concluido: concluída", () => {
+    expect(desfechoDaDevolucao([linha("concluido")])).toBe("concluida");
+  });
+
+  it("precedência: em curso vence concluída (solicitado + concluido juntas)", () => {
+    expect(desfechoDaDevolucao([linha("concluido"), linha("solicitado")])).toBe(
+      "em_curso",
+    );
+  });
+
+  it("precedência: em curso vence sem-devolução-automática (falhou + solicitado juntas)", () => {
+    expect(desfechoDaDevolucao([linha("falhou"), linha("solicitado")])).toBe(
+      "em_curso",
+    );
+  });
+
+  it("precedência: concluída vence sem-devolução-automática (falhou + concluido juntas)", () => {
+    expect(desfechoDaDevolucao([linha("falhou"), linha("concluido")])).toBe(
+      "concluida",
+    );
   });
 });
 
@@ -639,6 +714,111 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     expect(texto).not.toContain("fale com a loja");
     expect(texto).not.toContain("Fale com a loja");
     expect(texto).toContain("volta sozinho");
+  });
+
+  // (d) BLOQUEIA 1 do laudo rodada 3, agora fechado pela rodada 4: uma linha
+  // MORTA (`falhou`) sozinha não pode virar promessa de "volta sozinho" no
+  // card — o predicado único classifica isso como
+  // `sem_devolucao_automatica`, igual a "sem linha nenhuma".
+  it("(d) cancelado + pago + única linha 'falhou': card manda 'Fale com a loja', nunca 'volta sozinho'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "falhou",
+        solicitado_por: "sistema",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).toContain("Fale com a loja para resolver");
+    expect(texto).not.toContain("volta sozinho");
+  });
+
+  // (e) mesmo caso, com 'recusado' — mesma família da rodada 3, outro estado
+  // terminal (webhook do Mercado Pago grava 'recusado').
+  it("(e) cancelado + pago + única linha 'recusado': card manda 'Fale com a loja', nunca 'volta sozinho'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "recusado",
+        solicitado_por: "lojista",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).toContain("Fale com a loja para resolver");
+    expect(texto).not.toContain("volta sozinho");
+  });
+
+  // (f) devolução JÁ concluída: o card não pode falar de dinheiro em nenhuma
+  // direção (nem "volta sozinho" — já voltou; nem "fale com a loja" — não há
+  // o que resolver). Quem afirma o valor é o parágrafo `textoDevolucao`, logo
+  // abaixo, no tempo PASSADO ("Devolução concluída: R$ X").
+  it("(f) cancelado + pago + única linha 'concluido': card SEM 'volta sozinho' e SEM 'Fale com a loja', parágrafo com 'Devolução concluída'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "concluido",
+        solicitado_por: "cliente",
+        concluido_em: "2026-09-08T00:00:00Z",
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).not.toContain("volta sozinho");
+    expect(texto).not.toContain("Fale com a loja para resolver");
+    expect(texto).toContain(`Devolução concluída: ${formatCurrency(100)}`);
+  });
+
+  // (g) linha EM CURSO ao lado de uma linha MORTA: o automático ainda está
+  // tentando (ex.: primeira tentativa `falhou`, o cron reabriu como
+  // `solicitado` para retry) — em curso vence, "volta sozinho" continua
+  // verdade.
+  it("(g) cancelado + pago + linhas 'solicitado' e 'falhou' juntas: card mostra 'volta sozinho' (em curso vence)", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "solicitado",
+        solicitado_por: "sistema",
+        concluido_em: null,
+      },
+      {
+        amount: 100,
+        status: "falhou",
+        solicitado_por: "sistema",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: false,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).toContain("volta sozinho");
+    expect(texto).not.toContain("Fale com a loja para resolver");
   });
 
   // C9 — varredura do DOM em cada estado: nenhum indício de id do MP.

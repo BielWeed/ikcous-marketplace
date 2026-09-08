@@ -105,6 +105,31 @@ const ESTADOS_EM_CURSO: readonly StatusDevolucaoDoCliente[] = [
   "em_processamento",
 ];
 
+/** Os três desfechos possíveis de "o dinheiro está em movimento?" — a
+ * pergunta que `textoDevolucao` e o card de `OrderDetailsView`
+ * (`cancelledDescription`) faziam cada um à sua maneira até a rodada 4 do
+ * laudo Opus PR#457 (decisão da hub: "3ª ocorrência = olhar a ESTRUTURA").
+ * Precedência: EM CURSO vence CONCLUÍDA vence SEM DEVOLUÇÃO AUTOMÁTICA — uma
+ * linha `solicitado` ao lado de uma `concluido` antiga ainda está em
+ * movimento; `falhou`/`recusado` sozinhas (ou nenhuma linha) significam que o
+ * automático desistiu. */
+type DesfechoDaDevolucao =
+  | "em_curso"
+  | "concluida"
+  | "sem_devolucao_automatica";
+
+export function desfechoDaDevolucao(
+  linhas: LinhaDevolucaoDoCliente[],
+): DesfechoDaDevolucao {
+  const emCurso = linhas.some((linha) =>
+    ESTADOS_EM_CURSO.includes(linha.status),
+  );
+  if (emCurso) return "em_curso";
+  const temConcluida = linhas.some((linha) => linha.status === "concluido");
+  if (temConcluida) return "concluida";
+  return "sem_devolucao_automatica";
+}
+
 interface ParametrosTextoDevolucao {
   linhas: LinhaDevolucaoDoCliente[];
   cancelledAfterShipping: boolean;
@@ -125,24 +150,27 @@ export function textoDevolucao({
   cancelledAfterShipping,
   returnedToSellerAt,
 }: ParametrosTextoDevolucao): string | null {
-  const emAndamento = linhas.some((linha) =>
-    ESTADOS_EM_CURSO.includes(linha.status),
-  );
-  if (emAndamento) return TEXTO_EM_ANDAMENTO;
+  const desfecho = desfechoDaDevolucao(linhas);
 
-  const concluidas = linhas.filter((linha) => linha.status === "concluido");
-  if (concluidas.length > 0) {
+  if (desfecho === "em_curso") return TEXTO_EM_ANDAMENTO;
+
+  if (desfecho === "concluida") {
+    const concluidas = linhas.filter((linha) => linha.status === "concluido");
     const total = concluidas.reduce((soma, linha) => soma + linha.amount, 0);
     return `Devolução concluída: ${formatCurrency(total)}`;
   }
 
+  // desfecho === "sem_devolucao_automatica": sem linha nenhuma, ou só
+  // `falhou`/`recusado`. Os dois casos precisam de textos DIFERENTES (sem
+  // linha depende de `cancelledAfterShipping`; com linha morta, nunca o
+  // texto técnico do erro — `mp_status_detail`, `ultimo_erro` — o cliente não
+  // tem o que fazer com isso, só a loja), por isso o predicado sozinho não
+  // basta aqui: ele só decide QUE não há devolução automática, não qual das
+  // duas frases mostrar.
   if (linhas.length === 0) {
     if (!cancelledAfterShipping) return null;
     return returnedToSellerAt ? TEXTO_LOJA_JA_RECEBEU : TEXTO_LOJA_FAZ_DEPOIS;
   }
 
-  // Só sobram linhas `falhou`/`recusado` — nunca o texto técnico do erro
-  // (`mp_status_detail`, `ultimo_erro`): o cliente não tem o que fazer com
-  // isso, só a loja.
   return TEXTO_LOJA_CUIDANDO;
 }

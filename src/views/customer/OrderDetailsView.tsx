@@ -9,6 +9,8 @@ import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { supabase } from "@/lib/supabase";
 import {
+  type LinhaDevolucaoDoCliente,
+  desfechoDaDevolucao,
   textoConfirmarCancelamento,
   textoDevolucao,
 } from "@/lib/texto-estorno-do-cliente";
@@ -166,17 +168,28 @@ function pendingDescription(
  * que vira `false` e passava por "não enviado"). A RPC
  * `update_order_status_atomic`
  * (`supabase/migrations/2026110000000_o_estorno_nasce_no_ledger.sql:388-401`)
- * só grava a linha automática quando CINCO coisas são verdade ao mesmo
+ * só grava a linha automática quando SEIS coisas são verdade ao mesmo
  * tempo — `status` novo é `cancelled`, `status` antigo era
  * `pending`/`processing`, `payment_status` é `pago`/`pago_apos_expirar`,
- * `paid_at` não é nulo, e o pedido NÃO foi enviado — avaliadas no instante
- * do cancelamento, nunca depois. Observar a linha em vez de re-derivar essa
- * condição no front fecha as três divergências de uma vez (inclusive
- * `paid_at` nulo em pedido legado): a tela só promete o que o banco já fez.
+ * `paid_at` não é nulo, o pedido NÃO foi enviado, e ainda NÃO existe linha
+ * `solicitado`/`em_processamento`/`concluido` para o pedido (`NOT EXISTS`,
+ * a guarda que impede duplicar no ciclo reativar→cancelar de novo — linha
+ * `falhou`/`recusado` não bloqueia, o retry é legítimo) — avaliadas no
+ * instante do cancelamento, nunca depois. Observar a linha em vez de
+ * re-derivar essa condição no front fecha as três divergências de uma vez
+ * (inclusive `paid_at` nulo em pedido legado): a tela só promete o que o
+ * banco já fez.
+ *
+ * Rodada 4 (laudo Opus PR#457, decisão da hub): "existe linha?" sozinho
+ * ainda deixava passar um QUARTO caso da mesma família — linha `falhou`/
+ * `recusado` sozinha é dinheiro que o automático JÁ DESISTIU de mover, não
+ * "em movimento". O card e `textoDevolucao` (logo abaixo) agora leem o
+ * MESMO predicado `desfechoDaDevolucao` — os dois não podem mais divergir
+ * sobre a mesma pergunta.
  */
 function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
-  temLinhaDevolucao: boolean,
+  linhasDevolucao: LinhaDevolucaoDoCliente[],
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -187,18 +200,26 @@ function cancelledDescription(
     return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
   }
   if (key === "pago" || key === "pago_apos_expirar") {
-    // Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): a decisão é "existe linha
-    // em `linhasDevolucao`?", nunca mais `cancelledAfterShipping` nem
-    // re-inferir a condição da RPC. Com linha observada, o processo já
-    // começou (a mesma linha que `textoDevolucao`, logo abaixo, narra em
-    // detalhe) — "o dinheiro volta sozinho" é verdade. Sem linha, "fale com
-    // a loja" cobre de uma vez: pago já enviado (a RPC nunca grava),
+    // Rodada 4 (laudo Opus PR#457, decisão da hub): o card lê o MESMO
+    // predicado que `textoDevolucao` — nunca mais "existe linha?" sozinho
+    // (rodada 3), que confundia `falhou`/`recusado` (dinheiro que o
+    // automático já desistiu de mover) com "em movimento". EM CURSO: o
+    // processo já começou (a mesma linha que `textoDevolucao`, logo abaixo,
+    // narra em detalhe) — "o dinheiro volta sozinho" é verdade. CONCLUÍDA: o
+    // card não fala de dinheiro — quem afirma o valor, no passado, é o
+    // parágrafo `textoDevolucao` ("Devolução concluída: R$ X") logo abaixo.
+    // SEM DEVOLUÇÃO AUTOMÁTICA (sem linha, ou só `falhou`/`recusado`): "fale
+    // com a loja" cobre de uma vez pago já enviado (a RPC nunca grava),
     // `pago_apos_expirar` (o valor só existe depois do cancelamento),
     // convidado por rastreio (a RPC de OTP não carrega
-    // `cancelled_after_shipping`), pedido legado sem `paid_at`, e cache
-    // velho do `localStorage` sem a chave nova.
-    if (temLinhaDevolucao) {
+    // `cancelled_after_shipping`), pedido legado sem `paid_at`, cache velho
+    // do `localStorage` sem a chave nova, e o automático que desistiu.
+    const desfecho = desfechoDaDevolucao(linhasDevolucao);
+    if (desfecho === "em_curso") {
       return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
+    }
+    if (desfecho === "concluida") {
+      return "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
     }
     return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
   }
@@ -543,7 +564,7 @@ export function OrderDetailsView({
     order.status === "pending"
       ? pendingDescription(order.paymentStatus)
       : order.status === "cancelled"
-        ? cancelledDescription(order.paymentStatus, linhasDevolucao.length > 0)
+        ? cancelledDescription(order.paymentStatus, linhasDevolucao)
         : currentStatus.description;
   const textoDaDevolucao = mostrarDevolucao
     ? textoDevolucao({
