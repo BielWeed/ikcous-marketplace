@@ -81,6 +81,18 @@ import {
   resumir,
 } from "../_shared/webpush.ts";
 import { enviarComprovantePedido } from "../_shared/comprovante.ts";
+// T5 do plano de estorno pelo app (08/09/2026): o webhook é o segundo
+// caminho (e o único, para estorno feito FORA do app) que registra o
+// desfecho de uma devolução — reusa a MESMA decisão pura do P0
+// (`decidirConclusaoPelaConsulta`) sobre o objeto que ESTE handler já
+// consultou, sem um segundo GET (item 4 do brief P0: uma decisão, dois
+// chamadores).
+import {
+  decidirConclusaoPelaConsulta,
+  refundsDaOrder,
+  type LinhaEstorno,
+  type PedidoParaEstorno,
+} from "../_shared/estorno.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -292,6 +304,491 @@ async function dispararComprovanteReal(args: {
   }
 }
 
+/** Terminal de sucesso de um refund INDIVIDUAL na Payments API clássica —
+ * MESMA constante do P0 (`_shared/estorno.ts`, `STATUS_REFUND_APROVADO_
+ * PAYMENTS`), copiada aqui porque não é exportada: a Payments de cartão está
+ * DESLIGADA hoje (Restrição Global veda `fetch` real em teste) e esta grafia
+ * nunca foi medida contra a API real — a T8 (sandbox) decide se troca. */
+const STATUS_REFUND_APROVADO_PAYMENTS = "approved";
+/** Terminal de sucesso de um refund na Orders API — MESMA constante do P0
+ * (`STATUS_REFUND_CONCLUIDO`), via `refundsDaOrder` + este filtro. */
+const STATUS_REFUND_CONCLUIDO_ORDERS = "processed";
+
+/**
+ * Insere uma linha `sistema` já `concluido` e chama `concluir_estorno` na
+ * sequência — o padrão que A4 (estorno feito fora do app) e B/settled-sem-
+ * linha (chargeback cujo `in_process` nunca chegou) COMPARTILHAM: "nasce
+ * concluido, nunca solicitado" (pré-requisito 3 do plano — linha nova é
+ * dinheiro NOVO; esta linha é dinheiro que JÁ saiu). `valorOriginal` só
+ * difere de `amount` quando o clamp (disponível < valor do MP) reduziu —
+ * nesse caso o motivo ganha o valor real do MP, para o lojista não estranhar
+ * a diferença.
+ *
+ * Erro nomeado `estorno_acima_do_total` (a RPC recusou por segurança) →
+ * console.error e `false` (SEGUE — 200 no fim, item 6 do brief: reenviar não
+ * muda a conta e 500 aqui viraria reenvio infinito). Qualquer outro erro de
+ * banco → lança (o chamador devolve 500 — fila do MP).
+ */
+async function inserirEstornoConcluido(args: {
+  supabase: ReturnType<typeof createClient>;
+  orderId: string;
+  amount: number;
+  valorOriginal: number;
+  motivoBase: string;
+  mpRefundId: string | null;
+  mpStatus: string;
+  mpStatusDetail: string | null;
+}): Promise<boolean> {
+  const { supabase, orderId, amount, valorOriginal, motivoBase, mpRefundId, mpStatus, mpStatusDetail } = args;
+  const clampou = amount < valorOriginal;
+  const motivo = motivoBase + (clampou ? `, valor no MP R$ ${valorOriginal.toFixed(2)}` : "");
+
+  const { data: linhaInserida, error: erroInsert } = await supabase
+    .from("order_refunds")
+    .insert({
+      order_id: orderId,
+      amount,
+      solicitado_por: "sistema",
+      status: "concluido",
+      motivo,
+      mp_refund_id: mpRefundId,
+      mp_status: mpStatus,
+      mp_status_detail: mpStatusDetail,
+    })
+    .select("id")
+    .maybeSingle();
+  if (erroInsert) throw erroInsert;
+  if (!linhaInserida) {
+    console.error(
+      "webhook-mercadopago: insert do estorno fora do app não devolveu a linha",
+      orderId,
+      mpRefundId,
+    );
+    return false;
+  }
+
+  const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
+    p_refund_id: (linhaInserida as Record<string, unknown>).id,
+    p_mp_refund_id: mpRefundId,
+    p_mp_status: mpStatus,
+    p_mp_status_detail: mpStatusDetail,
+  });
+  if (erroConcluir) {
+    if (String((erroConcluir as { message?: string }).message ?? "").includes("estorno_acima_do_total")) {
+      console.error(
+        "webhook-mercadopago: concluir_estorno (estorno fora do app) recusou — acima do total",
+        orderId,
+        mpRefundId,
+        erroConcluir,
+      );
+      return false;
+    }
+    throw erroConcluir;
+  }
+  return true;
+}
+
+/**
+ * PASSO NOVO (T5, plano 20260907-plano-estorno-pelo-app.md): registra o
+ * desfecho do estorno — inclusive o feito FORA do app (painel do MP) e a
+ * contestação (chargeback) — a partir do objeto JÁ CONSULTADO ao MP (`corpo`;
+ * sem segundo GET). Chamada DEPOIS da consulta e da conferência de
+ * `pareceUuid(externalReference)`, ANTES do retorno antecipado de
+ * `statusMapeado === null` (PEDIDO-05: `processed:partially_refunded` mapeia
+ * para `null` de propósito, e sem este passo esse caso saía por "status
+ * desconhecido" sem registrar nada).
+ *
+ * Gatilhos (lidos do objeto CONSULTADO, nunca do corpo do webhook — quem
+ * chama já filtrou): `status === "refunded"`, `status_detail ===
+ * "partially_refunded"`, ou `status === "charged_back"`. `status`/
+ * `status_detail` ficam na RAIZ do objeto nas DUAS rotas: `consultarOrder`
+ * devolve a order com eles na raiz (medido 14/08/2026); `consultarPagamento`
+ * agora devolve `corpo` (item (b) do brief), o JSON cru do payment, que
+ * também os tem na raiz (campo padrão da API clássica do MP).
+ *
+ * INVARIANTE (achado 1, laudo rodada 2 do PR #440 — P0): um refund do MP
+ * credita UMA linha do ledger. `decidirConclusaoPelaConsulta` (P0) já
+ * cumpre essa regra por linha; este passo cumpre a mesma regra AO LONGO do
+ * lote (processa as linhas pendentes da mais velha para a mais nova,
+ * acumulando `reivindicados` e `pedido.valor_estornado` EM MEMÓRIA entre
+ * elas — I-B do laudo do #438: sem o acumulado em memória, a 2ª linha do
+ * MESMO pedido no MESMO lote decidiria com o `valor_estornado` velho).
+ */
+async function registrarDesfechoDoEstorno(args: {
+  supabase: ReturnType<typeof createClient>;
+  orderId: string;
+  rota: "payment" | "order";
+  corpo: Record<string, unknown>;
+}): Promise<void> {
+  const { supabase, orderId, rota, corpo } = args;
+  const ehPayments = rota === "payment";
+  const status = typeof corpo.status === "string" ? corpo.status : "";
+  const statusDetail = typeof corpo.status_detail === "string" ? corpo.status_detail : "";
+
+  // Leitura FRESCA, service role (item 1 do passo A): todas as linhas do
+  // pedido (qualquer status — precisamos delas para `reivindicados` e para
+  // saber o que já está em curso) e o pedido.
+  const { data: refundsRowsBrutos, error: erroRefundsRows } = await supabase
+    .from("order_refunds")
+    .select(
+      "id, amount, status, solicitado_por, mp_refund_id, mp_status, tentativas, concluido_em, created_at",
+    )
+    .eq("order_id", orderId);
+  if (erroRefundsRows) throw erroRefundsRows;
+  const linhasBanco = (refundsRowsBrutos ?? []) as Array<Record<string, unknown>>;
+
+  const { data: pedidoRow, error: erroPedidoRow } = await supabase
+    .from("marketplace_orders")
+    .select("id, gateway_payment_id, total, valor_estornado, payment_status, paid_at, status")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (erroPedidoRow) throw erroPedidoRow;
+  if (!pedidoRow) {
+    // O pedido some é tratado pelo restante do handler (a RPC
+    // confirmar_pagamento tem o rótulo 'inexistente' próprio) — aqui só
+    // desiste de registrar o desfecho do estorno, sem derrubar o evento.
+    console.error(
+      "webhook-mercadopago: pedido do estorno não encontrado ao registrar o desfecho",
+      orderId,
+    );
+    return;
+  }
+
+  // `pedido` é MUTÁVEL de propósito (I-B): `valor_estornado` sobe EM
+  // MEMÓRIA a cada linha concluída dentro deste MESMO lote.
+  const pedido: PedidoParaEstorno = {
+    id: String((pedidoRow as Record<string, unknown>).id),
+    gateway_payment_id: String((pedidoRow as Record<string, unknown>).gateway_payment_id ?? ""),
+    total: Number((pedidoRow as Record<string, unknown>).total),
+    valor_estornado: Number((pedidoRow as Record<string, unknown>).valor_estornado ?? 0),
+    payment_status: (pedidoRow as Record<string, unknown>).payment_status as string | null,
+    paid_at: (pedidoRow as Record<string, unknown>).paid_at as string | null,
+    status: String((pedidoRow as Record<string, unknown>).status),
+  };
+
+  // Item 5 do brief (janela de falha entre o INSERT e a RPC, W6): toda linha
+  // 'sistema' já 'concluido' mas com concluido_em NULO (crash de um ciclo
+  // anterior entre o INSERT e a RPC) recebe concluir_estorno de novo —
+  // idempotente por contrato (COALESCE dos campos do MP na RPC, prova P13).
+  // Roda ANTES de qualquer outra decisão deste passo.
+  for (const linha of linhasBanco) {
+    if (
+      linha.solicitado_por === "sistema" &&
+      linha.status === "concluido" &&
+      (linha.concluido_em === null || linha.concluido_em === undefined)
+    ) {
+      const { error: erroRecuperacao } = await supabase.rpc("concluir_estorno", {
+        p_refund_id: linha.id,
+      });
+      if (erroRecuperacao) {
+        if (
+          String((erroRecuperacao as { message?: string }).message ?? "").includes(
+            "estorno_acima_do_total",
+          )
+        ) {
+          console.error(
+            "webhook-mercadopago: concluir_estorno (recuperação da janela de falha) recusou — acima do total",
+            orderId,
+            linha.id,
+            erroRecuperacao,
+          );
+        } else {
+          throw erroRecuperacao;
+        }
+      }
+    }
+  }
+
+  // `reivindicados`: mp_refund_id de TODAS as linhas do pedido (qualquer
+  // status) que já têm id — um refund do MP credita UMA linha (P0).
+  const reivindicados = new Set<string>(
+    linhasBanco
+      .map((l) => l.mp_refund_id)
+      .filter((id): id is string => typeof id === "string"),
+  );
+
+  // ── A) Estorno (refunded / partially_refunded) ───────────────────────────
+  const statusTerminal = ehPayments ? STATUS_REFUND_APROVADO_PAYMENTS : STATUS_REFUND_CONCLUIDO_ORDERS;
+  const refundsBrutos = ehPayments
+    ? (Array.isArray(corpo.refunds)
+      ? (corpo.refunds as unknown[]).filter((r) => r && typeof r === "object") as Array<
+        Record<string, unknown>
+      >
+      : [])
+    : refundsDaOrder(corpo);
+  // UMA passagem só (ANOTADO do laudo Opus rodada 2): loga o que NÃO é
+  // terminal (item 2 do passo A) e já separa o que é, sem percorrer
+  // `refundsBrutos` duas vezes.
+  const refundsConcluidos: Array<Record<string, unknown>> = [];
+  for (const r of refundsBrutos) {
+    if (r.status !== statusTerminal) {
+      // Refund em outro status (in_process, rejected, …) não conta ainda —
+      // item 2 do passo A.
+      console.log(
+        "webhook-mercadopago: refund em status não terminal, ignorado neste ciclo",
+        orderId,
+        r.status,
+      );
+      continue;
+    }
+    refundsConcluidos.push(r);
+  }
+
+  // Linhas PENDENTES do pedido (mais velha primeiro) — nunca 'sistema'
+  // (dinheiro que já saiu por fora, não em curso pelo app).
+  const pendentes = linhasBanco
+    .filter((l) =>
+      (l.status === "solicitado" || l.status === "em_processamento") &&
+      l.solicitado_por !== "sistema"
+    )
+    .sort((a, b) => {
+      const da = typeof a.created_at === "string" ? Date.parse(a.created_at) : 0;
+      const db = typeof b.created_at === "string" ? Date.parse(b.created_at) : 0;
+      return da - db;
+    });
+
+  for (const linhaBanco of pendentes) {
+    const linha: LinhaEstorno = {
+      id: String(linhaBanco.id),
+      order_id: orderId,
+      amount: Number(linhaBanco.amount),
+      status: linhaBanco.status as LinhaEstorno["status"],
+      mp_refund_id: (linhaBanco.mp_refund_id as string | null) ?? null,
+      tentativas: Number(linhaBanco.tentativas ?? 0),
+    };
+    const resultado = decidirConclusaoPelaConsulta({
+      corpo,
+      ehPayments,
+      linha,
+      pedido,
+      idsJaReivindicados: Array.from(reivindicados),
+      temPreVeredito: false,
+    });
+    if (resultado.tipo === "concluido") {
+      const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
+        p_refund_id: linha.id,
+        p_mp_refund_id: resultado.mp_refund_id,
+        p_mp_status: resultado.mp_status,
+        p_mp_status_detail: resultado.mp_status_detail,
+      });
+      if (erroConcluir) {
+        if (
+          String((erroConcluir as { message?: string }).message ?? "").includes(
+            "estorno_acima_do_total",
+          )
+        ) {
+          console.error(
+            "webhook-mercadopago: concluir_estorno recusou — acima do total",
+            orderId,
+            linha.id,
+            erroConcluir,
+          );
+          continue;
+        }
+        throw erroConcluir;
+      }
+      if (resultado.mp_refund_id) reivindicados.add(resultado.mp_refund_id);
+      // I-B: acumulado EM MEMÓRIA — a próxima linha do lote decide com ele.
+      pedido.valor_estornado = Number((pedido.valor_estornado + linha.amount).toFixed(2));
+      // BLOQUEIA-1 (laudo Opus rodada 2, PR #449): `somaEmCurso` (abaixo)
+      // percorre `linhasBanco` como foi lida no INÍCIO do passo — sem
+      // marcar esta linha como concluída AQUI, no objeto local, ela
+      // continua contando como 'solicitado'/'em_processamento' nesse
+      // array, e o valor dela seria descontado DUAS vezes do `disponivel`
+      // do estorno externo (uma via `pedido.valor_estornado`, acima; outra
+      // via `somaEmCurso`). Mutar o objeto local é seguro: `linhaBanco` é a
+      // MESMA referência que `linhasBanco` guarda (ambos vêm do mesmo
+      // SELECT desta chamada) — `somaEmCurso`, chamada mais abaixo NESTE
+      // MESMO lote, já enxerga o status atualizado.
+      linhaBanco.status = "concluido";
+    }
+    // tentar_depois → nada (o cron continua com ela).
+  }
+
+  // Item 4 do passo A: refunds "processed"/"approved" que SOBRARAM fora de
+  // `reivindicados` = estorno feito FORA do app (painel do MP).
+  const somaEmCurso = (rows: Array<Record<string, unknown>>) =>
+    rows
+      .filter((l) => l.status === "solicitado" || l.status === "em_processamento")
+      .reduce((acc, l) => acc + Number(l.amount ?? 0), 0);
+
+  for (const refund of refundsConcluidos) {
+    const refundId = typeof refund.id === "string" || typeof refund.id === "number"
+      ? String(refund.id)
+      : "";
+    if (!refundId || reivindicados.has(refundId)) continue;
+
+    const valorRefundBruto = Number(refund.amount);
+    // ANTES-DE-CRESCER-1 (laudo Opus rodada 2, PR #449): valor ilegível OU
+    // não-positivo é "não sei", NUNCA "zero" — `amount: 0` violaria
+    // `CHECK (amount > 0)` no banco (500 em laço, o MP reenvia para
+    // sempre); `amount <= 0` também violaria o mesmo CHECK, e não-positivo
+    // não tem leitura de negócio aqui (refund de valor zero/negativo não é
+    // um refund). Pula este refund (nenhum insert, nenhuma RPC); o resto do
+    // handler continua (confirmar_pagamento do status atual roda do mesmo
+    // jeito).
+    if (!Number.isFinite(valorRefundBruto) || valorRefundBruto <= 0) {
+      console.error(
+        "webhook-mercadopago: refund sem valor legível ou não-positivo — pulando (não é 'não sei' = 0)",
+        orderId,
+        refundId,
+      );
+      continue;
+    }
+    const valorRefund = valorRefundBruto;
+    const disponivel = Number(
+      (pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2),
+    );
+
+    if (disponivel <= 0) {
+      console.error(
+        "webhook-mercadopago: estorno externo além do que o pedido pode registrar",
+        orderId,
+        refundId,
+        { disponivel, valorRefund },
+      );
+      continue;
+    }
+
+    const amountClampado = Math.min(valorRefund, disponivel);
+    const ok = await inserirEstornoConcluido({
+      supabase,
+      orderId,
+      amount: amountClampado,
+      valorOriginal: valorRefund,
+      motivoBase: "estorno feito fora do app (Mercado Pago)",
+      mpRefundId: refundId,
+      mpStatus: status,
+      mpStatusDetail: statusDetail || null,
+    });
+    if (ok) {
+      reivindicados.add(refundId);
+      pedido.valor_estornado = Number((pedido.valor_estornado + amountClampado).toFixed(2));
+    }
+  }
+
+  // ── B) Chargeback (status === "charged_back") ────────────────────────────
+  if (status === "charged_back") {
+    const linhaChargeback = linhasBanco.find(
+      (l) => l.solicitado_por === "sistema" && l.mp_status === "charged_back",
+    );
+
+    // Valor pago: payment → transaction_amount (do corpo cru); order →
+    // extrairValorDaOrder — MESMO clamp do item A4.
+    const valorPagoBruto = ehPayments ? Number(corpo.transaction_amount) : extrairValorDaOrder(corpo);
+    // ANTES-DE-CRESCER-1: valor ilegível OU não-positivo é "não sei", nunca
+    // "zero" — só afeta os DOIS ramos que nascem uma linha NOVA com
+    // `amountCb` (in_process sem linha, settled sem linha); a linha
+    // EXISTENTE (settled/reimbursed) usa o próprio `linhaChargeback.amount`,
+    // já gravado, e não lê valorPago.
+    const valorPagoValido = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto) &&
+      valorPagoBruto > 0;
+    const valorPago = valorPagoValido ? valorPagoBruto : 0;
+    const disponivelCb = Number(
+      (pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2),
+    );
+    const amountCb = Math.min(valorPago, disponivelCb > 0 ? disponivelCb : 0);
+
+    if (statusDetail === "in_process") {
+      if (!linhaChargeback) {
+        if (!valorPagoValido) {
+          console.error(
+            "webhook-mercadopago: chargeback (in_process) sem valor pago legível — pulando (não é 'não sei' = 0)",
+            orderId,
+          );
+        } else if (disponivelCb <= 0) {
+          console.error(
+            "webhook-mercadopago: chargeback além do que o pedido pode reservar",
+            orderId,
+          );
+        } else {
+          const { error: erroInsertCb } = await supabase.from("order_refunds").insert({
+            order_id: orderId,
+            amount: amountCb,
+            solicitado_por: "sistema",
+            status: "em_processamento",
+            motivo: "contestação (chargeback) em análise no Mercado Pago",
+            mp_status: "charged_back",
+            mp_status_detail: "in_process",
+            mp_refund_id: null,
+            ultimo_erro: null,
+          });
+          if (erroInsertCb) throw erroInsertCb;
+        }
+      }
+      // já existe: nada (dedupe por solicitado_por='sistema' AND
+      // mp_status='charged_back').
+    } else if (statusDetail === "settled") {
+      if (linhaChargeback) {
+        const { error: erroConcluirCb } = await supabase.rpc("concluir_estorno", {
+          p_refund_id: linhaChargeback.id,
+          p_mp_refund_id: null,
+          p_mp_status: "charged_back",
+          p_mp_status_detail: "settled",
+        });
+        if (erroConcluirCb) {
+          if (
+            String((erroConcluirCb as { message?: string }).message ?? "").includes(
+              "estorno_acima_do_total",
+            )
+          ) {
+            console.error(
+              "webhook-mercadopago: concluir_estorno (chargeback settled) recusou — acima do total",
+              orderId,
+              erroConcluirCb,
+            );
+          } else {
+            throw erroConcluirCb;
+          }
+        }
+      } else if (!valorPagoValido) {
+        console.error(
+          "webhook-mercadopago: chargeback (settled) sem valor pago legível — pulando (não é 'não sei' = 0)",
+          orderId,
+        );
+      } else if (disponivelCb <= 0) {
+        console.error(
+          "webhook-mercadopago: chargeback (settled) além do que o pedido pode registrar",
+          orderId,
+        );
+      } else {
+        // A notificação de in_process nunca chegou: nasce já concluido,
+        // como em A4 (mesmo helper — "nasce concluido, nunca solicitado").
+        await inserirEstornoConcluido({
+          supabase,
+          orderId,
+          amount: amountCb,
+          valorOriginal: valorPago,
+          motivoBase: "estorno feito fora do app (Mercado Pago)",
+          mpRefundId: null,
+          mpStatus: "charged_back",
+          mpStatusDetail: "settled",
+        });
+      }
+    } else if (statusDetail === "reimbursed") {
+      if (linhaChargeback) {
+        const { error: erroUpdateCb } = await supabase
+          .from("order_refunds")
+          .update({
+            status: "recusado",
+            mp_status_detail: "reimbursed",
+            ultimo_erro: "o Mercado Pago decidiu a contestação a favor da loja: o dinheiro ficou com você",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", linhaChargeback.id)
+          .in("status", ["em_processamento"]);
+        if (erroUpdateCb) throw erroUpdateCb;
+      } else {
+        console.log(
+          "webhook-mercadopago: chargeback reimbursed sem linha em_processamento — nada a atualizar",
+          orderId,
+        );
+      }
+      // nunca soma.
+    }
+  }
+}
+
 /**
  * `deps` é a mesma costura da `criar-pagamento` (index.ts:124-135): em
  * produção o `serve()` lá embaixo chama `handler(req)` com um único
@@ -479,6 +976,10 @@ async function handler(
   let idParaRpc: string;
   let statusBrutoParaLog: string;
   let valorPagoMp: number | undefined;
+  // T5 (estorno pelo app): o objeto JÁ CONSULTADO, nas duas rotas, para o
+  // passo novo (`registrarDesfechoDoEstorno`) ler `status`/`status_detail`/
+  // `refunds[]`/`transaction_amount_refunded` SEM um segundo GET.
+  let corpoConsultado: Record<string, unknown> | null = null;
 
   if (rota === "payment") {
     const consulta = await consultarPagamento({
@@ -506,6 +1007,9 @@ async function handler(
     // Valor aprovado, direto da resposta autenticada (laudo 31/08, A3):
     // undefined quando o corpo não trouxe número — nunca 0.
     valorPagoMp = typeof consulta.valor === "number" ? consulta.valor : undefined;
+    // Item (b) do brief da T5: o JSON cru — `status_detail`/`refunds[]`/
+    // `transaction_amount_refunded` moram nele, não nos campos já tipados.
+    corpoConsultado = (consulta as Record<string, unknown>).corpo as Record<string, unknown> | undefined ?? null;
   } else {
     const consulta = await consultarOrder({
       token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
@@ -556,13 +1060,21 @@ async function handler(
     // raiz (`total_amount`) ou em `transactions.payments[0].amount`
     // (laudo 31/08, A3; conversão só de campo presente, ver helper).
     valorPagoMp = extrairValorDaOrder(order);
+    corpoConsultado = order;
   }
 
-  if (statusMapeado === null) {
-    console.warn("webhook-mercadopago: status desconhecido do MP", dataIdStr, rota, statusBrutoParaLog);
-    return json({ ok: true, ignorado: "status desconhecido" }, 200);
-  }
-
+  // ⚠️ Reordenado pela T5 (08/09/2026): o retorno antecipado de
+  // `statusMapeado === null` costumava vir ANTES do `pareceUuid`. Ele agora
+  // vem DEPOIS do passo novo (`registrarDesfechoDoEstorno`, chamado logo
+  // abaixo) porque `processed:partially_refunded` mapeia para `null` DE
+  // PROPÓSITO (PEDIDO-05) — sem esta troca, todo estorno PARCIAL saía por
+  // "status desconhecido" sem registrar nada no ledger. Efeito colateral da
+  // ORDEM: o `pareceUuid` agora decide PRIMEIRO — um evento com status
+  // desconhecido (nem estorno, nem par mapeado) E `external_reference` sem
+  // forma de UUID responde "external_reference inválido" (o `return` abaixo),
+  // nunca chega no "status desconhecido" mais adiante. Nenhum dos dois é
+  // silencioso (os dois logam e devolvem 200), só muda QUAL rótulo aparece no
+  // log quando as duas condições coincidem.
   if (!pareceUuid(externalReference)) {
     console.warn(
       "webhook-mercadopago: external_reference sem forma de UUID",
@@ -579,6 +1091,48 @@ async function handler(
       Deno.env.get("SUPABASE_URL") ?? "",
       readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
     );
+
+  // PASSO NOVO (T5): gatilhos lidos do objeto CONSULTADO, nunca do corpo do
+  // webhook. Fora disso o passo não roda (0 leituras extras) — ver o
+  // docstring de `registrarDesfechoDoEstorno`.
+  const statusDoEstorno = typeof corpoConsultado?.status === "string" ? corpoConsultado.status : "";
+  const statusDetailDoEstorno = typeof corpoConsultado?.status_detail === "string"
+    ? corpoConsultado.status_detail
+    : "";
+  const gatilhoDeEstorno = statusDoEstorno === "refunded" ||
+    statusDetailDoEstorno === "partially_refunded" ||
+    statusDoEstorno === "charged_back";
+
+  if (gatilhoDeEstorno && corpoConsultado) {
+    try {
+      await registrarDesfechoDoEstorno({ supabase, orderId, rota, corpo: corpoConsultado });
+    } catch (erro) {
+      console.error(
+        "webhook-mercadopago: registrarDesfechoDoEstorno falhou — evento mantido na fila do MP",
+        orderId,
+        erro,
+      );
+      return json({ error: "Erro ao registrar o desfecho do estorno." }, 500);
+    }
+  }
+
+  if (statusMapeado === null) {
+    // PEDIDO-05: `processed:partially_refunded` mapeia para `null` de
+    // propósito — o passo acima JÁ registrou o desfecho (se houver linha
+    // pendente ou refund externo). Responder diferente do "status
+    // desconhecido" genérico: 200 com rótulo próprio, log info (não warn).
+    if (statusDetailDoEstorno === "partially_refunded") {
+      console.log(
+        "webhook-mercadopago: estorno parcial registrado",
+        dataIdStr,
+        rota,
+        statusBrutoParaLog,
+      );
+      return json({ ok: true, resultado: "estorno_parcial_registrado" }, 200);
+    }
+    console.warn("webhook-mercadopago: status desconhecido do MP", dataIdStr, rota, statusBrutoParaLog);
+    return json({ ok: true, ignorado: "status desconhecido" }, 200);
+  }
 
   // CORREÇÃO DOS TRÊS ELOS (achado de auditoria, 21/08/2026): `criar-pagamento`
   // (index.ts:590) SEMPRE grava em `gateway_payment_id` o id da ORDER (ULID,

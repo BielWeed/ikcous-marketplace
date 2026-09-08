@@ -212,21 +212,30 @@ export function montarCorpoCartao(args: {
  *
  * "processed:partially_refunded" NÃO está nesta tabela, de propósito
  * (PEDIDO-05, auditoria de 26/08/2026). Estava mapeado para "estornado" — o
- * MESMO rótulo do estorno TOTAL ("refunded:refunded") — e este banco não tem
- * coluna de VALOR estornado: a informação de "quanto voltou" nunca entra.
- * `confirmar_pagamento` não distingue os dois rótulos, e as nove agregações
- * do analítico filtram `payment_status IN ('pago', 'pago_apos_expirar')`
+ * MESMO rótulo do estorno TOTAL ("refunded:refunded") — e este banco NÃO
+ * distinguia "quanto voltou" pelo `payment_status`. `confirmar_pagamento`
+ * não distingue os dois rótulos, e as nove agregações do analítico filtram
+ * `payment_status IN ('pago', 'pago_apos_expirar')`
  * (`20260822000100_analitico_conta_so_dinheiro_reconhecido.sql`) — um
  * estorno de R$ 5 num pedido de R$ 200 apagava os R$ 200 inteiros do
  * faturamento, não só os R$ 5. A doc oficial do MP (checkout-api-orders/
  * payment-management/status/order-status, context7, 26/08/2026) confirma que
  * "processed" + "partially_refunded" é o par documentado para devolução
  * PARCIAL — distinto de "refunded" + "refunded" (devolução TOTAL, estado
- * terminal). Modelar "quanto" é decisão de produto que não é desta correção;
- * o conserto mínimo e correto é NÃO AFIRMAR o que não se sabe: par ausente
- * cai no `?? null` de `mapearStatusOrder` (abaixo), a MESMA regra que o
- * resto deste arquivo já segue para todo par desconhecido — o pedido fica
- * intacto e o caso vira log, em vez de apagar uma venda inteira em silêncio.
+ * terminal). ATUALIZAÇÃO (T5 do plano de estorno pelo app, 08/09/2026): esta
+ * tabela continua devolvendo `null` para o par PARCIAL de propósito — o
+ * `payment_status` nunca ganhou um terceiro rótulo para "parcialmente
+ * estornado". O que mudou é que "quanto voltou" agora TEM onde morar: a
+ * coluna `marketplace_orders.valor_estornado` e o ledger `order_refunds`
+ * (migration `2026110000000_o_estorno_nasce_no_ledger.sql`), registrados
+ * pelo passo novo do `webhook-mercadopago`
+ * (`registrarDesfechoDoEstorno`) — não por esta tabela nem por
+ * `mapearStatusOrder`. Continua certo NÃO AFIRMAR pelo `payment_status` o
+ * que ele não tem vocabulário para dizer: par ausente cai no `?? null` de
+ * `mapearStatusOrder` (abaixo), a MESMA regra que o resto deste arquivo já
+ * segue para todo par desconhecido — o pedido fica intacto e o caso vira
+ * log (ou, agora, linha no ledger), em vez de apagar uma venda inteira em
+ * silêncio.
  *
  * OUTROS PARES REVISADOS PELA MESMA REGRA, E MANTIDOS: "charged_back:*"
  * (in_process/settled/reimbursed) não têm "partial" no nome nem na doc do MP
@@ -776,6 +785,12 @@ type ResultadoPagamento =
       qrCode?: string;
       qrCodeBase64?: string;
       ticketUrl?: string;
+      // ADITIVO (item (b) do brief da T5, 08/09/2026): o JSON cru da
+      // resposta, para a rota `payment` do webhook ler `refunds[]`/
+      // `transaction_amount_refunded`/`status_detail` SEM um segundo GET —
+      // os campos já tipados acima (`status`, `valor`...) continuam
+      // existindo e não mudam; `corpo` é só o objeto por trás deles.
+      corpo?: Record<string, unknown>;
     }
   | { ok: false; erro: string; status: number };
 
@@ -920,6 +935,7 @@ async function interpretarRespostaDePagamento(
     qrCode: dados.qr_code as string | undefined,
     qrCodeBase64: dados.qr_code_base64 as string | undefined,
     ticketUrl: dados.ticket_url as string | undefined,
+    corpo: json,
   };
 }
 

@@ -140,7 +140,7 @@ function clienteFalso(opts: {
               // método que vem em seguida.
               eq(_coluna: string, orderId: string) {
                 return {
-                  neq(_coluna2: string, idAtual: string) {
+                  neq(coluna2: string, idAtual: string) {
                     return {
                       not(_coluna3: string, _op: string, _valor: unknown) {
                         if (opts.erroIdsJaReivindicados) {
@@ -149,6 +149,17 @@ function clienteFalso(opts: {
                             error: opts.erroIdsJaReivindicados,
                           });
                         }
+                        // AC3-a (laudo Opus #447 rodada 2, 08/09/2026): o
+                        // dublê tem de CONFERIR a coluna real que a produção
+                        // passou a `.neq()`, não descartá-la e reimplementar
+                        // a exclusão pelo `id` na mão — sem isso, trocar a
+                        // coluna em produção (ex.: "id" -> "mp_refund_id",
+                        // R15) passa batido porque o mock nunca olhava para
+                        // ela. `assertEquals` é a prova: mutar
+                        // reconciliar-pagamentos/index.ts:598 para
+                        // `.neq("mp_refund_id", refund.id)` faz este assert
+                        // (e R15) falharem.
+                        assertEquals(coluna2, "id");
                         const ids = opts.idsJaReivindicadosPorPedido?.(
                           orderId,
                           idAtual,
@@ -163,7 +174,23 @@ function clienteFalso(opts: {
                 };
               },
               in(_coluna: string, _valores: string[]) {
-                return {
+                // R14 (T5, webhook): linha `solicitado_por = 'sistema'` é
+                // dinheiro que já se moveu FORA do app — o cron nunca a
+                // toca. `.neq()` é CAUSAL aqui (filtra pelos argumentos reais
+                // que a produção passa, acumulados em `exclusoes`), e não é
+                // estrutural: `.lt()` fica disponível tanto encadeado depois
+                // de `.neq()` quanto direto em cima de `.in()` — assim, se a
+                // produção deixar de chamar `.neq("solicitado_por","sistema")`,
+                // o mock não quebra com TypeError (o que o `catch` externo do
+                // handler engoliria e faria o teste passar por acidente); a
+                // linha 'sistema' simplesmente deixa de ser excluída, e a
+                // mutação aparece como uma diferença real no resultado.
+                const comExclusoes = (
+                  exclusoes: Array<{ coluna: string; valor: unknown }>,
+                ) => ({
+                  neq(coluna: string, valor: unknown) {
+                    return comExclusoes([...exclusoes, { coluna, valor }]);
+                  },
                   lt(_colunaData: string, valorLimite: string) {
                     // D4 (ANTES-DE-CRESCER 6): a producao encadeia DOIS
                     // `.order()` (tentativas ASC, created_at ASC) antes do
@@ -186,8 +213,15 @@ function clienteFalso(opts: {
                         }
                         const todos = opts.refundsPendentes ?? [];
                         const filtrados = todos.filter((r) => {
-                          const upd = (r as Record<string, unknown>).updated_at;
-                          return typeof upd !== "string" || upd < valorLimite;
+                          const registro2 = r as Record<string, unknown>;
+                          const upd = registro2.updated_at;
+                          const passaJanela = typeof upd !== "string" || upd < valorLimite;
+                          // Causal: só exclui pelo que `.neq()` de fato
+                          // recebeu — sem chamada, sem exclusão nenhuma.
+                          const passaExclusoes = exclusoes.every(
+                            ({ coluna, valor }) => registro2[coluna] !== valor,
+                          );
+                          return passaJanela && passaExclusoes;
                         });
                         const ordenados = [...filtrados].sort((a, b) => {
                           for (const { coluna, ascendente } of criterios) {
@@ -210,7 +244,8 @@ function clienteFalso(opts: {
                     });
                     return comCriterios([]);
                   },
-                };
+                });
+                return comExclusoes([]);
               },
             };
           },
@@ -1707,4 +1742,52 @@ Deno.test("R15 - linha em_processamento que JÁ carrega o PRÓPRIO mp_refund_id 
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "rf-self-linha");
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "rf-self");
+});
+
+// =============================================================================
+// R14 — item "reconciliar-pagamentos" do brief da T5 (webhook): linha
+// `solicitado_por = 'sistema'` (estorno feito fora do app, ou chargeback em
+// análise) é dinheiro que JÁ se moveu — o cron jamais chama `executarEstorno`
+// para ela (seria um POST de refund NOVO com a chave dela = pagar duas
+// vezes). Só o webhook grava e conclui linha `sistema`.
+// =============================================================================
+
+Deno.test("R14 - linha 'sistema' em em_processamento NÃO é consultada nem POSTada; 'vistos' não a conta (mutação: tirar o .neq derruba)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara();
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      {
+        id: "r14-sistema",
+        order_id: pedido.id,
+        amount: 10,
+        status: "em_processamento",
+        solicitado_por: "sistema",
+        tentativas: 1,
+        mp_refund_id: null,
+      },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // A linha 'sistema' nunca entra na fila que o handler enxerga: 'vistos'
+  // fica em 0, nenhuma chamada ao MP, nenhuma atualização da linha.
+  assertEquals(corpo.estornos, { vistos: 0, concluidos: 0, adiados: 0, falhos: 0 });
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(registro.atualizacoesOrderRefunds.length, 0);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
 });
