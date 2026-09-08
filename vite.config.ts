@@ -33,6 +33,39 @@ try {
   console.warn("Aviso ao carregar branding.json:", e);
 }
 
+// Endereço público de CADA loja — MESMO corpo de `resolverEnderecoPublico`
+// em middleware.ts (docstring completa lá). Duplicado, não importado: um
+// `import { resolverEnderecoPublico } from "./middleware.ts"` aqui puxa
+// middleware.ts para o programa de `tsconfig.node.json`, e `tsc -b --force`
+// reprova com TS2559 ("Type 'ProcessEnv' has no properties in common with
+// type ...") — a checagem de "weak type" do TypeScript não conta o índice de
+// `ProcessEnv` como propriedade em comum com um tipo só de campos opcionais.
+// Medido em 08/09/2026 tentando a importação antes de duplicar.
+type AmbienteEnderecoPublico = {
+  VITE_APP_URL?: string;
+  VERCEL_PROJECT_PRODUCTION_URL?: string;
+  VERCEL_URL?: string;
+};
+
+export function resolverEnderecoPublico(env: AmbienteEnderecoPublico): string {
+  const candidatos = [
+    env.VITE_APP_URL,
+    env.VERCEL_PROJECT_PRODUCTION_URL,
+    env.VERCEL_URL,
+  ];
+
+  for (const candidato of candidatos) {
+    const valor = (candidato ?? "").trim();
+    if (valor === "") continue;
+    const comProtocolo = /^https?:\/\//.test(valor)
+      ? valor
+      : `https://${valor}`;
+    return comProtocolo.replace(/\/+$/, "");
+  }
+
+  return "https://ickous-marketplace.vercel.app";
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -178,11 +211,12 @@ export default defineConfig(({ mode, command }) => {
 
           const supabaseUrl = env.VITE_SUPABASE_URL || "";
           const supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : "";
-          const appUrl =
-            env.VITE_APP_URL ||
-            (process.env.VERCEL_URL
-              ? `https://${process.env.VERCEL_URL}`
-              : "https://ickous-marketplace.vercel.app");
+          const appUrl = resolverEnderecoPublico({
+            VITE_APP_URL: env.VITE_APP_URL,
+            VERCEL_PROJECT_PRODUCTION_URL:
+              process.env.VERCEL_PROJECT_PRODUCTION_URL,
+            VERCEL_URL: process.env.VERCEL_URL,
+          });
 
           let customizedHtml = html;
 
