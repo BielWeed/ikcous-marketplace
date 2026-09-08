@@ -89,8 +89,19 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
   /**
    * Renderiza o componente de verdade e dispara o `onSubmit` do Brick (PIX,
    * sem token) — mesmo caminho de `renderComPix` em pagamento-online.test.tsx.
+   *
+   * `resposta` permite ao chamador sobrescrever o que `criarPagamento`
+   * resolve — usado pelo teste do estado `{qrCodeBase64, qrCode: undefined}`
+   * (A-1 do laudo Opus), que a edge de fato pode devolver porque extrai os
+   * dois campos em separado.
    */
-  async function renderComPix() {
+  async function renderComPix(
+    resposta?: Partial<{
+      qrCode: string;
+      qrCodeBase64: string;
+      ticketUrl: string;
+    }>,
+  ) {
     const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
     // @ts-expect-error stub do SDK
     globalThis.MercadoPago = function MercadoPagoStub() {
@@ -103,6 +114,7 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       expiraEm: "2026-08-06T15:30:00.000Z",
       qrCode: QR_CODE_TESTE,
       qrCodeBase64: "abc123",
+      ...resposta,
     });
 
     await act(async () => {
@@ -173,6 +185,69 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       | HTMLInputElement
       | null;
     expect(campo).toBeTruthy();
+    // Laudo Opus A-4 (08/09/2026): o seletor `"textarea, input[readonly]"`
+    // casa QUALQUER textarea, com ou sem `readOnly` — só o ramo `input`
+    // exige o atributo. Asserção explícita fecha a lacuna.
+    expect(campo!.readOnly).toBe(true);
     expect(campo!.value).toBe(QR_CODE_TESTE);
   });
+
+  it("A-1: sem qrCode (só qrCodeBase64), não existe botão de copiar nem campo de falha — QR e link continuam", async () => {
+    await renderComPix({
+      qrCode: undefined,
+      qrCodeBase64: "abc123",
+      ticketUrl: "https://mercadopago.com/ticket/abc",
+    });
+
+    expect(botaoCopiar()).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain(
+      "Não consegui copiar sozinho. Toque no código abaixo, segure e copie.",
+    );
+    expect(hospedeiro.querySelector("textarea")).toBeNull();
+    expect(hospedeiro.querySelector("img[alt='QR code do PIX']")).toBeTruthy();
+    expect(
+      [...hospedeiro.querySelectorAll("a")].find((a) =>
+        a.textContent?.includes("Pagar pelo Mercado Pago"),
+      ),
+    ).toBeTruthy();
+  });
+
+  it("A-2: clipboard rejeita — a região role=status contém a frase de instrução", async () => {
+    clipboardWriteText = vi
+      .fn()
+      .mockRejectedValue(new Error("NotAllowedError"));
+
+    await renderComPix();
+
+    const botao = botaoCopiar();
+    await act(async () => {
+      botao!.click();
+      await esperarMicrotarefas();
+    });
+
+    const regiao = hospedeiro.querySelector('[role="status"]');
+    expect(regiao).toBeTruthy();
+    expect(regiao!.textContent).toContain(
+      "Não consegui copiar sozinho. Toque no código abaixo, segure e copie.",
+    );
+  });
+
+  it("depois de 2s, 'Copiado!' volta a 'Copiar código PIX'", async () => {
+    // Timers de verdade: `renderComPix`/`esperarMicrotarefas` dependem de
+    // `setTimeout` real, e fake timers globais travariam a montagem do SDK.
+    // Só o intervalo de 2s do próprio `handleCopiarPix` importa aqui.
+    await renderComPix();
+
+    const botao = botaoCopiar();
+    await act(async () => {
+      botao!.click();
+      await esperarMicrotarefas();
+    });
+    expect(botaoCopiar()!.textContent).toContain("Copiado!");
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2100));
+    });
+    expect(botaoCopiar()!.textContent).toContain("Copiar código PIX");
+  }, 10000);
 });
