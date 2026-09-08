@@ -10,6 +10,9 @@ import {
   guardaAntesDeChamar,
   interpretarResposta,
   montarRequisicao,
+  MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS,
+  MOTIVO_NAO_COBRE,
+  MOTIVO_NAO_COBRE_CONSERVADOR,
   refundsDaOrder,
   type LinhaEstorno,
   type PedidoParaEstorno,
@@ -1766,7 +1769,7 @@ Deno.test("E41 - AC-2: soma dos processed COBRE mas nenhum bate o valor exato da
   // Mutação m2 (trocar o motivo novo pelo antigo): E41 cai.
   assertEquals(
     (comPreVeredito as { motivo: string }).motivo,
-    "o Mercado Pago informa que este valor já foi devolvido por fora do app, em parcelas diferentes desta devolução; ela não é mais necessária",
+    MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS,
   );
 
   // Controle: um processed de 5 só (a soma NÃO cobre) — motivo ANTIGO.
@@ -1793,10 +1796,7 @@ Deno.test("E41 - AC-2: soma dos processed COBRE mas nenhum bate o valor exato da
     codigo: "order_already_refunded",
   });
   assertEquals(controle.tipo, "falhou");
-  assertEquals(
-    (controle as { motivo: string }).motivo,
-    "a cobrança já foi devolvida no Mercado Pago, mas o valor confirmado não cobre esta devolução",
-  );
+  assertEquals((controle as { motivo: string }).motivo, MOTIVO_NAO_COBRE);
 });
 
 Deno.test("E42 - decidirConclusaoPelaConsulta chamada DIRETA (Orders): feliz conclui, sem refund processed vira tentar_depois", () => {
@@ -1851,4 +1851,382 @@ Deno.test("E43 - refundsDaOrder chamada DIRETA: transactions como LISTA, como OB
   );
   assertEquals(refundsDaOrder({}), []);
   assertEquals(refundsDaOrder({ transactions: null }), []);
+});
+
+// ---------------------------------------------------------------------------
+// E44+ — rodada 3 do laudo Opus do PR #447 (08/09/2026): AC2-a (a soma que
+// prova saída de caixa é a soma LIVRE — exclui idsJaReivindicados — e se
+// compara com linha.amount, nunca com valor_estornado + amount), AC1-a e
+// AC2-b (lacunas de prova apontadas pelo laudo), string vazia como NaN e as
+// constantes de motivo exportadas.
+// ---------------------------------------------------------------------------
+
+Deno.test("E44 - AC1-a: Payments com refunds[] SEM candidato do valor da linha, transaction_amount_refunded ilegível e pré-veredito -> tentar_depois (mata X5, && candidato !== null)", async () => {
+  const pedido = pedidoPagoCom({ total: 10, valor_estornado: 0 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        // SEM transaction_amount_refunded, e o único refund NÃO bate o
+        // valor da linha (10) — candidato fica null.
+        refunds: [{ id: "rf-9", amount: 999, status: "approved" }],
+      },
+    },
+  ]);
+  const resultado = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 10 }),
+    pedido,
+    codigo: "4296",
+  });
+  assertEquals(resultado.tipo, "tentar_depois");
+});
+
+Deno.test("E45 - AC2-b: Payments com candidato found mas o acumulado do MP ainda não cobre não conclui (gêmeo do E37, mata X6, apagar o guarda de devolvidoCobre)", async () => {
+  // valor_estornado já é 30; a linha pede mais 10 (precisa de 40
+  // acumulado). O MP mostra um refund approved de 10 (bate a linha) mas o
+  // acumulado (transaction_amount_refunded) só chegou a 10 — não cobre.
+  const pedido = pedidoPagoCom({ total: 40, valor_estornado: 30 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 10,
+        refunds: [{ id: "rp-1", amount: 10, status: "approved" }],
+      },
+    },
+  ]);
+  const resultado = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 10 }),
+    pedido,
+  });
+  assertEquals(resultado.tipo, "tentar_depois");
+});
+
+Deno.test("E46 - transaction_amount_refunded em BRANCO ('' ou espaços) é 'não sei' (NaN), com e sem refunds[] (ANOTADO do laudo #447 rodada 2)", async () => {
+  const pedido = pedidoPagoCom({ total: 10, valor_estornado: 0 });
+
+  // Com refunds[] materializado, string vazia.
+  const comRefundsVazia = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: "",
+        refunds: [{ id: "rf-1", amount: 10, status: "approved" }],
+      },
+    },
+  ]);
+  const resultadoComRefunds = await confirmarPorConsulta({
+    buscar: comRefundsVazia.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 10 }),
+    pedido,
+    codigo: "4296",
+  });
+  // `Number("")` é 0 (falso "nada devolvido") — sem a checagem de branco,
+  // isto viraria `falhou` (guarda b não cobre) em vez de "não sei".
+  assertEquals(resultadoComRefunds.tipo, "tentar_depois");
+
+  // FALLBACK (sem refunds[]), string só de espaços.
+  const semRefundsEspacos = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: { id: 123456789, status: "approved", transaction_amount_refunded: "   " },
+    },
+  ]);
+  const resultadoFallback = await confirmarPorConsulta({
+    buscar: semRefundsEspacos.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 10 }),
+    pedido,
+    codigo: "4296",
+  });
+  assertEquals(resultadoFallback.tipo, "tentar_depois");
+});
+
+Deno.test("E47 - AC2-a, cenário G1 do laudo (Orders): outra linha AINDA sem id gravado — a soma livre cobre via refund de OUTRO valor, sem candidato exato; limite conhecido, documentado (inalcançável hoje, decisão adiada para a T6)", async () => {
+  // Pedido R$30, linha B (avaliada) R$10, linha C R$20 — C ainda NÃO gravou
+  // nenhum mp_refund_id (não dá para excluir o refund dela via
+  // idsJaReivindicados: o app não sabe que aquele refund é de outra linha).
+  const pedido = pedidoOrder({ total: 30, valor_estornado: 0 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "outro", amount: "20.00", status: "processed" }],
+        },
+      },
+    },
+  ]);
+  const resultado = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 10 }),
+    pedido,
+    codigo: "order_already_refunded",
+    // idsJaReivindicados AUSENTE de propósito: é exatamente isso que G1
+    // testa — a linha C não gravou id, então nada exclui o refund dela.
+  });
+  assertEquals(resultado.tipo, "falhou");
+  assertEquals(
+    (resultado as { motivo: string }).motivo,
+    MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS,
+  );
+});
+
+Deno.test("E48 - AC2-a, cenário G2 do laudo (Orders): outra linha JÁ reivindicou id — a soma LIVRE não cobre (o refund próprio ainda 'processing') -> tentar_depois sem pré-veredito; com pré-veredito, falhou com o texto CONSERVADOR (nunca 'por fora' nem o 'não cobre' antigo)", async () => {
+  // Pedido R$30, linha B (avaliada) R$10, linha C R$20 já com
+  // mp_refund_id="outro" gravado (em_processamento). O MP mostra "outro"
+  // processed e o refund PRÓPRIO de B ainda "processing" (não terminal).
+  const pedido = pedidoOrder({ total: 30, valor_estornado: 0 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [
+            { id: "outro", amount: "20.00", status: "processed" },
+            { id: "proprio-de-b", amount: "10.00", status: "processing" },
+          ],
+        },
+      },
+    },
+  ]);
+  const linha = linhaCom({ amount: 10 });
+
+  const semPreVeredito = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha,
+    pedido,
+    idsJaReivindicados: ["outro"],
+  });
+  assertEquals(semPreVeredito.tipo, "tentar_depois");
+
+  const comPreVeredito = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha,
+    pedido,
+    idsJaReivindicados: ["outro"],
+    codigo: "order_already_refunded",
+  });
+  assertEquals(comPreVeredito.tipo, "falhou");
+  assertEquals(
+    (comPreVeredito as { codigo: string }).codigo,
+    "confirmacao_insuficiente",
+  );
+  assertEquals(
+    (comPreVeredito as { motivo: string }).motivo,
+    MOTIVO_NAO_COBRE_CONSERVADOR,
+  );
+});
+
+Deno.test("E49 - AC2-a, gêmeo Payments do E41 (V1/V2/V3): soma livre de refunds[] cobre via dois approved parciais, sem candidato exato, ids vazios -> falhou 'por fora' com pré-veredito / tentar_depois sem; um único parcial (não cobre) -> falhou com o motivo ANTIGO", async () => {
+  const pedido = pedidoPagoCom({ total: 10, valor_estornado: 0 });
+  const doisDeCinco = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        // transaction_amount_refunded presente e legível (irrelevante para
+        // a decisão desta rodada, mas precisa passar da guarda C3/AC-1
+        // ANTES de chegar no ramo `candidato === null`).
+        transaction_amount_refunded: 10,
+        refunds: [
+          { id: "p1", amount: 5, status: "approved" },
+          { id: "p2", amount: 5, status: "approved" },
+        ],
+      },
+    },
+  ]);
+  const linha = linhaCom({ amount: 10 });
+
+  const semPreVeredito = await confirmarPorConsulta({
+    buscar: doisDeCinco.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(semPreVeredito.tipo, "tentar_depois");
+
+  const comPreVeredito = await confirmarPorConsulta({
+    buscar: doisDeCinco.f,
+    token: TOKEN,
+    linha,
+    pedido,
+    codigo: "4296",
+  });
+  assertEquals(comPreVeredito.tipo, "falhou");
+  assertEquals(
+    (comPreVeredito as { motivo: string }).motivo,
+    MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS,
+  );
+
+  // Controle: um approved de 5 só (a soma livre NÃO cobre) — motivo ANTIGO.
+  const umDeCinco = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 5,
+        refunds: [{ id: "p1", amount: 5, status: "approved" }],
+      },
+    },
+  ]);
+  const controle = await confirmarPorConsulta({
+    buscar: umDeCinco.f,
+    token: TOKEN,
+    linha,
+    pedido,
+    codigo: "4296",
+  });
+  assertEquals(controle.tipo, "falhou");
+  assertEquals((controle as { motivo: string }).motivo, MOTIVO_NAO_COBRE);
+});
+
+Deno.test("E50 - AC2-a, gêmeos G1/G2 na rota Payments com refunds[]", async () => {
+  const pedido = pedidoPagoCom({ total: 30, valor_estornado: 0 });
+  const linha = linhaCom({ amount: 10 });
+
+  // G1-Payments: refund de OUTRO valor (linha C, sem id gravado) cobre a
+  // soma livre; mesmo limite conhecido do G1 em Orders.
+  const g1 = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 20,
+        refunds: [{ id: "outro", amount: 20, status: "approved" }],
+      },
+    },
+  ]);
+  const resultadoG1 = await confirmarPorConsulta({
+    buscar: g1.f,
+    token: TOKEN,
+    linha,
+    pedido,
+    codigo: "4296",
+  });
+  assertEquals(resultadoG1.tipo, "falhou");
+  assertEquals(
+    (resultadoG1 as { motivo: string }).motivo,
+    MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS,
+  );
+
+  // G2-Payments: linha C já reivindicou "outro"; o refund PRÓPRIO de B
+  // ainda "in_process" (não terminal) — soma livre não cobre.
+  const g2 = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 20,
+        refunds: [
+          { id: "outro", amount: 20, status: "approved" },
+          { id: "proprio-de-b", amount: 10, status: "in_process" },
+        ],
+      },
+    },
+  ]);
+  const g2SemPreVeredito = await confirmarPorConsulta({
+    buscar: g2.f,
+    token: TOKEN,
+    linha,
+    pedido,
+    idsJaReivindicados: ["outro"],
+  });
+  assertEquals(g2SemPreVeredito.tipo, "tentar_depois");
+
+  const g2ComPreVeredito = await confirmarPorConsulta({
+    buscar: g2.f,
+    token: TOKEN,
+    linha,
+    pedido,
+    idsJaReivindicados: ["outro"],
+    codigo: "4296",
+  });
+  assertEquals(g2ComPreVeredito.tipo, "falhou");
+  assertEquals(
+    (g2ComPreVeredito as { motivo: string }).motivo,
+    MOTIVO_NAO_COBRE_CONSERVADOR,
+  );
+});
+
+Deno.test("E51 - AC2-a: a soma livre se compara com linha.amount, NUNCA com valor_estornado + amount (regra nova da rodada 3) — com valor_estornado alto, um refund de OUTRO valor que cobre a LINHA ainda dá 'por fora'", async () => {
+  // valor_estornado já é 30 (outra linha concluída antes); a linha agora
+  // avaliada pede 10 (precisaria de 40 acumulado pela fórmula ANTIGA). O MP
+  // mostra um processed de 15 — não bate o valor exato da linha (candidato
+  // fica null), mas 15 já cobre os 10 que ESTA linha precisa.
+  const pedido = pedidoOrder({ total: 40, valor_estornado: 30 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "p1", amount: "15.00", status: "processed" }],
+        },
+      },
+    },
+  ]);
+  const resultado = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha: linhaCom({ amount: 10 }),
+    pedido,
+    codigo: "order_already_refunded",
+  });
+  // Com a fórmula ANTIGA (valor_estornado + amount = 40), 15 NÃO cobriria e
+  // o motivo seria "não cobre" — a regra nova compara só com o que ESTA
+  // linha precisa (10), e 15 cobre: "por fora em parcelas".
+  assertEquals(resultado.tipo, "falhou");
+  assertEquals(
+    (resultado as { motivo: string }).motivo,
+    MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS,
+  );
 });

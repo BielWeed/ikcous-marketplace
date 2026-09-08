@@ -634,6 +634,94 @@ function refundQueCobreALinha(
 }
 
 /**
+ * Motivos definitivos ("falhou"), nomeados e exportados (ANOTADO do laudo
+ * #447 rodada 2, resolvido na rodada 3, 08/09/2026): usados nos DOIS ramos
+ * de `decidirConclusaoPelaConsulta` — o texto mora só aqui e no docstring da
+ * função; cada ramo apenas cita o nome da constante (antes, o mesmo
+ * comentário do AC-2 aparecia três vezes).
+ */
+export const MOTIVO_NAO_COBRE =
+  "a cobrança já foi devolvida no Mercado Pago, mas o valor confirmado não cobre esta devolução";
+export const MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS =
+  "o Mercado Pago informa que este valor já foi devolvido por fora do app, em parcelas diferentes desta devolução; ela não é mais necessária";
+/**
+ * AC2-a (laudo #447 rodada 2, resolvido na rodada 3): quando a soma LIVRE
+ * (já sem o que outras linhas do MESMO pedido reivindicaram) NÃO cobre esta
+ * linha e existe pelo menos uma outra linha com `mp_refund_id` já gravado —
+ * cenário G2 do laudo — a insuficiência não prova falha nenhuma: pode ser o
+ * refund PRÓPRIO desta linha ainda em andamento (status não-terminal, ex.
+ * `processing`/`in_process`). O app não sabe a origem; texto conservador,
+ * sem afirmar nem dispensar (nunca "não cobre", que soaria mais definitivo
+ * do que a evidência sustenta).
+ */
+export const MOTIVO_NAO_COBRE_CONSERVADOR =
+  "não cobre esta devolução; confira no painel do MP";
+
+/**
+ * Soma dos refunds do status TERMINAL informado, excluindo os que OUTRAS
+ * linhas já reivindicaram (`idsJaReivindicados`) — é esta soma, nunca a
+ * soma bruta (`somarRefundsDaOrder`, que mistura o dinheiro de TODAS as
+ * linhas do pedido), que prova saída de caixa PARA ESTA linha (AC2-a).
+ * `null` só quando nenhum refund do status terminal aparece (C3: "não
+ * sei"); soma livre ZERO é resultado válido — todo terminal já reivindicado
+ * por outra linha é exatamente o cenário G2.
+ */
+function somarLivres(
+  refunds: Array<Record<string, unknown>>,
+  statusTerminal: string,
+  idsJaReivindicados: string[],
+): number | null {
+  const terminais = refunds.filter((r) => r.status === statusTerminal);
+  if (terminais.length === 0) return null;
+  const reivindicados = new Set(idsJaReivindicados);
+  let soma = 0;
+  for (const r of terminais) {
+    if (
+      r.id !== undefined && r.id !== null &&
+      reivindicados.has(idComoString(r.id))
+    ) {
+      continue;
+    }
+    const v = Number(r.amount);
+    if (!Number.isFinite(v)) return null;
+    soma += v;
+  }
+  return soma;
+}
+
+/**
+ * O motivo quando NENHUM refund bate o valor exato desta linha (`candidato
+ * === null`) — AC2-a. Com ids já reivindicados por outras linhas, SEMPRE o
+ * texto conservador (`MOTIVO_NAO_COBRE_CONSERVADOR`, ver seu docstring:
+ * G1/G2); sem eles, a soma LIVRE decide entre "já saiu por fora"
+ * (`MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS`) e "ainda não cobre"
+ * (`MOTIVO_NAO_COBRE`) — exatamente o que V1/E41 já prova.
+ */
+function motivoSemCandidato(
+  idsJaReivindicados: string[],
+  somaLivre: number | null,
+  centavosDaLinha: number,
+  temPreVeredito: boolean,
+): ResultadoEstorno {
+  const somaLivreCobre = somaLivre !== null &&
+    emCentavos(somaLivre) >= centavosDaLinha;
+  if (somaLivreCobre) {
+    // A soma LIVRE (já sem o que outras linhas reivindicaram) cobre o que
+    // ESTA linha precisa — confiança de que o dinheiro saiu por fora do
+    // app, mesmo havendo outras linhas no pedido (o que sobrou já
+    // descontou o delas).
+    return insuficiente(temPreVeredito, MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS);
+  }
+  if (idsJaReivindicados.length > 0) {
+    // Soma livre NÃO cobre e existem outras linhas com id já gravado
+    // (G2): a insuficiência pode ser só o refund PRÓPRIO ainda em
+    // andamento — texto conservador, nunca "não cobre".
+    return insuficiente(temPreVeredito, MOTIVO_NAO_COBRE_CONSERVADOR);
+  }
+  return insuficiente(temPreVeredito, MOTIVO_NAO_COBRE);
+}
+
+/**
  * Decisão pura sobre o corpo JÁ consultado (GET) — sem I/O. EXPORTADA (item 4
  * do brief P0, 08/09/2026): a T5 (webhook) reutiliza esta função sobre o
  * objeto que ELA já buscou, sem um segundo GET — uma decisão, dois
@@ -648,32 +736,34 @@ function refundQueCobreALinha(
  *
  * Rota Orders — conclui SE E SOMENTE SE (a) existe refund `processed` do
  * MESMO valor desta linha, ainda não reivindicado (`refundQueCobreALinha`);
- * (b) a soma dos `processed` continua cobrindo `valor_estornado +
+ * (b) a soma BRUTA dos `processed` continua cobrindo `valor_estornado +
  * linha.amount` (guarda contra ledger que diz mais do que o MP mostra —
  * contradição não conclui, E37). Faltando qualquer uma → `insuficiente`.
  * Nenhum refund `processed` aparece ainda → `tentar_depois` incondicional
  * (C3: "não sei" nunca é prova de falha).
  *
- * AC-2 (decisão registrada, laudo #447 rodada 2, 08/09/2026): quando (b)
- * cobre mas (a) não achou candidato — o MP confirma que o dinheiro JÁ SAIU
- * (a soma dos `processed` bate o acumulado esperado), só não bate NESTA
- * linha — motivo: o lojista devolveu por fora do app, em parcelas diferentes
- * desta devolução (o achado 1 original, agora com a soma provando saída de
- * caixa em vez de "ainda não apareceu"). Com pré-veredito, o motivo passa a
- * ser "já devolvido por fora do app... não é mais necessária" em vez do
- * antigo "não cobre" — porque agora HÁ prova de saída; sem pré-veredito
- * continua `tentar_depois` (a consistência eventual do MP ainda pode
- * alcançar). Quem registra as parcelas reais no ledger é o webhook (T5,
- * linhas `sistema`); `falhou` aqui libera o saldo reservado sem gerar um
- * POST novo — o dinheiro não sai duas vezes. Quando (b) NÃO cobre, o motivo
- * continua o antigo ("não cobre esta devolução"): a soma insuficiente não
- * prova saída nenhuma. Mesma distinção no ramo Payments com `refunds[]`.
+ * AC2-a (rodada 3, resolve o achado da rodada 2): quando (a) não achou
+ * candidato, a soma que decide o motivo NÃO é mais a soma bruta comparada
+ * com `valor_estornado + linha.amount` (isso mistura o dinheiro de TODAS as
+ * linhas do pedido) — é a soma LIVRE (`somarLivres`, exclui
+ * `idsJaReivindicados`) comparada só com `linha.amount`, o que ESTA linha
+ * precisa (ver `motivoSemCandidato`). Soma livre cobrindo é "por fora em
+ * parcelas" (mesmo havendo outras linhas — o que sobrou já descontou o
+ * delas); soma livre NÃO cobrindo com ids já reivindicados por outra linha
+ * (G2) é o texto conservador, nunca "não cobre" (a insuficiência pode ser
+ * só o refund PRÓPRIO ainda em andamento); sem ids reivindicados, "não
+ * cobre" continua o texto — igual à rodada 2. Quem registra as parcelas
+ * reais no ledger é o webhook (T5, linhas `sistema`); `falhou` aqui libera
+ * o saldo reservado sem gerar um POST novo. Mesma distinção no ramo
+ * Payments com `refunds[]`.
  *
  * Rota Payments — se o corpo trouxer `refunds[]` com objetos, MESMA regra
  * por refund, terminal `approved`; sem `refunds[]` materializado (ausente ou
  * vazio), FALLBACK até a T8: acumulado clássico
  * (`transaction_amount_refunded`), `mp_refund_id` sempre `null` (nunca o id
- * do pagamento — M-A).
+ * do pagamento — M-A). O fallback NUNCA discrimina por linha (AC-4) — é a
+ * única saída possível sem a lista de refunds, e nunca foi medido contra a
+ * API real.
  *
  * ALTERNATIVA B DO I-A (laudo do PR #438 rodada 2): `temPreVeredito` decide
  * o desfecho de "não cobre" — com pré-veredito definitivo do MP
@@ -692,13 +782,17 @@ export function decidirConclusaoPelaConsulta(args: {
   const idsJaReivindicados = args.idsJaReivindicados ?? [];
   const precisoEmCentavos = emCentavos(pedido.valor_estornado) +
     emCentavos(linha.amount);
+  const centavosDaLinha = emCentavos(linha.amount);
 
   if (ehPayments) {
-    // C3: campo presente e legível decide; AUSENTE é "não sei" → depois.
-    // `Number(null)` seria 0 (falso "nada devolvido") — por isso a checagem
-    // de tipo ANTES da conversão.
+    // C3: campo presente e legível decide; AUSENTE ou EM BRANCO é "não sei"
+    // → depois. `Number(null)` seria 0 (falso "nada devolvido") e
+    // `Number("")` também é 0 (ANOTADO do laudo #447 rodada 2) — por isso a
+    // checagem de tipo E de conteúdo em branco ANTES da conversão.
     const bruto = corpo.transaction_amount_refunded;
-    const devolvido = typeof bruto === "number" || typeof bruto === "string"
+    const devolvido = typeof bruto === "number"
+      ? bruto
+      : typeof bruto === "string" && bruto.trim() !== ""
       ? Number(bruto)
       : NaN;
 
@@ -715,40 +809,32 @@ export function decidirConclusaoPelaConsulta(args: {
         STATUS_REFUND_APROVADO_PAYMENTS,
         idsJaReivindicados,
       );
-      // AC-1 (laudo #447 rodada 2): campo ausente/ilegível é "não sei" — NUNCA
-      // prova de falha, mesmo com um candidato do valor exato já achado. A
-      // versão anterior misturava este ramo com o de "li e não cobre" no
-      // mesmo `||`, e "não sei" virava `falhou` definitivo com pré-veredito
-      // (religar cartão). C3 continua: NaN não decide nada, sempre depois.
+      // AC-1 (laudo #447 rodada 2): campo ausente/ilegível é "não sei" —
+      // NUNCA prova de falha, mesmo com um candidato do valor exato já
+      // achado (AC1-a, rodada 3: testado também com candidato AUSENTE).
       if (!Number.isFinite(devolvido)) {
         return {
           tipo: "tentar_depois",
           motivo: "não consegui confirmar o estorno com o Mercado Pago agora",
         };
       }
-      const devolvidoCobre = emCentavos(devolvido) >= precisoEmCentavos;
       if (candidato === null) {
-        // AC-2 (laudo #447 rodada 2): guarda (b) cobre mas guarda (a) não
-        // achou candidato do valor exato — o MP confirma que o dinheiro
-        // SAIU, só não bate nesta linha (devolvido fora do app, em parcelas
-        // diferentes desta). Ver o docstring de `decidirConclusaoPelaConsulta`
-        // para a decisão registrada por trás do motivo novo.
-        if (devolvidoCobre) {
-          return insuficiente(
-            temPreVeredito,
-            "o Mercado Pago informa que este valor já foi devolvido por fora do app, em parcelas diferentes desta devolução; ela não é mais necessária",
-          );
-        }
-        return insuficiente(
+        // AC2-a (docstring acima): soma LIVRE de refundsBrutos.
+        return motivoSemCandidato(
+          idsJaReivindicados,
+          somarLivres(
+            refundsBrutos,
+            STATUS_REFUND_APROVADO_PAYMENTS,
+            idsJaReivindicados,
+          ),
+          centavosDaLinha,
           temPreVeredito,
-          "o Mercado Pago informa que o pagamento já foi estornado, mas o valor confirmado não cobre esta devolução",
         );
       }
-      if (!devolvidoCobre) {
-        return insuficiente(
-          temPreVeredito,
-          "o Mercado Pago informa que o pagamento já foi estornado, mas o valor confirmado não cobre esta devolução",
-        );
+      // Guarda (b), AC2-b: o acumulado do MP ainda não cobre — contradição
+      // não conclui, mesmo com candidato do valor certo (gêmeo do E37).
+      if (emCentavos(devolvido) < precisoEmCentavos) {
+        return insuficiente(temPreVeredito, MOTIVO_NAO_COBRE);
       }
       return {
         tipo: "concluido",
@@ -777,10 +863,7 @@ export function decidirConclusaoPelaConsulta(args: {
         valor: linha.amount,
       };
     }
-    return insuficiente(
-      temPreVeredito,
-      "o Mercado Pago informa que o pagamento já foi estornado, mas o valor confirmado não cobre esta devolução",
-    );
+    return insuficiente(temPreVeredito, MOTIVO_NAO_COBRE);
   }
 
   // Rota Orders — achado 1 do laudo do PR #440 (pré-requisito da T5/T6).
@@ -794,41 +877,28 @@ export function decidirConclusaoPelaConsulta(args: {
       motivo: "não consegui confirmar o estorno com o Mercado Pago agora",
     };
   }
+  const refundsProcessed = refundsDaOrder(corpo).filter(
+    (r) => r.status === STATUS_REFUND_CONCLUIDO,
+  );
   const candidato = refundQueCobreALinha(
-    refundsDaOrder(corpo).filter((r) => r.status === STATUS_REFUND_CONCLUIDO),
+    refundsProcessed,
     linha,
     STATUS_REFUND_CONCLUIDO,
     idsJaReivindicados,
   );
-  const somaCobre = emCentavos(soma) >= precisoEmCentavos;
   if (candidato === null) {
-    // AC-2 (laudo #447 rodada 2): guarda (b) cobre mas guarda (a) não achou
-    // candidato do valor exato desta linha — o MP confirma que o dinheiro
-    // JÁ SAIU (a soma dos processed cobre o acumulado esperado), só não
-    // bate nesta linha porque foi devolvido por fora do app, em parcelas
-    // diferentes desta devolução. Quem registra as parcelas reais no ledger
-    // é o webhook (T5, linhas `sistema`); `falhou` aqui libera o saldo
-    // reservado sem gerar um POST novo (o dinheiro não sai duas vezes). Sem
-    // a soma cobrir, o motivo continua o antigo — "não cobre" ainda é o
-    // caso certo (guarda a falhou sem prova de que o dinheiro saiu).
-    if (somaCobre) {
-      return insuficiente(
-        temPreVeredito,
-        "o Mercado Pago informa que este valor já foi devolvido por fora do app, em parcelas diferentes desta devolução; ela não é mais necessária",
-      );
-    }
-    return insuficiente(
+    // AC2-a (docstring acima): soma LIVRE dos refunds processed.
+    return motivoSemCandidato(
+      idsJaReivindicados,
+      somarLivres(refundsProcessed, STATUS_REFUND_CONCLUIDO, idsJaReivindicados),
+      centavosDaLinha,
       temPreVeredito,
-      "a cobrança já foi devolvida no Mercado Pago, mas o valor confirmado não cobre esta devolução",
     );
   }
-  if (!somaCobre) {
-    // Guarda (b, E37): o ledger diz mais do que a SOMA dos processed mostra
-    // — contradição não conclui, mesmo com candidato do valor certo.
-    return insuficiente(
-      temPreVeredito,
-      "a cobrança já foi devolvida no Mercado Pago, mas o valor confirmado não cobre esta devolução",
-    );
+  // Guarda (b, E37): o ledger diz mais do que a SOMA BRUTA dos processed
+  // mostra — contradição não conclui, mesmo com candidato do valor certo.
+  if (emCentavos(soma) < precisoEmCentavos) {
+    return insuficiente(temPreVeredito, MOTIVO_NAO_COBRE);
   }
   return {
     tipo: "concluido",
