@@ -627,12 +627,31 @@ export function StoreProvider({
         if (publicRes.data) {
           data = publicRes.data;
           error = null;
+        } else if (publicRes.error) {
+          // Para um cliente comum a consulta de admin nem roda, então `error`
+          // era SEMPRE nulo aqui: `publicRes.error && error` dava falso, nada
+          // era lançado, e a falha de rede seguia como se fosse "a loja não
+          // tem produto". Guardar a falha da pública é o que faz o `throw`
+          // abaixo acontecer. (Quando a de admin também falhou, o `throw` de
+          // cima já levou o erro dela — este ramo nem é alcançado.)
+          error = publicRes.error;
         }
       }
 
       if (error) throw error;
 
-      if (data && data.length > 0) {
+      // SÓ UMA RESPOSTA DE VERDADE SUBSTITUI O CATÁLOGO.
+      // `data` nulo aqui não é vitrine vazia: é ausência de resposta (a
+      // consulta de admin voltou sem dado e sem erro, e a pública nem chegou a
+      // rodar). Seguir daqui cairia no `else` lá embaixo, que troca o catálogo
+      // — inclusive o que veio do cache offline e já está na tela — por lista
+      // vazia. Lançar manda para o `catch`, que só registra: o cliente
+      // continua vendo os produtos que já estavam lá.
+      if (!data) {
+        throw new Error("consulta de produtos voltou sem dados e sem erro");
+      }
+
+      if (data.length > 0) {
         const mapped = (data as any[]).map((item: any) =>
           mapProductFromDB(item),
         );
