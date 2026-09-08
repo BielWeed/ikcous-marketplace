@@ -42,6 +42,15 @@ function Sonda({ enabled = true }: { enabled?: boolean }) {
 }
 
 describe("classificação de erro da sincronização", () => {
+  it("reconhece pedido não encontrado como erro terminal", () => {
+    expect(
+      erroDeSincronizacaoEhTerminal({
+        code: "P0001",
+        message: "Pedido não encontrado.",
+      }),
+    ).toBe(true);
+  });
+
   it.each([
     { message: "Apenas pedidos pendentes podem ser cancelados pelo usuário." },
     new Error("Este pedido não pode mais ser cancelado por você."),
@@ -212,31 +221,11 @@ describe("useOrders — a fila offline sincroniza uma vez", () => {
     },
   );
 
-  it("enabled=false não registra online nem processa a fila", async () => {
-    const registrar = vi.spyOn(window, "addEventListener");
+  it("enabled=false sincroniza a fila ao voltar online fora da aba Pedidos", async () => {
     localStorage.setItem(chave, JSON.stringify([item]));
     await montar(1, false);
-    expect(
-      registrar.mock.calls.filter(([evento]) => evento === "online"),
-    ).toHaveLength(0);
     await reconectar();
-    expect(supabase.rpc).not.toHaveBeenCalled();
-    expect(JSON.parse(localStorage.getItem(chave) ?? "null")).toEqual([item]);
-  });
-
-  it("a troca de enabled registra e depois remove o listener online", async () => {
-    const registrar = vi.spyOn(window, "addEventListener");
-    const remover = vi.spyOn(window, "removeEventListener");
-    await montar(1, false);
-    await montar(1, true);
-    const registros = registrar.mock.calls.filter(
-      ([evento]) => evento === "online",
-    );
-    expect(registros).toHaveLength(1);
-    await montar(1, false);
-    expect(remover).toHaveBeenCalledWith("online", registros[0][1]);
-    localStorage.setItem(chave, JSON.stringify([item]));
-    await reconectar();
-    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(chave)).toBeNull();
   });
 });

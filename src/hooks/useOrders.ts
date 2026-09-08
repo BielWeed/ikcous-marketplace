@@ -119,6 +119,11 @@ const statusConfigByKey = new Map(
   ][],
 );
 
+// Mensagens de update_order_status_atomic em
+// supabase/migrations/2026110000000_o_estorno_nasce_no_ledger.sql:
+// RAISE nas linhas 317–346; pedido inexistente (328) e cancelamento terminal (346).
+// "Apenas pedidos pendentes podem ser cancelados pelo usuário." é da versão
+// anterior da função, mantida para loja que ainda não aplicou essa migration.
 export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   // P0001 também é usado para falhas de autenticação: só a mensagem
@@ -129,7 +134,8 @@ export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
   return (
     mensagem.includes("apenas pedidos pendentes") ||
     mensagem.includes("não pode mais ser cancelado") ||
-    mensagem.includes("não pode ser cancelado")
+    mensagem.includes("não pode ser cancelado") ||
+    mensagem.includes("pedido não encontrado")
   );
 }
 
@@ -2693,9 +2699,11 @@ export function useOrders(
     [],
   );
 
-  // Synchronize queued offline order status updates when coming back online
+  // Revisão do PR #498 (08/09/2026): AdminLayout usa enabled=false e é o único
+  // sincronizador do painel fora da aba Pedidos; o listener precisa continuar ativo.
+  // sincronizacaoEmVoo serializa N listeners em uma só passada, sem duplicação.
   useEffect(() => {
-    if (!enabled || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
     const handleOnlineSync = () => {
       setTimeout(() => {
         syncOfflineOrderUpdates().then((synced) => {
@@ -2717,7 +2725,7 @@ export function useOrders(
     return () => {
       window.removeEventListener("online", handleOnlineSync);
     };
-  }, [enabled, user?.id, isAdmin, loadOrders, fetchUserOrders]);
+  }, [user?.id, isAdmin, loadOrders, fetchUserOrders]);
 
   useEffect(() => {
     return () => {
