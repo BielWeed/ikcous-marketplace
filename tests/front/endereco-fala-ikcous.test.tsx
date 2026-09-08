@@ -81,7 +81,7 @@ describe("AddressFormView fala o nome certo da marca", () => {
     hospedeiro.remove();
   });
 
-  it('o cabeçalho do formulário novo diz "IKCOUS" e nunca "ICKOUS"', async () => {
+  it('o cabeçalho do formulário novo diz o nome da loja e nunca "ICKOUS"', async () => {
     const { AddressFormView } = await import(
       "@/views/customer/AddressFormView"
     );
@@ -94,6 +94,6 @@ describe("AddressFormView fala o nome certo da marca", () => {
 
     const texto = document.body.textContent ?? "";
     expect(texto).not.toContain("ICKOUS");
-    expect(texto).toContain("Onde entregaremos seu produto da IKCOUS?");
+    expect(texto).toContain("Onde entregaremos seu produto da Loja de Teste?");
   });
 });

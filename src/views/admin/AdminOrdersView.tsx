@@ -35,6 +35,7 @@ import { useAnalytics } from "@/hooks/useAnalytics";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  ErroPedidoMudou,
   mensagemAmigavelErroAtualizacaoStatus,
   useOrders,
 } from "@/hooks/useOrders";
@@ -941,9 +942,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // `silent` — nenhum clique de verdade passa `true` aqui. Mantido mesmo
   // assim (não removido) porque `updateOrderStatus` do hook já aceita e usa
   // esse parâmetro para outros chamadores (ex.: CheckoutView, no cancelamento
-  // automático) — se um dia esta view ganhar um caminho silencioso próprio
-  // (ex.: sincronização em lote), o guard do catch abaixo já cobre o caso sem
-  // precisar lembrar de adicioná-lo depois.
+  // automático). Rodada 3 (achado 2 do laudo): a frase antiga aqui prometia
+  // que "o guard do catch abaixo já cobre o caso sem precisar lembrar de
+  // adicioná-lo depois" — deixou de ser verdade com o `return` do
+  // tratamento de `ErroPedidoMudou` (abaixo): quando esse erro tipado é
+  // lançado, o `catch` relança ANTES de chegar no `if (silent)
+  // toast.error(...)`, então um eventual caminho silencioso próprio que
+  // colidisse com `ErroPedidoMudou` NÃO geraria aviso nenhum ali. Isso está
+  // certo por desenho (silent = "não incomode a pessoa") e não muda nada
+  // hoje — o caminho é código morto, como já dito acima —, mas fica
+  // registrado para quem for ligar um caminho silencioso de verdade: não
+  // dá pra contar com este guard sem checar o `catch` inteiro primeiro.
   const handleStatusChange = async (
     orderId: string,
     newStatus: OrderStatus,
@@ -956,7 +965,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // agora está: Em Trânsito" de uma mudança que não aconteceu, e a tela do
     // admin fazia rollback. Notificação não tem desfazer.
     try {
-      await updateOrderStatus(orderId, newStatus, undefined, silent);
+      // Rodada 2 (achado 1 do laudo): o `statusEsperado` só importa quando
+      // o pedido não está em `orders` (deep link/paginação) — o hook usa
+      // `order.status` quando o pedido está carregado e só cai para este
+      // argumento na ausência dele (ver `esperado` em useOrders.ts). Nunca
+      // passar `selectedOrder.status` sem conferir o id: comparar contra o
+      // status de OUTRO pedido seria pior que não comparar nada.
+      await updateOrderStatus(
+        orderId,
+        newStatus,
+        undefined,
+        silent,
+        selectedOrder?.id === orderId ? selectedOrder.status : undefined,
+      );
       haptic.success();
 
       // Achado 1 (caça-defeitos, Task 4c) — `handleStatusChange` é função
@@ -980,6 +1001,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);
+      // Rodada 2 (achado 1/3 do laudo, deep link): quando o pedido não
+      // está em `orders` (deep link/paginação), a correção que o hook faz
+      // em `orders`/`cachedAdminOrders` é um no-op — a ficha aberta é
+      // `selectedOrder`, um estado À PARTE que não vem de `orders` nesse
+      // caminho. `ErroPedidoMudou` já carrega o status VERDADEIRO
+      // (`err.statusVerdadeiro`) e o hook já mostrou o ÚNICO toast — aqui
+      // só corrigimos a ficha, SEM toast nenhum (existe teste na casa
+      // contra o segundo aviso: admin-orders-status-erro-cru-nao-duplica-
+      // toast.test.tsx). Continua relançando o erro, como antes.
+      if (err instanceof ErroPedidoMudou) {
+        setSelectedOrder((prev) =>
+          prev?.id === orderId
+            ? { ...prev, status: err.statusVerdadeiro }
+            : prev,
+        );
+        throw err;
+      }
       // `useOrders.updateOrderStatus` (catch de useOrders.ts, por volta da
       // linha 1115) já mostra o PRÓPRIO toast traduzido via
       // `mensagemAmigavelErroAtualizacaoStatus` sempre que `!silent` — mostrar

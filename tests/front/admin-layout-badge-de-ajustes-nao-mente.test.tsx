@@ -22,6 +22,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // banco de dev medido em 02/09: DUAS perguntas sem resposta.
 const PERGUNTAS_PENDENTES_REAIS = 2;
 
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: {} }),
+}));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: vi.fn(() => {

@@ -1,10 +1,5 @@
-import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
+import { atributosDeImagem } from "@/lib/imageUrl";
 import { useEffect, useRef, useState } from "react";
-
-/** Escada de larguras oferecida ao navegador quando `sizes` é informado. */
-const LARGURAS_DISPONIVEIS = [200, 320, 480, 640, 960, 1280] as const;
-/** Usada no `src` puro, para o caso raro de o navegador ignorar o srcSet. */
-const LARGURA_PADRAO = 640;
 
 interface LazyImageProps {
   src: string;
@@ -91,6 +86,10 @@ export function LazyImage({
   // Só redimensiona quando o chamador declarou `sizes` — sem isso o navegador
   // não teria como escolher a variante certa do srcSet.
   const podeRedimensionar = Boolean(sizes) && !transformacaoFalhou;
+  const atributos = atributosDeImagem(src, {
+    sizes: podeRedimensionar ? sizes : undefined,
+    quality,
+  });
 
   const style: React.CSSProperties = {};
   if (width !== undefined) style.width = width;
@@ -121,17 +120,9 @@ export function LazyImage({
       {/* Actual image - only load when in viewport */}
       {isInView && (
         <img
-          src={
-            podeRedimensionar
-              ? imagemRedimensionada(src, { width: LARGURA_PADRAO, quality })
-              : src
-          }
-          srcSet={
-            podeRedimensionar
-              ? conjuntoDeImagens(src, LARGURAS_DISPONIVEIS, quality)
-              : undefined
-          }
-          sizes={podeRedimensionar ? sizes : undefined}
+          src={atributos.src}
+          srcSet={atributos.srcSet}
+          sizes={atributos.sizes}
           alt={alt}
           loading={priority ? "eager" : "lazy"}
           decoding={priority ? "sync" : "async"}

@@ -1,3 +1,4 @@
+import { statusConfig } from "@/components/admin/orders/OrderStatusBadge";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
@@ -44,6 +45,79 @@ const validateStatusUpdate = (
     }
   }
 };
+
+/**
+ * L-9 front (08/09/2026) — a corrida cliente-cancela × admin-avança:
+ * `updateOrderStatus` relê o status no servidor antes de gravar (só para
+ * admin, fora do cancelamento, com rede — ver o `if` logo antes da
+ * atualização otimista) e lança isto em vez de chamar a RPC quando o status
+ * lido diverge do que a tela tinha em memória. `statusVerdadeiro` é o status
+ * que o servidor tinha NESTE instante; o próprio hook já corrigiu
+ * `orders`/`cachedAdminOrders` para ele e já mostrou o toast de aviso antes
+ * de lançar — o `catch` de `updateOrderStatus`, logo abaixo, reconhece este
+ * erro por `instanceof` e NÃO reverte nem empilha um segundo toast.
+ */
+export class ErroPedidoMudou extends Error {
+  statusVerdadeiro: OrderStatus;
+  constructor(statusVerdadeiro: OrderStatus) {
+    super(
+      `O pedido mudou de status antes da gravação: agora está "${statusVerdadeiro}".`,
+    );
+    this.name = "ErroPedidoMudou";
+    this.statusVerdadeiro = statusVerdadeiro;
+  }
+}
+
+/**
+ * A releitura acima (não a RPC) falhou — rede caiu no meio, RLS recusou.
+ * "Não sei" nunca vira "pode avançar": `updateOrderStatus` lança isto ANTES
+ * de qualquer update otimista e ANTES de chamar a RPC.
+ */
+export class ErroReleituraDeStatusFalhou extends Error {
+  causaOriginal: unknown;
+  constructor(causaOriginal: unknown) {
+    super("Não foi possível conferir o status do pedido antes de avançar.");
+    this.name = "ErroReleituraDeStatusFalhou";
+    this.causaOriginal = causaOriginal;
+  }
+}
+
+/**
+ * L-9 front rodada 2 (08/09/2026, achado 1 do laudo do revisor): o pedido
+ * não está em `orders` (deep link, paginação — `orders` só traz a página
+ * carregada) e quem chamou `updateOrderStatus` não informou
+ * `statusEsperado`. Sem NENHUM dos dois, não existe status para comparar
+ * contra o que o servidor tem — e por isso a releitura nem chega a
+ * acontecer (nenhuma consulta é disparada). Diferente de
+ * `ErroReleituraDeStatusFalhou`: aqui a consulta nunca foi tentada, porque
+ * não há o que perguntar. "Não sei" nunca vira "pode avançar":
+ * `updateOrderStatus` lança isto ANTES de qualquer update otimista e ANTES
+ * de qualquer chamada de rede.
+ */
+export class ErroStatusEsperadoDesconhecido extends Error {
+  constructor() {
+    super(
+      "Não foi possível conferir o status do pedido antes de avançar: a ficha não tem o status atual em memória.",
+    );
+    this.name = "ErroStatusEsperadoDesconhecido";
+  }
+}
+
+/**
+ * `Map` sobre `statusConfig` (OrderStatusBadge.tsx) — mesma técnica de
+ * `paymentStatusConfigByKey`, no mesmo arquivo: a chave vem de uma união
+ * fechada (`OrderStatus`) e o `Record` de origem já é exaustivo por
+ * construção, mas o eslint-plugin-security não distingue isso de um
+ * dicionário arbitrário e acusa `detect-object-injection` em toda
+ * indexação dinâmica (`statusConfig[statusVerdadeiro]`). `Map.get` não é
+ * indexação para o eslint.
+ */
+const statusConfigByKey = new Map(
+  Object.entries(statusConfig) as [
+    OrderStatus,
+    (typeof statusConfig)[OrderStatus],
+  ][],
+);
 
 async function syncOfflineOrderUpdates(): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
@@ -1701,6 +1775,7 @@ export function useOrders(
       status: OrderStatus,
       notes?: string,
       silent = false,
+      statusEsperado?: OrderStatus,
     ) => {
       const originalOrders = [...orders];
       let originalCache: Order[] | null = null;
@@ -1710,6 +1785,93 @@ export function useOrders(
 
         // Validation logic extracted for clarity
         validateStatusUpdate(order, isAdmin, status, silent);
+
+        // L-9 front (08/09/2026): a lojista está com a ficha aberta
+        // mostrando um status que o servidor já não tem mais — o cliente
+        // cancelou entre a leitura que preencheu a tela e o clique em
+        // "Avançar". Só entra aqui para admin avançando (não cancelando —
+        // a RPC já guarda esse caminho contra os dois lados) e só com
+        // rede (offline cai direto na fila abaixo; sem rede não há como
+        // reler). Roda ANTES do update otimista, de propósito: se o
+        // status mudou, a gravação nem começa.
+        //
+        // Rodada 2 (achado 1 do laudo): a condição original exigia `order`
+        // — quando o pedido não está na página carregada (deep link,
+        // paginação: AdminOrdersView.tsx:604-635, AdminUserDetailView.tsx),
+        // `order` é `undefined` e a guarda inteira era pulada, deixando a
+        // RPC gravar sem checar nada. Agora `esperado` vem do que a TELA
+        // sabia — `order.status` quando o pedido está carregado, senão o
+        // `statusEsperado` que o chamador informou (ex.: a ficha aberta por
+        // deep link) — e a guarda não exige mais `order`.
+        const esperado = order?.status ?? statusEsperado;
+
+        if (
+          isAdmin &&
+          status !== "cancelled" &&
+          (typeof navigator === "undefined" || navigator.onLine)
+        ) {
+          if (esperado === undefined) {
+            // Nem `orders` nem o chamador sabem o status atual: não há o
+            // que reler. "Não sei" nunca vira "pode avançar" — falha
+            // FECHADA, sem consultar o servidor e sem gravar nada.
+            if (!silent) {
+              toast.warning("Não foi possível conferir o pedido agora.", {
+                description:
+                  "Confira sua conexão e tente avançar de novo em instantes.",
+              });
+            }
+            throw new ErroStatusEsperadoDesconhecido();
+          }
+
+          const { data: linhaAtual, error: erroReleitura } = await supabase
+            .from("marketplace_orders")
+            .select("status")
+            .eq("id", orderId)
+            .single();
+
+          if (erroReleitura) {
+            // "Não sei" nunca vira "pode avançar": sem confirmar o status
+            // real, nem update otimista nem RPC.
+            if (!silent) {
+              toast.warning("Não foi possível conferir o pedido agora.", {
+                description:
+                  "Confira sua conexão e tente avançar de novo em instantes.",
+              });
+            }
+            throw new ErroReleituraDeStatusFalhou(erroReleitura);
+          }
+
+          const statusVerdadeiro = linhaAtual?.status as
+            | OrderStatus
+            | undefined;
+
+          if (statusVerdadeiro && statusVerdadeiro !== esperado) {
+            const rotulo =
+              statusConfigByKey.get(statusVerdadeiro)?.label ??
+              statusVerdadeiro;
+            // Corrige o estado local para o que o servidor tem de verdade
+            // — a mesma forma do update otimista abaixo, só que gravando o
+            // status VERDADEIRO em vez do destino do clique. Quando o
+            // pedido não está em `orders` (deep link), este `map` é um
+            // no-op — quem corrige a ficha nesse caso é o chamador, a
+            // partir de `ErroPedidoMudou.statusVerdadeiro` (ver
+            // AdminOrdersView.handleStatusChange).
+            cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
+              o.id === orderId ? { ...o, status: statusVerdadeiro } : o,
+            );
+            setOrders((prev) =>
+              prev.map((o) =>
+                o.id === orderId ? { ...o, status: statusVerdadeiro } : o,
+              ),
+            );
+            if (!silent) {
+              toast.warning(
+                `Este pedido mudou há instantes: agora está "${rotulo}". A ficha foi atualizada.`,
+              );
+            }
+            throw new ErroPedidoMudou(statusVerdadeiro);
+          }
+        }
 
         // Optimistic update
         originalCache = cachedAdminOrders ? [...cachedAdminOrders] : null;
@@ -1816,14 +1978,39 @@ export function useOrders(
         }
       } catch (err: any) {
         console.error("Error updating status:", err);
-        cachedAdminOrders = cachedAdminOrders
-          ? [...(cachedAdminOrders || [])]
-          : null; // will revert below or use originalCache
-        cachedAdminOrders = originalCache;
-        setOrders(originalOrders);
+        // L-9 front: os três erros da releitura acima já cuidaram do
+        // próprio aviso (`toast.warning`, não `toast.error`) — cair no
+        // `toast.error` genérico aqui empilharia um SEGUNDO toast para o
+        // mesmo clique. `ErroPedidoMudou` especificamente já corrigiu
+        // `orders`/`cachedAdminOrders` para o status VERDADEIRO logo
+        // acima: reverter para `originalOrders`/`originalCache` aqui
+        // devolveria a tela ao status velho — o próprio defeito que esta
+        // releitura existe para fechar.
+        //
+        // Achado 2 do laudo da rodada 2: nenhum dos três lançou update
+        // OTIMISTA (a variável `originalCache` só recebe valor DEPOIS de
+        // toda a guarda, na linha do `// Optimistic update` abaixo) — mas
+        // `originalCache` nasce `null`, e reverter para ele fazia
+        // `cachedAdminOrders = null`, zerando o cache do painel inteiro
+        // numa falha de rede que não tinha nada a ver com o conteúdo dele.
+        // O comentário anterior aqui dizia que isso era "inofensivo" — não
+        // era: `setOrders(originalOrders)` de fato é um no-op (mesmo
+        // conteúdo de antes), mas `cachedAdminOrders = originalCache`
+        // apagava a SWR cache. Por isso os três erros pulam a reversão
+        // inteira, não só a de `orders`.
+        const erroJaTratado =
+          err instanceof ErroPedidoMudou ||
+          err instanceof ErroReleituraDeStatusFalhou ||
+          err instanceof ErroStatusEsperadoDesconhecido;
+        if (!erroJaTratado) {
+          cachedAdminOrders = originalCache;
+          setOrders(originalOrders);
+        }
         // P-2 (ressalva da revisão da onda 3): sem escrita de cache aqui
         // também — a reversão é em memória; o cache se renova no fetch.
-        if (!silent) toast.error(mensagemAmigavelErroAtualizacaoStatus(err));
+        if (!silent && !erroJaTratado) {
+          toast.error(mensagemAmigavelErroAtualizacaoStatus(err));
+        }
         throw err;
       }
     },

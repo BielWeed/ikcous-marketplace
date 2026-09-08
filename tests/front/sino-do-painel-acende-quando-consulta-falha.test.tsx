@@ -102,6 +102,10 @@ function criarContagemBuilder(
   return builder;
 }
 
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: {} }),
+}));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: vi.fn((tabela: string) => {

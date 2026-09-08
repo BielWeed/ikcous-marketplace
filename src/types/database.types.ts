@@ -1882,6 +1882,33 @@ export type Database = {
         };
         Relationships: [];
       };
+      vw_questions_public: {
+        Row: {
+          author_avatar_url: string | null;
+          author_name: string | null;
+          created_at: string | null;
+          id: string | null;
+          product_id: string | null;
+          question: string | null;
+        };
+        Insert: {
+          author_avatar_url?: never;
+          author_name?: never;
+          created_at?: string | null;
+          id?: string | null;
+          product_id?: string | null;
+          question?: string | null;
+        };
+        Update: {
+          author_avatar_url?: never;
+          author_name?: never;
+          created_at?: string | null;
+          id?: string | null;
+          product_id?: string | null;
+          question?: string | null;
+        };
+        Relationships: [];
+      };
       vw_questions_with_answers_count: {
         Row: {
           answers_count: number | null;
@@ -1944,6 +1971,48 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      vw_reviews_public: {
+        Row: {
+          author_avatar_url: string | null;
+          author_name: string | null;
+          comment: string | null;
+          created_at: string | null;
+          helpful: number | null;
+          id: string | null;
+          merchant_reply: string | null;
+          merchant_reply_at: string | null;
+          product_id: string | null;
+          rating: number | null;
+          verified: boolean | null;
+        };
+        Insert: {
+          author_avatar_url?: never;
+          author_name?: never;
+          comment?: string | null;
+          created_at?: string | null;
+          helpful?: number | null;
+          id?: string | null;
+          merchant_reply?: string | null;
+          merchant_reply_at?: string | null;
+          product_id?: string | null;
+          rating?: number | null;
+          verified?: boolean | null;
+        };
+        Update: {
+          author_avatar_url?: never;
+          author_name?: never;
+          comment?: string | null;
+          created_at?: string | null;
+          helpful?: number | null;
+          id?: string | null;
+          merchant_reply?: string | null;
+          merchant_reply_at?: string | null;
+          product_id?: string | null;
+          rating?: number | null;
+          verified?: boolean | null;
+        };
+        Relationships: [];
       };
     };
     Functions: {

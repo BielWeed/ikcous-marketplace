@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IKCOUS — Sem conexão</title>
+    <title>Sem conexão</title>
     <style>
         *,
         *::before,
@@ -124,6 +124,12 @@
             align-items: center;
             gap: 4px;
             margin-bottom: 32px;
+        }
+
+        .logo-wrap img {
+            width: 52px;
+            height: 52px;
+            object-fit: contain;
         }
 
         .logo-box {
@@ -255,9 +261,7 @@
 
     <div class="card">
         <div class="logo-wrap">
-            <div class="logo-box"><span>I</span></div>
-            <span class="logo-name">IKCOUS</span>
-            <span class="logo-sub">imports</span>
+            <img src="/branding/logo.svg" alt="" onerror="this.hidden=true">
         </div>
 
         <div class="signal-icon">
@@ -273,7 +277,7 @@
         </div>
 
         <h1>Sem conexão</h1>
-        <p>Você está offline. Reconecte para continuar navegando no IKCOUS.</p>
+        <p>Você está offline. Reconecte para continuar navegando.</p>
 
         <button class="btn" onclick="handleRetry()" id="retry-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"

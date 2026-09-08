@@ -7,6 +7,161 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.25.0] - 2026-09-08
+
+A versão em que o link da loja no WhatsApp mostra o produto, o painel diz o que
+falta para vender, a vitrine para de perder o lugar e ninguém fica preso na tela
+de atualização. 21 PRs (#457, #461, #462, #464, #468, #469, #470, #472, #473, #474, #475,
+#476, #477, #478, #479, #483, #484, #485, #486, #488, #490); ZERO edge function do
+Supabase e UMA migration de banco, aditiva e já aplicada nas duas lojas antes do
+corte (mais duas que viajam no repositório e NÃO se aplicam — ver "Para quem
+OPERA"). Front publicado pela Vercel no merge da `main` e pelo `vercel --prod`
+do clone da Savy (o `middleware.ts` da Vercel vai junto com o site).
+
+### Para quem COMPRA (vitrine)
+
+- **Compartilhar um produto no WhatsApp mostra foto, nome e preço** (PR #470):
+  o robô do WhatsApp recebia a página sem os dados do produto e, na loja da
+  Savy, a imagem apontava para um endereço temporário que exigia login. Agora
+  o `middleware.ts` monta as metatags do produto para os robôs de link, e a
+  imagem de compartilhamento aponta para o endereço público de cada loja.
+  (Cada loja precisa da variável do Supabase no projeto da Vercel dela; a
+  resposta traz o cabeçalho `X-Ikcous-Og` dizendo se achou o produto.)
+- **A vitrine não perde o lugar** (PRs #468, #479): a categoria escolhida na
+  home sobrevive ao ir e voltar do carrinho ou do produto e ao recarregar a
+  página (o endereço guarda `?category=`), e a lista já expandida ("ver mais")
+  continua expandida na volta — antes voltava para "Todas" com 12 produtos.
+  Escolher "Todas" ou outra categoria continua zerando a lista, de propósito.
+- **A vitrine não encolhe quando o catálogo muda ao vivo** (PR #461): uma venda
+  mexendo no estoque, um produto salvo ou pausado pela lojista faziam a lista
+  voltar para 12 produtos para quem já tinha carregado mais páginas. Agora a
+  posição se mantém; trocar categoria, busca ou ordenação continua reiniciando a
+  lista, de propósito.
+- **A loja não some quando a internet oscila** (PR #462): se a consulta de
+  produtos falhar por um instante enquanto a loja carrega, a vitrine mantém o que
+  já tinha (vindo da memória do celular) em vez de trocar tudo por "Nenhum
+  produto agora"; e a aba deixa de ficar sem atualização ao vivo pelo resto da
+  sessão quando a memória interna do app demora a abrir. Preço mudado e produto
+  esgotado voltam a chegar na hora.
+- **Ninguém mais fica preso na tela "Atualizando o Aplicativo"** (PR #474): no
+  máximo uma recarga automática por sessão, e depois de 4 segundos aparece
+  "A atualização está demorando mais do que o normal" com o botão "Recarregar a
+  página" (carrinho e login continuam salvos). E o app aberto para de encher o
+  armazenamento do celular: a pergunta "saiu versão nova?" (a cada 3 minutos)
+  não é mais guardada como arquivo novo pelo service worker.
+- **Cancelar um pedido pago diz a verdade** (PR #457): se o pedido ainda não
+  foi enviado, a tela diz que o dinheiro volta sozinho (PIX na conta, cartão na
+  fatura); se já foi enviado, diz que é preciso devolver o produto e que a loja
+  devolve depois que ele chegar; e mostra o estado da devolução depois do
+  cancelamento. Antes dizia "o dinheiro NÃO volta automaticamente" mesmo quando
+  voltava.
+- **O texto do banner é legível e o carrossel para quando você quer ler**
+  (PR #477): atrás do texto do banner há um escurecimento garantido mesmo com o
+  overlay do lojista em 0% (contraste medido antes: 1,05:1 no título); a prévia
+  do painel mostra exatamente o mesmo que a loja. O carrossel para de passar
+  sozinho enquanto o mouse está sobre ele ou algo dentro dele tem o foco do
+  teclado, e nunca passa sozinho para quem pediu "menos movimento" no sistema.
+- **Quem usa teclado ou leitor de tela navega pela grade de produtos**
+  (PRs #475, #478): o card do produto deixa de ser "um botão com botões dentro"
+  (estrutura inválida que o leitor de tela lia inteira como nome do botão) — o
+  nome do produto vira o alvo que abre o produto, e favoritar/comprar continuam
+  botões independentes; o botão de favoritar diz de qual produto é ("Adicionar
+  Camiseta Azul aos favoritos"). Para dedo e mouse nada muda.
+- **O app gasta menos bateria, dados e banco** (PRs #469, #464, #472, #476): a
+  checagem "estou online?" vira uma consulta por aba a cada 15 s em vez de uma
+  por pedaço de tela (o painel chegava a 8-16 consultas por minuto); a previsão
+  de próxima tela deixa de gravar no armazenamento a cada redesenho e volta a
+  funcionar para quem tem histórico antigo; e o aquecimento de fotos para uso
+  offline guarda só a primeira foto de cada um dos 15 primeiros produtos e
+  nenhum banner — 3.335 kB a menos baixados à toa (71% do que era aquecido),
+  medido na loja viva.
+- **Quem visita sem login não recebe mais a identidade de quem avaliou ou
+  perguntou** (PR #484, I-3/I-4): nada muda na tela, avaliações e perguntas
+  continuam na página do produto. Por baixo, o visitante anônimo passa a ler por
+  duas "vitrines" do banco (views públicas) que não carregam o identificador do
+  autor; antes, qualquer pessoa sem login conseguia puxar da API o `user_id` de
+  quem escreveu cada avaliação e cada pergunta. O fechamento completo (tirar do
+  visitante a leitura direta da tabela e a gravação anônima de analytics) depende
+  de duas migrations que **não** foram aplicadas nesta versão — ver "Para quem
+  OPERA".
+- **O banner do topo é baixado uma vez, não duas** (PR #486): o pré-carregamento
+  do banner pedia o arquivo original (até 1.443 kB) enquanto o carrossel mostrava
+  a versão redimensionada (~27 kB); no 4G o download inútil competia com as fotos
+  dos produtos. Agora o pré-carregamento pede exatamente a mesma foto que a tela
+  vai mostrar (uma única regra decide o endereço para os dois), e se a versão
+  redimensionada falhar ele já aquece a original, que é o que a tela tenta em
+  seguida. Nada muda no que aparece.
+- **A linha do tempo do pedido dá para ler e para ouvir** (PR #483): na lista
+  de pedidos do perfil, o texto de cada etapa ("Recebido", "Preparando", "Em
+  Rota", "Entregue") passa de 8 px para 11 px, e as etapas que ainda não
+  chegaram saem de um cinza quase invisível (contraste 1,48:1) para um cinza
+  legível (4,83:1, passa o mínimo). Para quem usa leitor de tela, a linha do
+  tempo deixa de ser só desenho: vira uma lista de 4 etapas, cada uma dizendo
+  se está concluída, se é a atual ou se ainda não chegou. O desenho não mudou.
+
+- **A loja se chama pelo nome dela em toda tela** (PR #488, Etapa 2 do "app
+  único"): quando a lojista preenche o nome da loja nos Ajustes, o topo do
+  painel deixa de dizer "IKCOUS Admin", o endereço de entrega pergunta "Onde
+  entregaremos seu produto da <nome da loja>?", a aba do navegador e os avisos
+  de notificação e de atualização usam o mesmo nome, e a tela "sem conexão"
+  mostra a logo da própria loja em vez do nome IKCOUS. O link de exemplo do
+  painel de WhatsApp passa a usar o endereço real da loja. Com o nome vazio,
+  tudo continua como hoje (marca do build).
+
+### Para quem VENDE (painel admin)
+
+- **O Dashboard diz quantos produtos estão acabando e o que falta para a loja
+  vender** (PR #473): um card "Estoque baixo: N produtos" (o número já vinha do
+  banco e ninguém mostrava) que leva à lista de avisos; e o bloco "Sua loja está
+  pronta para vender?" com os 3 itens que o app confere — PIX configurado, CEP
+  de origem do frete, pelo menos 1 produto ativo — cada um levando à tela certa.
+  O card de estoque não acusa falha enquanto ainda está carregando.
+- **O checklist "loja pronta" não se deixa enganar** (PR #485, issue #480): o CEP
+  de origem do frete só conta como feito com 8 dígitos (com ou sem hífen); antes,
+  digitar "123" já marcava a etapa como concluída e a cotação de frete ia falhar
+  no primeiro pedido. A regra "PIX configurado" passa a ser uma só para o
+  Dashboard e para os Ajustes (antes cada tela fazia a própria conta e um dia
+  iriam discordar), e o card de estoque baixo ganhou teste que impede voltar a
+  acusar falha enquanto ainda carrega.
+- **O botão "Avançar" do pedido não ressuscita um pedido cancelado** (PR #490,
+  L-9): a lojista está com a ficha "Em Separação" aberta, o cliente cancela pelo
+  app dele no mesmo instante, e a lojista clica "Avançar" — antes, o pedido
+  cancelado voltava a vivo como "Em Trânsito" e o cliente recebia aviso de que
+  estava a caminho. Agora o painel relê o status no servidor antes de gravar; se
+  mudou, não avança, mostra "Este pedido mudou há instantes: agora está
+  Cancelado" e corrige ficha e lista. Se a leitura falhar (rede, permissão), não
+  avança e avisa que não conseguiu conferir — "não sei" nunca vira "pode
+  avançar". Vale para todos os avanços do painel (um ponto único); cancelar não
+  mudou. Reduz a janela de segundos para milissegundos; fechar de vez depende do
+  servidor recusar o avanço (item 6 da fila, parado no dono).
+
+### Para quem OPERA (banco, servidor, lojas clonadas)
+
+- **Banco: uma migration já aplicada, duas que NÃO se aplicam** (PR #484, I-3/I-4,
+  juntado em develop 6a50c1e). Nenhuma edge function mudou. Medido no corte:
+  `git diff --name-only v1.24.0..fcd7452` = 97 arquivos, 6 em `supabase/migrations/`:
+  - `20261110000000_o_visitante_le_avaliacoes_e_perguntas_pela_vitrine.sql` — ADITIVA
+    (só `CREATE VIEW vw_reviews_public`/`vw_questions_public` + GRANT/REVOKE). **JÁ
+    APLICADA** no principal e na Savy em 08/09 16:54Z pela carta branca (laudo Opus
+    r2 aprovado; medido antes: ausentes; depois: existem, anon lê). O front desta
+    versão lê por essas views. Rollback: `rollback-manual-20261110000000_*.sql`.
+  - `20261111000000_o_visitante_para_de_ler_o_autor_direto_da_tabela.sql` e
+    `20261112000000_analytics_events_para_de_aceitar_gravacao_anonima.sql` — **NÃO
+    ADITIVAS, NÃO APLICADAS, NÃO APLICAR** nesta release: tiram permissão do visitante
+    e dependem da decisão do dono (issue #487: o perfil público de outro cliente
+    ficaria vazio para visitante sem login) e de um PR próprio antes. O front do #484
+    funciona com ou sem elas. Os arquivos viajam no repositório só para o SQL ficar
+    versionado e revisado.
+  - Para quem clona: o `db-apply` só pode rodar a 20261110; as outras duas ficam fora
+    até o dono liberar.
+- **`middleware.ts` (Vercel) mudou** (PR #470): é publicado junto com o site.
+  Na Savy, o cabeçalho `X-Ikcous-Og` responde `produto` quando a variável do
+  Supabase existe no projeto Vercel dela e `sem-produto` quando não existe —
+  medir depois da publicação.
+- **O service worker mudou** (PR #474, `src/sw/sw.ts`): quem já tem o app
+  aberto recebe o aviso "nova versão disponível" e atualiza pelo modal.
+- **Fora desta versão:** nenhum PR estava aberto no corte. Ficam para depois: a issue #489 (a categoria da home se perde ao voltar durante a troca de tela), a issue #487 e as duas migrations restritivas do #484 (decisão do dono), e o item "PIX configurado" do checklist, que hoje só enxerga o build e não o banco.
+
 ## [1.24.0] - 2026-09-08
 
 A versão em que a loja abre mais rápido, o app para de mentir quando copia e

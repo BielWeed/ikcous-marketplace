@@ -40,6 +40,10 @@ function criarContagemBuilder(contagem: number) {
   return builder;
 }
 
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: {} }),
+}));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     // A contagem depende da TABELA: sem separar, o caso da avaliacao mediria

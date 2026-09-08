@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 type NetworkQuality = "fast" | "medium" | "slow" | "offline";
 
@@ -86,9 +86,14 @@ export function useNetworkAdaptive() {
     };
   }, []);
 
-  return {
-    getQuality: () => qualityRef.current,
-    isSlow: () =>
-      qualityRef.current === "slow" || qualityRef.current === "offline",
-  };
+  const getCurrentQuality = useCallback(() => qualityRef.current, []);
+  const isSlow = useCallback(
+    () => qualityRef.current === "slow" || qualityRef.current === "offline",
+    [],
+  );
+
+  return useMemo(
+    () => ({ getQuality: getCurrentQuality, isSlow }),
+    [getCurrentQuality, isSlow],
+  );
 }

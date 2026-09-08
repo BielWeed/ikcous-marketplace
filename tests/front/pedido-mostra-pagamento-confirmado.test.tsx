@@ -269,17 +269,30 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
     });
   }
 
-  it("status 'cancelled' + pago_apos_expirar: mostra 'Pago após o vencimento', orienta a falar com a loja, e NÃO mostra 'Pagamento confirmado'", async () => {
+  // Rodada 3 (laudo Opus PR#457, BLOQUEIA A): este arquivo nunca dá uma linha
+  // de devolução à tela (o mock de `@/lib/supabase` acima só sabe responder
+  // `.select().eq().in()` — a chamada real do hook é `.select().eq().order()`,
+  // que estoura e vira `erro=true`/`linhas=[]`) — é exatamente o estado de
+  // "nenhuma linha observada" (o mesmo de `pago_apos_expirar` real, onde a
+  // linha nunca nasce porque o cancelamento aconteceu ANTES do dinheiro
+  // entrar) e a rodada 3 manda "Fale com a loja" para ele, nunca mais
+  // "volta sozinho" inferido de `payment_status`+`cancelledAfterShipping`.
+  it("status 'cancelled' + pago_apos_expirar + sem linha observada: mostra 'Pago após o vencimento' e 'Fale com a loja', NUNCA 'volta sozinho'", async () => {
     pedidoAtual = pedidoCanceladoComPagamento("pago_apos_expirar");
 
     await renderizar();
 
     expect(hospedeiro.textContent).toContain("Pago após o vencimento");
     expect(hospedeiro.textContent).toContain("Fale com a loja para resolver");
+    expect(hospedeiro.textContent).not.toContain("volta sozinho");
     expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
   });
 
-  it("status 'cancelled' + pago: mostra a mesma orientação de cancelado-mas-pago", async () => {
+  // Rodada 3 (mesmo motivo do teste acima): sem linha observada, "pago" +
+  // cancelado também manda falar com a loja — a mentira da rodada 2 era
+  // inferir "volta sozinho" da combinação `payment_status`+
+  // `cancelledAfterShipping`, sem checar se a RPC realmente gravou algo.
+  it("status 'cancelled' + pago + sem linha observada: mostra 'Fale com a loja', NUNCA 'volta sozinho'", async () => {
     pedidoAtual = pedidoCanceladoComPagamento("pago");
 
     await renderizar();
@@ -287,6 +300,7 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
     expect(hospedeiro.textContent).toContain(
       "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.",
     );
+    expect(hospedeiro.textContent).not.toContain("volta sozinho");
   });
 
   // Achado 1 da revisão: o SELO (CustomerPaymentBadge), não só a descrição
@@ -297,14 +311,23 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
   // Rótulo mudou de "Pago — pedido cancelado" para "Pago — fale com a loja"
   // numa revisão seguinte: o original quebra em duas linhas a 375px (achado
   // de largura) e o novo orienta em vez de só informar.
-  it("status 'cancelled' + pago: o selo mostra 'Pago — fale com a loja', e NÃO o verde 'Pagamento confirmado' nem o rótulo antigo", async () => {
+  //
+  // Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): o selo não tem
+  // `linhasDevolucao` — não pode saber se a devolução é automática ou
+  // depende da loja — então virou NEUTRO ("Pago — cancelado") para
+  // `pago`+cancelado em QUALQUER estado de envio. Quem afirma qual das duas
+  // frases é verdade é a descrição do card (asserida no teste acima) e a
+  // linha de devolução, que leem `linhasDevolucao` de verdade.
+  it("status 'cancelled' + pago: o selo mostra o rótulo NEUTRO 'Pago — cancelado', nunca uma promessa", async () => {
     pedidoAtual = pedidoCanceladoComPagamento("pago");
 
     await renderizar();
 
-    expect(hospedeiro.textContent).toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).toContain("Pago — cancelado");
     expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
     expect(hospedeiro.textContent).not.toContain("Pago — pedido cancelado");
+    expect(hospedeiro.textContent).not.toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).not.toContain("Pago — devolução automática");
   });
 
   // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
@@ -436,7 +459,12 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
   //
   // Rótulo mudou de "Pago — pedido cancelado" para "Pago — fale com a loja"
   // (achado de largura: o original quebra em duas linhas a 375px).
-  it("status 'cancelled' + pago: o card mostra 'Pago — fale com a loja', e NÃO o verde 'Pagamento confirmado' nem o rótulo antigo", async () => {
+  //
+  // Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): o selo da lista NÃO lê
+  // `linhasDevolucao` (ele nem monta o hook) — não tem como saber se a
+  // devolução é automática ou depende da loja, então virou NEUTRO ("Pago —
+  // cancelado") para `pago`+cancelado em QUALQUER estado de envio.
+  it("status 'cancelled' + pago + NÃO enviado: o card mostra o rótulo NEUTRO 'Pago — cancelado'", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const order: Order = {
       ...pedidoComPagamento("pago"),
@@ -447,9 +475,32 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
       raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
     });
 
-    expect(hospedeiro.textContent).toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).toContain("Pago — cancelado");
     expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
     expect(hospedeiro.textContent).not.toContain("Pago — pedido cancelado");
+    expect(hospedeiro.textContent).not.toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).not.toContain("Pago — devolução automática");
+  });
+
+  // Mesmo rótulo, agora ENVIADO (`cancelledAfterShipping: true`) — a
+  // invariante desta rodada é que o selo NÃO MUDA com o estado de envio
+  // (quem muda com ele é a descrição do card em `OrderDetailsView`, que lê
+  // `linhasDevolucao`, não este componente).
+  it("status 'cancelled' + pago + ENVIADO: o card mostra o MESMO rótulo neutro 'Pago — cancelado'", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order: Order = {
+      ...pedidoComPagamento("pago"),
+      status: "cancelled",
+      cancelledAfterShipping: true,
+    };
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    expect(hospedeiro.textContent).toContain("Pago — cancelado");
+    expect(hospedeiro.textContent).not.toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).not.toContain("Pago — devolução automática");
   });
 
   // Controle: o pedido segue vivo (status 'pending'), mesmo pago. O selo tem

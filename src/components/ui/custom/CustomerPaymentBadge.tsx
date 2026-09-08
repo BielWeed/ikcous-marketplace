@@ -3,7 +3,13 @@ import { cn } from "@/lib/utils";
 import type { OrderStatus, PaymentStatus } from "@/types";
 import { memo } from "react";
 
-type Tone = "confirmado" | "aguardando" | "recusado" | "expirado" | "atencao";
+type Tone =
+  | "confirmado"
+  | "aguardando"
+  | "recusado"
+  | "expirado"
+  | "atencao"
+  | "neutro";
 
 interface CustomerPaymentEntry {
   label: string;
@@ -101,6 +107,17 @@ const toneStyles: Record<
     borderColor: "border-orange-200",
     dot: "bg-orange-600",
   },
+  // Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): tom para o selo que não
+  // afirma nada sobre o desfecho do dinheiro (ver `PAGO_CANCELADO_NEUTRO`) —
+  // mesma paleta cinza de `expirado` (zinc-600/zinc-100, contraste 7,03,
+  // já medido acima), de propósito: cinza é neutro, não "boa notícia" nem
+  // "aja agora".
+  neutro: {
+    color: "text-zinc-600",
+    bgColor: "bg-zinc-100",
+    borderColor: "border-zinc-200",
+    dot: "bg-zinc-400",
+  },
 };
 
 /**
@@ -151,9 +168,33 @@ const customerPaymentConfigByKey = new Map(
 // de `pago_apos_expirar` acima: não existe rótulo próprio para "recebido na
 // entrega, cancelado depois" em lugar nenhum do app — sem essa entrada aqui,
 // o selo mostraria "Pagamento confirmado" verde para um pedido morto.
+// `recebido_na_entrega` fica FORA do Mercado Pago (brief T7): a devolução
+// sempre depende da loja, enviado ou não — por isso este rótulo continua
+// valendo pra ele em qualquer estado de envio (ver `customerPaymentStatusEntry`).
 const PAGO_MAS_CANCELADO: CustomerPaymentEntry = {
   label: "Pago — fale com a loja",
   tone: "atencao",
+};
+
+// Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): o selo NÃO tem a linha de
+// devolução (`linhasDevolucao`, só o card e a linha abaixo dele lêem o
+// hook) — logo não pode prometer nada sobre o desfecho do dinheiro. O rótulo
+// anterior ("Pago — devolução automática", tom `confirmado`) foi a rodada 2
+// inferindo a mesma condição da RPC a partir de `payment_status` +
+// `cancelledAfterShipping`, e essa inferência mentia em dois estados
+// alcançáveis (`pago_apos_expirar` e convidado por rastreio — ver o
+// comentário de `cancelledDescription` em OrderDetailsView.tsx). Este rótulo
+// é NEUTRO — não afirma "fale com a loja" nem "volta sozinho" — e vale para
+// `pago`+cancelado em QUALQUER estado de envio; quem decide qual das duas
+// frases é verdade é o card e `textoDevolucao`, que leem a linha de verdade.
+// Também corrige o estouro de largura: "Pago — devolução automática" (27
+// caracteres) passava do limite documentado acima (~180,6px disponíveis a
+// 375px) — medido em 217,3px (185,3px de texto + 32px de moldura da pill:
+// dot + gap + padding + borda). Este rótulo (16 caracteres) mede 143,0px,
+// 37,6px de folga.
+const PAGO_CANCELADO_NEUTRO: CustomerPaymentEntry = {
+  label: "Pago — cancelado",
+  tone: "neutro",
 };
 
 // Caso oposto de `PAGO_MAS_CANCELADO`: o cliente cancelou um PIX que ainda
@@ -177,6 +218,14 @@ const AGUARDANDO_MAS_CANCELADO: CustomerPaymentEntry = {
  * Traduz `payment_status` (e, quando o pedido morreu com o dinheiro dentro,
  * também `status`) para o texto que o comprador vê. `null` para
  * `sem_cobranca` — quem renderiza não desenha nada nesse caso.
+ *
+ * Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): `pago` + cancelado sempre
+ * devolve `PAGO_CANCELADO_NEUTRO`, em QUALQUER estado de envio — este selo
+ * não lê `linhasDevolucao` (só o card e a linha de devolução em
+ * `OrderDetailsView` fazem isso), então não tem como saber se a devolução é
+ * automática ou depende da loja. Antes desta rodada a função recebia um
+ * terceiro parâmetro (`cancelledAfterShipping`) para tentar adivinhar —
+ * removido junto com a promessa.
  */
 export function customerPaymentStatusEntry(
   paymentStatus: PaymentStatus | null | undefined,
@@ -184,11 +233,10 @@ export function customerPaymentStatusEntry(
 ): CustomerPaymentEntry | null {
   const key = paymentStatusKey(paymentStatus);
   if (key === "sem_cobranca") return null;
-  if (
-    (key === "pago" || key === "recebido_na_entrega") &&
-    orderStatus === "cancelled"
-  )
+  if (key === "recebido_na_entrega" && orderStatus === "cancelled")
     return PAGO_MAS_CANCELADO;
+  if (key === "pago" && orderStatus === "cancelled")
+    return PAGO_CANCELADO_NEUTRO;
   if (key === "aguardando" && orderStatus === "cancelled")
     return AGUARDANDO_MAS_CANCELADO;
   // `Map.get` não é indexação dinâmica para o eslint, e o Record acima é

@@ -1,16 +1,20 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { KpiSummaryCards } from "@/components/admin/dashboard/KpiSummaryCards";
+import { LojaProntaEEstoqueBaixo } from "@/components/admin/dashboard/LojaProntaEEstoqueBaixo";
 import { OperationalPerformanceChart } from "@/components/admin/dashboard/OperationalPerformanceChart";
 import { StrategicIntelligenceBlocks } from "@/components/admin/dashboard/StrategicIntelligenceBlocks";
 import { TopProductsList } from "@/components/admin/dashboard/TopProductsList";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
-import { useAnalytics } from "@/hooks/useAnalytics";
+import { useStore } from "@/contexts/StoreContext";
+import { type DashboardStats, useAnalytics } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -36,6 +40,43 @@ interface CategoryData {
   value: number;
   avg_ticket?: number;
   orders?: number;
+}
+
+/**
+ * Ponte entre os dados vivos (useStore) e o componente PURO
+ * LojaProntaEEstoqueBaixo. Separada do corpo de AdminDashboardView e SEMPRE
+ * renderizada dentro de um <LocalErrorBoundary> (ver render abaixo): useStore
+ * lança se chamado fora de um StoreProvider, e isolar a chamada aqui garante
+ * que essa falha (ex.: tela montada sem o provider, como em testes que não
+ * mexem com este bloco) derrube só este cartão — nunca o Dashboard inteiro.
+ */
+function SecaoLojaProntaEEstoqueBaixo({
+  stats,
+  estoqueCarregando,
+  onNavigate,
+  onTentarDeNovo,
+}: Readonly<{
+  stats: DashboardStats | null;
+  estoqueCarregando: boolean;
+  onNavigate: (view: View, id?: string) => void;
+  onTentarDeNovo: () => void;
+}>) {
+  const { config, isLoaded, products, loadingProducts } = useStore();
+
+  return (
+    <LojaProntaEEstoqueBaixo
+      stats={stats}
+      originCep={config.originCep}
+      ligado={PAGAMENTO_ONLINE_LIGADO}
+      chaveOk={pixConfiguradoNoBuild(import.meta.env.VITE_MP_PUBLIC_KEY)}
+      produtos={products}
+      configCarregando={!isLoaded}
+      produtosCarregando={loadingProducts}
+      estoqueCarregando={estoqueCarregando}
+      onNavigate={onNavigate}
+      onTentarDeNovo={onTentarDeNovo}
+    />
+  );
 }
 
 export const AdminDashboardView = memo(function AdminDashboardView({
@@ -305,6 +346,18 @@ export const AdminDashboardView = memo(function AdminDashboardView({
               stats={stats}
               loading={isLoading && !stats}
               active={active}
+            />
+          </LocalErrorBoundary>
+        </div>
+
+        {/* Estoque baixo + checklist "loja pronta para vender" */}
+        <div className="px-0 delay-75 duration-300 animate-in fade-in slide-in-from-bottom-2 sm:px-6">
+          <LocalErrorBoundary>
+            <SecaoLojaProntaEEstoqueBaixo
+              stats={stats}
+              estoqueCarregando={isLoading && !stats}
+              onNavigate={onNavigate}
+              onTentarDeNovo={() => loadDashboardData(true)}
             />
           </LocalErrorBoundary>
         </div>

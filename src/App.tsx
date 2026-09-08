@@ -656,9 +656,18 @@ const AppContent = () => {
     }
     return "Todas";
   });
+  const selectedCategoryRef = useRef(selectedCategory);
+  // Lê a categoria atual mesmo antes de o React concluir o próximo render.
+  const caminhoDaHomeRef = useRef(() => {
+    const category = selectedCategoryRef.current;
+    return category && category !== "Todas"
+      ? `/?category=${encodeURIComponent(category)}`
+      : "/";
+  });
   const [sortBy, setSortBy] = useState<SortOption>("default");
 
   const handleCategoryChange = useCallback((category: string) => {
+    selectedCategoryRef.current = category;
     setSelectedCategory(category);
     if (typeof window !== "undefined") {
       const url = new URL(globalThis.location.href);
@@ -924,7 +933,8 @@ const AppContent = () => {
         }
 
         // Sync URL without full reload
-        let path = targetView === "home" ? "/" : `/${targetView}`;
+        let path =
+          targetView === "home" ? caminhoDaHomeRef.current() : `/${targetView}`;
         if (
           [
             "product-detail",
@@ -1683,7 +1693,10 @@ const AppContent = () => {
 
         const urlParams = new URLSearchParams(globalThis.location.search);
         const categoryParam = urlParams.get("category") || "Todas";
-        setSelectedCategory(categoryParam);
+        if (targetView === "home") {
+          selectedCategoryRef.current = categoryParam;
+          setSelectedCategory(categoryParam);
+        }
         const queryId = urlParams.get("id");
         const stateId = globalThis.history.state?.id;
         const nextSelectedProductId =
@@ -1813,9 +1826,13 @@ const AppContent = () => {
           globalThis.history.replaceState(
             { view: "home", trap: true, isBase: true },
             "",
-            "/",
+            caminhoDaHomeRef.current(),
           );
-          globalThis.history.pushState({ view: "home", trap: true }, "", "/");
+          globalThis.history.pushState(
+            { view: "home", trap: true },
+            "",
+            caminhoDaHomeRef.current(),
+          );
         }
       } else {
         isTransitioningRef.current = false;
@@ -1900,7 +1917,11 @@ const AppContent = () => {
 
       // 2. Home Trap logic
       if (e.state?.isBase && currentView === "home") {
-        globalThis.history.pushState({ view: "home", trap: true }, "", "/");
+        globalThis.history.pushState(
+          { view: "home", trap: true },
+          "",
+          caminhoDaHomeRef.current(),
+        );
       }
 
       // Detect direction for popstate (default to back)

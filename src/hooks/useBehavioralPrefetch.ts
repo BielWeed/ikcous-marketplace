@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /**
  * useBehavioralPrefetch
@@ -10,6 +10,12 @@ export function useBehavioralPrefetch(
   currentPath: string,
   prefetchCallback?: (view: string) => void,
 ) {
+  const prefetchCallbackRef = useRef(prefetchCallback);
+
+  useEffect(() => {
+    prefetchCallbackRef.current = prefetchCallback;
+  }, [prefetchCallback]);
+
   const updateMarkovChain = useCallback((path: string) => {
     try {
       const historyRaw = localStorage.getItem("pwa_nav_history");
@@ -42,7 +48,9 @@ export function useBehavioralPrefetch(
       if (!transitionsRaw) return null;
 
       const transitions: Record<string, number> = JSON.parse(transitionsRaw);
-      const sorted = Object.entries(transitions).sort(([, a], [, b]) => b - a);
+      const sorted = Object.entries(transitions)
+        .filter(([path]) => path !== currentPath)
+        .sort(([, a], [, b]) => b - a);
 
       if (sorted.length > 0 && sorted[0][1] > 1) {
         // Só prevê se houver recorrência
@@ -59,12 +67,7 @@ export function useBehavioralPrefetch(
 
     const prediction = getPrediction();
     if (prediction && prediction !== currentPath) {
-      console.log(
-        `[Omnipotence-Markov] High probability path detected: ${prediction}. Prefetching...`,
-      );
-      if (prefetchCallback) {
-        prefetchCallback(prediction);
-      }
+      prefetchCallbackRef.current?.(prediction);
     }
-  }, [currentPath, updateMarkovChain, getPrediction, prefetchCallback]);
+  }, [currentPath, updateMarkovChain, getPrediction]);
 }
