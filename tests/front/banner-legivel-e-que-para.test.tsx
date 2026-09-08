@@ -367,4 +367,115 @@ describe("BannerCarousel: o carrossel para de passar sozinho", () => {
 
     expect(emblaApi.scrollNext).not.toHaveBeenCalled();
   });
+
+  // Laudo do revisor no PR #477 (rodada 2): `pausado` era UM booleano para
+  // dois motivos (mouse e foco). Cada saída zerava os dois — mouse saindo
+  // com foco ainda dentro (ou o inverso) destravava o autoplay incorreto.
+  it("mouse sai mas o foco continua dentro → não avança", async () => {
+    vi.useFakeTimers();
+    await montar(doisBanners(), { autoPlay: true, interval: 2000 });
+
+    const indicador = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Ir para slide"]',
+    );
+    expect(indicador, "precisa ter o botão indicador do slide").not.toBeNull();
+
+    act(() => {
+      regiao().dispatchEvent(
+        new MouseEvent("mouseover", {
+          bubbles: true,
+          cancelable: true,
+          relatedTarget: document.body,
+        }),
+      );
+    });
+    act(() => {
+      indicador?.focus();
+    });
+    act(() => {
+      regiao().dispatchEvent(
+        new MouseEvent("mouseout", {
+          bubbles: true,
+          cancelable: true,
+          relatedTarget: document.body,
+        }),
+      );
+    });
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(emblaApi.scrollNext).not.toHaveBeenCalled();
+  });
+
+  it("foco sai mas o mouse continua em cima → não avança", async () => {
+    vi.useFakeTimers();
+    await montar(doisBanners(), { autoPlay: true, interval: 2000 });
+
+    const indicador = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Ir para slide"]',
+    );
+    expect(indicador, "precisa ter o botão indicador do slide").not.toBeNull();
+
+    act(() => {
+      regiao().dispatchEvent(
+        new MouseEvent("mouseover", {
+          bubbles: true,
+          cancelable: true,
+          relatedTarget: document.body,
+        }),
+      );
+    });
+    act(() => {
+      indicador?.focus();
+    });
+    act(() => {
+      indicador?.blur();
+    });
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(emblaApi.scrollNext).not.toHaveBeenCalled();
+  });
+
+  it("mouse sai E foco sai → volta a avançar (controle: a pausa não fica presa)", async () => {
+    vi.useFakeTimers();
+    await montar(doisBanners(), { autoPlay: true, interval: 2000 });
+
+    const indicador = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Ir para slide"]',
+    );
+    expect(indicador, "precisa ter o botão indicador do slide").not.toBeNull();
+
+    act(() => {
+      regiao().dispatchEvent(
+        new MouseEvent("mouseover", {
+          bubbles: true,
+          cancelable: true,
+          relatedTarget: document.body,
+        }),
+      );
+    });
+    act(() => {
+      indicador?.focus();
+    });
+    act(() => {
+      indicador?.blur();
+    });
+    act(() => {
+      regiao().dispatchEvent(
+        new MouseEvent("mouseout", {
+          bubbles: true,
+          cancelable: true,
+          relatedTarget: document.body,
+        }),
+      );
+    });
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(emblaApi.scrollNext).toHaveBeenCalledTimes(1);
+  });
 });

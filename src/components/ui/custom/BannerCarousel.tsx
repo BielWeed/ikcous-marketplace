@@ -25,7 +25,12 @@ export const BannerCarousel = memo(function BannerCarousel({
   // Pausa do autoplay (WCAG 2.2.2 — laudo de acessibilidade 05/09, M7): mouse
   // em cima, foco de teclado dentro do carrossel, ou o sistema pedindo menos
   // movimento. Nenhuma das duas muda o visual — só some o `setInterval`.
-  const [pausado, setPausado] = useState(false);
+  // Dois motivos independentes (revisão do PR #477, rodada 2): mouse e foco
+  // cada um com o próprio booleano, para a saída de um não zerar o outro
+  // (ex.: mouse sai com o foco ainda dentro não pode destravar o autoplay).
+  const [hoverAtivo, setHoverAtivo] = useState(false);
+  const [focoAtivo, setFocoAtivo] = useState(false);
+  const pausado = hoverAtivo || focoAtivo;
   const [menosMovimento, setMenosMovimento] = useState(false);
 
   useEffect(() => {
@@ -128,12 +133,12 @@ export const BannerCarousel = memo(function BannerCarousel({
       role="region"
       aria-roledescription="carousel"
       aria-label="Destaques e Promoções"
-      onMouseEnter={() => setPausado(true)}
-      onMouseLeave={() => setPausado(false)}
-      onFocus={() => setPausado(true)}
+      onMouseEnter={() => setHoverAtivo(true)}
+      onMouseLeave={() => setHoverAtivo(false)}
+      onFocus={() => setFocoAtivo(true)}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null))
-          setPausado(false);
+          setFocoAtivo(false);
       }}
     >
       {/* Viewport */}
