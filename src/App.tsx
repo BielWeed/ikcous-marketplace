@@ -632,6 +632,22 @@ const AppContent = () => {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isHeaderDocked, setIsHeaderDocked] = useState(false);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
+  // Latch (achado do laudo Claude no PR #427, 04/09/2026): sobe para true na
+  // primeira vez que uma navegação pede a barra e nunca mais desce. Sem
+  // isto, `{isRouteLoading && <Suspense>...}` desmontava o Suspense (e o
+  // AnimatePresence de dentro) inteiro assim que isRouteLoading virava
+  // false — o exit (largura 100% + fade 0,25s, em AppMotionFallbacks.tsx)
+  // nunca tinha a chance de rodar porque o AnimatePresence já tinha ido
+  // embora com o pai. Com o latch o Suspense continua montado depois do
+  // primeiro uso e só o `active` (isRouteLoading de verdade) muda — o
+  // AnimatePresence entra em cena para tocar o exit. Preserva o objetivo
+  // original (não pedir o chunk no boot): antes da 1ª navegação
+  // barraDeRotaJaPedida é false e isRouteLoading também, então nada é
+  // montado.
+  const [barraDeRotaJaPedida, setBarraDeRotaJaPedida] = useState(false);
+  useEffect(() => {
+    if (isRouteLoading) setBarraDeRotaJaPedida(true);
+  }, [isRouteLoading]);
   const [backOverride, setBackOverride] = useState<(() => void) | null>(null);
   const [selectedCategory, setSelectedCategory] = useState(() => {
     if (typeof window !== "undefined") {
@@ -2602,9 +2618,14 @@ const AppContent = () => {
   return (
     <div className="flex size-full h-dvh min-h-dvh flex-col overflow-hidden bg-background text-foreground">
       <AppBadgeSynchronizer />
-      {/* Barra de rota SOB DEMANDA: render condicional para o Suspense não
-          pedir o chunk das animações no boot por conta própria (F1). */}
-      {isRouteLoading && (
+      {/* Barra de rota SOB DEMANDA: o Suspense só monta depois que a
+          primeira navegação pedir a barra (barraDeRotaJaPedida), para não
+          pedir o chunk das animações no boot por conta própria (F1). Depois
+          disso ele fica montado — só `active` muda — para o AnimatePresence
+          poder tocar o exit quando isRouteLoading volta a false (achado do
+          laudo Claude do PR #427, 04/09/2026: com `isRouteLoading &&` puro
+          o Suspense desmontava junto e o exit nunca rodava). */}
+      {(isRouteLoading || barraDeRotaJaPedida) && (
         <React.Suspense fallback={null}>
           <RouteLoadingProgress active={isRouteLoading} />
         </React.Suspense>

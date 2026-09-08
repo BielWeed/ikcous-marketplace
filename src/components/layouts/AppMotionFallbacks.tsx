@@ -13,11 +13,18 @@ import type { ReactNode } from "react";
  *
  * As animações são AS MESMAS de antes (mesmos props, mesmos tempos, mesmos
  * variants — movidos verbatim); só mudou o ENDEREÇO do código. Os fallbacks
- * de cada uso estão no App.tsx:
- *  - MainTabsMotionShell: div absoluta vazia (mesma geometria do wrapper);
- *  - SecondaryViewMotionShell e RouteLoadingProgress: null (nada na tela
- *    até o chunk chegar — ambos só entram em cena durante navegação ou em
- *    navegadores sem View Transitions, onde o chunk já veio no boot).
+ * de cada uso estão no App.tsx, e o chunk deste módulo NÃO é pré-carregado
+ * por nenhum useEffect de boot (esse preload existiu e foi apagado no
+ * commit a71684a — o ganho dele já vinha do primeiro render, abaixo):
+ *  - MainTabsMotionShell e SecondaryViewMotionShell: o chunk é pedido em
+ *    cascata pelo primeiro render do próprio shell lazy (montado junto com
+ *    as abas/views, no ramo sem View Transitions) — coberto pelo splash na
+ *    1ª visita; num reload da mesma sessão há uma janela curta com o
+ *    fallback de mesma geometria (div absoluta vazia / null) até o chunk
+ *    chegar;
+ *  - RouteLoadingProgress: é a única SOB DEMANDA de verdade — o chunk só é
+ *    pedido quando a primeira navegação de rota acontece (`isRouteLoading`
+ *    vira true em App.tsx), nunca no boot por conta própria.
  *
  * Este módulo NÃO pode passar a ser importado estaticamente por nada que
  * esteja no gráfico do entry — o teste
