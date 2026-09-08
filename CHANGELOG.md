@@ -11,7 +11,7 @@ não tem escopo registrado — não há como reconstruí-lo com honestidade, ent
 
 A versão em que o link da loja no WhatsApp mostra o produto, o painel diz o que
 falta para vender, a vitrine para de perder o lugar e ninguém fica preso na tela
-de atualização. 19 PRs (#457, #464, #468, #469, #470, #472, #473, #474, #475,
+de atualização. 21 PRs (#457, #461, #462, #464, #468, #469, #470, #472, #473, #474, #475,
 #476, #477, #478, #479, #483, #484, #485, #486, #488, #490); ZERO edge function do
 Supabase e UMA migration de banco, aditiva e já aplicada nas duas lojas antes do
 corte (mais duas que viajam no repositório e NÃO se aplicam — ver "Para quem
@@ -32,6 +32,17 @@ do clone da Savy (o `middleware.ts` da Vercel vai junto com o site).
   página (o endereço guarda `?category=`), e a lista já expandida ("ver mais")
   continua expandida na volta — antes voltava para "Todas" com 12 produtos.
   Escolher "Todas" ou outra categoria continua zerando a lista, de propósito.
+- **A vitrine não encolhe quando o catálogo muda ao vivo** (PR #461): uma venda
+  mexendo no estoque, um produto salvo ou pausado pela lojista faziam a lista
+  voltar para 12 produtos para quem já tinha carregado mais páginas. Agora a
+  posição se mantém; trocar categoria, busca ou ordenação continua reiniciando a
+  lista, de propósito.
+- **A loja não some quando a internet oscila** (PR #462): se a consulta de
+  produtos falhar por um instante enquanto a loja carrega, a vitrine mantém o que
+  já tinha (vindo da memória do celular) em vez de trocar tudo por "Nenhum
+  produto agora"; e a aba deixa de ficar sem atualização ao vivo pelo resto da
+  sessão quando a memória interna do app demora a abrir. Preço mudado e produto
+  esgotado voltam a chegar na hora.
 - **Ninguém mais fica preso na tela "Atualizando o Aplicativo"** (PR #474): no
   máximo uma recarga automática por sessão, e depois de 4 segundos aparece
   "A atualização está demorando mais do que o normal" com o botão "Recarregar a
