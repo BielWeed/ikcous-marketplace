@@ -1,5 +1,5 @@
-import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
+import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Rocket } from "lucide-react";
@@ -27,7 +27,7 @@ export function UpdateNotification({
   // Mesma regra das outras quatro telas (revisao 20260825-1015, achado 2):
   // string VAZIA tambem e "sem nome" — `??` devolveria "" e a frase
   // sairia com buraco (" Novidades..."). `?.trim() ||` cai no fallback.
-  const appName = config.storeName?.trim() || branding.appName;
+  const appName = nomeDaLoja(config);
   const [isUpdating, setIsUpdating] = useState(false);
   const [progress, setProgress] = useState(0);
 

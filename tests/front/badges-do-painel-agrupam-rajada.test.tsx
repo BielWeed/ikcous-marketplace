@@ -53,6 +53,10 @@ function builderSemContador() {
   return builder;
 }
 
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: {} }),
+}));
+
 vi.mock("@/hooks/useAnalytics", () => ({
   useAnalytics: () => ({
     fetchExecutiveSummary: vi.fn(),
