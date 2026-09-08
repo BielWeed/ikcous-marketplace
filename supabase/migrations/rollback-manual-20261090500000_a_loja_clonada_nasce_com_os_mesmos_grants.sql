@@ -1,5 +1,5 @@
 -- ============================================================================
--- ROLLBACK MANUAL — 2026110000200 (convergência de grants da loja clonada)
+-- ROLLBACK MANUAL — 20261090500000 (convergência de grants da loja clonada)
 -- ============================================================================
 -- ATENÇÃO: este rollback REABRE exatamente os 58 grants que a migration
 -- fecha — devolve a Savy ao ACL FROUXO que ela tinha antes (a fotografia
@@ -76,4 +76,13 @@ GRANT EXECUTE ON FUNCTION public.validate_coupon_secure(text,numeric) TO PUBLIC,
 
 -- Conferência do rollback (deve voltar tudo true):
 --   SELECT has_function_privilege('anon','public.check_is_admin()','EXECUTE');
---   SELECT has_function_privilege('PUBLIC','public.is_admin()','EXECUTE');
+--   -- has_function_privilege('PUBLIC', ...) NÃO SERVE — dá erro
+--   -- `role "PUBLIC" does not exist` (PUBLIC é pseudo-papel, não role de
+--   -- verdade). PUBLIC se mede por aclexplode com grantee = 0, igual ao que
+--   -- fotografar() já faz em scripts/db-prove-grants-convergem.cjs:458-464:
+--   SELECT EXISTS (
+--     SELECT 1 FROM pg_proc p
+--     CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g
+--     WHERE p.oid = 'public.is_admin()'::regprocedure
+--       AND g.privilege_type = 'EXECUTE' AND g.grantee = 0
+--   ) AS public_tem_execute_em_is_admin;

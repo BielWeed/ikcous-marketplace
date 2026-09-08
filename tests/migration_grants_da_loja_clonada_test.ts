@@ -1,6 +1,6 @@
 // @ts-nocheck
 // A LOJA CLONADA NASCE COM OS MESMOS GRANTS — prova textual do par
-// 2026110000200 + rollback-manual (frente grants-da-loja-clonada, 08/09/2026
+// 20261090500000 + rollback-manual (frente grants-da-loja-clonada, 08/09/2026
 // — brief da mesa equipe/entregas/20260908-brief-migration-convergencia-de-
 // grants-loja-clonada.md).
 //
@@ -25,7 +25,7 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const DIR = fromFileUrl(new URL(".", import.meta.url));
-const NOME = "2026110000200_a_loja_clonada_nasce_com_os_mesmos_grants.sql";
+const NOME = "20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql";
 const MIGRATION_PATH = `${DIR}../supabase/migrations/${NOME}`;
 const ROLLBACK_PATH = `${DIR}../supabase/migrations/rollback-manual-${NOME}`;
 
@@ -150,4 +150,28 @@ Deno.test("nenhuma função se repete na migration (cada função entra em UMA l
     unicos.size,
     "há função repetida em mais de uma linha REVOKE",
   );
+});
+
+Deno.test("a migration tem EXATAMENTE 1 bloco DO $$ (a autoverificação do ANTES-DE-CRESCER 2 — o REVOKE sozinho não prova que aplicou)", () => {
+  const blocosDo = codigoMigration.filter((l) => /^DO \$\$/.test(l.trim()));
+  assertEquals(
+    blocosDo.length,
+    1,
+    "esperava exatamente 1 `DO $$ ... END $$` no fim da migration, no molde das irmãs 20261090000000/20261091000000",
+  );
+});
+
+Deno.test("o bloco DO da autoverificação cita as 58 funções e nomeia PUBLIC/anon/authenticated no RAISE EXCEPTION", () => {
+  assert(
+    migration.includes(
+      "RAISE EXCEPTION 'blindagem grants: % ainda alcanca EXECUTE de %'",
+    ),
+    "a mensagem de erro do bloco DO não bate com o texto esperado (nomear papel e função)",
+  );
+  for (const r of revokes) {
+    assert(
+      migration.includes(`'${r.fn}'`),
+      `a autoverificação não cita a função ${r.fn} — o bloco DO tem que cobrir as mesmas 58 assinaturas do REVOKE`,
+    );
+  }
 });

@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 2026110000200 — a loja clonada nasce com os mesmos grants
+-- Migration 20261090500000 — a loja clonada nasce com os mesmos grants
 -- (frente grants-da-loja-clonada, 08/09/2026 — brief da mesa
 -- equipe/entregas/20260908-brief-migration-convergencia-de-grants-loja-clonada.md)
 -- ============================================================================
@@ -26,6 +26,20 @@
 -- 114: anon ainda alcanca EXECUTE de check_is_admin" — porque o `=X` de
 -- PUBLIC sobrevive ao `REVOKE ... FROM anon, authenticated` daquela migration
 -- (RE VOKE de um papel não tira o que PUBLIC concede a todo mundo).
+--
+-- ORDEM DELIBERADA (número escolhido por isto, não por estética): esta
+-- migration roda ANTES da `20261091000000` de propósito — `20261090500000`
+-- é MENOR que `20261091000000` como string de 14 dígitos
+-- (`20261090000000 < 20261090500000 < 20261091000000`), então o ledger
+-- aplica esta primeiro. A `091` só PASSA na loja clonada DEPOIS desta:
+-- o `REVOKE ... FROM anon, authenticated` da `091` nunca alcança o `=X` de
+-- PUBLIC (REVOKE de um papel não revoga o que PUBLIC concede a todo mundo),
+-- e é esta migration que fecha o PUBLIC (`REVOKE ... FROM PUBLIC, anon,
+-- authenticated`, ver linha do `check_is_admin` abaixo). Reproduzido na
+-- Savy em transação: CENÁRIO com a `091` antes desta FALHA (`RAISE
+-- EXCEPTION 'blindagem 114 falhou: anon ainda alcanca EXECUTE de
+-- check_is_admin'`, `db-apply` faria ROLLBACK e `exit 1`); CENÁRIO com esta
+-- antes da `091` PASSA nas duas.
 --
 -- A CURA — o que esta migration FAZ: só `REVOKE EXECUTE`, um statement por
 -- função, agrupando os papéis que diferem (PUBLIC, anon, authenticated
@@ -75,12 +89,26 @@
 --   clone; principal via o `.env` do repo) — no principal a prova tem de
 --   mostrar ZERO mudança de ACL (no-op) e passar do mesmo jeito.
 --
--- ROLLBACK: `rollback-manual-2026110000200_*.sql` versionado junto — devolve
+-- ROLLBACK: `rollback-manual-20261090500000_*.sql` versionado junto — devolve
 -- exatamente os GRANTs que a Savy tinha medido antes desta migration. NÃO
 -- FAZ SENTIDO no principal (ver cabeçalho do rollback).
 --
 -- SEM BEGIN/COMMIT (regra da casa: com eles o ROLLBACK do script de prova
 -- vira no-op e a mudança fica gravada).
+--
+-- AUTOVERIFICAÇÃO (bloco `DO $$ ... END $$` no fim, molde das irmãs
+-- `20261090000000`/`20261091000000`): migration aplicada e migration inerte
+-- têm a mesma saída verde — REVOKE de privilégio ausente completa sem erro
+-- e sem aviso (memória `revoke-de-tabela-e-cosmetico-por-quatro-rotas`). O
+-- bloco varre as 58 assinaturas ao vivo, no INSTANTE em que o arquivo roda,
+-- e explode com `RAISE EXCEPTION` nomeando a função e o papel se PUBLIC
+-- (medido por `aclexplode`, `grantee = 0` — `has_function_privilege` não
+-- tem pseudo-papel `PUBLIC`), `anon` ou `authenticated` ainda alcançarem
+-- EXECUTE fora do ALVO da tabela acima (as exceções deliberadas — `anon` em
+-- `create_marketplace_order_v23/v24`, `get_orders_by_otp_v1`,
+-- `get_orders_by_whatsapp_v3`, `get_product_recommendations`,
+-- `get_reviews_metrics`, `increment_helpful`, `is_admin`,
+-- `validate_coupon_secure_v2` — ficam de fora da varredura).
 -- ============================================================================
 
 REVOKE EXECUTE ON FUNCTION public.answer_question_atomic(uuid,text,uuid) FROM PUBLIC, anon;
@@ -141,3 +169,101 @@ REVOKE EXECUTE ON FUNCTION public.update_my_profile_secure(text,text,text,text) 
 REVOKE EXECUTE ON FUNCTION public.update_order_status_atomic(uuid,text,text,boolean) FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.validate_coupon_secure_v2(text,numeric) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.validate_coupon_secure(text,numeric) FROM PUBLIC, anon, authenticated;
+
+-- 5. Trava de estado final (ANTES-DE-CRESCER 2 do laudo 20260908): mesmo
+-- desenho das migrations irmãs 20261090000000/20261091000000 — o bloco
+-- VIAJA COM O ARQUIVO e vale em db-apply, psql -1 e no clone de qualquer
+-- cliente, sem depender de prova externa. A tabela (função, papéis) abaixo
+-- é a MESMA lista dos 58 REVOKE acima, function por function — não é o
+-- ALVO do script de prova redigitado: é o próprio conteúdo deste arquivo,
+-- para não haver uma segunda fonte que possa divergir da primeira. Varre
+-- as 58 assinaturas e explode se, DEPOIS do REVOKE, PUBLIC (medido por
+-- aclexplode, grantee = 0 — has_function_privilege não tem pseudo-papel
+-- PUBLIC), anon ou authenticated ainda alcançarem EXECUTE em alguma delas.
+-- Não reclama do que o REVOKE acima nunca tirou (ex.: anon em
+-- create_marketplace_order_v23/v24, get_orders_by_otp_v1,
+-- get_orders_by_whatsapp_v3, get_product_recommendations,
+-- get_reviews_metrics, increment_helpful, is_admin,
+-- validate_coupon_secure_v2 — nenhuma dessas linhas revoga anon, então a
+-- tabela abaixo não a lista para esse papel). Valida o INSTANTE em que o
+-- arquivo roda (DO block executa uma vez); quem vigia daqui em diante são
+-- os repetíveis: a prova --verificar e o detector de objetos do CI.
+DO $$ DECLARE sobrou record; BEGIN
+  FOR sobrou IN
+    SELECT t.fn, r.papel
+    FROM (VALUES
+      ('answer_question_atomic(uuid,text,uuid)', ARRAY['PUBLIC','anon']),
+      ('answer_question_atomic(uuid,text)', ARRAY['PUBLIC','anon']),
+      ('check_is_admin()', ARRAY['PUBLIC','anon','authenticated']),
+      ('clean_expired_shipping_quotes()', ARRAY['PUBLIC','anon','authenticated']),
+      ('clean_old_shipping_logs()', ARRAY['PUBLIC','anon','authenticated']),
+      ('create_marketplace_order_v22(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb)', ARRAY['PUBLIC','anon','authenticated']),
+      ('create_marketplace_order_v23(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb,text,text,uuid)', ARRAY['PUBLIC']),
+      ('create_marketplace_order_v24(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb,text,text,uuid)', ARRAY['PUBLIC']),
+      ('decrement_stock(uuid,integer)', ARRAY['PUBLIC','anon','authenticated']),
+      ('ensure_role_protection()', ARRAY['PUBLIC','anon','authenticated']),
+      ('generate_order_otp_v1(text,text,text)', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_active_products_internal()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_admin_analytics_v2(integer)', ARRAY['PUBLIC','anon']),
+      ('get_admin_customers_paged(text,text,text,integer,integer)', ARRAY['PUBLIC','anon']),
+      ('get_admin_dashboard_stats()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_admin_dashboard_summary()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_admin_executive_summary()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_admin_list_paginated(text,integer,integer,text,text)', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_admin_products_paged(text,text,text,text,integer,integer)', ARRAY['PUBLIC','anon']),
+      ('get_admin_questions_paged(text,text,integer,integer)', ARRAY['PUBLIC','anon']),
+      ('get_admin_reviews_paged(text,text,integer,integer)', ARRAY['PUBLIC','anon']),
+      ('get_admin_user_detail(uuid)', ARRAY['PUBLIC','anon']),
+      ('get_category_analytics(timestamp with time zone,timestamp with time zone)', ARRAY['PUBLIC','anon']),
+      ('get_category_sales(text,text)', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_coupon_stats()', ARRAY['PUBLIC','anon']),
+      ('get_customer_intelligence()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_inventory_health()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_my_complete_profile()', ARRAY['PUBLIC','anon']),
+      ('get_orders_by_otp_v1(text,text)', ARRAY['PUBLIC']),
+      ('get_orders_by_whatsapp_v3(text,text,text)', ARRAY['PUBLIC']),
+      ('get_product_optimization_data()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_product_recommendations(uuid,integer)', ARRAY['PUBLIC']),
+      ('get_product_stats()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_products_with_variants()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_retention_analytics()', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_retention_rate()', ARRAY['PUBLIC','anon']),
+      ('get_reviews_metrics(text,integer)', ARRAY['PUBLIC']),
+      ('get_sales_analytics(timestamp with time zone,timestamp with time zone)', ARRAY['PUBLIC','anon','authenticated']),
+      ('get_segmented_push_targets(text,numeric,integer)', ARRAY['PUBLIC','anon']),
+      ('handle_default_address()', ARRAY['PUBLIC','anon','authenticated']),
+      ('handle_new_user()', ARRAY['PUBLIC','anon','authenticated']),
+      ('handle_order_item_stock()', ARRAY['PUBLIC','anon','authenticated']),
+      ('handle_profile_role_sync_to_auth()', ARRAY['PUBLIC','anon','authenticated']),
+      ('handle_public_profile_sync()', ARRAY['PUBLIC','anon','authenticated']),
+      ('handle_updated_at()', ARRAY['PUBLIC','anon','authenticated']),
+      ('increment_helpful(uuid)', ARRAY['PUBLIC']),
+      ('is_admin()', ARRAY['PUBLIC']),
+      ('prevent_role_change()', ARRAY['PUBLIC','anon','authenticated']),
+      ('record_vor_action(text,jsonb,jsonb,text)', ARRAY['PUBLIC','anon']),
+      ('reply_review_atomic(uuid,text,uuid)', ARRAY['PUBLIC','anon']),
+      ('reply_review_atomic(uuid,text)', ARRAY['PUBLIC','anon']),
+      ('swap_banner_order(uuid,uuid)', ARRAY['PUBLIC','anon']),
+      ('sync_cart_atomic(jsonb)', ARRAY['PUBLIC','anon']),
+      ('tr_prevent_role_change()', ARRAY['PUBLIC','anon','authenticated']),
+      ('update_my_profile_secure(text,text,text,text)', ARRAY['PUBLIC','anon']),
+      ('update_order_status_atomic(uuid,text,text,boolean)', ARRAY['PUBLIC','anon']),
+      ('validate_coupon_secure_v2(text,numeric)', ARRAY['PUBLIC']),
+      ('validate_coupon_secure(text,numeric)', ARRAY['PUBLIC','anon','authenticated'])
+    ) AS t(fn, papeis)
+    CROSS JOIN LATERAL unnest(t.papeis) AS r(papel)
+    WHERE (
+            (r.papel = 'PUBLIC' AND EXISTS (
+              SELECT 1
+              FROM pg_proc p
+              CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g
+              WHERE p.oid = ('public.' || t.fn)::regprocedure
+                AND g.privilege_type = 'EXECUTE' AND g.grantee = 0
+            ))
+            OR (r.papel <> 'PUBLIC'
+                AND has_function_privilege(r.papel, ('public.' || t.fn)::regprocedure, 'EXECUTE'))
+          )
+  LOOP
+    RAISE EXCEPTION 'blindagem grants: % ainda alcanca EXECUTE de %', sobrou.papel, sobrou.fn;
+  END LOOP;
+END $$;

@@ -4,7 +4,7 @@
  * grants-da-loja-clonada, 08/09/2026 — brief da mesa
  * equipe/entregas/20260908-brief-migration-convergencia-de-grants-loja-clonada.md).
  *
- * NADA É GRAVADO: o conteúdo da migration 2026110000200 é LIDO DO DISCO
+ * NADA É GRAVADO: o conteúdo da migration 20261090500000 é LIDO DO DISCO
  * (sha256 impresso) e executado DENTRO de uma transação desfeita com
  * ROLLBACK no final. O arquivo de rollback-manual também é lido do disco e
  * executado na MESMA transação, para provar que ele é o inverso fiel.
@@ -58,11 +58,11 @@ const PROJECT_ROOT = path.resolve(__dirname, "..");
 const MODO_VERIFICAR = process.argv.includes("--verificar");
 const MIGRATION = path.join(
   PROJECT_ROOT,
-  "supabase/migrations/2026110000200_a_loja_clonada_nasce_com_os_mesmos_grants.sql",
+  "supabase/migrations/20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql",
 );
 const ROLLBACK = path.join(
   PROJECT_ROOT,
-  "supabase/migrations/rollback-manual-2026110000200_a_loja_clonada_nasce_com_os_mesmos_grants.sql",
+  "supabase/migrations/rollback-manual-20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql",
 );
 
 function lerDatabaseUrl() {
