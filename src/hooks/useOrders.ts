@@ -139,6 +139,31 @@ export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
   );
 }
 
+type ItemDaFila = {
+  orderId: string;
+  status: string;
+  notes?: string | null;
+  silent?: boolean;
+  timestamp?: number;
+};
+
+export function mesclarFilaOfflineAposPassada(
+  filaFresca: unknown,
+  processados: ReadonlyMap<string, number>,
+  reserva: readonly ItemDaFila[],
+): ItemDaFila[] {
+  if (!Array.isArray(filaFresca)) return [...reserva];
+  return filaFresca.filter((item): item is ItemDaFila => {
+    if (!item || typeof item.orderId !== "string") return false;
+    const timestampProcessado = processados.get(item.orderId);
+    return (
+      timestampProcessado === undefined ||
+      (typeof item.timestamp === "number" &&
+        item.timestamp > timestampProcessado)
+    );
+  });
+}
+
 let sincronizacaoEmVoo: Promise<boolean> | null = null;
 
 function syncOfflineOrderUpdates(): Promise<boolean> {
@@ -149,7 +174,9 @@ function syncOfflineOrderUpdates(): Promise<boolean> {
   return sincronizacaoEmVoo;
 }
 
-async function processarFilaOfflineDePedidos(): Promise<boolean> {
+async function processarFilaOfflineDePedidos(
+  segundaPassada = false,
+): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const queueStr = localStorage.getItem("orders_offline_updates_queue");
   if (!queueStr) return false;
@@ -158,14 +185,25 @@ async function processarFilaOfflineDePedidos(): Promise<boolean> {
     const queue = JSON.parse(queueStr);
     if (!Array.isArray(queue) || queue.length === 0) return false;
 
-    const remainingQueue: any[] = [];
-    let houveErroTerminal = false;
+    const remainingQueue: ItemDaFila[] = [];
+    const processados = new Map<string, number>();
+    const tentados = new Map<string, number>();
+    let syncedAny = false;
+    let falhasTransitorias = 0;
+    let descartesTerminais = 0;
     const toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
     );
 
     for (const item of queue) {
       const { orderId, status, notes, silent } = item;
+      // Itens antigos sem timestamp saem ao concluir; qualquer versão datada
+      // que entrar durante a RPC continua sendo mais nova.
+      const timestamp =
+        typeof item.timestamp === "number"
+          ? item.timestamp
+          : Number.NEGATIVE_INFINITY;
+      tentados.set(orderId, timestamp);
       try {
         const { error } = await (supabase.rpc as any)(
           "update_order_status_atomic",
@@ -178,9 +216,12 @@ async function processarFilaOfflineDePedidos(): Promise<boolean> {
         );
 
         if (error) throw error;
+        syncedAny = true;
+        processados.set(orderId, timestamp);
       } catch (err) {
         if (erroDeSincronizacaoEhTerminal(err)) {
-          houveErroTerminal = true;
+          descartesTerminais++;
+          processados.set(orderId, timestamp);
           continue;
         }
         console.error(
@@ -188,35 +229,72 @@ async function processarFilaOfflineDePedidos(): Promise<boolean> {
           orderId,
           err,
         );
+        falhasTransitorias++;
         remainingQueue.push(item);
       }
     }
 
-    const syncedAny = remainingQueue.length < queue.length;
+    let filaFresca: unknown = null;
+    try {
+      filaFresca = JSON.parse(
+        localStorage.getItem("orders_offline_updates_queue") ?? "null",
+      );
+    } catch {
+      // A reserva em memória conserva as falhas se o storage foi corrompido.
+    }
+    const final = mesclarFilaOfflineAposPassada(
+      filaFresca,
+      processados,
+      remainingQueue,
+    );
 
-    if (remainingQueue.length > 0) {
+    if (final.length > 0) {
       localStorage.setItem(
         "orders_offline_updates_queue",
-        JSON.stringify(remainingQueue),
-      );
-      toast.error(
-        `Falha ao sincronizar ${remainingQueue.length} alterações de pedidos. Tentando novamente mais tarde.`,
-        { id: toastId },
+        JSON.stringify(final),
       );
     } else {
       localStorage.removeItem("orders_offline_updates_queue");
       clearAnalyticsCache();
-      if (houveErroTerminal) {
-        toast.info(
-          "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.",
-          { id: toastId },
-        );
-      } else {
-        toast.success(
-          "Todas as atualizações de status de pedidos foram sincronizadas!",
-          { id: toastId },
-        );
-      }
+    }
+
+    if (falhasTransitorias > 0) {
+      toast.error(
+        `Falha ao sincronizar ${falhasTransitorias} alterações de pedidos. Tentando novamente mais tarde.${
+          descartesTerminais > 0
+            ? ` ${descartesTerminais} alterações não se aplicam mais ao estado atual dos pedidos.`
+            : ""
+        }`,
+        { id: toastId },
+      );
+    } else if (descartesTerminais > 0) {
+      toast.info(
+        "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.",
+        { id: toastId },
+      );
+    } else if (final.length === 0) {
+      toast.success(
+        "Todas as atualizações de status de pedidos foram sincronizadas!",
+        { id: toastId },
+      );
+    } else {
+      toast.info(
+        "Alterações de pedidos sincronizadas. Há novas alterações na fila offline.",
+        { id: toastId },
+      );
+    }
+
+    const temItemNovo = final.some((item) => {
+      const timestampTentado = tentados.get(item.orderId);
+      return (
+        timestampTentado === undefined ||
+        (typeof item.timestamp === "number" &&
+          item.timestamp > timestampTentado)
+      );
+    });
+    if (!segundaPassada && temItemNovo && navigator.onLine) {
+      const sincronizouNaSegunda = await processarFilaOfflineDePedidos(true);
+      return sincronizouNaSegunda || syncedAny;
     }
 
     return syncedAny;
