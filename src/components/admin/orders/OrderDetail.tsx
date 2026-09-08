@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { EstornoCard } from "./EstornoCard";
 import { OrderReceipt } from "./OrderReceipt";
 import { PaymentStatusBadge, statusConfig } from "./OrderStatusBadge";
 import { podeRegistrarPagamento } from "./podeRegistrarPagamento";
@@ -1394,6 +1395,15 @@ export const OrderDetail = memo(function OrderDetail({
               }
               registrandoPagamento={registrandoPagamento}
             />
+            {/* T6 do plano de estorno pelo app (08/09/2026): só cobrança
+                pelo site passa pelo Mercado Pago — dinheiro/cartão na
+                entrega não tem estorno pelo app, e a tela nem oferece. */}
+            {order.paymentMethod === "online" &&
+              (order.paymentStatus === "pago" ||
+                order.paymentStatus === "pago_apos_expirar" ||
+                order.paymentStatus === "estornado") && (
+                <EstornoCard order={order} />
+              )}
             <OrderLogisticsCard
               localTrackingCode={localTrackingCode}
               isEditingTracking={isEditingTracking}

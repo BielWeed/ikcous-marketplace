@@ -503,6 +503,12 @@ async function handler(
       .from("order_refunds")
       .select("id, order_id, amount, status, tentativas, mp_refund_id")
       .in("status", ["solicitado", "em_processamento"])
+      // T5 (webhook): linha `solicitado_por = 'sistema'` é dinheiro que JÁ
+      // se moveu FORA do app (estorno no painel do MP, chargeback) — o cron
+      // jamais pode chamar `executarEstorno` para ela: seria um POST de
+      // refund NOVO com a chave dela = pagar duas vezes. Só o webhook grava
+      // e conclui linha `sistema`.
+      .neq("solicitado_por", "sistema")
       .lt("updated_at", doisMinutosAtras)
       // D4 (ANTES-DE-CRESCER 6, laudo rodada 2 do PR #440): tentativas ASC
       // ANTES de created_at ASC — sem isso, uma linha TRAVADA (regime "só
