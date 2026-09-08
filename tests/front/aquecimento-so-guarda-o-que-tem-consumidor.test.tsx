@@ -251,6 +251,43 @@ describe("useCacheWarmer — aquece só o que tem consumidor (laudo sócio r2, F
     ]);
   });
 
+  it("produto sem a PROPRIEDADE images (não array vazio, ausente de vez) não derruba o aquecimento inteiro", async () => {
+    // Dado vindo do IndexedDB é `any` (vault.getAll<any>) — este objeto
+    // reproduz um registro legado que nunca ganhou o campo `images`, só
+    // `imagem_url`. `produtoDeTeste` sempre injeta `images: []` por padrão
+    // (linha 76), então aqui o objeto é montado na mão, sem a propriedade.
+    const produtoSemPropriedadeImages = {
+      id: "so-imagem-url",
+      imagem_url: "https://cdn.teste/so-imagem-url/foto-legada.jpg",
+    } as unknown as Product;
+
+    mockGetAll.mockImplementation((store: string) => {
+      if (store === "banners") return Promise.resolve([bannerDeTeste("b1")]);
+      if (store === "products") {
+        return Promise.resolve([
+          produtoDeTeste({
+            id: "com-images",
+            images: ["https://cdn.teste/com-images/foto-1.jpg"],
+          }),
+          produtoSemPropriedadeImages,
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    // Se `p.images[0]` lançar sem guarda, o `catch` externo do hook engole o
+    // erro (`console.warn`) e o `postMessage` NUNCA acontece — a falha certa
+    // deste teste é o timeout do `esperarAte`, não um TypeError estourado.
+    const mensagem = await montarWarmerEEsperarMensagem();
+
+    expect(mensagem.type).toBe("WARM_CACHE");
+    expect(mensagem.urls).toEqual([
+      "/",
+      "https://cdn.teste/com-images/foto-1.jpg",
+      "https://cdn.teste/so-imagem-url/foto-legada.jpg",
+    ]);
+  });
+
   it("a URL aquecida do produto é a MESMA STRING que a SearchBar usa na miniatura da sugestão", async () => {
     // Endereço no formato de arquivo público do Supabase Storage
     // (CAMINHO_ORIGINAL de imageUrl.ts) de propósito: só assim a mutação (c)

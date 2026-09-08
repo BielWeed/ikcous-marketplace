@@ -32,7 +32,7 @@ export function useCacheWarmer() {
         const products = await vault.getAll<any>("products");
         const productUrls = products
           .slice(0, 15) // Limitar aos primeiros 15 produtos
-          .map((p) => p.images[0] || p.imagem_url)
+          .map((p) => p.images?.[0] || p.imagem_url)
           .filter((url) => typeof url === "string" && url.trim() !== "");
 
         // Laudo 0109 (C5): guarda de rede lenta — o mesmo critério do
