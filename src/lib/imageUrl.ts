@@ -15,6 +15,11 @@
 const CAMINHO_ORIGINAL = "/storage/v1/object/public/";
 const CAMINHO_TRANSFORMADO = "/storage/v1/render/image/public/";
 
+/** Escada de larguras oferecida ao navegador quando `sizes` é informado. */
+const LARGURAS_DISPONIVEIS = [200, 320, 480, 640, 960, 1280] as const;
+/** Usada no `src` puro, para o caso raro de o navegador ignorar o srcSet. */
+const LARGURA_PADRAO = 640;
+
 export interface OpcoesImagem {
   /** Largura desejada em pixels de imagem (não em CSS pixels). */
   readonly width: number;
@@ -59,4 +64,20 @@ export function conjuntoDeImagens(
   return larguras
     .map((w) => `${imagemRedimensionada(url, { width: w, quality })} ${w}w`)
     .join(", ");
+}
+
+/** Atributos compartilhados entre a imagem exibida e seu pré-carregamento. */
+export function atributosDeImagem(
+  url: string,
+  { sizes, quality = 75 }: { sizes?: string; quality?: number },
+) {
+  return {
+    src: sizes
+      ? imagemRedimensionada(url, { width: LARGURA_PADRAO, quality })
+      : url,
+    srcSet: sizes
+      ? conjuntoDeImagens(url, LARGURAS_DISPONIVEIS, quality)
+      : undefined,
+    sizes: sizes || undefined,
+  };
 }

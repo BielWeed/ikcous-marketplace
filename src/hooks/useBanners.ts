@@ -1,6 +1,8 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
 import { DataVault } from "@/lib/dataVault";
+import { atributosDeImagem } from "@/lib/imageUrl";
+import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
 import { supabase } from "@/lib/supabase";
 import type { Banner } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,8 +17,18 @@ const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
 const preloadTopBanner = (items: Banner[]) => {
   const topBanner = items.find((b) => b.position === "home_top" && b.active);
   if (topBanner?.imageUrl && typeof window !== "undefined") {
+    const atributos = atributosDeImagem(topBanner.imageUrl, IMAGEM_DO_BANNER);
     const img = new Image();
-    img.src = topBanner.imageUrl;
+    if (atributos.src !== topBanner.imageUrl) {
+      img.onerror = () => {
+        img.onerror = null;
+        const original = new Image();
+        original.src = topBanner.imageUrl;
+      };
+    }
+    img.sizes = atributos.sizes ?? "";
+    img.srcset = atributos.srcSet ?? "";
+    img.src = atributos.src;
   }
 };
 
