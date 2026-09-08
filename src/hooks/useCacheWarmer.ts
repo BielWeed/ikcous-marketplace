@@ -20,30 +20,31 @@ export function useCacheWarmer() {
         const reg = await navigator.serviceWorker.getRegistration();
         if (!reg?.active) return;
 
-        // Puxar imagens dos banners e produtos do DataVault (IndexedDB)
+        // Laudo do sócio r2 (Frente 1, 08/09/2026): banners e a foto 2..N de
+        // cada produto NUNCA têm consumidor no endereço original — quem os
+        // mostra pede sempre a versão TRANSFORMADA (imageUrl.ts), que a
+        // gaveta do service worker não casa por endereço exato (sw.ts:176).
+        // Só a 1ª foto de cada produto é pedida crua (SearchBar,
+        // CartItemsList, ShippingProgress, ReviewCard) — é a única que vale
+        // a pena aquecer.
         const vault = await DataVault.init();
-
-        const banners = await vault.getAll<any>("banners");
-        const bannerUrls = banners
-          .filter((b) => b.imageUrl || b.imagem_url)
-          .map((b) => b.imageUrl || b.imagem_url);
 
         const products = await vault.getAll<any>("products");
         const productUrls = products
           .slice(0, 15) // Limitar aos primeiros 15 produtos
-          .flatMap((p) => p.images || (p.imagem_url ? [p.imagem_url] : []))
+          .map((p) => p.images[0] || p.imagem_url)
           .filter((url) => typeof url === "string" && url.trim() !== "");
 
         // Laudo 0109 (C5): guarda de rede lenta — o mesmo critério do
         // usePrefetchOnHover. Em 2G/slow-2g ou com economia de dados ligada,
-        // aquece SÓ as rotas críticas; as imagens (banners + 15 produtos em
-        // URL original) ficam para uma rede que aguenta.
+        // aquece SÓ as rotas críticas; a 1ª foto de cada um dos 15 produtos
+        // fica para uma rede que aguenta.
         const pularImagens = redeLenta(conexaoDoNavegador());
 
         // Collect critical routes and images
         const urls = pularImagens
           ? [...CRITICAL_URLS]
-          : [...CRITICAL_URLS, ...bannerUrls, ...productUrls];
+          : [...CRITICAL_URLS, ...productUrls];
 
         reg.active.postMessage({ type: "WARM_CACHE", urls });
 
