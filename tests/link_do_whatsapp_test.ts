@@ -402,3 +402,56 @@ Deno.test("middleware: produto sem imagem usa o og-image do endereço público r
     "o fallback caiu no literal fixo da IKCOUS em vez do endereço público resolvido da loja",
   );
 });
+
+// ── 10. Laudo Opus O2: o `id` vai codificado para o PostgREST — caractere
+// com significado ali (`&`, `,`) não pode chegar cru na URL da consulta. O
+// defeito era pré-existente e MORTO (a consulta batia na tabela `produtos`
+// e morria no 42501 antes de qualquer coisa); este diff trocou para a view
+// pública e ativou o caminho.
+
+Deno.test("middleware: id com '&' do PostgREST vai codificado na URL da consulta", async () => {
+  const urls: string[] = [];
+  const idMalicioso = "1&limit=0";
+
+  await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produtoFake(), urls), () =>
+      middleware(
+        request(
+          `/product-detail?id=${encodeURIComponent(idMalicioso)}`,
+          UA_ROBO,
+        ),
+      ),
+    ),
+  );
+
+  assertEquals(urls.length, 1);
+  assert(
+    !urls[0].includes("&limit="),
+    `a URL da consulta nao deveria conter "&limit=" cru: ${urls[0]}`,
+  );
+  assertStringIncludes(urls[0], encodeURIComponent(idMalicioso));
+  assertStringIncludes(urls[0], "vw_produtos_public");
+});
+
+Deno.test("middleware: id com ',' do PostgREST vai codificado na URL da consulta", async () => {
+  const urls: string[] = [];
+  const idComVirgula = "1,2";
+
+  await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produtoFake(), urls), () =>
+      middleware(
+        request(
+          `/product-detail?id=${encodeURIComponent(idComVirgula)}`,
+          UA_ROBO,
+        ),
+      ),
+    ),
+  );
+
+  assertEquals(urls.length, 1);
+  assert(
+    !urls[0].includes(","),
+    `a URL da consulta nao deveria conter "," cru: ${urls[0]}`,
+  );
+  assertStringIncludes(urls[0], "vw_produtos_public");
+});

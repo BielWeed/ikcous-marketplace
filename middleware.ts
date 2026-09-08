@@ -97,7 +97,7 @@ export default async function middleware(request: Request) {
         // verdade é a VIEW `vw_produtos_public`, a mesma que
         // src/lib/realtimeSyncEngine.ts usa para quem não é admin.
         const response = await fetch(
-          `${supabaseUrl}/rest/v1/vw_produtos_public?id=eq.${productId}&select=*`,
+          `${supabaseUrl}/rest/v1/vw_produtos_public?id=eq.${encodeURIComponent(productId)}&select=*`,
           {
             headers: {
               apikey: supabaseKey,
@@ -133,7 +133,11 @@ export default async function middleware(request: Request) {
               : [];
             const imageUrl = escaparHtml(
               images[0] ||
-                `${resolverEnderecoPublico(process.env)}/og-image.png`,
+                // `as unknown as`: TS2559 (weak type) não conta o índice de
+                // `ProcessEnv` como propriedade em comum com um tipo só de
+                // campos opcionais; `AmbienteEnderecoPublico` continua com o
+                // formato certo.
+                `${resolverEnderecoPublico(process.env as unknown as AmbienteEnderecoPublico)}/og-image.png`,
             );
 
             const html = `<!DOCTYPE html>
@@ -147,7 +151,7 @@ export default async function middleware(request: Request) {
   <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | ${APP_NAME}" />
   <meta property="og:description" content="${description}" />
   <meta property="og:type" content="product" />
-  <meta property="og:url" content="${request.url}" />
+  <meta property="og:url" content="${escaparHtml(request.url)}" />
   <meta property="og:image" content="${imageUrl}" />
   <meta property="og:image:width" content="600" />
   <meta property="og:image:height" content="400" />
