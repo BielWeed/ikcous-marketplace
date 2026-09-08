@@ -110,25 +110,24 @@ describe("reordenar banner sem mutar o estado", () => {
     for (const banner of painel().banners) {
       expect(banner).not.toBe(originais.find((b) => b.id === banner.id));
     }
-    expect(h.update).toHaveBeenCalledWith({ order: 1 }, "id", "banner-a");
-    expect(h.update).toHaveBeenCalledWith({ order: 2 }, "id", "banner-b");
-    expect(h.rpc).toHaveBeenCalledWith("swap_banner_order", {
-      banner_id_1: "banner-a",
-      banner_id_2: "banner-b",
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.rpc).toHaveBeenCalledWith("reorder_banners_atomic", {
+      p_position: "home_top",
+      p_banner_id_1: "banner-a",
+      p_banner_id_2: "banner-b",
     });
   });
 
-  it("erro resolvido na normalização restaura o snapshot na tela e no vault", async () => {
+  it("erro resolvido na RPC restaura o snapshot na tela e no vault", async () => {
     const painel = await montarPainel();
     const snapshot = painel().banners.map((b) => ({ ...b }));
-    h.update
-      .mockResolvedValueOnce({ error: null })
-      .mockResolvedValueOnce({ error: { message: "x" } });
+    h.rpc.mockResolvedValueOnce({ error: { message: "x" } });
     await act(async () => painel().reorderBanners("banner-a", "banner-b"));
 
     expect(painel().banners).toEqual(snapshot);
     expect(h.replaceAll).toHaveBeenLastCalledWith("banners", snapshot);
-    expect(h.rpc).not.toHaveBeenCalled();
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+    expect(h.update).not.toHaveBeenCalled();
   });
 
   it("falha da troca após normalizar restaura as ordens anteriores à normalização", async () => {

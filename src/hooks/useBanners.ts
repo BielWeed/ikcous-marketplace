@@ -32,7 +32,7 @@ const preloadTopBanner = (items: Banner[]) => {
   }
 };
 
-async function normalizeBannersOrder(
+export async function normalizeBannersOrder(
   pos: "home_top" | "home_middle" | "home_bottom",
 ) {
   try {
@@ -60,7 +60,10 @@ async function normalizeBannersOrder(
       .filter(Boolean);
 
     if (updates.length > 0) {
-      await Promise.all(updates);
+      const results = await Promise.all(updates);
+      for (const result of results) {
+        if (result?.error) throw result.error;
+      }
       console.log(
         `[Banners] Normalized ${updates.length} orders for position: ${pos}`,
       );
@@ -520,12 +523,13 @@ export function useBanners(adminMode = false) {
     const activeBanner = banners.find((b) => b.id === activeBannerId);
     const overBanner = banners.find((b) => b.id === overBannerId);
     if (!activeBanner || !overBanner) return;
+    if (activeBanner.position !== overBanner.position) return;
 
     const previousBanners = banners.map((b) => ({ ...b }));
     let newBanners = [...banners];
 
     try {
-      // Resolve any clashing/duplicate order issues in the database first
+      // Resolve clashing orders locally before the optimistic swap
       const activePosition = activeBanner.position;
       const samePosBanners = banners.filter(
         (b) => b.position === activePosition,
@@ -545,14 +549,6 @@ export function useBanners(adminMode = false) {
           return a.id.localeCompare(b.id);
         });
         const normalized = sorted.map((b, idx) => ({ ...b, order: idx + 1 }));
-        const results = await Promise.all(
-          normalized.map((b) =>
-            supabase.from("banners").update({ order: b.order }).eq("id", b.id),
-          ),
-        );
-        for (const { error } of results) {
-          if (error) throw error;
-        }
         newBanners = newBanners.map(
           (b) => normalized.find((item) => item.id === b.id) ?? b,
         );
@@ -583,9 +579,10 @@ export function useBanners(adminMode = false) {
         applyLocalBanners(cachedBanners);
       }
 
-      const { error } = await (supabase.rpc as any)("swap_banner_order", {
-        banner_id_1: activeBannerId,
-        banner_id_2: overBannerId,
+      const { error } = await (supabase.rpc as any)("reorder_banners_atomic", {
+        p_position: activePosition,
+        p_banner_id_1: activeBannerId,
+        p_banner_id_2: overBannerId,
       });
 
       if (error) throw error;
