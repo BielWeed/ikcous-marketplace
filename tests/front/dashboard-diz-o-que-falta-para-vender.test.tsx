@@ -82,12 +82,37 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     );
 
     expect(hospedeiro.textContent).toContain("3");
+    expect(hospedeiro.textContent).toMatch(/3 produtos/);
     const cardEstoque = botaoComTexto(/estoque baixo/i);
     expect(cardEstoque).toBeTruthy();
     expect(cardEstoque!.tagName).toBe("BUTTON");
 
     await clicar(cardEstoque!);
     expect(onNavigate).toHaveBeenCalledWith("admin-notifications");
+  });
+
+  // ── A1 (laudo 08/09): "1 produtos" está errado — plural fixo ──
+  it("com inventoryAlerts = 1, o card diz '1 produto' (singular), NUNCA '1 produtos'", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={{ inventoryAlerts: 1 }}
+        originCep="38500-000"
+        ligado={true}
+        chaveOk={true}
+        produtos={[{ isActive: true }]}
+        configCarregando={false}
+        produtosCarregando={false}
+        onNavigate={vi.fn()}
+        onTentarDeNovo={vi.fn()}
+      />,
+    );
+
+    expect(hospedeiro.textContent).toMatch(/1 produto\b/);
+    expect(hospedeiro.textContent).not.toMatch(/1 produtos/);
   });
 
   // ── Aceite 2: "não sei" nunca é zero ──
@@ -349,12 +374,17 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
       "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
     );
 
+    // chaveOk=true (não false): depois de A3 o item PIX não depende mais de
+    // configCarregando — resolve direto para "feito"/"pendente". Para este
+    // teste continuar cobrindo "nenhum PENDENTE aparece enquanto carrega",
+    // a combinação usada é a que resolve PIX como feito (sem botão), e não
+    // como "conferindo" — isso é coberto à parte pelo teste de A3 abaixo.
     await montar(
       <LojaProntaEEstoqueBaixo
         stats={{ inventoryAlerts: 0 }}
         originCep={undefined}
         ligado={true}
-        chaveOk={false}
+        chaveOk={true}
         produtos={[]}
         configCarregando={true}
         produtosCarregando={true}
@@ -371,6 +401,142 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     expect(hospedeiro.textContent).toMatch(/conferindo/i);
     // E o bloco não pode alegar que a loja está pronta sem ter conferido.
     expect(hospedeiro.textContent).not.toMatch(/está pronta para vender\./);
+  });
+
+  // ── A2 (laudo 08/09, achado mais importante): trava dos 3 itens ──
+  //
+  // O revisor mostrou, mutando, que um 4º item acrescentado ao array `itens`
+  // com estado "feito" passa pelos 16 testes antigos sem nenhum ficar
+  // vermelho. O número de itens do checklist é DECISÃO DE PRODUTO do dono
+  // ("nenhum item além desses três") — não é escolha de quem programa, e até
+  // aqui nada impedia um 4º item de entrar em silêncio. Os dois testes
+  // abaixo contam de verdade os `<li>` renderizados dentro da lista do
+  // checklist (não um seletor que possa "passar por acaso" contando outra
+  // coisa) e travam em exatamente 3, nomeando quais são os três.
+  it("checklist com os 3 itens 'feito': exatamente 3 <li>, e são PIX, CEP e produto ativo — nenhum a mais", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={{ inventoryAlerts: 0 }}
+        originCep="38500-000"
+        ligado={true}
+        chaveOk={true}
+        produtos={[{ isActive: true }]}
+        configCarregando={false}
+        produtosCarregando={false}
+        onNavigate={vi.fn()}
+        onTentarDeNovo={vi.fn()}
+      />,
+    );
+
+    const itensDoChecklist = hospedeiro.querySelectorAll("ul > li");
+    expect(itensDoChecklist.length).toBe(3);
+    expect(itensDoChecklist[0]!.textContent ?? "").toMatch(/pix/i);
+    expect(itensDoChecklist[1]!.textContent ?? "").toMatch(/cep/i);
+    expect(itensDoChecklist[2]!.textContent ?? "").toMatch(/produto ativo/i);
+  });
+
+  it("checklist com os 3 itens 'pendente': exatamente 3 <li>, e são PIX, CEP e produto ativo — nenhum a mais", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={{ inventoryAlerts: 0 }}
+        originCep=""
+        ligado={false}
+        chaveOk={false}
+        produtos={[]}
+        configCarregando={false}
+        produtosCarregando={false}
+        onNavigate={vi.fn()}
+        onTentarDeNovo={vi.fn()}
+      />,
+    );
+
+    const itensDoChecklist = hospedeiro.querySelectorAll("ul > li");
+    expect(itensDoChecklist.length).toBe(3);
+    expect(itensDoChecklist[0]!.textContent ?? "").toMatch(/pix/i);
+    expect(itensDoChecklist[1]!.textContent ?? "").toMatch(/cep/i);
+    expect(itensDoChecklist[2]!.textContent ?? "").toMatch(/produto ativo/i);
+  });
+
+  // ── A3 (laudo 08/09): PIX não depende do carregamento da loja ──
+  //
+  // A resposta do item PIX vem de constantes de BUILD (`ligado`/`chaveOk`,
+  // calculadas no import e que nunca mudam) — não do StoreContext. Antes,
+  // o item ficava em "Conferindo…" enquanto `configCarregando` era `true`,
+  // mesmo já sabendo a resposta: "não sei" na direção errada. Os outros dois
+  // itens (CEP, produto) continuam gated pelo carregamento deles, porque
+  // esses sim dependem de dado que ainda não chegou.
+  it("PIX resolve direto para 'feito' mesmo com configCarregando=true; CEP continua 'conferindo'", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={{ inventoryAlerts: 0 }}
+        originCep="38500-000"
+        ligado={true}
+        chaveOk={true}
+        produtos={[{ isActive: true }]}
+        configCarregando={true}
+        produtosCarregando={false}
+        onNavigate={vi.fn()}
+        onTentarDeNovo={vi.fn()}
+      />,
+    );
+
+    const itensDoChecklist = hospedeiro.querySelectorAll("ul > li");
+    const textoPix = itensDoChecklist[0]!.textContent ?? "";
+    const textoCep = itensDoChecklist[1]!.textContent ?? "";
+
+    expect(textoPix).toMatch(/pagamento pix configurado/i);
+    expect(textoPix).not.toMatch(/conferindo/i);
+    expect(textoCep).toMatch(/conferindo/i);
+  });
+
+  // ── A4 (laudo 08/09): durante o carregamento, dizer QUAL item está ──
+  //
+  // Antes, os itens em carregamento mostravam o texto idêntico "Conferindo…"
+  // sem identificação — quem usa leitor de tela não sabia o que estava
+  // sendo conferido. Depois de A3, o item PIX nunca mais fica em
+  // "carregando" (resolve na hora), então só CEP e produto podem estar
+  // carregando ao mesmo tempo; o teste cobre exatamente esses dois e exige
+  // que cada linha identifique o próprio item.
+  it("com CEP e produto carregando, cada linha mostra um texto distinto que identifica o próprio item", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={{ inventoryAlerts: 0 }}
+        originCep={undefined}
+        ligado={true}
+        chaveOk={true}
+        produtos={[]}
+        configCarregando={true}
+        produtosCarregando={true}
+        onNavigate={vi.fn()}
+        onTentarDeNovo={vi.fn()}
+      />,
+    );
+
+    const itensDoChecklist = hospedeiro.querySelectorAll("ul > li");
+    const textoCep = itensDoChecklist[1]!.textContent ?? "";
+    const textoProduto = itensDoChecklist[2]!.textContent ?? "";
+
+    expect(textoCep).toMatch(/conferindo/i);
+    expect(textoProduto).toMatch(/conferindo/i);
+    expect(textoCep).not.toBe(textoProduto);
+    expect(textoCep).toMatch(/cep/i);
+    expect(textoProduto).toMatch(/produto/i);
   });
 
   // ── Aceite 7: acessibilidade ──

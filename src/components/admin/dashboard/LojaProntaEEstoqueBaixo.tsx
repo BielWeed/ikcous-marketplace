@@ -1,5 +1,4 @@
 import type { DashboardStats } from "@/hooks/useAnalytics";
-import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
   AlertTriangle,
@@ -55,6 +54,9 @@ type EstadoDoItem = "carregando" | "feito" | "pendente";
 interface ItemDoChecklist {
   readonly chave: string;
   readonly icone: typeof Wallet;
+  /** Nome neutro do item — usado só na linha "Conferindo…", para dizer QUAL
+   * item está sendo conferido (leitor de tela não adivinha por posição). */
+  readonly rotulo: string;
   readonly rotuloFeito: string;
   readonly rotuloPendente: string;
   readonly estado: EstadoDoItem;
@@ -85,6 +87,14 @@ export function LojaProntaEEstoqueBaixo({
   // `.some(isActive)`, nunca `produtos.length`: o cofre do admin também
   // guarda produto desativado (realtimeSyncEngine.ts seleciona `ativo` e só
   // filtra `deleted_at`).
+  //
+  // Limitação conhecida (achado do laudo de 08/09/2026, fora desta frente):
+  // `produtos` vem de `useStore().products`, que o `StoreContext` busca
+  // truncado em, no máximo, 200 itens (ordenados por data_cadastro DESC),
+  // sem sinal de truncamento hoje. Numa loja com 200+ produtos em que os 200
+  // mais recentes estejam todos inativos e exista um ativo mais antigo fora
+  // da janela, este item mostraria falso "pendente". O conserto correto
+  // depende do StoreContext expor esse sinal — reservado por outra frente.
   const existeProdutoAtivo = produtos.some((produto) => produto.isActive);
   const pixOk = ligado && chaveOk;
 
@@ -92,14 +102,20 @@ export function LojaProntaEEstoqueBaixo({
     {
       chave: "pix",
       icone: Wallet,
+      rotulo: "Pagamento PIX",
       rotuloFeito: "Pagamento PIX configurado",
       rotuloPendente: "Configurar pagamento PIX",
-      estado: configCarregando ? "carregando" : pixOk ? "feito" : "pendente",
+      // Não depende de `configCarregando`: `ligado`/`chaveOk` vêm de
+      // constantes de build (mesma fonte de AdminSettingsView), calculadas
+      // no import e que nunca mudam — a resposta já é conhecida no mount,
+      // então "Conferindo…" aqui seria "não sei" na direção errada.
+      estado: pixOk ? "feito" : "pendente",
       destino: "admin-settings",
     },
     {
       chave: "cep",
       icone: MapPin,
+      rotulo: "CEP de origem do frete",
       rotuloFeito: "CEP de origem do frete preenchido",
       rotuloPendente: "Cadastrar CEP de origem do frete",
       estado: configCarregando
@@ -112,6 +128,7 @@ export function LojaProntaEEstoqueBaixo({
     {
       chave: "produto",
       icone: Package,
+      rotulo: "Produto ativo à venda",
       rotuloFeito: "Pelo menos 1 produto ativo à venda",
       rotuloPendente: "Cadastrar um produto ativo",
       estado: produtosCarregando
@@ -140,7 +157,8 @@ export function LojaProntaEEstoqueBaixo({
               Estoque baixo
             </span>
             <span className="block text-lg font-bold text-white">
-              Estoque baixo: {stats!.inventoryAlerts} produtos
+              Estoque baixo: {stats!.inventoryAlerts}{" "}
+              {stats!.inventoryAlerts === 1 ? "produto" : "produtos"}
             </span>
           </span>
         </button>
@@ -177,7 +195,9 @@ export function LojaProntaEEstoqueBaixo({
               {item.estado === "carregando" && (
                 <>
                   <CircleDashed className="size-4 shrink-0 animate-spin text-zinc-500" />
-                  <span className="text-xs text-zinc-500">Conferindo…</span>
+                  <span className="text-xs text-zinc-500">
+                    Conferindo {item.rotulo}…
+                  </span>
                 </>
               )}
               {item.estado === "feito" && (
@@ -205,11 +225,7 @@ export function LojaProntaEEstoqueBaixo({
         </ul>
 
         {lojaPronta && (
-          <p
-            className={cn(
-              "mt-3 border-t border-white/5 pt-3 text-xs font-bold text-emerald-400",
-            )}
-          >
+          <p className="mt-3 border-t border-white/5 pt-3 text-xs font-bold text-emerald-400">
             Sua loja está pronta para vender.
           </p>
         )}
