@@ -1888,7 +1888,6 @@ export type Database = {
           author_name: string | null;
           created_at: string | null;
           id: string | null;
-          is_verified_buyer: boolean | null;
           product_id: string | null;
           question: string | null;
         };
@@ -1897,7 +1896,6 @@ export type Database = {
           author_name?: never;
           created_at?: string | null;
           id?: string | null;
-          is_verified_buyer?: never;
           product_id?: string | null;
           question?: string | null;
         };
@@ -1906,7 +1904,6 @@ export type Database = {
           author_name?: never;
           created_at?: string | null;
           id?: string | null;
-          is_verified_buyer?: never;
           product_id?: string | null;
           question?: string | null;
         };

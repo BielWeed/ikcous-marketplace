@@ -19,9 +19,12 @@
 --   questions_select_policy USING (true) — SEM `TO`: `anon` recebe QUALQUER pergunta, `user_id` incluído.
 --
 -- O QUE ESTA MIGRATION FAZ: as duas policies passam a valer só para
--- `authenticated` — MESMA expressão USING de hoje (nada na regra de negócio
--- muda: quem está logado continua vendo o que via; o autor continua vendo a
--- própria pendente; o admin continua vendo tudo). O visitante sem sessão
+-- `authenticated` — a MESMA regra de negócio de hoje, só com
+-- `auth.uid()`/`is_admin()` reescritos como subselect (C2 do laudo Opus
+-- PR#484, ver comentário junto do `CREATE POLICY` abaixo; nada muda no que
+-- cada papel enxerga: quem está logado continua vendo o que via; o autor
+-- continua vendo a própria pendente; o admin continua vendo tudo). O
+-- visitante sem sessão
 -- (`anon`) deixa de ter QUALQUER policy permissiva nas duas tabelas — com
 -- RLS ligado e nenhuma policy aplicável ao seu papel, o Postgres nega por
 -- padrão: `SELECT` direto em `reviews`/`questions` como anon devolve ZERO
@@ -43,6 +46,22 @@
 -- colateral acima), `vw_reviews_public`/`vw_questions_public` (nunca
 -- expuseram a coluna). Não há RPC `SECURITY DEFINER` que devolva
 -- `reviews`/`questions` inteiras a `anon` (grep -rn "FROM public.reviews\|FROM public.questions" supabase/migrations/*.sql — só a própria tabela e as duas views desta frente).
+--
+-- C1 (laudo Opus PR#484, 08/09/2026) — O REALTIME DO VISITANTE ANÔNIMO
+-- MORRE COM ESTA MIGRATION, E NÃO É PARA SER CONSERTADO AQUI: `ProductView.
+-- tsx:472` assina `postgres_changes` em `reviews`; `ProductQA.tsx:37` assina
+-- em `questions` (`useReviews.ts:674`/`useQuestions.ts:719`). O Realtime do
+-- Supabase aplica a RLS de quem está inscrito no canal — sem policy
+-- permissiva para `anon` nas duas tabelas, os eventos deixam de ser
+-- entregues a partir do instante em que esta migration for aplicada.
+-- GATILHO: o instante da aplicação. EFEITO: a página de produto do
+-- visitante sem sessão para de atualizar sozinha quando uma avaliação é
+-- publicada ou uma pergunta é feita — só volta ao recarregar a página. A
+-- resposta da loja continua acordando a tela, porque `answers` segue
+-- pública, sem policy tocada nesta frente. Não é regressão de segurança —
+-- é comportamento visível que muda para quem usa; registrado aqui e na
+-- ficha de verificação abaixo. O front NÃO muda por causa disto nesta
+-- frente (fora do escopo dos arquivos permitidos).
 --
 -- ACHADO FORA DO ESCOPO DESTA FRENTE (arquivo proibido, não corrigido aqui —
 -- só registrado para o dono decidir): `src/views/customer/UserProfileView.tsx`
@@ -84,18 +103,33 @@
 --   --    a própria avaliação pendente; outro authenticated não vê a
 --   --    pendente alheia; admin vê tudo — mesma prova da 20261031000000.
 --
+--   -- 5. C1 — o visitante anônimo perde o realtime de reviews/questions:
+--   --    inscreva um canal `postgres_changes` como `anon` nas duas tabelas
+--   --    antes e depois de aplicar; depois, nenhum INSERT/UPDATE chega ao
+--   --    canal (a página exige recarregar para ver avaliação/pergunta
+--   --    nova). Não é falha desta migration — é o efeito esperado; a ficha
+--   --    serve para confirmar que ninguém trate isso como bug depois.
+--
 -- ROLLBACK: rollback-manual-20261111000000_*.sql versionado junto, com o
 -- corpo VIVO byte a byte (medido em pg_get_expr contra os DOIS bancos,
--- principal e Savy — idênticos neste ponto).
+-- principal e Savy — idênticos neste ponto). O rollback NÃO leva o
+-- subselect abaixo: ele reproduz o corpo que está vivo HOJE (sem `TO`, sem
+-- subselect), não o desenho novo desta migration.
 
 DROP POLICY IF EXISTS reviews_select_policy ON public.reviews;
 
+-- C2 (laudo Opus PR#484, 08/09/2026): `(SELECT auth.uid())` e
+-- `(SELECT public.is_admin())` em vez da chamada direta — sem o subselect o
+-- linter do Supabase acusa `auth_rls_initplan` e a função é reavaliada por
+-- LINHA em vez de uma vez por consulta (mesmo molde de
+-- `analytics_events_insert_policy` na 20261112000000 deste PR). Expressão
+-- funcionalmente idêntica à que estava viva antes desta migration.
 CREATE POLICY reviews_select_policy ON public.reviews
   FOR SELECT TO authenticated
   USING (
     status = 'publicada'
-    OR user_id = auth.uid()
-    OR public.is_admin()
+    OR user_id = (SELECT auth.uid())
+    OR (SELECT public.is_admin())
   );
 
 DROP POLICY IF EXISTS questions_select_policy ON public.questions;

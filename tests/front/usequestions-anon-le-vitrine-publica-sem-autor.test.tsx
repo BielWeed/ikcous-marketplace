@@ -13,9 +13,11 @@
 // consultar `vw_questions_public` (20261110000000) — a view nunca teve
 // `user_id`. As respostas da loja (`answers`) continuam vindo por uma
 // segunda consulta na tabela `answers`, que já era 100% pública e não muda
-// nesta frente. O selo "Comprador" (`is_verified_buyer`, calculado DENTRO
-// da view) continua chegando, sem o id de quem comprou. Quem está logado
-// continua na tabela, sem mudança.
+// nesta frente. O selo "Comprador" NÃO vem da view (correção B2 do laudo
+// Opus PR#484, 08/09/2026: calculá-lo lá dentro atravessaria a RLS de
+// pedidos, que hoje NEGA `anon` — entregaria ao visitante um fato que ele
+// não alcança hoje). O selo do visitante sem sessão fica sempre `false`.
+// Quem está logado continua na tabela, sem mudança.
 vi.hoisted(() => {
   if (typeof globalThis.BroadcastChannel === "undefined") {
     class BroadcastChannelFalso {
@@ -194,7 +196,6 @@ describe("getQuestionsByProduct — o visitante anônimo lê a vitrine pública,
         created_at: "2026-08-20T12:00:00.000Z",
         author_name: "Marina",
         author_avatar_url: null,
-        is_verified_buyer: true,
       },
     ];
     h.respostas = [
@@ -218,7 +219,9 @@ describe("getQuestionsByProduct — o visitante anônimo lê a vitrine pública,
       productId: "prod-bolsa",
       customerName: "Marina",
       question: "Tem em outra cor?",
-      isVerified: true,
+      // B2 (laudo Opus PR#484, 08/09/2026): a view nunca calcula o selo —
+      // o visitante sem sessão vê sempre `isVerified: false`.
+      isVerified: false,
     });
     expect(perguntas[0]?.answers).toHaveLength(1);
     expect(perguntas[0]?.answers[0]?.answer).toBe("Temos em azul e preto!");

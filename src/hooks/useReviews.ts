@@ -222,7 +222,15 @@ export function useReviews() {
         }
       }
     },
-    [user],
+    // B1 (laudo Opus PR#484, 08/09/2026): `user?.id`, não `user`. Em
+    // produção o `user` do AuthContext vem de `useState` e ganha identidade
+    // nova a cada `setUser` (renovação de token, ~1x/h) — isso derrubava e
+    // recriava o canal de realtime de avaliações da página de produto e
+    // refazia a leitura sem motivo nenhum ter mudado. `user?.id` é estável
+    // entre renders e só muda em login/logout de verdade (mesma disciplina
+    // de `useDataVault.ts:35`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id],
   );
 
   const addReview = useCallback(

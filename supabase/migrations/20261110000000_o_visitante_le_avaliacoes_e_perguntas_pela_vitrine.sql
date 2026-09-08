@@ -38,21 +38,32 @@
 --      pergunta, data), com `author_name`/`author_avatar_url` pelo mesmo
 --      JOIN, e SEM `user_id`. `answers` (a resposta da loja) NÃO faz parte
 --      desta view: a tabela já é 100% pública (`answers_select_policy USING
---      (true)`, sem coluna sensível consumida pelo front — só
---      id/question_id/answer/created_at) e não muda nesta frente; o front
---      busca a resposta à parte, com uma segunda consulta em `answers`
---      filtrada por `question_id`, exatamente como já faz hoje para o selo
---      de "Comprador verificado".
---   2b. `is_verified_buyer`: o selo "Comprador" (`ProductQA.tsx`, `{q.isVerified
---      && ...}`) É renderizado para o visitante anônimo HOJE — medido no
---      front, o badge não depende de login. Sem o `user_id`, o cliente não
---      tem mais como calcular esse selo nele mesmo (a conta de hoje é
---      "existe pedido `delivered` deste `user_id` com este `product_id`").
---      A view calcula o booleano NO SERVIDOR (subselect correlacionado em
---      `marketplace_orders`/`marketplace_order_items`) e devolve só o
---      `true`/`false` — nunca o id do comprador nem o pedido. Sem este
---      campo, o selo "Comprador" sumiria da tela do visitante — mudança
---      visível que o brief não autoriza ("nada visível" para quem usa).
+--      (true)`, `roles={-}` isto é PUBLIC, `anon` com GRANT SELECT — mas
+--      COM coluna sensível: `answers.user_id uuid NOT NULL` existe desde o
+--      baseline. Não é o autor da pergunta que vaza ali — é o id de quem
+--      RESPONDEU, e só admin responde (`answers_admin_insert_policy`); é um
+--      furo pré-existente, fora do escopo desta frente, registrado em
+--      `20261111000000` (achado D1 do laudo Opus PR#484, 08/09/2026) — e não
+--      muda nesta frente; o front busca a resposta à parte, com uma segunda
+--      consulta em `answers` filtrada por `question_id`.
+--   2b. `is_verified_buyer` NÃO entra nesta view (correção B2 do laudo Opus
+--      PR#484, 08/09/2026 — a versão anterior desta migration tinha essa
+--      coluna e foi REPROVADA). A view não é `security_invoker`: um `EXISTS`
+--      sobre `marketplace_orders`/`marketplace_order_items` dentro dela
+--      rodaria com o crachá do dono, atravessando a RLS de pedidos
+--      (`marketplace_orders_select_policy`/`order_items_all_policy`, ambas
+--      `TO authenticated`, sem policy nenhuma para `anon`). O selo
+--      "Comprador" NÃO é visível ao visitante anônimo HOJE — medido ao vivo:
+--      a consulta que o front hoje faz para calculá-lo
+--      (`useQuestions.ts`, `.from("marketplace_orders")...`) devolve ZERO
+--      linhas para quem não tem sessão, porque a RLS nega `anon` nas duas
+--      tabelas. Colocar o cálculo dentro da view teria ENTREGUE ao visitante
+--      um fato que a RLS de hoje já nega — "pessoa nomeada comprou e
+--      recebeu o produto X" — exatamente a classe de vazamento que este PR
+--      existe para fechar. O selo do visitante sem sessão fica sempre
+--      `false` (`isVerified: false` no ramo anônimo de `useQuestions.ts`) —
+--      reproduz o comportamento de hoje, é o "nada visível" que o brief
+--      pediu, e não é decisão de produto nova.
 --
 -- POR QUE AS DUAS VIEWS NÃO SÃO `security_invoker` (a exceção documentada
 -- na skill `nova-migration`, mesmo molde de `vw_produtos_public` —
@@ -90,7 +101,9 @@
 --   WHERE table_schema = 'public' AND table_name = 'vw_questions_public'
 --   ORDER BY ordinal_position;
 --   -- esperado: id, product_id, question, created_at, author_name,
---   -- author_avatar_url, is_verified_buyer — SEM user_id.
+--   -- author_avatar_url — SEM user_id, SEM is_verified_buyer (B2: a coluna
+--   -- atravessava a RLS de pedidos e vazava ao anônimo um fato que ela hoje
+--   -- nega; ver o item 2b acima).
 --
 --   -- 2. `anon` alcança as views (SET ROLE anon; SELECT * FROM
 --   --    vw_reviews_public LIMIT 1; SELECT * FROM vw_questions_public
@@ -129,15 +142,7 @@ SELECT
   q.question,
   q.created_at,
   pp.full_name AS author_name,
-  pp.avatar_url AS author_avatar_url,
-  EXISTS (
-    SELECT 1
-    FROM public.marketplace_orders mo
-    JOIN public.marketplace_order_items moi ON moi.order_id = mo.id
-    WHERE mo.user_id = q.user_id
-      AND mo.status = 'delivered'
-      AND moi.product_id = q.product_id
-  ) AS is_verified_buyer
+  pp.avatar_url AS author_avatar_url
 FROM public.questions q
 LEFT JOIN public.public_profiles pp ON pp.id = q.user_id;
 

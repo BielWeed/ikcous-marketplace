@@ -165,11 +165,18 @@ export function useQuestions() {
 
       // I-3 (brief hub-0809-g 08/09/2026): sem sessão, a leitura vai pela
       // vitrine pública (`vw_questions_public`, migration 20261110000000) —
-      // ela nunca teve `user_id` para vazar, e já calcula o selo
-      // "Comprador" no servidor (`is_verified_buyer`, sem devolver o id de
-      // quem comprou). As respostas da loja vêm de uma segunda consulta em
-      // `answers` (tabela já 100% pública, inalterada nesta frente). Quem
-      // está logado (inclusive admin) continua na tabela, sem mudança.
+      // ela nunca teve `user_id` para vazar. O selo "Comprador" NÃO vem da
+      // view (correção B2 do laudo Opus PR#484, 08/09/2026): calculá-lo lá
+      // dentro exigia um `EXISTS` sobre `marketplace_orders`/
+      // `marketplace_order_items` rodando com o crachá do dono da view — e
+      // isso atravessava a RLS de pedidos, que hoje NEGA `anon` nas duas
+      // tabelas (sem policy para o papel). O visitante nunca via o selo
+      // antes desta frente (a consulta que o calcula sempre devolvia zero
+      // linhas para ele); o selo sem sessão fica sempre `false`, mesmo
+      // comportamento de hoje. As respostas da loja vêm de uma segunda
+      // consulta em `answers` (tabela já 100% pública, inalterada nesta
+      // frente). Quem está logado (inclusive admin) continua na tabela, sem
+      // mudança — o selo dele segue calculado pelo caminho de sempre.
       const anonimo = !user;
 
       try {
@@ -222,7 +229,11 @@ export function useQuestions() {
             customerAvatar: item.author_avatar_url || undefined,
             question: item.question,
             createdAt: item.created_at,
-            isVerified: Boolean(item.is_verified_buyer),
+            // B2 (laudo Opus PR#484, 08/09/2026): `vw_questions_public` não
+            // tem `is_verified_buyer` — o selo do visitante fica sempre
+            // desligado, reproduzindo o que a RLS de pedidos já nega hoje
+            // ao anônimo (ver o comentário acima da bifurcação `anonimo`).
+            isVerified: false,
             answers: (answersByQuestion.get(item.id) || [])
               .map((ans: any) => ({
                 id: ans.id,
@@ -390,7 +401,17 @@ export function useQuestions() {
         }
       }
     },
-    [isAdmin, user],
+    // B1 (laudo Opus PR#484, 08/09/2026): `user?.id`, não `user`. O ramo só
+    // lê `!user`; o objeto `user` do AuthContext ganha identidade nova a
+    // cada `setUser` (login/logout, mas também renovação de token), o que
+    // dava a `getQuestionsByProduct` uma identidade nova a cada render —
+    // derrubando e recriando à toa o canal de realtime do consumidor
+    // (`ProductQA.tsx`) e quebrando o duble de teste que usa um objeto
+    // literal novo por chamada. `user?.id` é a chave estável; incluir
+    // `user` inteiro reintroduziria o bug (mesma disciplina de
+    // `useDataVault.ts:35`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isAdmin, user?.id],
   );
 
   const addQuestion = useCallback(

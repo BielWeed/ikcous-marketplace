@@ -265,6 +265,33 @@ async function rodar(rotulo) {
       anonQuestionsView.ok,
       JSON.stringify(anonQuestionsView),
     );
+    // D3 (laudo Opus PR#484, 08/09/2026): a asserção acima passa com a
+    // policy antiga E com a nova sendo restritiva demais — "sem erro" não
+    // prova que a view devolveu LINHA. Aqui, a mesma pergunta do controle
+    // negativo (ponto 0) tem de reaparecer na view, com rowCount > 0. Na
+    // Savy (`questions` vazia) a asserção sai como N/A explícito, nunca OK.
+    if (perguntaQualquer.rows.length > 0) {
+      const alvo = perguntaQualquer.rows[0];
+      const linhaQuestion = await sondar(
+        client,
+        "anon",
+        "SELECT * FROM public.vw_questions_public WHERE id = $1",
+        "",
+        [alvo.id],
+      );
+      afirmar(
+        "a MESMA pergunta do controle negativo aparece na view, com rowCount > 0 e sem user_id na linha",
+        linhaQuestion.ok &&
+          linhaQuestion.rowCount > 0 &&
+          linhaQuestion.rows.length === 1 &&
+          !Object.hasOwn(linhaQuestion.rows[0], "user_id"),
+        JSON.stringify(linhaQuestion),
+      );
+    } else {
+      console.log(
+        "  [N/A  ] vw_questions_public devolve linha real — nenhuma pergunta no banco (Savy vazia).",
+      );
+    }
 
     if (reviewPublicada.rows.length > 0) {
       const alvo = reviewPublicada.rows[0];
@@ -369,16 +396,26 @@ async function rodar(rotulo) {
         `antes=${JSON.stringify(antes)} depois=${JSON.stringify(depois)}`,
       );
     }
-    const anonDepoisDoRollback = await sondar(
-      client,
-      "anon",
-      "SELECT user_id FROM public.reviews LIMIT 1",
-    );
-    afirmar(
-      "depois do rollback: anon volta a alcançar user_id de reviews (o furo reabre — efeito colateral honesto documentado)",
-      anonDepoisDoRollback.ok,
-      JSON.stringify(anonDepoisDoRollback),
-    );
+    // D3 (laudo Opus PR#484, 08/09/2026): checar só `.ok` passa também com a
+    // policy restritiva (SELECT sem erro, rowCount 0) — falta exigir
+    // rowCount > 0, que só existe se houver avaliação no banco. Na Savy
+    // (`reviews` vazia) sai N/A explícito, nunca OK.
+    if (reviewPublicada.rows.length > 0) {
+      const anonDepoisDoRollback = await sondar(
+        client,
+        "anon",
+        "SELECT user_id FROM public.reviews LIMIT 1",
+      );
+      afirmar(
+        "depois do rollback: anon volta a alcançar user_id de reviews, com rowCount > 0 (o furo reabre — efeito colateral honesto documentado)",
+        anonDepoisDoRollback.ok && anonDepoisDoRollback.rowCount > 0,
+        JSON.stringify(anonDepoisDoRollback),
+      );
+    } else {
+      console.log(
+        "  [N/A  ] anon volta a alcançar user_id de reviews — nenhuma avaliação no banco (Savy vazia), rollback não pode ser provado por leitura de linha.",
+      );
+    }
     const grantAnonDepois = await client.query(
       `SELECT 1 FROM information_schema.role_table_grants
        WHERE table_schema='public' AND table_name='analytics_events'
