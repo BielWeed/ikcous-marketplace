@@ -48,7 +48,9 @@ export function useBehavioralPrefetch(
       if (!transitionsRaw) return null;
 
       const transitions: Record<string, number> = JSON.parse(transitionsRaw);
-      const sorted = Object.entries(transitions).sort(([, a], [, b]) => b - a);
+      const sorted = Object.entries(transitions)
+        .filter(([path]) => path !== currentPath)
+        .sort(([, a], [, b]) => b - a);
 
       if (sorted.length > 0 && sorted[0][1] > 1) {
         // Só prevê se houver recorrência
