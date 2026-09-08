@@ -1695,8 +1695,8 @@ const AppContent = () => {
         const categoryParam = urlParams.get("category") || "Todas";
         if (targetView === "home") {
           selectedCategoryRef.current = categoryParam;
+          setSelectedCategory(categoryParam);
         }
-        setSelectedCategory(categoryParam);
         const queryId = urlParams.get("id");
         const stateId = globalThis.history.state?.id;
         const nextSelectedProductId =
