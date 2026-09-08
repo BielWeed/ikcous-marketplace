@@ -86,6 +86,25 @@ sw.addEventListener("fetch", (event: any) => {
   if (url.hostname.includes("supabase.co") && url.pathname.includes("auth"))
     return;
 
+  // `/version.json` é SONDA DE FRESCOR, não recurso cacheável: é ela que o
+  // useUpdateCheck consulta a cada 3 minutos para descobrir se saiu versão
+  // nova. Duas razões para não passar por aqui, e as duas custaram medição:
+  //
+  // (1) O catch-all lá embaixo grava POR URL. Como cada poll levava um
+  //     carimbo diferente (`?t=<agora>`), 20 polls viraram 20 entradas
+  //     distintas no cache `app-cache-<versao>` (medido em 08/09/2026, Cache
+  //     Storage real) — ~20 por hora de app aberto, sem despejo, só limpas
+  //     quando a versão muda. O cache do app instalado crescia sem limite.
+  //
+  // (2) E o catch-all é CACHE-FIRST (`return cachedResponse || fetchPromise`).
+  //     Tirar o carimbo sem tirar a sonda daqui seria PIOR que o vazamento: o
+  //     poll passaria a receber a versão VELHA do cache para sempre e o aviso
+  //     de atualização morreria em silêncio.
+  //
+  // Dar `return` sem `respondWith` devolve o controle ao navegador, que busca
+  // nativamente. O `cache: "no-store"` do useUpdateCheck cuida do cache HTTP.
+  if (url.pathname === "/version.json") return;
+
   // 2. NAVEGAÇÃO: CACHE PRIMEIRO, REVALIDAÇÃO EM SEGUNDO PLANO
   // (laudo ofensiva 3108, achado N4)
   //
@@ -118,9 +137,18 @@ sw.addEventListener("fetch", (event: any) => {
                   if (sw.registration.waiting) return;
                   try {
                     const copy = response.clone();
+                    // O try/catch aqui é SÍNCRONO: ele não pega rejeição de
+                    // promessa. Sem este .catch, um put que falha (cota de
+                    // disco estourada) vira unhandled rejection dentro do SW.
                     caches
                       .open(CACHE_NAME)
-                      .then((cache) => cache.put(event.request, copy));
+                      .then((cache) => cache.put(event.request, copy))
+                      .catch((err) =>
+                        console.warn(
+                          "[SW] Failed to cache navigation response:",
+                          err,
+                        ),
+                      );
                   } catch (e) {
                     console.warn(
                       "[SW] Failed to clone navigation response:",
@@ -138,9 +166,17 @@ sw.addEventListener("fetch", (event: any) => {
             if (response.ok && response.status === 200) {
               try {
                 const copy = response.clone();
+                // Mesma razão do .catch da revalidação acima: o try/catch
+                // síncrono não alcança a rejeição da promessa do put.
                 caches
                   .open(CACHE_NAME)
-                  .then((cache) => cache.put(event.request, copy));
+                  .then((cache) => cache.put(event.request, copy))
+                  .catch((err) =>
+                    console.warn(
+                      "[SW] Failed to cache navigation response:",
+                      err,
+                    ),
+                  );
               } catch (e) {
                 console.warn("[SW] Failed to clone navigation response:", e);
               }
@@ -179,7 +215,14 @@ sw.addEventListener("fetch", (event: any) => {
             .then((networkResponse) => {
               if (networkResponse?.status === 200) {
                 const responseToCache = networkResponse.clone();
-                cache.put(event.request, responseToCache);
+                // O .catch do fetchPromise (abaixo) não cobre este put: ele é
+                // promessa SOLTA, e rejeitar aqui (cota cheia) viraria
+                // unhandled rejection dentro do SW.
+                cache
+                  .put(event.request, responseToCache)
+                  .catch((err: unknown) =>
+                    console.warn("[SW] Failed to cache Supabase image:", err),
+                  );
                 cleanOldImageCache(cache);
               }
               return networkResponse;
@@ -234,9 +277,15 @@ sw.addEventListener("fetch", (event: any) => {
                 (responseToCache.type === "basic" ||
                   responseToCache.type === "cors")
               ) {
-                caches.open(CACHE_NAME).then((cache) => {
-                  cache.put(event.request, responseToCache);
-                });
+                // O try/catch que envolve este bloco é SÍNCRONO e não pega
+                // rejeição de promessa: sem o .catch, um put que falha (cota
+                // de disco estourada) vira unhandled rejection no SW.
+                caches
+                  .open(CACHE_NAME)
+                  .then((cache) => cache.put(event.request, responseToCache))
+                  .catch((err) =>
+                    console.warn("[SW] Failed to cache asset response:", err),
+                  );
               }
             } catch (e) {
               console.warn("[SW] Failed to cache asset response:", e);
