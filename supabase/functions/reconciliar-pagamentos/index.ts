@@ -65,6 +65,12 @@ import {
 const TEXTO_LIMITE_DE_TENTATIVAS =
   "não consegui confirmar a devolução no Mercado Pago depois de 5 tentativas; confira no painel do MP";
 
+/** D4 (ANTES-DE-CRESCER 5, laudo rodada 2 do PR #440): texto leigo para quando
+ * o MP CONFIRMOU o estorno mas a NOSSA escrita (RPC `concluir_estorno`)
+ * falhou — o dinheiro já saiu, o problema é só o registro local. */
+const TEXTO_FALHA_AO_REGISTRAR_CONCLUSAO =
+  "o Mercado Pago confirmou a devolução, mas não consegui registrar aqui; tentando de novo";
+
 /**
  * Grava o desfecho de UM estorno (Task 2/T2 `ResultadoEstorno`) na MESMA
  * tabela de gravação que a edge `estornar-pagamento` (T3) usa — um desenho,
@@ -84,6 +90,7 @@ async function gravarDesfechoDoEstorno(
   supabase: ReturnType<typeof createClient>,
   refundId: string,
   resultado: ResultadoEstorno,
+  tentativasAtuais: number,
 ): Promise<"concluido" | "adiado" | "falhou"> {
   if (resultado.tipo === "concluido") {
     const { error } = await supabase.rpc("concluir_estorno", {
@@ -98,6 +105,29 @@ async function gravarDesfechoDoEstorno(
         refundId,
         error,
       );
+      // D4 (ANTES-DE-CRESCER 5, laudo rodada 2 do PR #440): o dinheiro JÁ
+      // saiu do MP — a linha nunca pode virar `falhou` só porque a NOSSA
+      // escrita falhou (fica `em_processamento`; nenhum `status` novo
+      // aqui). Incrementa `tentativas` (hoje não incrementava) para esta
+      // falha entrar no MESMO orçamento do teto de 5 (D2): sem isso, uma
+      // RPC que falha sempre de novo nunca alcançaria o regime "só
+      // consulta" que avisa o lojista via `ultimo_erro`.
+      const { error: erroIncremento } = await supabase
+        .from("order_refunds")
+        .update({
+          tentativas: tentativasAtuais + 1,
+          ultimo_erro: TEXTO_FALHA_AO_REGISTRAR_CONCLUSAO,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", refundId)
+        .in("status", ["em_processamento"]);
+      if (erroIncremento) {
+        console.error(
+          "reconciliar-pagamentos: falha ao gravar o incremento de tentativas do registro pendente",
+          refundId,
+          erroIncremento,
+        );
+      }
       return "adiado";
     }
     return "concluido";
@@ -474,6 +504,12 @@ async function handler(
       .select("id, order_id, amount, status, tentativas, mp_refund_id")
       .in("status", ["solicitado", "em_processamento"])
       .lt("updated_at", doisMinutosAtras)
+      // D4 (ANTES-DE-CRESCER 6, laudo rodada 2 do PR #440): tentativas ASC
+      // ANTES de created_at ASC — sem isso, uma linha TRAVADA (regime "só
+      // consulta" do D2, tentativas=5) ocupa a vaga do LIMIT em todo ciclo,
+      // e uma linha NOVA pode nunca ser vista a partir de 20 pendentes (a
+      // indisponibilidade do MP produz isso sozinha).
+      .order("tentativas", { ascending: true })
       .order("created_at", { ascending: true })
       .limit(20);
     if (erroRefunds) throw erroRefunds;
@@ -580,7 +616,12 @@ async function handler(
             buscar: buscarEstorno,
             consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
           });
-          const desfecho = await gravarDesfechoDoEstorno(supabase, String(refund.id), resultado);
+          const desfecho = await gravarDesfechoDoEstorno(
+            supabase,
+            String(refund.id),
+            resultado,
+            linha.tentativas,
+          );
           if (desfecho === "concluido") refundsConcluidos++;
           else if (desfecho === "adiado") refundsAdiados++;
           else refundsFalhos++;
@@ -590,13 +631,14 @@ async function handler(
         // refund.status === "em_processamento": a MARCA de "já pedi ao MP
         // com esta chave" — o cron NUNCA cria chave nova aqui. PRIMEIRO
         // consulta (sem POST); só repete o POST se a consulta não esclarecer.
+        const tentativasAtuais = Number(refund.tentativas ?? 0);
         const linhaAtual: LinhaEstorno = {
           id: String(refund.id),
           order_id: String(refund.order_id),
           amount: Number(refund.amount),
           status: "em_processamento",
           mp_refund_id: (refund.mp_refund_id as string | null) ?? null,
-          tentativas: Number(refund.tentativas ?? 0),
+          tentativas: tentativasAtuais,
         };
         const confirmacao = await confirmarPorConsulta({
           buscar: buscarEstorno,
@@ -606,7 +648,12 @@ async function handler(
         });
 
         if (confirmacao.tipo === "concluido") {
-          const desfecho = await gravarDesfechoDoEstorno(supabase, String(refund.id), confirmacao);
+          const desfecho = await gravarDesfechoDoEstorno(
+            supabase,
+            String(refund.id),
+            confirmacao,
+            tentativasAtuais,
+          );
           if (desfecho === "concluido") refundsConcluidos++;
           else if (desfecho === "adiado") refundsAdiados++;
           else refundsFalhos++;
@@ -616,12 +663,22 @@ async function handler(
         // Não confirmou (a alternativa B do I-A garante que o caminho
         // DIRETO desta função nunca devolve `falhou` por "ainda não
         // apareceu" — só `concluido` ou `tentar_depois`).
-        const tentativasAtuais = Number(refund.tentativas ?? 0);
+        //
+        // D2 (laudo BLOQUEIA-2, rodada 2 do PR #440): o teto SEM veredito do
+        // MP não pode soltar o saldo reservado — `falhou` LIBERA a reserva
+        // (`solicitar_estorno`/`update_order_status_atomic` só reservam
+        // solicitado/em_processamento), e um segundo POST com chave NOVA
+        // dobraria o dinheiro (o MP já pode ter aceitado o primeiro sem
+        // termos confirmado). A linha CONTINUA em_processamento; o que muda
+        // é que o cron nunca mais tenta o POST para ela — todo ciclo roda só
+        // a consulta acima (barata), que conclui sozinha se o MP confirmar.
+        // `tentativas` para de subir aqui (não precisa passar de 5): quem
+        // sobe é só o retry abaixo, que este ramo nunca alcança. `falhou`
+        // fica reservado para veredito NEGATIVO explícito do MP.
         if (tentativasAtuais >= 5) {
           const { error: erroLimite } = await supabase
             .from("order_refunds")
             .update({
-              status: "falhou",
               ultimo_erro: TEXTO_LIMITE_DE_TENTATIVAS,
               updated_at: new Date().toISOString(),
             })
@@ -634,7 +691,7 @@ async function handler(
               erroLimite,
             );
           }
-          refundsFalhos++;
+          refundsAdiados++;
           continue;
         }
 
@@ -662,6 +719,7 @@ async function handler(
           supabase,
           String(refund.id),
           resultadoRetry,
+          tentativasAtuais + 1,
         );
         if (desfechoRetry === "concluido") refundsConcluidos++;
         else if (desfechoRetry === "adiado") refundsAdiados++;

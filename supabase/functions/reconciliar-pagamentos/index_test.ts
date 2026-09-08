@@ -127,23 +127,50 @@ function clienteFalso(opts: {
               in(_coluna: string, _valores: string[]) {
                 return {
                   lt(_colunaData: string, valorLimite: string) {
-                    return {
-                      order(_colunaOrdem: string, _o?: unknown) {
-                        return {
-                          limit: async (_n: number) => {
-                            if (opts.erroRefundsPendentes) {
-                              return { data: null, error: opts.erroRefundsPendentes };
-                            }
-                            const todos = opts.refundsPendentes ?? [];
-                            const filtrados = todos.filter((r) => {
-                              const upd = (r as Record<string, unknown>).updated_at;
-                              return typeof upd !== "string" || upd < valorLimite;
-                            });
-                            return { data: filtrados, error: null };
-                          },
-                        };
+                    // D4 (ANTES-DE-CRESCER 6): a producao encadeia DOIS
+                    // `.order()` (tentativas ASC, created_at ASC) antes do
+                    // `.limit()` — o mock acumula os criterios recursivamente
+                    // (cada `.order()` devolve um objeto com `.order()` E
+                    // `.limit()`) e SIMULA a ordenacao de verdade, para que
+                    // R10 prove a fila sem reimplementar o handler.
+                    const comCriterios = (
+                      criterios: Array<{ coluna: string; ascendente: boolean }>,
+                    ) => ({
+                      order(coluna: string, o?: { ascending?: boolean }) {
+                        return comCriterios([
+                          ...criterios,
+                          { coluna, ascendente: o?.ascending ?? true },
+                        ]);
                       },
-                    };
+                      limit: async (n: number) => {
+                        if (opts.erroRefundsPendentes) {
+                          return { data: null, error: opts.erroRefundsPendentes };
+                        }
+                        const todos = opts.refundsPendentes ?? [];
+                        const filtrados = todos.filter((r) => {
+                          const upd = (r as Record<string, unknown>).updated_at;
+                          return typeof upd !== "string" || upd < valorLimite;
+                        });
+                        const ordenados = [...filtrados].sort((a, b) => {
+                          for (const { coluna, ascendente } of criterios) {
+                            const va = (a as Record<string, unknown>)[coluna];
+                            const vb = (b as Record<string, unknown>)[coluna];
+                            if (va === vb) continue;
+                            if (va === undefined || va === null) {
+                              return ascendente ? -1 : 1;
+                            }
+                            if (vb === undefined || vb === null) {
+                              return ascendente ? 1 : -1;
+                            }
+                            if (va < vb) return ascendente ? -1 : 1;
+                            if (va > vb) return ascendente ? 1 : -1;
+                          }
+                          return 0;
+                        });
+                        return { data: ordenados.slice(0, n), error: null };
+                      },
+                    });
+                    return comCriterios([]);
                   },
                 };
               },
@@ -983,7 +1010,7 @@ Deno.test("R3 - consulta sem refund e tentativas=2 -> repete o POST com a MESMA 
   );
 });
 
-Deno.test("R4 - tentativas=5 -> falhou com o texto exato, SEM novo POST", async () => {
+Deno.test("R4 - tentativas=5 -> continua em_processamento (saldo reservado), SEM novo POST, ultimo_erro com o texto do teto (D2/BLOQUEIA-2)", async () => {
   const registro = {
     chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
     chamouCandidatos: false,
@@ -1009,15 +1036,23 @@ Deno.test("R4 - tentativas=5 -> falhou com o texto exato, SEM novo POST", async 
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
-  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 0, falhos: 1 });
-  // Só a consulta (GET) — nenhum POST depois do teto de 5 tentativas.
+  // D2/BLOQUEIA-2: `falhou` LIBERA o saldo reservado (solicitar_estorno só
+  // reserva solicitado/em_processamento) — um teto sem veredito do MP nunca
+  // pode terminar em `falhou` (2º POST com chave nova = pagamento em dobro).
+  // Conta como adiado, nunca como falho.
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  // Só a consulta (GET) — nenhum POST depois do teto de 5 tentativas (m3).
   assertEquals(mp.chamadas.length, 1);
   assertEquals(mp.chamadas[0].metodo, "GET");
-  const gravado = registro.atualizacoesOrderRefunds.find((a) => a.id === "r4" && a.valores.status === "falhou");
+  const gravado = registro.atualizacoesOrderRefunds.find((a) => a.id === "r4");
   assertEquals(
     gravado?.valores.ultimo_erro,
     "não consegui confirmar a devolução no Mercado Pago depois de 5 tentativas; confira no painel do MP",
   );
+  // A prova real do BLOQUEIA-2: o update NÃO grava `status` nenhum (m2) — a
+  // linha continua em_processamento, o filtro condicional prova isso.
+  assertEquals(gravado?.valores.status, undefined);
+  assertEquals(gravado?.statusFiltro, ["em_processamento"]);
 });
 
 Deno.test("R5 - item que lança (pedido não encontrado) não impede o seguinte (falhos:1, o outro concluído)", async () => {
@@ -1213,4 +1248,177 @@ Deno.test("R8 - linha solicitado de pedido PIX (gateway_payment_id de ORDER) -> 
   assertEquals(mp.chamadas[1].chave, "r8");
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "r8");
+});
+
+// =============================================================================
+// R9–R11 — D2/D3/D4 do laudo rodada 2 do PR #440 (BLOQUEIA-2 e
+// ANTES-DE-CRESCER 3/5/6).
+// =============================================================================
+
+Deno.test("R9 - retry em_processamento de pedido PIX (gateway_payment_id de ORDER) chama consultarTransacaoDaOrder e refunda pela Orders API (D3, mutante: remover a injeção SÓ do retry)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    total: 20,
+    valor_estornado: 0,
+  });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r9", order_id: pedido.id, amount: 20, status: "em_processamento", tentativas: 2, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    // Serve TANTO o GET de confirmarPorConsulta (refunds[] vazio -> ainda
+    // não confirmou) QUANTO o GET de consultarTransacaoDaOrder dentro do
+    // retry (transactions.payments[] traz o id que o POST exige). R2/R3/R4
+    // só cobrem este caminho com id CLÁSSICO (123456789) — todo o caminho
+    // de recuperação para PIX (único método vivo) ficava sem teste.
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY_RETRY", status: "processed" }],
+          refunds: [],
+        },
+      },
+    },
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 201,
+      corpo: { id: "REFUND_RETRY", status: "refunded" },
+    },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  const postChamada = mp.chamadas.find((c) => c.metodo === "POST");
+  assertEquals(postChamada !== undefined, true);
+  // O corpo do POST usa a transação que consultarTransacaoDaOrder devolveu —
+  // sem a injeção, executarEstorno nunca chegaria a montar este POST (viraria
+  // tentar_depois para sempre, e o teste cairia em concluidos:0/adiados:1).
+  const corpoEnviado = postChamada?.corpoEnviado as { transactions: Array<{ id: string }> };
+  assertEquals(corpoEnviado.transactions[0].id, "PAY_RETRY");
+  assertEquals(postChamada?.chave, "r9");
+});
+
+Deno.test("R10 - fila ordena por tentativas ASC antes de created_at ASC: linha travada (tentativas 5, regime D2) não mata de fome linha nova (tentativas 0) no LIMIT 20 (D4)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const antigo = new Date(AGORA_MS - 3 * 60 * 1000).toISOString(); // fora da janela de 2 min
+
+  // 20 linhas TRAVADAS (tentativas=5, o regime "só consulta" do D2) com
+  // created_at MAIS ANTIGO que a linha nova — se a fila ordenasse só por
+  // created_at (like antes do D4), elas ocupariam as 20 vagas do LIMIT e a
+  // nova morreria de fome para sempre. O pedido delas nunca é resolvido
+  // (resolverPedidoFresco só conhece a nova) — o que basta para provar QUAIS
+  // entraram no lote, sem precisar de dublê de MP para elas.
+  const travadas = Array.from({ length: 20 }, (_, i) => ({
+    id: `travada-${i}`,
+    order_id: `pedido-travada-${i}`,
+    amount: 10,
+    status: "em_processamento",
+    tentativas: 5,
+    mp_refund_id: null,
+    updated_at: antigo,
+    created_at: new Date(AGORA_MS - (100 - i) * UM_DIA_MS).toISOString(),
+  }));
+  const pedidoNovo = pedidoFrescoPara({ id: "20000000-0000-4000-8000-0000000000ff", total: 10 });
+  const novo = {
+    id: "novo",
+    order_id: pedidoNovo.id,
+    amount: 10,
+    status: "solicitado",
+    tentativas: 0,
+    mp_refund_id: null,
+    updated_at: antigo,
+    // O MAIS RECENTE de todos — em ordenação só por created_at ficaria por
+    // ÚLTIMO e sairia do LIMIT 20 (21 linhas no total).
+    created_at: new Date(AGORA_MS).toISOString(),
+  };
+
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [...travadas, novo],
+    resolverPedidoFresco: (orderId) => (orderId === pedidoNovo.id ? pedidoNovo : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 1, status: "approved", amount: 10 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos.vistos, 20, "o LIMIT 20 continua valendo");
+  // A prova real: a linha NOVA foi tocada (marcada em_processamento) — ela
+  // entrou no lote. Sem o ORDER BY tentativas ASC (mutante m5: ordenar só
+  // por created_at), ela ficaria de fora e este array estaria vazio.
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.id === "novo"),
+    true,
+  );
+  assertEquals(corpo.estornos.concluidos, 1, "a nova concluiu o estorno normalmente");
+});
+
+Deno.test("R11 - concluido cuja RPC concluir_estorno levanta: incrementa tentativas e grava o motivo leigo, linha continua em_processamento (D4, ANTES-DE-CRESCER 5)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 30, valor_estornado: 0 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r11", order_id: pedido.id, amount: 30, status: "em_processamento", tentativas: 2, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    erroConcluirEstorno: { message: "conexão com o banco perdida" },
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved", transaction_amount_refunded: 30 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // O MP CONFIRMOU (GET diz 30/30) — o dinheiro já saiu; só a NOSSA escrita
+  // (RPC concluir_estorno) falhou. Nunca "falhou": o dinheiro não pode
+  // desaparecer do registro só porque a escrita local deu erro.
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  const gravado = registro.atualizacoesOrderRefunds.find((a) => a.id === "r11");
+  assertEquals(gravado?.valores.tentativas, 3, "incrementa a partir das 2 tentativas já persistidas");
+  assertEquals(typeof gravado?.valores.ultimo_erro, "string");
+  assertEquals(gravado?.valores.status, undefined, "nunca falhou: o MP já confirmou o dinheiro");
+  assertEquals(gravado?.statusFiltro, ["em_processamento"]);
 });

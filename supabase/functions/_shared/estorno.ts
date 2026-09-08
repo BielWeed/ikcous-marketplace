@@ -526,8 +526,25 @@ function refundsDaOrder(
   return [];
 }
 
+/**
+ * D1 (laudo BLOQUEIA-1, rodada 2 do PR #440): o terminal de SUCESSO de um
+ * refund da Orders API é `"processed"` — o mesmo valor que
+ * `STATUS_DE_PAGAMENTO_APROVADO` usa para pagamento aprovado. O exemplo
+ * oficial do endpoint de refund da Orders API traz um refund com `"status":
+ * "processing"`: sem este filtro, `somarRefundsDaOrder` somava QUALQUER
+ * status (`processing`, `rejected`, `cancelled`) como se já tivesse saído —
+ * o cenário do BLOQUEIA-1 (cliente sem o dinheiro, `payment_status` vira
+ * `estornado` mesmo assim). Falha fechada: a lista exata de status
+ * terminais é trabalho da T8 (sandbox); até lá, qualquer coisa que não seja
+ * `"processed"` (inclusive status ausente ou ilegível) não conta — na
+ * dúvida, "ainda não".
+ */
+const STATUS_REFUND_CONCLUIDO = "processed";
+
 function somarRefundsDaOrder(order: Record<string, unknown>): number | null {
-  const refunds = refundsDaOrder(order);
+  const refunds = refundsDaOrder(order).filter(
+    (r) => r.status === STATUS_REFUND_CONCLUIDO,
+  );
   if (refunds.length === 0) return null;
   let soma = 0;
   for (const r of refunds) {
@@ -558,6 +575,13 @@ function dataCreatedMs(refund: Record<string, unknown>): number {
  * mesmo valor — o refund novo é o desta chamada; nenhum candidato (lista
  * vazia ou nenhum bate o valor) devolve `null`, nunca um id que não é de
  * refund.
+ *
+ * D1 (laudo rodada 2 do PR #440): entre os candidatos do mesmo valor,
+ * prefere os que o MP já marcou como `processed` — sem isso, um refund
+ * rejeitado ou ainda em curso com o MESMO valor (uma tentativa anterior)
+ * poderia vencer o desempate por data e gravar o id ERRADO no ledger. O
+ * desempate por `date_created` continua, mas só DENTRO do grupo escolhido
+ * (processados, se houver algum; senão todos os candidatos, como antes).
  */
 function refundIdDaConsulta(
   refunds: Array<Record<string, unknown>>,
@@ -569,9 +593,13 @@ function refundIdDaConsulta(
     return Number.isFinite(valor) && emCentavos(valor) === centavosDaLinha;
   });
   if (candidatos.length === 0) return null;
-  let melhor = candidatos[0];
+  const processados = candidatos.filter(
+    (r) => r.status === STATUS_REFUND_CONCLUIDO,
+  );
+  const pool = processados.length > 0 ? processados : candidatos;
+  let melhor = pool[0];
   let melhorData = dataCreatedMs(melhor);
-  for (const candidato of candidatos.slice(1)) {
+  for (const candidato of pool.slice(1)) {
     const data = dataCreatedMs(candidato);
     if (data > melhorData) {
       melhor = candidato;
