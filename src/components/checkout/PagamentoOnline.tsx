@@ -1,4 +1,5 @@
 import { useOrders } from "@/hooks/useOrders";
+import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { useEffect, useRef, useState } from "react";
 
 const SDK_URL = "https://sdk.mercadopago.com/js/v2";
@@ -426,6 +427,35 @@ export function PagamentoOnline({
     // `criarPagamento` (useCallback(..., []) em useOrders.ts) não mudarem.
   }, [orderId, valor, criarPagamento]);
 
+  // Brief "o app não mente quando copia" (08/09/2026): o botão chamava
+  // `navigator.clipboard.writeText(...)` sem await, sem catch e sem NENHUM
+  // aviso — nem quando dava certo. Agora `copiarParaClipboard` (mesma peça do
+  // painel) diz o que aconteceu de verdade: sucesso muda o próprio texto do
+  // botão por ~2s (o botão está no centro da atenção nesta tela — um toast
+  // sumiria sem ninguém notar); falha mostra o código num campo selecionável,
+  // porque sem cópia automática o cliente ainda precisa conseguir pagar.
+  const [pixCopiado, setPixCopiado] = useState(false);
+  const [pixFalhouCopia, setPixFalhouCopia] = useState(false);
+
+  const handleCopiarPix = async (codigo: string) => {
+    // Laudo Opus A-1 (08/09/2026): `montarBrick` só recusa o PIX quando
+    // faltam OS DOIS campos (linha ~234) — a edge extrai `qr_code` e
+    // `qr_code_base64` em separado, então o estado `{qrCodeBase64,
+    // qrCode: undefined}` é alcançável. Sem esta guarda,
+    // `copiarParaClipboard("")` resolveria `true` e o botão diria "Copiado!"
+    // sem ter copiado nada. O botão já não renderiza quando `!pix.qrCode`
+    // (abaixo); esta é a segunda trava, para uma refatoração futura que volte
+    // a renderizar o botão sem QR não reabrir o mesmo defeito.
+    const ok = codigo !== "" && (await copiarParaClipboard(codigo));
+    if (!ok) {
+      setPixFalhouCopia(true);
+      return;
+    }
+    setPixFalhouCopia(false);
+    setPixCopiado(true);
+    setTimeout(() => setPixCopiado(false), 2000);
+  };
+
   if (pix) {
     return (
       <div className="space-y-4 rounded-2xl border border-zinc-100 bg-white p-4">
@@ -436,13 +466,46 @@ export function PagamentoOnline({
             className="mx-auto size-56"
           />
         )}
-        <button
-          type="button"
-          onClick={() => navigator.clipboard.writeText(pix.qrCode ?? "")}
-          className="w-full rounded-xl bg-zinc-900 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white"
-        >
-          Copiar código PIX
-        </button>
+        {/* Laudo Opus A-1 (08/09/2026): sem `qrCode` não existe código para
+            copiar — não oferecer o botão nem o campo de falha. O cliente
+            segue pelo QR acima e pelo link "Pagar pelo Mercado Pago" abaixo,
+            que já são condicionais ao próprio campo existir. */}
+        {pix.qrCode && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleCopiarPix(pix.qrCode ?? "")}
+              className="w-full rounded-xl bg-zinc-900 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white"
+            >
+              <span aria-live="polite">
+                {pixCopiado ? "Copiado!" : "Copiar código PIX"}
+              </span>
+            </button>
+            {/* Laudo Opus A-2 (08/09/2026): container SEMPRE montado (vazio
+                por padrão) com `role="status"`/`aria-live="polite"` — antes
+                o <div> só entrava no DOM quando `pixFalhouCopia` virava true,
+                e o leitor de tela precisa que a região JÁ EXISTA para
+                anunciar o texto que aparece nela; inseri-la depois do fato
+                silenciava exatamente o caso que precisa de aviso. */}
+            <div role="status" aria-live="polite" className="space-y-1.5">
+              {pixFalhouCopia && (
+                <>
+                  <p className="text-center text-xs text-zinc-500">
+                    Não consegui copiar sozinho. Toque no código abaixo, segure
+                    e copie.
+                  </p>
+                  <textarea
+                    readOnly
+                    value={pix.qrCode ?? ""}
+                    onFocus={(e) => e.currentTarget.select()}
+                    rows={3}
+                    className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-[10px] text-zinc-900"
+                  />
+                </>
+              )}
+            </div>
+          </>
+        )}
         {pix.ticketUrl && (
           <a
             href={pix.ticketUrl}

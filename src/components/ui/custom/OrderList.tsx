@@ -1,4 +1,5 @@
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
+import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus, PaymentMethod, View } from "@/types";
 import { motion } from "framer-motion";
@@ -137,8 +138,19 @@ export const OrderList = memo(function OrderList({
 }: Readonly<OrderListProps>) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const copyToClipboard = (orderId: string) => {
-    navigator.clipboard.writeText(orderId);
+  // Brief "o app não mente quando copia" (08/09/2026): copiava sem
+  // await/catch e já comemorava ("Copiado!" + toast) mesmo quando a cópia
+  // falhava — mesma família do laudo 0109 (A-8) que corrigiu OrderDetail.tsx
+  // (painel). `copiarParaClipboard` devolve `false` quando a API recusa, e aí
+  // o aviso é de erro, não de sucesso.
+  const copyToClipboard = async (orderId: string) => {
+    const ok = await copiarParaClipboard(orderId);
+    if (!ok) {
+      toast.error(
+        "Não foi possível copiar. Selecione o texto e copie manualmente.",
+      );
+      return;
+    }
     setCopiedId(orderId);
     toast.success("ID do pedido copiado!");
     setTimeout(() => {
