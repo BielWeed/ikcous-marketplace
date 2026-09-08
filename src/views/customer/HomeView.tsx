@@ -688,6 +688,7 @@ export const HomeView = React.memo(function HomeView({
         ) : (
           <ProductList
             products={filteredProducts}
+            resetKey={JSON.stringify([selectedCategory, searchQuery, sortBy])}
             isLoading={isLoading}
             favorites={favorites}
             onToggleFavorite={onToggleFavorite}
