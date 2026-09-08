@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
@@ -21,6 +22,32 @@ export const BannerCarousel = memo(function BannerCarousel({
     skipSnaps: false,
   });
   const [currentIndex, setCurrentIndex] = useState(0);
+  // Pausa do autoplay (WCAG 2.2.2 — laudo de acessibilidade 05/09, M7): mouse
+  // em cima, foco de teclado dentro do carrossel, ou o sistema pedindo menos
+  // movimento. Nenhuma das duas muda o visual — só some o `setInterval`.
+  const [pausado, setPausado] = useState(false);
+  const [menosMovimento, setMenosMovimento] = useState(false);
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    )
+      return;
+
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setMenosMovimento(mq.matches);
+
+    const aoMudar = (e: MediaQueryListEvent) => setMenosMovimento(e.matches);
+
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", aoMudar);
+      return () => mq.removeEventListener("change", aoMudar);
+    }
+    // Safari antigo não tem addEventListener em MediaQueryList.
+    mq.addListener(aoMudar);
+    return () => mq.removeListener(aoMudar);
+  }, []);
 
   const onSelect = useCallback(() => {
     if (!emblaApi) return;
@@ -44,14 +71,21 @@ export const BannerCarousel = memo(function BannerCarousel({
   }, [emblaApi, onSelect]);
 
   useEffect(() => {
-    if (!autoPlay || !emblaApi || banners.length <= 1) return;
+    if (
+      !autoPlay ||
+      pausado ||
+      menosMovimento ||
+      !emblaApi ||
+      banners.length <= 1
+    )
+      return;
 
     const timer = setInterval(() => {
       emblaApi.scrollNext();
     }, interval);
 
     return () => clearInterval(timer);
-  }, [autoPlay, emblaApi, interval, banners.length]);
+  }, [autoPlay, pausado, menosMovimento, emblaApi, interval, banners.length]);
 
   const handleNavigation = useCallback((link?: string) => {
     if (!link) return;
@@ -94,6 +128,13 @@ export const BannerCarousel = memo(function BannerCarousel({
       role="region"
       aria-roledescription="carousel"
       aria-label="Destaques e Promoções"
+      onMouseEnter={() => setPausado(true)}
+      onMouseLeave={() => setPausado(false)}
+      onFocus={() => setPausado(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+          setPausado(false);
+      }}
     >
       {/* Viewport */}
       <div className="h-full overflow-hidden" ref={emblaRef}>
@@ -146,6 +187,15 @@ export const BannerCarousel = memo(function BannerCarousel({
                             : 0.4,
                       }}
                     />
+                    {classeDoScrimDoBanner(banner.templateType) !== "" && (
+                      <div
+                        aria-hidden="true"
+                        className={cn(
+                          "pointer-events-none absolute inset-0",
+                          classeDoScrimDoBanner(banner.templateType),
+                        )}
+                      />
+                    )}
                     <div
                       className={cn(
                         "absolute inset-0 flex flex-col p-8 text-white sm:p-12 justify-end select-none",
