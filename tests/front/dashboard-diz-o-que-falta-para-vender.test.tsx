@@ -578,35 +578,83 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
 // mais de 200 produtos o card deste componente mostra o número completo
 // enquanto a tela de avisos diz "não consegui conferir produtos" — os dois
 // lados são honestos sobre o que sabem, e reconciliar isso é outro trabalho.
+//
+// 🔴 Este bloco NÃO ancora num nome de arquivo fixo. `get_admin_analytics_v2`
+// já foi redefinida por inteiro várias vezes (hoje são 6 migrations que a
+// redefinem) — um teste que citasse `20260902000000_kpi_usa_o_mesmo_...sql`
+// direto estaria medindo contra uma definição MORTA: mudar o limiar na
+// definição viva, ou numa migration futura, não deixaria este teste vermelho
+// (era exatamente esse o defeito daqui até 08/09/2026). Em vez de citar um
+// carimbo fixo, o teste varre TODAS as migrations, fica só com as que de
+// fato REDEFINEM a função (`CREATE OR REPLACE FUNCTION ...
+// get_admin_analytics_v2` + atribuição de `low_stock_count`) e mede contra a
+// de MAIOR carimbo — a viva de verdade, seja ela qual for no dia em que o
+// teste roda.
 describe("equivalência: o limiar do front é o MESMO literal gravado na migration do banco", () => {
-  const MIGRATION = import.meta.glob<string>(
-    "/supabase/migrations/20260902000000_kpi_usa_o_mesmo_estoque_que_a_tela.sql",
+  const TODAS_AS_MIGRATIONS = import.meta.glob<string>(
+    "/supabase/migrations/*.sql",
     { query: "?raw", import: "default", eager: true },
   );
 
-  it("o glob achou a migration certa", () => {
-    expect(Object.keys(MIGRATION).length).toBe(1);
+  // `_arquivadas/` já fica de fora sozinha — o glob `*.sql` não cruza
+  // subdiretório; só falta descartar os `rollback-manual-*`, que existem
+  // para desfazer uma migration e não fazem parte da fila viva.
+  //
+  // `Object.entries` (em vez de `Object.keys` + indexação por variável)
+  // evita o `security/detect-object-injection` do eslint-security — o
+  // mesmo motivo do molde em recusa-do-pedido-ancora-nas-migrations.test.ts
+  // usar `Object.values`.
+  const REDEFINICOES = Object.entries(TODAS_AS_MIGRATIONS)
+    .filter(([caminho]) => !caminho.includes("/rollback-manual-"))
+    .filter(
+      ([, sql]) =>
+        /CREATE OR REPLACE FUNCTION\s+public\.get_admin_analytics_v2/.test(
+          sql,
+        ) && /low_stock_count/.test(sql),
+    )
+    // o nome do arquivo começa com o carimbo (timestamp) — ordem alfabética
+    // é ordem cronológica, então o último da lista é o mais recente.
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+
+  const CAMINHOS_DAS_REDEFINICOES = REDEFINICOES.map(([caminho]) => caminho);
+  const VIVA = REDEFINICOES.at(-1);
+  const CAMINHO_DA_VIVA = VIVA?.[0] ?? "";
+  const SQL_DA_VIVA = VIVA?.[1] ?? "";
+
+  it("achou pelo menos 2 migrations que redefinem get_admin_analytics_v2 (hoje são 6) — sem isso, tudo abaixo passaria por vacuidade", () => {
+    expect(CAMINHOS_DAS_REDEFINICOES.length).toBeGreaterThanOrEqual(2);
+    expect(
+      CAMINHOS_DAS_REDEFINICOES.some((c) => c.includes("20260902000000")),
+    ).toBe(true);
+    expect(
+      CAMINHOS_DAS_REDEFINICOES.some((c) => c.includes("20261062000000")),
+    ).toBe(true);
   });
 
-  it("COALESCE(estoque_minimo, N) do SQL é o MESMO N de LIMIAR_PADRAO_DE_ESTOQUE", async () => {
+  it("a definição VIVA é a de maior carimbo — hoje, 20261062000000", () => {
+    expect(CAMINHO_DA_VIVA).toContain(
+      "20261062000000_o_hoje_do_painel_e_o_dia_do_lojista.sql",
+    );
+  });
+
+  it("COALESCE(estoque_minimo, N) do SQL VIVO é o MESMO N de LIMIAR_PADRAO_DE_ESTOQUE", async () => {
     const { LIMIAR_PADRAO_DE_ESTOQUE } = await import(
       "@/utils/avisos-do-lojista"
     );
-    const sql = Object.values(MIGRATION)[0];
 
-    const casado = sql.match(/COALESCE\(estoque_minimo,\s*(\d+)\)/);
+    const casado = SQL_DA_VIVA.match(/COALESCE\(estoque_minimo,\s*(\d+)\)/);
     expect(
       casado,
-      "o literal COALESCE(estoque_minimo, N) sumiu ou mudou de forma no SQL — " +
-        "confira a migration 20260902000000 à mão antes de mexer no limiar do front",
+      "o literal COALESCE(estoque_minimo, N) sumiu ou mudou de forma na " +
+        `migration VIVA (${CAMINHO_DA_VIVA}) — confira à mão antes de mexer ` +
+        "no limiar do front",
     ).toBeTruthy();
 
     const limiarDoBanco = Number(casado![1]);
     expect(limiarDoBanco).toBe(LIMIAR_PADRAO_DE_ESTOQUE);
   });
 
-  it("a RPC filtra o MESMO isActive (ativo = true, deleted_at IS NULL) que a tela de avisos usa", () => {
-    const sql = Object.values(MIGRATION)[0];
-    expect(sql).toMatch(/p\.deleted_at IS NULL AND p\.ativo = true/);
+  it("a RPC viva filtra o MESMO isActive (ativo = true, deleted_at IS NULL) que a tela de avisos usa", () => {
+    expect(SQL_DA_VIVA).toMatch(/p\.deleted_at IS NULL AND p\.ativo = true/);
   });
 });
