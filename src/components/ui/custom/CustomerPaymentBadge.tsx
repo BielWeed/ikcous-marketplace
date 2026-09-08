@@ -3,7 +3,13 @@ import { cn } from "@/lib/utils";
 import type { OrderStatus, PaymentStatus } from "@/types";
 import { memo } from "react";
 
-type Tone = "confirmado" | "aguardando" | "recusado" | "expirado" | "atencao";
+type Tone =
+  | "confirmado"
+  | "aguardando"
+  | "recusado"
+  | "expirado"
+  | "atencao"
+  | "neutro";
 
 interface CustomerPaymentEntry {
   label: string;
@@ -101,6 +107,17 @@ const toneStyles: Record<
     borderColor: "border-orange-200",
     dot: "bg-orange-600",
   },
+  // Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): tom para o selo que não
+  // afirma nada sobre o desfecho do dinheiro (ver `PAGO_CANCELADO_NEUTRO`) —
+  // mesma paleta cinza de `expirado` (zinc-600/zinc-100, contraste 7,03,
+  // já medido acima), de propósito: cinza é neutro, não "boa notícia" nem
+  // "aja agora".
+  neutro: {
+    color: "text-zinc-600",
+    bgColor: "bg-zinc-100",
+    borderColor: "border-zinc-200",
+    dot: "bg-zinc-400",
+  },
 };
 
 /**
@@ -159,20 +176,25 @@ const PAGO_MAS_CANCELADO: CustomerPaymentEntry = {
   tone: "atencao",
 };
 
-// Rodada 2 (laudo Opus PR#457, BLOQUEIA 1): caso `pago`/`pago_apos_expirar` +
-// cancelado + NÃO enviado — desde 07/09/2026 (Task 1 do plano-mãe de estorno
-// pelo app) esse cancelamento grava a linha de devolução em `order_refunds`
-// na MESMA transação e o cron/edge tocam o Mercado Pago sozinhos. Antes desta
-// rodada o selo continuava mostrando `PAGO_MAS_CANCELADO` ("fale com a
-// loja") para ESTE caso também, contradizendo a linha nova de devolução
-// (`textoDevolucao`, logo abaixo do selo na tela) e a description do card de
-// status — as três diziam coisas opostas sobre o mesmo dinheiro. Tom
-// `confirmado` (verde), não `atencao` (laranja): o cliente não precisa agir,
-// é boa notícia — contraste já medido para este tom (emerald-700/emerald-50:
-// 5,21, ver `toneStyles`).
-const PAGO_MAS_CANCELADO_DEVOLUCAO_AUTOMATICA: CustomerPaymentEntry = {
-  label: "Pago — devolução automática",
-  tone: "confirmado",
+// Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): o selo NÃO tem a linha de
+// devolução (`linhasDevolucao`, só o card e a linha abaixo dele lêem o
+// hook) — logo não pode prometer nada sobre o desfecho do dinheiro. O rótulo
+// anterior ("Pago — devolução automática", tom `confirmado`) foi a rodada 2
+// inferindo a mesma condição da RPC a partir de `payment_status` +
+// `cancelledAfterShipping`, e essa inferência mentia em dois estados
+// alcançáveis (`pago_apos_expirar` e convidado por rastreio — ver o
+// comentário de `cancelledDescription` em OrderDetailsView.tsx). Este rótulo
+// é NEUTRO — não afirma "fale com a loja" nem "volta sozinho" — e vale para
+// `pago`+cancelado em QUALQUER estado de envio; quem decide qual das duas
+// frases é verdade é o card e `textoDevolucao`, que leem a linha de verdade.
+// Também corrige o estouro de largura: "Pago — devolução automática" (27
+// caracteres) passava do limite documentado acima (~180,6px disponíveis a
+// 375px) — medido em 217,3px (185,3px de texto + 32px de moldura da pill:
+// dot + gap + padding + borda). Este rótulo (16 caracteres) mede 143,0px,
+// 37,6px de folga.
+const PAGO_CANCELADO_NEUTRO: CustomerPaymentEntry = {
+  label: "Pago — cancelado",
+  tone: "neutro",
 };
 
 // Caso oposto de `PAGO_MAS_CANCELADO`: o cliente cancelou um PIX que ainda
@@ -197,27 +219,24 @@ const AGUARDANDO_MAS_CANCELADO: CustomerPaymentEntry = {
  * também `status`) para o texto que o comprador vê. `null` para
  * `sem_cobranca` — quem renderiza não desenha nada nesse caso.
  *
- * `cancelledAfterShipping` só decide algo para `pago` (rodada 2, BLOQUEIA
- * 1): `=== false` (o chamador SABE que o pedido não foi enviado) devolve o
- * rótulo de devolução automática; `undefined` (chamador não tem o pedido) OU
- * `true` (enviado) mantêm `PAGO_MAS_CANCELADO` — o comportamento de antes
- * desta correção, que é o correto para "enviado" e o mais seguro para
- * "não sei".
+ * Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): `pago` + cancelado sempre
+ * devolve `PAGO_CANCELADO_NEUTRO`, em QUALQUER estado de envio — este selo
+ * não lê `linhasDevolucao` (só o card e a linha de devolução em
+ * `OrderDetailsView` fazem isso), então não tem como saber se a devolução é
+ * automática ou depende da loja. Antes desta rodada a função recebia um
+ * terceiro parâmetro (`cancelledAfterShipping`) para tentar adivinhar —
+ * removido junto com a promessa.
  */
 export function customerPaymentStatusEntry(
   paymentStatus: PaymentStatus | null | undefined,
   orderStatus?: OrderStatus | null,
-  cancelledAfterShipping?: boolean,
 ): CustomerPaymentEntry | null {
   const key = paymentStatusKey(paymentStatus);
   if (key === "sem_cobranca") return null;
   if (key === "recebido_na_entrega" && orderStatus === "cancelled")
     return PAGO_MAS_CANCELADO;
-  if (key === "pago" && orderStatus === "cancelled") {
-    return cancelledAfterShipping === false
-      ? PAGO_MAS_CANCELADO_DEVOLUCAO_AUTOMATICA
-      : PAGO_MAS_CANCELADO;
-  }
+  if (key === "pago" && orderStatus === "cancelled")
+    return PAGO_CANCELADO_NEUTRO;
   if (key === "aguardando" && orderStatus === "cancelled")
     return AGUARDANDO_MAS_CANCELADO;
   // `Map.get` não é indexação dinâmica para o eslint, e o Record acima é
@@ -231,11 +250,6 @@ interface CustomerPaymentBadgeProps {
   // Opcional para não quebrar chamador nenhum: sem ela, o comportamento é
   // idêntico ao de antes desta correção.
   orderStatus?: OrderStatus | null;
-  // Opcional pelo mesmo motivo — ausência vira `undefined`, que
-  // `customerPaymentStatusEntry` trata como "enviado" (mantém "fale com a
-  // loja"). Só passe `false` quando o pedido está disponível e comprovadamente
-  // NÃO foi enviado.
-  cancelledAfterShipping?: boolean;
   className?: string;
 }
 
@@ -247,14 +261,9 @@ interface CustomerPaymentBadgeProps {
 export const CustomerPaymentBadge = memo(function CustomerPaymentBadge({
   paymentStatus,
   orderStatus,
-  cancelledAfterShipping,
   className,
 }: Readonly<CustomerPaymentBadgeProps>) {
-  const entry = customerPaymentStatusEntry(
-    paymentStatus,
-    orderStatus,
-    cancelledAfterShipping,
-  );
+  const entry = customerPaymentStatusEntry(paymentStatus, orderStatus);
   if (!entry) return null;
   const styles = toneStyles[entry.tone];
 

@@ -541,13 +541,16 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     expect(texto).not.toMatch(/fatura/i);
   });
 
-  // BLOQUEIA 1 (laudo Opus PR#457, rodada 2): pago + cancelado + NÃO
-  // enviado (o caminho principal desta feature) não pode mandar "fale com a
-  // loja" em NENHUMA superfície (card de status, selo, linha de devolução) —
-  // o dinheiro volta sozinho, e a tela inteira precisa dizer só isso.
-  // Cobre os dois estados possíveis: sem linha ainda (janela entre o
-  // cancelamento e a primeira leitura do hook) e com linha `solicitado`.
-  it("BLOQUEIA 1: pago cancelado NÃO enviado, SEM linha ainda — nenhuma superfície manda falar com a loja", async () => {
+  // BLOQUEIA A/B (laudo Opus PR#457, rodada 3): a decisão virou "existe
+  // linha em `linhasDevolucao`?", nunca mais `payment_status` +
+  // `cancelledAfterShipping`. SEM linha observada — pago + cancelado + NÃO
+  // enviado, mas a RPC ainda não gravou nada (convidado por rastreio, cache
+  // velho, ou simplesmente a leitura do hook ainda não voltou) — a tela
+  // manda falar com a loja, a frase verdadeira da rodada 1: prometer "volta
+  // sozinho" sem ter observado a linha é exatamente a mentira que o laudo
+  // travou (BLOQUEIA A: `pago_apos_expirar` nunca ganha linha; BLOQUEIA B:
+  // convidado nunca carrega `cancelled_after_shipping`).
+  it("cenário (c): pago cancelado NÃO enviado, SEM linha observada — 'Fale com a loja', NUNCA 'volta sozinho'", async () => {
     linhasOrderRefundsMock = [];
     pedidoAtual = pedidoComPagamento("cancelled", "pago", {
       cancelledAfterShipping: false,
@@ -557,12 +560,16 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     await renderizar();
 
     const texto = hospedeiro.textContent || "";
-    expect(texto).not.toContain("fale com a loja");
-    expect(texto).not.toContain("Fale com a loja");
-    expect(texto).toContain("volta sozinho");
+    expect(
+      texto.includes("fale com a loja") || texto.includes("Fale com a loja"),
+    ).toBe(true);
+    expect(texto).not.toContain("volta sozinho");
   });
 
-  it("BLOQUEIA 1: pago cancelado NÃO enviado, COM linha 'solicitado' — nenhuma superfície manda falar com a loja", async () => {
+  // Cenário (b): COM linha observada (a mesma linha que a RPC grava na
+  // transação do cancelamento) — a tela afirma "volta sozinho" em TODAS as
+  // superfícies, e nenhuma manda falar com a loja.
+  it("cenário (b): pago cancelado NÃO enviado, COM linha 'solicitado' — nenhuma superfície manda falar com a loja", async () => {
     linhasOrderRefundsMock = [
       {
         amount: 100,
@@ -584,10 +591,11 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
     expect(texto).toContain("volta sozinho");
   });
 
-  // Inverso: pago cancelado APÓS o envio continua dependendo da loja e do
-  // produto voltar — "fale com a loja" aqui é verdade, e "volta sozinho" não
-  // pode aparecer (o dinheiro NÃO volta sozinho nesse caso).
-  it("BLOQUEIA 1 (inverso): pago cancelado APÓS o envio — 'fale com a loja' aparece, 'volta sozinho' não", async () => {
+  // Cancelado APÓS o envio, SEM linha — a RPC nunca grava para este caso
+  // (guarda `NOT v_cancelled_after_shipping`), então "fale com a loja"
+  // continua sendo o desfecho normal aqui, e "volta sozinho" não pode
+  // aparecer.
+  it("cenário: pago cancelado APÓS o envio, SEM linha — 'fale com a loja' aparece, 'volta sozinho' não", async () => {
     linhasOrderRefundsMock = [];
     pedidoAtual = pedidoComPagamento("cancelled", "pago", {
       cancelledAfterShipping: true,
@@ -601,6 +609,36 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
       texto.includes("fale com a loja") || texto.includes("Fale com a loja"),
     ).toBe(true);
     expect(texto).not.toContain("volta sozinho");
+  });
+
+  // Caso-limite: cancelado APÓS o envio, mas COM linha (a lojista abriu um
+  // estorno manual pelo painel depois de conversar com o cliente —
+  // `solicitar_estorno_do_pedido`, fora da RPC automática). Prova que a
+  // regra é MESMO "existe linha?", nunca "`cancelledAfterShipping`
+  // disfarçado": uma vez que a linha existe, o processo automático (cron/
+  // edge) já está tocando o Mercado Pago, e a tela tem que dizer isso — não
+  // pode continuar mandando "fale com a loja" para um dinheiro que já está
+  // em movimento.
+  it("caso-limite: pago cancelado APÓS o envio, COM linha (estorno manual da loja) — 'volta sozinho', NUNCA 'fale com a loja'", async () => {
+    linhasOrderRefundsMock = [
+      {
+        amount: 100,
+        status: "solicitado",
+        solicitado_por: "lojista",
+        concluido_em: null,
+      },
+    ];
+    pedidoAtual = pedidoComPagamento("cancelled", "pago", {
+      cancelledAfterShipping: true,
+      returnedToSellerAt: null,
+    });
+
+    await renderizar();
+
+    const texto = hospedeiro.textContent || "";
+    expect(texto).not.toContain("fale com a loja");
+    expect(texto).not.toContain("Fale com a loja");
+    expect(texto).toContain("volta sozinho");
   });
 
   // C9 — varredura do DOM em cada estado: nenhum indício de id do MP.

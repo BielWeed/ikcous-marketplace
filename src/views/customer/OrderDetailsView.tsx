@@ -155,18 +155,28 @@ function pendingDescription(
  * o QR do PIX ainda aberto no banco dele. Não há estorno automático neste
  * app.
  *
- * Rodada 2 (laudo Opus PR#457, BLOQUEIA 1): `pago`/`pago_apos_expirar` deixou
- * de ser um único texto — recebe `cancelledAfterShipping` porque desde
- * 07/09/2026 (Task 1 do plano-mãe de estorno pelo app) só o caso NÃO enviado
- * tem devolução automática (a RPC grava `order_refunds` na mesma transação
- * do cancelamento); o caso enviado continua dependendo da loja e do produto
- * físico voltar, e mandar "fale com a loja" ali é verdade — misturar os dois
- * num texto só fazia a tela contradizer o selo e a linha de devolução no
- * caminho principal da feature.
+ * Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): a decisão trocou
+ * `cancelledAfterShipping` por "existe linha em `linhasDevolucao`?" — a
+ * rodada 2 promovia "volta sozinho" INFERINDO a condição da RPC a partir de
+ * `payment_status`+`cancelledAfterShipping`, e essa inferência mentia em
+ * dois estados alcançáveis hoje: `pago_apos_expirar` (o valor só existe
+ * DEPOIS do cancelamento — no instante em que a RPC decidiu, `payment_status`
+ * ainda era `aguardando`/`expirado`, então nenhuma linha nasceu) e convidado
+ * por rastreio (`get_orders_by_otp_v1` não inclui `cancelled_after_shipping`,
+ * que vira `false` e passava por "não enviado"). A RPC
+ * `update_order_status_atomic`
+ * (`supabase/migrations/2026110000000_o_estorno_nasce_no_ledger.sql:388-401`)
+ * só grava a linha automática quando CINCO coisas são verdade ao mesmo
+ * tempo — `status` novo é `cancelled`, `status` antigo era
+ * `pending`/`processing`, `payment_status` é `pago`/`pago_apos_expirar`,
+ * `paid_at` não é nulo, e o pedido NÃO foi enviado — avaliadas no instante
+ * do cancelamento, nunca depois. Observar a linha em vez de re-derivar essa
+ * condição no front fecha as três divergências de uma vez (inclusive
+ * `paid_at` nulo em pedido legado): a tela só promete o que o banco já fez.
  */
 function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
-  cancelledAfterShipping: boolean,
+  temLinhaDevolucao: boolean,
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -177,18 +187,20 @@ function cancelledDescription(
     return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
   }
   if (key === "pago" || key === "pago_apos_expirar") {
-    // Rodada 2 (laudo Opus PR#457, BLOQUEIA 1): pago + JÁ enviado continua
-    // dependendo da loja e do produto físico voltar — "fale com a loja"
-    // continua verdade aqui. Pago + NÃO enviado é o caminho principal desta
-    // feature: desde 07/09/2026 (Task 1 do plano-mãe) o cancelamento grava a
-    // linha de devolução em `order_refunds` na MESMA transação e o cron/edge
-    // tocam o Mercado Pago sozinhos — "fale com a loja" deixou de ser
-    // verdade para este ramo, e dizer isso ao lado de "o dinheiro volta
-    // sozinho" (selo + linha de devolução) contradizia a própria tela.
-    if (cancelledAfterShipping) {
-      return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
+    // Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): a decisão é "existe linha
+    // em `linhasDevolucao`?", nunca mais `cancelledAfterShipping` nem
+    // re-inferir a condição da RPC. Com linha observada, o processo já
+    // começou (a mesma linha que `textoDevolucao`, logo abaixo, narra em
+    // detalhe) — "o dinheiro volta sozinho" é verdade. Sem linha, "fale com
+    // a loja" cobre de uma vez: pago já enviado (a RPC nunca grava),
+    // `pago_apos_expirar` (o valor só existe depois do cancelamento),
+    // convidado por rastreio (a RPC de OTP não carrega
+    // `cancelled_after_shipping`), pedido legado sem `paid_at`, e cache
+    // velho do `localStorage` sem a chave nova.
+    if (temLinhaDevolucao) {
+      return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
     }
-    return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
+    return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
   }
   if (key === "aguardando") {
     return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
@@ -531,10 +543,7 @@ export function OrderDetailsView({
     order.status === "pending"
       ? pendingDescription(order.paymentStatus)
       : order.status === "cancelled"
-        ? cancelledDescription(
-            order.paymentStatus,
-            order.cancelledAfterShipping,
-          )
+        ? cancelledDescription(order.paymentStatus, linhasDevolucao.length > 0)
         : currentStatus.description;
   const textoDaDevolucao = mostrarDevolucao
     ? textoDevolucao({
@@ -941,15 +950,14 @@ export function OrderDetailsView({
                 <CustomerPaymentBadge
                   paymentStatus={order.paymentStatus}
                   orderStatus={order.status}
-                  cancelledAfterShipping={order.cancelledAfterShipping}
                 />
-                {/* T7 do plano-mãe de estorno pelo app, corrigido na rodada 2
-                    (laudo Opus PR#457, BLOQUEIA 1): o selo acima e esta linha
-                    contam a MESMA história, nunca uma resumo da outra — pago
-                    + não enviado, os dois dizem que a devolução é automática
-                    ("Pago — devolução automática" / "o dinheiro volta
-                    sozinho"); pago + já enviado, os dois mandam falar com a
-                    loja. Esta linha nunca mostra id do Mercado Pago nem texto
+                {/* T7 do plano-mãe de estorno pelo app, corrigido na rodada 3
+                    (laudo Opus PR#457, BLOQUEIA A/B): o selo acima é NEUTRO
+                    para pago+cancelado (não afirma nem "fale com a loja" nem
+                    "volta sozinho" — ele não tem a linha de devolução para
+                    saber qual é verdade); quem afirma é esta linha e o card
+                    de status acima, os dois lendo a MESMA `linhasDevolucao`.
+                    Esta linha nunca mostra id do Mercado Pago nem texto
                     técnico de erro (ver `textoDevolucao`). */}
                 {textoDaDevolucao && (
                   <p className="text-[9px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
