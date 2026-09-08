@@ -57,10 +57,34 @@ function lerDatabaseUrl() {
   process.exit(1);
 }
 
-const versao = (nome) => {
-  const m = /^(\d{14})_/.exec(nome);
-  return m ? m[1] : null;
-};
+// Exceção por LISTA FECHADA (medido 07/09/2026): as duas migrations abaixo
+// nasceram com versão de 13 dígitos (typo do timestamp na criação), não 14
+// como o padrão AAAAMMDDhhmmss_. Já estão registradas no ledger da loja
+// principal desde 07/09/2026 — renomear o arquivo criaria uma versão nova
+// sem correspondência no ledger (órfã em produção) e editar o ledger está
+// fora de cogitação. Por isso a exceção é por NOME EXATO, nunca por abrir a
+// regex para "qualquer coisa de 13 dígitos": um nome futuro de 13 dígitos
+// fora desta lista tem de continuar caindo em NOME_FORA_DO_PADRAO.
+const NOMES_13_DIGITOS_COM_EXCECAO = new Set([
+  "2026110000000_o_estorno_nasce_no_ledger.sql",
+  "2026110000100_concluir_estorno.sql",
+]);
+
+// classificarNome decide, sem tocar disco nem banco, o que um nome de
+// arquivo de migration significa para a prova. Três formas de resultado:
+//   { versao }                 → versão de 14 dígitos, padrão normal.
+//   { versao, excecao: true }  → um dos dois nomes de 13 dígitos acima.
+//   { foraDoPadrao: true }     → qualquer outro nome que não case com o
+//                                padrão nem esteja na lista fechada.
+function classificarNome(nome) {
+  const m14 = /^(\d{14})_/.exec(nome);
+  if (m14) return { versao: m14[1] };
+  if (NOMES_13_DIGITOS_COM_EXCECAO.has(nome)) {
+    const m13 = /^(\d{13})_/.exec(nome);
+    return { versao: m13[1], excecao: true };
+  }
+  return { foraDoPadrao: true };
+}
 
 async function main() {
   // 1. Ledger de produção (somente leitura).
@@ -76,15 +100,32 @@ async function main() {
   const remotas = rows.map((r) => String(r.version));
 
   // 2. Arquivos locais: raiz (ativas) e _arquivadas (movidas no passo 0).
-  const ativas = fs
+  // rollback-manual-*.sql (e a família rollback-*.sql) já era ignorada em
+  // silêncio antes desta mudança — a regex de 14 dígitos nunca casava com o
+  // prefixo "rollback". Mantido exatamente esse comportamento, filtrando
+  // ANTES de chamar classificarNome: senão esses arquivos virariam
+  // NOME_FORA_DO_PADRAO por engano, e não é essa a classe nova pedida.
+  const nomesAtivos = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
-    .map(versao)
-    .filter(Boolean);
+    .filter((f) => !/^rollback-/.test(f));
+  const classificacoesAtivas = nomesAtivos.map((f) => ({
+    nome: f,
+    ...classificarNome(f),
+  }));
+  const foraDoPadrao = classificacoesAtivas
+    .filter((c) => c.foraDoPadrao)
+    .map((c) => c.nome);
+  const ativas = classificacoesAtivas.map((c) => c.versao).filter(Boolean);
+  // _arquivadas continua com a leitura antiga: nomes fora do padrão de lá
+  // (ex.: favorites_migration.sql, pré-existentes ao passo 0) seguem
+  // silenciosamente ignorados — só a raiz de MIGRATIONS_DIR ganha a checagem
+  // nova. classificarNome é reaproveitada para não duplicar a regex, mas seu
+  // `foraDoPadrao` não é olhado aqui de propósito.
   const arquivadas = fs
     .readdirSync(ARQUIVADAS_DIR)
     .filter((f) => f.endsWith(".sql"))
-    .map(versao)
+    .map((f) => classificarNome(f).versao)
     .filter(Boolean);
   const _locaisQualquer = new Set([...ativas, ...arquivadas]);
 
@@ -145,11 +186,22 @@ async function main() {
     `\n[🔴 PROIBIDO] REMOTA_SEM_ARQUIVO_POS (pós-baseline sem arquivo local, ${semArquivoPos.length}):`,
   );
   console.log(semArquivoPos.join("\n") || "(nenhuma)");
+  console.log(
+    `\n[🔴 PROIBIDO] NOME_FORA_DO_PADRAO (arquivo .sql na raiz de migrations com nome fora do padrão AAAAMMDDhhmmss_ e fora da lista fechada de exceção, ${foraDoPadrao.length}):`,
+  );
+  console.log(foraDoPadrao.join("\n") || "(nenhum)");
 
-  if (semArquivoPos.length > 0) {
-    console.error(
-      "\nREPROVADO: há migration pós-baseline aplicada em produção sem arquivo local. Não conserte, não rode repair — pare e escreva (decisão do Gabriel).",
-    );
+  if (semArquivoPos.length > 0 || foraDoPadrao.length > 0) {
+    if (foraDoPadrao.length > 0) {
+      console.error(
+        `\nREPROVADO: nome fora do padrão AAAAMMDDhhmmss_; renomeie ANTES de aplicar em qualquer loja: ${foraDoPadrao.join(", ")}`,
+      );
+    }
+    if (semArquivoPos.length > 0) {
+      console.error(
+        "\nREPROVADO: há migration pós-baseline aplicada em produção sem arquivo local. Não conserte, não rode repair — pare e escreva (decisão do Gabriel).",
+      );
+    }
     process.exit(1);
   }
   console.log(
@@ -157,7 +209,14 @@ async function main() {
   );
 }
 
-main().catch((e) => {
-  console.error("Erro na prova:", e.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    console.error("Erro na prova:", e.message);
+    process.exit(1);
+  });
+}
+
+// Exportado para tests/db_prove_passo0_classificar_nome_test.ts. O guarda
+// acima existe por causa disso: sem ele, importar o módulo para testar
+// classificarNome dispararia a conexão com o banco de produção.
+module.exports = { classificarNome };
