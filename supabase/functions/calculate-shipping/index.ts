@@ -8,8 +8,8 @@ const corsHeaders = {
 }
 
 export function erroDeTransportadoraEhCepInvalido(mensagem: string | null | undefined): boolean {
-    return !!mensagem && mensagem.includes('422') &&
-        (mensagem.includes('postal_code') || mensagem.includes('cep_destino'))
+    // Exige status 422 no prefixo e indicação explícita do CEP de destino.
+    return !!mensagem && mensagem.includes('retornou 422:') && mensagem.includes('cep_destino')
 }
 
 // Helper to calculate smart fallback price based on Brazilian CEP regions

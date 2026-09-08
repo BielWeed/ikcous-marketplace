@@ -20,7 +20,7 @@ Deno.test("calculateSmartFallback - same region", () => {
 });
 
 for (const mensagem of [
-  'Melhor Envio API retornou 422: {"errors":{"postal_code":["inválido"]}}',
+  'Melhor Envio API retornou 422: {"errors":{"postal_code":["O campo cep_destino está invalido"]}}',
   "Melhor Envio API retornou 422: O campo cep_destino está invalido",
 ]) {
   Deno.test(`CEP inexistente - classifica ${mensagem}`, () => {
@@ -29,6 +29,11 @@ for (const mensagem of [
 }
 
 for (const mensagem of [
+  'Melhor Envio API retornou 422: {"errors":{"postal_code":["inválido"]}}',
+  'Melhor Envio API retornou 422: {"errors":{"postal_code":["O campo cep_origem está invalido"]}}',
+  "Melhor Envio API retornou 500: erro interno ao cotar 04220-000 (422 registros)",
+  "Melhor Envio API retornou 401: token expirado para o pedido com cep_destino 04220-000",
+  "Melhor Envio API retornou 500: erro interno ao cotar cep_destino 04220-000 (422 registros)",
   "Melhor Envio API retornou 500: postal_code cep_destino",
   "Melhor Envio API retornou 401: postal_code cep_destino",
   "timeout",
