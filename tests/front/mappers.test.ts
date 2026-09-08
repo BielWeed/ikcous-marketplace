@@ -117,6 +117,7 @@ const PEDIDO_BASE: OrderRow = {
   payment_method: null,
   payment_status: null,
   returned_to_seller_at: null,
+  valor_estornado: 0,
   shipping: null,
   shipping_cost: null,
   shipping_label_id: null,

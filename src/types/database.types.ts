@@ -603,6 +603,7 @@ export type Database = {
           tracking_code: string | null;
           updated_at: string;
           user_id: string | null;
+          valor_estornado: number;
         };
         Insert: {
           address_id?: string | null;
@@ -640,6 +641,7 @@ export type Database = {
           tracking_code?: string | null;
           updated_at?: string;
           user_id?: string | null;
+          valor_estornado?: number;
         };
         Update: {
           address_id?: string | null;
@@ -677,6 +679,7 @@ export type Database = {
           tracking_code?: string | null;
           updated_at?: string;
           user_id?: string | null;
+          valor_estornado?: number;
         };
         Relationships: [
           {
@@ -730,6 +733,65 @@ export type Database = {
           usuario_id?: string | null;
         };
         Relationships: [];
+      };
+      order_refunds: {
+        Row: {
+          amount: number;
+          concluido_em: string | null;
+          created_at: string;
+          id: string;
+          motivo: string | null;
+          mp_refund_id: string | null;
+          mp_status: string | null;
+          mp_status_detail: string | null;
+          order_id: string;
+          solicitado_por: string;
+          status: string;
+          tentativas: number;
+          ultimo_erro: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          amount: number;
+          concluido_em?: string | null;
+          created_at?: string;
+          id?: string;
+          motivo?: string | null;
+          mp_refund_id?: string | null;
+          mp_status?: string | null;
+          mp_status_detail?: string | null;
+          order_id: string;
+          solicitado_por: string;
+          status?: string;
+          tentativas?: number;
+          ultimo_erro?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          amount?: number;
+          concluido_em?: string | null;
+          created_at?: string;
+          id?: string;
+          motivo?: string | null;
+          mp_refund_id?: string | null;
+          mp_status?: string | null;
+          mp_status_detail?: string | null;
+          order_id?: string;
+          solicitado_por?: string;
+          status?: string;
+          tentativas?: number;
+          ultimo_erro?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_refunds_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       order_shipping_events: {
         Row: {
@@ -1903,6 +1965,15 @@ export type Database = {
         Args: { p_email: string };
         Returns: Json;
       };
+      concluir_estorno: {
+        Args: {
+          p_mp_refund_id?: string;
+          p_mp_status?: string;
+          p_mp_status_detail?: string;
+          p_refund_id: string;
+        };
+        Returns: Json;
+      };
       confirmar_pagamento: {
         Args: { p_order_id: string; p_payment_id: string; p_status: string };
         Returns: string;
@@ -2222,17 +2293,15 @@ export type Database = {
       };
       get_product_stats: { Args: never; Returns: Json[] };
       get_products_with_variants: { Args: never; Returns: Json[] };
-      get_retention_analytics:
-        | {
-            Args: never;
-            Returns: {
-              month: string;
-              retention_rate: number;
-              returning_customers: number;
-              total_customers: number;
-            }[];
-          }
-        | { Args: { p_days?: number }; Returns: number };
+      get_retention_analytics: {
+        Args: never;
+        Returns: {
+          month: string;
+          retention_rate: number;
+          returning_customers: number;
+          total_customers: number;
+        }[];
+      };
       get_retention_rate: { Args: never; Returns: number };
       get_reviews_metrics: {
         Args: { p_rating?: number; p_search?: string };
@@ -2242,25 +2311,15 @@ export type Database = {
           total_verified: number;
         }[];
       };
-      get_sales_analytics:
-        | {
-            Args: { end_date: string; start_date: string };
-            Returns: {
-              day: string;
-              orders: number;
-              revenue: number;
-              ticket: number;
-            }[];
-          }
-        | {
-            Args: { end_date: string; start_date: string };
-            Returns: {
-              day: string;
-              orders: number;
-              revenue: number;
-              ticket: number;
-            }[];
-          };
+      get_sales_analytics: {
+        Args: { end_date: string; start_date: string };
+        Returns: {
+          day: string;
+          orders: number;
+          revenue: number;
+          ticket: number;
+        }[];
+      };
       get_segmented_push_count: {
         Args: {
           p_days_inactive?: number;
@@ -2327,6 +2386,10 @@ export type Database = {
             Args: { p_admin_id: string; p_reply: string; p_review_id: string };
             Returns: undefined;
           };
+      solicitar_estorno: {
+        Args: { p_amount: number; p_motivo: string; p_order_id: string };
+        Returns: Json;
+      };
       swap_banner_order: {
         Args: { banner_id_1: string; banner_id_2: string };
         Returns: undefined;

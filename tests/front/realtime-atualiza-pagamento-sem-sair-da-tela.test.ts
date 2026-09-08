@@ -123,6 +123,7 @@ function linhaRealtimeDePagamentoConfirmado(
     tracking_code: null,
     cancelled_after_shipping: false,
     returned_to_seller_at: null,
+    valor_estornado: 0,
     created_at: "2026-08-26T10:00:00.000Z",
     updated_at: "2026-08-26T10:05:00.000Z",
     ...overrides,
