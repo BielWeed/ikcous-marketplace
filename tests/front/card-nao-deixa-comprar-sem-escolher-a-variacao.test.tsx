@@ -87,14 +87,17 @@ function criarProduto(overrides: Partial<Product> = {}): Product {
 }
 
 /**
- * O botão de favoritar (coração) vem ANTES do botão de ação na árvore, tanto
- * em ProductCard.tsx quanto em HeroOfferCard -- pegar pelo índice em vez de
- * localizar por texto, porque o TEXTO do botão de ação é justamente o que
- * este arquivo está testando.
+ * Localiza pelo `data-testid` do botão de ação, não mais pela posição
+ * (`querySelectorAll("button")[1]`): B3 (08/09, card sem botão dentro de
+ * botão) inseriu um `<button>` NOVO -- o nome do produto -- entre o
+ * favoritar e o botão de ação, deslocando qualquer índice fixo. O testid
+ * (`ProductCard.tsx`) não muda com esse rearranjo e não depende do TEXTO do
+ * botão, que é justamente o que este arquivo está testando.
  */
 function botaoDeAcao(hospedeiro: HTMLElement): HTMLButtonElement {
-  const botoes = hospedeiro.querySelectorAll("button");
-  return botoes[1] as HTMLButtonElement;
+  return hospedeiro.querySelector<HTMLButtonElement>(
+    'button[data-testid="product-card-action"]',
+  )!;
 }
 
 describe("ProductCard (via ProductList) -- não deixa comprar sem escolher a variação", () => {
@@ -269,12 +272,24 @@ describe("HeroOfferCard (via PremiumOffers) -- os dois botões respeitam a varia
   }
 
   function botoes(hospedeiroEl: HTMLElement) {
-    const todos = hospedeiroEl.querySelectorAll("button");
-    // [0] favoritar, [1] "Adicionar", [2] "Comprar" -- mesma ordem do JSX.
-    return {
-      adicionar: todos[1] as HTMLButtonElement,
-      comprar: todos[2] as HTMLButtonElement,
-    };
+    // Localiza pelo container dos CTAs -- a `div.flex.gap-2` que de fato
+    // TEM botões dentro (existe outra `div` com as mesmas duas classes mais
+    // acima, a linha de categoria/frete grátis, sem nenhum botão) -- e
+    // dentro dele por ORDEM, não mais pelo índice global de botões do card
+    // (`querySelectorAll("button")[1]`/`[2]`): B3 (08/09) inseriu um
+    // `<button>` NOVO (o nome do produto) entre o favoritar e este
+    // container, deslocando qualquer índice fixo do card inteiro. Texto
+    // também não serve para diferenciar os dois CTAs aqui: com
+    // `hasActiveVariant` os dois mostram o MESMO rótulo ("Escolher
+    // opções") -- só a ordem DENTRO do container resolve os dois cenários
+    // que este arquivo testa.
+    const container = Array.from(
+      hospedeiroEl.querySelectorAll<HTMLDivElement>(".flex.gap-2"),
+    ).find((d) => d.querySelector("button"))!;
+    const [adicionar, comprar] = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button"),
+    );
+    return { adicionar, comprar };
   }
 
   it("produto com variação ativa: 'Adicionar' abre a tela do produto, não adiciona ao carrinho", async () => {
