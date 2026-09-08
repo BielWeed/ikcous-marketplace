@@ -95,11 +95,16 @@
     "Medido no CI, run 33785472791 (PR #424): 'eslint warnings 523 / teto 550 —",
     "baixou -27' e 'biome errors 20 / teto 21 — baixou -1'. A queda provavelmente",
     "veio da develop: o PR so tocou 3 arquivos de teste + formatter. Baixado",
-    "SO' DEPOIS do CI, como as quedas anteriores."
+    "SO' DEPOIS do CI, como as quedas anteriores.",
+    "",
+    "08/09/2026 — warnings de eslint de 523 para 511. Medido no CI, run",
+    "34205419138: 'eslint warnings 511 / teto 523'. Achado N-1 do laudo Opus",
+    "do PR #458 (rodada 2) — abaixado com o numero do CI, nao o da maquina",
+    "local do executor."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 523
+    "warnings": 511
   },
   "biome": {
     "errors": 20,

@@ -1263,7 +1263,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               onClick={exportarCsv}
               disabled={paginatedOrders.length === 0}
             >
-              Exportar CSV
+              {/* Achado A-1 do laudo Opus (rodada 2, PR #458): o arquivo
+                  gerado é sempre a PÁGINA visível (itemsPerPage=12), nunca o
+                  total filtrado — o rótulo tem de dizer isso, regra da casa
+                  do #451 ("o app diz a verdade quando copia"). "página" fica
+                  sempre no singular (é sempre UMA página); só o número na
+                  frente muda. */}
+              {paginatedOrders.length > 0
+                ? `Exportar CSV (${paginatedOrders.length} desta página)`
+                : "Exportar CSV"}
             </Button>
           </div>
           <div className="flex w-full items-center gap-3">
