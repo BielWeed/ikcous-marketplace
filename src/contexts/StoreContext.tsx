@@ -244,6 +244,14 @@ export function StoreProvider({
   const { isAdmin, loading, user } = useAuth();
   const { isLeader } = useLeaderElection();
   const vaultRef = useRef<DataVault | null>(null);
+  // O motor de tempo real precisa do cofre, e `ref` NÃO é dependência de
+  // efeito: mudar `vaultRef.current` não reavalia nada. Este estado é o aviso
+  // de que o cofre ficou pronto. Sem ele, numa aba em que o IndexedDB demora
+  // mais que a rede (`isLoaded` também vem do `finally` do fetchConfig, que
+  // não sabe nada do cofre), o efeito do realtime rodava com o cofre nulo,
+  // desistia e nunca mais era reavaliado — a aba passava a sessão inteira sem
+  // atualização ao vivo.
+  const [cofrePronto, setCofrePronto] = useState(false);
   const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
   const [isLoaded, setIsLoaded] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
@@ -256,6 +264,14 @@ export function StoreProvider({
       try {
         const vault = await DataVault.init();
         vaultRef.current = vault;
+        // A marca vem AQUI, junto com o cofre em mãos: as leituras abaixo
+        // podem lançar, e um erro delas não desfaz o cofre (por isso o `catch`
+        // não mexe nesta marca). Já um erro do próprio `DataVault.init()`
+        // acontece sem cofre nenhum — e ali ela continua falsa, que é o certo:
+        // sem cofre, sem motor de tempo real.
+        if (!cancelled) {
+          setCofrePronto(true);
+        }
 
         // Load config from IDB
         const cachedConfig = await vault.getById<any>(
@@ -627,12 +643,31 @@ export function StoreProvider({
         if (publicRes.data) {
           data = publicRes.data;
           error = null;
+        } else if (publicRes.error) {
+          // Para um cliente comum a consulta de admin nem roda, então `error`
+          // era SEMPRE nulo aqui: `publicRes.error && error` dava falso, nada
+          // era lançado, e a falha de rede seguia como se fosse "a loja não
+          // tem produto". Guardar a falha da pública é o que faz o `throw`
+          // abaixo acontecer. (Quando a de admin também falhou, o `throw` de
+          // cima já levou o erro dela — este ramo nem é alcançado.)
+          error = publicRes.error;
         }
       }
 
       if (error) throw error;
 
-      if (data && data.length > 0) {
+      // SÓ UMA RESPOSTA DE VERDADE SUBSTITUI O CATÁLOGO.
+      // `data` nulo aqui não é vitrine vazia: é ausência de resposta (a
+      // consulta de admin voltou sem dado e sem erro, e a pública nem chegou a
+      // rodar). Seguir daqui cairia no `else` lá embaixo, que troca o catálogo
+      // — inclusive o que veio do cache offline e já está na tela — por lista
+      // vazia. Lançar manda para o `catch`, que só registra: o cliente
+      // continua vendo os produtos que já estavam lá.
+      if (!data) {
+        throw new Error("consulta de produtos voltou sem dados e sem erro");
+      }
+
+      if (data.length > 0) {
         const mapped = (data as any[]).map((item: any) =>
           mapProductFromDB(item),
         );
@@ -820,8 +855,13 @@ export function StoreProvider({
   }, [fetchConfig, fetchProducts]);
 
   // ── Realtime Sync: Start/Stop engine ──
+  // `cofrePronto` (estado) e não `vaultRef` (ref) é quem manda este efeito
+  // reagir: ref não é dependência, então o cofre ficar pronto DEPOIS de
+  // `isLoaded` não redisparava nada e a aba ficava sem tempo real até
+  // recarregar a página. O guarda do `vaultRef.current` continua porque é ele
+  // que entrega o cofre para o motor.
   useEffect(() => {
-    if (!isLoaded || !vaultRef.current) return;
+    if (!isLoaded || !cofrePronto || !vaultRef.current) return;
 
     console.log(
       `[StoreContext] Starting RealtimeSyncEngine (isLeader: ${isLeader}, isAdmin: ${isAdmin})`,
@@ -835,7 +875,7 @@ export function StoreProvider({
     return () => {
       cleanup();
     };
-  }, [isLoaded, isLeader, isAdmin]);
+  }, [isLoaded, cofrePronto, isLeader, isAdmin]);
 
   // ── Realtime Sync: Listen for changes applied by RealtimeSyncEngine ──
   useSyncListener(

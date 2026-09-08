@@ -3,10 +3,17 @@ import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadg
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
+import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
 import { useOrders } from "@/hooks/useOrders";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { supabase } from "@/lib/supabase";
+import {
+  type LinhaDevolucaoDoCliente,
+  desfechoDaDevolucao,
+  textoConfirmarCancelamento,
+  textoDevolucao,
+} from "@/lib/texto-estorno-do-cliente";
 import { cn } from "@/lib/utils";
 import type {
   Order,
@@ -149,19 +156,71 @@ function pendingDescription(
  * pagamento" — a tela inteira convidava o cliente a pagar um pedido morto com
  * o QR do PIX ainda aberto no banco dele. Não há estorno automático neste
  * app.
+ *
+ * Rodada 3 (laudo Opus PR#457, BLOQUEIA A/B): a decisão trocou
+ * `cancelledAfterShipping` por "existe linha em `linhasDevolucao`?" — a
+ * rodada 2 promovia "volta sozinho" INFERINDO a condição da RPC a partir de
+ * `payment_status`+`cancelledAfterShipping`, e essa inferência mentia em
+ * dois estados alcançáveis hoje: `pago_apos_expirar` (o valor só existe
+ * DEPOIS do cancelamento — no instante em que a RPC decidiu, `payment_status`
+ * ainda era `aguardando`/`expirado`, então nenhuma linha nasceu) e convidado
+ * por rastreio (`get_orders_by_otp_v1` não inclui `cancelled_after_shipping`,
+ * que vira `false` e passava por "não enviado"). A RPC
+ * `update_order_status_atomic`
+ * (`supabase/migrations/2026110000000_o_estorno_nasce_no_ledger.sql:388-401`)
+ * só grava a linha automática quando SEIS coisas são verdade ao mesmo
+ * tempo — `status` novo é `cancelled`, `status` antigo era
+ * `pending`/`processing`, `payment_status` é `pago`/`pago_apos_expirar`,
+ * `paid_at` não é nulo, o pedido NÃO foi enviado, e ainda NÃO existe linha
+ * `solicitado`/`em_processamento`/`concluido` para o pedido (`NOT EXISTS`,
+ * a guarda que impede duplicar no ciclo reativar→cancelar de novo — linha
+ * `falhou`/`recusado` não bloqueia, o retry é legítimo) — avaliadas no
+ * instante do cancelamento, nunca depois. Observar a linha em vez de
+ * re-derivar essa condição no front fecha as três divergências de uma vez
+ * (inclusive `paid_at` nulo em pedido legado): a tela só promete o que o
+ * banco já fez.
+ *
+ * Rodada 4 (laudo Opus PR#457, decisão da hub): "existe linha?" sozinho
+ * ainda deixava passar um QUARTO caso da mesma família — linha `falhou`/
+ * `recusado` sozinha é dinheiro que o automático JÁ DESISTIU de mover, não
+ * "em movimento". O card e `textoDevolucao` (logo abaixo) agora leem o
+ * MESMO predicado `desfechoDaDevolucao` — os dois não podem mais divergir
+ * sobre a mesma pergunta.
  */
 function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
+  linhasDevolucao: LinhaDevolucaoDoCliente[],
 ): string {
   const key = paymentStatusKey(paymentStatus);
-  // `recebido_na_entrega` entra na mesma frase de `pago`/`pago_apos_expirar`
-  // (Task 3b de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md):
-  // dinheiro que a loja já confirmou ter recebido, e o pedido morreu depois.
-  if (
-    key === "pago" ||
-    key === "pago_apos_expirar" ||
-    key === "recebido_na_entrega"
-  ) {
+  // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
+  // depende sempre da loja, enviado ou não — por isso não entra no ramo de
+  // baixo, que só existe para dinheiro que passou pelo MP e tem cron/edge
+  // devolvendo sozinho.
+  if (key === "recebido_na_entrega") {
+    return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
+  }
+  if (key === "pago" || key === "pago_apos_expirar") {
+    // Rodada 4 (laudo Opus PR#457, decisão da hub): o card lê o MESMO
+    // predicado que `textoDevolucao` — nunca mais "existe linha?" sozinho
+    // (rodada 3), que confundia `falhou`/`recusado` (dinheiro que o
+    // automático já desistiu de mover) com "em movimento". EM CURSO: o
+    // processo já começou (a mesma linha que `textoDevolucao`, logo abaixo,
+    // narra em detalhe) — "o dinheiro volta sozinho" é verdade. CONCLUÍDA: o
+    // card não fala de dinheiro — quem afirma o valor, no passado, é o
+    // parágrafo `textoDevolucao` ("Devolução concluída: R$ X") logo abaixo.
+    // SEM DEVOLUÇÃO AUTOMÁTICA (sem linha, ou só `falhou`/`recusado`): "fale
+    // com a loja" cobre de uma vez pago já enviado (a RPC nunca grava),
+    // `pago_apos_expirar` (o valor só existe depois do cancelamento),
+    // convidado por rastreio (a RPC de OTP não carrega
+    // `cancelled_after_shipping`), pedido legado sem `paid_at`, cache velho
+    // do `localStorage` sem a chave nova, e o automático que desistiu.
+    const desfecho = desfechoDaDevolucao(linhasDevolucao);
+    if (desfecho === "em_curso") {
+      return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
+    }
+    if (desfecho === "concluida") {
+      return "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
+    }
     return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
   }
   if (key === "aguardando") {
@@ -217,16 +276,18 @@ export function OrderDetailsView({
     // tela da mesma trava do servidor (validateStatusUpdate, useOrders.ts, e
     // update_order_status_atomic no banco).
     //
-    // O aviso, por sua vez, ainda depende do pagamento — e este app não tem
-    // estorno automático em lugar nenhum. Quem já pagou (`pago`,
-    // `pago_apos_expirar` ou `recebido_na_entrega` — Task 3b de
-    // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md — via
-    // `paymentStatusKey` — a ÚNICA fonte que decide "null vira sem_cobranca")
-    // precisa saber, ANTES de confirmar, que o dinheiro fica com a loja até
-    // alguém devolver à mão — e se o pedido já foi enviado, até o PRODUTO
-    // voltar à loja. Quem ainda não pagou (aguardando/recusado/expirado/
-    // estornado/nulo) continua vendo o texto original: cancelar ali é
-    // inofensivo, e falar em dinheiro assustaria à toa.
+    // O aviso, por sua vez, ainda depende do pagamento. Desde 07/09/2026
+    // (Task 1 do plano-mãe `20260907-plano-estorno-pelo-app.md`) o
+    // cancelamento de um pedido PAGO e NÃO ENVIADO grava a linha de
+    // devolução em `order_refunds` na MESMA transação, e o cron/edge
+    // (`estornar-pagamento`, `reconciliar-pagamentos`) tocam o Mercado Pago
+    // sozinhos a partir dela — a frase antiga ("o dinheiro NÃO volta
+    // automaticamente") deixou de ser verdade para esse caso. O que
+    // continua dependendo de alguém é o caso oposto: pedido JÁ ENVIADO,
+    // onde a loja só devolve o dinheiro depois que o PRODUTO físico voltar.
+    // `textoConfirmarCancelamento` (texto-estorno-do-cliente.ts) é a fonte
+    // única dos quatro textos possíveis (não pago / pago não enviado / pago
+    // já enviado / pago na entrega).
     // `===` e nao `.includes()`: o array seria inferido como `string[]` e
     // aceitaria qualquer coisa, entao um rename futuro de `PaymentStatus`
     // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
@@ -238,23 +299,12 @@ export function OrderDetailsView({
       chavePagamento === "pago_apos_expirar" ||
       chavePagamento === "recebido_na_entrega";
     const jaFoiEnviado = order.status === "shipping";
-    // Achado da auditoria de 26/08/2026 (PEDIDO-03): este ramo prometia "o
-    // dinheiro volta depois que ele chegar de volta" — como se a devolução
-    // fosse automática assim que o produto chegasse na loja. Não existe
-    // ESSE nem NENHUM outro mecanismo de estorno automático no repositório
-    // (busca por `refund`/`estorn` em src/ e supabase/functions/ só acha
-    // rótulo de tela e tradução de status do Mercado Pago), e
-    // `confirmar_retorno_do_produto` não toca `payment_status` nem fala com
-    // o gateway. A frase agora usa o MESMO vocabulário honesto do ramo "não
-    // enviado" logo abaixo ("NÃO volta automaticamente" + "falar com a
-    // loja"), só acrescentando o fato físico de que a loja precisa do
-    // produto de volta antes dessa conversa fazer sentido — é isso, e só
-    // isso, que muda entre os dois ramos.
-    const textoConfirm = !pagamentoJaEntrou
-      ? "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita."
-      : jaFoiEnviado
-        ? "Este pedido já foi enviado. Se cancelar, você precisa devolver o produto à loja — o dinheiro NÃO volta automaticamente, você vai precisar combinar a devolução com a loja depois que o produto chegar de volta. Tem certeza?"
-        : "Você já pagou este pedido. Se cancelar, ele não será entregue e o dinheiro NÃO volta automaticamente — você vai precisar falar com a loja para pedir a devolução. Tem certeza?";
+    const pagamentoNaEntrega = chavePagamento === "recebido_na_entrega";
+    const textoConfirm = textoConfirmarCancelamento({
+      pagamentoJaEntrou,
+      jaFoiEnviado,
+      pagamentoNaEntrega,
+    });
     const confirmCancel = globalThis.confirm(textoConfirm);
     if (!confirmCancel) return;
 
@@ -448,6 +498,22 @@ export function OrderDetailsView({
     }
   };
 
+  // Só pedido `cancelled` com pagamento ONLINE confirmado (`pago` ou
+  // `pago_apos_expirar` — via `paymentStatusKey`) tem devolução para
+  // mostrar: `recebido_na_entrega` nunca passou pelo Mercado Pago, e para
+  // qualquer outro estado a pergunta "cadê meu dinheiro?" nem se aplica. O
+  // hook é chamado INCONDICIONAL (regra do React: hook não vai atrás de
+  // `if`) — `order` pode ser `null` no primeiro render, antes de qualquer
+  // pedido ter carregado, e é por isso que `mostrarDevolucao` usa `order?.`.
+  const chaveDoPagamento = paymentStatusKey(order?.paymentStatus);
+  const mostrarDevolucao =
+    order?.status === "cancelled" &&
+    (chaveDoPagamento === "pago" || chaveDoPagamento === "pago_apos_expirar");
+  const { linhas: linhasDevolucao } = useDevolucaoDoPedidoCliente(
+    orderId,
+    mostrarDevolucao,
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center space-y-4 bg-zinc-50/30">
@@ -498,8 +564,15 @@ export function OrderDetailsView({
     order.status === "pending"
       ? pendingDescription(order.paymentStatus)
       : order.status === "cancelled"
-        ? cancelledDescription(order.paymentStatus)
+        ? cancelledDescription(order.paymentStatus, linhasDevolucao)
         : currentStatus.description;
+  const textoDaDevolucao = mostrarDevolucao
+    ? textoDevolucao({
+        linhas: linhasDevolucao,
+        cancelledAfterShipping: order.cancelledAfterShipping,
+        returnedToSellerAt: order.returnedToSellerAt,
+      })
+    : null;
 
   return (
     <div className="pb-customer min-h-full bg-zinc-50/50">
@@ -899,6 +972,19 @@ export function OrderDetailsView({
                   paymentStatus={order.paymentStatus}
                   orderStatus={order.status}
                 />
+                {/* T7 do plano-mãe de estorno pelo app, corrigido na rodada 3
+                    (laudo Opus PR#457, BLOQUEIA A/B): o selo acima é NEUTRO
+                    para pago+cancelado (não afirma nem "fale com a loja" nem
+                    "volta sozinho" — ele não tem a linha de devolução para
+                    saber qual é verdade); quem afirma é esta linha e o card
+                    de status acima, os dois lendo a MESMA `linhasDevolucao`.
+                    Esta linha nunca mostra id do Mercado Pago nem texto
+                    técnico de erro (ver `textoDevolucao`). */}
+                {textoDaDevolucao && (
+                  <p className="text-[9px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
+                    {textoDaDevolucao}
+                  </p>
+                )}
               </div>
             </div>
           </div>

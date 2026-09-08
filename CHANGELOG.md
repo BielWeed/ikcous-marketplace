@@ -7,6 +7,65 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.24.0] - 2026-09-08
+
+A versão em que a loja abre mais rápido, o app para de mentir quando copia e
+quem usa teclado ou leitor de tela consegue navegar. 5 PRs (#427, #451, #452,
+#455, #458); ZERO migration e ZERO edge function — é uma release só de front,
+publicada pela Vercel no merge da `main` e pelo `vercel --prod` do clone da Savy.
+
+### Para quem COMPRA (vitrine)
+
+- **A loja abre mais rápido** (PR #427): a biblioteca de animação (~123 kB) saiu
+  do pacote que o navegador baixa no primeiro desenho da tela — **17% a menos de
+  código no arranque** (248.053 → 206.554 bytes brutos; 76.902 → 63.947
+  comprimidos, medido no topo `2d73d6a`). Nenhuma animação mudou: mesma cara,
+  mesmos tempos, código movido palavra por palavra para um pedaço carregado
+  depois. A barra de progresso de rota continua fazendo a saída dela até o fim
+  (regressão achada e fechada na própria rodada).
+- **O app diz a verdade quando copia** (PR #451): ao tocar em "Copiar código
+  PIX" a tela agora avisa que copiou ("Copiado!" por ~2 s, também anunciado ao
+  leitor de tela); se o navegador recusar, mostra o código num campo já
+  selecionado com a frase "Não consegui copiar sozinho. Toque no código abaixo,
+  segure e copie" — antes a tela não dizia nada e a pessoa não sabia se podia
+  colar no banco. O número do pedido e o código de rastreio pararam de comemorar
+  "Copiado!" quando a cópia tinha falhado de verdade.
+- **Quem usa teclado ou leitor de tela consegue navegar** (PRs #452, #455): um
+  link "Pular para o conteúdo" aparece no primeiro Tab e leva o foco direto para
+  a área principal, sem passar pelo cabeçalho inteiro; o Esc fecha de verdade o
+  menu de ordenar da home e a folha de avaliação do pedido (antes o Esc
+  simplesmente não funcionava, porque a escuta vivia num elemento que nunca
+  recebia foco); o campo de busca voltou a mostrar o anel de foco; home e
+  carrinho ganharam título de página para o leitor de tela (e o do carrinho diz
+  "Meus Pedidos" quando é essa a aba aberta); e o aviso do topo virou botão de
+  verdade, alcançável por Tab e fechável com Enter. **Quem usa mouse ou dedo não
+  vê um pixel mudar.**
+
+### Para quem VENDE (painel admin)
+
+- **Exportar em CSV a lista de pedidos** (PR #458, issue #456): o botão
+  "Exportar CSV (N desta página)" baixa exatamente os pedidos que estão na tela,
+  com os filtros e a ordem que o lojista aplicou, sem nova consulta ao banco. O
+  arquivo tem as dez colunas da issue e abre direto no Excel (acentos certos,
+  separador `;`, data local, total com vírgula). O botão fica desabilitado
+  quando a lista está vazia, e o rótulo diz **quantos** pedidos vai gravar — para
+  não prometer o total filtrado quando entrega só a página.
+- **O selo "Pago e cancelado — precisa de atenção" continua idêntico na tela**
+  (PR #458): a regra foi separada para o CSV reaproveitar, sem mexer na
+  aparência nem no modo compacto.
+
+### Para quem OPERA (banco, servidor, lojas clonadas)
+
+- **Nenhuma migration, nenhuma edge function.** Medido no corte: `git diff
+  --name-only v1.23.0..4e32da9` = 25 arquivos, **0** em `supabase/`. Nada a
+  aplicar no banco de nenhuma loja; a publicação é só front, nas duas lojas.
+- **O teto do lint apertou** de 523 para 511 avisos do ESLint, com o número
+  medido no CI (run 34205419138), não na máquina local (PR #458, achado N-1 do
+  laudo Opus).
+- **Fora desta versão:** o PR #457 (a tela do cliente sobre cancelamento com
+  devolução, T7 do estorno) ainda estava aberto no instante do corte
+  (`4e32da9`, 2026-09-08T09:37:56Z) — vai na próxima.
+
 ## [1.23.0] - 2026-09-08
 
 A versão em que o lojista devolve o dinheiro pelo painel e o banco para de
