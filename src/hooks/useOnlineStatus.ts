@@ -49,7 +49,14 @@ function computeInitialDiagnostics(): Diagnostics {
 let currentDiagnostics: Diagnostics = computeInitialDiagnostics();
 const listeners = new Set<() => void>();
 let generation = 0;
-let isChecking = false;
+// Mutex de "sonda em andamento", amarrado a QUEM tomou (a própria geração),
+// não um `boolean` solto. Antes (`isChecking = false`) o `finally` de
+// QUALQUER chamada liberava o mutex, inclusive o de uma sonda de geração já
+// morta que resolve depois da parada — liberando, sem querer, o mutex da
+// geração viva enquanto o fetch dela ainda estava em voo (laudo Opus,
+// ressalva 2: abria duas sondas simultâneas ao banco). `releaseChecking` só
+// libera se quem pede for o mesmo dono que tomou.
+let checkingGen: number | null = null;
 let heartbeatId: ReturnType<typeof setInterval> | null = null;
 let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -58,14 +65,18 @@ function publish(next: Diagnostics): void {
   for (const listener of listeners) listener();
 }
 
+function releaseChecking(gen: number): void {
+  if (checkingGen === gen) checkingGen = null;
+}
+
 async function verifyConnection(gen: number, isRetry = false): Promise<void> {
   if (gen !== generation) return;
-  if (isChecking) return;
-  isChecking = true;
+  if (checkingGen !== null) return;
+  checkingGen = gen;
 
   if (!navigator.onLine) {
     publish({ isOffline: true, latency: 0, quality: "offline" });
-    isChecking = false;
+    releaseChecking(gen);
     return;
   }
 
@@ -104,7 +115,7 @@ async function verifyConnection(gen: number, isRetry = false): Promise<void> {
     // `catch` abaixo, para erro de rede de verdade). Só marca offline se a
     // falha persistir na confirmação.
     if (isGatewayError && !isRetry) {
-      isChecking = false;
+      releaseChecking(gen);
       retryTimeoutId = setTimeout(() => {
         retryTimeoutId = null;
         verifyConnection(gen, true);
@@ -127,7 +138,7 @@ async function verifyConnection(gen: number, isRetry = false): Promise<void> {
   } catch {
     if (gen !== generation) return;
     if (!isRetry) {
-      isChecking = false;
+      releaseChecking(gen);
       retryTimeoutId = setTimeout(() => {
         retryTimeoutId = null;
         verifyConnection(gen, true);
@@ -136,7 +147,7 @@ async function verifyConnection(gen: number, isRetry = false): Promise<void> {
     }
     publish({ isOffline: true, latency: 0, quality: "offline" });
   } finally {
-    isChecking = false;
+    releaseChecking(gen);
   }
 }
 
@@ -179,9 +190,11 @@ function start(): void {
 
 function stop(): void {
   // Invalida qualquer fetch ou retry em voo desta geração: se resolverem
-  // depois da parada, `verifyConnection` vira no-op.
+  // depois da parada, `verifyConnection` vira no-op. Reset incondicional do
+  // mutex (não passa por `releaseChecking`): `stop()` é quem manda, e o
+  // dono que porventura estivesse com o mutex já não tem geração viva.
   generation++;
-  isChecking = false;
+  checkingGen = null;
 
   if (typeof window !== "undefined") {
     window.removeEventListener("online", handleOnline);
