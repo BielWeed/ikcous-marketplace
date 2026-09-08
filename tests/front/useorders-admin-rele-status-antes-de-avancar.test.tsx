@@ -72,9 +72,9 @@ vi.mock("@/hooks/useAnalytics", () => ({ clearAnalyticsCache: () => {} }));
 // dos outros testes de componente deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function pedidoFake(status: OrderStatus): Order {
+function pedidoFake(status: OrderStatus, id = "pedido-1"): Order {
   return {
-    id: "pedido-1",
+    id,
     customer: { name: "Cliente Teste", whatsapp: "34999999999" },
     items: [],
     subtotal: 100,
@@ -111,6 +111,7 @@ type AtualizaStatus = (
   status: OrderStatus,
   notes?: string,
   silent?: boolean,
+  statusEsperado?: OrderStatus,
 ) => Promise<void>;
 
 let linhasParaCarga: unknown[] = [];
@@ -202,8 +203,8 @@ async function montarSondaAdmin(pedido: Order): Promise<{
 
   return {
     pegarOrders: () => ordersAtuais,
-    updateOrderStatus: (id, status, notes, silent) =>
-      update(id, status, notes, silent),
+    updateOrderStatus: (id, status, notes, silent, statusEsperado) =>
+      update(id, status, notes, silent, statusEsperado),
   };
 }
 
@@ -374,6 +375,120 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
     expect(fila).toHaveLength(1);
     expect(fila[0]).toMatchObject({ orderId: "pedido-1", status: "shipping" });
     expect(toast.info).toHaveBeenCalledTimes(1);
+  });
+
+  // Rodada 2 (laudo do revisor, achado 1 BLOQUEIA): a condição original
+  // exigia `order` (achada em `orders`), então o pedido que chega por deep
+  // link ou paginação — fora da página carregada — pulava a guarda
+  // INTEIRA, e a RPC gravava sem checar nada. `montarSondaAdmin` abaixo
+  // carrega um pedido DIFERENTE ("pedido-carregado") para simular a lista
+  // paginada; "pedido-do-deep-link" nunca entra em `orders`.
+  it("critério A (achado 1, deep link) — pedido AUSENTE de `orders`, status esperado vem do chamador, servidor devolve DIFERENTE: a releitura ACONTECE, a RPC NÃO é chamada, UM toast de aviso, rejeita com ErroPedidoMudou", async () => {
+    const { ErroPedidoMudou } = await import("@/hooks/useOrders");
+    respostaDaReleitura = { data: { status: "cancelled" }, error: null };
+
+    const { updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("processing", "pedido-carregado"),
+    );
+    from.mockClear();
+
+    let erroCapturado: unknown;
+    await act(async () => {
+      try {
+        await updateOrderStatus(
+          "pedido-do-deep-link",
+          "shipping",
+          undefined,
+          false,
+          "processing",
+        );
+      } catch (e) {
+        erroCapturado = e;
+      }
+    });
+
+    expect(erroCapturado).toBeInstanceOf(ErroPedidoMudou);
+    expect(from).toHaveBeenCalled();
+    expect(chamadasUpdateOrderStatus).toHaveLength(0);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(toast.warning).mock.calls[0][0])).toContain(
+      "Cancelado",
+    );
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("critério B (falha fechada) — pedido AUSENTE de `orders` e SEM status esperado: a releitura NEM ACONTECE, a RPC não é chamada, sem update otimista, toast de 'não consegui conferir'", async () => {
+    const { ErroStatusEsperadoDesconhecido } = await import(
+      "@/hooks/useOrders"
+    );
+
+    const { pegarOrders, updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("processing", "pedido-carregado"),
+    );
+    from.mockClear();
+
+    let erroCapturado: unknown;
+    await act(async () => {
+      try {
+        await updateOrderStatus("pedido-do-deep-link", "shipping");
+      } catch (e) {
+        erroCapturado = e;
+      }
+    });
+
+    expect(erroCapturado).toBeInstanceOf(ErroStatusEsperadoDesconhecido);
+    // Sem status para comparar, a releitura nem é tentada.
+    expect(from).not.toHaveBeenCalled();
+    expect(chamadasUpdateOrderStatus).toHaveLength(0);
+    // Sem update otimista: nenhum pedido novo entra em `orders`.
+    expect(pegarOrders().some((o) => o.id === "pedido-do-deep-link")).toBe(
+      false,
+    );
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(toast.warning).mock.calls[0][0])).toContain(
+      "conferir",
+    );
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("critério D (achado 2) — falha na releitura NÃO zera `cachedAdminOrders`: uma montagem NOVA do hook admin continua enxergando o pedido carregado antes", async () => {
+    respostaDaReleitura = {
+      data: null,
+      error: { message: "Failed to fetch" },
+    };
+
+    const { updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("processing"),
+    );
+
+    await act(async () => {
+      try {
+        await updateOrderStatus("pedido-1", "shipping");
+      } catch {
+        // esperado: ErroReleituraDeStatusFalhou — o que importa aqui é o
+        // efeito colateral sobre `cachedAdminOrders`, não o erro em si.
+      }
+    });
+
+    // Medido pelo revisor contra o hook de produção: sem o conserto, uma
+    // montagem NOVA cai de 1 pedido para 0 (achado 2 — `cachedAdminOrders`
+    // vira `null` na falha de releitura, e o inicializador do useState
+    // admin parte de `cachedAdminOrders || []`).
+    const { useOrders: useOrdersImportado } = await import("@/hooks/useOrders");
+    let ordersNaMontagemNova: Order[] = [];
+    function SondaNova() {
+      const { orders } = useOrdersImportado(true, true);
+      useEffect(() => {
+        ordersNaMontagemNova = orders;
+      });
+      return null;
+    }
+    await act(async () => {
+      raiz.render(<SondaNova />);
+    });
+
+    expect(ordersNaMontagemNova).toHaveLength(1);
+    expect(ordersNaMontagemNova[0]?.id).toBe("pedido-1");
   });
 });
 

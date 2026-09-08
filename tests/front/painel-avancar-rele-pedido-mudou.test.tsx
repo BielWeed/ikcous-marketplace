@@ -117,8 +117,18 @@ vi.mock("@/hooks/useOrders", async () => {
   // chave vindo de uma união fechada.
   const statusConfigByKey = new Map(Object.entries(statusConfig));
   const { toast: toastReal } = await import("sonner");
+  // Achado E do laudo da rodada 2: antes daqui o dublê lançava um `Error`
+  // cru com `name = "ErroPedidoMudou"` — o `instanceof` do lado da VIEW
+  // (AdminOrdersView.tsx) nunca era exercido de verdade, mesmo com a
+  // releitura de produção desligada. Importar a classe REAL (não uma
+  // cópia) faz este arquivo provar a mesma checagem que roda em produção.
+  const { ErroPedidoMudou: ErroPedidoMudouReal } =
+    await vi.importActual<typeof import("@/hooks/useOrders")>(
+      "@/hooks/useOrders",
+    );
 
   return {
+    ErroPedidoMudou: ErroPedidoMudouReal,
     useOrders: () => {
       const [orders, setOrders] = React.useState<Order[]>(mockOrders);
 
@@ -148,11 +158,7 @@ vi.mock("@/hooks/useOrders", async () => {
                   `Este pedido mudou há instantes: agora está "${rotulo}". A ficha foi atualizada.`,
                 );
               }
-              const erro: any = new Error(
-                `O pedido mudou de status antes da gravação: agora está "${statusServidor}".`,
-              );
-              erro.name = "ErroPedidoMudou";
-              throw erro;
+              throw new ErroPedidoMudouReal(statusServidor);
             }
           }
           setOrders((prev) =>

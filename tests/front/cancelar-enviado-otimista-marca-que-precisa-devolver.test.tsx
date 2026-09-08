@@ -38,7 +38,20 @@ vi.mock("@/lib/supabase", () => ({
     rpc,
     from: () => ({
       select: () => ({
-        eq: () => ({ order: () => ({ data: [], error: null }) }),
+        eq: () => ({
+          order: () => ({ data: [], error: null }),
+          // Rodada 2 (L-9 front): a guarda nova de `updateOrderStatus`
+          // relê o status via `.select("status").eq("id", …).single()`
+          // sempre que `isAdmin` e o destino não é "cancelled" — mesmo
+          // quando o pedido não está em `orders`. `"shipping"` é o status
+          // que a suíte admin desta descrição usa como destino no
+          // controle negativo (linha ~552): devolver o MESMO valor faz a
+          // releitura confirmar "sem mudança" e seguir para a RPC, como
+          // o comportamento de produção espera quando o servidor concorda
+          // com o que a tela pediu.
+          single: () =>
+            Promise.resolve({ data: { status: "shipping" }, error: null }),
+        }),
       }),
     }),
     channel: () => ({
@@ -427,8 +440,20 @@ type CarregaOrdersAdmin = (
   silent?: boolean,
 ) => Promise<{ orders: Order[]; total: number }>;
 
+// Rodada 2 (L-9 front): a sonda ADMIN precisa poder passar `statusEsperado`
+// (5º argumento novo de `updateOrderStatus`, useOrders.ts) — a sonda
+// CLIENTE (`AtualizaStatus`, acima) fica como estava, sem o admin nunca
+// exercitar a guarda nova.
+type AtualizaStatusAdmin = (
+  id: string,
+  status: OrderStatus,
+  notes?: string,
+  silent?: boolean,
+  statusEsperado?: OrderStatus,
+) => Promise<void>;
+
 async function montarSondaAdmin(): Promise<{
-  chamarUpdateOrderStatus: AtualizaStatus;
+  chamarUpdateOrderStatus: AtualizaStatusAdmin;
   chamarConfirmarRetorno: ConfirmaRetorno;
   chamarFetchPedidosCancelados: () => Promise<Order[]>;
   chamarLoadOrders: CarregaOrdersAdmin;
@@ -437,7 +462,7 @@ async function montarSondaAdmin(): Promise<{
 }> {
   const { useOrders } = await import("@/hooks/useOrders");
 
-  let update: AtualizaStatus = async () => {};
+  let update: AtualizaStatusAdmin = async () => {};
   let confirmarRetorno: ConfirmaRetorno = async () => undefined;
   let fetchCancelados: () => Promise<Order[]> = async () => [];
   let carregar: CarregaOrdersAdmin = async () => ({ orders: [], total: 0 });
@@ -469,7 +494,8 @@ async function montarSondaAdmin(): Promise<{
   });
 
   return {
-    chamarUpdateOrderStatus: (id, status) => update(id, status),
+    chamarUpdateOrderStatus: (id, status, notes, silent, statusEsperado) =>
+      update(id, status, notes, silent, statusEsperado),
     chamarConfirmarRetorno: (id) => confirmarRetorno(id),
     chamarFetchPedidosCancelados: () => fetchCancelados(),
     chamarLoadOrders: (...args) => carregar(...args),
@@ -548,8 +574,23 @@ describe("updateOrderStatus (admin) recarrega pedidosCancelados sozinho — acha
   it("controle negativo: um status que NÃO é 'cancelled' não dispara a busca da lista de cancelados", async () => {
     const { chamarUpdateOrderStatus } = await montarSondaAdmin();
 
+    // Rodada 2 (L-9 front, falha fechada): "pedido-y" não está em `orders`
+    // (esta sonda não carrega nada) — sem `statusEsperado`, a guarda nova
+    // recusaria o avanço ANTES de chegar na RPC (comportamento correto,
+    // provado em critério B de useorders-admin-rele-status-antes-de-
+    // avancar.test.tsx). Aqui o que está sob prova é outra coisa
+    // (`fetchPedidosCancelados` só dispara para "cancelled"), então
+    // passamos o status esperado que o mock de `from` (`.single()`, acima)
+    // confirma sem mudança, para a chamada seguir até a RPC como neste
+    // teste sempre pretendeu.
     await act(async () => {
-      await chamarUpdateOrderStatus("pedido-y", "shipping");
+      await chamarUpdateOrderStatus(
+        "pedido-y",
+        "shipping",
+        undefined,
+        false,
+        "shipping",
+      );
     });
 
     expect(
