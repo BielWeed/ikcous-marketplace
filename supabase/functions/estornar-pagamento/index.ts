@@ -89,6 +89,9 @@ export type ExecutorEstorno = (args: {
     token: string
     buscar?: typeof fetch
     consultarTransacaoDaOrder?: (orderId: string) => Promise<string | null>
+    // Item 1 do brief P0 (08/09/2026) / encargo da T5: os mp_refund_id das
+    // OUTRAS linhas de order_refunds do mesmo pedido que já têm id gravado.
+    idsJaReivindicados?: string[]
 }) => Promise<ResultadoEstorno>
 
 /** Texto EXATO do plano (T3) para 202 — o lojista sabe quem confere e quando. */
@@ -224,6 +227,28 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             return json({ erro: 'Não consegui ler o pedido desta devolução agora. Tente novamente em instantes.' }, 500)
         }
 
+        // 3b. Ids já reivindicados por OUTRAS linhas do mesmo pedido (encargo
+        //     do P0, relatório do executor do PR #447: esta edge chamava
+        //     executarEstorno SEM idsJaReivindicados). MESMA leitura que o
+        //     cron já faz (reconciliar-pagamentos/index.ts, P0) para a MESMA
+        //     invariante (laudo do PR #440, achado 1): um refund do MP
+        //     credita UMA linha do ledger — sem isto, uma segunda linha
+        //     pendente do mesmo pedido podia concluir com o dinheiro de
+        //     outra.
+        const { data: linhasReivindicadas, error: erroIdsReivindicados } = await supabase
+            .from('order_refunds')
+            .select('mp_refund_id')
+            .eq('order_id', linha.order_id)
+            .neq('id', refundId)
+            .not('mp_refund_id', 'is', null)
+        if (erroIdsReivindicados) {
+            console.error('[estornar-pagamento] Erro ao ler ids já reivindicados:', erroIdsReivindicados)
+            return json({ erro: 'Não consegui ler a devolução agora. Tente novamente em instantes.' }, 500)
+        }
+        const idsJaReivindicados = (linhasReivindicadas ?? [])
+            .map((r: any) => r.mp_refund_id)
+            .filter((id: unknown): id is string => typeof id === 'string')
+
         // 4. Token do MP ANTES da marca: sem token não há execução — e uma
         //    linha marcada em_processamento sem chamada é fila parada à toa
         //    (o cron recuperaria em 2 min, mas não há por que marcar).
@@ -318,6 +343,9 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                         buscar: deps.buscar ?? fetch,
                     })
                 : undefined,
+            // Item 3b acima: as OUTRAS linhas do pedido que já reivindicaram
+            // um mp_refund_id — a mesma invariante que o cron (P0) já passa.
+            idsJaReivindicados,
         })
 
         // 7. O resultado vira estado + resposta. Nenhum texto carrega

@@ -148,10 +148,19 @@ function clienteSupaFalso(opts: {
     finais?: number[]
     rpcResultado?: any
     rpcErro?: any
+    // Item 1 do brief P0 / encargo da T5 (relatório do executor do PR #447):
+    // ids já reivindicados por OUTRAS linhas do mesmo pedido — a mesma
+    // leitura que o cron (P0) já faz, para a mesma invariante (um refund do
+    // MP credita UMA linha do ledger). Default []: os testes que não passam
+    // esta opção preservam o comportamento de antes (nenhum id excluído).
+    idsJaReivindicados?: string[]
+    erroIdsJaReivindicados?: any
 } = {}) {
     const registro = {
         leiturasLinha: 0,
         leiturasPedido: 0,
+        leiturasIdsReivindicados: 0,
+        filtrosIdsReivindicados: [] as any[],
         marcas: [] as any[],
         finais: [] as any[],
         atualizacoes: [] as any[],
@@ -180,6 +189,17 @@ function clienteSupaFalso(opts: {
                     no.filtros.push({ metodo: "eq", coluna, valor })
                     return api
                 },
+                // Item 1 do brief P0 / encargo T5: `.neq('id', refundId)` e
+                // `.not('mp_refund_id', 'is', null)` — chain IRMÃ de `.eq()`
+                // acima, que a leitura dos ids já reivindicados usa.
+                neq(coluna: string, valor: any) {
+                    no.filtros.push({ metodo: "neq", coluna, valor })
+                    return api
+                },
+                not(coluna: string, op: string, valor: any) {
+                    no.filtros.push({ metodo: "not", coluna, op, valor })
+                    return api
+                },
                 in(coluna: string, valores: any) {
                     no.filtros.push({ metodo: "in", coluna, valores })
                     return api
@@ -201,6 +221,18 @@ function clienteSupaFalso(opts: {
         if (no.tabela === "marketplace_orders") {
             registro.leiturasPedido++
             return promessa({ data: opts.pedido ?? null, error: null })
+        }
+        // A leitura dos ids já reivindicados se distingue da leitura simples
+        // da linha (abaixo) pela presença de um filtro `.not()` — nenhuma
+        // outra leitura desta edge usa esse método.
+        if (no.acao === null && no.filtros.some((f: any) => f.metodo === "not")) {
+            registro.leiturasIdsReivindicados++
+            registro.filtrosIdsReivindicados = [...no.filtros]
+            if (opts.erroIdsJaReivindicados) {
+                return promessa({ data: null, error: opts.erroIdsJaReivindicados })
+            }
+            const ids = opts.idsJaReivindicados ?? []
+            return promessa({ data: ids.map((mp_refund_id) => ({ mp_refund_id })), error: null })
         }
         if (no.acao === null) {
             registro.leiturasLinha++
@@ -776,4 +808,92 @@ Deno.test("F11c - desfecho que perde a linha (cron concluiu no meio) responde 40
     // O 409 novo agora tem o mesmo formato do 409 do passo 2 ({erro, status}).
     assertEquals(corpo.status, "concluido")
     assertEquals(registro.marcas.length, 1)
+})
+
+// ── T-1: ids já reivindicados por OUTRAS linhas do mesmo pedido (encargo do
+// P0, relatório do executor do PR #447 — "a edge do clique chama
+// executarEstorno SEM idsJaReivindicados"). Mesma leitura que o cron (P0) já
+// faz, para a MESMA invariante do laudo do PR #440 (achado 1): um refund do
+// MP credita UMA linha do ledger. SEM injetar deps.executarEstorno: força a
+// edge a usar o módulo real (_shared/estorno.ts), mesmo motivo do F5b — é lá
+// que `idsJaReivindicados` de fato exclui o candidato.
+
+/** Fetch falso: POST devolve 4296 (pré-veredito "já estornado"); o GET de
+ * confirmação devolve um refund aprovado de R$100 com id 'ref-outra-linha' —
+ * o MESMO valor da linha, mas gravado por OUTRA linha do pedido. */
+function fetchT1Falso() {
+    const registro = { chamadas: [] as any[] }
+    const buscar = ((_input: any, init?: any) => {
+        const metodo = String(init?.method ?? "GET").toUpperCase()
+        registro.chamadas.push({ metodo })
+        if (metodo === "POST") {
+            return Promise.resolve(
+                new Response(JSON.stringify({ cause: [{ code: 4296 }] }), { status: 404 }),
+            )
+        }
+        return Promise.resolve(
+            new Response(
+                JSON.stringify({
+                    status: "approved",
+                    transaction_amount_refunded: 100,
+                    refunds: [{ id: "ref-outra-linha", amount: 100, status: "approved" }],
+                }),
+                { status: 200 },
+            ),
+        )
+    }) as any
+    return { buscar, registro }
+}
+
+Deno.test("T-1 - a edge lê os ids já reivindicados por OUTRAS linhas e a segunda NÃO conclui com o refund da primeira (mutação m5: apagar a passagem do parâmetro derruba)", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        idsJaReivindicados: ["ref-outra-linha"],
+    })
+    const mp = fetchT1Falso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                buscar: mp.buscar,
+                // SEM executarEstorno: força o módulo real, igual ao F5b.
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    const corpo = await resposta.json()
+    // 'ref-outra-linha' já foi reivindicado por OUTRA linha — esta linha NÃO
+    // pode concluir com ele (decidirConclusaoPelaConsulta exclui o
+    // candidato); com pré-veredito (4296), o desfecho é 'falhou'.
+    assertEquals(corpo.status, "falhou")
+    // A edge LEU os ids já reivindicados ANTES de chamar o executor, com a
+    // MESMA forma de query que o cron (P0) já usa.
+    assertEquals(registro.leiturasIdsReivindicados, 1)
+    assertEquals(registro.filtrosIdsReivindicados, [
+        { metodo: "eq", coluna: "order_id", valor: LINHA_SOLICITADA.order_id },
+        { metodo: "neq", coluna: "id", valor: REFUND_ID },
+        { metodo: "not", coluna: "mp_refund_id", op: "is", valor: null },
+    ])
+    assertEquals(registro.rpcs.length, 0)
+})
+
+Deno.test("T-1b - SEM outra linha reivindicando o refund (idsJaReivindicados vazio), a MESMA resposta do MP conclui — controle positivo", async () => {
+    const { cliente } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        idsJaReivindicados: [],
+    })
+    const mp = fetchT1Falso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    const corpo = await resposta.json()
+    assertEquals(corpo.status, "concluido")
 })

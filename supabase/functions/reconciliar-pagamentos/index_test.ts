@@ -98,6 +98,16 @@ function clienteFalso(opts: {
   ) => { data: unknown; error: unknown };
   aoConcluirEstorno?: (args: Record<string, unknown>) => void;
   erroConcluirEstorno?: unknown;
+  // --- item 1 do brief P0 (08/09/2026): ids já reivindicados por OUTRAS
+  // linhas do mesmo pedido -------------------------------------------------
+  // `.select("mp_refund_id").eq("order_id", x).neq("id", y).not("mp_refund_id",
+  // "is", null)`. FUNÇÃO (não mapa estático), pelo MESMO motivo de
+  // `resolverPedidoFresco`: R13 precisa que o valor mude ENTRE as duas
+  // iterações do lote (a 1ª linha grava o id que a 2ª tem de ver). Default
+  // `[]`: os testes que não passam esta opção preservam o comportamento de
+  // antes (nenhum id excluído).
+  idsJaReivindicadosPorPedido?: (orderId: string, idAtual: string) => string[];
+  erroIdsJaReivindicados?: unknown;
 }) {
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
@@ -124,8 +134,63 @@ function clienteFalso(opts: {
         return {
           select(_colunas: string) {
             return {
-              in(_coluna: string, _valores: string[]) {
+              // item 1 do brief P0: `.select("mp_refund_id").eq("order_id",
+              // x).neq("id", y).not("mp_refund_id", "is", null)` — chain
+              // IRMÃ de `.in()` abaixo (a fila pendente), diferenciada pelo
+              // método que vem em seguida.
+              eq(_coluna: string, orderId: string) {
                 return {
+                  neq(coluna2: string, idAtual: string) {
+                    return {
+                      not(_coluna3: string, _op: string, _valor: unknown) {
+                        if (opts.erroIdsJaReivindicados) {
+                          return Promise.resolve({
+                            data: null,
+                            error: opts.erroIdsJaReivindicados,
+                          });
+                        }
+                        // AC3-a (laudo Opus #447 rodada 2, 08/09/2026): o
+                        // dublê tem de CONFERIR a coluna real que a produção
+                        // passou a `.neq()`, não descartá-la e reimplementar
+                        // a exclusão pelo `id` na mão — sem isso, trocar a
+                        // coluna em produção (ex.: "id" -> "mp_refund_id",
+                        // R15) passa batido porque o mock nunca olhava para
+                        // ela. `assertEquals` é a prova: mutar
+                        // reconciliar-pagamentos/index.ts:598 para
+                        // `.neq("mp_refund_id", refund.id)` faz este assert
+                        // (e R15) falharem.
+                        assertEquals(coluna2, "id");
+                        const ids = opts.idsJaReivindicadosPorPedido?.(
+                          orderId,
+                          idAtual,
+                        ) ?? [];
+                        return Promise.resolve({
+                          data: ids.map((mp_refund_id) => ({ mp_refund_id })),
+                          error: null,
+                        });
+                      },
+                    };
+                  },
+                };
+              },
+              in(_coluna: string, _valores: string[]) {
+                // R14 (T5, webhook): linha `solicitado_por = 'sistema'` é
+                // dinheiro que já se moveu FORA do app — o cron nunca a
+                // toca. `.neq()` é CAUSAL aqui (filtra pelos argumentos reais
+                // que a produção passa, acumulados em `exclusoes`), e não é
+                // estrutural: `.lt()` fica disponível tanto encadeado depois
+                // de `.neq()` quanto direto em cima de `.in()` — assim, se a
+                // produção deixar de chamar `.neq("solicitado_por","sistema")`,
+                // o mock não quebra com TypeError (o que o `catch` externo do
+                // handler engoliria e faria o teste passar por acidente); a
+                // linha 'sistema' simplesmente deixa de ser excluída, e a
+                // mutação aparece como uma diferença real no resultado.
+                const comExclusoes = (
+                  exclusoes: Array<{ coluna: string; valor: unknown }>,
+                ) => ({
+                  neq(coluna: string, valor: unknown) {
+                    return comExclusoes([...exclusoes, { coluna, valor }]);
+                  },
                   lt(_colunaData: string, valorLimite: string) {
                     // D4 (ANTES-DE-CRESCER 6): a producao encadeia DOIS
                     // `.order()` (tentativas ASC, created_at ASC) antes do
@@ -148,8 +213,15 @@ function clienteFalso(opts: {
                         }
                         const todos = opts.refundsPendentes ?? [];
                         const filtrados = todos.filter((r) => {
-                          const upd = (r as Record<string, unknown>).updated_at;
-                          return typeof upd !== "string" || upd < valorLimite;
+                          const registro2 = r as Record<string, unknown>;
+                          const upd = registro2.updated_at;
+                          const passaJanela = typeof upd !== "string" || upd < valorLimite;
+                          // Causal: só exclui pelo que `.neq()` de fato
+                          // recebeu — sem chamada, sem exclusão nenhuma.
+                          const passaExclusoes = exclusoes.every(
+                            ({ coluna, valor }) => registro2[coluna] !== valor,
+                          );
+                          return passaJanela && passaExclusoes;
                         });
                         const ordenados = [...filtrados].sort((a, b) => {
                           for (const { coluna, ascendente } of criterios) {
@@ -172,7 +244,8 @@ function clienteFalso(opts: {
                     });
                     return comCriterios([]);
                   },
-                };
+                });
+                return comExclusoes([]);
               },
             };
           },
@@ -1421,4 +1494,300 @@ Deno.test("R11 - concluido cuja RPC concluir_estorno levanta: incrementa tentati
   assertEquals(typeof gravado?.valores.ultimo_erro, "string");
   assertEquals(gravado?.valores.status, undefined, "nunca falhou: o MP já confirmou o dinheiro");
   assertEquals(gravado?.statusFiltro, ["em_processamento"]);
+});
+
+// =============================================================================
+// R12–R13 — brief P0 de 08/09/2026 (pré-requisito da T5/T6), achado 1 do laudo
+// `20260908-laudo-opus-pr440-t4-reconciliacao-rodada2.md`: `confirmarPorConsulta`
+// credita à linha avaliada QUALQUER refund processed do pedido — com duas
+// linhas pendentes, uma é dada por devolvida com o dinheiro da outra.
+// R15 — AC-3 da rodada 2 do laudo Opus do PR #447 (08/09/2026): a linha que
+// JÁ carrega o próprio `mp_refund_id` (PIX em contingência) não pode ler a
+// si mesma como "já reivindicada por outra linha" — o `.neq("id", refund.id)`
+// é quem garante isso.
+// =============================================================================
+
+Deno.test("R12 - experimento do laudo ponta a ponta: com a ordenação tentativas ASC (b primeiro), b NÃO conclui com o refund de a; a conclui pela consulta", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const orderId = "20000000-0000-4000-8000-0000000000aa";
+  const pedido = pedidoFrescoPara({
+    id: orderId,
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    total: 30,
+    valor_estornado: 0,
+  });
+
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      // a: R$20, tentativas 5 (a que TEM o refund no MP). b: R$10,
+      // tentativas 1 — vem PRIMEIRO na fila (tentativas ASC, D4).
+      { id: "a", order_id: orderId, amount: 20, status: "em_processamento", tentativas: 5, mp_refund_id: null },
+      { id: "b", order_id: orderId, amount: 10, status: "em_processamento", tentativas: 1, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (id) => (id === orderId ? pedido : null),
+  });
+
+  // A order do MP mostra UM refund processed de 20 (o de `a`) — nunca muda
+  // entre as consultas (mesmo objeto, sempre a mesma resposta).
+  const corpoOrder = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+      refunds: [{ id: "ref-a", amount: "20.00", status: "processed" }],
+    },
+  };
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: corpoOrder },
+    // Retry de b (POST com a chave dela): o MP diz "já em curso" — b fica
+    // em_processamento (adiada), NUNCA concluída sem o refund dela aparecer.
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 409,
+      corpo: { error: "invalid_request", error_messages: [{ code: "order_refund_already_in_process" }] },
+    },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // b (avaliada primeiro) NÃO conclui: nem com o dinheiro de a (achado 1),
+  // nem sem POST — o POST com a chave DELA saiu (`mp.chamadas` abaixo) e o
+  // resultado é "em_processamento" (adiada). a conclui SEM POST, pela
+  // consulta, com o refund que é exatamente do valor dela.
+  assertEquals(corpo.estornos, { vistos: 2, concluidos: 1, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "a");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "ref-a");
+  // O POST de b saiu com a chave DELA (idempotência por linha) — nunca a de a.
+  const postDeB = mp.chamadas.find((c) => c.metodo === "POST");
+  assertEquals(postDeB?.chave, "b");
+});
+
+Deno.test("R13 - idsJaReivindicados: duas linhas do MESMO valor no mesmo lote — a 1ª conclui com o refund, a 2ª (vendo o id já gravado) NÃO conclui", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const orderId = "20000000-0000-4000-8000-0000000000bb";
+  const pedido = pedidoFrescoPara({
+    id: orderId,
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    total: 10,
+    valor_estornado: 0,
+  });
+
+  // Estado SIMULADO do que cada linha já reivindicou — a 2ª iteração tem de
+  // ver o que a 1ª gravou NO MESMO lote (a leitura é DENTRO do laço, por
+  // item; um SELECT único antes do laço veria as duas ainda sem id).
+  const reivindicadosPorOrder = new Map<string, string[]>();
+
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      // Mesmas tentativas — desempata por created_at (c1 antes de c2).
+      {
+        id: "c1",
+        order_id: orderId,
+        amount: 10,
+        status: "em_processamento",
+        tentativas: 1,
+        mp_refund_id: null,
+        created_at: "2026-09-01T00:00:00.000Z",
+      },
+      {
+        id: "c2",
+        order_id: orderId,
+        amount: 10,
+        status: "em_processamento",
+        tentativas: 1,
+        mp_refund_id: null,
+        created_at: "2026-09-02T00:00:00.000Z",
+      },
+    ],
+    resolverPedidoFresco: (id) => (id === orderId ? pedido : null),
+    idsJaReivindicadosPorPedido: (id) => reivindicadosPorOrder.get(id) ?? [],
+    aoConcluirEstorno: (args) => {
+      const lista = reivindicadosPorOrder.get(orderId) ?? [];
+      lista.push(String(args.p_mp_refund_id));
+      reivindicadosPorOrder.set(orderId, lista);
+    },
+  });
+
+  // A order do MP mostra UM único refund processed de 10 (`ref-x`) — o
+  // MESMO valor das duas linhas.
+  const corpoOrder = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+      refunds: [{ id: "ref-x", amount: "10.00", status: "processed" }],
+    },
+  };
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: corpoOrder },
+    // Retry de c2 (o único caminho que sobra depois de excluído ref-x): o MP
+    // diz "já em curso" — c2 fica em_processamento (adiada).
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 409,
+      corpo: { error: "invalid_request", error_messages: [{ code: "order_refund_already_in_process" }] },
+    },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // c1 conclui com ref-x; c2 (mesmo valor, MESMO refund já reivindicado por
+  // c1) NÃO conclui — é exatamente o achado 1 do laudo, agora com DUAS
+  // linhas do MESMO valor em vez de valores diferentes (E36 cobre a unidade;
+  // este teste cobre o CONTRATO do cron ponta a ponta).
+  assertEquals(corpo.estornos, { vistos: 2, concluidos: 1, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "c1");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "ref-x");
+});
+
+Deno.test("R15 - linha em_processamento que JÁ carrega o PRÓPRIO mp_refund_id (PIX em contingência): o .neq exclui a si mesma e ela CONCLUI (AC-3, laudo #447 rodada 2)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const orderId = "20000000-0000-4000-8000-0000000000cc";
+  const pedido = pedidoFrescoPara({
+    id: orderId,
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    total: 10,
+    valor_estornado: 0,
+  });
+
+  // A ÚNICA linha do lote: em_processamento, já com o PRÓPRIO mp_refund_id
+  // gravado numa passada anterior (`gravarDesfechoDoEstorno` grava o id na
+  // linha `em_processamento` quando o POST devolve o assíncrono do PIX em
+  // contingência — `resultado.tipo === "em_processamento"`, index.ts:~154).
+  const linhasDoPedido = [
+    { id: "rf-self-linha", order_id: orderId, mp_refund_id: "rf-self" },
+  ];
+
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      {
+        id: "rf-self-linha",
+        order_id: orderId,
+        amount: 10,
+        status: "em_processamento",
+        tentativas: 1,
+        mp_refund_id: "rf-self",
+      },
+    ],
+    resolverPedidoFresco: (id) => (id === orderId ? pedido : null),
+    // Simula a query real (`.eq("order_id", x).neq("id", idAtual)
+    // .not("mp_refund_id", "is", null)`): SÓ exclui a linha cujo id bate com
+    // `idAtual`. Sem essa exclusão (mutação m3: `.neq("id", refund.id)` ->
+    // `.neq("id", "0000...")`), a linha leria o PRÓPRIO mp_refund_id como já
+    // reivindicado por OUTRA linha e nunca concluiria — morre de fome até o
+    // teto com o dinheiro já devolvido (o cenário do AC-3).
+    idsJaReivindicadosPorPedido: (oid, idAtual) =>
+      linhasDoPedido
+        .filter((l) => l.order_id === oid && l.id !== idAtual)
+        .map((l) => l.mp_refund_id)
+        .filter((id): id is string => typeof id === "string"),
+  });
+
+  // A order do MP mostra o refund `rf-self` (o mesmo id JÁ gravado na
+  // linha) processed, do valor exato dela.
+  const corpoOrder = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+      refunds: [{ id: "rf-self", amount: "10.00", status: "processed" }],
+    },
+  };
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: corpoOrder },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // Conclui SEM POST nenhum (nenhuma rota POST no dublê acima) — o `.neq`
+  // exclui a si mesma, e "rf-self" nunca entra em idsJaReivindicados.
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "rf-self-linha");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "rf-self");
+});
+
+// =============================================================================
+// R14 — item "reconciliar-pagamentos" do brief da T5 (webhook): linha
+// `solicitado_por = 'sistema'` (estorno feito fora do app, ou chargeback em
+// análise) é dinheiro que JÁ se moveu — o cron jamais chama `executarEstorno`
+// para ela (seria um POST de refund NOVO com a chave dela = pagar duas
+// vezes). Só o webhook grava e conclui linha `sistema`.
+// =============================================================================
+
+Deno.test("R14 - linha 'sistema' em em_processamento NÃO é consultada nem POSTada; 'vistos' não a conta (mutação: tirar o .neq derruba)", async () => {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara();
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      {
+        id: "r14-sistema",
+        order_id: pedido.id,
+        amount: 10,
+        status: "em_processamento",
+        solicitado_por: "sistema",
+        tentativas: 1,
+        mp_refund_id: null,
+      },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // A linha 'sistema' nunca entra na fila que o handler enxerga: 'vistos'
+  // fica em 0, nenhuma chamada ao MP, nenhuma atualização da linha.
+  assertEquals(corpo.estornos, { vistos: 0, concluidos: 0, adiados: 0, falhos: 0 });
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(registro.atualizacoesOrderRefunds.length, 0);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
 });

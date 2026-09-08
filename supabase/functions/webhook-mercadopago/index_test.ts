@@ -207,15 +207,176 @@ function clienteFalso(opts: {
   registro?: {
     chamadasRpc: Array<{ args: Record<string, unknown> }>;
     chamadasFrom?: Array<{ tabela: string; colunas: string; coluna: string; valor: unknown }>;
+    chamadasConcluirEstorno?: Array<{ args: Record<string, unknown> }>;
+    insertsOrderRefunds?: Array<Record<string, unknown>>;
+    updatesOrderRefunds?: Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >;
   };
+  // --- T5 (estorno pelo app): order_refunds — o ledger que o passo novo
+  // (registrarDesfechoDoEstorno) lê/grava. Default: fila VAZIA — testes que
+  // não passam nada aqui (as 50 pré-existentes) continuam se comportando
+  // como antes MESMO que um status novo (refunded/charged_back) dispare o
+  // gatilho: o passo roda e não encontra nada para fazer.
+  orderRefundsRows?: Array<Record<string, unknown>>;
+  erroOrderRefundsSelect?: unknown;
+  erroOrderRefundsInsert?: unknown;
+  erroOrderRefundsUpdate?: unknown;
+  // Erro nomeado (ex.: 'estorno_acima_do_total') por chamada de
+  // concluir_estorno — função para W8 poder recusar só a chamada que
+  // interessa, sem afetar outras.
+  erroConcluirEstorno?: (args: Record<string, unknown>) => unknown;
+  concluirEstornoResultado?: unknown;
 }) {
+  // Fila VIVA de order_refunds — mutável: um INSERT desta MESMA chamada de
+  // handler (ou de uma chamada seguinte, com o MESMO cliente falso — W3/W5
+  // reenviam a notificação) passa a aparecer nas leituras seguintes, como o
+  // banco de verdade faria.
+  const filaOrderRefunds: Array<Record<string, unknown>> = (opts.orderRefundsRows ?? []).map(
+    (r) => ({ ...r }),
+  );
+  let proximoIdInserido = 0;
+  // W5: espelha a SOMA que a RPC real faz em marketplace_orders.valor_estornado
+  // — só soma na PRIMEIRA conclusão de cada linha (P13: (status <> 'concluido'
+  // OR concluido_em IS NULL)); replay da MESMA linha não soma de novo.
+  let valorEstornadoAcumulado = 0;
+
   return {
-    rpc: async (_nome: string, args: Record<string, unknown>) => {
-      opts.registro?.chamadasRpc.push({ args });
-      if (opts.rpcError) return { data: null, error: opts.rpcError };
-      return { data: opts.rpcResultado ?? null, error: null };
+    rpc: async (nome: string, args: Record<string, unknown>) => {
+      if (nome === "confirmar_pagamento") {
+        opts.registro?.chamadasRpc.push({ args });
+        if (opts.rpcError) return { data: null, error: opts.rpcError };
+        return { data: opts.rpcResultado ?? null, error: null };
+      }
+      if (nome === "concluir_estorno") {
+        opts.registro?.chamadasConcluirEstorno?.push({ args });
+        const erro = opts.erroConcluirEstorno?.(args) ?? null;
+        if (erro) return { data: null, error: erro };
+        // Espelha o COALESCE + a guarda P13 da RPC real
+        // (2026110000100_concluir_estorno.sql): só soma e só carimba
+        // concluido_em na PRIMEIRA passagem — replay da MESMA linha (W5) não
+        // soma de novo.
+        const linha = filaOrderRefunds.find((r) => r.id === args.p_refund_id);
+        const jaConcluida = Boolean(linha && linha.status === "concluido" && linha.concluido_em);
+        if (linha && !jaConcluida) {
+          valorEstornadoAcumulado += Number(linha.amount ?? 0);
+          linha.status = "concluido";
+          linha.concluido_em = "2026-09-08T00:00:00.000Z";
+          if (args.p_mp_refund_id !== undefined && args.p_mp_refund_id !== null) {
+            linha.mp_refund_id = args.p_mp_refund_id;
+          }
+        }
+        if (opts.registro) (opts.registro as any).valorEstornadoAcumulado = valorEstornadoAcumulado;
+        return {
+          data: opts.concluirEstornoResultado ?? {
+            concluido: true,
+            ja_concluida: jaConcluida,
+            valor_estornado: valorEstornadoAcumulado,
+          },
+          error: null,
+        };
+      }
+      throw new Error(`rpc inesperada nos testes: ${nome}`);
     },
     from(tabela: string) {
+      if (tabela === "order_refunds") {
+        return {
+          select(colunas: string) {
+            return {
+              eq(_coluna: string, orderId: string) {
+                if (opts.erroOrderRefundsSelect) {
+                  return Promise.resolve({ data: null, error: opts.erroOrderRefundsSelect });
+                }
+                // Cópias RASAS por linha (como o PostgREST real devolve —
+                // laudo rodada 2, BLOQUEIA-2): sem isso, o handler mutar uma
+                // linha do array devolvido (ex.: marcar status='concluido'
+                // localmente) mutava a MESMA referência que `filaOrderRefunds`
+                // guarda, escondendo qualquer defeito de dupla contagem
+                // dentro do MESMO lote — a fila continua VIVA entre chamadas
+                // (W3/W5 seguem, porque o INSERT/RPC ainda escrevem na fila
+                // de verdade; só a LEITURA deixa de compartilhar referência).
+                //
+                // PROJEÇÃO das colunas pedidas (laudo rodada 2, BLOQIEA
+                // `mp_status`): mesma lógica de `colunasPedidas` usada 100
+                // linhas abaixo para `marketplace_orders` — o PostgREST real
+                // só devolve o que o `select()` pede, e a assimetria entre
+                // os dois dublês (este devolvia a linha INTEIRA) era o que
+                // escondia a coluna esquecida no `select` de produção.
+                const colunasPedidas = new Set(
+                  colunas
+                    .split(",")
+                    .map((c) => c.trim())
+                    .filter((c) => c.length > 0),
+                );
+                const projetar = (r: Record<string, unknown>) =>
+                  colunas.trim() === "*"
+                    ? { ...r }
+                    : Object.fromEntries(
+                        Object.entries(r).filter(([chave]) => colunasPedidas.has(chave)),
+                      );
+                return Promise.resolve({
+                  data: filaOrderRefunds.filter((r) => r.order_id === orderId).map(projetar),
+                  error: null,
+                });
+              },
+            };
+          },
+          insert(valores: Record<string, unknown>) {
+            // O INSERT do item A4/B (in_process) não encadeia `.select()` —
+            // é `await`ado DIRETO, como o supabase-js real permite (o
+            // resultado é thenable mesmo sem `.select()`). `executar()` é a
+            // MESMA lógica para os dois casos, para não existir um segundo
+            // produtor de linha na fila.
+            const executar = () => {
+              opts.registro?.insertsOrderRefunds?.push(valores);
+              if (opts.erroOrderRefundsInsert) {
+                return { data: null, error: opts.erroOrderRefundsInsert };
+              }
+              proximoIdInserido++;
+              const id = `sistema-${proximoIdInserido}`;
+              filaOrderRefunds.push({ ...valores, id });
+              return { data: { id }, error: null };
+            };
+            return {
+              select(_colunas: string) {
+                return {
+                  maybeSingle: () => Promise.resolve(executar()),
+                };
+              },
+              // `await`ável DIRETO (item A4/B in_process: `insert({...})`
+              // sem `.select()`) — mesma regra do supabase-js real.
+              then(resolveu: any, rejeitou: any) {
+                return Promise.resolve(executar()).then(resolveu, rejeitou);
+              },
+            };
+          },
+          update(valores: Record<string, unknown>) {
+            return {
+              eq(_coluna: string, id: string) {
+                return {
+                  in(_coluna2: string, statusFiltro: string[]) {
+                    const executar = () => {
+                      opts.registro?.updatesOrderRefunds?.push({ id, valores, statusFiltro });
+                      if (opts.erroOrderRefundsUpdate) {
+                        return { data: null, error: opts.erroOrderRefundsUpdate };
+                      }
+                      const linha = filaOrderRefunds.find((r) => r.id === id);
+                      if (linha && statusFiltro.includes(String(linha.status))) {
+                        Object.assign(linha, valores);
+                        return { data: [{ id }], error: null };
+                      }
+                      return { data: [], error: null };
+                    };
+                    return { then: (res: any, rej: any) => Promise.resolve(executar()).then(res, rej) };
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+
+      // ── comportamento pré-existente (marketplace_orders) ──────────────
       return {
         select(colunas: string) {
           return {
@@ -1951,4 +2112,1090 @@ Deno.test("comprovante chama DIRETO a reserva no supabase do webhook — não de
     Deno.env.delete("SMTP_USER");
     Deno.env.delete("SMTP_PASSWORD");
   }
+});
+
+// =============================================================================
+// W1–W9 — T5 da frente "estorno pelo app": o webhook registra o desfecho do
+// estorno (inclusive o feito FORA do app) e o banco para de divergir do MP
+// (brief 20260908-brief-t5-webhook-registra-o-desfecho-do-estorno.md).
+//
+// Pedido base reaproveita UUID_PEDIDO/ID_ORDER_TESTE já definidos acima.
+// =============================================================================
+
+Deno.test("W1 - payment 'refunded' com linha em_processamento de 100 -> concluir_estorno UMA vez (p_refund_id da linha, p_mp_refund_id 'r1'); nenhuma inserção", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+    updatesOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: "123456789",
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "cancelled",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-1",
+      order_id: UUID_PEDIDO,
+      amount: 100,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 1,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: 999,
+    status: "refunded",
+    status_detail: "refunded",
+    external_reference: UUID_PEDIDO,
+    transaction_amount_refunded: 100,
+    refunds: [{ id: "r1", amount: 100, status: "approved" }],
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-1");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r1");
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
+Deno.test("W2 - order 'processed'+'partially_refunded' com refund de 30 e linha 'solicitado' de 30 -> concluída com r2; responde 200 'estorno_parcial_registrado' SEM confirmar_pagamento com status inventado", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "cancelled",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-2",
+      order_id: UUID_PEDIDO,
+      amount: 30,
+      status: "solicitado",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 0,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r2", amount: "30.00", status: "processed" }],
+    },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.resultado, "estorno_parcial_registrado");
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-2");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r2");
+  // statusMapeado é null (PEDIDO-05): confirmar_pagamento NUNCA é chamada
+  // aqui (mutação m4: mover o passo para DEPOIS do retorno de status
+  // desconhecido faria confirmar_pagamento nunca rodar OU rodar com status
+  // inventado — este teste também cobre o caso "passo não roda de jeito
+  // nenhum", que é o defeito real de mover o passo para depois do retorno).
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("W3 - order 'refunded' SEM linha, refund processed 100 (r3) -> UMA linha 'sistema' concluída; a MESMA notificação de novo -> zero inserções, zero RPC nova", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r3", amount: "100.00", status: "processed" }],
+    },
+  };
+  const fetchImpl = fetchConsulta(200, corpoOrder);
+
+  const req1 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta1 = await handler(req1, { supabase, fetchImpl });
+  assertEquals(resposta1.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "r3");
+  assertEquals(registro.insertsOrderRefunds[0].status, "concluido");
+  assertEquals(registro.insertsOrderRefunds[0].solicitado_por, "sistema");
+  assertEquals(registro.insertsOrderRefunds[0].motivo, "estorno feito fora do app (Mercado Pago)");
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+
+  // MESMA notificação de novo — o dublê (fila VIVA) agora devolve a linha
+  // com mp_refund_id 'r3' já gravada -> zero inserções, zero RPC nova.
+  const req2 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta2 = await handler(req2, { supabase, fetchImpl });
+  assertEquals(resposta2.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});
+
+Deno.test("W4 - chargeback: 'in_process' cria linha 'sistema' em_processamento (reserva, sem RPC); 'settled' com essa linha -> RPC concluir_estorno (soma)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+    updatesOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
+
+  const corpoInProcess = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "charged_back",
+    status_detail: "in_process",
+    total_amount: "100.00",
+  };
+  const req1 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resp1 = await handler(req1, { supabase, fetchImpl: fetchConsulta(200, corpoInProcess) });
+  assertEquals(resp1.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.insertsOrderRefunds[0].status, "em_processamento");
+  assertEquals(registro.insertsOrderRefunds[0].mp_status, "charged_back");
+  assertEquals(registro.insertsOrderRefunds[0].mp_status_detail, "in_process");
+  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, null);
+  // ANTES-DE-CRESCER-2 (laudo Opus rodada 2): o `amount` da linha 'sistema'
+  // nunca era asserido — rota `order`, `total_amount: "100.00"` -> 100.
+  assertEquals(registro.insertsOrderRefunds[0].amount, 100);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+
+  // Segunda notificação (in_process de novo, mesma disputa): dedupe — a
+  // linha já existe, nada é inserido de novo.
+  const req1b = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  await handler(req1b, { supabase, fetchImpl: fetchConsulta(200, corpoInProcess) });
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+
+  // O MP decide a disputa: settled — a linha em_processamento existe ->
+  // concluir_estorno (soma; o dinheiro saiu).
+  const corpoSettled = { ...corpoInProcess, status_detail: "settled" };
+  const req2 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resp2 = await handler(req2, { supabase, fetchImpl: fetchConsulta(200, corpoSettled) });
+  assertEquals(resp2.status, 200);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_status, "charged_back");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_status_detail, "settled");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, null);
+});
+
+Deno.test("W4b - chargeback: 'reimbursed' com a linha em_processamento -> UPDATE 'recusado' condicional (.in(['em_processamento'])), sem RPC, nunca soma", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+    updatesOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
+
+  const corpoInProcess = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "charged_back",
+    status_detail: "in_process",
+    total_amount: "100.00",
+  };
+  const req1 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  await handler(req1, { supabase, fetchImpl: fetchConsulta(200, corpoInProcess) });
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  // ANTES-DE-CRESCER-2: amount da linha 'sistema' nasce com o valor pago.
+  assertEquals(registro.insertsOrderRefunds[0].amount, 100);
+
+  // O MP decide a favor da loja: reimbursed — recusa condicional, nunca soma.
+  const corpoReimbursed = { ...corpoInProcess, status_detail: "reimbursed" };
+  const req2 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resp2 = await handler(req2, { supabase, fetchImpl: fetchConsulta(200, corpoReimbursed) });
+  assertEquals(resp2.status, 200);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.updatesOrderRefunds.length, 1);
+  assertEquals(registro.updatesOrderRefunds[0].valores.status, "recusado");
+  assertEquals(registro.updatesOrderRefunds[0].valores.mp_status_detail, "reimbursed");
+  // O UPDATE terminal é SEMPRE condicional — o teste lê os filtros do dublê
+  // (Restrições globais do plano).
+  assertEquals(registro.updatesOrderRefunds[0].statusFiltro, ["em_processamento"]);
+});
+
+Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada inserido, RPC não chamada de novo, valor_estornado do dublê NÃO muda", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: "123456789",
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "cancelled",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-5",
+      order_id: UUID_PEDIDO,
+      amount: 100,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 1,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const fetchImpl = fetchConsulta(200, {
+    id: 999,
+    status: "refunded",
+    status_detail: "refunded",
+    external_reference: UUID_PEDIDO,
+    transaction_amount_refunded: 100,
+    refunds: [{ id: "r1", amount: 100, status: "approved" }],
+  });
+
+  // 1a passagem: conclui, igual ao W1.
+  const req1 = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  await handler(req1, { supabase, fetchImpl });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  const valorApos1a = (registro as any).valorEstornadoAcumulado;
+  assertEquals(valorApos1a, 100);
+
+  // 2a passagem: MESMA notificação — a linha já está 'concluido' com
+  // mp_refund_id 'r1' (fila viva do dublê), então ela sai de `pendentes` e a
+  // RPC não é chamada de novo (P13: idempotente por contrato) — nada é
+  // inserido, e o valor_estornado acumulado NÃO muda.
+  const req2 = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  await handler(req2, { supabase, fetchImpl });
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals((registro as any).valorEstornadoAcumulado, valorApos1a);
+});
+
+Deno.test("W6 - linha 'sistema' concluida com concluido_em NULO (crash entre INSERT e RPC) -> o passo chama concluir_estorno para ela ANTES de tudo", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-crash",
+      order_id: UUID_PEDIDO,
+      amount: 40,
+      status: "concluido",
+      solicitado_por: "sistema",
+      mp_refund_id: "r-recuperar",
+      mp_status: "refunded",
+      mp_status_detail: "refunded",
+      tentativas: 0,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r-recuperar", amount: "40.00", status: "processed" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-crash");
+  // A recuperação passa SÓ o id — os campos do MP já estão gravados na
+  // linha (o COALESCE da RPC real os preserva).
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, undefined);
+  // 'r-recuperar' já está em `reivindicados` (linha-crash já o tinha) — não
+  // vira uma SEGUNDA inserção de "estorno fora do app".
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
+Deno.test("W7 - order com refund 'in_process' (não 'processed') e linha em_processamento -> nada concluído, nada inserido, 200", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-7",
+      order_id: UUID_PEDIDO,
+      amount: 100,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 1,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r7", amount: "100.00", status: "in_process" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
+Deno.test("W8 - estorno externo maior que o disponível (pedido já totalmente estornado) -> a GUARDA impede o insert ANTES da RPC", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 100,
+    payment_status: "estornado",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [],
+    // Seguro: SE a guarda faltasse (mutação m2) e o insert/RPC rodassem
+    // mesmo assim, o dublê simula a recusa nomeada da RPC real.
+    erroConcluirEstorno: () => ({
+      message: "estorno_acima_do_total: a linha somaria 100 e o acumulado passaria do total 100.",
+    }),
+  });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r8", amount: "100.00", status: "processed" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  // A guarda (disponivel <= 0) barra ANTES do insert — mutação m2 (apagar o
+  // clamp/guarda) faz insertsOrderRefunds subir para 1 e chama a RPC (que
+  // recusaria pelo erro nomeado configurado acima).
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+});
+
+Deno.test("W8b - RPC concluir_estorno recusa com 'estorno_acima_do_total' mesmo com a guarda passando -> console.error e SEGUE (200), nunca 500", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [],
+    erroConcluirEstorno: () => ({
+      message: "estorno_acima_do_total: recusa de segurança do banco (item 6 do brief).",
+    }),
+  });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r8b", amount: "100.00", status: "processed" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  // A guarda deixou passar (disponivel = 100), o INSERT aconteceu, e a RPC
+  // recusou pelo nome — o handler TOLERA (nunca lança 500): reenviar não
+  // muda a conta.
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});
+
+Deno.test("W9 - dois refunds processed de 10 (ra, rb) e duas linhas pendentes de 10 -> cada linha recebe um id DIFERENTE (mutação m1: apagar o filtro de reivindicados derruba)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 20,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-9a",
+      order_id: UUID_PEDIDO,
+      amount: 10,
+      status: "solicitado",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 0,
+      concluido_em: null,
+      created_at: "2026-09-01T00:00:00.000Z",
+    },
+    {
+      id: "linha-9b",
+      order_id: UUID_PEDIDO,
+      amount: 10,
+      status: "solicitado",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 0,
+      concluido_em: null,
+      created_at: "2026-09-02T00:00:00.000Z",
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [
+        { id: "ra", amount: "10.00", status: "processed" },
+        { id: "rb", amount: "10.00", status: "processed" },
+      ],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasConcluirEstorno.length, 2);
+  const idsRecebidos = registro.chamadasConcluirEstorno.map((c: any) => c.args.p_mp_refund_id).sort();
+  assertEquals(idsRecebidos, ["ra", "rb"]);
+  const porLinha = new Map(
+    registro.chamadasConcluirEstorno.map((c: any) => [c.args.p_refund_id, c.args.p_mp_refund_id]),
+  );
+  assertEquals(porLinha.get("linha-9a") !== porLinha.get("linha-9b"), true);
+});
+
+// =============================================================================
+// PROBE-A/B — BLOQUEIA-1 do laudo Opus rodada 2 (PR #449, 08/09/2026):
+// `somaEmCurso(linhasBanco)` percorre as linhas como lidas no INÍCIO do passo
+// — a linha que ESTE MESMO LOTE acabou de concluir (RPC bem-sucedida) ainda
+// aparece como 'solicitado'/'em_processamento' nesse array, e o valor dela é
+// descontado DUAS vezes do `disponivel` do estorno externo: uma via
+// `pedido.valor_estornado` (acumulado em memória, I-B), outra via
+// `somaEmCurso`. Só ficam VERMELHOS depois do conserto do BLOQUEIA-2 (dublê
+// devolve cópias rasas — sem isso a mutação de `concluir_estorno` no array
+// da fila viva também mutava, por referência, o array `linhasBanco` do
+// handler, escondendo o defeito).
+// =============================================================================
+
+Deno.test("PROBE-A (BLOQUEIA-1) - pedido 100, linha pendente 40 concluída por r1, externo rext 60 -> linha 'sistema' de 60 (não 20: somaEmCurso não pode recontar a linha que este lote acabou de concluir)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-proba",
+      order_id: UUID_PEDIDO,
+      amount: 40,
+      status: "solicitado",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 0,
+      concluido_em: null,
+      created_at: "2026-09-01T00:00:00.000Z",
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [
+        { id: "r1", amount: "40.00", status: "processed" },
+        { id: "rext", amount: "60.00", status: "processed" },
+      ],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  // A linha pendente conclui com r1 (valor exato: 40).
+  assertEquals(registro.chamadasConcluirEstorno.length, 2);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-proba");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r1");
+  // rext (externo, não reivindicado) tem de registrar os R$60 INTEIROS — com
+  // o bug, `disponivel` = 100 − 40(memória) − 40(linha-proba recontada por
+  // somaEmCurso) = 20, e o insert sairia com amount 20.
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "rext");
+  assertEquals(registro.insertsOrderRefunds[0].amount, 60);
+});
+
+Deno.test("PROBE-B (BLOQUEIA-1) - pedido 100, linha em_processamento 50 concluída por r1, externo rext 50 -> linha 'sistema' de 50 inserida, valor_estornado final 100", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-probb",
+      order_id: UUID_PEDIDO,
+      amount: 50,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 1,
+      concluido_em: null,
+      created_at: "2026-09-01T00:00:00.000Z",
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [
+        { id: "r1", amount: "50.00", status: "processed" },
+        { id: "rext", amount: "50.00", status: "processed" },
+      ],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasConcluirEstorno.length, 2);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-probb");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r1");
+  // Com o bug, disponivel = 100 − 50(memória) − 50(linha-probb recontada) = 0
+  // -> a GUARDA barra e rext NUNCA é inserido: o cliente ficaria com só R$50
+  // no ledger, apesar de o MP ter devolvido os R$100 inteiros.
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "rext");
+  assertEquals(registro.insertsOrderRefunds[0].amount, 50);
+  assertEquals((registro as any).valorEstornadoAcumulado, 100);
+});
+
+// =============================================================================
+// MUT-X/MUT-Y — mutações do laudo Opus (rodada 2, PR #449) que sobreviviam
+// 61/61: MUT-X apaga a linha `pedido.valor_estornado = ...` (I-B); MUT-Y
+// apaga o filtro `l.solicitado_por !== "sistema"` do laço de pendentes.
+// =============================================================================
+
+Deno.test("MUT-X (I-B) - pedido 100, linha 40 concluída por r1, externo rext 80 -> disponivel usa o valor_estornado ACUMULADO EM MEMÓRIA (60), não o valor do banco antes do lote (apagar 'pedido.valor_estornado = ...' derruba: disponivel viraria 100 e o insert sairia com 80)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-mutx",
+      order_id: UUID_PEDIDO,
+      amount: 40,
+      status: "solicitado",
+      solicitado_por: "cliente",
+      mp_refund_id: null,
+      tentativas: 0,
+      concluido_em: null,
+      created_at: "2026-09-01T00:00:00.000Z",
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [
+        { id: "r1", amount: "40.00", status: "processed" },
+        { id: "rext", amount: "80.00", status: "processed" },
+      ],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "rext");
+  // disponivel correto = 100 − 40(memória) − 0(somaEmCurso, linha já
+  // concluída pelo BLOQUEIA-1) = 60; rext (80) clampa em 60.
+  assertEquals(registro.insertsOrderRefunds[0].amount, 60);
+});
+
+Deno.test("MUT-Y (dinheiro já saiu) - linha 'sistema' em_processamento de chargeback NÃO entra no laço de pendentes nem é concluída por um refund 'refunded' real do MESMO valor (apagar 'l.solicitado_por !== sistema' derruba)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "estornado",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-chargeback",
+      order_id: UUID_PEDIDO,
+      amount: 100,
+      status: "em_processamento",
+      solicitado_por: "sistema",
+      mp_refund_id: null,
+      mp_status: "charged_back",
+      mp_status_detail: "in_process",
+      tentativas: 0,
+      concluido_em: null,
+      created_at: "2026-09-01T00:00:00.000Z",
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  // Um evento DIFERENTE (estorno real, não chargeback) traz um refund
+  // 'processed' do MESMO valor da linha de chargeback (100) — ela não pode
+  // emprestar o id: quem resolve uma disputa é settled/reimbursed, nunca um
+  // refund comum.
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r-real", amount: "100.00", status: "processed" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  // A linha 'sistema' fica de fora do laço de pendentes -> nenhuma conclusão
+  // pelo laço; r-real cai no passo do estorno externo, mas a linha de
+  // chargeback ainda reserva o saldo inteiro (somaEmCurso não filtra por
+  // solicitado_por) -> disponivel = 0 -> nenhum insert, nenhuma RPC.
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
+// =============================================================================
+// PROBE-E — ANTES-DE-CRESCER-1 do laudo Opus rodada 2 (PR #449): valor
+// ilegível do MP (refund sem `amount`, `:606`) é "não sei" — console.error +
+// PULAR (nenhum insert, nenhuma RPC), NUNCA `0` (que violaria
+// `CHECK (amount > 0)` no banco -> 500 em laço -> o MP reenvia para sempre).
+// =============================================================================
+
+Deno.test("PROBE-E (ANTES-DE-CRESCER-1) - refund 'processed' sem 'amount' legível -> zero inserts, zero RPC de estorno, 200, e o resto do handler roda (confirmar_pagamento do 'refunded' acontece)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [],
+    rpcResultado: "estornado",
+  });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      // sem `amount` — refund.amount é undefined -> Number(undefined) = NaN.
+      refunds: [{ id: "r-sem-valor", status: "processed" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  // O resto do handler roda: confirmar_pagamento é chamada com o status do
+  // 'refunded' (a falha ao registrar o desfecho do estorno NUNCA bloqueia o
+  // resto do fluxo).
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_status, "estornado");
+});
+
+// =============================================================================
+// ANTES-DE-CRESCER-2 (laudo Opus rodada 2): chargeback pela rota `payment`
+// nunca tinha teste — só a rota `order` (W4/W4b, acima) provava o valor.
+// =============================================================================
+
+Deno.test("ANTES-DE-CRESCER-2 - chargeback pela rota 'payment' (transaction_amount: 100) -> linha 'sistema' em_processamento nasce com amount 100 (mesmo clamp do item A4)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: "123456789",
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: 999,
+    status: "charged_back",
+    status_detail: "in_process",
+    external_reference: UUID_PEDIDO,
+    transaction_amount: 100,
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.insertsOrderRefunds[0].status, "em_processamento");
+  assertEquals(registro.insertsOrderRefunds[0].mp_status, "charged_back");
+  assertEquals(registro.insertsOrderRefunds[0].mp_status_detail, "in_process");
+  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, null);
+  assertEquals(registro.insertsOrderRefunds[0].amount, 100);
+});
+
+// =============================================================================
+// Rodada 3 (laudo Opus 08/09, rodada 2) — `Number(null)` e `Number("")` são
+// 0, NÃO NaN: `!Number.isFinite(v)` sozinho passa um valor explicitamente
+// nulo ou vazio como 0. Só `|| v <= 0` barra — sem ele, `amount: 0`/
+// `transaction_amount: 0` violaria `CHECK (amount > 0)` no banco (500 em
+// laço, o MP reenvia para sempre). PROBE-E (acima) já cobre `amount`
+// AUSENTE (undefined -> NaN, já pego só por `Number.isFinite`); estas cobrem
+// o valor PRESENTE mas nulo/vazio, que só o `<= 0` pega.
+// =============================================================================
+
+Deno.test("PROBE-E2 (rodada 3) - refund 'processed' com amount: null -> zero inserts, zero RPC de estorno, 200, e o resto do handler roda", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [],
+    rpcResultado: "estornado",
+  });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      // amount: null -> Number(null) é 0 (finito!), não NaN.
+      refunds: [{ id: "r-nulo", amount: null, status: "processed" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  // O resto do handler roda mesmo com o refund pulado.
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_status, "estornado");
+});
+
+Deno.test("PROBE-E3 (rodada 3) - refund 'processed' com amount: '' -> zero inserts (Number('') também é 0, não NaN)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [],
+    rpcResultado: "estornado",
+  });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r-vazio", amount: "", status: "processed" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
+Deno.test("PROBE-F (rodada 3) - chargeback pela rota 'payment', 'in_process', transaction_amount: null -> zero inserts (guarda !valorPagoValido, :689)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: "123456789",
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: 999,
+    status: "charged_back",
+    status_detail: "in_process",
+    external_reference: UUID_PEDIDO,
+    transaction_amount: null,
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
+// =============================================================================
+// MUT-N2 (laudo Opus rodada 2, PR #449) — o filtro de status do refactor
+// "uma passagem" (o `continue` que descarta refund não-terminal, `:532`) não
+// tinha teste que discriminasse: apagá-lo sobrevivia 67/67 porque, sem linha
+// pendente para zerar `disponivel`, W7 (que também mata outros mutantes)
+// fica verde por outro motivo. Este cenário isola o `continue`: SEM linha
+// pendente nenhuma, um refund `in_process` (dinheiro que NÃO voltou) não
+// pode virar insert nenhum.
+// =============================================================================
+
+Deno.test("MUT-N2 (rodada 3) - pedido SEM linha pendente, refund 'in_process' de 50 -> zero inserts (dinheiro que não voltou não pode ser gravado como devolvido)", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [],
+    rpcResultado: "estornado",
+  });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      // 'in_process' NÃO é terminal (statusTerminal da rota order é
+      // 'processed') — o `continue` de :532 tem que descartar este refund
+      // ANTES de ele chegar em `refundsConcluidos`.
+      refunds: [{ id: "r-in-process", amount: "50.00", status: "in_process" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
 });
