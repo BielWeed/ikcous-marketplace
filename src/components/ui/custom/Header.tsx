@@ -273,7 +273,8 @@ export const Header = memo(function Header({
         <div className="z-[70] flex shrink-0 items-center justify-end gap-1.5 md:min-w-[100px]">
           <AnimatePresence mode="wait">
             {activeToast ? (
-              <motion.div
+              <motion.button
+                type="button"
                 layout
                 key={activeToast.id || "header-dynamic-island-toast"}
                 initial={{ opacity: 0, scale: 0.8, width: 36 }}
@@ -288,6 +289,15 @@ export const Header = memo(function Header({
                 onClick={() => {
                   haptic.light();
                   setActiveToast(null);
+                }}
+                // Laudo de acessibilidade 05/09 (onda 3, item B9): era um
+                // motion.div com onClick — invisível para quem navega por
+                // teclado. Virou <button> de verdade: Tab alcança, Enter
+                // fecha nativo; falta só o Esc.
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setActiveToast(null);
+                  }
                 }}
                 className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"
               >
@@ -321,7 +331,7 @@ export const Header = memo(function Header({
                 >
                   ✨
                 </motion.span>
-              </motion.div>
+              </motion.button>
             ) : (
               <motion.div
                 layout

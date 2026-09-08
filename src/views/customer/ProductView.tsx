@@ -37,6 +37,25 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
+// Revisado na rodada 2 (Codex, 08/09, item 3): os botões Detalhes/
+// Avaliações/Perguntas não são abas de verdade — as três seções ficam
+// SEMPRE visíveis (rolagem de página), sem painel escondido, sem roving
+// tabIndex, sem setas. O role de aba prometia um widget que não existe.
+// Voltaram a ser <button> normais dentro de um <nav>, com aria-current no
+// ativo e aria-controls ainda ligado à seção correspondente.
+// `switch`, não lookup em objeto por chave dinâmica (`obj[tabId]` dispara o
+// security/detect-object-injection do eslint — subiria a catraca do lint).
+function painelDaAba(tabId: "description" | "reviews" | "questions"): string {
+  switch (tabId) {
+    case "description":
+      return "details-section";
+    case "reviews":
+      return "reviews-section";
+    case "questions":
+      return "chat-section";
+  }
+}
+
 interface CompactVariantDropdownProps {
   name: string;
   values: ProductVariant[];
@@ -1144,7 +1163,10 @@ export const ProductView = React.memo(function ProductView({
               : "bg-transparent border-transparent",
           )}
         >
-          <div className="mx-auto flex w-full max-w-[290px] items-center gap-0.5 rounded-full border border-zinc-200/40 bg-zinc-100/60 p-0.5">
+          <nav
+            aria-label="Seções do produto"
+            className="mx-auto flex w-full max-w-[290px] items-center gap-0.5 rounded-full border border-zinc-200/40 bg-zinc-100/60 p-0.5"
+          >
             {[
               { id: "description", label: "Detalhes" },
               // ADMIN-090 (#101): com o interruptor desligado, a aba
@@ -1155,9 +1177,12 @@ export const ProductView = React.memo(function ProductView({
               { id: "questions", label: "Perguntas" },
             ].map((tab) => {
               const isActive = activeTab === tab.id;
+              const tabId = tab.id as "description" | "reviews" | "questions";
               return (
                 <button
                   key={tab.id}
+                  aria-current={isActive ? "true" : undefined}
+                  aria-controls={painelDaAba(tabId)}
                   onClick={() => handleTabClick(tab.id as any)}
                   // Laudo 05/09, M3: `outline-none` apagava o anel de foco
                   // sem repor — padrão do BottomNav (onda 1 do laudo 03/09).
@@ -1187,7 +1212,7 @@ export const ProductView = React.memo(function ProductView({
                 </button>
               );
             })}
-          </div>
+          </nav>
         </div>
 
         {/* Sequential Sections */}

@@ -255,7 +255,11 @@ export function SearchBar({
           onKeyDown={handleKeyDown}
           aria-label="Buscar produtos"
           title="Buscar produtos"
-          className="relative z-20 h-full rounded-full border-transparent bg-transparent pl-12 pr-10 text-sm font-bold tracking-tight text-zinc-900 shadow-none placeholder:font-medium placeholder:text-zinc-500 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          // Laudo 05/09 (onda 3, item invisível): as variantes do anel só
+          // para foco visível apagavam a marcação sem repor — mesmo padrão
+          // do BottomNav/Header (PR #437, M3): anel visível só para quem
+          // navega por teclado.
+          className="relative z-20 h-full rounded-full border-transparent bg-transparent pl-12 pr-10 text-sm font-bold tracking-tight text-zinc-900 shadow-none placeholder:font-medium placeholder:text-zinc-500 focus:outline-none focus:ring-0 focus-visible:ring-2 focus-visible:ring-zinc-900/50"
           placeholder={placeholder}
           autoComplete="off"
         />
