@@ -384,10 +384,22 @@ export function CartView({
   );
   return (
     <div className="pb-customer-summary flex min-h-full flex-col bg-zinc-50/30 transition-all duration-300">
+      {/* Laudo de acessibilidade 05/09 (onda 3, item B1): o carrinho não
+          tinha NENHUM heading — leitor de tela sem título de página.
+          sr-only: zero pixel muda. Rodada 2 (Codex, 08/09, item 4): com
+          initialTab="orders" a tela visível é "Meus Pedidos", mas o h1
+          continuava dizendo "Carrinho" — agora acompanha a aba ativa. */}
+      <h1 className="sr-only">
+        {activeTab === "orders" ? "Meus Pedidos" : "Carrinho"}
+      </h1>
       {/* Tab Switcher Premium */}
       <div className="sticky top-[-2px] z-50 flex flex-col gap-2 border-b border-zinc-100 bg-white/80 px-4 py-2 backdrop-blur-md xs:gap-4 xs:px-6 xs:pb-2.5 xs:pt-3">
-        <div className="relative flex overflow-hidden rounded-2xl bg-zinc-100/50 p-1">
+        <div
+          className="relative flex overflow-hidden rounded-2xl bg-zinc-100/50 p-1"
+          role="tablist"
+        >
           <motion.div
+            aria-hidden="true"
             className="absolute inset-y-1 rounded-xl border border-zinc-200/50 bg-white shadow-sm"
             initial={false}
             animate={{
@@ -398,6 +410,10 @@ export function CartView({
           />
 
           <button
+            id="tab-cart"
+            role="tab"
+            aria-selected={activeTab === "cart"}
+            aria-controls="painel-cart"
             onClick={() => {
               haptic.light();
               setActiveTab("cart");
@@ -415,6 +431,10 @@ export function CartView({
           </button>
 
           <button
+            id="tab-orders"
+            role="tab"
+            aria-selected={activeTab === "orders"}
+            aria-controls="painel-orders"
             onClick={() => {
               haptic.light();
               setActiveTab("orders");
@@ -438,6 +458,9 @@ export function CartView({
           {activeTab === "cart" ? (
             <motion.div
               key="cart-content"
+              id="painel-cart"
+              role="tabpanel"
+              aria-labelledby="tab-cart"
               custom={tabDirection}
               variants={tabVariants}
               initial="enter"
@@ -737,6 +760,9 @@ export function CartView({
           ) : (
             <motion.div
               key="orders-content"
+              id="painel-orders"
+              role="tabpanel"
+              aria-labelledby="tab-orders"
               custom={tabDirection}
               variants={tabVariants}
               initial="enter"

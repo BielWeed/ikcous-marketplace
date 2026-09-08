@@ -1,90 +1,50 @@
+// @vitest-environment jsdom
+//
+// Rodada 2 do B6 (laudo Opus do PR #455, 08/09): o teste textual em
+// acess-b6-skip-link-contrato.test.tsx prova a MARCAÇÃO (ordem no fonte,
+// atributos do <main>), mas não prova o COMPORTAMENTO — nem que o link é de
+// fato o primeiro elemento focável do DOCUMENTO renderizado, nem que
+// ativá-lo não navega. O defeito do laudo era exatamente isso: o
+// `href="#conteudo"` fazia o clique mudar `location.hash`, disparar
+// `hashchange`/`popstate` e o app tratava isso como "Voltar"
+// (`backOverrideRef` no checkout jogava o cliente com o QR PIX na tela para
+// a home; `isAdminDirtyRef` abria "Descartar e Sair" no admin com formulário
+// sujo). Nenhum teste textual pegaria isso — só renderizar o App de verdade
+// e medir o efeito do clique prova.
+//
+// Setup copiado de barra-de-rota-fica-montada-para-o-exit.test.tsx (mesmo
+// vizinho que já renderiza o App de verdade). O mock de Header devolve
+// `null` — para o caso 1 (primeiro focável) isso é aceitável: o skip link
+// vem ANTES do Header de qualquer jeito na árvore (App.tsx:2624, Header só
+// entra em 2659), então um Header real com campo de busca focável não
+// mudaria qual elemento é o PRIMEIRO. O caso 2 (clique não navega) nem
+// depende do Header.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-// @vitest-environment jsdom
-/**
- * Trocar de produto pela vitrine "você também pode gostar" tem de abrir a tela
- * LIMPA.
- *
- * O DEFEITO QUE ESTE TESTE PRENDE: em `src/App.tsx`, no `case "product-detail"`
- * de `renderCustomerSecondaryView`, o `<PreloadedOrLazy component={ProductView}>`
- * era montado SEM `key`. Para o React, o mesmo tipo de componente na mesma
- * posição é a MESMA instância — trocar só a prop `product` re-renderiza, não
- * remonta. Todo `useState` interno do ProductView sobrevive: a variação
- * escolhida, a quantidade, o índice da foto. Quem clicava num produto
- * recomendado abria a tela do novo produto com a escolha do anterior ainda
- * marcada — e, se apertasse comprar, o item ia para o carrinho com o NOME DE
- * VARIAÇÃO ERRADO (`ProductView.tsx:591-602` monta `variantNames` a partir do
- * `selectedVariants` que ficou).
- *
- * POR QUE O TESTE MONTA O `<App />` DE VERDADE, E NÃO UM ARREMEDO:
- * um teste que renderizasse `<PreloadedOrLazy>` com uma `key` escrita à mão
- * provaria a reconciliação do React, que não é o que está em dúvida. O que
- * precisa ser provado é que O APP passa a `key`. Por isso a montagem é a real —
- * entrada por URL em `/product-detail?id=<A>`, clique no mesmo `onProductClick`
- * que a vitrine de recomendações usa — e o que é dublê é só a periferia
- * (rede, contextos, telas vizinhas).
- *
- * DUAS ARMADILHAS DESTA MÁQUINA, JÁ CONTORNADAS ABAIXO:
- *  1. o Node 25 expõe um `globalThis.localStorage` experimental SEM `.clear` e
- *     SEM `.key`, que vence o do jsdom mesmo com o docblock acima. Daí o dublê
- *     de `Map` em `vi.stubGlobal` — o mesmo de `auth-admin-check.test.tsx`.
- *  2. o dublê do `framer-motion` guarda os componentes por tag num `Map`. Se
- *     `motion.div` devolvesse uma função NOVA a cada acesso, o React veria um
- *     tipo novo a cada render e remontaria a árvore inteira sozinho — o teste
- *     ficaria verde com ou sem a correção, que é o pior desfecho possível.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// `vi.hoisted` porque as fábricas de `vi.mock` sobem para o topo do arquivo e
-// não enxergam variáveis normais de módulo.
-const ALVO = vi.hoisted(() => ({
-  idA: "produto-A-9f2c41",
-  idB: "produto-B-7d4e08",
-  // Valores que não podem coincidir por acaso: se a asserção final encontrar
-  // este texto, ele só pode ter vindo da tela do produto A.
-  varianteEscolhidaNoA: "Cor: VERDE-ABACATE-88 / Tamanho: GG",
-  varianteZerada: "NENHUMA-VARIACAO-ESCOLHIDA",
-}));
-
-// --- A tela sob observação -------------------------------------------------
-// Dublê enxuto do ProductView: guarda um estado interno próprio (como o
-// `selectedVariants` real guarda) e oferece o mesmo `onProductClick` que a
-// faixa "você também pode gostar" chama.
-vi.mock("@/views/customer/ProductView", async () => {
-  const React = await import("react");
-  function ProductView({
-    product,
-    onProductClick,
-  }: {
-    readonly product: { id: string };
-    readonly onProductClick: (id: string) => void;
-  }) {
-    const [variante, setVariante] = React.useState(ALVO.varianteZerada);
-    return (
-      <div data-testid="tela-do-produto">
-        <span data-testid="id-do-produto">{product.id}</span>
-        <span data-testid="variante-escolhida">{variante}</span>
-        <button
-          type="button"
-          data-testid="escolher-variante"
-          onClick={() => setVariante(ALVO.varianteEscolhidaNoA)}
-        >
-          escolher variação
-        </button>
-        <button
-          type="button"
-          data-testid="abrir-o-outro-produto"
-          onClick={() => onProductClick(ALVO.idB)}
-        >
-          você também pode gostar
-        </button>
-      </div>
-    );
-  }
-  return { ProductView };
+const CONTROLE = vi.hoisted(() => {
+  let liberar: (() => void) | null = null;
+  const prefetchPromise = new Promise<void>((resolve) => {
+    liberar = resolve;
+  });
+  return {
+    prefetchPromise,
+    liberarPrefetch: () => liberar?.(),
+  };
 });
 
-// --- Periferia: tudo que não é o comportamento sob teste --------------------
+vi.mock("@/components/layouts/AppMotionFallbacks", async (importOriginal) => {
+  const real =
+    await importOriginal<
+      typeof import("@/components/layouts/AppMotionFallbacks")
+    >();
+  function RouteLoadingProgress({ active }: { readonly active: boolean }) {
+    return <div data-testid="barra-de-rota" data-active={String(active)} />;
+  }
+  return { ...real, RouteLoadingProgress };
+});
+
 vi.mock("framer-motion", async () => {
   const React = await import("react");
   const PROPS_DE_ANIMACAO = new Set([
@@ -109,9 +69,6 @@ vi.mock("framer-motion", async () => {
   ]);
   const criar = (tag: string) =>
     function DubleDeMotion({ children, ...resto }: Record<string, unknown>) {
-      // `Object.fromEntries` e não `limpo[chave] = resto[chave]`: indexar por
-      // variável dispara `security/detect-object-injection`, e a catraca de
-      // lint deste projeto reprova qualquer aviso novo.
       const limpo = Object.fromEntries(
         Object.entries(resto).filter(
           ([chave]) => !PROPS_DE_ANIMACAO.has(chave),
@@ -119,7 +76,6 @@ vi.mock("framer-motion", async () => {
       );
       return React.createElement(tag, limpo, children as React.ReactNode);
     };
-  // O cache é o que mantém o TIPO estável entre renders. Ver o cabeçalho.
   const cache = new Map<string, unknown>();
   const motion = new Proxy({} as Record<string, unknown>, {
     get: (_alvo, tag) => {
@@ -141,7 +97,30 @@ vi.mock("framer-motion", async () => {
 vi.mock("@/views/customer/HomeView", async () => {
   const React = await import("react");
   return {
-    HomeView: () => React.createElement("div", { "data-testid": "home" }),
+    HomeView: ({
+      onNavigate,
+    }: {
+      readonly onNavigate: (view: string) => void;
+    }) =>
+      React.createElement(
+        "div",
+        { "data-testid": "home" },
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            "data-testid": "ir-para-o-carrinho",
+            onClick: () => onNavigate("cart"),
+          },
+          "ir para o carrinho",
+        ),
+      ),
+  };
+});
+vi.mock("@/views/customer/CartView", async () => {
+  const React = await import("react");
+  return {
+    CartView: () => React.createElement("div", { "data-testid": "carrinho" }),
   };
 });
 
@@ -171,8 +150,6 @@ vi.mock("sonner", () => ({
   }),
 }));
 
-// Passa-adiante em vez do de verdade: se algo quebrar dentro da árvore, o teste
-// tem de morrer alto, não virar uma tela de erro silenciosa.
 vi.mock("@/components/ui/custom/LocalErrorBoundary", () => ({
   LocalErrorBoundary: ({ children }: { readonly children?: unknown }) =>
     children as never,
@@ -225,7 +202,7 @@ vi.mock("@/hooks/useAuth", () => ({
 }));
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
-    products: [{ id: ALVO.idA }, { id: ALVO.idB }],
+    products: [],
     loading: false,
   }),
 }));
@@ -243,7 +220,7 @@ vi.mock("@/hooks/usePrefetchOnHover", () => ({
   usePrefetchOnHover: () => ({
     prefetchView: () => {},
     prefetchAll: () => {},
-    prefetchViewPromise: () => Promise.resolve(),
+    prefetchViewPromise: () => CONTROLE.prefetchPromise,
   }),
 }));
 vi.mock("@/hooks/useNetworkAdaptive", () => ({
@@ -289,7 +266,7 @@ vi.mock("@/lib/supabase", () => {
 
 import App from "@/App";
 
-// --- Buracos do jsdom ------------------------------------------------------
+// --- Buracos do jsdom -------------------------------------------------
 class ObservadorDeInterseccao {
   observe() {}
   unobserve() {}
@@ -312,8 +289,6 @@ function dubleDeArmazem() {
     clear: () => {
       dados.clear();
     },
-    // `.at(i)` e não `[i]`: mesmo motivo do `Object.fromEntries` acima — é o
-    // idioma que `auth-admin-check.test.tsx` já usa neste mesmo dublê.
     key: (i: number) => Array.from(dados.keys()).at(i) ?? null,
     get length() {
       return dados.size;
@@ -321,14 +296,22 @@ function dubleDeArmazem() {
   };
 }
 
-describe("trocar de produto pela vitrine de recomendados", () => {
+// Todos os focáveis do documento, em ordem do DOM (mesma heurística que um
+// leitor de tela/Tab usa para decidir o próximo parada).
+const SELETOR_FOCAVEL =
+  'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+function focaveis(): HTMLElement[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(SELETOR_FOCAVEL),
+  ).filter((el) => !(el as HTMLButtonElement).disabled);
+}
+
+describe("B6 rodada 2 — skip link: primeiro focável e clique não navega", () => {
   let raiz: Root | null = null;
   let container: HTMLDivElement | null = null;
 
   beforeEach(() => {
-    // O `localStorage` do Node 25 não tem `.clear` nem `.key` e vence o do
-    // jsdom. Sem este dublê o arquivo inteiro morre em
-    // `localStorage.clear is not a function`.
     vi.stubGlobal("localStorage", dubleDeArmazem());
     vi.stubGlobal("sessionStorage", dubleDeArmazem());
     vi.stubGlobal("IntersectionObserver", ObservadorDeInterseccao);
@@ -350,12 +333,7 @@ describe("trocar de produto pela vitrine de recomendados", () => {
     // @ts-expect-error — bandeira interna do React para o `act`
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-    // A pessoa chega direto na tela do produto A, como quem abre um link.
-    globalThis.history.replaceState(
-      { view: "product-detail", id: ALVO.idA },
-      "",
-      `/product-detail?id=${ALVO.idA}`,
-    );
+    globalThis.history.replaceState({ view: "home" }, "", "/");
 
     container = document.createElement("div");
     document.body.append(container);
@@ -373,10 +351,6 @@ describe("trocar de produto pela vitrine de recomendados", () => {
     vi.unstubAllGlobals();
   });
 
-  // Assentar inclui macrotask (setTimeout real, não fake): desde o F1
-  // (glm-perf-1paint-0309) a view secundária mora num shell lazy — o
-  // `import()` dinâmico dele atravessa I/O de verdade no vitest e microtask
-  // sozinha não espera ele resolver.
   const assentar = async (voltas = 10) => {
     for (let i = 0; i < voltas; i++) {
       await act(async () => {
@@ -386,41 +360,78 @@ describe("trocar de produto pela vitrine de recomendados", () => {
     }
   };
 
-  const ler = (marca: string) =>
-    container?.querySelector(`[data-testid="${marca}"]`)?.textContent ?? null;
-
-  const clicar = async (marca: string) => {
-    const botao = container?.querySelector<HTMLButtonElement>(
-      `[data-testid="${marca}"]`,
-    );
-    if (!botao) throw new Error(`botão "${marca}" não está na tela`);
-    await act(async () => {
-      botao.click();
-    });
-  };
-
-  it("abre o produto novo sem a variação escolhida no anterior", async () => {
+  it("o skip link é o primeiro focável de TODO o documento renderizado", async () => {
     await act(async () => {
       raiz?.render(<App />);
     });
     await assentar();
 
-    // Ponto de partida: produto A na tela, nada escolhido.
-    expect(ler("id-do-produto")).toBe(ALVO.idA);
-    expect(ler("variante-escolhida")).toBe(ALVO.varianteZerada);
+    const primeiro = focaveis()[0];
+    expect(primeiro, "nenhum elemento focável no documento").toBeDefined();
+    expect(primeiro?.textContent?.trim()).toBe("Pular para o conteúdo");
+  });
 
-    // A pessoa escolhe uma variação no produto A.
-    await clicar("escolher-variante");
-    expect(ler("variante-escolhida")).toBe(ALVO.varianteEscolhidaNoA);
-
-    // E então clica num produto da faixa "você também pode gostar".
-    await clicar("abrir-o-outro-produto");
+  it("ativar o skip link foca o <main> sem navegar nem disparar popstate/hashchange", async () => {
+    await act(async () => {
+      raiz?.render(<App />);
+    });
     await assentar();
 
-    // A tela agora é a do produto B...
-    expect(ler("id-do-produto")).toBe(ALVO.idB);
-    // ...e NADA do produto A pode ter atravessado. É esta linha que cai
-    // quando o `key` some do `case "product-detail"` em `src/App.tsx`.
-    expect(ler("variante-escolhida")).toBe(ALVO.varianteZerada);
+    const link = focaveis()[0] as HTMLAnchorElement;
+    expect(link.textContent?.trim()).toBe("Pular para o conteúdo");
+
+    const popstateSpy = vi.fn();
+    const hashchangeSpy = vi.fn();
+    window.addEventListener("popstate", popstateSpy);
+    window.addEventListener("hashchange", hashchangeSpy);
+
+    const hashAntes = window.location.hash;
+    const tamanhoAntes = window.history.length;
+
+    // Sondado à parte (script descartável, fora do repo): neste jsdom
+    // (v4.1.10 do vitest deste projeto) `elemento.click()` num <a
+    // href="#x"> SEM handler não muda location.hash nem dispara
+    // hashchange/popstate — jsdom não implementa a navegação nativa por
+    // fragmento em clique sintético. Por isso as três asserções abaixo
+    // (hash/popstate/history) NÃO são sensíveis, sozinhas, à mutação de
+    // remover o `e.preventDefault()`: ficam verdes com ou sem o bug do
+    // laudo Opus. A prova que REALMENTE derruba a mutação é o retorno de
+    // `dispatchEvent`: ele vem `false` quando o evento foi cancelado
+    // (`preventDefault()` chamado) e cancelável — é o mesmo sinal que o
+    // navegador usaria para decidir se segue com a ação padrão do link.
+    let cliqueNaoCancelado = true;
+    await act(async () => {
+      cliqueNaoCancelado = link.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+
+    window.removeEventListener("popstate", popstateSpy);
+    window.removeEventListener("hashchange", hashchangeSpy);
+
+    expect(
+      cliqueNaoCancelado,
+      "o clique não foi cancelado — falta o e.preventDefault() que impede a navegação padrão do link",
+    ).toBe(false);
+    expect(
+      document.activeElement,
+      'o foco não caiu no <main id="conteudo">',
+    ).toBe(document.getElementById("conteudo"));
+    // Defesa em profundidade: neste ambiente estas três já vinham
+    // inalteradas mesmo sem o preventDefault (ver comentário acima), mas
+    // documentam o resultado esperado caso o motor de teste algum dia passe
+    // a simular a navegação nativa por fragmento.
+    expect(
+      window.location.hash,
+      "a URL mudou — isso dispara popstate no app",
+    ).toBe(hashAntes);
+    expect(
+      popstateSpy,
+      "popstate disparou — o app trataria isso como Voltar",
+    ).not.toHaveBeenCalled();
+    expect(hashchangeSpy).not.toHaveBeenCalled();
+    expect(window.history.length, "uma entrada de histórico foi somada").toBe(
+      tamanhoAntes,
+    );
   });
 });
