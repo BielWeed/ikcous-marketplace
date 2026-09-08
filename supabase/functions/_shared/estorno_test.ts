@@ -15,11 +15,21 @@ import {
 
 /**
  * Suíte da Task 2 da frente "estorno pelo app" (plano
- * 20260907-plano-estorno-pelo-app.md): E1–E25 — E1–E20, um por afirmativa do
+ * 20260907-plano-estorno-pelo-app.md): E1–E31 — E1–E20, um por afirmativa do
  * plano; E21–E25 do conserto da reprovação Opus do PR #438 (laudo
  * 20260907-laudo-opus-pr438-t2-executor-do-estorno.md): fórmula acumulada,
  * credencial 401/403, "não sei" na confirmação, chave+corpo do POST e 2xx
- * desconhecido.
+ * desconhecido; E21 (rodada 2) e E26–E27 da alternativa B do I-A e do M-A
+ * (laudo 20260907-laudo-opus-pr438-t2-executor-do-estorno-rodada2.md): o
+ * caminho direto de `confirmarPorConsulta` (sem `codigo`) vira tentar_depois
+ * em vez de falhou, e `refundIdDaConsulta` desempata por `date_created` e
+ * nunca devolve o id do pagamento; E28–E31 do conserto do laudo do PR #439
+ * (07/09): `consultarTransacaoDaOrder` (PIX via Orders API) exportada e
+ * testada diretamente; E32–E34 do D1 do laudo rodada 2 do PR #440
+ * (BLOQUEIA-1, 08/09): `somarRefundsDaOrder` só soma refund `status`
+ * `"processed"`, `refundIdDaConsulta` prefere candidatos `"processed"` no
+ * desempate, e a forma array de `transactions` (defensiva) continua coberta
+ * por 1 teste.
  *
  * NENHUMA chamada real ao Mercado Pago acontece aqui: todo `fetch` é dublê
  * (rota por método+trecho de URL) e a consulta da transação da order é uma
@@ -491,7 +501,11 @@ Deno.test("E16 - Orders order_already_refunded -> consulta a order: soma cobre c
       corpo: {
         id: "ORD01ABCDEFOLUIMWQKDXYZ01",
         status: "refunded",
-        transactions: [{ refunds: [{ id: "REEMB1", amount: "100.00" }] }],
+        // Forma REAL da Orders API (D3): transactions é OBJETO, não lista.
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "REEMB1", amount: "100.00", status: "processed" }],
+        },
       },
     },
   ]);
@@ -521,7 +535,10 @@ Deno.test("E16 - Orders order_already_refunded -> consulta a order: soma cobre c
       corpo: {
         id: "ORD01ABCDEFOLUIMWQKDXYZ01",
         status: "refunded",
-        transactions: [{ refunds: [{ id: "REEMB1", amount: "30.00" }] }],
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "REEMB1", amount: "30.00", status: "processed" }],
+        },
       },
     },
   ]);
@@ -572,7 +589,10 @@ Deno.test("E18 - Orders idempotency_key_already_used -> consulta a order (o resu
       corpo: {
         id: "ORD01ABCDEFOLUIMWQKDXYZ01",
         status: "refunded",
-        transactions: [{ refunds: [{ id: "REEMB9", amount: "100.00" }] }],
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "REEMB9", amount: "100.00", status: "processed" }],
+        },
       },
     },
   ]);
@@ -672,11 +692,31 @@ Deno.test("E21 - confirmacao compara o ACUMULADO do MP com o ACUMULADO do ledger
       },
     },
   ]);
+  // Com pré-veredito (o POST voltou 4296: o MP AFIRMOU "já devolvido"),
+  // insuficiente é definitivo — falhou, com o marcador único do achado.
+  const comCodigo = await executarEstorno({
+    linha,
+    pedido,
+    token: TOKEN,
+    buscar: mpEm30.f,
+  });
+  assertEquals(comCodigo.tipo, "falhou");
   assertEquals(
-    (await executarEstorno({ linha, pedido, token: TOKEN, buscar: mpEm30.f }))
-      .tipo,
-    "falhou",
+    (comCodigo as { codigo: string }).codigo,
+    "confirmacao_insuficiente",
   );
+
+  // Alternativa B do I-A (laudo #438 rodada 2): o caminho DIRETO — sem
+  // pré-veredito, é o que a T4 usa para linha em_processamento — nunca
+  // conclui "falhou" por consistência eventual: vira tentar_depois, para o
+  // cron poder repetir o POST com a mesma chave (R3).
+  const semCodigo = await confirmarPorConsulta({
+    buscar: mpEm30.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(semCodigo.tipo, "tentar_depois");
 
   const mpEm50 = fetchDuble([
     post4296,
@@ -730,20 +770,34 @@ Deno.test("E21 - confirmacao compara o ACUMULADO do MP com o ACUMULADO do ledger
       corpo: {
         id: "ORD01ABCDEFOLUIMWQKDXYZ01",
         status: "refunded",
-        transactions: [{ refunds: [{ id: "REEMB1", amount: "30.00" }] }],
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "REEMB1", amount: "30.00", status: "processed" }],
+        },
       },
     },
   ]);
+  const ordersComCodigo = await executarEstorno({
+    linha,
+    pedido: pedidoCom30,
+    token: TOKEN,
+    buscar: orderEm30.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+  });
+  assertEquals(ordersComCodigo.tipo, "falhou");
   assertEquals(
-    (await executarEstorno({
-      linha,
-      pedido: pedidoCom30,
-      token: TOKEN,
-      buscar: orderEm30.f,
-      consultarTransacaoDaOrder: consultaTransacaoFalsa,
-    })).tipo,
-    "falhou",
+    (ordersComCodigo as { codigo: string }).codigo,
+    "confirmacao_insuficiente",
   );
+
+  // Mesma alternativa B, agora na Orders API: caminho direto -> tentar_depois.
+  const ordersSemCodigo = await confirmarPorConsulta({
+    buscar: orderEm30.f,
+    token: TOKEN,
+    linha,
+    pedido: pedidoCom30,
+  });
+  assertEquals(ordersSemCodigo.tipo, "tentar_depois");
 
   const orderEm50 = fetchDuble([
     postJaRefunded,
@@ -754,12 +808,13 @@ Deno.test("E21 - confirmacao compara o ACUMULADO do MP com o ACUMULADO do ledger
       corpo: {
         id: "ORD01ABCDEFOLUIMWQKDXYZ01",
         status: "refunded",
-        transactions: [{
-          refunds: [{ id: "REEMB1", amount: "30.00" }, {
-            id: "REEMB2",
-            amount: "20.00",
-          }],
-        }],
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [
+            { id: "REEMB1", amount: "30.00", status: "processed" },
+            { id: "REEMB2", amount: "20.00", status: "processed" },
+          ],
+        },
       },
     },
   ]);
@@ -985,6 +1040,138 @@ Deno.test("E25 - 2xx desconhecido vira tentar_depois nas duas APIs (M4)", async 
 });
 
 // ---------------------------------------------------------------------------
+// E26–E27 — M-A do laudo (PR #438 rodada 2): refundIdDaConsulta desempata
+// pelo date_created mais recente e nunca devolve o id do pagamento.
+// ---------------------------------------------------------------------------
+
+Deno.test("E26 - refundIdDaConsulta desempata dois refunds do MESMO valor pelo date_created mais RECENTE (M-A)", async () => {
+  const linha = linhaCom({ amount: 20 });
+  const pedido = pedidoPagoCom({ total: 100, valor_estornado: 0 });
+  // O mais recente vem PRIMEIRO na lista de propósito: um desempate por
+  // posição (e nao por data) devolveria o id errado aqui.
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 20,
+        refunds: [
+          { id: 222, amount: 20, date_created: "2026-09-05T00:00:00.000Z" },
+          { id: 111, amount: 20, date_created: "2026-09-01T00:00:00.000Z" },
+        ],
+      },
+    },
+  ]);
+  const concluido = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(concluido.tipo, "concluido");
+  assertEquals((concluido as { mp_refund_id: string | null }).mp_refund_id, "222");
+
+  // Orders: mesma conta pela soma de refunds[] da order.
+  const pedidoOrd = pedidoOrder({ total: 100, valor_estornado: 0 });
+  const mpOrders = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [
+            {
+              id: "REEMB_NOVO",
+              amount: "20.00",
+              status: "processed",
+              date_created: "2026-09-05T00:00:00.000Z",
+            },
+            {
+              id: "REEMB_VELHO",
+              amount: "20.00",
+              status: "processed",
+              date_created: "2026-09-01T00:00:00.000Z",
+            },
+          ],
+        },
+      },
+    },
+  ]);
+  const concluidaOrders = await confirmarPorConsulta({
+    buscar: mpOrders.f,
+    token: TOKEN,
+    linha,
+    pedido: pedidoOrd,
+  });
+  assertEquals(concluidaOrders.tipo, "concluido");
+  assertEquals(
+    (concluidaOrders as { mp_refund_id: string | null }).mp_refund_id,
+    "REEMB_NOVO",
+  );
+});
+
+Deno.test("E27 - sem refunds[] materializado, concluido grava mp_refund_id NULL — nunca o id do pagamento (M-A)", async () => {
+  const linha = linhaCom({ amount: 20 });
+  const pedido = pedidoPagoCom({ total: 100, valor_estornado: 0 });
+
+  // Payments: transaction_amount_refunded confirma o valor, mas refunds[]
+  // ainda não veio (consistência eventual do MP) — SEM o campo.
+  const semCampo = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: { id: 123456789, status: "approved", transaction_amount_refunded: 20 },
+    },
+  ]);
+  const concluidoSemCampo = await confirmarPorConsulta({
+    buscar: semCampo.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(concluidoSemCampo.tipo, "concluido");
+  assertEquals(
+    (concluidoSemCampo as { mp_refund_id: string | null }).mp_refund_id,
+    null,
+  );
+
+  // Payments: refunds[] presente mas VAZIO — mesmo desfecho, nunca o id do
+  // pagamento (123456789) no campo do refund.
+  const listaVazia = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 20,
+        refunds: [],
+      },
+    },
+  ]);
+  const concluidoListaVazia = await confirmarPorConsulta({
+    buscar: listaVazia.f,
+    token: TOKEN,
+    linha,
+    pedido,
+  });
+  assertEquals(concluidoListaVazia.tipo, "concluido");
+  assertEquals(
+    (concluidoListaVazia as { mp_refund_id: string | null }).mp_refund_id,
+    null,
+  );
+});
+
+// ---------------------------------------------------------------------------
 // E28–E31 — conserto do laudo do PR #439 (07/09): a edge estornar-pagamento
 // não passava `consultarTransacaoDaOrder` ao executor — todo estorno de PIX
 // (Orders API, único método vivo da loja) devolvia `tentar_depois` para
@@ -1064,5 +1251,194 @@ Deno.test("E31 - dois pagamentos aprovados sem discriminador -> null (nunca chut
   assertEquals(
     await consultarTransacaoDaOrder({ orderId: "ORD04DUPLICADO", token: TOKEN, buscar: f }),
     null,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// E32–E34 — D1 do laudo rodada 2 do PR #440 (BLOQUEIA-1): somarRefundsDaOrder
+// só soma refund com status terminal "processed"; refundIdDaConsulta prefere
+// candidatos "processed" no desempate.
+// ---------------------------------------------------------------------------
+
+Deno.test("E32 - somarRefundsDaOrder só soma refund status 'processed' — processing/rejected/ausente NÃO contam, e SEM nenhum processed vira tentar_depois (D1/BLOQUEIA-1)", async () => {
+  const pedido = pedidoOrder({ total: 30, valor_estornado: 0 });
+
+  // 1) Nenhum refund 'processed' — só 'processing', o exemplo oficial do MP
+  // no endpoint de refund — nunca pode virar concluido (o cenário exato do
+  // BLOQUEIA-1: cliente sem o dinheiro, app diz "devolvido").
+  const semProcessado = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "R1", amount: "30.00", status: "processing" }],
+        },
+      },
+    },
+  ]);
+  assertEquals(
+    (await confirmarPorConsulta({
+      buscar: semProcessado.f,
+      token: TOKEN,
+      linha: linhaCom({ amount: 30 }),
+      pedido,
+    })).tipo,
+    "tentar_depois",
+  );
+
+  // 2) Mistura: um refund 'processed' (15) e um 'rejected' (15) — só o
+  // processed conta (soma=15, não cobre os 30 pedidos); sem o filtro a soma
+  // bateria 30 e concluiria ERRADO.
+  const misto = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [
+            { id: "R2", amount: "15.00", status: "processed" },
+            { id: "R3", amount: "15.00", status: "rejected" },
+          ],
+        },
+      },
+    },
+  ]);
+  assertEquals(
+    (await confirmarPorConsulta({
+      buscar: misto.f,
+      token: TOKEN,
+      linha: linhaCom({ amount: 30 }),
+      pedido,
+    })).tipo,
+    "tentar_depois",
+  );
+
+  // 3) refund SEM status (ausente) também não conta.
+  const semStatus = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "R4", amount: "30.00" }],
+        },
+      },
+    },
+  ]);
+  assertEquals(
+    (await confirmarPorConsulta({
+      buscar: semStatus.f,
+      token: TOKEN,
+      linha: linhaCom({ amount: 30 }),
+      pedido,
+    })).tipo,
+    "tentar_depois",
+  );
+
+  // 4) status 'processed' cobre -> concluido (controle positivo: prova que o
+  // filtro não é permissivo demais, só rejeita o que não é 'processed').
+  const cobreProcessado = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [{ id: "R5", amount: "30.00", status: "processed" }],
+        },
+      },
+    },
+  ]);
+  assertEquals(
+    (await confirmarPorConsulta({
+      buscar: cobreProcessado.f,
+      token: TOKEN,
+      linha: linhaCom({ amount: 30 }),
+      pedido,
+    })).tipo,
+    "concluido",
+  );
+});
+
+Deno.test("E33 - refundIdDaConsulta prefere o refund com status 'processed' entre candidatos do MESMO valor (D1)", async () => {
+  const linha = linhaCom({ amount: 20 });
+  const pedido = pedidoOrder({ total: 100, valor_estornado: 0 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+          refunds: [
+            // O rejeitado é MAIS RECENTE, mas não é o que esta linha
+            // refere — sem a preferência por 'processed' o desempate por
+            // data pegaria este id errado.
+            {
+              id: "REEMB_REJEITADO",
+              amount: "20.00",
+              status: "rejected",
+              date_created: "2026-09-06T00:00:00.000Z",
+            },
+            {
+              id: "REEMB_PROCESSADO",
+              amount: "20.00",
+              status: "processed",
+              date_created: "2026-09-01T00:00:00.000Z",
+            },
+          ],
+        },
+      },
+    },
+  ]);
+  const resultado = await confirmarPorConsulta({ buscar: mp.f, token: TOKEN, linha, pedido });
+  assertEquals(resultado.tipo, "concluido");
+  assertEquals(
+    (resultado as { mp_refund_id: string | null }).mp_refund_id,
+    "REEMB_PROCESSADO",
+  );
+});
+
+Deno.test("E34 - forma ARRAY de transactions (defensiva, não é o formato real do MP) ainda soma refund 'processed'", async () => {
+  const linha = linhaCom({ amount: 30 });
+  const pedido = pedidoOrder({ total: 30, valor_estornado: 0 });
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+      status: 200,
+      corpo: {
+        id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+        status: "refunded",
+        // Forma ARRAY (defensiva): a Orders API real devolve `transactions`
+        // como OBJETO ({ payments, refunds }, ver E32–E33) — este teste só
+        // existe enquanto `refundsDaOrder` mantiver o ramo
+        // `Array.isArray(t)` como defesa, não como palpite.
+        transactions: [{ refunds: [{ id: "R1", amount: "30.00", status: "processed" }] }],
+      },
+    },
+  ]);
+  assertEquals(
+    (await confirmarPorConsulta({ buscar: mp.f, token: TOKEN, linha, pedido })).tipo,
+    "concluido",
   );
 });

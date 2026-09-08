@@ -52,7 +52,10 @@ export type PedidoParaEstorno = {
 export type ResultadoEstorno =
   | {
     tipo: "concluido";
-    mp_refund_id: string;
+    // M-A do laudo (PR #438 rodada 2): `null` quando a consulta confirma o
+    // valor mas `refunds[]` ainda não trouxe o id (consistência eventual do
+    // MP) — nunca o id do PAGAMENTO nesse campo (a T3/T4 gravam o que vier).
+    mp_refund_id: string | null;
     mp_status: string;
     mp_status_detail: string | null;
     valor: number;
@@ -523,8 +526,25 @@ function refundsDaOrder(
   return [];
 }
 
+/**
+ * D1 (laudo BLOQUEIA-1, rodada 2 do PR #440): o terminal de SUCESSO de um
+ * refund da Orders API é `"processed"` — o mesmo valor que
+ * `STATUS_DE_PAGAMENTO_APROVADO` usa para pagamento aprovado. O exemplo
+ * oficial do endpoint de refund da Orders API traz um refund com `"status":
+ * "processing"`: sem este filtro, `somarRefundsDaOrder` somava QUALQUER
+ * status (`processing`, `rejected`, `cancelled`) como se já tivesse saído —
+ * o cenário do BLOQUEIA-1 (cliente sem o dinheiro, `payment_status` vira
+ * `estornado` mesmo assim). Falha fechada: a lista exata de status
+ * terminais é trabalho da T8 (sandbox); até lá, qualquer coisa que não seja
+ * `"processed"` (inclusive status ausente ou ilegível) não conta — na
+ * dúvida, "ainda não".
+ */
+const STATUS_REFUND_CONCLUIDO = "processed";
+
 function somarRefundsDaOrder(order: Record<string, unknown>): number | null {
-  const refunds = refundsDaOrder(order);
+  const refunds = refundsDaOrder(order).filter(
+    (r) => r.status === STATUS_REFUND_CONCLUIDO,
+  );
   if (refunds.length === 0) return null;
   let soma = 0;
   for (const r of refunds) {
@@ -535,26 +555,60 @@ function somarRefundsDaOrder(order: Record<string, unknown>): number | null {
   return soma;
 }
 
+/** `date_created` do refund em milissegundos; sem data (ou ilegível) perde
+ * qualquer desempate — nunca vence um candidato datado. */
+function dataCreatedMs(refund: Record<string, unknown>): number {
+  const bruto = refund.date_created;
+  if (typeof bruto !== "string") return -Infinity;
+  const t = Date.parse(bruto);
+  return Number.isFinite(t) ? t : -Infinity;
+}
+
+/**
+ * M-A do laudo (PR #438 rodada 2): a lista de refunds é do PEDIDO inteiro —
+ * pode haver mais de um refund com o MESMO valor (duas linhas do mesmo
+ * pedido, ou uma repetição). Medido: a versão anterior (`find` = primeiro
+ * que bate) devolvia o refund mais VELHO (o de uma linha anterior) quando
+ * dois batiam o valor, e SEM `refunds[]` devolvia o id do PAGAMENTO no campo
+ * de refund (confunde conciliação, embora sem dano de dinheiro). Correção:
+ * desempata pelo `date_created` mais RECENTE entre os candidatos com o
+ * mesmo valor — o refund novo é o desta chamada; nenhum candidato (lista
+ * vazia ou nenhum bate o valor) devolve `null`, nunca um id que não é de
+ * refund.
+ *
+ * D1 (laudo rodada 2 do PR #440): entre os candidatos do mesmo valor,
+ * prefere os que o MP já marcou como `processed` — sem isso, um refund
+ * rejeitado ou ainda em curso com o MESMO valor (uma tentativa anterior)
+ * poderia vencer o desempate por data e gravar o id ERRADO no ledger. O
+ * desempate por `date_created` continua, mas só DENTRO do grupo escolhido
+ * (processados, se houver algum; senão todos os candidatos, como antes).
+ */
 function refundIdDaConsulta(
-  corpo: Record<string, unknown>,
   refunds: Array<Record<string, unknown>>,
   linha: LinhaEstorno,
-): string {
-  // M3 do laudo (PR #438): a lista de refunds é do PEDIDO inteiro — o último
-  // item pode ser de OUTRA linha (devolução anterior). O refund DESTA linha
-  // é o que tem o valor dela (em centavos, C1); não achando (par somado a
-  // outro, grafia nova do MP), cai no último como antes — nunca `""`, que
-  // gravaria id vazio no ledger.
+): string | null {
   const centavosDaLinha = emCentavos(linha.amount);
-  const destaLinha = refunds.find((r) => {
+  const candidatos = refunds.filter((r) => {
     const valor = Number(r.amount);
     return Number.isFinite(valor) && emCentavos(valor) === centavosDaLinha;
   });
-  if (destaLinha?.id !== undefined && destaLinha.id !== null) {
-    return idComoString(destaLinha.id);
+  if (candidatos.length === 0) return null;
+  const processados = candidatos.filter(
+    (r) => r.status === STATUS_REFUND_CONCLUIDO,
+  );
+  const pool = processados.length > 0 ? processados : candidatos;
+  let melhor = pool[0];
+  let melhorData = dataCreatedMs(melhor);
+  for (const candidato of pool.slice(1)) {
+    const data = dataCreatedMs(candidato);
+    if (data > melhorData) {
+      melhor = candidato;
+      melhorData = data;
+    }
   }
-  const ultimo = refunds.length > 0 ? refunds[refunds.length - 1] : null;
-  return idComoString(ultimo?.id ?? corpo.id);
+  return melhor.id !== undefined && melhor.id !== null
+    ? idComoString(melhor.id)
+    : null;
 }
 
 /**
@@ -579,6 +633,25 @@ function refundIdDaConsulta(
  * total JÁ devolvido do pagamento; a linha é INCREMENTAL. Cobrado ⇔
  * devolvido_no_MP >= `pedido.valor_estornado` (o que o ledger já somou
  * ANTES desta linha) + `linha.amount` (esta linha) — tudo em centavos (C1).
+ *
+ * INVARIANTE I-B (laudo do PR #438 rodada 2): `pedido.valor_estornado` tem
+ * de ser lido FRESCO, imediatamente antes desta chamada; snapshot velho
+ * conclui sem dinheiro sair (duas linhas do mesmo pedido no mesmo lote, a
+ * 1ª soma no ledger, a 2ª com o snapshot velho vê `valor_estornado` menor do
+ * que já é de verdade e conclui cedo demais). Quem chama por item, dentro de
+ * um laço (T4), releia o pedido a cada iteração — nunca um SELECT único
+ * antes do laço.
+ *
+ * ALTERNATIVA B DO I-A (laudo do PR #438 rodada 2, decidida 07/09): quando o
+ * valor devolvido no MP ainda não cobre o esperado, o desfecho depende de
+ * COMO chegamos aqui — `args.codigo` é o marcador de quem já tem uma
+ * confirmação DEFINITIVA do MP (4296/`order_already_refunded`: "já
+ * devolvido, mas o valor não bate" é uma contradição real do MP, e é
+ * `falhou`). SEM `codigo` — o caminho DIRETO que a T4 usa para linhas
+ * `em_processamento` — "ainda não cobre" é só CONSISTÊNCIA EVENTUAL (o
+ * refund pode não ter aparecido ainda): `tentar_depois`, nunca `falhou`;
+ * matar a linha aqui tornaria o retry do POST (R3 da T4) inalcançável para o
+ * caso mais comum.
  */
 export async function confirmarPorConsulta(args: {
   buscar: typeof fetch;
@@ -588,11 +661,10 @@ export async function confirmarPorConsulta(args: {
   codigo?: string;
 }): Promise<ResultadoEstorno> {
   const { buscar, token, linha, pedido } = args;
-  // Código do pré-veredito que trouxe até aqui (4296,
-  // order_already_refunded, idempotency_key_already_used). Chamado direto
-  // pela T4 não há pré-veredito — o `falhou` de "não cobre" precisa de um
-  // código mesmo assim (é campo obrigatório do tipo).
-  const codigoFinal = args.codigo ?? "confirmacao_insuficiente";
+  // Alternativa B do I-A: só existe confirmação DEFINITIVA (falhou) quando
+  // um pré-veredito do MP trouxe até aqui; sem ele (caminho direto da T4) a
+  // insuficiência é sempre "ainda não apareceu" — tentar_depois.
+  const temPreVeredito = args.codigo !== undefined;
   const ehPayments = idEhClassico(pedido.gateway_payment_id);
   const url = ehPayments
     ? `${BASE_URL_PADRAO}/v1/payments/${pedido.gateway_payment_id}`
@@ -660,18 +732,16 @@ export async function confirmarPorConsulta(args: {
         : [];
       return {
         tipo: "concluido",
-        mp_refund_id: refundIdDaConsulta(corpo, refunds, linha),
+        mp_refund_id: refundIdDaConsulta(refunds, linha),
         mp_status: idComoString(corpo.status),
         mp_status_detail: detailOuNull(corpo),
         valor: linha.amount,
       };
     }
-    return {
-      tipo: "falhou",
-      motivo:
-        "o Mercado Pago informa que o pagamento já foi estornado, mas o valor confirmado não cobre esta devolução",
-      codigo: codigoFinal,
-    };
+    return insuficiente(
+      temPreVeredito,
+      "o Mercado Pago informa que o pagamento já foi estornado, mas o valor confirmado não cobre esta devolução",
+    );
   }
 
   const soma = somarRefundsDaOrder(corpo);
@@ -686,17 +756,42 @@ export async function confirmarPorConsulta(args: {
   if (emCentavos(soma) >= precisoEmCentavos) {
     return {
       tipo: "concluido",
-      mp_refund_id: refundIdDaConsulta(corpo, refundsDaOrder(corpo), linha),
+      mp_refund_id: refundIdDaConsulta(refundsDaOrder(corpo), linha),
       mp_status: idComoString(corpo.status),
       mp_status_detail: detailOuNull(corpo),
       valor: linha.amount,
     };
   }
+  return insuficiente(
+    temPreVeredito,
+    "a cobrança já foi devolvida no Mercado Pago, mas o valor confirmado não cobre esta devolução",
+  );
+}
+
+/**
+ * Alternativa B do I-A (laudo do PR #438 rodada 2): um único ponto de
+ * decisão para os dois desfechos de "o MP ainda não confirma o valor
+ * inteiro" — com pré-veredito DEFINITIVO do MP (4296/`order_already_refunded`)
+ * é `falhou`; sem ele (caminho direto que a T4 usa para `em_processamento`)
+ * é `tentar_depois`, porque a consistência eventual do MP ainda pode
+ * alcançar. O código sempre é o mesmo marcador (`confirmacao_insuficiente`)
+ * — quem consome não precisa saber qual dos dois códigos nomeados do MP
+ * trouxe até aqui, só que a confirmação não fechou.
+ */
+function insuficiente(
+  temPreVeredito: boolean,
+  motivoDefinitivo: string,
+): ResultadoEstorno {
+  if (!temPreVeredito) {
+    return {
+      tipo: "tentar_depois",
+      motivo: "a devolução ainda não aparece no Mercado Pago",
+    };
+  }
   return {
     tipo: "falhou",
-    motivo:
-      "a cobrança já foi devolvida no Mercado Pago, mas o valor confirmado não cobre esta devolução",
-    codigo: codigoFinal,
+    motivo: motivoDefinitivo,
+    codigo: "confirmacao_insuficiente",
   };
 }
 

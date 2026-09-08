@@ -44,12 +44,144 @@ import {
   consultarOrder,
   consultarPagamento,
   extrairValorDaOrder,
+  fetchComTempo,
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
   TOLERANCIA_DE_VALOR,
 } from "../_shared/mercadopago.ts";
 import { readKey } from "../_shared/webpush.ts";
+import {
+  confirmarPorConsulta,
+  consultarTransacaoDaOrder,
+  executarEstorno,
+  type LinhaEstorno,
+  type PedidoParaEstorno,
+  type ResultadoEstorno,
+} from "../_shared/estorno.ts";
+
+/** Único texto do app que manda o lojista ao painel do MP (Restrições
+ * globais do plano) — só depois de 5 tentativas sem confirmação. */
+const TEXTO_LIMITE_DE_TENTATIVAS =
+  "não consegui confirmar a devolução no Mercado Pago depois de 5 tentativas; confira no painel do MP";
+
+/** D4 (ANTES-DE-CRESCER 5, laudo rodada 2 do PR #440): texto leigo para quando
+ * o MP CONFIRMOU o estorno mas a NOSSA escrita (RPC `concluir_estorno`)
+ * falhou — o dinheiro já saiu, o problema é só o registro local. */
+const TEXTO_FALHA_AO_REGISTRAR_CONCLUSAO =
+  "o Mercado Pago confirmou a devolução, mas não consegui registrar aqui; tentando de novo";
+
+/**
+ * Grava o desfecho de UM estorno (Task 2/T2 `ResultadoEstorno`) na MESMA
+ * tabela de gravação que a edge `estornar-pagamento` (T3) usa — um desenho,
+ * dois chamadores, para não existir um segundo lugar decidindo o que
+ * `concluido`/`falhou`/`tentar_depois` significam no ledger.
+ *
+ * `concluido` → RPC `concluir_estorno` (atômica: soma `valor_estornado` e
+ * vira `payment_status` numa transação só). Se a RPC falhar o dinheiro já
+ * saiu do MP — a linha fica `em_processamento` (nunca `falhou`) para o
+ * PRÓXIMO ciclo completar o registro, nunca "esquecer que o MP confirmou".
+ * `tentar_depois`/`em_processamento` → mantém a linha viva, grava o
+ * diagnóstico. `falhou`/`recusado` → UPDATE terminal condicional
+ * (`.in('status', ['em_processamento'])`): se outro executor já concluiu ou
+ * falhou a linha no meio, 0 linhas voltam e nada é sobrescrito.
+ */
+async function gravarDesfechoDoEstorno(
+  supabase: ReturnType<typeof createClient>,
+  refundId: string,
+  resultado: ResultadoEstorno,
+  tentativasAtuais: number,
+): Promise<"concluido" | "adiado" | "falhou"> {
+  if (resultado.tipo === "concluido") {
+    const { error } = await supabase.rpc("concluir_estorno", {
+      p_refund_id: refundId,
+      p_mp_refund_id: resultado.mp_refund_id,
+      p_mp_status: resultado.mp_status,
+      p_mp_status_detail: resultado.mp_status_detail,
+    });
+    if (error) {
+      console.error(
+        "reconciliar-pagamentos: concluir_estorno falhou (o MP confirmou; o próximo ciclo completa o registro)",
+        refundId,
+        error,
+      );
+      // D4 (ANTES-DE-CRESCER 5, laudo rodada 2 do PR #440): o dinheiro JÁ
+      // saiu do MP — a linha nunca pode virar `falhou` só porque a NOSSA
+      // escrita falhou (fica `em_processamento`; nenhum `status` novo
+      // aqui). Incrementa `tentativas` (hoje não incrementava) para esta
+      // falha entrar no MESMO orçamento do teto de 5 (D2): sem isso, uma
+      // RPC que falha sempre de novo nunca alcançaria o regime "só
+      // consulta" que avisa o lojista via `ultimo_erro`.
+      const { error: erroIncremento } = await supabase
+        .from("order_refunds")
+        .update({
+          tentativas: tentativasAtuais + 1,
+          ultimo_erro: TEXTO_FALHA_AO_REGISTRAR_CONCLUSAO,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", refundId)
+        .in("status", ["em_processamento"]);
+      if (erroIncremento) {
+        console.error(
+          "reconciliar-pagamentos: falha ao gravar o incremento de tentativas do registro pendente",
+          refundId,
+          erroIncremento,
+        );
+      }
+      return "adiado";
+    }
+    return "concluido";
+  }
+
+  if (resultado.tipo === "tentar_depois") {
+    const { error } = await supabase
+      .from("order_refunds")
+      .update({ ultimo_erro: resultado.motivo, updated_at: new Date().toISOString() })
+      .eq("id", refundId)
+      .in("status", ["em_processamento"]);
+    if (error) {
+      console.error("reconciliar-pagamentos: falha ao gravar o adiamento do estorno", refundId, error);
+    }
+    return "adiado";
+  }
+
+  if (resultado.tipo === "em_processamento") {
+    // Resposta assíncrona do MP (PIX em contingência): a linha JÁ está
+    // em_processamento — só grava o diagnóstico (mesmo padrão da edge, T3).
+    const { error } = await supabase
+      .from("order_refunds")
+      .update({
+        mp_refund_id: resultado.mp_refund_id ?? undefined,
+        mp_status: resultado.mp_status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", refundId)
+      .in("status", ["em_processamento"]);
+    if (error) {
+      console.error("reconciliar-pagamentos: falha ao gravar o diagnóstico do estorno", refundId, error);
+    }
+    return "adiado";
+  }
+
+  // falhou | recusado: definitivo. `falhou` com codigo
+  // 'confirmacao_insuficiente' só chega aqui vindo de um POST que devolveu
+  // 4296/order_already_refunded (o MP contradisse a si mesmo) — é terminal
+  // mesmo (a alternativa B do I-A garante que o caminho DIRETO desta função
+  // nunca produz `falhou` por "ainda não apareceu").
+  const { error } = await supabase
+    .from("order_refunds")
+    .update({
+      status: resultado.tipo,
+      ultimo_erro: resultado.motivo,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", refundId)
+    .in("status", ["em_processamento"]);
+  if (error) {
+    console.error("reconciliar-pagamentos: falha ao gravar o desfecho terminal do estorno", refundId, error);
+  }
+  return "falhou";
+}
 
 const json = (corpo: unknown, status = 200) =>
   new Response(JSON.stringify(corpo), {
@@ -352,6 +484,259 @@ async function handler(
     }
   }
 
+  // ─── PASSO NOVO (Task 4, frente "estorno pelo app"): processa a fila de
+  // `order_refunds` pendentes — o cron pega tudo que a edge do clique do
+  // lojista (T3) ou o cancelamento automático (T1) deixaram para trás. TRY
+  // PRÓPRIO envolvendo o passo inteiro: uma falha aqui (ex.: a query da
+  // fila) não pode apagar o resultado da reconciliação de PAGAMENTOS acima,
+  // que já rodou.
+  let refundsVistos = 0;
+  let refundsConcluidos = 0;
+  let refundsAdiados = 0;
+  let refundsFalhos = 0;
+
+  try {
+    // Janela de 2 minutos (brief da T4): evita disputar com a edge do
+    // clique, que pode estar processando a MESMA linha agora mesmo.
+    const doisMinutosAtras = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const { data: refundsPendentes, error: erroRefunds } = await supabase
+      .from("order_refunds")
+      .select("id, order_id, amount, status, tentativas, mp_refund_id")
+      .in("status", ["solicitado", "em_processamento"])
+      .lt("updated_at", doisMinutosAtras)
+      // D4 (ANTES-DE-CRESCER 6, laudo rodada 2 do PR #440): tentativas ASC
+      // ANTES de created_at ASC — sem isso, uma linha TRAVADA (regime "só
+      // consulta" do D2, tentativas=5) ocupa a vaga do LIMIT em todo ciclo,
+      // e uma linha NOVA pode nunca ser vista a partir de 20 pendentes (a
+      // indisponibilidade do MP produz isso sozinha).
+      .order("tentativas", { ascending: true })
+      .order("created_at", { ascending: true })
+      .limit(20);
+    if (erroRefunds) throw erroRefunds;
+
+    const mpToken = Deno.env.get("MP_ACCESS_TOKEN") ?? "";
+    // Mesmo timeout de 15s de toda chamada ao MP (Restrições globais) — o
+    // `buscar` injetado pelos testes (`deps.fetchImpl`) nunca vê o `fetch`
+    // cru por fora deste envelope, igual à edge do clique (T3).
+    const buscarEstorno: typeof fetch = (input, init) =>
+      fetchComTempo(
+        deps.fetchImpl ?? fetch,
+        input instanceof Request ? input.url : String(input),
+        init,
+      );
+
+    // PIX = ORDER: `gateway_payment_id` guarda o id da ORDER, não o da
+    // transação de pagamento que o refund-order exige no corpo — sem esta
+    // consulta o executor devolve `tentar_depois` para sempre e o dinheiro
+    // nunca volta (mesmo achado do laudo do PR #439, agora aqui no cron).
+    // Buscar CRU (`deps.fetchImpl ?? fetch`, nunca `buscarEstorno`):
+    // `consultarTransacaoDaOrder` já embute o próprio `fetchComTempo` por
+    // dentro de `consultarOrder` — envolver de novo duplicaria o timeout.
+    const consultarTransacaoDaOrderDoCron = (orderId: string) =>
+      consultarTransacaoDaOrder({
+        orderId,
+        token: mpToken,
+        buscar: deps.fetchImpl ?? fetch,
+      });
+
+    for (const refund of refundsPendentes ?? []) {
+      refundsVistos++;
+      // Cada linha no seu próprio try: a reconciliação de estornos existe
+      // para pegar o que já falhou uma vez — um item não pode custar a vez
+      // do seguinte (mesma defesa do laço de pagamentos acima).
+      try {
+        // I-B (laudo do PR #438 rodada 2): releitura FRESCA do pedido,
+        // DENTRO do laço, por item — NUNCA um SELECT único antes do laço.
+        // Duas linhas do mesmo pedido no mesmo lote com um snapshot só
+        // fariam a segunda concluir sem o dinheiro dela ter saído do MP.
+        const { data: pedidoRow, error: erroPedido } = await supabase
+          .from("marketplace_orders")
+          .select(
+            "id, gateway_payment_id, total, valor_estornado, payment_status, paid_at, status",
+          )
+          .eq("id", refund.order_id)
+          .maybeSingle();
+        if (erroPedido) throw erroPedido;
+        if (!pedidoRow) {
+          console.error(
+            "reconciliar-pagamentos: pedido da devolução não encontrado",
+            refund.id,
+            refund.order_id,
+          );
+          refundsFalhos++;
+          continue;
+        }
+
+        const pedido: PedidoParaEstorno = {
+          id: String((pedidoRow as Record<string, unknown>).id),
+          gateway_payment_id: String(
+            (pedidoRow as Record<string, unknown>).gateway_payment_id ?? "",
+          ),
+          total: Number((pedidoRow as Record<string, unknown>).total),
+          valor_estornado: Number(
+            (pedidoRow as Record<string, unknown>).valor_estornado ?? 0,
+          ),
+          payment_status:
+            (pedidoRow as Record<string, unknown>).payment_status as string | null,
+          paid_at: (pedidoRow as Record<string, unknown>).paid_at as string | null,
+          status: String((pedidoRow as Record<string, unknown>).status),
+        };
+
+        if (refund.status === "solicitado") {
+          // A MARCA — mesmo UPDATE condicional da edge do clique (T3): se 0
+          // linhas voltarem, o clique do lojista já pegou esta linha.
+          const { data: marcada, error: erroMarca } = await supabase
+            .from("order_refunds")
+            .update({
+              status: "em_processamento",
+              tentativas: Number(refund.tentativas ?? 0) + 1,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", refund.id)
+            .in("status", ["solicitado"])
+            .select();
+          if (erroMarca) throw erroMarca;
+          if (!Array.isArray(marcada) || marcada.length === 0) {
+            refundsAdiados++;
+            continue;
+          }
+
+          const linha: LinhaEstorno = {
+            id: String(refund.id),
+            order_id: String(refund.order_id),
+            amount: Number(refund.amount),
+            status: "em_processamento",
+            mp_refund_id: (refund.mp_refund_id as string | null) ?? null,
+            tentativas: Number(refund.tentativas ?? 0) + 1,
+          };
+          const resultado = await executarEstorno({
+            linha,
+            pedido,
+            token: mpToken,
+            buscar: buscarEstorno,
+            consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
+          });
+          const desfecho = await gravarDesfechoDoEstorno(
+            supabase,
+            String(refund.id),
+            resultado,
+            linha.tentativas,
+          );
+          if (desfecho === "concluido") refundsConcluidos++;
+          else if (desfecho === "adiado") refundsAdiados++;
+          else refundsFalhos++;
+          continue;
+        }
+
+        // refund.status === "em_processamento": a MARCA de "já pedi ao MP
+        // com esta chave" — o cron NUNCA cria chave nova aqui. PRIMEIRO
+        // consulta (sem POST); só repete o POST se a consulta não esclarecer.
+        const tentativasAtuais = Number(refund.tentativas ?? 0);
+        const linhaAtual: LinhaEstorno = {
+          id: String(refund.id),
+          order_id: String(refund.order_id),
+          amount: Number(refund.amount),
+          status: "em_processamento",
+          mp_refund_id: (refund.mp_refund_id as string | null) ?? null,
+          tentativas: tentativasAtuais,
+        };
+        const confirmacao = await confirmarPorConsulta({
+          buscar: buscarEstorno,
+          token: mpToken,
+          linha: linhaAtual,
+          pedido,
+        });
+
+        if (confirmacao.tipo === "concluido") {
+          const desfecho = await gravarDesfechoDoEstorno(
+            supabase,
+            String(refund.id),
+            confirmacao,
+            tentativasAtuais,
+          );
+          if (desfecho === "concluido") refundsConcluidos++;
+          else if (desfecho === "adiado") refundsAdiados++;
+          else refundsFalhos++;
+          continue;
+        }
+
+        // Não confirmou (a alternativa B do I-A garante que o caminho
+        // DIRETO desta função nunca devolve `falhou` por "ainda não
+        // apareceu" — só `concluido` ou `tentar_depois`).
+        //
+        // D2 (laudo BLOQUEIA-2, rodada 2 do PR #440): o teto SEM veredito do
+        // MP não pode soltar o saldo reservado — `falhou` LIBERA a reserva
+        // (`solicitar_estorno`/`update_order_status_atomic` só reservam
+        // solicitado/em_processamento), e um segundo POST com chave NOVA
+        // dobraria o dinheiro (o MP já pode ter aceitado o primeiro sem
+        // termos confirmado). A linha CONTINUA em_processamento; o que muda
+        // é que o cron nunca mais tenta o POST para ela — todo ciclo roda só
+        // a consulta acima (barata), que conclui sozinha se o MP confirmar.
+        // `tentativas` para de subir aqui (não precisa passar de 5): quem
+        // sobe é só o retry abaixo, que este ramo nunca alcança. `falhou`
+        // fica reservado para veredito NEGATIVO explícito do MP.
+        if (tentativasAtuais >= 5) {
+          const { error: erroLimite } = await supabase
+            .from("order_refunds")
+            .update({
+              ultimo_erro: TEXTO_LIMITE_DE_TENTATIVAS,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", refund.id)
+            .in("status", ["em_processamento"]);
+          if (erroLimite) {
+            console.error(
+              "reconciliar-pagamentos: falha ao gravar o limite de tentativas",
+              refund.id,
+              erroLimite,
+            );
+          }
+          refundsAdiados++;
+          continue;
+        }
+
+        // Marca a NOVA tentativa ANTES do POST: se o processo cair no meio,
+        // a contagem já reflete que houve uma chamada — nunca reprocessa a
+        // mesma tentativa como se fosse a primeira.
+        const { error: erroTentativa } = await supabase
+          .from("order_refunds")
+          .update({
+            tentativas: tentativasAtuais + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", refund.id)
+          .in("status", ["em_processamento"]);
+        if (erroTentativa) throw erroTentativa;
+
+        const resultadoRetry = await executarEstorno({
+          linha: { ...linhaAtual, tentativas: tentativasAtuais + 1 },
+          pedido,
+          token: mpToken,
+          buscar: buscarEstorno,
+          consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
+        });
+        const desfechoRetry = await gravarDesfechoDoEstorno(
+          supabase,
+          String(refund.id),
+          resultadoRetry,
+          tentativasAtuais + 1,
+        );
+        if (desfechoRetry === "concluido") refundsConcluidos++;
+        else if (desfechoRetry === "adiado") refundsAdiados++;
+        else refundsFalhos++;
+      } catch (erro) {
+        console.error(
+          "reconciliar-pagamentos: falha ao processar devolução",
+          refund.id,
+          erro,
+        );
+        refundsFalhos++;
+      }
+    }
+  } catch (erro) {
+    console.error("reconciliar-pagamentos: varredura de devoluções pendentes falhou", erro);
+  }
+
   // Contagem verdadeira: responder sucesso sem verificar nada é como este
   // projeto passou meses achando que o push funcionava (#80). `ok` continua
   // `true` mesmo com falhas — decisão da sessão principal, pendência
@@ -364,7 +749,22 @@ async function handler(
   // que a Tarefa 4 passou a filtrar ANTES da RPC (ignorados, sem chamá-la).
   // Sem essa invariante o corpo não é auditável sem abrir o log: um
   // candidato "sumiria" do total.
-  return json({ ok: true, verificados, confirmados, ignorados, falhas }, 200);
+  return json(
+    {
+      ok: true,
+      verificados,
+      confirmados,
+      ignorados,
+      falhas,
+      estornos: {
+        vistos: refundsVistos,
+        concluidos: refundsConcluidos,
+        adiados: refundsAdiados,
+        falhos: refundsFalhos,
+      },
+    },
+    200,
+  );
 }
 
 // O guard do runner de teste é COPIADO de webhook-mercadopago/index.ts: sem
