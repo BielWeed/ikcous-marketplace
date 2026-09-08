@@ -2621,6 +2621,7 @@ const AppContent = () => {
           até ganhar foco (sr-only); Tab uma vez + Enter leva direto para o
           <main>, sem passar pelo cabeçalho inteiro. z-[100000] fica acima
           da barra de progresso (z-[99999]) e do Header (z-[100]). */}
+      {/* biome-ignore lint/a11y/useValidAnchor: skip link é LINK por convenção (WCAG G1, leitor de tela anuncia "link"); o onClick cancela a navegação porque o hash dispararia popstate, que este App trata como Voltar (laudo Opus do PR #455) */}
       <a
         href="#conteudo"
         onClick={(e) => {
