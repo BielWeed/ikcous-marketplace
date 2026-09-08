@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
+import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
@@ -166,8 +167,8 @@ export const BannerCarousel = memo(function BannerCarousel({
                 className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105"
                 priority={index === 0}
                 // Banner ocupa a largura toda; era o pior caso (PNG de 1340 kB).
-                sizes="100vw"
-                quality={70}
+                sizes={IMAGEM_DO_BANNER.sizes}
+                quality={IMAGEM_DO_BANNER.quality}
               />
               {/* Dynamic Custom Overlay & Content */}
               {(() => {
