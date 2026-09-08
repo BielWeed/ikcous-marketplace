@@ -140,59 +140,90 @@ export function useReviews() {
   const [loading, setLoading] = useState(() => isAdmin && !cachedReviewsData);
   const latestProductIdRef = useRef<string | null>(null);
 
-  const getReviewsByProduct = useCallback(async (productId: string) => {
-    latestProductIdRef.current = productId;
+  const getReviewsByProduct = useCallback(
+    async (productId: string) => {
+      latestProductIdRef.current = productId;
 
-    // 1. SWR Cache Sync
-    const cached = getReviewsCache(productId);
-    if (cached) {
-      setReviews(cached);
-      setLoading(false);
-    } else {
-      setReviews([]); // Clear previous product reviews if not cached
-      setLoading(true);
-    }
+      // 1. SWR Cache Sync
+      const cached = getReviewsCache(productId);
+      if (cached) {
+        setReviews(cached);
+        setLoading(false);
+      } else {
+        setReviews([]); // Clear previous product reviews if not cached
+        setLoading(true);
+      }
 
-    try {
-      const { data, error } = await supabase
-        .from("reviews" as any)
-        .select(`
+      try {
+        // I-3 (brief hub-0809-g 08/09/2026): sem sessão, a leitura vai pela
+        // vitrine pública (`vw_reviews_public`, migration 20261110000000) —
+        // ela nunca teve `user_id` para vazar (a RLS de `reviews`, depois da
+        // 20261111000000, nem devolveria linha ao visitante). Quem está
+        // logado continua lendo a tabela direto, comportamento inalterado.
+        const anonimo = !user;
+
+        const { data, error } = anonimo
+          ? await supabase
+              .from("vw_reviews_public" as any)
+              .select("*")
+              .eq("product_id", productId)
+              .order("created_at", { ascending: false })
+          : await supabase
+              .from("reviews" as any)
+              .select(`
           *,
           user:public_profiles(full_name, avatar_url)
         `)
-        .eq("product_id", productId)
-        .order("created_at", { ascending: false });
+              .eq("product_id", productId)
+              .order("created_at", { ascending: false });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      const formattedReviews: Review[] = data.map((item: any) => ({
-        id: item.id,
-        productId: item.product_id,
-        userId: item.user_id,
-        customerName: item.user?.full_name || "Usuário Anônimo",
-        customerAvatar: item.user?.avatar_url || undefined,
-        rating: item.rating,
-        comment: item.comment,
-        verified: item.verified,
-        status: item.status,
-        helpful: item.helpful,
-        createdAt: item.created_at,
-        merchantReply: item.merchant_reply,
-      }));
+        const formattedReviews: Review[] = data.map((item: any) =>
+          anonimo
+            ? {
+                id: item.id,
+                productId: item.product_id,
+                customerName: item.author_name || "Usuário Anônimo",
+                customerAvatar: item.author_avatar_url || undefined,
+                rating: item.rating,
+                comment: item.comment,
+                verified: item.verified,
+                helpful: item.helpful,
+                createdAt: item.created_at,
+                merchantReply: item.merchant_reply,
+              }
+            : {
+                id: item.id,
+                productId: item.product_id,
+                userId: item.user_id,
+                customerName: item.user?.full_name || "Usuário Anônimo",
+                customerAvatar: item.user?.avatar_url || undefined,
+                rating: item.rating,
+                comment: item.comment,
+                verified: item.verified,
+                status: item.status,
+                helpful: item.helpful,
+                createdAt: item.created_at,
+                merchantReply: item.merchant_reply,
+              },
+        );
 
-      if (latestProductIdRef.current === productId) {
-        setReviews(formattedReviews);
+        if (latestProductIdRef.current === productId) {
+          setReviews(formattedReviews);
+        }
+        updateReviewsCache(productId, formattedReviews);
+      } catch (error: any) {
+        console.error("Error fetching reviews:", error);
+        toast.error("Erro ao carregar avaliações.");
+      } finally {
+        if (latestProductIdRef.current === productId) {
+          setLoading(false);
+        }
       }
-      updateReviewsCache(productId, formattedReviews);
-    } catch (error: any) {
-      console.error("Error fetching reviews:", error);
-      toast.error("Erro ao carregar avaliações.");
-    } finally {
-      if (latestProductIdRef.current === productId) {
-        setLoading(false);
-      }
-    }
-  }, []);
+    },
+    [user],
+  );
 
   const addReview = useCallback(
     async (review: { productId: string; rating: number; comment: string }) => {

@@ -1,0 +1,27 @@
+-- ROLLBACK MANUAL da 20261110000000_o_visitante_le_avaliacoes_e_perguntas_pela_vitrine.sql
+-- (as views públicas de reviews/questions, sem user_id)
+--
+-- ⚠️ ORDEM: reverter o FRONT PRIMEIRO (ou aceitar que a leitura anônima de
+-- avaliações/perguntas quebra até o passo 2 — o front deste PR lê
+-- `vw_reviews_public`/`vw_questions_public` para o visitante; sem as views,
+-- o PostgREST recusa a consulta com PGRST205, relação não encontrada).
+--
+-- 1. Reverter o deploy do front para a versão anterior a este PR (ou aceitar
+--    a janela de erro na página do produto para visitante não logado).
+--
+-- 2. Se as duas migrations NÃO aditivas (20261111000000, 20261112000000) já
+--    tiverem sido aplicadas, revertê-las PRIMEIRO (rollback delas devolve
+--    `anon` às policies antigas de `reviews`/`questions` — sem isso, apagar
+--    as views deste passo não devolve nada ao visitante: ele ficaria sem
+--    NENHUM caminho de leitura).
+--
+-- 3. Apagar as duas views (idempotente; nenhum dado de `reviews`/`questions`
+--    é tocado — só o objeto de leitura):
+--
+DROP VIEW IF EXISTS public.vw_reviews_public;
+DROP VIEW IF EXISTS public.vw_questions_public;
+--
+-- EFEITO COLATERAL HONESTO: se rodado SEM reverter o passo 1 primeiro, a
+-- página de produto do visitante (ProductQA/ReviewCard) para de carregar
+-- avaliações e perguntas (a consulta que o front faz aponta para uma
+-- relação que não existe mais).
