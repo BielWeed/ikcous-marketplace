@@ -244,6 +244,14 @@ export function StoreProvider({
   const { isAdmin, loading, user } = useAuth();
   const { isLeader } = useLeaderElection();
   const vaultRef = useRef<DataVault | null>(null);
+  // O motor de tempo real precisa do cofre, e `ref` NÃO é dependência de
+  // efeito: mudar `vaultRef.current` não reavalia nada. Este estado é o aviso
+  // de que o cofre ficou pronto. Sem ele, numa aba em que o IndexedDB demora
+  // mais que a rede (`isLoaded` também vem do `finally` do fetchConfig, que
+  // não sabe nada do cofre), o efeito do realtime rodava com o cofre nulo,
+  // desistia e nunca mais era reavaliado — a aba passava a sessão inteira sem
+  // atualização ao vivo.
+  const [cofrePronto, setCofrePronto] = useState(false);
   const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
   const [isLoaded, setIsLoaded] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
@@ -256,6 +264,14 @@ export function StoreProvider({
       try {
         const vault = await DataVault.init();
         vaultRef.current = vault;
+        // A marca vem AQUI, junto com o cofre em mãos: as leituras abaixo
+        // podem lançar, e um erro delas não desfaz o cofre (por isso o `catch`
+        // não mexe nesta marca). Já um erro do próprio `DataVault.init()`
+        // acontece sem cofre nenhum — e ali ela continua falsa, que é o certo:
+        // sem cofre, sem motor de tempo real.
+        if (!cancelled) {
+          setCofrePronto(true);
+        }
 
         // Load config from IDB
         const cachedConfig = await vault.getById<any>(
@@ -839,8 +855,13 @@ export function StoreProvider({
   }, [fetchConfig, fetchProducts]);
 
   // ── Realtime Sync: Start/Stop engine ──
+  // `cofrePronto` (estado) e não `vaultRef` (ref) é quem manda este efeito
+  // reagir: ref não é dependência, então o cofre ficar pronto DEPOIS de
+  // `isLoaded` não redisparava nada e a aba ficava sem tempo real até
+  // recarregar a página. O guarda do `vaultRef.current` continua porque é ele
+  // que entrega o cofre para o motor.
   useEffect(() => {
-    if (!isLoaded || !vaultRef.current) return;
+    if (!isLoaded || !cofrePronto || !vaultRef.current) return;
 
     console.log(
       `[StoreContext] Starting RealtimeSyncEngine (isLeader: ${isLeader}, isAdmin: ${isAdmin})`,
@@ -854,7 +875,7 @@ export function StoreProvider({
     return () => {
       cleanup();
     };
-  }, [isLoaded, isLeader, isAdmin]);
+  }, [isLoaded, cofrePronto, isLeader, isAdmin]);
 
   // ── Realtime Sync: Listen for changes applied by RealtimeSyncEngine ──
   useSyncListener(
