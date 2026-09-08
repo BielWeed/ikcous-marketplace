@@ -2617,6 +2617,16 @@ const AppContent = () => {
 
   return (
     <div className="flex size-full h-dvh min-h-dvh flex-col overflow-hidden bg-background text-foreground">
+      {/* Skip link (B6 da a11y onda 3): primeiro focável do app. Invisível
+          até ganhar foco (sr-only); Tab uma vez + Enter leva direto para o
+          <main>, sem passar pelo cabeçalho inteiro. z-[100000] fica acima
+          da barra de progresso (z-[99999]) e do Header (z-[100]). */}
+      <a
+        href="#conteudo"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100000] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-zinc-900 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-admin-gold"
+      >
+        Pular para o conteúdo
+      </a>
       <AppBadgeSynchronizer />
       {/* Barra de rota SOB DEMANDA: o Suspense só monta depois que a
           primeira navegação pedir a barra (barraDeRotaJaPedida), para não
@@ -2673,10 +2683,12 @@ const AppContent = () => {
       )}
 
       <main
+        id="conteudo"
         ref={mainRef}
         onScroll={handleScroll}
+        tabIndex={-1}
         className={cn(
-          "relative flex-1 flex flex-col overflow-x-hidden [-webkit-overflow-scrolling:touch]",
+          "relative flex-1 flex flex-col overflow-x-hidden [-webkit-overflow-scrolling:touch] focus:outline-none",
           currentView.startsWith("admin")
             ? "h-full pt-0 overflow-y-hidden"
             : isMainTab
