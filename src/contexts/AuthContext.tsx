@@ -8,7 +8,7 @@ import {
   isAuthApiError,
   isAuthRetryableFetchError,
 } from "@supabase/supabase-js";
-import type { Session, User } from "@supabase/supabase-js";
+import type { AuthError, Session, User } from "@supabase/supabase-js";
 import {
   type ReactNode,
   createContext,
@@ -58,7 +58,7 @@ interface AuthContextType {
     email: string,
     senha: string,
     audience: LoginAudience,
-  ) => Promise<{ success: boolean; error?: any }>;
+  ) => Promise<{ success: boolean; error?: AuthError }>;
   signUp: (
     email: string,
     senha: string,
@@ -827,7 +827,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       email: string,
       senha: string,
       audience: LoginAudience,
-    ): Promise<{ success: boolean; error?: any }> => {
+    ): Promise<{ success: boolean; error?: AuthError }> => {
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password: senha,
