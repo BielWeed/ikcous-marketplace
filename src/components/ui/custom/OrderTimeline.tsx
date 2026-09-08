@@ -30,7 +30,7 @@ export function OrderTimeline({ status }: OrderTimelineProps) {
   const safeIndex = currentStepIndex === -1 ? 0 : currentStepIndex;
 
   return (
-    <div className="relative flex w-full items-start justify-between px-2 py-6">
+    <div className="relative px-2 py-6">
       {/* Background Line */}
       <div
         aria-hidden="true"
@@ -48,14 +48,18 @@ export function OrderTimeline({ status }: OrderTimelineProps) {
       />
 
       {/*
-        `contents`: o <ol> não forma caixa própria, então os <li> seguem
-        como filhos diretos do flex do container acima -- o layout visual
-        (justify-between, items-start) fica idêntico ao de antes, quando
-        os passos eram <div> filhos diretos.
+        O <ol> carrega o flex (não `display: contents`): esse display remove o
+        elemento -- e, em algumas versões de navegador, os <li> e o sr-only
+        junto -- da árvore de acessibilidade (MDN, Web/CSS/display-box#accessibility).
+        `role="list"` é explícito porque `list-style: none` faz o VoiceOver (Safari)
+        deixar de anunciar a lista como lista.
       */}
+      {/* eslint-disable-next-line jsx-a11y/no-redundant-roles -- list-style:none apaga o papel de lista no Safari/VoiceOver */}
       <ol
         aria-label="Andamento do pedido"
-        className="m-0 contents list-none p-0"
+        // biome-ignore lint/a11y/noRedundantRoles: list-style:none apaga o papel de lista no Safari/VoiceOver
+        role="list"
+        className="m-0 flex w-full list-none items-start justify-between p-0"
       >
         {steps.map((step, index) => {
           const Icon = step.icon;

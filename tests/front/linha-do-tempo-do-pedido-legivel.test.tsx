@@ -47,6 +47,26 @@ describe("OrderTimeline -- lista ordenada com etapa atual anunciada e rótulos l
     });
   }
 
+  // `display: contents` some da árvore de acessibilidade (MDN, seção Accessibility de
+  // Web/CSS/display-box) e, em algumas versões de navegador, arrasta os <li> e o
+  // sr-only junto. jsdom não calcula estilo computado, então este teste não vê o
+  // efeito visual -- ele trava a DECISÃO (a classe não pode estar na marcação).
+  it("o <ol> não usa display:contents (some da árvore de acessibilidade)", async () => {
+    await renderizar("processing");
+
+    const lista = hospedeiro.querySelector("ol");
+    expect(lista?.className).not.toMatch(/\bcontents\b/);
+  });
+
+  // `list-style: none` sem `role="list"` explícito faz o VoiceOver (Safari) parar de
+  // anunciar "lista, N itens" -- comportamento conhecido do WebKit.
+  it('o <ol> tem role="list" explícito (Safari/VoiceOver ignora lista com list-none)', async () => {
+    await renderizar("processing");
+
+    const lista = hospedeiro.querySelector("ol");
+    expect(lista?.getAttribute("role")).toBe("list");
+  });
+
   it("status 'processing' (etapa 1 de 4): lista ordenada de 4 itens, etapa atual com aria-current=step", async () => {
     await renderizar("processing");
 
