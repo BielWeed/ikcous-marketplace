@@ -459,7 +459,7 @@ export function AccountSettingsView() {
           <button
             type="button"
             onClick={() => setActiveTab("profile")}
-            className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus:outline-none ${
+            className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
               activeTab === "profile"
                 ? "text-zinc-900"
                 : "text-zinc-500 hover:text-zinc-900"
@@ -480,7 +480,7 @@ export function AccountSettingsView() {
           <button
             type="button"
             onClick={() => setActiveTab("security")}
-            className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus:outline-none ${
+            className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
               activeTab === "security"
                 ? "text-zinc-900"
                 : "text-zinc-500 hover:text-zinc-900"
@@ -876,7 +876,7 @@ export function AccountSettingsView() {
                 setModalTab("avatars");
                 haptic.light();
               }}
-              className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus:outline-none ${
+              className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
                 modalTab === "avatars"
                   ? "text-zinc-900"
                   : "text-zinc-500 hover:text-zinc-900"
@@ -900,7 +900,7 @@ export function AccountSettingsView() {
                 setModalTab("upload");
                 haptic.light();
               }}
-              className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus:outline-none ${
+              className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
                 modalTab === "upload"
                   ? "text-zinc-900"
                   : "text-zinc-500 hover:text-zinc-900"

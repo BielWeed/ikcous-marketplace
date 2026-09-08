@@ -7,6 +7,53 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.22.0] - 2026-09-07
+
+A versão em que o cancelamento devolve o dinheiro sozinho. 5 PRs de produto
+(#436, #438, #439, #440 e #437) mais a migration que faz a loja clonada nascer
+com as mesmas travas da principal (#441); 3 migrations no banco (2 já
+aplicadas na loja principal em 07/09, 1 sem efeito lá) e 2 edge functions
+(1 nova, 1 alterada).
+
+### Para quem COMPRA (vitrine)
+
+- **Pedido PIX cancelado antes de sair devolve o dinheiro sem ninguém pedir**
+  (PRs #436, #438, #439, #440): quando um pedido pago e ainda não enviado é
+  cancelado, a loja registra a devolução e o servidor a executa no Mercado
+  Pago em minutos, conferindo antes de repetir para nunca devolver duas
+  vezes. A devolução só é dada por concluída quando o Mercado Pago confirma
+  que o dinheiro voltou (status `processed`); se não confirmar depois de 5
+  tentativas, o pedido fica marcado para o lojista olhar, e nunca libera uma
+  segunda devolução do mesmo valor. Pedido já enviado continua exigindo o
+  produto de volta antes.
+- **Acessibilidade, onda 1 do painel do cliente** (PR #437): nomes, estados e
+  anúncios ao leitor de tela nos pontos medidos; zero mudança visual.
+
+### Para quem VENDE (painel admin)
+
+- **Livro-caixa das devoluções** (PR #436): cada devolução vira uma linha
+  própria com valor, tentativas e último erro em português; o pedido guarda
+  quanto já foi devolvido. O botão "Devolver dinheiro" no painel e a tela do
+  cliente vêm nas próximas versões — hoje a devolução automática já funciona.
+
+### Para quem OPERA (banco, servidor, lojas clonadas)
+
+- **Migrations** `2026110000000` (ledger `order_refunds`, `valor_estornado`,
+  `solicitar_estorno`, bloco de estorno em `update_order_status_atomic`) e
+  `2026110000100` (`concluir_estorno`, só servidor) — aplicadas na loja
+  principal em 07/09 com prova; entram na loja da Savy junto com esta versão.
+- **Migration `20261090500000`** (PR #441): a loja clonada converge para os
+  mesmos grants de EXECUTE da principal (58 funções que na Savy ficavam ao
+  alcance do visitante anônimo). Na loja principal não muda nada; ela existe
+  para toda loja clonada nascer igual.
+- **Edge functions:** `estornar-pagamento` (nova; `verify_jwt = true`) e
+  `reconciliar-pagamentos` (agora processa a fila de devoluções; `verify_jwt
+  = false`, é cron). Ordem de publicação: migrations → edges → front.
+- **Só anotado para a próxima versão** (laudo Opus rodada 2 do #440): com
+  duas devoluções pendentes no mesmo pedido a consulta poderia creditar o
+  dinheiro de uma à outra; hoje nenhum caminho cria a segunda linha, e a
+  guarda é pré-requisito das tarefas 5 e 6 do plano do estorno.
+
 ## [1.21.1] - 2026-09-05
 
 A versão que faz a home parar de pular. Uma correção, um PR (#431), zero

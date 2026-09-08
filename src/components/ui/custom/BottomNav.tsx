@@ -87,6 +87,9 @@ export const BottomNav = memo(function BottomNav({
                   ? `${item.label}, ${item.badge} ${item.badge === 1 ? "item" : "itens"}`
                   : undefined
               }
+              // Laudo 05/09, M8: a aba ativa não se anunciava —
+              // `aria-current="page"` faz o leitor dizer "atual" na aba.
+              aria-current={isActive ? "page" : undefined}
               onClick={() => {
                 haptic.light();
                 onNavigate(item.view);
@@ -115,7 +118,7 @@ export const BottomNav = memo(function BottomNav({
                 )}
               </div>
               <span
-                className={`mt-1.5 text-[10px] font-bold tracking-tight transition-[opacity,transform,font-weight] duration-300 sm:text-[11px] ${isActive ? "scale-105 font-black opacity-100 text-zinc-950" : "opacity-60 grayscale-[0.5]"}`}
+                className={`mt-1.5 text-[10px] font-bold tracking-tight transition-[opacity,transform,font-weight] duration-300 sm:text-[11px] ${isActive ? "scale-105 font-black text-zinc-950 opacity-100" : "opacity-60 grayscale-[0.5]"}`}
               >
                 {item.label}
               </span>
