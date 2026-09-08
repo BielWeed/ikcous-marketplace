@@ -62,10 +62,12 @@ const CHAVE_PUBLICA_MP_OK_DASHBOARD =
  */
 function SecaoLojaProntaEEstoqueBaixo({
   stats,
+  estoqueCarregando,
   onNavigate,
   onTentarDeNovo,
 }: Readonly<{
   stats: DashboardStats | null;
+  estoqueCarregando: boolean;
   onNavigate: (view: View, id?: string) => void;
   onTentarDeNovo: () => void;
 }>) {
@@ -80,6 +82,7 @@ function SecaoLojaProntaEEstoqueBaixo({
       produtos={products}
       configCarregando={!isLoaded}
       produtosCarregando={loadingProducts}
+      estoqueCarregando={estoqueCarregando}
       onNavigate={onNavigate}
       onTentarDeNovo={onTentarDeNovo}
     />
@@ -362,6 +365,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           <LocalErrorBoundary>
             <SecaoLojaProntaEEstoqueBaixo
               stats={stats}
+              estoqueCarregando={isLoading && !stats}
               onNavigate={onNavigate}
               onTentarDeNovo={() => loadDashboardData(true)}
             />

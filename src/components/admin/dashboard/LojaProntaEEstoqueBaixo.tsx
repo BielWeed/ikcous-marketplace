@@ -44,6 +44,15 @@ interface LojaProntaEEstoqueBaixoProps {
   readonly configCarregando: boolean;
   /** A lista de produtos ainda não terminou de carregar. */
   readonly produtosCarregando: boolean;
+  /**
+   * A busca de `stats` (RPC de analytics) ainda está em andamento — ainda
+   * não é falha, é "não sei ainda". Sem isso, o card de estoque confundia
+   * "ainda estou buscando" com "busquei e não consegui": em toda abertura do
+   * Dashboard sem cache, `stats` nasce `null` e a busca só começa depois de
+   * um atraso proposital, então o lojista lia o alarme de falha antes de a
+   * busca sequer ter começado. Número em mãos sempre ganha do carregando.
+   */
+  readonly estoqueCarregando?: boolean;
   readonly onNavigate: (view: View) => void;
   /** Tenta buscar `stats` de novo (dashboard em estado "não sei"). */
   readonly onTentarDeNovo: () => void;
@@ -71,6 +80,7 @@ export function LojaProntaEEstoqueBaixo({
   produtos,
   configCarregando,
   produtosCarregando,
+  estoqueCarregando = false,
   onNavigate,
   onTentarDeNovo,
 }: LojaProntaEEstoqueBaixoProps) {
@@ -80,6 +90,11 @@ export function LojaProntaEEstoqueBaixo({
   const numeroDeAlertasValido =
     typeof stats?.inventoryAlerts === "number" &&
     Number.isFinite(stats.inventoryAlerts);
+
+  // Número em mãos ganha do carregando: se a busca terminou com um número
+  // válido, mostra o número mesmo que `estoqueCarregando` ainda esteja true
+  // (ex.: um refresh em segundo plano com o número anterior em cache).
+  const estoqueEstaCarregando = estoqueCarregando && !numeroDeAlertasValido;
 
   // "Preenchido" = string com conteúdo após trim() — a mesma regra do
   // formulário de endereço; CEP só de espaço em branco não conta.
@@ -162,6 +177,18 @@ export function LojaProntaEEstoqueBaixo({
             </span>
           </span>
         </button>
+      ) : estoqueEstaCarregando ? (
+        <div className="flex items-center gap-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-5">
+          <CircleDashed className="size-6 shrink-0 animate-spin text-zinc-500" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-black uppercase tracking-widest text-zinc-400">
+              Estoque baixo
+            </span>
+            <span className="block text-xs text-zinc-500">
+              Conferindo estoque…
+            </span>
+          </span>
+        </div>
       ) : (
         <div className="flex items-center gap-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-5">
           <AlertTriangle className="size-6 shrink-0 text-zinc-500" />

@@ -147,6 +147,99 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     expect(onTentarDeNovo).toHaveBeenCalledTimes(1);
   });
 
+  // ── D-carregando: a busca ainda está em andamento não é falha ──
+  //
+  // Antes desta frente, o card de estoque só conhecia dois estados (número
+  // ou falha) — em toda abertura do Dashboard sem cache, `stats` nasce
+  // `null` e a RPC só é disparada depois do `setTimeout` de 320ms em
+  // AdminDashboardView, então o lojista lia "não foi possível conferir o
+  // estoque" antes mesmo da busca começar. `estoqueCarregando` distingue
+  // "ainda não sei porque estou buscando" de "busquei e não consegui".
+  it("estoqueCarregando=true e stats=null: mostra o estado de carregando, NUNCA a mensagem de falha nem o botão de tentar de novo", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={null}
+        originCep="38500-000"
+        ligado={true}
+        chaveOk={true}
+        produtos={[{ isActive: true }]}
+        configCarregando={false}
+        produtosCarregando={false}
+        estoqueCarregando={true}
+        onNavigate={vi.fn()}
+        onTentarDeNovo={vi.fn()}
+      />,
+    );
+
+    expect(hospedeiro.textContent).not.toMatch(
+      /não consegui|não foi possível/i,
+    );
+    expect(botaoComTexto(/tentar de novo/i)).toBeFalsy();
+    expect(botaoComTexto(/estoque baixo/i)).toBeFalsy();
+    expect(hospedeiro.textContent).toMatch(/conferindo estoque/i);
+  });
+
+  it("estoqueCarregando=false e stats=null: continua no estado de falha, com o botão de tentar de novo (comportamento já provado, não pode regredir)", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+    const onTentarDeNovo = vi.fn();
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={null}
+        originCep="38500-000"
+        ligado={true}
+        chaveOk={true}
+        produtos={[{ isActive: true }]}
+        configCarregando={false}
+        produtosCarregando={false}
+        estoqueCarregando={false}
+        onNavigate={vi.fn()}
+        onTentarDeNovo={onTentarDeNovo}
+      />,
+    );
+
+    expect(hospedeiro.textContent).toMatch(/não consegui|não foi possível/i);
+    const tentar = botaoComTexto(/tentar de novo/i);
+    expect(tentar).toBeTruthy();
+    await clicar(tentar!);
+    expect(onTentarDeNovo).toHaveBeenCalledTimes(1);
+  });
+
+  it("estoqueCarregando=true mas com stats.inventoryAlerts=3: o número em mãos ganha do carregando, mostra 3", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+    const onNavigate = vi.fn();
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={{ inventoryAlerts: 3 }}
+        originCep="38500-000"
+        ligado={true}
+        chaveOk={true}
+        produtos={[{ isActive: true }]}
+        configCarregando={false}
+        produtosCarregando={false}
+        estoqueCarregando={true}
+        onNavigate={onNavigate}
+        onTentarDeNovo={vi.fn()}
+      />,
+    );
+
+    expect(hospedeiro.textContent).toMatch(/3 produtos/);
+    expect(hospedeiro.textContent).not.toMatch(/conferindo estoque/i);
+    const cardEstoque = botaoComTexto(/estoque baixo/i);
+    expect(cardEstoque).toBeTruthy();
+    await clicar(cardEstoque!);
+    expect(onNavigate).toHaveBeenCalledWith("admin-notifications");
+  });
+
   it("inventoryAlerts não numérico (ex.: veio como string do banco): mesmo tratamento de 'não sei'", async () => {
     const { LojaProntaEEstoqueBaixo } = await import(
       "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
