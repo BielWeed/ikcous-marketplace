@@ -61,13 +61,12 @@ const CONTROLE = vi.hoisted(() => {
 // de vida, mantendo MainTabsMotionShell/SecondaryViewMotionShell reais (o
 // contrato deles não está em jogo aqui).
 vi.mock("@/components/layouts/AppMotionFallbacks", async (importOriginal) => {
-  const real = await importOriginal<
-    typeof import("@/components/layouts/AppMotionFallbacks")
-  >();
+  const real =
+    await importOriginal<
+      typeof import("@/components/layouts/AppMotionFallbacks")
+    >();
   function RouteLoadingProgress({ active }: { readonly active: boolean }) {
-    return (
-      <div data-testid="barra-de-rota" data-active={String(active)} />
-    );
+    return <div data-testid="barra-de-rota" data-active={String(active)} />;
   }
   return { ...real, RouteLoadingProgress };
 });
