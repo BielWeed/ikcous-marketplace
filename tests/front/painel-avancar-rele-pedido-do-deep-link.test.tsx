@@ -20,6 +20,13 @@
 // mock encaminha `ErroPedidoMudou` REAL via `vi.importActual` — o mesmo
 // `instanceof` que `AdminOrdersView.tsx` usa no `catch` precisa reconhecer
 // a instância que este arquivo lança.
+//
+// Rodada 3 (achado 1 do laudo, mutação i): o teste "controle: o pedido
+// selecionado muda para OUTRO..." é a ÚNICA exceção ao `orders` vazio —
+// precisa de um segundo pedido JÁ carregado para provar que
+// `AdminOrdersView.tsx:971` só manda `statusEsperado` quando o id do
+// pedido que está avançando bate com o do `selectedOrder` atual.
+import { mapOrderFromDB } from "@/lib/mappers";
 import type { Order } from "@/types";
 import { act } from "react";
 import type { ReactNode } from "react";
@@ -182,6 +189,25 @@ function builderPedidoUnico(linha: unknown) {
   return builder;
 }
 
+/** Variante de `linhaCruaDoDeepLink` com pagamento AGUARDANDO — é o que faz
+ * `OrderDetail.requestStatusChange` abrir a confirmação ("Avançar mesmo
+ * assim") em vez de chamar `handleStatusChange` direto (só usada no teste
+ * da mutação i, abaixo). */
+function linhaCruaAguardandoPagamento() {
+  return { ...linhaCruaDoDeepLink(), payment_status: "aguardando" };
+}
+
+const PEDIDO_ID_OUTRO = "pedido-deep-link-outro";
+
+/** Segundo pedido, só usado no teste da mutação i: precisa estar em
+ * `orders` (não vir de busca avulsa) para a troca de `selectedOrder`
+ * acontecer sem passar pela tela de "Carregando Pedido" — que desmontaria
+ * `OrderDetail` e apagaria a confirmação pendente que o teste depende de
+ * manter viva. */
+function linhaCruaOutroPedido() {
+  return { ...linhaCruaDoDeepLink(), id: PEDIDO_ID_OUTRO, status: "pending" };
+}
+
 describe("AdminOrdersView — a ficha aberta por DEEP LINK reflete o status VERDADEIRO quando a releitura descobre que o pedido mudou (L-9 front rodada 2, critério C)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -310,5 +336,91 @@ describe("AdminOrdersView — a ficha aberta por DEEP LINK reflete o status VERD
     expect(hospedeiro.textContent).not.toContain("Pago e cancelado");
     expect(toast.warning).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
+
+    // Rodada 3 (achado 1 do laudo): prende o 5º argumento (`statusEsperado`)
+    // que `AdminOrdersView.tsx:971` manda a `updateOrderStatus`. Sem esta
+    // asserção, apagar aquela expressão inteira (virar `undefined` sempre)
+    // deixava a suíte toda verde — a linha que sustenta a guarda do deep
+    // link não tinha rede de proteção nenhuma. `linhaCruaDoDeepLink` carrega
+    // `status: "processing"`, e o pedido aberto É o `selectedOrder` (mesmo
+    // id) — por isso o valor esperado é o status dele, nunca `undefined`.
+    expect(updateOrderStatus.mock.calls[0][4]).toBe("processing");
+  });
+
+  it("controle: o pedido selecionado muda para OUTRO enquanto a confirmação de pagamento pendente está aberta — o 5º argumento vai `undefined`, NUNCA o status do pedido errado (rodada 3, mutação i)", async () => {
+    // Pagamento "aguardando" faz `OrderDetail.requestStatusChange` desviar
+    // para a confirmação (`setPendingAdvance`) em vez de chamar
+    // `handleStatusChange` direto — é essa pausa que abre a janela para o
+    // `selectedOrder` mudar por baixo enquanto o id do pedido A já está
+    // capturado no diálogo.
+    from.mockImplementation(() =>
+      builderPedidoUnico(linhaCruaAguardandoPagamento()),
+    );
+    updateOrderStatus.mockResolvedValue(undefined);
+
+    await renderizarComDeepLink();
+
+    const botaoAvancarPrimeiro = botaoAvancar();
+    expect(botaoAvancarPrimeiro).toBeTruthy();
+
+    await act(async () => {
+      botaoAvancarPrimeiro!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+
+    function botaoConfirmarAvancoMesmoAssim() {
+      return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Avançar mesmo assim"),
+      );
+    }
+
+    // O diálogo abriu em vez de gravar direto — prova que o clique caiu no
+    // caminho de confirmação, não no caminho direto do outro teste.
+    expect(botaoConfirmarAvancoMesmoAssim()).toBeTruthy();
+    expect(updateOrderStatus).not.toHaveBeenCalled();
+
+    // Troca o pedido aberto ANTES de confirmar. `mockOrders` passa a conter
+    // o pedido B — assim `AdminOrdersView` acha `nextOrder` local (efeito de
+    // AdminOrdersView.tsx:564-566) e troca `selectedOrder` SEM passar pela
+    // tela de "Carregando Pedido", que desmontaria `OrderDetail` e limparia
+    // a confirmação pendente que este teste depende de manter viva.
+    mockOrders = [mapOrderFromDB(linhaCruaOutroPedido() as any)];
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(
+        <AdminOrdersView
+          onNavigate={vi.fn()}
+          active={true}
+          selectedOrderId={PEDIDO_ID_OUTRO}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // A ficha agora mostra o pedido B — o diálogo de confirmação continua
+    // aberto, com o id do pedido A ainda capturado dentro dele.
+    expect(hospedeiro.textContent).toContain(PEDIDO_ID_OUTRO.slice(-6));
+    const botaoConfirmar = botaoConfirmarAvancoMesmoAssim();
+    expect(botaoConfirmar).toBeTruthy();
+
+    await act(async () => {
+      botaoConfirmar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // `updateOrderStatus` é chamado com o id do pedido A (o que estava
+    // sendo confirmado), mas o `selectedOrder` no instante da chamada já é
+    // o pedido B — os ids NÃO batem, e o 5º argumento tem que vir
+    // `undefined`. Se `AdminOrdersView.tsx:971` mandasse
+    // `selectedOrder.status` sem conferir o id (mutação i), este teste
+    // receberia o status do pedido ERRADO (B) em vez de `undefined`.
+    expect(updateOrderStatus).toHaveBeenCalledTimes(1);
+    expect(updateOrderStatus.mock.calls[0][0]).toBe(PEDIDO_ID);
+    expect(updateOrderStatus.mock.calls[0][4]).toBeUndefined();
   });
 });

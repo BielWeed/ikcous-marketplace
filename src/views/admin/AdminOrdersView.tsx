@@ -942,9 +942,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // `silent` — nenhum clique de verdade passa `true` aqui. Mantido mesmo
   // assim (não removido) porque `updateOrderStatus` do hook já aceita e usa
   // esse parâmetro para outros chamadores (ex.: CheckoutView, no cancelamento
-  // automático) — se um dia esta view ganhar um caminho silencioso próprio
-  // (ex.: sincronização em lote), o guard do catch abaixo já cobre o caso sem
-  // precisar lembrar de adicioná-lo depois.
+  // automático). Rodada 3 (achado 2 do laudo): a frase antiga aqui prometia
+  // que "o guard do catch abaixo já cobre o caso sem precisar lembrar de
+  // adicioná-lo depois" — deixou de ser verdade com o `return` do
+  // tratamento de `ErroPedidoMudou` (abaixo): quando esse erro tipado é
+  // lançado, o `catch` relança ANTES de chegar no `if (silent)
+  // toast.error(...)`, então um eventual caminho silencioso próprio que
+  // colidisse com `ErroPedidoMudou` NÃO geraria aviso nenhum ali. Isso está
+  // certo por desenho (silent = "não incomode a pessoa") e não muda nada
+  // hoje — o caminho é código morto, como já dito acima —, mas fica
+  // registrado para quem for ligar um caminho silencioso de verdade: não
+  // dá pra contar com este guard sem checar o `catch` inteiro primeiro.
   const handleStatusChange = async (
     orderId: string,
     newStatus: OrderStatus,
