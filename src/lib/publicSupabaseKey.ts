@@ -1,7 +1,8 @@
+import type { PublicKeyClass } from "../config/storeDeliveryContract";
 import { IdentityError } from "./storeIdentity";
 
-export function assertPublicSupabaseKey(key: string): void {
-  if (/^sb_publishable_[A-Za-z0-9_-]+$/.test(key)) return;
+export function classifyPublicSupabaseKey(key: string): PublicKeyClass {
+  if (/^sb_publishable_[A-Za-z0-9_-]+$/.test(key)) return "publishable";
   try {
     if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(key))
       throw new Error();
@@ -16,9 +17,13 @@ export function assertPublicSupabaseKey(key: string): void {
       "role" in payload &&
       payload.role === "anon"
     )
-      return;
+      return "anon-jwt";
   } catch {
     /* Only classify public legacy keys; the server verifies the signature. */
   }
   throw new IdentityError("IDENTITY_KEY");
+}
+
+export function assertPublicSupabaseKey(key: string): void {
+  classifyPublicSupabaseKey(key);
 }
