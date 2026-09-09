@@ -1,3 +1,4 @@
+import { hexToTailwindHsl } from "@/config/branding";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import type { SyncEvent } from "@/lib/realtimeSyncEngine";
 import type { StoreConfig } from "@/types";
@@ -394,11 +395,24 @@ describe("identidade transportada pelo StoreProvider real", () => {
     expect(externo.rpc).not.toHaveBeenCalled();
     expect(externo.put).not.toHaveBeenCalled();
   });
-  it("congela uma cópia validada antes de aguardar a RPC, mantendo pedido e cache iguais", async () => {
+  it("captura os oito campos antes da RPC e mantém pedido, estado e cache iguais", async () => {
     externo.linha = { id: 1 };
     await montar();
-    const patch = patchIdentidade();
-    const esperado = pacoteDeMarca();
+    const identidade = {
+      ...patchIdentidade(),
+      storeName: "Aurora",
+      storeCity: "Recife",
+      storeState: "PE",
+      primaryColor: "#059669",
+    };
+    const patch = { ...identidade, brandingAssets: pacoteDeMarca() };
+    const confirmado = {
+      ...linhaIdentidade(),
+      store_name: "Aurora",
+      store_city: "Recife",
+      store_state: "PE",
+      primary_color: "#059669",
+    };
     let resolver!: (result: Resultado) => void;
     externo.rpc.mockImplementation(
       () =>
@@ -410,27 +424,163 @@ describe("identidade transportada pelo StoreProvider real", () => {
     await act(async () => {
       pendente = store.updateConfig(patch);
     });
-    patch.secondaryColor = "#111111";
-    patch.accentColor = "#222222";
+    expect(Object.isFrozen(patch)).toBe(false);
+    patch.logoUrl = "https://example.com/outra-logo.png";
+    patch.storeName = "Horizonte";
+    patch.storeCity = "Salvador";
+    patch.storeState = "BA";
+    patch.primaryColor = "#111111";
+    patch.secondaryColor = "#222222";
+    patch.accentColor = "#333333";
     patch.brandingAssets.header.bytes = 999;
     patch.brandingAssets.originals.reverse();
     patch.brandingAssets = pacoteDeMarca();
     patch.brandingAssets.loader.bytes = 777;
     const enviado = externo.rpc.mock.calls[0][1].config_json.branding_assets;
-    expect(enviado).toEqual(esperado);
+    expect(enviado).toEqual(identidade.brandingAssets);
     expect(Object.isFrozen(enviado.header)).toBe(true);
+    expect(externo.rpc).toHaveBeenCalledWith("upsert_store_config", {
+      config_json: {
+        logo_url: urlDoHeader,
+        store_name: "Aurora",
+        store_city: "Recife",
+        store_state: "PE",
+        primary_color: "#059669",
+        secondary_color: "#FFFFFF",
+        accent_color: "#C99730",
+        branding_assets: identidade.brandingAssets,
+      },
+    });
     let ok: boolean | undefined;
     await act(async () => {
-      resolver({ data: linhaIdentidade(), error: null });
+      resolver({ data: confirmado, error: null });
       ok = await pendente;
+      // Antes do efeito de render: nem a aplicação imediata pode usar o rascunho.
+      expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
+        hexToTailwindHsl("#059669"),
+      );
     });
     expect(ok).toBe(true);
-    expect(store.config.secondaryColor).toBe("#FFFFFF");
-    expect(store.config.accentColor).toBe("#C99730");
+    expect(store.config).toMatchObject(identidade);
     expect(store.config.brandingAssets).toBe(enviado);
     expect(externo.put).toHaveBeenCalledWith(
       "store_config",
-      expect.objectContaining({ brandingAssets: esperado }),
+      expect.objectContaining(identidade),
     );
+  });
+  it.each(["omitidos", "undefined", "null"] as const)(
+    "preserva a captura dos campos anteriores com %s durante a RPC",
+    async (caso) => {
+      externo.linha = {
+        ...linhaIdentidade(),
+        store_name: "Aurora",
+        store_city: "Recife",
+        store_state: "PE",
+        primary_color: "#059669",
+      };
+      await montar();
+      const anterior = store.config;
+      const limpeza = {
+        logoUrl: null,
+        storeName: null,
+        storeCity: null,
+        storeState: null,
+      };
+      const patch: Partial<StoreConfig> = {
+        enableCoupons: true,
+        ...(caso === "null"
+          ? limpeza
+          : caso === "undefined"
+            ? {
+                logoUrl: undefined,
+                storeName: undefined,
+                storeCity: undefined,
+                storeState: undefined,
+                primaryColor: undefined,
+              }
+            : {}),
+      };
+      let resolver!: (result: Resultado) => void;
+      externo.rpc.mockImplementation(
+        () =>
+          new Promise<Resultado>((resolve) => {
+            resolver = resolve;
+          }),
+      );
+      let pendente!: Promise<boolean>;
+      await act(async () => {
+        pendente = store.updateConfig(patch);
+      });
+      if (caso !== "undefined") {
+        patch.logoUrl = "https://example.com/rascunho.png";
+        patch.storeName = "Horizonte";
+        patch.storeCity = "Salvador";
+        patch.storeState = "BA";
+        patch.primaryColor = "#111111";
+      }
+      const confirmado = {
+        enable_coupons: true,
+        ...(caso === "null"
+          ? {
+              logo_url: null,
+              store_name: null,
+              store_city: null,
+              store_state: null,
+            }
+          : {}),
+      };
+      expect(externo.rpc).toHaveBeenCalledWith("upsert_store_config", {
+        config_json: confirmado,
+      });
+      let ok: boolean | undefined;
+      await act(async () => {
+        resolver({ data: confirmado, error: null });
+        ok = await pendente;
+      });
+      expect(ok).toBe(true);
+      const esperado = {
+        ...anterior,
+        enableCoupons: true,
+        ...(caso === "null" ? limpeza : {}),
+      };
+      expect(store.config).toEqual(esperado);
+      expect(externo.put).toHaveBeenCalledWith(
+        "store_config",
+        expect.objectContaining(esperado),
+      );
+    },
+  );
+  it.each([
+    { logo_url: "https://example.com/divergente.png" },
+    { store_name: "Horizonte" },
+    { store_city: "Salvador" },
+    { store_state: "BA" },
+    { primary_color: "#111111" },
+  ])("recusa confirmação divergente de identidade %j", async (divergencia) => {
+    await montar();
+    const anterior = store.config;
+    externo.rpc.mockResolvedValue({
+      data: {
+        ...linhaIdentidade(),
+        store_name: "Aurora",
+        store_city: "Recife",
+        store_state: "PE",
+        primary_color: "#059669",
+        ...divergencia,
+      },
+      error: null,
+    });
+    expect(
+      await salvar({
+        ...patchIdentidade(),
+        storeName: "Aurora",
+        storeCity: "Recife",
+        storeState: "PE",
+        primaryColor: "#059669",
+      }),
+    ).toBe(false);
+    expect(store.config).toBe(anterior);
+    expect(externo.put).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });

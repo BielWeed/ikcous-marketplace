@@ -761,9 +761,14 @@ export function StoreProvider({
           dbUpdates.enable_reviews = updates.enableReviews;
         if (updates.enableCoupons !== undefined)
           dbUpdates.enable_coupons = updates.enableCoupons;
-        if (updates.logoUrl !== undefined) dbUpdates.logo_url = updates.logoUrl;
-        if (updates.primaryColor !== undefined)
-          dbUpdates.primary_color = updates.primaryColor;
+        if (updates.logoUrl !== undefined) {
+          identityUpdates.logoUrl = updates.logoUrl;
+          dbUpdates.logo_url = identityUpdates.logoUrl;
+        }
+        if (updates.primaryColor !== undefined) {
+          identityUpdates.primaryColor = updates.primaryColor;
+          dbUpdates.primary_color = identityUpdates.primaryColor;
+        }
         if (updates.secondaryColor !== undefined) {
           identityUpdates.secondaryColor = updates.secondaryColor;
           dbUpdates.secondary_color = identityUpdates.secondaryColor;
@@ -789,12 +794,18 @@ export function StoreProvider({
           dbUpdates.push_marketing_enabled = updates.pushMarketingEnabled;
         if (updates.minAppVersion !== undefined)
           dbUpdates.min_app_version = updates.minAppVersion;
-        if (updates.storeName !== undefined)
-          dbUpdates.store_name = updates.storeName;
-        if (updates.storeCity !== undefined)
-          dbUpdates.store_city = updates.storeCity;
-        if (updates.storeState !== undefined)
-          dbUpdates.store_state = updates.storeState;
+        if (updates.storeName !== undefined) {
+          identityUpdates.storeName = updates.storeName;
+          dbUpdates.store_name = identityUpdates.storeName;
+        }
+        if (updates.storeCity !== undefined) {
+          identityUpdates.storeCity = updates.storeCity;
+          dbUpdates.store_city = identityUpdates.storeCity;
+        }
+        if (updates.storeState !== undefined) {
+          identityUpdates.storeState = updates.storeState;
+          dbUpdates.store_state = identityUpdates.storeState;
+        }
         if (updates.originCep !== undefined)
           dbUpdates.origin_cep = updates.originCep;
         if (updates.shippingProvider !== undefined)
@@ -862,6 +873,11 @@ export function StoreProvider({
 
         setConfig((prev) => {
           const {
+            logoUrl: _logoUrl,
+            storeName: _storeName,
+            storeCity: _storeCity,
+            storeState: _storeState,
+            primaryColor: _primaryColor,
             secondaryColor: _secondaryColor,
             accentColor: _accentColor,
             brandingAssets: _brandingAssets,
@@ -882,12 +898,11 @@ export function StoreProvider({
             );
           return newConfig;
         });
-        // Aplica pela REGRA também no caminho do admin: valor explícito do
-        // formulário passa (inclusive #000000 = preto escolhido); ausente
-        // não pinta nada. Nenhum caminho aplica cru por fora do dono único.
+        // Aplica a cor capturada pela mesma regra da vitrine: ausência e
+        // #000000 não pintam. O rascunho pode ter mudado durante o await.
         applyBranding(
           corPrimariaEfetiva({
-            primaryColor: updates.primaryColor,
+            primaryColor: identityUpdates.primaryColor,
           } as StoreConfig),
         );
         toast.success("Configurações salvas");

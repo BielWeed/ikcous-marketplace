@@ -79,9 +79,9 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
       "schema, lista de campos, mapeamento da leitura e clonagem validada em memória; nenhuma persistência (A3)",
   },
   "src/contexts/StoreContext.tsx": {
-    n: 10,
+    n: 11,
     porque:
-      "lê do banco (mapConfig) e aplica em runtime — inclusive updateConfig",
+      "lê do banco (mapConfig) e aplica em runtime — inclusive updateConfig; desestrutura primaryColor para excluir a leitura tardia do rascunho (A5a2)",
   },
   "src/types/database.types.ts": {
     n: 9,
