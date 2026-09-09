@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx tsc -b && vite build",
+    "build": "npx tsc -b && node scripts/buildStore.mjs",
     "lint": "eslint . --cache --cache-strategy content",
     "lint:rapido": "eslint . --config eslint.config.rapido.js --cache --cache-strategy content --cache-location .eslintcache-rapido",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
