@@ -51,6 +51,20 @@ afterEach(() => {
 });
 
 describe("transporte de identidade restrito a origem e sessao", () => {
+  it("exposes only the response metadata needed to bind a resumed object", async () => {
+    const f = fixture();
+    f.fetchImpl.mockResolvedValueOnce(
+      new Response(null, {
+        headers: {
+          "Upload-Metadata": "objectName dGVzdA==",
+          Authorization: "private",
+        },
+      }),
+    );
+    const response = await f.stack.createRequest("HEAD", uploadUrl).send();
+    expect(response.getHeader("Upload-Metadata")).toBe("objectName dGVzdA==");
+    expect(response.getHeader("Authorization")).toBeUndefined();
+  });
   it("cancelar durante credencial encerra sem esperar nem enviar depois", async () => {
     const auth = deferred<IdentityUploadAuthorization>();
     const f = fixture({ authorize: () => auth.promise });

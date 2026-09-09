@@ -64,6 +64,7 @@ const requestHeaders = new Set([
   "content-type",
 ]);
 const responseHeaders = [
+  "upload-metadata",
   "location",
   "upload-offset",
   "upload-length",
