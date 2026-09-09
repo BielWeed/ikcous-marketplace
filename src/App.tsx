@@ -1640,8 +1640,16 @@ const AppContent = () => {
             "[App] Unauthorized admin access attempt blocked in syncWithUrl.",
           );
           targetView = "home";
-          if (globalThis.location.pathname !== "/") {
-            globalThis.history.replaceState({ view: "home" }, "", "/");
+          const caminhoDaHome = caminhoDaHomeRef.current();
+          if (
+            globalThis.location.pathname + globalThis.location.search !==
+            caminhoDaHome
+          ) {
+            globalThis.history.replaceState(
+              { view: "home" },
+              "",
+              caminhoDaHome,
+            );
           }
         }
 
