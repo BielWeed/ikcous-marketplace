@@ -7,6 +7,7 @@ import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import { precoVendido } from "@/lib/preco-vendido";
 import { RealtimeSyncEngine } from "@/lib/realtimeSyncEngine";
+import { parseBrandingAssets } from "@/lib/storeIdentity";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, Product, ShippingOption, StoreConfig } from "@/types";
 import React, {
@@ -73,7 +74,8 @@ type TipoColunaStoreConfig =
   | "boolean"
   | "texto"
   | "texto_array"
-  | "home_sections";
+  | "home_sections"
+  | "branding_assets";
 
 // `Map`, não `Record` -- `chave` vem do banco (nome de coluna que a RPC
 // devolveu) e indexar objeto com string vinda de fora é exatamente o que
@@ -94,6 +96,9 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   ["enable_coupons", "boolean"],
   ["logo_url", "texto"],
   ["primary_color", "texto"],
+  ["secondary_color", "texto"],
+  ["accent_color", "texto"],
+  ["branding_assets", "branding_assets"],
   ["theme_mode", "texto"],
   ["real_time_sales_alerts", "boolean"],
   ["push_marketing_enabled", "boolean"],
@@ -146,6 +151,20 @@ function homeSectionsForamGravadas(
   );
 }
 
+// O pacote atravessa jsonb: ordem de chaves não importa, ordem dos originais sim.
+// Validar ambos impede que uma resposta malformada seja aceita como confirmação.
+function brandingAssetsIguais(enviado: unknown, gravado: unknown): boolean {
+  if (enviado === null || enviado === undefined) return gravado === enviado;
+  try {
+    return (
+      JSON.stringify(normalizarHomeSections(parseBrandingAssets(enviado))) ===
+      JSON.stringify(normalizarHomeSections(parseBrandingAssets(gravado)))
+    );
+  } catch {
+    return false;
+  }
+}
+
 // DECISÃO — o caso do COALESCE no ramo INSERT (linha nova) da RPC:
 //
 // upsert_store_config aplica COALESCE(..., default) em várias colunas só no
@@ -178,6 +197,8 @@ function valorFoiGravado(
   if (enviado === null) return gravado === null;
 
   switch (tipo) {
+    case "branding_assets":
+      return brandingAssetsIguais(enviado, gravado);
     case "numeric": {
       // `Number(null) === 0` e `Number("") === 0` -- coagir os DOIS lados
       // pelo `Number(...)` abaixo faria o banco devolver `null` (= não
@@ -403,6 +424,9 @@ export function StoreProvider({
           if (arrA.length !== arrB.length) return false;
           return arrA.every((v, i) => v === arrB[i]);
         }
+        if (k === "brandingAssets") {
+          return brandingAssetsIguais(a.brandingAssets, b.brandingAssets);
+        }
         if (k === "homeSections") {
           if (Array.isArray(a[k]) && Array.isArray(b[k])) {
             return homeSectionsForamGravadas(a[k], b[k]);
@@ -467,6 +491,16 @@ export function StoreProvider({
       ),
       logoUrl: getVal("logo_url", "logoUrl", undefined),
       primaryColor: getVal("primary_color", "primaryColor", undefined),
+      secondaryColor:
+        data.secondary_color !== undefined
+          ? data.secondary_color
+          : data.secondaryColor,
+      accentColor:
+        data.accent_color !== undefined ? data.accent_color : data.accentColor,
+      brandingAssets:
+        data.branding_assets !== undefined
+          ? data.branding_assets
+          : data.brandingAssets,
       themeMode: getVal(
         "theme_mode",
         "themeMode",
@@ -710,6 +744,7 @@ export function StoreProvider({
         }
 
         const dbUpdates: any = {};
+        const identityUpdates: Partial<StoreConfig> = {};
         if (updates.freeShippingMin !== undefined)
           dbUpdates.free_shipping_min = updates.freeShippingMin;
         if (updates.shippingFee !== undefined)
@@ -729,6 +764,23 @@ export function StoreProvider({
         if (updates.logoUrl !== undefined) dbUpdates.logo_url = updates.logoUrl;
         if (updates.primaryColor !== undefined)
           dbUpdates.primary_color = updates.primaryColor;
+        if (updates.secondaryColor !== undefined) {
+          identityUpdates.secondaryColor = updates.secondaryColor;
+          dbUpdates.secondary_color = identityUpdates.secondaryColor;
+        }
+        if (updates.accentColor !== undefined) {
+          identityUpdates.accentColor = updates.accentColor;
+          dbUpdates.accent_color = identityUpdates.accentColor;
+        }
+        if (updates.brandingAssets !== undefined) {
+          // Cópia validada e congelada antes do await; o chamador pode editar
+          // o rascunho enquanto a RPC aguarda sem alterar o pedido confirmado.
+          identityUpdates.brandingAssets =
+            updates.brandingAssets === null
+              ? null
+              : parseBrandingAssets(updates.brandingAssets);
+          dbUpdates.branding_assets = identityUpdates.brandingAssets;
+        }
         if (updates.themeMode !== undefined)
           dbUpdates.theme_mode = updates.themeMode;
         if (updates.realTimeSalesAlerts !== undefined)
@@ -809,7 +861,13 @@ export function StoreProvider({
         }
 
         setConfig((prev) => {
-          const newConfig = { ...prev, ...updates };
+          const {
+            secondaryColor: _secondaryColor,
+            accentColor: _accentColor,
+            brandingAssets: _brandingAssets,
+            ...otherUpdates
+          } = updates;
+          const newConfig = { ...prev, ...otherUpdates, ...identityUpdates };
           // Persist to DataVault
           // Pelo singleton e com erro logado (revisão 20260825-1050).
           DataVault.init()

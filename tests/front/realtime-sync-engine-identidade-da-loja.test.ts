@@ -10,6 +10,7 @@
 // assim que o app sincroniza pelo caminho offline/realtime em vez de vir
 // direto do `StoreContext`.
 import { describe, expect, it, vi } from "vitest";
+import { pacoteDeMarca } from "./fixtures/branding-assets";
 
 // `realtimeSyncEngine.ts` importa `@/lib/supabase` no topo do módulo, e o
 // client real falha ao construir em jsdom (sem Web Worker). O dublê evita
@@ -37,6 +38,28 @@ describe("realtimeSyncEngine — identidade da loja no mapRecord de store_config
     expect(mapeado.storeCity).toBe("Uberlândia");
     expect(mapeado.storeState).toBe("MG");
   });
+
+  it.each([undefined, null, pacoteDeMarca()])(
+    "transporta pacote e cores sem inventar valores: %s",
+    (pacote) => {
+      const raw =
+        pacote === undefined
+          ? {}
+          : {
+              secondary_color: pacote === null ? null : "#FFFFFF",
+              accent_color: pacote === null ? null : "#C99730",
+              branding_assets: pacote,
+            };
+      const mapeado = mapearStoreConfig(raw);
+      expect(mapeado.secondaryColor).toBe(
+        pacote === undefined ? undefined : pacote === null ? null : "#FFFFFF",
+      );
+      expect(mapeado.accentColor).toBe(
+        pacote === undefined ? undefined : pacote === null ? null : "#C99730",
+      );
+      expect(mapeado.brandingAssets).toEqual(pacote);
+    },
+  );
 
   it("não inventa identidade quando o payload não traz os campos", () => {
     const mapeado = mapearStoreConfig({});
