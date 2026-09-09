@@ -441,3 +441,134 @@ describe("confirmação somente após Vite resolver por inteiro", () => {
     }
   });
 });
+
+describe("entrega preparada chega ao observador e é conferida", () => {
+  const syntheticPlugin: Plugin = {
+    name: "a6c-like",
+    config: () => ({
+      define: {
+        "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(
+          "https://abcdefghijklmnopqrst.supabase.co",
+        ),
+        "import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(
+          "a6c-public-artificial-key-no-account",
+        ),
+      },
+    }),
+  };
+
+  it("fixture-none confirma marcador e mantém os seis campos de version.json", async () => {
+    const fixture = await setup([], true);
+    const marker = await fixture.run();
+    expect(Object.keys(marker).sort()).toEqual([
+      "codeSha",
+      "codeVersion",
+      "identityRevision",
+      "promotable",
+      "source",
+      "version",
+    ]);
+    expect(marker.promotable).toBe(false);
+    expect(JSON.parse(await fs.readFile(fixture.marker, "utf8"))).toEqual(
+      marker,
+    );
+  });
+
+  it("fixture-synthetic (par A6) confirma e não vira database", async () => {
+    let seen: { connection: { kind: string } } | undefined;
+    const peek: Plugin = {
+      name: "peek",
+      enforce: "post",
+      configResolved(config) {
+        seen = config.plugins
+          .find((p) => p.api?.name === "ikcous-store-delivery")!
+          .api.get();
+      },
+    };
+    const fixture = await setup([syntheticPlugin, peek], true);
+    const marker = await fixture.run();
+    expect(seen?.connection.kind).toBe("fixture-synthetic");
+    expect(marker.promotable).toBe(false);
+    expect(marker.source).toBe("fixture");
+  });
+
+  it("fornecedor duplicado não confirma", async () => {
+    const fixture = await setup([], true);
+    const fake: Plugin = {
+      name: "second-provider",
+      api: { name: "ikcous-store-delivery", version: 1, get: () => ({}) },
+    };
+    await expect(
+      fixture.run({ plugins: [...fixture.options.plugins!, fake] }),
+    ).rejects.toThrow(/IDENTITY_DELIVERY_PROVIDER/);
+    await absent(fixture.marker);
+  });
+
+  it("fornecedor ausente não confirma", async () => {
+    const fixture = await setup([], true);
+    const identityOnly = fixture.options.plugins!.filter(
+      (p) => (p as Plugin).name !== "store-identity-lifecycle",
+    );
+    await expect(fixture.run({ plugins: identityOnly })).rejects.toThrow(
+      /IDENTITY_DELIVERY_PROVIDER|IDENTITY_SNAPSHOT/,
+    );
+    await absent(fixture.marker);
+  });
+
+  it("versão desconhecida do getter não confirma", async () => {
+    const fixture = await setup([], true);
+    const identity = fixture.options.plugins![0] as Plugin;
+    const wrapped: Plugin = {
+      ...identity,
+      api: { ...identity.api, version: 2 },
+    };
+    await expect(
+      fixture.run({ plugins: [wrapped, ...fixture.options.plugins!.slice(1)] }),
+    ).rejects.toThrow(/IDENTITY_DELIVERY_VERSION/);
+    await absent(fixture.marker);
+  });
+
+  it("define público alterado depois da captura não confirma", async () => {
+    let config: import("vite").ResolvedConfig;
+    const fixture = await setup(
+      [
+        {
+          name: "mutate-public-define-after-capture",
+          configResolved(value) {
+            config = value;
+          },
+          closeBundle() {
+            config.define!["import.meta.env.VITE_SUPABASE_URL"] =
+              JSON.stringify("https://zzzzzzzzzzzzzzzzzzzz.supabase.co");
+          },
+        },
+      ],
+      true,
+    );
+    await expect(fixture.run()).rejects.toThrow(/IDENTITY_DELIVERY_CHANGED/);
+    await absent(fixture.marker);
+  });
+
+  it("getter que devolve outro objeto depois não confirma", async () => {
+    const fixture = await setup([], true);
+    const identity = fixture.options.plugins![0] as Plugin;
+    let calls = 0;
+    const flaky: Plugin = {
+      ...identity,
+      api: {
+        ...identity.api,
+        get() {
+          const value = identity.api.get();
+          calls++;
+          return calls === 1
+            ? value
+            : { ...value, publicDefines: { ...value.publicDefines, url: "x" } };
+        },
+      },
+    };
+    await expect(
+      fixture.run({ plugins: [flaky, ...fixture.options.plugins!.slice(1)] }),
+    ).rejects.toThrow(/IDENTITY_DELIVERY_CHANGED/);
+    await absent(fixture.marker);
+  });
+});

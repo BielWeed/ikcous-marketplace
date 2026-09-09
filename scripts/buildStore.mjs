@@ -3,11 +3,146 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 const failure = (code) => new Error(`IDENTITY_${code}`);
 const object = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const samePath = (one, two) => path.relative(one, two) === "";
+
+// Espelho literal de src/config/storeDeliveryContract.ts. Este arquivo é JS nativo
+// sem loader; tests/front/store-delivery-contract.test.ts confronta os dois lados.
+export const deliveryContract = Object.freeze({
+  api: Object.freeze({ name: "ikcous-store-delivery", version: 1 }),
+  defineKeys: Object.freeze({
+    url: "import.meta.env.VITE_SUPABASE_URL",
+    publishable: "import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY",
+    anon: "import.meta.env.VITE_SUPABASE_ANON_KEY",
+  }),
+  synthetic: Object.freeze({
+    origin: "https://abcdefghijklmnopqrst.supabase.co",
+    publishableKey: "a6c-public-artificial-key-no-account",
+  }),
+});
+
+const supabaseOrigin = /^https:\/\/([a-z0-9]{20})\.supabase\.co$/;
+
+function publicDefineStrings(define) {
+  if (!object(define) || Object.hasOwn(define, "import.meta.env"))
+    throw failure("DELIVERY_ENV");
+  const raw = {};
+  for (const [field, key] of Object.entries(deliveryContract.defineKeys)) {
+    // eslint-disable-next-line security/detect-object-injection -- Key comes from the closed deliveryContract.defineKeys tuple, not caller input.
+    if (typeof define[key] !== "string") throw failure("DELIVERY_DEFINES");
+    // eslint-disable-next-line security/detect-object-injection -- Field is one of the three fixed defineKeys entries above.
+    raw[field] = define[key];
+  }
+  return Object.freeze(raw);
+}
+
+function deliveryProvider(plugins) {
+  const providers = plugins.filter(
+    (plugin) =>
+      object(plugin?.api) && plugin.api.name === deliveryContract.api.name,
+  );
+  if (providers.length !== 1) throw failure("DELIVERY_PROVIDER");
+  const { api } = providers[0];
+  if (api.version !== deliveryContract.api.version)
+    throw failure("DELIVERY_VERSION");
+  if (typeof api.get !== "function") throw failure("DELIVERY_VERSION");
+  return api;
+}
+
+// Valida o envelope contra o snapshot já aceito e devolve uma cópia congelada.
+// `identityDefine` é a string exata de __STORE_IDENTITY__: comparar por string evita
+// falso negativo de igualdade profunda quando um campo `undefined` some no JSON.
+function delivery(value, identityDefine, source, raw) {
+  if (
+    !object(value) ||
+    value.deliveryApiVersion !== 1 ||
+    !object(value.publicDefines) ||
+    !object(value.connection) ||
+    Object.keys(value).length !== 4 ||
+    JSON.stringify(value.snapshot) !== identityDefine
+  )
+    throw failure("DELIVERY_SHAPE");
+  const snapshot = value.snapshot;
+  const defines = value.publicDefines;
+  if (
+    Object.keys(defines).length !== 3 ||
+    ["url", "publishable", "anon"].some(
+      // eslint-disable-next-line security/detect-object-injection -- Key iterates the closed three-field tuple, not caller input.
+      (key) => typeof defines[key] !== "string",
+    )
+  )
+    throw failure("DELIVERY_SHAPE");
+  for (const key of ["url", "publishable", "anon"]) {
+    // eslint-disable-next-line security/detect-object-injection -- Key iterates the closed three-field tuple above, not caller input.
+    if (JSON.parse(raw[key]) !== defines[key])
+      throw failure("DELIVERY_DEFINES");
+  }
+  const connection = value.connection;
+  const expectedSource =
+    connection.kind === "database" ? "database" : "fixture";
+  if (
+    !["database", "fixture-none", "fixture-synthetic"].includes(
+      connection.kind,
+    ) ||
+    source !== expectedSource ||
+    snapshot.source !== expectedSource
+  )
+    throw failure("DELIVERY_SOURCE");
+  if (connection.kind === "fixture-none") {
+    if (
+      Object.keys(connection).length !== 1 ||
+      defines.url !== "" ||
+      defines.publishable !== "" ||
+      defines.anon !== ""
+    )
+      throw failure("DELIVERY_SHAPE");
+  } else {
+    const match = supabaseOrigin.exec(connection.origin);
+    if (
+      !match ||
+      connection.projectRef !== match[1] ||
+      snapshot.identity.projectRef !== match[1] ||
+      typeof connection.key !== "string" ||
+      connection.key === "" ||
+      defines.anon + defines.publishable !== connection.key
+    )
+      throw failure("DELIVERY_SHAPE");
+    if (connection.kind === "fixture-synthetic") {
+      if (
+        connection.origin !== deliveryContract.synthetic.origin ||
+        connection.key !== deliveryContract.synthetic.publishableKey ||
+        defines.url !== connection.origin ||
+        defines.publishable !== connection.key ||
+        Object.keys(connection).length !== 4
+      )
+        throw failure("DELIVERY_SHAPE");
+    } else {
+      const cleanedUrl = defines.url.endsWith("/")
+        ? defines.url.slice(0, -1)
+        : defines.url;
+      if (
+        cleanedUrl !== connection.origin ||
+        !["publishable", "anon-jwt"].includes(connection.keyClass) ||
+        (connection.keyClass === "publishable") !==
+          (defines.publishable === connection.key) ||
+        (connection.keyClass === "anon-jwt") !==
+          (defines.anon === connection.key) ||
+        (connection.keyClass === "publishable" &&
+          !connection.key.startsWith("sb_publishable_")) ||
+        !["VITE_SUPABASE_PUBLISHABLE_KEY", "VITE_SUPABASE_ANON_KEY"].includes(
+          connection.keySource,
+        ) ||
+        Object.keys(connection).length !== 6
+      )
+        throw failure("DELIVERY_SHAPE");
+    }
+  }
+  return Object.freeze(structuredClone(value));
+}
 
 async function statOrMissing(target) {
   try {
@@ -183,6 +318,9 @@ export async function buildStore(options = {}) {
   let identityDefine;
   let versionDefine;
   let captures = 0;
+  let capturedDelivery;
+  let publicRaw;
+  let provider;
   const observer = {
     name: "store-build-finalization-observer",
     enforce: "post",
@@ -199,6 +337,12 @@ export async function buildStore(options = {}) {
         throw failure("OUTPUT");
       captured = metadata(config.define, source, version);
       identityDefine = config.define.__STORE_IDENTITY__;
+      // Síncrono e ANTES de qualquer await: cópia profunda da entrega enquanto
+      // ainda está garantida a ordem frente aos demais plugins (observador post).
+      const api = deliveryProvider(config.plugins);
+      publicRaw = publicDefineStrings(config.define);
+      capturedDelivery = delivery(api.get(), identityDefine, source, publicRaw);
+      provider = api;
       versionDefine = config.define.__APP_VERSION__;
       resolved = config;
     },
@@ -218,6 +362,12 @@ export async function buildStore(options = {}) {
     resolved.define.__APP_VERSION__ !== versionDefine
   )
     throw failure("SNAPSHOT_CHANGED");
+  if (
+    !capturedDelivery ||
+    !isDeepStrictEqual(publicDefineStrings(resolved.define), publicRaw) ||
+    !isDeepStrictEqual(structuredClone(provider.get()), capturedDelivery)
+  )
+    throw failure("DELIVERY_CHANGED");
   const results = Array.isArray(result) ? result : [result];
   if (
     !results.length ||

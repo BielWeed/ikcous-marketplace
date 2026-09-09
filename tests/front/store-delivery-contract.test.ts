@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+// @ts-expect-error Node entry is plain JavaScript; no TypeScript runner or declaration dependency.
+import { deliveryContract } from "../../scripts/buildStore.mjs";
 import {
   PUBLIC_DEFINE_KEYS,
   STORE_DELIVERY_API,
@@ -55,5 +57,15 @@ describe("contrato da entrega preparada", () => {
     "sb_publishable_fixture\nonly",
   ])("recusa %j com IDENTITY_KEY", (key) => {
     expect(() => classifyPublicSupabaseKey(key)).toThrow(/IDENTITY_KEY/);
+  });
+
+  it("espelho literal em buildStore.mjs é igual ao contrato TypeScript", () => {
+    expect(deliveryContract).toEqual({
+      api: STORE_DELIVERY_API,
+      defineKeys: PUBLIC_DEFINE_KEYS,
+      synthetic: SYNTHETIC_PUBLIC_SERVICE,
+    });
+    expect(Object.isFrozen(deliveryContract)).toBe(true);
+    expect(Object.isFrozen(deliveryContract.api)).toBe(true);
   });
 });
