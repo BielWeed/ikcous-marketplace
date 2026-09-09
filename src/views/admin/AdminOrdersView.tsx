@@ -262,6 +262,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const {
     orders,
     loadOrders,
+    buscarPedidosDoFiltroParaExportar,
     updateOrderStatus,
     confirmarRetornoDoProduto,
     registrarPagamentoRecebido,
@@ -289,6 +290,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     "",
   );
   const [isTyping, setIsTyping] = useState(false);
+  const [gerandoCsv, setGerandoCsv] = useState(false);
+  const exportacaoCsvEmCursoRef = useRef(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
 
   const [showVisualLoading, setShowVisualLoading] = useState(false);
@@ -854,26 +857,42 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [orders, paymentFilter],
   );
 
-  const exportarCsv = () => {
-    if (paginatedOrders.length === 0) return;
-    const agora = new Date();
-    const doisDigitos = (numero: number) => String(numero).padStart(2, "0");
-    const data = `${agora.getFullYear()}-${doisDigitos(agora.getMonth() + 1)}-${doisDigitos(agora.getDate())}`;
-    const hora = `${doisDigitos(agora.getHours())}-${doisDigitos(agora.getMinutes())}`;
-    const arquivo = new Blob([pedidosParaCsv(paginatedOrders)], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(arquivo);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `pedidos-${data}-${hora}.csv`;
-    document.body.appendChild(link);
+  const exportarCsv = async () => {
+    if (totalOrders === 0 || exportacaoCsvEmCursoRef.current) return;
+    exportacaoCsvEmCursoRef.current = true;
+    setGerandoCsv(true);
     try {
-      link.click();
+      const pedidosDoFiltro = await buscarPedidosDoFiltroParaExportar({
+        statusFilter: filter,
+        searchQuery,
+        startDate: dateRange.start || undefined,
+        endDate: dateRange.end || undefined,
+        paymentStatus: paymentFilter,
+      });
+      const agora = new Date();
+      const doisDigitos = (numero: number) => String(numero).padStart(2, "0");
+      const data = `${agora.getFullYear()}-${doisDigitos(agora.getMonth() + 1)}-${doisDigitos(agora.getDate())}`;
+      const hora = `${doisDigitos(agora.getHours())}-${doisDigitos(agora.getMinutes())}`;
+      const arquivo = new Blob([pedidosParaCsv(pedidosDoFiltro)], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(arquivo);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `pedidos-${data}-${hora}.csv`;
+      document.body.appendChild(link);
+      try {
+        link.click();
+      } finally {
+        link.remove();
+        // Aguarda o navegador iniciar o download antes de liberar o endereço.
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    } catch {
+      toast.error("Não foi possível gerar o CSV. Tente de novo.");
     } finally {
-      link.remove();
-      // Aguarda o navegador iniciar o download antes de liberar o endereço.
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      exportacaoCsvEmCursoRef.current = false;
+      setGerandoCsv(false);
     }
   };
 
@@ -1299,17 +1318,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               type="button"
               variant="outline"
               onClick={exportarCsv}
-              disabled={paginatedOrders.length === 0}
+              disabled={totalOrders === 0 || gerandoCsv}
             >
-              {/* Achado A-1 do laudo Opus (rodada 2, PR #458): o arquivo
-                  gerado é sempre a PÁGINA visível (itemsPerPage=12), nunca o
-                  total filtrado — o rótulo tem de dizer isso, regra da casa
-                  do #451 ("o app diz a verdade quando copia"). "página" fica
-                  sempre no singular (é sempre UMA página); só o número na
-                  frente muda. */}
-              {paginatedOrders.length > 0
-                ? `Exportar CSV (${paginatedOrders.length} desta página)`
-                : "Exportar CSV"}
+              {/* O CSV consulta o filtro inteiro; a contagem acompanha esse recorte. */}
+              {gerandoCsv
+                ? "Gerando CSV..."
+                : totalOrders > 0
+                  ? `Exportar CSV (${totalOrders} no filtro)`
+                  : "Exportar CSV"}
             </Button>
           </div>
           <div className="flex w-full items-center gap-3">

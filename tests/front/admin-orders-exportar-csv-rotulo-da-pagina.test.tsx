@@ -1,18 +1,5 @@
 // @vitest-environment jsdom
-//
-// Rodada 2 do laudo Opus do PR #458 (achado A-1): o botão "Exportar CSV"
-// baixa `paginatedOrders` — a PÁGINA visível (itemsPerPage=12), não o total
-// filtrado — e o rótulo não avisava disso. Regra da casa (#451, "o app diz a
-// verdade quando copia"): o texto do botão passa a carregar a contagem da
-// página (`paginatedOrders.length`), nunca a do total filtrado
-// (`totalOrders`). Este teste prova a DISTINÇÃO: monta `totalOrders` maior
-// que a lista da página e verifica que o rótulo usa o tamanho da lista, não
-// o total.
-//
-// Mesmo padrão de mock de admin-orders-filtro-que-filtra.test.tsx: `@/lib/
-// supabase` mocado porque AdminOrdersView.tsx importa `supabase` no topo, e
-// `useOrders`/`useAnalytics` mocados para controlar `orders` e `totalOrders`
-// por teste, sem bater no banco.
+// A exportação agora consulta o filtro inteiro: o rótulo acompanha totalOrders.
 import type { Order } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -153,7 +140,7 @@ describe("AdminOrdersView — o botão de exportar CSV diz quantos pedidos vai g
     mockTotalOrders = 0;
   });
 
-  it("com 3 pedidos NA PÁGINA e 25 no total filtrado, o rótulo mostra 3 — nunca 25", async () => {
+  it("com 3 pedidos na página e 25 no filtro, o rótulo mostra os 25 que serão exportados", async () => {
     mockOrders = [pedido("a"), pedido("b"), pedido("c")];
     mockTotalOrders = 25; // total filtrado é bem maior que a página
 
@@ -166,11 +153,11 @@ describe("AdminOrdersView — o botão de exportar CSV diz quantos pedidos vai g
 
     const botao = botaoExportar(hospedeiro);
     expect(botao).toBeTruthy();
-    expect(botao!.textContent?.trim()).toBe("Exportar CSV (3 desta página)");
-    expect(botao!.textContent).not.toContain("25");
+    expect(botao!.textContent?.trim()).toBe("Exportar CSV (25 no filtro)");
+    expect(botao!.disabled).toBe(false);
   });
 
-  it("com 1 pedido na página, o singular fica correto: '1 desta página'", async () => {
+  it("com 1 pedido no filtro, o rótulo mostra esse total", async () => {
     mockOrders = [pedido("a")];
     mockTotalOrders = 1;
 
@@ -182,7 +169,7 @@ describe("AdminOrdersView — o botão de exportar CSV diz quantos pedidos vai g
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
     const botao = botaoExportar(hospedeiro);
-    expect(botao!.textContent?.trim()).toBe("Exportar CSV (1 desta página)");
+    expect(botao!.textContent?.trim()).toBe("Exportar CSV (1 no filtro)");
   });
 
   it("com a lista vazia, o botão continua desabilitado", async () => {
