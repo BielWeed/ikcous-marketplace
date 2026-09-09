@@ -1,3 +1,10 @@
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useLayoutEffect,
+} from "react";
 // F1 "loja abre mais rápido" (frente glm-perf-1paint-0309, 04/09/2026):
 // Header, BottomNav e CartReminder usam framer-motion e eram importados
 // estaticamente — junto com o import de framer-motion do próprio App, isso
@@ -25,13 +32,6 @@ const CartReminder = React.lazy(() =>
     default: m.CartReminder,
   })),
 );
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useLayoutEffect,
-} from "react";
 const HomeView = lazyWithPreload(() =>
   import("@/views/customer/HomeView").then((m) => ({ default: m.HomeView })),
 );
