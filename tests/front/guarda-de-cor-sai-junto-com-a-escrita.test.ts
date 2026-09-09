@@ -68,6 +68,16 @@ const PADRAO_ESCRITA =
 //   - é ESCRITA? tira a guarda do corPrimariaEfetiva junto com ela e
 //     INVERTE o teste (e) de cor-da-loja-vem-do-banco.
 const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
+  "src/lib/publicStoreIdentity.ts": {
+    n: 1,
+    porque:
+      "lista SELECT da identidade pública; controlledFetch só admite GET, sem escrita no banco (A3)",
+  },
+  "src/lib/storeIdentity.ts": {
+    n: 4,
+    porque:
+      "schema, lista de campos, mapeamento da leitura e clonagem validada em memória; nenhuma persistência (A3)",
+  },
   "src/contexts/StoreContext.tsx": {
     n: 10,
     porque:

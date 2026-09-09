@@ -24,6 +24,7 @@ import { ProductCarousel } from "@/components/ui/custom/ProductCarousel";
 import { ProductList } from "@/components/ui/custom/ProductList";
 import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
+import { buildIdentity } from "@/config/buildIdentity";
 import { LIMITE_MAX_ITENS_CARROSSEL } from "@/config/carrossel";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import {
@@ -296,10 +297,13 @@ export const HomeView = React.memo(function HomeView({
     ? `Descubra produtos exclusivos com frete grátis em ${cidadeLoja}.`
     : "Descubra produtos exclusivos.";
   // Mesma preferência do Header: o nome que o lojista gravou no banco vem
-  // antes do branding.json estático.
+  // antes da identidade compilada.
   const nomeDaLoja = config.storeName?.trim() || branding.appName;
   const homeSocialTitle = `${nomeDaLoja} - Seu Shopping Local`;
-  const homeLogo = `${globalThis.location.origin}/branding/logo.png`;
+  const homeLogo = new URL(
+    buildIdentity.localUrls.og,
+    globalThis.location.origin,
+  ).href;
 
   useDocumentMeta({
     title: cidadeLoja ? `${nomeDaLoja} | ${cidadeLoja}` : nomeDaLoja,

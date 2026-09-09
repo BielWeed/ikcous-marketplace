@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, StrictMode } from "react";
+import { StrictMode, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { StoreConfig } from "@/types";
+import { buildIdentityFixture } from "./fixtures/build-identity";
 
 let mockConfig: Partial<StoreConfig> = {};
 vi.mock("@/contexts/StoreContext", () => ({
@@ -62,7 +63,11 @@ describe("Header — a logo acompanha a configuração sem remontar", () => {
     const { Header } = await import("@/components/ui/custom/Header");
     await act(async () => {
       // Mesma raiz/posição; callback novo força o memo a ler o mock atualizado.
-      raiz.render(<StrictMode><Header onNavigate={() => {}} /></StrictMode>);
+      raiz.render(
+        <StrictMode>
+          <Header onNavigate={() => {}} />
+        </StrictMode>,
+      );
     });
   }
 
@@ -78,7 +83,9 @@ describe("Header — a logo acompanha a configuração sem remontar", () => {
 
   it("tenta a URL que chega depois do primeiro render sem logo", async () => {
     await renderizar();
-    expect(imagem().getAttribute("src")).toBe("/branding/logo.svg");
+    expect(imagem().getAttribute("src")).toBe(
+      buildIdentityFixture.localUrls.header,
+    );
     const botao = imagem().closest("button");
     botao!.focus();
 
@@ -94,7 +101,9 @@ describe("Header — a logo acompanha a configuração sem remontar", () => {
   it("troca de A para B mesmo se A já falhou", async () => {
     await renderizar(LOGO_A);
     falhar();
-    expect(imagem().getAttribute("src")).toBe("/branding/logo.svg");
+    expect(imagem().getAttribute("src")).toBe(
+      buildIdentityFixture.localUrls.header,
+    );
     await renderizar(LOGO_B);
     expect(imagem().getAttribute("src")).toBe(LOGO_B);
   });
@@ -112,10 +121,9 @@ describe("Header — a logo acompanha a configuração sem remontar", () => {
     await renderizar(LOGO_A);
     falhar();
     await renderizar(LOGO_A);
-    expect(imagem().getAttribute("src")).toBe("/branding/logo.svg");
-    falhar();
-    await renderizar(LOGO_A);
-    expect(imagem().getAttribute("src")).toBe("/branding/logo.png");
+    expect(imagem().getAttribute("src")).toBe(
+      buildIdentityFixture.localUrls.header,
+    );
     falhar();
     await renderizar(LOGO_A);
     expect(hospedeiro.querySelector("img")).toBeNull();
@@ -129,7 +137,9 @@ describe("Header — a logo acompanha a configuração sem remontar", () => {
     falhar(anterior);
     expect(imagem().getAttribute("src")).toBe(LOGO_B);
     falhar();
-    expect(imagem().getAttribute("src")).toBe("/branding/logo.svg");
+    expect(imagem().getAttribute("src")).toBe(
+      buildIdentityFixture.localUrls.header,
+    );
   });
 
   it("o erro da primeira tentativa de A não derruba A após passar por B", async () => {
@@ -146,18 +156,32 @@ describe("Header — a logo acompanha a configuração sem remontar", () => {
     const anterior = imagem();
     falhar(anterior);
     falhar(anterior);
-    expect(imagem().getAttribute("src")).toBe("/branding/logo.svg");
+    expect(imagem().getAttribute("src")).toBe(
+      buildIdentityFixture.localUrls.header,
+    );
   });
 
-  it.each([undefined, ""])("remover a URL (%s) volta à reserva local", async (ausente) => {
-    await renderizar(LOGO_A);
-    await renderizar(ausente);
-    expect(imagem().getAttribute("src")).toBe("/branding/logo.svg");
+  it.each([undefined, ""])(
+    "remover a URL (%s) volta à reserva local",
+    async (ausente) => {
+      await renderizar(LOGO_A);
+      await renderizar(ausente);
+      expect(imagem().getAttribute("src")).toBe(
+        buildIdentityFixture.localUrls.header,
+      );
+    },
+  );
+
+  it("URL remota igual à reserva local não tenta a mesma imagem duas vezes", async () => {
+    await renderizar(buildIdentityFixture.localUrls.header);
+    falhar();
+    expect(hospedeiro.querySelector("img")).toBeNull();
+    await renderizar(buildIdentityFixture.localUrls.header);
+    expect(hospedeiro.querySelector("img")).toBeNull();
   });
 
   it("uma URL nova recupera a imagem mesmo depois de chegar ao texto", async () => {
     await renderizar(LOGO_A);
-    falhar();
     falhar();
     falhar();
     expect(hospedeiro.querySelector("img")).toBeNull();

@@ -2,7 +2,7 @@
 //
 // O nome da loja sai do código: as telas passam a preferir `config.storeName`
 // (o que o lojista gravou no banco) e só então caem no `branding.appName` do
-// branding.json estático. Antes disto o lojista mudava o nome no banco e a
+// snapshot compilado. Antes disto o lojista mudava o nome no banco e a
 // tela continuava mostrando o nome do arquivo — o gap documentado no
 // comentário de StoreLocationSection (AdminSettingsView): "o nome que
 // aparece continua vindo de branding.appName".
@@ -12,7 +12,7 @@
 //    nome do caminho feliz, em que a logo do banco carrega e o bloco
 //    textual nem renderiza);
 //  - no fallback textual (mainName/subName), que só aparece quando TODAS as
-//    logos falham (db -> svg -> png -> texto).
+//    logos falham (db -> local -> texto).
 // Os dois precisam seguir a mesma ordem de preferência, então o teste anda
 // os dois caminhos.
 import { act } from "react";
@@ -20,6 +20,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { StoreConfig } from "@/types";
+import { buildIdentityFixture } from "./fixtures/build-identity";
 
 // Mock mutável: cada teste ajusta `mockConfig` antes de renderizar. Os
 // componentes leem `config` em tempo de render (não no import), então mudar
@@ -97,10 +98,9 @@ describe("Header — o nome da loja vem do banco, não do branding.json", () => 
     });
   }
 
-  // Sem logoUrl o Header nasce no estado "svg"; cada erro de imagem o
-  // rebaixa um degrau (svg -> png -> texto) até sobrar o nome escrito.
+  // Sem logoUrl há uma imagem local; falhando, sobra o nome escrito.
   async function derrubarAsLogos() {
-    for (let degrau = 0; degrau < 2; degrau++) {
+    for (let degrau = 0; degrau < 1; degrau++) {
       const img = hospedeiro.querySelector("img");
       expect(img).toBeTruthy();
       act(() => {
@@ -127,16 +127,25 @@ describe("Header — o nome da loja vem do banco, não do branding.json", () => 
     expect(hospedeiro.textContent).not.toContain("IKCOUS");
   });
 
+  it("subtítulo continua vindo do nome com separador", async () => {
+    mockConfig = { storeName: "Aurora - Presentes" };
+    await renderizarHeader();
+    await derrubarAsLogos();
+    expect(hospedeiro.textContent).toContain("Aurora");
+    expect(hospedeiro.textContent).toContain("Presentes");
+    expect(hospedeiro.textContent).not.toContain("imports");
+  });
+
   it("sem nome no banco, o fallback continua sendo o branding atual", async () => {
     mockConfig = {};
     await renderizarHeader();
 
     await derrubarAsLogos();
 
-    // branding.json diz "IKCOUS - imports": o Header separa em "IKCOUS" +
-    // "imports". É o mesmo nome de antes — a preferência nova não pode
-    // trocar o fallback.
-    expect(hospedeiro.textContent).toContain("IKCOUS");
+    expect(hospedeiro.textContent).toContain(
+      buildIdentityFixture.identity.storeName,
+    );
+    expect(hospedeiro.textContent).not.toContain("imports");
     expect(hospedeiro.textContent).not.toContain(NOME_DO_BANCO);
   });
 });

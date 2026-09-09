@@ -31,10 +31,17 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    setupFiles: ["tests/front/setup-build-identity.ts"],
     include: ["tests/front/**/*.test.{ts,tsx}"],
     // Sem isto o vitest varre node_modules e as cópias do repositório que
     // moram em .claude/worktrees — o mesmo problema que a catraca de lint teve.
-    exclude: ["node_modules/**", "dist/**", ".claude/**", "supabase/**"],
+    exclude: [
+      "node_modules/**",
+      "dist/**",
+      "dist-test/**",
+      ".claude/**",
+      "supabase/**",
+    ],
     reporters: ["default"],
     // DOIS AJUSTES QUE VALEM SÓ FORA DO CI — e as duas causas que os pediram.
     //
