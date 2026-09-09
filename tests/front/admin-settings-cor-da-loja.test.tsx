@@ -1,224 +1,253 @@
+import type { StoreIdentityIntent } from "@/lib/adminStoreIdentity";
 // @vitest-environment jsdom
-//
-// Tela "Cor da loja" nos Ajustes (pedido 004, 02/09/2026): o lojista escolhe
-// a cor da marca e o app grava pelo updateConfig — o MESMO caminho dos
-// outros campos da tela; a vitrine inteira acompanha pelo mecanismo que já
-// existia (corPrimariaEfetiva → --primary e meta theme-color). O CONTRATO
-// que este arquivo prova:
-//
-//   1. A guarda do PRETO vale na ESCRITA: escolher #000000 é recusado com
-//      mensagem honesta e NADA vai ao banco. A leitura trata preto gravado
-//      como resíduo de configuração antiga (guarda de corPrimariaEfetiva,
-//      src/config/cor-da-loja.ts) — gravar preto pela tela deixaria a
-//      vitrine na cor padrão com o lojista achando que mudou algo.
-//   2. Hex com LETRAS em maiúsculas grava NORMALIZADO em minúsculas — a
-//      caixa morre na validaCorDaLoja e o canônico gravado é o que a
-//      comparação exata da guarda de leitura espera.
-//   3. A cor exibida é a EFETIVA (mesma regra da vitrine): sem cor no
-//      banco, o campo nasce com a semente do build.
-//   4. Falha de gravação não vira "salvo" (mesmo contrato ADMIN-010, #94
-//      das outras seções).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { branding } from "@/config/branding";
-
-const updateConfig = vi.fn();
-
-// `mockConfig` precisa ser declarado via `vi.hoisted` porque `vi.mock` é
-// hoisted acima dos imports -- mesmo padrão de
-// admin-settings-identidade-da-loja.test.tsx.
-const { mockConfig } = vi.hoisted(() => ({
-  mockConfig: {
-    storeName: "Loja Teste",
-    // SEM cor de propósito: a loja não escolheu — o campo nasce com a
-    // semente do build (mesmo contrato que a vitrine aplica).
+const h = vi.hoisted(() => ({
+  read: vi.fn(),
+  save: vi.fn(),
+  prepare: vi.fn(),
+  upload: vi.fn(),
+  refresh: vi.fn(),
+  update: vi.fn(),
+  dirty: vi.fn(),
+  origin: "https://abcdefghijklmnopqrst.supabase.co",
+  auth: {
+    user: { id: "admin-a" },
+    isAdmin: true,
+    adminStatus: "admin",
+    session: { user: { id: "admin-a" }, access_token: "synthetic-session" },
   },
+  config: { businessHours: "Antigo", shippingFee: 1 },
+  version: 0,
+  listeners: new Set<() => void>(),
 }));
-
-vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: mockConfig,
-    isLoaded: true,
-    updateConfig,
-  }),
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => h.auth }));
+vi.mock("@/contexts/StoreContext", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    useStore: () => {
+      useSyncExternalStore(
+        (cb) => {
+          h.listeners.add(cb);
+          return () => {
+            h.listeners.delete(cb);
+          };
+        },
+        () => h.version,
+      );
+      return {
+        config: h.config,
+        isLoaded: true,
+        updateConfig: h.update,
+        refresh: h.refresh,
+      };
+    },
+  };
+});
+vi.mock("@/lib/env-valores", () => ({
+  lerSupabaseUrl: () => h.origin,
+  lerChaveSupabase: () => "sb_publishable_synthetic",
 }));
-
-vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
-
-// AdminSettingsView importa `@/lib/supabase` direto (usado só pelo
-// diagnóstico de conexão, num botão que nenhum caso deste arquivo clica) --
-// sem o dublê o import tentaria criar um client de verdade em jsdom.
+vi.mock("@/lib/adminStoreIdentity", () => ({
+  readAdminStoreIdentity: h.read,
+  saveAdminStoreIdentity: h.save,
+}));
+vi.mock("@/lib/prepareIdentityImage", () => ({
+  prepareIdentityImage: h.prepare,
+}));
+vi.mock("@/lib/uploadIdentityImage", () => ({ uploadIdentityImage: h.upload }));
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
-
-const toastSuccess = vi.fn();
-const toastError = vi.fn();
-vi.mock("sonner", () => ({
-  toast: { success: toastSuccess, error: toastError },
-}));
-
-// @ts-expect-error flag interna do React, sem tipo público.
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// @ts-expect-error React testing flag
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function esperarMicrotarefas(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+function asset(
+  name: string,
+  width?: number,
+  height?: number,
+  media_type = "image/png",
+) {
+  return {
+    path: `v1/${"a".repeat(64)}/${name}`,
+    sha256: "a".repeat(64),
+    bytes: 100,
+    media_type,
+    ...(width === undefined ? {} : { width, height }),
+  };
+}
+function snapshot() {
+  return {
+    revision: "9007199254740993",
+    identity: {
+      store_name: "Loja Teste",
+      store_city: "Uberlândia",
+      store_state: "MG",
+      primary_color: "#ABCDEF",
+      secondary_color: "#000000",
+      accent_color: "#000000",
+      logo_url: `${h.origin}/storage/v1/object/public/branding/${asset("header.svg").path}`,
+      branding_assets: {
+        version: 1,
+        originals: [asset("source.svg", undefined, undefined, "image/svg+xml")],
+        header: asset("header.svg", undefined, undefined, "image/svg+xml"),
+        loader: asset("loader.svg", undefined, undefined, "image/svg+xml"),
+        favicon: asset(
+          "favicon.ico",
+          undefined,
+          undefined,
+          "image/vnd.microsoft.icon",
+        ),
+        apple_touch: asset("apple.png", 180, 180),
+        icon_192: asset("192.png", 192, 192),
+        icon_512: asset("512.png", 512, 512),
+        maskable_512: asset("mask.png", 512, 512),
+        og: asset("og.jpg", 1200, 630, "image/jpeg"),
+      },
+    },
+  };
+}
+let root: Root;
+let host: HTMLDivElement;
+let mounted = true;
+async function flush() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+async function render(active = true) {
+  const { AdminSettingsView } = await import("@/views/admin/AdminSettingsView");
+  await act(async () => {
+    root.render(
+      <AdminSettingsView
+        active={active}
+        onNavigate={vi.fn()}
+        onSetDirty={h.dirty}
+      />,
+    );
+  });
+  const section = [...host.querySelectorAll("button")].find((node) =>
+    node.textContent?.includes("Identidade da loja"),
+  )!;
+  if (section.getAttribute("aria-expanded") === "false")
+    await act(async () => section.click());
+  await act(async () => {
+    await import("@/components/admin/settings/IdentitySettingsSection");
+  });
+  await flush();
+  await flush();
 }
 
-describe("AdminSettingsView — Cor da loja", () => {
-  let raiz: Root;
-  let hospedeiro: HTMLDivElement;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    hospedeiro = document.createElement("div");
-    document.body.appendChild(hospedeiro);
-    raiz = createRoot(hospedeiro);
+function input(id: string) {
+  const el = host.querySelector<HTMLInputElement>(`#${id}`);
+  expect(el).not.toBeNull();
+  return el!;
+}
+function button(text: string) {
+  const el = [...host.querySelectorAll("button")].find(
+    (node) => node.textContent === text,
+  );
+  expect(el).toBeDefined();
+  return el!;
+}
+async function click(text: string) {
+  await act(async () => {
+    button(text).click();
   });
-
-  afterEach(() => {
-    act(() => {
-      raiz.unmount();
-    });
-    hospedeiro.remove();
-    vi.restoreAllMocks();
-  });
-
-  // A seção de cor nasce COLAPSADA (mesmo pedido do Gabriel de 02/09 que
-  // esconde as outras): o teste expande antes de exercitar o formulário.
-  async function abrirSecaoCor(): Promise<HTMLInputElement> {
-    const { AdminSettingsView } = await import(
-      "@/views/admin/AdminSettingsView"
-    );
-    await act(async () => {
-      raiz.render(<AdminSettingsView onNavigate={vi.fn()} active={true} />);
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-    const cabecalho = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Cor da loja"),
-    ) as HTMLButtonElement;
-    expect(cabecalho).toBeDefined();
-    await act(async () => {
-      cabecalho.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-    const campo =
-      hospedeiro.querySelector<HTMLInputElement>("#store-color-hex");
-    expect(campo).toBeDefined();
-    return campo!;
-  }
-
-  // jsdom + createRoot não reage a mutação direta de `value` sem passar
-  // pelo onChange do React -- setter nativo + evento "input" é o jeito que
-  // funciona com controlled inputs neste ambiente (mesmo padrão do teste
-  // de identidade da loja).
-  const setValorNativo = (elemento: HTMLInputElement, valor: string) => {
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
+  await flush();
+}
+async function type(id: string, value: string) {
+  await act(async () => {
+    const el = input(id);
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
       "value",
-    )!.set!;
-    setter.call(elemento, valor);
-    elemento.dispatchEvent(new Event("input", { bubbles: true }));
+    )!.set!.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+beforeEach(() => {
+  vi.clearAllMocks();
+  h.read.mockReset();
+  h.save.mockReset();
+  h.prepare.mockReset();
+  h.upload.mockReset();
+  h.refresh.mockResolvedValue(undefined);
+  h.origin = "https://abcdefghijklmnopqrst.supabase.co";
+  h.auth = {
+    user: { id: "admin-a" },
+    isAdmin: true,
+    adminStatus: "admin",
+    session: { user: { id: "admin-a" }, access_token: "synthetic-session" },
   };
+  h.config = { businessHours: "Antigo", shippingFee: 1 };
+  h.read.mockImplementation(async () => snapshot());
+  h.save.mockImplementation(async (intent: StoreIdentityIntent) => ({
+    status: "confirmed",
+    source: "response",
+    snapshot: { revision: "9007199254740994", identity: intent.desired },
+  }));
+  h.prepare.mockImplementation(async (file: File) => ({
+    blob: file,
+    asset: asset("new.svg", undefined, undefined, "image/svg+xml"),
+  }));
+  h.upload.mockImplementation(async (image) => ({
+    asset: image.asset,
+    url: `${h.origin}/storage/v1/object/public/branding/${image.asset.path}`,
+  }));
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  mounted = true;
+});
+afterEach(() => {
+  if (mounted) act(() => root.unmount());
+  host.remove();
+  vi.restoreAllMocks();
+});
 
-  async function clicarSalvarCor() {
-    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar cor"),
-    ) as HTMLButtonElement;
-    expect(botao).toBeDefined();
-    await act(async () => {
-      botao.click();
-      await esperarMicrotarefas();
-    });
-  }
-
-  it("o campo nasce com a cor efetiva — a semente do build quando a loja não escolheu", async () => {
-    const campo = await abrirSecaoCor();
-    expect(campo.value).toBe(branding.theme.primary);
+describe("Ajustes — cor principal na identidade", () => {
+  it("exibe a fotografia do banco, sem usar a semente do build para gravar", async () => {
+    await render();
+    expect(input("store-color-hex").value).toBe("#ABCDEF");
   });
-
-  it("escolher PRETO é recusado com mensagem honesta e NADA vai ao banco", async () => {
-    const campo = await abrirSecaoCor();
-
-    await act(async () => {
-      setValorNativo(campo, "#000000");
-    });
-    await clicarSalvarCor();
-
-    expect(updateConfig).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalledWith(
-      expect.stringContaining("Preto não pode ser a cor da loja"),
-    );
-    // A mensagem também fica no lugar (não é só toast que some): erro
-    // junto ao campo, com role=alert.
-    expect(hospedeiro.textContent).toContain(
-      "Preto não pode ser a cor da loja",
-    );
+  it("recusa preto primário sem gravar e explica a recusa no formulário", async () => {
+    await render();
+    await type("store-color-hex", "#000000");
+    await click("Salvar identidade");
+    expect(h.save).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("Preto não pode ser a cor da loja");
   });
-
-  // Letras A-F maiúsculas são o ÚNICO jeito de exercitar a normalização de
-  // caixa do contrato (cor-da-loja.ts): dígitos não têm caixa — um "#000000"
-  // "em maiúsculas" é idêntico ao minúsculo e não prova nada. Sem o
-  // toLowerCase(), o regex da validação recusaria #FF5733 como "formato" e
-  // uma cor legítima nunca chegaria ao banco.
-  it("hex com LETRAS em maiúsculas grava NORMALIZADO em minúsculas — a caixa morre na validação", async () => {
-    updateConfig.mockResolvedValue(true);
-    const campo = await abrirSecaoCor();
-
-    await act(async () => {
-      setValorNativo(campo, "#FF5733");
-    });
-    await clicarSalvarCor();
-
-    expect(updateConfig).toHaveBeenCalledTimes(1);
-    expect(updateConfig.mock.calls[0][0]).toEqual({
-      primaryColor: "#ff5733",
-    });
-    expect(toastSuccess).toHaveBeenCalledWith("Cor da loja salva");
+  it("hex com letras aceita maiúsculas e grava o canônico do novo codec", async () => {
+    await render();
+    await type("store-color-hex", "#ff5733");
+    await click("Salvar identidade");
+    expect(h.save.mock.calls[0][0].desired.primary_color).toBe("#FF5733");
+    expect(h.update).not.toHaveBeenCalled();
   });
-
-  it("hex válido grava pelo updateConfig em minúsculas (canônico da guarda de leitura)", async () => {
-    updateConfig.mockResolvedValue(true);
-    const campo = await abrirSecaoCor();
-
-    await act(async () => {
-      setValorNativo(campo, "#059669");
-    });
-    await clicarSalvarCor();
-
-    expect(updateConfig).toHaveBeenCalledTimes(1);
-    expect(updateConfig.mock.calls[0][0]).toEqual({
-      primaryColor: "#059669",
-    });
-    expect(toastSuccess).toHaveBeenCalledWith("Cor da loja salva");
+  it("hex numérico válido chega ao pacote e refresh somente lê", async () => {
+    await render();
+    await type("store-color-hex", "#059669");
+    await click("Salvar identidade");
+    expect(h.save.mock.calls[0][0].desired.primary_color).toBe("#059669");
+    expect(h.refresh).toHaveBeenCalledExactlyOnceWith({ onlyConfig: true });
   });
-
-  it("formato fora de #RRGGBB é recusado antes de salvar", async () => {
-    const campo = await abrirSecaoCor();
-
-    await act(async () => {
-      setValorNativo(campo, "verde");
-    });
-    await clicarSalvarCor();
-
-    expect(updateConfig).not.toHaveBeenCalled();
-    expect(hospedeiro.textContent).toContain("#RRGGBB");
+  it("formato inválido é recusado antes da RPC", async () => {
+    await render();
+    await type("store-color-hex", "verde");
+    await click("Salvar identidade");
+    expect(h.save).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("#RRGGBB");
   });
-
-  it("não diz que salvou quando a gravação falha", async () => {
-    updateConfig.mockResolvedValue(false);
-    const campo = await abrirSecaoCor();
-
-    await act(async () => {
-      setValorNativo(campo, "#059669");
-    });
-    await clicarSalvarCor();
-
-    expect(updateConfig).toHaveBeenCalledTimes(1);
-    expect(toastSuccess).not.toHaveBeenCalled();
+  it("falha de gravação não celebra nem apaga a cor digitada", async () => {
+    h.save.mockResolvedValue({ status: "rejected", code: "invalid" });
+    await render();
+    await type("store-color-hex", "#123456");
+    await click("Salvar identidade");
+    expect(input("store-color-hex").value).toBe("#123456");
+    expect(h.refresh).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain("Identidade salva no cadastro");
   });
 });

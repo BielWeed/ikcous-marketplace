@@ -27,6 +27,11 @@ import { toast } from "sonner";
 import { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 export { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 
+interface UpdateConfigOptions {
+  readonly isCurrent: () => boolean;
+  readonly silent?: boolean;
+}
+
 interface StoreContextType {
   config: StoreConfig;
   isLoaded: boolean;
@@ -40,10 +45,14 @@ interface StoreContextType {
    * fechava modal e mostrava toast de sucesso em cima de uma gravação que não
    * aconteceu (ADMIN-010, #94).
    *
-   * Quem chama TEM de olhar o retorno. O toast de erro já sai daqui de dentro;
-   * o chamador só precisa não seguir em frente.
+   * Quem chama TEM de olhar o retorno. Sem opções, o aviso de erro sai daqui.
+   * `silent` delega os avisos ao chamador. Com `isCurrent`, false também pode
+   * significar resposta não entregue ao contexto atual, sem desfazer a RPC.
    */
-  updateConfig: (updates: Partial<StoreConfig>) => Promise<boolean>;
+  updateConfig: (
+    updates: Partial<StoreConfig>,
+    options?: UpdateConfigOptions,
+  ) => Promise<boolean>;
   refresh: (options?: { onlyConfig?: boolean }) => Promise<void>;
   fetchProducts: () => Promise<void>;
   calculateShipping: (
@@ -736,10 +745,27 @@ export function StoreProvider({
   }, [isAdmin, loading]);
 
   const updateConfig = useCallback(
-    async (updates: Partial<StoreConfig>): Promise<boolean> => {
+    async (
+      updates: Partial<StoreConfig>,
+      options?: UpdateConfigOptions,
+    ): Promise<boolean> => {
+      // Captura o contrato antes da rede: mutar options não troca o destinatário.
+      const isCurrent = options?.isCurrent;
+      const silent = options?.silent === true;
+      let invalidated = false;
+      const current = () => {
+        if (invalidated) return false;
+        try {
+          if (isCurrent && isCurrent() !== true) invalidated = true;
+        } catch {
+          invalidated = true;
+        }
+        return !invalidated;
+      };
       try {
+        if (!current()) return false;
         if (!isAdmin) {
-          toast.error("Acesso negado");
+          if (!silent && current()) toast.error("Acesso negado");
           return false;
         }
 
@@ -821,11 +847,13 @@ export function StoreProvider({
         if (updates.homeSections !== undefined)
           dbUpdates.home_sections = updates.homeSections;
 
+        if (!current()) return false;
         const { data, error } = await (supabase.rpc as any)(
           "upsert_store_config",
           { config_json: dbUpdates },
         );
 
+        if (!current()) return false;
         if (error) throw error;
 
         // A RPC não errou, mas "não errou" não é "gravou o que pedimos" --
@@ -833,13 +861,15 @@ export function StoreProvider({
         // conhece. Falha fechado: retorno vazio, nulo ou de formato que não
         // dá para avaliar é falha, nunca sucesso.
         if (!data || typeof data !== "object" || Array.isArray(data)) {
+          if (!current()) return false;
           console.error(
             "[StoreContext] Update retornou em formato inesperado:",
             data,
           );
-          toast.error(
-            "Não foi possível confirmar que as configurações foram salvas. Tente novamente.",
-          );
+          if (!silent && current())
+            toast.error(
+              "Não foi possível confirmar que as configurações foram salvas. Tente novamente.",
+            );
           return false;
         }
 
@@ -860,18 +890,22 @@ export function StoreProvider({
           .map(([chave]) => chave);
 
         if (chavesNaoConfirmadas.length > 0) {
+          if (!current()) return false;
           console.error(
             "[StoreContext] Update não confirmado para:",
             chavesNaoConfirmadas,
             { enviado: dbUpdates, gravado },
           );
-          toast.error(
-            "Não deu para confirmar que tudo foi salvo. Tente salvar de novo antes de sair da tela.",
-          );
+          if (!silent && current())
+            toast.error(
+              "Não deu para confirmar que tudo foi salvo. Tente salvar de novo antes de sair da tela.",
+            );
           return false;
         }
 
+        if (!current()) return false;
         setConfig((prev) => {
+          if (!current()) return prev;
           const {
             logoUrl: _logoUrl,
             storeName: _storeName,
@@ -886,30 +920,40 @@ export function StoreProvider({
           const newConfig = { ...prev, ...otherUpdates, ...identityUpdates };
           // Persist to DataVault
           // Pelo singleton e com erro logado (revisão 20260825-1050).
+          if (!current()) return prev;
           DataVault.init()
-            .then((vault) =>
-              vault.put("store_config", { id: "singleton", ...newConfig }),
-            )
-            .catch((err) =>
-              console.warn(
-                "[StoreContext] config não gravada no cache offline:",
-                err,
-              ),
-            );
+            .then((vault) => {
+              if (current())
+                return vault.put("store_config", {
+                  id: "singleton",
+                  ...newConfig,
+                });
+            })
+            .catch((err) => {
+              if (current())
+                console.warn(
+                  "[StoreContext] config não gravada no cache offline:",
+                  err,
+                );
+            });
           return newConfig;
         });
         // Aplica a cor capturada pela mesma regra da vitrine: ausência e
         // #000000 não pintam. O rascunho pode ter mudado durante o await.
+        if (!current()) return false;
         applyBranding(
           corPrimariaEfetiva({
             primaryColor: identityUpdates.primaryColor,
           } as StoreConfig),
         );
-        toast.success("Configurações salvas");
+        if (!current()) return false;
+        if (!silent) toast.success("Configurações salvas");
         return true;
       } catch (err) {
+        if (!current()) return false;
         console.error("[StoreContext] Update error:", err);
-        toast.error("Erro ao salvar as configurações");
+        if (!silent && current())
+          toast.error("Erro ao salvar as configurações");
         return false;
       }
     },

@@ -116,9 +116,14 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
       "lê config.primaryColor como sugestão de paleta (tem seletor: ligá-lo ao primaryColor conta como NOVA e cai aqui)",
   },
   "src/views/admin/AdminSettingsView.tsx": {
+    n: 0,
+    porque:
+      "A5d3b retirou o escritor isolado de cor; identidade agora usa rascunho validado e RPC protegida, conservando a recusa de preto primário",
+  },
+  "src/components/admin/settings/IdentitySettingsSection.tsx": {
     n: 1,
     porque:
-      "única ESCRITA do app (tela Cor da loja, pedido 004, 02/09) — recusa #000000 via validaCorDaLoja, então a guarda de leitura permanece; ver DECISÃO REGISTRADA no topo",
+      "A5d3b: nome de campo bruto no resumo de conflito, somente leitura; escrita passa por validaCorDaLoja e buildIdentityEditorIntent, sem permitir preto primário",
   },
   "src/config/branding.ts": {
     n: 1,
