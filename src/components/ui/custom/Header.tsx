@@ -47,9 +47,22 @@ export const Header = memo(function Header({
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isChecking, setIsChecking] = useState(false);
   const [activeToast, setActiveToast] = useState<HeaderToastData | null>(null);
-  const [logoState, setLogoState] = useState<"db" | "svg" | "png" | "text">(
-    config.logoUrl ? "db" : "svg",
-  );
+  const logoUrl = config.logoUrl || null;
+  const [logoSelection, setLogoSelection] = useState<{
+    url: string | null;
+    revision: number;
+    stage: "db" | "svg" | "png" | "text";
+  }>({ url: logoUrl, revision: 0, stage: logoUrl ? "db" : "svg" });
+
+  // Cada troca ganha novas tentativas antes de atualizar o DOM, inclusive A -> B -> A.
+  if (logoSelection.url !== logoUrl) {
+    setLogoSelection({
+      url: logoUrl,
+      revision: logoSelection.revision + 1,
+      stage: logoUrl ? "db" : "svg",
+    });
+  }
+  const logoState = logoSelection.stage;
 
   const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -185,17 +198,22 @@ export const Header = memo(function Header({
             {logoSrc ? (
               <div className="flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]">
                 <img
+                  key={`${logoSelection.revision}:${logoState}`}
                   src={logoSrc}
                   alt={storeName}
                   className="size-full object-contain"
                   onError={() => {
-                    if (logoState === "db") {
-                      setLogoState("svg");
-                    } else if (logoState === "svg") {
-                      setLogoState("png");
-                    } else if (logoState === "png") {
-                      setLogoState("text");
-                    }
+                    setLogoSelection((current) => {
+                      // Falha só avança a candidata/revisão que a originou.
+                      if (current !== logoSelection) return current;
+                      const stage =
+                        current.stage === "db"
+                          ? "svg"
+                          : current.stage === "svg"
+                            ? "png"
+                            : "text";
+                      return { ...current, stage };
+                    });
                   }}
                 />
               </div>
