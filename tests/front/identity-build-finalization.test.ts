@@ -12,6 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildStore } from "../../scripts/buildStore.mjs";
 import { createIdentityBuildConfig } from "../../scripts/identityBuildConfig";
 import { createIdentityBuildFixture } from "../../scripts/identityBuildFixture";
+import type {
+  DatabaseConnection,
+  PreparedStoreDelivery,
+} from "../../src/config/storeDeliveryContract";
 
 vi.mock("../../scripts/identityBuildFixture", { spy: true });
 const roots: string[] = [];
@@ -34,7 +38,18 @@ afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
 });
 
-async function setup(extra: Plugin[] = [], pwa = false) {
+async function setup(
+  extra: Plugin[] = [],
+  pwa = false,
+  // O que varia entre fixture (padrão) e database (Task 3b): o `env` que vai
+  // para o plugin, o resolvedor de endereço público e a saída esperada. O
+  // corpo inteiro do fixture continua único; só os três campos abaixo mudam.
+  variant: {
+    env?: Record<string, string | undefined>;
+    resolvePublicAddress?: () => string;
+    outDir?: string;
+  } = {},
+) {
   const root = await fs.mkdtemp(
     path.join(os.tmpdir(), "identity-finalization-"),
   );
@@ -71,24 +86,31 @@ async function setup(extra: Plugin[] = [], pwa = false) {
       globIgnores: ["store-identity/**"],
     },
   };
+  const outDir = variant.outDir ?? "dist-test";
   const identity = createIdentityBuildConfig({
     root,
-    env: { IKCOUS_IDENTITY_MODE: "fixture", IKCOUS_CODE_SHA: "a".repeat(40) },
+    env: {
+      IKCOUS_IDENTITY_MODE: "fixture",
+      IKCOUS_CODE_SHA: "a".repeat(40),
+      ...variant.env,
+    },
     context: { command: "build", mode: "production" },
     pwaOptions,
-    resolvePublicAddress: () => {
-      throw new Error("real URL forbidden");
-    },
+    resolvePublicAddress:
+      variant.resolvePublicAddress ??
+      (() => {
+        throw new Error("real URL forbidden");
+      }),
   });
   const options: InlineConfig = {
     root,
     configFile: false,
     envFile: false,
     logLevel: "silent",
-    build: { outDir: "dist-test", emptyOutDir: false },
+    build: { outDir, emptyOutDir: false },
     plugins: [identity.plugin, ...extra, ...(pwa ? VitePWA(pwaOptions) : [])],
   };
-  const marker = path.join(root, "dist-test/version.json");
+  const marker = path.join(root, outDir, "version.json");
   return {
     root,
     marker,
@@ -492,6 +514,219 @@ describe("entrega preparada chega ao observador e é conferida", () => {
     expect(marker.source).toBe("fixture");
   });
 
+  // Task 3b (lacuna da revisão Opus da T3): todo teste de buildStore acima
+  // roda em modo fixture, então o ramo `database` de `delivery()` em
+  // buildStore.mjs nunca é exercitado por um build real — apagar o `if`
+  // inteiro daquele ramo (8 condições) deixava a suíte inteira verde (M5).
+  // Transporte fictício no molde de databaseTransport() em
+  // identity-build-config-delivery.test.ts:44-74.
+  const databaseOrigin = "https://abcdefghijklmnopqrst.supabase.co";
+  const databasePublishable = "sb_publishable_fixture_only";
+  const databaseAnon = `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(
+    JSON.stringify({ role: "anon" }),
+  ).toString("base64url")}.fixture`;
+
+  async function databaseTransport() {
+    const fixture = await createIdentityBuildFixture("oceano");
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname === "/rest/v1/v_store_config") {
+        const { identity } = fixture;
+        return new Response(
+          JSON.stringify([
+            {
+              store_name: identity.storeName,
+              store_city: identity.city,
+              store_state: identity.state,
+              logo_url: identity.urls.header,
+              primary_color: identity.theme.primary,
+              secondary_color: identity.theme.secondary,
+              accent_color: identity.theme.accent,
+              branding_assets: identity.assets,
+            },
+          ]),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      const file = fixture.files.find((item) =>
+        url.pathname.endsWith(item.path),
+      );
+      if (!file) throw new Error("unexpected request");
+      return new Response(Buffer.from(file.bytes), {
+        headers: { "content-type": file.mediaType },
+      });
+    });
+    return fixture;
+  }
+
+  it.each([
+    {
+      label: "publishable",
+      publishable: databasePublishable,
+      anon: databaseAnon,
+      url: databaseOrigin,
+      keyClass: "publishable" as const,
+      expectedKey: databasePublishable,
+      expectedUrl: databaseOrigin,
+    },
+    {
+      label: "anon-jwt (publishable só com espaços)",
+      publishable: "   ",
+      anon: databaseAnon,
+      url: databaseOrigin,
+      keyClass: "anon-jwt" as const,
+      expectedKey: databaseAnon,
+      expectedUrl: databaseOrigin,
+    },
+    {
+      label: "url com barra final",
+      publishable: databasePublishable,
+      anon: databaseAnon,
+      url: `${databaseOrigin}/`,
+      keyClass: "publishable" as const,
+      expectedKey: databasePublishable,
+      expectedUrl: `${databaseOrigin}/`,
+    },
+  ])(
+    "database ($label): build real confirma sem vazar segredo",
+    async (item) => {
+      // beforeEach fixa IKCOUS_IDENTITY_MODE="fixture" e um fetch que lança;
+      // os dois precisam ser substituídos aqui, dentro do próprio it.
+      vi.stubEnv("IKCOUS_IDENTITY_MODE", undefined);
+      await databaseTransport();
+      let seen: PreparedStoreDelivery | undefined;
+      const peek: Plugin = {
+        name: "peek",
+        enforce: "post",
+        configResolved(config) {
+          seen = config.plugins
+            .find((p) => p.api?.name === "ikcous-store-delivery")!
+            .api.get();
+        },
+      };
+      const fixture = await setup([peek], true, {
+        env: {
+          IKCOUS_IDENTITY_MODE: undefined,
+          VITE_APP_URL: "https://loja-exclusiva.invalid",
+          VITE_SUPABASE_URL: item.url,
+          VITE_SUPABASE_PUBLISHABLE_KEY: item.publishable,
+          VITE_SUPABASE_ANON_KEY: item.anon,
+        },
+        resolvePublicAddress: () => "https://loja-exclusiva.invalid",
+        outDir: "dist",
+      });
+      const marker = await fixture.run();
+      expect(Object.keys(marker).sort()).toEqual([
+        "codeSha",
+        "codeVersion",
+        "identityRevision",
+        "promotable",
+        "source",
+        "version",
+      ]);
+      expect(marker.promotable).toBe(true);
+      expect(marker.source).toBe("database");
+      const text = await fs.readFile(fixture.marker, "utf8");
+      expect(text).not.toContain(databasePublishable);
+      expect(text).not.toContain("abcdefghijklmnopqrst");
+      expect(JSON.parse(text)).toEqual(marker);
+      expect(seen?.connection.kind).toBe("database");
+      const connection = seen?.connection as DatabaseConnection;
+      expect(connection.keyClass).toBe(item.keyClass);
+      expect(connection.origin).toBe(databaseOrigin);
+      expect(seen?.publicDefines).toEqual({
+        url: item.expectedUrl,
+        publishable: item.keyClass === "publishable" ? item.expectedKey : "",
+        anon: item.keyClass === "anon-jwt" ? item.expectedKey : "",
+      });
+    },
+  );
+
+  // As duas abaixo são negativas de propósito: um teste de SUCESSO não pode
+  // detectar a remoção de uma guarda que só existe para REJEITAR entrada
+  // inválida — em caminho válido a guarda nunca dispara, removida ou não
+  // (medido: a mutação M5 apagando o ramo `database` inteiro de delivery()
+  // deixou os três `it.each` de sucesso acima 3/3 verdes). Por isso o
+  // fornecedor aqui embrulha o plugin real e adultera só o que `api.get()`
+  // devolve — `config.define` continua genuíno — para alcançar o ramo sem
+  // tropeçar nas guardas do próprio plugin (IDENTITY_DELIVERY_CHANGED), que
+  // comparam `config.define`, nunca `api.get()`.
+  it.each([
+    { label: "campo extra (7 chaves)", tamper: { extra: "unexpected" } },
+    { label: "keySource fora da lista", tamper: { keySource: "OUTRA_FONTE" } },
+  ])(
+    "database: conexão adulterada ($label) não confirma (mata M5)",
+    async ({ tamper }) => {
+      vi.stubEnv("IKCOUS_IDENTITY_MODE", undefined);
+      await databaseTransport();
+      const fixture = await setup([], true, {
+        env: {
+          IKCOUS_IDENTITY_MODE: undefined,
+          VITE_APP_URL: "https://loja-exclusiva.invalid",
+          VITE_SUPABASE_URL: databaseOrigin,
+          VITE_SUPABASE_PUBLISHABLE_KEY: databasePublishable,
+        },
+        resolvePublicAddress: () => "https://loja-exclusiva.invalid",
+        outDir: "dist",
+      });
+      const identity = fixture.options.plugins![0] as Plugin;
+      const tampered: Plugin = {
+        ...identity,
+        api: {
+          ...identity.api,
+          get() {
+            const value = identity.api.get();
+            return {
+              ...value,
+              connection: { ...value.connection, ...tamper },
+            };
+          },
+        },
+      };
+      await expect(
+        fixture.run({
+          plugins: [tampered, ...fixture.options.plugins!.slice(1)],
+        }),
+      ).rejects.toThrow(/IDENTITY_DELIVERY_SHAPE/);
+      await absent(fixture.marker);
+    },
+  );
+
+  it("database: snapshot do envelope diferente de __STORE_IDENTITY__ não confirma (mata M3)", async () => {
+    vi.stubEnv("IKCOUS_IDENTITY_MODE", undefined);
+    await databaseTransport();
+    const fixture = await setup([], true, {
+      env: {
+        IKCOUS_IDENTITY_MODE: undefined,
+        VITE_APP_URL: "https://loja-exclusiva.invalid",
+        VITE_SUPABASE_URL: databaseOrigin,
+        VITE_SUPABASE_PUBLISHABLE_KEY: databasePublishable,
+      },
+      resolvePublicAddress: () => "https://loja-exclusiva.invalid",
+      outDir: "dist",
+    });
+    const identity = fixture.options.plugins![0] as Plugin;
+    const tampered: Plugin = {
+      ...identity,
+      api: {
+        ...identity.api,
+        get() {
+          const value = identity.api.get();
+          return {
+            ...value,
+            snapshot: { ...value.snapshot, codeSha: "b".repeat(40) },
+          };
+        },
+      },
+    };
+    await expect(
+      fixture.run({
+        plugins: [tampered, ...fixture.options.plugins!.slice(1)],
+      }),
+    ).rejects.toThrow(/IDENTITY_DELIVERY_SHAPE/);
+    await absent(fixture.marker);
+  });
+
   it("fornecedor duplicado não confirma", async () => {
     const fixture = await setup([], true);
     const fake: Plugin = {
@@ -504,14 +739,20 @@ describe("entrega preparada chega ao observador e é conferida", () => {
     await absent(fixture.marker);
   });
 
-  it("fornecedor ausente não confirma", async () => {
+  it("fornecedor sem api (define válido) chega a IDENTITY_DELIVERY_PROVIDER", async () => {
+    // Remover o plugin inteiro cai em IDENTITY_SNAPSHOT, porque metadata()
+    // roda antes de deliveryProvider() (achado A-4 da revisão Opus da T3).
+    // Aqui o plugin real continua de pé — __STORE_IDENTITY__/__APP_VERSION__
+    // seguem válidos — só a propriedade `api` externa é removida, então
+    // deliveryProvider() conta zero fornecedores de verdade.
     const fixture = await setup([], true);
-    const identityOnly = fixture.options.plugins!.filter(
-      (p) => (p as Plugin).name !== "store-identity-lifecycle",
-    );
-    await expect(fixture.run({ plugins: identityOnly })).rejects.toThrow(
-      /IDENTITY_DELIVERY_PROVIDER|IDENTITY_SNAPSHOT/,
-    );
+    const identity = fixture.options.plugins![0] as Plugin;
+    const { api: _api, ...withoutApi } = identity;
+    await expect(
+      fixture.run({
+        plugins: [withoutApi, ...fixture.options.plugins!.slice(1)],
+      }),
+    ).rejects.toThrow(/IDENTITY_DELIVERY_PROVIDER/);
     await absent(fixture.marker);
   });
 
