@@ -68,6 +68,11 @@ const PADRAO_ESCRITA =
 //   - é ESCRITA? tira a guarda do corPrimariaEfetiva junto com ela e
 //     INVERTE o teste (e) de cor-da-loja-vem-do-banco.
 const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
+  "src/lib/storeIdentitySnapshot.ts": {
+    n: 2,
+    porque:
+      "tipo e schema da fotografia administrativa bruta; clona e valida somente em memoria, sem escrita de cor (A5d1)",
+  },
   "src/lib/publicStoreIdentity.ts": {
     n: 1,
     porque:
