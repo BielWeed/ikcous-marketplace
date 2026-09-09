@@ -1284,6 +1284,82 @@ export function useOrders(
     [enabled],
   );
 
+  /** Consulta independente: não troca a página, o cache ou a recarga da tela. */
+  const buscarPedidosDoFiltroParaExportar = useCallback(
+    async ({
+      statusFilter,
+      searchQuery,
+      startDate,
+      endDate,
+      paymentStatus,
+    }: {
+      statusFilter?: string;
+      searchQuery?: string;
+      startDate?: string;
+      endDate?: string;
+      paymentStatus?: string;
+    }): Promise<Order[]> => {
+      const PAGE_SIZE = 100;
+      const MAX_ORDERS = 5000;
+      const MAX_PAGES = MAX_ORDERS / PAGE_SIZE;
+      const pedidos: Order[] = [];
+      const ids = new Set<string>();
+      let totalEsperado: number | undefined;
+
+      for (let page = 0; page < MAX_PAGES; page += 1) {
+        const { data, error } = await (supabase.rpc as any)(
+          "get_admin_orders_paged",
+          {
+            p_search: searchQuery || "",
+            p_status: statusFilter || "all",
+            p_start_date: startDate || "",
+            p_end_date: endDate || "",
+            p_page: page,
+            p_page_size: PAGE_SIZE,
+            // A RPC filtra tanto os dados quanto a contagem por pagamento.
+            p_payment_status: paymentStatus || "all",
+          },
+        );
+        if (error) throw error;
+
+        const total = Number(data?.total_count);
+        const linhas = data?.data;
+        if (total > MAX_ORDERS) {
+          throw new Error(
+            "O CSV permite até 5000 pedidos. Reduza o período do filtro.",
+          );
+        }
+        if (
+          !Number.isInteger(total) ||
+          total < 0 ||
+          !Array.isArray(linhas) ||
+          (totalEsperado !== undefined && total !== totalEsperado)
+        ) {
+          throw new Error(
+            "Não foi possível consultar o filtro completo. Tente de novo.",
+          );
+        }
+        totalEsperado = total;
+        for (const linha of linhas) {
+          const pedido = mapOrderFromDB(linha);
+          if (ids.has(pedido.id)) {
+            throw new Error(
+              "A consulta de pedidos ficou incompleta. Tente de novo.",
+            );
+          }
+          ids.add(pedido.id);
+          pedidos.push(pedido);
+        }
+        if (pedidos.length === total) return pedidos;
+        if (linhas.length === 0 || pedidos.length > total) break;
+      }
+      throw new Error(
+        "A consulta de pedidos ficou incompleta. Reduza o período e tente de novo.",
+      );
+    },
+    [],
+  );
+
   // Wrapper for backward compatibility
   const fetchOrders = useCallback(
     async (limitCount?: number) => {
@@ -2832,6 +2908,7 @@ export function useOrders(
     realtimeConnectionStatus: connectionStatus,
     fetchUserOrders,
     loadOrders, // New pagination function
+    buscarPedidosDoFiltroParaExportar,
     fetchOrders, // Legacy alias
     updateOrderStatus,
     confirmarRetornoDoProduto,
