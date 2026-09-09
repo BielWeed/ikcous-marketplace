@@ -7,6 +7,92 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.26.0] - 2026-09-09
+
+A categoria escolhida na vitrine é preservada em mais caminhos de retorno, o
+CSV de pedidos ganha os dados para conferência e as operações de banners e da
+fila offline recebem correções. A preparação desta versão incluiu a função de
+frete e a migration de banners já disponibilizadas nas duas lojas antes do front.
+
+### Para quem COMPRA (vitrine)
+
+- **A categoria escolhida é preservada em mais caminhos de volta** (PRs #494,
+  #505, #518): ao voltar durante a troca de tela, abrir um produto que deixou de
+  existir ou tentar acessar o painel sem permissão. O acesso ao painel continua
+  bloqueado para quem não é administrador.
+- **A aba do navegador na página de um produto usa o nome da loja** (PR #495).
+- **CEP inexistente recebe uma mensagem específica** (PR #506): a cotação informa
+  “CEP não encontrado. Confira o número e tente de novo.” O servidor já estava
+  atualizado; esta versão passa a mostrar a mensagem na tela.
+- **Reenviar a confirmação respeita a espera nos dois botões** (PR #497). Erros
+  de login são tratados sem assumir que qualquer resposta seja um texto.
+- **A tela de abertura passa a mostrar “IKCOUS DEVELOPER” nas duas lojas**
+  (PR #516): principal e Savy, conforme definição do dono, preservando a
+  identidade de cada loja.
+
+### Para quem VENDE (painel admin)
+
+- **O CSV traz os pedidos do filtro e os dados para conferência** (PRs #514,
+  #517): inclui todos os pedidos filtrados, até o limite de 5.000, e informa
+  quando o limite é atingido. Acrescenta as quatro colunas itens, subtotal,
+  frete e desconto, com os valores do pedido registrado, preservando as colunas
+  anteriores, os acentos e o formato do arquivo.
+- **Reordenar banners mantém o estado anterior quando o banco recusa** (PRs
+  #496, #509, #513). A normalização da ordem e a troca passam a acontecer numa
+  única operação de banco, com confirmação conjunta. A chamada por
+  administrador real continua no checklist pós-publicação.
+- **A fila offline preserva alterações acrescentadas durante a sincronização**
+  (PRs #498, #507): evita repetir a mesma sincronização dentro da aba e descarta
+  erros que exigem outra ação. A prova em duas abas anônimas com servidor
+  simulado passou em 2/2 cenários; ela não prova exclusão mútua entre abas nem
+  operação no banco vivo. Reconexão autenticada permanece no checklist
+  pós-publicação.
+- **O login do painel não quebra com erro cuja mensagem não seja texto**
+  (PR #508).
+
+### Para quem DESENVOLVE
+
+- **A inicialização respeita a ordem dos imports** (PRs #512, #519):
+  o #512 corrigiu a tela branca observada no servidor de desenvolvimento;
+  o #519 estende a proteção a todas as inicializações lazy depois do último
+  import, preservando os componentes e sua ordem de inicialização.
+
+### Para quem OPERA (banco, servidor, lojas clonadas)
+
+- **Banco: migration de banners já aplicada nas duas lojas.** A
+  `20261120000000_reordenar_banners_numa_transacao_so.sql` foi aplicada antes
+  do front. A sonda de 09/09/2026 confirmou existência, corpo igual nas duas
+  lojas, `search_path=public`, `anon` sem execução e
+  `authenticated`/`service_role` com execução. Essa consulta não exercitou
+  a operação como administrador real; essa prova fica para depois da publicação.
+- **A função de servidor `calculate-shipping` já foi publicada nas duas lojas.**
+  A sonda de CEP inexistente retornou HTTP 400 e `cep_invalido` nas duas;
+  a mensagem correspondente integra o front desta versão.
+- **SQL 20261111/12 e issue #487 continuam fora desta release.** Não aplicar
+  `20261111000000` nem `20261112000000`: continuam pendentes do dono e não
+  são novas dependências da 1.26.0. As views públicas da `20261110000000`,
+  utilizadas pelo front anterior, continuam presentes nos dois bancos.
+- **Escopo definido para as duas lojas:** atualizar principal e Savy com
+  “IKCOUS DEVELOPER” na abertura, preservando marca, configuração, ícones e
+  credenciais de cada uma. As versões públicas medidas antes da preparação
+  foram principal `1.25.0-sha.9300cd1` e Savy `1.25.0-build.48141`.
+- **Preparação validada no candidato `be5e8e8` (PR #520):** os sete jobs do CI
+  passaram e o diretor aprovou a preparação. O navegador real anônimo, em
+  desktop e celular, confirmou abertura, vitrine, retirada do carregamento,
+  ausência de erros e de rolagem horizontal. A Vercel retomou as prévias dos
+  PRs #519 e #520 após a recusa por cota; isso não garante a disponibilidade
+  dos deploys de produção. Antes do merge, reconferir o CI no commit do topo;
+  ao publicar, confirmar cada implantação e comparar `version.json` antes/depois.
+- **Checklist pós-publicação:** medir as versões nas duas lojas, executar a
+  chamada de banners por administrador real, verificar reconexão autenticada
+  com múltiplas abas e o bloqueio de admin com conta não-administradora.
+  A prova anônima não substitui essas verificações autenticadas.
+- **Para desfazer:** restaurar o front anterior de cada implantação. Se também
+  for necessário desfazer a operação de banners, retornar primeiro o front e
+  só então usar
+  `rollback-manual-20261120000000_reordenar_banners_numa_transacao_so.sql`,
+  após revisão do estado vivo.
+
 ## [1.25.0] - 2026-09-08
 
 A versão em que o link da loja no WhatsApp mostra o produto, o painel diz o que
