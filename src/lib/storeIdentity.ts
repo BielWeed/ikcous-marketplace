@@ -18,6 +18,8 @@ export type IdentityErrorCode =
   | "IDENTITY_INVALID"
   | "IDENTITY_KEY"
   | "IDENTITY_TIMEOUT"
+  | "IDENTITY_CANCELED"
+  | "IDENTITY_CONTEXT"
   | "IDENTITY_PERMISSION"
   | "IDENTITY_SCHEMA"
   | "IDENTITY_ROWS"
@@ -164,6 +166,12 @@ export function parseBrandingAssets(value: unknown): BrandingAssets {
     seen.set(asset.path, descriptor);
   }
   return freeze(assets);
+}
+
+export function parseIdentityAsset(value: unknown): IdentityAsset {
+  const parsed = assetSchema.safeParse(value);
+  if (!parsed.success) throw new IdentityError("IDENTITY_INVALID");
+  return freeze(parsed.data);
 }
 
 export function normalizeSupabaseOrigin(value: unknown): string {

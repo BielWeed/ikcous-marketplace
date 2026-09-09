@@ -6,6 +6,7 @@ import {
   identityAssetDescriptors,
   identityRevision,
   normalizeSupabaseOrigin,
+  parseIdentityAsset,
   parseStoreIdentity,
 } from "./storeIdentity";
 import type { IdentityAsset, PublicStoreIdentity } from "./storeIdentity";
@@ -94,9 +95,16 @@ async function readBytes(
   signal: AbortSignal,
   maxBytes: number,
   exactBytes?: number,
+  normalizeReadErrors = false,
 ): Promise<Uint8Array<ArrayBuffer>> {
   if (!response.body) throw new IdentityError("IDENTITY_ASSET_SIZE");
-  const reader = response.body.getReader();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = response.body.getReader();
+  } catch (error) {
+    if (normalizeReadErrors) throw new IdentityError("IDENTITY_FETCH");
+    throw error;
+  }
   const cancel = () => {
     void reader.cancel().catch(() => undefined);
   };
@@ -106,7 +114,13 @@ async function readBytes(
   try {
     for (;;) {
       signal.throwIfAborted();
-      const part = await reader.read();
+      let part: ReadableStreamReadResult<Uint8Array>;
+      try {
+        part = await reader.read();
+      } catch (error) {
+        if (normalizeReadErrors) throw new IdentityError("IDENTITY_FETCH");
+        throw error;
+      }
       signal.throwIfAborted();
       if (part.done) break;
       length += part.value.byteLength;
@@ -309,4 +323,171 @@ export async function downloadIdentityAssets(
       files: Object.freeze(files),
     });
   });
+}
+
+export interface VerifyPublicIdentityAssetOptions {
+  readonly supabaseUrl: string;
+  readonly signal: AbortSignal;
+  readonly isCurrent: () => boolean;
+  readonly fetchImpl?: typeof fetch;
+  readonly timeoutMs?: number;
+}
+export interface VerifiedPublicIdentityAsset {
+  readonly asset: IdentityAsset;
+  readonly url: string;
+}
+export async function verifyPublicIdentityAsset(
+  value: IdentityAsset,
+  options: VerifyPublicIdentityAssetOptions,
+): Promise<VerifiedPublicIdentityAsset> {
+  // Capture the request before yielding; callers retain ownership of their objects.
+  const asset = parseIdentityAsset(value);
+  if (options === null || typeof options !== "object")
+    throw new IdentityError("IDENTITY_INVALID");
+  const {
+    supabaseUrl,
+    signal,
+    isCurrent,
+    fetchImpl: suppliedFetch,
+    timeoutMs: suppliedTimeout,
+  } = options;
+  const fetchImpl =
+    suppliedFetch === undefined ? globalThis.fetch : suppliedFetch;
+  const timeoutMs = suppliedTimeout === undefined ? 30000 : suppliedTimeout;
+  if (
+    !(signal instanceof AbortSignal) ||
+    typeof isCurrent !== "function" ||
+    typeof fetchImpl !== "function" ||
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > 120000
+  )
+    throw new IdentityError("IDENTITY_INVALID");
+  const origin = normalizeSupabaseOrigin(supabaseUrl);
+  const url = `${origin}/storage/v1/object/public/branding/${asset.path}`;
+  const controller = new AbortController();
+  const deadline = performance.now() + timeoutMs;
+  let terminalError: IdentityError | undefined;
+  let rejectTerminal!: (error: IdentityError) => void;
+  const terminal = new Promise<never>((_resolve, reject) => {
+    rejectTerminal = reject;
+  });
+  const stop = (
+    code: "IDENTITY_CANCELED" | "IDENTITY_TIMEOUT" | "IDENTITY_CONTEXT",
+  ) => {
+    if (!terminalError) {
+      terminalError = new IdentityError(code);
+      rejectTerminal(terminalError);
+      controller.abort();
+    }
+    return terminalError;
+  };
+  const checkSignalAndTime = () => {
+    if (terminalError) throw terminalError;
+    if (signal.aborted) throw stop("IDENTITY_CANCELED");
+    if (performance.now() >= deadline) throw stop("IDENTITY_TIMEOUT");
+  };
+  const checkActive = () => {
+    checkSignalAndTime();
+    let current = false;
+    try {
+      current = isCurrent() === true;
+    } catch {
+      /* Context callbacks never expose diagnostics. */
+    }
+    // The callback may synchronously cancel, including on the last check.
+    checkSignalAndTime();
+    if (!current) throw stop("IDENTITY_CONTEXT");
+  };
+  const onAbort = () => {
+    stop("IDENTITY_CANCELED");
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => {
+    stop("IDENTITY_TIMEOUT");
+  }, timeoutMs);
+  const discard = (response: Response) => {
+    if (!response.body?.locked)
+      void response.body?.cancel().catch(() => undefined);
+  };
+  const run = async (): Promise<VerifiedPublicIdentityAsset> => {
+    let response: Response | undefined;
+    try {
+      checkActive();
+      try {
+        response = await fetchImpl(url, {
+          method: "GET",
+          redirect: "error",
+          credentials: "omit",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+      } catch {
+        checkActive();
+        throw new IdentityError("IDENTITY_FETCH");
+      }
+      // This continuation also disposes of a late response when fetch ignores abort.
+      checkActive();
+      if (response.redirected || response.url !== url)
+        throw new IdentityError("IDENTITY_ORIGIN");
+      if (response.status !== 200)
+        throw new IdentityError("IDENTITY_ASSET_STATUS");
+      const mime = response.headers
+        .get("content-type")
+        ?.split(";", 1)[0]
+        .trim()
+        .toLowerCase();
+      if (mime !== asset.media_type)
+        throw new IdentityError("IDENTITY_ASSET_MIME");
+      const bytes = await readBytes(
+        response,
+        controller.signal,
+        MAX_IDENTITY_ASSET_BYTES,
+        asset.bytes,
+        true,
+      );
+      checkActive();
+      if (!matchesSignature(bytes, mime))
+        throw new IdentityError("IDENTITY_ASSET_MIME");
+      let digest: ArrayBuffer;
+      try {
+        digest = await crypto.subtle.digest("SHA-256", bytes);
+      } catch {
+        checkActive();
+        throw new IdentityError("IDENTITY_FETCH");
+      }
+      checkActive();
+      const sha256 = Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+      if (sha256 !== asset.sha256)
+        throw new IdentityError("IDENTITY_ASSET_HASH");
+      checkActive();
+      return Object.freeze({ asset, url });
+    } catch (error) {
+      if (response) discard(response);
+      checkActive();
+      // External operations normalize at their boundary; only local codes survive.
+      if (error instanceof IdentityError) {
+        switch (error.code) {
+          case "IDENTITY_ORIGIN":
+          case "IDENTITY_ASSET_STATUS":
+          case "IDENTITY_ASSET_SIZE":
+          case "IDENTITY_ASSET_MIME":
+          case "IDENTITY_ASSET_HASH":
+            throw new IdentityError(error.code);
+        }
+      }
+      throw new IdentityError("IDENTITY_FETCH");
+    }
+  };
+  try {
+    // Race observes late fulfillment/rejection without waiting on native cancellation.
+    const result = await Promise.race([run(), terminal]);
+    checkActive();
+    return result;
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", onAbort);
+  }
 }

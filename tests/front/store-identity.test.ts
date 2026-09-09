@@ -2,6 +2,7 @@ import {
   identityRevision,
   normalizeSupabaseOrigin,
   parseBrandingAssets,
+  parseIdentityAsset,
   parseStoreIdentity,
 } from "@/lib/storeIdentity";
 import { describe, expect, it } from "vitest";
@@ -42,6 +43,41 @@ function fixture() {
     },
   };
 }
+
+describe("parser individual do mesmo contrato A3", () => {
+  it("clona, congela e aceita raster sem dimensoes e o limite exato", () => {
+    const source = { ...fixture().branding_assets.icon_512 };
+    const result = parseIdentityAsset(source);
+    source.bytes = 123;
+    expect(result.bytes).toBe(100);
+    expect(result).not.toBe(source);
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(source)).toBe(false);
+    const { width: _width, height: _height, ...withoutSize } = source;
+    expect(parseIdentityAsset({ ...withoutSize, bytes: 20971520 }).bytes).toBe(
+      20971520,
+    );
+  });
+  it.each([
+    null,
+    {},
+    { extra: true },
+    { sha256: "b".repeat(64) },
+    { path: `v1/${"a".repeat(64)}/wrong.jpg` },
+    { media_type: "image/jpeg" },
+    { bytes: 0 },
+    { bytes: 20971521 },
+    { bytes: 1.5 },
+    { width: undefined },
+    { width: 8193 },
+  ])("recusa entrada individual fora do schema %#", (patch) => {
+    const value =
+      patch === null || Object.keys(patch).length === 0
+        ? patch
+        : { ...fixture().branding_assets.icon_512, ...patch };
+    expect(() => parseIdentityAsset(value)).toThrow("IDENTITY_INVALID");
+  });
+});
 
 describe("identidade publica pura", () => {
   it("limites validos de originais, bytes e dimensoes sao aceitos", () => {
