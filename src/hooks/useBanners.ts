@@ -579,7 +579,7 @@ export function useBanners(adminMode = false) {
         applyLocalBanners(cachedBanners);
       }
 
-      const { error } = await (supabase.rpc as any)("reorder_banners_atomic", {
+      const { error } = await supabase.rpc("reorder_banners_atomic", {
         p_position: activePosition,
         p_banner_id_1: activeBannerId,
         p_banner_id_2: overBannerId,
