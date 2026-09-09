@@ -6,7 +6,21 @@ import path from "node:path";
 import type { ConfigEnv, Plugin, UserConfig } from "vite";
 import type { VitePWAOptions } from "vite-plugin-pwa";
 import type { BuildIdentitySnapshot } from "../src/config/buildIdentityContract";
+import {
+  PUBLIC_DEFINE_KEYS,
+  STORE_DELIVERY_API,
+  SYNTHETIC_PUBLIC_SERVICE,
+} from "../src/config/storeDeliveryContract";
+import type {
+  PreparedStoreDelivery,
+  PublicDefineValues,
+  StoreConnection,
+  StoreDeliveryApi,
+} from "../src/config/storeDeliveryContract";
+import type { OrigemChaveSupabase } from "../src/lib/env-publico-valores";
 import { resolverValoresPublicosSupabase } from "../src/lib/env-publico-valores";
+import { classifyPublicSupabaseKey } from "../src/lib/publicSupabaseKey";
+import { normalizeSupabaseOrigin } from "../src/lib/storeIdentity";
 import type { PreparedIdentityBuild } from "./prepareIdentity";
 
 const essentialRoles = [
@@ -168,6 +182,76 @@ function publicAddress(
   return resolver(env);
 }
 
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const item of Object.values(value as Record<string, unknown>))
+      deepFreeze(item);
+  }
+  return value;
+}
+
+function projectRefOf(origin: string): string {
+  return new URL(origin).hostname.split(".")[0];
+}
+
+// Lê os três define públicos do config resolvido. Recusa ambiente inteiro e ausência.
+function readPublicDefines(
+  define: Record<string, string> | undefined,
+): PublicDefineValues {
+  if (!define || Object.hasOwn(define, "import.meta.env"))
+    throw new Error(
+      "IDENTITY_DELIVERY_ENV: substituição integral de import.meta.env recusada",
+    );
+  const read = (key: string): string => {
+    // eslint-disable-next-line security/detect-object-injection -- Key comes from the closed PUBLIC_DEFINE_KEYS tuple; the value is re-validated as string + JSON string below.
+    const raw = define[key];
+    if (typeof raw !== "string")
+      throw new Error("IDENTITY_DELIVERY_DEFINES: define público ausente");
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      throw new Error("IDENTITY_DELIVERY_DEFINES: define público ilegível");
+    }
+    if (typeof value !== "string")
+      throw new Error("IDENTITY_DELIVERY_DEFINES: define público não textual");
+    return value;
+  };
+  return {
+    url: read(PUBLIC_DEFINE_KEYS.url),
+    publishable: read(PUBLIC_DEFINE_KEYS.publishable),
+    anon: read(PUBLIC_DEFINE_KEYS.anon),
+  };
+}
+
+function fixtureConnection(
+  values: PublicDefineValues,
+  projectRef: string,
+): StoreConnection {
+  if (values.url === "" && values.publishable === "" && values.anon === "")
+    return { kind: "fixture-none" };
+  if (
+    values.url === SYNTHETIC_PUBLIC_SERVICE.origin &&
+    values.publishable === SYNTHETIC_PUBLIC_SERVICE.publishableKey &&
+    values.anon === ""
+  ) {
+    if (projectRefOf(values.url) !== projectRef)
+      throw new Error(
+        "IDENTITY_CONNECTION: projeto sintético não corresponde à marca",
+      );
+    return {
+      kind: "fixture-synthetic",
+      origin: SYNTHETIC_PUBLIC_SERVICE.origin,
+      projectRef,
+      key: SYNTHETIC_PUBLIC_SERVICE.publishableKey,
+    };
+  }
+  throw new Error(
+    "IDENTITY_DELIVERY_DEFINES: fixture aceita só ausência total ou o par sintético",
+  );
+}
+
 export function createIdentityBuildConfig(options: {
   env: Record<string, string | undefined>;
   context: ConfigEnv;
@@ -180,8 +264,30 @@ export function createIdentityBuildConfig(options: {
   const outDir = source === "fixture" ? "dist-test" : "dist";
   let prepared: PreparedIdentityBuild | undefined;
   let snapshot: BuildIdentitySnapshot | undefined;
+  let delivery: PreparedStoreDelivery | undefined;
+  let publicDefines: PublicDefineValues | undefined;
   const dispose = async () => {
     if (prepared) await prepared.dispose();
+  };
+  const seal = (connection: StoreConnection, values: PublicDefineValues) => {
+    if (delivery)
+      throw new Error("IDENTITY_DELIVERY_SEALED: entrega já selada");
+    if (!snapshot) throw new Error("IDENTITY_INCOMPLETE: fotografia ausente");
+    delivery = deepFreeze({
+      deliveryApiVersion: 1 as const,
+      snapshot,
+      publicDefines: values,
+      connection,
+    });
+  };
+  const api: StoreDeliveryApi = {
+    name: STORE_DELIVERY_API.name,
+    version: STORE_DELIVERY_API.version,
+    get() {
+      if (!delivery)
+        throw new Error("IDENTITY_DELIVERY_UNSEALED: entrega ainda não selada");
+      return delivery;
+    },
   };
   const assertOutput = (output: string | undefined) => {
     if (
@@ -216,9 +322,10 @@ export function createIdentityBuildConfig(options: {
         "IDENTITY_OUTPUT: saída deve ser diretório local sem link",
       );
   };
-  const plugin: Plugin = {
+  const plugin: Plugin<StoreDeliveryApi> = {
     name: "store-identity-lifecycle",
     enforce: "pre",
+    api,
     async config(config) {
       await assertConfiguration(config);
       if (config.build?.watch)
@@ -246,6 +353,12 @@ export function createIdentityBuildConfig(options: {
             : publicAddress(env, options.resolvePublicAddress);
         const { prepareIdentityBuild } = await import("./prepareIdentity");
         let downloaded;
+        let publicSelection:
+          | {
+              supabaseUrl: string;
+              chave: { valor: string; origem: OrigemChaveSupabase };
+            }
+          | undefined;
         if (source === "fixture") {
           const { createIdentityBuildFixture } = await import(
             "./identityBuildFixture"
@@ -274,6 +387,7 @@ export function createIdentityBuildConfig(options: {
             throw new Error(
               "IDENTITY_INCOMPLETE: configuração pública obrigatória",
             );
+          publicSelection = { supabaseUrl, chave };
           const identity = await readPublicStoreIdentity({
             supabaseUrl,
             publicKey: chave.valor,
@@ -306,6 +420,34 @@ export function createIdentityBuildConfig(options: {
           identityRevision: prepared.identityRevision,
           deliveryVersion: prepared.deliveryVersion,
         });
+        if (source === "database") {
+          const { supabaseUrl, chave } = publicSelection!;
+          const keyClass = classifyPublicSupabaseKey(chave.valor);
+          const origin = normalizeSupabaseOrigin(supabaseUrl);
+          const projectRef = projectRefOf(origin);
+          if (snapshot.identity.projectRef !== projectRef)
+            throw new Error(
+              "IDENTITY_CONNECTION: origem do banco não corresponde à marca",
+            );
+          publicDefines = {
+            url: supabaseUrl,
+            publishable: keyClass === "publishable" ? chave.valor : "",
+            anon: keyClass === "anon-jwt" ? chave.valor : "",
+          };
+          seal(
+            {
+              kind: "database",
+              origin,
+              projectRef,
+              key: chave.valor,
+              keyClass,
+              keySource: chave.origem,
+            },
+            publicDefines,
+          );
+        } else {
+          publicDefines = { url: "", publishable: "", anon: "" };
+        }
         const guardianPath = path.join(
           prepared.publicDir,
           "silent-guardian.js",
@@ -351,6 +493,11 @@ export function createIdentityBuildConfig(options: {
           define: {
             __STORE_IDENTITY__: JSON.stringify(snapshot),
             __APP_VERSION__: JSON.stringify(snapshot.deliveryVersion),
+            [PUBLIC_DEFINE_KEYS.url]: JSON.stringify(publicDefines.url),
+            [PUBLIC_DEFINE_KEYS.publishable]: JSON.stringify(
+              publicDefines.publishable,
+            ),
+            [PUBLIC_DEFINE_KEYS.anon]: JSON.stringify(publicDefines.anon),
           },
         };
       } catch (error) {
@@ -360,6 +507,27 @@ export function createIdentityBuildConfig(options: {
     },
     async configResolved(config) {
       try {
+        // Síncrono e ANTES de qualquer await: configResolved roda em Promise.all,
+        // e só este trecho tem ordem garantida frente ao observador (enforce post).
+        if (!context.isPreview && snapshot) {
+          const values = readPublicDefines(config.define);
+          if (source === "database") {
+            const emitted = publicDefines!;
+            if (
+              values.url !== emitted.url ||
+              values.publishable !== emitted.publishable ||
+              values.anon !== emitted.anon
+            )
+              throw new Error(
+                "IDENTITY_DELIVERY_CHANGED: define público alterado após o preparo",
+              );
+          } else {
+            seal(
+              fixtureConnection(values, snapshot.identity.projectRef),
+              values,
+            );
+          }
+        }
         await assertConfiguration(config);
       } catch (error) {
         await dispose();
