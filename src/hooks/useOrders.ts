@@ -292,12 +292,13 @@ async function processarFilaOfflineDePedidos(
           item.timestamp > timestampTentado)
       );
     });
+    const filaAvancou = syncedAny || descartesTerminais > 0;
     if (!segundaPassada && temItemNovo && navigator.onLine) {
       const sincronizouNaSegunda = await processarFilaOfflineDePedidos(true);
-      return sincronizouNaSegunda || syncedAny;
+      return sincronizouNaSegunda || filaAvancou;
     }
 
-    return syncedAny;
+    return filaAvancou;
   } catch (e) {
     console.error("[Offline Sync] Error parsing offline orders queue:", e);
     return false;
@@ -2784,8 +2785,8 @@ export function useOrders(
     if (typeof window === "undefined") return;
     const handleOnlineSync = () => {
       setTimeout(() => {
-        syncOfflineOrderUpdates().then((synced) => {
-          if (synced) {
+        syncOfflineOrderUpdates().then((filaAvancou) => {
+          if (filaAvancou) {
             if (isAdmin) {
               loadOrders(0, 10, "all", "", "", "", true).catch(() => {});
             } else if (user?.id) {
