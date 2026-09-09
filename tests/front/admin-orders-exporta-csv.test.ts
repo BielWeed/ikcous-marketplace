@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 const CABECALHO =
-  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF";
+  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto";
 
 function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
   return {
@@ -36,11 +36,81 @@ function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
 }
 
 describe("pedidosParaCsv", () => {
+  it("exporta itens e valores históricos distintos sem recalcular o pedido", () => {
+    const original = pedido({
+      items: [
+        {
+          productId: "produto-1",
+          name: 'Café; "Seleção"\n250 g',
+          quantity: 2,
+          price: 12.34,
+          image: "",
+        },
+        {
+          productId: "produto-1",
+          name: "Chá de maçã",
+          quantity: 1,
+          price: 5.6,
+          image: "",
+        },
+      ],
+      subtotal: 123.45,
+      shipping: 16.7,
+      discount: 8.9,
+      total: 131.25,
+    });
+    const antes = structuredClone(original);
+    const csv = pedidosParaCsv([original]);
+    expect(csv.split("\r\n")[0]).toBe(
+      "\uFEFFNúmero do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto",
+    );
+    expect(csv).toContain(
+      ';131,25;São Paulo;SP;"Café; ""Seleção""\n250 g (2 x 12,34) | Chá de maçã (1 x 5,60)";123,45;16,70;8,90',
+    );
+    expect(original).toEqual(antes);
+    expect(pedidosParaCsv([original])).toBe(csv);
+  });
+
+  it("exporta itens vazios e valores zero registrados sem inventar itens", () => {
+    expect(
+      pedidosParaCsv([
+        pedido({ items: [], subtotal: 0, shipping: 0, discount: 0, total: 0 }),
+      ]),
+    ).toContain(";0,00;São Paulo;SP;;0,00;0,00;0,00");
+  });
+
+  it.each([
+    ["=1+1", "'=1+1 (1 x 2,50)"],
+    ["+1+1", "'+1+1 (1 x 2,50)"],
+    ["-1+1", "'-1+1 (1 x 2,50)"],
+    ["@SUM(1)", "'@SUM(1) (1 x 2,50)"],
+    ["  =1+1", "'  =1+1 (1 x 2,50)"],
+    ["\t=1+1", "'\t=1+1 (1 x 2,50)"],
+    ["\r=1+1", '"\'\r=1+1 (1 x 2,50)"'],
+    ["\n=1+1", '"\'\n=1+1 (1 x 2,50)"'],
+  ])("neutraliza fórmula na coluna de itens: %j", (name, esperado) => {
+    expect(
+      pedidosParaCsv([
+        pedido({
+          items: [
+            {
+              productId: "produto-1",
+              name,
+              quantity: 1,
+              price: 2.5,
+              image: "",
+            },
+          ],
+        }),
+      ]),
+    ).toContain(`;SP;${esperado};1234,50;0,00;0,00`);
+  });
+
   it("gera BOM UTF-8, colunas na ordem contratada, ponto e vírgula e CRLF", () => {
     const csv = pedidosParaCsv([pedido()]);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
     expect(csv).toBe(
-      `\uFEFF${CABECALHO}\r\n#ABC123;08/09/2026 09:07;João Silva;11987654321;Novo Pedido;PIX Instantâneo;Aguardando pagamento;1234,50;São Paulo;SP`,
+      `\uFEFF${CABECALHO}\r\n#ABC123;08/09/2026 09:07;João Silva;11987654321;Novo Pedido;PIX Instantâneo;Aguardando pagamento;1234,50;São Paulo;SP;;1234,50;0,00;0,00`,
     );
   });
 
