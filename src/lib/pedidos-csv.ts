@@ -16,7 +16,7 @@ export function rotuloDaFormaDePagamento(method: string): string {
 
 const statusPorChave = new Map(Object.entries(statusConfig));
 const CABECALHO =
-  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF";
+  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto";
 
 function escaparCampo(valor: string): string {
   // Aspas CSV não impedem fórmulas: texto vindo do cliente precisa continuar texto.
@@ -47,6 +47,17 @@ export function pedidosParaCsv(pedidos: Pedido[]): string {
       pedido.total.toFixed(2).replace(".", ","),
       escaparCampo(pedido.customer?.city ?? ""),
       escaparCampo(pedido.customer?.state ?? ""),
+      escaparCampo(
+        pedido.items
+          .map(
+            (item) =>
+              `${item.name} (${item.quantity} x ${item.price.toFixed(2).replace(".", ",")})`,
+          )
+          .join(" | "),
+      ),
+      pedido.subtotal.toFixed(2).replace(".", ","),
+      pedido.shipping.toFixed(2).replace(".", ","),
+      pedido.discount.toFixed(2).replace(".", ","),
     ].join(";"),
   );
   return `\uFEFF${[CABECALHO, ...linhas].join("\r\n")}`;
