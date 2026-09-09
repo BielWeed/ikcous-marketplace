@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { assertPublicSupabaseKey } from "./publicSupabaseKey";
 import {
   IdentityError,
   MAX_IDENTITY_ASSET_BYTES,
@@ -33,28 +34,6 @@ export interface DownloadedStoreIdentity {
 
 const selection =
   "store_name,store_city,store_state,logo_url,primary_color,secondary_color,accent_color,branding_assets";
-function assertPublicKey(key: string): void {
-  if (/^sb_publishable_[A-Za-z0-9_-]+$/.test(key)) return;
-  try {
-    if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(key))
-      throw new Error();
-    const segment = key.split(".")[1].replaceAll("-", "+").replaceAll("_", "/");
-    const decoded = atob(
-      segment.padEnd(Math.ceil(segment.length / 4) * 4, "="),
-    );
-    const payload: unknown = JSON.parse(decoded);
-    if (
-      payload !== null &&
-      typeof payload === "object" &&
-      "role" in payload &&
-      payload.role === "anon"
-    )
-      return;
-  } catch {
-    /* Only classify public legacy keys; the server verifies the signature. */
-  }
-  throw new IdentityError("IDENTITY_KEY");
-}
 
 async function withDeadline<T>(
   timeoutMs: number,
@@ -152,7 +131,7 @@ export async function readPublicStoreIdentity(
   options: ReadIdentityOptions,
 ): Promise<PublicStoreIdentity> {
   const origin = normalizeSupabaseOrigin(options.supabaseUrl);
-  assertPublicKey(options.publicKey);
+  assertPublicSupabaseKey(options.publicKey);
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   return withDeadline(options.timeoutMs ?? 10000, async (signal) => {
     let transportError: IdentityError | undefined;

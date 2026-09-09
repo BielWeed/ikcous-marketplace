@@ -2481,6 +2481,18 @@ export type Database = {
             Args: { p_admin_id: string; p_reply: string; p_review_id: string };
             Returns: undefined;
           };
+      read_store_identity: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      save_store_identity: {
+        Args: {
+          expected_revision: string;
+          expected_identity: Json;
+          desired_identity: Json;
+        };
+        Returns: Json;
+      };
       solicitar_estorno: {
         Args: { p_amount: number; p_motivo: string; p_order_id: string };
         Returns: Json;
