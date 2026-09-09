@@ -4,10 +4,16 @@ import type { DownloadedStoreIdentity } from "../src/lib/publicStoreIdentity";
 import { identityRevision, parseStoreIdentity } from "../src/lib/storeIdentity";
 import type { IdentityAsset } from "../src/lib/storeIdentity";
 
-// Deterministic, entirely fictional pixels; never reads a real store or its images.
+import { createLocalIdentityBuildFixture } from "./localIdentityBuildFixture";
+import type { LocalKitFixture } from "./localIdentityBuildFixture";
+export type { LocalKitFixture } from "./localIdentityBuildFixture";
+
+// Geometric defaults stay deterministic; local kits preserve approved bytes.
 export async function createIdentityBuildFixture(
-  variant: "aurora" | "oceano" = "aurora",
+  variant: "aurora" | "oceano" | LocalKitFixture = "aurora",
 ): Promise<DownloadedStoreIdentity> {
+  if (typeof variant !== "string")
+    return createLocalIdentityBuildFixture(variant);
   const color = variant === "aurora" ? "#863B50" : "#246780";
   const files: DownloadedStoreIdentity["files"][number][] = [];
   const add = (

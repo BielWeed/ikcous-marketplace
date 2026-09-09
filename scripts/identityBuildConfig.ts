@@ -23,6 +23,8 @@ export function selectIdentityMode(
   env: Record<string, string | undefined>,
 ): "database" | "fixture" {
   const mode = env.IKCOUS_IDENTITY_MODE;
+  if (env.IKCOUS_IDENTITY_FIXTURE_FILE !== undefined && mode !== "fixture")
+    throw new Error("IDENTITY_FIXTURE: seletor local exige modo fixture");
   if (mode === undefined || mode === "database") return "database";
   if (mode === "fixture") return "fixture";
   throw new Error("IDENTITY_MODE: use database ou fixture explicitamente");
@@ -247,7 +249,18 @@ export function createIdentityBuildConfig(options: {
           const { createIdentityBuildFixture } = await import(
             "./identityBuildFixture"
           );
-          downloaded = await createIdentityBuildFixture();
+          if (env.IKCOUS_IDENTITY_FIXTURE_FILE !== undefined) {
+            const { readLocalKitFixtureSelector } = await import(
+              "./localIdentityBuildFixture"
+            );
+            downloaded = await createIdentityBuildFixture(
+              await readLocalKitFixtureSelector(
+                env.IKCOUS_IDENTITY_FIXTURE_FILE,
+              ),
+            );
+          } else {
+            downloaded = await createIdentityBuildFixture();
+          }
         } else {
           const { readPublicStoreIdentity, downloadIdentityAssets } =
             await import("../src/lib/publicStoreIdentity");
