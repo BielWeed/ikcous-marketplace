@@ -98,6 +98,92 @@ export function readPrecache(code) {
   return entries;
 }
 
+// Installation must contain the complete static closure, irrespective of chunk names.
+export function assertStaticPrecache(graph, precache) {
+  const chunks = new Map(graph.map((chunk) => [chunk.fileName, chunk]));
+  assert.equal(chunks.size, graph.length, "STATIC_GRAPH_DUPLICATE");
+  const entries = graph.filter(
+    (chunk) => chunk.isEntry && chunk.moduleIds.includes("src/main.tsx"),
+  );
+  assert.equal(entries.length, 1, "STATIC_MAIN_ENTRY_ONCE");
+  const required = new Set();
+  const pending = [entries[0].fileName];
+  while (pending.length) {
+    const name = pending.pop();
+    if (required.has(name)) continue;
+    const chunk = chunks.get(name);
+    assert(chunk, `STATIC_GRAPH_EDGE_MISSING: ${name}`);
+    required.add(name);
+    pending.push(...chunk.imports);
+  }
+  const urls = new Set(precache.map((item) => item.url));
+  for (const name of required)
+    assert(urls.has(name), `STATIC_PRECACHE_MISSING: ${name}`);
+  return [...required].sort();
+}
+
+function checkStaticPrecache() {
+  const chunk = (fileName, imports = [], dynamicImports = []) => ({
+    fileName,
+    imports,
+    dynamicImports,
+    isEntry: fileName === "entry.js",
+    moduleIds: fileName === "entry.js" ? ["src/main.tsx"] : [],
+  });
+  const graph = [
+    chunk("entry.js", ["direct.js", "direct.js"], ["lazy.js"]),
+    chunk("direct.js", ["indirect.js"]),
+    chunk("indirect.js", ["entry.js"]),
+    chunk("lazy.js", ["lazy-child.js"]),
+    chunk("lazy-child.js"),
+  ];
+  const precache = ["entry.js", "direct.js", "indirect.js"].map((url) => ({
+    url,
+    revision: null,
+  }));
+  const required = assertStaticPrecache(graph, precache);
+  assert.deepEqual(required, precache.map((item) => item.url).sort());
+  assert.deepEqual(assertStaticPrecache(graph, precache), required);
+  assert.deepEqual(
+    assertStaticPrecache(graph, [...precache, precache[0]]),
+    required,
+  );
+  assert.throws(() => assertStaticPrecache([], []), /STATIC_MAIN_ENTRY_ONCE/);
+  assert.throws(
+    () => assertStaticPrecache(graph.slice(1), precache),
+    /STATIC_MAIN_ENTRY_ONCE/,
+  );
+  assert.throws(
+    () =>
+      assertStaticPrecache(
+        [...graph, { ...graph[0], fileName: "second-entry.js" }],
+        precache,
+      ),
+    /STATIC_MAIN_ENTRY_ONCE/,
+  );
+  assert.throws(
+    () => assertStaticPrecache([...graph, graph[1]], precache),
+    /STATIC_GRAPH_DUPLICATE/,
+  );
+  assert.throws(
+    () =>
+      assertStaticPrecache(
+        graph.filter((item) => item.fileName !== "indirect.js"),
+        precache,
+      ),
+    /STATIC_GRAPH_EDGE_MISSING: indirect\.js/,
+  );
+  for (const name of required)
+    assert.throws(
+      () =>
+        assertStaticPrecache(
+          graph,
+          precache.filter((item) => item.url !== name),
+        ),
+      (error) => error.message === `STATIC_PRECACHE_MISSING: ${name}`,
+    );
+}
+
 const chunkKey = (chunk) =>
   JSON.stringify([
     chunk.facadeModuleId,
@@ -598,13 +684,28 @@ async function measure(directory, evidence, isControl) {
     assert(urls.has(item.url), `ESSENTIAL_MISSING: ${item.role}`);
   for (const url of [snapshot.localUrls.og, ...snapshot.localUrls.originals])
     assert(!urls.has(url.slice(1)), "ORIGINAL_OG_CACHED");
-  evidence.knownChartsGap = evidence.graph
-    .filter((item) => item.fileName.startsWith("assets/vendor-charts-"))
-    .map((item) => ({
-      fileName: item.fileName,
-      staticMainImport: entry[0].imports.includes(item.fileName),
-      inPrecache: urls.has(item.fileName),
-    }));
+  const required = assertStaticPrecache(evidence.graph, evidence.precache);
+  evidence.staticPrecache = { required, chunks: [], mutations: [] };
+  for (const name of required) {
+    const body = await fs.readFile(await localFile(output, name));
+    evidence.staticPrecache.chunks.push({
+      fileName: name,
+      bytes: body.length,
+      sha256: hash(body),
+    });
+    assert.throws(
+      () =>
+        assertStaticPrecache(
+          evidence.graph,
+          evidence.precache.filter((item) => item.url !== name),
+        ),
+      (error) => error.message === `STATIC_PRECACHE_MISSING: ${name}`,
+    );
+    evidence.staticPrecache.mutations.push({
+      removedInMemory: name,
+      rejected: true,
+    });
+  }
   evidence.artifacts = [];
   for (const name of [
     "sw.js",
@@ -632,6 +733,7 @@ async function measure(directory, evidence, isControl) {
 
 export async function run() {
   assert.equal(process.argv.length, 2, "NO_ARGUMENTS");
+  checkStaticPrecache();
   assert.throws(
     () => readPrecache("const manifest=[]"),
     /PRECACHE_AST_UNAMBIGUOUS/,
@@ -660,7 +762,7 @@ export async function run() {
   );
   const directory = path.join(
     control,
-    `tarefa-A5d3c1-${Date.now()}-${randomUUID()}`,
+    `tarefa-A6c1-${Date.now()}-${randomUUID()}`,
   );
   await fs.mkdir(directory);
   const evidence = {
@@ -849,7 +951,7 @@ export async function run() {
     ]);
     evidence.status = "GREEN";
     console.log(
-      `GREEN: five entries excluded, ${evidence.targetBytes} bytes; real SW activated; shared coverage retained.`,
+      `GREEN: five entries excluded, ${evidence.targetBytes} bytes; real SW activated; shared coverage retained; static closure precached and every required chunk mutation rejected.`,
     );
   } catch (error) {
     evidence.failure = error.message;

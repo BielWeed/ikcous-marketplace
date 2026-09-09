@@ -88,7 +88,6 @@ export default defineConfig(async (context): Promise<UserConfig> => {
         "images/demo/**",
         "og-image.png",
         "assets/Admin*.js",
-        "assets/vendor-charts-*.js",
         "assets/ImageAdjuster-*.js",
         "assets/PhoneSimulator-*.js",
       ],

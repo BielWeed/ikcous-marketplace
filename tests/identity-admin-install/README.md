@@ -31,7 +31,7 @@ resultado antigo com o mesmo HEAD. Usa duas compilações reais; somente o
 candidato final é servido ao Chrome.
 
 Evidências novas ficam em
-`C:/Users/Gabriel/recuperacao-ikcous/20260909-ecossistema/controle/tarefa-A5d3c1-*`,
+`C:/Users/Gabriel/recuperacao-ikcous/20260909-ecossistema/controle/tarefa-A6c1-*`,
 com controle em `paired-control/` e candidato em sua pasta pai. Guardam
 grafo, precache, SW e hashes, sem copiar a árvore compilada.
 As pastas são exclusivas e a escrita usa `wx`; nada histórico é sobrescrito.
@@ -44,5 +44,20 @@ preencher CacheStorage sem buscar os cinco alvos. O HTML da loja é baixado como
 recurso de cache, mas nunca executado. Servidor e navegador fecham em finally.
 
 Limites: não prova abertura/offline/update de cliente ou administrador, nem
-Auth/GoTrue/Storage/produção. A exclusão antiga de vendor-charts, importado por
-main, é registrada, não corrigida. Não publica, não usa banco nem credenciais.
+Auth/GoTrue/Storage/produção. Não publica, não usa banco nem credenciais.
+
+A guarda pura exportada `assertStaticPrecache(graph, precache)` encontra a única
+entrada com `src/main.tsx` e exige todo o fechamento transitivo de imports
+estáticos no grafo e no precache. Não exige imports somente dinâmicos e termina
+mesmo com ciclos. Entrada ausente/duplicada, chunk duplicado, dependência ausente
+do grafo e falta no precache reprovam. Controles em memória cobrem dependência
+indireta, ciclo, import repetido e dinâmico; cada chunk obrigatório é retirado
+individualmente do precache para exigir reprovação nos dois builds.
+
+A exclusão explícita de vendor-charts foi removida porque o grafo real o exige
+na entrada. Os nomes não fazem parte da guarda: `staticPrecache` registra os
+chunks obrigatórios com bytes, SHA-256 e contraprovas. As medições acontecem
+após buildStore concluir seus fechamentos. Importar o runner não inicia build.
+O RED anterior à correção foi medido separadamente no artefato A5d3c1 preservado;
+a execução normal continua independente de evidência histórica. Instalar o SW
+na página neutra ainda não certifica o primeiro reload offline da loja.
