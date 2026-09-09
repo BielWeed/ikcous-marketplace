@@ -24,50 +24,30 @@
  * pergunta, não quando o módulo é avaliado.
  */
 
-// URL e chave anon são sempre ASCII imprimível ("!" a "~"). Descartar o resto elimina
-// de uma vez BOM, zero-width, nbsp e espaços que entram ao colar valores no .env.
-export const cleanEnvVar = (val: string) => val.replace(/[^!-~]/g, "");
+import { resolverValoresPublicosSupabase } from "./env-publico-valores";
+import type { OrigemChaveSupabase } from "./env-publico-valores";
+
+export { cleanEnvVar } from "./env-publico-valores";
+export type { OrigemChaveSupabase } from "./env-publico-valores";
+
+// A mesma limpeza e precedência usada no preparo, com ambiente lido a cada chamada.
+function resolverAmbientePublicoSupabase() {
+  return resolverValoresPublicosSupabase({
+    VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env
+      .VITE_SUPABASE_PUBLISHABLE_KEY,
+    VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+  });
+}
 
 export function lerSupabaseUrl(): string {
-  return cleanEnvVar(import.meta.env.VITE_SUPABASE_URL || "");
-}
-
-export type OrigemChaveSupabase =
-  | "VITE_SUPABASE_PUBLISHABLE_KEY"
-  | "VITE_SUPABASE_ANON_KEY";
-
-interface ChaveSupabaseResolvida {
-  valor: string;
-  origem: OrigemChaveSupabase;
-}
-
-// INFRA-260 (#126): o Supabase está trocando as chaves de API — a legada
-// `anon` (JWT) dá lugar à `publishable` (`sb_publishable_...`). As legadas
-// funcionam até o dono desligá-las num clique no Dashboard, sem data
-// marcada. As 8 edge functions no ar já leem a nova com fallback para a
-// legada (`readKey` em supabase/functions/_shared/webpush.ts); aqui é a
-// mesma precedência, para o front sobreviver ao mesmo desligamento.
-//
-// A precedência mora NESTA função só. `env.ts` (para nomear a origem no
-// `console.info` do portão) e `useOnlineStatus.ts` (para o header da sonda)
-// chamam as duas funções exportadas abaixo, que delegam para cá — nenhum dos
-// dois reimplementa o `||`, que é como duas cópias da mesma conta divergiam
-// antes.
-function resolverChaveSupabase(): ChaveSupabaseResolvida {
-  const nova = cleanEnvVar(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "");
-  if (nova) {
-    return { valor: nova, origem: "VITE_SUPABASE_PUBLISHABLE_KEY" };
-  }
-  return {
-    valor: cleanEnvVar(import.meta.env.VITE_SUPABASE_ANON_KEY || ""),
-    origem: "VITE_SUPABASE_ANON_KEY",
-  };
+  return resolverAmbientePublicoSupabase().supabaseUrl;
 }
 
 export function lerChaveSupabase(): string {
-  return resolverChaveSupabase().valor;
+  return resolverAmbientePublicoSupabase().chave.valor;
 }
 
 export function lerOrigemChaveSupabase(): OrigemChaveSupabase {
-  return resolverChaveSupabase().origem;
+  return resolverAmbientePublicoSupabase().chave.origem;
 }

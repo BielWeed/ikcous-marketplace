@@ -6,6 +6,7 @@ import path from "node:path";
 import type { ConfigEnv, Plugin, UserConfig } from "vite";
 import type { VitePWAOptions } from "vite-plugin-pwa";
 import type { BuildIdentitySnapshot } from "../src/config/buildIdentityContract";
+import { resolverValoresPublicosSupabase } from "../src/lib/env-publico-valores";
 import type { PreparedIdentityBuild } from "./prepareIdentity";
 
 const essentialRoles = [
@@ -264,17 +265,18 @@ export function createIdentityBuildConfig(options: {
         } else {
           const { readPublicStoreIdentity, downloadIdentityAssets } =
             await import("../src/lib/publicStoreIdentity");
-          const keys = [
-            env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            env.VITE_SUPABASE_ANON_KEY,
-          ].filter(Boolean);
-          if (!env.VITE_SUPABASE_URL || !keys.length)
+          const { supabaseUrl, chave } = resolverValoresPublicosSupabase({
+            VITE_SUPABASE_URL: env.VITE_SUPABASE_URL,
+            VITE_SUPABASE_PUBLISHABLE_KEY: env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            VITE_SUPABASE_ANON_KEY: env.VITE_SUPABASE_ANON_KEY,
+          });
+          if (!supabaseUrl || !chave.valor)
             throw new Error(
               "IDENTITY_INCOMPLETE: configuração pública obrigatória",
             );
           const identity = await readPublicStoreIdentity({
-            supabaseUrl: env.VITE_SUPABASE_URL,
-            publicKey: keys[0]!,
+            supabaseUrl,
+            publicKey: chave.valor,
           });
           downloaded = await downloadIdentityAssets(identity);
         }
