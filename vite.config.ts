@@ -114,6 +114,25 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       build: { outDir: identity.outDir },
       plugins: [identity.plugin],
     };
+  // Closed set of measured dynamic entries; shared chunks retain Vite names.
+  const identityEntries = new Map(
+    [
+      [
+        "src/components/admin/settings/IdentitySettingsSection.tsx",
+        "AdminIdentitySettings",
+      ],
+      ["src/lib/prepareIdentityImage.ts", "AdminIdentityPrepare"],
+      ["src/lib/uploadIdentityImage.ts", "AdminIdentityUpload"],
+      [
+        "node_modules/tus-js-client/lib.esm/browser/index.js",
+        "AdminIdentityTus",
+      ],
+      ["node_modules/image-dimensions/index.js", "AdminIdentityDimensions"],
+    ].map(([file, name]) => [
+      path.resolve(root, file).replace(/\\/g, "/"),
+      name,
+    ]),
+  );
   const isDev = mode === "development";
   if (command === "build" && !isDev) process.env.NODE_ENV = "production";
   return {
@@ -149,6 +168,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       outDir: identity.outDir,
       rollupOptions: {
         output: {
+          chunkFileNames(chunk) {
+            const id = chunk.facadeModuleId?.replace(/\\/g, "/");
+            const name =
+              chunk.isDynamicEntry && id ? identityEntries.get(id) : undefined;
+            return name
+              ? `assets/${name}-[hash].js`
+              : "assets/[name]-[hash].js";
+          },
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
             if (normalizedId.includes("commonjsHelpers")) {
