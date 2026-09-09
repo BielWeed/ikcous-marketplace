@@ -119,7 +119,64 @@ const statusConfigByKey = new Map(
   ][],
 );
 
-async function syncOfflineOrderUpdates(): Promise<boolean> {
+// Mensagens de update_order_status_atomic em
+// supabase/migrations/2026110000000_o_estorno_nasce_no_ledger.sql:
+// RAISE nas linhas 317–346; pedido inexistente (328) e cancelamento terminal (346).
+// "Apenas pedidos pendentes podem ser cancelados pelo usuário." é da versão
+// anterior da função, mantida para loja que ainda não aplicou essa migration.
+export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  // P0001 também é usado para falhas de autenticação: só a mensagem
+  // identifica o estado terminal. 23514 é a violação de CHECK do banco.
+  if ("code" in err && err.code === "23514") return true;
+  if (!("message" in err) || typeof err.message !== "string") return false;
+  const mensagem = err.message.toLowerCase();
+  return (
+    mensagem.includes("apenas pedidos pendentes") ||
+    mensagem.includes("não pode mais ser cancelado") ||
+    mensagem.includes("não pode ser cancelado") ||
+    mensagem.includes("pedido não encontrado")
+  );
+}
+
+type ItemDaFila = {
+  orderId: string;
+  status: string;
+  notes?: string | null;
+  silent?: boolean;
+  timestamp?: number;
+};
+
+export function mesclarFilaOfflineAposPassada(
+  filaFresca: unknown,
+  processados: ReadonlyMap<string, number>,
+  reserva: readonly ItemDaFila[],
+): ItemDaFila[] {
+  if (!Array.isArray(filaFresca)) return [...reserva];
+  return filaFresca.filter((item): item is ItemDaFila => {
+    if (!item || typeof item.orderId !== "string") return false;
+    const timestampProcessado = processados.get(item.orderId);
+    return (
+      timestampProcessado === undefined ||
+      (typeof item.timestamp === "number" &&
+        item.timestamp > timestampProcessado)
+    );
+  });
+}
+
+let sincronizacaoEmVoo: Promise<boolean> | null = null;
+
+function syncOfflineOrderUpdates(): Promise<boolean> {
+  if (sincronizacaoEmVoo) return sincronizacaoEmVoo;
+  sincronizacaoEmVoo = processarFilaOfflineDePedidos().finally(() => {
+    sincronizacaoEmVoo = null;
+  });
+  return sincronizacaoEmVoo;
+}
+
+async function processarFilaOfflineDePedidos(
+  segundaPassada = false,
+): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const queueStr = localStorage.getItem("orders_offline_updates_queue");
   if (!queueStr) return false;
@@ -128,13 +185,25 @@ async function syncOfflineOrderUpdates(): Promise<boolean> {
     const queue = JSON.parse(queueStr);
     if (!Array.isArray(queue) || queue.length === 0) return false;
 
-    const remainingQueue: any[] = [];
+    const remainingQueue: ItemDaFila[] = [];
+    const processados = new Map<string, number>();
+    const tentados = new Map<string, number>();
+    let syncedAny = false;
+    let falhasTransitorias = 0;
+    let descartesTerminais = 0;
     const toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
     );
 
     for (const item of queue) {
       const { orderId, status, notes, silent } = item;
+      // Itens antigos sem timestamp saem ao concluir; qualquer versão datada
+      // que entrar durante a RPC continua sendo mais nova.
+      const timestamp =
+        typeof item.timestamp === "number"
+          ? item.timestamp
+          : Number.NEGATIVE_INFINITY;
+      tentados.set(orderId, timestamp);
       try {
         const { error } = await (supabase.rpc as any)(
           "update_order_status_atomic",
@@ -147,37 +216,89 @@ async function syncOfflineOrderUpdates(): Promise<boolean> {
         );
 
         if (error) throw error;
+        syncedAny = true;
+        processados.set(orderId, timestamp);
       } catch (err) {
+        if (erroDeSincronizacaoEhTerminal(err)) {
+          descartesTerminais++;
+          processados.set(orderId, timestamp);
+          continue;
+        }
         console.error(
           "[Offline Sync] Failed to sync order status %s:",
           orderId,
           err,
         );
+        falhasTransitorias++;
         remainingQueue.push(item);
       }
     }
 
-    const syncedAny = remainingQueue.length < queue.length;
+    let filaFresca: unknown = null;
+    try {
+      filaFresca = JSON.parse(
+        localStorage.getItem("orders_offline_updates_queue") ?? "null",
+      );
+    } catch {
+      // A reserva em memória conserva as falhas se o storage foi corrompido.
+    }
+    const final = mesclarFilaOfflineAposPassada(
+      filaFresca,
+      processados,
+      remainingQueue,
+    );
 
-    if (remainingQueue.length > 0) {
+    if (final.length > 0) {
       localStorage.setItem(
         "orders_offline_updates_queue",
-        JSON.stringify(remainingQueue),
-      );
-      toast.error(
-        `Falha ao sincronizar ${remainingQueue.length} alterações de pedidos. Tentando novamente mais tarde.`,
-        { id: toastId },
+        JSON.stringify(final),
       );
     } else {
       localStorage.removeItem("orders_offline_updates_queue");
       clearAnalyticsCache();
+    }
+
+    if (falhasTransitorias > 0) {
+      toast.error(
+        `Falha ao sincronizar ${falhasTransitorias} alterações de pedidos. Tentando novamente mais tarde.${
+          descartesTerminais > 0
+            ? ` ${descartesTerminais} alterações não se aplicam mais ao estado atual dos pedidos.`
+            : ""
+        }`,
+        { id: toastId },
+      );
+    } else if (descartesTerminais > 0) {
+      toast.info(
+        "Fila de pedidos atualizada. Algumas alterações não se aplicam mais ao estado atual dos pedidos.",
+        { id: toastId },
+      );
+    } else if (final.length === 0) {
       toast.success(
         "Todas as atualizações de status de pedidos foram sincronizadas!",
         { id: toastId },
       );
+    } else {
+      toast.info(
+        "Alterações de pedidos sincronizadas. Há novas alterações na fila offline.",
+        { id: toastId },
+      );
     }
 
-    return syncedAny;
+    const temItemNovo = final.some((item) => {
+      const timestampTentado = tentados.get(item.orderId);
+      return (
+        timestampTentado === undefined ||
+        (typeof item.timestamp === "number" &&
+          item.timestamp > timestampTentado)
+      );
+    });
+    const filaAvancou = syncedAny || descartesTerminais > 0;
+    if (!segundaPassada && temItemNovo && navigator.onLine) {
+      const sincronizouNaSegunda = await processarFilaOfflineDePedidos(true);
+      return sincronizouNaSegunda || filaAvancou;
+    }
+
+    return filaAvancou;
   } catch (e) {
     console.error("[Offline Sync] Error parsing offline orders queue:", e);
     return false;
@@ -1161,6 +1282,82 @@ export function useOrders(
       }
     },
     [enabled],
+  );
+
+  /** Consulta independente: não troca a página, o cache ou a recarga da tela. */
+  const buscarPedidosDoFiltroParaExportar = useCallback(
+    async ({
+      statusFilter,
+      searchQuery,
+      startDate,
+      endDate,
+      paymentStatus,
+    }: {
+      statusFilter?: string;
+      searchQuery?: string;
+      startDate?: string;
+      endDate?: string;
+      paymentStatus?: string;
+    }): Promise<Order[]> => {
+      const PAGE_SIZE = 100;
+      const MAX_ORDERS = 5000;
+      const MAX_PAGES = MAX_ORDERS / PAGE_SIZE;
+      const pedidos: Order[] = [];
+      const ids = new Set<string>();
+      let totalEsperado: number | undefined;
+
+      for (let page = 0; page < MAX_PAGES; page += 1) {
+        const { data, error } = await (supabase.rpc as any)(
+          "get_admin_orders_paged",
+          {
+            p_search: searchQuery || "",
+            p_status: statusFilter || "all",
+            p_start_date: startDate || "",
+            p_end_date: endDate || "",
+            p_page: page,
+            p_page_size: PAGE_SIZE,
+            // A RPC filtra tanto os dados quanto a contagem por pagamento.
+            p_payment_status: paymentStatus || "all",
+          },
+        );
+        if (error) throw error;
+
+        const total = Number(data?.total_count);
+        const linhas = data?.data;
+        if (total > MAX_ORDERS) {
+          throw new Error(
+            "O CSV permite até 5000 pedidos. Reduza o período do filtro.",
+          );
+        }
+        if (
+          !Number.isInteger(total) ||
+          total < 0 ||
+          !Array.isArray(linhas) ||
+          (totalEsperado !== undefined && total !== totalEsperado)
+        ) {
+          throw new Error(
+            "Não foi possível consultar o filtro completo. Tente de novo.",
+          );
+        }
+        totalEsperado = total;
+        for (const linha of linhas) {
+          const pedido = mapOrderFromDB(linha);
+          if (ids.has(pedido.id)) {
+            throw new Error(
+              "A consulta de pedidos ficou incompleta. Tente de novo.",
+            );
+          }
+          ids.add(pedido.id);
+          pedidos.push(pedido);
+        }
+        if (pedidos.length === total) return pedidos;
+        if (linhas.length === 0 || pedidos.length > total) break;
+      }
+      throw new Error(
+        "A consulta de pedidos ficou incompleta. Reduza o período e tente de novo.",
+      );
+    },
+    [],
   );
 
   // Wrapper for backward compatibility
@@ -2657,13 +2854,15 @@ export function useOrders(
     [],
   );
 
-  // Synchronize queued offline order status updates when coming back online
+  // Revisão do PR #498 (08/09/2026): AdminLayout usa enabled=false e é o único
+  // sincronizador do painel fora da aba Pedidos; o listener precisa continuar ativo.
+  // sincronizacaoEmVoo serializa N listeners em uma só passada, sem duplicação.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleOnlineSync = () => {
       setTimeout(() => {
-        syncOfflineOrderUpdates().then((synced) => {
-          if (synced) {
+        syncOfflineOrderUpdates().then((filaAvancou) => {
+          if (filaAvancou) {
             if (isAdmin) {
               loadOrders(0, 10, "all", "", "", "", true).catch(() => {});
             } else if (user?.id) {
@@ -2709,6 +2908,7 @@ export function useOrders(
     realtimeConnectionStatus: connectionStatus,
     fetchUserOrders,
     loadOrders, // New pagination function
+    buscarPedidosDoFiltroParaExportar,
     fetchOrders, // Legacy alias
     updateOrderStatus,
     confirmarRetornoDoProduto,

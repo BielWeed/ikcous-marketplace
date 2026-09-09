@@ -35,22 +35,29 @@ interface AdminLoginViewProps {
 // ramos (e-mail não confirmado, 429, credenciais inválidas) continuam com
 // literal PRÓPRIO desta tela ("administrativos"), de propósito — a
 // divergência ali é deliberada, não o defeito que este comentário descreve.
-function mensagemDeErroAdminLogin(error: any): string {
+export function mensagemDeErroAdminLogin(error: unknown): string {
+  const detalhes = (error ?? {}) as {
+    code?: unknown;
+    message?: unknown;
+    status?: unknown;
+  };
+  const code = typeof detalhes.code === "string" ? detalhes.code : "";
+  const message = typeof detalhes.message === "string" ? detalhes.message : "";
+  const status =
+    typeof detalhes.status === "number" ? detalhes.status : undefined;
+
   if (
-    error?.code === "email_not_confirmed" ||
-    error?.message?.includes("Email not confirmed")
+    code === "email_not_confirmed" ||
+    message.includes("Email not confirmed")
   ) {
     return "Este e-mail administrativo ainda não foi confirmado. Verifique a caixa de entrada.";
   }
-  if (error?.status === 429) {
+  if (status === 429) {
     // Verificado na doc oficial: o limite de login é POR ENDEREÇO IP, não
     // por usuário — não revela se a senha está certa ou errada.
     return "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.";
   }
-  if (
-    error?.code === "user_banned" ||
-    error?.message?.includes("User is banned")
-  ) {
+  if (code === "user_banned" || message.includes("User is banned")) {
     // A1-fix3 (achado BLOQUEANTE) — PRECISA vir antes do `if (error?.status
     // === 400 ...)` abaixo. `user_banned` é HTTP 400 (conferido na fonte do
     // GoTrue: internal/api/token.go, `user.IsBanned()` devolve
@@ -70,10 +77,7 @@ function mensagemDeErroAdminLogin(error: any): string {
     // A1-fix4 moveu a constante).
     return MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA;
   }
-  if (
-    error?.status === 400 ||
-    error?.message?.includes("Invalid login credentials")
-  ) {
+  if (status === 400 || message.includes("Invalid login credentials")) {
     return "Email ou senha administrativos incorretos.";
   }
   // Causa não distinguível (rede, erro inesperado do servidor, provedor de

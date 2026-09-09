@@ -3,6 +3,7 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   buscarComTempo,
   calculateSmartFallback,
+  erroDeTransportadoraEhCepInvalido,
   getCartHash,
   handler,
   isLocalCep,
@@ -17,6 +18,35 @@ Deno.test("calculateSmartFallback - same region", () => {
   const fee = calculateSmartFallback("38500000", "35000000", 10);
   assertEquals(fee, 15); // max of 15 and baseFee (10)
 });
+
+for (const mensagem of [
+  'Melhor Envio API retornou 422: {"errors":{"postal_code":["O campo cep_destino está invalido"]}}',
+  "Melhor Envio API retornou 422: O campo cep_destino está invalido",
+]) {
+  Deno.test(`CEP inexistente - classifica ${mensagem}`, () => {
+    assertEquals(erroDeTransportadoraEhCepInvalido(mensagem), true);
+  });
+}
+
+for (const mensagem of [
+  'Melhor Envio API retornou 422: {"errors":{"postal_code":["inválido"]}}',
+  'Melhor Envio API retornou 422: {"errors":{"postal_code":["O campo cep_origem está invalido"]}}',
+  "Melhor Envio API retornou 500: erro interno ao cotar 04220-000 (422 registros)",
+  "Melhor Envio API retornou 401: token expirado para o pedido com cep_destino 04220-000",
+  "Melhor Envio API retornou 500: erro interno ao cotar cep_destino 04220-000 (422 registros)",
+  "Melhor Envio API retornou 500: postal_code cep_destino",
+  "Melhor Envio API retornou 401: postal_code cep_destino",
+  "timeout",
+  "Melhor Envio API retornou 422: peso inválido",
+  "postal_code cep_destino",
+  null,
+  undefined,
+  "",
+]) {
+  Deno.test(`CEP inexistente - não confunde outra falha: ${mensagem}`, () => {
+    assertEquals(erroDeTransportadoraEhCepInvalido(mensagem), false);
+  });
+}
 
 Deno.test("calculateSmartFallback - neighboring region group", () => {
   // Test neighboring region group (e.g., 2 and 3)
@@ -619,6 +649,53 @@ Deno.test("gravação rejeita (exceção) -> erro, e não vira preço de conting
 /** A linha que o handler mandou para `shipping_calculation_logs`, se mandou. */
 function logDaCotacao(registro: { inserts: Array<{ tabela: string; linha: any }> }) {
   return registro.inserts.find((i) => i.tabela === "shipping_calculation_logs")?.linha;
+}
+
+for (const statusDaTransportadora of [422, 500]) {
+  Deno.test(`CEP inexistente - transportadora ${statusDaTransportadora} responde ${statusDaTransportadora === 422 ? 400 : 503} e preserva o log`, async () => {
+    const corpoDaTransportadora = JSON.stringify({
+      errors: { postal_code: ["O campo cep_destino está invalido"] },
+    });
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const fetchOriginal = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(corpoDaTransportadora, { status: statusDaTransportadora }))) as any;
+    try {
+      const req = new Request("http://localhost/calculate-shipping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cep: "19999-999", cart: CARRINHO_DE_TESTE }),
+      });
+      const resposta = await handler(req, {
+        supabase: clienteFalso({
+          registro,
+          cacheInsert: () => Promise.resolve({ error: null }),
+          logInsert: () => new Promise((resolve) => setTimeout(() => resolve({ error: null }), 5)),
+        }),
+      });
+      assertEquals(registro.logConcluido, true);
+      assertEquals(resposta.status, statusDaTransportadora === 422 ? 400 : 503);
+      assertEquals(await resposta.json(), statusDaTransportadora === 422
+        ? { error: "CEP não encontrado. Confira o número e tente de novo.", codigo: "cep_invalido" }
+        : { error: "Não foi possível calcular o frete agora. Tente novamente em instantes." });
+      assertEquals(resposta.headers.get("Access-Control-Allow-Origin"), "*");
+      assertEquals(resposta.headers.get("Content-Type"), "application/json");
+      assertEquals(logDaCotacao(registro).status, "error");
+      assertEquals(logDaCotacao(registro).destination_cep, "19999999");
+      assertEquals(logDaCotacao(registro).error_message,
+        `Melhor Envio API retornou ${statusDaTransportadora}: ${corpoDaTransportadora}`);
+      assertEquals(execucoesDoLog(registro), 1);
+      assertEquals(registro.inserts.some((i) => i.tabela === "shipping_quotes_cache"), false);
+    } finally {
+      globalThis.fetch = fetchOriginal;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  });
 }
 
 Deno.test("gravação falha -> o log registra ERRO, e não 'Sucesso' verde", async () => {

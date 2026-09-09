@@ -18,7 +18,7 @@ import {
   Sparkles,
   User,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AuthViewProps {
@@ -97,6 +97,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   // antes desta issue; aqui só guardamos qual dos dois foi o motivo.
   const [emailNaoConfirmado, setEmailNaoConfirmado] = useState(false);
   const [reenviandoConfirmacao, setReenviandoConfirmacao] = useState(false);
+  const reenvioConfirmacaoEmCurso = useRef(false);
 
   const formatPhone = (value: string) => {
     const numbers = value.replace(/\D/g, "");
@@ -303,26 +304,24 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     }
   };
 
-  // #200 — reenvia o link de confirmação a partir do erro de login (não do
-  // fluxo showConfirmation, que só existe na sessão em que a pessoa se
-  // cadastrou). `resendConfirmationEmail` (AuthContext) já mostra o toast de
-  // sucesso/erro no caminho normal — aqui só cuidamos do estado de
-  // carregando, de não disparar dois reenvios em paralelo, e do caminho
-  // excepcional em que a promise rejeita (reaproveita o mesmo banner de erro
-  // do login, não inventa feedback novo). `finally` garante que o botão sai
-  // do "carregando" mesmo nesse caminho, então nunca fica travado nem o erro
-  // fica preso em silêncio.
+  // #208 — login e confirmação compartilham estado e trava síncrona:
+  // dois cliques antes do próximo render também geram só um envio.
+  // AuthContext já mostra o toast no caminho normal. Na rejeição, mantém
+  // o banner do login e usa toast na confirmação, que não tem esse banner.
   const handleResendConfirmation = async () => {
-    if (reenviandoConfirmacao) return;
+    if (reenvioConfirmacaoEmCurso.current) return;
+    reenvioConfirmacaoEmCurso.current = true;
     setReenviandoConfirmacao(true);
     try {
       await resendConfirmationEmail(email.trim());
     } catch (err) {
       console.error(err);
-      setLoginError(
-        "Não foi possível reenviar o e-mail de confirmação. Tente novamente.",
-      );
+      const message =
+        "Não foi possível reenviar o e-mail de confirmação. Tente novamente.";
+      if (showConfirmation) toast.error(message);
+      else setLoginError(message);
     } finally {
+      reenvioConfirmacaoEmCurso.current = false;
       setReenviandoConfirmacao(false);
     }
   };
@@ -382,10 +381,11 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 Não recebeu?{" "}
                 <button
                   type="button"
-                  onClick={() => resendConfirmationEmail(email.trim())}
+                  onClick={handleResendConfirmation}
+                  disabled={reenviandoConfirmacao}
                   className="text-amber-600 hover:underline"
                 >
-                  Reenviar link
+                  {reenviandoConfirmacao ? "Reenviando..." : "Reenviar link"}
                 </button>
               </p>
             </motion.div>

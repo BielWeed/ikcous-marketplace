@@ -1,30 +1,3 @@
-// F1 "loja abre mais rápido" (frente glm-perf-1paint-0309, 04/09/2026):
-// Header, BottomNav e CartReminder usam framer-motion e eram importados
-// estaticamente — junto com o import de framer-motion do próprio App, isso
-// puxava o chunk vendor-motion (~123 KB brutos / ~40 KB gzip) para o pacote
-// que o navegador baixa no primeiro paint de toda loja. Agora são chunks
-// lazy: o entry não parseia nem executa a biblioteca antes do primeiro
-// conteúdo. O DOWNLOAD dos chunks do chrome continua acontecendo logo após
-// o primeiro render (o Header lazy montado pede o dele, e o dele puxa o
-// vendor-motion) — em cascata, não em paralelo com o entry; por isso os
-// fallbacks do Header e do BottomNav reservam a GEOMETRIA (sem salto de
-// layout na janela em que o splash não cobre — ele é 1× por sessão).
-// Este arquivo NÃO pode voltar a importar framer-motion (nem módulo que o
-// importe estaticamente) — cavalca o teste
-// tests/front/perf-entrada-sem-animacao-no-1o-paint.test.ts.
-const Header = React.lazy(() =>
-  import("@/components/ui/custom/Header").then((m) => ({ default: m.Header })),
-);
-const BottomNav = React.lazy(() =>
-  import("@/components/ui/custom/BottomNav").then((m) => ({
-    default: m.BottomNav,
-  })),
-);
-const CartReminder = React.lazy(() =>
-  import("@/components/ui/custom/CartReminder").then((m) => ({
-    default: m.CartReminder,
-  })),
-);
 import React, {
   useState,
   useEffect,
@@ -32,42 +5,6 @@ import React, {
   useRef,
   useLayoutEffect,
 } from "react";
-const HomeView = lazyWithPreload(() =>
-  import("@/views/customer/HomeView").then((m) => ({ default: m.HomeView })),
-);
-const CartView = lazyWithPreload(() =>
-  import("@/views/customer/CartView").then((m) => ({ default: m.CartView })),
-);
-const ProductView = lazyWithPreload(() =>
-  import("@/views/customer/ProductView").then((m) => ({
-    default: m.ProductView,
-  })),
-);
-const CheckoutView = lazyWithPreload(() =>
-  import("@/views/customer/CheckoutView").then((m) => ({
-    default: m.CheckoutView,
-  })),
-);
-const NotificationsView = lazyWithPreload(() =>
-  import("@/views/customer/NotificationsView").then((m) => ({
-    default: m.NotificationsView,
-  })),
-);
-const OrderSuccessView = lazyWithPreload(() =>
-  import("@/views/customer/OrderSuccessView").then((m) => ({
-    default: m.OrderSuccessView,
-  })),
-);
-const ProfileView = lazyWithPreload(() =>
-  import("@/views/customer/ProfileView").then((m) => ({
-    default: m.ProfileView,
-  })),
-);
-const UserProfileView = lazyWithPreload(() =>
-  import("@/views/customer/UserProfileView").then((m) => ({
-    default: m.UserProfileView,
-  })),
-);
 
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { applyThemeColor, branding } from "@/config/branding";
@@ -78,125 +15,8 @@ import {
   limpaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
 import { supabase } from "@/lib/supabase";
-// --- LAZY LOADED ADMIN VIEWS ---
 import { cn } from "@/lib/utils";
 import { PreloadedOrLazy, lazyWithPreload } from "@/utils/lazyWithPreload";
-
-// O portao do painel mora em `@/components/layouts/AdminAreaGate`. Ele saiu de
-// dentro de um `React.lazy` aqui (achado 1 da auditoria de 26/08/2026): o
-// carregador tratava "o servidor disse que voce nao e admin" e "o servidor nao
-// respondeu" como o mesmo caso, e os dois expulsavam com
-// `window.location.href`. O motivo inteiro esta escrito no arquivo do portao.
-// O nome `AdminArea` fica porque e assim que VIEW_COMPONENTS e o render abaixo
-// o chamam.
-const AdminArea = AdminAreaGate;
-
-const AdminLogin = lazyWithPreload(() =>
-  import("@/views/admin/AdminLoginView").then((m) => ({
-    default: m.AdminLoginView,
-  })),
-);
-
-// --- LAZY LOADED CUSTOMER VIEWS ---
-const AuthView = lazyWithPreload(() =>
-  import("@/views/shared/AuthView").then((m) => ({ default: m.AuthView })),
-);
-const AddressFormView = lazyWithPreload(() =>
-  import("@/views/customer/AddressFormView").then((m) => ({
-    default: m.AddressFormView,
-  })),
-);
-const AccountSettings = lazyWithPreload(() =>
-  import("@/views/customer/AccountSettingsView").then((m) => ({
-    default: m.AccountSettingsView,
-  })),
-);
-const OrderDetailsView = lazyWithPreload(() =>
-  import("@/views/customer/OrderDetailsView").then((m) => ({
-    default: m.OrderDetailsView,
-  })),
-);
-const SearchView = lazyWithPreload(() =>
-  import("@/views/customer/SearchView").then((m) => ({
-    default: m.SearchView,
-  })),
-);
-const FavoritesView = lazyWithPreload(() =>
-  import("@/views/customer/FavoritesView").then((m) => ({
-    default: m.FavoritesView,
-  })),
-);
-
-const DebugPanel = React.lazy(() =>
-  import("@/components/debug/DebugPanel").then((m) => ({
-    default: m.DebugPanel,
-  })),
-);
-
-// F1 (glm-perf-1paint-0309): os três usos de framer-motion que viviam no
-// corpo do App (wrapper das abas, troca de view secundária e barra de
-// progresso de rota) moram agora no módulo abaixo — fora do gráfico estático
-// do entry, junto com o vendor-motion. Animações idênticas, movidas
-// verbatim. No ramo SEM View Transitions os shells participam do primeiro
-// render das abas/views e pedem o chunk no primeiro paint (em cascata —
-// coberto pelo splash na 1ª visita; no reload da mesma sessão há uma
-// janela curta com o fallback de mesma geometria). A barra de rota é a
-// única renderizada SOB DEMANDA (`isRouteLoading`), para não pedir chunk
-// nenhum por conta própria no boot.
-const MainTabsMotionShell = lazyWithPreload(() =>
-  import("@/components/layouts/AppMotionFallbacks").then((m) => ({
-    default: m.MainTabsMotionShell,
-  })),
-);
-const SecondaryViewMotionShell = lazyWithPreload(() =>
-  import("@/components/layouts/AppMotionFallbacks").then((m) => ({
-    default: m.SecondaryViewMotionShell,
-  })),
-);
-const RouteLoadingProgress = lazyWithPreload(() =>
-  import("@/components/layouts/AppMotionFallbacks").then((m) => ({
-    default: m.RouteLoadingProgress,
-  })),
-);
-
-const VIEW_COMPONENTS = {
-  home: HomeView,
-  cart: CartView,
-  "product-detail": ProductView,
-  checkout: CheckoutView,
-  profile: ProfileView,
-  admin: AdminArea,
-  "admin-dashboard": AdminArea,
-  search: SearchView,
-  auth: AuthView,
-  login: AuthView,
-  favorites: FavoritesView,
-  notifications: NotificationsView,
-  "order-success": OrderSuccessView,
-  orders: CartView,
-  "order-details": OrderDetailsView,
-  "recently-viewed": HomeView,
-  "account-settings": AccountSettings,
-  "admin-products": AdminArea,
-  "admin-product-form": AdminArea,
-  "admin-orders": AdminArea,
-  "admin-coupons": AdminArea,
-  "admin-coupon-form": AdminArea,
-  "admin-banners": AdminArea,
-  "admin-carousels": AdminArea,
-  "admin-shipping": AdminArea,
-  "admin-settings": AdminArea,
-  "admin-reviews": AdminArea,
-  "admin-qa": AdminArea,
-  "admin-customers": AdminArea,
-  "admin-user-detail": AdminArea,
-  "admin-push": AdminArea,
-  "admin-notifications": AdminArea,
-  "admin-whatsapp-config": AdminArea,
-  "address-form": AddressFormView,
-  "admin-login": AdminLogin,
-  "user-profile": UserProfileView,
-};
 
 import {
   AlertDialog,
@@ -346,6 +166,195 @@ function AdminAccessDenied({
 
   return <AdminRouteLoading />;
 }
+import { corPrimariaEfetiva } from "@/config/cor-da-loja";
+import { CartProvider } from "@/contexts/CartContext";
+import { FavoritesProvider } from "@/contexts/FavoritesContext";
+import { StoreProvider, useStore } from "@/contexts/StoreContext";
+import { useCartActions, useCartState } from "@/hooks/useCart";
+import type { Product, SortOption, View } from "@/types";
+import { haptic } from "@/utils/haptic";
+
+// F1 "loja abre mais rápido" (frente glm-perf-1paint-0309, 04/09/2026):
+// Header, BottomNav e CartReminder usam framer-motion e eram importados
+// estaticamente — junto com o import de framer-motion do próprio App, isso
+// puxava o chunk vendor-motion (~123 KB brutos / ~40 KB gzip) para o pacote
+// que o navegador baixa no primeiro paint de toda loja. Agora são chunks
+// lazy: o entry não parseia nem executa a biblioteca antes do primeiro
+// conteúdo. O DOWNLOAD dos chunks do chrome continua acontecendo logo após
+// o primeiro render (o Header lazy montado pede o dele, e o dele puxa o
+// vendor-motion) — em cascata, não em paralelo com o entry; por isso os
+// fallbacks do Header e do BottomNav reservam a GEOMETRIA (sem salto de
+// layout na janela em que o splash não cobre — ele é 1× por sessão).
+// Este arquivo NÃO pode voltar a importar framer-motion (nem módulo que o
+// importe estaticamente) — cavalca o teste
+// tests/front/perf-entrada-sem-animacao-no-1o-paint.test.ts.
+const Header = React.lazy(() =>
+  import("@/components/ui/custom/Header").then((m) => ({ default: m.Header })),
+);
+const BottomNav = React.lazy(() =>
+  import("@/components/ui/custom/BottomNav").then((m) => ({
+    default: m.BottomNav,
+  })),
+);
+const CartReminder = React.lazy(() =>
+  import("@/components/ui/custom/CartReminder").then((m) => ({
+    default: m.CartReminder,
+  })),
+);
+const HomeView = lazyWithPreload(() =>
+  import("@/views/customer/HomeView").then((m) => ({ default: m.HomeView })),
+);
+const CartView = lazyWithPreload(() =>
+  import("@/views/customer/CartView").then((m) => ({ default: m.CartView })),
+);
+const ProductView = lazyWithPreload(() =>
+  import("@/views/customer/ProductView").then((m) => ({
+    default: m.ProductView,
+  })),
+);
+const CheckoutView = lazyWithPreload(() =>
+  import("@/views/customer/CheckoutView").then((m) => ({
+    default: m.CheckoutView,
+  })),
+);
+const NotificationsView = lazyWithPreload(() =>
+  import("@/views/customer/NotificationsView").then((m) => ({
+    default: m.NotificationsView,
+  })),
+);
+const OrderSuccessView = lazyWithPreload(() =>
+  import("@/views/customer/OrderSuccessView").then((m) => ({
+    default: m.OrderSuccessView,
+  })),
+);
+const ProfileView = lazyWithPreload(() =>
+  import("@/views/customer/ProfileView").then((m) => ({
+    default: m.ProfileView,
+  })),
+);
+const UserProfileView = lazyWithPreload(() =>
+  import("@/views/customer/UserProfileView").then((m) => ({
+    default: m.UserProfileView,
+  })),
+);
+
+// --- LAZY LOADED ADMIN VIEWS ---
+// O portao do painel mora em `@/components/layouts/AdminAreaGate`. Ele saiu de
+// dentro de um `React.lazy` aqui (achado 1 da auditoria de 26/08/2026): o
+// carregador tratava "o servidor disse que voce nao e admin" e "o servidor nao
+// respondeu" como o mesmo caso, e os dois expulsavam com
+// `window.location.href`. O motivo inteiro esta escrito no arquivo do portao.
+// O nome `AdminArea` fica porque e assim que VIEW_COMPONENTS e o render abaixo
+// o chamam.
+const AdminArea = AdminAreaGate;
+
+const AdminLogin = lazyWithPreload(() =>
+  import("@/views/admin/AdminLoginView").then((m) => ({
+    default: m.AdminLoginView,
+  })),
+);
+
+// --- LAZY LOADED CUSTOMER VIEWS ---
+const AuthView = lazyWithPreload(() =>
+  import("@/views/shared/AuthView").then((m) => ({ default: m.AuthView })),
+);
+const AddressFormView = lazyWithPreload(() =>
+  import("@/views/customer/AddressFormView").then((m) => ({
+    default: m.AddressFormView,
+  })),
+);
+const AccountSettings = lazyWithPreload(() =>
+  import("@/views/customer/AccountSettingsView").then((m) => ({
+    default: m.AccountSettingsView,
+  })),
+);
+const OrderDetailsView = lazyWithPreload(() =>
+  import("@/views/customer/OrderDetailsView").then((m) => ({
+    default: m.OrderDetailsView,
+  })),
+);
+const SearchView = lazyWithPreload(() =>
+  import("@/views/customer/SearchView").then((m) => ({
+    default: m.SearchView,
+  })),
+);
+const FavoritesView = lazyWithPreload(() =>
+  import("@/views/customer/FavoritesView").then((m) => ({
+    default: m.FavoritesView,
+  })),
+);
+
+const DebugPanel = React.lazy(() =>
+  import("@/components/debug/DebugPanel").then((m) => ({
+    default: m.DebugPanel,
+  })),
+);
+
+// F1 (glm-perf-1paint-0309): os três usos de framer-motion que viviam no
+// corpo do App (wrapper das abas, troca de view secundária e barra de
+// progresso de rota) moram agora no módulo abaixo — fora do gráfico estático
+// do entry, junto com o vendor-motion. Animações idênticas, movidas
+// verbatim. No ramo SEM View Transitions os shells participam do primeiro
+// render das abas/views e pedem o chunk no primeiro paint (em cascata —
+// coberto pelo splash na 1ª visita; no reload da mesma sessão há uma
+// janela curta com o fallback de mesma geometria). A barra de rota é a
+// única renderizada SOB DEMANDA (`isRouteLoading`), para não pedir chunk
+// nenhum por conta própria no boot.
+const MainTabsMotionShell = lazyWithPreload(() =>
+  import("@/components/layouts/AppMotionFallbacks").then((m) => ({
+    default: m.MainTabsMotionShell,
+  })),
+);
+const SecondaryViewMotionShell = lazyWithPreload(() =>
+  import("@/components/layouts/AppMotionFallbacks").then((m) => ({
+    default: m.SecondaryViewMotionShell,
+  })),
+);
+const RouteLoadingProgress = lazyWithPreload(() =>
+  import("@/components/layouts/AppMotionFallbacks").then((m) => ({
+    default: m.RouteLoadingProgress,
+  })),
+);
+
+const VIEW_COMPONENTS = {
+  home: HomeView,
+  cart: CartView,
+  "product-detail": ProductView,
+  checkout: CheckoutView,
+  profile: ProfileView,
+  admin: AdminArea,
+  "admin-dashboard": AdminArea,
+  search: SearchView,
+  auth: AuthView,
+  login: AuthView,
+  favorites: FavoritesView,
+  notifications: NotificationsView,
+  "order-success": OrderSuccessView,
+  orders: CartView,
+  "order-details": OrderDetailsView,
+  "recently-viewed": HomeView,
+  "account-settings": AccountSettings,
+  "admin-products": AdminArea,
+  "admin-product-form": AdminArea,
+  "admin-orders": AdminArea,
+  "admin-coupons": AdminArea,
+  "admin-coupon-form": AdminArea,
+  "admin-banners": AdminArea,
+  "admin-carousels": AdminArea,
+  "admin-shipping": AdminArea,
+  "admin-settings": AdminArea,
+  "admin-reviews": AdminArea,
+  "admin-qa": AdminArea,
+  "admin-customers": AdminArea,
+  "admin-user-detail": AdminArea,
+  "admin-push": AdminArea,
+  "admin-notifications": AdminArea,
+  "admin-whatsapp-config": AdminArea,
+  "address-form": AddressFormView,
+  "admin-login": AdminLogin,
+  "user-profile": UserProfileView,
+};
+
 // F1 (glm-perf-1paint-0309): PushNotificationBanner usa framer-motion —
 // sai do import estático e vira chunk lazy (o banner só nasce quando chega
 // push, bem depois do boot). Nada muda na cara dele.
@@ -354,13 +363,6 @@ const PushNotificationBanner = React.lazy(() =>
     default: m.PushNotificationBanner,
   })),
 );
-import { corPrimariaEfetiva } from "@/config/cor-da-loja";
-import { CartProvider } from "@/contexts/CartContext";
-import { FavoritesProvider } from "@/contexts/FavoritesContext";
-import { StoreProvider, useStore } from "@/contexts/StoreContext";
-import { useCartActions, useCartState } from "@/hooks/useCart";
-import type { Product, SortOption, View } from "@/types";
-import { haptic } from "@/utils/haptic";
 
 export default function App() {
   // Global check for session-based splash skip
@@ -1640,8 +1642,16 @@ const AppContent = () => {
             "[App] Unauthorized admin access attempt blocked in syncWithUrl.",
           );
           targetView = "home";
-          if (globalThis.location.pathname !== "/") {
-            globalThis.history.replaceState({ view: "home" }, "", "/");
+          const caminhoDaHome = caminhoDaHomeRef.current();
+          if (
+            globalThis.location.pathname + globalThis.location.search !==
+            caminhoDaHome
+          ) {
+            globalThis.history.replaceState(
+              { view: "home" },
+              "",
+              caminhoDaHome,
+            );
           }
         }
 
@@ -1883,7 +1893,7 @@ const AppContent = () => {
         // Re-push the state to prevent URL getting out of sync with current locked view
         const path =
           currentView === "home"
-            ? "/"
+            ? caminhoDaHomeRef.current()
             : [
                   "product-detail",
                   "user-profile",
@@ -2017,8 +2027,16 @@ const AppContent = () => {
               );
               setCurrentView("home");
               // Sync URL back to home
-              if (globalThis.location.pathname !== "/") {
-                globalThis.history.replaceState({ view: "home" }, "", "/");
+              const caminhoDaHome = caminhoDaHomeRef.current();
+              if (
+                globalThis.location.pathname + globalThis.location.search !==
+                caminhoDaHome
+              ) {
+                globalThis.history.replaceState(
+                  { view: "home" },
+                  "",
+                  caminhoDaHome,
+                );
               }
             }
           }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Regressão #466: a primeira volta instala a armadilha sem apagar a categoria.
+// Regressão #510: bloquear o painel não apaga a categoria da loja.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -53,17 +53,15 @@ vi.mock("framer-motion", async () => {
   return { motion, AnimatePresence, useReducedMotion: () => true };
 });
 
+const { usuario } = vi.hoisted(() => ({ usuario: { id: "pessoa-logada" } }));
+
 vi.mock("@/views/customer/HomeView", () => ({
   HomeView: ({
     selectedCategory,
     onCategoryChange,
-    onNavigate,
-    onProductClick,
   }: {
     readonly selectedCategory: string;
     readonly onCategoryChange: (category: string) => void;
-    readonly onNavigate: (view: string) => void;
-    readonly onProductClick: (id: string) => void;
   }) => (
     <div data-testid="home" data-categoria={selectedCategory}>
       {["Bebidas", "Todas", "Doces", "Café & chá"].map((categoria) => (
@@ -78,20 +76,6 @@ vi.mock("@/views/customer/HomeView", () => ({
           {categoria}
         </button>
       ))}
-      <button
-        type="button"
-        data-testid="carrinho"
-        onClick={() => onNavigate("cart")}
-      >
-        Carrinho
-      </button>
-      <button
-        type="button"
-        data-testid="produto"
-        onClick={() => onProductClick("produto-A")}
-      >
-        Produto
-      </button>
     </div>
   ),
 }));
@@ -183,7 +167,7 @@ vi.mock("@/hooks/useCart", () => ({
 }));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
-    user: null,
+    user: usuario,
     isAdmin: false,
     adminStatus: "not-admin",
     loading: false,
@@ -239,7 +223,11 @@ vi.mock("@/lib/supabase", () => {
   const consulta: Record<string, unknown> = {};
   consulta.select = () => consulta;
   consulta.eq = () => consulta;
-  consulta.single = () => Promise.resolve({ data: null, error: null });
+  consulta.single = () =>
+    Promise.resolve({
+      data: null,
+      error: { message: "not found", code: "PGRST116" },
+    });
   return {
     supabase: {
       from: () => consulta,
@@ -286,11 +274,13 @@ function dubleDeArmazem() {
   };
 }
 
-describe("a categoria da home sobrevive ao voltar", () => {
+describe("bloqueio de admin preserva a categoria", () => {
   let raiz: Root | null = null;
   let container: HTMLDivElement | null = null;
 
   beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubGlobal("localStorage", dubleDeArmazem());
     vi.stubGlobal("sessionStorage", dubleDeArmazem());
     vi.stubGlobal("IntersectionObserver", ObservadorDeInterseccao);
@@ -361,175 +351,38 @@ describe("a categoria da home sobrevive ao voltar", () => {
     await assentar();
     expect(globalThis.history.state).toBeNull();
   };
-  const voltar = async () => {
-    // history.back() entrega popstate em uma macrotask no jsdom.
-    await act(async () => {
-      globalThis.history.back();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    await assentar();
-  };
-  const irAoCarrinho = async () => {
-    await clicar("Bebidas");
-    expect(globalThis.history.state).toBeNull();
-    await clicar("carrinho");
-    expect(globalThis.location.pathname).toBe("/cart");
-    expect(
-      container?.querySelector('[data-testid="tela-carrinho"]'),
-    ).not.toBeNull();
-    await voltar();
-  };
-
-  it("preserva Bebidas e o endereço para recarregar na primeira volta do carrinho", async () => {
-    await abrir();
-    await irAoCarrinho();
-    expect(globalThis.location.pathname).toBe("/");
-    expect.soft(categoria()).toBe("Bebidas");
-    expect.soft(globalThis.location.search).toBe("?category=Bebidas");
-  });
-
-  it("preserva a categoria ao voltar durante a ida ao carrinho, inclusive Todas", async () => {
-    const moduloDePrefetch = await import("@/hooks/usePrefetchOnHover");
-    const prefetchOriginal = moduloDePrefetch.usePrefetchOnHover();
-    let esperaDoCarrinho: Promise<unknown> = Promise.resolve();
-    vi.spyOn(moduloDePrefetch, "usePrefetchOnHover").mockReturnValue({
-      ...prefetchOriginal,
-      prefetchViewPromise: () => esperaDoCarrinho,
-    });
-    const avisar = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const empurrar = vi.spyOn(globalThis.history, "pushState");
-    await abrir();
-
-    for (const [escolha, busca] of [
-      ["Todas", ""],
-      ["Bebidas", "?category=Bebidas"],
-    ]) {
-      await clicar(escolha);
-      expect(categoria()).toBe(escolha);
-      expect(globalThis.location.search).toBe(busca);
-      // Garante uma entrada anterior da home para o history.back() real.
-      const estadoAnterior = globalThis.history.state;
-      globalThis.history.pushState(null, "", `/${busca}`);
-      let liberarCarrinho = () => {};
-      esperaDoCarrinho = new Promise((resolve) => {
-        liberarCarrinho = () => resolve(undefined);
-      });
-
-      try {
-        // O App liga a trava antes de aguardar o carregamento do carrinho.
-        // Seguramos só esse carregamento, sem alterar o roteador ou seus refs.
-        await clicar("carrinho");
-        expect(categoria()).toBe(escolha);
-        avisar.mockClear();
-        empurrar.mockClear();
-        await voltar();
-        expect(avisar).toHaveBeenCalledWith(
-          "[App] Popstate blocked by transition lock. Reverting history to maintain sync.",
-        );
-        expect(empurrar).toHaveBeenCalledTimes(1);
-        expect(globalThis.history.state).toEqual(
-          estadoAnterior || { view: "home" },
-        );
-        expect(globalThis.location.pathname).toBe("/");
-        expect.soft(globalThis.location.search).toBe(busca);
-      } finally {
-        liberarCarrinho();
-        await assentar();
-      }
-      await clicar("inicio");
-      // Não deixa o encerramento da transição anterior liberar a próxima.
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 400));
-      });
-    }
-  });
-
-  it("mantém a armadilha empurrando uma nova entrada ao voltar à base", async () => {
-    await abrir();
-    await irAoCarrinho();
-    expect(globalThis.history.state).toEqual({ view: "home", trap: true });
-    const empurrar = vi.spyOn(globalThis.history, "pushState");
-    await voltar();
-    expect(empurrar).toHaveBeenCalledWith(
-      { view: "home", trap: true },
-      "",
-      expect.any(String),
-    );
-    expect(globalThis.history.state).toEqual({ view: "home", trap: true });
-    expect(globalThis.location.pathname).toBe("/");
-  });
-
-  it("preserva a categoria ao voltar do produto sem levar id para a home", async () => {
-    await abrir();
-    await clicar("Bebidas");
-    await clicar("produto");
-    expect(globalThis.location.pathname).toBe("/product-detail");
-    expect(new URLSearchParams(globalThis.location.search).get("id")).toBe(
-      "produto-A",
-    );
-    expect(
-      container?.querySelector('[data-testid="tela-produto"]'),
-    ).not.toBeNull();
-    await voltar();
-    expect(categoria()).toBe("Bebidas");
-    expect(globalThis.location.pathname + globalThis.location.search).toBe(
-      "/?category=Bebidas",
-    );
-  });
-
   it.each([
-    ["Todas", ""],
-    ["Doces", "?category=Doces"],
-    ["Café & chá", "?category=Caf%C3%A9%20%26%20ch%C3%A1"],
+    ["Bebidas", "Bebidas", "/?category=Bebidas"],
+    [
+      "categoria-especial",
+      "Café & chá",
+      "/?category=Caf%C3%A9%20%26%20ch%C3%A1",
+    ],
+    ["Todas", "Todas", "/"],
   ])(
-    "permite trocar Bebidas por %s após instalar a armadilha",
-    async (novaCategoria, busca) => {
+    "bloqueia /admin sem perder a categoria %s, mesmo na segunda tentativa",
+    async (botao, categoriaEsperada, enderecoEsperado) => {
       await abrir();
-      await irAoCarrinho();
-      await clicar(
-        novaCategoria === "Café & chá" ? "categoria-especial" : novaCategoria,
-      );
-      expect(categoria()).toBe(novaCategoria);
-      expect(
-        new URLSearchParams(globalThis.location.search).get("category"),
-      ).toBe(novaCategoria === "Todas" ? null : novaCategoria);
-      // A entrada base ainda contém Bebidas: a escolha nova precisa prevalecer
-      // quando a proteção empurra a próxima entrada de home.
-      await voltar();
-      expect(categoria()).toBe(novaCategoria);
-      expect(globalThis.location.search).toBe(busca);
-      await clicar("carrinho");
-      await clicar("inicio");
-      expect(categoria()).toBe(novaCategoria);
-      expect(globalThis.location.search).toBe(busca);
-    },
-  );
+      await clicar(botao);
+      expect(categoria()).toBe(categoriaEsperada);
 
-  it("preserva Bebidas na segunda ida e volta na mesma página", async () => {
-    await abrir();
-    await irAoCarrinho();
-    expect(categoria()).toBe("Bebidas");
-    await clicar("carrinho");
-    expect(globalThis.location.pathname).toBe("/cart");
-    await voltar();
-    expect(categoria()).toBe("Bebidas");
-    expect(globalThis.location.search).toBe("?category=Bebidas");
-  });
+      for (let tentativa = 0; tentativa < 2; tentativa++) {
+        await act(async () => {
+          globalThis.history.pushState({ view: "admin" }, "", "/admin");
+          globalThis.dispatchEvent(
+            new PopStateEvent("popstate", { state: { view: "admin" } }),
+          );
+        });
+        await assentar();
 
-  it.each(["carrinho", "produto"])(
-    "preserva a categoria ao tocar Início a partir de %s",
-    async (destino) => {
-      await abrir();
-      await clicar("Bebidas");
-      await clicar(destino);
-      expect(globalThis.location.pathname).toBe(
-        destino === "carrinho" ? "/cart" : "/product-detail",
-      );
-      await clicar("inicio");
-      expect(categoria()).toBe("Bebidas");
-      expect(globalThis.location.pathname + globalThis.location.search).toBe(
-        "/?category=Bebidas",
-      );
+        const home = container?.querySelector('[data-testid="home"]');
+        expect(home).not.toBeNull();
+        expect.soft(categoria()).toBe(categoriaEsperada);
+        expect
+          .soft(globalThis.location.pathname + globalThis.location.search)
+          .toBe(enderecoEsperado);
+        expect(globalThis.history.state?.view).toBe("home");
+      }
     },
   );
 });

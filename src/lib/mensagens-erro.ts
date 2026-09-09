@@ -21,8 +21,8 @@
 //     a frase fixa em inglês "Edge Function returned a non-2xx status
 //     code" — o corpo de verdade que a função devolveu (que pode conter
 //     texto técnico de provedor de frete, ex.: "Melhor Envio (Status 500):
-//     <corpo>") mora em `error.context` (a `Response` crua), que nenhum dos
-//     dois pontos lê hoje. Ou seja: `.message` NUNCA carrega a causa
+//     <corpo>") mora em `error.context` (a `Response` crua), lida pelo helper
+//     de código abaixo. Ou seja: `.message` NUNCA carrega a causa
 //     específica aqui — só esse rótulo genérico do SDK. Por isso este caso
 //     cai no genérico de quem chamou, e não presume qual foi a causa real.
 //   - `FunctionsFetchError` (o `fetch` em si falhou, sem chegar a existir
@@ -60,4 +60,29 @@ export function mensagemAmigavelErroEdgeFunction(
   }
 
   return opcoes.mensagemGenerica;
+}
+
+// Só o código escolhe uma frase conhecida pelo front: texto vindo do servidor
+// nunca vai para a tela sem passar pela lista de frases locais permitidas.
+export async function codigoDoErroDeEdgeFunction(
+  error: unknown,
+): Promise<string | null> {
+  try {
+    if (!error || typeof error !== "object") return null;
+    const detalhes = error as { name?: unknown; context?: unknown };
+    if (
+      detalhes.name !== "FunctionsHttpError" ||
+      typeof Response === "undefined" ||
+      !(detalhes.context instanceof Response)
+    ) {
+      return null;
+    }
+
+    const corpo: unknown = await detalhes.context.clone().json();
+    if (!corpo || typeof corpo !== "object" || !("codigo" in corpo))
+      return null;
+    return typeof corpo.codigo === "string" ? corpo.codigo : null;
+  } catch {
+    return null;
+  }
 }

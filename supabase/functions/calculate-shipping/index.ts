@@ -7,6 +7,11 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+export function erroDeTransportadoraEhCepInvalido(mensagem: string | null | undefined): boolean {
+    // Exige status 422 no prefixo e indicação explícita do CEP de destino.
+    return !!mensagem && mensagem.includes('retornou 422:') && mensagem.includes('cep_destino')
+}
+
 // Helper to calculate smart fallback price based on Brazilian CEP regions
 export function calculateSmartFallback(origin: string, dest: string, baseFee: number): number {
     const cleanOrigin = origin.replace(/\D/g, '')
@@ -1161,6 +1166,13 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
             )
             fireAndForget(logEmVoo, 'Failed to log contingency:')
             await logEmVoo.catch(() => {})
+
+            if (erroDeTransportadoraEhCepInvalido(apiError)) {
+                return new Response(
+                    JSON.stringify({ error: 'CEP não encontrado. Confira o número e tente de novo.', codigo: 'cep_invalido' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
 
             return new Response(
                 JSON.stringify({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }),

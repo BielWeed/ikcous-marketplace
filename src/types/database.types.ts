@@ -2449,6 +2449,14 @@ export type Database = {
         Args: { p_order_id: string };
         Returns: boolean;
       };
+      reorder_banners_atomic: {
+        Args: {
+          p_banner_id_1: string;
+          p_banner_id_2: string;
+          p_position: string;
+        };
+        Returns: undefined;
+      };
       reply_review_atomic:
         | { Args: { p_reply: string; p_review_id: string }; Returns: undefined }
         | {

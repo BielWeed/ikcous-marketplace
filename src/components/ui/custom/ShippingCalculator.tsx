@@ -1,7 +1,10 @@
 import { useCartState } from "@/contexts/CartContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { opcaoMaisBarata } from "@/lib/auto-selecao-de-frete";
-import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
+import {
+  codigoDoErroDeEdgeFunction,
+  mensagemAmigavelErroEdgeFunction,
+} from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
 import type { CartItem, ShippingOption } from "@/types";
@@ -51,6 +54,8 @@ const SHIPPING_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
  */
 const MENSAGEM_SEM_CONEXAO_FRETE = "Sem conexão com a internet.";
 const MENSAGEM_FALHA_AO_COTAR = "Falha ao cotar frete.";
+const MENSAGEM_CEP_NAO_ENCONTRADO =
+  "CEP não encontrado. Confira o número e tente de novo.";
 
 interface EnvelopeDeCacheDeFrete {
   /** Assinatura do carrinho que gerou esta cotação (mesmo formato de `cartSignature`). */
@@ -303,16 +308,20 @@ export function ShippingCalculator({
       onCepValidated?.(cep);
     } catch (err: any) {
       if (meuId !== reqRef.current) return;
+      const codigo = await codigoDoErroDeEdgeFunction(err);
+      if (meuId !== reqRef.current) return;
       console.error("Error calculating shipping:", err);
       setError(
-        mensagemAmigavelErroEdgeFunction(err, {
-          mensagensSeguras: [
-            MENSAGEM_SEM_CONEXAO_FRETE,
-            MENSAGEM_FALHA_AO_COTAR,
-          ],
-          mensagemGenerica:
-            "Não foi possível calcular o frete agora. Tente novamente em instantes.",
-        }),
+        codigo === "cep_invalido"
+          ? MENSAGEM_CEP_NAO_ENCONTRADO
+          : mensagemAmigavelErroEdgeFunction(err, {
+              mensagensSeguras: [
+                MENSAGEM_SEM_CONEXAO_FRETE,
+                MENSAGEM_FALHA_AO_COTAR,
+              ],
+              mensagemGenerica:
+                "Não foi possível calcular o frete agora. Tente novamente em instantes.",
+            }),
       );
 
       // COTAÇÃO QUE FALHA NÃO VIRA PREÇO INVENTADO.
