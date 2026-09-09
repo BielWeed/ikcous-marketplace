@@ -9,11 +9,10 @@ não tem escopo registrado — não há como reconstruí-lo com honestidade, ent
 
 ## [1.26.0] - 2026-09-09
 
-**Versão preparada, ainda não publicada.** A categoria escolhida na vitrine é
-preservada em mais caminhos de retorno, o CSV de pedidos ganha os dados para
-conferência e as operações de banners e da fila offline recebem correções.
-O front público continua na 1.25.0; a função de frete e a migration de banners
-necessárias já foram disponibilizadas nas duas lojas.
+A categoria escolhida na vitrine é preservada em mais caminhos de retorno, o
+CSV de pedidos ganha os dados para conferência e as operações de banners e da
+fila offline recebem correções. A preparação desta versão incluiu a função de
+frete e a migration de banners já disponibilizadas nas duas lojas antes do front.
 
 ### Para quem COMPRA (vitrine)
 
@@ -27,8 +26,9 @@ necessárias já foram disponibilizadas nas duas lojas.
   atualizado; esta versão passa a mostrar a mensagem na tela.
 - **Reenviar a confirmação respeita a espera nos dois botões** (PR #497). Erros
   de login são tratados sem assumir que qualquer resposta seja um texto.
-- **A tela de abertura da loja principal passa a mostrar “IKCOUS DEVELOPER”**
-  (PR #516). O alcance desse texto na Savy continua pendente de definição do dono.
+- **A tela de abertura passa a mostrar “IKCOUS DEVELOPER” nas duas lojas**
+  (PR #516): principal e Savy, conforme definição do dono, preservando a
+  identidade de cada loja.
 
 ### Para quem VENDE (painel admin)
 
@@ -67,27 +67,26 @@ necessárias já foram disponibilizadas nas duas lojas.
   a operação como administrador real; essa prova fica para depois da publicação.
 - **A função de servidor `calculate-shipping` já foi publicada nas duas lojas.**
   A sonda de CEP inexistente retornou HTTP 400 e `cep_invalido` nas duas;
-  o front com a nova mensagem ainda aguarda publicação.
+  a mensagem correspondente integra o front desta versão.
 - **SQL 20261111/12 e issue #487 continuam fora desta release.** Não aplicar
   `20261111000000` nem `20261112000000`: continuam pendentes do dono e não
   são novas dependências da 1.26.0. As views públicas da `20261110000000`,
   utilizadas pelo front anterior, continuam presentes nos dois bancos.
-- **Publicação aguarda a definição do texto da Savy e as verificações finais.**
-  A Vercel recusou prévias por cota durante a preparação, mas gerou a do PR #519;
-  confirmar disponibilidade novamente ao publicar. Manter o PR em draft
-  até cumprir as condições. As versões públicas medidas antes
-  desta preparação são principal `1.25.0-sha.9300cd1` e Savy
-  `1.25.0-build.48141`. Publicar nas duas lojas quando liberado, preservando
-  marca, configuração, ícones e credenciais de cada uma, e comparar
-  `version.json` antes/depois. Replicar o texto “IKCOUS DEVELOPER” na Savy
-  depende da definição do dono.
-- **Antes de publicar:** refazer a prova de navegador no commit candidato
-  (abertura, vitrine e categoria no bloqueio de admin); revisão independente
-  e fechamento pelo diretor; CI
-  completo no commit final; cota da Vercel liberada e alcance do texto na Savy
-  definido. Depois de publicar: medir as versões nas duas lojas, executar a
-  chamada de banners por administrador real e verificar reconexão autenticada
-  com múltiplas abas. A prova anônima não substitui essas verificações.
+- **Escopo definido para as duas lojas:** atualizar principal e Savy com
+  “IKCOUS DEVELOPER” na abertura, preservando marca, configuração, ícones e
+  credenciais de cada uma. As versões públicas medidas antes da preparação
+  foram principal `1.25.0-sha.9300cd1` e Savy `1.25.0-build.48141`.
+- **Preparação validada no candidato `be5e8e8` (PR #520):** os sete jobs do CI
+  passaram e o diretor aprovou a preparação. O navegador real anônimo, em
+  desktop e celular, confirmou abertura, vitrine, retirada do carregamento,
+  ausência de erros e de rolagem horizontal. A Vercel retomou as prévias dos
+  PRs #519 e #520 após a recusa por cota; isso não garante a disponibilidade
+  dos deploys de produção. Antes do merge, reconferir o CI no commit do topo;
+  ao publicar, confirmar cada implantação e comparar `version.json` antes/depois.
+- **Checklist pós-publicação:** medir as versões nas duas lojas, executar a
+  chamada de banners por administrador real, verificar reconexão autenticada
+  com múltiplas abas e o bloqueio de admin com conta não-administradora.
+  A prova anônima não substitui essas verificações autenticadas.
 - **Para desfazer:** restaurar o front anterior de cada implantação. Se também
   for necessário desfazer a operação de banners, retornar primeiro o front e
   só então usar
