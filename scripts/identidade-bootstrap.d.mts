@@ -19,3 +19,13 @@ export function principal(
   env: Record<string, string | undefined>,
   fabricas?: FabricasLancador,
 ): Promise<number>;
+
+// Tarefa A11e: expostas para o teste (executavelNpx) e para a prova offline
+// do lancador (quotarWindows) montarem o MESMO comando que a `cli()` real.
+export function quotarWindows(valor: unknown): string;
+
+export function executavelNpx(args: {
+  readonly plataforma: string;
+  readonly execPath: string;
+  readonly existe: (caminho: string) => boolean;
+}): string;

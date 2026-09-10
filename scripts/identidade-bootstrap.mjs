@@ -9,6 +9,7 @@
 // sem extensao. Nunca imprime DATABASE_URL, chave nem o caminho absoluto de um objeto do kit
 // (ObjetoDoKit.arquivo -- filtrado pelo replacer nucleo.semArquivo em toda saida JSON).
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -102,12 +103,38 @@ function portaBanco(databaseUrl, nucleo) {
 // processo filho como TRES argumentos separados ("public,", "max-age=...,",
 // "immutable"), corrompendo o comando. Quotar cada parte e montar UM
 // comando (sem args[]) preserva cada valor inteiro e nao dispara o aviso.
-const quotarWindows = (valor) => `"${String(valor).replace(/"/g, '""')}"`;
+export const quotarWindows = (valor) =>
+  `"${String(valor).replace(/"/g, '""')}"`;
+
+// Medido pela hub em 10/09/2026 (loja real, ANTES de tocar o banco;
+// script "prova-npx-cmd.mjs" desta tarefa reproduz offline): no Windows, a
+// `cli()` montava `"npx" "supabase" ...` -- "npx" ENTRE ASPAS e SEM CAMINHO.
+// O cmd.exe, para um .cmd citado assim, expande `%~dp0` (usado pelo proprio
+// npx.cmd para achar `node_modules\npm\bin\npx-cli.js`) para o CWD do
+// processo PAI, nao para a pasta onde o npx.cmd de verdade mora. Num
+// worktree isolado o CWD nao tem esse `node_modules`, e a chamada falha
+// ANTES de rodar qualquer coisa: "Cannot find module
+// '...worktree...\npm-prefix.js'" -> BootstrapError UPLOAD -> exit 3 no
+// primeiro objeto (mesmo com a loja certa e o comando certo). Um CAMINHO
+// ABSOLUTO entre aspas nao sofre disso (`%~dp0` do proprio arquivo): esta
+// funcao devolve `<pasta do node.exe>\npx.cmd` quando esse arquivo existe
+// (instalacao padrao do Node no Windows poe os dois lado a lado) e cai para
+// o literal "npx" (resolvido pelo PATH) fora do Windows ou se o arquivo nao
+// estiver la'.
+export function executavelNpx({ plataforma, execPath, existe }) {
+  if (plataforma !== "win32") return "npx";
+  const candidato = path.join(path.dirname(execPath), "npx.cmd");
+  return existe(candidato) ? candidato : "npx";
+}
 
 function portaStorage(workdir, nucleo) {
   const cli = (args) => {
     const partes = [
-      "npx",
+      executavelNpx({
+        plataforma: process.platform,
+        execPath: process.execPath,
+        existe: existsSync,
+      }),
       "supabase",
       ...args,
       "--linked",

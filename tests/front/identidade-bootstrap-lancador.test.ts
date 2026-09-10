@@ -13,7 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // fabricas)` e' o que este arquivo importa e chama com portas falsas -- as
 // duas fabricas de porta e o fetchImpl, no mesmo molde do `portasFalsas` de
 // tests/front/identidade-bootstrap.test.ts.
-import { principal } from "../../scripts/identidade-bootstrap.mjs";
+import {
+  executavelNpx,
+  principal,
+} from "../../scripts/identidade-bootstrap.mjs";
 import {
   CODIGOS_DE_SAIDA,
   canonico,
@@ -217,6 +220,39 @@ async function prepararValores() {
   await fs.writeFile(valoresPath, JSON.stringify(valoresBase));
   return valoresPath;
 }
+
+// Tarefa A11e: o "npx" quotado ENTRE ASPAS e SEM CAMINHO (o que a `cli()` do
+// lancador fazia antes desta tarefa) faz o cmd.exe expandir %~dp0 do atalho
+// para o CWD do processo pai, nao para a pasta do proprio npx.cmd -- por
+// isso o caminho absoluto ao lado do node.exe (process.execPath) so' entra
+// quando o arquivo realmente existe ali; caso contrario ("npx" sem caminho)
+// e fora do Windows, o PATH resolve normalmente.
+describe("executavelNpx", () => {
+  it("win32 com npx.cmd existente ao lado do node.exe: caminho absoluto", () => {
+    const execPath = "C:\\Program Files\\nodejs\\node.exe";
+    const existe = (caminho: string) =>
+      caminho === "C:\\Program Files\\nodejs\\npx.cmd";
+    expect(executavelNpx({ plataforma: "win32", execPath, existe })).toBe(
+      "C:\\Program Files\\nodejs\\npx.cmd",
+    );
+  });
+
+  it("win32 sem npx.cmd ao lado do node.exe: cai para 'npx' (PATH)", () => {
+    const execPath = "C:\\Program Files\\nodejs\\node.exe";
+    const existe = () => false;
+    expect(executavelNpx({ plataforma: "win32", execPath, existe })).toBe(
+      "npx",
+    );
+  });
+
+  it("linux: sempre 'npx', mesmo com o arquivo existindo (nao e' o problema deste SO)", () => {
+    const execPath = "/usr/local/bin/node";
+    const existe = () => true;
+    expect(executavelNpx({ plataforma: "linux", execPath, existe })).toBe(
+      "npx",
+    );
+  });
+});
 
 describe("principal (lancador)", () => {
   it("dry-run bootstrap: exit 0, nenhuma porta de escrita chamada", async () => {
