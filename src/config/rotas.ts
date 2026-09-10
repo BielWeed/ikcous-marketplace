@@ -1,4 +1,4 @@
-import type { View } from "../types";
+import type { View } from "@/types";
 
 // Declaração ÚNICA das telas que o leitor de endereço do App.tsx reconhece.
 // A hospedagem (scripts/hospedagem.mjs) gera as entradas estáticas a partir
