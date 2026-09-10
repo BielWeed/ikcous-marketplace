@@ -100,14 +100,24 @@
     "08/09/2026 — warnings de eslint de 523 para 511. Medido no CI, run",
     "34205419138: 'eslint warnings 511 / teto 523'. Achado N-1 do laudo Opus",
     "do PR #458 (rodada 2) — abaixado com o numero do CI, nao o da maquina",
-    "local do executor."
+    "local do executor.",
+    "",
+    "10/09/2026 — warnings de eslint de 511 para 503 e biome de 20 para 19.",
+    "Medido no CI, run 34421360973 (PR #522, identidade unica): 'eslint",
+    "warnings 503 / teto 511 — baixou -8' e 'biome errors 19 / teto 20 —",
+    "baixou -1'. As duas quedas VIERAM do PR: os -8 de eslint sao os",
+    "eslint-disable com motivo da entrega preparada (A7b2 T2, commit b7ed924)",
+    "e o -1 de biome e um erro de formatacao da base que a branch ja nao tem",
+    "(tests/front/admin-settings-secoes-colapsaveis.test.tsx), depois de zerar",
+    "os 232 erros que a bancada A6 trazia (commit 7585da3). Baixado SO' DEPOIS",
+    "do CI, como as quedas anteriores."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 511
+    "warnings": 503
   },
   "biome": {
-    "errors": 20,
+    "errors": 19,
     "warnings": 1
   }
 }
