@@ -58,7 +58,7 @@ export function planejar(desired: LinhaIdentidade, atual: IdentidadeLida, kit: K
 
 - [ ] **Step 1: Escrever os testes que falham (kit sintetico)**
 
-O kit sintetico reproduz o layout do kit A6a: `<dir>/manifesto.json` (so `{ "scope": "local-preparation" }` basta para esta ferramenta), `<dir>/<loja>/branding-assets.json` (o mapa de 8 papeis + `originals`, formato de `BrandingAssets`), `<dir>/objetos/<sha256>` (bytes). Gere os bytes com `createIdentityBuildFixture("aurora")` de `scripts/identityBuildFixture.ts` (devolve `files[]` com `path`, `bytes`, `sha256`, `mediaType` e `identity.assets`), e grave cada `files[i].bytes` em `objetos/<sha256>`.
+O kit sintetico reproduz o layout do kit A6a: `<dir>/manifesto.json` (so `{ "scope": "local-preparation" }` basta para esta ferramenta), `<dir>/<loja>/branding-assets.json` (o mapa de 8 papeis + `originals`, formato de `BrandingAssets`), `<dir>/objetos/<sha256>/<nome-original>` (bytes; um diretorio por sha, com o nome original dentro). Gere os bytes com `createIdentityBuildFixture("aurora")` de `scripts/identityBuildFixture.ts` (devolve `files[]` com `path`, `bytes`, `sha256`, `mediaType` e `identity.assets`), e grave cada `files[i].bytes` em `objetos/<sha256>/<nome-original>`.
 
 ```ts
 // tests/front/identidade-bootstrap.test.ts
@@ -81,7 +81,7 @@ async function kitSintetico(loja: "ikcous" | "savy" = "ikcous") {
   await fs.mkdir(path.join(dir, loja), { recursive: true });
   await fs.writeFile(path.join(dir, "manifesto.json"), JSON.stringify({ scope: "local-preparation" }));
   await fs.writeFile(path.join(dir, loja, "branding-assets.json"), JSON.stringify(fixture.identity.assets));
-  for (const file of fixture.files) await fs.writeFile(path.join(dir, "objetos", file.sha256), file.bytes);
+  for (const file of fixture.files) await fs.writeFile(path.join(dir, "objetos", file.sha256, file.path.split("/")[2]), file.bytes);
   return fixture;
 }
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), "kit-a6-")); });
