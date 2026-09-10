@@ -14,9 +14,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // duas fabricas de porta e o fetchImpl, no mesmo molde do `portasFalsas` de
 // tests/front/identidade-bootstrap.test.ts.
 import {
+  ehConflito409,
   executavelNpx,
+  interpretarResultadoCp,
   montarChamadaCp,
   principal,
+  quotarComando,
 } from "../../scripts/identidade-bootstrap.mjs";
 import {
   CODIGOS_DE_SAIDA,
@@ -290,7 +293,10 @@ describe("montarChamadaCp", () => {
       "--content-type",
       header.mime,
       "--cache-control",
-      "max-age=31536000",
+      // ANOTADO C da revisao A11f: valor de volta ao original (o CLI
+      // 2.109.1 ignora a flag no Windows, medido -- ver comentario no
+      // codigo -- mas um CLI futuro que a honre nao deve perder immutable).
+      "public, max-age=31536000, immutable",
       "--linked",
       "--experimental",
       "--workdir",
@@ -302,6 +308,115 @@ describe("montarChamadaCp", () => {
     expect(partes.some((p) => p === header.arquivo)).toBe(false);
     expect(partes[4]).not.toContain(":");
     expect(partes[4]).not.toMatch(/[\\/]/);
+  });
+
+  // ANOTADO A da revisao A11f: subir() agora roda com cwd = pasta do objeto
+  // no kit (fix acima), entao um --workdir-supabase RELATIVO (digitado da
+  // raiz do repo; as invocacoes registradas da casa usam absoluto) passaria
+  // a ser interpretado pelo CLI (processo FILHO, que recebe esse cwd)
+  // relativo a essa pasta, nunca ao cwd do operador. O cwd do PAI nao muda;
+  // path.resolve() no pai fixa o valor antes de ir para o filho.
+  it("--workdir relativo vira absoluto na montagem (o cwd que o CLI ve mudou para a pasta do objeto)", async () => {
+    await kitSintetico();
+    const kitRoot = path.join(dir, "kit");
+    const kit = await lerKit(kitRoot, "ikcous");
+    const header = kit.objetos.get(kit.assets.header.path);
+    if (!header) throw new Error("fixture sem header");
+    const execPath = "C:\\Program Files\\nodejs\\node.exe";
+    const existe = () => true;
+    const workdirRelativo = "supabase";
+    const { partes } = montarChamadaCp(header, {
+      plataforma: "win32",
+      execPath,
+      existe,
+      workdir: workdirRelativo,
+    });
+    const i = partes.indexOf("--workdir");
+    expect(partes[i + 1]).toBe(path.resolve(workdirRelativo));
+    expect(partes[i + 1]).not.toBe(workdirRelativo);
+  });
+});
+
+// Tarefa A11e ANOTADO/ANTES DE CRESCER (revisao A11e): o fallback de
+// executavelNpx devolve o literal "npx" (sem caminho, resolvido pelo PATH) --
+// quota-lo entre aspas e' EXATAMENTE a forma que quebra a resolucao do
+// %~dp0 do proprio npx.cmd (medido pela hub: "npx" quotado falha, npx sem
+// aspas funciona). Um caminho ABSOLUTO (com espaco, ex.: "Program Files")
+// continua precisando de aspas -- so' o literal "npx" e' a excecao.
+describe("quotarComando (win32)", () => {
+  it("nao quota o literal 'npx' no indice 0, mas quota os demais argumentos", () => {
+    const partes = ["npx", "supabase", "storage, coisa", "cp"];
+    expect(quotarComando(partes)).toBe('npx "supabase" "storage, coisa" "cp"');
+  });
+
+  it("quota o executavel quando e' caminho absoluto (com espaco)", () => {
+    const partes = ["C:\\Program Files\\nodejs\\npx.cmd", "supabase", "-v"];
+    expect(quotarComando(partes)).toBe(
+      '"C:\\Program Files\\nodejs\\npx.cmd" "supabase" "-v"',
+    );
+  });
+});
+
+// ANOTADO B da revisao A11f: o destino ss:///branding/v1/<sha256>/<nome>
+// costuma vir ecoado no JSON de erro do CLI, e um sha256 contem "409" em
+// ~1,5% dos casos -- so' o campo statusCode confirma um conflito real.
+// Revisao A11g: nenhuma destas strings veio de medicao (ninguem tem o JSON
+// cru de um `cp` 409 real do CLI 2.109.1) -- sao formas PRESUMIDAS, numerica
+// e string, que a regex tem de casar as duas.
+describe("ehConflito409", () => {
+  it("casa pelo campo statusCode numerico (forma presumida, nao medida)", () => {
+    const saidaPresumida =
+      '{"code":"LegacyStorageGatewayStatusError","statusCode":409,"message":"Duplicate"}';
+    expect(ehConflito409(saidaPresumida)).toBe(true);
+  });
+
+  it("casa pelo campo statusCode em string (forma presumida, nao medida)", () => {
+    const saidaPresumida =
+      '{"code":"LegacyStorageGatewayStatusError","statusCode":"409","message":"Duplicate"}';
+    expect(ehConflito409(saidaPresumida)).toBe(true);
+  });
+
+  it("NAO casa por um '409' solto dentro do sha256 do destino", () => {
+    const saidaComShaContendo409 =
+      "erro ao subir ss:///branding/v1/abc4091234.../header.jpg: timeout";
+    expect(ehConflito409(saidaComShaContendo409)).toBe(false);
+  });
+});
+
+// Revisao A11g (BLOQUEIA): o "pular sem erro" da A11f fazia um objeto que
+// JA estava no bucket (409) entrar em `subidos`, a lista que `--desfazer
+// --subidos` APAGA -- reabria o buraco que a revisao A11b fechou. Um 409
+// confirmado volta a ser sempre erro (`conflito-409`), como antes de
+// 83bfcfd; so' o matching por `statusCode` (em vez de substring "409"
+// solta) e' novo.
+describe("interpretarResultadoCp", () => {
+  it("status 0: desfecho ok", () => {
+    expect(interpretarResultadoCp({ status: 0, stdout: "feito" })).toEqual({
+      desfecho: "ok",
+      stdout: "feito",
+    });
+  });
+
+  it("409 confirmado pelo statusCode: conflito-409 (erro), nunca sucesso silencioso", () => {
+    const r = {
+      status: 1,
+      stderr: '{"statusCode":409,"message":"Duplicate"}',
+    };
+    expect(interpretarResultadoCp(r)).toEqual({
+      desfecho: "conflito-409",
+      saidaCrua: r.stderr,
+    });
+  });
+
+  it("substring '409' solta (sha256) nao casa como conflito: falha generica", () => {
+    const r = {
+      status: 1,
+      stderr: "erro ao subir v1/abc409def.../header.jpg: timeout",
+    };
+    expect(interpretarResultadoCp(r)).toEqual({
+      desfecho: "falha",
+      saidaCrua: r.stderr,
+    });
   });
 });
 
@@ -392,6 +507,107 @@ describe("principal (lancador)", () => {
     expect(f.linha().revision).not.toBe("0");
     expect(logs.some((l) => l.includes('"subidos"'))).toBe(true);
     await expect(fs.access(saidaInexistente)).rejects.toThrow();
+  });
+
+  // ANOTADO A1 da revisao A11d: PROVA (exit 6 = "banco ja gravado") so'
+  // pode sair quando relatorio.aplicado for true. Com o plano "nada" (banco
+  // ja tem exatamente a identidade do kit, de uma rodada anterior), gravar()
+  // NUNCA e' chamado, entao uma falha ao escrever --saida e' entrada
+  // invalida (5), nunca prova de escrita.
+  it("--aplicar --saida falha, mas o plano e' 'nada' (nada foi gravado): exit ENTRADA (5), nao PROVA", async () => {
+    await kitSintetico();
+    const kitRoot = path.join(dir, "kit");
+    const kit = await lerKit(kitRoot, "ikcous");
+    const desired = montarIdentidade(kit, valoresBase, SUPABASE_URL);
+    // Banco ja com a identidade do kit -- plano("nada"), nao "bootstrap".
+    const f = portasFalsas({ revision: "1", identity: desired });
+    const valoresPath = await prepararValores();
+    const saidaInexistente = path.join(dir, "pasta-que-nao-existe", "r.json");
+    const { exit, errs } = await rodar(
+      [
+        "--kit",
+        kitRoot,
+        "--loja",
+        "ikcous",
+        "--valores",
+        valoresPath,
+        "--workdir-supabase",
+        path.join(dir, "workdir"),
+        "--aplicar",
+        "--saida",
+        saidaInexistente,
+      ],
+      envFalso(),
+      f,
+    );
+    expect(exit).toBe(CODIGOS_DE_SAIDA.entrada);
+    expect(f.chamadas).not.toContain("gravar");
+    expect(errs.some((l) => l.includes("BANCO JA GRAVADO"))).toBe(false);
+  });
+
+  // ANOTADO A3 da revisao A11d: a regra "--aplicar exige --saida" (que
+  // sustenta o B1 pela raiz) nao tinha cobertura no LANCADOR -- so' no
+  // nucleo (identidadeBootstrap.test.ts, fora do escopo desta tarefa).
+  it("--aplicar sem --saida: recusa antes de tocar qualquer porta, exit ENTRADA (5)", async () => {
+    await kitSintetico();
+    const kitRoot = path.join(dir, "kit");
+    const valoresPath = await prepararValores();
+    const f = portasFalsas(linhaNula);
+    const { exit, errs } = await rodar(
+      [
+        "--kit",
+        kitRoot,
+        "--loja",
+        "ikcous",
+        "--valores",
+        valoresPath,
+        "--workdir-supabase",
+        path.join(dir, "workdir"),
+        "--aplicar",
+      ],
+      envFalso(),
+      f,
+    );
+    expect(exit).toBe(CODIGOS_DE_SAIDA.entrada);
+    expect(f.chamadas).toEqual([]);
+    expect(errs.some((l) => l.includes("--saida"))).toBe(true);
+  });
+
+  // ANOTADO A5 da revisao A11d: --subidos ilegivel (aqui, inexistente) caia
+  // no catch generico ("inesperado", exit 1) com o STACK inteiro, vazando o
+  // caminho absoluto (nome de usuario incluso). Devia ser entrada invalida
+  // (5), sem ecoar o caminho.
+  it("--desfazer --aplicar --subidos apontando para arquivo inexistente: exit ENTRADA (5), sem stack nem caminho", async () => {
+    await kitSintetico();
+    const kitRoot = path.join(dir, "kit");
+    const kit = await lerKit(kitRoot, "ikcous");
+    const desired = montarIdentidade(kit, valoresBase, SUPABASE_URL);
+    const f = portasFalsas({ revision: "1", identity: desired });
+    const valoresPath = await prepararValores();
+    const subidosInexistente = path.join(dir, "nao-existe.json");
+    const { exit, errs } = await rodar(
+      [
+        "--kit",
+        kitRoot,
+        "--loja",
+        "ikcous",
+        "--valores",
+        valoresPath,
+        "--workdir-supabase",
+        path.join(dir, "workdir"),
+        "--desfazer",
+        "--aplicar",
+        "--subidos",
+        subidosInexistente,
+      ],
+      envFalso(),
+      f,
+    );
+    const tudo = errs.join("\n");
+    expect(exit).toBe(CODIGOS_DE_SAIDA.entrada);
+    expect(tudo).not.toContain("inesperado");
+    expect(tudo).not.toContain(dir);
+    expect(f.chamadas).not.toContain("gravar");
   });
 
   it("--desfazer --aplicar --subidos com subconjunto remove so' esse subconjunto", async () => {
@@ -496,10 +712,10 @@ describe("principal (lancador)", () => {
     expect(tudo).not.toContain("SENHA");
     expect(tudo).not.toContain("postgresql://");
     expect(tudo).not.toContain(ANON_KEY);
-    // O caminho de --saida (fora do kit) pode aparecer na mensagem de erro
-    // do B1 -- e' o texto real de ENOENT, previsto no proprio achado. O que
-    // NUNCA pode vazar e' o caminho absoluto do KIT (que carrega
-    // ObjetoDoKit.arquivo, filtrado por semArquivo em todo Relatorio).
+    // ANOTADO A5 da revisao A11d: a mensagem de erro do B1 (falha ao gravar
+    // --saida) parou de ecoar o caminho absoluto do ENOENT -- nem o do kit,
+    // nem o do proprio --saida (que tambem carrega o nome de usuario do SO).
     expect(tudo).not.toContain(kitRoot);
+    expect(tudo).not.toContain(dir);
   });
 });

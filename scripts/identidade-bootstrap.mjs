@@ -106,9 +106,25 @@ function portaBanco(databaseUrl, nucleo) {
 export const quotarWindows = (valor) =>
   `"${String(valor).replace(/"/g, '""')}"`;
 
+// ANTES DE CRESCER da revisao A11e: quotar o elemento 0 (o executavel) so'
+// e' seguro quando ele for um CAMINHO (absoluto, pode ter espaco -- "Program
+// Files"). O fallback de executavelNpx devolve o literal "npx" (sem
+// caminho, resolvido pelo PATH do cmd.exe) -- quota-lo entre aspas e'
+// EXATAMENTE a forma que faz o %~dp0 do proprio npx.cmd resolver para o cwd
+// do processo PAI em vez da pasta onde o arquivo de verdade mora (medido
+// pela hub: "npx" quotado falha com ENOENT em npm-prefix.js; npx sem aspas
+// funciona). Os demais argumentos sempre quotam (DEP0190 do spawnSync com
+// shell:true).
+export const quotarComando = (partes) =>
+  partes
+    .map((p, i) => (i === 0 && p === "npx" ? p : quotarWindows(p)))
+    .join(" ");
+
 // Medido pela hub em 10/09/2026 (loja real, ANTES de tocar o banco;
-// script "prova-npx-cmd.mjs" desta tarefa reproduz offline): no Windows, a
-// `cli()` montava `"npx" "supabase" ...` -- "npx" ENTRE ASPAS e SEM CAMINHO.
+// reproduzido offline por um script de prova ("prova-npx-cmd.mjs") que vive
+// FORA deste repositorio, no scratchpad da hub -- nao versionado aqui de
+// proposito, so' a conclusao medida importa): no Windows, a `cli()` montava
+// `"npx" "supabase" ...` -- "npx" ENTRE ASPAS e SEM CAMINHO.
 // O cmd.exe, para um .cmd citado assim, expande `%~dp0` (usado pelo proprio
 // npx.cmd para achar `node_modules\npm\bin\npx-cli.js`) para o CWD do
 // processo PAI, nao para a pasta onde o npx.cmd de verdade mora. Num
@@ -156,23 +172,66 @@ export function montarChamadaCp(
     // Medido pela hub em 10/09/2026 (loja real): o CLI 2.109.1 IGNORA esta
     // flag (antes ou depois dos posicionais) -- o objeto serve
     // "Cache-Control: no-cache" ate alguem regravar pelo painel/API. Nao ha'
-    // o que fazer aqui alem de documentar; o valor (31536000) e' o mesmo
-    // que src/lib/uploadIdentityImage.ts:501 manda no metadata TUS
-    // (cacheControl: "31536000") para o upload real pelo navegador.
-    "max-age=31536000",
+    // o que fazer aqui alem de documentar; o valor e' o mesmo que
+    // src/lib/uploadIdentityImage.ts:501 manda no metadata TUS para o upload
+    // real pelo navegador -- mantido por inteiro (immutable incluso) porque
+    // um CLI futuro que passe a HONRAR a flag nao deve perder o atributo por
+    // causa de uma reducao feita so' porque este nao honra.
+    "public, max-age=31536000, immutable",
     "--linked",
     "--experimental",
     "--workdir",
-    workdir,
+    // ANOTADO A da revisao A11f: `cwd` acima passou a ser a pasta do proprio
+    // objeto (para o <src> relativo funcionar, comentario acima). As
+    // invocacoes registradas da casa passam --workdir-supabase ABSOLUTO;
+    // mas um valor RELATIVO (digitado da raiz do repo) PASSARIA a ser
+    // interpretado pelo CLI contra a pasta do objeto no kit, em vez da pasta
+    // que o OPERADOR digitou. O cwd do processo PAI
+    // (este script) nunca muda -- quem passa a rodar com cwd diferente e' o
+    // processo FILHO (o CLI supabase, via `cwd` acima); por isso o valor tem
+    // de ser resolvido AQUI, no pai, antes de seguir para o filho (so' o
+    // valor afetado pela troca de cwd do filho precisa disto; cli()/remover()
+    // nao passam `cwd` ao spawnSync e continuam intocados).
+    path.resolve(workdir),
   ];
   return { cwd, partes };
+}
+
+// ANOTADO B da revisao A11f: o destino ss:///branding/v1/<sha256>/<nome>
+// costuma vir ecoado no JSON de erro do CLI, e um sha256 contem "409" em
+// ~1,5% dos casos -- so' o campo statusCode do JSON confirma um conflito
+// real de "objeto ja existe". A forma exata do campo e' PRESUMIDA, nao
+// medida: ninguem tem o JSON cru de um `cp` 409 real do CLI 2.109.1 (o
+// unico envelope observado, de outra classe de erro, e'
+// {"_tag":"Error","error":{"code":...,"message":...}}, sem "statusCode").
+// A regex casa a forma numerica ("statusCode":409) e a forma string
+// ("statusCode":"409"), com espacos opcionais ao redor dos dois-pontos --
+// se a forma real do CLI for outra (aninhada, por exemplo), a regex nao
+// casa e o caminho FALHA FECHADO (409 vira erro generico de upload, exit
+// 3, igual a nao ter esta funcao). Pura, sem nucleo/BootstrapError, para o
+// teste checar as formas sem montar um erro completo.
+export const ehConflito409 = (saidaCrua) =>
+  /"statusCode"\s*:\s*"?409\b/.test(String(saidaCrua));
+
+// Extraida do laco de execucao (mesmo espirito de montarChamadaCp/
+// executavelNpx: pura, sem spawnSync, para o teste simular o resultado do
+// CLI). Revisao A11g (BLOQUEIA): um 409 confirmado sempre e' erro
+// ("conflito-409"), nunca sucesso silencioso -- "pular" um objeto que este
+// script nao subiu faria o nucleo colocar o path em `subidos`, a lista que
+// `--desfazer --subidos` APAGA do bucket, para um objeto que pode ter sido
+// gravado por outra via (ex.: o painel administrativo).
+export function interpretarResultadoCp(r) {
+  if (r.status === 0) return { desfecho: "ok", stdout: r.stdout };
+  const saidaCrua = r.stderr || r.stdout || "";
+  if (ehConflito409(saidaCrua)) return { desfecho: "conflito-409", saidaCrua };
+  return { desfecho: "falha", saidaCrua };
 }
 
 function portaStorage(workdir, nucleo) {
   const executar = (partes, cwd) => {
     const r =
       process.platform === "win32"
-        ? spawnSync(partes.map(quotarWindows).join(" "), [], {
+        ? spawnSync(quotarComando(partes), [], {
             encoding: "utf8",
             shell: true,
             cwd,
@@ -183,25 +242,17 @@ function portaStorage(workdir, nucleo) {
         "UPLOAD",
         `nao foi possivel executar supabase: ${mascarar(String(r.error))}`,
       );
-    if (r.status !== 0) {
-      const saidaCrua = r.stderr || r.stdout || "";
-      // Medido pela hub em 10/09/2026 (loja real): o CLI NAO sobrescreve --
-      // `cp` para um path ja existente devolve LegacyStorageGatewayStatusError
-      // com statusCode 409. Compativel com o nucleo (estadoNoBucket pula o
-      // que ja existe com o mesmo sha), mas a mensagem original (409 cru
-      // dentro do JSON) nao dizia isso -- so' reescreve o texto, o codigo de
-      // saida continua o de UPLOAD (CODIGOS_DE_SAIDA.upload).
-      if (saidaCrua.includes("409"))
-        throw new nucleo.BootstrapError(
-          "UPLOAD",
-          `objeto ja existe no bucket (409); estadoNoBucket deveria ter pulado — conteudo diferente? ${mascarar(saidaCrua)}`,
-        );
+    const resultado = interpretarResultadoCp(r);
+    if (resultado.desfecho === "ok") return resultado.stdout;
+    if (resultado.desfecho === "conflito-409")
       throw new nucleo.BootstrapError(
         "UPLOAD",
-        `supabase ${partes[2]} ${partes[3]} falhou: ${mascarar(saidaCrua)}`,
+        `objeto ja existe no bucket (409); estadoNoBucket deveria ter pulado — conteudo diferente? ${mascarar(resultado.saidaCrua)}`,
       );
-    }
-    return r.stdout;
+    throw new nucleo.BootstrapError(
+      "UPLOAD",
+      `supabase ${partes[2]} ${partes[3]} falhou: ${mascarar(resultado.saidaCrua)}`,
+    );
   };
   const cli = (args, cwd) =>
     executar(
@@ -351,9 +402,31 @@ export async function principal(argv, env, fabricas = {}) {
     if (argumentos.desfazer) {
       let removerPaths = [];
       if (argumentos.subidos) {
-        const anterior = JSON.parse(
-          await fs.readFile(argumentos.subidos, "utf8"),
-        );
+        let anterior;
+        try {
+          anterior = JSON.parse(await fs.readFile(argumentos.subidos, "utf8"));
+        } catch (error) {
+          // ANOTADO A5 da revisao A11d: antes, um --subidos ilegivel (ENOENT,
+          // sem permissao, JSON invalido) escapava direto para o catch
+          // generico ("inesperado", exit 1) com o STACK inteiro -- caminho
+          // absoluto (nome de usuario incluso) e tudo. Isto e' entrada
+          // invalida do operador, nunca "inesperado": BootstrapError VALORES
+          // sai como CODIGOS_DE_SAIDA.entrada (5), sem ecoar o caminho.
+          // ANOTADO da revisao A11g: ENOENT e' "arquivo nao encontrado";
+          // EACCES/EPERM (sem permissao de leitura) tem mensagem propria em
+          // vez de cair no balde generico de "JSON invalido" -- as duas
+          // causas sao bem diferentes para o operador corrigir.
+          const motivo =
+            error?.code === "ENOENT"
+              ? "arquivo nao encontrado"
+              : error?.code === "EACCES" || error?.code === "EPERM"
+                ? "sem permissao para ler"
+                : "JSON invalido";
+          throw new BootstrapError(
+            "VALORES",
+            `arquivo --subidos ilegivel: ${motivo}`,
+          );
+        }
         if (!Array.isArray(anterior.subidos))
           throw new BootstrapError(
             "VALORES",
@@ -396,8 +469,7 @@ export async function principal(argv, env, fabricas = {}) {
         // mascara, e e' o unico que sobrevive se a gravacao do arquivo
         // falhar DEPOIS do banco ja gravado -- sem isto, a lista "subidos"
         // (o unico jeito de --desfazer --subidos saber o que remover) se
-        // perdia por inteiro. Falha aqui e' PROVA (banco ja gravado), nunca
-        // "inesperado": o exit 1 antigo mentia que nada tinha acontecido.
+        // perdia por inteiro.
         imprimirRelatorio(relatorio);
         try {
           await fs.writeFile(
@@ -406,10 +478,28 @@ export async function principal(argv, env, fabricas = {}) {
             { flag: "wx" },
           );
         } catch (error) {
+          // ANOTADO A1 da revisao A11d: PROVA (exit 6, "banco ja gravado")
+          // so' faz sentido quando o banco de fato foi gravado NESTA rodada
+          // (relatorio.aplicado === true -- plano.acao === "nada" tambem cai
+          // aqui, com aplicado false, e a mensagem antiga mentia "revisao
+          // null"). Sem grava, falha ao escrever --saida e' entrada invalida
+          // (5), nao prova de escrita.
+          //
+          // ANOTADO A5 da revisao A11d: a mensagem nao ecoa mais o texto cru
+          // do erro de fs (carrega o caminho absoluto, nome de usuario
+          // incluso) -- so' o `code` (ENOENT etc.), que identifica a causa
+          // sem vazar caminho.
+          const causa = error?.code ?? "erro desconhecido";
+          if (relatorio.aplicado) {
+            console.error(
+              `PROVA: BANCO JA GRAVADO (revisao ${relatorio.revisao}); falha ao gravar --saida (${causa})`,
+            );
+            return CODIGOS_DE_SAIDA.prova;
+          }
           console.error(
-            `PROVA: BANCO JA GRAVADO (revisao ${relatorio.revisao}); falha ao gravar --saida: ${mascarar(error?.message ?? String(error))}`,
+            `falha ao gravar --saida (${causa}); nada foi gravado no banco`,
           );
-          return CODIGOS_DE_SAIDA.prova;
+          return CODIGOS_DE_SAIDA.entrada;
         }
         return CODIGOS_DE_SAIDA.ok;
       }
