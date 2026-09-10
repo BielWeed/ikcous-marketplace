@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx tsc -b && vite build",
+    "build": "npx tsc -b && node scripts/buildStore.mjs",
     "lint": "eslint . --cache --cache-strategy content",
     "lint:rapido": "eslint . --config eslint.config.rapido.js --cache --cache-strategy content --cache-location .eslintcache-rapido",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
@@ -56,6 +56,7 @@
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.34.1",
+    "image-dimensions": "2.5.1",
     "lucide-react": "^0.562.0",
     "next-themes": "^0.4.6",
     "react": "^19.2.0",
@@ -64,6 +65,7 @@
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
+    "tus-js-client": "4.3.1",
     "zod": "^4.3.5"
   },
   "devDependencies": {

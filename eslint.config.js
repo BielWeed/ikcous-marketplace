@@ -11,6 +11,7 @@ import tseslint from "typescript-eslint";
 export default defineConfig([
   globalIgnores([
     "dist",
+    "dist-test",
     ".unlighthouse",
     ".agents",
     "node_modules",
@@ -110,6 +111,7 @@ export default defineConfig([
           "!**/node_modules/**",
           "!**/.*/**",
           "!**/dist/**",
+          "!**/dist-test/**",
           "!**/build/**",
         ],
       },

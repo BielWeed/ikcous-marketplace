@@ -13,6 +13,17 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: "admin-a" },
+    session: { user: { id: "admin-a" } },
+    isAdmin: true,
+    adminStatus: "admin",
+  }),
+}));
+vi.mock("@/lib/env-valores", () => ({
+  lerSupabaseUrl: () => "https://abcdefghijklmnopqrst.supabase.co",
+}));
 const updateConfig = vi.fn();
 
 const { mockConfig } = vi.hoisted(() => ({
@@ -79,7 +90,7 @@ describe("AdminSettingsView — Horário de atendimento", () => {
     // Seções colapsáveis (pedido do Gabriel, 02/09): os campos da loja
     // nascem OCULTOS — o teste expande a seção antes de exercitá-los.
     const cabecalhoLoja = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Identidade e localização da loja"),
+      b.textContent?.includes("Horário de atendimento"),
     ) as HTMLButtonElement;
     expect(cabecalhoLoja).toBeDefined();
     await act(async () => {
@@ -122,7 +133,9 @@ describe("AdminSettingsView — Horário de atendimento", () => {
     updateConfig.mockResolvedValue(true);
     await abrirTela();
 
-    digitar(pegarCampo("store-business-hours"), "Ter-Sáb: 8h às 17h");
+    await act(async () =>
+      digitar(pegarCampo("store-business-hours"), "Ter-Sáb: 8h às 17h"),
+    );
     await act(async () => {
       pegarBotaoSalvar().click();
     });
@@ -131,7 +144,8 @@ describe("AdminSettingsView — Horário de atendimento", () => {
     });
 
     expect(updateConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ businessHours: "Ter-Sáb: 8h às 17h" }),
+      { businessHours: "Ter-Sáb: 8h às 17h" },
+      { isCurrent: expect.any(Function), silent: true },
     );
     expect(toastSuccess).toHaveBeenCalled();
   });
@@ -140,7 +154,7 @@ describe("AdminSettingsView — Horário de atendimento", () => {
     updateConfig.mockResolvedValue(true);
     await abrirTela();
 
-    digitar(pegarCampo("store-business-hours"), "   ");
+    await act(async () => digitar(pegarCampo("store-business-hours"), "   "));
     await act(async () => {
       pegarBotaoSalvar().click();
     });
@@ -149,7 +163,8 @@ describe("AdminSettingsView — Horário de atendimento", () => {
     });
 
     expect(updateConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ businessHours: null }),
+      { businessHours: null },
+      { isCurrent: expect.any(Function), silent: true },
     );
   });
 
@@ -157,7 +172,9 @@ describe("AdminSettingsView — Horário de atendimento", () => {
     updateConfig.mockResolvedValue(false);
     await abrirTela();
 
-    digitar(pegarCampo("store-business-hours"), "Seg-Sáb: 9h às 18h");
+    await act(async () =>
+      digitar(pegarCampo("store-business-hours"), "Outro horário"),
+    );
     await act(async () => {
       pegarBotaoSalvar().click();
     });

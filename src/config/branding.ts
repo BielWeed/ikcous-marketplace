@@ -1,29 +1,18 @@
-import brandingData from "./branding.json";
+import { buildIdentity } from "./buildIdentity";
 
 export interface Branding {
   appName: string;
-  companyName: string;
   theme: {
     primary: string;
     secondary: string;
     accent: string;
   };
-  supportContact: string;
 }
 
-// Identidade por build: env (VITE_*) vence, branding.json é o fallback. Assim
-// TODO consumidor de branding fica parametrizado no build sem editar cada
-// view — outra build do ecossistema troca a marca só pelas envs.
-const env = import.meta.env;
-
+// A mesma fotografia validada que preparou o HTML e o manifesto.
 export const branding: Branding = {
-  ...brandingData,
-  appName: env.VITE_APP_NAME ?? brandingData.appName,
-  theme: {
-    primary: env.VITE_BRAND_PRIMARY ?? brandingData.theme.primary,
-    secondary: env.VITE_BRAND_SECONDARY ?? brandingData.theme.secondary,
-    accent: env.VITE_BRAND_ACCENT ?? brandingData.theme.accent,
-  },
+  appName: buildIdentity.identity.storeName,
+  theme: buildIdentity.identity.theme,
 };
 
 // Converte Hex (#RRGGBB) para HSL no formato aceito pelo Tailwind (ex: "240 5.9% 10%")
@@ -115,16 +104,27 @@ export function applyBranding(): void {
   // assume depois com a cor efetiva (banco > build).
   applyThemeColor(branding.theme.primary);
 
-  // 2. Atualizar Favicon e Apple Touch Icon se existirem arquivos de branding personalizados
-  // A pasta /branding/ é gerada no public pelo Ecosystem Manager
-  const favicon = document.querySelector("link[rel*='icon']");
-  if (favicon) {
-    // Aponta para o favicon dinâmico se a pasta branding estiver presente
-    favicon.setAttribute("href", "/branding/favicon.ico?v=3");
-  }
-  const appleTouch = document.querySelector("link[rel='apple-touch-icon']");
-  if (appleTouch) {
-    appleTouch.setAttribute("href", "/branding/logo.png?v=3");
+  // 2. Conservar os papéis e MIME preparados, sem atingir mask-icon ou outro link.
+  for (const [rel, href, type] of [
+    [
+      "icon",
+      buildIdentity.localUrls.favicon,
+      buildIdentity.identity.assets.favicon.media_type,
+    ],
+    [
+      "apple-touch-icon",
+      buildIdentity.localUrls.apple_touch,
+      buildIdentity.identity.assets.apple_touch.media_type,
+    ],
+  ]) {
+    let link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+    if (!link) {
+      link = document.createElement("link");
+      link.setAttribute("rel", rel);
+      document.head.appendChild(link);
+    }
+    link.setAttribute("href", href);
+    link.setAttribute("type", type);
   }
 
   // 3. Atualizar o loader silencioso inicial (silent-guardian-loader) se ele ainda estiver no DOM

@@ -1,4 +1,5 @@
 // Tipos do IKCOUS Marketplace - V2
+import type { BrandingAssets } from "@/lib/storeIdentity";
 
 export interface Product {
   id: string;
@@ -249,7 +250,10 @@ export interface StoreConfig {
   businessHours?: string | null;
   enableReviews: boolean;
   enableCoupons: boolean;
-  logoUrl?: string;
+  logoUrl?: string | null;
+  secondaryColor?: string | null;
+  accentColor?: string | null;
+  brandingAssets?: BrandingAssets | null;
   primaryColor?: string;
   themeMode?: "light" | "dark" | "glass";
   realTimeSalesAlerts?: boolean;

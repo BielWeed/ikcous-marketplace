@@ -15,6 +15,7 @@ import {
 import { memo, useEffect, useRef, useState } from "react";
 import { SearchBar } from "./SearchBar";
 
+import { buildIdentity } from "@/config/buildIdentity";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { useStore } from "@/contexts/StoreContext";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
@@ -47,9 +48,22 @@ export const Header = memo(function Header({
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isChecking, setIsChecking] = useState(false);
   const [activeToast, setActiveToast] = useState<HeaderToastData | null>(null);
-  const [logoState, setLogoState] = useState<"db" | "svg" | "png" | "text">(
-    config.logoUrl ? "db" : "svg",
-  );
+  const logoUrl = config.logoUrl || null;
+  const [logoSelection, setLogoSelection] = useState<{
+    url: string | null;
+    revision: number;
+    stage: "db" | "local" | "text";
+  }>({ url: logoUrl, revision: 0, stage: logoUrl ? "db" : "local" });
+
+  // Cada troca ganha novas tentativas antes de atualizar o DOM, inclusive A -> B -> A.
+  if (logoSelection.url !== logoUrl) {
+    setLogoSelection({
+      url: logoUrl,
+      revision: logoSelection.revision + 1,
+      stage: logoUrl ? "db" : "local",
+    });
+  }
+  const logoState = logoSelection.stage;
 
   const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,18 +71,15 @@ export const Header = memo(function Header({
   let logoSrc: string | null = null;
   if (logoState === "db" && config.logoUrl) {
     logoSrc = config.logoUrl;
-  } else if (logoState === "svg") {
-    logoSrc = "/branding/logo.svg";
-  } else if (logoState === "png") {
-    logoSrc = "/branding/logo.png";
+  } else if (logoState === "local") {
+    logoSrc = buildIdentity.localUrls.header;
   }
 
   // A regra comum prefere o nome configurado pela loja à marca do build.
   const storeName = nomeDaLoja(config);
   const parts = storeName.split(/[|-]/);
   const mainName = parts[0]?.trim() || storeName;
-  const subName =
-    parts[1]?.trim() || (parts[0]?.includes(" ") ? "" : "imports");
+  const subName = parts[1]?.trim() || "";
   const storeLetter = mainName.charAt(0).toUpperCase();
 
   useEffect(() => {
@@ -185,17 +196,21 @@ export const Header = memo(function Header({
             {logoSrc ? (
               <div className="flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]">
                 <img
+                  key={`${logoSelection.revision}:${logoState}`}
                   src={logoSrc}
                   alt={storeName}
                   className="size-full object-contain"
                   onError={() => {
-                    if (logoState === "db") {
-                      setLogoState("svg");
-                    } else if (logoState === "svg") {
-                      setLogoState("png");
-                    } else if (logoState === "png") {
-                      setLogoState("text");
-                    }
+                    setLogoSelection((current) => {
+                      // Falha só avança a candidata/revisão que a originou.
+                      if (current !== logoSelection) return current;
+                      const stage =
+                        current.stage === "db" &&
+                        logoSrc !== buildIdentity.localUrls.header
+                          ? "local"
+                          : "text";
+                      return { ...current, stage };
+                    });
                   }}
                 />
               </div>
