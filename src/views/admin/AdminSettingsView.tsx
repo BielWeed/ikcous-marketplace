@@ -4,16 +4,15 @@ import {
   AlertTriangle,
   ArrowUpRight,
   ChevronDown,
+  Clock,
   HelpCircle,
   History,
   Layers,
-  MapPin,
   Palette,
   RefreshCw,
-  Save,
   Truck,
 } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { Suspense, lazy, memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
@@ -21,10 +20,10 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import { TransportadorasSection } from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { branding } from "@/config/branding";
-import { corPrimariaEfetiva, validaCorDaLoja } from "@/config/cor-da-loja";
 import { useStore } from "@/contexts/StoreContext";
+import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { lerSupabaseUrl } from "@/lib/env-valores";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
@@ -44,365 +43,148 @@ interface AdminSettingsViewProps {
   onSetDirty?: (dirty: boolean) => void;
 }
 
-// ==========================================
-// Store Location Section — nome, cidade, estado e horário da loja
-// ==========================================
-//
-// Até aqui esta tela tinha exatamente dois blocos: diagnóstico de conexão e
-// um guia de ajuda. Não havia uma única configuração de loja nela. Este
-// cartão é o que faz "Ajustes" ajustar alguma coisa.
-//
-// `storeName` grava no banco (StoreContext) e as telas do cliente leem de
-// volta — Header, Home e Busca preferem `config.storeName` e só caem no
-// `branding.appName` quando o banco está vazio (ver
-// tests/front/nome-da-loja-vem-do-banco.test.tsx). Até 01/09/2026 NENHUMA
-// tela gravava esse valor (laudo varredura #2, L-3): a vitrine, o recibo e
-// as push mostravam o nome do molde para sempre. O campo mora aqui agora —
-// vazio = a loja não definiu nome, e o app usa o fallback do branding.
-const StoreLocationSection = memo(function StoreLocationSection() {
+const IdentitySettingsSection = lazy(() =>
+  import("@/components/admin/settings/IdentitySettingsSection").then(
+    (module) => ({ default: module.IdentitySettingsSection }),
+  ),
+);
+
+const BusinessHoursEditor = memo(function BusinessHoursEditor({
+  onDirtyChange,
+  active = true,
+}: { onDirtyChange: (dirty: boolean) => void; active?: boolean }) {
   const { config, updateConfig } = useStore();
-  const [storeName, setStoreName] = useState(config.storeName ?? "");
-  const [storeCity, setStoreCity] = useState(config.storeCity ?? "");
-  const [storeState, setStoreState] = useState(config.storeState ?? "");
-  const [businessHours, setBusinessHours] = useState(
-    config.businessHours ?? "",
-  );
-  const [isSaving, setIsSaving] = useState(false);
-
-  // A tela pode montar antes do StoreContext terminar de carregar o config
-  // do banco -- sem isto, os campos ficariam presos no valor vazio do
-  // primeiro render mesmo depois do fetch resolver.
+  const saved = config.businessHours ?? "";
+  const [baseline, setBaseline] = useState(saved);
+  const [value, setValue] = useState(saved);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
+  const lifecycle = useRef({ mounted: true, active, serial: 0 });
+  if (lifecycle.current.active && !active) lifecycle.current.serial++;
+  lifecycle.current.active = active;
   useEffect(() => {
-    setStoreName(config.storeName ?? "");
-    setStoreCity(config.storeCity ?? "");
-    setStoreState(config.storeState ?? "");
-    setBusinessHours(config.businessHours ?? "");
-  }, [
-    config.storeName,
-    config.storeCity,
-    config.storeState,
-    config.businessHours,
-  ]);
-
-  const handleSave = async () => {
-    if (isSaving) return;
-    setIsSaving(true);
-    try {
-      // Campo vazio grava `null`, não string vazia: `null` é o estado "a
-      // loja não configurou" que o resto do app trata como ausência, em vez
-      // de imprimir vazio no meio de uma frase.
-      const salvou = await updateConfig({
-        // Laudo #2 (L-3): o nome é a primeira configuração de qualquer dono
-        // de loja. Vazio = não definiu (o app volta para o nome do branding).
-        storeName: storeName.trim() || null,
-        storeCity: storeCity.trim() || null,
-        storeState: storeState.trim().toUpperCase() || null,
-        // Horário de atendimento no mesmo molde (laudo caça-bugs 30/08:
-        // a sentinela 'Seg-Sáb: 9h às 18h' chegou a ser publicada como se
-        // fosse dado real). Vazio = a loja não disse, e a vitrine omite o
-        // bloco — nunca publica expediente que ninguém digitou.
-        businessHours: businessHours.trim() || null,
-      });
-      // O toast de erro já sai de dentro do StoreContext (ADMIN-010, #94) --
-      // aqui só não seguimos em frente quando o retorno não for `true`.
-      if (!salvou) return;
-      toast.success("Dados da loja salvos");
-    } finally {
-      setIsSaving(false);
+    // Sair da aba invalida o pedido, mas preserva o texto para uma nova tentativa.
+    if (!active) setSaving(false);
+  }, [active]);
+  const lastIncoming = useRef(saved);
+  const dirty = value !== baseline;
+  // Incoming data only refreshes a pristine editor. A shipping refresh cannot erase typing.
+  useEffect(() => {
+    if (saved === lastIncoming.current) return;
+    lastIncoming.current = saved;
+    if (!dirty && !saving) {
+      setBaseline(saved);
+      setValue(saved);
     }
-  };
-
+  }, [saved, dirty, saving]);
+  useEffect(() => {
+    onDirtyChange(dirty || saving);
+  }, [dirty, saving, onDirtyChange]);
+  useEffect(() => {
+    const life = lifecycle.current;
+    life.mounted = true;
+    return () => {
+      life.mounted = false;
+      life.serial++;
+    };
+  }, []);
+  async function save() {
+    if (saving || !active) return;
+    const life = lifecycle.current;
+    const serial = ++life.serial;
+    const isCurrent = () =>
+      life.mounted && life.active && life.serial === serial;
+    const chosen = value.trim();
+    setSaving(true);
+    setError(false);
+    try {
+      const success = await updateConfig(
+        { businessHours: chosen || null },
+        { isCurrent, silent: true },
+      );
+      if (!isCurrent()) return;
+      if (success) {
+        setBaseline(chosen);
+        setValue(chosen);
+        toast.success("Horário de atendimento salvo");
+      } else setError(true);
+    } catch {
+      if (isCurrent()) setError(true);
+    } finally {
+      if (isCurrent()) setSaving(false);
+    }
+  }
   return (
-    <div className="space-y-3">
-      {/* O título "Identidade e localização" mora no CABEÇALHO da seção
-          colapsável (02/09) — aqui é só o formulário. */}
-      <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
-        <div className="flex flex-col gap-3">
-          <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            O nome, a cidade, o estado e o horário aparecem para quem compra.
-            Deixe em branco o que a loja ainda não quer mostrar -- o app omite,
-            nunca inventa.
-          </p>
-
-          <div className="space-y-1.5">
-            <label
-              htmlFor="store-name"
-              className="text-xs font-semibold text-zinc-300"
-            >
-              Nome da loja
-            </label>
-            <input
-              id="store-name"
-              type="text"
-              value={storeName}
-              onChange={(e) => setStoreName(e.target.value)}
-              placeholder="Como a loja aparece na vitrine, no recibo e nas notificações"
-              className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px]">
-            <div className="space-y-1.5">
-              <label
-                htmlFor="store-city"
-                className="text-xs font-semibold text-zinc-300"
-              >
-                Cidade
-              </label>
-              <input
-                id="store-city"
-                type="text"
-                value={storeCity}
-                onChange={(e) => setStoreCity(e.target.value)}
-                placeholder="Cidade"
-                className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label
-                htmlFor="store-state"
-                className="text-xs font-semibold text-zinc-300"
-              >
-                Estado (UF)
-              </label>
-              <input
-                id="store-state"
-                type="text"
-                maxLength={2}
-                value={storeState}
-                onChange={(e) => setStoreState(e.target.value.toUpperCase())}
-                placeholder="UF"
-                className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-center font-mono text-xs font-semibold uppercase text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label
-              htmlFor="store-business-hours"
-              className="text-xs font-semibold text-zinc-300"
-            >
-              Horário de atendimento
-            </label>
-            <input
-              id="store-business-hours"
-              type="text"
-              value={businessHours}
-              onChange={(e) => setBusinessHours(e.target.value)}
-              placeholder="Ex: Ter a Sáb, 9h às 18h"
-              className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
-            />
-          </div>
-
-          <div className="mt-1 flex justify-end">
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={handleSave}
-              className="flex select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-            >
-              {isSaving ? (
-                <RefreshCw className="size-3 animate-spin text-admin-gold" />
-              ) : (
-                <Save className="size-3 text-admin-gold" />
-              )}
-              <span>{isSaving ? "Salvando..." : "Salvar"}</span>
-            </button>
-          </div>
-        </div>
+    <div className="space-y-3 text-sm text-zinc-300">
+      <p>
+        Informe quando a loja atende. Em branco, o aplicativo omite o horário.
+      </p>
+      <label htmlFor="store-business-hours">Horário de atendimento</label>
+      <input
+        id="store-business-hours"
+        value={value}
+        disabled={saving || !active}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder="Ex: Ter a Sáb, 9h às 18h"
+        className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white"
+      />
+      {error && (
+        <p role="alert">
+          Não foi possível salvar o horário. O texto foi preservado.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          disabled={saving || !active || !dirty}
+          onClick={() => void save()}
+          className="rounded-lg border border-white/10 px-3 py-2"
+        >
+          {saving ? "Salvando…" : "Salvar horário"}
+        </button>
+        <button
+          type="button"
+          disabled={saving || !active || !dirty}
+          onClick={() => {
+            setBaseline(saved);
+            setValue(saved);
+            setError(false);
+          }}
+          className="rounded-lg border border-white/10 px-3 py-2"
+        >
+          Descartar horário
+        </button>
       </div>
     </div>
   );
 });
 
-// ==========================================
-// Store Color Section — a cor da marca da loja (pedido 004)
-// ==========================================
-//
-// Até 02/09/2026 o lojista só tinha cor escrevendo no banco à mão. Aqui a
-// escolha vira tela. O caminho é o que JÁ existe — nada de mecanismo de
-// tema novo: `updateConfig` grava a cor no banco, o StoreContext re-aplica
-// a regra de corPrimariaEfetiva na variável --primary e o App reflete no
-// meta theme-color — a vitrine inteira acompanha sozinha.
-//
-// A guarda do PRETO mora em src/config/cor-da-loja.ts (dono único da regra
-// de cor) e vale AQUI também: escolher preto é recusado com mensagem
-// honesta, porque a leitura trata preto gravado como resíduo de
-// configuração antiga — se a tela gravasse preto, a vitrine continuaria na
-// cor padrão com o lojista achando que mudou algo.
-
-// Contraste do texto da pré-visualização: conta YIQ clássica (pesos de
-// percepção) — texto escuro sobre fundo claro, branco sobre o resto.
-function textoLegivelSobre(fundo: string): string {
-  const n = fundo.replace("#", "");
-  const r = Number.parseInt(n.slice(0, 2), 16);
-  const g = Number.parseInt(n.slice(2, 4), 16);
-  const b = Number.parseInt(n.slice(4, 6), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 >= 140 ? "#111111" : "#ffffff";
+function BusinessHoursSection({
+  onDirtyChange,
+  active,
+}: {
+  onDirtyChange: (dirty: boolean) => void;
+  active?: boolean;
+}) {
+  const { user, session, isAdmin, adminStatus } = useAuth();
+  const allowed =
+    isAdmin &&
+    adminStatus === "admin" &&
+    !!user &&
+    session?.user.id === user.id;
+  useEffect(() => {
+    if (!allowed) onDirtyChange(false);
+  }, [allowed, onDirtyChange]);
+  if (!allowed)
+    return <p role="alert">Entre como administrador para editar o horário.</p>;
+  return (
+    <BusinessHoursEditor
+      key={`${lerSupabaseUrl()}|${user.id}`}
+      onDirtyChange={onDirtyChange}
+      active={active}
+    />
+  );
 }
-
-const CorDaLojaSection = memo(function CorDaLojaSection() {
-  const { config, updateConfig } = useStore();
-  // A cor EXIBIDA é a EFETIVA (mesma regra da vitrine): sem cor no banco —
-  // ou com o preto-resíduo que a regra ignora — o lojista vê exatamente a
-  // cor com que o app abre (a semente do build).
-  const corAtual = corPrimariaEfetiva(config) ?? branding.theme.primary;
-  const [hex, setHex] = useState(corAtual);
-  const [isSaving, setIsSaving] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  // A tela pode montar antes do StoreContext terminar de carregar a config
-  // do banco — sem isto, o campo ficaria preso na semente mesmo depois do
-  // fetch resolver (mesmo motivo do StoreLocationSection).
-  useEffect(() => {
-    setHex(corPrimariaEfetiva(config) ?? branding.theme.primary);
-  }, [config]);
-
-  // O picker de cor do navegador só aceita valor #rrggbb: enquanto o texto
-  // digitado não é válido, ele continua mostrando a última cor válida —
-  // a pré-visualização também não pisca com digitação pela metade.
-  const hexValido = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : corAtual;
-
-  const handleSave = async () => {
-    if (isSaving) return;
-    // Validação e guarda do preto vêm do dono da regra (cor-da-loja.ts) —
-    // a tela não duplica a decisão, consome.
-    const resultado = validaCorDaLoja(hex);
-    if (!resultado.ok) {
-      const mensagem =
-        resultado.motivo === "preto"
-          ? "Preto não pode ser a cor da loja: o app trata preto gravado como resíduo de configuração antiga e a vitrine continuaria na cor padrão. Escolha outro tom."
-          : "Use o formato #RRGGBB — cerquilha e seis dígitos, ex.: #059669.";
-      setErro(mensagem);
-      toast.error(mensagem);
-      return;
-    }
-    setErro(null);
-    setIsSaving(true);
-    try {
-      const salvou = await updateConfig({ primaryColor: resultado.cor });
-      // O toast de erro já sai de dentro do StoreContext (ADMIN-010, #94) --
-      // aqui só não seguimos em frente quando o retorno não for `true`.
-      if (!salvou) return;
-      toast.success("Cor da loja salva");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      {/* O título "Cor da loja" mora no CABEÇALHO da seção colapsável —
-          aqui é só o formulário. */}
-      <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
-        <div className="flex flex-col gap-3">
-          <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Esta é a cor da sua marca na vitrine: botões, destaques e a barra do
-            celular. Quem compra vê a nova cor assim que você salvar.
-          </p>
-
-          {/* Pré-visualização — o lojista vê o resultado ANTES de salvar. */}
-          <div className="overflow-hidden rounded-2xl border border-white/10">
-            <div
-              className="flex h-14 items-center justify-between gap-2 px-3"
-              style={{ backgroundColor: hexValido }}
-            >
-              <span
-                className="truncate text-[10px] font-black uppercase tracking-widest"
-                style={{ color: textoLegivelSobre(hexValido) }}
-              >
-                {config.storeName?.trim() || branding.appName}
-              </span>
-              <span
-                className="shrink-0 text-[9px] font-bold"
-                style={{ color: textoLegivelSobre(hexValido) }}
-              >
-                {hexValido.toUpperCase()}
-              </span>
-            </div>
-            <div className="flex items-center justify-center bg-zinc-950 p-3.5">
-              <span
-                className="rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-widest"
-                style={{
-                  backgroundColor: hexValido,
-                  color: textoLegivelSobre(hexValido),
-                }}
-              >
-                Comprar agora
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-[64px_1fr] items-end gap-3">
-            <div className="space-y-1.5">
-              <label
-                htmlFor="store-color-picker"
-                className="text-xs font-semibold text-zinc-300"
-              >
-                Escolher
-              </label>
-              <input
-                id="store-color-picker"
-                type="color"
-                value={hexValido}
-                onChange={(e) => {
-                  setHex(e.target.value);
-                  setErro(null);
-                }}
-                className="h-10 w-full cursor-pointer rounded-xl border border-white/10 bg-black/50 p-1"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label
-                htmlFor="store-color-hex"
-                className="text-xs font-semibold text-zinc-300"
-              >
-                Cor em código (hex)
-              </label>
-              <input
-                id="store-color-hex"
-                type="text"
-                maxLength={7}
-                value={hex}
-                onChange={(e) => {
-                  setHex(e.target.value);
-                  setErro(null);
-                }}
-                placeholder="#059669"
-                className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 font-mono text-xs font-semibold uppercase text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {erro && (
-            <p
-              role="alert"
-              className="text-left text-[10px] font-semibold leading-snug text-red-400"
-            >
-              {erro}
-            </p>
-          )}
-
-          <div className="mt-1 flex justify-end">
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={handleSave}
-              className="flex select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-            >
-              {isSaving ? (
-                <RefreshCw className="size-3 animate-spin text-admin-gold" />
-              ) : (
-                <Save className="size-3 text-admin-gold" />
-              )}
-              <span>{isSaving ? "Salvando..." : "Salvar cor"}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
 
 // ==========================================
 // Connection Diagnostics Section (Glassmorphism)
@@ -738,16 +520,28 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const [transportadorasPendentes, setTransportadorasPendentes] =
     useState(false);
 
-  // Espelha a pendência do token para o App (onSetDirty = setIsAdminDirty):
+  const [identidadePendente, setIdentidadePendente] = useState(false);
+  const [horarioPendente, setHorarioPendente] = useState(false);
+
+  // Espelha a soma das pendências para o App (onSetDirty = setIsAdminDirty):
   // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
   // — mesmo contrato da tela de Frete (AdminShippingView).
   useEffect(() => {
-    onSetDirty?.(transportadorasPendentes);
-  }, [transportadorasPendentes, onSetDirty]);
+    if (active !== false)
+      onSetDirty?.(
+        transportadorasPendentes || identidadePendente || horarioPendente,
+      );
+  }, [
+    active,
+    transportadorasPendentes,
+    identidadePendente,
+    horarioPendente,
+    onSetDirty,
+  ]);
 
   // Reset helper modals when tab becomes inactive
   useEffect(() => {
-    if (!active) {
+    if (active === false) {
       setShowHelpModal(false);
     }
   }, [active]);
@@ -911,20 +705,33 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               </div>
             </SecaoColapsavel>
 
-            {/* Dados da loja — COLAPSADA por padrão, pelo mesmo motivo. */}
             <SecaoColapsavel
-              titulo="Identidade e localização da loja"
-              icone={MapPin}
+              titulo="Identidade da loja"
+              icone={Palette}
+              comPendencia={identidadePendente}
             >
-              <StoreLocationSection />
+              <Suspense
+                fallback={
+                  <p className="text-sm text-zinc-400">
+                    Carregando identidade…
+                  </p>
+                }
+              >
+                <IdentitySettingsSection
+                  active={active}
+                  onDirtyChange={setIdentidadePendente}
+                />
+              </Suspense>
             </SecaoColapsavel>
-
-            {/* Cor da loja — a vitrine inteira acompanha pelo mecanismo que
-                já existe (corPrimariaEfetiva → --primary e meta theme-color,
-                dono único em src/config/cor-da-loja.ts). COLAPSADA pelo mesmo
-                pedido do Gabriel de 02/09. */}
-            <SecaoColapsavel titulo="Cor da loja" icone={Palette}>
-              <CorDaLojaSection />
+            <SecaoColapsavel
+              titulo="Horário de atendimento"
+              icone={Clock}
+              comPendencia={horarioPendente}
+            >
+              <BusinessHoursSection
+                active={active}
+                onDirtyChange={setHorarioPendente}
+              />
             </SecaoColapsavel>
 
             {/* Transportadoras e cotação de frete — MUDOU DE TELA (frente
@@ -967,7 +774,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
             Nesta tela você pode gerenciar o design visual da vitrine do
-            marketplace e realizar diagnósticos de conectividade do sistema.
+            marketplace, editar a identidade da loja e o horário de atendimento,
+            e realizar diagnósticos de conectividade do sistema.
           </p>
 
           <div className="space-y-3">

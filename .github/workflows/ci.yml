@@ -133,19 +133,17 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      # NODE_ENV explícito por causa da vite.config.ts:143, que lê
-      # `process.env.NODE_ENV` em vez do `mode` do Vite. Sem isto, o build
-      # sai em modo desenvolvimento e o `size` mede o artefato errado.
-      # (regra 4 do contexto de onboarding / INFRA-120)
-      - name: Build de produção
+      # Ensaio completo e sem segredos; dist-test nunca é promovível.
+      - name: Build de teste com identidade fictícia
         run: npm run build
         env:
           NODE_ENV: production
-      # O build NÃO precisa de VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY:
-      # a falta delas quebra em runtime (tela branca), não em build time.
-      # Verificado rodando o build sem elas. Por isso este job não usa secrets.
-      - name: Limite de tamanho
+          IKCOUS_IDENTITY_MODE: fixture
+          IKCOUS_CODE_SHA: ${{ github.sha }}
+      - name: Limite de tamanho da entrega de teste
         run: npm run size
+        env:
+          IKCOUS_IDENTITY_MODE: fixture
 
   secrets:
     name: Varredura de segredo

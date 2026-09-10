@@ -1,191 +1,313 @@
+import type { StoreIdentityIntent } from "@/lib/adminStoreIdentity";
 // @vitest-environment jsdom
-//
-// Tarefa 3 do plano "o app para de inventar endereço": a tela de Ajustes
-// tinha exatamente dois blocos -- um medidor de latência de rede e um guia
-// de ajuda -- e nenhuma configuração de loja. Este teste prova o cartão
-// "Identidade e Localização da Loja" que passa a existir ali: mostra o que
-// já está salvo, grava o que a pessoa digitar, e não finge sucesso quando a
-// gravação falha.
-//
-// ATUALIZADO pelo laudo varredura profunda #2 (L-3, 01/09/2026): a versão
-// anterior deste arquivo EXCLUÍA o campo "Nome da loja" porque `storeName`
-// não tinha consumidor do lado do cliente. Isso deixou de ser verdade: hoje
-// Header, Home, Auth, Busca, o recibo e as push preferem `config.storeName`
-// — e, sem tela de gravação, vitrine/recibo/push mostravam o nome do MOLDE
-// para sempre. O campo mora aqui agora; vazio = não definiu (grava `null`,
-// o app volta para `branding.appName`).
-//
-// O caso de "dizer salvo sem salvar" continua valendo: o botão de salvar
-// tem de olhar o retorno de `updateConfig` (`Promise<boolean>`) e só
-// comemorar quando ele for `true` (ADMIN-010, #94).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const updateConfig = vi.fn();
-
-// `mockConfig` precisa ser declarado via `vi.hoisted` porque `vi.mock` é
-// hoisted acima dos imports -- mesmo padrão de checkout-guest-cep.test.tsx.
-const { mockConfig } = vi.hoisted(() => ({
-  mockConfig: {
-    storeCity: "Uberlândia",
-    storeState: "MG",
+const h = vi.hoisted(() => ({
+  read: vi.fn(),
+  save: vi.fn(),
+  prepare: vi.fn(),
+  upload: vi.fn(),
+  refresh: vi.fn(),
+  update: vi.fn(),
+  dirty: vi.fn(),
+  origin: "https://abcdefghijklmnopqrst.supabase.co",
+  auth: {
+    user: { id: "admin-a" },
+    isAdmin: true,
+    adminStatus: "admin",
+    session: { user: { id: "admin-a" }, access_token: "synthetic-session" },
   },
+  config: { businessHours: "Antigo", shippingFee: 1 },
+  version: 0,
+  listeners: new Set<() => void>(),
 }));
-
-vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: mockConfig,
-    isLoaded: true,
-    updateConfig,
-  }),
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => h.auth }));
+vi.mock("@/contexts/StoreContext", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    useStore: () => {
+      useSyncExternalStore(
+        (cb) => {
+          h.listeners.add(cb);
+          return () => {
+            h.listeners.delete(cb);
+          };
+        },
+        () => h.version,
+      );
+      return {
+        config: h.config,
+        isLoaded: true,
+        updateConfig: h.update,
+        refresh: h.refresh,
+      };
+    },
+  };
+});
+vi.mock("@/lib/env-valores", () => ({
+  lerSupabaseUrl: () => h.origin,
+  lerChaveSupabase: () => "sb_publishable_synthetic",
 }));
-
-vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
-
-// AdminSettingsView importa `@/lib/supabase` direto (usado só pelo
-// diagnóstico de conexão, num botão que nenhum caso deste arquivo clica) --
-// sem o dublê o import tentaria criar um client de verdade em jsdom.
+vi.mock("@/lib/adminStoreIdentity", () => ({
+  readAdminStoreIdentity: h.read,
+  saveAdminStoreIdentity: h.save,
+}));
+vi.mock("@/lib/prepareIdentityImage", () => ({
+  prepareIdentityImage: h.prepare,
+}));
+vi.mock("@/lib/uploadIdentityImage", () => ({ uploadIdentityImage: h.upload }));
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
-
-const toastSuccess = vi.fn();
-const toastError = vi.fn();
-vi.mock("sonner", () => ({
-  toast: { success: toastSuccess, error: toastError },
-}));
-
-// @ts-expect-error flag interna do React, sem tipo público.
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// @ts-expect-error React testing flag
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function esperarMicrotarefas(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+function asset(
+  name: string,
+  width?: number,
+  height?: number,
+  media_type = "image/png",
+) {
+  return {
+    path: `v1/${"a".repeat(64)}/${name}`,
+    sha256: "a".repeat(64),
+    bytes: 100,
+    media_type,
+    ...(width === undefined ? {} : { width, height }),
+  };
+}
+function snapshot() {
+  return {
+    revision: "9007199254740993",
+    identity: {
+      store_name: "Loja Teste",
+      store_city: "Uberlândia",
+      store_state: "MG",
+      primary_color: "#ABCDEF",
+      secondary_color: "#000000",
+      accent_color: "#000000",
+      logo_url: `${h.origin}/storage/v1/object/public/branding/${asset("header.svg").path}`,
+      branding_assets: {
+        version: 1,
+        originals: [asset("source.svg", undefined, undefined, "image/svg+xml")],
+        header: asset("header.svg", undefined, undefined, "image/svg+xml"),
+        loader: asset("loader.svg", undefined, undefined, "image/svg+xml"),
+        favicon: asset(
+          "favicon.ico",
+          undefined,
+          undefined,
+          "image/vnd.microsoft.icon",
+        ),
+        apple_touch: asset("apple.png", 180, 180),
+        icon_192: asset("192.png", 192, 192),
+        icon_512: asset("512.png", 512, 512),
+        maskable_512: asset("mask.png", 512, 512),
+        og: asset("og.jpg", 1200, 630, "image/jpeg"),
+      },
+    },
+  };
+}
+let root: Root;
+let host: HTMLDivElement;
+let mounted = true;
+async function flush() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+async function render(active = true) {
+  const { AdminSettingsView } = await import("@/views/admin/AdminSettingsView");
+  await act(async () => {
+    root.render(
+      <AdminSettingsView
+        active={active}
+        onNavigate={vi.fn()}
+        onSetDirty={h.dirty}
+      />,
+    );
+  });
+  const section = [...host.querySelectorAll("button")].find((node) =>
+    node.textContent?.includes("Identidade da loja"),
+  )!;
+  if (section.getAttribute("aria-expanded") === "false")
+    await act(async () => section.click());
+  await act(async () => {
+    await import("@/components/admin/settings/IdentitySettingsSection");
+  });
+  await flush();
+  await flush();
 }
 
-describe("AdminSettingsView — Identidade da Loja", () => {
-  let raiz: Root;
-  let hospedeiro: HTMLDivElement;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    hospedeiro = document.createElement("div");
-    document.body.appendChild(hospedeiro);
-    raiz = createRoot(hospedeiro);
+function input(id: string) {
+  const el = host.querySelector<HTMLInputElement>(`#${id}`);
+  expect(el).not.toBeNull();
+  return el!;
+}
+function button(text: string) {
+  const el = [...host.querySelectorAll("button")].find(
+    (node) => node.textContent === text,
+  );
+  expect(el).toBeDefined();
+  return el!;
+}
+async function click(text: string) {
+  await act(async () => {
+    button(text).click();
   });
-
-  afterEach(() => {
-    act(() => {
-      raiz.unmount();
-    });
-    hospedeiro.remove();
-    vi.restoreAllMocks();
+  await flush();
+}
+async function type(id: string, value: string) {
+  await act(async () => {
+    const el = input(id);
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
   });
+}
+beforeEach(() => {
+  vi.clearAllMocks();
+  h.read.mockReset();
+  h.save.mockReset();
+  h.prepare.mockReset();
+  h.upload.mockReset();
+  h.refresh.mockResolvedValue(undefined);
+  h.origin = "https://abcdefghijklmnopqrst.supabase.co";
+  h.auth = {
+    user: { id: "admin-a" },
+    isAdmin: true,
+    adminStatus: "admin",
+    session: { user: { id: "admin-a" }, access_token: "synthetic-session" },
+  };
+  h.config = { businessHours: "Antigo", shippingFee: 1 };
+  h.read.mockImplementation(async () => snapshot());
+  h.save.mockImplementation(async (intent: StoreIdentityIntent) => ({
+    status: "confirmed",
+    source: "response",
+    snapshot: { revision: "9007199254740994", identity: intent.desired },
+  }));
+  h.prepare.mockImplementation(async (file: File) => ({
+    blob: file,
+    asset: asset("new.svg", undefined, undefined, "image/svg+xml"),
+  }));
+  h.upload.mockImplementation(async (image) => ({
+    asset: image.asset,
+    url: `${h.origin}/storage/v1/object/public/branding/${image.asset.path}`,
+  }));
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  mounted = true;
+});
+afterEach(() => {
+  if (mounted) act(() => root.unmount());
+  host.remove();
+  vi.restoreAllMocks();
+});
 
-  async function abrirTela() {
-    const { AdminSettingsView } = await import(
-      "@/views/admin/AdminSettingsView"
+describe("Ajustes — identidade da loja pela RPC protegida", () => {
+  it("salvar identidade não limpa horário pendente e recolher não perde os campos", async () => {
+    await render();
+    await type("store-name", "Novo nome");
+    const section = [...host.querySelectorAll("button")].find((node) =>
+      node.textContent?.includes("Identidade da loja"),
+    )!;
+    await act(async () => section.click());
+    expect(section.getAttribute("aria-expanded")).toBe("true");
+    await click("Horário de atendimento");
+    await type("store-business-hours", "Novo horário");
+    await click("Salvar identidade");
+    expect(h.dirty).toHaveBeenLastCalledWith(true);
+    h.update.mockResolvedValue(true);
+    await click("Salvar horário");
+    expect(h.update).toHaveBeenCalledExactlyOnceWith(
+      { businessHours: "Novo horário" },
+      { isCurrent: expect.any(Function), silent: true },
     );
-    await act(async () => {
-      raiz.render(<AdminSettingsView onNavigate={vi.fn()} active={true} />);
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-    // Seções colapsáveis (pedido do Gabriel, 02/09): os campos da loja
-    // nascem OCULTOS — o teste expande a seção antes de exercitá-los.
-    const cabecalhoLoja = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Identidade e localização da loja"),
-    ) as HTMLButtonElement;
-    expect(cabecalhoLoja).toBeDefined();
-    await act(async () => {
-      cabecalhoLoja.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-  }
-
-  function pegarCampo(id: string): HTMLInputElement {
-    const campo = hospedeiro.querySelector(`#${id}`) as HTMLInputElement;
-    expect(campo).toBeDefined();
-    return campo;
-  }
-
-  function pegarBotaoSalvar(): HTMLButtonElement {
-    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
-    ) as HTMLButtonElement;
-    expect(botao).toBeDefined();
-    return botao;
-  }
-
-  it("mostra os campos de cidade e estado preenchidos com o que está salvo", async () => {
-    await abrirTela();
-
-    expect(pegarCampo("store-city").value).toBe("Uberlândia");
-    expect(pegarCampo("store-state").value).toBe("MG");
+    expect(h.update.mock.calls[0][1].isCurrent()).toBe(true);
+    expect(input("store-business-hours").value).toBe("Novo horário");
+    expect(h.dirty).toHaveBeenLastCalledWith(false);
   });
-
-  it("mostra o campo de nome da loja (com o salvo) e diz que o nome aparece para quem compra", async () => {
-    await abrirTela();
-
-    const campo = hospedeiro.querySelector("#store-name") as HTMLInputElement;
-    expect(campo).toBeDefined();
-    expect(campo.value).toBe(""); // mockConfig não define storeName
-    // A frase de ajuda do cartão não pode prometer menos do que o app faz:
-    // o nome gravado aqui aparece na vitrine para quem compra.
-    expect(hospedeiro.textContent).toMatch(/Nome da loja/);
+  it("aba inativa não altera a guarda global, e a volta reapresenta sua pendência", async () => {
+    await render();
+    await type("store-name", "Não perdido");
+    h.dirty.mockClear();
+    await render(false);
+    expect(h.dirty).not.toHaveBeenCalled();
+    await render(true);
+    expect(h.dirty).toHaveBeenLastCalledWith(true);
+    expect(input("store-name").value).toBe("Não perdido");
   });
-
-  it("grava os três campos quando a pessoa salva — nome vazio vira null", async () => {
-    updateConfig.mockResolvedValue(true);
-    await abrirTela();
-
-    const cidade = pegarCampo("store-city");
-    const estado = pegarCampo("store-state");
-
-    // jsdom + createRoot não reage a mutação direta de `value` sem passar
-    // pelo onChange do React -- disparar via setter nativo + evento "input"
-    // é o jeito que funciona com controlled inputs neste ambiente.
-    const setValorNativo = (elemento: HTMLInputElement, valor: string) => {
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value",
-      )!.set!;
-      setter.call(elemento, valor);
-      elemento.dispatchEvent(new Event("input", { bubbles: true }));
+  it("horário tardio de usuário anterior não celebra nem altera novo editor", async () => {
+    let resolve!: (value: boolean) => void;
+    h.update.mockReturnValue(
+      new Promise<boolean>((yes) => {
+        resolve = yes;
+      }),
+    );
+    await render();
+    await click("Horário de atendimento");
+    await type("store-business-hours", "Antigo usuário");
+    await click("Salvar horário");
+    h.auth = {
+      ...h.auth,
+      user: { id: "admin-b" },
+      session: { user: { id: "admin-b" }, access_token: "synthetic-b" },
     };
-
-    await act(async () => {
-      setValorNativo(cidade, "Patos de Minas");
-      setValorNativo(estado, "mg");
-    });
-
-    const botao = pegarBotaoSalvar();
-    await act(async () => {
-      botao.click();
-      await esperarMicrotarefas();
-    });
-
-    expect(updateConfig).toHaveBeenCalledTimes(1);
-    const [payload] = updateConfig.mock.calls[0];
-    expect(payload.storeCity).toBe("Patos de Minas");
-    // Estado sempre em maiúscula, independente do que foi digitado.
-    expect(payload.storeState).toBe("MG");
-    // Nome vazio grava `null` (não definido ≠ string vazia impressa).
-    expect(payload.storeName).toBeNull();
+    await render();
+    await type("store-business-hours", "B editando");
+    await act(async () => resolve(true));
+    expect(input("store-business-hours").value).toBe("B editando");
+    const { toast } = await import("sonner");
+    expect(toast.success).not.toHaveBeenCalled();
   });
-
-  it("não diz que salvou quando a gravação falha", async () => {
-    updateConfig.mockResolvedValue(false);
-    await abrirTela();
-
-    const botao = pegarBotaoSalvar();
+  it("mostra nome, cidade e estado da fotografia administrativa", async () => {
+    await render();
+    expect(input("store-name").value).toBe("Loja Teste");
+    expect(input("store-city").value).toBe("Uberlândia");
+    expect(input("store-state").value).toBe("MG");
+  });
+  it("preserva nome e cor digitados ao atualizar apenas config de horário/frete", async () => {
+    await render();
+    await type("store-name", "Meu rascunho");
+    await type("store-color-hex", "#0");
     await act(async () => {
-      botao.click();
-      await esperarMicrotarefas();
+      h.config = { businessHours: "Outro", shippingFee: 99 };
+      h.version++;
+      for (const callback of h.listeners) callback();
     });
-
-    expect(updateConfig).toHaveBeenCalledTimes(1);
-    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(input("store-name").value).toBe("Meu rascunho");
+    expect(input("store-color-hex").value).toBe("#0");
+    expect(h.update).not.toHaveBeenCalled();
+  });
+  it("grava pacote único com nome/local, sem updateConfig e sem inventar nome vazio", async () => {
+    await render();
+    await type("store-name", "Minha Loja");
+    await type("store-city", "Patos de Minas");
+    await type("store-state", "mg");
+    await click("Salvar identidade");
+    expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.save.mock.calls[0][0].desired).toMatchObject({
+      store_name: "Minha Loja",
+      store_city: "Patos de Minas",
+      store_state: "MG",
+    });
+    expect(h.update).not.toHaveBeenCalled();
+    await type("store-name", " ");
+    await click("Salvar identidade");
+    expect(h.save).toHaveBeenCalledTimes(1);
+  });
+  it("falha mantém rascunho, guarda e não diz salvo", async () => {
+    h.save.mockResolvedValue({ status: "rejected", code: "permission" });
+    await render();
+    await type("store-name", "Meu nome");
+    await click("Salvar identidade");
+    expect(h.refresh).not.toHaveBeenCalled();
+    expect(input("store-name").value).toBe("Meu nome");
+    expect(h.dirty).toHaveBeenLastCalledWith(true);
+    expect(host.textContent).not.toContain("Identidade salva no cadastro");
   });
 });

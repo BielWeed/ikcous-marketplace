@@ -3,6 +3,8 @@
  * Estratégia Nuclear de Cache e Revalidação.
  */
 
+import { buildIdentity } from "../config/buildIdentity";
+
 const sw = self as any;
 
 // A variável __APP_VERSION__ é injetada pelo Vite (definida em vite.config.ts)
@@ -403,12 +405,11 @@ sw.addEventListener("push", (event: any) => {
   try {
     const payload = event.data.json();
     const title = payload.title || "Novidade!";
-    // Laudo #2 (P-5): o ícone vive em /icons/ (a raiz de public/ nunca teve
-    // icon-192x192.png) — toda push nascia com ícone ausente na lockscreen.
+    // A imagem acompanha a identidade validada desta entrega.
     const options = {
       body: payload.body || "",
-      icon: "/icons/icon-192x192.png",
-      badge: "/icons/icon-192x192.png",
+      icon: buildIdentity.localUrls.icon_192,
+      badge: buildIdentity.localUrls.icon_192,
       data: {
         url: payload.url || "/",
         ...payload.data,

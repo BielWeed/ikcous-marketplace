@@ -3,7 +3,7 @@
 // Pedido do Gabriel (02/09, segunda foto dos Ajustes): a tela precisa estar
 // SEPARADA por partes e as seções técnicas nascerem OCULTAS — "Status de
 // funcionamento do sistema" (termômetro do PIX + diagnóstico de conexão) e
-// "Identidade e localização da loja" (nome, cidade, UF, horário) só exibem
+// "Identidade da loja" (nome, cidade, UF, horário) só exibem
 // o conteúdo quando o lojista clica no cabeçalho da seção.
 //
 // O CONTRATO:
@@ -17,6 +17,38 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/components/admin/settings/IdentitySettingsSection", async () => {
+  const { useState, useEffect } = await import("react");
+  return {
+    IdentitySettingsSection: ({
+      onDirtyChange,
+    }: { onDirtyChange: (value: boolean) => void }) => {
+      const [value, setValue] = useState("Loja Teste");
+      useEffect(
+        () => onDirtyChange(value !== "Loja Teste"),
+        [value, onDirtyChange],
+      );
+      return (
+        <input
+          id="store-name"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      );
+    },
+  };
+});
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: "admin-a" },
+    session: { user: { id: "admin-a" } },
+    isAdmin: true,
+    adminStatus: "admin",
+  }),
+}));
+vi.mock("@/lib/env-valores", () => ({
+  lerSupabaseUrl: () => "https://abcdefghijklmnopqrst.supabase.co",
+}));
 const updateConfig = vi.fn();
 
 const { mockConfig } = vi.hoisted(() => ({
@@ -150,7 +182,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
 
     // Os cabeçalhos existem e estão marcados como recolhidos.
     const status = cabecalhoDaSecao("Status de funcionamento do sistema")!;
-    const loja = cabecalhoDaSecao("Identidade e localização da loja")!;
+    const loja = cabecalhoDaSecao("Identidade da loja")!;
     expect(status).toBeTruthy();
     expect(loja).toBeTruthy();
     expect(status.getAttribute("aria-expanded")).toBe("false");
@@ -185,7 +217,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
 
     expect(hospedeiro.querySelector("#store-name")).toBeNull();
 
-    const loja = cabecalhoDaSecao("Identidade e localização da loja")!;
+    const loja = cabecalhoDaSecao("Identidade da loja")!;
     await act(async () => {
       loja.click();
     });
@@ -275,9 +307,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(
-      hospedeiro.querySelector('input[type="password"]'),
-    ).not.toBeNull();
+    expect(hospedeiro.querySelector('input[type="password"]')).not.toBeNull();
     expect(cabecalho.getAttribute("aria-expanded")).toBe("true");
 
     // Salva dentro da própria seção…

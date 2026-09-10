@@ -1421,6 +1421,9 @@ export type Database = {
           min_app_version: string | null;
           origin_cep: string | null;
           primary_color: string | null;
+          secondary_color: string | null;
+          accent_color: string | null;
+          branding_assets: Json | null;
           push_marketing_enabled: boolean | null;
           real_time_sales_alerts: boolean | null;
           share_text: string | null;
@@ -1449,6 +1452,9 @@ export type Database = {
           min_app_version?: string | null;
           origin_cep?: string | null;
           primary_color?: string | null;
+          secondary_color?: string | null;
+          accent_color?: string | null;
+          branding_assets?: Json | null;
           push_marketing_enabled?: boolean | null;
           real_time_sales_alerts?: boolean | null;
           share_text?: string | null;
@@ -1477,6 +1483,9 @@ export type Database = {
           min_app_version?: string | null;
           origin_cep?: string | null;
           primary_color?: string | null;
+          secondary_color?: string | null;
+          accent_color?: string | null;
+          branding_assets?: Json | null;
           push_marketing_enabled?: boolean | null;
           real_time_sales_alerts?: boolean | null;
           share_text?: string | null;
@@ -1625,6 +1634,9 @@ export type Database = {
           min_app_version: string | null;
           origin_cep: string | null;
           primary_color: string | null;
+          secondary_color: string | null;
+          accent_color: string | null;
+          branding_assets: Json | null;
           push_marketing_enabled: boolean | null;
           real_time_sales_alerts: boolean | null;
           share_text: string | null;
@@ -1653,6 +1665,9 @@ export type Database = {
           min_app_version?: string | null;
           origin_cep?: string | null;
           primary_color?: string | null;
+          secondary_color?: string | null;
+          accent_color?: string | null;
+          branding_assets?: Json | null;
           push_marketing_enabled?: boolean | null;
           real_time_sales_alerts?: boolean | null;
           share_text?: string | null;
@@ -1681,6 +1696,9 @@ export type Database = {
           min_app_version?: string | null;
           origin_cep?: string | null;
           primary_color?: string | null;
+          secondary_color?: string | null;
+          accent_color?: string | null;
+          branding_assets?: Json | null;
           push_marketing_enabled?: boolean | null;
           real_time_sales_alerts?: boolean | null;
           share_text?: string | null;
@@ -2463,6 +2481,18 @@ export type Database = {
             Args: { p_admin_id: string; p_reply: string; p_review_id: string };
             Returns: undefined;
           };
+      read_store_identity: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      save_store_identity: {
+        Args: {
+          expected_revision: string;
+          expected_identity: Json;
+          desired_identity: Json;
+        };
+        Returns: Json;
+      };
       solicitar_estorno: {
         Args: { p_amount: number; p_motivo: string; p_order_id: string };
         Returns: Json;

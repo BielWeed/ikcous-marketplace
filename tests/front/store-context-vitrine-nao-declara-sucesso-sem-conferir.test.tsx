@@ -27,6 +27,7 @@ import {
   useStore,
 } from "@/contexts/StoreContext";
 import type { StoreConfig } from "@/types";
+import { pacoteDeMarca, urlDoHeader } from "./fixtures/branding-assets";
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ isAdmin: true, loading: false, user: { id: "admin-1" } }),
@@ -684,7 +685,10 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
       businessHours: "x",
       enableReviews: true,
       enableCoupons: true,
-      logoUrl: "https://exemplo.com/logo.png",
+      logoUrl: urlDoHeader,
+      secondaryColor: "#FFFFFF",
+      accentColor: "#C99730",
+      brandingAssets: pacoteDeMarca(),
       primaryColor: "#111111",
       themeMode: "light",
       realTimeSalesAlerts: true,

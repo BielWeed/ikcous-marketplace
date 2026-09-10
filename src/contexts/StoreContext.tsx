@@ -7,6 +7,7 @@ import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import { precoVendido } from "@/lib/preco-vendido";
 import { RealtimeSyncEngine } from "@/lib/realtimeSyncEngine";
+import { parseBrandingAssets } from "@/lib/storeIdentity";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, Product, ShippingOption, StoreConfig } from "@/types";
 import React, {
@@ -26,6 +27,11 @@ import { toast } from "sonner";
 import { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 export { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 
+interface UpdateConfigOptions {
+  readonly isCurrent: () => boolean;
+  readonly silent?: boolean;
+}
+
 interface StoreContextType {
   config: StoreConfig;
   isLoaded: boolean;
@@ -39,10 +45,14 @@ interface StoreContextType {
    * fechava modal e mostrava toast de sucesso em cima de uma gravação que não
    * aconteceu (ADMIN-010, #94).
    *
-   * Quem chama TEM de olhar o retorno. O toast de erro já sai daqui de dentro;
-   * o chamador só precisa não seguir em frente.
+   * Quem chama TEM de olhar o retorno. Sem opções, o aviso de erro sai daqui.
+   * `silent` delega os avisos ao chamador. Com `isCurrent`, false também pode
+   * significar resposta não entregue ao contexto atual, sem desfazer a RPC.
    */
-  updateConfig: (updates: Partial<StoreConfig>) => Promise<boolean>;
+  updateConfig: (
+    updates: Partial<StoreConfig>,
+    options?: UpdateConfigOptions,
+  ) => Promise<boolean>;
   refresh: (options?: { onlyConfig?: boolean }) => Promise<void>;
   fetchProducts: () => Promise<void>;
   calculateShipping: (
@@ -73,7 +83,8 @@ type TipoColunaStoreConfig =
   | "boolean"
   | "texto"
   | "texto_array"
-  | "home_sections";
+  | "home_sections"
+  | "branding_assets";
 
 // `Map`, não `Record` -- `chave` vem do banco (nome de coluna que a RPC
 // devolveu) e indexar objeto com string vinda de fora é exatamente o que
@@ -94,6 +105,9 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   ["enable_coupons", "boolean"],
   ["logo_url", "texto"],
   ["primary_color", "texto"],
+  ["secondary_color", "texto"],
+  ["accent_color", "texto"],
+  ["branding_assets", "branding_assets"],
   ["theme_mode", "texto"],
   ["real_time_sales_alerts", "boolean"],
   ["push_marketing_enabled", "boolean"],
@@ -146,6 +160,20 @@ function homeSectionsForamGravadas(
   );
 }
 
+// O pacote atravessa jsonb: ordem de chaves não importa, ordem dos originais sim.
+// Validar ambos impede que uma resposta malformada seja aceita como confirmação.
+function brandingAssetsIguais(enviado: unknown, gravado: unknown): boolean {
+  if (enviado === null || enviado === undefined) return gravado === enviado;
+  try {
+    return (
+      JSON.stringify(normalizarHomeSections(parseBrandingAssets(enviado))) ===
+      JSON.stringify(normalizarHomeSections(parseBrandingAssets(gravado)))
+    );
+  } catch {
+    return false;
+  }
+}
+
 // DECISÃO — o caso do COALESCE no ramo INSERT (linha nova) da RPC:
 //
 // upsert_store_config aplica COALESCE(..., default) em várias colunas só no
@@ -178,6 +206,8 @@ function valorFoiGravado(
   if (enviado === null) return gravado === null;
 
   switch (tipo) {
+    case "branding_assets":
+      return brandingAssetsIguais(enviado, gravado);
     case "numeric": {
       // `Number(null) === 0` e `Number("") === 0` -- coagir os DOIS lados
       // pelo `Number(...)` abaixo faria o banco devolver `null` (= não
@@ -403,6 +433,9 @@ export function StoreProvider({
           if (arrA.length !== arrB.length) return false;
           return arrA.every((v, i) => v === arrB[i]);
         }
+        if (k === "brandingAssets") {
+          return brandingAssetsIguais(a.brandingAssets, b.brandingAssets);
+        }
         if (k === "homeSections") {
           if (Array.isArray(a[k]) && Array.isArray(b[k])) {
             return homeSectionsForamGravadas(a[k], b[k]);
@@ -467,6 +500,16 @@ export function StoreProvider({
       ),
       logoUrl: getVal("logo_url", "logoUrl", undefined),
       primaryColor: getVal("primary_color", "primaryColor", undefined),
+      secondaryColor:
+        data.secondary_color !== undefined
+          ? data.secondary_color
+          : data.secondaryColor,
+      accentColor:
+        data.accent_color !== undefined ? data.accent_color : data.accentColor,
+      brandingAssets:
+        data.branding_assets !== undefined
+          ? data.branding_assets
+          : data.brandingAssets,
       themeMode: getVal(
         "theme_mode",
         "themeMode",
@@ -702,14 +745,32 @@ export function StoreProvider({
   }, [isAdmin, loading]);
 
   const updateConfig = useCallback(
-    async (updates: Partial<StoreConfig>): Promise<boolean> => {
+    async (
+      updates: Partial<StoreConfig>,
+      options?: UpdateConfigOptions,
+    ): Promise<boolean> => {
+      // Captura o contrato antes da rede: mutar options não troca o destinatário.
+      const isCurrent = options?.isCurrent;
+      const silent = options?.silent === true;
+      let invalidated = false;
+      const current = () => {
+        if (invalidated) return false;
+        try {
+          if (isCurrent && isCurrent() !== true) invalidated = true;
+        } catch {
+          invalidated = true;
+        }
+        return !invalidated;
+      };
       try {
+        if (!current()) return false;
         if (!isAdmin) {
-          toast.error("Acesso negado");
+          if (!silent && current()) toast.error("Acesso negado");
           return false;
         }
 
         const dbUpdates: any = {};
+        const identityUpdates: Partial<StoreConfig> = {};
         if (updates.freeShippingMin !== undefined)
           dbUpdates.free_shipping_min = updates.freeShippingMin;
         if (updates.shippingFee !== undefined)
@@ -726,9 +787,31 @@ export function StoreProvider({
           dbUpdates.enable_reviews = updates.enableReviews;
         if (updates.enableCoupons !== undefined)
           dbUpdates.enable_coupons = updates.enableCoupons;
-        if (updates.logoUrl !== undefined) dbUpdates.logo_url = updates.logoUrl;
-        if (updates.primaryColor !== undefined)
-          dbUpdates.primary_color = updates.primaryColor;
+        if (updates.logoUrl !== undefined) {
+          identityUpdates.logoUrl = updates.logoUrl;
+          dbUpdates.logo_url = identityUpdates.logoUrl;
+        }
+        if (updates.primaryColor !== undefined) {
+          identityUpdates.primaryColor = updates.primaryColor;
+          dbUpdates.primary_color = identityUpdates.primaryColor;
+        }
+        if (updates.secondaryColor !== undefined) {
+          identityUpdates.secondaryColor = updates.secondaryColor;
+          dbUpdates.secondary_color = identityUpdates.secondaryColor;
+        }
+        if (updates.accentColor !== undefined) {
+          identityUpdates.accentColor = updates.accentColor;
+          dbUpdates.accent_color = identityUpdates.accentColor;
+        }
+        if (updates.brandingAssets !== undefined) {
+          // Cópia validada e congelada antes do await; o chamador pode editar
+          // o rascunho enquanto a RPC aguarda sem alterar o pedido confirmado.
+          identityUpdates.brandingAssets =
+            updates.brandingAssets === null
+              ? null
+              : parseBrandingAssets(updates.brandingAssets);
+          dbUpdates.branding_assets = identityUpdates.brandingAssets;
+        }
         if (updates.themeMode !== undefined)
           dbUpdates.theme_mode = updates.themeMode;
         if (updates.realTimeSalesAlerts !== undefined)
@@ -737,12 +820,18 @@ export function StoreProvider({
           dbUpdates.push_marketing_enabled = updates.pushMarketingEnabled;
         if (updates.minAppVersion !== undefined)
           dbUpdates.min_app_version = updates.minAppVersion;
-        if (updates.storeName !== undefined)
-          dbUpdates.store_name = updates.storeName;
-        if (updates.storeCity !== undefined)
-          dbUpdates.store_city = updates.storeCity;
-        if (updates.storeState !== undefined)
-          dbUpdates.store_state = updates.storeState;
+        if (updates.storeName !== undefined) {
+          identityUpdates.storeName = updates.storeName;
+          dbUpdates.store_name = identityUpdates.storeName;
+        }
+        if (updates.storeCity !== undefined) {
+          identityUpdates.storeCity = updates.storeCity;
+          dbUpdates.store_city = identityUpdates.storeCity;
+        }
+        if (updates.storeState !== undefined) {
+          identityUpdates.storeState = updates.storeState;
+          dbUpdates.store_state = identityUpdates.storeState;
+        }
         if (updates.originCep !== undefined)
           dbUpdates.origin_cep = updates.originCep;
         if (updates.shippingProvider !== undefined)
@@ -758,11 +847,13 @@ export function StoreProvider({
         if (updates.homeSections !== undefined)
           dbUpdates.home_sections = updates.homeSections;
 
+        if (!current()) return false;
         const { data, error } = await (supabase.rpc as any)(
           "upsert_store_config",
           { config_json: dbUpdates },
         );
 
+        if (!current()) return false;
         if (error) throw error;
 
         // A RPC não errou, mas "não errou" não é "gravou o que pedimos" --
@@ -770,13 +861,15 @@ export function StoreProvider({
         // conhece. Falha fechado: retorno vazio, nulo ou de formato que não
         // dá para avaliar é falha, nunca sucesso.
         if (!data || typeof data !== "object" || Array.isArray(data)) {
+          if (!current()) return false;
           console.error(
             "[StoreContext] Update retornou em formato inesperado:",
             data,
           );
-          toast.error(
-            "Não foi possível confirmar que as configurações foram salvas. Tente novamente.",
-          );
+          if (!silent && current())
+            toast.error(
+              "Não foi possível confirmar que as configurações foram salvas. Tente novamente.",
+            );
           return false;
         }
 
@@ -797,46 +890,70 @@ export function StoreProvider({
           .map(([chave]) => chave);
 
         if (chavesNaoConfirmadas.length > 0) {
+          if (!current()) return false;
           console.error(
             "[StoreContext] Update não confirmado para:",
             chavesNaoConfirmadas,
             { enviado: dbUpdates, gravado },
           );
-          toast.error(
-            "Não deu para confirmar que tudo foi salvo. Tente salvar de novo antes de sair da tela.",
-          );
+          if (!silent && current())
+            toast.error(
+              "Não deu para confirmar que tudo foi salvo. Tente salvar de novo antes de sair da tela.",
+            );
           return false;
         }
 
+        if (!current()) return false;
         setConfig((prev) => {
-          const newConfig = { ...prev, ...updates };
+          if (!current()) return prev;
+          const {
+            logoUrl: _logoUrl,
+            storeName: _storeName,
+            storeCity: _storeCity,
+            storeState: _storeState,
+            primaryColor: _primaryColor,
+            secondaryColor: _secondaryColor,
+            accentColor: _accentColor,
+            brandingAssets: _brandingAssets,
+            ...otherUpdates
+          } = updates;
+          const newConfig = { ...prev, ...otherUpdates, ...identityUpdates };
           // Persist to DataVault
           // Pelo singleton e com erro logado (revisão 20260825-1050).
+          if (!current()) return prev;
           DataVault.init()
-            .then((vault) =>
-              vault.put("store_config", { id: "singleton", ...newConfig }),
-            )
-            .catch((err) =>
-              console.warn(
-                "[StoreContext] config não gravada no cache offline:",
-                err,
-              ),
-            );
+            .then((vault) => {
+              if (current())
+                return vault.put("store_config", {
+                  id: "singleton",
+                  ...newConfig,
+                });
+            })
+            .catch((err) => {
+              if (current())
+                console.warn(
+                  "[StoreContext] config não gravada no cache offline:",
+                  err,
+                );
+            });
           return newConfig;
         });
-        // Aplica pela REGRA também no caminho do admin: valor explícito do
-        // formulário passa (inclusive #000000 = preto escolhido); ausente
-        // não pinta nada. Nenhum caminho aplica cru por fora do dono único.
+        // Aplica a cor capturada pela mesma regra da vitrine: ausência e
+        // #000000 não pintam. O rascunho pode ter mudado durante o await.
+        if (!current()) return false;
         applyBranding(
           corPrimariaEfetiva({
-            primaryColor: updates.primaryColor,
+            primaryColor: identityUpdates.primaryColor,
           } as StoreConfig),
         );
-        toast.success("Configurações salvas");
+        if (!current()) return false;
+        if (!silent) toast.success("Configurações salvas");
         return true;
       } catch (err) {
+        if (!current()) return false;
         console.error("[StoreContext] Update error:", err);
-        toast.error("Erro ao salvar as configurações");
+        if (!silent && current())
+          toast.error("Erro ao salvar as configurações");
         return false;
       }
     },
