@@ -127,56 +127,114 @@ export function executavelNpx({ plataforma, execPath, existe }) {
   return existe(candidato) ? candidato : "npx";
 }
 
+// Medido pela hub em 10/09/2026 (loja real, CLI supabase 2.109.1 via npx,
+// Windows): `cp` com <src> ABSOLUTO de Windows (com "C:/..." ou "C:\\...")
+// falha SEMPRE -- o CLI le "C:" como esquema de URL, nao como drive letter
+// ({"code":"LegacyStorageUnsupportedOperationError","message":"Unsupported
+// operation","suggestion":"Run cp -r <src> <dst> to copy between local
+// directories."}). Com <src> RELATIVO ao diretorio atual (cwd = a propria
+// pasta do arquivo, <src> = so' o nome) funciona: upload confirmado, sha e
+// Content-Type corretos no objeto publico. Extraida como funcao pura (sem
+// spawnSync) para o teste montar o MESMO array que `subir()` manda ao CLI,
+// sem rede -- reusa executavelNpx (mesmo problema do %~dp0 documentado
+// acima).
+export function montarChamadaCp(
+  objeto,
+  { plataforma, execPath, existe, workdir },
+) {
+  const cwd = path.dirname(objeto.arquivo);
+  const partes = [
+    executavelNpx({ plataforma, execPath, existe }),
+    "supabase",
+    "storage",
+    "cp",
+    path.basename(objeto.arquivo),
+    `ss:///branding/${objeto.path}`,
+    "--content-type",
+    objeto.mime,
+    "--cache-control",
+    // Medido pela hub em 10/09/2026 (loja real): o CLI 2.109.1 IGNORA esta
+    // flag (antes ou depois dos posicionais) -- o objeto serve
+    // "Cache-Control: no-cache" ate alguem regravar pelo painel/API. Nao ha'
+    // o que fazer aqui alem de documentar; o valor (31536000) e' o mesmo
+    // que src/lib/uploadIdentityImage.ts:501 manda no metadata TUS
+    // (cacheControl: "31536000") para o upload real pelo navegador.
+    "max-age=31536000",
+    "--linked",
+    "--experimental",
+    "--workdir",
+    workdir,
+  ];
+  return { cwd, partes };
+}
+
 function portaStorage(workdir, nucleo) {
-  const cli = (args) => {
-    const partes = [
-      executavelNpx({
-        plataforma: process.platform,
-        execPath: process.execPath,
-        existe: existsSync,
-      }),
-      "supabase",
-      ...args,
-      "--linked",
-      "--experimental",
-      "--workdir",
-      workdir,
-    ];
+  const executar = (partes, cwd) => {
     const r =
       process.platform === "win32"
         ? spawnSync(partes.map(quotarWindows).join(" "), [], {
             encoding: "utf8",
             shell: true,
+            cwd,
           })
-        : spawnSync(partes[0], partes.slice(1), { encoding: "utf8" });
+        : spawnSync(partes[0], partes.slice(1), { encoding: "utf8", cwd });
     if (r.error)
       throw new nucleo.BootstrapError(
         "UPLOAD",
         `nao foi possivel executar supabase: ${mascarar(String(r.error))}`,
       );
-    if (r.status !== 0)
+    if (r.status !== 0) {
+      const saidaCrua = r.stderr || r.stdout || "";
+      // Medido pela hub em 10/09/2026 (loja real): o CLI NAO sobrescreve --
+      // `cp` para um path ja existente devolve LegacyStorageGatewayStatusError
+      // com statusCode 409. Compativel com o nucleo (estadoNoBucket pula o
+      // que ja existe com o mesmo sha), mas a mensagem original (409 cru
+      // dentro do JSON) nao dizia isso -- so' reescreve o texto, o codigo de
+      // saida continua o de UPLOAD (CODIGOS_DE_SAIDA.upload).
+      if (saidaCrua.includes("409"))
+        throw new nucleo.BootstrapError(
+          "UPLOAD",
+          `objeto ja existe no bucket (409); estadoNoBucket deveria ter pulado — conteudo diferente? ${mascarar(saidaCrua)}`,
+        );
       throw new nucleo.BootstrapError(
         "UPLOAD",
-        `supabase ${args[0]} ${args[1]} falhou: ${mascarar(r.stderr || r.stdout)}`,
+        `supabase ${partes[2]} ${partes[3]} falhou: ${mascarar(saidaCrua)}`,
       );
+    }
     return r.stdout;
   };
+  const cli = (args, cwd) =>
+    executar(
+      [
+        executavelNpx({
+          plataforma: process.platform,
+          execPath: process.execPath,
+          existe: existsSync,
+        }),
+        "supabase",
+        ...args,
+        "--linked",
+        "--experimental",
+        "--workdir",
+        workdir,
+      ],
+      cwd,
+    );
   return {
     async subir(objeto) {
-      cli([
-        "storage",
-        "cp",
-        objeto.arquivo,
-        `ss:///branding/${objeto.path}`,
-        "--content-type",
-        objeto.mime,
-        "--cache-control",
-        "public, max-age=31536000, immutable",
-      ]);
+      const { cwd, partes } = montarChamadaCp(objeto, {
+        plataforma: process.platform,
+        execPath: process.execPath,
+        existe: existsSync,
+        workdir,
+      });
+      executar(partes, cwd);
     },
     async remover(paths) {
       // Chamado so' quando ha' algo para remover -- o nucleo (desfazer) ja
       // guarda essa condicao, mas a porta e' defensiva por conta propria.
+      // Sem <src> local, nao precisa de cwd especial (undefined = cwd do
+      // proprio processo, igual ao comportamento anterior a esta tarefa).
       if (!paths.length) return;
       cli(["storage", "rm", ...paths.map((p) => `ss:///branding/${p}`)]);
     },

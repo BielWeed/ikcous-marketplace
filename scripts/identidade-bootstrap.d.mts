@@ -5,7 +5,11 @@
 // "../../scripts/identidade-bootstrap.mjs"` vira TS7016 (implicit any).
 // `.d.mts` e' a extensao que o TypeScript associa a um `.mjs` do mesmo nome
 // (par ESM), nao precisa de referencia explicita em nenhum lugar.
-import type { PortaBanco, PortaStorage } from "./identidadeBootstrap";
+import type {
+  ObjetoDoKit,
+  PortaBanco,
+  PortaStorage,
+} from "./identidadeBootstrap";
 
 export interface FabricasLancador {
   readonly portaBanco?: (databaseUrl: string, nucleo: unknown) => PortaBanco;
@@ -29,3 +33,15 @@ export function executavelNpx(args: {
   readonly execPath: string;
   readonly existe: (caminho: string) => boolean;
 }): string;
+
+// Tarefa A11f: pura, sem spawnSync -- monta o MESMO comando que
+// portaStorage.subir() manda ao CLI, para o teste comparar sem rede.
+export function montarChamadaCp(
+  objeto: ObjetoDoKit,
+  args: {
+    readonly plataforma: string;
+    readonly execPath: string;
+    readonly existe: (caminho: string) => boolean;
+    readonly workdir: string;
+  },
+): { readonly cwd: string; readonly partes: readonly string[] };

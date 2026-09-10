@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // tests/front/identidade-bootstrap.test.ts.
 import {
   executavelNpx,
+  montarChamadaCp,
   principal,
 } from "../../scripts/identidade-bootstrap.mjs";
 import {
@@ -251,6 +252,56 @@ describe("executavelNpx", () => {
     expect(executavelNpx({ plataforma: "linux", execPath, existe })).toBe(
       "npx",
     );
+  });
+});
+
+// Tarefa A11f: medido pela hub em 10/09/2026 (loja real) -- `cp` com <src>
+// ABSOLUTO de Windows (com "C:/..." ou "C:\\...") falha SEMPRE porque o CLI
+// le "C:" como esquema de URL (LegacyStorageUnsupportedOperationError,
+// "Unsupported operation"); com <src> RELATIVO ao cwd (o proprio diretorio
+// do arquivo), o upload funciona. `montarChamadaCp` e' a funcao pura que
+// monta { cwd, partes } sem rede, para o teste comparar contra o MESMO
+// comando que `subir()` manda ao CLI de verdade.
+describe("montarChamadaCp", () => {
+  it("cwd = pasta do objeto no kit, <src> = basename relativo (sem ':' nem barra do arquivo absoluto)", async () => {
+    await kitSintetico();
+    const kitRoot = path.join(dir, "kit");
+    const kit = await lerKit(kitRoot, "ikcous");
+    const header = kit.objetos.get(kit.assets.header.path);
+    if (!header) throw new Error("fixture sem header");
+    const execPath = "C:\\Program Files\\nodejs\\node.exe";
+    const existe = (caminho: string) =>
+      caminho === "C:\\Program Files\\nodejs\\npx.cmd";
+    const workdir = path.join(dir, "workdir");
+    const { cwd, partes } = montarChamadaCp(header, {
+      plataforma: "win32",
+      execPath,
+      existe,
+      workdir,
+    });
+    expect(cwd).toBe(path.dirname(header.arquivo));
+    expect(partes).toEqual([
+      "C:\\Program Files\\nodejs\\npx.cmd",
+      "supabase",
+      "storage",
+      "cp",
+      path.basename(header.arquivo),
+      `ss:///branding/${header.path}`,
+      "--content-type",
+      header.mime,
+      "--cache-control",
+      "max-age=31536000",
+      "--linked",
+      "--experimental",
+      "--workdir",
+      workdir,
+    ]);
+    // mutante: <src> absoluto (o caminho inteiro do arquivo, com
+    // drive/barra) derruba este teste -- e' exatamente o que falhava na
+    // loja real.
+    expect(partes.some((p) => p === header.arquivo)).toBe(false);
+    expect(partes[4]).not.toContain(":");
+    expect(partes[4]).not.toMatch(/[\\/]/);
   });
 });
 
