@@ -5,12 +5,15 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BootstrapError,
+  CODIGOS_DE_SAIDA,
   canonico,
   desfazer,
   executar,
+  lerArgumentos,
   lerKit,
   montarIdentidade,
   planejar,
+  semArquivo,
 } from "../../scripts/identidadeBootstrap";
 import type {
   IdentidadeLida,
@@ -409,9 +412,17 @@ describe("desfazer", () => {
       aplicar: true,
     });
     const antes = f.chamadas.length;
-    const r = await desfazer(kit, valores, f.portas, { aplicar: true });
+    // removerPaths = todos os paths do kit: reproduz o comportamento
+    // "remove tudo" de proposito, agora como lista EXPLICITA em vez de
+    // implicita (o achado ANTES DE CRESCER da revisao A11b era exatamente o
+    // codigo assumir esta lista por padrao).
+    const r = await desfazer(kit, valores, f.portas, {
+      aplicar: true,
+      removerPaths: [...kit.objetos.keys()],
+    });
     expect(r.acao).toBe("desfeito");
     expect(r.aplicado).toBe(true);
+    expect(r.deixados).toEqual([]);
     expect(Object.values(f.linha().identity).every((v) => v === null)).toBe(
       true,
     );
@@ -453,5 +464,162 @@ describe("desfazer", () => {
         .filter((c) => c === "gravar" || c.startsWith("remover")),
     ).toEqual([]);
     expect(f.bucket.size).toBeGreaterThan(0);
+  });
+  it("removerPaths = subconjunto (o que executar realmente subiu) remove so' esse subconjunto; o resto fica em deixados", async () => {
+    // Reproducao do cenario concreto da revisao A11b: o header ja estava no
+    // bucket ANTES do bootstrap (por exemplo, subido pelo painel
+    // administrativo no MESMO path v1/<sha>/<nome> -- uploadIdentityImage.ts
+    // grava no mesmo bucket "branding"). executar() pula ele (pulados);
+    // desfazer() com removerPaths = subidos (o que o lancador le do
+    // relatorio de --subidos) NAO pode apagar o que nunca subiu.
+    await kitSintetico();
+    const kit = await lerKit(dir, "ikcous");
+    const desired = montarIdentidade(kit, valores, SUPABASE_URL);
+    const header = kit.objetos.get(kit.assets.header.path);
+    if (!header) throw new Error("fixture sem header");
+    const f = portasFalsas(kit, linhaNula);
+    f.bucket.set(header.path, {
+      bytes: await fs.readFile(header.arquivo),
+      mime: header.mime,
+    });
+    const relatorioExecutar = await executar(
+      planejar(desired, linhaNula, kit),
+      f.portas,
+      { aplicar: true },
+    );
+    expect(relatorioExecutar.pulados).toEqual([header.path]);
+    const r = await desfazer(kit, valores, f.portas, {
+      aplicar: true,
+      removerPaths: relatorioExecutar.subidos,
+    });
+    expect(r.deixados).toEqual([header.path]);
+    expect(f.bucket.has(header.path)).toBe(true);
+    expect(f.bucket.size).toBe(1);
+  });
+  it("sem removerPaths, desfazer grava NULL mas nao chama a porta de remocao; deixados = todos os paths do kit", async () => {
+    await kitSintetico();
+    const kit = await lerKit(dir, "ikcous");
+    const desired = montarIdentidade(kit, valores, SUPABASE_URL);
+    const f = portasFalsas(kit, linhaNula);
+    await executar(planejar(desired, linhaNula, kit), f.portas, {
+      aplicar: true,
+    });
+    const antes = f.chamadas.length;
+    const r = await desfazer(kit, valores, f.portas, { aplicar: true });
+    expect(f.chamadas.slice(antes).some((c) => c.startsWith("remover"))).toBe(
+      false,
+    );
+    expect(r.deixados.slice().sort()).toEqual([...kit.objetos.keys()].sort());
+    expect(f.bucket.size).toBe(kit.objetos.size);
+  });
+});
+
+describe("lerArgumentos", () => {
+  it("le todas as flags reconhecidas (kit, loja, valores, workdir-supabase, aplicar e saida)", () => {
+    const argumentos = lerArgumentos([
+      "--kit",
+      "/tmp/kit",
+      "--loja",
+      "ikcous",
+      "--valores",
+      "/tmp/valores.json",
+      "--workdir-supabase",
+      "/tmp/workdir",
+      "--aplicar",
+      "--saida",
+      "/tmp/relatorio.json",
+    ]);
+    expect(argumentos).toEqual({
+      kit: "/tmp/kit",
+      loja: "ikcous",
+      valores: "/tmp/valores.json",
+      workdirSupabase: "/tmp/workdir",
+      aplicar: true,
+      desfazer: false,
+      saida: "/tmp/relatorio.json",
+      subidos: null,
+    });
+  });
+  it("--aplicar e --desfazer juntos -> { aplicar: true, desfazer: true }", () => {
+    // Mesma regra do bootstrap: --desfazer sozinho e' dry-run (nada gravado
+    // nem removido); --desfazer --aplicar executa de verdade. --saida nao e'
+    // exigido aqui porque o ramo e' desfazer, nao bootstrap.
+    const argumentos = lerArgumentos([
+      "--kit",
+      "/tmp/kit",
+      "--loja",
+      "ikcous",
+      "--valores",
+      "/tmp/valores.json",
+      "--workdir-supabase",
+      "/tmp/workdir",
+      "--aplicar",
+      "--desfazer",
+    ]);
+    expect(argumentos).toEqual({
+      kit: "/tmp/kit",
+      loja: "ikcous",
+      valores: "/tmp/valores.json",
+      workdirSupabase: "/tmp/workdir",
+      aplicar: true,
+      desfazer: true,
+      saida: null,
+      subidos: null,
+    });
+  });
+  it("flag desconhecida -> VALORES", () => {
+    expect(() =>
+      lerArgumentos([
+        "--kit",
+        "/tmp/kit",
+        "--loja",
+        "ikcous",
+        "--valores",
+        "/tmp/valores.json",
+        "--workdir-supabase",
+        "/tmp/workdir",
+        "--modo-turbo",
+      ]),
+    ).toThrowError(expect.objectContaining({ code: "VALORES" }));
+  });
+});
+
+describe("CODIGOS_DE_SAIDA", () => {
+  it("tem um codigo proprio (6) para PROVA, distinto de UPLOAD/CONFERENCIA (3)", () => {
+    // C3 da revisao A11: PROVA e' o unico erro em que o banco JA FOI
+    // GRAVADO; confundir com falha de upload (exit 3) faz quem le o exit
+    // code concluir "nada foi gravado" quando a identidade ja esta no ar.
+    expect(CODIGOS_DE_SAIDA.prova).toBe(6);
+    expect(CODIGOS_DE_SAIDA.prova).not.toBe(CODIGOS_DE_SAIDA.upload);
+  });
+});
+
+describe("semArquivo", () => {
+  it("remove a chave 'arquivo' (caminho absoluto com nome de usuario) em qualquer profundidade, sem tocar o resto", () => {
+    const objeto = {
+      revisao: "1",
+      objetos: {
+        header: {
+          arquivo:
+            "C:/Users/Gabriel/worktrees-ikcous/app-identidade-20260909/kit/objetos/abc/logo.svg",
+          path: "v1/abc/logo.svg",
+          sha256: "abc",
+          mime: "image/svg+xml",
+        },
+      },
+    };
+    const json = JSON.stringify(objeto, semArquivo, 2);
+    expect(json).not.toContain("Users");
+    expect(json).not.toContain("arquivo");
+    expect(JSON.parse(json)).toEqual({
+      revisao: "1",
+      objetos: {
+        header: {
+          path: "v1/abc/logo.svg",
+          sha256: "abc",
+          mime: "image/svg+xml",
+        },
+      },
+    });
   });
 });

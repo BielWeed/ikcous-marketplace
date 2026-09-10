@@ -476,14 +476,14 @@ Atencao ao `push` com `as never` acima: escreva de forma legivel (dois `if`), o 
 **Interfaces (Produces):**
 
 ```ts
-export interface Argumentos { readonly kit: string; readonly loja: Loja; readonly valores: string; readonly workdirSupabase: string; readonly aplicar: boolean; readonly desfazer: boolean; }
+export interface Argumentos { readonly kit: string; readonly loja: Loja; readonly valores: string; readonly workdirSupabase: string; readonly aplicar: boolean; readonly desfazer: boolean; readonly saida: string | null; readonly subidos: string | null; } // saida: onde o relatorio de um --aplicar de bootstrap e' gravado (obrigatorio nesse ramo); subidos: relatorio de um --aplicar anterior, de onde o lancador le .subidos para virar removerPaths de desfazer()
 export function lerArgumentos(argv: readonly string[]): Argumentos; // lanca BootstrapError("VALORES") em falta/duplicata/flag desconhecida
-export const CODIGOS_DE_SAIDA: Readonly<Record<"ok" | "recusa" | "upload" | "conflito" | "entrada" | "inesperado", number>> = { ok: 0, inesperado: 1, recusa: 2, upload: 3, conflito: 4, entrada: 5 };
+export const CODIGOS_DE_SAIDA: Readonly<Record<"ok" | "recusa" | "upload" | "conflito" | "entrada" | "inesperado" | "prova", number>> = { ok: 0, inesperado: 1, recusa: 2, upload: 3, conflito: 4, entrada: 5, prova: 6 }; // achado C3 da revisao A11: PROVA (banco JA gravado) nunca pode sair como UPLOAD/CONFERENCIA
 ```
 
-Uso: `node scripts/identidade-bootstrap.mjs --kit <dir> --loja ikcous|savy --valores <json> --workdir-supabase <dir linkado> [--aplicar] [--desfazer]`. Ambiente obrigatorio: `DATABASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (a hub injeta por lancador; a ferramenta nunca le `.env`).
+Uso: `node scripts/identidade-bootstrap.mjs --kit <dir> --loja ikcous|savy --valores <json> --workdir-supabase <dir linkado> [--desfazer [--subidos <arquivo>]] [--aplicar [--saida <arquivo>]]`. `--aplicar` e `--desfazer` sao independentes: a MESMA regra do bootstrap vale para o desfazer — sem `--aplicar` e' dry-run de verdade (nada gravado nem removido), inclusive no `--desfazer`; `--desfazer --aplicar` executa (grava NULL, remove so' o que `--subidos` apontar). Ambiente obrigatorio: `DATABASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (a hub injeta por lancador; a ferramenta nunca le `.env`).
 
-- [ ] **Step 1: Testes de `lerArgumentos`** (3 casos: completo; `--aplicar` e `--desfazer` juntos → VALORES; flag desconhecida → VALORES) — adicionar ao arquivo de teste, rodar, ver falhar, implementar com um `for` sobre `argv` e um `Map` de flags, rodar e ver passar.
+- [ ] **Step 1: Testes de `lerArgumentos`** (3 casos: completo; `--aplicar` e `--desfazer` juntos → `{ aplicar: true, desfazer: true }` — sao independentes, a mesma regra de dry-run do bootstrap vale para o desfazer; flag desconhecida → VALORES) — adicionar ao arquivo de teste, rodar, ver falhar, implementar com um `for` sobre `argv` e um `Map` de flags, rodar e ver passar.
 
 - [ ] **Step 2: Escrever o lancador**
 
@@ -580,7 +580,7 @@ async function principal() {
   } catch (error) {
     if (error instanceof BootstrapError) {
       console.error(`${error.code}: ${mascarar(error.message)}`);
-      return error.code === "CONFLITO" ? CODIGOS_DE_SAIDA.conflito : error.code === "ESTADO" ? CODIGOS_DE_SAIDA.recusa : ["UPLOAD", "CONFERENCIA", "PROVA"].includes(error.code) ? CODIGOS_DE_SAIDA.upload : CODIGOS_DE_SAIDA.entrada;
+      return error.code === "CONFLITO" ? CODIGOS_DE_SAIDA.conflito : error.code === "ESTADO" ? CODIGOS_DE_SAIDA.recusa : error.code === "PROVA" ? CODIGOS_DE_SAIDA.prova : ["UPLOAD", "CONFERENCIA"].includes(error.code) ? CODIGOS_DE_SAIDA.upload : CODIGOS_DE_SAIDA.entrada;
     }
     console.error("inesperado:", mascarar(error?.stack ?? error));
     return CODIGOS_DE_SAIDA.inesperado;

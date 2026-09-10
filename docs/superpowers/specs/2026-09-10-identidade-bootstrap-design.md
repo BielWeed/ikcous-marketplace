@@ -18,9 +18,10 @@ identidade do painel passa a funcionar para mudar tudo isso sem programador.
 Gravar identidade muda o que o cliente ve NO ATO (o front 1.26.0 no ar le nome, logo e cor do
 banco com precedencia). Conserto: (1) os bytes gravados sao os mesmos que a loja ja mostra
 (kit A6a preserva byte a byte); (2) cidade/UF ficam como o `socio`/Gabriel decidirem (NULL
-preserva a tela de hoje); (3) `--desfazer` devolve a linha a NULL pela mesma RPC e apaga os
-objetos — a loja volta a usar as reservas locais, como hoje. O bem maior — a loja no ar
-vendendo — nao muda de comportamento alem da fonte da imagem.
+preserva a tela de hoje); (3) `--desfazer` devolve a linha a NULL pela mesma RPC e apaga so' os
+objetos que `--subidos` apontar (o que esta ferramenta de fato subiu, nunca o kit inteiro) — a
+loja volta a usar as reservas locais, como hoje. O bem maior — a loja no ar vendendo — nao muda
+de comportamento alem da fonte da imagem.
 
 ## Escopo
 
@@ -48,14 +49,30 @@ Uma ferramenta de linha de comando no repositorio do app, `scripts/identidade-bo
    revisao e a identidade lidas no passo 3 (conflito = alguem gravou no meio: recusa).
 7. Prova final pela porta do consumidor: `readPublicStoreIdentity({supabaseUrl, publicKey:
    <anon>})` + `downloadIdentityAssets` — exatamente o que `scripts/identityBuildConfig.ts`
-   roda no build — tem de passar.
+   roda no build — tem de passar. No ramo bootstrap (`--aplicar` sem `--desfazer`), o `Relatorio`
+   (com `subidos`) e' impresso em stdout e, obrigatoriamente, gravado em `--saida <arquivo>`
+   (`flag: "wx"`, recusa se o arquivo ja existe) — e' esse arquivo que alimenta o `--subidos` do
+   passo 8, mais abaixo. Falha ao gravar `--saida` depois do banco ja gravado sai com o exit
+   PROVA (6), nunca "inesperado": o stdout ja imprimiu o relatorio antes da tentativa de
+   gravacao, entao a lista `subidos` nunca se perde so' porque o arquivo nao pode ser criado
+   (achado B1 da revisao A11).
 8. `--desfazer`: le a atual, exige que seja igual ao `desired` calculado do kit, grava a linha
    toda NULL pela mesma RPC (o `upsert_store_config` grava NULL explicito; a CHECK de logo
-   aceita `branding_assets` NULL), depois `supabase storage rm` dos objetos do kit. Ordem:
-   banco primeiro (a loja volta a reserva local), objetos depois.
+   aceita `branding_assets` NULL). Ordem: banco primeiro (a loja volta a reserva local), objetos
+   depois — mas so' remove os paths de `--subidos <relatorio de um --aplicar anterior>`
+   (`relatorio.subidos`, o mesmo arquivo que o passo 7 gravou em `--saida`), nunca o kit inteiro:
+   o achado ANTES DE CRESCER da revisao A11b mediu que o painel administrativo grava no MESMO
+   bucket e no MESMO path (`v1/<sha>/<nome>`), e `executar()` PULA objeto que ja estava la' —
+   `desfazer` remover o kit inteiro por padrao apagaria algo que esta ferramenta nunca subiu.
+   Sem `--subidos`, so' grava NULL e avisa; o `Relatorio` sempre lista em `deixados` os paths do
+   kit que ficaram no bucket.
 
 Sem `--aplicar` o comando e' `--dry-run` de verdade: roda 1, 2, 3 e imprime o plano (objetos a
-subir, valores a gravar, revisao atual) sem nenhuma escrita — nem arquivo local.
+subir, valores a gravar, revisao atual) sem nenhuma escrita — nem arquivo local. A MESMA regra
+vale para `--desfazer`: `--desfazer` sozinho e' dry-run (nada gravado nem removido, so' imprime
+o que seria feito); `--desfazer --aplicar` executa de verdade. `--aplicar` e `--desfazer` sao
+flags independentes, nunca mutuamente exclusivas — um comando destrutivo sem pre-visualizacao
+nao e' aceitavel numa loja viva.
 
 ## Fora do escopo
 
@@ -82,7 +99,9 @@ subir, valores a gravar, revisao atual) sem nenhuma escrita — nem arquivo loca
   `.ts` com o esbuild ja instalado (padrao de `validar.mjs` do kit), injeta as portas reais,
   imprime o relatorio e sai com codigo distinto por estado (0 aplicado/nada a fazer, 2
   recusa por estado do banco, 3 falha de upload/conferencia, 4 conflito de revisao, 5 sem
-  DATABASE_URL/kit, 1 erro inesperado). Nunca imprime URL de banco nem chave.
+  DATABASE_URL/kit, 6 prova pelo consumidor falhou DEPOIS do banco ja gravado (achado C3: nunca
+  confundir com upload/conferencia, que ainda nao gravaram nada), 1 erro inesperado). Nunca
+  imprime URL de banco nem chave.
 - Testes (`tests/front/identidade-bootstrap.test.ts`, vitest): kit sintetico em `mkdtemp` com
   PNG/SVG deterministicos (reusar `createIdentityBuildFixture` de
   `scripts/identityBuildFixture.ts`), portas falsas em memoria. Casos: kit integro passa

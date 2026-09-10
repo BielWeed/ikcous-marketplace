@@ -15,6 +15,12 @@ import {
 } from "../src/lib/storeIdentity";
 import type { BrandingAssets } from "../src/lib/storeIdentity";
 
+// Reexportado para o lancador (scripts/identidade-bootstrap.mjs) validar
+// VITE_SUPABASE_URL ANTES de chamar o nucleo, com uma mensagem que aponta
+// para o ambiente em vez de "VALORES" (ver ANOTADO da revisao A11:
+// montarIdentidade confunde URL malformada com valor de identidade ruim).
+export { normalizeSupabaseOrigin };
+
 export type Loja = "ikcous" | "savy";
 export interface ObjetoDoKit {
   readonly path: string;
@@ -239,6 +245,10 @@ export interface Relatorio {
   readonly acao: Plano["acao"] | "desfeito";
   readonly subidos: readonly string[];
   readonly pulados: readonly string[];
+  // So' populado por desfazer: os paths do KIT que NAO entraram em
+  // removerPaths e por isso continuam no bucket (orfao e' inofensivo, o path
+  // e' enderecado por conteudo). Sempre [] em executar.
+  readonly deixados: readonly string[];
   readonly revisao: string | null;
   readonly prova: "ok" | "nao-rodou";
   // false em todo dry-run (sem --aplicar) e quando plano.acao nao e' "bootstrap";
@@ -297,6 +307,7 @@ export async function executar(
       acao: plano.acao,
       subidos: [],
       pulados: [],
+      deixados: [],
       revisao: null,
       prova: "nao-rodou",
       aplicado: false,
@@ -318,6 +329,7 @@ export async function executar(
       acao: "bootstrap",
       subidos: candidatos.map((o) => o.path),
       pulados,
+      deixados: [],
       revisao: null,
       prova: "nao-rodou",
       aplicado: false,
@@ -361,6 +373,7 @@ export async function executar(
     acao: "bootstrap",
     subidos: candidatos.map((o) => o.path),
     pulados,
+    deixados: [],
     revisao: gravado.revision,
     prova: "ok",
     aplicado: true,
@@ -371,7 +384,13 @@ export async function desfazer(
   kit: Kit,
   valores: Valores,
   portas: Portas,
-  opcoes: { aplicar?: boolean } = {},
+  // removerPaths: lista EXPLICITA (fecha o achado ANTES DE CRESCER da
+  // revisao A11b: remover [...kit.objetos.keys()] apagava do bucket tambem
+  // os objetos que executar() PULOU por ja existirem -- por exemplo, o mesmo
+  // path v1/<sha>/<nome> gravado antes pelo painel administrativo, que grava
+  // no MESMO bucket com o MESMO endereco por conteudo). Sem a lista (ou
+  // vazia), desfazer grava NULL e NAO remove nada.
+  opcoes: { aplicar?: boolean; removerPaths?: readonly string[] } = {},
 ): Promise<Relatorio> {
   const desired = montarIdentidade(kit, valores, portas.supabaseUrl);
   const atual = await portas.banco.ler();
@@ -380,11 +399,18 @@ export async function desfazer(
       "ESTADO",
       "o banco nao tem exatamente a identidade deste kit; desfazer so' desfaz o que esta ferramenta gravou",
     );
+  const remover = opcoes.removerPaths ?? [];
+  const removerSet = new Set(remover);
+  // Informativo mesmo em dry-run (o mesmo padrao de executar(), que ja
+  // devolve subidos/pulados calculados mesmo sem --aplicar): os paths do kit
+  // que NAO estao na lista explicita e portanto ficariam orfaos no bucket.
+  const deixados = [...kit.objetos.keys()].filter((p) => !removerSet.has(p));
   if (!opcoes.aplicar)
     return {
       acao: "desfeito",
       subidos: [],
       pulados: [],
+      deixados,
       revisao: null,
       prova: "nao-rodou",
       aplicado: false,
@@ -397,13 +423,148 @@ export async function desfazer(
     atual.identity,
     LINHA_NULA,
   );
-  await portas.storage.remover([...kit.objetos.keys()]);
+  // Sem lista, nao chama a porta de remocao (falha fechada: objeto orfao no
+  // bucket e' inofensivo, path enderecado por conteudo; remover o kit
+  // inteiro por padrao e' o defeito que este parametro corrige).
+  if (remover.length > 0) await portas.storage.remover(remover);
   return {
     acao: "desfeito",
     subidos: [],
     pulados: [],
+    deixados,
     revisao: gravado.revision,
     prova: "nao-rodou",
     aplicado: true,
   };
+}
+
+export interface Argumentos {
+  readonly kit: string;
+  readonly loja: Loja;
+  readonly valores: string;
+  readonly workdirSupabase: string;
+  readonly aplicar: boolean;
+  readonly desfazer: boolean;
+  // --saida: caminho onde o lancador grava o relatorio JSON de um --aplicar
+  // de bootstrap (obrigatorio nesse caso). null quando nao informado.
+  readonly saida: string | null;
+  // --subidos: relatorio de um --aplicar anterior, de onde o lancador le
+  // `.subidos` para virar `removerPaths` de desfazer(). null = desfazer nao
+  // remove nada do bucket (so' grava NULL).
+  readonly subidos: string | null;
+}
+
+const FLAGS_COM_VALOR: ReadonlySet<string> = new Set([
+  "--kit",
+  "--loja",
+  "--valores",
+  "--workdir-supabase",
+  "--saida",
+  "--subidos",
+]);
+const FLAGS_BOOLEANAS: ReadonlySet<string> = new Set([
+  "--aplicar",
+  "--desfazer",
+]);
+const USO =
+  "uso: identidade-bootstrap.mjs --kit <dir> --loja ikcous|savy --valores <json> --workdir-supabase <dir> [--desfazer [--subidos <arquivo>]] [--aplicar [--saida <arquivo>]]\n" +
+  "sem --aplicar nada e' gravado nem removido (dry-run), inclusive no --desfazer";
+
+// --aplicar e --desfazer sao independentes, e a MESMA regra vale para os
+// dois: sem --aplicar e' dry-run (nada gravado nem removido); --desfazer
+// --aplicar executa de verdade (grava NULL, remove so' o que --subidos
+// apontar). Correcao da leitura anterior (ver
+// central/tarefa-A11c-desfazer-dry-run-relatorio.md): um comando destrutivo
+// sem pre-visualizacao nao e' aceitavel numa loja viva. --saida so' e'
+// exigido no ramo bootstrap (--aplicar sem --desfazer) -- --desfazer nao usa
+// --saida.
+export function lerArgumentos(argv: readonly string[]): Argumentos {
+  const valores = new Map<string, string>();
+  const booleanas = new Set<string>();
+  // Fila consumida por .shift(): evita indexacao por variavel (argv[i]), que
+  // o eslint-plugin-security marca como "object injection" mesmo quando o
+  // indice e' so' um contador do proprio laco.
+  const fila = [...argv];
+  for (let flag = fila.shift(); flag !== undefined; flag = fila.shift()) {
+    if (FLAGS_COM_VALOR.has(flag)) {
+      if (valores.has(flag))
+        throw new BootstrapError("VALORES", `flag repetida: ${flag}`);
+      const valor = fila.shift();
+      if (valor === undefined)
+        throw new BootstrapError("VALORES", `falta valor para ${flag}`);
+      valores.set(flag, valor);
+      continue;
+    }
+    if (FLAGS_BOOLEANAS.has(flag)) {
+      if (booleanas.has(flag))
+        throw new BootstrapError("VALORES", `flag repetida: ${flag}`);
+      booleanas.add(flag);
+      continue;
+    }
+    throw new BootstrapError("VALORES", `flag desconhecida: ${flag}`);
+  }
+  const kit = valores.get("--kit");
+  const lojaBruta = valores.get("--loja");
+  const arquivoValores = valores.get("--valores");
+  const workdirSupabase = valores.get("--workdir-supabase");
+  if (!kit || !lojaBruta || !arquivoValores || !workdirSupabase)
+    throw new BootstrapError("VALORES", USO);
+  if (!LOJAS.has(lojaBruta))
+    throw new BootstrapError("VALORES", `loja desconhecida: ${lojaBruta}`);
+  const aplicar = booleanas.has("--aplicar");
+  const desfazer = booleanas.has("--desfazer");
+  const saida = valores.get("--saida") ?? null;
+  // So' o ramo bootstrap (--aplicar sem --desfazer) precisa de --saida: e'
+  // onde o relatorio de um --aplicar e' gravado. --desfazer nao usa --saida.
+  if (aplicar && !desfazer && !saida)
+    throw new BootstrapError(
+      "VALORES",
+      "--aplicar exige --saida <arquivo> (onde o relatorio e' gravado)",
+    );
+  return {
+    kit,
+    // LOJAS.has(lojaBruta) ja' garantiu que lojaBruta e' "ikcous" ou "savy".
+    loja: lojaBruta === "ikcous" ? "ikcous" : "savy",
+    valores: arquivoValores,
+    workdirSupabase,
+    aplicar,
+    desfazer,
+    saida,
+    subidos: valores.get("--subidos") ?? null,
+  };
+}
+
+export const CODIGOS_DE_SAIDA: Readonly<
+  Record<
+    | "ok"
+    | "recusa"
+    | "upload"
+    | "conflito"
+    | "entrada"
+    | "inesperado"
+    | "prova",
+    number
+  >
+> = {
+  ok: 0,
+  inesperado: 1,
+  recusa: 2,
+  upload: 3,
+  conflito: 4,
+  entrada: 5,
+  // PROVA e' o unico erro em que o banco JA FOI GRAVADO e a loja ja mudou
+  // por realtime -- achado C3 da revisao A11: confundir isso com falha de
+  // upload/conferencia (exit 3) faz quem le o exit code concluir "nada foi
+  // gravado" quando a identidade ja esta no ar.
+  prova: 6,
+};
+
+// Replacer de JSON.stringify: nunca deixa a chave "arquivo" (caminho
+// ABSOLUTO de disco de um ObjetoDoKit, que carrega o nome de usuario do SO)
+// escapar para a saida do lancador, em qualquer profundidade do objeto --
+// mesmo que um campo novo volte a carregar ObjetoDoKit no relatorio no
+// futuro. Relatorio hoje so' carrega paths (string), entao isto e' defesa em
+// profundidade, nao a unica guarda.
+export function semArquivo(chave: string, valor: unknown): unknown {
+  return chave === "arquivo" ? undefined : valor;
 }
