@@ -1,7 +1,7 @@
 -- Identidade opcional da propria loja. Nenhuma linha existente e reescrita.
 -- Reaplicacao e objetos ja presentes sao recusados, nunca sobrescritos.
 -- A3/A5 devem conferir o project-ref: SQL valida a forma da URL, nao a infraestrutura.
-BEGIN;
+-- Sem BEGIN/COMMIT de proposito: o db-apply.cjs aplica cada arquivo numa transacao propria (psql: usar -1).
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 LOCK TABLE public.store_config IN ACCESS EXCLUSIVE MODE;
@@ -34,7 +34,7 @@ BEGIN
   END IF;
 END $preflight$;
 
-CREATE FUNCTION public.branding_a2_file_valid(asset jsonb, asset_role text)
+CREATE OR REPLACE FUNCTION public.branding_a2_file_valid(asset jsonb, asset_role text)
 RETURNS boolean LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE
 SET search_path = pg_catalog
 AS $function$
@@ -82,7 +82,7 @@ BEGIN
 END;
 $function$;
 
-CREATE FUNCTION public.branding_a2_assets_valid(assets jsonb)
+CREATE OR REPLACE FUNCTION public.branding_a2_assets_valid(assets jsonb)
 RETURNS boolean LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE
 SET search_path = pg_catalog
 AS $function$
@@ -106,7 +106,7 @@ BEGIN
 END;
 $function$;
 
-CREATE FUNCTION public.branding_a2_logo_valid(assets jsonb, logo text)
+CREATE OR REPLACE FUNCTION public.branding_a2_logo_valid(assets jsonb, logo text)
 RETURNS boolean LANGUAGE sql IMMUTABLE PARALLEL SAFE
 SET search_path = pg_catalog
 AS $function$
@@ -328,4 +328,3 @@ CREATE POLICY branding_a2_public_select ON storage.objects FOR SELECT TO public
 CREATE POLICY branding_a2_admin_insert ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (bucket_id='branding' AND (SELECT public.is_admin()));
 
-COMMIT;

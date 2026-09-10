@@ -1,7 +1,7 @@
 -- Cada ocorrencia da identidade recebe um numero privado, inclusive por escritores antigos.
 -- Linhas existentes conservam todos os valores e comecam na revisao zero, sem UPDATE.
 -- Reaplicacao recusa sem alterar estado; retorno operacional conserva a protecao.
-BEGIN;
+-- Sem BEGIN/COMMIT de proposito: o db-apply.cjs aplica cada arquivo numa transacao propria (psql: usar -1).
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 LOCK TABLE public.store_config IN ACCESS EXCLUSIVE MODE;
@@ -65,7 +65,7 @@ ALTER TABLE public.store_config
   ADD COLUMN identity_revision bigint NOT NULL DEFAULT 0,
   ADD CONSTRAINT store_config_identity_revision_a5_check CHECK (identity_revision >= 0);
 
-CREATE FUNCTION public.branding_a5_track_revision() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.branding_a5_track_revision() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $function$
@@ -90,7 +90,7 @@ REVOKE ALL ON FUNCTION public.branding_a5_track_revision() FROM PUBLIC,anon,auth
 CREATE TRIGGER branding_a5_track_revision BEFORE INSERT OR UPDATE ON public.store_config
   FOR EACH ROW EXECUTE FUNCTION public.branding_a5_track_revision();
 
-CREATE FUNCTION public.read_store_identity() RETURNS jsonb
+CREATE OR REPLACE FUNCTION public.read_store_identity() RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $function$
@@ -111,7 +111,7 @@ BEGIN
 END;
 $function$;
 
-CREATE FUNCTION public.save_store_identity(expected_revision text, expected_identity jsonb, desired_identity jsonb)
+CREATE OR REPLACE FUNCTION public.save_store_identity(expected_revision text, expected_identity jsonb, desired_identity jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET lock_timeout = '5s'
@@ -199,4 +199,3 @@ REVOKE ALL ON FUNCTION public.read_store_identity(),public.save_store_identity(t
   FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.read_store_identity(),public.save_store_identity(text,jsonb,jsonb)
   TO authenticated,service_role;
-COMMIT;

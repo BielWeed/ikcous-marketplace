@@ -190,6 +190,7 @@ async function main() {
       console.log("RED 42703: new public columns absent");
       continue;
     }
+    const emTransacao = (texto) => `BEGIN;\n${texto}\nCOMMIT;\n`;
     const migration = readFileSync(
       join(
         root,
@@ -218,7 +219,7 @@ async function main() {
       divergentDb,
       "SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM store_config s;",
     );
-    sql(divergentDb, migration, /A2_ALREADY_PRESENT_OR_DIVERGENT/);
+    sql(divergentDb, emTransacao(migration), /A2_ALREADY_PRESENT_OR_DIVERGENT/);
     assert.equal(sql(divergentDb, snapshot), divergentBefore);
     assert.equal(
       sql(
@@ -245,7 +246,7 @@ async function main() {
       "PASS divergent existing bucket refused atomically; bucket/schema/rows/policies unchanged",
     );
     // Inject a failure at the final DDL boundary. Transaction must restore every earlier step.
-    sql(db, migration.replace(/COMMIT;\s*$/, "SELECT 1/0;\nCOMMIT;"), /22012/);
+    sql(db, emTransacao(`${migration}\nSELECT 1/0;`), /22012/);
     assert.equal(sql(db, snapshot), before);
     assert.equal(
       sql(
@@ -268,7 +269,7 @@ async function main() {
     console.log(
       "PASS final-statement failure rolls back all DDL and preserves live RPC",
     );
-    sql(db, migration);
+    sql(db, emTransacao(migration));
     assert.equal(sql(db, snapshot), before);
     assert.equal(
       sql(
@@ -287,7 +288,7 @@ async function main() {
       db,
       "SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM store_config s;",
     );
-    sql(db, migration, /A2_ALREADY_PRESENT_OR_DIVERGENT/);
+    sql(db, emTransacao(migration), /A2_ALREADY_PRESENT_OR_DIVERGENT/);
     assert.equal(sql(db, snapshot), before);
     assert.equal(
       sql(db, "SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM store_config s;"),

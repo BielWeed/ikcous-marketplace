@@ -64,6 +64,7 @@ const read = (name) => readAllowed(join(__dirname, name));
 const a2 = (name) => readAllowed(join(root, "tests/identity-database", name));
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const lit = (value) => `'${String(value).replaceAll("'", "''")}'`;
+const emTransacao = (texto) => `BEGIN;\n${texto}\nCOMMIT;\n`;
 function guard(target) {
   assert([container, bootstrapContainer].includes(target));
   const inspected = spawnSync("docker", ["inspect", target], {
@@ -199,7 +200,7 @@ async function main() {
     );
     psql(db, dump.stdout);
     psql(db, a2("fixture.sql") + a2(`storage-${variant}.sql`));
-    psql(db, a2Migration);
+    psql(db, emTransacao(a2Migration));
     // Consume only the committed helper definitions, never the Storage probes.
     psql(db, `${a2("contract.sql").split("COMMIT;")[0]}COMMIT;`);
     assert.match(psql(db, "SHOW session_preload_libraries;"), /supautils/);
@@ -252,7 +253,7 @@ async function main() {
     );
     const before = psql(db, baseline);
     const originalRows = psql(db, rows);
-    psql(db, migration.replace(/COMMIT;\s*$/, "SELECT 1/0;\nCOMMIT;"), /22012/);
+    psql(db, emTransacao(`${migration}\nSELECT 1/0;`), /22012/);
     assert.equal(psql(db, baseline), before);
     assert.equal(psql(db, rows), originalRows);
     assert.equal(
@@ -265,20 +266,20 @@ async function main() {
     log("PASS injected final error rolls back all A5 DDL and rows");
     // A conflicting name and an unreviewed writer both fail before mutation.
     psql(db, "CREATE SEQUENCE public.branding_a5_revision_seq;");
-    psql(db, migration, /A5_ALREADY_PRESENT_OR_DIVERGENT/);
+    psql(db, emTransacao(migration), /A5_ALREADY_PRESENT_OR_DIVERGENT/);
     psql(db, "DROP SEQUENCE public.branding_a5_revision_seq;");
     psql(
       db,
       "CREATE FUNCTION public.a5_foreign_trigger() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$; CREATE TRIGGER unrelated BEFORE UPDATE ON public.store_config FOR EACH ROW EXECUTE FUNCTION public.a5_foreign_trigger();",
     );
-    psql(db, migration, /A5_BASELINE_DIVERGENT/);
+    psql(db, emTransacao(migration), /A5_BASELINE_DIVERGENT/);
     psql(
       db,
       "DROP TRIGGER unrelated ON public.store_config; DROP FUNCTION public.a5_foreign_trigger();",
     );
     // ALTER metadata, rather than guessing another function body, must be detected.
     psql(db, "ALTER FUNCTION public.is_admin() SET search_path=pg_catalog;");
-    psql(db, migration, /A5_BASELINE_DIVERGENT/);
+    psql(db, emTransacao(migration), /A5_BASELINE_DIVERGENT/);
     psql(
       db,
       `ALTER FUNCTION public.is_admin() SET search_path TO 'public', 'auth';`,
@@ -301,7 +302,7 @@ async function main() {
       );
       const withoutCheck = psql(db, baseline);
       log(`PROBE baseline missing ${constraint} must refuse A5`);
-      psql(db, migration, /A5_BASELINE_DIVERGENT/);
+      psql(db, emTransacao(migration), /A5_BASELINE_DIVERGENT/);
       assert.equal(psql(db, baseline), withoutCheck);
       assert.equal(psql(db, rows), originalRows);
       psql(
@@ -310,7 +311,7 @@ async function main() {
       );
     }
     assert.equal(psql(db, baseline), before);
-    psql(db, migration);
+    psql(db, emTransacao(migration));
     assert.equal(psql(db, baseline), before);
     assert.equal(psql(db, rows), originalRows);
     assert.equal(
@@ -371,7 +372,7 @@ async function main() {
       log,
     });
     const after = psql(db, rows);
-    psql(db, migration, /A5_ALREADY_PRESENT_OR_DIVERGENT/);
+    psql(db, emTransacao(migration), /A5_ALREADY_PRESENT_OR_DIVERGENT/);
     assert.equal(psql(db, rows), after);
     assert.equal(psql(db, baseline), before);
     const revision = psql(
@@ -413,8 +414,8 @@ async function main() {
     );
     psql(maxDb, dump.stdout);
     psql(maxDb, a2("fixture.sql") + a2(`storage-${variant}.sql`));
-    psql(maxDb, a2Migration);
-    psql(maxDb, migration);
+    psql(maxDb, emTransacao(a2Migration));
+    psql(maxDb, emTransacao(migration));
     psql(
       maxDb,
       `SELECT setval('public.branding_a5_revision_seq',9223372036854775806,true); UPDATE public.store_config SET primary_color=NULL WHERE id=1;`,
