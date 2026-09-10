@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { build } from "vite";
 import type { InlineConfig, Plugin, UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -811,5 +812,157 @@ describe("entrega preparada chega ao observador e é conferida", () => {
       fixture.run({ plugins: [flaky, ...fixture.options.plugins!.slice(1)] }),
     ).rejects.toThrow(/IDENTITY_DELIVERY_CHANGED/);
     await absent(fixture.marker);
+  });
+
+  // O brief da Task 5 (a7c-T5-brief.md, Step 1) descreve este describe como
+  // um bloco irmão "ao fim do arquivo", mas databaseTransport/databaseOrigin/
+  // databasePublishable/databaseAnon (linhas 523-560 acima) são locais ao
+  // corpo desta describe — não existem em escopo de módulo. Aninhar aqui
+  // (em vez de ao fim do arquivo) é o ajuste mínimo que preserva o reuso
+  // pedido sem duplicar o transporte fictício nem promover os `const` para
+  // o topo do arquivo (fora da lista de mudanças autorizadas).
+  describe("arquivos de hospedagem (Cloudflare Pages) na finalização", () => {
+    const nomes = [
+      "_routes.json",
+      "_redirects",
+      "_headers",
+      "404.html",
+      "_worker.js",
+    ];
+
+    it("fixture: os cinco existem, fora do precache, 404 igual ao index, worker sem chave", async () => {
+      const t = await setup([], true);
+      await t.run();
+      const saida = path.join(t.root, "dist-test");
+      for (const nome of nomes) await fs.access(path.join(saida, nome));
+      const sw = await fs.readFile(path.join(saida, "sw.js"), "utf8");
+      for (const nome of nomes) expect(sw).not.toContain(nome);
+      expect(sw).toContain("index.html"); // o precache continua vivo
+      const indice = await fs.readFile(path.join(saida, "index.html"));
+      const erro = await fs.readFile(path.join(saida, "404.html"));
+      expect(erro.equals(indice)).toBe(true);
+      const redirecionamentos = await fs.readFile(
+        path.join(saida, "_redirects"),
+        "utf8",
+      );
+      expect(redirecionamentos.trimEnd().split("\n")).toHaveLength(108);
+      expect(
+        JSON.parse(await fs.readFile(path.join(saida, "_routes.json"), "utf8")),
+      ).toEqual({
+        version: 1,
+        include: ["/product-detail"],
+        exclude: [],
+      });
+      const cabecalhos = await fs.readFile(
+        path.join(saida, "_headers"),
+        "utf8",
+      );
+      expect(cabecalhos).toContain(
+        "/assets/*\n  Cache-Control: public, max-age=31536000, immutable",
+      );
+      const worker = await fs.readFile(path.join(saida, "_worker.js"), "utf8");
+      expect(worker).toContain('"kind":"none"');
+      expect(worker).toContain("https://loja-ensaio.invalid");
+      expect(worker).not.toContain("sb_publishable_");
+      expect(worker).toMatch(/export\s*\{[^}]*as default\s*\}|export default/);
+      // A-2/A-3 da revisão (tarefa-A7c-r3-revisao.md): a troca define->banner
+      // tira a única garantia automática de que o arquivo é um módulo
+      // carregável, e nenhum teste guardava o CSP/X-Frame-Options chegando
+      // ao worker. Importa o _worker.js de verdade e chama fetch().
+      const workerModulo = (await import(
+        pathToFileURL(path.join(saida, "_worker.js")).href
+      )) as { default: { fetch: unknown } };
+      expect(typeof workerModulo.default.fetch).toBe("function");
+      const respostaDoWorker = await (
+        workerModulo.default as {
+          fetch: (request: Request, env: unknown) => Promise<Response>;
+        }
+      ).fetch(
+        new Request(
+          "https://loja-ensaio.invalid/product-detail?id=nao-e-uuid",
+          { headers: { "user-agent": "WhatsApp/2.0" } },
+        ),
+        {
+          ASSETS: {
+            fetch: async () =>
+              new Response("<html></html>", {
+                status: 200,
+                headers: { "content-type": "text/html" },
+              }),
+          },
+        },
+      );
+      expect(respostaDoWorker.headers.get("x-frame-options")).toBe("DENY");
+      expect(respostaDoWorker.headers.get("content-security-policy")).toContain(
+        "default-src",
+      );
+      const marcador = JSON.parse(await fs.readFile(t.marker, "utf8"));
+      expect(Object.keys(marcador).sort()).toEqual([
+        "codeSha",
+        "codeVersion",
+        "identityRevision",
+        "promotable",
+        "source",
+        "version",
+      ]);
+    }, 60000);
+
+    it("database: o worker embute a origem e a chave publishable classificada", async () => {
+      vi.stubEnv("IKCOUS_IDENTITY_MODE", undefined);
+      await databaseTransport();
+      const t = await setup([], true, {
+        outDir: "dist",
+        env: {
+          IKCOUS_IDENTITY_MODE: undefined,
+          VITE_APP_URL: "https://loja-exclusiva.invalid",
+          VITE_SUPABASE_URL: databaseOrigin,
+          VITE_SUPABASE_PUBLISHABLE_KEY: databasePublishable,
+          VITE_SUPABASE_ANON_KEY: databaseAnon,
+        },
+        resolvePublicAddress: () => "https://loja-exclusiva.invalid",
+      });
+      await t.run();
+      const worker = await fs.readFile(
+        path.join(t.root, "dist", "_worker.js"),
+        "utf8",
+      );
+      expect(worker).toContain(`"origin":"${databaseOrigin}"`);
+      expect(worker).toContain(`"key":"${databasePublishable}"`);
+      expect(worker).toContain('"keyClass":"publishable"');
+      expect(worker).not.toContain(databaseAnon);
+      expect(worker).toContain('"publicUrl":"https://loja-exclusiva.invalid"');
+      const versao = await fs.readFile(
+        path.join(t.root, "dist", "version.json"),
+        "utf8",
+      );
+      expect(versao).not.toContain(databasePublishable);
+    }, 60000);
+
+    it("falha ao gravar um arquivo de hospedagem deixa a saída sem version.json", async () => {
+      const t = await setup([], true);
+      const original = fs.writeFile;
+      const espiao = vi
+        .spyOn(fs, "writeFile")
+        .mockImplementation(async (destino, ...resto) => {
+          if (String(destino).endsWith("_headers"))
+            throw new Error("disco cheio");
+          return original.call(fs, destino, ...resto);
+        });
+      try {
+        await expect(t.run()).rejects.toThrow(/IDENTITY_HOSTING/);
+      } finally {
+        espiao.mockRestore();
+      }
+      await absent(t.marker);
+      await fs.access(path.join(t.root, "dist-test", "_routes.json")); // o que veio antes ficou
+    }, 60000);
+
+    it("arquivo de hospedagem pré-existente na saída reprova (wx) em vez de sobrescrever", async () => {
+      const t = await setup([], true);
+      await fs.mkdir(path.join(t.root, "dist-test"), { recursive: true });
+      await fs.writeFile(path.join(t.root, "dist-test", "_worker.js"), "velho");
+      await expect(t.run()).rejects.toThrow(/IDENTITY_HOSTING/);
+      await absent(t.marker);
+    }, 60000);
   });
 });

@@ -5,6 +5,9 @@
 // e hospedagem-decisao-rotas-preservadas.md; ensaio aprovado: A7a3.
 
 import { readFileSync } from "node:fs";
+// Default (não nomeado): vi.spyOn(fs, "writeFile") do teste de finalização só
+// intercepta se este módulo e buildStore.mjs importarem o MESMO objeto default.
+import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -169,4 +172,80 @@ export function hostsDeImagem(vercel) {
       .filter((fonte) => fonte.startsWith("https://"))
       .map((fonte) => fonte.slice("https://".length)),
   );
+}
+
+const ENTRADA_DO_WORKER = fileURLToPath(
+  new URL("../src/hospedagem/worker.ts", import.meta.url),
+);
+
+export function configDoWorker(delivery, vercel) {
+  const { snapshot, connection } = delivery;
+  const conexao =
+    connection.kind === "database"
+      ? {
+          kind: "database",
+          origin: connection.origin,
+          key: connection.key,
+          keyClass: connection.keyClass,
+        }
+      : { kind: "none" }; // fixture-none E fixture-synthetic: nunca sair para a rede
+  return Object.freeze({
+    versao: 1,
+    publicUrl: snapshot.publicUrl,
+    storeName: snapshot.identity.storeName,
+    conexao,
+    hostsDeImagem: hostsDeImagem(vercel),
+    cabecalhos: cabecalhosDeFuncao(vercel),
+    deliveryVersion: snapshot.deliveryVersion,
+  });
+}
+
+// esbuild já vem com o Vite; compila TS e embute a config como constante JSON.
+// `define` foi tentado primeiro (Step 4 do brief), mas o esbuild reformata o
+// valor como literal JS ao reimprimir (chaves sem aspas, espaço após ":"),
+// e os testes de finalização confrontam o JSON exato (`"kind":"none"`,
+// `"origin":"..."`) — por isso `banner` com o JSON textual intacto.
+export async function compilarWorker(config) {
+  const { build } = await import("esbuild");
+  const resultado = await build({
+    entryPoints: [ENTRADA_DO_WORKER],
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    logLevel: "silent",
+    banner: {
+      js: `// IKCOUS hospedagem ${config.deliveryVersion}\nconst __IKCOUS_HOSPEDAGEM__ = ${JSON.stringify(config)};`,
+    },
+  });
+  if (resultado.errors.length > 0 || resultado.outputFiles?.length !== 1)
+    throw new Error("HOSTING_WORKER_BUILD");
+  return resultado.outputFiles[0].text;
+}
+
+// Depois do precache (closeBundle do PWA já fechou) e ANTES do version.json:
+// qualquer falha aqui deixa a saída sem marcador. Só escreve no outDir.
+export async function gerarHospedagem(outDir, delivery) {
+  const vercel = lerVercel();
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- outDir já validado por localDirectory() (buildStore.mjs:305); "index.html" é literal fixo.
+  const indice = await fs.readFile(path.join(outDir, "index.html"));
+  const config = configDoWorker(delivery, vercel);
+  const arquivos = [
+    ["_routes.json", routes()],
+    ["_redirects", redirects()],
+    ["_headers", headers(vercel)],
+    ["404.html", indice],
+    ["_worker.js", await compilarWorker(config)],
+  ];
+  for (const [nome, conteudo] of arquivos) {
+    const destino = path.join(outDir, nome);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- outDir já validado por localDirectory() (buildStore.mjs:305); "nome" vem dos cinco literais fechados acima.
+    await fs.writeFile(destino, conteudo, { flag: "wx" });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- mesmo destino recém-gravado nesta linha; releitura de conferência, não entrada externa.
+    const relido = await fs.readFile(destino);
+    if (!relido.equals(Buffer.from(conteudo)))
+      throw new Error(`HOSTING_WRITE_MISMATCH ${nome}`);
+  }
+  return Object.freeze(arquivos.map(([nome]) => nome));
 }

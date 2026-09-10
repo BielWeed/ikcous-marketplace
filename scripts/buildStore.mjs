@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
+import { gerarHospedagem } from "./hospedagem.mjs";
 
 const failure = (code) => new Error(`IDENTITY_${code}`);
 const object = (value) =>
@@ -380,6 +381,15 @@ export async function buildStore(options = {}) {
   )
     throw failure("OUTPUT");
   if (await statOrMissing(marker)) throw failure("MARKER_UNEXPECTED");
+  // Arquivos da hospedagem (Pages) entram depois do precache — o closeBundle
+  // do PWA já rodou dentro de build() — e antes do marcador: falha aqui = saída
+  // sem version.json, como qualquer falha tardia.
+  try {
+    await gerarHospedagem(output, capturedDelivery);
+  } catch (error) {
+    const razao = error instanceof Error ? error.message : String(error);
+    throw failure(`HOSTING ${razao}`);
+  }
   const temporary = path.join(output, `version.json.${randomUUID()}.tmp`);
   // A failed write/rename propagates; only our exclusive temporary may remain.
   await fs.writeFile(temporary, JSON.stringify(captured, null, 2), {
