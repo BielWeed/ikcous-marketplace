@@ -12,10 +12,14 @@ let current = {
   dirty: false,
 };
 const listeners = new Set<() => void>();
-function publish() { for (const listener of listeners) listener(); }
+function publish() {
+  for (const listener of listeners) listener();
+}
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return () => {
+    listeners.delete(listener);
+  };
 }
 export function setFixtureContext(patch: Partial<typeof current>) {
   current = { ...current, ...patch };
@@ -24,7 +28,9 @@ export function setFixtureContext(patch: Partial<typeof current>) {
 export function useFixtureContext() {
   return useSyncExternalStore(subscribe, () => current);
 }
-export function useAuth() { return useFixtureContext(); }
+export function useAuth() {
+  return useFixtureContext();
+}
 const refresh = async () => {
   setFixtureContext({ refreshes: current.refreshes + 1 });
 };
