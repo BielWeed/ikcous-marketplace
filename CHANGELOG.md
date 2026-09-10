@@ -18,11 +18,14 @@ antes do corte.
 ### Para quem COMPRA (vitrine)
 
 - **A aba do navegador, a prévia de link (WhatsApp, Google) e os ícones do
-  aplicativo usam a identidade da loja** (PR #522). O título passa a ser o
-  nome da loja, com cidade e estado quando cadastrados, e a descrição passa a
-  ser "Produtos e novidades de <nome da loja>". Antes o texto era o genérico
-  "IKCOUS Marketplace". O cabeçalho, as telas e as notificações acompanham a
-  logo gravada no banco.
+  aplicativo usam a identidade gravada no banco da loja** (PR #522). Antes o
+  título era "<nome da loja> | Monte Carmelo, MG", com a cidade vinda de um
+  valor fixo do build antigo; agora o título é só o nome da loja, porque
+  cidade e UF ficam em branco na identidade (decisão do dono em 10/09/2026:
+  preencher a cidade hoje ligaria o "Aviso de Região" do checkout, que não
+  olha a cobertura de frete). A descrição muda de "<nome> - O seu shopping
+  local completo..." para "Produtos e novidades de <nome da loja>". O
+  cabeçalho, as telas e as notificações acompanham a logo gravada no banco.
 - **Instalação e atualização do aplicativo verificadas com as marcas reais das
   duas lojas** numa bancada de navegador, inclusive a primeira abertura sem
   rede.
@@ -50,7 +53,9 @@ antes do corte.
   `read_store_identity`/`save_store_identity` e as colunas novas de
   `store_config` vivas. A identidade de cada loja foi gravada antes desta
   release (principal "IKCOUS - imports", Savy "Savy"; cidade e estado em
-  branco nas duas, por decisão do dono).
+  branco nas duas, por decisão do dono, mantida em 10/09/2026 depois da
+  revisão: o "Aviso de Região" do checkout liga com qualquer cidade, sem
+  olhar a cobertura de frete — issue aberta no Core).
 - **Nenhuma função de servidor muda nesta versão.**
 - **O build de produção lê a identidade no banco com a chave pública**
   (`VITE_SUPABASE_PUBLISHABLE_KEY`, presente em produção nas duas lojas, com a
