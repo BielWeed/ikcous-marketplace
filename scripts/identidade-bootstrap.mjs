@@ -137,9 +137,14 @@ export const quotarComando = (partes) =>
 // (instalacao padrao do Node no Windows poe os dois lado a lado) e cai para
 // o literal "npx" (resolvido pelo PATH) fora do Windows ou se o arquivo nao
 // estiver la'.
+// `path.win32` de proposito, nao `path`: a decisao e' sobre a PLATAFORMA
+// recebida, nao sobre onde este codigo roda. No Windows `path` JA e'
+// `path.win32` (mesmo resultado); no Linux do CI, `path.join` montaria
+// `C:\Program Files\nodejs/npx.cmd` e o teste que simula win32 nunca
+// reconheceria o caminho (2 testes vermelhos no run 34505922201, 10/09/2026).
 export function executavelNpx({ plataforma, execPath, existe }) {
   if (plataforma !== "win32") return "npx";
-  const candidato = path.join(path.dirname(execPath), "npx.cmd");
+  const candidato = path.win32.join(path.win32.dirname(execPath), "npx.cmd");
   return existe(candidato) ? candidato : "npx";
 }
 
