@@ -6,6 +6,71 @@ versionamento por [SemVer](https://semver.org/lang/pt-BR/).
 Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado em 30/07/2026
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
+## [1.27.0] - 2026-09-10
+
+Cada loja passa a ter identidade própria vinda do banco (nome, cidade e estado,
+cores, logo, ícones e imagem de compartilhamento), e o aplicativo é gerado a
+partir dessa identidade validada, sem cópia de código por cliente. O lojista
+edita a identidade no painel. Esta versão reúne o PR #522 (28 commits de
+conteúdo). As duas migrations que ele traz já estavam aplicadas nas duas lojas
+antes do corte.
+
+### Para quem COMPRA (vitrine)
+
+- **A aba do navegador, a prévia de link (WhatsApp, Google) e os ícones do
+  aplicativo usam a identidade gravada no banco da loja** (PR #522). Antes o
+  título era "<nome da loja> | Monte Carmelo, MG", com a cidade vinda de um
+  valor fixo do build antigo; agora o título é só o nome da loja, porque
+  cidade e UF ficam em branco na identidade (decisão do dono em 10/09/2026:
+  preencher a cidade hoje ligaria o "Aviso de Região" do checkout, que não
+  olha a cobertura de frete). A descrição muda de "<nome> - O seu shopping
+  local completo..." para "Produtos e novidades de <nome da loja>". O
+  cabeçalho, as telas e as notificações acompanham a logo gravada no banco.
+- **Instalação e atualização do aplicativo verificadas com as marcas reais das
+  duas lojas** numa bancada de navegador, inclusive a primeira abertura sem
+  rede.
+
+### Para quem VENDE (painel admin)
+
+- **Editar a identidade da loja no painel** (PR #522): nome, cidade e estado,
+  cores, logo, ícones e imagem de compartilhamento, com confirmação, rascunho
+  preservado, envio com retomada e originais guardados. O editor fica fora do
+  pacote instalado, então não pesa na instalação do aplicativo.
+
+### Para quem DESENVOLVE
+
+- **Configuração pública num contrato único** (PR #522): o endereço do
+  Supabase e a chave pública classificada são capturados uma vez no build e
+  conferidos antes do `version.json`; quando a chave publishable existe, a
+  legada não vai para o pacote.
+- **Dívida de Biome da bancada A6 zerada**; a catraca volta a 19 erros.
+
+### Para quem OPERA (banco, servidor, lojas clonadas)
+
+- **Banco: as migrations `20261121000000` (identidade e arquivos da loja) e
+  `20261122000000` (gravação concorrente da identidade) já estão aplicadas nas
+  duas lojas.** Ledger conferido em 10/09/2026 nos dois bancos, com as funções
+  `read_store_identity`/`save_store_identity` e as colunas novas de
+  `store_config` vivas. A identidade de cada loja foi gravada antes desta
+  release (principal "IKCOUS - imports", Savy "Savy"; cidade e estado em
+  branco nas duas, por decisão do dono, mantida em 10/09/2026 depois da
+  revisão: o "Aviso de Região" do checkout liga com qualquer cidade, sem
+  olhar a cobertura de frete — issue aberta no Core).
+- **Nenhuma função de servidor muda nesta versão.**
+- **O build de produção lê a identidade no banco com a chave pública**
+  (`VITE_SUPABASE_PUBLISHABLE_KEY`, presente em produção nas duas lojas, com a
+  legada como reserva). Se a leitura falhar, o build falha e a versão anterior
+  continua no ar.
+- **SQL 20261111/12 continuam fora**, pendentes do dono, nas duas lojas; a
+  `20261032000000` consta só no ledger da Savy. Nenhuma delas é dependência
+  desta versão.
+- **Versões públicas medidas antes da preparação:** principal e Savy em
+  `1.26.0-sha.9ec593a`.
+- **Sincronização da Savy:** a ferramenta `sincronizar-loja-cliente.mjs` foi
+  aposentada em 09/09/2026 pelo corte da gestão de lojas, sem substituta que
+  atualize loja. Esta release usa o motor original preservado por aquele corte
+  (hash `2743a718…`), pelo runner revisado da 1.26, sem restaurá-lo no lugar.
+
 
 ## [1.26.0] - 2026-09-09
 
