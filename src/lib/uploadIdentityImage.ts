@@ -12,7 +12,11 @@ import type { IdentityUploadResume } from "./identityUploadResume";
 import type { PreparedIdentityImage } from "./prepareIdentityImage";
 import { verifyPublicIdentityAsset } from "./publicStoreIdentity";
 import type { VerifiedPublicIdentityAsset } from "./publicStoreIdentity";
-import { normalizeSupabaseOrigin, parseIdentityAsset } from "./storeIdentity";
+import {
+  IdentityError,
+  normalizeSupabaseOrigin,
+  parseIdentityAsset,
+} from "./storeIdentity";
 
 export type IdentityImageUploadCode =
   | "IDENTITY_UPLOAD_INVALID"
@@ -331,8 +335,26 @@ function runUpload(
         });
         check();
         resolve(result);
-      } catch {
-        if (active()) stop("IDENTITY_UPLOAD_UNCONFIRMED");
+      } catch (error) {
+        // The internal deadline above is floored, so it can expire a
+        // fraction of a millisecond before the outer one; on a slow runner
+        // that race resolves in the internal timer's favor. Its own
+        // TIMEOUT/CANCELED is still a real terminal cause and must not be
+        // downgraded to UNCONFIRMED just because the outer check() below
+        // has not yet observed the same deadline or signal.
+        if (
+          error instanceof IdentityError &&
+          error.code === "IDENTITY_TIMEOUT"
+        ) {
+          stop("IDENTITY_UPLOAD_TIMEOUT");
+        } else if (
+          error instanceof IdentityError &&
+          error.code === "IDENTITY_CANCELED"
+        ) {
+          stop("IDENTITY_UPLOAD_CANCELED");
+        } else if (active()) {
+          stop("IDENTITY_UPLOAD_UNCONFIRMED");
+        }
       }
     };
     void confirm().catch(() => stop("IDENTITY_UPLOAD_UNCONFIRMED"));

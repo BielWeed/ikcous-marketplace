@@ -62,10 +62,19 @@ vi.mock("tus-js-client", () => ({
 }));
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
   control.instances.length = 0;
   control.start = undefined;
   control.find = undefined;
 });
+// Da tempo real ao event loop (crypto.subtle.digest, import dinamico,
+// createIdentityUploadResume) sem mexer no relogio falso do vi.useFakeTimers.
+async function drain(turns = 50) {
+  for (let i = 0; i < turns; i++) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await vi.advanceTimersByTimeAsync(0);
+  }
+}
 it("onSuccess nao confirma objeto publico diferente de mesmo tamanho", async () => {
   const publicBytes = bytes.slice();
   publicBytes[9] = 3;
@@ -448,6 +457,40 @@ it.each(["cancel", "timeout"])(
     wait.resolve(response());
   },
 );
+it("GET publico pendente respeita timeout mesmo quando o prazo interno vence antes do externo", async () => {
+  // O confirm() calcula o prazo do verificador publico com
+  // Math.floor(deadline - performance.now()); qualquer fracao de ms ja
+  // decorrida faz esse prazo interno vencer ANTES do externo. Isto reproduz
+  // essa janela sem depender da sorte do agendador real (o defeito medido no
+  // CI): o relogio e falso, entao o prazo interno e o externo vencem em
+  // instantes determinados por este teste, nao pelo runner.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  control.start = () => {};
+  const wait = deferred<Response>();
+  const fetchImpl = vi.fn(() => wait.promise);
+  const pending = uploadIdentityImage(
+    image,
+    options({ fetchImpl, timeoutMs: 100 }),
+  );
+  void pending.catch(() => {});
+  await drain();
+  expect(control.instances).toHaveLength(1);
+  // 30.4ms de "trabalho" antes do SDK chamar onSuccess: o prazo interno do
+  // confirm() vira Math.floor(100 - 30.4) = 69, vencendo em 30.4+69=99.4,
+  // ou seja, 0.6ms antes do prazo externo de 100.
+  await vi.advanceTimersByTimeAsync(30.4);
+  success(control.instances[0]!);
+  await drain();
+  expect(fetchImpl).toHaveBeenCalledOnce();
+  // O GET publico nunca responde (wait.promise fica pendente): so o timer
+  // interno do verificador (69ms) tem chance de vencer aqui; o externo
+  // (100ms, agendado desde o inicio) ainda nao chegou.
+  await vi.advanceTimersByTimeAsync(69);
+  await expect(pending).rejects.toMatchObject({
+    code: "IDENTITY_UPLOAD_TIMEOUT",
+  });
+  wait.resolve(response());
+});
 it.each(["cancel", "changed-user"])(
   "autorizacao pendente %s nao envia request tardio",
   async (mode) => {
