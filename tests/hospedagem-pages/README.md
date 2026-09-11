@@ -64,7 +64,9 @@ isolados dentro da pasta de evidência da execução; `WRANGLER_SEND_METRICS`,
   `/product-detail/` — medido pelo cabeçalho `x-ikcous-og`, que o worker
   real emite nessas duas formas. A NÃO-invocação nas demais rotas
   (estáticas, ausentes, desconhecidas, raiz) NÃO é medida por este ensaio
-  (ver "O que NÃO prova"): ela está medida no ensaio A7a3, com uma
+  (ver "O que NÃO prova"; o carimbo do ramo de passagem já existiria para
+  medir isso, mas nenhuma conferência abaixo o usa para tanto): ela está
+  medida no ensaio A7a3, com uma
   testemunha que carimba TODA invocação
   (`recuperacao-ikcous/20260909-ecossistema/controle/pages-rotas-explicitas-20260909-a7a3-36f2/`,
   fixture `witness`: 307 respostas em 119 caminhos, carimbo em 13, só nas
@@ -89,14 +91,18 @@ conferência para fechar verde.
 
 ## O que NÃO prova
 
-A não-invocação da função fora de `/product-detail` e `/product-detail/`:
-o ramo de passagem do worker (`src/hospedagem/compartilhamento.ts`,
-`if (!CAMINHOS_DE_PRODUTO.has(url.pathname)) return env.ASSETS.fetch(request)`)
-devolve a resposta SEM carimbo, então "invocada e passou" e "nunca
-invocada" produzem a mesma resposta — a ausência de `x-ikcous-og` numa
-rota não prova que a função não rodou. Quem prova isso é a testemunha do
-A7a3 citada acima; este ensaio só prova a invocação nas duas formas de
-produto e o comportamento observável das demais rotas.
+A não-invocação da função fora de `/product-detail` e `/product-detail/`
+continua sem ser MEDIDA por este ensaio (nenhuma conferência abaixo asserta
+isso), mesmo que hoje ela já pudesse ser: desde a correção da issue #530, o
+ramo de passagem do worker (`src/hospedagem/compartilhamento.ts`,
+`if (!CAMINHOS_DE_PRODUTO.has(url.pathname))`) devolve a resposta COM
+`x-ikcous-og: passa`, então "invocada e passou" e "nunca invocada" já não
+produzem mais a mesma resposta — a ausência de `x-ikcous-og` numa rota
+voltaria a ser evidência de não-invocação se este ensaio a conferisse. Quem
+prova isso hoje é a testemunha do A7a3 citada acima; este ensaio só prova a
+invocação nas duas formas de produto e o comportamento observável das
+demais rotas (que, por `_routes.json` incluir só `/product-detail`, nunca
+chegam a acionar a função de qualquer forma).
 
 Nada aqui fala com CDN, conta Cloudflare, banco de dados real ou o
 processo de atualização do PWA já instalado no aparelho de alguém. O

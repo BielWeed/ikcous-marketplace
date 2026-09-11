@@ -65,17 +65,18 @@ export function imagemPermitida(
   url: string,
   config: HospedagemConfig,
 ): boolean {
-  let candidata: URL;
+  // scripts/buildStore.mjs valida publicUrl antes de gerar o worker; o try
+  // aqui é só defesa contra um publicUrl inválido chegar mesmo assim.
   try {
-    candidata = new URL(url);
+    const candidata = new URL(url);
+    if (candidata.protocol !== "https:") return false;
+    return (
+      candidata.host === new URL(config.publicUrl).host ||
+      hostPermitido(candidata.host, config.hostsDeImagem)
+    );
   } catch {
     return false;
   }
-  if (candidata.protocol !== "https:") return false;
-  return (
-    candidata.host === new URL(config.publicUrl).host ||
-    hostPermitido(candidata.host, config.hostsDeImagem)
-  );
 }
 
 export function montarConsulta(origin: string, id: string): string {
@@ -279,8 +280,20 @@ export function criarWorker(
       const url = new URL(request.url);
       // _routes.json já restringe a função; conferir de novo custa nada e
       // protege contra uma regra de rota mais larga no futuro.
-      if (!CAMINHOS_DE_PRODUTO.has(url.pathname))
-        return env.ASSETS.fetch(request);
+      if (!CAMINHOS_DE_PRODUTO.has(url.pathname)) {
+        const origem = await env.ASSETS.fetch(request);
+        // origem.headers pode ser imutável (Response de fetch): reconstrói a
+        // resposta para poder carimbar, igual ao pass-through de navegador.
+        const cabecalhos = comCarimbo(
+          new Headers(origem.headers),
+          config,
+          "passa",
+        );
+        return new Response(origem.body, {
+          status: origem.status,
+          headers: cabecalhos,
+        });
+      }
       const robo = ehRobo(request.headers.get("user-agent"));
       if (!robo) return documentoDaLoja(request, env, config, "passa");
       const id = url.searchParams.get("id");
