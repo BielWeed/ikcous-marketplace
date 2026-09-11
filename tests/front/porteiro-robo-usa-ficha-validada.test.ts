@@ -401,4 +401,67 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     const html = await resp.text();
     expect(html).toContain("Produto Com Ponto Final");
   });
+
+  it("robô em alias *.vercel.app em produção -> 308 para o dominio_publico, nunca HTML de produto, nunca passthrough (brief 20260911-brief-aliases-vercel-encaminham)", async () => {
+    const origemProjeto = "https://projetofffffffffffff.supabase.co";
+    const produtoQueNuncaDeveAparecer = {
+      nome: "Produto Que Nao Deveria Aparecer",
+      descricao: "desc",
+      preco_venda: 42,
+      imagem_url: "https://cdn.exemplo.com/f.jpg",
+      imagem_urls: null,
+    };
+    const fetchDuble: typeof fetch = (async (input) => {
+      const url = requestUrl(input);
+      if (url.pathname === "/rest/v1/v_store_config") {
+        if (url.searchParams.get("select") === "dominio_publico") {
+          return new Response(
+            JSON.stringify([
+              { dominio_publico: "ickous-marketplace.vercel.app" },
+            ]),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify([identidadeFixture("Loja Principal", origemProjeto)]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.pathname === "/rest/v1/vw_produtos_public")
+        return new Response(JSON.stringify([produtoQueNuncaDeveAparecer]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      throw new Error(`URL não mapeada no dublê: ${url.toString()}`);
+    }) as typeof fetch;
+
+    const resp = await comProcessEnv(
+      {
+        ...ENV_LIMPO,
+        VITE_SUPABASE_URL: origemProjeto,
+        VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_projeto",
+        VERCEL_ENV: "production",
+      },
+      () =>
+        comFetch(fetchDuble, () =>
+          middleware(
+            new Request(
+              "https://ickous-marketplace-git-main-abc.vercel.app/product-detail?id=9",
+              { headers: { "user-agent": UA_ROBO } },
+            ),
+          ),
+        ),
+    );
+    expect(resp.status).toBe(308);
+    expect(resp.headers.get("location")).toBe(
+      "https://ickous-marketplace.vercel.app/product-detail?id=9",
+    );
+    expect(resp.headers.get("cache-control")).toBe("no-store");
+    expect(resp.headers.get("x-ikcous-porteiro")).toBe("encaminha");
+    expect(resp.headers.get("x-middleware-next")).toBeNull();
+    expect(resp.headers.get("x-ikcous-og")).toBeNull();
+    const corpo = await resp.text();
+    expect(corpo).toBe("");
+    expect(corpo).not.toContain("Produto Que Nao Deveria Aparecer");
+  });
 });

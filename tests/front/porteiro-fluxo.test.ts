@@ -260,7 +260,9 @@ describe("atenderPorteiro — preview (teste obrigatório 4)", () => {
     expect(resp.status).toBe(200);
   });
 
-  it("mesmo cenário com VERCEL_ENV=production -> 503 discorda", async () => {
+  it("mesmo cenário com VERCEL_ENV=production -> 308 para o dominio_publico, nunca a página (produção não ganha o relaxamento de preview; o alias cai na regra do encaminhamento, 11/09/2026)", async () => {
+    // Par de variável ÚNICA com o teste acima: mesmo host, mesmo banco,
+    // só VERCEL_ENV muda (revisão Opus, menor M3).
     const fetchImpl = criarFetchDuble({
       [origem]: {
         linha: linhaFixture("Loja A", "#111111", origem),
@@ -276,8 +278,9 @@ describe("atenderPorteiro — preview (teste obrigatório 4)", () => {
       },
       deps(fetchImpl),
     );
-    expect(resp.status).toBe(503);
-    expect(resp.headers.get("x-ikcous-porteiro")).toBe("discorda");
+    expect(resp.status).toBe(308);
+    expect(resp.headers.get("location")).toBe("https://a.exemplo/");
+    expect(resp.headers.get("x-ikcous-porteiro")).toBe("encaminha");
   });
 });
 

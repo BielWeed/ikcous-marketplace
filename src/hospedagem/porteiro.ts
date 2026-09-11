@@ -274,10 +274,25 @@ export interface ParametrosConcordancia {
  * PR e não deveria ganhar o mesmo relaxamento) e `producaoUrl` não vazio.
  * `vercelEnv === "production"` ou `undefined` NUNCA relaxam — falha fechada
  * por padrão, nunca por omissão de env.
+ *
+ * 4º resultado (11/09/2026, decisão do sócio aprovada pelo Gabriel — brief
+ * `20260911-brief-aliases-vercel-encaminham.md`): em PRODUÇÃO, um alias
+ * automático da própria Vercel (`*.vercel.app`, o host termina nesse
+ * sufixo) que discorda do `dominio_publico` não é "loja A com dado de loja
+ * B" — é um endereço antigo do MESMO deploy tentando abrir o site (nenhum
+ * link comprido foi divulgado, só os aliases que a própria Vercel fabrica).
+ * Em vez de 503, a resposta é `"encaminha"` — quem chama monta um 308 para
+ * o `dominio_publico` desta MESMA loja. A concessão é estrita: só
+ * `vercelEnv === "production"` (nunca preview — já tratado acima —, nunca
+ * `development`, nunca `undefined`) e só quando o host bate o sufixo
+ * `.vercel.app`; qualquer outro host que discorde (domínio próprio, ou
+ * `.vercel.app` fora de produção) continua em `discorda`, byte a byte como
+ * antes desta rodada. A regra 3 (dominio_publico não-nulo/não-vazio) já foi
+ * checada acima e sempre vence — `sem-loja` nunca vira `encaminha`.
  */
 export function decidirConcordancia(
   params: ParametrosConcordancia,
-): "ok" | "sem-loja" | "discorda" {
+): "ok" | "sem-loja" | "discorda" | "encaminha" {
   const { host, dominioPublico, vercelEnv, producaoUrl } = params;
   if (dominioPublico === null || dominioPublico === "") return "sem-loja";
   const hostMinusculo = host.toLowerCase();
@@ -291,6 +306,9 @@ export function decidirConcordancia(
     producaoUrl.toLowerCase() === dominioMinusculo
   ) {
     return "ok";
+  }
+  if (vercelEnv === "production" && hostMinusculo.endsWith(".vercel.app")) {
+    return "encaminha";
   }
   return "discorda";
 }
@@ -377,6 +395,33 @@ export function respostaManutencao(
       "cache-control": "no-store",
       "retry-after": "60",
       "x-ikcous-porteiro": motivo,
+      "x-ikcous-caderneta": caderneta,
+    },
+  });
+}
+
+// ─── respostaEncaminhamento ─────────────────────────────────────────────────
+
+/**
+ * O 4º resultado de `decidirConcordancia` (`"encaminha"`) vira um 308
+ * Permanent Redirect para `destino` — SEMPRE `https://<dominio_publico>`
+ * mais o `pathname`/`search` do pedido atendido, verbatim, nunca conteúdo:
+ * corpo vazio, nunca a página de loja nenhuma (brief
+ * `20260911-brief-aliases-vercel-encaminham.md`). `cache-control: no-store`
+ * (instrução do sócio: "não guardar isto", para o redirect não grudar no
+ * navegador se o `dominio_publico` mudar amanhã) — a MESMA disciplina de
+ * `respostaManutencao`, que fica só para os 503.
+ */
+export function respostaEncaminhamento(
+  destino: string,
+  caderneta: EstadoCaderneta,
+): Response {
+  return new Response(null, {
+    status: 308,
+    headers: {
+      location: destino,
+      "cache-control": "no-store",
+      "x-ikcous-porteiro": "encaminha",
       "x-ikcous-caderneta": caderneta,
     },
   });
@@ -556,6 +601,26 @@ class DecisaoPorteiro extends Error {
   }
 }
 
+/**
+ * O resultado `"encaminha"` de `decidirConcordancia` — SEPARADO de
+ * `DecisaoPorteiro` porque não é um motivo de 503 (`MotivoManutencao`): é
+ * uma decisão de REDIRECIONAR, com o destino completo já montado
+ * (`https://<dominio_publico><pathname><search>`, brief
+ * `20260911-brief-aliases-vercel-encaminham.md`). `obterFichaValidada`
+ * devolve a resposta de encaminhamento pelo MESMO canal (`tipo:
+ * "manutencao"`) que hoje devolve a de manutenção — ver o comentário ali
+ * sobre a escolha de reaproveitar o tipo em vez de criar um novo.
+ */
+class DecisaoEncaminhamento extends Error {
+  readonly destino: string;
+  readonly caderneta: EstadoCaderneta;
+  constructor(destino: string, caderneta: EstadoCaderneta) {
+    super("encaminha");
+    this.destino = destino;
+    this.caderneta = caderneta;
+  }
+}
+
 /** Envolve qualquer falha de REDE/schema (isto é, algo que NÃO é uma
  * DECISÃO do porteiro) com o `EstadoCaderneta` que esta tentativa já tinha
  * resolvido ANTES de falhar — é o que permite ao 503 `banco-indisponivel`
@@ -602,6 +667,14 @@ async function resolverFichaViaRede(
       vercelEnv: ambiente.VERCEL_ENV,
       producaoUrl: ambiente.VERCEL_PROJECT_PRODUCTION_URL,
     });
+    if (decisao === "encaminha") {
+      // `decidirConcordancia` só devolve "encaminha" depois de já ter
+      // validado `dominioPublico` não-nulo/não-vazio (regra 3, checada
+      // primeiro na função) — o cast documenta essa invariante sem
+      // duplicar a checagem aqui.
+      const destino = `https://${dominioPublico as string}${url.pathname}${url.search}`;
+      throw new DecisaoEncaminhamento(destino, caderneta);
+    }
     if (decisao !== "ok") throw new DecisaoPorteiro(decisao, caderneta);
     // `publicUrl` preserva protocolo e porta do pedido atendido (rodada B,
     // item 4) — nunca `https://${host}` fixo, porque a prova ponta a ponta
@@ -614,7 +687,11 @@ async function resolverFichaViaRede(
     });
     return { ficha, caderneta };
   } catch (erro) {
-    if (erro instanceof DecisaoPorteiro) throw erro;
+    if (
+      erro instanceof DecisaoPorteiro ||
+      erro instanceof DecisaoEncaminhamento
+    )
+      throw erro;
     throw new FalhaResolucaoPorteiro(caderneta, erro);
   }
 }
@@ -734,6 +811,20 @@ export async function obterFichaValidada(
       caderneta: resolvida.caderneta,
     };
   } catch (erro) {
+    // Escolha registrada no relatório da tarefa (brief
+    // `20260911-brief-aliases-vercel-encaminham.md`, item 4): o 308 de
+    // encaminhamento reaproveita o MESMO canal (`tipo: "manutencao"` com
+    // `resposta: Response`) que a decisão `discorda`/`sem-loja` já usa, em
+    // vez de um tipo próprio `"encaminha"`. Os dois consumidores
+    // (`atenderPorteiro` e o ramo de robô em `middleware.ts`) já fazem
+    // `if (resultado.tipo === "manutencao") return resultado.resposta` —
+    // reaproveitar evita alargar `ResultadoObterFicha` e não exige tocar em
+    // `middleware.ts` para este redirecionamento chegar aos dois.
+    if (erro instanceof DecisaoEncaminhamento)
+      return {
+        tipo: "manutencao",
+        resposta: respostaEncaminhamento(erro.destino, erro.caderneta),
+      };
     if (erro instanceof DecisaoPorteiro)
       return {
         tipo: "manutencao",
