@@ -34,7 +34,7 @@ interface ProductInfo {
 
 interface UserReview {
   id: string;
-  product_id: string;
+  product_id: string | null;
   rating: number;
   comment: string | null;
   created_at: string;
@@ -46,7 +46,7 @@ interface UserReview {
 
 interface UserQuestion {
   id: string;
-  product_id: string;
+  product_id: string | null;
   question: string;
   created_at: string;
   product: ProductInfo | null;
@@ -60,6 +60,38 @@ interface UserQuestion {
 interface UserProfileViewProps {
   userId: string;
   onNavigate: (view: View, id?: string) => void;
+}
+
+// Formato de retorno das RPCs `perfil_publico_avaliacoes`/
+// `perfil_publico_perguntas` (migration 20261130000000) — o ÚNICO caminho de
+// leitura desta tela, com ou sem sessão (ver comentário abaixo do effect).
+// Nenhuma das duas devolve `user_id`: quem chama já conhece o autor pela
+// navegação, e a vitrine não precisa expor o id de ninguém para renderizar a
+// lista. `product_id` vem `null` junto com `produto_nome`/`produto_imagem_url`
+// quando o produto não é público (inativo, apagado ou inexistente) — nunca
+// fabricar um id de produto a partir da review/pergunta.
+interface PerfilPublicoAvaliacaoRow {
+  id: string;
+  product_id: string | null;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  helpful: number | null;
+  verified: boolean | null;
+  merchant_reply: string | null;
+  merchant_reply_at: string | null;
+  produto_nome: string | null;
+  produto_imagem_url: string | null;
+}
+
+interface PerfilPublicoPerguntaRow {
+  id: string;
+  product_id: string | null;
+  question: string;
+  created_at: string;
+  produto_nome: string | null;
+  produto_imagem_url: string | null;
+  answers: Array<{ id: string; answer: string; created_at: string }> | null;
 }
 
 const containerVariants = {
@@ -110,6 +142,16 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
     [],
   );
 
+  // Regra de produto do Gabriel (11/09/2026): perfil público NÃO exige
+  // login. UM CAMINHO SÓ, com ou sem sessão: `AuthContext` hidrata `user` do
+  // cache local antes de falar com o servidor, e uma sessão em cache com
+  // token expirado/irrecuperável cairia num ramo por tabela e, com a
+  // migration 20261111000000 aplicada, veria "—" PERMANENTE numa tela que é
+  // pública por regra de produto. Por isso `reviews`/`questions` do autor se
+  // leem SEMPRE pelas duas funções da vitrine (nunca devolvem `user_id`).
+  // Efeito visível: no perfil público, o próprio autor e o admin passam a
+  // ver só o que é público (a pendente não aparece aqui; a moderação tem a
+  // tela dela).
   useEffect(() => {
     if (!userId) return;
 
@@ -140,14 +182,35 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         // 2. Fetch public reviews — cada sub-consulta com seu próprio erro:
         // uma falhar não pode apagar o resto nem mentir zero no contador.
         try {
-          const { data: reviewsData, error: reviewsErr } = await supabase
-            .from("reviews")
-            .select("*, product:produtos(id, nome, imagem_url)")
-            .eq("user_id", userId)
-            .order("created_at", { ascending: false });
-
-          if (reviewsErr) throw reviewsErr;
-          setReviews((reviewsData || []) as UserReview[]);
+          const { data, error } = await supabase.rpc(
+            "perfil_publico_avaliacoes",
+            { p_autor: userId },
+          );
+          if (error) throw error;
+          const reviewsData = ((data || []) as PerfilPublicoAvaliacaoRow[]).map(
+            (row): UserReview => ({
+              id: row.id,
+              product_id: row.product_id,
+              rating: row.rating,
+              comment: row.comment,
+              created_at: row.created_at,
+              verified: row.verified,
+              helpful: row.helpful,
+              merchant_reply: row.merchant_reply,
+              // Nunca fabricar id: só monta `product` quando o nome E o id
+              // vieram preenchidos (produto público). Review de produto não
+              // público mostra o placeholder e não navega.
+              product:
+                row.produto_nome && row.product_id
+                  ? {
+                      id: row.product_id,
+                      nome: row.produto_nome,
+                      imagem_url: row.produto_imagem_url ?? "",
+                    }
+                  : null,
+            }),
+          );
+          setReviews(reviewsData);
           setReviewsError(false);
         } catch (err) {
           console.error("Error loading public reviews:", err);
@@ -156,16 +219,32 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
 
         // 3. Fetch public questions with product details and answers
         try {
-          const { data: questionsData, error: questionsErr } = await supabase
-            .from("questions")
-            .select(
-              "*, product:produtos(id, nome, imagem_url), answers:answers(*)",
-            )
-            .eq("user_id", userId)
-            .order("created_at", { ascending: false });
-
-          if (questionsErr) throw questionsErr;
-          setQuestions((questionsData || []) as UserQuestion[]);
+          const { data, error } = await supabase.rpc(
+            "perfil_publico_perguntas",
+            { p_autor: userId },
+          );
+          if (error) throw error;
+          const questionsData = (
+            (data || []) as PerfilPublicoPerguntaRow[]
+          ).map(
+            (row): UserQuestion => ({
+              id: row.id,
+              product_id: row.product_id,
+              question: row.question,
+              created_at: row.created_at,
+              // Mesma regra da avaliação: nunca fabricar id.
+              product:
+                row.produto_nome && row.product_id
+                  ? {
+                      id: row.product_id,
+                      nome: row.produto_nome,
+                      imagem_url: row.produto_imagem_url ?? "",
+                    }
+                  : null,
+              answers: row.answers ?? [],
+            }),
+          );
+          setQuestions(questionsData);
           setQuestionsError(false);
         } catch (err) {
           console.error("Error loading public questions:", err);

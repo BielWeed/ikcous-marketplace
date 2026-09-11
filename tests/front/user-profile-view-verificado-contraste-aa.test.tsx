@@ -7,6 +7,11 @@
 // Modelo estrutural copiado de user-profile-view-gate-avaliacoes.test.tsx
 // (mesmo dublê de `@/lib/supabase` -- client de verdade usa Web Worker,
 // indisponível no jsdom).
+//
+// ADENDO 11/09 ~06:50Z (crítico de desenho, item 5): a tela não importa
+// mais `useAuth` -- lê SEMPRE pela RPC `perfil_publico_avaliacoes`. Este
+// arquivo volta a não precisar de mock de `useAuth` e mocka `supabase.rpc`
+// no lugar de `from("reviews")`.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,20 +30,22 @@ const perfil = {
   cover_url: null,
 };
 
-const reviewVerificada = {
+const reviewVerificadaRpc = {
   id: "review-1",
   product_id: "prod-1",
   rating: 5,
   comment: "Produto ótimo, chegou rápido.",
   created_at: new Date().toISOString(),
-  verified: true,
   helpful: 2,
+  verified: true,
   merchant_reply: null,
-  product: { id: "prod-1", nome: "Produto Teste", imagem_url: [] },
+  merchant_reply_at: null,
+  produto_nome: "Produto Teste",
+  produto_imagem_url: null,
 };
 
-// UserProfileView chama `supabase.from(tabela).select().eq()...` três vezes
-// em sequência (perfil, reviews, questions).
+// UserProfileView chama `supabase.from("public_profiles")...` para o perfil
+// e `supabase.rpc(...)` para avaliações/perguntas.
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
@@ -51,24 +58,16 @@ vi.mock("@/lib/supabase", () => ({
           }),
         };
       }
-      if (tabela === "reviews") {
-        return {
-          select: () => ({
-            eq: () => ({
-              order: () =>
-                Promise.resolve({ data: [reviewVerificada], error: null }),
-            }),
-          }),
-        };
+      throw new Error(`from inesperado neste teste: ${tabela}`);
+    },
+    rpc: (nome: string, _args?: unknown) => {
+      if (nome === "perfil_publico_avaliacoes") {
+        return Promise.resolve({ data: [reviewVerificadaRpc], error: null });
       }
-      // questions
-      return {
-        select: () => ({
-          eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
-          }),
-        }),
-      };
+      if (nome === "perfil_publico_perguntas") {
+        return Promise.resolve({ data: [], error: null });
+      }
+      throw new Error(`rpc inesperado neste teste: ${nome}`);
     },
   },
 }));
