@@ -6,6 +6,7 @@ versionamento por [SemVer](https://semver.org/lang/pt-BR/).
 Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado em 30/07/2026
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
+
 ## [1.29.0] - 2026-09-11
 
 Um único site passa a servir todas as lojas: ao abrir o endereço de uma loja, o
