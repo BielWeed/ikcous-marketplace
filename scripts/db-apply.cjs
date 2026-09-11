@@ -1598,6 +1598,19 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // PR #534: og deixa de aceitar jpeg/webp (build passa a gravar e servir
+  // og-image.png por extensao, com nosniff). CREATE OR REPLACE troca só o
+  // corpo desta função; o marcador prova que a linha do og virou o mesmo
+  // formato de apple_touch/icon_* (mime='image/png' fixo, sem IN(...)).
+  "20261123000000_arte_de_compartilhamento_so_png.sql": [
+    {
+      funcao: "branding_a2_file_valid",
+      esperado: [
+        "WHEN 'og' THEN mime='image/png' AND asset->>'width'='1200' AND asset->>'height'='630'",
+        "WHEN 'apple_touch' THEN mime='image/png' AND asset->>'width'='180' AND asset->>'height'='180'",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
