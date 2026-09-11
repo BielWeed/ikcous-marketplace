@@ -140,6 +140,12 @@ jobs:
           NODE_ENV: production
           IKCOUS_IDENTITY_MODE: fixture
           IKCOUS_CODE_SHA: ${{ github.sha }}
+      # T6 (etapa 2 da escala, ADENDO C, 11/09/2026): a prova ponta a ponta
+      # com hosts de verdade precisa de `dist-test/`, que só existe DEPOIS do
+      # passo acima — por isso não mora em `npm run test:front` (job `test`,
+      # sem build) nem em `npm test`. Ver `tests/porteiro-dois-hosts/README.md`.
+      - name: Prova ponta a ponta do porteiro com hosts de verdade (T6)
+        run: npx vitest run --config vitest.porteiro.config.ts
       - name: Limite de tamanho da entrega de teste
         run: npm run size
         env:

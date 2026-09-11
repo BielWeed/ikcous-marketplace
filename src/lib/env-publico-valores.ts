@@ -6,7 +6,11 @@ export interface AmbientePublicoSupabase {
 
 export type OrigemChaveSupabase =
   | "VITE_SUPABASE_PUBLISHABLE_KEY"
-  | "VITE_SUPABASE_ANON_KEY";
+  | "VITE_SUPABASE_ANON_KEY"
+  // Etapa 2 da escala (11/09/2026): a conexão veio da FICHA DA LOJA que o
+  // porteiro gravou no HTML (`src/config/fichaDaLoja.ts`), não do ambiente
+  // de build — só acontece num build compartilhado por N lojas.
+  | "ficha";
 
 // URL e chave são ASCII imprimível ("!" a "~"). Remove também BOM,
 // zero-width, nbsp e espaços que entram ao colar valores no ambiente.
