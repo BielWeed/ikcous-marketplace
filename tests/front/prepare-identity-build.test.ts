@@ -102,7 +102,7 @@ async function fixture(
     icon_192: await raster("192.png", 192, 192),
     icon_512: await raster("512.png", 512, 512),
     maskable_512: await raster("maskable.png", 512, 512),
-    og: await raster("og.jpg", 1200, 630, "jpeg"),
+    og: await raster("og.png", 1200, 630),
   };
   const origin = `https://${ref}.supabase.co`;
   const identity = parseStoreIdentity(
@@ -283,19 +283,22 @@ describe("preparação privada da identidade", () => {
         file.bytes = await sharp({
           create: { width: 30, height: 20, channels: 3, background: "red" },
         })
-          .jpeg()
+          .png()
           .toBuffer();
       } else if (kind === "truncated") file.bytes = file.bytes.slice(0, 180);
       else if (kind === "format")
+        // og agora só aceita PNG (decisão da hub, 11/09/2026): bytes JPEG de
+        // verdade sob um descritor que declara PNG é o mesmo tipo de forja
+        // que a assinatura barra antes de chamar o sharp.
         file.bytes = await sharp({
           create: { width: 1200, height: 630, channels: 3, background: "red" },
         })
-          .png()
+          .jpeg()
           .toBuffer();
       else file.bytes[file.bytes.length - 1] ^= 1;
       if (kind !== "bytes") {
         file.sha256 = hash(file.bytes);
-        file.path = `v1/${file.sha256}/og.jpg`;
+        file.path = `v1/${file.sha256}/og.png`;
         asset.sha256 = file.sha256;
         asset.path = file.path;
         asset.bytes = file.bytes.length;
@@ -411,7 +414,7 @@ describe("preparação privada da identidade", () => {
     await fs.mkdir(sentinel);
     const write = fs.writeFile.bind(fs);
     vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
-      if (String(args[0]).endsWith("og.jpg"))
+      if (String(args[0]).endsWith("og.png"))
         throw new Error("fixture failure");
       return write(...args);
     });
@@ -466,7 +469,7 @@ describe("preparação privada da identidade", () => {
     const write = fs.writeFile.bind(fs);
     let introduced = "";
     vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
-      if (String(args[0]).endsWith("og.jpg")) {
+      if (String(args[0]).endsWith("og.png")) {
         const stage = (await fs.readdir(parent))[0];
         introduced = path.join(parent, stage, "public", "linked");
         await fs.symlink(external, introduced, "junction");
@@ -522,7 +525,7 @@ describe("preparação privada da identidade", () => {
     const downloaded = await fixture();
     const write = fs.writeFile.bind(fs);
     vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
-      if (String(args[0]).endsWith("og.jpg"))
+      if (String(args[0]).endsWith("og.png"))
         return write(args[0], "corrupted after write", args[2]);
       return write(...args);
     });
@@ -635,7 +638,7 @@ describe("preparação privada da identidade", () => {
     );
     file.bytes = bytes;
     file.sha256 = hash(bytes);
-    file.path = `v1/${file.sha256}/og.jpg`;
+    file.path = `v1/${file.sha256}/og.png`;
     asset.path = file.path;
     asset.sha256 = file.sha256;
     asset.bytes = bytes.length;
@@ -707,9 +710,21 @@ describe("preparação privada da identidade", () => {
       (await fs.stat(path.join(prepared.publicDir, "empty"))).isDirectory(),
     ).toBe(true);
     for (const filename of retired)
-      await expect(
-        fs.stat(path.join(prepared.publicDir, filename)),
-      ).rejects.toMatchObject({ code: "ENOENT" });
+      if (filename !== "og-image.png")
+        await expect(
+          fs.stat(path.join(prepared.publicDir, filename)),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+    // og-image.png volta a existir, mas com o caminho FIXO: o middleware da
+    // Vercel e o worker do Cloudflare Pages usam esse nome como fallback
+    // quando o produto não tem foto, e agora ele é a imagem da PRÓPRIA loja
+    // (identity.assets.og), nunca a marca antiga genérica da origem comum.
+    const ogAsset = downloaded.identity.assets.og;
+    const ogFile = downloaded.files.find((file) => file.path === ogAsset.path)!;
+    const ogFixo = await fs.readFile(
+      path.join(prepared.publicDir, "og-image.png"),
+    );
+    expect(ogFixo).toEqual(Buffer.from(ogFile.bytes));
+    expect(ogFixo.toString("utf8")).not.toBe("marca antiga");
     for (const file of downloaded.files) {
       const written = await fs.readFile(
         path.join(prepared.publicDir, "store-identity", file.path),

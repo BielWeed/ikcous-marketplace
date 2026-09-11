@@ -25,7 +25,7 @@ const previews: readonly [IdentityAssetRole, string, string][] = [
   ["header", "Cabeçalho", "PNG, JPEG, WebP ou SVG"],
   ["loader", "Abertura", "PNG, JPEG, WebP ou SVG"],
   ["icon_512", "Ícone do aplicativo", "PNG, 512 × 512"],
-  ["og", "Compartilhamento", "PNG, JPEG ou WebP, 1200 × 630"],
+  ["og", "Compartilhamento", "PNG, 1200 × 630"],
 ];
 const advanced: readonly [IdentityAssetRole, string, string][] = [
   ["favicon", "Favicon", "PNG, SVG ou ICO"],
@@ -33,7 +33,7 @@ const advanced: readonly [IdentityAssetRole, string, string][] = [
   ["icon_192", "Ícone 192", "PNG, 192 × 192"],
   ["icon_512", "Ícone 512", "PNG, 512 × 512"],
   ["maskable_512", "Ícone com máscara", "PNG, 512 × 512"],
-  ["og", "Arte de compartilhamento", "PNG, JPEG ou WebP, 1200 × 630"],
+  ["og", "Arte de compartilhamento", "PNG, 1200 × 630"],
 ];
 function url(origin: string, asset: IdentityAsset) {
   return `${origin}/storage/v1/object/public/branding/${asset.path}`;

@@ -168,13 +168,19 @@ export function montarHtml(
     textoOuNulo(produto.descricao) ??
       `Confira os detalhes do produto no ${config.storeName}.`,
   );
+  // Só número > 0 aparece: 0, negativo ou não numérico ficam sem preço na
+  // prévia (decisão do dono, 11/09/2026).
   const preco =
-    typeof produto.preco_venda === "number"
+    typeof produto.preco_venda === "number" && produto.preco_venda > 0
       ? escaparHtml(`R$ ${produto.preco_venda.toFixed(2).replace(".", ",")}`)
       : "";
-  const candidatas: unknown[] = Array.isArray(produto.imagem_urls)
-    ? produto.imagem_urls
-    : [produto.imagem_url];
+  // `imagem_urls` é o DEFAULT `[]` da coluna com frequência — um array vazio
+  // não pode apagar `imagem_url` (decisão do dono, 11/09/2026). Ordem: cada
+  // item de `imagem_urls`, DEPOIS `imagem_url`.
+  const candidatas: unknown[] = [
+    ...(Array.isArray(produto.imagem_urls) ? produto.imagem_urls : []),
+    produto.imagem_url,
+  ];
   const imagemValida = candidatas.find(
     (item): item is string =>
       typeof item === "string" &&

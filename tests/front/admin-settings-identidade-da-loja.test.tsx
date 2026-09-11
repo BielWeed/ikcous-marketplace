@@ -104,7 +104,7 @@ function snapshot() {
         icon_192: asset("192.png", 192, 192),
         icon_512: asset("512.png", 512, 512),
         maskable_512: asset("mask.png", 512, 512),
-        og: asset("og.jpg", 1200, 630, "image/jpeg"),
+        og: asset("og.png", 1200, 630),
       },
     },
   };
