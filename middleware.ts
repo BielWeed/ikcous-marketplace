@@ -3,10 +3,7 @@ import type {
   EntradaCachePorteiro,
   ResolverLojaNaCaderneta,
 } from "./src/hospedagem/porteiro";
-import {
-  atenderPorteiro,
-  obterFichaValidada,
-} from "./src/hospedagem/porteiro";
+import { atenderPorteiro, obterFichaValidada } from "./src/hospedagem/porteiro";
 
 // O `matcher` PRECISA ser um array-LITERAL bem aqui — a Vercel/Next lê
 // `config.matcher` por ANÁLISE ESTÁTICA em tempo de build; qualquer valor
