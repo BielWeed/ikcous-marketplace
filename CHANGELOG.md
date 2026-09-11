@@ -6,6 +6,70 @@ versionamento por [SemVer](https://semver.org/lang/pt-BR/).
 Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado em 30/07/2026
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
+## [1.28.0] - 2026-09-11
+
+A prévia de link de produto (WhatsApp, Facebook, Google) fica correta em todos os
+casos: produto sem foto mostra a arte de compartilhamento da loja, produto com uma
+foto só volta a mostrar a foto, preço zero não aparece e a imagem vai com o
+tamanho declarado. O arquivo fixo `/og-image.png` volta a ser uma imagem de
+verdade (desde a 1.27.0 respondia HTML nas duas lojas). O painel passa a aceitar
+só PNG na arte de compartilhamento, com a trava correspondente já no banco das
+duas lojas. Reúne os PRs #527, #531, #532, #534, #536 e #537.
+
+### Para quem COMPRA (vitrine)
+
+- **Prévia de produto sem foto usa a imagem de compartilhamento da própria
+  loja, e preço zero não aparece** (PR #534). Antes a prévia caía numa imagem
+  genérica e mostrava "R$ 0,00" quando o produto ainda não tinha preço.
+- **Produto com uma foto só volta a aparecer com a foto na prévia** (PR #534):
+  a lista de fotos vazia escondia a foto única guardada no campo antigo.
+- **A prévia declara o tamanho da imagem** (PR #537): 1200 × 630 para a arte da
+  loja e o tamanho lido da foto quando existe. Sem isso o Facebook podia mostrar
+  o primeiro compartilhamento sem imagem até o robô dele baixar o arquivo.
+- **`/og-image.png` volta a servir a arte da loja como imagem** (PR #534). Links
+  antigos que apontam para esse caminho recuperam a imagem.
+
+### Para quem VENDE (painel admin)
+
+- **A arte de compartilhamento só aceita PNG de 1200 × 630** (PRs #534 e #537):
+  o seletor de arquivo só oferece PNG, e o texto de ajuda diz o tamanho. Os
+  outros papéis (logo, ícones, cabeçalho) continuam aceitando o que aceitavam.
+  Quem tinha JPEG converte uma vez; hoje as duas lojas já estão em PNG.
+
+### Para quem DESENVOLVE
+
+- **Adaptador de hospedagem em Cloudflare Pages gerado no build** (PR #527): o
+  `dist` ganha `_routes.json`, `_redirects`, `_headers`, `404.html` e
+  `_worker.js`, com as 36 telas de entrada declaradas uma vez em
+  `src/config/rotas.ts`. Na Vercel esses arquivos ficam inertes: a loja continua
+  servida como antes. Nenhuma conta Cloudflare foi criada nem usada.
+- **O worker da hospedagem carimba o pass-through e não lança com `publicUrl`
+  inválido** (PR #532).
+- **`esbuild` declarado em `devDependencies`** (PR #531), em vez de vir só por
+  içamento do Vite.
+- **`db-prove-rollback.cjs` acha o `rollback-manual-*.sql` ao lado da migration**
+  sem precisar de `--rollback` (PR #537).
+- **Primeiro lote no modelo paralelo** (PR #537): quatro peças numa branch, um
+  CI, revisor por peça em paralelo e verificador final sobre o estado congelado.
+
+### Para quem OPERA (banco, servidor, lojas clonadas)
+
+- **Banco: a migration `20261123000000` (arte de compartilhamento só PNG) já
+  está aplicada nas duas lojas** (PR #536; aplicada em 11/09/2026 antes do corte,
+  com o desfazer provado nos dois bancos). Ela troca só o corpo da função
+  `branding_a2_file_valid`; o preflight recusa se alguma loja tiver arte fora de
+  PNG. Ordem obrigatória cumprida: banco antes do front.
+- **Banco: a migration `20261112000000` (visitante sem login não grava mais em
+  `analytics_events`) também foi aplicada nas duas lojas em 11/09/2026**, com o
+  sim do dono. Já viajava no repositório desde a 1.25.0.
+- **Ainda pendente nas duas lojas, de propósito: `20261111000000`** (visitante
+  não lê o autor de avaliações e perguntas pela tabela). Espera uma peça nova no
+  banco para o perfil público, que continua sem exigir login por decisão do dono.
+- **`middleware.ts` (Vercel) mudou** (PRs #534 e #537): é publicado junto com o
+  site, nas duas lojas. É onde ficam preço zero, foto única e o tamanho da
+  imagem na prévia de link.
+- **Nenhuma função de servidor (`supabase/functions`) muda nesta versão.**
+
 ## [1.27.0] - 2026-09-10
 
 Cada loja passa a ter identidade própria vinda do banco (nome, cidade e estado,
