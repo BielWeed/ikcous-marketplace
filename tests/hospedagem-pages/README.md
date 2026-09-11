@@ -60,10 +60,16 @@ isolados dentro da pasta de evidência da execução; `WRANGLER_SEND_METRICS`,
   literal de `index.html` — o ensaio confere essa igualdade antes de rodar
   a matriz);
 - a função (`_worker.js`, compilado de `src/hospedagem/compartilhamento.ts`
-  pelo `scripts/hospedagem.mjs`) é invocada SÓ em `/product-detail` e
+  pelo `scripts/hospedagem.mjs`) FOI invocada em `/product-detail` e
   `/product-detail/` — medido pelo cabeçalho `x-ikcous-og`, que o worker
-  real emite, presente ali e AUSENTE em toda outra resposta da matriz
-  (estáticas, ausentes, desconhecidas, raiz);
+  real emite nessas duas formas. A NÃO-invocação nas demais rotas
+  (estáticas, ausentes, desconhecidas, raiz) NÃO é medida por este ensaio
+  (ver "O que NÃO prova"): ela está medida no ensaio A7a3, com uma
+  testemunha que carimba TODA invocação
+  (`recuperacao-ikcous/20260909-ecossistema/controle/pages-rotas-explicitas-20260909-a7a3-36f2/`,
+  fixture `witness`: 307 respostas em 119 caminhos, carimbo em 13, só nas
+  duas formas de produto), sob um `_routes.json` byte a byte igual ao que
+  `routes()` gera hoje;
 - `_headers` em vigor: `/assets/*` com `immutable` e `max-age=31536000`,
   `/version.json` com `no-store` (medidos num arquivo `.js` e no
   `version.json` reais do `dist-test`, não em fixture);
@@ -82,6 +88,15 @@ matriz). Reprovação de qualquer conferência é `exit 1` com a lista de
 conferência para fechar verde.
 
 ## O que NÃO prova
+
+A não-invocação da função fora de `/product-detail` e `/product-detail/`:
+o ramo de passagem do worker (`src/hospedagem/compartilhamento.ts`,
+`if (!CAMINHOS_DE_PRODUTO.has(url.pathname)) return env.ASSETS.fetch(request)`)
+devolve a resposta SEM carimbo, então "invocada e passou" e "nunca
+invocada" produzem a mesma resposta — a ausência de `x-ikcous-og` numa
+rota não prova que a função não rodou. Quem prova isso é a testemunha do
+A7a3 citada acima; este ensaio só prova a invocação nas duas formas de
+produto e o comportamento observável das demais rotas.
 
 Nada aqui fala com CDN, conta Cloudflare, banco de dados real ou o
 processo de atualização do PWA já instalado no aparelho de alguém. O
