@@ -65,7 +65,10 @@ duas lojas. Reúne os PRs #527, #531, #532, #534, #536 e #537.
 - **Ainda pendente nas duas lojas, de propósito: `20261111000000`** (visitante
   não lê o autor de avaliações e perguntas pela tabela). Espera uma peça nova no
   banco para o perfil público, que continua sem exigir login por decisão do dono.
-- **Nenhuma função de servidor muda nesta versão.**
+- **`middleware.ts` (Vercel) mudou** (PRs #534 e #537): é publicado junto com o
+  site, nas duas lojas. É onde ficam preço zero, foto única e o tamanho da
+  imagem na prévia de link.
+- **Nenhuma função de servidor (`supabase/functions`) muda nesta versão.**
 
 ## [1.27.0] - 2026-09-10
 
