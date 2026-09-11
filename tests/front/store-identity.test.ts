@@ -8,19 +8,21 @@ import {
 import { describe, expect, it } from "vitest";
 
 const origin = "https://abcdefghijklmnopqrst.supabase.co";
-function fixture() {
-  const file = (
-    name: string,
-    width?: number,
-    height?: number,
-    media_type = "image/png",
-  ) => ({
+function file(
+  name: string,
+  width?: number,
+  height?: number,
+  media_type = "image/png",
+) {
+  return {
     path: `v1/${"a".repeat(64)}/${name}`,
     sha256: "a".repeat(64),
     media_type,
     bytes: 100,
     ...(width === undefined ? {} : { width, height }),
-  });
+  };
+}
+function fixture() {
   return {
     store_name: 'Loja "A" <script>dados</script>',
     store_city: " Cidade ",
@@ -39,7 +41,7 @@ function fixture() {
       icon_192: file("b.png", 192, 192),
       icon_512: file("c.png", 512, 512),
       maskable_512: file("c.png", 512, 512),
-      og: file("og.jpg", 1200, 630, "image/jpeg"),
+      og: file("og.png", 1200, 630),
     },
   };
 }
@@ -282,9 +284,15 @@ describe("identidade publica pura", () => {
       ...p,
       og: { ...p.og, height: 631 },
     }),
+    // og virou sempre PNG (compatível com favicon); a incoerência testada
+    // aqui precisa de um tipo que favicon recusa mesmo assim.
     (p: ReturnType<typeof fixture>["branding_assets"]) => ({
       ...p,
-      favicon: p.og,
+      favicon: {
+        ...p.og,
+        media_type: "image/webp",
+        path: p.og.path.replace(/\.png$/, ".webp"),
+      },
     }),
     (p: ReturnType<typeof fixture>["branding_assets"]) => ({
       ...p,
@@ -295,6 +303,28 @@ describe("identidade publica pura", () => {
       parseBrandingAssets(alter(fixture().branding_assets)),
     ).toThrow(),
   );
+  it.each([
+    ["image/jpeg", "og.jpg"],
+    ["image/webp", "og.webp"],
+  ])(
+    "og só aceita PNG: %s vira IDENTITY_INVALID (decisão da hub, 11/09/2026)",
+    (media_type, name) => {
+      const p = fixture().branding_assets;
+      expect(() =>
+        parseBrandingAssets({
+          ...p,
+          og: file(name, 1200, 630, media_type),
+        }),
+      ).toThrow("IDENTITY_INVALID");
+    },
+  );
+  it("og em PNG 1200 × 630 passa", () => {
+    const p = fixture().branding_assets;
+    expect(
+      parseBrandingAssets({ ...p, og: file("og.png", 1200, 630) }).og
+        .media_type,
+    ).toBe("image/png");
+  });
   it.each([
     "../x.svg",
     "x.svg?x=1",

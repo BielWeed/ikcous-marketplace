@@ -68,7 +68,7 @@ export async function createIdentityBuildFixture(
     icon_192: await raster("192.png", 192, 192),
     icon_512: await raster("512.png", 512, 512),
     maskable_512: await raster("maskable.png", 512, 512),
-    og: await raster("og.jpg", 1200, 630, "jpeg"),
+    og: await raster("og.png", 1200, 630),
   };
   const origin = "https://abcdefghijklmnopqrst.supabase.co";
   const identity = parseStoreIdentity(

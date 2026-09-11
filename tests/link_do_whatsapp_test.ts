@@ -455,3 +455,133 @@ Deno.test("middleware: id com ',' do PostgREST vai codificado na URL da consulta
   );
   assertStringIncludes(urls[0], "vw_produtos_public");
 });
+
+// ── 11. Decisão do dono (11/09/2026): imagem_urls=[] (default da coluna) não
+// pode apagar imagem_url, e preço <= 0 não aparece na prévia.
+
+Deno.test("middleware: imagem_urls vazio (default) com imagem_url preenchido usa a foto", async () => {
+  const urls: string[] = [];
+  const produto = produtoFake({
+    imagem_urls: [],
+    imagem_url: "https://cdn.exemplo.com/foto-unica.jpg",
+  });
+
+  const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produto, urls), () =>
+      middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
+    ),
+  );
+
+  const html = await resp.text();
+  assertStringIncludes(
+    html,
+    `<meta property="og:image" content="https://cdn.exemplo.com/foto-unica.jpg"`,
+  );
+});
+
+Deno.test("middleware: preco_venda 0 não aparece no og:title", async () => {
+  const urls: string[] = [];
+  const produto = produtoFake({ preco_venda: 0 });
+
+  const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produto, urls), () =>
+      middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
+    ),
+  );
+
+  const html = await resp.text();
+  const tituloMatch = html.match(
+    /<meta property="og:title" content="(.*?)" \/>/,
+  );
+  assert(
+    tituloMatch,
+    `og:title nao encontrado ou mal formado no HTML:\n${html}`,
+  );
+  assert(
+    !tituloMatch[1].includes("R$"),
+    `og:title com preco_venda 0 nao deveria mostrar preco: ${tituloMatch[1]}`,
+  );
+});
+
+Deno.test("middleware: preco_venda 14.9 continua mostrando R$ 14,90 (regressão)", async () => {
+  const urls: string[] = [];
+  const produto = produtoFake({ preco_venda: 14.9 });
+
+  const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produto, urls), () =>
+      middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
+    ),
+  );
+
+  const html = await resp.text();
+  assertStringIncludes(html, "R$ 14,90");
+});
+
+// ── 12. Contrato da identidade (issue #533): o fallback da loja é a arte
+// PNG 1200x630; a foto do produto não tem dimensão fixa, o robô mede.
+
+Deno.test("middleware: produto sem foto usa og:image:width=1200 e og:image:height=630 (identidade)", async () => {
+  const urls: string[] = [];
+  const produto = produtoFake({ imagem_url: null, imagem_urls: null });
+
+  const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produto, urls), () =>
+      middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
+    ),
+  );
+
+  const html = await resp.text();
+  assertStringIncludes(
+    html,
+    '<meta property="og:image:width" content="1200" />',
+  );
+  assertStringIncludes(
+    html,
+    '<meta property="og:image:height" content="630" />',
+  );
+});
+
+Deno.test("middleware: produto com foto não declara og:image:width nem og:image:height (o robô mede)", async () => {
+  const urls: string[] = [];
+  const produto = produtoFake();
+
+  const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produto, urls), () =>
+      middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
+    ),
+  );
+
+  const html = await resp.text();
+  assert(
+    !html.includes("og:image:width"),
+    `html nao deveria conter og:image:width com foto de produto: ${html}`,
+  );
+  assert(
+    !html.includes("og:image:height"),
+    `html nao deveria conter og:image:height com foto de produto: ${html}`,
+  );
+});
+
+Deno.test("middleware: preco_venda negativo não aparece no og:title", async () => {
+  const urls: string[] = [];
+  const produto = produtoFake({ preco_venda: -5 });
+
+  const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produto, urls), () =>
+      middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
+    ),
+  );
+
+  const html = await resp.text();
+  const tituloMatch = html.match(
+    /<meta property="og:title" content="(.*?)" \/>/,
+  );
+  assert(
+    tituloMatch,
+    `og:title nao encontrado ou mal formado no HTML:\n${html}`,
+  );
+  assert(
+    !tituloMatch[1].includes("R$"),
+    `og:title com preco_venda negativo nao deveria mostrar preco: ${tituloMatch[1]}`,
+  );
+});

@@ -1,8 +1,8 @@
-// Prova, sem banco, que os rollback-manual das migrations 20261121/20261122
-// existem, reproduzem a RPC e a view vivas byte a byte, e que os quatro
-// arquivos (migrations + seus rollback-manual) não carregam controle de
-// transação em nível superior — a convenção da casa é o db-apply.cjs abrir
-// uma transação por arquivo.
+// Prova, sem banco, que os rollback-manual das migrations 20261121/20261122/
+// 20261123 existem, reproduzem a RPC, a view e o corpo da og-so-PNG vivos
+// byte a byte, e que os seis arquivos (migrations + seus rollback-manual)
+// não carregam controle de transação em nível superior — a convenção da
+// casa é o db-apply.cjs abrir uma transação por arquivo.
 import { createRequire } from "node:module";
 import {
   assert,
@@ -95,6 +95,25 @@ function definicaoDaView(sql: string): string {
   return sql.slice(a + marca.length, z + 1);
 }
 
+// Corpo de branding_a2_file_valid: os bytes ESTRITAMENTE entre
+// `AS $function$` e o `$function$` de fechamento do bloco que CRIA essa
+// função no arquivo. Mesma lógica de corpoDaRpc(), repetida em vez de
+// generalizada porque os dois âncoram em textos literais diferentes — um
+// parâmetro a mais que muda o comportamento por string custa mais para ler
+// do que as ~10 linhas repetidas.
+function corpoDoBrandingA2FileValid(sql: string): string {
+  const inicio = sql.indexOf(
+    "CREATE OR REPLACE FUNCTION public.branding_a2_file_valid(asset jsonb, asset_role text)",
+  );
+  assert(inicio >= 0, "arquivo não (re)cria branding_a2_file_valid");
+  const abre = "AS $function$";
+  const a = sql.indexOf(abre, inicio);
+  assert(a >= 0, "delimitador AS $function$ ausente");
+  const z = sql.indexOf("$function$", a + abre.length);
+  assert(z > a, "delimitador $function$ de fechamento ausente");
+  return sql.slice(a + abre.length, z);
+}
+
 Deno.test("rollback-manual da 20261121 reproduz a RPC viva byte a byte", async () => {
   const sql = await ler(
     "rollback-manual-20261121000000_identidade_e_arquivos_da_loja.sql",
@@ -116,18 +135,61 @@ Deno.test("rollback-manual da 20261121 reproduz o cabecalho vivo da RPC", async 
   assertEquals(await sha256(cabecalhoDaRpc(sql)), CABECALHO_RPC_VIVO);
 });
 
+// PR #534 — a 20261123 aperta o og para so PNG trocando SÓ o corpo de
+// branding_a2_file_valid. A prova é contra o TEXTO da 20261121 (não um hash
+// fixo): é o mesmo bloco, na mesma migration-mãe da função, então comparar
+// direto contra ela (em vez de uma constante capturada à mão) sobrevive a
+// qualquer futura recaptura de baseline sem precisar reeditar este teste.
+Deno.test("rollback-manual da 20261123 reproduz o corpo vivo de branding_a2_file_valid byte a byte", async () => {
+  const original = await ler(
+    "20261121000000_identidade_e_arquivos_da_loja.sql",
+  );
+  const rollback = await ler(
+    "rollback-manual-20261123000000_arte_de_compartilhamento_so_png.sql",
+  );
+  assertEquals(
+    corpoDoBrandingA2FileValid(rollback),
+    corpoDoBrandingA2FileValid(original),
+  );
+});
+
+Deno.test("a migration 20261123 aperta o og para so PNG, sem jpeg/webp soltos na linha do og", async () => {
+  const sql = await ler("20261123000000_arte_de_compartilhamento_so_png.sql");
+  assert(
+    sql.includes(
+      "WHEN 'og' THEN mime='image/png' AND asset->>'width'='1200' AND asset->>'height'='630'",
+    ),
+    "linha nova do og não encontrada com o formato esperado",
+  );
+  // A asserção é sobre a linha do OG, nunca sobre o arquivo inteiro: as
+  // linhas header/loader continuam legitimamente com jpeg/webp/svg, e um
+  // `!sql.includes('image/jpeg')` ingênuo reprovaria a migration certa.
+  const linhaOg = sql.split("\n").find((l) => l.includes("WHEN 'og'"));
+  assert(linhaOg, "linha do WHEN 'og' não encontrada");
+  assert(
+    !linhaOg.includes("image/jpeg"),
+    `linha do og ainda aceita jpeg: ${linhaOg}`,
+  );
+  assert(
+    !linhaOg.includes("image/webp"),
+    `linha do og ainda aceita webp: ${linhaOg}`,
+  );
+});
+
 // Ancorado em `detectarTransacaoExplicita`/`removerRuido` (as mesmas funções
 // que o db-prove-rollback.cjs usa na Fase 0), nunca numa regex ingênua: o
 // corpo da RPC copiado aqui termina em "END;\n" na coluna 0 — legítimo
 // dentro do dollar-quote `$function$...$function$` — e uma regex que não
 // remove o dollar-quote primeiro acusaria esse "END;" como controle de
 // transação de nível superior, uma recusa falsa.
-Deno.test("nenhum dos quatro arquivos carrega controle de transacao no topo", async () => {
+Deno.test("nenhum dos seis arquivos carrega controle de transacao no topo", async () => {
   for (const nome of [
     "20261121000000_identidade_e_arquivos_da_loja.sql",
     "20261122000000_gravacao_concorrente_da_identidade.sql",
     "rollback-manual-20261121000000_identidade_e_arquivos_da_loja.sql",
     "rollback-manual-20261122000000_gravacao_concorrente_da_identidade.sql",
+    "20261123000000_arte_de_compartilhamento_so_png.sql",
+    "rollback-manual-20261123000000_arte_de_compartilhamento_so_png.sql",
   ]) {
     const sql = await ler(nome);
     const achados = detectarTransacaoExplicita(removerRuido(sql)).achados;

@@ -167,6 +167,7 @@ function AdminAccessDenied({
   return <AdminRouteLoading />;
 }
 import { corPrimariaEfetiva } from "@/config/cor-da-loja";
+import { TELAS_DE_ENTRADA } from "@/config/rotas";
 import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
@@ -1495,44 +1496,7 @@ const AppContent = () => {
       if (!path) path = "home";
 
       // Basic validation of view name
-      const validViews: View[] = [
-        "home",
-        "cart",
-        "product-detail",
-        "checkout",
-        "profile",
-        "admin",
-        "search",
-        "auth",
-        "login",
-        "favorites",
-        "notifications",
-        "order-success",
-        "orders",
-        "order-details",
-        "recently-viewed",
-        "account-settings",
-        "admin-dashboard",
-        "admin-products",
-        "admin-product-form",
-        "admin-orders",
-        "admin-coupons",
-        "admin-coupon-form",
-        "admin-banners",
-        "admin-carousels",
-        "admin-shipping",
-        "admin-settings",
-        "admin-reviews",
-        "admin-qa",
-        "admin-customers",
-        "admin-user-detail",
-        "admin-push",
-        "admin-notifications",
-        "admin-whatsapp-config",
-        "address-form",
-        "admin-login",
-        "user-profile",
-      ];
+      const validViews: readonly View[] = TELAS_DE_ENTRADA;
       if (validViews.includes(path as View)) {
         let targetView = path as View;
 

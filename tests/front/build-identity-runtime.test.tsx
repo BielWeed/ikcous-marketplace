@@ -147,7 +147,7 @@ describe("a identidade compilada permanece na apresentação", () => {
         'meta[name="twitter:image"]',
       ]) {
         expect(document.querySelector(selector)?.getAttribute("content")).toBe(
-          `${location.origin}/identity/${name.toLowerCase()}/social.jpg`,
+          `${location.origin}/identity/${name.toLowerCase()}/social.png`,
         );
       }
       config = {

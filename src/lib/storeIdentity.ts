@@ -152,7 +152,9 @@ export function parseBrandingAssets(value: unknown): BrandingAssets {
     !["image/png", "image/svg+xml", "image/vnd.microsoft.icon"].includes(
       assets.favicon.media_type,
     ) ||
-    !["image/png", "image/jpeg", "image/webp"].includes(assets.og.media_type) ||
+    // `og` é escrito no build num caminho FIXO (`og-image.png`); só PNG
+    // torna esse nome honesto (decisão da hub, 11/09/2026).
+    assets.og.media_type !== "image/png" ||
     assets.og.width !== 1200 ||
     assets.og.height !== 630
   ) {
