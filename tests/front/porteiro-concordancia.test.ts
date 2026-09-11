@@ -77,10 +77,10 @@ describe("decidirConcordancia — preview (VERCEL_ENV !== production)", () => {
     ).toBe("discorda");
   });
 
-  it("mesmo cenário, mas VERCEL_ENV=production -> discorda (o relaxamento só vale fora de produção)", () => {
+  it("mesmo cenário, mas VERCEL_ENV=production -> discorda (o relaxamento só vale fora de produção; host NÃO é .vercel.app para não cruzar com a regra do alias, rodada 11/09/2026)", () => {
     expect(
       decidirConcordancia({
-        host: "loja-a-git-branch-x.vercel.app",
+        host: "loja-a-git-branch-x.exemplo",
         dominioPublico: "a.exemplo",
         vercelEnv: "production",
         producaoUrl: "a.exemplo",
@@ -134,5 +134,99 @@ describe("decidirConcordancia — preview (VERCEL_ENV !== production)", () => {
         producaoUrl: "",
       }),
     ).toBe("discorda");
+  });
+});
+
+// Brief `20260911-brief-aliases-vercel-encaminham.md` — decisão do sócio
+// aprovada pelo Gabriel (17:2xZ): alias automático da própria Vercel
+// (`*.vercel.app`) que discorda do `dominio_publico` em PRODUÇÃO encaminha
+// (308) para a própria loja, em vez de morrer em "manutenção".
+describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)", () => {
+  it("produção + host alias + dominio_publico de OUTRO host -> encaminha", () => {
+    expect(
+      decidirConcordancia({
+        host: "x-git-main-y.vercel.app",
+        dominioPublico: "ickous-marketplace.vercel.app",
+        vercelEnv: "production",
+        producaoUrl: undefined,
+      }),
+    ).toBe("encaminha");
+  });
+
+  it("produção + host que NÃO termina em .vercel.app + dominio_publico diferente -> discorda (inalterado)", () => {
+    expect(
+      decidirConcordancia({
+        host: "loja.com.br",
+        dominioPublico: "outra-loja.com.br",
+        vercelEnv: "production",
+        producaoUrl: undefined,
+      }),
+    ).toBe("discorda");
+  });
+
+  it("produção + host alias + dominio_publico NULL -> sem-loja (a regra 3 vem ANTES da regra do alias)", () => {
+    expect(
+      decidirConcordancia({
+        host: "x-git-main-y.vercel.app",
+        dominioPublico: null,
+        vercelEnv: "production",
+        producaoUrl: undefined,
+      }),
+    ).toBe("sem-loja");
+  });
+
+  it("produção + host alias + dominio_publico vazio (string) -> sem-loja (mesma regra 3)", () => {
+    expect(
+      decidirConcordancia({
+        host: "x-git-main-y.vercel.app",
+        dominioPublico: "",
+        vercelEnv: "production",
+        producaoUrl: undefined,
+      }),
+    ).toBe("sem-loja");
+  });
+
+  it("preview + host alias, sem bater com producaoUrl -> discorda (inalterado, o relaxamento de alias é só produção)", () => {
+    expect(
+      decidirConcordancia({
+        host: "x-git-main-y.vercel.app",
+        dominioPublico: "ickous-marketplace.vercel.app",
+        vercelEnv: "preview",
+        producaoUrl: undefined,
+      }),
+    ).toBe("discorda");
+  });
+
+  it("VERCEL_ENV ausente (undefined) + host alias -> discorda (nunca relaxa por omissão de env)", () => {
+    expect(
+      decidirConcordancia({
+        host: "x-git-main-y.vercel.app",
+        dominioPublico: "ickous-marketplace.vercel.app",
+        vercelEnv: undefined,
+        producaoUrl: undefined,
+      }),
+    ).toBe("discorda");
+  });
+
+  it("VERCEL_ENV=development + host alias -> discorda (nunca relaxa, só 'production' exatamente)", () => {
+    expect(
+      decidirConcordancia({
+        host: "x-git-main-y.vercel.app",
+        dominioPublico: "ickous-marketplace.vercel.app",
+        vercelEnv: "development",
+        producaoUrl: undefined,
+      }),
+    ).toBe("discorda");
+  });
+
+  it("host alias igual ao dominio_publico, só a caixa muda -> ok (nunca laço de redirect)", () => {
+    expect(
+      decidirConcordancia({
+        host: "X-Git-Main-Y.Vercel.App",
+        dominioPublico: "x-git-main-y.vercel.app",
+        vercelEnv: "production",
+        producaoUrl: undefined,
+      }),
+    ).toBe("ok");
   });
 });

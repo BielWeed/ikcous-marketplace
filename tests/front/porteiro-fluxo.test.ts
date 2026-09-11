@@ -260,7 +260,7 @@ describe("atenderPorteiro — preview (teste obrigatório 4)", () => {
     expect(resp.status).toBe(200);
   });
 
-  it("mesmo cenário com VERCEL_ENV=production -> 503 discorda", async () => {
+  it("mesmo cenário com VERCEL_ENV=production -> 503 discorda (host NÃO é .vercel.app para não cruzar com a regra do alias, rodada 11/09/2026)", async () => {
     const fetchImpl = criarFetchDuble({
       [origem]: {
         linha: linhaFixture("Loja A", "#111111", origem),
@@ -268,7 +268,7 @@ describe("atenderPorteiro — preview (teste obrigatório 4)", () => {
       },
     });
     const resp = await atenderPorteiro(
-      pedido("loja-a-git-branch-x.vercel.app"),
+      pedido("loja-a-git-branch-x.exemplo"),
       {
         ...ambienteBase,
         VERCEL_ENV: "production",
