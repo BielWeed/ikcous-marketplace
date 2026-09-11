@@ -1409,6 +1409,7 @@ export type Database = {
         Row: {
           business_hours: string | null;
           created_at: string | null;
+          dominio_publico: string | null;
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
@@ -1440,6 +1441,7 @@ export type Database = {
         Insert: {
           business_hours?: string | null;
           created_at?: string | null;
+          dominio_publico?: string | null;
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
@@ -1471,6 +1473,7 @@ export type Database = {
         Update: {
           business_hours?: string | null;
           created_at?: string | null;
+          dominio_publico?: string | null;
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
@@ -1622,6 +1625,7 @@ export type Database = {
         Row: {
           business_hours: string | null;
           created_at: string | null;
+          dominio_publico: string | null;
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
@@ -1653,6 +1657,7 @@ export type Database = {
         Insert: {
           business_hours?: string | null;
           created_at?: string | null;
+          dominio_publico?: string | null;
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
@@ -1684,6 +1689,7 @@ export type Database = {
         Update: {
           business_hours?: string | null;
           created_at?: string | null;
+          dominio_publico?: string | null;
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;

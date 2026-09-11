@@ -32,5 +32,5 @@
   // do tipo da linha do banco sem ninguém perceber, que é exatamente o erro
   // que estes testes existem para pegar. Vale só para `tests/front`: o
   // `tests/truth_gate_test.ts` é Deno, importa por URL e tem @ts-nocheck.
-  "include": ["src", "tests/front"]
+  "include": ["src", "tests/front", "tests/porteiro-dois-hosts"]
 }

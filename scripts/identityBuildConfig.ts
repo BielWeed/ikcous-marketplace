@@ -6,6 +6,13 @@ import path from "node:path";
 import type { ConfigEnv, Plugin, UserConfig } from "vite";
 import type { VitePWAOptions } from "vite-plugin-pwa";
 import type { BuildIdentitySnapshot } from "../src/config/buildIdentityContract";
+// `identityHtml` mora agora em `src/config/identidadeNoHtml.ts` — extraída
+// para ser a MESMA função pura que o porteiro (`src/hospedagem/porteiro.ts`)
+// usa em tempo real (etapa 2 da escala, 11/09/2026). Reexportada abaixo
+// (`export { ... }`) porque `tests/front/identity-build-integration.test.ts`
+// importa `identityHtml` deste módulo; o comportamento não mudou, só o
+// endereço da definição.
+import { escapeHtml, identityHtml } from "../src/config/identidadeNoHtml";
 import {
   PUBLIC_DEFINE_KEYS,
   STORE_DELIVERY_API,
@@ -22,6 +29,8 @@ import { resolverValoresPublicosSupabase } from "../src/lib/env-publico-valores"
 import { classifyPublicSupabaseKey } from "../src/lib/publicSupabaseKey";
 import { normalizeSupabaseOrigin } from "../src/lib/storeIdentity";
 import type { PreparedIdentityBuild } from "./prepareIdentity";
+
+export { escapeHtml, identityHtml };
 
 const essentialRoles = [
   "header",
@@ -43,84 +52,6 @@ export function selectIdentityMode(
   if (mode === undefined || mode === "database") return "database";
   if (mode === "fixture") return "fixture";
   throw new Error("IDENTITY_MODE: use database ou fixture explicitamente");
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-export function identityHtml(
-  html: string,
-  snapshot: BuildIdentitySnapshot,
-): string {
-  const { identity, localUrls, publicUrl } = snapshot;
-  const description = `Produtos e novidades de ${identity.storeName}`;
-  const place = [identity.city, identity.state].filter(Boolean).join(", ");
-  const title = `${identity.storeName}${place ? ` | ${place}` : ""}`;
-  const meta = new Map([
-    ["description", description],
-    ["theme-color", identity.theme.primary],
-    ["background-color", identity.theme.primary],
-    ["application-name", identity.storeName],
-    ["apple-mobile-web-app-title", identity.storeName],
-    ["og:title", identity.storeName],
-    ["og:description", description],
-    ["og:url", `${publicUrl}/`],
-    ["og:image", `${publicUrl}${localUrls.og}`],
-    ["og:image:type", identity.assets.og.media_type],
-    ["twitter:title", identity.storeName],
-    ["twitter:description", description],
-    ["twitter:image", `${publicUrl}${localUrls.og}`],
-  ]);
-  let result = html
-    .replace(
-      /<title>[\s\S]*?<\/title>/,
-      () => `<title>${escapeHtml(title)}</title>`,
-    )
-    .replace(
-      /<meta (name|property)="([^"]+)" content="[^"]*"\s*\/>/g,
-      (tag, kind: string, name: string) => {
-        const value = meta.get(name);
-        return value === undefined
-          ? tag
-          : `<meta ${kind}="${name}" content="${escapeHtml(value)}" />`;
-      },
-    )
-    .replace(
-      /<link rel="icon"[^>]*>/,
-      () =>
-        `<link rel="icon" type="${identity.assets.favicon.media_type}" href="${localUrls.favicon}" />`,
-    )
-    .replace(
-      /<link rel="apple-touch-icon"[^>]*>/,
-      () => `<link rel="apple-touch-icon" href="${localUrls.apple_touch}" />`,
-    )
-    .replace(
-      /<link rel="preconnect" href="https:\/\/[^"]+\.supabase\.co" crossorigin\s*\/>/,
-      () =>
-        `<link rel="preconnect" href="https://${identity.projectRef}.supabase.co" crossorigin />`,
-    )
-    .replace(
-      /<!-- LOGO_START -->[\s\S]*?<!-- LOGO_END -->/,
-      () =>
-        `<img src="${localUrls.loader}" alt="${escapeHtml(identity.storeName)}" class="guardian-logo" />`,
-    )
-    .replace(
-      /<div class="cinematic-text">[^<]*<\/div>/,
-      () =>
-        `<div class="cinematic-text">${escapeHtml(identity.storeName)}</div>`,
-    );
-  const rgba = (color: string, alpha: string) =>
-    `${Number.parseInt(color.slice(1, 3), 16)}, ${Number.parseInt(color.slice(3, 5), 16)}, ${Number.parseInt(color.slice(5, 7), 16)}, ${alpha}`;
-  const { primary, secondary, accent } = identity.theme;
-  const style = `<style id="dynamic-branding-style">:root {--primary-color:${primary};--secondary-color:${secondary};--accent-color:${accent};--orb-1-color:rgba(${rgba(primary, "0.25")});--orb-2-color:rgba(${rgba(secondary, "0.20")});--orb-3-color:rgba(${rgba(accent, "0.20")});--progress-track-color:rgba(${rgba(primary, "0.15")});}</style>`;
-  result = result.replace("<head>", () => `<head>${style}`);
-  return result;
 }
 
 function codeSha(

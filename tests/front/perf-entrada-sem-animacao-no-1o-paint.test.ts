@@ -48,7 +48,19 @@ function resolverEspecificador(deOnde: string, spec: string): string | null {
   const base = spec.startsWith("@/")
     ? `/src/${spec.slice(2)}`
     : `${deOnde.slice(0, deOnde.lastIndexOf("/"))}/${spec}`;
-  const limpo = (p: string) => p.replaceAll("/./", "/");
+  // `/./` e `/../` são normalizados de verdade — sem o `..`, um import
+  // relativo que sobe de pasta (ex.: `src/config/fichaDaLojaContract.ts`
+  // importando `../lib/storeIdentity`) caía em `semResolucao` e a guarda
+  // abaixo reprovava um módulo que existe (11/09/2026, etapa 2 da escala).
+  const limpo = (p: string) => {
+    const partes: string[] = [];
+    for (const parte of p.split("/")) {
+      if (parte === "." || parte === "") continue;
+      if (parte === "..") partes.pop();
+      else partes.push(parte);
+    }
+    return `/${partes.join("/")}`;
+  };
   for (const ext of EXTENSOES) {
     for (const candidato of [limpo(base + ext), limpo(`${base}/index${ext}`)]) {
       if (ARQUIVOS.has(candidato)) return candidato;

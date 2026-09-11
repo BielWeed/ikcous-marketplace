@@ -6,6 +6,7 @@ import { defineConfig, loadEnv } from "vite";
 import type { UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
+import { MANIFESTO_BASE } from "./src/config/manifestoBase";
 // Endereço público de CADA loja — MESMO corpo de `resolverEnderecoPublico`
 // em middleware.ts (docstring completa lá). Duplicado, não importado: um
 // `import { resolverEnderecoPublico } from "./middleware.ts"` aqui puxa
@@ -54,30 +55,11 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     manifest: {
       name: "",
       short_name: "",
-      display: "standalone",
-      orientation: "portrait",
-      scope: "/",
-      id: "/?source=pwa",
-      start_url: "/?source=pwa",
-      launch_handler: { client_mode: ["focus-existing", "auto"] },
+      // Campos que NUNCA variam por loja — ponto único de troca com o
+      // manifest que o porteiro monta em tempo real
+      // (`src/hospedagem/porteiro.ts`, `src/config/manifestoBase.ts`).
+      ...MANIFESTO_BASE,
       icons: [],
-      categories: ["shopping", "lifestyle"],
-      shortcuts: [
-        {
-          name: "Carrinho",
-          short_name: "Carrinho",
-          description: "Ver itens no carrinho",
-          url: "/?view=cart",
-          icons: [{ src: "/icons/cart-96x96.png", sizes: "96x96" }],
-        },
-        {
-          name: "Favoritos",
-          short_name: "Favoritos",
-          description: "Ver lista de desejos",
-          url: "/?view=favorites",
-          icons: [{ src: "/icons/heart-96x96.png", sizes: "96x96" }],
-        },
-      ],
     },
     injectManifest: {
       globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],

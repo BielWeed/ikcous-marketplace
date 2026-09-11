@@ -78,8 +78,23 @@ async function comFetch<T>(
   }
 }
 
+// T3c (ADENDO — RODADA C, 11/09/2026): o ramo de robô deixou de resolver a
+// conexão "por fora" (`resolverConexao` isolado) e passou a chamar
+// `obterFichaValidada` — a MESMA trava que o documento usa (resolver +
+// concordar + cachear). Isso significa que, a partir de agora, o robô
+// TAMBÉM precisa de uma `v_store_config` válida (identidade + o
+// `dominio_publico` batendo com o host) antes de sequer tentar o produto —
+// os dublês abaixo passaram a simular as DUAS chamadas de rede
+// (`v_store_config` para identidade/domínio, `vw_produtos_public` para o
+// produto), não só a última. `VITE_SUPABASE_URL` precisa ter o formato que
+// `normalizeSupabaseOrigin` exige (`https://` + 20 chars `[a-z0-9]` +
+// `.supabase.co`) — um host qualquer como o antigo `supa-fake.local` falha
+// a validação de ORIGEM antes de qualquer fetch.
+const HOST_LOJA_TESTE = "loja-teste.vercel.app";
+const ORIGEM_SUPABASE_VALIDA = "https://abcdefghij0123456789.supabase.co";
+
 const ENV_SUPABASE_BASE = {
-  VITE_SUPABASE_URL: "https://supa-fake.local",
+  VITE_SUPABASE_URL: ORIGEM_SUPABASE_VALIDA,
   VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_de_teste",
   VITE_SUPABASE_ANON_KEY: undefined,
 };
@@ -95,6 +110,122 @@ function produtoFake(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// Ficha válida mínima (mesmo molde de `linhaFixture` em
+// `tests/front/porteiro-fluxo.test.ts`) — só o que `parseStoreIdentity`
+// (`src/lib/storeIdentity.ts`) exige: cada asset com `path` no formato
+// `v1/<sha256>/<arquivo>`, `sha256` igual ao trecho do path, dimensões
+// batendo com o papel (ícones quadrados, `og` 1200x630).
+const HASH_FIXTURE = "a".repeat(64);
+function assetFixture(nome: string, largura: number, altura: number) {
+  return {
+    path: `v1/${HASH_FIXTURE}/${nome}.png`,
+    sha256: HASH_FIXTURE,
+    media_type: "image/png",
+    bytes: 100,
+    width: largura,
+    height: altura,
+  };
+}
+function identidadeFixture(nome: string, origin: string) {
+  const header = assetFixture("header", 64, 64);
+  return {
+    store_name: nome,
+    store_city: null,
+    store_state: null,
+    logo_url: `${origin}/storage/v1/object/public/branding/${header.path}`,
+    primary_color: "#111111",
+    secondary_color: "#654321",
+    accent_color: "#abcdef",
+    branding_assets: {
+      version: 1,
+      originals: [header],
+      header,
+      loader: assetFixture("loader", 64, 64),
+      favicon: assetFixture("favicon", 32, 32),
+      apple_touch: assetFixture("apple", 180, 180),
+      icon_192: assetFixture("icon192", 192, 192),
+      icon_512: assetFixture("icon512", 512, 512),
+      maskable_512: assetFixture("maskable", 512, 512),
+      og: assetFixture("og", 1200, 630),
+    },
+  };
+}
+
+// Dublê combinado para o ramo de robô: responde `v_store_config` (os dois
+// `select` — identidade e `dominio_publico`) COM uma ficha válida cujo
+// `dominio_publico` bate com `HOST_LOJA_TESTE` (para `decidirConcordancia`
+// devolver "ok"), e `vw_produtos_public` com o `produto`/`produtoStatus`
+// pedido. `urlsCapturadas` recebe TODAS as URLs (agora 3 por requisição
+// fresca: 2x `v_store_config` + 1x `vw_produtos_public`) — os testes que
+// inspecionam a URL do produto filtram por `vw_produtos_public`
+// explicitamente, nunca por posição, porque o cache de ficha do porteiro
+// (módulo-level, compartilhado por todos os testes deste arquivo) pode
+// reduzir esse número em requisições SUBSEQUENTES para o mesmo host.
+function fetchRoboComFicha(
+  opcoes: {
+    produto?: unknown;
+    produtoStatus?: number;
+  },
+  urlsCapturadas: string[],
+) {
+  const identidade = identidadeFixture("Loja Teste", ORIGEM_SUPABASE_VALIDA);
+  return (input: any) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    urlsCapturadas.push(url.toString());
+    if (url.pathname === "/rest/v1/v_store_config") {
+      if (url.searchParams.get("select") === "dominio_publico") {
+        return Promise.resolve(
+          new Response(JSON.stringify([{ dominio_publico: HOST_LOJA_TESTE }]), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify([identidade]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (url.pathname === "/rest/v1/vw_produtos_public") {
+      if (opcoes.produtoStatus !== undefined && opcoes.produtoStatus !== 200) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              code: "42501",
+              details: null,
+              hint: null,
+              message: "permission denied for table produtos",
+            }),
+            {
+              status: opcoes.produtoStatus,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        );
+      }
+      const linhas = opcoes.produto === undefined ? [] : [opcoes.produto];
+      return Promise.resolve(
+        new Response(JSON.stringify(linhas), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return Promise.reject(
+      new Error(
+        `URL não mapeada no dublê fetchRoboComFicha: ${url.toString()}`,
+      ),
+    );
+  };
+}
+
+// Dublê ANTIGO, mantido só para o teste #6 (navegador): devolve o produto
+// para QUALQUER URL, inclusive `v_store_config` — é exatamente essa
+// incompatibilidade de forma (o produto não tem `store_name`,
+// `dominio_publico`, etc.) que prova a falha fechada quando o esquema não
+// bate.
 function fetchProdutoOk(produto: unknown, urlsCapturadas: string[]) {
   return (input: any) => {
     const url = String(input instanceof Request ? input.url : input);
@@ -108,26 +239,12 @@ function fetchProdutoOk(produto: unknown, urlsCapturadas: string[]) {
   };
 }
 
-function fetchPermissionDenied(urlsCapturadas: string[]) {
-  return (input: any) => {
-    const url = String(input instanceof Request ? input.url : input);
-    urlsCapturadas.push(url);
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          code: "42501",
-          details: null,
-          hint: null,
-          message: "permission denied for table produtos",
-        }),
-        { status: 403, headers: { "content-type": "application/json" } },
-      ),
-    );
-  };
-}
-
-function request(pathComQuery: string, userAgent: string): Request {
-  return new Request(`https://loja-teste.vercel.app${pathComQuery}`, {
+function request(
+  pathComQuery: string,
+  userAgent: string,
+  host: string = HOST_LOJA_TESTE,
+): Request {
+  return new Request(`https://${host}${pathComQuery}`, {
     headers: { "user-agent": userAgent },
   });
 }
@@ -275,13 +392,17 @@ Deno.test("middleware: robô + produto existente devolve prévia com foto, nome 
   const produto = produtoFake();
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produto, urls), () =>
+    comFetch(fetchRoboComFicha({ produto }, urls), () =>
       middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
     ),
   );
 
   const html = await resp.text();
   assertEquals(resp.headers.get("x-ikcous-og"), "produto");
+  // Item 2 do brief T3c: x-ikcous-caderneta em toda resposta do ramo de
+  // robô — "ausente" porque este teste não configura as três variáveis da
+  // caderneta central.
+  assertEquals(resp.headers.get("x-ikcous-caderneta"), "ausente");
   assertStringIncludes(
     html,
     `<meta property="og:image" content="${produto.imagem_url}"`,
@@ -290,11 +411,16 @@ Deno.test("middleware: robô + produto existente devolve prévia com foto, nome 
   assertStringIncludes(html, "R$ 14,90");
 
   // Causa 2, guardada: a URL consultada usa a VIEW pública, nunca a tabela.
-  assertEquals(urls.length, 1);
-  assertStringIncludes(urls[0], "vw_produtos_public");
+  // Filtrado por `vw_produtos_public` (T3c: agora há também chamadas a
+  // `v_store_config` para resolver a ficha — 2 numa requisição fresca, 0
+  // se o cache de ficha do porteiro já estiver aquecido para este host de
+  // um teste anterior).
+  const urlsProduto = urls.filter((u) => u.includes("vw_produtos_public"));
+  assertEquals(urlsProduto.length, 1);
+  assertStringIncludes(urlsProduto[0], "vw_produtos_public");
   assert(
-    !urls[0].includes("/produtos?"),
-    `a URL consultada nao deveria conter "/produtos?": ${urls[0]}`,
+    !urlsProduto[0].includes("/produtos?"),
+    `a URL consultada nao deveria conter "/produtos?": ${urlsProduto[0]}`,
   );
 });
 
@@ -305,41 +431,86 @@ Deno.test("middleware: robô + permission denied (42501) devolve pass-through co
   const urls: string[] = [];
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchPermissionDenied(urls), () =>
+    comFetch(fetchRoboComFicha({ produtoStatus: 403 }, urls), () =>
       middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
     ),
   );
 
   assertEquals(resp.headers.get("x-middleware-next"), "1");
   assertEquals(resp.headers.get("x-ikcous-og"), "sem-produto");
+  // Item 2 do brief T3c: presente também no sem-produto.
+  assertEquals(resp.headers.get("x-ikcous-caderneta"), "ausente");
   assertEquals(await resp.text(), "");
 });
 
-// ── 6. Navegador comum: pass-through, sem prévia de produto nenhuma.
+// ── 6. Navegador comum em /product-detail: DEIXOU de ser pass-through. Com o
+// matcher novo do porteiro (etapa 2 da escala, rodada 3 de correção,
+// 11/09/2026), `/product-detail` é um DOCUMENTO como outro qualquer — todo
+// documento passa pelo porteiro, não só a rota de robô. Este teste usa o
+// dublê de fetch antigo (`fetchProdutoOk`, que só simula a consulta de
+// `produtos`); o porteiro agora tenta ler `v_store_config` com ele e recebe
+// forma inesperada (sem `dominio_publico`) -> 503 `banco-indisponivel`. Não é
+// regressão do porteiro: é a expectativa deste teste que ficou velha. Medido
+// com `deno run --allow-all --no-check` sobre o `middleware()` real.
 
-Deno.test("middleware: navegador (Mozilla) em /product-detail é pass-through", async () => {
+Deno.test("middleware: navegador (Mozilla) em /product-detail cai no porteiro (503 banco-indisponivel, dublê não simula v_store_config)", async () => {
   const urls: string[] = [];
+  // Host DEDICADO (nunca usado por um teste de sucesso): o cache de ficha
+  // do porteiro é módulo-level e compartilhado por todos os testes deste
+  // arquivo — se este host coincidisse com o de um teste que já resolveu
+  // uma ficha BOA, este teste pegaria cache HIT (200) em vez do 503 que
+  // prova a falha fechada.
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
     comFetch(fetchProdutoOk(produtoFake(), urls), () =>
-      middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_NAVEGADOR)),
+      middleware(
+        request(
+          `/product-detail?id=${PRODUCT_ID}`,
+          UA_NAVEGADOR,
+          "loja-teste-navegador.vercel.app",
+        ),
+      ),
     ),
   );
 
-  assertEquals(resp.headers.get("x-middleware-next"), "1");
-  assertEquals(resp.headers.get("x-ikcous-og"), "passa");
-  assertEquals(
-    urls.length,
-    0,
-    "navegador comum nao deveria disparar consulta ao Supabase",
+  assertEquals(resp.status, 503);
+  assertEquals(resp.headers.get("x-ikcous-porteiro"), "banco-indisponivel");
+  assertEquals(resp.headers.get("x-middleware-next"), null);
+  assert(
+    urls.length > 0,
+    "o porteiro consulta o banco mesmo para navegador comum, porque todo documento passa por ele agora",
   );
 });
 
-// ── 7. Robô fora do matcher: pass-through.
+// ── 7. Robô em /cart: renomeado (rodada 3, 11/09/2026) — o título antigo
+// dizia "fora do matcher", e isso virou mentira: `/cart` não tem extensão e
+// por isso CASA o matcher novo (só documentos). Sem `IKCOUS_FROTA_URL`/
+// `VITE_SUPABASE_URL` no ambiente deste teste, `resolverConexao` devolve
+// `null` e o porteiro fecha com 503 `sem-loja` — falha fechada por desenho,
+// não pass-through.
 
-Deno.test("middleware: robô em caminho fora do matcher (/cart) é pass-through", async () => {
-  const resp = await middleware(request("/cart", UA_ROBO));
-  assertEquals(resp.headers.get("x-middleware-next"), "1");
-  assertEquals(resp.headers.get("x-ikcous-og"), "passa");
+Deno.test("middleware: robô em /cart (dentro do matcher novo, sem env) recebe 503 sem-loja", async () => {
+  // Host DEDICADO, pelo mesmo motivo do teste do navegador acima: sem env
+  // nenhum, este teste só prova "sem-loja" se o cache do porteiro nunca
+  // tiver visto este host com sucesso.
+  // Revisor Opus (rodada C, menor): sem este envelope o teste dependia da
+  // AUSENCIA de VITE_SUPABASE_*/IKCOUS_FROTA_* no processo — com elas
+  // exportadas, o porteiro acha conexao e sai para a rede real.
+  const resp = await comEnvAsync(
+    {
+      VITE_SUPABASE_URL: undefined,
+      VITE_SUPABASE_PUBLISHABLE_KEY: undefined,
+      VITE_SUPABASE_ANON_KEY: undefined,
+      IKCOUS_FROTA_URL: undefined,
+      IKCOUS_FROTA_APIKEY: undefined,
+      IKCOUS_FROTA_CHAVE: undefined,
+    },
+    () => middleware(request("/cart", UA_ROBO, "loja-teste-cart.vercel.app")),
+  );
+  assertEquals(resp.status, 503);
+  assertEquals(resp.headers.get("x-ikcous-porteiro"), "sem-loja");
+  assertEquals(resp.headers.get("x-middleware-next"), null);
+  // Item 2 do brief T3c: presente também no 503 do ramo de robô.
+  assertEquals(resp.headers.get("x-ikcous-caderneta"), "ausente");
 });
 
 // ── 8. Escape: nome com aspas e `<` não quebra a meta tag.
@@ -349,7 +520,7 @@ Deno.test("middleware: nome com aspas e < continua com a meta tag bem formada", 
   const produto = produtoFake({ nome: `Copo 300ml "Premium" <especial>` });
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produto, urls), () =>
+    comFetch(fetchRoboComFicha({ produto }, urls), () =>
       middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
     ),
   );
@@ -387,7 +558,7 @@ Deno.test("middleware: produto sem imagem usa o og-image do endereço público r
   const resp = await comEnvAsync(
     { ...ENV_SUPABASE_BASE, VITE_APP_URL: "https://loja-savy.vercel.app" },
     () =>
-      comFetch(fetchProdutoOk(produto, urls), () =>
+      comFetch(fetchRoboComFicha({ produto }, urls), () =>
         middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
       ),
   );
@@ -414,7 +585,7 @@ Deno.test("middleware: id com '&' do PostgREST vai codificado na URL da consulta
   const idMalicioso = "1&limit=0";
 
   await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produtoFake(), urls), () =>
+    comFetch(fetchRoboComFicha({ produto: produtoFake() }, urls), () =>
       middleware(
         request(
           `/product-detail?id=${encodeURIComponent(idMalicioso)}`,
@@ -424,13 +595,14 @@ Deno.test("middleware: id com '&' do PostgREST vai codificado na URL da consulta
     ),
   );
 
-  assertEquals(urls.length, 1);
+  const urlsProduto = urls.filter((u) => u.includes("vw_produtos_public"));
+  assertEquals(urlsProduto.length, 1);
   assert(
-    !urls[0].includes("&limit="),
-    `a URL da consulta nao deveria conter "&limit=" cru: ${urls[0]}`,
+    !urlsProduto[0].includes("&limit="),
+    `a URL da consulta nao deveria conter "&limit=" cru: ${urlsProduto[0]}`,
   );
-  assertStringIncludes(urls[0], encodeURIComponent(idMalicioso));
-  assertStringIncludes(urls[0], "vw_produtos_public");
+  assertStringIncludes(urlsProduto[0], encodeURIComponent(idMalicioso));
+  assertStringIncludes(urlsProduto[0], "vw_produtos_public");
 });
 
 Deno.test("middleware: id com ',' do PostgREST vai codificado na URL da consulta", async () => {
@@ -438,7 +610,7 @@ Deno.test("middleware: id com ',' do PostgREST vai codificado na URL da consulta
   const idComVirgula = "1,2";
 
   await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produtoFake(), urls), () =>
+    comFetch(fetchRoboComFicha({ produto: produtoFake() }, urls), () =>
       middleware(
         request(
           `/product-detail?id=${encodeURIComponent(idComVirgula)}`,
@@ -448,12 +620,13 @@ Deno.test("middleware: id com ',' do PostgREST vai codificado na URL da consulta
     ),
   );
 
-  assertEquals(urls.length, 1);
+  const urlsProduto = urls.filter((u) => u.includes("vw_produtos_public"));
+  assertEquals(urlsProduto.length, 1);
   assert(
-    !urls[0].includes(","),
-    `a URL da consulta nao deveria conter "," cru: ${urls[0]}`,
+    !urlsProduto[0].includes(","),
+    `a URL da consulta nao deveria conter "," cru: ${urlsProduto[0]}`,
   );
-  assertStringIncludes(urls[0], "vw_produtos_public");
+  assertStringIncludes(urlsProduto[0], "vw_produtos_public");
 });
 
 // ── 11. Decisão do dono (11/09/2026): imagem_urls=[] (default da coluna) não
@@ -467,7 +640,7 @@ Deno.test("middleware: imagem_urls vazio (default) com imagem_url preenchido usa
   });
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produto, urls), () =>
+    comFetch(fetchRoboComFicha({ produto }, urls), () =>
       middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
     ),
   );
@@ -484,7 +657,7 @@ Deno.test("middleware: preco_venda 0 não aparece no og:title", async () => {
   const produto = produtoFake({ preco_venda: 0 });
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produto, urls), () =>
+    comFetch(fetchRoboComFicha({ produto }, urls), () =>
       middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
     ),
   );
@@ -508,7 +681,7 @@ Deno.test("middleware: preco_venda 14.9 continua mostrando R$ 14,90 (regressão)
   const produto = produtoFake({ preco_venda: 14.9 });
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produto, urls), () =>
+    comFetch(fetchRoboComFicha({ produto }, urls), () =>
       middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
     ),
   );
@@ -525,7 +698,7 @@ Deno.test("middleware: produto sem foto usa og:image:width=1200 e og:image:heigh
   const produto = produtoFake({ imagem_url: null, imagem_urls: null });
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produto, urls), () =>
+    comFetch(fetchRoboComFicha({ produto }, urls), () =>
       middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
     ),
   );
@@ -546,7 +719,7 @@ Deno.test("middleware: produto com foto não declara og:image:width nem og:image
   const produto = produtoFake();
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produto, urls), () =>
+    comFetch(fetchRoboComFicha({ produto }, urls), () =>
       middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
     ),
   );
@@ -567,7 +740,7 @@ Deno.test("middleware: preco_venda negativo não aparece no og:title", async () 
   const produto = produtoFake({ preco_venda: -5 });
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
-    comFetch(fetchProdutoOk(produto, urls), () =>
+    comFetch(fetchRoboComFicha({ produto }, urls), () =>
       middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
     ),
   );
