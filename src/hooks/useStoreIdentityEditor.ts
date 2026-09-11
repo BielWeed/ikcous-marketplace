@@ -353,11 +353,14 @@ export function useStoreIdentityEditor(active = true) {
       });
     } catch {
       if (!op.isCurrent()) return;
+      const isOg = target.kind === "asset" && target.roles.includes("og");
       finish({
         ...before,
         phase: "editing",
         message:
-          "Não foi possível conferir esta imagem. Confira o formato e as dimensões e tente novamente.",
+          isOg && file.type !== "image/png"
+            ? "A arte de compartilhamento precisa ser PNG, 1200 x 630."
+            : "Não foi possível conferir esta imagem. Confira o formato e as dimensões e tente novamente.",
       });
     }
   }

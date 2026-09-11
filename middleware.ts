@@ -140,6 +140,12 @@ export default async function middleware(request: Request) {
             const images = rawImages.filter(
               (img: any) => typeof img === "string" && img.trim() !== "",
             );
+            // Só o fallback (${publicUrl}/og-image.png) tem dimensão fixa: é
+            // a arte de compartilhamento da identidade, sempre PNG 1200x630.
+            // A foto do produto não tem tamanho conhecido — declarar 600x400
+            // pra qualquer imagem distorcia a prévia; sem as duas metas, o
+            // robô mede a imagem sozinho.
+            const ehFallback = images.length === 0;
             const imageUrl = escaparHtml(
               images[0] ||
                 // `as unknown as`: TS2559 (weak type) não conta o índice de
@@ -161,9 +167,13 @@ export default async function middleware(request: Request) {
   <meta property="og:description" content="${description}" />
   <meta property="og:type" content="product" />
   <meta property="og:url" content="${escaparHtml(request.url)}" />
-  <meta property="og:image" content="${imageUrl}" />
-  <meta property="og:image:width" content="600" />
-  <meta property="og:image:height" content="400" />
+  <meta property="og:image" content="${imageUrl}" />${
+    ehFallback
+      ? `
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />`
+      : ""
+  }
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />

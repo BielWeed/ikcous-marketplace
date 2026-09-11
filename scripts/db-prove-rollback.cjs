@@ -47,8 +47,10 @@
  *   node scripts/db-prove-rollback.cjs <migration.sql> [--rollback <arquivo>]
  *
  * Se `--rollback` não vier, o rollback-manual é resolvido pela convenção já
- * em uso no repositório: `rollback-manual-<nome-do-arquivo-da-migration>.sql`
- * na raiz (ver os ~19 arquivos existentes com esse padrão).
+ * em uso no repositório: `rollback-manual-<nome-do-arquivo-da-migration>.sql`,
+ * procurado PRIMEIRO no diretório da própria migration (`supabase/
+ * migrations/`, convenção desde o commit 1a4e332 de 09/09) e, se não existir
+ * ali, na raiz do projeto (compatibilidade com os arquivos antigos).
  *
  * ESTADOS DE SAÍDA (distintos, o `else` de uma classificação é sempre a
  * DÚVIDA, nunca o sucesso — ver dominios/testes-e-verificacao.md):
@@ -618,8 +620,13 @@ function resolverCaminhoMigration(arg) {
 }
 
 /**
- * Convenção do repositório: `rollback-manual-<nome-do-arquivo>.sql`, na raiz
- * do projeto (ver os ~19 arquivos hoje existentes com esse padrão).
+ * Convenção do repositório: `rollback-manual-<nome-do-arquivo>.sql`. Desde o
+ * commit 1a4e332 (09/09) o rollback-manual passou a morar AO LADO da
+ * migration, dentro de `supabase/migrations/` — não mais só na raiz do
+ * projeto. Sem `--rollback` explícito, a resolução procura PRIMEIRO no
+ * diretório da própria migration e só cai para a raiz (compatibilidade com
+ * os ~19 arquivos antigos que ainda vivem lá) se o arquivo não existir ao
+ * lado. `--rollback` explícito sempre manda, sem passar por essa busca.
  */
 function resolverCaminhoRollback(migrationPath, argRollback) {
   if (argRollback) {
@@ -628,7 +635,10 @@ function resolverCaminhoRollback(migrationPath, argRollback) {
       : path.resolve(process.cwd(), argRollback);
   }
   const nomeBase = path.basename(migrationPath);
-  return path.join(PROJECT_ROOT, `rollback-manual-${nomeBase}`);
+  const nomeRollback = `rollback-manual-${nomeBase}`;
+  const aoLado = path.join(path.dirname(migrationPath), nomeRollback);
+  if (fs.existsSync(aoLado)) return aoLado;
+  return path.join(PROJECT_ROOT, nomeRollback);
 }
 
 // ---------------------------------------------------------------------------
