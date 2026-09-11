@@ -342,6 +342,63 @@ describe("worker", () => {
     expect(html).toContain("/og-image.png");
   });
 
+  it("imagem_urls vazio (default) com imagem_url preenchido usa a foto", async () => {
+    const { env } = ambiente();
+    const { impl } = fetchComProduto([
+      { ...produto, imagem_urls: [], imagem_url: produto.imagem_url },
+    ]);
+    const r = await criarWorker(config(), { fetchImpl: impl }).fetch(
+      new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+        headers: ROBO,
+      }),
+      env,
+    );
+    const html = await r.text();
+    expect(html).toContain(
+      'content="https://abc.supabase.co/storage/v1/object/public/p/1.jpg"',
+    );
+  });
+
+  it("preco_venda 0 não aparece no og:title", async () => {
+    const { env } = ambiente();
+    const { impl } = fetchComProduto([{ ...produto, preco_venda: 0 }]);
+    const r = await criarWorker(config(), { fetchImpl: impl }).fetch(
+      new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+        headers: ROBO,
+      }),
+      env,
+    );
+    const html = await r.text();
+    expect(html).toContain(
+      '<meta property="og:title" content="Tênis &quot;Aero&quot; &lt;novo&gt;  | Loja &amp; Cia">',
+    );
+    expect(html).not.toContain("R$");
+  });
+
+  it("preco_venda 14.9 continua mostrando R$ 14,90 (regressão)", async () => {
+    const { env } = ambiente();
+    const { impl } = fetchComProduto([{ ...produto, preco_venda: 14.9 }]);
+    const r = await criarWorker(config(), { fetchImpl: impl }).fetch(
+      new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+        headers: ROBO,
+      }),
+      env,
+    );
+    expect(await r.text()).toContain("R$ 14,90");
+  });
+
+  it("preco_venda negativo não aparece no og:title", async () => {
+    const { env } = ambiente();
+    const { impl } = fetchComProduto([{ ...produto, preco_venda: -5 }]);
+    const r = await criarWorker(config(), { fetchImpl: impl }).fetch(
+      new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+        headers: ROBO,
+      }),
+      env,
+    );
+    expect(await r.text()).not.toContain("R$");
+  });
+
   it("HEAD de robô com produto devolve os cabeçalhos e nenhum corpo", async () => {
     const { env } = ambiente();
     const { impl } = fetchComProduto([produto]);

@@ -58,7 +58,7 @@ function snapshot() {
         icon_192: file("192.png", 192, 192),
         icon_512: file("512.png", 512, 512),
         maskable_512: file("mask.png", 512, 512),
-        og: file("og.jpg", 1200, 630, "image/jpeg"),
+        og: file("og.png", 1200, 630),
       },
     },
   };

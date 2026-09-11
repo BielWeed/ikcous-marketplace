@@ -380,6 +380,17 @@ export async function prepareIdentityBuild(
         path.join(publicDir, "store-identity", file.path),
         file.bytes,
       );
+    // Caminho FIXO (mesmo nome de antes da 1.27.0): o middleware.ts da
+    // Vercel e o worker do Cloudflare Pages caem em `${publicUrl}/og-image.png`
+    // quando o produto não tem foto própria, e links compartilhados antes
+    // da 1.27.0 também apontam direto para cá — sem este arquivo os dois
+    // fallbacks servem HTML (rewrite da SPA) em vez de uma imagem. O nome
+    // fixo só é honesto porque `og` é PNG por validação (storeIdentity.ts);
+    // a guarda abaixo é defesa em profundidade, não a primeira linha.
+    const ogFile = files.find((file) => file.path === identity.assets.og.path);
+    if (!ogFile) throw invalid();
+    if (ogFile.mediaType !== "image/png") throw invalid();
+    await verifiedWrite(path.join(publicDir, "og-image.png"), ogFile.bytes);
     const local = (asset: IdentityAsset) => `/store-identity/${asset.path}`;
     const localUrls = Object.freeze({
       originals: Object.freeze(identity.assets.originals.map(local)),

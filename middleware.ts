@@ -118,19 +118,28 @@ export default async function middleware(request: Request) {
               product.descricao ||
                 `Confira os detalhes do produto no ${APP_NAME}.`,
             );
-            const price = product.preco_venda
-              ? escaparHtml(
-                  `R$ ${Number(product.preco_venda).toFixed(2).replace(".", ",")}`,
-                )
-              : "";
-            const rawImages =
-              product.imagem_urls ||
-              (product.imagem_url ? [product.imagem_url] : []);
-            const images = Array.isArray(rawImages)
-              ? rawImages.filter(
-                  (img: any) => typeof img === "string" && img.trim() !== "",
-                )
-              : [];
+            // Só número > 0 aparece: 0, negativo ou não numérico ficam sem
+            // preço na prévia (decisão do dono, 11/09/2026).
+            const precoNumerico = Number(product.preco_venda);
+            const price =
+              Number.isFinite(precoNumerico) && precoNumerico > 0
+                ? escaparHtml(
+                    `R$ ${precoNumerico.toFixed(2).replace(".", ",")}`,
+                  )
+                : "";
+            // `imagem_urls` é o DEFAULT `[]` da coluna com frequência — um
+            // array vazio é truthy e não pode apagar `imagem_url` (decisão do
+            // dono, 11/09/2026). Ordem: cada item de `imagem_urls`, DEPOIS
+            // `imagem_url`.
+            const rawImages = [
+              ...(Array.isArray(product.imagem_urls)
+                ? product.imagem_urls
+                : []),
+              product.imagem_url,
+            ];
+            const images = rawImages.filter(
+              (img: any) => typeof img === "string" && img.trim() !== "",
+            );
             const imageUrl = escaparHtml(
               images[0] ||
                 // `as unknown as`: TS2559 (weak type) não conta o índice de
