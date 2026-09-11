@@ -181,4 +181,47 @@ describe("atenderPorteiro — alias *.vercel.app em produção encaminha (308) p
     expect(cache.size).toBe(0);
     expect(cache.get(HOST_ALIAS.toLowerCase())).toBeUndefined();
   });
+
+  it("ficha em cache STALE (fora dos 60s, dentro da 1h) NÃO vence o encaminhamento: dominio_publico mudou no banco -> 308, nunca a ficha velha", async () => {
+    // Revisão Opus, menor M2: o `if (DecisaoEncaminhamento)` em
+    // `obterFichaValidada` tem de vir ANTES do stale-if-error. Se alguém o
+    // mover para depois, um host que já teve ficha em cache serviria a
+    // página antiga (200) por até 1h em vez do 308.
+    const cache = new Map<string, EntradaCachePorteiro>();
+    let relogio = 0;
+    const agora = () => relogio;
+    // t=0: o host É o dominio_publico -> 200, popula o cache.
+    const fetchAntes = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja Principal", "#111111", origem),
+        dominioPublico: HOST_ALIAS,
+      },
+    });
+    const primeira = await atenderPorteiro(
+      pedido(`https://${HOST_ALIAS}/`),
+      { ...ambienteBase, VERCEL_ENV: "production" },
+      { fetchImpl: fetchAntes, cache, agora },
+    );
+    expect(primeira.status).toBe(200);
+    expect(cache.size).toBe(1);
+    // t=120s: cache fora do fresco (60s) e dentro do stale (1h); o banco
+    // agora declara OUTRO dominio_publico.
+    relogio = 120_000;
+    const fetchDepois = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja Principal", "#111111", origem),
+        dominioPublico: DOMINIO_PUBLICO,
+      },
+    });
+    const segunda = await atenderPorteiro(
+      pedido(`https://${HOST_ALIAS}/product-detail?id=7`),
+      { ...ambienteBase, VERCEL_ENV: "production" },
+      { fetchImpl: fetchDepois, cache, agora },
+    );
+    expect(segunda.status).toBe(308);
+    expect(segunda.headers.get("location")).toBe(
+      `https://${DOMINIO_PUBLICO}/product-detail?id=7`,
+    );
+    expect(segunda.headers.get("x-ikcous-porteiro")).toBe("encaminha");
+  });
 });

@@ -77,15 +77,20 @@ describe("decidirConcordancia — preview (VERCEL_ENV !== production)", () => {
     ).toBe("discorda");
   });
 
-  it("mesmo cenário, mas VERCEL_ENV=production -> discorda (o relaxamento só vale fora de produção; host NÃO é .vercel.app para não cruzar com a regra do alias, rodada 11/09/2026)", () => {
+  it("mesmo cenário, mas VERCEL_ENV=production -> encaminha, nunca ok (o relaxamento de preview só vale fora de produção; em produção o alias *.vercel.app cai na regra do encaminhamento, 11/09/2026)", () => {
+    // Par de variável ÚNICA com o teste acima: mesmo host, mesmo
+    // dominio_publico, mesma producaoUrl — só VERCEL_ENV muda. O que este
+    // teste prova é que produção NÃO ganha o "ok" do preview; a resposta
+    // deixou de ser "discorda" porque o host é um alias da própria Vercel
+    // (revisão Opus, menor M3).
     expect(
       decidirConcordancia({
-        host: "loja-a-git-branch-x.exemplo",
+        host: "loja-a-git-branch-x.vercel.app",
         dominioPublico: "a.exemplo",
         vercelEnv: "production",
         producaoUrl: "a.exemplo",
       }),
-    ).toBe("discorda");
+    ).toBe("encaminha");
   });
 
   it("preview sem VERCEL_PROJECT_PRODUCTION_URL no ambiente -> discorda (nada para comparar, falha fechada)", () => {
@@ -151,6 +156,17 @@ describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)",
         producaoUrl: undefined,
       }),
     ).toBe("encaminha");
+  });
+
+  it("produção + host que só CONTÉM .vercel.app no meio (x.vercel.app.evil.com) -> discorda (o sufixo é ancorado no fim; revisão Opus, menor M1)", () => {
+    expect(
+      decidirConcordancia({
+        host: "x.vercel.app.evil.com",
+        dominioPublico: "ickous-marketplace.vercel.app",
+        vercelEnv: "production",
+        producaoUrl: undefined,
+      }),
+    ).toBe("discorda");
   });
 
   it("produção + host que NÃO termina em .vercel.app + dominio_publico diferente -> discorda (inalterado)", () => {
