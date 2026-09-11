@@ -187,6 +187,11 @@ export function montarHtml(
       item.trim() !== "" &&
       imagemPermitida(item.trim(), config),
   );
+  // Só o fallback (${publicUrl}/og-image.png) tem dimensão fixa: é a arte de
+  // compartilhamento da identidade, sempre PNG 1200x630. A foto do produto
+  // não tem tamanho conhecido — declarar 600x400 pra qualquer imagem
+  // distorcia a prévia; sem as duas metas, o robô mede a imagem sozinho.
+  const ehFallback = imagemValida === undefined;
   const imagem = escaparHtml(
     imagemValida?.trim() ?? `${config.publicUrl}/og-image.png`,
   );
@@ -205,8 +210,12 @@ export function montarHtml(
     '<meta property="og:type" content="product">',
     `<meta property="og:url" content="${url}">`,
     `<meta property="og:image" content="${imagem}">`,
-    '<meta property="og:image:width" content="600">',
-    '<meta property="og:image:height" content="400">',
+    ...(ehFallback
+      ? [
+          '<meta property="og:image:width" content="1200">',
+          '<meta property="og:image:height" content="630">',
+        ]
+      : []),
     '<meta name="twitter:card" content="summary_large_image">',
     `<meta name="twitter:title" content="${nome} | ${loja}">`,
     `<meta name="twitter:description" content="${descricao}">`,

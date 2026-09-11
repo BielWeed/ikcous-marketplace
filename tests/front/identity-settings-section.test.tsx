@@ -150,6 +150,14 @@ function button(text: string) {
   expect(el).toBeDefined();
   return el!;
 }
+function fileInput(label: string) {
+  const id = `identity-upload-${encodeURIComponent(label)}`;
+  const el = [
+    ...host.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+  ].find((node) => node.id === id);
+  expect(el).toBeDefined();
+  return el!;
+}
 async function click(text: string) {
   await act(async () => {
     button(text).click();
@@ -713,6 +721,47 @@ describe("imagem original e fontes explícitas", () => {
       h.save.mock.calls[0][0].desired.branding_assets.originals,
     ).toHaveLength(8);
     expect(h.upload).toHaveBeenCalledTimes(1);
+  });
+  it("papel de compartilhamento aceita somente PNG; cabeçalho continua aceitando outros formatos", async () => {
+    await render();
+    expect(fileInput("Trocar compartilhamento").accept).toBe("image/png");
+    expect(fileInput("Trocar cabeçalho").accept).toBe(
+      "image/png,image/jpeg,image/webp,image/svg+xml,image/vnd.microsoft.icon,.ico",
+    );
+  });
+  it("arquivo não-PNG no papel de compartilhamento devolve mensagem específica", async () => {
+    await render();
+    await select("Trocar compartilhamento");
+    expect(h.upload).not.toHaveBeenCalled();
+    expect(host.textContent).toContain(
+      "A arte de compartilhamento precisa ser PNG, 1200 x 630.",
+    );
+  });
+  it("arquivo não-PNG no cabeçalho não mostra a mensagem do papel de compartilhamento", async () => {
+    await render();
+    await select(
+      "Trocar cabeçalho",
+      new File(["jpeg"], "foto.jpg", { type: "image/jpeg" }),
+    );
+    expect(host.textContent).not.toContain(
+      "A arte de compartilhamento precisa ser PNG, 1200 x 630.",
+    );
+  });
+  it("PNG com dimensão errada no papel de compartilhamento mostra a mensagem genérica", async () => {
+    await render();
+    h.prepare.mockResolvedValueOnce({
+      blob: new Blob(["png"]),
+      asset: asset("og-errado.png", 600, 400, "image/png"),
+    });
+    await select(
+      "Trocar compartilhamento",
+      new File(["png"], "og-errado.png", { type: "image/png" }),
+    );
+    expect(h.upload).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain(
+      "A arte de compartilhamento precisa ser PNG, 1200 x 630.",
+    );
+    expect(host.textContent).toContain("formato e as dimensões");
   });
   it("última fonte não pode sair; guardar referência não reenvia e retirada só muda lista", async () => {
     await render();

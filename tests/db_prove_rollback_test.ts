@@ -36,6 +36,9 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const require = createRequire(import.meta.url);
+const nodePath = require("node:path");
+const path_join = nodePath.join;
+const path_resolve = nodePath.resolve;
 const {
   SqlMalformadoError,
   removerRuido,
@@ -408,6 +411,60 @@ Deno.test("resolverCaminhoRollback respeita --rollback quando informado", () => 
     "C:/algum/lugar/supabase/migrations/20260101000000_exemplo.sql";
   const r = resolverCaminhoRollback(migrationPath, "outro-arquivo.sql");
   assertStringIncludes(r, "outro-arquivo.sql");
+});
+
+// ---------------------------------------------------------------------------
+// Issue #535 — desde o commit 1a4e332 (09/09) o rollback-manual passou a
+// morar em supabase/migrations/, ao lado da migration, não mais só na raiz
+// do projeto. Sem --rollback explícito, resolverCaminhoRollback tem de
+// procurar PRIMEIRO ao lado da migration e só cair para a raiz (antigos, por
+// compatibilidade) se o arquivo não existir lá. --rollback explícito continua
+// mandando sempre, sem essa busca.
+// ---------------------------------------------------------------------------
+
+Deno.test("resolverCaminhoRollback: migration em supabase/migrations com rollback AO LADO resolve para o diretório da migration", async () => {
+  const dirTemp = await Deno.makeTempDir();
+  try {
+    const nomeMigration = "20260101000000_exemplo_ao_lado.sql";
+    const migrationPath = path_join(dirTemp, nomeMigration);
+    const rollbackPath = path_join(dirTemp, `rollback-manual-${nomeMigration}`);
+    const fsNode = require("node:fs");
+    fsNode.writeFileSync(migrationPath, "-- migration");
+    fsNode.writeFileSync(rollbackPath, "-- rollback ao lado");
+
+    const r = resolverCaminhoRollback(migrationPath, null);
+    assertEquals(r, rollbackPath);
+  } finally {
+    await Deno.remove(dirTemp, { recursive: true });
+  }
+});
+
+Deno.test("resolverCaminhoRollback: sem rollback ao lado, cai para a raiz do projeto (compatibilidade com os antigos)", async () => {
+  const dirTemp = await Deno.makeTempDir();
+  try {
+    const nomeMigration = "20260101000000_exemplo_sem_ao_lado.sql";
+    const migrationPath = path_join(dirTemp, nomeMigration);
+    const fsNode = require("node:fs");
+    fsNode.writeFileSync(migrationPath, "-- migration");
+    // nenhum rollback-manual criado em dirTemp
+
+    const r = resolverCaminhoRollback(migrationPath, null);
+    assertStringIncludes(r, `rollback-manual-${nomeMigration}`);
+    assert(
+      !r.startsWith(dirTemp),
+      "deveria ter caído para a raiz do projeto, não para o diretório temporário da migration",
+    );
+  } finally {
+    await Deno.remove(dirTemp, { recursive: true });
+  }
+});
+
+Deno.test("resolverCaminhoRollback: --rollback relativo continua resolvendo pelo cwd, mesmo com a busca ao lado da migration", () => {
+  const migrationPath =
+    "C:/algum/lugar/supabase/migrations/20260101000000_exemplo.sql";
+  const r = resolverCaminhoRollback(migrationPath, "outro-arquivo.sql");
+  const esperado = path_resolve(Deno.cwd(), "outro-arquivo.sql");
+  assertEquals(r, esperado);
 });
 
 // ---------------------------------------------------------------------------

@@ -517,6 +517,51 @@ Deno.test("middleware: preco_venda 14.9 continua mostrando R$ 14,90 (regressão)
   assertStringIncludes(html, "R$ 14,90");
 });
 
+// ── 12. Contrato da identidade (issue #533): o fallback da loja é a arte
+// PNG 1200x630; a foto do produto não tem dimensão fixa, o robô mede.
+
+Deno.test("middleware: produto sem foto usa og:image:width=1200 e og:image:height=630 (identidade)", async () => {
+  const urls: string[] = [];
+  const produto = produtoFake({ imagem_url: null, imagem_urls: null });
+
+  const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produto, urls), () =>
+      middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
+    ),
+  );
+
+  const html = await resp.text();
+  assertStringIncludes(
+    html,
+    '<meta property="og:image:width" content="1200" />',
+  );
+  assertStringIncludes(
+    html,
+    '<meta property="og:image:height" content="630" />',
+  );
+});
+
+Deno.test("middleware: produto com foto não declara og:image:width nem og:image:height (o robô mede)", async () => {
+  const urls: string[] = [];
+  const produto = produtoFake();
+
+  const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
+    comFetch(fetchProdutoOk(produto, urls), () =>
+      middleware(request(`/product-detail?id=${PRODUCT_ID}`, UA_ROBO)),
+    ),
+  );
+
+  const html = await resp.text();
+  assert(
+    !html.includes("og:image:width"),
+    `html nao deveria conter og:image:width com foto de produto: ${html}`,
+  );
+  assert(
+    !html.includes("og:image:height"),
+    `html nao deveria conter og:image:height com foto de produto: ${html}`,
+  );
+});
+
 Deno.test("middleware: preco_venda negativo não aparece no og:title", async () => {
   const urls: string[] = [];
   const produto = produtoFake({ preco_venda: -5 });

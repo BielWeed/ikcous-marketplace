@@ -415,6 +415,34 @@ describe("worker", () => {
     expect(await r.text()).not.toContain("R$");
   });
 
+  it("produto sem foto usa og:image:width=1200 e og:image:height=630 (identidade)", async () => {
+    const { env } = ambiente();
+    const { impl } = fetchComProduto([{ id: ID }]);
+    const r = await criarWorker(config(), { fetchImpl: impl }).fetch(
+      new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+        headers: ROBO,
+      }),
+      env,
+    );
+    const html = await r.text();
+    expect(html).toContain('<meta property="og:image:width" content="1200">');
+    expect(html).toContain('<meta property="og:image:height" content="630">');
+  });
+
+  it("produto com foto não declara og:image:width nem og:image:height (o robô mede)", async () => {
+    const { env } = ambiente();
+    const { impl } = fetchComProduto([produto]);
+    const r = await criarWorker(config(), { fetchImpl: impl }).fetch(
+      new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+        headers: ROBO,
+      }),
+      env,
+    );
+    const html = await r.text();
+    expect(html).not.toContain("og:image:width");
+    expect(html).not.toContain("og:image:height");
+  });
+
   it("HEAD de robô com produto devolve os cabeçalhos e nenhum corpo", async () => {
     const { env } = ambiente();
     const { impl } = fetchComProduto([produto]);

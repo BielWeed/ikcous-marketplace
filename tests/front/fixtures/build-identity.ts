@@ -20,7 +20,7 @@ export function criarBuildIdentity(
     icon_192: `/identity/${directory}/icon-192.png`,
     icon_512: `/identity/${directory}/icon-512.png`,
     maskable_512: `/identity/${directory}/maskable.png`,
-    og: `/identity/${directory}/social.jpg`,
+    og: `/identity/${directory}/social.png`,
     originals: [`/identity/${directory}/original.png`],
   };
   return {
@@ -43,12 +43,12 @@ export function criarBuildIdentity(
         icon_192: asset,
         icon_512: asset,
         maskable_512: asset,
-        og: { ...asset, media_type: "image/jpeg" },
+        og: { ...asset, media_type: "image/png" },
       },
       urls: {
         ...localUrls,
         header: "https://remote.example/header.webp",
-        og: "https://remote.example/social.jpg",
+        og: "https://remote.example/social.png",
       },
     },
     localUrls,
