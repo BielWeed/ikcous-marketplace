@@ -112,20 +112,36 @@ describe("funções puras", () => {
     expect(imagemPermitida("https://supabase.co/x.jpg", c)).toBe(false); // curinga exige subdomínio
     expect(imagemPermitida("não é url", c)).toBe(false);
   });
+  it("publicUrl inválido no config nunca lança, só devolve false", () => {
+    const c = config({ publicUrl: "isso nao e url" });
+    expect(() =>
+      imagemPermitida("https://loja-exclusiva.invalid/x.png", c),
+    ).not.toThrow();
+    expect(imagemPermitida("https://loja-exclusiva.invalid/x.png", c)).toBe(
+      false,
+    );
+  });
 });
 
 describe("worker", () => {
-  it("fora de /product-detail passa o pedido intacto ao serviço de arquivos", async () => {
+  it("fora de /product-detail passa o pedido intacto ao serviço de arquivos, carimbado com x-ikcous-og: passa", async () => {
     const { env, pedidos } = ambiente();
     const { impl } = fetchComProduto([produto]);
     const worker = criarWorker(config(), { fetchImpl: impl });
     const pedido = new Request("https://loja.exemplo/cart?x=1", {
       headers: ROBO,
     });
-    await worker.fetch(pedido, env);
+    const resposta = await worker.fetch(pedido, env);
     expect(pedidos).toHaveLength(1);
     expect(pedidos[0].url).toBe("https://loja.exemplo/cart?x=1");
     expect(impl).not.toHaveBeenCalled();
+    expect(resposta.status).toBe(200);
+    expect(resposta.headers.get("x-ikcous-og")).toBe("passa");
+    expect(resposta.headers.get("x-ikcous-delivery")).toBe("1.26.0+a.b.c");
+    expect(resposta.headers.get("content-type")).toBe(
+      "text/html; charset=utf-8",
+    );
+    expect(await resposta.text()).toBe("<html>app</html>");
   });
 
   it("navegador em /product-detail recebe o documento da raiz, URL preservada, x-ikcous-og: passa", async () => {
