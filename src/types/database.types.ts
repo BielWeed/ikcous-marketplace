@@ -2449,6 +2449,34 @@ export type Database = {
           order_id: string;
         }[];
       };
+      perfil_publico_avaliacoes: {
+        Args: { p_autor: string };
+        Returns: {
+          comment: string | null;
+          created_at: string;
+          helpful: number | null;
+          id: string;
+          merchant_reply: string | null;
+          merchant_reply_at: string | null;
+          product_id: string | null;
+          produto_imagem_url: string | null;
+          produto_nome: string | null;
+          rating: number;
+          verified: boolean | null;
+        }[];
+      };
+      perfil_publico_perguntas: {
+        Args: { p_autor: string };
+        Returns: {
+          answers: Json;
+          created_at: string;
+          id: string;
+          product_id: string | null;
+          produto_imagem_url: string | null;
+          produto_nome: string | null;
+          question: string;
+        }[];
+      };
       record_vor_action: {
         Args: {
           p_action_type: string;
