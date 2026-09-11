@@ -17,6 +17,11 @@
 // user-profile-view-gate-avaliacoes.test.tsx (client de verdade usa Web
 // Worker, indisponível no jsdom). Vermelho analítico contra o HEAD: o catch
 // único antigo tratava (b) exatamente como (a).
+//
+// ADENDO 11/09 ~06:50Z (crítico de desenho, item 5): a tela não importa
+// mais `useAuth` -- lê SEMPRE pelas duas RPCs da vitrine, com ou sem
+// sessão. Este arquivo volta a não precisar de mock de `useAuth` e mocka
+// `supabase.rpc` no lugar de `from("reviews")`/`from("questions")`.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,8 +34,9 @@ const perfil = {
   cover_url: null,
 };
 
-// O resultado da PRIMEIRA consulta (perfil) é trocado por cada teste; as
-// demais tabelas respondem normais por padrão.
+// O resultado da PRIMEIRA consulta (perfil) é trocado por cada teste; a RPC
+// de avaliações responde normal por padrão, e `reviewsQuebram` chaveia o
+// caso de falha (rejeita em vez de resolver).
 let resultadoDoPerfil: {
   data: unknown;
   error: { code?: string; message?: string } | null;
@@ -49,26 +55,18 @@ vi.mock("@/lib/supabase", () => ({
           }),
         };
       }
-      if (tabela === "reviews") {
-        return {
-          select: () => ({
-            eq: () => ({
-              order: () =>
-                reviewsQuebram
-                  ? Promise.reject(new Error("network down"))
-                  : Promise.resolve({ data: [], error: null }),
-            }),
-          }),
-        };
+      throw new Error(`from inesperado neste teste: ${tabela}`);
+    },
+    rpc: (nome: string, _args?: unknown) => {
+      if (nome === "perfil_publico_avaliacoes") {
+        return reviewsQuebram
+          ? Promise.reject(new Error("network down"))
+          : Promise.resolve({ data: [], error: null });
       }
-      // questions
-      return {
-        select: () => ({
-          eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
-          }),
-        }),
-      };
+      if (nome === "perfil_publico_perguntas") {
+        return Promise.resolve({ data: [], error: null });
+      }
+      throw new Error(`rpc inesperado neste teste: ${nome}`);
     },
   },
 }));

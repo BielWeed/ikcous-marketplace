@@ -41,6 +41,18 @@ export const SUPABASE_ANON_KEY = SUPABASE_PUBLISHABLE_KEY;
 /**
  * Substitui o loader inicial por uma tela de erro legível.
  * Usa DOM puro de propósito: é chamada em cenários onde o React não subiu.
+ *
+ * Exportada (etapa 2 da escala, rodada B, 11/09/2026) para o portão de
+ * chave ausente deste arquivo — o único chamador que resta.
+ * `src/config/buildIdentity.ts` NÃO a importa (correção da rodada 2, achado
+ * 1 do revisor Opus, 11/09/2026): este módulo computa
+ * `SUPABASE_URL = lerSupabaseUrl()` na PRÓPRIA avaliação, e essa chamada
+ * volta a ler a ficha da loja — se a ficha for inválida, avaliar este
+ * módulo relançaria o MESMO `IDENTITY_FICHA_INVALID`. Em ESM, um módulo
+ * cuja avaliação lança nunca entrega seu namespace a quem o importa (nem
+ * estático, nem dinâmico), então `buildIdentity.ts` nunca conseguiria
+ * chegar a esta função por esse caminho — ela usa uma cópia autônoma,
+ * `pintarFichaInvalidaNoBoot` (veja o cabeçalho de `buildIdentity.ts`).
  */
 function renderBootFailure(title: string, detail: string): void {
   if (typeof document === "undefined") return;

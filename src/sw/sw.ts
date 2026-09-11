@@ -3,9 +3,29 @@
  * Estratégia Nuclear de Cache e Revalidação.
  */
 
-import { buildIdentity } from "../config/buildIdentity";
+import type { FichaDaLoja } from "../config/fichaDaLojaContract";
+import {
+  CAMINHO_IDENTIDADE_JSON,
+  FICHA_DA_LOJA_ID,
+} from "../config/fichaDaLojaContract";
 
 const sw = self as any;
+
+// Com um único build para toda a frota (etapa 2 da escala, 11/09/2026), o SW
+// não tem `document` e não recebe `__STORE_IDENTITY__` por loja — a ficha da
+// loja (marca + conexão) chega pelo mesmo JSON que o porteiro serve em
+// CAMINHO_IDENTIDADE_JSON. Guardada aqui, num cache PRÓPRIO (nome que o
+// `activate` abaixo NÃO apaga), para o `push` ler sem depender do build.
+const IDENTIDADE_CACHE_NAME = "ikcous-identidade";
+
+// O ícone ASSADO vem direto do define `__STORE_IDENTITY__` (declarado em
+// src/vite-env.d.ts), e NÃO de `src/config/buildIdentity` — aquele módulo
+// passou a ler a ficha da loja (T1 da etapa 2) e arrasta o validador da
+// identidade (zod) para dentro de quem o importa. Medido em 11/09/2026: com
+// o import, o `sw.js` publicado saltava de 12,7 KB para 543 KB (76 módulos
+// de zod) — e `npm run size` não acusa porque só mede `assets/*.js`. Aqui só
+// se precisa de UM campo; o define entrega esse campo sem custo.
+const ICONE_ASSADO: string = __STORE_IDENTITY__.localUrls.icon_192;
 
 // A variável __APP_VERSION__ é injetada pelo Vite (definida em vite.config.ts)
 declare const __APP_VERSION__: string;
@@ -45,6 +65,22 @@ sw.addEventListener("install", (event: any) => {
   console.log(
     "[SW] Installing new version. Waiting for user/client activation signal...",
   );
+
+  // A ficha da loja, fora do <head>: busca própria, sem bloquear o install
+  // se o porteiro estiver fora do ar ou o build ainda for o antigo (que não
+  // serve este caminho) — daí um waitUntil separado, com o erro contido nele.
+  event.waitUntil(
+    fetch(CAMINHO_IDENTIDADE_JSON, { cache: "no-store" })
+      .then((resposta: any) => {
+        if (!resposta?.ok) return;
+        return caches
+          .open(IDENTIDADE_CACHE_NAME)
+          .then((cache) => cache.put(CAMINHO_IDENTIDADE_JSON, resposta));
+      })
+      .catch((err: unknown) => {
+        console.warn("[SW] Falha ao buscar a ficha da loja no install:", err);
+      }),
+  );
 });
 
 sw.addEventListener("activate", (event: any) => {
@@ -57,7 +93,10 @@ sw.addEventListener("activate", (event: any) => {
         .keys()
         .then((cacheNames) => {
           const cachesToDelete = cacheNames.filter(
-            (name) => name !== CACHE_NAME && name !== IMAGE_CACHE_NAME,
+            (name) =>
+              name !== CACHE_NAME &&
+              name !== IMAGE_CACHE_NAME &&
+              name !== IDENTIDADE_CACHE_NAME,
           );
           return Promise.all(
             cachesToDelete.map((name) => {
@@ -71,6 +110,44 @@ sw.addEventListener("activate", (event: any) => {
 });
 
 let networkQuality = "fast";
+
+// Achado do revisor (rodada 2, 11/09/2026): o `install` precacheia
+// `/index.html` CRU (`cache.addAll(urls)`, linha ~49 — `vite.config.ts`
+// não exclui `html` do `globPatterns`). Esse HTML é o assado do build
+// "idêntico para todas" (fixture da etapa 2), sem NENHUMA ficha dentro.
+// O fallback de navegação abaixo (rota nunca visitada + rede fora do ar)
+// caía nele sem checar — servindo o assado de ninguém como se fosse a
+// loja, e violando "na dúvida, em manutenção" (o bem maior desta etapa).
+// Por isso: antes de devolver um HTML tirado do cache de FALLBACK (não o
+// da rota exata, que só chega ao cache vindo de uma resposta de rede real
+// já passada pelo porteiro), confirmamos que ele carrega a tag da ficha.
+async function respostaTemFichaDaLoja(resposta: any): Promise<boolean> {
+  if (!resposta) return false;
+  try {
+    const texto = await resposta.clone().text();
+    return texto.includes(`id="${FICHA_DA_LOJA_ID}"`);
+  } catch (e) {
+    console.warn("[SW] Falha ao checar a ficha no HTML de fallback:", e);
+    return false;
+  }
+}
+
+/** Página curta de "em manutenção" — mesma decisão de falha fechada do
+ * porteiro (T3), reproduzida aqui porque o SW não pode importar código de
+ * outra tarefa: nenhum byte de marca ou conexão sai quando não há ficha. */
+function respostaEmManutencao(): Response {
+  return new Response(
+    "<!doctype html><html><body>Loja em manutenção. Tente novamente em instantes.</body></html>",
+    {
+      status: 503,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "retry-after": "60",
+        "x-ikcous-porteiro": "sem-ficha-no-cache",
+      },
+    },
+  );
+}
 
 sw.addEventListener("fetch", (event: any) => {
   const url = new URL(event.request.url);
@@ -192,9 +269,15 @@ sw.addEventListener("fetch", (event: any) => {
             );
             return caches.match(event.request).then((response) => {
               if (response) return response;
-              return caches.match("/index.html").then((fallback) => {
-                if (fallback) return fallback;
-                return caches.match("/");
+              return caches.match("/index.html").then(async (fallback) => {
+                if (fallback && (await respostaTemFichaDaLoja(fallback))) {
+                  return fallback;
+                }
+                const raiz = await caches.match("/");
+                if (raiz && (await respostaTemFichaDaLoja(raiz))) {
+                  return raiz;
+                }
+                return respostaEmManutencao();
               });
             });
           });
@@ -400,22 +483,62 @@ setInterval(() => {
   // Keep alive logic
 }, 30000);
 
+// A imagem da notificação prefere a FICHA guardada no install (loja
+// resolvida por host, build compartilhado) e só cai no ícone assado
+// (`buildIdentity`, comportamento de hoje) quando não há ficha em cache —
+// build antigo, ou o `install` ainda não terminou de buscá-la. Qualquer falha
+// na leitura do cache (inclusive `caches` sem `match`, ambiente antigo) cai
+// no mesmo fallback: nunca deixa a notificação sem ícone.
+//
+// Lê pelo cache PRÓPRIO (`IDENTIDADE_CACHE_NAME`), não pelo `caches.match`
+// de nível topo: um build compartilhado por toda a frota (etapa 2 da escala)
+// pode ter, no mesmo Cache Storage, entradas de outra origem/loja para o
+// MESMO caminho `/identidade.json` sobrevivendo entre trocas de host num
+// mesmo dispositivo (SW não é limpo por navegação). Por isso, mesmo achando
+// a ficha no cache próprio, só ela é aceita se `ficha.host` bater com
+// `self.location.hostname` — senão, ícone assado (nunca a ficha de outra loja).
+async function resolverIconeDaLoja(): Promise<string> {
+  try {
+    const cache = await caches.open(IDENTIDADE_CACHE_NAME);
+    const resposta = await cache.match(CAMINHO_IDENTIDADE_JSON);
+    if (resposta) {
+      const ficha: FichaDaLoja = await resposta.json();
+      if (ficha?.host === sw.location.hostname) {
+        const icone = ficha?.identidade?.localUrls?.icon_192;
+        if (icone) return icone;
+      }
+    }
+  } catch (e) {
+    console.warn("[SW] Falha ao ler a ficha da loja em cache:", e);
+  }
+  return ICONE_ASSADO;
+}
+
 sw.addEventListener("push", (event: any) => {
   if (!event.data) return;
   try {
     const payload = event.data.json();
     const title = payload.title || "Novidade!";
-    // A imagem acompanha a identidade validada desta entrega.
-    const options = {
-      body: payload.body || "",
-      icon: buildIdentity.localUrls.icon_192,
-      badge: buildIdentity.localUrls.icon_192,
-      data: {
-        url: payload.url || "/",
-        ...payload.data,
-      },
+    const notificar = (icon: string) => {
+      const options = {
+        body: payload.body || "",
+        icon,
+        badge: icon,
+        data: {
+          url: payload.url || "/",
+          ...payload.data,
+        },
+      };
+      return sw.registration.showNotification(title, options);
     };
-    event.waitUntil(sw.registration.showNotification(title, options));
+    // Sem a API de cache (ambiente sem `caches.match`), não há como ler a
+    // ficha — segue direto para o ícone assado, exatamente como antes desta
+    // mudança. Com a API disponível (todo SW real), a ficha tem preferência.
+    if (typeof caches?.match !== "function") {
+      event.waitUntil(notificar(ICONE_ASSADO));
+    } else {
+      event.waitUntil(resolverIconeDaLoja().then(notificar));
+    }
   } catch (e) {
     console.error("[SW] Push parse error:", e);
     event.waitUntil(

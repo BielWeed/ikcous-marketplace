@@ -6,6 +6,94 @@ versionamento por [SemVer](https://semver.org/lang/pt-BR/).
 Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado em 30/07/2026
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
+## [1.29.0] - 2026-09-11
+
+Um único site passa a servir todas as lojas: ao abrir o endereço de uma loja, o
+porteiro (o `middleware.ts` da Vercel) descobre qual loja é pelo endereço, lê a
+marca e a conexão do banco dela e entrega a página já com o nome, as cores e a
+chave certas. Se o endereço não bate com o que o banco daquela loja declara, a
+resposta é "Loja em manutenção", nunca a loja errada; os dois endereços
+automáticos antigos da loja principal encaminham para o endereço oficial. O
+perfil público de um cliente continua abrindo sem login e passa a ler avaliações
+e perguntas por uma vitrine própria. Reúne os PRs #540, #541 e #542.
+
+### Para quem COMPRA (vitrine)
+
+- **O site sabe qual loja é pelo endereço** (PR #541): nome, cores, ícones e
+  conexão vêm do banco da loja que responde naquele endereço, no instante em que
+  a página é entregue. Quem instalou a loja como aplicativo continua abrindo sem
+  rede, porque o aplicativo guarda a ficha da própria loja.
+- **Endereço antigo da loja principal continua funcionando** (PR #542):
+  os dois endereços automáticos da Vercel (`...-git-main-...vercel.app` e
+  `...-gabriels-projects-...vercel.app`) encaminham de forma permanente para
+  `ickous-marketplace.vercel.app`, mantendo o caminho e os parâmetros do link.
+  Um link antigo de produto mandado no WhatsApp abre o produto certo. Nenhum
+  outro endereço ganha esse encaminhamento: endereço que não pertence à loja
+  continua em "Loja em manutenção".
+- **O perfil público de um cliente mostra as avaliações publicadas e as
+  perguntas dele sem exigir login** (PR #540), lendo por uma vitrine própria
+  que não expõe quem é o autor por dentro. Produto desativado ou apagado aparece
+  sem nome e sem foto. O próprio autor e o admin passam a ver ali só o que é
+  público (a avaliação pendente fica na moderação).
+
+### Para quem VENDE (painel admin)
+
+- Nada muda no painel nesta versão. A identidade da loja continua sendo editada
+  onde já era (1.27.0); o que muda é como o site a lê no ar.
+
+### Para quem DESENVOLVE
+
+- **Pivô da identidade** (PR #541): o app lê a ficha `#ikcous-loja` do HTML;
+  ausente, usa o valor assado no build; inválida, mostra a tela de manutenção.
+- **Porteiro** (PR #541, `middleware.ts` + `src/hospedagem/*`): matcher literal só
+  para documentos; resolve a conexão pela caderneta central (POST) ou pelo env
+  do projeto; concordância `host × dominio_publico` com cache; serve
+  `/identidade.json` e `/manifest.webmanifest`; o robô de prévia usa a mesma
+  ficha validada. Cabeçalhos `x-ikcous-porteiro` e `x-ikcous-caderneta` em toda
+  resposta. Compilado no CI com as opções que a Vercel usa
+  (`tsconfig.middleware.json`).
+- **Encaminhamento 308 dos aliases** (PR #542): só em produção, só para
+  host `*.vercel.app` diferente do `dominio_publico` lido do banco alcançado,
+  com `cache-control: no-store` e `x-ikcous-porteiro: encaminha`.
+- **Service worker** (PR #541): busca `/identidade.json` no install; o fallback
+  de navegação só serve HTML com ficha.
+- **Prova ponta a ponta com dois hosts** (PR #541, `tests/porteiro-dois-hosts`),
+  passo novo no job de build do CI.
+
+### Para quem OPERA (banco, servidor, lojas clonadas)
+
+- **Banco: `20261140000000` (coluna `store_config.dominio_publico` + CHECK +
+  view + gatilhos em lista de permissão) e `20261141000000` (caderneta
+  `frota_lojas`, `frota_segredo`, `resolver_loja`) já estão aplicadas nas duas
+  lojas** (11/09/2026 ~15:40Z, desfazer provado nos dois bancos). A caderneta
+  foi semeada na principal.
+- **Banco: `20261130000000` (vitrine do perfil público, ADITIVA) já está
+  aplicada nas duas lojas** (11/09/2026, 07:26Z e 07:35Z).
+- **Banco: `20261032000000` (`unaccent` nasce com a loja) entrou no registro da
+  principal em 11/09/2026** (a extensão já existia; a Savy já tinha o registro).
+- **Cada loja precisa ter `dominio_publico` gravado antes deste site subir**:
+  sem isso o porteiro responde "manutenção" em toda página daquela loja (falha
+  fechada). Gravado em 11/09/2026 17:27Z: principal
+  `ickous-marketplace.vercel.app`, Savy `loja-savy.vercel.app`. Desfazer:
+  `UPDATE public.store_config SET dominio_publico = NULL WHERE id = 1` (junto
+  com o site anterior).
+- **Vercel: `IKCOUS_FROTA_URL`, `IKCOUS_FROTA_APIKEY` e `IKCOUS_FROTA_CHAVE` em
+  Production nos dois projetos** (11/09/2026). Sem elas o porteiro cai no env
+  do próprio projeto (caminho (b)), avisado em `x-ikcous-caderneta`.
+- **Funções de servidor (`supabase/functions`): nenhuma muda de código nesta
+  versão.** A cópia baixada do que estava no ar nas duas lojas (10 funções) é
+  idêntica ao repositório; o que divergia entre as lojas era só a assinatura do
+  pacote gerado no dia de cada deploy. As 4 com assinatura diferente
+  (`melhor-envio-etiqueta`, `notify-new-order`, `send-otp-email`, `send-push`)
+  foram republicadas nas duas lojas em 11/09/2026 para alinhar a assinatura.
+  `send-order-whatsapp` continua fora do ar, de propósito.
+- **Ainda pendente nas duas lojas, de propósito: `20261111000000`** (visitante
+  não lê o autor de avaliações e perguntas pela tabela). Ela só pode entrar
+  DEPOIS deste site no ar, porque o perfil público passa a ler pelas RPCs do
+  PR #540. Efeito quando entrar: o visitante sem login deixa de receber a
+  atualização automática de avaliações e perguntas na página do produto (vê ao
+  recarregar).
+
 ## [1.28.0] - 2026-09-11
 
 A prévia de link de produto (WhatsApp, Facebook, Google) fica correta em todos os
@@ -65,7 +153,10 @@ duas lojas. Reúne os PRs #527, #531, #532, #534, #536 e #537.
 - **Ainda pendente nas duas lojas, de propósito: `20261111000000`** (visitante
   não lê o autor de avaliações e perguntas pela tabela). Espera uma peça nova no
   banco para o perfil público, que continua sem exigir login por decisão do dono.
-- **Nenhuma função de servidor muda nesta versão.**
+- **`middleware.ts` (Vercel) mudou** (PRs #534 e #537): é publicado junto com o
+  site, nas duas lojas. É onde ficam preço zero, foto única e o tamanho da
+  imagem na prévia de link.
+- **Nenhuma função de servidor (`supabase/functions`) muda nesta versão.**
 
 ## [1.27.0] - 2026-09-10
 

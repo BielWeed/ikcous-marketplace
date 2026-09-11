@@ -1,0 +1,18 @@
+{
+  "_comentario": [
+    "Projeto so' para o `middleware.ts` (porteiro da Vercel), com as MESMAS opcoes",
+    "que a Vercel usa ao compila'-lo: o @vercel/node le o tsconfig.json da RAIZ,",
+    "nao o tsconfig.app.json. Sem este projeto nenhum portao do CI tipa o",
+    "middleware (o Vite so empacota src/, o Deno roda com --no-check) e o",
+    "preview da Vercel foi o unico a ver o TS5097/TS2554 em 11/09/2026 (PR #541).",
+    "De proposito SEM allowImportingTsExtensions e sem paths: e' a ausencia deles",
+    "que reproduz o erro da Vercel. Medido: import com `.ts` aqui reprova `tsc -b`."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "paths": {}
+  },
+  "files": ["middleware.ts"]
+}

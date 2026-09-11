@@ -1409,6 +1409,7 @@ export type Database = {
         Row: {
           business_hours: string | null;
           created_at: string | null;
+          dominio_publico: string | null;
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
@@ -1440,6 +1441,7 @@ export type Database = {
         Insert: {
           business_hours?: string | null;
           created_at?: string | null;
+          dominio_publico?: string | null;
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
@@ -1471,6 +1473,7 @@ export type Database = {
         Update: {
           business_hours?: string | null;
           created_at?: string | null;
+          dominio_publico?: string | null;
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
@@ -1622,6 +1625,7 @@ export type Database = {
         Row: {
           business_hours: string | null;
           created_at: string | null;
+          dominio_publico: string | null;
           enable_coupons: boolean | null;
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
@@ -1653,6 +1657,7 @@ export type Database = {
         Insert: {
           business_hours?: string | null;
           created_at?: string | null;
+          dominio_publico?: string | null;
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
@@ -1684,6 +1689,7 @@ export type Database = {
         Update: {
           business_hours?: string | null;
           created_at?: string | null;
+          dominio_publico?: string | null;
           enable_coupons?: boolean | null;
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
@@ -2447,6 +2453,34 @@ export type Database = {
         Returns: {
           gateway_payment_id: string;
           order_id: string;
+        }[];
+      };
+      perfil_publico_avaliacoes: {
+        Args: { p_autor: string };
+        Returns: {
+          comment: string | null;
+          created_at: string;
+          helpful: number | null;
+          id: string;
+          merchant_reply: string | null;
+          merchant_reply_at: string | null;
+          product_id: string | null;
+          produto_imagem_url: string | null;
+          produto_nome: string | null;
+          rating: number;
+          verified: boolean | null;
+        }[];
+      };
+      perfil_publico_perguntas: {
+        Args: { p_autor: string };
+        Returns: {
+          answers: Json;
+          created_at: string;
+          id: string;
+          product_id: string | null;
+          produto_imagem_url: string | null;
+          produto_nome: string | null;
+          question: string;
         }[];
       };
       record_vor_action: {
