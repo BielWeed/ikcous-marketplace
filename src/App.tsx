@@ -1197,6 +1197,29 @@ const AppContent = () => {
       ? "none"
       : "back";
 
+    // Achado do relato do Gabriel (12/09/2026): com um override registrado
+    // (painel de resumo do checkout, modal de endereço — `onSetBackOverride`
+    // empurra uma entrada PRÓPRIA no histórico ao abrir), a seta chamava
+    // `handleNavigate("home")` DIRETO — o `state.from` daquela entrada
+    // pushed é sempre `undefined` (só `handleNavigate` grava `from`), então
+    // o `else` abaixo disparava e saía do checkout inteiro no primeiro
+    // toque, sem o override ser sequer consultado (só o handler de
+    // `popstate`, mais abaixo, olha `backOverrideRef`).
+    //
+    // A correção reusa o MESMO mecanismo que o Escape e o "ver menos" do
+    // painel já usam para fechar (CheckoutView.tsx): disparar um
+    // `history.back()` de verdade. Isso consome a entrada que o override
+    // empurrou e deixa o handler de `popstate` (que já chama
+    // `backOverrideRef.current()`) fechar o painel — sem chamar o override
+    // direto aqui, que deixaria a entrada pushed órfã (um próximo "voltar"
+    // sem efeito visível) e sem risco de laço: esta função não invoca o
+    // override, só pede ao navegador para voltar uma posição, uma vez.
+    if (backOverrideRef.current) {
+      globalThis.history.back();
+      globalThis.scrollTo(0, 0);
+      return;
+    }
+
     const state = globalThis.history.state;
     if (state?.from) {
       globalThis.history.back();
