@@ -77,9 +77,17 @@ async function esperarAte(
   });
 }
 
+/** Desde 12/09/2026 o botão é compacto (cabe na linha da busca): o texto
+ *  VISÍVEL é só "CSV" e o rótulo por extenso — com a contagem do filtro — é o
+ *  NOME ACESSÍVEL. A propriedade guardada por este arquivo não mudou: o número
+ *  tem de ser o do filtro inteiro, nunca o da página. Só mudou onde ele é lido. */
+function nomeAcessivel(b: HTMLButtonElement) {
+  return (b.getAttribute("aria-label") || "").trim();
+}
+
 function botaoExportar(hospedeiro: HTMLElement) {
   return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-    b.textContent?.trim().startsWith("Exportar CSV"),
+    nomeAcessivel(b).startsWith("Exportar CSV"),
   );
 }
 
@@ -153,7 +161,7 @@ describe("AdminOrdersView — o botão de exportar CSV diz quantos pedidos vai g
 
     const botao = botaoExportar(hospedeiro);
     expect(botao).toBeTruthy();
-    expect(botao!.textContent?.trim()).toBe("Exportar CSV (25 no filtro)");
+    expect(nomeAcessivel(botao!)).toBe("Exportar CSV (25 no filtro)");
     expect(botao!.disabled).toBe(false);
   });
 
@@ -169,7 +177,7 @@ describe("AdminOrdersView — o botão de exportar CSV diz quantos pedidos vai g
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
     const botao = botaoExportar(hospedeiro);
-    expect(botao!.textContent?.trim()).toBe("Exportar CSV (1 no filtro)");
+    expect(nomeAcessivel(botao!)).toBe("Exportar CSV (1 no filtro)");
   });
 
   it("com a lista vazia, o botão continua desabilitado", async () => {

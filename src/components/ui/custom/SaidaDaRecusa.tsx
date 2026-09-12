@@ -37,6 +37,10 @@ const ROTULO_DA_ACAO: Record<AcaoDeRecusa, string> = {
   trocar_endereco: "Escolher outro endereço",
   trocar_entrega: "Ver outras formas de entrega",
   remover_cupom: "Tirar o cupom",
+  // Item 3c (12/09/2026): duas das seis recusas do portão de convidado só
+  // se resolvem entrando na conta — mesmo rótulo já usado no aviso de
+  // "Entrega fora da cidade é só com conta" (CheckoutView.tsx).
+  entrar_na_conta: "Entrar ou criar conta",
   tentar_de_novo: "Tentar de novo",
   conferir_antes: "Ver meus pedidos",
 };

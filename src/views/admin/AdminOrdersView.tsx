@@ -57,6 +57,7 @@ import {
   ChevronRight,
   Clock,
   DollarSign,
+  Download,
   Filter,
   HelpCircle,
   LayoutGrid,
@@ -857,6 +858,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [orders, paymentFilter],
   );
 
+  /** Nome do botão de exportar. O CSV consulta o FILTRO INTEIRO, e a contagem
+   *  acompanha esse recorte — nunca o total da página. Desde 12/09/2026 este
+   *  texto é o nome ACESSÍVEL do botão (o visível é só "CSV", para o controle
+   *  caber na linha da busca), então ele é a única coisa que diz ao lojista
+   *  quantos pedidos o arquivo vai trazer. */
+  const rotuloExportarCsv = gerandoCsv
+    ? "Gerando CSV..."
+    : totalOrders > 0
+      ? `Exportar CSV (${totalOrders} no filtro)`
+      : "Exportar CSV";
+
   const exportarCsv = async () => {
     if (totalOrders === 0 || exportacaoCsvEmCursoRef.current) return;
     exportacaoCsvEmCursoRef.current = true;
@@ -1313,21 +1325,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             block. O id="admin-pedidos-lista" (âncora do scroll do botão
             "Ver pedidos") fica no bloco da lista, mais abaixo. */}
         <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-          <div className="mb-2 flex justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={exportarCsv}
-              disabled={totalOrders === 0 || gerandoCsv}
-            >
-              {/* O CSV consulta o filtro inteiro; a contagem acompanha esse recorte. */}
-              {gerandoCsv
-                ? "Gerando CSV..."
-                : totalOrders > 0
-                  ? `Exportar CSV (${totalOrders} no filtro)`
-                  : "Exportar CSV"}
-            </Button>
-          </div>
           <div className="flex w-full items-center gap-3">
             <div className="group relative w-full flex-1">
               <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
@@ -1517,6 +1514,37 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               ) : (
                 <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
               )}
+            </Button>
+
+            {/* Exportar CSV COMPACTO (pedido do Gabriel, 12/09/2026: "essa
+                opção está ocupando muito espaço (...) até ficar do lado do
+                campo de pesquisa"). Antes ocupava uma FILEIRA INTEIRA acima
+                da busca; agora é o terceiro controle da mesma linha.
+                🔴 O rótulo por extenso — com a contagem do FILTRO INTEIRO, não
+                a da página — não sumiu: virou o nome acessível do botão
+                (`aria-label`/`title`). Essa contagem é conserto deliberado de
+                uma mentira antiga na tela (o rótulo mostrava o total da página
+                e o CSV exportava o filtro inteiro) e está guardada por
+                tests/front/admin-orders-exportar-csv-rotulo-da-pagina.test.tsx
+                — que agora lê o nome acessível em vez do texto visível.
+                A palavra "CSV" fica visível de propósito: baixar um arquivo é
+                mais consequente que filtrar, e uma seta sozinha não diz o que
+                o toque vai fazer. */}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={exportarCsv}
+              disabled={totalOrders === 0 || gerandoCsv}
+              aria-label={rotuloExportarCsv}
+              title={rotuloExportarCsv}
+              className="group h-11 shrink-0 gap-1.5 rounded-xl border-zinc-800 bg-zinc-900/60 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 hover:text-white focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
+            >
+              {gerandoCsv ? (
+                <Loader2 className="size-4 shrink-0 animate-spin text-admin-gold" />
+              ) : (
+                <Download className="size-4 shrink-0 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+              )}
+              <span>CSV</span>
             </Button>
           </div>
 
