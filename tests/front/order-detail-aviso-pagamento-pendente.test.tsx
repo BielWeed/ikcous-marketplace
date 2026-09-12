@@ -5,9 +5,9 @@
 // a pagamento — dava para levar um pedido não pago até "Finalizado" sem o
 // painel dizer uma palavra. Este teste cobre as duas partes da correção:
 //
-//   1. o badge de status de pagamento aparece no cabeçalho e no bloco
-//      "Consolidado Financeiro" (mesmo componente `PaymentStatusBadge` já
-//      usado na lista de pedidos, para o vocabulário ficar idêntico);
+//   1. o badge de status de pagamento aparece no cabeçalho e na seção
+//      "Pagamento" (mesmo componente `PaymentStatusBadge` já usado na lista
+//      de pedidos, para o vocabulário ficar idêntico);
 //   2. clicar em "Avançar" com `paymentStatus` em 'aguardando', 'recusado'
 //      ou 'estornado' abre uma confirmação antes de mudar o status;
 //      `null`/'pago'/'pago_apos_expirar' avançam direto, sem aviso.
@@ -146,7 +146,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     vi.restoreAllMocks();
   });
 
-  it("mostra 'Aguardando pagamento' no cabeçalho e no Consolidado Financeiro", async () => {
+  it("mostra 'Aguardando pagamento' no cabeçalho e na seção Pagamento", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
@@ -160,7 +160,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
       "Aguardando pagamento",
     ).length;
     // split por N ocorrências dá N+1 pedaços: duas ocorrências (cabeçalho +
-    // Consolidado Financeiro) viram 3 pedaços.
+    // seção Pagamento) viram 3 pedaços.
     expect(ocorrencias).toBeGreaterThanOrEqual(3);
   });
 
@@ -191,7 +191,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     });
 
     const botaoAvancar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.trim().startsWith("Avançar:"),
+      b.textContent?.trim().startsWith("Avançar →"),
     ) as HTMLButtonElement;
     expect(botaoAvancar).toBeDefined();
 
@@ -219,7 +219,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     });
 
     const botaoAvancar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.trim().startsWith("Avançar:"),
+      b.textContent?.trim().startsWith("Avançar →"),
     ) as HTMLButtonElement;
 
     await act(async () => {
@@ -254,7 +254,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     });
 
     const botaoAvancar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.trim().startsWith("Avançar:"),
+      b.textContent?.trim().startsWith("Avançar →"),
     ) as HTMLButtonElement;
 
     await act(async () => {
@@ -282,7 +282,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     });
 
     const botaoAvancar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.trim().startsWith("Avançar:"),
+      b.textContent?.trim().startsWith("Avançar →"),
     ) as HTMLButtonElement;
 
     await act(async () => {
@@ -310,7 +310,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     });
 
     const botaoAvancar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.trim().startsWith("Avançar:"),
+      b.textContent?.trim().startsWith("Avançar →"),
     ) as HTMLButtonElement;
     expect(botaoAvancar).toBeDefined();
 
@@ -338,7 +338,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     });
 
     const botaoAvancar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.trim().startsWith("Avançar:"),
+      b.textContent?.trim().startsWith("Avançar →"),
     ) as HTMLButtonElement;
     expect(botaoAvancar).toBeDefined();
 
@@ -352,12 +352,12 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(onStatusChange).not.toHaveBeenCalled();
   });
 
-  it("botão 'Abortar Operação' continua sendo uma porta separada do diálogo de pagamento — agora COM confirmação própria (laudo #2, L-1)", async () => {
+  it("botão 'Cancelar pedido' (era 'Abortar Operação') continua sendo uma porta separada do diálogo de pagamento — COM confirmação própria (laudo #2, L-1)", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
     // paymentStatus 'aguardando' é justamente o caso que dispara o aviso
-    // para o botão "Avançar" — o teste prova que o botão de abortar é uma
+    // para o botão "Avançar" — o teste prova que o botão de cancelar é uma
     // porta estrutural separada. Desde o laudo #2 (L-1), cancelar pede
     // CONFIRMAÇÃO (a ação mais destrutiva do painel não é mais um clique
     // sem guarda): o texto avisa o caso do pedido e o clique só vale com
@@ -375,13 +375,13 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
         );
       });
 
-      const botaoAbortar = hospedeiro.querySelector(
-        'button[title="Abortar Operação"]',
+      const botaoCancelar = hospedeiro.querySelector(
+        'button[title="Cancelar pedido"]',
       ) as HTMLButtonElement;
-      expect(botaoAbortar).toBeDefined();
+      expect(botaoCancelar).toBeDefined();
 
       await act(async () => {
-        botaoAbortar.click();
+        botaoCancelar.click();
         await esperarMicrotarefas();
       });
 
@@ -416,12 +416,12 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
         );
       });
 
-      const botaoAbortar = hospedeiro.querySelector(
-        'button[title="Abortar Operação"]',
+      const botaoCancelar = hospedeiro.querySelector(
+        'button[title="Cancelar pedido"]',
       ) as HTMLButtonElement;
 
       await act(async () => {
-        botaoAbortar.click();
+        botaoCancelar.click();
         await esperarMicrotarefas();
       });
 

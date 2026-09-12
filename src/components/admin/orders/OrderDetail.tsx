@@ -45,7 +45,12 @@ import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { EstornoCard } from "./EstornoCard";
 import { OrderReceipt } from "./OrderReceipt";
-import { PaymentStatusBadge, statusConfig } from "./OrderStatusBadge";
+import {
+  OrderStatusBadge,
+  PaymentStatusBadge,
+  rotuloDoPagamento,
+  statusConfig,
+} from "./OrderStatusBadge";
 import { podeRegistrarPagamento } from "./podeRegistrarPagamento";
 
 const statusFlow: OrderStatus[] = [
@@ -98,6 +103,72 @@ const getNextStatus = (current: OrderStatus): OrderStatus | null => {
   }
   return null;
 };
+
+// `Map` em vez de indexação dinâmica — mesma razão de `statusConfigByKey`
+// em useOrders.ts: `statusConfig[chave]` acende
+// `security/detect-object-injection` no eslint-plugin-security mesmo a
+// chave vindo de uma união fechada.
+const statusConfigByKey = new Map(Object.entries(statusConfig));
+
+// Rótulo do método de pagamento na ficha. T3 (lote B, 12/09): "Rede PIX" e
+// "Rede Crédito" eram vocabulário de operador — passam a ser "PIX" e
+// "Cartão de crédito", como o lojista fala.
+// "online" existe desde a Fase 2 (CHECKOUT-010): pedido cobrado no site
+// via Mercado Pago, não confundir com dinheiro na entrega — quem lança o
+// caixa a partir daqui não pode ler "Dinheiro Espécie" e cobrar de novo.
+const getPaymentMethodLabel = (method: PaymentMethod) => {
+  if (method === "pix") return "PIX";
+  if (method === "card") return "Cartão de crédito";
+  if (method === "online") return "Pagamento Online";
+  return "Dinheiro Espécie";
+};
+
+// T3 (lote B, 12/09) — a frase-situação do dinheiro no cabeçalho da seção
+// Pagamento (emprestada da direção "Dinheiro primeiro"): a primeira dúvida
+// ao abrir a ficha é "esse pedido está pago?". Uma linha, derivada SÓ de
+// dados que já existem no pedido — nenhuma regra nova de dinheiro aqui.
+//
+// 🔴 A fonte do "estado do dinheiro" é a MESMA do selo (`rotuloDoPagamento`,
+// de OrderStatusBadge): é ela que resolve o cruzamento pago+cancelado →
+// "Pago e cancelado — precisa de atenção" (e os outros casos de atenção).
+// Quando o selo pede atenção, a frase REPETE o veredito dele — frase e selo
+// saem da mesma decisão e não podem discordar justamente no caso em que o
+// dinheiro está preso. Só os casos SEM atenção pendente ganham frase de
+// contexto (site/entrega).
+function fraseSituacaoDoPagamento(order: Order): string {
+  const valor = (order?.total || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+  });
+  const rotuloDoSelo = rotuloDoPagamento(order.paymentStatus, order.status);
+  if (rotuloDoSelo.includes("precisa de atenção")) {
+    return `${rotuloDoSelo} · R$ ${valor}`;
+  }
+  // Pagamento na entrega (cash/pix/card): quem decide "entrou" é o registro
+  // do recebimento — a MESMA verdade que decide o botão "Marcar como
+  // recebido" (`podeRegistrarPagamento`). `recebido_na_entrega` + cancelado
+  // já caiu no ramo de atenção acima.
+  if (order.paymentMethod !== "online") {
+    return order.pagamentoRecebidoEm
+      ? `Recebido na entrega · R$ ${valor}`
+      : `Falta receber na entrega · R$ ${valor}`;
+  }
+  // Cobrança pelo site, sem atenção pendente.
+  if (order.paymentStatus === "pago") {
+    return `Pago no site · R$ ${valor}`;
+  }
+  if (order.paymentStatus === "aguardando") {
+    return `Aguardando pagamento no site · R$ ${valor}`;
+  }
+  if (order.paymentStatus === "recusado") {
+    return `Pagamento recusado no site · R$ ${valor}`;
+  }
+  if (order.paymentStatus === "expirado") {
+    return `Pagamento expirado no site · R$ ${valor}`;
+  }
+  // `null` com cobrança online não existe na prática (a cobrança nasce
+  // "aguardando"); se aparecer, o rótulo do selo é a frase — sem inventar.
+  return `${rotuloDoSelo} · R$ ${valor}`;
+}
 
 interface OrderDetailProps {
   order: Order;
@@ -172,14 +243,49 @@ function ItemSkuBadge({
   );
 }
 
+// T3 (lote B, 12/09) — "Mesa do lojista": o cabeçalho da ficha vira o topo
+// da comanda — título, pills de status do pedido e do pagamento, e a linha
+// meta com data e método. Os botões de ação MIGRARAM para a barra fixa
+// embaixo (`OrderActionBar`): o header fica só com o que se LÊ.
 interface OrderHeaderProps {
+  order: Order;
+}
+
+function OrderHeader({ order }: Readonly<OrderHeaderProps>) {
+  const criadoEm = new Date(order.createdAt);
+  const data = criadoEm.toLocaleDateString("pt-BR");
+  const hora = criadoEm.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return (
+    <header className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="text-2xl font-bold tracking-tighter text-white">
+          Pedido{" "}
+          <span className="text-admin-gold">#{order.id.slice(-6)}</span>
+        </h1>
+        <OrderStatusBadge status={order.status} />
+        <PaymentStatusBadge
+          paymentStatus={order.paymentStatus}
+          orderStatus={order.status}
+        />
+      </div>
+      <p className="text-[11px] font-medium text-zinc-500">
+        Feito em {data} às {hora} · {getPaymentMethodLabel(order.paymentMethod)}
+      </p>
+    </header>
+  );
+}
+
+interface OrderActionBarProps {
   orderId: string;
   orderStatus: OrderStatus;
-  paymentStatus: PaymentStatus | null | undefined;
   nextStatus: OrderStatus | null;
   isOffline: boolean;
   isUpdatingStatus: boolean;
-  // Dois callbacks, não um: "Avançar" e "Abortar Operação" são ações
+  // Dois callbacks, não um: "Avançar" e "Cancelar pedido" são ações
   // distintas por natureza (uma confirma pagamento pendente, a outra
   // confirma o CANCELAMENTO — laudo #2, L-1: cancelar parou de ser um
   // clique sem guarda) — a distinção continua estrutural, cada botão chama
@@ -188,82 +294,66 @@ interface OrderHeaderProps {
   onCancel: (id: string) => void;
 }
 
-function OrderHeader({
+// T3 (lote B, 12/09) — a ação do momento fica PRESA embaixo, sempre visível
+// ao rolar (o header antigo era sticky e prendia a ação no TOPO, obrigando a
+// rolar de volta depois de ler a ficha). São os MESMOS botões e guardas do
+// header antigo, só o endereço mudou: 🖨️ imprime · ✕ Cancelar pedido
+// (vermelho suave, era "Abortar Operação") · Avançar → próxima etapa
+// (dourado, primária).
+function OrderActionBar({
   orderId,
   orderStatus,
-  paymentStatus,
   nextStatus,
   isOffline,
   isUpdatingStatus,
   onAdvance,
   onCancel,
-}: Readonly<OrderHeaderProps>) {
+}: Readonly<OrderActionBarProps>) {
+  const podeCancelar =
+    orderStatus !== "cancelled" && orderStatus !== "delivered";
+  const podeAvancar = nextStatus !== null && orderStatus !== "cancelled";
+
   return (
-    <div className="admin-glass sticky top-0 z-[60] border-b border-white/5 shadow-2xl backdrop-blur-3xl">
-      <div className="flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col">
-            <h2 className="mb-1 flex items-center gap-1.5 text-[9px] font-black uppercase leading-none tracking-[0.2em] text-zinc-500">
-              GESTÃO OPERACIONAL
-              <div className="size-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-            </h2>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold tracking-tighter text-white">
-                Pedido{" "}
-                <span className="text-admin-gold">#{orderId.slice(-6)}</span>
-              </h1>
-              <PaymentStatusBadge
-                paymentStatus={paymentStatus}
-                orderStatus={orderStatus}
-              />
-            </div>
-          </div>
-        </div>
+    <div className="fixed inset-x-0 bottom-0 z-[60] border-t border-white/5 bg-admin-bg/95 shadow-2xl backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-[600px] items-center gap-2.5 px-4 py-3">
+        <Button
+          variant="ghost"
+          onClick={() => globalThis.print()}
+          className="size-11 shrink-0 rounded-2xl border border-white/5 bg-white/5 p-0 text-white transition-all duration-300 hover:bg-white/10 active:scale-95"
+          title="Imprimir Pedido"
+        >
+          <Printer className="size-5" />
+        </Button>
 
-        <div className="flex items-center gap-2">
+        {podeCancelar && (
           <Button
+            onClick={() => onCancel(orderId)}
+            disabled={isOffline || isUpdatingStatus}
             variant="ghost"
-            onClick={() => globalThis.print()}
-            className="size-10 rounded-xl border border-white/5 bg-white/5 p-0 text-white transition-all duration-300 hover:bg-white/10 active:scale-95"
-            title="Imprimir Pedido"
+            className="flex h-11 shrink-0 items-center gap-1.5 rounded-2xl border border-red-500/10 bg-red-500/5 px-3 text-[10px] font-black uppercase tracking-wider text-red-400 transition-all duration-300 hover:bg-red-500/15 hover:text-red-300 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            title="Cancelar pedido"
           >
-            <Printer className="size-5" />
+            <XCircle className="size-4" />
+            Cancelar pedido
           </Button>
+        )}
 
-          {orderStatus !== "cancelled" && orderStatus !== "delivered" && (
-            <Button
-              onClick={() => onCancel(orderId)}
-              disabled={isOffline || isUpdatingStatus}
-              variant="ghost"
-              className="size-10 rounded-xl border border-red-500/10 bg-red-500/5 p-0 text-red-400 transition-all duration-300 hover:bg-red-500/15 hover:text-red-300 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-              title="Abortar Operação"
-            >
-              <XCircle className="size-5" />
-            </Button>
-          )}
-
-          {nextStatus && orderStatus !== "cancelled" && (
-            <Button
-              onClick={() => onAdvance(orderId, nextStatus)}
-              disabled={isOffline || isUpdatingStatus}
-              className="flex h-10 items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-admin-gold/10 px-4 text-[10px] font-black uppercase tracking-wider text-admin-gold transition-all duration-300 hover:bg-admin-gold hover:text-black active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-            >
-              {isUpdatingStatus ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" />
-                  <span className="hidden xs:inline">Processando</span>
-                </>
-              ) : (
-                <>
-                  <span>Avançar</span>
-                  <span className="hidden sm:inline">
-                    : {statusConfig[nextStatus].label}
-                  </span>
-                </>
-              )}
-            </Button>
-          )}
-        </div>
+        {podeAvancar && nextStatus && (
+          <Button
+            onClick={() => onAdvance(orderId, nextStatus)}
+            disabled={isOffline || isUpdatingStatus}
+            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-wider text-black shadow-[0_0_24px_rgba(234,179,8,0.2)] transition-all duration-300 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+          >
+            {isUpdatingStatus ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                <span>Processando</span>
+              </>
+            ) : (
+              <span className="truncate">{`Avançar → ${statusConfigByKey.get(nextStatus)?.label ?? nextStatus}`}</span>
+            )}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -288,7 +378,7 @@ function OrderStepperPipeline({
   const currentStepperIndex = statusFlow.indexOf(orderStatus);
 
   return (
-    <div className="admin-glass relative overflow-hidden rounded-3xl border border-white/5 p-5 shadow-2xl md:p-6">
+    <div className="admin-glass relative overflow-hidden rounded-3xl border border-white/5 p-4 shadow-2xl">
       <div className="relative flex w-full items-center justify-between">
         <div className="absolute inset-x-6 top-1/2 z-0 h-[2px] -translate-y-1/2 bg-white/5" />
         <div
@@ -363,17 +453,16 @@ function OrderCustomerCard({
       <div className="flex items-center justify-between border-b border-white/5 pb-3">
         <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
           <Users className="size-3.5 text-zinc-500" />
-          Dados do Cliente
+          Cliente
         </h3>
-        <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-400">
-          <span className="size-1 rounded-full bg-emerald-500" />
-          <span>Portfólio Ativo</span>
-        </span>
       </div>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {/* T3 (lote B, 12/09): a comanda é de coluna única — nome e WhatsApp
+          descem empilhados (era um grid de 2 colunas), na largura de leitura
+          de uma comanda de papel. */}
+      <div className="space-y-4">
         <div className="space-y-1">
           <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-            Nome Completo
+            Nome
           </p>
           <p className="text-base font-bold leading-tight text-white">
             {order.customer.name}
@@ -381,7 +470,7 @@ function OrderCustomerCard({
         </div>
         <div className="space-y-1">
           <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-            Contato Comercial
+            WhatsApp
           </p>
           <div className="flex items-center gap-2">
             <p className="font-mono text-sm font-semibold text-white">
@@ -435,7 +524,7 @@ function OrderCustomerCard({
               ) : (
                 <>
                   <Copy className="size-3 text-zinc-400" />
-                  Copiar
+                  Copiar endereço
                 </>
               )}
             </button>
@@ -447,7 +536,7 @@ function OrderCustomerCard({
               title="Ver no Google Maps"
             >
               <MapPin className="size-3 text-zinc-400" />
-              Maps
+              Ver no Maps
             </a>
           </div>
         </div>
@@ -552,28 +641,39 @@ function OrderFinanceCard({
   onRegistrarPagamento,
   registrandoPagamento,
 }: Readonly<OrderFinanceCardProps>) {
-  const getPaymentMethodLabel = (method: PaymentMethod) => {
-    if (method === "pix") return "Rede PIX";
-    if (method === "card") return "Rede Crédito";
-    // "online" existe desde a Fase 2 (CHECKOUT-010): pedido cobrado no site
-    // via Mercado Pago, não confundir com dinheiro na entrega — quem lança o
-    // caixa a partir daqui não pode ler "Dinheiro Espécie" e cobrar de novo.
-    if (method === "online") return "Pagamento Online";
-    return "Dinheiro Espécie";
-  };
+  // T3 (lote B, 12/09) — a frase-situação do dinheiro abre a seção: "esse
+  // pedido está pago?" é respondido antes de qualquer número. Verde quando o
+  // dinheiro entrou SEM pendência; âmbar para tudo o mais — inclusive os
+  // "precisa de atenção", que não podem pintar de verde só porque a frase
+  // começa com "Pago" (pago e cancelado é dinheiro PRESO, não resolvido).
+  const situacao = fraseSituacaoDoPagamento(order);
+  const situacaoPositiva =
+    !situacao.includes("precisa de atenção") &&
+    (situacao.startsWith("Pago no site") ||
+      situacao.startsWith("Recebido na entrega"));
 
   return (
     <div className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 p-6 text-white shadow-2xl">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
           <DollarSign className="size-4 text-admin-gold" />
-          Consolidado Financeiro
+          Pagamento
         </h3>
+        <span
+          className={cn(
+            "rounded-full border px-2.5 py-1 text-[9.5px] font-black uppercase tracking-wider",
+            situacaoPositiva
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-400",
+          )}
+        >
+          {situacao}
+        </span>
       </div>
 
       <div className="relative z-10 space-y-4">
         <div className="flex justify-between text-xs font-bold text-zinc-400">
-          <span className="uppercase tracking-widest">Subtotal Bruto</span>
+          <span className="uppercase tracking-widest">Subtotal</span>
           <span className="font-mono">
             R${" "}
             {(order?.subtotal || 0).toLocaleString("pt-BR", {
@@ -602,10 +702,10 @@ function OrderFinanceCard({
         )}
 
         <div className="flex justify-between text-xs font-bold text-emerald-400">
-          <span className="uppercase tracking-widest">Taxa Logística</span>
+          <span className="uppercase tracking-widest">Frete</span>
           <span className="font-mono">
             {(order?.shipping || 0) === 0
-              ? "BONIFICADO"
+              ? "GRÁTIS"
               : `R$ ${(order?.shipping || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
           </span>
         </div>
@@ -614,7 +714,7 @@ function OrderFinanceCard({
           <div className="mb-4 flex items-start justify-between">
             <div>
               <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                Montante Final
+                Total do pedido
               </span>
               <span className="text-3xl font-black tracking-tighter text-white">
                 <span className="mr-1 text-lg text-admin-gold">R$</span>
@@ -632,7 +732,7 @@ function OrderFinanceCard({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="text-[8px] font-black uppercase leading-none tracking-widest text-zinc-500">
-                  Liquidação
+                  Como vai ser pago
                 </p>
                 <PaymentStatusBadge
                   paymentStatus={order.paymentStatus}
@@ -722,7 +822,7 @@ function OrderLogisticsCard({
       <div className="flex items-center justify-between border-b border-white/5 pb-3">
         <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
           <Truck className="size-3.5 text-zinc-500" />
-          Logística & Rastreio
+          Entrega e rastreio
         </h3>
       </div>
 
@@ -733,7 +833,7 @@ function OrderLogisticsCard({
               htmlFor="tracking-input"
               className="text-[8px] font-black uppercase tracking-widest text-zinc-500"
             >
-              Código de Rastreamento
+              Código de rastreio
             </label>
             <Input
               id="tracking-input"
@@ -779,7 +879,7 @@ function OrderLogisticsCard({
           {localTrackingCode ? (
             <div className="space-y-2">
               <p className="text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                Código Cadastrado
+                Código de rastreio
               </p>
               <div className="flex items-center justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-2.5">
                 <span className="select-all font-mono text-xs font-bold tracking-widest text-white">
@@ -818,17 +918,22 @@ function OrderLogisticsCard({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/5 bg-zinc-950/20 p-4 text-center">
-              <p className="text-[10px] font-medium text-zinc-500">
-                Nenhum código de rastreamento cadastrado.
+            // T3 (lote B, 12/09) — estado vazio como CONVITE: tracejado,
+            // frase curta e botão dourado (era um botão cinza discreto).
+            <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/10 bg-zinc-950/20 p-4 text-center">
+              <p className="text-[11px] font-semibold text-zinc-400">
+                Sem código de rastreio ainda
+              </p>
+              <p className="text-[10px] text-zinc-500">
+                Quando o pedido despachar, cole o código dos Correios aqui.
               </p>
               <Button
                 onClick={() => setIsEditingTracking(true)}
                 disabled={isOffline}
-                className="flex h-8 items-center gap-1 rounded-lg border border-white/5 bg-white/5 px-3 text-[9px] font-bold uppercase tracking-wider text-white transition-all hover:bg-white/10 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                className="mt-1.5 flex h-9 items-center gap-1 rounded-lg bg-admin-gold px-4 text-[9px] font-black uppercase tracking-wider text-black transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
               >
                 <Plus className="size-3.5" />
-                Adicionar Rastreio
+                Adicionar rastreio
               </Button>
             </div>
           )}
@@ -864,7 +969,7 @@ function OrderNotesCard({
       <div className="flex items-center justify-between border-b border-white/5 pb-3">
         <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
           <MessageCircle className="size-3.5 text-zinc-500" />
-          Notas Operacionais
+          Anotações internas
         </h3>
       </div>
 
@@ -935,17 +1040,22 @@ function OrderNotesCard({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/5 bg-zinc-950/20 p-4 text-center">
-              <p className="text-[10px] font-medium text-zinc-500">
-                Nenhuma nota cadastrada para este pedido.
+            // T3 (lote B, 12/09) — estado vazio como CONVITE: tracejado,
+            // frase curta e botão dourado (era um botão cinza discreto).
+            <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/10 bg-zinc-950/20 p-4 text-center">
+              <p className="text-[11px] font-semibold text-zinc-400">
+                Nenhuma anotação neste pedido
+              </p>
+              <p className="text-[10px] text-zinc-500">
+                Anote combinados com o cliente: horário, presente, troca…
               </p>
               <Button
                 onClick={() => setIsEditingNotes(true)}
                 disabled={isOffline}
-                className="flex h-8 items-center gap-1 rounded-lg border border-white/5 bg-white/5 px-3 text-[9px] font-bold uppercase tracking-wider text-white transition-all hover:bg-white/10 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                className="mt-1.5 flex h-9 items-center gap-1 rounded-lg bg-admin-gold px-4 text-[9px] font-black uppercase tracking-wider text-black transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
               >
                 <Plus className="size-3.5" />
-                Adicionar Nota
+                Adicionar anotação
               </Button>
             </div>
           )}
@@ -1333,25 +1443,21 @@ export const OrderDetail = memo(function OrderDetail({
   };
 
   return (
-    <div className="min-h-screen bg-admin-bg pb-24 duration-500 animate-in fade-in">
-      <OrderHeader
-        orderId={order.id}
-        orderStatus={order.status}
-        paymentStatus={order.paymentStatus}
-        nextStatus={nextStatus}
-        isOffline={isOffline}
-        isUpdatingStatus={isUpdatingStatus}
-        onAdvance={requestStatusChange}
-        onCancel={handleCancelarComConfirmacao}
-      />
+    <div className="min-h-screen bg-admin-bg pb-28 duration-500 animate-in fade-in">
+      {/* T3 (lote B, 12/09) — "Mesa do lojista": coluna ÚNICA tipo comanda
+          (~600px centrados), na ordem em que o lojista LÊ a ficha: header →
+          espera → trilha → cliente → itens → pagamento (+ devolução) →
+          entrega → anotações. O grid de 2 colunas saiu; a ação migrou para a
+          barra fixa embaixo (`OrderActionBar`). */}
+      <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6">
+        <OrderHeader order={order} />
 
-      <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-6">
         {order.status === "cancelled" && (
           <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-950/20 p-4 text-red-400 duration-300 animate-in slide-in-from-top">
             <XCircle className="size-5 shrink-0" />
             <div>
               <p className="text-xs font-bold uppercase tracking-wider">
-                Operação Abortada / Cancelada
+                Pedido cancelado
               </p>
               <p className="mt-0.5 text-[10px] text-zinc-400">
                 Este pedido foi cancelado e não pode prosseguir.
@@ -1369,66 +1475,69 @@ export const OrderDetail = memo(function OrderDetail({
 
         <OrderStepperPipeline orderStatus={order.status} />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
-            <OrderCustomerCard
-              order={order}
-              isOffline={isOffline}
-              copiedAddress={copiedAddress}
-              mapsUrlQuery={mapsUrlQuery}
-              onCopyAddress={handleCopyAddress}
-              onWhatsAppDirect={handleWhatsAppDirect}
-              whatsappUrl={whatsappUrl}
-            />
-            <OrderItemsCard
-              items={order.items}
-              skus={skus}
-              loadingSkus={loadingSkus}
-            />
-          </div>
-
-          <div className="space-y-6">
-            <OrderFinanceCard
-              order={order}
-              onRegistrarPagamento={
-                onRegistrarPagamento ? handleRegistrarPagamento : undefined
-              }
-              registrandoPagamento={registrandoPagamento}
-            />
-            {/* T6 do plano de estorno pelo app (08/09/2026): só cobrança
-                pelo site passa pelo Mercado Pago — dinheiro/cartão na
-                entrega não tem estorno pelo app, e a tela nem oferece. */}
-            {order.paymentMethod === "online" &&
-              (order.paymentStatus === "pago" ||
-                order.paymentStatus === "pago_apos_expirar" ||
-                order.paymentStatus === "estornado") && (
-                <EstornoCard order={order} />
-              )}
-            <OrderLogisticsCard
-              localTrackingCode={localTrackingCode}
-              isEditingTracking={isEditingTracking}
-              trackingValue={trackingValue}
-              isSavingTracking={isSavingTracking}
-              copiedTracking={copiedTracking}
-              isOffline={isOffline}
-              setTrackingValue={setTrackingValue}
-              setIsEditingTracking={setIsEditingTracking}
-              onSaveTracking={handleSaveTracking}
-              onCopyTracking={handleCopyTracking}
-            />
-            <OrderNotesCard
-              localNotes={localNotes}
-              isEditingNotes={isEditingNotes}
-              notesValue={notesValue}
-              isSavingNotes={isSavingNotes}
-              isOffline={isOffline}
-              setNotesValue={setNotesValue}
-              setIsEditingNotes={setIsEditingNotes}
-              onSaveNotes={handleSaveNotes}
-            />
-          </div>
-        </div>
+        <OrderCustomerCard
+          order={order}
+          isOffline={isOffline}
+          copiedAddress={copiedAddress}
+          mapsUrlQuery={mapsUrlQuery}
+          onCopyAddress={handleCopyAddress}
+          onWhatsAppDirect={handleWhatsAppDirect}
+          whatsappUrl={whatsappUrl}
+        />
+        <OrderItemsCard
+          items={order.items}
+          skus={skus}
+          loadingSkus={loadingSkus}
+        />
+        <OrderFinanceCard
+          order={order}
+          onRegistrarPagamento={
+            onRegistrarPagamento ? handleRegistrarPagamento : undefined
+          }
+          registrandoPagamento={registrandoPagamento}
+        />
+        {/* T6 do plano de estorno pelo app (08/09/2026): só cobrança
+            pelo site passa pelo Mercado Pago — dinheiro/cartão na
+            entrega não tem estorno pelo app, e a tela nem oferece. Na
+            comanda, a devolução mora logo abaixo da seção Pagamento, que
+            é de quem ela trata. */}
+        {order.paymentMethod === "online" &&
+          (order.paymentStatus === "pago" ||
+            order.paymentStatus === "pago_apos_expirar" ||
+            order.paymentStatus === "estornado") && <EstornoCard order={order} />}
+        <OrderLogisticsCard
+          localTrackingCode={localTrackingCode}
+          isEditingTracking={isEditingTracking}
+          trackingValue={trackingValue}
+          isSavingTracking={isSavingTracking}
+          copiedTracking={copiedTracking}
+          isOffline={isOffline}
+          setTrackingValue={setTrackingValue}
+          setIsEditingTracking={setIsEditingTracking}
+          onSaveTracking={handleSaveTracking}
+          onCopyTracking={handleCopyTracking}
+        />
+        <OrderNotesCard
+          localNotes={localNotes}
+          isEditingNotes={isEditingNotes}
+          notesValue={notesValue}
+          isSavingNotes={isSavingNotes}
+          isOffline={isOffline}
+          setNotesValue={setNotesValue}
+          setIsEditingNotes={setIsEditingNotes}
+          onSaveNotes={handleSaveNotes}
+        />
       </div>
+
+      <OrderActionBar
+        orderId={order.id}
+        orderStatus={order.status}
+        nextStatus={nextStatus}
+        isOffline={isOffline}
+        isUpdatingStatus={isUpdatingStatus}
+        onAdvance={requestStatusChange}
+        onCancel={handleCancelarComConfirmacao}
+      />
 
       <OrderReceipt order={order} storeName={storeName} />
 
