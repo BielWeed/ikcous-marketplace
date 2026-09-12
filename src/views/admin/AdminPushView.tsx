@@ -28,20 +28,23 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
+  BatteryFull,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
-  ExternalLink,
+  Gift,
   HelpCircle,
   History,
-  Info,
   Radio,
   Send,
+  Settings,
+  ShoppingCart,
+  Signal,
   Smartphone,
   Sparkles,
-  Target,
   Users,
+  Wifi,
   Zap,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useState } from "react";
@@ -53,7 +56,8 @@ import { toast } from "sonner";
  * Ajustes — cabeçalho clicável com `aria-expanded`, conteúdo montado só
  * quando aberta e trava de pendência ("Salve antes de fechar": fechar
  * desmonta o conteúdo e jogaria fora o que foi digitado). Local a este
- * arquivo de propósito; o acento é o verde desta tela.
+ * arquivo de propósito; o acento é o dourado (`admin-gold`) da tela — o
+ * mesmo padrão do Atendimento.
  *
  * `extra`: selo exibido na linha do cabeçalho (ex.: o "Receberão: N
  * aparelhos" da seção de escrita — a informação fica à vista mesmo com o
@@ -90,7 +94,7 @@ function SecaoColapsavel({
         className="flex w-full items-center justify-between gap-3 text-left"
       >
         <span className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-admin-gold/20 bg-admin-gold/10 text-admin-gold">
             <Icone className="size-4" />
           </span>
           <span className="min-w-0">
@@ -140,6 +144,145 @@ interface AdminPushViewProps {
   onNavigate: (view: View, id?: string) => void;
   targetUserId?: string;
   onSetDirty?: (dirty: boolean) => void;
+}
+
+/**
+ * Ícone da loja para a prévia — o ÍCONE CADASTRADO da loja
+ * (`config.logoUrl`), com fallback honesto: sem logo (ou logo que não
+ * carrega), o monograma da loja em neutro escuro — o card real da
+ * notificação do Android é neutro, e a prévia promete ser o que o cliente
+ * vê. Nunca um emoji genérico.
+ */
+function IconeDaLoja({
+  logoUrl,
+  nome,
+}: {
+  readonly logoUrl?: string | null;
+  readonly nome: string;
+}) {
+  const [falhou, setFalhou] = useState(false);
+  if (!logoUrl || falhou) {
+    const inicial = nome.trim().charAt(0).toUpperCase() || "?";
+    return (
+      <div
+        aria-hidden="true"
+        className="flex size-full items-center justify-center bg-zinc-700 text-sm font-black text-zinc-100"
+      >
+        {inicial}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={logoUrl}
+      alt=""
+      onError={() => setFalhou(true)}
+      className="size-full object-cover"
+    />
+  );
+}
+
+/**
+ * Prévia no celular (remendo do preview do Gabriel, 12/09/2026): tela de
+ * bloqueio do Android de verdade — status bar com a HORA REAL do relógio,
+ * punch hole, relógio da lock screen e o card de notificação do Material
+ * You com o ícone e o nome DA LOJA cadastrados. Título e corpo são o que o
+ * lojista digitou ao lado, ao vivo; com campo vazio o card não finge ter
+ * mensagem (texto guia esmaecido). O carimbo "agora" é o da notificação
+ * real e os testes da prévia (data-testid, "agora", reatividade) seguem
+ * valendo.
+ */
+function PreviaNoCelular({
+  title,
+  body,
+  logoUrl,
+  nomeLoja,
+}: {
+  readonly title: string;
+  readonly body: string;
+  readonly logoUrl?: string | null;
+  readonly nomeLoja?: string | null;
+}) {
+  const agora = new Date();
+  const hora = agora.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const data = agora.toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  const nome = (nomeLoja ?? "").trim() || "Sua loja";
+
+  return (
+    <div
+      data-testid="previa-celular"
+      className="flex flex-col items-center gap-2.5 py-1"
+    >
+      {/* Shell do aparelho — borda escura com brilho de tela */}
+      <div className="w-[300px] rounded-[34px] border border-zinc-700/60 bg-gradient-to-b from-zinc-900 to-black p-1.5 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+        <div className="relative overflow-hidden rounded-[26px] bg-[#0a0a0c] pb-3">
+          {/* Status bar — hora real à esquerda, punch hole no meio, sinais à direita */}
+          <div className="relative flex items-center justify-between px-4.5 pt-2.5 text-[9.5px] font-semibold text-zinc-400">
+            <span className="tabular-nums">{hora}</span>
+            <span className="absolute left-1/2 top-2.5 size-3 -translate-x-1/2 rounded-full bg-black ring-1 ring-zinc-800" />
+            <span className="flex items-center gap-1.5 text-zinc-500">
+              <Signal className="size-3" />
+              <Wifi className="size-3" />
+              <BatteryFull className="size-3.5" />
+            </span>
+          </div>
+
+          {/* Relógio da tela de bloqueio, como o cliente vê ao acender */}
+          <p className="mt-4 text-center text-[10px] font-medium capitalize text-zinc-500">
+            {data}
+          </p>
+          <p className="text-center text-4xl font-thin tabular-nums text-zinc-100">
+            {hora}
+          </p>
+
+          {/* Card da notificação — Material You: ícone do app é o ícone da
+              loja, o nome em cima é o da loja, título e corpo são o que foi
+              digitado ao lado. */}
+          <div className="mx-3 mt-4 rounded-[22px] bg-zinc-800/95 p-3.5 shadow-lg ring-1 ring-white/5">
+            <div className="flex items-center gap-2.5">
+              <div className="size-10 shrink-0 overflow-hidden rounded-[12px] ring-1 ring-white/10">
+                <IconeDaLoja logoUrl={logoUrl} nome={nome} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="truncate text-[9.5px] font-medium text-zinc-400">
+                    {nome}
+                  </span>
+                  <span className="shrink-0 text-[9.5px] text-zinc-500">
+                    agora
+                  </span>
+                </div>
+                <p
+                  className={`mt-0.5 truncate text-[13px] font-bold leading-tight ${
+                    title ? "text-white" : "text-zinc-600"
+                  }`}
+                >
+                  {title || "Título da notificação aqui"}
+                </p>
+              </div>
+            </div>
+            <p
+              className={`mt-1.5 pl-[50px] text-[11px] leading-snug ${
+                body ? "text-zinc-400" : "text-zinc-600"
+              }`}
+            >
+              {body || "O texto digitado aparece aqui."}
+            </p>
+          </div>
+        </div>
+      </div>
+      <p className="text-[10px] text-zinc-500">
+        Prévia ao vivo — é assim que chega no celular do cliente
+      </p>
+    </div>
+  );
 }
 
 export const AdminPushView = memo(function AdminPushView({
@@ -436,10 +579,12 @@ export const AdminPushView = memo(function AdminPushView({
     calculateReach();
   }, [calculateReach]);
 
-  // Rascunho não enviado = pendência. A MESMA expressão que liga a guarda do
-  // App (onSetDirty) agora também trava o fechamento da seção de escrita —
-  // fechar desmontaria o formulário e descartaria o rascunho (padrão "Salve
-  // antes de fechar" dos Ajustes).
+  // Rascunho não enviado = pendência para o APP (onSetDirty): é guarda de
+  // navegação — sair da tela com texto não enviado avisa antes de perder.
+  // A composição é cartão fixo (nada desmonta o formulário), então o
+  // comentário anterior — que dizia "fechar desmontaria e descartaria o
+  // rascunho" — afirmava uma perda que o código nunca produziu (revisão do
+  // lote B, 12/09/2026).
   const rascunhoPendente =
     notification.title.trim().length > 0 || notification.body.trim().length > 0;
 
@@ -779,7 +924,7 @@ export const AdminPushView = memo(function AdminPushView({
     (effectiveReach === 0 && !podeGravarAvisoSemPush);
 
   return (
-    <div className="min-h-screen bg-[#09090b] pb-admin lg:pb-12 text-white duration-200 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div className="min-h-screen bg-[#09090b] pb-admin lg:pb-12 text-white duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-admin-gold">
       {/* Top Header Bar — fórmula "Elite Header" (AdminPageHeader), mesma
           casca das ondas anteriores: o título padrão, a ajuda na linha do
           título e os indicadores à direita. O subtítulo fica na view. */}
@@ -792,7 +937,7 @@ export const AdminPushView = memo(function AdminPushView({
                 <>
                   {/* Indicadores no Topbar (os mesmos de antes) */}
                   <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold text-zinc-300">
-                    <Smartphone className="size-3.5 text-emerald-400" />
+                    <Smartphone className="size-3.5 text-admin-gold" />
                     <span>
                       <strong className="text-white font-bold">
                         {rotuloDaContagem(subCount)}
@@ -802,7 +947,7 @@ export const AdminPushView = memo(function AdminPushView({
                   </div>
                   <div className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold">
                     <span
-                      className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"}`}
+                      className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-admin-gold animate-pulse" : "bg-zinc-600"}`}
                     />
                     <span className="text-zinc-400 uppercase tracking-wider text-[9px]">
                       {config.realTimeSalesAlerts
@@ -835,63 +980,72 @@ export const AdminPushView = memo(function AdminPushView({
           métrica, dica) ficam sempre visíveis. Todo o conteúdo de dentro
           (campos, segmentos, envio, listas) é o de antes, um a um. */}
       <div className="mx-auto max-w-4xl space-y-3.5 px-3 pt-3 sm:px-4 sm:pt-4">
-        <SecaoColapsavel
-          titulo="Escrever Nova Notificação"
-          descricao="Crie e envie mensagens para os clientes"
-          icone={Send}
-          abertaPorPadrao
-          comPendencia={rascunhoPendente}
-          extra={
-            <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
+        {/* Painel único de composição (direção B "Rádio do lojista",
+            12/09/2026): entra, escreve e dispara — CARTÃO FIXO, "painel
+            único aceso, nada escondido" (mesma decisão da T1 no Atendimento;
+            revisão do lote B). Os inputs são controlados por um useState
+            daqui e remontam com o valor, então colapso aqui nunca protegeu
+            rascunho nenhum — só escondia a porta de trabalho. Conteúdo:
+            pílulas de modelos, texto, público em chips, destino inline e um
+            botão só; no desktop (lg) a prévia do celular acompanha em
+            coluna própria, fixa à vista. O alcance fica à vista no selo do
+            cabeçalho, no chip do segmento e no botão de enviar. */}
+        <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl sm:p-4">
+          <div className="mb-3.5 flex items-center justify-between gap-3">
+            <p className="flex min-w-0 items-center gap-2.5 text-xs font-black uppercase tracking-wider text-white">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-admin-gold/20 bg-admin-gold/10 text-admin-gold">
+                <Radio className="size-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate">No ar agora</span>
+                <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                  Escreva e envie mensagens para os clientes
+                </span>
+              </span>
+            </p>
+            <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-admin-gold/20 bg-admin-gold/10 px-2.5 py-0.5 text-[10px] font-bold text-admin-gold">
               <Radio className="size-3 animate-pulse" />
               <span>Receberão: {textoDeAlcanceEmAparelhos(reachExibido)}</span>
             </div>
-          }
-        >
-          {/* Mensagens Prontas — sub-cartão que alimenta o formulário */}
-          <div className="mb-3.5 rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
-            <div className="mb-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="size-3.5 text-emerald-400" />
-                <h3 className="text-xs font-black uppercase tracking-wider text-white">
-                  Exemplos de Mensagens Prontas
-                </h3>
-              </div>
-              <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-500">
-                Clique para usar
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          </div>
+          {/* Miolo do painel em grade (redesenho do Gabriel, 12/09/2026):
+              no desktop (lg) são 2 colunas — composição à esquerda e a
+              prévia do celular fixa à direita (lg:sticky), à vista enquanto
+              se digita; no mobile tudo empilha no fluxo, com a prévia entre
+              o texto e o público, como sempre esteve. A prévia é o ÚNICO
+              filho com posição explícita; os demais caem na coluna 1 por
+              auto-placement, na ordem do DOM — o aviso offline entrar e
+              sair não desloca ninguém. */}
+          <div className="grid grid-cols-1 gap-y-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-x-5">
+            {/* Mensagens Prontas — pílulas (direção B). Os mesmos 3 arquétipos
+                de antes: o preenchimento, o registro VOR e o toast não mudam —
+                só a forma (cartão grande → pílula de um clique). */}
+            <div className="flex flex-wrap gap-2">
               {[
                 {
                   id: "fomo",
+                  Icone: Zap,
                   title: "Desconto Relâmpago",
-                  tag: "Oferta ⚡",
                   desc: "Preenche oferta de 10% OFF",
-                  icon: Zap,
-                  border: "hover:border-amber-500/40 hover:bg-amber-500/5",
                 },
                 {
                   id: "auth",
+                  Icone: ShoppingCart,
                   title: "Lembrete de Carrinho",
-                  tag: "Vendas 🛒",
                   desc: "Lembrar de finalizar compra",
-                  icon: Info,
-                  border: "hover:border-sky-500/40 hover:bg-sky-500/5",
                 },
                 {
                   id: "value",
+                  Icone: Gift,
                   title: "Cupom de R$20",
-                  tag: "Presente 🎁",
                   desc: "Cupom de desconto especial",
-                  icon: Target,
-                  border: "hover:border-emerald-500/40 hover:bg-emerald-500/5",
                 },
               ].map((arch) => (
                 <button
                   key={arch.id}
-                  className={`group/arch flex flex-col justify-between rounded-lg border border-white/5 bg-white/[0.03] p-2.5 text-left transition-all duration-200 active:scale-[0.98] ${arch.border}`}
+                  type="button"
+                  title={arch.desc}
+                  className="group flex items-center gap-2 rounded-full border border-white/10 bg-black/35 py-1.5 pl-1.5 pr-3.5 text-[11px] font-bold text-zinc-300 transition-all duration-200 hover:border-admin-gold/45 hover:bg-admin-gold/5 hover:text-white active:scale-[0.98]"
                   onClick={() => {
                     if (arch.id === "fomo") {
                       setNotification({
@@ -927,49 +1081,141 @@ export const AdminPushView = memo(function AdminPushView({
                     );
                   }}
                 >
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-white">
-                      <arch.icon className="size-3 text-emerald-400" />
-                      {arch.title}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-[9px] font-medium text-zinc-400">
-                    <span>{arch.desc}</span>
-                    <span className="font-mono text-[8px] text-emerald-400/80 font-bold">
-                      {arch.tag}
-                    </span>
-                  </div>
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-admin-gold/20 bg-admin-gold/10 text-admin-gold transition-colors duration-200 group-hover:border-admin-gold/40 group-hover:bg-admin-gold/20">
+                    <arch.Icone className="size-3" />
+                  </span>
+                  {arch.title}
                 </button>
               ))}
             </div>
-          </div>
 
-          {isOffline && (
-            <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-rose-300 animate-in fade-in">
-              <AlertCircle className="size-4 shrink-0" />
-              <div className="text-[10px]">
-                <span className="font-bold uppercase">Você está offline:</span>{" "}
-                Conecte-se à internet para poder enviar notificações aos
-                clientes.
+            {isOffline && (
+              <div className="flex items-center gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-rose-300 animate-in fade-in">
+                <AlertCircle className="size-4 shrink-0" />
+                <div className="text-[10px]">
+                  <span className="font-bold uppercase">
+                    Você está offline:
+                  </span>{" "}
+                  Conecte-se à internet para poder enviar notificações aos
+                  clientes.
+                </div>
+              </div>
+            )}
+
+            {/* Título & Mensagem — sobem para antes do público (direção B:
+                primeiro se escreve, depois se escolhe quem lê). Contadores
+                tabulares para o número não dançar enquanto digita. */}
+            <div className="space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label
+                    htmlFor="push-title"
+                    className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                  >
+                    Título da mensagem
+                  </Label>
+                  <span className="text-[8px] font-mono tabular-nums text-zinc-500">
+                    {notification.title.length}/60
+                  </span>
+                </div>
+                <LocalBufferedInput
+                  id="push-title"
+                  name="title"
+                  autoComplete="off"
+                  // Trava da proposta (revisão do lote B, 12/09/2026): o
+                  // contador "{n}/60" só é honesto acompanhado do limite —
+                  // sem o atributo, o envio saía maior que 60.
+                  maxLength={60}
+                  value={notification.title}
+                  onFlush={(val) =>
+                    setNotification((prev) => ({ ...prev, title: val }))
+                  }
+                  disabled={isOffline || loading}
+                  placeholder={
+                    isOffline
+                      ? "Indisponível offline"
+                      : "Ex: Oferta especial liberada para você! 🎁"
+                  }
+                  useShadcn={true}
+                  className="h-9 rounded-lg border-white/10 bg-black/50 px-3 text-xs text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 placeholder:text-zinc-600 disabled:opacity-40"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label
+                    htmlFor="push-body"
+                    className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                  >
+                    Texto da mensagem
+                  </Label>
+                  <span className="text-[8px] font-mono tabular-nums text-zinc-500">
+                    {notification.body.length}/140
+                  </span>
+                </div>
+                <LocalBufferedTextarea
+                  id="push-body"
+                  name="body"
+                  autoComplete="off"
+                  // Mesma trava do título: 140 é o que a notificação real
+                  // carrega — sem o atributo, a prévia mostrava inteiro o
+                  // que o SO do cliente trunca.
+                  maxLength={140}
+                  value={notification.body}
+                  onFlush={(val) =>
+                    setNotification((prev) => ({ ...prev, body: val }))
+                  }
+                  disabled={isOffline || loading}
+                  placeholder={
+                    isOffline
+                      ? "Indisponível offline"
+                      : "Escreva aqui a mensagem curta que o cliente vai ver no celular..."
+                  }
+                  rows={2}
+                  useShadcn={true}
+                  className="resize-none rounded-lg border-white/10 bg-black/50 p-2.5 text-xs font-medium text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 placeholder:text-zinc-600 disabled:opacity-40"
+                />
               </div>
             </div>
-          )}
 
-          <div className="space-y-3">
-            {/* Quem vai receber */}
+            {/* Prévia no celular — a notificação EXATAMENTE como chega, ao
+                vivo com o que foi digitado, com o ícone e o nome da LOJA
+                cadastrados, antes de sair do aparelho de ninguém. Com campo
+                vazio o mockup não finge ter mensagem. É a coluna direita da
+                grade no desktop e fica FIXA à vista (lg:sticky) enquanto se
+                digita; no mobile volta ao fluxo, aqui entre o texto e o
+                público. Único filho com posição explícita da grade — o
+                row-span-6 cobre as linhas da composição à esquerda, com
+                (6) e sem (5) o aviso offline renderizado. */}
+            <div className="lg:col-start-2 lg:row-start-1 lg:row-span-6 lg:sticky lg:top-20">
+              <PreviaNoCelular
+                title={notification.title}
+                body={notification.body}
+                logoUrl={config?.logoUrl}
+                nomeLoja={config?.storeName}
+              />
+            </div>
+
+            {/* Quem recebe — chips com o número GRANDE (direção B). Segmento
+                MEDIDO como zero nasce desativado COM o motivo do zero;
+                contagem desconhecida (null → "—") continua selecionável,
+                porque é o selecionar que dispara a medição daquele segmento. */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
-                  Quem vai receber esta mensagem?
+                  Quem recebe{" "}
+                  <span className="font-semibold normal-case tracking-normal text-zinc-500">
+                    — contado agora, de verdade
+                  </span>
                 </span>
               </div>
 
               {targetUserId ? (
-                <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5">
+                <div className="flex items-center justify-between rounded-lg border border-admin-gold/30 bg-admin-gold/10 p-2.5">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-400" />
+                    <CheckCircle2 className="size-4 text-admin-gold" />
                     <div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-emerald-400 leading-none">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-admin-gold leading-none">
                         Mensagem para Cliente Específico
                       </p>
                       <p className="text-xs font-bold text-white mt-0.5">
@@ -1018,6 +1264,7 @@ export const AdminPushView = memo(function AdminPushView({
                       // `effectiveReach`, que converte desconhecido em 0
                       // só para a trava do botão de enviar.
                       count: subCount,
+                      motivoDoZero: "nenhum aparelho cadastrado ainda",
                     },
                     {
                       id: "vip",
@@ -1031,11 +1278,12 @@ export const AdminPushView = memo(function AdminPushView({
                       // quando a medição está no ar ou falhou — se
                       // usasse `effectiveReach` (sempre numérico, de
                       // propósito, para a trava do botão) ele "viraria
-                      // 0" bem na hora em que os outros badges mostram
+                      // 0" bem na hora em que os outros chips mostram
                       // traço, contradizendo a própria tela.
                       count: (segment === "vip"
                         ? reachExibido
                         : segmentCounts.vip) as ContagemMedida,
+                      motivoDoZero: "nenhuma compra paga ainda",
                     },
                     {
                       id: "inactive",
@@ -1046,6 +1294,7 @@ export const AdminPushView = memo(function AdminPushView({
                       count: (segment === "inactive"
                         ? reachExibido
                         : segmentCounts.inactive) as ContagemMedida,
+                      motivoDoZero: "ninguém passou de 30 dias sem pedir",
                     },
                     {
                       id: "new",
@@ -1056,23 +1305,43 @@ export const AdminPushView = memo(function AdminPushView({
                       count: (segment === "new"
                         ? reachExibido
                         : segmentCounts.new) as ContagemMedida,
+                      motivoDoZero: "nenhum cadastro nos últimos 7 dias",
                     },
                   ].map((s) => (
                     <button
                       key={s.id}
-                      onClick={() => !isOffline && setSegment(s.id)}
-                      disabled={isOffline}
-                      className={`flex h-8 items-center justify-between rounded-lg border px-2.5 text-[9px] font-black uppercase tracking-wider transition-all ${
+                      type="button"
+                      onClick={() => setSegment(s.id)}
+                      disabled={isOffline || s.count === 0}
+                      className={`flex flex-col items-start gap-0.5 rounded-xl border p-2.5 text-left transition-all duration-200 ${
                         segment === s.id
-                          ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
+                          ? "border-admin-gold/50 bg-admin-gold/15 text-admin-gold"
                           : "border-white/5 bg-white/[0.02] text-zinc-400 hover:bg-white/5 hover:text-white"
-                      } disabled:opacity-30`}
+                      } disabled:cursor-not-allowed disabled:opacity-40`}
                     >
-                      <span className="truncate pr-1">{s.label}</span>
+                      <span className="w-full truncate text-[9px] font-black uppercase tracking-wider">
+                        {s.label}
+                      </span>
+                      {/* O número GRANDE do chip (direção B), no span
+                          font-mono que os testes leem — `rotuloDaContagem`
+                          mantém o traço quando a medição não chegou. */}
                       <span
-                        className={`text-[8px] font-mono rounded px-1 shrink-0 ${segment === s.id ? "bg-emerald-500/20 text-emerald-200" : "bg-zinc-800 text-zinc-500"}`}
+                        className={`font-mono text-lg font-black tabular-nums leading-none ${
+                          segment === s.id
+                            ? "text-admin-gold"
+                            : s.count === 0
+                              ? "text-zinc-500"
+                              : "text-white"
+                        }`}
                       >
                         {rotuloDaContagem(s.count)}
+                      </span>
+                      <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-500">
+                        {/* Zero MEDIDO tem motivo na cara (a regra do
+                            servidor, em palavras — é o que a direção B
+                            pediu). Desconhecido não tem motivo: null não é
+                            zero, é "ainda não mediu". */}
+                        {s.count === 0 ? s.motivoDoZero : "aparelhos"}
                       </span>
                     </button>
                   ))}
@@ -1080,117 +1349,56 @@ export const AdminPushView = memo(function AdminPushView({
               )}
             </div>
 
-            {/* Título & Mensagem */}
+            {/* Destino — inline (direção B): o próprio gatilho do Select é a
+                linha "Ao clicar na mensagem, o cliente abre … mudar ↗" — um
+                clique abre as opções. Os 8 itens e a trava PAINEL-07 são os
+                de antes; a leitura mono do URL saiu (o destino escolhido já
+                aparece no próprio gatilho — dizer de novo era redundância). */}
             <div className="space-y-2">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label
-                    htmlFor="push-title"
-                    className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
-                  >
-                    Título da mensagem
-                  </Label>
-                  <span className="text-[8px] font-mono text-zinc-500">
-                    {notification.title.length}/60
-                  </span>
-                </div>
-                <LocalBufferedInput
-                  id="push-title"
-                  name="title"
-                  autoComplete="off"
-                  value={notification.title}
-                  onFlush={(val) =>
-                    setNotification((prev) => ({ ...prev, title: val }))
-                  }
-                  disabled={isOffline || loading}
-                  placeholder={
-                    isOffline
-                      ? "Indisponível offline"
-                      : "Ex: Oferta especial liberada para você! 🎁"
-                  }
-                  useShadcn={true}
-                  className="h-9 rounded-lg border-white/10 bg-black/50 px-3 text-xs text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 placeholder:text-zinc-600 disabled:opacity-40"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label
-                    htmlFor="push-body"
-                    className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
-                  >
-                    Texto da mensagem
-                  </Label>
-                  <span className="text-[8px] font-mono text-zinc-500">
-                    {notification.body.length}/140
-                  </span>
-                </div>
-                <LocalBufferedTextarea
-                  id="push-body"
-                  name="body"
-                  autoComplete="off"
-                  value={notification.body}
-                  onFlush={(val) =>
-                    setNotification((prev) => ({ ...prev, body: val }))
-                  }
-                  disabled={isOffline || loading}
-                  placeholder={
-                    isOffline
-                      ? "Indisponível offline"
-                      : "Escreva aqui a mensagem curta que o cliente vai ver no celular..."
-                  }
-                  rows={2}
-                  useShadcn={true}
-                  className="resize-none rounded-lg border-white/10 bg-black/50 p-2.5 text-xs font-medium text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 placeholder:text-zinc-600 disabled:opacity-40"
-                />
-              </div>
-            </div>
-
-            {/* Destino Selector & Dynamic Inputs */}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label
-                  htmlFor="push-destination"
-                  className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+              <Select
+                name="destType"
+                value={destType}
+                onValueChange={handleDestTypeChange}
+                // PAINEL-07: sem o loadingProducts aqui, escolher
+                // "Produto" antes da lista carregar gerava um URL
+                // '/product-detail' sem id — que o efeito de
+                // sincronização reinterpretava como "custom page".
+                disabled={isOffline || loading || loadingProducts}
+              >
+                <SelectTrigger
+                  id="push-destination"
+                  aria-label="Para onde o cliente vai ao clicar"
+                  className="h-auto w-full justify-between gap-3 rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-left shadow-inner focus:border-admin-gold/50 focus:ring-0 [&>svg]:opacity-50"
                 >
-                  Para onde o cliente vai ao clicar?
-                </Label>
-                <Select
-                  name="destType"
-                  value={destType}
-                  onValueChange={handleDestTypeChange}
-                  // PAINEL-07: sem o loadingProducts aqui, escolher
-                  // "Produto" antes da lista carregar gerava um URL
-                  // '/product-detail' sem id — que o efeito de
-                  // sincronização reinterpretava como "custom page".
-                  disabled={isOffline || loading || loadingProducts}
-                >
-                  <SelectTrigger
-                    id="push-destination"
-                    className="h-9 w-full rounded-lg border border-white/10 bg-black/50 px-2.5 text-xs text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 [&>svg]:opacity-50"
-                  >
-                    <SelectValue placeholder="Selecione a tela..." />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border border-white/10 bg-zinc-950 text-white shadow-2xl">
-                    <SelectItem value="home">Página Inicial da Loja</SelectItem>
-                    <SelectItem value="search">
-                      Página de Busca de Produtos
-                    </SelectItem>
-                    <SelectItem value="cart">Carrinho de Compras</SelectItem>
-                    <SelectItem value="favorites">
-                      Lista de Favoritos
-                    </SelectItem>
-                    <SelectItem value="orders">Meus Pedidos</SelectItem>
-                    <SelectItem value="profile">Perfil do Cliente</SelectItem>
-                    <SelectItem value="product">
-                      Abrir um Produto Específico
-                    </SelectItem>
-                    <SelectItem value="custom">
-                      Outra Página (Link manual)
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  <span className="min-w-0">
+                    <span className="block text-[10px] font-semibold text-zinc-400">
+                      Ao clicar na mensagem, o cliente abre
+                    </span>
+                    <span className="mt-0.5 flex items-center gap-2 text-[13px] font-bold text-white">
+                      <SelectValue placeholder="Selecione a tela..." />
+                      <span className="shrink-0 text-[11px] font-black text-admin-gold">
+                        mudar ↗
+                      </span>
+                    </span>
+                  </span>
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border border-white/10 bg-zinc-950 text-white shadow-2xl">
+                  <SelectItem value="home">Página Inicial da Loja</SelectItem>
+                  <SelectItem value="search">
+                    Página de Busca de Produtos
+                  </SelectItem>
+                  <SelectItem value="cart">Carrinho de Compras</SelectItem>
+                  <SelectItem value="favorites">Lista de Favoritos</SelectItem>
+                  <SelectItem value="orders">Meus Pedidos</SelectItem>
+                  <SelectItem value="profile">Perfil do Cliente</SelectItem>
+                  <SelectItem value="product">
+                    Abrir um Produto Específico
+                  </SelectItem>
+                  <SelectItem value="custom">
+                    Outra Página (Link manual)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
 
               {destType === "product" && (
                 <div className="space-y-1 duration-200 animate-in fade-in">
@@ -1208,7 +1416,7 @@ export const AdminPushView = memo(function AdminPushView({
                   >
                     <SelectTrigger
                       id="push-product-select"
-                      className="h-9 w-full rounded-lg border border-white/10 bg-black/50 px-2.5 text-xs text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 [&>svg]:opacity-50"
+                      className="h-9 w-full rounded-lg border border-white/10 bg-black/50 px-2.5 text-xs text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 [&>svg]:opacity-50"
                     >
                       <SelectValue
                         placeholder={
@@ -1246,135 +1454,43 @@ export const AdminPushView = memo(function AdminPushView({
                     disabled={isOffline || loading}
                     placeholder="/exemplo-pagina"
                     useShadcn={true}
-                    className="h-9 rounded-lg border-white/10 bg-black/50 font-mono text-xs text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 placeholder:text-zinc-600"
+                    className="h-9 rounded-lg border-white/10 bg-black/50 font-mono text-xs text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 placeholder:text-zinc-600"
                   />
-                </div>
-              )}
-
-              {destType !== "product" && destType !== "custom" && (
-                <div className="flex items-end">
-                  <div className="flex h-9 w-full items-center gap-1.5 rounded-lg border border-white/5 bg-black/20 px-3 text-[10px] font-mono text-zinc-400">
-                    <ExternalLink className="size-3 text-emerald-400 shrink-0" />
-                    <span className="truncate">
-                      Ao clicar abrirá: {notification.url}
-                    </span>
-                  </div>
                 </div>
               )}
             </div>
 
             {/* Botão de Ação */}
             <button
-              className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 text-xs font-black uppercase tracking-[0.15em] text-white shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all hover:bg-emerald-400 hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-[0.98] disabled:opacity-30 disabled:grayscale disabled:shadow-none"
+              className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-admin-gold to-[#e2c04a] text-xs font-black uppercase tracking-[0.15em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98] disabled:opacity-30 disabled:grayscale disabled:shadow-none"
               onClick={handleSend}
               disabled={botaoEnviarDesabilitado}
             >
               {loading ? (
                 <div className="flex items-center gap-2">
-                  <div className="size-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+                  <div className="size-4 animate-spin rounded-full border-2 border-zinc-950/25 border-t-zinc-950" />
                   <span>Enviando Notificação...</span>
                 </div>
               ) : (
                 <>
                   <Send className="size-4 fill-current" />
-                  Enviar Notificação Agora (
-                  {textoDeAlcanceEmAparelhos(reachExibido)})
+                  {/* Direção B: um botão só, com o número real do segmento
+                      escolhido — `textoDeAlcanceEmAparelhos` mantém o
+                      singular e o traço do desconhecido, como sempre. */}
+                  Enviar agora para {textoDeAlcanceEmAparelhos(reachExibido)}
                 </>
               )}
             </button>
           </div>
-        </SecaoColapsavel>
+        </div>
 
-        {/* Avisos de Compras Recentes — cartão fixo (o conteúdo de dentro,
-            inclusive a expansão de explicação, é o de antes) */}
-        {configLoaded && (
-          <div
-            className={`rounded-xl border p-3.5 transition-all duration-300 ${
-              config.realTimeSalesAlerts
-                ? "border-emerald-500/30 bg-emerald-500/5 shadow-[0_0_15px_rgba(16,185,129,0.08)]"
-                : "border-white/10 bg-zinc-900/60"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-all duration-300 ${
-                    config.realTimeSalesAlerts
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                      : "border-white/5 bg-zinc-950 text-zinc-500"
-                  }`}
-                >
-                  <Sparkles className="size-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Label
-                      htmlFor="realtime-sales-alerts-switch"
-                      className="cursor-pointer text-xs font-bold text-white"
-                    >
-                      Avisos de Compras Recentes
-                    </Label>
-                    <span
-                      className={`size-1.5 rounded-full ${
-                        config.realTimeSalesAlerts
-                          ? "bg-emerald-500 animate-pulse"
-                          : "bg-zinc-600"
-                      }`}
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <p className="text-[10px] text-zinc-400 leading-none">
-                      Mostra na loja avisos de compras em tempo real.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setIsSocialProofExpanded(!isSocialProofExpanded)
-                      }
-                      className="flex items-center text-[10px] font-bold text-emerald-400 hover:text-emerald-300 leading-none"
-                    >
-                      {isSocialProofExpanded ? (
-                        <ChevronUp className="size-3" />
-                      ) : (
-                        <ChevronDown className="size-3" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <Switch
-                id="realtime-sales-alerts-switch"
-                checked={config.realTimeSalesAlerts}
-                onCheckedChange={handleToggleRealTimeSalesAlerts}
-                className="scale-90 data-[state=checked]:bg-emerald-500"
-                disabled={isOffline || isUpdatingConfig}
-              />
-            </div>
-
-            <AnimatePresence initial={false}>
-              {isSocialProofExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: "easeInOut" }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[10px] leading-relaxed text-zinc-400 space-y-1">
-                    <p>
-                      Esta opção exibe pequenas notificações discretas na loja
-                      quando alguém faz um pedido, passando mais segurança e
-                      confiança aos novos clientes.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* Metric Card - Celulares Cadastrados */}
-        {/*
+        {/* Métrica + dica, lado a lado (direção B): os dois cartões de estado
+            viram um par compacto. A prova social e o botão de teste de
+            recebimento desceram para o bloco "Ajustes", no fim da tela —
+            fora do caminho da composição. */}
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+          {/* Metric Card - Celulares Cadastrados */}
+          {/*
               Achado 7 da auditoria de 20/08/2026: este card tinha selos
               "iOS: X" e "Android: Y" que eram 40% e 60% de `subCount`,
               arredondados — não existe coluna de plataforma em
@@ -1383,43 +1499,53 @@ export const AdminPushView = memo(function AdminPushView({
               única saída honesta é não afirmar: os selos saíram, sem
               inventar substituto.
             */}
-        <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
-          <div className="flex items-center justify-between mb-2">
-            <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-              <Users className="size-3.5 text-emerald-400" /> Clientes Prontos
-              para Receber
-            </p>
-            <span className="text-[9px] font-mono text-emerald-400 font-bold uppercase">
-              Ativos
-            </span>
-          </div>
-
-          <div className="flex items-baseline justify-between border-b border-white/5 pb-2.5">
-            <div className="flex items-baseline gap-2">
-              <h2 className="text-3xl font-black tabular-nums tracking-tight text-white">
-                {rotuloDaContagem(subCount)}
-              </h2>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                Celulares e Computadores Cadastrados
+          <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
+            <div className="flex items-center justify-between mb-2">
+              <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                <Users className="size-3.5 text-admin-gold" /> Clientes Prontos
+                para Receber
+              </p>
+              <span className="text-[9px] font-mono text-admin-gold font-bold uppercase">
+                Ativos
               </span>
+            </div>
+
+            <div className="flex items-baseline justify-between border-b border-white/5 pb-2.5">
+              <div className="flex items-baseline gap-2">
+                <h2 className="text-3xl font-black tabular-nums tracking-tight text-white">
+                  {rotuloDaContagem(subCount)}
+                </h2>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-admin-gold">
+                  Celulares e Computadores Cadastrados
+                </span>
+              </div>
             </div>
           </div>
 
-          {isSupported && !isTestSubscribed && (
-            <button
-              onClick={handleTestSubscription}
-              disabled={isOffline}
-              className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 py-1.5 text-[9px] font-black uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/20 active:scale-95 disabled:opacity-40"
-            >
-              <Zap className="size-3 fill-emerald-400" />
-              Testar Recebimento Neste Aparelho
-            </button>
-          )}
+          {/* Dica de Vendas — a outra metade do par (o texto é o de antes) */}
+          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-zinc-900/60 p-3 backdrop-blur-md">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-admin-gold/20 bg-admin-gold/10 text-admin-gold">
+              <Clock className="size-3.5 text-admin-gold" />
+            </div>
+            <p className="text-[10px] font-medium text-zinc-300 leading-tight">
+              <span className="font-bold text-admin-gold uppercase tracking-wider">
+                Dica de Vendas:
+              </span>{" "}
+              Enviar mensagens entre{" "}
+              <strong className="text-white">10h e 12h</strong> costuma atrair{" "}
+              <span className="font-black text-admin-gold">
+                mais clientes e aumentar as vendas
+              </span>
+              .
+            </p>
+          </div>
         </div>
 
-        {/* Log de Envios — seção colapsável (consulta), nasce aberta */}
+        {/* O que já foi ao ar — seção colapsável (consulta), nasce aberta.
+            Direção B: o estado vazio é DESENHADO (caixa postal vazia + o que
+            vai aparecer aqui quando houver envio) — não uma frase seca. */}
         <SecaoColapsavel
-          titulo="Histórico de Mensagens Enviadas"
+          titulo="O que já foi ao ar"
           icone={History}
           abertaPorPadrao
           extra={
@@ -1436,10 +1562,17 @@ export const AdminPushView = memo(function AdminPushView({
                 </p>
               </div>
             ) : history.length === 0 ? (
-              <div className="py-6 text-center italic text-zinc-600">
-                <p className="text-[9px] font-bold uppercase tracking-widest">
-                  Nenhuma mensagem enviada até o momento
+              <div className="rounded-2xl border border-dashed border-white/10 py-7 text-center">
+                <div className="mb-2 text-2xl" aria-hidden="true">
+                  📭
+                </div>
+                <p className="text-[11px] font-bold text-zinc-300">
+                  Nenhuma mensagem enviada até agora
                 </p>
+                <span className="mt-1 block text-[10px] font-medium text-zinc-500">
+                  Quando você enviar, cada mensagem aparece aqui — com quantos
+                  aparelhos receberam de verdade.
+                </span>
               </div>
             ) : (
               history.map((item) => (
@@ -1448,7 +1581,7 @@ export const AdminPushView = memo(function AdminPushView({
                   className="rounded-lg border border-white/5 bg-black/30 p-2.5 transition-all hover:border-white/10 hover:bg-black/50"
                 >
                   <div className="flex items-center justify-between text-[8px] font-bold uppercase tracking-widest text-zinc-400 mb-1">
-                    <span className="text-emerald-400 font-mono">
+                    <span className="text-zinc-500 font-mono">
                       {new Date(item.sent_at).toLocaleDateString()} às{" "}
                       {new Date(item.sent_at).toLocaleTimeString([], {
                         hour: "2-digit",
@@ -1456,7 +1589,7 @@ export const AdminPushView = memo(function AdminPushView({
                       })}
                     </span>
                     <span className="flex items-center gap-1 bg-zinc-800/80 px-1.5 py-0.5 rounded text-zinc-300">
-                      <Users className="size-2.5 text-emerald-400" />{" "}
+                      <Users className="size-2.5 text-zinc-400" />{" "}
                       {textoDeAlcanceEmAparelhos(item.recipient_count)}
                     </span>
                   </div>
@@ -1477,7 +1610,7 @@ export const AdminPushView = memo(function AdminPushView({
                             "ninguém confirmou ainda". O selo deixou de
                             afirmar sucesso sem olhar o número. */}
                     {item.recipient_count > 0 ? (
-                      <span className="font-bold uppercase text-emerald-400">
+                      <span className="font-bold uppercase text-admin-gold">
                         Entregue
                       </span>
                     ) : (
@@ -1492,23 +1625,122 @@ export const AdminPushView = memo(function AdminPushView({
           </div>
         </SecaoColapsavel>
 
-        {/* Dica de Vendas — faixa fixa */}
-        <div className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 backdrop-blur-md">
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
-            <Clock className="size-3.5 text-emerald-400" />
+        {/* Ajustes — o sacrifício aprovado do desenho (direção B): prova
+            social e teste de recebimento saíram do caminho da composição e
+            recolhem no fim da tela. A função é exatamente a de antes — o
+            interruptor grava na hora (updateConfig), nada aqui guarda texto
+            não enviado, então fechar o bloco não descarta rascunho nenhum; a
+            trava "Salve antes de fechar" continua na seção de escrita,
+            onde o rascunho vive. */}
+        <SecaoColapsavel
+          titulo="Ajustes"
+          descricao="Prova social e teste de recebimento"
+          icone={Settings}
+        >
+          <div className="space-y-2.5">
+            {/* Avisos de Compras Recentes — cartão intocado, só mudou de
+                lugar (o conteúdo de dentro, inclusive a expansão de
+                explicação, é o de antes) */}
+            {configLoaded && (
+              <div
+                className={`rounded-xl border p-3.5 transition-all duration-300 ${
+                  config.realTimeSalesAlerts
+                    ? "border-admin-gold/30 bg-admin-gold/5"
+                    : "border-white/10 bg-zinc-900/60"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-all duration-300 ${
+                        config.realTimeSalesAlerts
+                          ? "border-admin-gold/30 bg-admin-gold/10 text-admin-gold"
+                          : "border-white/5 bg-zinc-950 text-zinc-500"
+                      }`}
+                    >
+                      <Sparkles className="size-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label
+                          htmlFor="realtime-sales-alerts-switch"
+                          className="cursor-pointer text-xs font-bold text-white"
+                        >
+                          Avisos de Compras Recentes
+                        </Label>
+                        <span
+                          className={`size-1.5 rounded-full ${
+                            config.realTimeSalesAlerts
+                              ? "bg-admin-gold animate-pulse"
+                              : "bg-zinc-600"
+                          }`}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-[10px] text-zinc-400 leading-none">
+                          Mostra na loja avisos de compras em tempo real.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setIsSocialProofExpanded(!isSocialProofExpanded)
+                          }
+                          className="flex items-center text-[10px] font-bold text-admin-gold hover:text-admin-gold/80 leading-none"
+                        >
+                          {isSocialProofExpanded ? (
+                            <ChevronUp className="size-3" />
+                          ) : (
+                            <ChevronDown className="size-3" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <Switch
+                    id="realtime-sales-alerts-switch"
+                    checked={config.realTimeSalesAlerts}
+                    onCheckedChange={handleToggleRealTimeSalesAlerts}
+                    className="scale-90 data-[state=checked]:bg-admin-gold"
+                    disabled={isOffline || isUpdatingConfig}
+                  />
+                </div>
+
+                <AnimatePresence initial={false}>
+                  {isSocialProofExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2, ease: "easeInOut" }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[10px] leading-relaxed text-zinc-400 space-y-1">
+                        <p>
+                          Esta opção exibe pequenas notificações discretas na
+                          loja quando alguém faz um pedido, passando mais
+                          segurança e confiança aos novos clientes.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Teste de recebimento — o mesmo botão do cartão métrico, na
+                mesma condição (`isSupported && !isTestSubscribed`). */}
+            {isSupported && !isTestSubscribed && (
+              <button
+                onClick={handleTestSubscription}
+                disabled={isOffline}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 py-2 text-[9px] font-black uppercase tracking-wider text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+              >
+                <Zap className="size-3 fill-admin-gold" />
+                Testar Recebimento Neste Aparelho
+              </button>
+            )}
           </div>
-          <p className="text-[10px] font-medium text-zinc-300 leading-tight">
-            <span className="font-bold text-emerald-400 uppercase tracking-wider">
-              Dica de Vendas:
-            </span>{" "}
-            Enviar mensagens entre{" "}
-            <strong className="text-white">10h e 12h</strong> costuma atrair{" "}
-            <span className="font-black text-emerald-300">
-              mais clientes e aumentar as vendas
-            </span>
-            .
-          </p>
-        </div>
+        </SecaoColapsavel>
       </div>
 
       {/* Modal de Ajuda Limpo */}
@@ -1524,13 +1756,13 @@ export const AdminPushView = memo(function AdminPushView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-emerald-500 pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
               O que você pode fazer aqui
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Send className="size-3.5 text-emerald-500" />
+                  <Send className="size-3.5 text-admin-gold" />
                   Enviar Notificação
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -1541,7 +1773,7 @@ export const AdminPushView = memo(function AdminPushView({
 
               <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Sparkles className="size-3.5 text-emerald-400" />
+                  <Sparkles className="size-3.5 text-admin-gold" />
                   Mensagens Prontas
                 </div>
                 <p className="text-xs text-zinc-400">

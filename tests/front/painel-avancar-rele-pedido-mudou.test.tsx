@@ -287,9 +287,9 @@ describe("AdminOrdersView / OrderDetail — a ficha reflete o status VERDADEIRO 
     );
   }
 
-  function botaoAbortar() {
+  function botaoCancelar() {
     return Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.getAttribute("title") === "Abortar Operação",
+      (b) => b.getAttribute("title") === "Cancelar pedido",
     );
   }
 
@@ -335,10 +335,10 @@ describe("AdminOrdersView / OrderDetail — a ficha reflete o status VERDADEIRO 
     expect(hospedeiro.textContent).toContain("Pago e cancelado");
 
     // O botão "Avançar" só aparece quando `orderStatus !== "cancelled"`
-    // (OrderDetail.tsx, OrderHeader) — sumir prova que a ficha não ficou
-    // travada no status velho.
+    // (OrderDetail.tsx, OrderActionBar — a barra fixa de baixo, T3 lote B)
+    // — sumir prova que a ficha não ficou travada no status velho.
     expect(botaoAvancar()).toBeFalsy();
-    expect(botaoAbortar()).toBeFalsy();
+    expect(botaoCancelar()).toBeFalsy();
 
     // Exatamente UM toast, de AVISO — nunca de erro (a armadilha do
     // catch, item 2 do brief).
