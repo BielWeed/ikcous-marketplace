@@ -318,6 +318,24 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     expect(previaDepois!.textContent).toContain("agora");
   });
 
+  // Revisão do lote B (12/09/2026), achado 2: a proposta aprovada trava o
+  // comprimento (maxlength 60/140) e o contador "{n}/60" existia sem a
+  // trava — o envio saía com 73 e a prévia mostrava inteiro o que o SO do
+  // cliente trunca. `maxLength` é a propriedade DOM que reflete o atributo;
+  // sem o atributo, o valor é -1 (sem limite).
+  it("título e corpo têm a trava de comprimento da proposta — o contador não é só enfeite", async () => {
+    await abrirTela();
+
+    const campoTitulo =
+      hospedeiro.querySelector<HTMLInputElement>("#push-title");
+    const campoCorpo =
+      hospedeiro.querySelector<HTMLTextAreaElement>("#push-body");
+    expect(campoTitulo).toBeTruthy();
+    expect(campoCorpo).toBeTruthy();
+    expect(campoTitulo!.maxLength).toBe(60);
+    expect(campoCorpo!.maxLength).toBe(140);
+  });
+
   it("prova social e botão de teste ficam no bloco Ajustes, fora da composição", async () => {
     await abrirTela();
 
@@ -359,12 +377,19 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     expect(texto()).not.toContain("Nenhuma mensagem enviada até o momento");
   });
 
-  // A guarda de rascunho (ex-"Escrever Nova Notificação") sobrevive à direção
-  // B: a seção de composição mudou de nome, não de dever — com texto não
-  // enviado ela não fecha ("Salve antes de fechar"), porque fechar desmonta
-  // o formulário e jogaria fora o que foi digitado.
-  it("com rascunho não enviado, a seção 'No ar agora' não fecha — 'Salve antes de fechar'", async () => {
+  // Revisão do lote B (12/09/2026), achado 3: o colapso da composição saiu —
+  // "painel único aceso, nada escondido" (mesma decisão da T1 no
+  // Atendimento). Os inputs são controlados por um useState da própria view
+  // e remontam com o valor, então o colapso nunca descartou rascunho: a
+  // guarda real é de navegação (onSetDirty), e a frase "Salve antes de
+  // fechar" sai junto com a seção que a carregava.
+  it("a composição 'No ar agora' é cartão fixo — não colapsa, e o rascunho não desmonta nada", async () => {
     await abrirTela();
+
+    // Zero controle de colapso para a composição.
+    const controleDeColapso = cabecalhoDeSecao("No ar agora");
+    expect(controleDeColapso).toBeUndefined();
+    expect(texto()).not.toMatch(/salve antes de fechar/i);
 
     const campo = hospedeiro.querySelector<HTMLInputElement>("#push-title");
     expect(campo).toBeTruthy();
@@ -380,18 +405,8 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       await esperar(400); // flush do LocalBufferedInput (~200ms)
     });
 
-    expect(texto()).toMatch(/salve antes de fechar/i);
-
-    const escrita = cabecalhoDeSecao("No ar agora");
-    expect(escrita).toBeTruthy();
-    await act(async () => {
-      escrita!.click();
-    });
-    await act(async () => {
-      await esperar(50);
-    });
-
-    expect(escrita!.getAttribute("aria-expanded")).toBe("true");
+    // Com rascunho pendente, nada sai da árvore: o campo segue com o valor,
+    // e a guarda real (o sinal para o App) é coberta pelo teste de baixo.
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
     expect(campo!.value).toBe("Oferta da semana");
   });

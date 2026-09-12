@@ -7,7 +7,9 @@
 // conteúdo em seções colapsáveis no padrão dos Ajustes. Depois, na frente
 // lote-b-telas-admin (12/09), o Atendimento SAIU do colapso: virou
 // FORMULÁRIO DIRETO (direção B aprovada pelo dono) — três blocos numerados,
-// todos abertos. O Avisar clientes continua em seções colapsáveis.
+// todos abertos. No Avisar clientes (T2, mesma direção B) a COMPOSIÇÃO saiu
+// do colapso junto — virou o cartão fixo "No ar agora" — e o histórico e os
+// Ajustes seguem colapsáveis.
 //
 // A REGRA DE OURO da frente: muda a casa, não o morador. Por isso o contrato
 // prende, para cada tela:
@@ -17,7 +19,9 @@
 //      No Atendimento, o editor nasce montado com o texto salvo e NADA do
 //      que o lojista digitou se perde: sem seção que desmonta, o sinal de
 //      alteração não salva (onSetDirty) segue vivo para o App. No Avisar
-//      clientes, o guarda "Salve antes de fechar" segue de pé nas seções.
+//      clientes é igual: a composição é cartão fixo, e o sinal de rascunho
+//      (onSetDirty) é guarda de navegação — nada na tela desmonta o
+//      formulário.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -339,10 +343,12 @@ describe("Canais de Atendimento — o formulário direto guarda o morador", () =
 });
 
 // ── Parte 3: Avisar clientes (AdminPushView) ───────────────────────────────
-async function abrirAvisar() {
+async function abrirAvisar(aoSujar?: (dirty: boolean) => void) {
   const { AdminPushView } = await import("@/views/admin/AdminPushView");
   await act(async () => {
-    raiz.render(<AdminPushView onNavigate={vi.fn()} />);
+    raiz.render(
+      <AdminPushView onNavigate={vi.fn()} onSetDirty={aoSujar ?? vi.fn()} />,
+    );
   });
   await act(async () => {
     await esperar(50);
@@ -352,9 +358,10 @@ async function abrirAvisar() {
 // Rótulos reancorados (12/09): a direção B da tela de Notificações (frente
 // T2) renomeou as seções — "No ar agora" (composição), "O que já foi ao ar"
 // (histórico) e uma terceira, "Ajustes", que nasce FECHADA e abriga o
-// interruptor de prova social. O invariante de cada teste é o mesmo de
-// sempre: a porta de trabalho nasce aberta, o que entra na árvore volta
-// depois de recolher, e rascunho pendente trava o fechamento.
+// interruptor de prova social. E o colapso da composição saiu (revisão do
+// lote B): ela é cartão FIXO — "painel único aceso, nada escondido" —; só
+// histórico e Ajustes recolhem e reabrem. Rascunho pendente sinaliza ao
+// App (onSetDirty), nunca trava colapso.
 describe("Avisar clientes — a casca nova guarda o morador", () => {
   it("nasce no título padrão, com composição e histórico visíveis na árvore", async () => {
     await abrirAvisar();
@@ -363,12 +370,12 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
       "Enviar Notificações",
     );
 
-    // Seções colapsáveis presentes e abertas (a porta de trabalho inteira).
-    const composicao = cabecalhoDeSecao(hospedeiro, "No ar agora");
+    // A composição é cartão FIXO: zero controle de colapso para ela — o
+    // conteúdo (os campos, logo abaixo) está na árvore sem interação
+    // nenhuma. O histórico segue colapsável e nasce aberto.
+    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
     const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar");
-    expect(composicao).toBeTruthy();
     expect(historico).toBeTruthy();
-    expect(composicao!.getAttribute("aria-expanded")).toBe("true");
     expect(historico!.getAttribute("aria-expanded")).toBe("true");
 
     // Campos-chave do envio — nenhum sumiu no redesenho.
@@ -408,7 +415,7 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     ).not.toBeNull();
   });
 
-  it("as seções recolhem e reabrem (o conteúdo sai e volta da árvore)", async () => {
+  it("o histórico recolhe e reabre (o conteúdo sai e volta da árvore) — e a composição é fixa", async () => {
     await abrirAvisar();
 
     const historico = cabecalhoDeSecao(
@@ -435,29 +442,16 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     expect(historico.getAttribute("aria-expanded")).toBe("true");
     expect(textoDaTela()).toContain("Não confirmada");
 
-    // A composição também é recolhível (sem rascunho, nada a trava).
-    const composicao = cabecalhoDeSecao(hospedeiro, "No ar agora")!;
-    await act(async () => {
-      composicao.click();
-    });
-    await act(async () => {
-      await esperar(350);
-    });
-    expect(composicao.getAttribute("aria-expanded")).toBe("false");
-    expect(hospedeiro.querySelector("#push-title")).toBeNull();
-
-    await act(async () => {
-      composicao.click();
-    });
-    await act(async () => {
-      await esperar(50);
-    });
-    expect(composicao.getAttribute("aria-expanded")).toBe("true");
+    // A composição NÃO é recolhível — cartão fixo: sem controle de colapso,
+    // o campo nunca sai da árvore (o recolher/reabrir vale só para o
+    // histórico e os Ajustes).
+    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
   });
 
-  it("com rascunho não enviado, a composição não fecha — 'Salve antes de fechar'", async () => {
-    await abrirAvisar();
+  it("com rascunho pendente, a composição continua na árvore — e o sinal para o App segue de pé", async () => {
+    const aoSujar = vi.fn();
+    await abrirAvisar(aoSujar);
 
     const campo = hospedeiro.querySelector("#push-title") as HTMLInputElement;
     await digitarEm(campo, "Oferta da semana");
@@ -465,17 +459,19 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
       await esperar(400); // flush do LocalBufferedInput (200 ms)
     });
 
-    expect(textoDaTela()).toMatch(/salve antes de fechar/i);
+    // A guarda real é de navegação: o App fica sabendo que há rascunho.
+    expect(aoSujar).toHaveBeenLastCalledWith(true);
 
-    const composicao = cabecalhoDeSecao(hospedeiro, "No ar agora")!;
-    await act(async () => {
-      composicao.click();
-    });
-    await act(async () => {
-      await esperar(50);
-    });
+    // A frase "Salve antes de fechar" morava no cabeçalho da seção: sem
+    // seção não há o que fechar, e a frase sai junto (mesmo raciocínio do
+    // Atendimento, na Parte 2).
+    expect(textoDaTela()).not.toMatch(/salve antes de fechar/i);
 
-    expect(composicao.getAttribute("aria-expanded")).toBe("true");
+    // E a composição segue inteira na árvore, com o rascunho no campo.
+    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
+    expect(
+      (hospedeiro.querySelector("#push-title") as HTMLInputElement).value,
+    ).toBe("Oferta da semana");
   });
 });

@@ -434,10 +434,12 @@ export const AdminPushView = memo(function AdminPushView({
     calculateReach();
   }, [calculateReach]);
 
-  // Rascunho não enviado = pendência. A MESMA expressão que liga a guarda do
-  // App (onSetDirty) agora também trava o fechamento da seção de escrita —
-  // fechar desmontaria o formulário e descartaria o rascunho (padrão "Salve
-  // antes de fechar" dos Ajustes).
+  // Rascunho não enviado = pendência para o APP (onSetDirty): é guarda de
+  // navegação — sair da tela com texto não enviado avisa antes de perder.
+  // A composição é cartão fixo (nada desmonta o formulário), então o
+  // comentário anterior — que dizia "fechar desmontaria e descartaria o
+  // rascunho" — afirmava uma perda que o código nunca produziu (revisão do
+  // lote B, 12/09/2026).
   const rascunhoPendente =
     notification.title.trim().length > 0 || notification.body.trim().length > 0;
 
@@ -834,24 +836,33 @@ export const AdminPushView = memo(function AdminPushView({
           (campos, segmentos, envio, listas) é o de antes, um a um. */}
       <div className="mx-auto max-w-4xl space-y-3.5 px-3 pt-3 sm:px-4 sm:pt-4">
         {/* Painel único de composição (direção B "Rádio do lojista",
-            12/09/2026): entra, escreve e dispara. A casca continua a
-            SecaoColapsavel com a trava de rascunho ("Salve antes de
-            fechar"); o conteúdo ganha a ordem nova — pílulas de modelos,
-            texto, prévia no celular, público em chips, destino inline e um
-            botão só. */}
-        <SecaoColapsavel
-          titulo="No ar agora"
-          descricao="Escreva e envie mensagens para os clientes"
-          icone={Radio}
-          abertaPorPadrao
-          comPendencia={rascunhoPendente}
-          extra={
-            <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
+            12/09/2026): entra, escreve e dispara — CARTÃO FIXO, "painel
+            único aceso, nada escondido" (mesma decisão da T1 no Atendimento;
+            revisão do lote B). Os inputs são controlados por um useState
+            daqui e remontam com o valor, então colapso aqui nunca protegeu
+            rascunho nenhum — só escondia a porta de trabalho. Conteúdo na
+            ordem nova: pílulas de modelos, texto, prévia no celular,
+            público em chips, destino inline e um botão só. O alcance fica à
+            vista no selo do cabeçalho, no chip do segmento e no botão de
+            enviar. */}
+        <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl sm:p-4">
+          <div className="mb-3.5 flex items-center justify-between gap-3">
+            <p className="flex min-w-0 items-center gap-2.5 text-xs font-black uppercase tracking-wider text-white">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
+                <Radio className="size-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate">No ar agora</span>
+                <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                  Escreva e envie mensagens para os clientes
+                </span>
+              </span>
+            </p>
+            <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
               <Radio className="size-3 animate-pulse" />
               <span>Receberão: {textoDeAlcanceEmAparelhos(reachExibido)}</span>
             </div>
-          }
-        >
+          </div>
           {/* Mensagens Prontas — pílulas (direção B). Os mesmos 3 arquétipos
               de antes: o preenchimento, o registro VOR e o toast não mudam —
               só a forma (cartão grande → pílula de um clique). */}
@@ -951,6 +962,10 @@ export const AdminPushView = memo(function AdminPushView({
                   id="push-title"
                   name="title"
                   autoComplete="off"
+                  // Trava da proposta (revisão do lote B, 12/09/2026): o
+                  // contador "{n}/60" só é honesto acompanhado do limite —
+                  // sem o atributo, o envio saía maior que 60.
+                  maxLength={60}
                   value={notification.title}
                   onFlush={(val) =>
                     setNotification((prev) => ({ ...prev, title: val }))
@@ -982,6 +997,10 @@ export const AdminPushView = memo(function AdminPushView({
                   id="push-body"
                   name="body"
                   autoComplete="off"
+                  // Mesma trava do título: 140 é o que a notificação real
+                  // carrega — sem o atributo, a prévia mostrava inteiro o
+                  // que o SO do cliente trunca.
+                  maxLength={140}
                   value={notification.body}
                   onFlush={(val) =>
                     setNotification((prev) => ({ ...prev, body: val }))
@@ -1326,7 +1345,7 @@ export const AdminPushView = memo(function AdminPushView({
               )}
             </button>
           </div>
-        </SecaoColapsavel>
+        </div>
 
         {/* Métrica + dica, lado a lado (direção B): os dois cartões de estado
             viram um par compacto. A prova social e o botão de teste de
