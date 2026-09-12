@@ -4,8 +4,8 @@
 > O [CLAUDE.md](CLAUDE.md) é só um aviso apontando para cá. Regras GLOBAIS de comportamento
 > (custo zero, travas, paralelismo, revisão por risco) moram em `~/.zcode/AGENTS.md` — este
 > arquivo declara apenas o **terreno daqui**. O conteúdo de ferramentas Cursor/Antigravity
-> que existia aqui foi removido nessa reescrita; a cópia `.cursorrules` ficou DESATUALIZADA
-> (candidata a remoção — decisão do dono).
+> que existia aqui foi removido nessa reescrita; a cópia `.cursorrules`, que ficou
+> DESATUALIZADA, foi removida em 12/09/2026 (decisão do dono).
 
 ---
 
