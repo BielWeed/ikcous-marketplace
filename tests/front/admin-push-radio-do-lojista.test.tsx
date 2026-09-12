@@ -241,8 +241,8 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
 
     // O chip do segmento selecionado ("all" por padrão) tem destaque; os
     // outros não.
-    expect(chipTodos?.className).toContain("border-emerald-500/50");
-    expect(chipVip?.className).not.toContain("border-emerald-500/50");
+    expect(chipTodos?.className).toContain("border-admin-gold/50");
+    expect(chipVip?.className).not.toContain("border-admin-gold/50");
 
     // A linha de unidade embaixo do número — parte do chip da direção B
     // ("9 / aparelhos"), que o botão antigo não tinha.
@@ -271,7 +271,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       await esperar(50);
     });
 
-    expect(chipInativo!.className).not.toContain("border-emerald-500/50");
+    expect(chipInativo!.className).not.toContain("border-admin-gold/50");
     expect(texto()).toContain("Receberão: 8 aparelhos");
   });
 

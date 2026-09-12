@@ -664,7 +664,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
               <button
                 onClick={handleSubmit}
                 disabled={!isLoaded || isOffline || isSaving}
-                className="h-9.5 flex shrink-0 items-center gap-2 rounded-lg bg-admin-gold px-3.5 text-[9.5px] font-black uppercase tracking-widest text-white shadow-[0_0_30px_rgba(212,175,55,0.2)] transition-all hover:bg-admin-gold/90 hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-3 sm:px-5"
+                className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-gold px-4 text-[10.5px] font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-[#e3c25e] hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-2.5 sm:px-5"
               >
                 {isSaving ? (
                   <>
@@ -689,7 +689,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
       {/* Formulário direto (direção B): três blocos numerados, todos abertos.
           Nada de seção colapsável — a tela inteira fica à vista e o que o
           lojista digita nunca desmonta. */}
-      <div className="mx-auto max-w-2xl space-y-4 px-4 pt-4">
+      <div className="mx-auto max-w-4xl space-y-4 px-4 pt-4">
         {isOffline && (
           <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
             <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />
@@ -809,91 +809,24 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
         <BlocoNumerado
           numero="3"
           titulo="Mensagem de compartilhamento"
-          descricao="Texto que vai junto quando alguém compartilha um produto da sua loja. Inclua os marcadores — cada um é trocado pelo dado real na hora do envio."
+          descricao="Texto que vai junto quando alguém compartilha um produto da sua loja. A prévia em cima mostra ao vivo o que você digitar embaixo — como a mensagem chega no WhatsApp de quem recebe."
         >
           <div className="space-y-4">
+            {/* Prévia ao vivo — EM CIMA do campo: o lojista digita embaixo e
+                vê a mensagem montando aqui em tempo real, sem rolar para
+                procurar. Fiel: cabeçalho, papal de parede, bolha com o card
+                do produto e o domínio real da loja. */}
             <div className="space-y-2">
-              <Label
-                id="rotulo-texto-mensagem"
-                className="ml-1 text-[13px] font-bold text-white"
-              >
-                Texto da mensagem
-              </Label>
-              <div className="relative">
-                <div className="pointer-events-none absolute left-3.5 top-3.5 z-15">
-                  <Share2 className="size-3.5 text-zinc-500" />
-                </div>
-
-                {/* ContentEditable Rich Text Area Mockup. O rótulo se
-                  associa por aria-labelledby: div editável não é campo
-                  rotulável por `for` — é a associação correta aqui. */}
-                <div
-                  id="settings-share-message-editor"
-                  aria-labelledby="rotulo-texto-mensagem"
-                  contentEditable={!isOffline}
-                  onInput={handleEditorInput}
-                  onBlur={handleEditorBlur}
-                  onPaste={handleEditorPaste}
-                  className="relative min-h-[120px] cursor-text overflow-y-auto rounded-xl border border-white/10 bg-black/40 p-3.5 pl-10 text-[13px] font-medium leading-relaxed text-white outline-none transition-all empty:before:pointer-events-none empty:before:absolute empty:before:left-10 empty:before:top-3.5 empty:before:text-zinc-700 empty:before:content-['Escreva_a_mensagem_de_compartilhamento_do_produto...'] focus:bg-black/60 focus:ring-2 focus:ring-admin-gold/50"
-                />
-              </div>
-
-              {/* Tags Dinâmicas */}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button
-                  type="button"
-                  disabled={isOffline}
-                  onClick={() => insertTag("nome")}
-                  className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  <Plus className="size-3.5 text-admin-gold transition-transform duration-200 group-hover:rotate-90" />
-                  <span>Nome do Produto</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={isOffline}
-                  onClick={() => insertTag("preco")}
-                  className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  <Plus className="size-3.5 text-admin-gold transition-transform duration-200 group-hover:rotate-90" />
-                  <span>Preço</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={isOffline}
-                  onClick={() => insertTag("link")}
-                  className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  <Plus className="size-3.5 text-admin-gold transition-transform duration-200 group-hover:rotate-90" />
-                  <span>Link</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Botão de Modelos Prontos */}
-            <div>
-              <button
-                type="button"
-                disabled={isOffline}
-                onClick={() => {
-                  setPresetSearch("");
-                  setIsPresetsOpen(true);
-                }}
-                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-purple-500/20 bg-purple-500/5 px-4 py-3.5 text-[13px] font-bold text-purple-400 shadow-sm transition-all hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98]"
-              >
-                <Sparkles className="size-4 text-purple-400" />
-                <span>Modelos prontos (30 disponíveis)</span>
-              </button>
-            </div>
-
-            {/* Prévia fiel — logo depois do campo que a muda */}
-            <div className="space-y-2 border-t border-white/5 pt-4">
-              <span className="ml-1 block text-[13px] font-bold text-zinc-400">
-                Prévia — como chega no WhatsApp de quem recebe
+              <span className="ml-1 flex items-center gap-2 text-[13px] font-bold text-zinc-400">
+                <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
+                  Ao vivo
+                </span>
+                Como chega no WhatsApp de quem recebe
               </span>
 
-              {/* Chat window mockup com max-width responsivo e centralizado */}
-              <div className="relative flex flex-col h-[340px] max-w-md mx-auto w-full rounded-2xl overflow-hidden border border-zinc-800 bg-[#0b141a] shadow-2xl transition-all duration-300">
+              {/* Chat window mockup ampliado — ocupa a tela de verdade */}
+              <div className="relative mx-auto flex h-[420px] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0b141a] shadow-2xl transition-all duration-300">
                 {/* WhatsApp Custom Header */}
                 <div className="flex items-center justify-between bg-[#1f2c34] px-3.5 py-2 border-b border-[#222e35]/50 z-10 shrink-0">
                   <div className="flex items-center gap-2.5">
@@ -990,6 +923,81 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 </div>
               </div>
             </div>
+
+            <div className="space-y-2 border-t border-white/5 pt-4">
+              <Label
+                id="rotulo-texto-mensagem"
+                className="ml-1 text-[13px] font-bold text-white"
+              >
+                Texto da mensagem
+              </Label>
+              <div className="relative">
+                <div className="pointer-events-none absolute left-3.5 top-3.5 z-15">
+                  <Share2 className="size-3.5 text-zinc-500" />
+                </div>
+
+                {/* ContentEditable Rich Text Area Mockup. O rótulo se
+                  associa por aria-labelledby: div editável não é campo
+                  rotulável por `for` — é a associação correta aqui. */}
+                <div
+                  id="settings-share-message-editor"
+                  aria-labelledby="rotulo-texto-mensagem"
+                  contentEditable={!isOffline}
+                  onInput={handleEditorInput}
+                  onBlur={handleEditorBlur}
+                  onPaste={handleEditorPaste}
+                  className="relative min-h-[140px] cursor-text overflow-y-auto rounded-xl border border-white/10 bg-black/40 p-3.5 pl-10 text-[13px] font-medium leading-relaxed text-white outline-none transition-all empty:before:pointer-events-none empty:before:absolute empty:before:left-10 empty:before:top-3.5 empty:before:text-zinc-700 empty:before:content-['Escreva_a_mensagem_de_compartilhamento_do_produto...'] focus:bg-black/60 focus:ring-2 focus:ring-admin-gold/50"
+                />
+              </div>
+
+              {/* Tags Dinâmicas */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={isOffline}
+                  onClick={() => insertTag("nome")}
+                  className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Plus className="size-3.5 text-admin-gold transition-transform duration-200 group-hover:rotate-90" />
+                  <span>Nome do Produto</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isOffline}
+                  onClick={() => insertTag("preco")}
+                  className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Plus className="size-3.5 text-admin-gold transition-transform duration-200 group-hover:rotate-90" />
+                  <span>Preço</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isOffline}
+                  onClick={() => insertTag("link")}
+                  className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Plus className="size-3.5 text-admin-gold transition-transform duration-200 group-hover:rotate-90" />
+                  <span>Link</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Botão de Modelos Prontos */}
+            <div>
+              <button
+                type="button"
+                disabled={isOffline}
+                onClick={() => {
+                  setPresetSearch("");
+                  setIsPresetsOpen(true);
+                }}
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-purple-500/20 bg-purple-500/5 px-4 py-3.5 text-[13px] font-bold text-purple-400 shadow-sm transition-all hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98]"
+              >
+                <Sparkles className="size-4 text-purple-400" />
+                <span>Modelos prontos (30 disponíveis)</span>
+              </button>
+            </div>
+
           </div>
         </BlocoNumerado>
       </div>
