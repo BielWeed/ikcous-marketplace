@@ -110,11 +110,18 @@
     "e o -1 de biome e um erro de formatacao da base que a branch ja nao tem",
     "(tests/front/admin-settings-secoes-colapsaveis.test.tsx), depois de zerar",
     "os 232 erros que a bancada A6 trazia (commit 7585da3). Baixado SO' DEPOIS",
-    "do CI, como as quedas anteriores."
+    "do CI, como as quedas anteriores.", "",
+    "12/09/2026 — warnings de eslint de 503 para 485. Medido no CI, run",
+    "34725042608 (PR #549, Lote B das telas admin): 'eslint warnings 485 / teto",
+    "503 — baixou -18 — abaixe o teto'. A queda VEIO do PR: o Lote B reescreveu",
+    "as 3 telas admin (atendimento, notificacoes e ficha do pedido) com os",
+    "testes delas, e os warnings que as versoes velhas carregavam sumiram",
+    "junto. Biome ficou 19/1, sem mudanca. Baixado SO' DEPOIS do CI, como as",
+    "quedas anteriores."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 503
+    "warnings": 485
   },
   "biome": {
     "errors": 19,
