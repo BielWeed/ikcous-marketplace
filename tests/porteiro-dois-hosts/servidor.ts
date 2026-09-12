@@ -269,13 +269,19 @@ const CHAVES_DE_AMBIENTE_DO_PORTEIRO = [
   "IKCOUS_FROTA_APIKEY",
   "IKCOUS_FROTA_CHAVE",
   "VERCEL_ENV",
-  "VERCEL_PROJECT_PRODUCTION_URL",
+  "IKCOUS_DOMINIO_PRINCIPAL",
 ] as const;
 
 /** Regra estrita (ADENDO B/T6, item do servidor): `VERCEL_ENV` e
- * `VERCEL_PROJECT_PRODUCTION_URL` ficam SEMPRE ausentes aqui — nenhum destes
+ * `IKCOUS_DOMINIO_PRINCIPAL` ficam SEMPRE ausentes aqui — nenhum destes
  * cenários é um preview de PR, e o relaxamento de `decidirConcordancia` só
- * vale para `vercelEnv === "preview"` (rodada B, achado do revisor). */
+ * vale para `vercelEnv === "preview"` (rodada B, achado do revisor). Rodada
+ * da correção da variável mais curta da Vercel (12/09/2026): a variável que
+ * o preview compara deixou de ser uma variável da própria Vercel (instável
+ * num projeto multi-loja — ver `decidirConcordancia`) e passou a ser a
+ * nossa, cadastrada no projeto — nenhum cenário deste servidor de ensaio é
+ * preview, então a chave nunca precisou de valor aqui, só do nome certo
+ * para a limpeza. */
 function aplicarAmbientePorHost(hostname: string): void {
   // eslint-disable-next-line security/detect-object-injection -- `chave` percorre SÓ o array literal fixo `CHAVES_DE_AMBIENTE_DO_PORTEIRO` declarado acima, nunca entrada externa.
   for (const chave of CHAVES_DE_AMBIENTE_DO_PORTEIRO) delete process.env[chave];

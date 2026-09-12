@@ -55,7 +55,7 @@ const ENV_LIMPO = {
   VITE_SUPABASE_PUBLISHABLE_KEY: undefined,
   VITE_SUPABASE_ANON_KEY: undefined,
   VERCEL_ENV: undefined,
-  VERCEL_PROJECT_PRODUCTION_URL: undefined,
+  IKCOUS_DOMINIO_PRINCIPAL: undefined,
 };
 
 const HASH = "a".repeat(64);

@@ -135,7 +135,13 @@ export interface AmbientePorteiro {
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly VERCEL_ENV?: string;
-  readonly VERCEL_PROJECT_PRODUCTION_URL?: string;
+  /** A NOSSA variável (cadastrada no projeto Vercel da principal) — o
+   * `dominio_publico` da loja PRINCIPAL, que é a loja que toda prévia de PR
+   * mostra (em preview a caderneta está ausente, então o fallback é sempre
+   * o banco da principal). Ver o comentário de `decidirConcordancia` para o
+   * porquê de existir (troca de uma variável da própria Vercel que se
+   * mostrou instável num projeto multi-loja). */
+  readonly IKCOUS_DOMINIO_PRINCIPAL?: string;
 }
 
 export interface ConexaoResolvida {
@@ -317,7 +323,7 @@ export interface ParametrosConcordancia {
   readonly host: string;
   readonly dominioPublico: string | null;
   readonly vercelEnv: string | undefined;
-  readonly producaoUrl: string | undefined;
+  readonly dominioPrincipal: string | undefined;
 }
 
 /**
@@ -327,14 +333,31 @@ export interface ParametrosConcordancia {
  * "sem-loja", nunca "ok"). Fora de produção (preview de PR), a Vercel serve
  * em hosts do tipo `*-git-*.vercel.app` que NUNCA vão bater com
  * `dominio_publico`; a única concessão é aceitar quando o banco concorda
- * com `VERCEL_PROJECT_PRODUCTION_URL` — o domínio de produção do MESMO
- * projeto, que a Vercel injeta e o visitante não controla. Essa concessão
- * só vale quando `vercelEnv === "preview"` (rodada B, achado do revisor: a
- * rodada A relaxava para QUALQUER `vercelEnv` diferente de `"production"`,
- * inclusive `"development"` — um ambiente de teste local não é preview de
- * PR e não deveria ganhar o mesmo relaxamento) e `producaoUrl` não vazio.
- * `vercelEnv === "production"` ou `undefined` NUNCA relaxam — falha fechada
- * por padrão, nunca por omissão de env.
+ * com `IKCOUS_DOMINIO_PRINCIPAL` — o `dominio_publico` da loja PRINCIPAL,
+ * que é a loja que TODA prévia de PR mostra (em preview a caderneta central
+ * está ausente, então o fallback cai sempre no banco da principal). Essa
+ * concessão só vale quando `vercelEnv === "preview"` (rodada B, achado do
+ * revisor: a rodada A relaxava para QUALQUER `vercelEnv` diferente de
+ * `"production"`, inclusive `"development"` — um ambiente de teste local
+ * não é preview de PR e não deveria ganhar o mesmo relaxamento) e
+ * `dominioPrincipal` não vazio. `vercelEnv === "production"` ou `undefined`
+ * NUNCA relaxam — falha fechada por padrão, nunca por omissão de env.
+ *
+ * POR QUE NÃO É MAIS `VERCEL_PROJECT_PRODUCTION_URL` (correção medida em
+ * 12/09/2026, PR #545): a doc oficial da Vercel descreve essa variável como
+ * "o domínio de produção MAIS CURTO do projeto" — não "o domínio DESTA
+ * loja". Com o projeto principal passando a hospedar TODAS as lojas (cada
+ * loja ganha um alias `.vercel.app` extra no MESMO projeto, etapa 2 da
+ * escala), a variável passou a devolver o nome mais curto entre TODAS as
+ * lojas, não necessariamente o da principal — medido na prévia do PR #545:
+ * a variável valia `savycollection.vercel.app` (24 letras) em vez de
+ * `ickous-marketplace.vercel.app` (29), o `sitemap.xml` da prévia foi
+ * assado com o domínio errado, e a prévia respondia `/` 503 com
+ * `x-ikcous-porteiro: discorda`. Qualquer regra que dependa dessa variável
+ * quebra assim que o projeto vira multi-loja. A correção troca a fonte por
+ * `IKCOUS_DOMINIO_PRINCIPAL`, uma variável NOSSA que sempre vale o
+ * `dominio_publico` real da principal, cadastrada à mão no projeto — nunca
+ * inferida pela Vercel.
  *
  * 4º resultado (11/09/2026, decisão do sócio aprovada pelo Gabriel — brief
  * `20260911-brief-aliases-vercel-encaminham.md`): em PRODUÇÃO, um alias
@@ -350,11 +373,14 @@ export interface ParametrosConcordancia {
  * `.vercel.app` fora de produção) continua em `discorda`, byte a byte como
  * antes desta rodada. A regra 3 (dominio_publico não-nulo/não-vazio) já foi
  * checada acima e sempre vence — `sem-loja` nunca vira `encaminha`.
+ * `dominioPrincipal` NUNCA entra nesta regra — produção decide só pelo
+ * sufixo do host, mesmo que `dominioPrincipal` bata com o host ou com o
+ * `dominio_publico`.
  */
 export function decidirConcordancia(
   params: ParametrosConcordancia,
 ): "ok" | "sem-loja" | "discorda" | "encaminha" {
-  const { host, dominioPublico, vercelEnv, producaoUrl } = params;
+  const { host, dominioPublico, vercelEnv, dominioPrincipal } = params;
   if (dominioPublico === null || dominioPublico === "") return "sem-loja";
   const hostMinusculo = host.toLowerCase();
   const dominioMinusculo = dominioPublico.toLowerCase();
@@ -362,9 +388,11 @@ export function decidirConcordancia(
   const ehPreview = vercelEnv === "preview";
   if (
     ehPreview &&
-    producaoUrl !== undefined &&
-    producaoUrl !== "" &&
-    producaoUrl.toLowerCase() === dominioMinusculo
+    dominioPrincipal !== undefined &&
+    // Redundante com a regra 3 (`dominioMinusculo !== ""`, checada acima):
+    // vazio nunca bate um `dominio_publico` não vazio. Fica só por legibilidade.
+    dominioPrincipal !== "" &&
+    dominioPrincipal.toLowerCase() === dominioMinusculo
   ) {
     return "ok";
   }
@@ -854,7 +882,16 @@ async function resolverFichaViaRede(
       host,
       dominioPublico,
       vercelEnv: ambiente.VERCEL_ENV,
-      producaoUrl: ambiente.VERCEL_PROJECT_PRODUCTION_URL,
+      // Rodada de correção (revisor Opus, achado 1): `IKCOUS_DOMINIO_PRINCIPAL`
+      // é digitada à mão no painel da Vercel — um `\n` ou espaço colado no
+      // valor faria TODA prévia responder 503 `discorda`, porque a comparação
+      // é byte a byte. `cleanEnvVar` é a MESMA limpeza que
+      // `IKCOUS_FROTA_URL`/`_APIKEY`/`_CHAVE` já recebem, acima. Gatilho
+      // conhecido (re-revisão Opus, 12/09/2026): `cleanEnvVar` apaga TODO
+      // caractere fora de `!-~`, acento inclusive — se um dia a principal
+      // tiver domínio próprio com acento, a comparação aqui nunca bate e toda
+      // prévia vira 503; nesse dia a limpeza certa é `trim` + `normalize`.
+      dominioPrincipal: cleanEnvVar(ambiente.IKCOUS_DOMINIO_PRINCIPAL ?? ""),
     });
     if (decisao === "encaminha") {
       // `decidirConcordancia` só devolve "encaminha" depois de já ter

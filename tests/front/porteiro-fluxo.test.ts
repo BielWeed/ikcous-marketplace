@@ -15,6 +15,15 @@ import type {
   ResolverLojaNaCaderneta,
 } from "@/hospedagem/porteiro";
 
+/** SÓ para o teste do item (d) da correção da variável mais curta da Vercel
+ * (12/09/2026): representa o ambiente REAL que a Vercel injeta, que
+ * continua trazendo `VERCEL_PROJECT_PRODUCTION_URL` mesmo depois de
+ * `AmbientePorteiro` parar de declarar esse campo — o env de verdade do
+ * fluxo, nunca só um parâmetro artificial de teste. */
+type AmbienteComVariavelAntigaDaVercel = AmbientePorteiro & {
+  readonly VERCEL_PROJECT_PRODUCTION_URL?: string;
+};
+
 const HTML_ASSADO = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -265,7 +274,7 @@ describe("atenderPorteiro — preview (teste obrigatório 4)", () => {
     VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_a",
   };
 
-  it("VERCEL_ENV=preview, host de deploy, banco concorda com VERCEL_PROJECT_PRODUCTION_URL -> ok", async () => {
+  it("VERCEL_ENV=preview, host de deploy, banco concorda com IKCOUS_DOMINIO_PRINCIPAL -> ok", async () => {
     const fetchImpl = criarFetchDuble({
       [origem]: {
         linha: linhaFixture("Loja A", "#111111", origem),
@@ -277,7 +286,7 @@ describe("atenderPorteiro — preview (teste obrigatório 4)", () => {
       {
         ...ambienteBase,
         VERCEL_ENV: "preview",
-        VERCEL_PROJECT_PRODUCTION_URL: "a.exemplo",
+        IKCOUS_DOMINIO_PRINCIPAL: "a.exemplo",
       },
       deps(fetchImpl),
     );
@@ -298,13 +307,88 @@ describe("atenderPorteiro — preview (teste obrigatório 4)", () => {
       {
         ...ambienteBase,
         VERCEL_ENV: "production",
-        VERCEL_PROJECT_PRODUCTION_URL: "a.exemplo",
+        IKCOUS_DOMINIO_PRINCIPAL: "a.exemplo",
       },
       deps(fetchImpl),
     );
     expect(resp.status).toBe(308);
     expect(resp.headers.get("location")).toBe("https://a.exemplo/");
     expect(resp.headers.get("x-ikcous-porteiro")).toBe("encaminha");
+  });
+
+  // Item (d) da correção da variável mais curta da Vercel (12/09/2026,
+  // medido na prévia do PR #545 com `savycollection.vercel.app`): prova
+  // pelo FLUXO REAL (`atenderPorteiro`/`AmbientePorteiro`, nunca só pelos
+  // parâmetros de `decidirConcordancia`) que a variável ANTIGA da Vercel
+  // (`VERCEL_PROJECT_PRODUCTION_URL`, "o domínio de produção MAIS CURTO do
+  // projeto" — que um projeto multi-loja pode devolver como o nome de
+  // QUALQUER loja, não necessariamente a principal) deixou de ser lida.
+  // `AmbienteComVariavelAntigaDaVercel` representa o env de verdade que a
+  // Vercel injeta — que continua trazendo essa chave mesmo depois de
+  // `AmbientePorteiro` parar de declará-la — para matar o mutante "o código
+  // ainda lê a variável antiga".
+  it("preview: VERCEL_PROJECT_PRODUCTION_URL (variável antiga da Vercel) bate com dominio_publico, mas SEM IKCOUS_DOMINIO_PRINCIPAL -> discorda (a variável antiga não é mais lida)", async () => {
+    const fetchImpl = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja A", "#111111", origem),
+        dominioPublico: "a.exemplo",
+      },
+    });
+    const ambienteComVariavelAntiga: AmbienteComVariavelAntigaDaVercel = {
+      ...ambienteBase,
+      VERCEL_ENV: "preview",
+      VERCEL_PROJECT_PRODUCTION_URL: "a.exemplo",
+    };
+    const resp = await atenderPorteiro(
+      pedido("loja-a-git-branch-x.vercel.app"),
+      ambienteComVariavelAntiga,
+      deps(fetchImpl),
+    );
+    expect(resp.status).toBe(503);
+    expect(resp.headers.get("x-ikcous-porteiro")).toBe("discorda");
+  });
+
+  // Achado 1 da rodada de correção (revisor Opus): `IKCOUS_DOMINIO_PRINCIPAL`
+  // é digitada à mão no painel da Vercel — sem `cleanEnvVar`, um `\n` colado
+  // (comum ao copiar/colar) faria TODA prévia responder 503, mesmo com o
+  // valor "certo" por baixo.
+  it("preview: IKCOUS_DOMINIO_PRINCIPAL com \\n colado (copiar/colar no painel da Vercel) -> ok, limpo antes da comparação", async () => {
+    const fetchImpl = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja A", "#111111", origem),
+        dominioPublico: "ickous-marketplace.vercel.app",
+      },
+    });
+    const resp = await atenderPorteiro(
+      pedido("loja-a-git-branch-x.vercel.app"),
+      {
+        ...ambienteBase,
+        VERCEL_ENV: "preview",
+        IKCOUS_DOMINIO_PRINCIPAL: "ickous-marketplace.vercel.app\n",
+      },
+      deps(fetchImpl),
+    );
+    expect(resp.status).toBe(200);
+  });
+
+  it("preview: IKCOUS_DOMINIO_PRINCIPAL só de espaços -> 503 discorda (limpo vira vazio, vazio nunca conta como presente)", async () => {
+    const fetchImpl = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja A", "#111111", origem),
+        dominioPublico: "a.exemplo",
+      },
+    });
+    const resp = await atenderPorteiro(
+      pedido("loja-a-git-branch-x.vercel.app"),
+      {
+        ...ambienteBase,
+        VERCEL_ENV: "preview",
+        IKCOUS_DOMINIO_PRINCIPAL: "   ",
+      },
+      deps(fetchImpl),
+    );
+    expect(resp.status).toBe(503);
+    expect(resp.headers.get("x-ikcous-porteiro")).toBe("discorda");
   });
 });
 
