@@ -251,9 +251,9 @@ describe("Canais de Atendimento — o formulário direto guarda o morador", () =
     expect(hospedeiro.querySelector("h1")?.textContent).toBe("Atendimento");
 
     // Formulário direto: zero controle de colapso nesta tela.
-    expect(
-      hospedeiro.querySelectorAll("button[aria-expanded]"),
-    ).toHaveLength(0);
+    expect(hospedeiro.querySelectorAll("button[aria-expanded]")).toHaveLength(
+      0,
+    );
 
     // Os três blocos à vista de uma vez — nada nasce escondido.
     expect(hospedeiro.querySelector("#settings-whatsapp")).not.toBeNull();
@@ -418,10 +418,7 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
   it("o histórico recolhe e reabre (o conteúdo sai e volta da árvore) — e a composição é fixa", async () => {
     await abrirAvisar();
 
-    const historico = cabecalhoDeSecao(
-      hospedeiro,
-      "O que já foi ao ar",
-    )!;
+    const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar")!;
     expect(textoDaTela()).toContain("Não confirmada");
 
     await act(async () => {

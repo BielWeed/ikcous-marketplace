@@ -997,7 +997,6 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 <span>Modelos prontos (30 disponíveis)</span>
               </button>
             </div>
-
           </div>
         </BlocoNumerado>
       </div>

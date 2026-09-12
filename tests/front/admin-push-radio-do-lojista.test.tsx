@@ -260,7 +260,9 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
 
     // Zero medido tem EXPLICAÇÃO na cara do chip — não é um zero mudo.
     expect(chipInativo!.disabled).toBe(true);
-    expect(chipInativo!.textContent).toContain("ninguém passou de 30 dias sem pedir");
+    expect(chipInativo!.textContent).toContain(
+      "ninguém passou de 30 dias sem pedir",
+    );
 
     // E a desativação é de verdade: clicar não troca o segmento — a tela
     // continua no "all" (8 aparelhos), não no zero.
@@ -285,7 +287,8 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     expect(previa!.textContent).toContain("agora");
     expect(previa!.textContent).not.toContain("Promoção de teste");
 
-    const campoTitulo = hospedeiro.querySelector<HTMLInputElement>("#push-title");
+    const campoTitulo =
+      hospedeiro.querySelector<HTMLInputElement>("#push-title");
     const campoCorpo =
       hospedeiro.querySelector<HTMLTextAreaElement>("#push-body");
     expect(campoTitulo).toBeTruthy();
@@ -370,9 +373,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
 
     expect(texto()).toContain("O que já foi ao ar");
     expect(texto()).toContain("Nenhuma mensagem enviada até agora");
-    expect(texto()).toContain(
-      "Quando você enviar, cada mensagem aparece aqui",
-    );
+    expect(texto()).toContain("Quando você enviar, cada mensagem aparece aqui");
     // O texto antigo, seco, não sobrevive em lugar nenhum.
     expect(texto()).not.toContain("Nenhuma mensagem enviada até o momento");
   });
@@ -466,7 +467,9 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       hospedeiro.querySelector<HTMLInputElement>("#push-title")?.value,
     ).toBe("Rascunho que sobrevive");
     expect(
-      (onSetDirty.mock.calls as boolean[][])[onSetDirty.mock.calls.length - 1][0],
+      (onSetDirty.mock.calls as boolean[][])[
+        onSetDirty.mock.calls.length - 1
+      ][0],
     ).toBe(true);
   });
 });

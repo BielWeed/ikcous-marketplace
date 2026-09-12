@@ -232,15 +232,13 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
   it("avançar é o botão primário dourado com o rótulo 'Avançar → <próxima etapa>', na MESMA barra fixa", async () => {
     await renderizar(pedidoFake({ status: "pending" }));
 
-    const botaoAvancar = Array.from(
-      hospedeiro.querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Avançar →"));
+    const botaoAvancar = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Avançar →"),
+    );
     expect(botaoAvancar).toBeDefined();
     // pending → próxima etapa é "Separação" (rótulo do statusConfig).
     expect(botaoAvancar?.textContent).toContain("Separação");
-    expect(
-      botaoAvancar?.closest("div.fixed.bottom-0") ?? null,
-    ).not.toBeNull();
+    expect(botaoAvancar?.closest("div.fixed.bottom-0") ?? null).not.toBeNull();
   });
 
   it("imprimir continua na barra, com o mesmo title de sempre", async () => {
@@ -250,9 +248,7 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
       'button[title="Imprimir Pedido"]',
     );
     expect(botaoImprimir).not.toBeNull();
-    expect(
-      botaoImprimir?.closest("div.fixed.bottom-0") ?? null,
-    ).not.toBeNull();
+    expect(botaoImprimir?.closest("div.fixed.bottom-0") ?? null).not.toBeNull();
   });
 
   it("pedido finalizado (delivered): sem 'Cancelar pedido' e sem 'Avançar' — as guardas do header antigo migraram junto", async () => {
@@ -261,9 +257,9 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
     expect(
       hospedeiro.querySelector('button[title="Cancelar pedido"]'),
     ).toBeNull();
-    const botaoAvancar = Array.from(
-      hospedeiro.querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Avançar →"));
+    const botaoAvancar = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Avançar →"),
+    );
     expect(botaoAvancar).toBeUndefined();
     // A barra não desaparece: imprimir continua.
     expect(

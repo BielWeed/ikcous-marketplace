@@ -1076,7 +1076,9 @@ export const AdminPushView = memo(function AdminPushView({
                       },
                     );
 
-                    toast.success(`Mensagem pronta "${arch.title}" preenchida!`);
+                    toast.success(
+                      `Mensagem pronta "${arch.title}" preenchida!`,
+                    );
                   }}
                 >
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-admin-gold/20 bg-admin-gold/10 text-admin-gold transition-colors duration-200 group-hover:border-admin-gold/40 group-hover:bg-admin-gold/20">
@@ -1091,7 +1093,9 @@ export const AdminPushView = memo(function AdminPushView({
               <div className="flex items-center gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-rose-300 animate-in fade-in">
                 <AlertCircle className="size-4 shrink-0" />
                 <div className="text-[10px]">
-                  <span className="font-bold uppercase">Você está offline:</span>{" "}
+                  <span className="font-bold uppercase">
+                    Você está offline:
+                  </span>{" "}
                   Conecte-se à internet para poder enviar notificações aos
                   clientes.
                 </div>
@@ -1384,9 +1388,7 @@ export const AdminPushView = memo(function AdminPushView({
                     Página de Busca de Produtos
                   </SelectItem>
                   <SelectItem value="cart">Carrinho de Compras</SelectItem>
-                  <SelectItem value="favorites">
-                    Lista de Favoritos
-                  </SelectItem>
+                  <SelectItem value="favorites">Lista de Favoritos</SelectItem>
                   <SelectItem value="orders">Meus Pedidos</SelectItem>
                   <SelectItem value="profile">Perfil do Cliente</SelectItem>
                   <SelectItem value="product">
@@ -1500,8 +1502,8 @@ export const AdminPushView = memo(function AdminPushView({
           <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
             <div className="flex items-center justify-between mb-2">
               <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-                <Users className="size-3.5 text-admin-gold" /> Clientes
-                Prontos para Receber
+                <Users className="size-3.5 text-admin-gold" /> Clientes Prontos
+                para Receber
               </p>
               <span className="text-[9px] font-mono text-admin-gold font-bold uppercase">
                 Ativos

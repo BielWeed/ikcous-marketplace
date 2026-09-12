@@ -263,8 +263,7 @@ function OrderHeader({ order }: Readonly<OrderHeaderProps>) {
     <header className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-bold tracking-tighter text-white">
-          Pedido{" "}
-          <span className="text-admin-gold">#{order.id.slice(-6)}</span>
+          Pedido <span className="text-admin-gold">#{order.id.slice(-6)}</span>
         </h1>
         <OrderStatusBadge status={order.status} />
         <PaymentStatusBadge
@@ -1504,7 +1503,9 @@ export const OrderDetail = memo(function OrderDetail({
         {order.paymentMethod === "online" &&
           (order.paymentStatus === "pago" ||
             order.paymentStatus === "pago_apos_expirar" ||
-            order.paymentStatus === "estornado") && <EstornoCard order={order} />}
+            order.paymentStatus === "estornado") && (
+            <EstornoCard order={order} />
+          )}
         <OrderLogisticsCard
           localTrackingCode={localTrackingCode}
           isEditingTracking={isEditingTracking}

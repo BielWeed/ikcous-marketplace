@@ -95,15 +95,13 @@ describe("Atendimento — formulário direto (direção B)", () => {
     ).toEqual(["1", "2", "3"]);
 
     // Zero controle de colapso: nenhum botão de seção nesta tela.
-    expect(
-      hospedeiro.querySelectorAll("button[aria-expanded]"),
-    ).toHaveLength(0);
+    expect(hospedeiro.querySelectorAll("button[aria-expanded]")).toHaveLength(
+      0,
+    );
 
     // Tudo à vista de uma vez — nada escondido atrás de clique.
     expect(hospedeiro.querySelector("#settings-whatsapp")).not.toBeNull();
-    expect(
-      hospedeiro.querySelector("#settings-business-hours"),
-    ).not.toBeNull();
+    expect(hospedeiro.querySelector("#settings-business-hours")).not.toBeNull();
     expect(
       hospedeiro.querySelector("#settings-share-message-editor"),
     ).not.toBeNull();
@@ -181,8 +179,8 @@ describe("Atendimento — formulário direto (direção B)", () => {
   it("campo vazio continua salvando NULL (o botão de WhatsApp some da loja)", async () => {
     await abrirTela();
 
-    const salvar = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => (b.textContent ?? "").includes("Salvar"),
+    const salvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes("Salvar"),
     ) as HTMLButtonElement;
     expect(salvar.disabled).toBe(false);
 
