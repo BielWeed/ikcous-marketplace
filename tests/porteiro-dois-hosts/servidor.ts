@@ -64,6 +64,7 @@ import path from "node:path";
 
 import middleware from "../../middleware.ts";
 import {
+  SELECT_CONFIGURACAO_PUBLICA,
   ehCaminhoDeDocumento,
   normalizarHost,
 } from "../../src/hospedagem/porteiro.ts";
@@ -163,10 +164,29 @@ export const HOSTS = {
   DESCONHECIDA: "loja-desconhecida.localhost",
 } as const;
 
+/** Os 4 valores públicos por loja (etapa 3 da escala, 11/09/2026) — Loja A
+ * com pagamento LIGADO (prova que `configuracao` chega intacta ao caminho
+ * (b)); as demais desligadas (default seguro), sem precisar de um cenário
+ * dedicado por combinação. */
+interface ConfiguracaoDeBrinquedo {
+  readonly mpPublicKey: string | null;
+  readonly vapidPublicKey: string | null;
+  readonly pagamentoOnline: boolean;
+  readonly manutencao: boolean;
+}
+
+const CONFIGURACAO_DESLIGADA: ConfiguracaoDeBrinquedo = {
+  mpPublicKey: null,
+  vapidPublicKey: null,
+  pagamentoOnline: false,
+  manutencao: false,
+};
+
 interface BancoDeBrinquedo {
   readonly linha: ReturnType<typeof criarLinha>;
   readonly dominioPublico: string;
   readonly chavePublica: string;
+  readonly configuracao: ConfiguracaoDeBrinquedo;
 }
 
 const BANCOS_POR_ORIGEM: Record<string, BancoDeBrinquedo> = {
@@ -174,21 +194,30 @@ const BANCOS_POR_ORIGEM: Record<string, BancoDeBrinquedo> = {
     linha: criarLinha("Loja A", "#111111", "a1".repeat(32), ORIGEM_A),
     dominioPublico: HOSTS.A,
     chavePublica: "sb_publishable_loja_a",
+    configuracao: {
+      mpPublicKey: "APP_USR-loja-a-de-brinquedo",
+      vapidPublicKey: "Bloja-a-de-brinquedo",
+      pagamentoOnline: true,
+      manutencao: false,
+    },
   },
   [ORIGEM_B]: {
     linha: criarLinha("Loja B", "#222222", "b2".repeat(32), ORIGEM_B),
     dominioPublico: HOSTS.B,
     chavePublica: "sb_publishable_loja_b",
+    configuracao: CONFIGURACAO_DESLIGADA,
   },
   [ORIGEM_C]: {
     linha: criarLinha("Loja C", "#333333", "c3".repeat(32), ORIGEM_C),
     dominioPublico: HOSTS.C,
     chavePublica: "sb_publishable_loja_c",
+    configuracao: CONFIGURACAO_DESLIGADA,
   },
   [ORIGEM_D]: {
     linha: criarLinha("Loja D", "#444444", "d4".repeat(32), ORIGEM_D),
     dominioPublico: HOSTS.D,
     chavePublica: "sb_publishable_loja_d",
+    configuracao: CONFIGURACAO_DESLIGADA,
   },
 };
 
@@ -201,6 +230,19 @@ export const IDENTIDADES_ESPERADAS: Record<
   [HOSTS.B]: { storeName: "Loja B", cor: "#222222", origem: ORIGEM_B },
   [HOSTS.C]: { storeName: "Loja C", cor: "#333333", origem: ORIGEM_C },
   [HOSTS.D]: { storeName: "Loja D", cor: "#444444", origem: ORIGEM_D },
+};
+
+/** Idem, para `configuracao` (etapa 3 da escala) — Loja A com pagamento
+ * LIGADO, as demais desligadas. */
+export const CONFIGURACAO_ESPERADA: Record<string, ConfiguracaoDeBrinquedo> = {
+  // eslint-disable-next-line security/detect-object-injection -- `ORIGEM_A` é a constante do módulo declarada acima, não entrada externa.
+  [HOSTS.A]: BANCOS_POR_ORIGEM[ORIGEM_A]!.configuracao,
+  // eslint-disable-next-line security/detect-object-injection -- `ORIGEM_B` é a constante do módulo declarada acima, não entrada externa.
+  [HOSTS.B]: BANCOS_POR_ORIGEM[ORIGEM_B]!.configuracao,
+  // eslint-disable-next-line security/detect-object-injection -- `ORIGEM_C` é a constante do módulo declarada acima, não entrada externa.
+  [HOSTS.C]: BANCOS_POR_ORIGEM[ORIGEM_C]!.configuracao,
+  // eslint-disable-next-line security/detect-object-injection -- `ORIGEM_D` é a constante do módulo declarada acima, não entrada externa.
+  [HOSTS.D]: BANCOS_POR_ORIGEM[ORIGEM_D]!.configuracao,
 };
 
 // ─── A caderneta central dublada (caminho "a") ─────────────────────────────
@@ -227,13 +269,19 @@ const CHAVES_DE_AMBIENTE_DO_PORTEIRO = [
   "IKCOUS_FROTA_APIKEY",
   "IKCOUS_FROTA_CHAVE",
   "VERCEL_ENV",
-  "VERCEL_PROJECT_PRODUCTION_URL",
+  "IKCOUS_DOMINIO_PRINCIPAL",
 ] as const;
 
 /** Regra estrita (ADENDO B/T6, item do servidor): `VERCEL_ENV` e
- * `VERCEL_PROJECT_PRODUCTION_URL` ficam SEMPRE ausentes aqui — nenhum destes
+ * `IKCOUS_DOMINIO_PRINCIPAL` ficam SEMPRE ausentes aqui — nenhum destes
  * cenários é um preview de PR, e o relaxamento de `decidirConcordancia` só
- * vale para `vercelEnv === "preview"` (rodada B, achado do revisor). */
+ * vale para `vercelEnv === "preview"` (rodada B, achado do revisor). Rodada
+ * da correção da variável mais curta da Vercel (12/09/2026): a variável que
+ * o preview compara deixou de ser uma variável da própria Vercel (instável
+ * num projeto multi-loja — ver `decidirConcordancia`) e passou a ser a
+ * nossa, cadastrada no projeto — nenhum cenário deste servidor de ensaio é
+ * preview, então a chave nunca precisou de valor aqui, só do nome certo
+ * para a limpeza. */
 function aplicarAmbientePorHost(hostname: string): void {
   // eslint-disable-next-line security/detect-object-injection -- `chave` percorre SÓ o array literal fixo `CHAVES_DE_AMBIENTE_DO_PORTEIRO` declarado acima, nunca entrada externa.
   for (const chave of CHAVES_DE_AMBIENTE_DO_PORTEIRO) delete process.env[chave];
@@ -333,17 +381,26 @@ async function fetchDeBrinquedo(
     });
   }
 
-  // `readPublicStoreIdentity` (a identidade completa) e `lerDominioPublico`
-  // (só a coluna de concordância) — as duas leituras de `v_store_config`.
+  // `readPublicStoreIdentity` (a identidade completa) e
+  // `lerConfiguracaoPublica` (concordância + os 4 valores por loja, etapa
+  // 3) — as duas leituras de `v_store_config`.
   if (url.pathname === "/rest/v1/v_store_config") {
     const banco = BANCOS_POR_ORIGEM[url.origin];
     if (!banco)
       return new Response("banco nao mapeado no servidor de ensaio", {
         status: 500,
       });
-    if (url.searchParams.get("select") === "dominio_publico") {
+    if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
       return new Response(
-        JSON.stringify([{ dominio_publico: banco.dominioPublico }]),
+        JSON.stringify([
+          {
+            dominio_publico: banco.dominioPublico,
+            mp_public_key: banco.configuracao.mpPublicKey,
+            vapid_public_key: banco.configuracao.vapidPublicKey,
+            pagamento_online: banco.configuracao.pagamentoOnline,
+            manutencao: banco.configuracao.manutencao,
+          },
+        ]),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }

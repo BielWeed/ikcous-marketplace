@@ -12,7 +12,7 @@
 // `ConexaoResolvida | null`.
 import { describe, expect, it } from "vitest";
 
-import { resolverConexao } from "@/hospedagem/porteiro";
+import { FalhaRpcCaderneta, resolverConexao } from "@/hospedagem/porteiro";
 import type {
   ResolverLojaNaCaderneta,
   ResultadoCaderneta,
@@ -77,7 +77,7 @@ describe("resolverConexao — caminho (a), a caderneta central", () => {
     ]);
   });
 
-  it("frota configurada mas a caderneta devolve miss (zero linhas) -> cai no caminho (b), estado 'miss'", async () => {
+  it("frota configurada mas a caderneta devolve miss (zero linhas) -> conexao null, estado 'miss' (ADENDO B.1: fecha a loja NA HORA, NUNCA mais cai no caminho (b))", async () => {
     const caderneta: ResolverLojaNaCaderneta = async () => ({ tipo: "miss" });
     const resultado = await resolverConexao(
       "loja-nova.exemplo",
@@ -88,19 +88,12 @@ describe("resolverConexao — caminho (a), a caderneta central", () => {
       },
       caderneta,
     );
-    expect(resultado).toEqual({
-      conexao: {
-        supabaseUrl: "https://projeto-proprio.supabase.co",
-        publishableKey: "sb_publishable_do_projeto",
-        origem: "projeto",
-      },
-      caderneta: "miss",
-    });
+    expect(resultado).toEqual({ conexao: null, caderneta: "miss" });
   });
 
-  it("a caderneta devolve erro (HTTP não-2xx ou rede, já classificado por quem a implementa) -> cai no caminho (b), estado 'erro'", async () => {
+  it("a caderneta devolve erro (HTTP não-2xx ou rede, já classificado por quem a implementa) -> LANÇA FalhaRpcCaderneta com caderneta 'erro' (ADENDO B.1: nunca fecha a loja aqui — quem chama herda o stale-if-error, nunca cai no caminho (b))", async () => {
     const caderneta: ResolverLojaNaCaderneta = async () => ({ tipo: "erro" });
-    const resultado = await resolverConexao(
+    const promessa = resolverConexao(
       "loja-a.exemplo",
       {
         ...AMBIENTE_FROTA_COMPLETO,
@@ -109,14 +102,17 @@ describe("resolverConexao — caminho (a), a caderneta central", () => {
       },
       caderneta,
     );
-    expect(resultado.caderneta).toBe("erro");
-    expect(resultado.conexao?.origem).toBe("projeto");
+    await expect(promessa).rejects.toBeInstanceOf(FalhaRpcCaderneta);
+    await expect(promessa).rejects.toMatchObject({ caderneta: "erro" });
   });
 
-  it("uma chave service_role devolvida pela caderneta (hit) NUNCA é repassada — cai no caminho (b), estado 'erro' (resposta anômala, nunca 'hit')", async () => {
+  it("uma chave service_role devolvida pela caderneta (hit) NUNCA é repassada — conexao null, estado 'erro' (resposta anômala, DECISÃO — nunca cai no caminho (b), nunca vira 'hit')", async () => {
     // Defesa em profundidade: o porteiro não confia cegamente na fonte (a),
     // mesmo sendo a caderneta central — service_role no Edge é "chave de
-    // tudo no banco da principal" (parecer, item 6 da tabela).
+    // tudo no banco da principal" (parecer, item 6 da tabela). ADENDO B.1:
+    // isto é uma DECISÃO (retorno normal), não uma falha de rede — por
+    // isso `conexao: null` em vez de lançar `FalhaRpcCaderneta` (esse é só
+    // para a RPC falhar DE VERDADE).
     const caderneta: ResolverLojaNaCaderneta =
       async (): Promise<ResultadoCaderneta> => ({
         tipo: "hit",
@@ -135,9 +131,7 @@ describe("resolverConexao — caminho (a), a caderneta central", () => {
       },
       caderneta,
     );
-    expect(resultado.conexao?.publishableKey).toBe("sb_publishable_do_projeto");
-    expect(resultado.conexao?.origem).toBe("projeto");
-    expect(resultado.caderneta).toBe("erro");
+    expect(resultado).toEqual({ conexao: null, caderneta: "erro" });
   });
 
   it("falta só IKCOUS_FROTA_APIKEY (as outras duas presentes) -> estado 'ausente', nunca chama a caderneta", async () => {

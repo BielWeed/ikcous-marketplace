@@ -122,11 +122,6 @@ export const resolverNaCaderneta: ResolverLojaNaCaderneta = async (
   }
 };
 
-// Nome da marca no HTML servido a crawlers. Env de projeto na Vercel chega em
-// process.env com o nome exato (mesmo canal dos VITE_SUPABASE_* abaixo);
-// sem nada configurado, o texto continua como sempre foi.
-const APP_NAME = process.env.VITE_APP_NAME || "IKCOUS Marketplace";
-
 // Endereço público de CADA loja — nunca o host do deploy (`VERCEL_URL` muda a
 // cada publicação e, em preview/produção protegida, exige login da Vercel:
 // o robô do WhatsApp recebe 302 e não baixa a foto). Ordem de precedência,
@@ -206,6 +201,12 @@ export default async function middleware(request: Request) {
     if (resultado.tipo === "manutencao") return resultado.resposta;
     const { ficha, caderneta: estadoCaderneta } = resultado;
     const { supabaseUrl, publishableKey: supabaseKey } = ficha.conexao;
+    // Nome da marca no HTML servido a crawlers: T5 (11/09/2026) tira o
+    // último valor ASSADO do ramo de robô (antes: `process.env.VITE_APP_NAME`
+    // ou o literal "IKCOUS Marketplace" — o mesmo problema que a ficha por
+    // host já resolve para o resto da página). A MESMA ficha validada que o
+    // documento usa ("uma trava, um lugar") também é a fonte do nome aqui.
+    const storeName = ficha.identidade.identity.storeName;
     const productId = url.searchParams.get("id");
 
     // `x-ikcous-og` diz QUEM respondeu: sem ele, "o middleware não rodou" e
@@ -248,10 +249,10 @@ export default async function middleware(request: Request) {
 
             // Resolve values (escapados: nome/descrição vêm do banco, o
             // lojista escreve, e um `"` ou `<` cru quebraria a meta tag).
-            const name = escaparHtml(product.nome || `Produto - ${APP_NAME}`);
+            const name = escaparHtml(product.nome || `Produto - ${storeName}`);
             const description = escaparHtml(
               product.descricao ||
-                `Confira os detalhes do produto no ${APP_NAME}.`,
+                `Confira os detalhes do produto no ${storeName}.`,
             );
             // Só número > 0 aparece: 0, negativo ou não numérico ficam sem
             // preço na prévia (decisão do dono, 11/09/2026).
@@ -275,30 +276,27 @@ export default async function middleware(request: Request) {
             const images = rawImages.filter(
               (img: any) => typeof img === "string" && img.trim() !== "",
             );
-            // Só o fallback (${publicUrl}/og-image.png) tem dimensão fixa: é
-            // a arte de compartilhamento da identidade, sempre PNG 1200x630.
-            // A foto do produto não tem tamanho conhecido — declarar 600x400
-            // pra qualquer imagem distorcia a prévia; sem as duas metas, o
-            // robô mede a imagem sozinho.
+            // Só o fallback (a arte de compartilhamento da identidade, vinda
+            // de `ficha.identidade.localUrls.og` — Storage da PRÓPRIA loja,
+            // nunca mais um `${publicUrl}/og-image.png` do build assado) tem
+            // dimensão fixa: sempre PNG 1200x630. A foto do produto não tem
+            // tamanho conhecido — declarar 600x400 pra qualquer imagem
+            // distorcia a prévia; sem as duas metas, o robô mede a imagem
+            // sozinho.
             const ehFallback = images.length === 0;
             const imageUrl = escaparHtml(
-              images[0] ||
-                // `as unknown as`: TS2559 (weak type) não conta o índice de
-                // `ProcessEnv` como propriedade em comum com um tipo só de
-                // campos opcionais; `AmbienteEnderecoPublico` continua com o
-                // formato certo.
-                `${resolverEnderecoPublico(process.env as unknown as AmbienteEnderecoPublico)}/og-image.png`,
+              images[0] || ficha.identidade.localUrls.og,
             );
 
             const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>${name} | ${APP_NAME}</title>
+  <title>${name} | ${storeName}</title>
   <meta name="description" content="${description}">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | ${APP_NAME}" />
+  <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | ${storeName}" />
   <meta property="og:description" content="${description}" />
   <meta property="og:type" content="product" />
   <meta property="og:url" content="${escaparHtml(request.url)}" />
@@ -312,7 +310,7 @@ export default async function middleware(request: Request) {
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${name} | ${APP_NAME}" />
+  <meta name="twitter:title" content="${name} | ${storeName}" />
   <meta name="twitter:description" content="${description}" />
   <meta name="twitter:image" content="${imageUrl}" />
 </head>

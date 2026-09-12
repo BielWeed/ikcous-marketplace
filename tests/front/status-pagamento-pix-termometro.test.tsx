@@ -56,17 +56,17 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
     expect(barras.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("ligado SEM chave: rótulo 'Chave ausente' em vermelho; o clique abre o diagnóstico com o nome da variável", async () => {
+  it("ligado SEM chave: rótulo 'Chave ausente' em vermelho; o clique abre o diagnóstico dizendo onde a chave mora", async () => {
     await renderizar({ ligado: true, chaveOk: false });
 
     expect(rotulo()).toContain("Chave ausente");
-    expect(hospedeiro.textContent).not.toContain("VITE_MP_PUBLIC_KEY");
+    expect(hospedeiro.textContent).not.toContain("configuração da loja");
 
     await act(async () => {
       hospedeiro.querySelector("button")!.click();
     });
 
-    expect(hospedeiro.textContent).toContain("VITE_MP_PUBLIC_KEY");
+    expect(hospedeiro.textContent).toContain("configuração da loja");
     expect(hospedeiro.textContent).toContain("antes de divulgar a loja");
   });
 
@@ -99,7 +99,7 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
     await act(async () => {
       botao.click();
     });
-    expect(hospedeiro.textContent).toContain("VITE_MP_PUBLIC_KEY");
+    expect(hospedeiro.textContent).toContain("configuração da loja");
 
     await act(async () => {
       botao.click();
@@ -108,6 +108,6 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));
     });
-    expect(hospedeiro.textContent).not.toContain("VITE_MP_PUBLIC_KEY");
+    expect(hospedeiro.textContent).not.toContain("configuração da loja");
   });
 });

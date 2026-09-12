@@ -1,3 +1,4 @@
+import { chavePublicaVapid } from "@/config/configuracaoDaLoja";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
@@ -130,8 +131,9 @@ export function usePushNotifications() {
     if (!isSupported) return;
 
     try {
-      // Get VAPID public key from env or use a default one for dev
-      const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+      // Escala etapa 3 (11/09/2026): a chave VAPID deixou de ser assada no
+      // build e passa a vir da ficha da loja (banco de cada loja).
+      const vapidPublicKey = chavePublicaVapid();
 
       if (!vapidPublicKey) {
         // Item 5 da revisão de 27/08/2026: isto devolvia `undefined` em
@@ -145,7 +147,7 @@ export function usePushNotifications() {
         // inscrever ninguém neste build.
         throw new PushSubscribeError(
           "navegador",
-          new Error("VAPID Public Key não configurada no build"),
+          new Error("VAPID Public Key não configurada nesta loja"),
         );
       }
 
