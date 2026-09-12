@@ -20,6 +20,13 @@ import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { useStore } from "@/contexts/StoreContext";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 
+// Ponto de encaixe do centro da barra, usado quando não há busca (hoje:
+// "address-form" e "checkout"). ID ESTÁVEL de propósito — o CheckoutView
+// (D1, pedido do Gabriel 12/09/2026) porta ali o gatilho do resumo do
+// pedido via `createPortal`, sem o Header saber nada de carrinho, frete ou
+// total: ele só hospeda o espaço, o cálculo mora inteiro no CheckoutView.
+export const HEADER_CENTER_SLOT_ID = "checkout-header-center-slot";
+
 interface HeaderProps {
   onNavigate: (view: View, id?: string) => void;
   showBackButton?: boolean;
@@ -254,7 +261,31 @@ export const Header = memo(function Header({
         </div>
 
         {/* MIDDLE: Search Bar (Smoothly shrinks/compresses in sync when Notification Capsule expands) */}
-        {!hideSearch && (
+        {hideSearch ? (
+          // Sem busca (address-form, checkout): o centro ficava vazio.
+          // Este slot é só um ponto de encaixe — vazio em toda tela que não
+          // porta nada nele (Header idêntico ao de hoje ali).
+          //
+          // Achado 3 do BLOQUEANTE (12/09/2026): sem um orçamento PRÓPRIO,
+          // o espaço "disponível" dependia só da largura da logo desta loja
+          // (32px) — outra loja com logo de 100px (o próprio `max-w-[100px]`
+          // que este Header permite, algumas linhas abaixo) cortava o
+          // conteúdo portado no meio, e como a publicação vai para TODAS as
+          // lojas isso vira defeito permanente em qualquer loja com logo
+          // larga. `max-w-[140px]` é o teto medido para caber o gatilho
+          // (texto em 2 linhas, ver CheckoutView.tsx) mesmo com o pior caso
+          // (3+ produtos); com a cápsula de aviso do sino ativa
+          // (`activeToast`) o espaço recolhe para `max-w-[72px]` — só cabe o
+          // conjunto de miniaturas, mesmo mecanismo que a busca já usa
+          // algumas linhas abaixo (`activeToast ? "max-w-[...]" : "max-w-lg"`).
+          <div
+            id={HEADER_CENTER_SLOT_ID}
+            className={cn(
+              "mx-auto flex min-w-0 flex-1 items-center justify-center overflow-hidden px-1 sm:px-4 md:w-full",
+              activeToast ? "max-w-[72px]" : "max-w-[140px]",
+            )}
+          />
+        ) : (
           <motion.div
             layout
             transition={{
