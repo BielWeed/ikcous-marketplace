@@ -7,6 +7,84 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.30.0] - 2026-09-12
+
+Um site, todas as lojas — agora por inteiro. As quatro últimas coisas que ainda
+eram "assadas" na publicação (a chave pública do Mercado Pago, a chave das
+notificações, o pagamento online ligado ou não, e a loja em manutenção ou não)
+passam a vir da ficha da loja que responde naquele endereço, lida do banco dela
+no instante em que a página é entregue. Com isso uma única publicação serve a
+loja principal e cada loja de cliente, cada uma com a sua chave. Endereço que
+nenhuma loja reivindicou responde "Loja em manutenção"; se a caderneta central
+cair, cada loja continua no ar com a ficha que já tinha (por até uma hora).
+Reúne o PR #545.
+
+### Para quem COMPRA (vitrine)
+
+- **O checkout carrega o Mercado Pago com a chave da loja que você está
+  vendo** (PR #545): a chave pública vem da ficha da loja, não mais da
+  publicação. Nada muda no fluxo de compra.
+- **Notificações do aplicativo instalado usam a chave da loja certa**
+  (PR #545): a chave pública de notificação (VAPID) vem da ficha. Quem já
+  tinha aceitado notificações na loja principal precisa aceitar de novo se a
+  chave gravada na ficha for diferente da que estava na publicação (a antiga
+  estava trocada).
+- **Endereço que não é de nenhuma loja mostra "Loja em manutenção"**
+  (PR #545), nunca a loja errada.
+
+### Para quem VENDE (painel admin)
+
+- **"Pagamento online" e "loja em manutenção" passam a ser lidos da ficha da
+  loja** (PR #545): o painel mostra o estado gravado no banco da sua loja. A
+  troca desses valores ainda é feita pela operação (ferramenta da frota), não
+  pela tela — igual antes, só que agora sem republicar o site.
+
+### Para quem DESENVOLVE
+
+- **Ficha v2** (PR #545, `src/config/fichaDaLojaContract.ts`,
+  `configuracaoDaLoja.ts`): o bloco `configuracao` traz `mpPublicKey`,
+  `vapidPublicKey`, `pagamentoOnline` e `manutencao`; os seis leitores do app
+  (checkout, PIX, push, flags, dashboard e configurações do admin) leem por
+  ela. Em produção, ficha ausente é falha fechada; em desenvolvimento o `.env`
+  continua valendo.
+- **Porteiro** (PR #545, `src/hospedagem/porteiro.ts`): lê as cinco colunas
+  numa consulta só; `miss` da caderneta e chave anômala fecham a loja
+  (503 `sem-loja`); `erro` da caderneta cai no stale-if-error de 1 h. A
+  concessão de prévia (PR de feature) compara `dominio_publico` com
+  `IKCOUS_DOMINIO_PRINCIPAL` (variável nossa, falha fechada) e não mais com
+  `VERCEL_PROJECT_PRODUCTION_URL`, que a Vercel define como "o domínio de
+  produção MAIS CURTO do projeto" e que num projeto com várias lojas vira o
+  nome da loja mais curta (medido na prévia deste PR: o build veio assado com
+  o endereço da Savy).
+- **Catraca no build** (PR #545, `scripts/identityBuildConfig.ts`): na Vercel,
+  `VITE_APP_URL` é obrigatória; sem ela o build falha nomeando a causa, em vez
+  de assar sitemap e canonical com o domínio de outra loja.
+- **Service worker** (PR #545): a notificação usa um ícone neutro
+  (`/icons/heart-96x96.png`), nunca o da loja principal.
+- **Prova ponta a ponta com dois hosts** (PR #545) cobre a ficha v2.
+
+### Para quem OPERA (banco, servidor, lojas clonadas)
+
+- **Banco: `20261150000000` (colunas `mp_public_key`, `vapid_public_key`,
+  `pagamento_online`, `manutencao` em `store_config`, view e gatilhos) já está
+  aplicada nas duas lojas** (11/09/2026 ~23:33Z, desfazer provado nos dois
+  bancos).
+- **Cada loja precisa ter a configuração semeada ANTES deste site subir**
+  (`semear-configuracao.cjs`): principal semeada em 12/09/2026 ~01:4xZ
+  (chave MP igual ao env de produção da Vercel, VAPID igual ao segredo do
+  `send-push`, pagamento online ligado); Savy semeada em 11/09/2026 (VAPID
+  dela, sem chave MP, pagamento online desligado). Desfazer: `UPDATE
+  public.store_config SET mp_public_key = NULL, vapid_public_key = NULL,
+  pagamento_online = false WHERE id = 1` (junto com o site anterior).
+- **Vercel (projeto principal): variáveis `IKCOUS_DOMINIO_PRINCIPAL`
+  (preview + production) e `VITE_APP_URL` (preview + production)** cadastradas
+  em 12/09/2026; a segunda fixa o endereço assado no build (sitemap, canonical)
+  na principal, porque o projeto passa a ter nomes de outras lojas.
+- **Ferramentas da frota** (`equipe/ferramentas`): `semear-frota.cjs --loja`,
+  `semear-configuracao.cjs` (forma das chaves, `--prova-sha256`,
+  `--limpar-sem-forma`), `mudar-endereco-loja.cjs` (cutover de endereço),
+  `frota-estado.cjs`.
+
 ## [1.29.0] - 2026-09-11
 
 Um único site passa a servir todas as lojas: ao abrir o endereço de uma loja, o
