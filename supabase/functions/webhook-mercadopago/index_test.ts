@@ -13,7 +13,7 @@
  * (por isso o `p_order_id` sai da RESPOSTA do MP, nunca do corpo).
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { handler } from "./index.ts";
+import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 
 const SEGREDO = "segredo-webhook-teste";
 const UUID_PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -1783,7 +1783,7 @@ Deno.test("resultado 'pago' -> dispara TAMBÉM o comprovante ao cliente, com o o
   assertEquals((chamadasComprovante[0] as { orderId: string }).orderId, UUID_PEDIDO);
 });
 
-Deno.test("resultado 'pago_apos_expirar' -> NÃO dispara o comprovante ao cliente (enviarComprovantePedido só conhece 'pago' e mentiria duas vezes)", async () => {
+Deno.test("resultado 'pago_apos_expirar' -> NÃO dispara o comprovante padrão, mas dispara o aviso honesto de pagamento atrasado", async () => {
   const registro = { chamadasRpc: [] };
   const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
   const supabase = clienteFalso({ rpcResultado: "pago_apos_expirar", pedido, registro });
@@ -1798,18 +1798,34 @@ Deno.test("resultado 'pago_apos_expirar' -> NÃO dispara o comprovante ao client
   const enviarComprovante = async (args: unknown) => {
     chamadasComprovante.push(args);
   };
+  const chamadasAvisoAtrasado: unknown[] = [];
+  const enviarAvisoAtrasado = async (args: unknown) => {
+    chamadasAvisoAtrasado.push(args);
+  };
 
-  const resposta = await handler(req, { supabase, fetchImpl, enviarPush, enviarComprovante });
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl,
+    enviarPush,
+    enviarComprovante,
+    enviarAvisoAtrasado,
+  });
 
   assertEquals(resposta.status, 200);
   assertEquals(
     chamadasComprovante.length,
     0,
-    "'pago_apos_expirar' não deveria disparar o comprovante — o pedido segue cancelado e o texto mentiria",
+    "'pago_apos_expirar' não deveria disparar o comprovante padrão — o pedido segue cancelado e o texto mentiria",
   );
+  assertEquals(
+    chamadasAvisoAtrasado.length,
+    1,
+    "'pago_apos_expirar' deveria disparar o aviso honesto — PEÇA 5, o cliente não pode ficar mudo",
+  );
+  assertEquals((chamadasAvisoAtrasado[0] as { orderId: string }).orderId, UUID_PEDIDO);
 });
 
-Deno.test("comprovante dispara em exatamente 1 dos 9 retornos possíveis da RPC — só 'pago' (o push sai também em 'pago_apos_expirar', o comprovante não)", async () => {
+Deno.test("comprovante e aviso atrasado disparam em exatamente 1 dos 9 retornos possíveis da RPC cada — nunca os dois para o mesmo resultado", async () => {
   const NOVE_RETORNOS = [
     "pago",
     "pago_apos_expirar",
@@ -1821,7 +1837,8 @@ Deno.test("comprovante dispara em exatamente 1 dos 9 retornos possíveis da RPC 
     "inexistente",
     "ignorado",
   ];
-  const DISPARAM = new Set(["pago"]);
+  const DISPARAM_COMPROVANTE = new Set(["pago"]);
+  const DISPARAM_AVISO_ATRASADO = new Set(["pago_apos_expirar"]);
 
   for (const resultado of NOVE_RETORNOS) {
     const registro = { chamadasRpc: [] };
@@ -1838,14 +1855,29 @@ Deno.test("comprovante dispara em exatamente 1 dos 9 retornos possíveis da RPC 
     const enviarComprovante = async (args: unknown) => {
       chamadasComprovante.push(args);
     };
+    const chamadasAvisoAtrasado: unknown[] = [];
+    const enviarAvisoAtrasado = async (args: unknown) => {
+      chamadasAvisoAtrasado.push(args);
+    };
 
-    await handler(req, { supabase, fetchImpl, enviarPush, enviarComprovante });
+    await handler(req, { supabase, fetchImpl, enviarPush, enviarComprovante, enviarAvisoAtrasado });
 
-    const esperado = DISPARAM.has(resultado) ? 1 : 0;
+    const esperadoComprovante = DISPARAM_COMPROVANTE.has(resultado) ? 1 : 0;
+    const esperadoAviso = DISPARAM_AVISO_ATRASADO.has(resultado) ? 1 : 0;
     assertEquals(
       chamadasComprovante.length,
-      esperado,
-      `resultado="${resultado}" deveria disparar ${esperado} comprovante(s)`,
+      esperadoComprovante,
+      `resultado="${resultado}" deveria disparar ${esperadoComprovante} comprovante(s)`,
+    );
+    assertEquals(
+      chamadasAvisoAtrasado.length,
+      esperadoAviso,
+      `resultado="${resultado}" deveria disparar ${esperadoAviso} aviso(s) atrasado(s)`,
+    );
+    assertEquals(
+      chamadasComprovante.length > 0 && chamadasAvisoAtrasado.length > 0,
+      false,
+      `resultado="${resultado}" nunca deveria disparar os dois textos para o mesmo pedido`,
     );
   }
 });
@@ -3198,4 +3230,209 @@ Deno.test("MUT-N2 (rodada 3) - pedido SEM linha pendente, refund 'in_process' de
 
   assertEquals(resposta.status, 200);
   assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
+// --- PEÇA 5 (revisão de dinheiro-não-recebido, 12/09/2026): o cliente que
+// paga PIX depois do prazo de reserva não pode ficar mudo. ---------------
+
+function numeroDoPedidoEsperado(id: string): string {
+  return `#${String(id).slice(-6).toUpperCase()}`;
+}
+
+Deno.test("htmlDoAvisoDePagamentoAtrasado: texto honesto — NUNCA promete 'aguardando confirmação' nem 'fila de separação'", () => {
+  const html = htmlDoAvisoDePagamentoAtrasado({ orderId: UUID_PEDIDO, nomeDaLoja: "Loja Teste" });
+
+  // As duas frases que o comprovante PADRÃO usa e que mentiriam aqui — ver
+  // `htmlDoPedido` em `_shared/comprovante.ts`. A negação ("não entrou na
+  // fila de separação") é o texto HONESTO — o que não pode aparecer é a
+  // afirmação, no presente, de que o pedido ENTRA na fila.
+  assertEquals(html.includes("aguardando"), false, "não pode dizer que o pagamento ainda está aguardando confirmação");
+  assertEquals(html.includes("entra na fila de separação"), false, "o pedido está cancelado — nunca ENTRA na fila de separação");
+  assertStringIncludes(html, "não entrou na fila de separação");
+
+  // O que TEM de estar dito: pagamento confirmado, tarde, pedido cancelado.
+  assertStringIncludes(html, "cancelado");
+  assertStringIncludes(html, numeroDoPedidoEsperado(UUID_PEDIDO));
+  assertStringIncludes(html, "Loja Teste");
+});
+
+Deno.test("aviso de pagamento atrasado: reserva NÃO concedida (reservou=false) -> não chega a ler store_config nem a enviar e-mail", async () => {
+  // Mesma técnica de "por padrão... a reserva é alcançada com o orderId
+  // certo" (mais acima): `reservou=false` simula o comprovante PADRÃO (ou
+  // este mesmo aviso, num reenvio) já tendo reivindicado o pedido — é assim
+  // que se prova, sem tocar SMTP, que os dois nunca mandam dois avisos.
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
+  Deno.env.set("SMTP_PASSWORD", "fixture-nao-e-credencial-real");
+  try {
+    const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
+    let leuStoreConfig = false;
+    const pedido = {
+      id: UUID_PEDIDO,
+      user_id: null,
+      customer_data: { email: "cliente@exemplo.com" },
+    };
+    const supabase = {
+      rpc: async (nome: string, args: Record<string, unknown>) => {
+        chamadasRpc.push({ nome, args });
+        if (nome === "confirmar_pagamento") return { data: "pago_apos_expirar", error: null };
+        if (nome === "reivindicar_email_de_confirmacao") return { data: false, error: null };
+        return { data: null, error: null };
+      },
+      from(tabela: string) {
+        if (tabela === "store_config") leuStoreConfig = true;
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return { maybeSingle: async () => ({ data: tabela === "marketplace_orders" ? pedido : null, error: null }) };
+              },
+              limit(_n: number) {
+                return { maybeSingle: async () => ({ data: null, error: null }) };
+              },
+            };
+          },
+        };
+      },
+    };
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const enviarPush = async (_args: unknown) => {};
+
+    const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+    assertEquals(resposta.status, 200);
+    const chamadaReserva = chamadasRpc.find((c) => c.nome === "reivindicar_email_de_confirmacao");
+    assertEquals(chamadaReserva?.args.p_order_id, UUID_PEDIDO, "a reserva tem de ser alcançada com o orderId certo");
+    assertEquals(leuStoreConfig, false, "reservou=false tem de parar ANTES de montar o e-mail (nada de SMTP)");
+  } finally {
+    Deno.env.delete("SMTP_USER");
+    Deno.env.delete("SMTP_PASSWORD");
+  }
+});
+
+Deno.test("aviso de pagamento atrasado: RPC de reserva lança -> webhook ainda responde 200, e loga o erro (falha nunca sobe)", async () => {
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
+  Deno.env.set("SMTP_PASSWORD", "fixture-nao-e-credencial-real");
+  try {
+    const pedido = {
+      id: UUID_PEDIDO,
+      user_id: null,
+      customer_data: { email: "cliente@exemplo.com" },
+    };
+    const supabase = {
+      rpc: async (nome: string) => {
+        if (nome === "confirmar_pagamento") return { data: "pago_apos_expirar", error: null };
+        if (nome === "reivindicar_email_de_confirmacao") {
+          throw new Error("conexão com o banco caiu no meio da reserva");
+        }
+        return { data: null, error: null };
+      },
+      from(tabela: string) {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return { maybeSingle: async () => ({ data: tabela === "marketplace_orders" ? pedido : null, error: null }) };
+              },
+            };
+          },
+        };
+      },
+    };
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const enviarPush = async (_args: unknown) => {};
+    const chamadasErro: unknown[][] = [];
+    const console_error = console.error;
+    console.error = (...args: unknown[]) => {
+      chamadasErro.push(args);
+    };
+
+    let resposta: Response;
+    try {
+      resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+    } finally {
+      console.error = console_error;
+    }
+
+    assertEquals(resposta.status, 200);
+    assertEquals(
+      chamadasErro.some((args) =>
+        args.some((v) => typeof v === "string" && v.includes("aviso de pagamento atrasado")),
+      ),
+      true,
+      "deveria logar console.error mencionando o aviso de pagamento atrasado",
+    );
+  } finally {
+    Deno.env.delete("SMTP_USER");
+    Deno.env.delete("SMTP_PASSWORD");
+  }
+});
+
+Deno.test("aviso de pagamento atrasado: SMTP não configurado -> não chega a chamar a reserva, e loga o motivo", async () => {
+  const valorUser = Deno.env.get("SMTP_USER");
+  const valorPass = Deno.env.get("SMTP_PASSWORD");
+  Deno.env.delete("SMTP_USER");
+  Deno.env.delete("SMTP_PASSWORD");
+  try {
+    const chamadasRpc: string[] = [];
+    const pedido = { id: UUID_PEDIDO, user_id: null, customer_data: { email: "cliente@exemplo.com" } };
+    const supabase = {
+      rpc: async (nome: string) => {
+        chamadasRpc.push(nome);
+        if (nome === "confirmar_pagamento") return { data: "pago_apos_expirar", error: null };
+        return { data: null, error: null };
+      },
+      from(tabela: string) {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return { maybeSingle: async () => ({ data: tabela === "marketplace_orders" ? pedido : null, error: null }) };
+              },
+            };
+          },
+        };
+      },
+    };
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const enviarPush = async (_args: unknown) => {};
+    const chamadasErro: unknown[][] = [];
+    const console_error = console.error;
+    console.error = (...args: unknown[]) => {
+      chamadasErro.push(args);
+    };
+
+    let resposta: Response;
+    try {
+      resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+    } finally {
+      console.error = console_error;
+    }
+
+    assertEquals(resposta.status, 200);
+    assertEquals(chamadasRpc.includes("reivindicar_email_de_confirmacao"), false);
+    assertEquals(
+      chamadasErro.some((args) =>
+        args.some((v) => typeof v === "string" && v.includes("SMTP não configurado")),
+      ),
+      true,
+    );
+  } finally {
+    if (valorUser !== undefined) Deno.env.set("SMTP_USER", valorUser);
+    if (valorPass !== undefined) Deno.env.set("SMTP_PASSWORD", valorPass);
+  }
 });

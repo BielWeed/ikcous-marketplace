@@ -276,4 +276,31 @@ describe("CheckoutView com pagamentoOnlineLigado() desligada", () => {
     expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
     expect(hospedeiro.textContent).toContain("Pedido Celebrado!");
   });
+
+  // Item 3a (12/09/2026): o grupo "No app" só existe quando há algo dentro
+  // dele — com a flag desligada, `opcoesNoApp` fica vazio e o cabeçalho
+  // inteiro (título incluso) tem de sumir junto, não ficar órfão em cima de
+  // uma lista vazia.
+  it("sem 'Pagar agora', o grupo 'No app' nem aparece — só 'Na entrega', com as três opções", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    expect(hospedeiro.textContent).not.toContain("No app");
+
+    const radiogroups = hospedeiro.querySelectorAll('[role="radiogroup"]');
+    expect(radiogroups).toHaveLength(1);
+    const texto = radiogroups[0].textContent ?? "";
+    expect(texto).toContain("Na entrega");
+    expect(texto).toContain("Pix na Entrega");
+    expect(texto).toContain("Cartão na Entrega");
+    expect(texto).toContain("Dinheiro na Entrega");
+  });
 });

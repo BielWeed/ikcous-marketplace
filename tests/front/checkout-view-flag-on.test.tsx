@@ -388,6 +388,54 @@ describe("CheckoutView com pagamentoOnlineLigado() ligada", () => {
     expect(pagamentoOnlineProps[0]).toEqual({ orderId: "ped-999", valor: 120 });
   });
 
+  // Item 3a (12/09/2026, pedido do dono): "ter uma divisão entre pagamentos
+  // na entrega e pagamentos no app, pra ficar mais organizado. E não tudo
+  // misturado como está agora." Prova de ORDEM (as opções não mudaram de
+  // comportamento — isso já está coberto pelos testes de seleção e de
+  // bloqueio deste arquivo): "No app" some antes de "Pagar agora com PIX",
+  // que vem antes de "Na entrega", que vem antes das três opções de
+  // entrega — e tudo dentro do MESMO `radiogroup` (a escolha continua
+  // sendo uma só).
+  it("os quatro meios aparecem em dois grupos rotulados, dentro do mesmo radiogroup", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    const radiogroups = hospedeiro.querySelectorAll('[role="radiogroup"]');
+    expect(radiogroups).toHaveLength(1);
+
+    const texto = radiogroups[0].textContent ?? "";
+    const posNoApp = texto.indexOf("No app");
+    const posPagarAgora = texto.indexOf("Pagar agora com PIX");
+    const posNaEntrega = texto.indexOf("Na entrega");
+    const posPix = texto.indexOf("Pix na Entrega");
+    const posCartao = texto.indexOf("Cartão na Entrega");
+    const posDinheiro = texto.indexOf("Dinheiro na Entrega");
+
+    for (const pos of [
+      posNoApp,
+      posPagarAgora,
+      posNaEntrega,
+      posPix,
+      posCartao,
+      posDinheiro,
+    ]) {
+      expect(pos).toBeGreaterThanOrEqual(0);
+    }
+    expect(posNoApp).toBeLessThan(posPagarAgora);
+    expect(posPagarAgora).toBeLessThan(posNaEntrega);
+    expect(posNaEntrega).toBeLessThan(posPix);
+    expect(posPix).toBeLessThan(posCartao);
+    expect(posCartao).toBeLessThan(posDinheiro);
+  });
+
   // CHECKOUT-050: repete a sequência do teste acima até a tela "Finalize o
   // pagamento" — as duas provas novas (recuperável x terminal) partem
   // exatamente daqui.

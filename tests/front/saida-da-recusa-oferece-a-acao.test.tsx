@@ -51,6 +51,7 @@ const TODAS_AS_ACOES: AcaoDeRecusa[] = [
   "trocar_endereco",
   "trocar_entrega",
   "remover_cupom",
+  "entrar_na_conta",
   "tentar_de_novo",
   "conferir_antes",
 ];
@@ -96,6 +97,22 @@ describe("SaidaDaRecusa", () => {
     ) as HTMLButtonElement;
     act(() => botao.click());
     expect(recebidas).toEqual(["recotar_frete"]);
+  });
+
+  it("entrar_na_conta oferece 'Entrar ou criar conta', nunca 'Ver meus pedidos'", () => {
+    // Item 3c (12/09/2026): a saída do gate de convidado é a MESMA do aviso
+    // "Entrega fora da cidade é só com conta" que já existe no checkout
+    // (CheckoutView.tsx) — nunca a lista de pedidos, que não existe para
+    // quem comprou sem conta.
+    render({
+      acao: "entrar_na_conta",
+      mensagem: "A loja ainda está configurando a entrega. Fale com a loja.",
+    });
+    const rotulos = Array.from(container.querySelectorAll("button")).map((b) =>
+      (b.textContent ?? "").toLowerCase(),
+    );
+    expect(rotulos.some((r) => r.includes("entrar ou criar conta"))).toBe(true);
+    expect(rotulos.some((r) => r.includes("meus pedidos"))).toBe(false);
   });
 
   it("estoque insuficiente diz quanto ainda há", () => {

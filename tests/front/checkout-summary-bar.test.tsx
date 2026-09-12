@@ -333,6 +333,87 @@ describe("CheckoutView — barra do total mostra o que está sendo comprado", ()
     expect(document.body.textContent).not.toContain("Entrega grátis inclusa");
   });
 
+  // Item 3b, correção da revisão (12/09/2026, rodada 1): a rodada anterior
+  // uniu itemsLabel + entregaLabel numa string só (`resumoDoCarrinho`) para
+  // acabar com os dois cortes lado a lado — mas a REVISÃO mediu no
+  // navegador (375px, "1x maleta canetas 120" + frete R$ 10,00) que a
+  // string única continuava sem caber (precisa de 238px, a coluna tem
+  // 168px) e que, com nome de produto longo, a informação de entrega
+  // sumia POR INTEIRO da barra. Correção: item e entrega voltam a ser dois
+  // elementos, mas agora EMPILHADOS (cada um em sua própria linha, com o
+  // próprio `truncate`) em vez de lado a lado na mesma linha — assim eles
+  // não competem pela mesma largura. Este teste não prova "cabe em
+  // 375px" (jsdom não faz layout; a prova de largura real é medição no
+  // navegador, registrada no relatório) — prova a ESTRUTURA da correção:
+  // dois textos INTEIROS, nunca um cortando o outro pela metade.
+  it("item e entrega são duas linhas empilhadas, cada uma com o texto INTEIRO — não uma string única cortada no meio", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    const cart: CartItem[] = [
+      { product: produto({ name: "Coxinha", price: 9 }), quantity: 1 },
+    ];
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          cart={cart}
+          subtotal={9}
+          shipping={8}
+          total={17}
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await esperarBarraMontar();
+
+    const bloco = localizarBlocoDoTotal();
+    expect(bloco).toBeDefined();
+
+    // Duas linhas truncadas de forma independente — cada uma com o texto
+    // COMPLETO daquele pedaço, nunca uma string juntando os dois com " · ".
+    const truncados = bloco!.querySelectorAll(".truncate");
+    expect(truncados).toHaveLength(2);
+    expect(truncados[0].textContent).toBe("1× Coxinha");
+    expect(truncados[1].textContent).toBe("Inclui R$ 8,00 de entrega");
+    expect(bloco!.textContent).not.toContain("1× Coxinha · Inclui");
+  });
+
+  // Ressalva medida pela revisão: no layout de string única, um nome de
+  // produto longo consumia toda a largura disponível e a informação de
+  // entrega desaparecia INTEIRA da barra (nem truncada — ausente). Com as
+  // duas linhas independentes, o nome comprido só afeta a PRÓPRIA linha; a
+  // linha de entrega continua com o texto completo e presente no DOM.
+  it("com nome de produto muito comprido, a linha de entrega continua presente e completa", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    const nomeComprido =
+      "Maleta de canetas coloridas 120 cores profissional dual brush";
+    const cart: CartItem[] = [
+      { product: produto({ name: nomeComprido, price: 9 }), quantity: 1 },
+    ];
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          cart={cart}
+          subtotal={9}
+          shipping={8}
+          total={17}
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await esperarBarraMontar();
+
+    const bloco = localizarBlocoDoTotal();
+    expect(bloco).toBeDefined();
+
+    const truncados = bloco!.querySelectorAll(".truncate");
+    expect(truncados).toHaveLength(2);
+    expect(truncados[0].textContent).toBe(`1× ${nomeComprido}`);
+    expect(truncados[1].textContent).toBe("Inclui R$ 8,00 de entrega");
+  });
+
   it("mostra 'Entrega grátis inclusa' quando shipping é zero", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     const cart: CartItem[] = [

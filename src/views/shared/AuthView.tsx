@@ -48,6 +48,23 @@ const itemVariants: Variants = {
   },
 };
 
+// PEÇA 4 (12/09/2026) — a frase antiga ("O seu acesso VIP aos achadinhos
+// mais baratos da região.") estava CRAVADA aqui e ia igual para toda loja
+// hospedada por este mesmo build (a Savy Collection vende roupa; a IKCOUS
+// não é a única loja). `store_config`/`v_store_config` não têm uma coluna
+// dedicada de "descrição da loja" (conferido no schema: só storeName,
+// storeCity, storeState, shareText, businessHours — nada de description/
+// tagline), então o subtítulo passa a citar o `storeName` que a ficha da
+// loja já entrega (o mesmo campo que o rodapé desta tela usa, ~linha 795).
+// Sem storeName configurado, cai num texto NEUTRO — serve a qualquer ramo
+// (roupa, papelaria, brinquedo) e não promete preço nem região.
+function subtituloBoasVindas(storeName: string | undefined | null): string {
+  const nome = storeName?.trim();
+  return nome
+    ? `Entre para acompanhar seus pedidos e novidades da ${nome}.`
+    : "Entre para acompanhar seus pedidos e novidades da loja.";
+}
+
 export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const { config } = useStore();
   const {
@@ -507,8 +524,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               variants={itemVariants}
               className="mt-2 max-w-[280px] px-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 sm:mt-4 sm:max-w-none sm:text-sm"
             >
-              {viewMode === "login" &&
-                "O seu acesso VIP aos achadinhos mais baratos da região."}
+              {viewMode === "login" && subtituloBoasVindas(config.storeName)}
               {viewMode === "signup" &&
                 "Inicie sua jornada no marketplace premium."}
               {viewMode === "forgot" &&

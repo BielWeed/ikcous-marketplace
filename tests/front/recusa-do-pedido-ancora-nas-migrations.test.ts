@@ -56,6 +56,17 @@ const FRASES_DO_BANCO = [
   "O cupom % exige uma compra mínima de R$ %.",
   "Os valores do pedido mudaram. Atualize o carrinho e tente novamente.",
   "Estoque insuficiente para o produto %",
+  // ITEM 3c (12/09/2026): a porta da entrega (20261039000000 em diante) e a
+  // chave de idempotência (20261038000000) — as regras irmãs em
+  // recusaDoPedido.ts (entrar_na_conta ×2, trocar_endereco ×2,
+  // reconferir_carrinho, recotar_frete) morrem caladas se alguma frase
+  // sumir ou for reescrita no SQL.
+  "A loja ainda está configurando a entrega. Fale com a loja.",
+  "Compra sem conta é só com entrega na cidade da loja. Entre na sua conta para receber em outro endereço.",
+  "Esta loja só faz entrega na cidade dela. Confira o CEP de entrega.",
+  "Informe o CEP de entrega.",
+  "Não foi possível criar o pedido. Atualize a página e tente de novo.",
+  "O frete foi cotado para outro CEP. Volte ao carrinho, calcule o frete para o CEP de entrega e finalize de novo.",
 ];
 
 const sql = Object.values(MIGRATIONS).join("\n");

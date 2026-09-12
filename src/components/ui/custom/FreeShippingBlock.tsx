@@ -133,7 +133,12 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
     }
     // Carrinho vazio: o fato verdadeiro da loja — vale para convidado e
     // logado (a regra de grátis não depende mais de login, frente B).
-    return `Ganhe frete grátis em compras acima de ${formatCurrency(minShipping)}.`;
+    // Frase curta de propósito (relato do dono, 12/09/2026): a versão antiga
+    // ("Ganhe frete grátis em compras acima de R$ X") cortava com reticências
+    // numa tela estreita, sobretudo com meta alta. Esta cabe mesmo com
+    // R$ 1.999,90 e continua dizendo a mesma coisa útil: a partir de quanto
+    // o frete é grátis.
+    return `A partir de ${formatCurrency(minShipping)} em compras.`;
   };
 
   // FRETE V2: um único render — convidado e logado têm a mesma regra de

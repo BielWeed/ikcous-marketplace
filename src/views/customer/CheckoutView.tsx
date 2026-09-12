@@ -55,6 +55,7 @@ import {
   FileText,
   Loader2,
   Lock,
+  type LucideIcon,
   MapPin,
   Phone,
   Plus,
@@ -157,14 +158,15 @@ export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido =>
  * `default` silencioso — que é o beco que este trabalho inteiro existe para
  * fechar.
  *
- * Seis das dez levam ao CARRINHO porque é lá que o problema se resolve de fato:
- * quantidade, variação, item indisponível e a cotação do frete são todos
- * editáveis lá, e nenhum deles é editável na tela do checkout.
+ * Seis das onze levam ao CARRINHO porque é lá que o problema se resolve de
+ * fato: quantidade, variação, item indisponível e a cotação do frete são
+ * todos editáveis lá, e nenhum deles é editável na tela do checkout.
  */
 type DestinoDaRecusa =
   | "carrinho"
   | "cupom"
   | "endereco"
+  | "conta"
   | "pedidos"
   | "so_fechar";
 
@@ -177,6 +179,10 @@ const DESTINO_DA_ACAO: Record<AcaoDeRecusa, DestinoDaRecusa> = {
   trocar_entrega: "carrinho",
   remover_cupom: "cupom",
   trocar_endereco: "endereco",
+  // Item 3c (12/09/2026): mesmo destino do aviso "Entrega fora da cidade é
+  // só com conta" já existente nesta tela (`convidadoForaDaCidade`, mais
+  // abaixo) — entrar ou criar conta.
+  entrar_na_conta: "conta",
   conferir_antes: "pedidos",
   // 🔴 `tentar_de_novo` NÃO reenvia sozinho. O botão "Finalizar Pedido"
   // continua na tela e é a pessoa que decide apertá-lo de novo. Reenviar por
@@ -1224,6 +1230,12 @@ export function CheckoutView({
       case "endereco":
         setIsAddressModalOpen(true);
         return;
+      case "conta":
+        // Mesmo destino do aviso "Entrega fora da cidade é só com conta"
+        // (`convidadoForaDaCidade`, mais abaixo) — entrar ou criar conta é
+        // a única saída para o gate de convidado do portão de entrega.
+        onNavigate("auth");
+        return;
       case "pedidos":
         // `conferir_antes` é o caso em que NÃO se sabe se o pedido nasceu.
         // A única saída segura é olhar os próprios pedidos antes de repetir.
@@ -1732,6 +1744,156 @@ export function CheckoutView({
     );
   }
 
+  // Pedido do dono (12/09/2026): "melhorar essa parte do meio de pagamento,
+  // pra gente ter uma divisão entre pagamentos na entrega e pagamentos no
+  // app, pra ficar mais organizado. E não tudo misturado como está agora."
+  // Os quatro meios continuam sendo A MESMA escolha (um `radiogroup` só,
+  // `paymentMethod` guarda um valor só) — só o AGRUPAMENTO visual é novo.
+  // `opcoesNoApp` fica vazio quando `pagamentoOnlineLigado()` é falso, e o
+  // grupo inteiro (título incluso) some — ele nunca aparece com zero opções
+  // dentro.
+  interface OpcaoDePagamento {
+    value: PaymentMethod;
+    label: string;
+    icon: LucideIcon;
+    color: string;
+    requerConta: boolean;
+  }
+
+  const opcoesNoApp: OpcaoDePagamento[] = pagamentoOnlineLigado()
+    ? [
+        {
+          value: "online",
+          // SÓ PIX, e o rótulo tem de dizer isso. A Fase 3 recusa cartão em
+          // DOIS lugares — o Brick só oferece `bankTransfer`
+          // (PagamentoOnline.tsx) e a criar-pagamento devolve 400 "No
+          // momento aceitamos apenas PIX". O rótulo antigo dizia "(PIX ou
+          // cartão)" e sobreviveu à Fase 3: prometia ao cliente o que o
+          // código nega. Ao religar cartão na Fase 3.5, este rótulo volta
+          // junto.
+          label: "Pagar agora com PIX",
+          icon: CreditCard,
+          color: "text-violet-500 bg-violet-50",
+          // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) —
+          // só esta opção carrega a exigência; as outras (entrega)
+          // continuam abertas a convidado.
+          requerConta: true,
+        },
+      ]
+    : [];
+
+  const opcoesNaEntrega: OpcaoDePagamento[] = [
+    {
+      value: "pix",
+      label: "Pix na Entrega",
+      icon: Smartphone,
+      color: "text-emerald-500 bg-emerald-50",
+      requerConta: false,
+    },
+    {
+      value: "card",
+      label: "Cartão na Entrega",
+      icon: CreditCard,
+      color: "text-blue-500 bg-blue-50",
+      requerConta: false,
+    },
+    {
+      value: "cash",
+      label: "Dinheiro na Entrega",
+      icon: Banknote,
+      color: "text-amber-500 bg-amber-50",
+      requerConta: false,
+    },
+  ];
+
+  // Extraído do `.map()` que existia antes da separação em grupos — o
+  // corpo do botão não mudou UMA linha, só passou a ser chamado duas vezes
+  // (uma por grupo) em vez de uma.
+  const renderOpcaoDePagamento = (option: OpcaoDePagamento) => {
+    const Icon = option.icon;
+    const isSelected = paymentMethod === option.value;
+    // Bloqueada só pela FALTA DE CONTA, nunca só por `requerConta` — um
+    // cliente logado escolhe "Pagar agora com PIX" normalmente. NÃO
+    // esconde a opção: some sem explicação faria o convidado achar que a
+    // loja não aceita PIX pelo site. Mostra com aparência de indisponível,
+    // e o clique vira o caminho para resolver (entrar/criar conta), em vez
+    // de selecionar o método.
+    const bloqueadaPorFaltaDeConta = option.requerConta && !user;
+    return (
+      <button
+        key={option.value}
+        type="button"
+        role="radio"
+        // Fiel ao que se VÊ: opção bloqueada por falta de conta não mostra
+        // seleção (a borda dela não usa `isSelected`), então não anuncia
+        // seleção.
+        aria-checked={isSelected && !bloqueadaPorFaltaDeConta}
+        onClick={() => {
+          if (bloqueadaPorFaltaDeConta) {
+            haptic.light();
+            onNavigate("auth");
+            return;
+          }
+          setPaymentMethod(option.value);
+        }}
+        // Sem `opacity-70` na opção bloqueada: ela multiplicava cores JÁ
+        // claras e derrubava o texto para ~1,9:1 de contraste (medido em
+        // 17/08/2026), abaixo do 4,5:1 que texto pequeno exige — e este é
+        // justamente o único item da lista que precisa ser LIDO, porque
+        // explica o que fazer. Quem diz "indisponível" aqui é o fundo
+        // cinza, o cadeado e a cor do rótulo, não a transparência.
+        className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
+          bloqueadaPorFaltaDeConta
+            ? "border-zinc-100 bg-zinc-50/60"
+            : isSelected
+              ? "z-10 border-zinc-900 bg-white shadow-md"
+              : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
+        }`}
+      >
+        <div
+          className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
+        >
+          <Icon className="size-5" />
+        </div>
+        <div className="flex min-w-0 flex-col items-start gap-1.5 text-left">
+          {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de pagamento
+              não escolhidos ficavam ilegíveis, com cara de desabilitados.
+              `zinc-600` (7:1) mantém a hierarquia (escolhido continua
+              sendo o mais escuro) sem apagar as outras opções. */}
+          <span
+            className={`text-xs font-bold uppercase tracking-wider ${
+              bloqueadaPorFaltaDeConta
+                ? "text-zinc-500"
+                : isSelected
+                  ? "text-zinc-900"
+                  : "text-zinc-600"
+            }`}
+          >
+            {option.label}
+          </span>
+          {bloqueadaPorFaltaDeConta && (
+            // Mesma frase, leitura melhor (02/09/2026): leading normal e
+            // mais respiro da linha de cima — as três linhas da explicação
+            // param de parecer um bloco compacto demais em 375px.
+            <span className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-500">
+              Pagar pelo site exige conta, para você acompanhar o pedido e
+              receber a confirmação. Toque para entrar ou criar a sua.
+            </span>
+          )}
+        </div>
+        {bloqueadaPorFaltaDeConta ? (
+          <Lock className="ml-auto size-4 shrink-0 text-zinc-500" />
+        ) : (
+          <div
+            className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
+          >
+            {isSelected && <Check className="size-3 text-white" />}
+          </div>
+        )}
+      </button>
+    );
+  };
+
   return (
     <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2">
       {/* `mx-auto max-w-md` é a largura de conteúdo do resto do app (ver
@@ -2184,144 +2346,34 @@ export function CheckoutView({
           {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
               são uma escolha ÚNICA, mas nada anunciava qual estava marcada —
               o "check" era só um desenho. `radiogroup` + `radio` com
-              `aria-checked` dá o estado ao leitor de tela. */}
+              `aria-checked` dá o estado ao leitor de tela.
+              Pedido do dono (12/09/2026): os quatro meios viviam numa lista
+              só, misturando "pagar agora" com "pagar na entrega" — dois
+              subgrupos rotulados dentro do MESMO `radiogroup` (a escolha
+              continua sendo uma só; só o agrupamento visual é novo). */}
           <div
             role="radiogroup"
             aria-label="Meio de pagamento"
-            className="grid grid-cols-1 gap-2.5 p-4"
+            className="space-y-4 p-4"
           >
-            {[
-              ...(pagamentoOnlineLigado()
-                ? [
-                    {
-                      value: "online" as PaymentMethod,
-                      // SÓ PIX, e o rótulo tem de dizer isso. A Fase 3 recusa
-                      // cartão em DOIS lugares — o Brick só oferece
-                      // `bankTransfer` (PagamentoOnline.tsx) e a criar-pagamento
-                      // devolve 400 "No momento aceitamos apenas PIX". O rótulo
-                      // antigo dizia "(PIX ou cartão)" e sobreviveu à Fase 3:
-                      // prometia ao cliente o que o código nega.
-                      // Ao religar cartão na Fase 3.5, este rótulo volta junto.
-                      label: "Pagar agora com PIX",
-                      icon: CreditCard,
-                      color: "text-violet-500 bg-violet-50",
-                      // Pagamento online exige conta (decisão do Gabriel,
-                      // 16/08/2026) — só esta opção carrega a exigência; as
-                      // outras (entrega) continuam abertas a convidado.
-                      requerConta: true,
-                    },
-                  ]
-                : []),
-              {
-                value: "pix" as PaymentMethod,
-                label: "Pix na Entrega",
-                icon: Smartphone,
-                color: "text-emerald-500 bg-emerald-50",
-                requerConta: false,
-              },
-              {
-                value: "card" as PaymentMethod,
-                label: "Cartão na Entrega",
-                icon: CreditCard,
-                color: "text-blue-500 bg-blue-50",
-                requerConta: false,
-              },
-              {
-                value: "cash" as PaymentMethod,
-                label: "Dinheiro na Entrega",
-                icon: Banknote,
-                color: "text-amber-500 bg-amber-50",
-                requerConta: false,
-              },
-            ].map((option) => {
-              const Icon = option.icon;
-              const isSelected = paymentMethod === option.value;
-              // Bloqueada só pela FALTA DE CONTA, nunca só por
-              // `requerConta` — um cliente logado escolhe "Pagar agora com
-              // PIX" normalmente. NÃO esconde a opção: some sem explicação
-              // faria o convidado achar que a loja não aceita PIX pelo
-              // site. Mostra com aparência de indisponível, e o clique vira
-              // o caminho para resolver (entrar/criar conta), em vez de
-              // selecionar o método.
-              const bloqueadaPorFaltaDeConta = option.requerConta && !user;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  // Fiel ao que se VÊ: opção bloqueada por falta de conta não
-                  // mostra seleção (a borda dela não usa `isSelected`), então
-                  // não anuncia seleção.
-                  aria-checked={isSelected && !bloqueadaPorFaltaDeConta}
-                  onClick={() => {
-                    if (bloqueadaPorFaltaDeConta) {
-                      haptic.light();
-                      onNavigate("auth");
-                      return;
-                    }
-                    setPaymentMethod(option.value);
-                  }}
-                  // Sem `opacity-70` na opção bloqueada: ela multiplicava
-                  // cores JÁ claras e derrubava o texto para ~1,9:1 de
-                  // contraste (medido em 17/08/2026), abaixo do 4,5:1 que
-                  // texto pequeno exige — e este é justamente o único item da
-                  // lista que precisa ser LIDO, porque explica o que fazer.
-                  // Quem diz "indisponível" aqui é o fundo cinza, o cadeado e
-                  // a cor do rótulo, não a transparência.
-                  className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
-                    bloqueadaPorFaltaDeConta
-                      ? "border-zinc-100 bg-zinc-50/60"
-                      : isSelected
-                        ? "z-10 border-zinc-900 bg-white shadow-md"
-                        : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
-                  }`}
-                >
-                  <div
-                    className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
-                  >
-                    <Icon className="size-5" />
-                  </div>
-                  <div className="flex min-w-0 flex-col items-start gap-1.5 text-left">
-                    {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de
-                        pagamento não escolhidos ficavam ilegíveis, com cara de
-                        desabilitados. `zinc-600` (7:1) mantém a hierarquia
-                        (escolhido continua sendo o mais escuro) sem apagar as
-                        outras opções. */}
-                    <span
-                      className={`text-xs font-bold uppercase tracking-wider ${
-                        bloqueadaPorFaltaDeConta
-                          ? "text-zinc-500"
-                          : isSelected
-                            ? "text-zinc-900"
-                            : "text-zinc-600"
-                      }`}
-                    >
-                      {option.label}
-                    </span>
-                    {bloqueadaPorFaltaDeConta && (
-                      // Mesma frase, leitura melhor (02/09/2026): leading
-                      // normal e mais respiro da linha de cima — as três
-                      // linhas da explicação param de parecer um bloco
-                      // compacto demais em 375px.
-                      <span className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-500">
-                        Pagar pelo site exige conta, para você acompanhar o
-                        pedido e receber a confirmação. Toque para entrar ou
-                        criar a sua.
-                      </span>
-                    )}
-                  </div>
-                  {bloqueadaPorFaltaDeConta ? (
-                    <Lock className="ml-auto size-4 shrink-0 text-zinc-500" />
-                  ) : (
-                    <div
-                      className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
-                    >
-                      {isSelected && <Check className="size-3 text-white" />}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+            {opcoesNoApp.length > 0 && (
+              <div className="space-y-2.5">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  No app
+                </span>
+                <div className="grid grid-cols-1 gap-2.5">
+                  {opcoesNoApp.map(renderOpcaoDePagamento)}
+                </div>
+              </div>
+            )}
+            <div className="space-y-2.5">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                Na entrega
+              </span>
+              <div className="grid grid-cols-1 gap-2.5">
+                {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2660,7 +2712,7 @@ export function CheckoutView({
                   >
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
-                    <div className="mx-auto flex max-w-md items-center justify-between gap-3">
+                    <div className="mx-auto flex max-w-md items-center justify-between gap-2">
                       <button
                         type="button"
                         ref={summaryPanelTriggerRef}
@@ -2685,28 +2737,48 @@ export function CheckoutView({
                             empilhadas e, com cupom aplicado, o selo
                             "(-R$ X OFF)" quebrava para uma 5ª (a coluna tem
                             ~141px e valor+selo exigem ~180px) — a barra
-                            engordava de ~87 para ~100px. Agora: "itens ·
-                            entrega" numa ÚNICA linha truncada, o valor
-                            dominante em linha própria e o selo INLINE com
-                            truncate (shrink-0 no valor) — nunca empurra a
-                            barra a crescer. O valor completo do desconto
-                            segue no painel de resumo, na linha "Desconto". */}
+                            engordava de ~87 para ~100px. O valor completo do
+                            desconto segue no painel de resumo, na linha
+                            "Desconto".
+
+                            PEÇA 3b, correção da revisão (12/09/2026, rodada
+                            1): a rodada anterior uniu item + entrega numa
+                            STRING ÚNICA (`resumoDoCarrinho`) pra acabar com
+                            os dois cortes lado a lado — mas a revisão MEDIU
+                            no navegador (375px, "1x maleta canetas 120" +
+                            frete R$ 10,00) que a string única continuava sem
+                            caber (precisa de 238px; a coluna tem 168px) e
+                            que, com nome de produto longo, a entrega SUMIA
+                            por inteiro da barra. Correção: item e entrega
+                            voltam a ser dois elementos, mas agora
+                            EMPILHADOS (cada um na própria linha, com o
+                            próprio `truncate`) em vez de lado a lado na
+                            MESMA linha — assim eles não competem pela mesma
+                            largura, e o caso do dono cabe INTEIRO nas duas
+                            linhas (medido: 105,6px e 124px, dentro dos
+                            168px da coluna). A altura das duas linhas
+                            (text-[9px] leading-none, sem `mb-*` entre elas
+                            nem antes de "Total a Pagar", que desceu de
+                            text-[11px] para text-[10px]) foi calibrada para
+                            a coluna ficar em 46px de altura, dentro dos
+                            48px do botão "Finalizar Pedido" ao lado — a
+                            BARRA não cresce nem um pixel; a régua (dono):
+                            "a solução não é crescer a barra". */}
                         {(itemsLabel || entregaLabel) && (
-                          <span className="mb-0.5 flex min-w-0 items-center gap-1 text-[10px] font-medium leading-tight text-zinc-400">
+                          <div className="flex min-w-0 flex-col">
                             {itemsLabel && (
-                              <span className="truncate">{itemsLabel}</span>
-                            )}
-                            {itemsLabel && entregaLabel && (
-                              <span aria-hidden="true" className="shrink-0">
-                                ·
+                              <span className="truncate text-[9px] font-medium leading-none text-zinc-400">
+                                {itemsLabel}
                               </span>
                             )}
                             {entregaLabel && (
-                              <span className="truncate">{entregaLabel}</span>
+                              <span className="truncate text-[9px] font-medium leading-none text-zinc-400">
+                                {entregaLabel}
+                              </span>
                             )}
-                          </span>
+                          </div>
                         )}
-                        <span className="mb-0.5 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-400">
+                        <span className="text-[10px] font-bold uppercase leading-none tracking-wider text-zinc-400">
                           Total a Pagar
                         </span>
                         <div className="flex min-w-0 items-baseline gap-1.5">
@@ -2734,7 +2806,7 @@ export function CheckoutView({
                         }}
                         disabled={botaoFinalizarDesabilitado}
                         className={cn(
-                          "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
+                          "h-12 px-3 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-1.5 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
                           botaoFinalizarDesabilitado
                             ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
                             : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
