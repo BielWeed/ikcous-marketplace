@@ -63,7 +63,7 @@ function identidadeDaFicha() {
 
 function fichaValida(overrides: Partial<FichaDaLoja> = {}): FichaDaLoja {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     host: "loja-da-ficha.exemplo.com",
     identidade: {
       identity: identidadeDaFicha(),
@@ -84,6 +84,12 @@ function fichaValida(overrides: Partial<FichaDaLoja> = {}): FichaDaLoja {
     conexao: {
       supabaseUrl: SUPABASE_URL_FICHA,
       publishableKey: "sb_publishable_da_ficha_teste",
+    },
+    configuracao: {
+      mpPublicKey: "APP_USR-da-ficha",
+      vapidPublicKey: "Bda-ficha",
+      pagamentoOnline: true,
+      manutencao: false,
     },
     ...overrides,
   };
@@ -220,7 +226,7 @@ describe("buildIdentity.ts e env-valores.ts — a ficha da loja vence o assado",
 
   it("ficha PRESENTE e inválida: importar buildIdentity.ts LANÇA — nunca cai no assado (que pode ser de outra loja)", async () => {
     const ficha = fichaValida();
-    injetarFicha(JSON.stringify({ ...ficha, schemaVersion: 2 }));
+    injetarFicha(JSON.stringify({ ...ficha, schemaVersion: 1 }));
     vi.resetModules();
     vi.stubGlobal("__STORE_IDENTITY__", criarBuildIdentity("Assado", "assado"));
 

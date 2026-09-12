@@ -40,7 +40,7 @@ function urlsFixture() {
 
 function fichaFixture(storeName = "Loja A"): FichaDaLoja {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     host: "loja-a.exemplo",
     identidade: {
       identity: {
@@ -75,6 +75,12 @@ function fichaFixture(storeName = "Loja A"): FichaDaLoja {
     conexao: {
       supabaseUrl: "https://abcdefghijklmnopqrst.supabase.co",
       publishableKey: "sb_publishable_de_teste",
+    },
+    configuracao: {
+      mpPublicKey: "APP_USR-de-teste",
+      vapidPublicKey: "Bde-teste",
+      pagamentoOnline: true,
+      manutencao: false,
     },
   };
 }

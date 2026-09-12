@@ -4,7 +4,10 @@
 // `deno test` sobre `middleware.ts` (colado no relatório da tarefa).
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { atenderPorteiro } from "@/hospedagem/porteiro";
+import {
+  SELECT_CONFIGURACAO_PUBLICA,
+  atenderPorteiro,
+} from "@/hospedagem/porteiro";
 import type {
   AmbientePorteiro,
   DependenciasPorteiro,
@@ -86,14 +89,33 @@ function linhaFixture(nome: string, primary: string, origin: string) {
   };
 }
 
+interface ConfiguracaoFake {
+  readonly mpPublicKey?: string | null;
+  readonly vapidPublicKey?: string | null;
+  readonly pagamentoOnline?: boolean;
+  readonly manutencao?: boolean;
+}
+
 interface BancoFake {
   readonly linha: ReturnType<typeof linhaFixture>;
   readonly dominioPublico: string | null;
+  readonly configuracao?: ConfiguracaoFake;
+}
+
+function linhaConfiguracaoPublica(banco: BancoFake): Record<string, unknown> {
+  const cfg = banco.configuracao ?? {};
+  return {
+    dominio_publico: banco.dominioPublico,
+    mp_public_key: cfg.mpPublicKey ?? null,
+    vapid_public_key: cfg.vapidPublicKey ?? null,
+    pagamento_online: cfg.pagamentoOnline ?? false,
+    manutencao: cfg.manutencao ?? false,
+  };
 }
 
 function criarFetchDuble(
   bancos: Record<string, BancoFake>,
-  opcoes: { bancoIndisponivel?: string[] } = {},
+  opcoes: { bancoIndisponivel?: string[]; omitirColuna?: string } = {},
 ): typeof fetch {
   return (async (input: RequestInfo | URL) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
@@ -112,11 +134,13 @@ function criarFetchDuble(
       if (!banco || opcoes.bancoIndisponivel?.includes(url.origin))
         return new Response("erro", { status: 500 });
       const select = url.searchParams.get("select");
-      if (select === "dominio_publico") {
-        return new Response(
-          JSON.stringify([{ dominio_publico: banco.dominioPublico }]),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
+      if (select === SELECT_CONFIGURACAO_PUBLICA) {
+        const linha = linhaConfiguracaoPublica(banco);
+        if (opcoes.omitirColuna) delete linha[opcoes.omitirColuna];
+        return new Response(JSON.stringify([linha]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       }
       return new Response(JSON.stringify([banco.linha]), {
         status: 200,
@@ -647,9 +671,10 @@ describe("lerDominioPublico (via atenderPorteiro) — mesmo prazo e teto de byte
       const url = new URL(input instanceof Request ? input.url : String(input));
       if (url.pathname !== "/rest/v1/v_store_config")
         throw new Error(`URL não mapeada no teste: ${url.toString()}`);
-      if (url.searchParams.get("select") === "dominio_publico") {
+      if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
         // Simula um transporte que nunca resolve nem observa o `signal` —
-        // só o temporizador interno de `lerDominioPublico` pode desatar isto.
+        // só o temporizador interno de `lerConfiguracaoPublica` pode
+        // desatar isto.
         return new Promise<Response>(() => undefined);
       }
       return new Response(
@@ -675,13 +700,19 @@ describe("lerDominioPublico (via atenderPorteiro) — mesmo prazo e teto de byte
   it("resposta do domínio público maior que o teto (256 KiB) -> 503 banco-indisponivel", async () => {
     const origem = "https://projetoaaaaaaaaaaaaa.supabase.co";
     const linhaGigante = JSON.stringify([
-      { dominio_publico: "a".repeat(300 * 1024) },
+      {
+        dominio_publico: "a".repeat(300 * 1024),
+        mp_public_key: null,
+        vapid_public_key: null,
+        pagamento_online: false,
+        manutencao: false,
+      },
     ]);
     const fetchImpl: typeof fetch = (async (input: RequestInfo | URL) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       if (url.pathname !== "/rest/v1/v_store_config")
         throw new Error(`URL não mapeada no teste: ${url.toString()}`);
-      if (url.searchParams.get("select") === "dominio_publico") {
+      if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
         return new Response(linhaGigante, {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -703,5 +734,357 @@ describe("lerDominioPublico (via atenderPorteiro) — mesmo prazo e teto de byte
     );
     expect(resp.status).toBe(503);
     expect(resp.headers.get("x-ikcous-porteiro")).toBe("banco-indisponivel");
+  });
+});
+
+describe("atenderPorteiro — configuração pública: select exato, coluna ausente, e a ficha carrega a configuração (T3, etapa 3)", () => {
+  const origem = "https://projetoaaaaaaaaaaaaa.supabase.co";
+  const ambiente: AmbientePorteiro = {
+    VITE_SUPABASE_URL: origem,
+    VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_a",
+  };
+
+  it("teste obrigatório (a): o select pede EXATAMENTE as 5 colunas, nem mais nem menos", async () => {
+    const selectsPedidos: string[] = [];
+    const fetchQueRegistraSelect: typeof fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname === "/rest/v1/v_store_config") {
+        const select = url.searchParams.get("select");
+        if (select) selectsPedidos.push(select);
+      }
+      return criarFetchDuble({
+        [origem]: {
+          linha: linhaFixture("Loja A", "#111111", origem),
+          dominioPublico: "a.exemplo",
+        },
+      })(input as any);
+    };
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo"),
+      ambiente,
+      deps(fetchQueRegistraSelect),
+    );
+    expect(resp.status).toBe(200);
+    expect(selectsPedidos).toContain(SELECT_CONFIGURACAO_PUBLICA);
+    expect(SELECT_CONFIGURACAO_PUBLICA.split(",").sort()).toEqual(
+      [
+        "dominio_publico",
+        "mp_public_key",
+        "vapid_public_key",
+        "pagamento_online",
+        "manutencao",
+      ].sort(),
+    );
+  });
+
+  it("teste obrigatório (b): linha sem mp_public_key (view antiga, migration não aplicada) -> 503 banco-indisponivel, no-store", async () => {
+    const fetchImpl = criarFetchDuble(
+      {
+        [origem]: {
+          linha: linhaFixture("Loja A", "#111111", origem),
+          dominioPublico: "a.exemplo",
+        },
+      },
+      { omitirColuna: "mp_public_key" },
+    );
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo"),
+      ambiente,
+      deps(fetchImpl),
+    );
+    expect(resp.status).toBe(503);
+    expect(resp.headers.get("x-ikcous-porteiro")).toBe("banco-indisponivel");
+    expect(resp.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("teste obrigatório (b2): linha sem mp_public_key, mas com cache de 5 min -> 200 com a ficha velha (crítica do lote item 8: o stale-if-error cobre a migration atrasada, é isso que obriga 20261150 a ir ANTES do release — ADENDO A.7)", async () => {
+    let relogio = 0;
+    const fetchOk = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja A", "#111111", origem),
+        dominioPublico: "a.exemplo",
+      },
+    });
+    const cache = new Map<string, EntradaCachePorteiro>();
+    const primeira = await atenderPorteiro(pedido("a.exemplo"), ambiente, {
+      fetchImpl: fetchOk,
+      cache,
+      agora: () => relogio,
+    });
+    expect(primeira.status).toBe(200);
+
+    relogio = 5 * 60 * 1000; // 5 min depois: fora do fresco (60s), dentro do stale (1h)
+    const fetchSemColuna = criarFetchDuble(
+      {
+        [origem]: {
+          linha: linhaFixture("Loja A", "#111111", origem),
+          dominioPublico: "a.exemplo",
+        },
+      },
+      { omitirColuna: "mp_public_key" },
+    );
+    const segunda = await atenderPorteiro(pedido("a.exemplo"), ambiente, {
+      fetchImpl: fetchSemColuna,
+      cache,
+      agora: () => relogio,
+    });
+    expect(segunda.status).toBe(200);
+    const html = await segunda.text();
+    expect(html).toContain("Loja A");
+  });
+
+  it("teste obrigatório (c): a ficha carrega `configuracao` idêntica à linha do banco — null e booleanos preservados", async () => {
+    const fetchImpl = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja A", "#111111", origem),
+        dominioPublico: "a.exemplo",
+        configuracao: {
+          mpPublicKey: "APP_USR-1234",
+          vapidPublicKey: null,
+          pagamentoOnline: true,
+          manutencao: false,
+        },
+      },
+    });
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo", "/identidade.json"),
+      ambiente,
+      deps(fetchImpl),
+    );
+    expect(resp.status).toBe(200);
+    const ficha = await resp.json();
+    expect(ficha.schemaVersion).toBe(2);
+    expect(ficha.configuracao).toEqual({
+      mpPublicKey: "APP_USR-1234",
+      vapidPublicKey: null,
+      pagamentoOnline: true,
+      manutencao: false,
+    });
+  });
+
+  it("configuração toda desligada (null/false) — mesmo formato preservado", async () => {
+    const fetchImpl = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja A", "#111111", origem),
+        dominioPublico: "a.exemplo",
+      },
+    });
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo", "/identidade.json"),
+      ambiente,
+      deps(fetchImpl),
+    );
+    const ficha = await resp.json();
+    expect(ficha.configuracao).toEqual({
+      mpPublicKey: null,
+      vapidPublicKey: null,
+      pagamentoOnline: false,
+      manutencao: false,
+    });
+  });
+
+  // ADENDO A.5 ("falha por campo, não por loja"): `mp_public_key = ''` no
+  // banco não pode fechar a loja INTEIRA. Sem a normalização em
+  // `lerColunaChavePublicaOuNull` (porteiro.ts), o porteiro montaria a
+  // ficha com `mpPublicKey: ''`, e `configuracaoValida`
+  // (`src/config/fichaDaLoja.ts`, exige `length > 0`) reprovaria a ficha
+  // inteira — `lerFichaDaLoja` lançaria `IDENTITY_FICHA_INVALID` e o app
+  // inteiro cairia em manutenção por uma chave vazia, quando o combinado é
+  // só desligar o pagamento (`pagamentoOnline` continua o que o banco diz,
+  // sem relação com a normalização da chave).
+  it('mp_public_key = "" no banco -> 200 com ficha válida e configuracao.mpPublicKey === null (pagamentoOnline continua o que o banco diz)', async () => {
+    const fetchImpl = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja A", "#111111", origem),
+        dominioPublico: "a.exemplo",
+        configuracao: {
+          mpPublicKey: "",
+          pagamentoOnline: true,
+        },
+      },
+    });
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo", "/identidade.json"),
+      ambiente,
+      deps(fetchImpl),
+    );
+    expect(resp.status).toBe(200);
+    const ficha = await resp.json();
+    expect(ficha.configuracao).toEqual({
+      mpPublicKey: null,
+      vapidPublicKey: null,
+      pagamentoOnline: true,
+      manutencao: false,
+    });
+  });
+
+  it('vapid_public_key = "   " (só espaços) no banco -> 200 com ficha válida e configuracao.vapidPublicKey === null', async () => {
+    const fetchImpl = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Loja A", "#111111", origem),
+        dominioPublico: "a.exemplo",
+        configuracao: {
+          vapidPublicKey: "   ",
+        },
+      },
+    });
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo", "/identidade.json"),
+      ambiente,
+      deps(fetchImpl),
+    );
+    expect(resp.status).toBe(200);
+    const ficha = await resp.json();
+    expect(ficha.configuracao).toEqual({
+      mpPublicKey: null,
+      vapidPublicKey: null,
+      pagamentoOnline: false,
+      manutencao: false,
+    });
+  });
+});
+
+describe("atenderPorteiro — caderneta CONFIGURADA: miss e chave anômala fecham NA HORA, erro de RPC herda o stale-if-error (ADENDO A.3 + ADENDO B.1, testes obrigatórios d/e/f)", () => {
+  const origem = "https://projetoaaaaaaaaaaaaa.supabase.co";
+  // O ambiente do PRÓPRIO PROJETO também está presente (como estaria na
+  // Vercel de verdade, já que a principal SEMPRE tem VITE_SUPABASE_*) — é
+  // isso que prova que miss/erro/chave-anômala NÃO caem nele quando a
+  // frota está configurada: se caísse, este ambiente devolveria 200 com a
+  // ficha da PRINCIPAL, nunca 503.
+  const ambienteComFrotaEProjeto: AmbientePorteiro = {
+    VITE_SUPABASE_URL: origem,
+    VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_a",
+    IKCOUS_FROTA_URL: "https://principal.supabase.co",
+    IKCOUS_FROTA_APIKEY: "sb_publishable_principal",
+    IKCOUS_FROTA_CHAVE: "segredo",
+  };
+  const fetchImpl = criarFetchDuble({
+    [origem]: {
+      linha: linhaFixture("Loja Principal", "#111111", origem),
+      dominioPublico: "a.exemplo",
+    },
+  });
+
+  it("teste obrigatório (d): caderneta MISS -> 503 sem-loja, x-ikcous-caderneta: miss, NUNCA 308, NUNCA o banco do projeto", async () => {
+    const cadernetaMiss: ResolverLojaNaCaderneta = async () => ({
+      tipo: "miss",
+    });
+    const resp = await atenderPorteiro(
+      pedido("host-desconhecido.exemplo"),
+      ambienteComFrotaEProjeto,
+      deps(fetchImpl, { resolverNaCaderneta: cadernetaMiss }),
+    );
+    expect(resp.status).toBe(503);
+    expect(resp.headers.get("x-ikcous-porteiro")).toBe("sem-loja");
+    expect(resp.headers.get("x-ikcous-caderneta")).toBe("miss");
+    const corpo = await resp.text();
+    expect(corpo).not.toContain("Loja Principal");
+  });
+
+  // ADENDO B.1 (crítica do lote item 1, revisor Opus de T3): a versão A.3
+  // ao pé da letra tratava `erro` (RPC da caderneta fora do ar) igual a
+  // `miss` — mas a caderneta É o banco da PRINCIPAL, então isso derrubaria
+  // TODAS as lojas 60s depois de uma queda simples dela. Os três testes
+  // abaixo substituem o antigo teste obrigatório (e): `erro` de RPC NUNCA
+  // vira `DecisaoPorteiro` — herda o stale-if-error igual a qualquer outra
+  // falha de rede do porteiro.
+  it("teste obrigatório (e1): caderneta ERRO com cache QUENTE (5 min, dentro da 1h de stale) -> 200 com a ficha antiga, x-ikcous-caderneta: erro (a loja conhecida sobrevive à queda da caderneta)", async () => {
+    let relogio = 0;
+    let chamadas = 0;
+    const cadernetaOraHitOraErro: ResolverLojaNaCaderneta = async () => {
+      chamadas += 1;
+      if (chamadas === 1) {
+        return {
+          tipo: "hit",
+          conexao: {
+            supabaseUrl: origem,
+            publishableKey: "sb_publishable_a",
+            origem: "caderneta",
+          },
+        };
+      }
+      return { tipo: "erro" };
+    };
+    const cache = new Map<string, EntradaCachePorteiro>();
+    const primeira = await atenderPorteiro(
+      pedido("a.exemplo"),
+      ambienteComFrotaEProjeto,
+      {
+        fetchImpl,
+        cache,
+        agora: () => relogio,
+        resolverNaCaderneta: cadernetaOraHitOraErro,
+      },
+    );
+    expect(primeira.status).toBe(200);
+    expect(primeira.headers.get("x-ikcous-caderneta")).toBe("hit");
+
+    relogio = 5 * 60 * 1000; // 5 min depois: fora do fresco (60s), dentro do stale (1h)
+    const segunda = await atenderPorteiro(
+      pedido("a.exemplo"),
+      ambienteComFrotaEProjeto,
+      {
+        fetchImpl,
+        cache,
+        agora: () => relogio,
+        resolverNaCaderneta: cadernetaOraHitOraErro,
+      },
+    );
+    expect(segunda.status).toBe(200);
+    expect(segunda.headers.get("x-ikcous-caderneta")).toBe("erro");
+    const html = await segunda.text();
+    expect(html).toContain("Loja Principal");
+  });
+
+  it("teste obrigatório (e2): caderneta ERRO sem cache quente -> 503 banco-indisponivel, x-ikcous-caderneta: erro (NUNCA sem-loja, NUNCA o banco do projeto)", async () => {
+    const cadernetaErro: ResolverLojaNaCaderneta = async () => ({
+      tipo: "erro",
+    });
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo"),
+      ambienteComFrotaEProjeto,
+      deps(fetchImpl, { resolverNaCaderneta: cadernetaErro }),
+    );
+    expect(resp.status).toBe(503);
+    expect(resp.headers.get("x-ikcous-porteiro")).toBe("banco-indisponivel");
+    expect(resp.headers.get("x-ikcous-caderneta")).toBe("erro");
+    const corpo = await resp.text();
+    expect(corpo).not.toContain("Loja Principal");
+  });
+
+  it("teste obrigatório (e3): chave anômala devolvida pela caderneta (hit com papel que não é publishable/anon) -> 503 sem-loja, x-ikcous-caderneta: erro, NUNCA 308, NUNCA o banco do projeto (resposta anômala é DECISÃO, não falha de rede — fecha NA HORA, diferente de e1/e2)", async () => {
+    const cadernetaChaveAnomala: ResolverLojaNaCaderneta = async () => ({
+      tipo: "hit",
+      conexao: {
+        supabaseUrl: "https://frota-com-bug.supabase.co",
+        publishableKey: "chave-service-role-nao-publica",
+        origem: "caderneta",
+      },
+    });
+    const resp = await atenderPorteiro(
+      pedido("host-desconhecido.exemplo"),
+      ambienteComFrotaEProjeto,
+      deps(fetchImpl, { resolverNaCaderneta: cadernetaChaveAnomala }),
+    );
+    expect(resp.status).toBe(503);
+    expect(resp.headers.get("x-ikcous-porteiro")).toBe("sem-loja");
+    expect(resp.headers.get("x-ikcous-caderneta")).toBe("erro");
+    const corpo = await resp.text();
+    expect(corpo).not.toContain("Loja Principal");
+  });
+
+  it("teste obrigatório (f): SEM as três variáveis da frota (ausente) -> cai no ambiente do projeto, como hoje", async () => {
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo"),
+      {
+        VITE_SUPABASE_URL: origem,
+        VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_a",
+      },
+      deps(fetchImpl),
+    );
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("x-ikcous-caderneta")).toBe("ausente");
+    const html = await resp.text();
+    expect(html).toContain("Loja Principal");
   });
 });

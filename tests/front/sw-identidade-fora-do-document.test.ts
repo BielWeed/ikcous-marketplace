@@ -13,8 +13,9 @@ import { criarBuildIdentity } from "./fixtures/build-identity";
  * Este arquivo prova três coisas que o brief exige: (1) o `install` busca essa
  * ficha e a guarda num cache PRÓPRIO sem derrubar a instalação se a busca
  * falhar; (2) o `activate` NÃO apaga esse cache junto com os antigos; (3) o
- * `push` prefere o ícone da ficha em cache e só cai no ícone assado
- * (`buildIdentity`, comportamento de hoje) quando não há ficha.
+ * `push` prefere o ícone da ficha em cache e só cai no ícone NEUTRO do build
+ * (`/icons/heart-96x96.png`, ADENDO A.8/B.5, 11/09/2026 — nunca mais o
+ * `buildIdentity` da principal) quando não há ficha.
  *
  * POR QUE `environment: "node"`, `globalThis.self` FALSO E IMPORTAR DENTRO DE
  * CADA TESTE: mesmas razões documentadas em `tests/front/sw-fetch.test.ts` —
@@ -253,7 +254,7 @@ describe("src/sw/sw.ts — a ficha da loja sem document", () => {
     );
   });
 
-  it("push: ficha em cache com host DIFERENTE do self.location.hostname → ícone assado", async () => {
+  it("push: ficha em cache com host DIFERENTE do self.location.hostname → ícone neutro (nunca o da principal)", async () => {
     const respostaFicha = {
       json: vi.fn().mockResolvedValue({
         schemaVersion: 1,
@@ -285,18 +286,21 @@ describe("src/sw/sw.ts — a ficha da loja sem document", () => {
     });
     await Promise.all(waitUntil.mock.calls.map((call) => call[0]));
 
-    // Ícone do assado (fixture "Aurora"), NUNCA o da ficha "DaFicha" — a
-    // divergência de host descarta a ficha inteira.
+    // ADENDO A.8/B.5 (11/09/2026): o último recurso deixou de ser o ícone
+    // assado da PRINCIPAL (`buildIdentity`) — agora é o ícone NEUTRO do
+    // build (`/icons/heart-96x96.png`), nunca `/identity/aurora/...` (a
+    // fixture "Aurora" simula a principal). A divergência de host descarta a
+    // ficha inteira e cai no mesmo fallback do cache vazio.
     expect(selfFalso.registration.showNotification).toHaveBeenCalledWith(
       "Aviso",
       expect.objectContaining({
-        icon: "/identity/aurora/icon-192.png",
-        badge: "/identity/aurora/icon-192.png",
+        icon: "/icons/heart-96x96.png",
+        badge: "/icons/heart-96x96.png",
       }),
     );
   });
 
-  it("push: sem ficha em cache, o ícone continua vindo do buildIdentity assado (comportamento de hoje)", async () => {
+  it("push: sem ficha em cache, o ícone cai no NEUTRO do build (nunca o assado da principal)", async () => {
     const { listeners, selfFalso } = await importarComGlobaisFalsos({
       respostaEmCache: undefined,
     });
@@ -312,8 +316,8 @@ describe("src/sw/sw.ts — a ficha da loja sem document", () => {
     expect(selfFalso.registration.showNotification).toHaveBeenCalledWith(
       "Aviso",
       expect.objectContaining({
-        icon: "/identity/aurora/icon-192.png",
-        badge: "/identity/aurora/icon-192.png",
+        icon: "/icons/heart-96x96.png",
+        badge: "/icons/heart-96x96.png",
       }),
     );
   });

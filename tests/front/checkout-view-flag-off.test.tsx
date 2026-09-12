@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 //
-// Prova da garantia central da Task 5: com PAGAMENTO_ONLINE_LIGADO desligada
-// (VITE_PAGAMENTO_ONLINE fixada em "false" pelo beforeEach — mesma leitura
-// de import.meta.env que o build usa), o CheckoutView tem que continuar
-// idêntico ao de hoje: sem a opção "Pagar agora" na lista de meios de
-// pagamento, sempre chamando a v23 (via createOrder(..., { comPagamentoOnline:
-// false })) e nunca mostrando a tela de "Finalize o pagamento".
+// Prova da garantia central da Task 5: com `pagamentoOnlineLigado()`
+// desligada (VITE_PAGAMENTO_ONLINE fixada em "false" pelo beforeEach — sem
+// ficha injetada no DOM, e por isso a mesma leitura de import.meta.env que o
+// build de loja única usa, ver src/config/configuracaoDaLoja.ts, escala
+// etapa 3), o CheckoutView tem que continuar idêntico ao de hoje: sem a
+// opção "Pagar agora" na lista de meios de pagamento, sempre chamando a v23
+// (via createOrder(..., { comPagamentoOnline: false })) e nunca mostrando a
+// tela de "Finalize o pagamento".
 //
 // POR QUE RENDER DE VERDADE (react-dom/client + jsdom), NÃO O DUBLÊ DE REACT
 // de create-order-rpc.test.ts: aquele teste mocka useState/useEffect porque só
@@ -142,17 +144,21 @@ function localizarBotaoFinalizar() {
   ) as HTMLButtonElement | undefined;
 }
 
-describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO desligada", () => {
+describe("CheckoutView com pagamentoOnlineLigado() desligada", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
     // A PREMISSA DESTE ARQUIVO, FIXADA EM VEZ DE TORCIDA POR ELA.
     //
-    // `PAGAMENTO_ONLINE_LIGADO` é calculada no topo de `src/lib/flags.ts`, a
-    // partir de `import.meta.env.VITE_PAGAMENTO_ONLINE`. O Vite monta esse
-    // objeto a partir dos arquivos `.env*` da raiz — inclusive `.env.local`,
-    // que é ignorado pelo git e existe só na máquina de quem desenvolve.
+    // Escala etapa 3 (11/09/2026): `pagamentoOnlineLigado()` (reexportada de
+    // `@/lib/flags`, definida em `src/config/configuracaoDaLoja.ts`) lê a
+    // ficha da loja; sem ficha injetada no DOM (o caso deste arquivo, que
+    // nunca chama `injetarFicha`) e em DEV (padrão do vitest, não stubado
+    // aqui), ela cai no MESMO `import.meta.env.VITE_PAGAMENTO_ONLINE` de
+    // antes. O Vite monta esse objeto a partir dos arquivos `.env*` da raiz
+    // — inclusive `.env.local`, que é ignorado pelo git e existe só na
+    // máquina de quem desenvolve.
     //
     // Medido em 23/08/2026: com `VITE_PAGAMENTO_ONLINE=true` no `.env.local`
     // desta máquina, este teste reprovava ("expected ... not to contain
@@ -162,10 +168,10 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO desligada", () => {
     // este teste passar por acaso.
     //
     // O `stubEnv` roda ANTES do `await import("@/views/customer/CheckoutView")`
-    // do corpo do teste, que é quando `flags.ts` é avaliado pela primeira vez.
+    // do corpo do teste, que é quando o módulo é avaliado pela primeira vez.
     // Por isso o módulo REAL continua no caminho: o que se prova aqui ainda é
-    // a leitura de verdade de `import.meta.env`, e não um dublê de `flags.ts`
-    // como fazem os arquivos irmãos de flag LIGADA.
+    // a leitura de verdade de `import.meta.env`, e não um dublê de
+    // `@/lib/flags` como fazem os arquivos irmãos de flag LIGADA.
     vi.stubEnv("VITE_PAGAMENTO_ONLINE", "false");
     createOrder.mockClear();
     clearCart.mockClear();

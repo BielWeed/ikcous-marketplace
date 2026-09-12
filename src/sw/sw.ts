@@ -18,14 +18,28 @@ const sw = self as any;
 // `activate` abaixo NÃO apaga), para o `push` ler sem depender do build.
 const IDENTIDADE_CACHE_NAME = "ikcous-identidade";
 
-// O ícone ASSADO vem direto do define `__STORE_IDENTITY__` (declarado em
-// src/vite-env.d.ts), e NÃO de `src/config/buildIdentity` — aquele módulo
-// passou a ler a ficha da loja (T1 da etapa 2) e arrasta o validador da
-// identidade (zod) para dentro de quem o importa. Medido em 11/09/2026: com
-// o import, o `sw.js` publicado saltava de 12,7 KB para 543 KB (76 módulos
-// de zod) — e `npm run size` não acusa porque só mede `assets/*.js`. Aqui só
-// se precisa de UM campo; o define entrega esse campo sem custo.
-const ICONE_ASSADO: string = __STORE_IDENTITY__.localUrls.icon_192;
+// ETAPA 3 da escala (11/09/2026, ADENDO A.8): o ícone de ÚLTIMO RECURSO
+// deixou de vir de `__STORE_IDENTITY__` — aquele define é o build ASSADO da
+// loja de UM projeto (etapa 1); num build ÚNICO compartilhado por N lojas
+// (etapa 2), `__STORE_IDENTITY__` é o ícone de QUALQUER UMA delas (hoje, o
+// da principal), nunca de ninguém em especial — servir esse ícone para uma
+// notificação da Savy antes da ficha chegar ao cache seria mostrar a marca
+// ERRADA. Em vez disso, um ícone NEUTRO do build.
+//
+// CORREÇÃO (rodada 1 desta etapa, achado do revisor): `public/icons/` — a
+// FONTE no repositório — tem 5 arquivos, mas `scripts/prepareIdentity.ts`
+// aposenta 3 deles (`icon-192x192.png`, `icon-512x512.png`,
+// `icon-maskable-512x512.png`, ver `retiredPaths`) do `public/` que vira o
+// build publicado: pedir um desses ao vivo cai no catch-all do `vercel.json`
+// e devolve `/index.html` (200 text/html) em vez de imagem — notificação sem
+// ícone. Medido nesta branch (`dist-test/icons`) e em produção
+// (`GET /icons/icon-192x192.png` → 200 text/html). Só sobrevivem ao build
+// `cart-96x96.png` e `heart-96x96.png` (medidos 200 image/png); SVG fica de
+// fora de `showNotification` por inconsistência entre navegadores. Por isso
+// o literal abaixo tem de ser um dos DOIS que sobrevivem — nunca um dos 3
+// aposentados. Continua sendo só o ÚLTIMO recurso: `resolverIconeDaLoja`
+// abaixo sempre prefere a ficha da loja quando ela já está em cache.
+const ICONE_ASSADO = "/icons/heart-96x96.png";
 
 // A variável __APP_VERSION__ é injetada pelo Vite (definida em vite.config.ts)
 declare const __APP_VERSION__: string;

@@ -63,7 +63,7 @@ function identidadeValida() {
 
 function fichaValida(overrides: Partial<FichaDaLoja> = {}): FichaDaLoja {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     host: "loja-a.exemplo.com",
     identidade: {
       identity: identidadeValida(),
@@ -84,6 +84,12 @@ function fichaValida(overrides: Partial<FichaDaLoja> = {}): FichaDaLoja {
     conexao: {
       supabaseUrl: SUPABASE_URL,
       publishableKey: "sb_publishable_ficha_valida_abc",
+    },
+    configuracao: {
+      mpPublicKey: "APP_USR-ficha-valida",
+      vapidPublicKey: "Bficha-valida",
+      pagamentoOnline: true,
+      manutencao: false,
     },
     ...overrides,
   };
@@ -154,8 +160,8 @@ describe("fichaDaLoja.ts — leitura da ficha da loja", () => {
     expect(() => lerFichaDaLoja()).toThrow("IDENTITY_FICHA_INVALID");
   });
 
-  it("schemaVersion diferente de 1: lança IDENTITY_FICHA_INVALID", async () => {
-    injetarFicha(JSON.stringify({ ...fichaValida(), schemaVersion: 2 }));
+  it("schemaVersion diferente de 2 (ex.: 1, da ficha antiga sem `configuracao`): lança IDENTITY_FICHA_INVALID", async () => {
+    injetarFicha(JSON.stringify({ ...fichaValida(), schemaVersion: 1 }));
     const { lerFichaDaLoja } = await importarLimpo();
 
     expect(() => lerFichaDaLoja()).toThrow("IDENTITY_FICHA_INVALID");
@@ -456,5 +462,116 @@ describe("fichaDaLoja.ts — leitura da ficha da loja", () => {
     const { lerFichaDaLoja } = await importarLimpo();
 
     expect(lerFichaDaLoja()?.host).toBe("loja-a.exemplo.com");
+  });
+
+  // Etapa 3 da escala (11/09/2026): o bloco `configuracao` é o que faz a
+  // ficha ir de v1 para v2. Ficha v1 de verdade não tem este campo — é o
+  // caso "ausente" abaixo, equivalente ao `undefined` que um JSON antigo
+  // teria depois de um `JSON.parse`.
+  describe("bloco `configuracao` (etapa 3, ADENDO A)", () => {
+    it("ficha v2 válida: devolve os 4 valores de `configuracao` sem alterar", async () => {
+      injetarFicha(JSON.stringify(fichaValida()));
+      const { lerFichaDaLoja } = await importarLimpo();
+
+      expect(lerFichaDaLoja()?.configuracao).toEqual({
+        mpPublicKey: "APP_USR-ficha-valida",
+        vapidPublicKey: "Bficha-valida",
+        pagamentoOnline: true,
+        manutencao: false,
+      });
+    });
+
+    it("ficha v2 válida com mpPublicKey e vapidPublicKey null (recurso desligado, não fecha a loja): NÃO lança", async () => {
+      const ficha = fichaValida();
+      injetarFicha(
+        JSON.stringify({
+          ...ficha,
+          configuracao: {
+            ...ficha.configuracao,
+            mpPublicKey: null,
+            vapidPublicKey: null,
+            pagamentoOnline: false,
+          },
+        }),
+      );
+      const { lerFichaDaLoja } = await importarLimpo();
+
+      expect(lerFichaDaLoja()?.configuracao).toEqual({
+        mpPublicKey: null,
+        vapidPublicKey: null,
+        pagamentoOnline: false,
+        manutencao: false,
+      });
+    });
+
+    it("`configuracao` ausente (ficha v1 antiga, sem o campo): lança IDENTITY_FICHA_INVALID", async () => {
+      const ficha = fichaValida();
+      const { configuracao: _removido, ...fichaSemConfiguracao } = ficha;
+      injetarFicha(JSON.stringify(fichaSemConfiguracao));
+      const { lerFichaDaLoja } = await importarLimpo();
+
+      expect(() => lerFichaDaLoja()).toThrow("IDENTITY_FICHA_INVALID");
+    });
+
+    it("`configuracao` como `null`: lança IDENTITY_FICHA_INVALID", async () => {
+      injetarFicha(JSON.stringify({ ...fichaValida(), configuracao: null }));
+      const { lerFichaDaLoja } = await importarLimpo();
+
+      expect(() => lerFichaDaLoja()).toThrow("IDENTITY_FICHA_INVALID");
+    });
+
+    it("`configuracao.mpPublicKey` string vazia (nunca vazia — ou preenchida, ou `null`): lança IDENTITY_FICHA_INVALID", async () => {
+      const ficha = fichaValida();
+      injetarFicha(
+        JSON.stringify({
+          ...ficha,
+          configuracao: { ...ficha.configuracao, mpPublicKey: "" },
+        }),
+      );
+      const { lerFichaDaLoja } = await importarLimpo();
+
+      expect(() => lerFichaDaLoja()).toThrow("IDENTITY_FICHA_INVALID");
+    });
+
+    it("`configuracao.vapidPublicKey` como número (fora do contrato): lança IDENTITY_FICHA_INVALID", async () => {
+      const ficha = fichaValida();
+      injetarFicha(
+        JSON.stringify({
+          ...ficha,
+          configuracao: { ...ficha.configuracao, vapidPublicKey: 123 },
+        }),
+      );
+      const { lerFichaDaLoja } = await importarLimpo();
+
+      expect(() => lerFichaDaLoja()).toThrow("IDENTITY_FICHA_INVALID");
+    });
+
+    it('`configuracao.pagamentoOnline` como string `"true"` (não é boolean): lança IDENTITY_FICHA_INVALID', async () => {
+      const ficha = fichaValida();
+      injetarFicha(
+        JSON.stringify({
+          ...ficha,
+          configuracao: { ...ficha.configuracao, pagamentoOnline: "true" },
+        }),
+      );
+      const { lerFichaDaLoja } = await importarLimpo();
+
+      expect(() => lerFichaDaLoja()).toThrow("IDENTITY_FICHA_INVALID");
+    });
+
+    it("`configuracao.manutencao` ausente: lança IDENTITY_FICHA_INVALID", async () => {
+      const ficha = fichaValida();
+      const { manutencao: _removido, ...configuracaoSemManutencao } =
+        ficha.configuracao;
+      injetarFicha(
+        JSON.stringify({
+          ...ficha,
+          configuracao: configuracaoSemManutencao,
+        }),
+      );
+      const { lerFichaDaLoja } = await importarLimpo();
+
+      expect(() => lerFichaDaLoja()).toThrow("IDENTITY_FICHA_INVALID");
+    });
   });
 });

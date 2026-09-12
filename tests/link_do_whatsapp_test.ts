@@ -173,12 +173,28 @@ function fetchRoboComFicha(
     const url = new URL(input instanceof Request ? input.url : String(input));
     urlsCapturadas.push(url.toString());
     if (url.pathname === "/rest/v1/v_store_config") {
-      if (url.searchParams.get("select") === "dominio_publico") {
+      // ETAPA 3: o `select` da consulta de concordância/configuração passou
+      // a pedir 5 colunas numa chamada só (`dominio_publico` + os 4 valores
+      // de `configuracao`, `SELECT_CONFIGURACAO_PUBLICA` em porteiro.ts) —
+      // `startsWith` em vez do literal exato para não duplicar a lista de
+      // colunas neste arquivo e não quebrar se a ordem mudar lá.
+      if (url.searchParams.get("select")?.startsWith("dominio_publico")) {
         return Promise.resolve(
-          new Response(JSON.stringify([{ dominio_publico: HOST_LOJA_TESTE }]), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }),
+          new Response(
+            JSON.stringify([
+              {
+                dominio_publico: HOST_LOJA_TESTE,
+                mp_public_key: null,
+                vapid_public_key: null,
+                pagamento_online: false,
+                manutencao: false,
+              },
+            ]),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
         );
       }
       return Promise.resolve(
@@ -549,9 +565,16 @@ Deno.test("middleware: nome com aspas e < continua com a meta tag bem formada", 
   assertStringIncludes(html, "&lt;especial&gt;");
 });
 
-// ── 9. Produto sem imagem: cai no fallback resolvido, não no literal fixo.
+// ── 9. Produto sem imagem: cai no fallback da FICHA (Storage da própria
+// loja, `ficha.identidade.localUrls.og`), não mais em `resolverEnderecoPublico`
+// (mudança de código do 11/09/2026 — o robô montava `og:image` colando
+// `resolverEnderecoPublico()` com `/og-image.png`; agora usa a URL absoluta
+// do Storage que a ficha já carrega, a mesma que `injetarFichaNoHtml` usa
+// para o navegador — "uma trava, um lugar" também para este dado).
+// `VITE_APP_URL` continua no ambiente do teste só para provar que deixou de
+// influenciar o resultado.
 
-Deno.test("middleware: produto sem imagem usa o og-image do endereço público resolvido", async () => {
+Deno.test("middleware: produto sem imagem usa o og-image do Storage da ficha (localUrls.og), não mais o endereço público resolvido", async () => {
   const urls: string[] = [];
   const produto = produtoFake({ imagem_url: null, imagem_urls: null });
 
@@ -564,13 +587,18 @@ Deno.test("middleware: produto sem imagem usa o og-image do endereço público r
   );
 
   const html = await resp.text();
+  const ogEsperado = `${ORIGEM_SUPABASE_VALIDA}/storage/v1/object/public/branding/v1/${HASH_FIXTURE}/og.png`;
   assertStringIncludes(
     html,
-    `<meta property="og:image" content="https://loja-savy.vercel.app/og-image.png" />`,
+    `<meta property="og:image" content="${ogEsperado}" />`,
   );
   assert(
     !html.includes("ickous-marketplace.vercel.app/og-image.png"),
-    "o fallback caiu no literal fixo da IKCOUS em vez do endereço público resolvido da loja",
+    "o fallback caiu no literal fixo da IKCOUS em vez da URL do Storage da ficha",
+  );
+  assert(
+    !html.includes("loja-savy.vercel.app/og-image.png"),
+    "o fallback ainda depende de resolverEnderecoPublico em vez da ficha",
   );
 });
 

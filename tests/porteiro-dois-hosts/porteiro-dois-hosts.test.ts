@@ -27,6 +27,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  CONFIGURACAO_ESPERADA,
   DIST_TEST_DIR,
   HOSTS,
   IDENTIDADES_ESPERADAS,
@@ -166,6 +167,23 @@ describe("porteiro-dois-hosts — prova ponta a ponta (T6, ADENDO D)", () => {
     const ficha = lerDataBlock(html);
     expect(ficha.host).toBe(HOSTS.D);
     expect(ficha.conexao.supabaseUrl).toBe(esperado.origem);
+  });
+
+  // ETAPA 3 (11/09/2026): `configuracao` viaja na ficha real, montada pelo
+  // `middleware()` de verdade, num build único — Loja A com pagamento
+  // LIGADO (`CONFIGURACAO_ESPERADA`, servidor.ts), schemaVersion 2.
+  it("loja-a.localhost: a ficha carrega schemaVersion 2 e configuracao com a chave do Mercado Pago da PRÓPRIA loja", async () => {
+    const resp = await pedir(servidor.porta, HOSTS.A, "/");
+    expect(resp.status).toBe(200);
+    const ficha = lerDataBlock(resp.corpo.toString("utf-8"));
+    const esperado = CONFIGURACAO_ESPERADA[HOSTS.A]!;
+    expect((ficha as any).schemaVersion).toBe(2);
+    expect((ficha as any).configuracao).toEqual({
+      mpPublicKey: esperado.mpPublicKey,
+      vapidPublicKey: esperado.vapidPublicKey,
+      pagamentoOnline: esperado.pagamentoOnline,
+      manutencao: esperado.manutencao,
+    });
   });
 
   it("loja-b.localhost: ficha PRÓPRIA, diferente da de A (mesmo build assado)", async () => {

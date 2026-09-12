@@ -7,13 +7,14 @@ import { StrategicIntelligenceBlocks } from "@/components/admin/dashboard/Strate
 import { TopProductsList } from "@/components/admin/dashboard/TopProductsList";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
+import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useStore } from "@/contexts/StoreContext";
 import { type DashboardStats, useAnalytics } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
-import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { pagamentoOnlineLigado } from "@/lib/flags";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -67,8 +68,8 @@ function SecaoLojaProntaEEstoqueBaixo({
     <LojaProntaEEstoqueBaixo
       stats={stats}
       originCep={config.originCep}
-      ligado={PAGAMENTO_ONLINE_LIGADO}
-      chaveOk={pixConfiguradoNoBuild(import.meta.env.VITE_MP_PUBLIC_KEY)}
+      ligado={pagamentoOnlineLigado()}
+      chaveOk={pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined)}
       produtos={products}
       configCarregando={!isLoaded}
       produtosCarregando={loadingProducts}

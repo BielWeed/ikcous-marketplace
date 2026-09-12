@@ -1419,8 +1419,11 @@ export type Database = {
           local_cep_range: string | null;
           local_delivery_fee: number;
           logo_url: string | null;
+          manutencao: boolean;
           min_app_version: string | null;
+          mp_public_key: string | null;
           origin_cep: string | null;
+          pagamento_online: boolean;
           primary_color: string | null;
           secondary_color: string | null;
           accent_color: string | null;
@@ -1436,6 +1439,7 @@ export type Database = {
           store_state: string | null;
           theme_mode: string | null;
           updated_at: string | null;
+          vapid_public_key: string | null;
           whatsapp_number: string | null;
         };
         Insert: {
@@ -1451,8 +1455,11 @@ export type Database = {
           local_cep_range?: string | null;
           local_delivery_fee?: number;
           logo_url?: string | null;
+          manutencao?: boolean;
           min_app_version?: string | null;
+          mp_public_key?: string | null;
           origin_cep?: string | null;
+          pagamento_online?: boolean;
           primary_color?: string | null;
           secondary_color?: string | null;
           accent_color?: string | null;
@@ -1468,6 +1475,7 @@ export type Database = {
           store_state?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
+          vapid_public_key?: string | null;
           whatsapp_number?: string | null;
         };
         Update: {
@@ -1483,8 +1491,11 @@ export type Database = {
           local_cep_range?: string | null;
           local_delivery_fee?: number;
           logo_url?: string | null;
+          manutencao?: boolean;
           min_app_version?: string | null;
+          mp_public_key?: string | null;
           origin_cep?: string | null;
+          pagamento_online?: boolean;
           primary_color?: string | null;
           secondary_color?: string | null;
           accent_color?: string | null;
@@ -1500,6 +1511,7 @@ export type Database = {
           store_state?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
+          vapid_public_key?: string | null;
           whatsapp_number?: string | null;
         };
         Relationships: [];
@@ -1635,8 +1647,11 @@ export type Database = {
           local_cep_range: string | null;
           local_delivery_fee: number | null;
           logo_url: string | null;
+          manutencao: boolean | null;
           min_app_version: string | null;
+          mp_public_key: string | null;
           origin_cep: string | null;
+          pagamento_online: boolean | null;
           primary_color: string | null;
           secondary_color: string | null;
           accent_color: string | null;
@@ -1652,6 +1667,7 @@ export type Database = {
           store_state: string | null;
           theme_mode: string | null;
           updated_at: string | null;
+          vapid_public_key: string | null;
           whatsapp_number: string | null;
         };
         Insert: {
@@ -1667,8 +1683,11 @@ export type Database = {
           local_cep_range?: string | null;
           local_delivery_fee?: number | null;
           logo_url?: string | null;
+          manutencao?: boolean | null;
           min_app_version?: string | null;
+          mp_public_key?: string | null;
           origin_cep?: string | null;
+          pagamento_online?: boolean | null;
           primary_color?: string | null;
           secondary_color?: string | null;
           accent_color?: string | null;
@@ -1684,6 +1703,7 @@ export type Database = {
           store_state?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
+          vapid_public_key?: string | null;
           whatsapp_number?: string | null;
         };
         Update: {
@@ -1699,8 +1719,11 @@ export type Database = {
           local_cep_range?: string | null;
           local_delivery_fee?: number | null;
           logo_url?: string | null;
+          manutencao?: boolean | null;
           min_app_version?: string | null;
+          mp_public_key?: string | null;
           origin_cep?: string | null;
+          pagamento_online?: boolean | null;
           primary_color?: string | null;
           secondary_color?: string | null;
           accent_color?: string | null;
@@ -1716,6 +1739,7 @@ export type Database = {
           store_state?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
+          vapid_public_key?: string | null;
           whatsapp_number?: string | null;
         };
         Relationships: [];
