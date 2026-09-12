@@ -92,7 +92,7 @@ function pedidoFake(
     paymentMethod?: PaymentMethod;
     paymentStatus?: Order["paymentStatus"];
     pagamentoRecebidoEm?: string | null;
-    trackingCode?: string | null;
+    trackingCode?: string;
   } = {},
 ): Order {
   return {
@@ -119,7 +119,10 @@ function pedidoFake(
     cancelledAfterShipping: false,
     pagamentoRecebidoEm: overrides.pagamentoRecebidoEm ?? null,
     pagamentoRecebidoPor: null,
-    trackingCode: overrides.trackingCode ?? null,
+    // `Order["trackingCode"]` é `string | undefined` (opcional, NÃO aceita
+    // null — diferente de `pagamentoRecebidoEm`): `?? null` aqui derrubava
+    // o `tsc -b` do typecheck/build. `undefined` já casa com o opcional.
+    trackingCode: overrides.trackingCode,
   };
 }
 
