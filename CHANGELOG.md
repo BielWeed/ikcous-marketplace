@@ -25,10 +25,10 @@ Reúne o PR #545.
   vendo** (PR #545): a chave pública vem da ficha da loja, não mais da
   publicação. Nada muda no fluxo de compra.
 - **Notificações do aplicativo instalado usam a chave da loja certa**
-  (PR #545): a chave pública de notificação (VAPID) vem da ficha. Quem já
-  tinha aceitado notificações na loja principal precisa aceitar de novo se a
-  chave gravada na ficha for diferente da que estava na publicação (a antiga
-  estava trocada).
+  (PR #545): a chave pública de notificação (VAPID) vem da ficha. Na loja
+  principal, o valor gravado na ficha é o mesmo que a publicação anterior já
+  usava e o mesmo do servidor de envio: quem já aceitou notificações não
+  precisa fazer nada.
 - **Endereço que não é de nenhuma loja mostra "Loja em manutenção"**
   (PR #545), nunca a loja errada.
 
