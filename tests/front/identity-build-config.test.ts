@@ -381,6 +381,119 @@ describe("fronteira da configuração de identidade", () => {
     vi.stubGlobal("fetch", async () => new Response("{}", { status: 403 }));
     await expect(config()).rejects.toThrow("IDENTITY_PERMISSION");
   });
+  // Achado 4 da rodada de correção (revisor Opus): catraca contra o
+  // endereço assado errado quando o build roda NA VERCEL sem VITE_APP_URL —
+  // a hub já neutralizou o sitemap errado cadastrando VITE_APP_URL no
+  // projeto Vercel (PR #545); esta trava impede a repetição se a variável
+  // sumir de novo (`VERCEL_PROJECT_PRODUCTION_URL` é o domínio de produção
+  // MAIS CURTO do projeto e, num projeto multi-loja, pode apontar para
+  // outra loja).
+  it("build NA VERCEL (VERCEL=1) sem VITE_APP_URL -> lança antes da rede, mensagem nomeia a causa", async () => {
+    fixtureEnv();
+    vi.stubEnv("IKCOUS_IDENTITY_MODE", "database");
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "outra-loja.vercel.app");
+    vi.stubGlobal("fetch", () => {
+      throw new Error("network forbidden");
+    });
+    await expect(config()).rejects.toThrow(
+      "IDENTITY_PUBLIC_URL: VITE_APP_URL obrigatorio na Vercel - VERCEL_PROJECT_PRODUCTION_URL e o dominio de producao MAIS CURTO do projeto e num projeto multi-loja aponta para outra loja",
+    );
+  });
+
+  it("build NA VERCEL (VERCEL=1) com VITE_APP_URL só de espaços -> a MESMA mensagem da catraca (em branco conta como ausente)", async () => {
+    fixtureEnv();
+    vi.stubEnv("IKCOUS_IDENTITY_MODE", "database");
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("VITE_APP_URL", "   ");
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "outra-loja.vercel.app");
+    vi.stubGlobal("fetch", () => {
+      throw new Error("network forbidden");
+    });
+    await expect(config()).rejects.toThrow(
+      "IDENTITY_PUBLIC_URL: VITE_APP_URL obrigatorio na Vercel",
+    );
+  });
+
+  it("build NA VERCEL (VERCEL=1) COM VITE_APP_URL -> usa ela normalmente (a trava só cobra a ausência)", async () => {
+    fixtureEnv();
+    vi.stubEnv("IKCOUS_IDENTITY_MODE", "database");
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("VITE_APP_URL", "https://loja-exclusiva.invalid");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://abcdefghijklmnopqrst.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_fixture_only");
+    const fixture = await createIdentityBuildFixture("oceano");
+    const { identity } = fixture;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname === "/rest/v1/v_store_config")
+        return new Response(
+          JSON.stringify([
+            {
+              store_name: identity.storeName,
+              store_city: identity.city,
+              store_state: identity.state,
+              logo_url: identity.urls.header,
+              primary_color: identity.theme.primary,
+              secondary_color: identity.theme.secondary,
+              accent_color: identity.theme.accent,
+              branding_assets: identity.assets,
+            },
+          ]),
+          { headers: { "content-type": "application/json" } },
+        );
+      const file = fixture.files.find((item) =>
+        url.pathname.endsWith(item.path),
+      );
+      if (!file) throw new Error("unexpected request");
+      return new Response(Buffer.from(file.bytes), {
+        headers: { "content-type": file.mediaType },
+      });
+    });
+    const result = await config();
+    const snapshot = JSON.parse(result.define!.__STORE_IDENTITY__);
+    expect(snapshot.publicUrl).toBe("https://loja-exclusiva.invalid");
+  });
+
+  it("sem VERCEL (fora da Vercel), só VERCEL_PROJECT_PRODUCTION_URL -> continua funcionando como hoje (a trava só cobra dentro da Vercel)", async () => {
+    fixtureEnv();
+    vi.stubEnv("IKCOUS_IDENTITY_MODE", "database");
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "loja-exclusiva.invalid");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://abcdefghijklmnopqrst.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_fixture_only");
+    const fixture = await createIdentityBuildFixture("oceano");
+    const { identity } = fixture;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname === "/rest/v1/v_store_config")
+        return new Response(
+          JSON.stringify([
+            {
+              store_name: identity.storeName,
+              store_city: identity.city,
+              store_state: identity.state,
+              logo_url: identity.urls.header,
+              primary_color: identity.theme.primary,
+              secondary_color: identity.theme.secondary,
+              accent_color: identity.theme.accent,
+              branding_assets: identity.assets,
+            },
+          ]),
+          { headers: { "content-type": "application/json" } },
+        );
+      const file = fixture.files.find((item) =>
+        url.pathname.endsWith(item.path),
+      );
+      if (!file) throw new Error("unexpected request");
+      return new Response(Buffer.from(file.bytes), {
+        headers: { "content-type": file.mediaType },
+      });
+    });
+    const result = await config();
+    const snapshot = JSON.parse(result.define!.__STORE_IDENTITY__);
+    expect(snapshot.publicUrl).toBe("https://loja-exclusiva.invalid");
+  });
+
   it("override Rollup de diretório não contorna dist-test", async () => {
     fixtureEnv();
     const staging = vi.spyOn(fs, "mkdtemp");

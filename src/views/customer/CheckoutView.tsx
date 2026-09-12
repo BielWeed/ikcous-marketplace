@@ -21,7 +21,7 @@ import {
   criarGerenciadorDeChave,
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
-import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { pagamentoOnlineLigado } from "@/lib/flags";
 import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -2191,7 +2191,7 @@ export function CheckoutView({
             className="grid grid-cols-1 gap-2.5 p-4"
           >
             {[
-              ...(PAGAMENTO_ONLINE_LIGADO
+              ...(pagamentoOnlineLigado()
                 ? [
                     {
                       value: "online" as PaymentMethod,

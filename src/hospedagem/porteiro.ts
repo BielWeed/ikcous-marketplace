@@ -1,4 +1,7 @@
-import type { FichaDaLoja } from "../config/fichaDaLojaContract";
+import type {
+  ConfiguracaoDaLoja,
+  FichaDaLoja,
+} from "../config/fichaDaLojaContract";
 import { CAMINHO_IDENTIDADE_JSON } from "../config/fichaDaLojaContract";
 // O PORTEIRO — o `middleware.ts` estendido que monta o HTML de cada loja na
 // borda, por HOST, a partir de um único build compartilhado (etapa 2 da
@@ -132,7 +135,13 @@ export interface AmbientePorteiro {
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly VERCEL_ENV?: string;
-  readonly VERCEL_PROJECT_PRODUCTION_URL?: string;
+  /** A NOSSA variável (cadastrada no projeto Vercel da principal) — o
+   * `dominio_publico` da loja PRINCIPAL, que é a loja que toda prévia de PR
+   * mostra (em preview a caderneta está ausente, então o fallback é sempre
+   * o banco da principal). Ver o comentário de `decidirConcordancia` para o
+   * porquê de existir (troca de uma variável da própria Vercel que se
+   * mostrou instável num projeto multi-loja). */
+  readonly IKCOUS_DOMINIO_PRINCIPAL?: string;
 }
 
 export interface ConexaoResolvida {
@@ -145,11 +154,20 @@ export interface ConexaoResolvida {
  * Estado da caderneta central NESTA resolução — "cair em (b) nunca é
  * silencioso" (rodada B, adendo): `hit` = a caderneta respondeu a loja;
  * `miss` = zero linhas (host não cadastrado, ou `ativa = false`); `erro` =
- * HTTP não-2xx, resposta malformada, ou falha de rede; `ausente` = as três
- * variáveis (`IKCOUS_FROTA_URL`/`_APIKEY`/`_CHAVE`) não estão TODAS
- * configuradas, ou não há implementação injetada. `miss`/`erro`/`ausente`
- * caem no caminho (b) — o ambiente do próprio projeto. `atenderPorteiro`
- * escreve este valor em `x-ikcous-caderneta` em toda resposta que produz.
+ * HTTP não-2xx, resposta malformada, falha de rede da RPC, OU chave
+ * anômala devolvida (papel que não é `publishable`/`anon`) — dois motivos
+ * BEM diferentes que compartilham o rótulo (ver o comentário de
+ * `resolverConexao` para a distinção); `ausente` = as três variáveis
+ * (`IKCOUS_FROTA_URL`/`_APIKEY`/`_CHAVE`) não estão TODAS configuradas, ou
+ * não há implementação injetada. SÓ `ausente` cai no caminho (b) — o
+ * ambiente do próprio projeto. ETAPA 3 (ADENDO A.3 + ADENDO B.1, revisor
+ * Opus de T3): com a caderneta configurada, `miss` e chave anômala fecham
+ * a loja NA HORA (decisão); uma falha de VERDADE da RPC (rotulada `erro`
+ * também) NÃO fecha — herda o stale-if-error, porque a caderneta É o
+ * banco da principal e "erro" ali não pode derrubar a frota inteira em
+ * 60 s. `atenderPorteiro` escreve este valor em `x-ikcous-caderneta` em
+ * toda resposta que produz — inclusive quando a resposta final é a ficha
+ * antiga servida por stale-if-error.
  */
 export type EstadoCaderneta = "hit" | "miss" | "erro" | "ausente";
 
@@ -181,23 +199,72 @@ export type ResolverLojaNaCaderneta = (
 ) => Promise<ResultadoCaderneta>;
 
 /**
+ * A RPC `resolver_loja` FALHOU DE VERDADE (HTTP não-2xx, rede, resposta
+ * malformada) — nunca uma decisão (`miss`, chave anômala). ADENDO B, item
+ * 1 (11/09/2026, crítica do lote + revisor Opus de T3): isto NUNCA pode
+ * virar `DecisaoPorteiro`, porque a caderneta É o banco da PRINCIPAL —
+ * tratar `erro` de RPC como decisão fecharia TODAS as lojas (a principal
+ * inclusive) 60 s depois de uma simples queda do Supabase dela
+ * (`CACHE_FRESCO_MS`), invertendo "loja conhecida sobrevive à queda do
+ * cadastro" sem ninguém ter decidido inverter. `resolverConexao` LANÇA
+ * isto em vez de devolver `{conexao: null, caderneta: "erro"}` — é o que
+ * distingue este caso, dentro do módulo, do caso (b) abaixo (chave
+ * anômala), que devolve o mesmo `caderneta: "erro"` só que por um RETORNO
+ * normal (decisão, fecha a loja na hora). `resolverFichaViaRede` captura
+ * esta exceção e reembala em `FalhaResolucaoPorteiro` — o MESMO canal que
+ * já existe para falha de rede ao ler identidade/configuração — para
+ * herdar o stale-if-error (`CACHE_STALE_MAX_MS`, 1h): cache quente → 200
+ * com a última ficha boa; sem cache quente → 503 `banco-indisponivel`.
+ * Ambos os campos (`caderneta`, `motivo`) que `resolverFichaViaRede`
+ * precisa vêm junto na exceção, para quem a captura não ter que adivinhar
+ * o estado.
+ */
+export class FalhaRpcCaderneta extends Error {
+  readonly caderneta = "erro" as const;
+  constructor() {
+    super(
+      "PORTEIRO_CADERNETA: falha da RPC resolver_loja (HTTP não-2xx, rede ou resposta malformada)",
+    );
+  }
+}
+
+/**
  * Escolhe QUAL banco o porteiro vai perguntar. Caminho (a): a caderneta
  * central (`resolver_loja`), só se as TRÊS variáveis (`IKCOUS_FROTA_URL`,
  * `IKCOUS_FROTA_APIKEY`, `IKCOUS_FROTA_CHAVE`) estiverem no ambiente do
  * hospedeiro E uma implementação estiver injetada. Caminho (b): o ambiente
  * do próprio projeto Vercel (mesma limpeza e precedência de
  * `resolverValoresPublicosSupabase` — publishable primeiro, depois a `anon`
- * legada). (b) também é o destino quando (a) está configurada mas devolve
- * `miss` ou `erro` — "loja conhecida sobrevive à queda do cadastro"
- * (parecer, item 7).
+ * legada) — só quando a caderneta está AUSENTE (as três variáveis não
+ * configuradas, ou nenhuma implementação injetada).
  *
- * NUNCA repassa uma chave que não seja pública: `assertPublicSupabaseKey`
- * recusa `service_role` e qualquer coisa que não seja `publishable` ou
- * `anon` — mesmo vinda da caderneta (defesa em profundidade contra um bug
- * na RPC ou no cadastro). Esse caso é rotulado `erro` (não `hit`, não
- * `miss`): é uma resposta ANÔMALA da caderneta, não uma ausência normal —
- * SUPOSIÇÃO registrada no relatório da tarefa, o brief não nomeou este
- * quinto caso explicitamente.
+ * MUDANÇA DA ETAPA 3 (ADENDO A.3 + ADENDO B.1, 11/09/2026, crítico
+ * 3/socio a.1 + crítica do lote item 1/revisor Opus de T3): com a
+ * caderneta CONFIGURADA, um host DESCONHECIDO nunca mais cai em (b) — a
+ * versão anterior ("loja conhecida sobrevive à queda do cadastro", parecer
+ * da etapa 2, item 7) fazia um host DESCONHECIDO da caderneta cair no
+ * banco do PRÓPRIO PROJETO hospedeiro — que, com N lojas compartilhando o
+ * mesmo build, é sempre a loja PRINCIPAL: um host sem cadastro serviria
+ * silenciosamente a loja errada. Dois casos de "não consegui confirmar a
+ * loja" continuam fechando a loja NA HORA (decisão, `conexao: null`):
+ *
+ *   (a) `miss` — host não cadastrado (zero linhas, ou `ativa = false`);
+ *   (b) chave devolvida pela RPC que NÃO é `publishable`/`anon` —
+ *       resposta ANÔMALA da caderneta (defesa em profundidade: NUNCA
+ *       repassa uma chave que não seja pública — `assertPublicSupabaseKey`
+ *       recusa `service_role` e qualquer coisa fora do papel esperado,
+ *       mesmo vinda da fonte de confiança), rotulada `erro` mas tratada
+ *       como decisão, não como falha de rede.
+ *
+ * `resolverFichaViaRede` trata os dois como `DecisaoPorteiro("sem-loja",
+ * caderneta)`, virando 503 `sem-loja` com `x-ikcous-caderneta` dizendo
+ * qual dos dois foi.
+ *
+ * O TERCEIRO caso — (c) a RPC falhou DE VERDADE (HTTP não-2xx, rede, ou
+ * resposta malformada) — NÃO segue o mesmo caminho (ADENDO B, item 1): ver
+ * `FalhaRpcCaderneta` acima para o porquê e o mecanismo (lança em vez de
+ * devolver, para `resolverFichaViaRede` herdar o stale-if-error em vez de
+ * fechar a loja na hora).
  */
 export async function resolverConexao(
   host: string,
@@ -232,12 +299,12 @@ export async function resolverConexao(
   }
 
   const resultado = await caderneta(host, frotaUrl, frotaApikey, frotaChave);
-  if (resultado.tipo === "miss")
-    return { conexao: doProjeto(), caderneta: "miss" };
-  if (resultado.tipo === "erro")
-    return { conexao: doProjeto(), caderneta: "erro" };
+  if (resultado.tipo === "miss") return { conexao: null, caderneta: "miss" };
+  // (c) falha DE VERDADE da RPC — lança, nunca devolve: ver
+  // `FalhaRpcCaderneta` e o comentário desta função.
+  if (resultado.tipo === "erro") throw new FalhaRpcCaderneta();
   if (!chaveEhPublica(resultado.conexao.publishableKey))
-    return { conexao: doProjeto(), caderneta: "erro" };
+    return { conexao: null, caderneta: "erro" };
   return { conexao: resultado.conexao, caderneta: "hit" };
 }
 
@@ -256,7 +323,7 @@ export interface ParametrosConcordancia {
   readonly host: string;
   readonly dominioPublico: string | null;
   readonly vercelEnv: string | undefined;
-  readonly producaoUrl: string | undefined;
+  readonly dominioPrincipal: string | undefined;
 }
 
 /**
@@ -266,14 +333,31 @@ export interface ParametrosConcordancia {
  * "sem-loja", nunca "ok"). Fora de produção (preview de PR), a Vercel serve
  * em hosts do tipo `*-git-*.vercel.app` que NUNCA vão bater com
  * `dominio_publico`; a única concessão é aceitar quando o banco concorda
- * com `VERCEL_PROJECT_PRODUCTION_URL` — o domínio de produção do MESMO
- * projeto, que a Vercel injeta e o visitante não controla. Essa concessão
- * só vale quando `vercelEnv === "preview"` (rodada B, achado do revisor: a
- * rodada A relaxava para QUALQUER `vercelEnv` diferente de `"production"`,
- * inclusive `"development"` — um ambiente de teste local não é preview de
- * PR e não deveria ganhar o mesmo relaxamento) e `producaoUrl` não vazio.
- * `vercelEnv === "production"` ou `undefined` NUNCA relaxam — falha fechada
- * por padrão, nunca por omissão de env.
+ * com `IKCOUS_DOMINIO_PRINCIPAL` — o `dominio_publico` da loja PRINCIPAL,
+ * que é a loja que TODA prévia de PR mostra (em preview a caderneta central
+ * está ausente, então o fallback cai sempre no banco da principal). Essa
+ * concessão só vale quando `vercelEnv === "preview"` (rodada B, achado do
+ * revisor: a rodada A relaxava para QUALQUER `vercelEnv` diferente de
+ * `"production"`, inclusive `"development"` — um ambiente de teste local
+ * não é preview de PR e não deveria ganhar o mesmo relaxamento) e
+ * `dominioPrincipal` não vazio. `vercelEnv === "production"` ou `undefined`
+ * NUNCA relaxam — falha fechada por padrão, nunca por omissão de env.
+ *
+ * POR QUE NÃO É MAIS `VERCEL_PROJECT_PRODUCTION_URL` (correção medida em
+ * 12/09/2026, PR #545): a doc oficial da Vercel descreve essa variável como
+ * "o domínio de produção MAIS CURTO do projeto" — não "o domínio DESTA
+ * loja". Com o projeto principal passando a hospedar TODAS as lojas (cada
+ * loja ganha um alias `.vercel.app` extra no MESMO projeto, etapa 2 da
+ * escala), a variável passou a devolver o nome mais curto entre TODAS as
+ * lojas, não necessariamente o da principal — medido na prévia do PR #545:
+ * a variável valia `savycollection.vercel.app` (24 letras) em vez de
+ * `ickous-marketplace.vercel.app` (29), o `sitemap.xml` da prévia foi
+ * assado com o domínio errado, e a prévia respondia `/` 503 com
+ * `x-ikcous-porteiro: discorda`. Qualquer regra que dependa dessa variável
+ * quebra assim que o projeto vira multi-loja. A correção troca a fonte por
+ * `IKCOUS_DOMINIO_PRINCIPAL`, uma variável NOSSA que sempre vale o
+ * `dominio_publico` real da principal, cadastrada à mão no projeto — nunca
+ * inferida pela Vercel.
  *
  * 4º resultado (11/09/2026, decisão do sócio aprovada pelo Gabriel — brief
  * `20260911-brief-aliases-vercel-encaminham.md`): em PRODUÇÃO, um alias
@@ -289,11 +373,14 @@ export interface ParametrosConcordancia {
  * `.vercel.app` fora de produção) continua em `discorda`, byte a byte como
  * antes desta rodada. A regra 3 (dominio_publico não-nulo/não-vazio) já foi
  * checada acima e sempre vence — `sem-loja` nunca vira `encaminha`.
+ * `dominioPrincipal` NUNCA entra nesta regra — produção decide só pelo
+ * sufixo do host, mesmo que `dominioPrincipal` bata com o host ou com o
+ * `dominio_publico`.
  */
 export function decidirConcordancia(
   params: ParametrosConcordancia,
 ): "ok" | "sem-loja" | "discorda" | "encaminha" {
-  const { host, dominioPublico, vercelEnv, producaoUrl } = params;
+  const { host, dominioPublico, vercelEnv, dominioPrincipal } = params;
   if (dominioPublico === null || dominioPublico === "") return "sem-loja";
   const hostMinusculo = host.toLowerCase();
   const dominioMinusculo = dominioPublico.toLowerCase();
@@ -301,9 +388,11 @@ export function decidirConcordancia(
   const ehPreview = vercelEnv === "preview";
   if (
     ehPreview &&
-    producaoUrl !== undefined &&
-    producaoUrl !== "" &&
-    producaoUrl.toLowerCase() === dominioMinusculo
+    dominioPrincipal !== undefined &&
+    // Redundante com a regra 3 (`dominioMinusculo !== ""`, checada acima):
+    // vazio nunca bate um `dominio_publico` não vazio. Fica só por legibilidade.
+    dominioPrincipal !== "" &&
+    dominioPrincipal.toLowerCase() === dominioMinusculo
   ) {
     return "ok";
   }
@@ -320,17 +409,27 @@ export interface EntradaMontarFicha {
   readonly identity: PublicStoreIdentity;
   readonly publicUrl: string;
   readonly conexao: ConexaoResolvida;
+  /** Os 4 valores públicos por loja (etapa 3 da escala, 11/09/2026) — lidos
+   * na MESMA consulta que `dominio_publico` (`lerConfiguracaoPublica`,
+   * abaixo). */
+  readonly configuracao: ConfiguracaoDaLoja;
 }
 
 /** Compõe a `FichaDaLoja` a partir do que já foi lido/decidido. Assíncrona
  * só por causa de `identityRevision` (hash SHA-256, determinístico e sem
- * rede) — sem outro efeito colateral. */
+ * rede) — sem outro efeito colateral.
+ *
+ * `schemaVersion: 2` (ADENDO A.6): a ficha ganhou o bloco `configuracao` —
+ * bump de versão, não campo opcional, porque `/identidade.json` sobrevive
+ * no cache do service worker entre deploys e uma ficha v1 (sem
+ * `configuracao`) TEM que ser rejeitada pelo leitor (`fichaDaLoja.ts`, T2),
+ * nunca lida como `configuracao: undefined`. */
 export async function montarFicha(
   entrada: EntradaMontarFicha,
 ): Promise<FichaDaLoja> {
-  const { host, identity, publicUrl, conexao } = entrada;
+  const { host, identity, publicUrl, conexao, configuracao } = entrada;
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     host: host.toLowerCase(),
     identidade: {
       identity,
@@ -342,6 +441,7 @@ export async function montarFicha(
       supabaseUrl: conexao.supabaseUrl,
       publishableKey: conexao.publishableKey,
     },
+    configuracao,
   };
 }
 
@@ -427,23 +527,42 @@ export function respostaEncaminhamento(
   });
 }
 
-// ─── lerDominioPublico ──────────────────────────────────────────────────────
+// ─── lerConfiguracaoPublica ─────────────────────────────────────────────────
 //
 // SEPARADO de `readPublicStoreIdentity`: aquela função valida o `select`
 // EXATO da identidade e recusa qualquer outro (`controlledFetch` em
-// `src/lib/publicStoreIdentity.ts`), então a concordância precisa da sua
-// própria chamada a `v_store_config`. T4 ainda não pôs `dominio_publico` na
-// view — até lá, em produção, isto falha (coluna ausente) e o porteiro
-// trata como `banco-indisponivel`; os testes usam um `fetchImpl` dublê que
-// já devolve a coluna, simulando o pós-T4.
+// `src/lib/publicStoreIdentity.ts`), então a concordância e a configuração
+// pública precisam da sua própria chamada a `v_store_config`. Banco sem
+// alguma das 5 colunas (migration não aplicada ainda) → PostgREST 400 (ou
+// linha sem o campo) → o porteiro trata como `banco-indisponivel` (falha
+// fechada); os testes usam um `fetchImpl` dublê que já devolve as 5
+// colunas, simulando o banco pós-migration.
+//
+// ETAPA 3 (11/09/2026, brief T3): esta consulta, que já lia só
+// `dominio_publico` para a concordância (`decidirConcordancia`), passa a
+// pedir NUMA SÓ CHAMADA `dominio_publico,mp_public_key,vapid_public_key,
+// pagamento_online,manutencao` — os 4 valores por loja que a partir de
+// agora viajam na ficha (`configuracao`, `fichaDaLojaContract.ts`, T2) em
+// vez de serem ASSADOS no build. Uma consulta a mais por loja custaria uma
+// chamada extra ao PostgREST por resolução de host; juntar os 5 campos na
+// MESMA chamada que já existia mantém o número de consultas de rede igual
+// ao de antes desta etapa (SUPOSIÇÃO: o brief diz "UMA consulta, como
+// hoje" — "hoje" é lido como "quantas chamadas de rede o porteiro já fazia
+// para dominio_publico", não como "não pode crescer o número de colunas").
+
+/** O `select` exato desta chamada — exportado só para os testes (fixtures
+ * de `fetchImpl`) não hardcoderem a string em 3 arquivos diferentes e
+ * divergirem se a lista de colunas mudar aqui. */
+export const SELECT_CONFIGURACAO_PUBLICA =
+  "dominio_publico,mp_public_key,vapid_public_key,pagamento_online,manutencao";
 
 // MESMO prazo padrão e MESMO teto de bytes que `readPublicStoreIdentity`
 // aplica (`src/lib/publicStoreIdentity.ts`, `withDeadline`/`readBytes`) —
 // não importados de lá porque aquele arquivo não expõe as duas peças
 // internas e não está na lista de arquivos tocáveis desta tarefa; replicado
 // aqui com o mesmo valor (rodada B, item 5 do brief).
-const LER_DOMINIO_PUBLICO_TIMEOUT_MS = 10_000;
-const LER_DOMINIO_PUBLICO_MAX_BYTES = 256 * 1024;
+const LER_CONFIGURACAO_PUBLICA_TIMEOUT_MS = 10_000;
+const LER_CONFIGURACAO_PUBLICA_MAX_BYTES = 256 * 1024;
 
 /** Lê o corpo da resposta sob um teto de bytes, cancelando o stream (nunca
  * materializando o corpo inteiro antes de checar) se o teto for excedido —
@@ -457,7 +576,7 @@ async function lerCorpoComTeto(
   if (!response.body) {
     const texto = await response.text();
     if (new TextEncoder().encode(texto).byteLength > maxBytes)
-      throw new Error("PORTEIRO_DOMINIO_PUBLICO: resposta grande demais");
+      throw new Error("PORTEIRO_CONFIGURACAO_PUBLICA: resposta grande demais");
     return texto;
   }
   const reader = response.body.getReader();
@@ -472,7 +591,9 @@ async function lerCorpoComTeto(
       tamanho += parte.value.byteLength;
       if (tamanho > maxBytes) {
         void reader.cancel().catch(() => undefined);
-        throw new Error("PORTEIRO_DOMINIO_PUBLICO: resposta grande demais");
+        throw new Error(
+          "PORTEIRO_CONFIGURACAO_PUBLICA: resposta grande demais",
+        );
       }
       pedacos.push(parte.value);
     }
@@ -488,12 +609,63 @@ async function lerCorpoComTeto(
   return new TextDecoder().decode(bytes);
 }
 
-async function lerDominioPublicoComSinal(
+export interface ConfiguracaoPublicaResolvida {
+  readonly dominioPublico: string | null;
+  readonly configuracao: ConfiguracaoDaLoja;
+}
+
+/** `string | null` que valida o tipo antes de aceitar — usado para
+ * `dominio_publico`, `mp_public_key` e `vapid_public_key`: as 3 colunas
+ * que podem ser `NULL` no banco (recurso desligado ou host sem loja). */
+function lerColunaTextoOuNull(valor: unknown, coluna: string): string | null {
+  if (valor === null) return null;
+  if (typeof valor !== "string")
+    throw new Error(
+      `PORTEIRO_CONFIGURACAO_PUBLICA: tipo inesperado (${coluna})`,
+    );
+  return valor;
+}
+
+/** Mesma leitura de `lerColunaTextoOuNull`, mas string vazia ou só espaços
+ * também vira `null` — usada SÓ para `mp_public_key`/`vapid_public_key`
+ * (ADENDO A.5, "falha por campo, não por loja"). Defesa em profundidade:
+ * a migration 20261150 não tem CHECK que recuse `''` nestas duas colunas
+ * (conferido no arquivo da migration), então uma gravação manual ou um
+ * script com bug pode deixar `''` no banco. Sem esta normalização, o
+ * porteiro montaria a ficha com `mpPublicKey: ''`, e `configuracaoValida`
+ * (`src/config/fichaDaLoja.ts`, exige `length > 0` para string não-nula)
+ * reprovaria a ficha INTEIRA — derrubando a vitrine inteira por uma chave
+ * vazia, quando o combinado é só desligar o pagamento/push daquele campo.
+ * Não se aplica a `dominio_publico`: aquele já tem a própria regra de
+ * "vazio = sem-loja" em `decidirConcordancia`, que não muda aqui. */
+function lerColunaChavePublicaOuNull(
+  valor: unknown,
+  coluna: string,
+): string | null {
+  const bruto = lerColunaTextoOuNull(valor, coluna);
+  if (bruto === null) return null;
+  return bruto.trim() === "" ? null : bruto;
+}
+
+/** `boolean` estrito — `pagamento_online`/`manutencao` têm `NOT NULL
+ * DEFAULT false` no banco (migration 20261150): nunca deveriam chegar como
+ * `null`, mas um valor fora do tipo (linha corrompida, banco divergente)
+ * fecha a loja pela mesma trava das outras colunas, nunca um `Boolean(x)`
+ * complacente. */
+function lerColunaBooleana(valor: unknown, coluna: string): boolean {
+  if (typeof valor !== "boolean")
+    throw new Error(
+      `PORTEIRO_CONFIGURACAO_PUBLICA: tipo inesperado (${coluna})`,
+    );
+  return valor;
+}
+
+async function lerConfiguracaoPublicaComSinal(
   conexao: ConexaoResolvida,
   fetchImpl: typeof fetch,
   signal: AbortSignal,
-): Promise<string | null> {
-  const url = `${conexao.supabaseUrl}/rest/v1/v_store_config?select=dominio_publico&id=eq.1&limit=2`;
+): Promise<ConfiguracaoPublicaResolvida> {
+  const url = `${conexao.supabaseUrl}/rest/v1/v_store_config?select=${SELECT_CONFIGURACAO_PUBLICA}&id=eq.1&limit=2`;
   const resposta = await fetchImpl(url, {
     headers: {
       apikey: conexao.publishableKey,
@@ -504,27 +676,59 @@ async function lerDominioPublicoComSinal(
     credentials: "omit",
   });
   if (!resposta.ok)
-    throw new Error("PORTEIRO_DOMINIO_PUBLICO: resposta não-ok");
+    throw new Error("PORTEIRO_CONFIGURACAO_PUBLICA: resposta não-ok");
   const texto = await lerCorpoComTeto(
     resposta,
     signal,
-    LER_DOMINIO_PUBLICO_MAX_BYTES,
+    LER_CONFIGURACAO_PUBLICA_MAX_BYTES,
   );
   const linhas: unknown = JSON.parse(texto);
   if (!Array.isArray(linhas) || linhas.length !== 1)
-    throw new Error("PORTEIRO_DOMINIO_PUBLICO: forma inesperada");
+    throw new Error("PORTEIRO_CONFIGURACAO_PUBLICA: forma inesperada");
   const linha = linhas[0];
-  if (
-    linha === null ||
-    typeof linha !== "object" ||
-    !("dominio_publico" in linha)
-  )
-    throw new Error("PORTEIRO_DOMINIO_PUBLICO: coluna ausente");
-  const valor = (linha as { dominio_publico: unknown }).dominio_publico;
-  if (valor === null) return null;
-  if (typeof valor !== "string")
-    throw new Error("PORTEIRO_DOMINIO_PUBLICO: tipo inesperado");
-  return valor;
+  if (linha === null || typeof linha !== "object")
+    throw new Error("PORTEIRO_CONFIGURACAO_PUBLICA: linha inesperada");
+  const registro = linha as Record<string, unknown>;
+  // Banco sem a migration 20261150 (view antiga, sem as 4 colunas novas —
+  // ou qualquer uma das 5 ausente por algum outro motivo) tem de falhar
+  // fechado aqui, ANTES de tentar ler o valor: uma coluna simplesmente
+  // ausente do objeto JSON (PostgREST omite, não manda `null`) passaria
+  // pelos leitores de tipo abaixo como `undefined`, que `lerColunaTextoOuNull`
+  // rejeitaria mesmo assim — mas o erro nomeado aqui é mais claro sobre a
+  // causa real (migration pendente) do que "tipo inesperado".
+  for (const coluna of [
+    "dominio_publico",
+    "mp_public_key",
+    "vapid_public_key",
+    "pagamento_online",
+    "manutencao",
+  ] as const) {
+    if (!(coluna in registro))
+      throw new Error(
+        `PORTEIRO_CONFIGURACAO_PUBLICA: coluna ausente (${coluna})`,
+      );
+  }
+  return {
+    dominioPublico: lerColunaTextoOuNull(
+      registro.dominio_publico,
+      "dominio_publico",
+    ),
+    configuracao: {
+      mpPublicKey: lerColunaChavePublicaOuNull(
+        registro.mp_public_key,
+        "mp_public_key",
+      ),
+      vapidPublicKey: lerColunaChavePublicaOuNull(
+        registro.vapid_public_key,
+        "vapid_public_key",
+      ),
+      pagamentoOnline: lerColunaBooleana(
+        registro.pagamento_online,
+        "pagamento_online",
+      ),
+      manutencao: lerColunaBooleana(registro.manutencao, "manutencao"),
+    },
+  };
 }
 
 /**
@@ -538,21 +742,21 @@ async function lerDominioPublicoComSinal(
  * mesmo que a promessa de rede nunca o faça (mesma forma de `withDeadline`
  * em `publicStoreIdentity.ts`).
  */
-async function lerDominioPublico(
+async function lerConfiguracaoPublica(
   conexao: ConexaoResolvida,
   fetchImpl: typeof fetch,
-): Promise<string | null> {
+): Promise<ConfiguracaoPublicaResolvida> {
   const controller = new AbortController();
   let temporizador: ReturnType<typeof setTimeout> | undefined;
   const prazoEsgotado = new Promise<never>((_resolve, reject) => {
     temporizador = setTimeout(() => {
       controller.abort();
-      reject(new Error("PORTEIRO_DOMINIO_PUBLICO: prazo esgotado"));
-    }, LER_DOMINIO_PUBLICO_TIMEOUT_MS);
+      reject(new Error("PORTEIRO_CONFIGURACAO_PUBLICA: prazo esgotado"));
+    }, LER_CONFIGURACAO_PUBLICA_TIMEOUT_MS);
   });
   try {
     return await Promise.race([
-      lerDominioPublicoComSinal(conexao, fetchImpl, controller.signal),
+      lerConfiguracaoPublicaComSinal(conexao, fetchImpl, controller.signal),
       prazoEsgotado,
     ]);
   } finally {
@@ -645,27 +849,49 @@ async function resolverFichaViaRede(
   ambiente: AmbientePorteiro,
   deps: DependenciasPorteiro,
 ): Promise<FichaResolvida> {
-  const { conexao, caderneta } = await resolverConexao(
-    host,
-    ambiente,
-    deps.resolverNaCaderneta,
-  );
-  if (!conexao) throw new DecisaoPorteiro("sem-loja", caderneta);
+  // `caderneta` só é conhecida DEPOIS de `resolverConexao` resolver (ou
+  // lançar) — por isso a chamada entrou para DENTRO do `try` (ADENDO B.1):
+  // é o que permite ao `catch` capturar `FalhaRpcCaderneta` (RPC que falhou
+  // de verdade) no MESMO lugar que já captura falha de rede ao ler
+  // identidade/configuração, e reembalar as duas em `FalhaResolucaoPorteiro`
+  // para herdar o stale-if-error. O valor inicial "ausente" só é usado se
+  // `resolverConexao` lançar algo IMPREVISTO (nem `DecisaoPorteiro`/
+  // `DecisaoEncaminhamento`, nem `FalhaRpcCaderneta`) — mesmo default do
+  // fallback que já existia em `obterFichaValidada`.
+  let caderneta: EstadoCaderneta = "ausente";
   try {
+    const resolucao = await resolverConexao(
+      host,
+      ambiente,
+      deps.resolverNaCaderneta,
+    );
+    caderneta = resolucao.caderneta;
+    if (!resolucao.conexao) throw new DecisaoPorteiro("sem-loja", caderneta);
+    const conexao = resolucao.conexao;
     const lerIdentidade = deps.lerIdentidade ?? readPublicStoreIdentity;
-    const [identity, dominioPublico] = await Promise.all([
+    const [identity, configuracaoPublica] = await Promise.all([
       lerIdentidade({
         supabaseUrl: conexao.supabaseUrl,
         publicKey: conexao.publishableKey,
         fetchImpl: deps.fetchImpl,
       }),
-      lerDominioPublico(conexao, deps.fetchImpl),
+      lerConfiguracaoPublica(conexao, deps.fetchImpl),
     ]);
+    const { dominioPublico, configuracao } = configuracaoPublica;
     const decisao = decidirConcordancia({
       host,
       dominioPublico,
       vercelEnv: ambiente.VERCEL_ENV,
-      producaoUrl: ambiente.VERCEL_PROJECT_PRODUCTION_URL,
+      // Rodada de correção (revisor Opus, achado 1): `IKCOUS_DOMINIO_PRINCIPAL`
+      // é digitada à mão no painel da Vercel — um `\n` ou espaço colado no
+      // valor faria TODA prévia responder 503 `discorda`, porque a comparação
+      // é byte a byte. `cleanEnvVar` é a MESMA limpeza que
+      // `IKCOUS_FROTA_URL`/`_APIKEY`/`_CHAVE` já recebem, acima. Gatilho
+      // conhecido (re-revisão Opus, 12/09/2026): `cleanEnvVar` apaga TODO
+      // caractere fora de `!-~`, acento inclusive — se um dia a principal
+      // tiver domínio próprio com acento, a comparação aqui nunca bate e toda
+      // prévia vira 503; nesse dia a limpeza certa é `trim` + `normalize`.
+      dominioPrincipal: cleanEnvVar(ambiente.IKCOUS_DOMINIO_PRINCIPAL ?? ""),
     });
     if (decisao === "encaminha") {
       // `decidirConcordancia` só devolve "encaminha" depois de já ter
@@ -684,6 +910,7 @@ async function resolverFichaViaRede(
       identity,
       publicUrl: `${url.protocol}//${url.host}`,
       conexao,
+      configuracao,
     });
     return { ficha, caderneta };
   } catch (erro) {
@@ -692,6 +919,12 @@ async function resolverFichaViaRede(
       erro instanceof DecisaoEncaminhamento
     )
       throw erro;
+    // A RPC da caderneta falhou DE VERDADE (ADENDO B.1) — o rótulo vem do
+    // próprio erro (`"erro"`, sempre), não da variável `caderneta` do
+    // escopo externo, porque `resolverConexao` pode ter lançado ANTES de
+    // atribuí-la.
+    if (erro instanceof FalhaRpcCaderneta)
+      throw new FalhaResolucaoPorteiro(erro.caderneta, erro);
     throw new FalhaResolucaoPorteiro(caderneta, erro);
   }
 }

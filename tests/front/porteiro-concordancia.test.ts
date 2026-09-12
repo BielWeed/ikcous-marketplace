@@ -12,7 +12,7 @@ describe("decidirConcordancia — produção", () => {
         host: "loja-a.exemplo",
         dominioPublico: "loja-a.exemplo",
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("ok");
   });
@@ -23,7 +23,7 @@ describe("decidirConcordancia — produção", () => {
         host: "Loja-A.Exemplo",
         dominioPublico: "loja-a.exemplo",
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("ok");
   });
@@ -34,7 +34,7 @@ describe("decidirConcordancia — produção", () => {
         host: "loja-a.exemplo",
         dominioPublico: null,
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("sem-loja");
   });
@@ -48,58 +48,90 @@ describe("decidirConcordancia — produção", () => {
         host: "a.exemplo",
         dominioPublico: "b.exemplo",
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
+      }),
+    ).toBe("discorda");
+  });
+
+  // Item (e) do brief da correção da variável mais curta da Vercel
+  // (12/09/2026): em produção, `dominioPrincipal` (a variável NOSSA,
+  // `IKCOUS_DOMINIO_PRINCIPAL`) tem de ser tão irrelevante quanto a variável
+  // que ela substituiu — o relaxamento de preview NUNCA pode vazar para
+  // produção. Aqui `dominioPrincipal` bate com o HOST (o que, sob a regra
+  // de preview, daria "ok"), e mesmo assim a resposta continua "discorda":
+  // prova que produção nem olha para este campo.
+  it("produção + IKCOUS_DOMINIO_PRINCIPAL igual ao HOST (não ao dominio_publico) -> discorda mesmo assim (produção nunca lê esta variável)", () => {
+    expect(
+      decidirConcordancia({
+        host: "a.exemplo",
+        dominioPublico: "b.exemplo",
+        vercelEnv: "production",
+        dominioPrincipal: "a.exemplo",
       }),
     ).toBe("discorda");
   });
 });
 
 describe("decidirConcordancia — preview (VERCEL_ENV !== production)", () => {
-  it("preview: host de deploy, banco diz o domínio de PRODUÇÃO do MESMO projeto -> ok", () => {
+  it("preview: host de deploy, banco diz o domínio da PRINCIPAL (IKCOUS_DOMINIO_PRINCIPAL) -> ok", () => {
     expect(
       decidirConcordancia({
         host: "loja-a-git-branch-x.vercel.app",
         dominioPublico: "a.exemplo",
         vercelEnv: "preview",
-        producaoUrl: "a.exemplo",
+        dominioPrincipal: "a.exemplo",
       }),
     ).toBe("ok");
   });
 
-  it("preview: banco diz um domínio de produção DIFERENTE do deploy atual -> discorda", () => {
+  it("preview: banco diz um domínio DIFERENTE do dominio da principal -> discorda", () => {
     expect(
       decidirConcordancia({
         host: "loja-a-git-branch-x.vercel.app",
         dominioPublico: "b.exemplo",
         vercelEnv: "preview",
-        producaoUrl: "a.exemplo",
+        dominioPrincipal: "a.exemplo",
       }),
     ).toBe("discorda");
   });
 
   it("mesmo cenário, mas VERCEL_ENV=production -> encaminha, nunca ok (o relaxamento de preview só vale fora de produção; em produção o alias *.vercel.app cai na regra do encaminhamento, 11/09/2026)", () => {
     // Par de variável ÚNICA com o teste acima: mesmo host, mesmo
-    // dominio_publico, mesma producaoUrl — só VERCEL_ENV muda. O que este
-    // teste prova é que produção NÃO ganha o "ok" do preview; a resposta
-    // deixou de ser "discorda" porque o host é um alias da própria Vercel
-    // (revisão Opus, menor M3).
+    // dominio_publico, mesmo dominioPrincipal — só VERCEL_ENV muda. O que
+    // este teste prova é que produção NÃO ganha o "ok" do preview; a
+    // resposta deixou de ser "discorda" porque o host é um alias da própria
+    // Vercel (revisão Opus, menor M3).
     expect(
       decidirConcordancia({
         host: "loja-a-git-branch-x.vercel.app",
         dominioPublico: "a.exemplo",
         vercelEnv: "production",
-        producaoUrl: "a.exemplo",
+        dominioPrincipal: "a.exemplo",
       }),
     ).toBe("encaminha");
   });
 
-  it("preview sem VERCEL_PROJECT_PRODUCTION_URL no ambiente -> discorda (nada para comparar, falha fechada)", () => {
+  it("preview sem IKCOUS_DOMINIO_PRINCIPAL no ambiente -> discorda (nada para comparar, falha fechada)", () => {
     expect(
       decidirConcordancia({
         host: "loja-a-git-branch-x.vercel.app",
         dominioPublico: "a.exemplo",
         vercelEnv: "preview",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
+      }),
+    ).toBe("discorda");
+  });
+
+  it("preview + IKCOUS_DOMINIO_PRINCIPAL é o domínio de OUTRA loja (não a principal desta prévia) -> discorda", () => {
+    // A prévia mostra sempre a PRINCIPAL (caderneta ausente em preview) — se
+    // a variável trouxer o domínio de uma loja QUALQUER que não seja a
+    // principal, não há concordância nenhuma para conceder.
+    expect(
+      decidirConcordancia({
+        host: "loja-a-git-branch-x.vercel.app",
+        dominioPublico: "a.exemplo",
+        vercelEnv: "preview",
+        dominioPrincipal: "outra-loja-qualquer.exemplo",
       }),
     ).toBe("discorda");
   });
@@ -110,35 +142,54 @@ describe("decidirConcordancia — preview (VERCEL_ENV !== production)", () => {
         host: "loja-a-git-branch-x.vercel.app",
         dominioPublico: "a.exemplo",
         vercelEnv: undefined,
-        producaoUrl: "a.exemplo",
+        dominioPrincipal: "a.exemplo",
       }),
     ).toBe("discorda");
   });
 
-  it("rodada B (achado do revisor): VERCEL_ENV=development NUNCA ganha o relaxamento, mesmo com producaoUrl batendo — só 'preview' exatamente", () => {
+  it("rodada B (achado do revisor): VERCEL_ENV=development NUNCA ganha o relaxamento, mesmo com dominioPrincipal batendo — só 'preview' exatamente", () => {
     // Antes da rodada B, `ehPreview` valia para QUALQUER coisa != "production"
     // (inclusive "development", um ambiente de teste local) — sob a regra
     // antiga este caso daria "ok". A regra nova exige a igualdade exata
-    // com "preview".
+    // com "preview". Cobre também o item (f) da correção da variável mais
+    // curta da Vercel (12/09/2026): `development` nunca relaxa, nem com a
+    // variável NOSSA batendo.
     expect(
       decidirConcordancia({
         host: "loja-a-dev.internal",
         dominioPublico: "a.exemplo",
         vercelEnv: "development",
-        producaoUrl: "a.exemplo",
+        dominioPrincipal: "a.exemplo",
       }),
     ).toBe("discorda");
   });
 
-  it("preview com VERCEL_PROJECT_PRODUCTION_URL vazio (string) -> discorda (vazio não conta como presente)", () => {
+  it("preview com IKCOUS_DOMINIO_PRINCIPAL vazio -> discorda (vazio nunca é igual a um dominio_publico não vazio)", () => {
     expect(
       decidirConcordancia({
         host: "loja-a-git-branch-x.vercel.app",
         dominioPublico: "a.exemplo",
         vercelEnv: "preview",
-        producaoUrl: "",
+        dominioPrincipal: "",
       }),
     ).toBe("discorda");
+  });
+
+  // Achado 3 da rodada de correção (revisor Opus): a comparação de
+  // `dominioPrincipal` com `dominioPublico` é case-insensitive
+  // (`.toLowerCase()` nos dois lados, `porteiro.ts`), mas nenhum teste
+  // provava isso — um mutante que removesse o `.toLowerCase()` de
+  // `dominioPrincipal` sobrevivia. Caixa diferente nos dois lados, mesma
+  // string por baixo.
+  it("preview: dominio_publico e IKCOUS_DOMINIO_PRINCIPAL batem só se ignorar caixa -> ok", () => {
+    expect(
+      decidirConcordancia({
+        host: "loja-a-git-branch-x.vercel.app",
+        dominioPublico: "a.exemplo",
+        vercelEnv: "preview",
+        dominioPrincipal: "A.Exemplo",
+      }),
+    ).toBe("ok");
   });
 });
 
@@ -153,7 +204,7 @@ describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)",
         host: "x-git-main-y.vercel.app",
         dominioPublico: "ickous-marketplace.vercel.app",
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("encaminha");
   });
@@ -164,7 +215,7 @@ describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)",
         host: "x.vercel.app.evil.com",
         dominioPublico: "ickous-marketplace.vercel.app",
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("discorda");
   });
@@ -175,7 +226,7 @@ describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)",
         host: "loja.com.br",
         dominioPublico: "outra-loja.com.br",
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("discorda");
   });
@@ -186,7 +237,7 @@ describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)",
         host: "x-git-main-y.vercel.app",
         dominioPublico: null,
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("sem-loja");
   });
@@ -197,18 +248,18 @@ describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)",
         host: "x-git-main-y.vercel.app",
         dominioPublico: "",
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("sem-loja");
   });
 
-  it("preview + host alias, sem bater com producaoUrl -> discorda (inalterado, o relaxamento de alias é só produção)", () => {
+  it("preview + host alias, sem bater com dominioPrincipal -> discorda (inalterado, o relaxamento de alias é só produção)", () => {
     expect(
       decidirConcordancia({
         host: "x-git-main-y.vercel.app",
         dominioPublico: "ickous-marketplace.vercel.app",
         vercelEnv: "preview",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("discorda");
   });
@@ -219,7 +270,7 @@ describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)",
         host: "x-git-main-y.vercel.app",
         dominioPublico: "ickous-marketplace.vercel.app",
         vercelEnv: undefined,
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("discorda");
   });
@@ -230,7 +281,7 @@ describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)",
         host: "x-git-main-y.vercel.app",
         dominioPublico: "ickous-marketplace.vercel.app",
         vercelEnv: "development",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("discorda");
   });
@@ -241,8 +292,23 @@ describe("decidirConcordancia — alias *.vercel.app em produção (encaminha)",
         host: "X-Git-Main-Y.Vercel.App",
         dominioPublico: "x-git-main-y.vercel.app",
         vercelEnv: "production",
-        producaoUrl: undefined,
+        dominioPrincipal: undefined,
       }),
     ).toBe("ok");
+  });
+
+  // Item (e) da correção da variável mais curta da Vercel (12/09/2026):
+  // mesmo quando `dominioPrincipal` bate com o HOST (o que, em preview,
+  // daria "ok"), produção continua indo pela regra do alias — nunca pela
+  // regra de preview. `dominioPrincipal` é irrelevante aqui.
+  it("produção + host alias + IKCOUS_DOMINIO_PRINCIPAL igual ao HOST -> encaminha mesmo assim (dominioPrincipal ignorado em produção)", () => {
+    expect(
+      decidirConcordancia({
+        host: "x-git-main-y.vercel.app",
+        dominioPublico: "ickous-marketplace.vercel.app",
+        vercelEnv: "production",
+        dominioPrincipal: "x-git-main-y.vercel.app",
+      }),
+    ).toBe("encaminha");
   });
 });

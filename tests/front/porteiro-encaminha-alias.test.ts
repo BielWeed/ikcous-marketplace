@@ -6,7 +6,10 @@
 // de verdade).
 import { describe, expect, it } from "vitest";
 
-import { atenderPorteiro } from "@/hospedagem/porteiro";
+import {
+  SELECT_CONFIGURACAO_PUBLICA,
+  atenderPorteiro,
+} from "@/hospedagem/porteiro";
 import type {
   AmbientePorteiro,
   DependenciasPorteiro,
@@ -70,9 +73,17 @@ function criarFetchDuble(bancos: Record<string, BancoFake>): typeof fetch {
       const banco = bancos[url.origin];
       if (!banco) return new Response("erro", { status: 500 });
       const select = url.searchParams.get("select");
-      if (select === "dominio_publico") {
+      if (select === SELECT_CONFIGURACAO_PUBLICA) {
         return new Response(
-          JSON.stringify([{ dominio_publico: banco.dominioPublico }]),
+          JSON.stringify([
+            {
+              dominio_publico: banco.dominioPublico,
+              mp_public_key: null,
+              vapid_public_key: null,
+              pagamento_online: false,
+              manutencao: false,
+            },
+          ]),
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }

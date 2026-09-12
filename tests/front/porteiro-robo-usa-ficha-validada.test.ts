@@ -14,6 +14,7 @@
 // `globalThis.fetch` e `process.env` substituídos — nunca rede de verdade.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { SELECT_CONFIGURACAO_PUBLICA } from "@/hospedagem/porteiro";
 import middleware from "../../middleware";
 
 const UA_ROBO = "WhatsApp/2.23.20.0 A";
@@ -54,7 +55,7 @@ const ENV_LIMPO = {
   VITE_SUPABASE_PUBLISHABLE_KEY: undefined,
   VITE_SUPABASE_ANON_KEY: undefined,
   VERCEL_ENV: undefined,
-  VERCEL_PROJECT_PRODUCTION_URL: undefined,
+  IKCOUS_DOMINIO_PRINCIPAL: undefined,
 };
 
 const HASH = "a".repeat(64);
@@ -97,6 +98,23 @@ function requestUrl(input: RequestInfo | URL): URL {
   return new URL(input instanceof Request ? input.url : String(input));
 }
 
+// ETAPA 3: `SELECT_CONFIGURACAO_PUBLICA` (porteiro.ts) passou a pedir 5
+// colunas numa consulta só (`dominio_publico` + os 4 valores de
+// `configuracao`), no lugar do antigo `select=dominio_publico` sozinho —
+// os dubles abaixo precisam casar o select novo e devolver as 5 colunas,
+// senão a resposta cai fora do formato esperado e o porteiro fecha a loja
+// com `banco-indisponivel`. Os testes deste arquivo não afirmam nada sobre
+// `configuracao`, então os 4 valores extras são neutros (desligados).
+function linhaConfiguracaoPublica(dominioPublico: string | null) {
+  return {
+    dominio_publico: dominioPublico,
+    mp_public_key: null,
+    vapid_public_key: null,
+    pagamento_online: false,
+    manutencao: false,
+  };
+}
+
 describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado do revisor, rodada C)", () => {
   it("caderneta mapeia loja-a-central para o banco de B (dominio_publico=loja-b-central) -> robô recebe 503 discorda, sem nome/preço/supabaseUrl/chave de B", async () => {
     const origemB = "https://projetobbbbbbbbbbbbb.supabase.co";
@@ -118,9 +136,11 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
         );
       }
       if (url.pathname === "/rest/v1/v_store_config") {
-        if (url.searchParams.get("select") === "dominio_publico") {
+        if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
           return new Response(
-            JSON.stringify([{ dominio_publico: "loja-b-central.exemplo" }]),
+            JSON.stringify([
+              linhaConfiguracaoPublica("loja-b-central.exemplo"),
+            ]),
             { status: 200, headers: { "content-type": "application/json" } },
           );
         }
@@ -182,9 +202,11 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
         );
       }
       if (url.pathname === "/rest/v1/v_store_config") {
-        if (url.searchParams.get("select") === "dominio_publico") {
+        if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
           return new Response(
-            JSON.stringify([{ dominio_publico: "loja-b-central-2.exemplo" }]),
+            JSON.stringify([
+              linhaConfiguracaoPublica("loja-b-central-2.exemplo"),
+            ]),
             { status: 200, headers: { "content-type": "application/json" } },
           );
         }
@@ -232,37 +254,21 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     expect(respRobo.headers.get("x-ikcous-porteiro")).toBe("discorda");
   });
 
-  it("robô + caderneta ausente (miss) -> serve pelo ambiente do projeto com x-ikcous-caderneta: miss, produto normal", async () => {
-    const origemProjeto = "https://projetoccccccccccccc.supabase.co";
-    const produto = {
-      nome: "Produto Normal",
-      descricao: "desc",
-      preco_venda: 10,
-      imagem_url: "https://cdn.exemplo.com/c.jpg",
-      imagem_urls: null,
-    };
+  it("robô + frota CONFIGURADA + host não cadastrado (miss) -> 503 sem-loja, x-ikcous-caderneta: miss, NUNCA serve pelo ambiente do projeto (ADENDO A.3: host sem cadastro é o vazamento que A.3 fechou)", async () => {
+    // O ambiente do projeto (VITE_SUPABASE_*) está presente de propósito,
+    // igual ao teste de unidade em porteiro-caderneta.test.ts: se o ramo de
+    // robô regredisse para o comportamento pré-etapa-3 ("caderneta miss cai
+    // no ambiente do projeto hospedeiro"), este host desconhecido serviria o
+    // catálogo da loja PRINCIPAL (o projeto hospedeiro, com N lojas
+    // compartilhando o build) — o vazamento que o ADENDO A.3 fechou. A RPC
+    // `resolver_loja` nunca é seguida de uma consulta a `v_store_config`
+    // aqui: `resolverFichaViaRede` lança `DecisaoPorteiro("sem-loja", …)`
+    // assim que `resolverConexao` devolve `conexao: null`, antes de ler
+    // identidade/configuração — por isso o dublê abaixo só mapeia a RPC.
     const fetchDuble: typeof fetch = (async (input) => {
       const url = requestUrl(input);
       if (url.pathname === "/rest/v1/rpc/resolver_loja") {
         return new Response(JSON.stringify([]), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      if (url.pathname === "/rest/v1/v_store_config") {
-        if (url.searchParams.get("select") === "dominio_publico") {
-          return new Response(
-            JSON.stringify([{ dominio_publico: "loja-projeto.exemplo" }]),
-            { status: 200, headers: { "content-type": "application/json" } },
-          );
-        }
-        return new Response(
-          JSON.stringify([identidadeFixture("Loja Do Projeto", origemProjeto)]),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (url.pathname === "/rest/v1/vw_produtos_public") {
-        return new Response(JSON.stringify([produto]), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
@@ -276,7 +282,7 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
         IKCOUS_FROTA_URL: "https://principal.supabase.co",
         IKCOUS_FROTA_APIKEY: "sb_publishable_principal",
         IKCOUS_FROTA_CHAVE: "segredo-de-teste",
-        VITE_SUPABASE_URL: origemProjeto,
+        VITE_SUPABASE_URL: "https://projetoccccccccccccc.supabase.co",
         VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_projeto",
       },
       () =>
@@ -288,12 +294,14 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
           ),
         ),
     );
-    expect(resp.status).toBe(200);
-    expect(resp.headers.get("x-ikcous-og")).toBe("produto");
-    // Item 2 do brief: header presente também na resposta de sucesso.
+    expect(resp.status).toBe(503);
+    expect(resp.headers.get("x-ikcous-porteiro")).toBe("sem-loja");
     expect(resp.headers.get("x-ikcous-caderneta")).toBe("miss");
     const html = await resp.text();
-    expect(html).toContain("Produto Normal");
+    expect(html).toContain("manutenção");
+    expect(html).not.toContain("Produto Normal");
+    expect(html).not.toContain("supabase.co");
+    expect(html).not.toContain("sb_publishable");
   });
 
   it("robô + produto não encontrado -> sem-produto (pass-through) continua com x-ikcous-caderneta presente", async () => {
@@ -301,9 +309,11 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     const fetchDuble: typeof fetch = (async (input) => {
       const url = requestUrl(input);
       if (url.pathname === "/rest/v1/v_store_config") {
-        if (url.searchParams.get("select") === "dominio_publico") {
+        if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
           return new Response(
-            JSON.stringify([{ dominio_publico: "loja-sem-produto.exemplo" }]),
+            JSON.stringify([
+              linhaConfiguracaoPublica("loja-sem-produto.exemplo"),
+            ]),
             { status: 200, headers: { "content-type": "application/json" } },
           );
         }
@@ -360,9 +370,11 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     const fetchDuble: typeof fetch = (async (input) => {
       const url = requestUrl(input);
       if (url.pathname === "/rest/v1/v_store_config") {
-        if (url.searchParams.get("select") === "dominio_publico") {
+        if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
           return new Response(
-            JSON.stringify([{ dominio_publico: "loja-com-ponto.exemplo" }]),
+            JSON.stringify([
+              linhaConfiguracaoPublica("loja-com-ponto.exemplo"),
+            ]),
             { status: 200, headers: { "content-type": "application/json" } },
           );
         }
@@ -414,10 +426,10 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     const fetchDuble: typeof fetch = (async (input) => {
       const url = requestUrl(input);
       if (url.pathname === "/rest/v1/v_store_config") {
-        if (url.searchParams.get("select") === "dominio_publico") {
+        if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
           return new Response(
             JSON.stringify([
-              { dominio_publico: "ickous-marketplace.vercel.app" },
+              linhaConfiguracaoPublica("ickous-marketplace.vercel.app"),
             ]),
             { status: 200, headers: { "content-type": "application/json" } },
           );
@@ -463,5 +475,129 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     const corpo = await resp.text();
     expect(corpo).toBe("");
     expect(corpo).not.toContain("Produto Que Nao Deveria Aparecer");
+  });
+
+  // T5 (11/09/2026): o ramo de robô lia `process.env.VITE_APP_NAME` — um
+  // valor ASSADO no build, o mesmo problema que a ficha por host resolve
+  // para o resto da página. Título, og:title e twitter:title passam a usar
+  // `ficha.identidade.identity.storeName` (a MESMA ficha validada que o
+  // documento usa — "uma trava, um lugar" continua valendo para o dado, não
+  // só para a decisão de servir).
+  it("robô usa o storeName da FICHA no title/og:title/twitter:title, nunca process.env.VITE_APP_NAME", async () => {
+    const origemProjeto = "https://projetoggggggggggggg.supabase.co";
+    const produtoComNome = {
+      nome: "Camiseta Azul",
+      descricao: "100% algodão",
+      preco_venda: 49.9,
+      imagem_url: "https://cdn.exemplo.com/g.jpg",
+      imagem_urls: null,
+    };
+    const fetchDuble: typeof fetch = (async (input) => {
+      const url = requestUrl(input);
+      if (url.pathname === "/rest/v1/v_store_config") {
+        if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
+          return new Response(
+            JSON.stringify([
+              linhaConfiguracaoPublica("loja-com-storename.exemplo"),
+            ]),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify([identidadeFixture("Loja Da Ficha", origemProjeto)]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.pathname === "/rest/v1/vw_produtos_public")
+        return new Response(JSON.stringify([produtoComNome]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      throw new Error(`URL não mapeada no dublê: ${url.toString()}`);
+    }) as typeof fetch;
+
+    const resp = await comProcessEnv(
+      {
+        ...ENV_LIMPO,
+        VITE_SUPABASE_URL: origemProjeto,
+        VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_projeto",
+        VITE_APP_NAME: "Nome Do Build Nunca Deveria Aparecer",
+      },
+      () =>
+        comFetch(fetchDuble, () =>
+          middleware(
+            new Request(
+              "https://loja-com-storename.exemplo/product-detail?id=1",
+              { headers: { "user-agent": UA_ROBO } },
+            ),
+          ),
+        ),
+    );
+    expect(resp.status).toBe(200);
+    const html = await resp.text();
+    expect(html).toContain("<title>Camiseta Azul | Loja Da Ficha</title>");
+    expect(html).toContain(
+      '<meta property="og:title" content="Camiseta Azul - R$ 49,90 | Loja Da Ficha" />',
+    );
+    expect(html).toContain(
+      '<meta name="twitter:title" content="Camiseta Azul | Loja Da Ficha" />',
+    );
+    expect(html).not.toContain("Nome Do Build Nunca Deveria Aparecer");
+  });
+
+  it("robô + produto sem foto -> og:image usa localUrls.og da FICHA (Storage absoluto), nunca o og-image.png do domínio da loja", async () => {
+    const origemProjeto = "https://projetohhhhhhhhhhhhh.supabase.co";
+    const produtoSemFoto = {
+      nome: "Produto Sem Foto",
+      descricao: "desc",
+      preco_venda: 30,
+      imagem_url: null,
+      imagem_urls: null,
+    };
+    const fetchDuble: typeof fetch = (async (input) => {
+      const url = requestUrl(input);
+      if (url.pathname === "/rest/v1/v_store_config") {
+        if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
+          return new Response(
+            JSON.stringify([linhaConfiguracaoPublica("loja-sem-foto.exemplo")]),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify([identidadeFixture("Loja Sem Foto", origemProjeto)]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.pathname === "/rest/v1/vw_produtos_public")
+        return new Response(JSON.stringify([produtoSemFoto]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      throw new Error(`URL não mapeada no dublê: ${url.toString()}`);
+    }) as typeof fetch;
+
+    const resp = await comProcessEnv(
+      {
+        ...ENV_LIMPO,
+        VITE_SUPABASE_URL: origemProjeto,
+        VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_projeto",
+      },
+      () =>
+        comFetch(fetchDuble, () =>
+          middleware(
+            new Request("https://loja-sem-foto.exemplo/product-detail?id=1", {
+              headers: { "user-agent": UA_ROBO },
+            }),
+          ),
+        ),
+    );
+    expect(resp.status).toBe(200);
+    const html = await resp.text();
+    const ogEsperado = `${origemProjeto}/storage/v1/object/public/branding/v1/${HASH}/og.png`;
+    expect(html).toContain(
+      `<meta property="og:image" content="${ogEsperado}" />`,
+    );
+    expect(html).toContain('<meta property="og:image:width" content="1200" />');
+    expect(html).not.toContain("og-image.png");
   });
 });

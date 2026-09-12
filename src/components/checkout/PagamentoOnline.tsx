@@ -1,3 +1,4 @@
+import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useOrders } from "@/hooks/useOrders";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { useEffect, useRef, useState } from "react";
@@ -124,7 +125,7 @@ export function montarBrick({
       await carregarSdkMercadoPago();
       if (cancelado) return;
 
-      const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+      const publicKey = chavePublicaMercadoPago();
       if (!publicKey) throw new Error("Pagamento indisponível.");
 
       // @ts-expect-error o SDK entra pelo global

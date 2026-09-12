@@ -147,7 +147,7 @@ vi.mock("@/lib/supabase", () => ({ supabase: {} }));
 vi.mock("canvas-confetti", () => ({ default: confettiMock }));
 
 vi.mock("@/lib/flags", () => ({
-  PAGAMENTO_ONLINE_LIGADO: true,
+  pagamentoOnlineLigado: () => true,
   lerFlagPagamentoOnline: (v: string | undefined) => v === "true",
 }));
 

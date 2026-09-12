@@ -20,11 +20,12 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import { TransportadorasSection } from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { lerSupabaseUrl } from "@/lib/env-valores";
-import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { pagamentoOnlineLigado } from "@/lib/flags";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -35,8 +36,10 @@ import type { View } from "@/types";
 
 // Laudo 0109 (D1): o painel não tinha NENHUMA menção ao estado do
 // pagamento — o lojista descobria que a loja não aceita PIX pela queixa do
-// cliente. A flag vem do build (src/lib/flags.ts); a chave pública também
-// (mesmo deploy). Placeholder do .env.example é o "não configurada".
+// cliente. Escala etapa 3 (11/09/2026): a flag e a chave pública deixaram de
+// vir do build e passaram a vir da ficha da loja
+// (src/config/configuracaoDaLoja.ts), lida do banco de cada loja pelo
+// porteiro. `null`/`false` é o "não configurada".
 interface AdminSettingsViewProps {
   onNavigate: (view: View) => void;
   active?: boolean;
@@ -696,9 +699,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             >
               <div className="space-y-3">
                 <StatusPagamentoPix
-                  ligado={PAGAMENTO_ONLINE_LIGADO}
+                  ligado={pagamentoOnlineLigado()}
                   chaveOk={pixConfiguradoNoBuild(
-                    import.meta.env.VITE_MP_PUBLIC_KEY,
+                    chavePublicaMercadoPago() ?? undefined,
                   )}
                 />
                 <ConnectionDiagnosticsSection />

@@ -11,17 +11,20 @@ import { useState } from "react";
  * 02/09: "deve ser algo visualmente absolutamente compacto").
  *
  * AGORA: uma linha única com o termômetro de 3 níveis —
- *   ▮▮▮  verde     = ligado e com chave pública no deploy (funcionando);
- *   ▮▯▯  vermelho  = ligado, MAS a chave pública não está no deploy
- *                    (a tela de pagamento nem carrega para o cliente);
+ *   ▮▮▮  verde     = ligado e com chave pública na configuração da loja
+ *                    (frota) (funcionando);
+ *   ▮▯▯  vermelho  = ligado, MAS a chave pública não está na configuração
+ *                    da loja (a tela de pagamento nem carrega para o
+ *                    cliente);
  *   ▯▯▯  cinza     = desligado (o cliente finaliza por pagamento na
  *                    entrega).
  * O diagnóstico completo (as instruções de correção do laudo 0109, D1)
  * continua a um clique — recolhido por padrão para a linha ficar compacta.
  *
- * Componente PURO: `ligado`/`chaveOk` chegam de fora (as flags do deploy,
- * em AdminSettingsView) — este arquivo não lê `import.meta.env`, e é assim
- * que os três estados são exercitáveis por teste sem stub de ambiente.
+ * Componente PURO: `ligado`/`chaveOk` chegam de fora (a configuração da
+ * loja, lida da ficha em AdminSettingsView — escala etapa 3, 11/09/2026)
+ * — este arquivo não lê a ficha, e é assim que os três estados são
+ * exercitáveis por teste sem stub de ambiente.
  */
 
 type NivelDoPagamento = "ok" | "alerta" | "off";
@@ -37,15 +40,15 @@ interface StatusPagamentoPixProps {
 const DIAGNOSTICO = new Map<NivelDoPagamento, string>([
   [
     "ok",
-    "Ligado e com chave pública no deploy. Antes de divulgar a loja, confira se os segredos MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET estão gravados no Supabase.",
+    "Ligado e com chave pública na configuração da loja (frota). Antes de divulgar a loja, confira se os segredos MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET estão gravados no Supabase.",
   ],
   [
     "alerta",
-    'A flag está LIGADA, mas a chave pública do Mercado Pago não está no deploy (VITE_MP_PUBLIC_KEY): a tela de pagamento nem carrega para o cliente ("Não foi possível carregar o pagamento."). Grave as chaves MP antes de divulgar a loja.',
+    'A flag está LIGADA, mas a chave pública do Mercado Pago não está na configuração da loja (frota): a tela de pagamento nem carrega para o cliente ("Não foi possível carregar o pagamento."). Grave as chaves MP antes de divulgar a loja.',
   ],
   [
     "off",
-    "O cliente finaliza por pagamento na entrega. Para aceitar PIX/cartão: cadastre as chaves do Mercado Pago (VITE_MP_PUBLIC_KEY no deploy; MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET nos segredos do Supabase) e ligue VITE_PAGAMENTO_ONLINE no deploy.",
+    "O cliente finaliza por pagamento na entrega. Para aceitar PIX/cartão: cadastre as chaves do Mercado Pago e ligue o pagamento online na configuração da loja (frota); MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET vão nos segredos do Supabase.",
   ],
 ]);
 

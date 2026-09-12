@@ -120,6 +120,12 @@ describe("injetarFichaNoHtml sobre HTML de PRODUÇÃO (já assado + já material
         publishableKey: "sb_publishable_a",
         origem: "projeto",
       },
+      configuracao: {
+        mpPublicKey: "TEST-00000000-0000-0000-0000-000000000000",
+        vapidPublicKey: "BExampleVapidPublicKeyNaoUsadaNesteTeste",
+        pagamentoOnline: true,
+        manutencao: false,
+      },
     });
     const html = injetarFichaNoHtml(HTML_ASSADO_PRODUCAO, ficha);
 
@@ -145,6 +151,12 @@ describe("injetarFichaNoHtml sobre HTML de PRODUÇÃO (já assado + já material
         supabaseUrl: "https://projeto-a.supabase.co",
         publishableKey: "sb_publishable_a",
         origem: "projeto",
+      },
+      configuracao: {
+        mpPublicKey: "TEST-00000000-0000-0000-0000-000000000000",
+        vapidPublicKey: "BExampleVapidPublicKeyNaoUsadaNesteTeste",
+        pagamentoOnline: true,
+        manutencao: false,
       },
     });
     const html = injetarFichaNoHtml(HTML_ASSADO_PRODUCAO, ficha);
@@ -173,6 +185,12 @@ describe("montarFicha + injetarFichaNoHtml — host A e host B nunca produzem o 
         publishableKey: "sb_publishable_a",
         origem: "projeto",
       },
+      configuracao: {
+        mpPublicKey: "TEST-00000000-0000-0000-0000-000000000000",
+        vapidPublicKey: "BExampleVapidPublicKeyNaoUsadaNesteTeste",
+        pagamentoOnline: true,
+        manutencao: false,
+      },
     });
     const fichaB = await montarFicha({
       host: "loja-b.exemplo",
@@ -182,6 +200,12 @@ describe("montarFicha + injetarFichaNoHtml — host A e host B nunca produzem o 
         supabaseUrl: "https://projeto-b.supabase.co",
         publishableKey: "sb_publishable_b",
         origem: "projeto",
+      },
+      configuracao: {
+        mpPublicKey: "TEST-00000000-0000-0000-0000-000000000000",
+        vapidPublicKey: "BExampleVapidPublicKeyNaoUsadaNesteTeste",
+        pagamentoOnline: true,
+        manutencao: false,
       },
     });
 
@@ -234,6 +258,12 @@ describe("montarFicha + injetarFichaNoHtml — host A e host B nunca produzem o 
         publishableKey: "sb_publishable_a",
         origem: "projeto",
       },
+      configuracao: {
+        mpPublicKey: "TEST-00000000-0000-0000-0000-000000000000",
+        vapidPublicKey: "BExampleVapidPublicKeyNaoUsadaNesteTeste",
+        pagamentoOnline: true,
+        manutencao: false,
+      },
     });
     const html = injetarFichaNoHtml(HTML_ASSADO, ficha);
     const posicaoHead = html.indexOf("<head>");
@@ -253,6 +283,12 @@ describe("montarFicha + injetarFichaNoHtml — host A e host B nunca produzem o 
         supabaseUrl: "https://projeto-a.supabase.co",
         publishableKey: "sb_publishable_a",
         origem: "projeto",
+      },
+      configuracao: {
+        mpPublicKey: "TEST-00000000-0000-0000-0000-000000000000",
+        vapidPublicKey: "BExampleVapidPublicKeyNaoUsadaNesteTeste",
+        pagamentoOnline: true,
+        manutencao: false,
       },
     });
     expect(ficha.host).toBe("loja-a.exemplo");

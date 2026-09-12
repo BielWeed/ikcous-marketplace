@@ -33,7 +33,11 @@ import {
   cloneStoreIdentity,
   normalizeSupabaseOrigin,
 } from "@/lib/storeIdentity";
-import { FICHA_DA_LOJA_ID, type FichaDaLoja } from "./fichaDaLojaContract";
+import {
+  type ConfiguracaoDaLoja,
+  FICHA_DA_LOJA_ID,
+  type FichaDaLoja,
+} from "./fichaDaLojaContract";
 
 let fichaCacheada: FichaDaLoja | null | undefined;
 
@@ -104,6 +108,30 @@ function publicUrlValida(publicUrl: string): boolean {
   return `${url.protocol}//${url.host}` === publicUrl;
 }
 
+/**
+ * O bloco `configuracao` (etapa 3 da escala, 11/09/2026, ADENDO A.5): as
+ * chaves são `string` NÃO VAZIA (loja com o recurso configurado) ou `null`
+ * (recurso desligado) — nunca `undefined`, nunca outro tipo. As duas flags
+ * são `boolean` — falha fechada por desenho: qualquer forma diferente disto
+ * (campo ausente, número, string) é ficha FORA DO CONTRATO, e por isso
+ * inválida, nunca "recurso desligado".
+ */
+function configuracaoValida(
+  configuracao: unknown,
+): configuracao is ConfiguracaoDaLoja {
+  if (configuracao === null || typeof configuracao !== "object") return false;
+  const { mpPublicKey, vapidPublicKey, pagamentoOnline, manutencao } =
+    configuracao as Record<string, unknown>;
+  const chavePublicaValida = (valor: unknown): boolean =>
+    valor === null || (typeof valor === "string" && valor.length > 0);
+  return (
+    chavePublicaValida(mpPublicKey) &&
+    chavePublicaValida(vapidPublicKey) &&
+    typeof pagamentoOnline === "boolean" &&
+    typeof manutencao === "boolean"
+  );
+}
+
 function validarFicha(textoBruto: string | null): FichaDaLoja {
   let bruta: unknown;
   try {
@@ -115,7 +143,7 @@ function validarFicha(textoBruto: string | null): FichaDaLoja {
   if (bruta === null || typeof bruta !== "object") invalida();
   const ficha = bruta as Record<string, unknown>;
 
-  if (ficha.schemaVersion !== 1) invalida();
+  if (ficha.schemaVersion !== 2) invalida();
   if (typeof ficha.host !== "string" || ficha.host.length === 0) invalida();
 
   const identidadeBruta = ficha.identidade;
@@ -192,8 +220,11 @@ function validarFicha(textoBruto: string | null): FichaDaLoja {
     invalida();
   }
 
+  const configuracaoBruta = ficha.configuracao;
+  if (!configuracaoValida(configuracaoBruta)) invalida();
+
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     host: ficha.host as string,
     identidade: {
       identity: identidadeValidada,
@@ -205,5 +236,6 @@ function validarFicha(textoBruto: string | null): FichaDaLoja {
       supabaseUrl: supabaseUrlValidada,
       publishableKey,
     },
+    configuracao: configuracaoBruta as ConfiguracaoDaLoja,
   };
 }

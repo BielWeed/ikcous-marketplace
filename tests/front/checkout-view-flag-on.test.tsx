@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Par do checkout-view-flag-off.test.tsx, mas com PAGAMENTO_ONLINE_LIGADO
+// Par do checkout-view-flag-off.test.tsx, mas com `pagamentoOnlineLigado()`
 // LIGADA — a metade da invariante que faltava. O bloqueador da rodada de
 // correção 1 só existia neste caminho: `onClearCart()` roda ANTES de
 // `setAguardandoPagamento(true)`, o React 18 agrupa os dois updates, e o
@@ -197,9 +197,11 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("canvas-confetti", () => ({ default: confettiMock }));
 
 // Flag ligada — sem isso, "Pagar agora" nem aparece na lista para ser
-// clicada.
+// clicada. Escala etapa 3 (11/09/2026): a flag deixou de ser constante de
+// módulo e virou função lida por CHAMADA (`pagamentoOnlineLigado()`), lida
+// no render — mockar como função é o que preserva essa garantia.
 vi.mock("@/lib/flags", () => ({
-  PAGAMENTO_ONLINE_LIGADO: true,
+  pagamentoOnlineLigado: () => true,
   lerFlagPagamentoOnline: (v: string | undefined) => v === "true",
 }));
 
@@ -245,7 +247,7 @@ function localizarBotaoPorTexto(
   ) as HTMLButtonElement | undefined;
 }
 
-describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
+describe("CheckoutView com pagamentoOnlineLigado() ligada", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 

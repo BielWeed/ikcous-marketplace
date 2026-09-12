@@ -25,7 +25,10 @@ import type {
   StoreDeliveryApi,
 } from "../src/config/storeDeliveryContract";
 import type { OrigemChaveSupabase } from "../src/lib/env-publico-valores";
-import { resolverValoresPublicosSupabase } from "../src/lib/env-publico-valores";
+import {
+  cleanEnvVar,
+  resolverValoresPublicosSupabase,
+} from "../src/lib/env-publico-valores";
 import { classifyPublicSupabaseKey } from "../src/lib/publicSupabaseKey";
 import { normalizeSupabaseOrigin } from "../src/lib/storeIdentity";
 import type { PreparedIdentityBuild } from "./prepareIdentity";
@@ -82,6 +85,24 @@ function publicAddress(
   env: Record<string, string | undefined>,
   resolver: (env: Record<string, string | undefined>) => string,
 ): string {
+  // Catraca contra o endereço assado errado (correção medida em 12/09/2026,
+  // PR #545): NA Vercel (`VERCEL === "1"`, variável de sistema da própria
+  // plataforma), `VITE_APP_URL` deixa de ser opcional — sem ela, o
+  // `resolver` (`resolverEnderecoPublico`) cai para
+  // `VERCEL_PROJECT_PRODUCTION_URL`/`VERCEL_URL`, e a primeira é "o domínio
+  // de produção MAIS CURTO do projeto", que num projeto multi-loja pode ser
+  // qualquer loja, não a que está sendo construída. A hub já neutralizou o
+  // incidente cadastrando `VITE_APP_URL` no projeto Vercel; esta trava
+  // impede a repetição se a variável sumir de novo. Dependência que não mora
+  // no repo: `VERCEL` só existe com "Enable access to System Environment
+  // Variables" LIGADO no projeto (doc oficial) — desligado, esta trava fica
+  // muda e `VERCEL_PROJECT_PRODUCTION_URL`/`VERCEL_URL` somem junto. O
+  // `cleanEnvVar` aqui é só consistência de mensagem: valor em branco já
+  // falharia adiante em `new URL`, mas com um erro que não nomeia a causa.
+  if (env.VERCEL === "1" && !cleanEnvVar(env.VITE_APP_URL ?? ""))
+    throw new Error(
+      "IDENTITY_PUBLIC_URL: VITE_APP_URL obrigatorio na Vercel - VERCEL_PROJECT_PRODUCTION_URL e o dominio de producao MAIS CURTO do projeto e num projeto multi-loja aponta para outra loja",
+    );
   const candidates = [
     env.VITE_APP_URL,
     env.VERCEL_PROJECT_PRODUCTION_URL,

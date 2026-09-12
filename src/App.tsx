@@ -166,6 +166,7 @@ function AdminAccessDenied({
 
   return <AdminRouteLoading />;
 }
+import { modoManutencao } from "@/config/configuracaoDaLoja";
 import { corPrimariaEfetiva } from "@/config/cor-da-loja";
 import { TELAS_DE_ENTRADA } from "@/config/rotas";
 import { CartProvider } from "@/contexts/CartContext";
@@ -2231,7 +2232,7 @@ const AppContent = () => {
   };
 
   const renderCustomerContent = () => {
-    const isMaintenanceMode = import.meta.env.VITE_MAINTENANCE_MODE === "true";
+    const isMaintenanceMode = modoManutencao();
     if (isMaintenanceMode) {
       return <MaintenanceView />;
     }
