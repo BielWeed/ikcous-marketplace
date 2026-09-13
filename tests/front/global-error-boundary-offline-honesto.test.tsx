@@ -169,6 +169,12 @@ describe("GlobalErrorBoundary — offline honesto (laudo #2, P-3 e P-1)", () => 
       );
     });
 
+    // Issue #92: a decisão é assíncrona (ciclo do service worker com
+    // fallback de reload seco — e sem SW no jsdom o degrau 1 é o reload
+    // seco). A execução resolve em macrotarefa: drenar antes de afirmar.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     expect(reloadEspiao).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem("pwa_reload_reason")).toBe(
       "recuperacao-erro-modulo",

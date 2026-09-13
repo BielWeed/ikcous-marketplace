@@ -2,6 +2,11 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import { useStore } from "@/contexts/StoreContext";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
 import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
+import {
+  apagarCachesDoApp,
+  apagarIndexedDBAguardando,
+  navegarPreservandoEndereco,
+} from "@/lib/recuperacao-chunk";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -140,6 +145,11 @@ export function useUpdateCheck() {
   // ==============================
   // CORE: Nuclear Purge (mandatory)
   // ==============================
+  // Issue #92: este é o purge de VERSÃO OBRIGATÓRIA (minAppVersion) — o
+  // ÚNICO caminho que apaga IndexedDB de propósito, agora com o delete
+  // AGUARDADO (prazo + onblocked). O disparado por ERRO DE CHUNK não passa
+  // mais por aqui: é a escada de @/lib/recuperacao-chunk, que preserva o
+  // IndexedDB e nunca roda sem rede verificada.
   const performNuclearPurge = useCallback(async (immediate = false) => {
     console.warn("[Update] 🔴 NUCLEAR_PURGE_START: Initiating full cleanup...");
 
@@ -149,7 +159,6 @@ export function useUpdateCheck() {
         try {
           const regs = await navigator.serviceWorker.getRegistrations();
           for (const r of regs) {
-            if (r.waiting) r.waiting.postMessage({ type: "SKIP_WAITING" });
             await r.unregister();
           }
         } catch (e) {
@@ -157,26 +166,17 @@ export function useUpdateCheck() {
         }
       }
 
-      // 2. Cache storage cleanup
-      if ("caches" in window) {
-        try {
-          const keys = await caches.keys();
-          for (const k of keys) await caches.delete(k);
-        } catch (e) {
-          console.error("[Purge] Cache error:", e);
-        }
-      }
+      // 2. Cache storage cleanup — SELETIVO via módulo único: só os caches
+      // `app-cache-*` morrem. `ikcous-identidade` e `supabase-images-cache`
+      // sobrevivem (o activate do SW preserva num update normal; sem a
+      // ficha, o fallback offline devolveria 503 "Loja em manutenção" para
+      // a base instalada).
+      await apagarCachesDoApp();
 
-      // 2.5 IndexedDB cleanup (DataVault deletion)
-      try {
-        const req = indexedDB.deleteDatabase("ikcous-datavault");
-        req.onsuccess = () =>
-          console.log("[Purge] DataVault database deleted.");
-        req.onerror = () =>
-          console.error("[Purge] Failed to delete DataVault database.");
-      } catch (e) {
-        console.error("[Purge] DB delete error:", e);
-      }
+      // 2.5 IndexedDB cleanup (DataVault deletion) — AGUARDADO (aceite 5):
+      // fire-and-forget corria com a navegação; await literal travaria com
+      // conexão aberta. O módulo faz os dois com prazo + onblocked laudado.
+      await apagarIndexedDBAguardando();
 
       // 3. Selective localStorage purge
       // Keep auth tokens, user data, brand specific keys and PENDING writes
@@ -198,8 +198,12 @@ export function useUpdateCheck() {
       // 4. Set reload reason for next boot
       gravaMotivoDeRecarga("atualizacao-aplicada");
 
-      // 5. Hard reload
-      window.location.href = `${window.location.origin}/?forceUpdate=${Date.now()}`;
+      // 5. Navegação honesta (aceite 6): location.replace não empilha
+      // histórico; pathname+search preservados (?source=pwa da base
+      // instalada sobrevive). A query de força da era antiga morreu sem
+      // consumidor nenhum; recarregar de verdade vem do SW desregistrado,
+      // não de parâmetro de URL que ninguém lê.
+      navegarPreservandoEndereco();
     };
 
     if (immediate) {
@@ -337,61 +341,13 @@ export function useUpdateCheck() {
   // ==============================
   // ChunkLoadError auto-recovery
   // ==============================
-  useEffect(() => {
-    const handleError = (e: ErrorEvent) => {
-      const msg = (e.message || "").toLowerCase();
-      const isChunkError =
-        msg.includes("loading chunk") ||
-        msg.includes("chunkloaderror") ||
-        msg.includes("unexpected token") ||
-        msg.includes("failed to fetch dynamically imported module") ||
-        msg.includes("error loading dynamically imported module") ||
-        msg.includes("importing a module script failed") ||
-        msg.includes("css chunk load failed");
-
-      if (isChunkError) {
-        // Pílula da revisão do PR #375 (ressalva 1b): chunk error com a
-        // máquina SEM internet é só a rede caída — o SW está servindo do
-        // cache e NADA aqui conserta isso. O purge nuclear neste estado
-        // apagaria exatamente o que mantém a loja de pé offline
-        // (transformando erro recuperável em tela de erro dura).
-        if (typeof navigator !== "undefined" && navigator.onLine === false) {
-          console.warn(
-            "[Update] 💥 ChunkLoadError ignorado: sem internet — cache offline preservado.",
-          );
-          return;
-        }
-
-        console.error("[Update] 💥 ChunkLoadError detected");
-
-        const lastReload = sessionStorage.getItem("pwa_chunk_error_reload");
-        const now = Date.now();
-
-        if (lastReload && now - Number.parseInt(lastReload) < 15000) {
-          console.warn("[Update] 🛡️ Reload Guard Active.");
-          toast.error("Ocorreu um erro persistente", {
-            description: "Por favor, tente recarregar manualmente.",
-            duration: 10000,
-          });
-          return;
-        }
-
-        sessionStorage.setItem("pwa_chunk_error_reload", now.toString());
-        // Laudo #2 (P-1): recuperação de erro de módulo NÃO é atualização —
-        // o motivo nominal impede o boot de anunciar "Sistema Atualizado".
-        gravaMotivoDeRecarga("recuperacao-erro-modulo");
-
-        toast.loading("Sincronizando nova versão...", {
-          description: "Corrigindo erro de carregamento automaticamente.",
-        });
-
-        setTimeout(() => performNuclearPurge(true), 1500);
-      }
-    };
-
-    window.addEventListener("error", handleError);
-    return () => window.removeEventListener("error", handleError);
-  }, [performNuclearPurge]);
+  // Issue #92: REMOVIDO daqui. Este hook vive num chunk LAZY
+  // (PWAUpdateGate via React.lazy) — no boot inicial ele não existe, e se o
+  // chunk que falhasse fosse o dele próprio, o mecanismo nem acordava. Os
+  // canais 'error' e 'unhandledrejection' agora são instalados UMA vez no
+  // main.tsx (chunk inicial) e decidem pela MESMA chave de
+  // @/lib/recuperacao-chunk que o GlobalErrorBoundary — sem corrida entre
+  // chaves, sem purge nuclear sem rede verificada.
 
   return {
     isMandatory,
