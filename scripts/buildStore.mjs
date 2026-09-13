@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { gerarHospedagem } from "./hospedagem.mjs";
+import { gerarSitemap } from "./sitemap.mjs";
 
 const failure = (code) => new Error(`IDENTITY_${code}`);
 const object = (value) =>
@@ -389,6 +390,16 @@ export async function buildStore(options = {}) {
   } catch (error) {
     const razao = error instanceof Error ? error.message : String(error);
     throw failure(`HOSTING ${razao}`);
+  }
+  // robots.txt/sitemap.xml da loja (issue #117): sobrescreve as sementes que
+  // o Vite copiou de public/ com o catálogo vivo — modo database consulta a
+  // vw_produtos_public, fixture não sai para a rede. Mesma janela da
+  // hospedagem: depois do precache, antes do marcador.
+  try {
+    await gerarSitemap(output, capturedDelivery);
+  } catch (error) {
+    const razao = error instanceof Error ? error.message : String(error);
+    throw failure(`SITEMAP ${razao}`);
   }
   const temporary = path.join(output, `version.json.${randomUUID()}.tmp`);
   // A failed write/rename propagates; only our exclusive temporary may remain.
