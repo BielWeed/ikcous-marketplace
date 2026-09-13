@@ -3046,14 +3046,16 @@ export function CheckoutView({
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2 text-sm font-black text-zinc-900">
-                          {/* AJUSTE da revisão (Opus): a pílula é quem
-                              encolhe (`min-w-0 shrink truncate`) — "Total" e
-                              o VALOR nunca podem quebrar linha nem ceder
-                              espaço; `whitespace-nowrap` nos dois barra a
-                              quebra mesmo num 375px apertado com o valor
-                              mais longo. */}
+                          {/* AJUSTE da re-revisão (Opus, medido a 320/360/375px
+                              com o CSS real): quem cede espaço é a PALAVRA
+                              "Total" (`min-w-0 truncate`), nunca um número.
+                              Truncar a pílula mostrava dinheiro pela metade
+                              ("-R$ 12,…") a 320px mesmo com valores comuns;
+                              a pílula e o valor do total ficam inteiros
+                              (`shrink-0 whitespace-nowrap`). A 375px nada
+                              muda: "Total" aparece inteiro. */}
                           <span className="flex min-w-0 items-center gap-1">
-                            <span className="shrink-0 whitespace-nowrap">
+                            <span className="min-w-0 truncate whitespace-nowrap">
                               Total
                             </span>
                             {/* Pedido do Gabriel (12/09/2026): pílula
@@ -3065,7 +3067,7 @@ export function CheckoutView({
                                 está embutido nele). */}
                             {economiaTotal > 0 && (
                               <span
-                                className="min-w-0 shrink truncate whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
+                                className="shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
                                 aria-label={`Desconto de R$ ${economiaTotal.toFixed(2).replace(".", ",")}`}
                               >
                                 -R$ {economiaTotal.toFixed(2).replace(".", ",")}
