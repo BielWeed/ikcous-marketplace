@@ -60,11 +60,13 @@ Sempre `--base develop`. `--base main` só em release e hotfix.
 ## Depois da revisão
 
 ```bash
-gh pr merge --squash --delete-branch
+gh pr merge --merge --delete-branch
 git switch develop && git pull
 ```
 
-Squash em PR de feature. **Merge commit** em release e hotfix.
+**Merge commit em todo PR** — feature, release e hotfix. Squash comprimiria as rodadas
+do laço num commit só e apagaria a fronteira do PR. Registro do existente: zero squash
+na janela #541–#564. Porquê completo no [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
 ---
 

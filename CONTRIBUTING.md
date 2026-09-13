@@ -363,12 +363,11 @@ branch de release no instante do merge e inviabilizava o passo 6 do
 [Release](#release) — que precisa dela viva. O preço é este: branch mergeada
 fica no remoto até alguém apagar.
 
-**Por que local antes de remoto.** Squash é o padrão aqui, e squash cria um
-commit novo: o original da sua branch nunca vira ancestral da `develop`. O
-`git branch -d` ainda aceita apagar, porque a branch bate com o ref de upstream
-(`origin/feat/...`) — ele avisa "não mergeada em HEAD" e apaga assim mesmo. Mas
-se você apagar o remoto primeiro, esse ref some no `--prune` e aí o `-d` passa a
-recusar, exigindo `-D`.
+**Por que local antes de remoto.** O PR entra como merge commit (registro do
+existente: zero squash na janela #541–#564), então os commits da sua branch
+viram ancestrais da `develop` e o `git branch -d` apaga limpo, em qualquer
+ordem. A ordem local-primeiro é preferência declarada da casa — uma receita só,
+sem caso especial — não necessidade técnica.
 
 Se cair no `-D`, confirme antes que o conteúdo entrou de verdade:
 `git diff develop <branch>` tem que sair vazio. `-D` não pergunta nada, e
