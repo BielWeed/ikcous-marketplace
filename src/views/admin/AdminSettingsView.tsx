@@ -257,6 +257,7 @@ const ConnectionDiagnosticsSection = memo(
         <button
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
+          aria-expanded={isOpen}
           className="group flex w-full select-none items-center justify-between rounded-2xl p-2 text-left transition-all hover:bg-white/5"
         >
           <div className="flex items-center gap-4">
@@ -272,9 +273,11 @@ const ConnectionDiagnosticsSection = memo(
             </h2>
           </div>
           <ChevronDown
-            className={`size-5 text-zinc-500 transition-all duration-300 group-hover:text-white ${
-              isOpen ? "rotate-180 text-admin-gold" : ""
-            }`}
+            strokeWidth={2.25}
+            className={cn(
+              "size-5 shrink-0 text-zinc-500 transition-transform duration-200 group-hover:text-zinc-300",
+              isOpen && "rotate-180",
+            )}
           />
         </button>
 
