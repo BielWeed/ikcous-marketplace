@@ -1457,13 +1457,15 @@ export const OrderDetail = memo(function OrderDetail({
     );
   };
 
-  // pb-44 (176px): no celular a barra fixa mora ACIMA do menu inferior
-  // (6.5rem de offset + ~69px de barra ≈ 173px do fundo) — o pb-28 antigo
-  // (112px) deixava o fim de "Anotações internas" atrás da barra levantada
-  // (mesmo achado 1 da revisão do PR 549). A partir de lg a barra volta ao
-  // pé e pb-28 chega.
+  // pb-[calc(11rem+safe-area)]: no celular a barra fixa mora ACIMA do menu
+  // inferior (6.5rem de offset + ~69px de barra ≈ 173px do fundo) — o pb-28
+  // antigo (112px) deixava o fim de "Anotações internas" atrás da barra
+  // levantada (mesmo achado 1 da revisão do PR 549) — e o iPhone com notch
+  // soma ~34px de inset que o pb-44 fixo (176px) não cobria: o calc com a
+  // var cobre os dois (padrão do AdminProductFormView). A partir de lg a
+  // barra volta ao pé e pb-28 chega.
   return (
-    <div className="min-h-screen bg-admin-bg pb-44 duration-500 animate-in fade-in lg:pb-28">
+    <div className="min-h-screen bg-admin-bg pb-[calc(11rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] duration-500 animate-in fade-in lg:pb-28">
       {/* T3 (lote B, 12/09) — "Mesa do lojista": coluna ÚNICA tipo comanda
           (~600px centrados), na ordem em que o lojista LÊ a ficha: header →
           espera → trilha → cliente → itens → pagamento (+ devolução) →

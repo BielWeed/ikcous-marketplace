@@ -296,11 +296,12 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
     // O padrão mobile-safe já é conferido por botão nos testes de cima;
     // aqui entra a OUTRA metade do achado: o fim da ficha ("Anotações
     // internas") precisa de padding que cubra a barra LEVANTADA no <lg
-    // (6.5rem de offset + ~69px de barra ≈ 173px; pb-44 = 176px) — o pb-28
-    // antigo (112px) deixava o fim atrás. A partir de lg a barra volta ao
-    // pé: pb-28 chega.
+    // (6.5rem de offset + ~69px de barra ≈ 173px) MAIS o inset de safe-area
+    // do iPhone com notch (~34px que o pb-44 fixo não cobria) — 11rem +
+    // safe-area pela var, mesmo padrão do AdminProductFormView. A partir de
+    // lg a barra volta ao pé: pb-28 chega.
     const folha = hospedeiro.querySelector("div.min-h-screen");
-    expect(folha?.className).toContain("pb-44");
+    expect(folha?.className).toContain("pb-[calc(11rem");
     expect(folha?.className).toContain("lg:pb-28");
   });
 

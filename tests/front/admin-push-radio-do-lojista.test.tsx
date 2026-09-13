@@ -304,6 +304,34 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     expect(chipNovos!.disabled).toBe(false);
   });
 
+  it("o público 'Todos' também REMEDE ao voltar o foco: inscrito novo destrava o chip (achado do bot de revisão do GitHub sobre o ef4c1ee)", async () => {
+    // Abertura com a loja SEM aparelho inscrito: o chip "Todos" nasce zero e
+    // desativado, pela mesma regra de zero medido dos demais chips.
+    estadoDoBanco.subCount = 0;
+    await abrirTela();
+
+    const chipTodos = chipDeSegmento("Todos os Clientes");
+    expect(chipTodos).toBeTruthy();
+    expect(chipTodos!.disabled).toBe(true);
+    expect(numeroDoChip(chipTodos)).toBe("0");
+
+    // O banco andou com a tela aberta: um aparelho se inscreveu.
+    estadoDoBanco.subCount = 1;
+
+    // O foco volta: `subCount` tem de ser medido de novo — antes deste
+    // conserto o efeito de foco só remediava os segmentos, e o "Todos"
+    // ficava travado no zero para sempre.
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+
+    expect(numeroDoChip(chipTodos)).toBe("1");
+    expect(chipTodos!.disabled).toBe(false);
+  });
+
   it("a prévia do celular mostra o título e o corpo digitados, como a notificação chega", async () => {
     await abrirTela();
 
