@@ -122,7 +122,13 @@ describe("HomeView — a cidade vem do config, e a home para de prometer o que n
     // aparecia com "entrega expressa" quando a loja TINHA cidade. O caso sem
     // cidade acima nunca exercitava esse ramo, e a promessa sobreviveu ao
     // PR #225 escondida atrás da condição.
-    mockConfig = { storeCity: "Uberlândia", storeState: "MG" };
+    // #525: com cidade, a frase do frete grátis só existe com cobertura
+    // LOCAL — por isso o mock declara a cobertura aqui.
+    mockConfig = {
+      storeCity: "Uberlândia",
+      storeState: "MG",
+      shippingCoverage: "local",
+    };
     await renderizarHome();
 
     const metaDescricao = document.head
@@ -189,11 +195,15 @@ describe("FreeShippingBlock — o rótulo de cidade lê o config, ou some", () =
     });
   }
 
-  it("mostra a cidade da loja quando ela está configurada", async () => {
+  it("mostra a cidade da loja quando ela está configurada (cobertura local)", async () => {
+    // #525: o selo "<CIDADE> •" lê como "entrega em <cidade>" — só com
+    // cobertura LOCAL. O caso nacional (selo não pode nascer) mora em
+    // aviso-de-regiao-olha-a-cobertura.test.tsx.
     mockConfig = {
       freeShippingMin: 50,
       storeCity: "Uberlândia",
       storeState: "MG",
+      shippingCoverage: "local",
     };
     await renderizarBloco();
 

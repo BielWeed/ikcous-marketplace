@@ -293,8 +293,16 @@ export const HomeView = React.memo(function HomeView({
   // que esta sobreviveu escondida atrás do `cidadeLoja ? ... : ...` (a Tarefa
   // 6 só olhou as linhas 217/222/224 e ninguém reparou nesta). O frete grátis
   // fica: ele é de verdade, configurável, com valor mínimo.
-  const homeDescription = cidadeLoja
-    ? `Descubra produtos exclusivos com frete grátis em ${cidadeLoja}.`
+  //
+  // A cidade do TÍTULO afirma onde a loja ESTÁ e não muda com a cobertura;
+  // a do OG afirma PARA ONDE ela entrega ("frete grátis em <cidade>") — por
+  // isso só existe com cobertura LOCAL (#525): loja nacional com cidade
+  // preenchida mostra a frase sem cidade em vez de restringir a entrega à
+  // sede.
+  const cidadeDeEntrega =
+    config.shippingCoverage === "local" ? cidadeLoja : undefined;
+  const homeDescription = cidadeDeEntrega
+    ? `Descubra produtos exclusivos com frete grátis em ${cidadeDeEntrega}.`
     : "Descubra produtos exclusivos.";
   // Mesma preferência do Header: o nome que o lojista gravou no banco vem
   // antes da identidade compilada.
