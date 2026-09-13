@@ -277,6 +277,33 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     expect(texto()).toContain("Receberão: 8 aparelhos");
   });
 
+  it("contagem zero desatualizada REMEDE ao voltar o foco: cliente novo com a tela aberta destrava o chip (achado 3 da revisão do PR 549)", async () => {
+    await abrirTela();
+
+    const chipNovos = chipDeSegmento("Cadastrados há ≤ 7 dias");
+    expect(chipNovos).toBeTruthy();
+    // Abertura da tela: zero medido de verdade → chip desativado com motivo.
+    expect(chipNovos!.disabled).toBe(true);
+    expect(numeroDoChip(chipNovos)).toBe("0");
+
+    // O banco andou enquanto a tela estava aberta: um cliente se cadastrou.
+    estadoDoBanco.porSegmento.new = [{ id: "9" }];
+
+    // Lojista volta o foco à janela/aba (voltou do WhatsApp, foi ver a
+    // loja…): a medição dos segmentos roda de novo e o chip acompanha —
+    // antes deste conserto ele ficava travado no zero para sempre, sem
+    // caminho de remedir (chip desativado não dispara a medição).
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+
+    expect(numeroDoChip(chipNovos)).toBe("1");
+    expect(chipNovos!.disabled).toBe(false);
+  });
+
   it("a prévia do celular mostra o título e o corpo digitados, como a notificação chega", async () => {
     await abrirTela();
 

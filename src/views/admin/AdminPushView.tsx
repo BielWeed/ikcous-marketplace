@@ -540,6 +540,29 @@ export const AdminPushView = memo(function AdminPushView({
     fetchSegmentCounts();
   }, [fetchSubscribers, fetchHistory, fetchSegmentCounts]);
 
+  // Achado 3 (menor) da revisão cruzada do PR 549 (recado 20260912-2320):
+  // as contagens dos chips nasciam SÓ no efeito de montagem — e o chip de
+  // zero nasce desativado, então "cliente novo cadastrou com a tela aberta"
+  // deixava o chip travado no zero para sempre, sem caminho de remedir (o
+  // clique que remedeia a medição só existe para chip ativo; antes do rádio
+  // era assim que se remedava). Remede-se do jeito barato: o foco voltando
+  // à janela/aba mede os segmentos de novo. O desenho aprovado na direção B
+  // (zero desativado com o motivo na cara) segue igual — só a MEDIDA deixa
+  // de congelar.
+  useEffect(() => {
+    const remedirAoVoltar = () => {
+      if (document.visibilityState === "visible") {
+        fetchSegmentCounts();
+      }
+    };
+    window.addEventListener("focus", remedirAoVoltar);
+    document.addEventListener("visibilitychange", remedirAoVoltar);
+    return () => {
+      window.removeEventListener("focus", remedirAoVoltar);
+      document.removeEventListener("visibilitychange", remedirAoVoltar);
+    };
+  }, [fetchSegmentCounts]);
+
   const calculateReach = useCallback(async () => {
     if (segment === "all") {
       // `predictedReach` só é lido quando `segment !== "all"` (ver
