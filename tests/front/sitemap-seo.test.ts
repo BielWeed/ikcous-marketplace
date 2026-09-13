@@ -300,6 +300,23 @@ describe("buscarIdsDeProdutos", () => {
     ).rejects.toThrow(/SITEMAP_LIMITE/);
   });
 
+  it("página final CURTA acima do teto também reprova — a borda em que o teto era furado", async () => {
+    // Achado da revisão do PR #572: o check do teto só rodava quando a página
+    // vinha cheia; catálogo cuja ÚLTIMA página é parcial (10001–10999 produtos
+    // com os padrões) escapava sem reprovar, furando a invariante declarada.
+    const { fetchImpl } = fetchPaginado([
+      ["a", "b"],
+      ["c"],
+    ]);
+    await expect(
+      sitemap.buscarIdsDeProdutos(conexaoPublishable, {
+        fetchImpl,
+        pagina: 2,
+        maxProdutos: 2,
+      }),
+    ).rejects.toThrow(/SITEMAP_LIMITE/);
+  });
+
   it("timeout PROPAGA: aqui falhar calado publicaria sitemap velho (o oposto do consultarProduto)", async () => {
     // O fetch de verdade rejeita quando o signal aborta; o dublê tem que
     // fazer o mesmo, senão o teste mede o mock e não o prazo.

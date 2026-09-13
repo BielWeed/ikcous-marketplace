@@ -152,9 +152,11 @@ export async function buscarIdsDeProdutos(connection, opcoes = {}) {
         throw new Error("SITEMAP_SHAPE");
       ids.push(item.id);
     }
+    // O teto é conferido a cada página, ANTES do break da última: página final
+    // curta acima do teto também reprova (borda achada na revisão do PR #572).
+    if (ids.length > maxProdutos) throw new Error("SITEMAP_LIMITE");
     if (lista.length < limite) break; // última página
     depoisDe = lista[lista.length - 1].id;
-    if (ids.length > maxProdutos) throw new Error("SITEMAP_LIMITE");
   }
   return ids;
 }
