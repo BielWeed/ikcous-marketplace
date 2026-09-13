@@ -1,4 +1,10 @@
 import { LazyImage } from "@/components/LazyImage";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { imagemRedimensionada } from "@/lib/imageUrl";
@@ -6,7 +12,6 @@ import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
   ChevronDown,
@@ -15,7 +20,6 @@ import {
   Loader2,
   ShoppingCart,
   Truck,
-  X,
 } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -28,11 +32,13 @@ interface ProductCardProps {
   onAddToCart?: (product: Product, e: React.MouseEvent) => void;
   onQuickBuy?: (product: Product, e: React.MouseEvent) => void;
   /**
-   * Card inteligente (pedido do Gabriel, 02/09): presente, o botão "Escolher
-   * opções" EXPANDE as variações no próprio card — preço e imagem reagem à
-   * escolha — e "Adicionar" entrega a variação escolhida. Ausente, o botão
-   * leva para a tela do produto (comportamento de sempre, retrocompatível).
-   * Assinatura igual ao `handleAddToCart` do App com quantity fixo em 1.
+   * Card inteligente (pedido do Gabriel, 02/09; folha desde 13/09 — direção
+   * B, mockup dele): presente, o botão "Escolher opções" ABRE a folha de
+   * opções que desliza de baixo (bottom sheet, em portal fora do card) —
+   * preço e imagem do card reagem à escolha, e o CTA do rodapé da folha
+   * entrega a variação escolhida. Ausente, o botão leva para a tela do
+   * produto (comportamento de sempre, retrocompatível). Assinatura igual ao
+   * `handleAddToCart` do App com quantity fixo em 1.
    */
   onAddToCartWithVariants?: (
     product: Product,
@@ -101,16 +107,11 @@ export const ProductCard = memo(function ProductCard({
       timersRef.current.forEach((id) => window.clearTimeout(id));
     };
   }, []);
-  // Foco: ao abrir o painel, vai para o X (primeiro controle dele); ao
-  // fechar, volta para o botão de ação -- sem isso o painel vira uma camada
-  // que aparece por cima da foto sem o teclado/leitor de tela acompanhar
-  // (laudos de acessibilidade 03/09 e 08/09). A guarda da primeira
-  // renderização existe para NÃO roubar o foco de toda a vitrine no mount
-  // (o efeito rodaria uma vez por card, e "toda página abre com foco no
-  // botão do último card" seria pior que o problema original).
-  const primeiraRenderPainelRef = useRef(true);
-  const fecharBtnRef = useRef<HTMLButtonElement>(null);
-  const actionBtnRef = useRef<HTMLButtonElement>(null);
+  // Foco: quem gerencia agora é o próprio diálogo da folha (Radix) -- foco
+  // entra no conteúdo ao abrir, fica preso dentro (focus trap) e volta ao
+  // elemento que abriu ao fechar (13/09). O foco manual do painel antigo
+  // (refs + useEffect com guarda de primeira renderização, laudos de
+  // acessibilidade 03/09 e 08/09) foi embora junto com o painel.
 
   const discount = product.originalPrice
     ? Math.round(
@@ -129,7 +130,7 @@ export const ProductCard = memo(function ProductCard({
   // `stockIncrement` das escolhidas. Map em vez de Record: objeto indexado
   // por variável é o warning `security/detect-object-injection` que o teto
   // do lint reprova — e Map é a estrutura certa para a escolha.
-  const [painelOpcoesAberto, setPainelOpcoesAberto] = useState(false);
+  const [folhaOpcoesAberta, setFolhaOpcoesAberta] = useState(false);
   const [selecionadas, setSelecionadas] = useState<Map<string, string>>(
     () => new Map(),
   );
@@ -169,26 +170,14 @@ export const ProductCard = memo(function ProductCard({
     Array.from(variantGroups.keys()).every((nome) => selecionadas.has(nome));
 
   // Loja recém-criada ou produto com variantes cadastradas mas TODAS sem
-  // estoque: sem isso o painel abre só com chips riscados e o botão fica
-  // preso em "Escolha acima" para sempre -- a única saída seria o X, o que
-  // parece a tela travada com o painel cobrindo a foto.
+  // estoque: sem isso a folha abre só com chips riscados e nada pode ser
+  // escolhido -- a única saída seria o X, o que parece a tela travada com
+  // o card coberto pela folha.
   const nenhumaOpcaoDisponivel =
     temGruposDeOpcao &&
     Array.from(variantGroups.values()).every((valores) =>
       valores.every((v) => (v.stockIncrement ?? 0) <= 0),
     );
-
-  useEffect(() => {
-    if (primeiraRenderPainelRef.current) {
-      primeiraRenderPainelRef.current = false;
-      return;
-    }
-    if (painelOpcoesAberto) {
-      fecharBtnRef.current?.focus();
-    } else {
-      actionBtnRef.current?.focus();
-    }
-  }, [painelOpcoesAberto]);
 
   // Safely determine if this specific card should have the view transition name applied.
   // We apply it strictly to the clicked instance (via activeTransitionCardId) to avoid duplicate transition names.
@@ -200,27 +189,23 @@ export const ProductCard = memo(function ProductCard({
   }
 
   // O card não pode deixar comprar sem escolher a variação.
-  // Com a prop `onAddToCartWithVariants`, o botão EXPANDE as opções no
-  // próprio card — a escolha acontece aqui, sem sair da vitrine. Sem a
-  // prop, leva para a tela do produto, que é onde a escolha é obrigatória
-  // (ProductView.tsx). Sem isso o pedido nascia com `variant_id = NULL` no
-  // banco, cobrando o preço do produto (ignorando `price_override`) e
-  // decrementando só `produtos.estoque`, nunca a variação escolhida.
+  // Com a prop `onAddToCartWithVariants`, o botão ABRE a folha de opções —
+  // a escolha acontece ali, sem sair da vitrine. Sem a prop, leva para a
+  // tela do produto, que é onde a escolha é obrigatória (ProductView.tsx).
+  // Sem isso o pedido nascia com `variant_id = NULL` no banco, cobrando o
+  // preço do produto (ignorando `price_override`) e decrementando só
+  // `produtos.estoque`, nunca a variação escolhida.
   const hasActiveVariant = product.variants?.some((v) => v.active) ?? false;
 
   const handleAddToCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    // Card inteligente: o mesmo botão abre o painel de opções e, com a
-    // escolha completa, vira "Adicionar" — o clique final é o
-    // `handleAdicionarComOpcoes`, abaixo.
+    // Card inteligente (folha, 13/09): o botão do card SÓ ABRE a folha — a
+    // escolha e o "Adicionar" moram no rodapé dela. O rótulo do botão do
+    // card é sempre "Escolher opções".
     if (hasActiveVariant && onAddToCartWithVariants) {
       if (estoqueAtual <= 0 || cartStatus !== "idle") return;
-      if (!painelOpcoesAberto) {
-        setPainelOpcoesAberto(true);
-        return;
-      }
-      handleAdicionarComOpcoes(e);
+      setFolhaOpcoesAberta(true);
       return;
     }
 
@@ -278,14 +263,12 @@ export const ProductCard = memo(function ProductCard({
     triggerFlyingCartAnimation(e.currentTarget as HTMLElement, imgSrc);
     onAddToCartWithVariants?.(product, variantId, variantNames);
 
-    // Decisão desta tarefa (não estava no pedido original -- ver relatório):
-    // o painel NÃO fecha nem limpa a escolha sozinho depois do "Salvo!".
-    // Antes, com o painel no fluxo, o fechamento automático só encolhia o
-    // card; como camada sobreposta à foto, fechar sozinho parecia o card
-    // "se apagando" sem ninguém ter tocado em nada -- e apagava junto a
-    // escolha de quem estava comprando DUAS variações do mesmo produto (P e
-    // M, dois sabores), forçando recomeçar do zero. Fechar passa a ser
-    // sempre um gesto explícito (X ou tocar fora do painel).
+    // DECISÃO PAGA (12/09, portada para a folha em 13/09 -- ver relatório
+    // da tarefa original): a folha NÃO fecha nem limpa a escolha sozinho
+    // depois do "Salvo!". Fechar automático apagava junto a escolha de quem
+    // estava comprando DUAS variações do mesmo produto (P e M, dois
+    // sabores), forçando recomeçar do zero. Fechar é sempre um gesto
+    // explícito: X, toque fora (overlay) ou Escape.
     const idLoading = window.setTimeout(() => {
       setCartStatus("success");
       const idSuccess = window.setTimeout(() => {
@@ -296,8 +279,11 @@ export const ProductCard = memo(function ProductCard({
     timersRef.current.push(idLoading);
   };
 
-  const alternarOpcao = (e: React.MouseEvent, nome: string, valor: string) => {
-    e.stopPropagation();
+  // Tocar num chip ativo DESELECIONA (toggle) -- mesma semântica de sempre.
+  // Sem stopPropagation aqui: quem para o clique de borbulhar é o CONTEÚDO
+  // da folha (SheetContent, ver comentário lá) -- um stopPropagation só, no
+  // portão de entrada, cobre chips, CTA e o que mais nascer dentro dela.
+  const alternarOpcao = (nome: string, valor: string) => {
     setSelecionadas((antes) => {
       const depois = new Map(antes);
       if (depois.get(nome) === valor) {
@@ -334,30 +320,20 @@ export const ProductCard = memo(function ProductCard({
     onClick(product.id);
   };
 
-  // O painel virou uma camada por cima da foto -- sem isto, tocar fora dele
-  // para "fechar" na verdade navegava para a página do produto e descartava
-  // a escolha feita (o wrapper raiz sempre teve `onClick={abrirProduto}`).
-  // Enquanto o painel está aberto, o clique no fundo do card fecha o painel
-  // em vez de abrir o produto; o X e o Escape (dentro do painel) fazem o
-  // mesmo.
-  const handleWrapperClick = () => {
-    if (painelOpcoesAberto) {
-      setPainelOpcoesAberto(false);
-      return;
-    }
-    abrirProduto();
-  };
-
   return (
     // B3 (laudo de acessibilidade, 08/09): este wrapper é INTENCIONALMENTE
     // um div não-interativo (sem role/tabIndex) -- o teclado é servido pelo
     // <button> do nome, logo abaixo. O `onClick` aqui cobre só mouse/toque
     // em área vazia do card; o eslint-disable é o mesmo padrão já usado em
     // AdminWhatsAppConfigView.tsx para overlay clicável sem foco próprio.
+    // Desde o redesenho de 13/09 este clique volta a ser SÓ `abrirProduto`:
+    // com a folha aberta é o overlay dela que recebe o toque fora (e fecha
+    // a folha), nunca este wrapper -- o ramo que fechava o painel aqui
+    // morreu com o painel.
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       ref={cardRef}
-      onClick={handleWrapperClick}
+      onClick={abrirProduto}
       onMouseEnter={() => {
         prefetchImage(imagemRedimensionada(srcImagem, { width: 640 }));
         if (onMouseEnter) onMouseEnter(product.id);
@@ -378,47 +354,26 @@ export const ProductCard = memo(function ProductCard({
         // do bloco de preço absorvia o espaço extra como uma faixa em
         // branco entre o estoque e o preço/botão.
         //
-        // A correção de 12/09 tira o painel do FLUXO: ele passa a ser uma
-        // camada `absolute` sobreposta à faixa foto+meta (ver o wrapper
-        // "relative" logo abaixo, antes do bloco de preço/botão), nunca um
-        // filho que cresce entre o preço e o botão. Com isso, abrir o
-        // painel deixa de mudar a altura de CONTEÚDO do card -- fechado e
-        // aberto medem o mesmo tanto (medido no navegador, ver relatório da
-        // tarefa). Sendo a altura constante, `h-full`/`flex-1` VOLTAM aqui:
-        // a grade pode esticar o card com segurança, porque não existe mais
-        // um EVENTO (abrir o painel) que muda essa altura no meio da vida
-        // do card -- só o efeito estático normal de grid (nome de 1 linha
-        // vs. 2 linhas), que sempre existiu e nunca foi o bug relatado.
+        // A correção de 12/09 tirou o painel do FLUXO (virou camada
+        // `absolute` sobre a faixa foto+meta) e devolveu `h-full`/`flex-1`.
+        // O redesenho de 13/09 (folha que desliza de baixo, direção B
+        // escolhida pelo Gabriel) tornou a garantia ESTRUTURAL: a escolha
+        // não é mais descendente do card -- a folha renderiza em portal,
+        // fora desta árvore, e abrir as opções não insere nenhum nó aqui.
+        // As classes ficam: a altura de conteúdo do card não muda com a
+        // folha aberta, só o efeito estático normal de grid (nome de 1
+        // linha vs. 2 linhas), que sempre existiu e nunca foi o bug.
         "group bg-zinc-50/30 rounded-[2rem] overflow-hidden hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:bg-white transition-[transform,box-shadow,background-color] duration-300 ease-out cursor-pointer border border-zinc-200/60 flex h-full flex-1 flex-col relative active:scale-[0.98] gpu-accelerated",
         className,
       )}
     >
-      {/* Foto + metadados: bloco que o painel de opções cobre quando aberto
-          (ver AnimatePresence logo abaixo) -- nunca o preço nem o botão de
-          ação, que ficam no bloco seguinte, fora daqui, sempre visíveis e
-          clicáveis. Medido no navegador a 375px (12/09): a foto sozinha
-          (aspect-[4/5], ~207px) mal cabia DOIS grupos de variação com a
-          fileira de chips atual; foto+meta juntos dão a folga real que o
-          caso comum (2 grupos) precisa sem rolar -- ver relatório da
-          tarefa. `relative` é o que ancora o painel `absolute` a ESTA faixa,
-          não ao card inteiro. */}
+      {/* Foto + metadados: faixa que o painel de opções cobria até 13/09;
+          hoje a folha é portal e nada a cobre -- o preço e o botão de ação
+          continuam no bloco seguinte, fora daqui. O `relative` ancora o
+          botão de favoritar (absolute) a esta caixa de foto. */}
       <div className="relative">
         {/* Image Container */}
-        {/* Correção da rodada 1 (revisão, 12/09): com o painel aberto esta
-            faixa fica coberta por uma camada OPACA (o `motion.div` logo
-            abaixo, `bg-white`), mas sem `inert` o botão de favoritar
-            continuava focável e na árvore de acessibilidade -- Shift+Tab
-            chegava nele invisível, e Enter favoritava o produto sem a
-            pessoa ver nada acontecer. `inert` tira foco + árvore de
-            acessibilidade + eventos de ponteiro de uma vez, casando com o
-            que a camada opaca já faz visualmente (React 19.2 suporta
-            `inert` como prop booleana nativa). Nunca no wrapper `relative`
-            do pai (que contém o próprio painel) -- inert ali mataria o X e
-            os chips. */}
-        <div
-          className="relative aspect-[4/5] overflow-hidden bg-slate-50"
-          inert={painelOpcoesAberto}
-        >
+        <div className="relative aspect-[4/5] overflow-hidden bg-slate-50">
           <LazyImage
             src={srcImagem}
             alt={product.name}
@@ -460,11 +415,7 @@ export const ProductCard = memo(function ProductCard({
         </div>
 
         {/* Meta: categoria, nome, avaliação/estoque */}
-        {/* Mesma correção acima: com o painel aberto, o <button> do NOME
-            (logo abaixo) fica coberto pela camada opaca -- `inert` tira ele
-            e a categoria/estoque da árvore de foco e de acessibilidade
-            enquanto durar a sobreposição. */}
-        <div className="space-y-0.5 p-2.5 pb-1" inert={painelOpcoesAberto}>
+        <div className="space-y-0.5 p-2.5 pb-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <p className="max-w-[80%] truncate text-[9px] font-bold uppercase tracking-widest text-slate-400">
               {product.category}
@@ -552,138 +503,13 @@ export const ProductCard = memo(function ProductCard({
             </div>
           </div>
         </div>
-
-        {/* Painel de opções NO CARD (card inteligente, pedido do Gabriel
-            02/09; redesenhado em 12/09 para não empurrar o card -- ver o
-            comentário do wrapper raiz). Sobrepõe a faixa foto+meta acima --
-            por isso mora aqui no DOM, logo depois da foto: a ordem de
-            leitura/Tab bate com a ordem visual (WCAG 1.3.2/2.4.3; laudos de
-            acessibilidade 03/09 e 08/09). Anima opacidade/escala, nunca
-            altura: o nó está FORA do fluxo (absolute) -- animar `height`
-            nele não faz sentido e briga com a rolagem interna. A rolagem
-            mora no FILHO dedicado (overflow-y-auto + overscroll-contain),
-            nunca no nó que o framer-motion mede -- ver `min-h-0` abaixo
-            (sem ele, o filho flex não encolhe para disparar o scroll). O
-            stopPropagation impede o clique (e o Enter) de fechar o painel
-            via handleWrapperClick, ou de abrir a página do produto,
-            enquanto o cliente escolhe. */}
-        <AnimatePresence initial={false}>
-          {painelOpcoesAberto &&
-            hasActiveVariant &&
-            onAddToCartWithVariants && (
-              <motion.div
-                data-testid="product-card-options-panel"
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                className="absolute inset-0 z-10 flex flex-col overflow-hidden rounded-b-2xl border border-zinc-200/70 bg-white p-2.5 shadow-lg"
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Escape") {
-                    setPainelOpcoesAberto(false);
-                  }
-                }}
-              >
-                <div className="flex shrink-0 items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    {/* Miniatura da imagem ATUAL (produto ou variante
-                        escolhida): o painel cobre a foto grande, mas a
-                        promessa do card inteligente ("preço e imagem
-                        reagem à escolha", docblock de
-                        `onAddToCartWithVariants` acima) continua visível
-                        aqui -- sem isto, quem escolhe cor nunca veria a
-                        foto da cor escolhida, porque o painel fica bem em
-                        cima do único lugar onde ela aparecia. */}
-                    <img
-                      src={imagemRedimensionada(srcImagem, { width: 64 })}
-                      alt=""
-                      className="size-6 shrink-0 rounded-md object-cover"
-                    />
-                    <span className="truncate text-[8px] font-black uppercase tracking-widest text-zinc-400">
-                      Escolha as opções
-                    </span>
-                  </div>
-                  <button
-                    ref={fecharBtnRef}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPainelOpcoesAberto(false);
-                    }}
-                    aria-label="Fechar opções"
-                    className="shrink-0 rounded-lg p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-
-                {/* Filho dedicado à rolagem: o card NUNCA cresce para caber
-                    conteúdo -- produto com muitos grupos (cor + tamanho +
-                    sabor) rola AQUI dentro, sem esticar o card nem a
-                    foto. */}
-                <div
-                  data-testid="product-card-options-scroll"
-                  className="mt-2 min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain"
-                >
-                  {nenhumaOpcaoDisponivel ? (
-                    <p className="py-4 text-center text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                      Sem opções disponíveis no momento.
-                    </p>
-                  ) : (
-                    Array.from(variantGroups).map(([nome, valores]) => (
-                      <div key={nome}>
-                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                          {nome}
-                        </span>
-                        <div className="mt-1 flex flex-wrap gap-1.5">
-                          {valores.map((v) => {
-                            const semEstoque = (v.stockIncrement ?? 0) <= 0;
-                            const ativa = selecionadas.get(nome) === v.value;
-                            return (
-                              <button
-                                key={v.id}
-                                type="button"
-                                disabled={semEstoque}
-                                // Laudo de acessibilidade 03/09, achado 3: a
-                                // opção marcada só se distinguia pela cor —
-                                // `aria-pressed` anuncia o estado (padrão do
-                                // CategoryFilter).
-                                aria-pressed={ativa}
-                                onClick={(e) => alternarOpcao(e, nome, v.value)}
-                                title={
-                                  semEstoque
-                                    ? `${v.value} — sem estoque`
-                                    : undefined
-                                }
-                                className={cn(
-                                  "rounded-xl border px-2.5 py-1 text-[9px] font-black uppercase tracking-wide transition-all active:scale-95",
-                                  ativa
-                                    ? "border-zinc-900 bg-zinc-900 text-white shadow-sm"
-                                    : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400 hover:text-zinc-900",
-                                  semEstoque &&
-                                    "cursor-not-allowed line-through opacity-40 hover:border-zinc-200 hover:text-zinc-600",
-                                )}
-                              >
-                                {v.value}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </motion.div>
-            )}
-        </AnimatePresence>
       </div>
 
-      {/* Preço + botão: NUNCA cobertos pelo painel -- ficam fora do bloco
-          foto+meta acima, sempre visíveis e clicáveis mesmo com as opções
-          abertas (sem isso, quem escolhe a variação não teria como
-          adicionar ao carrinho -- pior que o bug original). */}
+      {/* Preço + botão: ficam fora do bloco foto+meta acima, sempre
+          visíveis e clicáveis. Com a folha em portal (13/09) nada os cobre
+          nunca mais -- e o PREÇO continua dinâmico: reflete o
+          `priceOverride` da escolha feita na folha, que é a promessa do
+          card inteligente. */}
       <div className="flex flex-1 flex-col gap-0.5 p-2.5 pt-1">
         {/* Price */}
         <div className="mt-auto flex w-full items-end justify-between gap-2 pt-1">
@@ -728,10 +554,13 @@ export const ProductCard = memo(function ProductCard({
           </div>
         </div>
 
-        {/* Action Button */}
+        {/* Action Button: com variação, o rótulo é SEMPRE "Escolher opções"
+            (13/09) -- ele só abre a folha; os estados de salvamento
+            ("Salvando..."/"Salvo!") e o rótulo de valor moram no CTA do
+            rodapé da folha. O ChevronDown girando é o sinal de estado
+            (folha aberta). */}
         <div className="mt-1.5">
           <button
-            ref={actionBtnRef}
             data-testid="product-card-action"
             onClick={handleAddToCartClick}
             disabled={estoqueAtual <= 0 || cartStatus !== "idle"}
@@ -748,29 +577,19 @@ export const ProductCard = memo(function ProductCard({
               <Loader2 className="size-3 shrink-0 animate-spin" />
             )}
             {cartStatus === "success" && <Check className="size-3 shrink-0" />}
-            {cartStatus === "idle" &&
-              estoqueAtual > 0 &&
-              !(painelOpcoesAberto && onAddToCartWithVariants) && (
-                <ShoppingCart className="size-3 shrink-0" />
-              )}
+            {cartStatus === "idle" && estoqueAtual > 0 && (
+              <ShoppingCart className="size-3 shrink-0" />
+            )}
             <span className="truncate">
               {estoqueAtual <= 0
                 ? "Esgotado"
-                : painelOpcoesAberto && onAddToCartWithVariants
-                  ? cartStatus === "loading"
-                    ? "Salvando..."
-                    : cartStatus === "success"
-                      ? "Salvo!"
-                      : escolhaCompleta
-                        ? "Adicionar"
-                        : "Escolha acima"
-                  : hasActiveVariant
-                    ? "Escolher opções"
-                    : cartStatus === "idle"
-                      ? "Carrinho"
-                      : cartStatus === "loading"
-                        ? "Salvando..."
-                        : "Salvo!"}
+                : hasActiveVariant
+                  ? "Escolher opções"
+                  : cartStatus === "idle"
+                    ? "Carrinho"
+                    : cartStatus === "loading"
+                      ? "Salvando..."
+                      : "Salvo!"}
             </span>
             {hasActiveVariant &&
               onAddToCartWithVariants &&
@@ -778,13 +597,237 @@ export const ProductCard = memo(function ProductCard({
                 <ChevronDown
                   className={cn(
                     "size-3 shrink-0 transition-transform duration-200",
-                    painelOpcoesAberto && "rotate-180",
+                    folhaOpcoesAberta && "rotate-180",
                   )}
                 />
               )}
           </button>
         </div>
       </div>
+
+      {/* ── FOLHA DE OPÇÕES (13/09, direção B — mockup do Gabriel) ──────
+          Bottom sheet em PORTAL: substitui o painel que expandia dentro do
+          card (reprovado pelo dono). A folha NUNCA é descendente do card --
+          abrir opções não muda a árvore nem a altura de nada aqui (ver o
+          comentário do wrapper raiz). Controlada por estado, sem
+          SheetTrigger: o gatilho é o botão do card, que tem handler próprio
+          (stopPropagation + abertura de produto para cuidar). Estrutura
+          (de cima para baixo): alça visual -- CORPO rolável (foto grande
+          que reage à escolha, categoria, título, selos, preço, grupos de
+          opção) -- RODAPÉ fixo com o CTA. A rolagem mora no FILHO dedicado
+          (overflow-y-auto + overscroll-contain + min-h-0, o mesmo padrão do
+          painel antigo), nunca na folha inteira. Foco, Escape, clique fora
+          e devolução de foco são do Radix (ver comentário no topo). */}
+      {hasActiveVariant && onAddToCartWithVariants && (
+        <Sheet open={folhaOpcoesAberta} onOpenChange={setFolhaOpcoesAberta}>
+          {/* stopPropagation OBRIGATÓRIO (prova no teste "Adicionar ... sem
+              navegar"): eventos sintéticos de conteúdo renderizado em portal
+              borbulham pela ÁRVORE REACT, não pela árvore do DOM -- a folha é
+              filho React DESTE componente, e o wrapper raiz tem
+              onClick={abrirProduto}. Sem isto, tocar num chip ou no CTA da
+              folha abriria o produto junto. É a MESMA proteção que o painel
+              antigo carregava no motion.div; o portal do DOM sozinho não
+              protege (o clique nunca sai do body pelo DOM, mas chega aqui
+              pela árvore do React). */}
+          <SheetContent
+            side="bottom"
+            data-testid="product-card-options-sheet"
+            onClick={(e) => e.stopPropagation()}
+            className="mx-auto max-h-[88dvh] gap-0 sm:max-w-md sm:rounded-t-3xl"
+          >
+            {/* Alça visual: só desenho, sem gesto de arrastar (o mockup B
+                não promete arrasto e o X/fora/Escape já fecham). */}
+            <div
+              aria-hidden="true"
+              className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-zinc-300"
+            />
+            <div
+              data-testid="product-card-options-scroll"
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4 pt-2"
+            >
+              <SheetDescription className="sr-only">
+                Escolha as opções para adicionar ao carrinho.
+              </SheetDescription>
+              {/* Banda de FOTO grande (a promessa da direção B: a foto da
+                  folha era MENOR que a do card atrás no thumbnail antigo e
+                  viciava a comparação -- 104x130 vs 165x206, medido 13/09).
+                  Reage à variante escolhida via `srcImagem`. */}
+              <LazyImage
+                src={srcImagem}
+                alt={product.name}
+                priority
+                sizes="(min-width: 640px) 448px, 100vw"
+                className="h-44 w-full rounded-2xl"
+              />
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  {product.category}
+                </p>
+                <SheetTitle className="text-base font-black tracking-tight text-slate-900">
+                  {product.name}
+                </SheetTitle>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {/* Os MESMOS selos do card -- a folha não inventa
+                      promessa que o card não faz. */}
+                  {discount > 0 && (
+                    <span className="shrink-0 select-none rounded border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-rose-700">
+                      {discount}% OFF
+                    </span>
+                  )}
+                  {product.isBestseller && (
+                    <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700">
+                      <Flame className="size-2.5 shrink-0 fill-orange-500/20 text-orange-500" />
+                      <span>EM ALTA</span>
+                    </span>
+                  )}
+                  {product.freeShipping && (
+                    <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
+                      <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
+                      <span>Frete Grátis</span>
+                    </span>
+                  )}
+                  {/* Indicador de estoque: os MESMOS literais do card,
+                      agora reagindo à escolha na folha também. */}
+                  <span
+                    className={cn(
+                      "flex items-center gap-1 font-bold text-[9px]",
+                      estoqueAtual <= 0
+                        ? "text-zinc-500"
+                        : estoqueAtual <= 5
+                          ? "text-rose-600"
+                          : "text-emerald-700",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "w-1 h-1 rounded-full animate-pulse",
+                        estoqueAtual <= 0
+                          ? "bg-zinc-400"
+                          : estoqueAtual <= 5
+                            ? "bg-rose-500"
+                            : "bg-emerald-500",
+                      )}
+                    />
+                    {estoqueAtual <= 0
+                      ? "Esgotado"
+                      : estoqueAtual <= 5
+                        ? `Apenas ${estoqueAtual} restam!`
+                        : `Estoque: ${estoqueAtual}`}
+                  </span>
+                </div>
+                {/* Preço De/Por DINÂMICO na folha (mesma semântica do
+                    card: `??` preserva override zero). */}
+                {product.originalPrice && product.originalPrice > precoAtual ? (
+                  <div className="flex flex-wrap items-baseline gap-2 pt-1">
+                    <span className="text-[15px] font-black leading-none tracking-tight text-rose-600">
+                      Por: {formatCurrency(precoAtual)}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      De:{" "}
+                      <span className="line-through">
+                        {formatCurrency(product.originalPrice)}
+                      </span>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="pt-1">
+                    <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
+                      {formatCurrency(precoAtual)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Grupos de opção: MESMA semântica do painel antigo (chips
+                  com aria-pressed, disabled + title quando sem estoque,
+                  line-through/opacidade), com folga maior de toque porque
+                  a folha tem largura de tela inteira. */}
+              {nenhumaOpcaoDisponivel ? (
+                <p className="py-4 text-center text-[11px] font-bold uppercase tracking-wide text-zinc-400">
+                  Sem opções disponíveis no momento.
+                </p>
+              ) : (
+                Array.from(variantGroups).map(([nome, valores]) => (
+                  <div key={nome} className="space-y-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                      {nome}
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {valores.map((v) => {
+                        const semEstoque = (v.stockIncrement ?? 0) <= 0;
+                        const ativa = selecionadas.get(nome) === v.value;
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            disabled={semEstoque}
+                            // Laudo de acessibilidade 03/09, achado 3: a
+                            // opção marcada só se distinguia pela cor —
+                            // `aria-pressed` anuncia o estado (padrão do
+                            // CategoryFilter).
+                            aria-pressed={ativa}
+                            onClick={() => alternarOpcao(nome, v.value)}
+                            title={
+                              semEstoque
+                                ? `${v.value} — sem estoque`
+                                : undefined
+                            }
+                            className={cn(
+                              "min-h-[40px] rounded-xl border px-3 py-1.5 text-[11px] font-black uppercase tracking-wide transition-all active:scale-95",
+                              ativa
+                                ? "border-zinc-900 bg-zinc-900 text-white shadow-sm"
+                                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400 hover:text-zinc-900",
+                              semEstoque &&
+                                "cursor-not-allowed line-through opacity-40 hover:border-zinc-200 hover:text-zinc-600",
+                            )}
+                          >
+                            {v.value}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Rodapé FIXO: o CTA nunca rola para fora da folha. Padding
+                inferior soma a área segura do aparelho (mesma variável
+                --safe-area-bottom que os rodapés da casa usam). */}
+            <div className="shrink-0 border-t border-zinc-100 bg-background px-5 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-3">
+              <button
+                type="button"
+                data-testid="product-card-options-add"
+                onClick={handleAdicionarComOpcoes}
+                disabled={cartStatus !== "idle"}
+                className={cn(
+                  "flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-150 active:scale-[0.98] shadow-[0_4px_10px_rgba(24,24,27,0.1)]",
+                  cartStatus === "success"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : "bg-primary hover:opacity-90 text-primary-foreground",
+                  cartStatus === "loading" && "opacity-80",
+                )}
+              >
+                {cartStatus === "loading" && (
+                  <Loader2 className="size-4 shrink-0 animate-spin" />
+                )}
+                {cartStatus === "success" && (
+                  <Check className="size-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {cartStatus === "loading"
+                    ? "Salvando..."
+                    : cartStatus === "success"
+                      ? "Salvo!"
+                      : escolhaCompleta
+                        ? `Adicionar · ${formatCurrency(precoAtual)}`
+                        : "Adicionar"}
+                </span>
+              </button>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   );
 });
