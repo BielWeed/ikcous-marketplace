@@ -260,7 +260,7 @@ const ConnectionDiagnosticsSection = memo(
           className="group flex w-full select-none items-center justify-between rounded-2xl p-2 text-left transition-all hover:bg-white/5"
         >
           <div className="flex items-center gap-4">
-            <div className="relative flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 ring-1 ring-amber-500/20 shadow-[0_2px_12px_-4px] shadow-amber-500/25">
+            <div className="relative flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 shadow-[0_2px_12px_-4px] shadow-amber-500/25 ring-1 ring-amber-500/20">
               <span
                 aria-hidden="true"
                 className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-amber-500/[0.32] to-amber-500/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
@@ -484,7 +484,7 @@ function SecaoColapsavel({
         className="group flex w-full items-center justify-between gap-3 text-left"
       >
         <span className="flex min-w-0 items-center gap-3">
-          <span className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20 shadow-[0_2px_12px_-4px] shadow-admin-gold/25">
+          <span className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold shadow-[0_2px_12px_-4px] shadow-admin-gold/25 ring-1 ring-admin-gold/20">
             <span
               aria-hidden="true"
               className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-admin-gold/[0.32] to-admin-gold/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
@@ -575,30 +575,41 @@ type EstadoDoIndicador = "vivo" | "problema" | "neutro" | "apagado";
 // Paleta por estado do tile: container do ícone + dot do rótulo. Vivo e
 // problema ganham glow fraco da própria cor; neutro dourado é o idioma do
 // painel; apagado é vidro sem luz — nada a comemorar, nada a temer.
-const PALETA_DO_INDICADOR: Record<
+// Map + `.get` no mesmo padrão do ROTULO_DO_PIX/COR_DO_PIX abaixo: acesso
+// por índice de variável (`Record[estado]`) acorda o object-injection do
+// eslint, e o teto de warnings do repo não abre exceção para estilo.
+const PALETA_NEUTRA = {
+  container:
+    "bg-admin-gold/10 text-admin-gold ring-admin-gold/20 shadow-[0_0_16px_-6px] shadow-admin-gold/40",
+  dot: "bg-admin-gold",
+};
+
+const PALETA_DO_INDICADOR = new Map<
   EstadoDoIndicador,
   { readonly container: string; readonly dot: string }
-> = {
-  vivo: {
-    container:
-      "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20 shadow-[0_0_16px_-6px] shadow-emerald-500/40",
-    dot: "bg-emerald-400",
-  },
-  problema: {
-    container:
-      "bg-red-500/10 text-red-400 ring-red-500/20 shadow-[0_0_16px_-6px] shadow-red-500/40",
-    dot: "bg-red-400",
-  },
-  neutro: {
-    container:
-      "bg-admin-gold/10 text-admin-gold ring-admin-gold/20 shadow-[0_0_16px_-6px] shadow-admin-gold/40",
-    dot: "bg-admin-gold",
-  },
-  apagado: {
-    container: "bg-white/5 text-zinc-300 ring-white/10",
-    dot: "bg-zinc-500",
-  },
-};
+>([
+  [
+    "vivo",
+    {
+      container:
+        "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20 shadow-[0_0_16px_-6px] shadow-emerald-500/40",
+      dot: "bg-emerald-400",
+    },
+  ],
+  [
+    "problema",
+    {
+      container:
+        "bg-red-500/10 text-red-400 ring-red-500/20 shadow-[0_0_16px_-6px] shadow-red-500/40",
+      dot: "bg-red-400",
+    },
+  ],
+  ["neutro", PALETA_NEUTRA],
+  [
+    "apagado",
+    { container: "bg-white/5 text-zinc-300 ring-white/10", dot: "bg-zinc-500" },
+  ],
+]);
 
 function IndicadorDoPainel({
   icone: Icone,
@@ -613,7 +624,7 @@ function IndicadorDoPainel({
   readonly cor?: string;
   readonly estado?: EstadoDoIndicador;
 }) {
-  const paleta = PALETA_DO_INDICADOR[estado];
+  const paleta = PALETA_DO_INDICADOR.get(estado) ?? PALETA_NEUTRA;
   return (
     <div className="flex min-w-0 flex-col gap-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
       <span
@@ -856,7 +867,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   }}
                   className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-admin-gold/30 hover:bg-zinc-900/30 active:scale-[0.98]"
                 >
-                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20 shadow-[0_2px_12px_-4px] shadow-admin-gold/25">
+                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold shadow-[0_2px_12px_-4px] shadow-admin-gold/25 ring-1 ring-admin-gold/20">
                     <span
                       aria-hidden="true"
                       className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-admin-gold/[0.32] to-admin-gold/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
@@ -889,7 +900,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   }}
                   className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-amber-500/30 hover:bg-zinc-900/30 active:scale-[0.98]"
                 >
-                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 ring-1 ring-amber-500/20 shadow-[0_2px_12px_-4px] shadow-amber-500/25">
+                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 shadow-[0_2px_12px_-4px] shadow-amber-500/25 ring-1 ring-amber-500/20">
                     <span
                       aria-hidden="true"
                       className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-amber-500/[0.32] to-amber-500/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
