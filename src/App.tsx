@@ -796,7 +796,8 @@ const AppContent = () => {
       // sincronização de rota via `popstate`. Adicionar uma quarta view
       // aqui e esquecer as outras duas falha em silêncio.
       if (
-        (view === "profile" ||
+        (view === "user-profile" ||
+          view === "profile" ||
           view === "account-settings" ||
           view === "address-form") &&
         !isAuthL &&
@@ -1626,7 +1627,8 @@ const AppContent = () => {
         // arquivo) e de `src/lib/destinoPosLogin.ts`
         // (VIEWS_REDIRECIONAVEIS) — sem nada amarrando os três.
         if (
-          (targetView === "profile" ||
+          (targetView === "user-profile" ||
+            targetView === "profile" ||
             targetView === "account-settings" ||
             targetView === "address-form") &&
           !authLoading &&
