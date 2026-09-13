@@ -260,8 +260,12 @@ const ConnectionDiagnosticsSection = memo(
           className="group flex w-full select-none items-center justify-between rounded-2xl p-2 text-left transition-all hover:bg-white/5"
         >
           <div className="flex items-center gap-4">
-            <div className="flex size-10 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.1)] transition-all group-hover:scale-105">
-              <RefreshCw className="size-5 text-amber-500" strokeWidth={2.5} />
+            <div className="relative flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 ring-1 ring-amber-500/20 shadow-[0_2px_12px_-4px] shadow-amber-500/25">
+              <span
+                aria-hidden="true"
+                className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-amber-500/[0.32] to-amber-500/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+              />
+              <RefreshCw className="relative size-[18px]" strokeWidth={2.25} />
             </div>
             <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
               Diagnóstico de Conexão
@@ -477,11 +481,15 @@ function SecaoColapsavel({
           setAberta((antes) => !antes);
         }}
         aria-expanded={aberta}
-        className="flex w-full items-center justify-between gap-3 text-left"
+        className="group flex w-full items-center justify-between gap-3 text-left"
       >
         <span className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-gold/20 bg-admin-gold/10 text-admin-gold">
-            <Icone className="size-4" strokeWidth={2.5} />
+          <span className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20 shadow-[0_2px_12px_-4px] shadow-admin-gold/25">
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-admin-gold/[0.32] to-admin-gold/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+            />
+            <Icone className="relative size-[18px]" strokeWidth={2.25} />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-black uppercase tracking-[0.2em] text-white">
@@ -502,7 +510,7 @@ function SecaoColapsavel({
           )}
           <ChevronDown
             className={cn(
-              "size-4 shrink-0 text-zinc-400 transition-transform duration-200",
+              "size-4 shrink-0 text-zinc-500 transition-transform duration-200 group-hover:text-zinc-300",
               aberta && "rotate-180",
             )}
           />
@@ -554,28 +562,81 @@ function GrupoDeAjustes({
  * PURO: ícone + rótulo curto + valor lido do que já existe — sem ação, sem
  * fetch novo, sem estado. O valor vem truncado: horário e nome de loja
  * longos não empurram os vizinhos do grid.
+ *
+ * `estado` (refinamento do dono, 13/09: acabamento premium do painel)
+ * escolhe SÓ a paleta visual do tile — container do ícone tintado pelo
+ * estado + dot de status na frente do rótulo (pulsa apenas em "vivo", o
+ * único estado momentâneo). Não carrega julgamento de dado nenhum: o
+ * VALOR e a COR do valor continuam sendo escolha do chamador no hub,
+ * pelas mesmas fontes de antes.
  */
+type EstadoDoIndicador = "vivo" | "problema" | "neutro" | "apagado";
+
+// Paleta por estado do tile: container do ícone + dot do rótulo. Vivo e
+// problema ganham glow fraco da própria cor; neutro dourado é o idioma do
+// painel; apagado é vidro sem luz — nada a comemorar, nada a temer.
+const PALETA_DO_INDICADOR: Record<
+  EstadoDoIndicador,
+  { readonly container: string; readonly dot: string }
+> = {
+  vivo: {
+    container:
+      "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20 shadow-[0_0_16px_-6px] shadow-emerald-500/40",
+    dot: "bg-emerald-400",
+  },
+  problema: {
+    container:
+      "bg-red-500/10 text-red-400 ring-red-500/20 shadow-[0_0_16px_-6px] shadow-red-500/40",
+    dot: "bg-red-400",
+  },
+  neutro: {
+    container:
+      "bg-admin-gold/10 text-admin-gold ring-admin-gold/20 shadow-[0_0_16px_-6px] shadow-admin-gold/40",
+    dot: "bg-admin-gold",
+  },
+  apagado: {
+    container: "bg-white/5 text-zinc-300 ring-white/10",
+    dot: "bg-zinc-500",
+  },
+};
+
 function IndicadorDoPainel({
   icone: Icone,
   rotulo,
   valor,
   cor = "text-zinc-200",
+  estado = "neutro",
 }: {
   readonly icone: React.ElementType;
   readonly rotulo: string;
   readonly valor: string;
   readonly cor?: string;
+  readonly estado?: EstadoDoIndicador;
 }) {
+  const paleta = PALETA_DO_INDICADOR[estado];
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/5 bg-zinc-950/40 p-3">
-      <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-500">
-        <Icone
-          className="size-3.5 shrink-0 text-admin-gold"
-          strokeWidth={2.5}
+    <div className="flex min-w-0 flex-col gap-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
+      <span
+        className={cn(
+          "flex size-10 items-center justify-center rounded-xl ring-1 backdrop-blur-sm",
+          paleta.container,
+        )}
+      >
+        <Icone className="size-[18px]" strokeWidth={2.25} />
+      </span>
+      <span className="flex items-center gap-1.5 text-[9.5px] font-black uppercase tracking-[0.18em] text-zinc-500">
+        <span
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            paleta.dot,
+            estado === "vivo" && "animate-pulse",
+          )}
         />
         {rotulo}
       </span>
-      <span className={cn("truncate text-xs font-bold", cor)}>{valor}</span>
+      <span className={cn("truncate text-sm font-bold leading-tight", cor)}>
+        {valor}
+      </span>
     </div>
   );
 }
@@ -602,6 +663,15 @@ const COR_DO_PIX = new Map<NivelDoPix, string>([
   ["ok", "text-emerald-400"],
   ["alerta", "text-red-400"],
   ["off", "text-zinc-500"],
+]);
+
+// Estado VISUAL do tile do PIX no painel (paleta do IndicadorDoPainel),
+// derivado do MESMO NivelDoPix: ok=vivo (dot pulsa), alerta=problema,
+// off=apagado.
+const ESTADO_DO_PIX = new Map<NivelDoPix, EstadoDoIndicador>([
+  ["ok", "vivo"],
+  ["alerta", "problema"],
+  ["off", "apagado"],
 ]);
 
 // Nome amigável do provedor de frete. O fallback de LEITURA é o mesmo do
@@ -733,29 +803,38 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               <h2 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
                 Como está sua loja
               </h2>
-              <div className="grid grid-cols-2 gap-3 rounded-3xl border border-admin-gold/20 bg-admin-gold/5 p-4 shadow-xl lg:grid-cols-4">
-                <IndicadorDoPainel
-                  icone={Wifi}
-                  rotulo="Conexão"
-                  valor={isOffline ? "Offline" : "Online"}
-                  cor={isOffline ? "text-red-400" : "text-emerald-400"}
-                />
-                <IndicadorDoPainel
-                  icone={Wallet}
-                  rotulo="Pagamento"
-                  valor={rotuloDoPix}
-                  cor={COR_DO_PIX.get(nivelDoPix)}
-                />
-                <IndicadorDoPainel
-                  icone={Truck}
-                  rotulo="Frete"
-                  valor={nomeDoFrete}
-                />
-                <IndicadorDoPainel
-                  icone={Clock}
-                  rotulo="Atendimento"
-                  valor={atendimentoDeRelacao}
-                />
+              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900/90 via-zinc-950/80 to-admin-gold/[0.06] p-4 shadow-2xl shadow-black/50 sm:p-5">
+                <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-admin-gold/50 to-transparent" />
+                <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+                  <IndicadorDoPainel
+                    icone={Wifi}
+                    rotulo="Conexão"
+                    valor={isOffline ? "Offline" : "Online"}
+                    cor={isOffline ? "text-red-400" : "text-emerald-400"}
+                    estado={isOffline ? "problema" : "vivo"}
+                  />
+                  <IndicadorDoPainel
+                    icone={Wallet}
+                    rotulo="Pagamento"
+                    valor={rotuloDoPix}
+                    cor={COR_DO_PIX.get(nivelDoPix)}
+                    estado={ESTADO_DO_PIX.get(nivelDoPix) ?? "apagado"}
+                  />
+                  <IndicadorDoPainel
+                    icone={Truck}
+                    rotulo="Frete"
+                    valor={nomeDoFrete}
+                    cor="text-white"
+                    estado="neutro"
+                  />
+                  <IndicadorDoPainel
+                    icone={Clock}
+                    rotulo="Atendimento"
+                    valor={atendimentoDeRelacao}
+                    cor={horarioSalvo === "" ? "text-zinc-500" : "text-white"}
+                    estado="apagado"
+                  />
+                </div>
               </div>
             </section>
 
@@ -777,8 +856,15 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   }}
                   className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-admin-gold/30 hover:bg-zinc-900/30 active:scale-[0.98]"
                 >
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-gold/20 bg-admin-gold/10 text-admin-gold transition-colors duration-300 group-hover:bg-admin-gold group-hover:text-black">
-                    <Palette className="size-4" />
+                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20 shadow-[0_2px_12px_-4px] shadow-admin-gold/25">
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-admin-gold/[0.32] to-admin-gold/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                    />
+                    <Palette
+                      className="relative size-[18px]"
+                      strokeWidth={2.25}
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
@@ -803,8 +889,15 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   }}
                   className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-amber-500/30 hover:bg-zinc-900/30 active:scale-[0.98]"
                 >
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-500 transition-colors duration-300 group-hover:bg-amber-500 group-hover:text-black">
-                    <Layers className="size-4" />
+                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 ring-1 ring-amber-500/20 shadow-[0_2px_12px_-4px] shadow-amber-500/25">
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-amber-500/[0.32] to-amber-500/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                    />
+                    <Layers
+                      className="relative size-[18px]"
+                      strokeWidth={2.25}
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
@@ -941,7 +1034,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Activity className="size-4 text-admin-gold" />
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
+                    <Activity className="size-3.5" strokeWidth={2.25} />
+                  </span>
                   Painel de estado
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -960,7 +1055,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Palette className="size-4 text-admin-gold" />
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
+                    <Palette className="size-3.5" strokeWidth={2.25} />
+                  </span>
                   Banners e Vitrines
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -970,7 +1067,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               </div>
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Clock className="size-4 text-admin-gold" />
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
+                    <Clock className="size-3.5" strokeWidth={2.25} />
+                  </span>
                   Nome, logo e cores · Atendimento
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -988,7 +1087,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Truck className="size-4 text-admin-gold" />
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
+                    <Truck className="size-3.5" strokeWidth={2.25} />
+                  </span>
                   Entrega e frete
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -1006,7 +1107,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Activity className="size-4 text-admin-gold" />
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
+                    <Activity className="size-3.5" strokeWidth={2.25} />
+                  </span>
                   Minha loja está no ar?
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -1016,7 +1119,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               </div>
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <History className="size-4 text-admin-gold" />
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
+                    <History className="size-3.5" strokeWidth={2.25} />
+                  </span>
                   Consultas de frete
                 </div>
                 <p className="text-xs text-zinc-400">
