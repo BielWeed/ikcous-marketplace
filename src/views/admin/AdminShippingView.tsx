@@ -375,8 +375,15 @@ export const AdminShippingView = memo(function AdminShippingView({
     }
   };
 
+  // pb-[calc(11rem+safe-area)]: no celular a barra de salvar (quando existe)
+  // mora ACIMA do menu inferior do admin (6.5rem de offset + ~66px de barra
+  // ≈ 170px do fundo — mesmo achado da ficha do pedido, revisão do PR 549) e
+  // o pb-32 antigo (128px) deixava o fim do formulário atrás dela; o iPhone
+  // com notch soma ~34px de inset que o pb fixo não cobria — o calc com a
+  // var cobre (padrão do AdminProductFormView). A partir de lg o menu e o
+  // offset somem: pb-40 chega.
   return (
-    <div className="min-h-screen bg-admin-bg pb-32 text-zinc-100 transition-colors duration-200 animate-in fade-in sm:pb-36 lg:pb-40">
+    <div className="min-h-screen bg-admin-bg pb-[calc(11rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] text-zinc-100 transition-colors duration-200 animate-in fade-in lg:pb-40">
       {/* Top Header Bar — fórmula "Elite Header" (herdada da onda visual
           02/09): AdminPageHeader padronizado + barra sticky na view. O
           Salvar mora na BARRA FIXA do rodapé (direção D) — não aqui. */}
@@ -499,7 +506,11 @@ export const AdminShippingView = memo(function AdminShippingView({
           tela e não foi inventado. O fluxo de salvar é EXATAMENTE o de
           sempre (offline → guarda → updateConfig → toasts). ── */}
       {isLoaded && isFormDirty && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#09090b]/90 backdrop-blur-md duration-200 animate-in fade-in">
+        // Mesmo conserto da ficha do pedido (revisão do PR 549): no celular
+        // o menu inferior do admin (z-[60], DEPOIS no DOM) cobria esta
+        // barra (z-40) — "Salvar alterações" ficava atrás de uma aba do
+        // menu. Acima do menu até lg; no pé a partir de lg (menu some).
+        <div className="fixed inset-x-0 bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-40 border-t border-white/10 bg-[#09090b]/90 backdrop-blur-md duration-200 animate-in fade-in lg:bottom-0">
           <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
             <p className="flex min-w-0 items-center gap-2.5 text-[13px] font-medium text-zinc-400">
               <span

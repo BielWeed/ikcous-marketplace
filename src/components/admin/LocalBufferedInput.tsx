@@ -172,7 +172,10 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
       {useShadcn ? (
         <Input
           {...(props as any)}
-          type={mask ? "text" : props.type}
+          // Um `type` explícito do chamador vence a máscara (ex.: type="tel"
+          // no WhatsApp do Atendimento — teclado numérico no celular). A
+          // máscara funciona por JS sobre o valor, não pelo tipo do input.
+          type={props.type ?? (mask ? "text" : undefined)}
           value={localVal}
           onChange={handleChange}
           onFocus={handleFocus}
@@ -186,7 +189,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
       ) : (
         <input
           {...props}
-          type={mask ? "text" : props.type}
+          type={props.type ?? (mask ? "text" : undefined)}
           value={localVal}
           onChange={handleChange}
           onFocus={handleFocus}

@@ -30,6 +30,13 @@ const RECUSAS_REAIS_DO_BANCO = [
   "A cotação de frete expirou. Calcule o frete novamente e refaça o pedido.",
   "Cupom X inválido ou expirado.",
   "Os valores do pedido mudaram. Atualize o carrinho e tente novamente.",
+  // Item 3c (12/09/2026): a porta da entrega e a chave de idempotência.
+  "A loja ainda está configurando a entrega. Fale com a loja.",
+  "Compra sem conta é só com entrega na cidade da loja. Entre na sua conta para receber em outro endereço.",
+  "Esta loja só faz entrega na cidade dela. Confira o CEP de entrega.",
+  "Informe o CEP de entrega.",
+  "Não foi possível criar o pedido. Atualize a página e tente de novo.",
+  "O frete foi cotado para outro CEP. Volte ao carrinho, calcule o frete para o CEP de entrega e finalize de novo.",
 ];
 
 describe("nenhuma recusa real do banco cai no caso genérico", () => {

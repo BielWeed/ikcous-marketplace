@@ -141,7 +141,9 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     logsState.data = [];
     await abrirSecao();
 
-    expect(textoDoHistorico()).toMatch(/Nenhuma cotação registrada recentemente/i);
+    expect(textoDoHistorico()).toMatch(
+      /Nenhuma cotação registrada recentemente/i,
+    );
     expect(textoDoHistorico()).not.toMatch(/Taxa Única Fixa/i);
   });
 
@@ -159,7 +161,9 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     // "Nenhuma cotação PARA MOSTRAR...", que não casa com o regex anterior.
     // Sem a linha abaixo, uma falha de consulta caindo no ramo flat_fee
     // passaria pela asserção de ausência por acidente.
-    expect(textoDoHistorico()).not.toMatch(/não existe cotação para registrar/i);
+    expect(textoDoHistorico()).not.toMatch(
+      /não existe cotação para registrar/i,
+    );
   });
 
   it("escolha não salva na seção vizinha NÃO muda o motivo do vazio (o histórico lê o SALVO)", async () => {
@@ -198,9 +202,9 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     // certo renderiza de qualquer jeito.
     const opcaoMelhorEnvio = [
       ...hospedeiro.querySelectorAll('[role="radio"]'),
-    ].find(
-      (b) => b.textContent?.includes("Melhor Envio"),
-    ) as HTMLButtonElement | undefined;
+    ].find((b) => b.textContent?.includes("Melhor Envio")) as
+      | HTMLButtonElement
+      | undefined;
     expect(opcaoMelhorEnvio).toBeTruthy();
     expect(opcaoMelhorEnvio?.getAttribute("aria-checked")).toBe("false");
 
@@ -247,5 +251,36 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     expect(textoDoHistorico()).not.toMatch(/Taxa Única Fixa/i);
     expect(textoDoHistorico()).not.toMatch(/Não foi possível/i);
     expect(textoDoHistorico()).toMatch(/Exibindo a 1 consulta mais recente/i);
+  });
+
+  it("lote E: a seção veste o idioma visual do novo Ajustes (o card é da casca, não do conteúdo)", async () => {
+    mockConfig.shippingProvider = "melhor_envio";
+    logsState.data = [
+      {
+        id: "1",
+        created_at: new Date().toISOString(),
+        destination_cep: "38400000",
+        provider: "melhor_envio",
+        response_time_ms: 320,
+        status: "success",
+      },
+    ];
+    await abrirSecao();
+
+    // O card `rounded-3xl border-white/5` é da CASCA (SecaoColapsavel, peça
+    // A do lote E). Conteúdo que ainda carrega o próprio vidro
+    // (`admin-glass`) vira card dentro de card no salão novo.
+    const secao = hospedeiro.querySelector("#historico-cotacoes-section");
+    expect(secao).toBeTruthy();
+    expect(secao?.querySelector(".admin-glass")).toBeNull();
+
+    // Cabeçalho das colunas no padrão de rótulo do salão: text-[10px]
+    // font-black uppercase tracking-[0.2em].
+    const cabecalho = secao?.querySelector("thead tr");
+    expect(cabecalho).toBeTruthy();
+    expect(cabecalho?.classList.contains("text-[10px]")).toBe(true);
+    expect(cabecalho?.classList.contains("font-black")).toBe(true);
+    expect(cabecalho?.classList.contains("uppercase")).toBe(true);
+    expect(cabecalho?.classList.contains("tracking-[0.2em]")).toBe(true);
   });
 });

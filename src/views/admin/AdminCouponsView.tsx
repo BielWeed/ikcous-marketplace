@@ -567,7 +567,16 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                             className="group/code flex max-w-[70%] items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-left transition-all hover:bg-white/[0.08] active:scale-95"
                             title="Copiar Código"
                           >
-                            <span className="truncate font-mono text-lg font-black uppercase italic tracking-tighter text-white">
+                            {/* `pr-[3px]`: o Gabriel viu o ÚLTIMO caractere do código
+                                cortado (12/09/2026 — o "0" de TESTE20). Causa: `truncate`
+                                liga `overflow:hidden`, e glifo ITÁLICO se inclina para
+                                fora da largura que a fonte declara — a inclinação do
+                                último caractere cai fora da caixa e some. O
+                                `tracking-tighter` piora, porque encurta ainda mais o
+                                avanço de cada letra. A folga de 3px devolve o espaço da
+                                inclinação SEM tirar o `truncate` (que existe para código
+                                longo não empurrar o botão de copiar). */}
+                            <span className="truncate pr-[3px] font-mono text-lg font-black uppercase italic tracking-tighter text-white">
                               {coupon.code}
                             </span>
                             {copiedCode === coupon.code ? (

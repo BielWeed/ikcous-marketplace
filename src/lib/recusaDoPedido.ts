@@ -66,6 +66,7 @@ export type AcaoDeRecusa =
   | "trocar_endereco"
   | "trocar_entrega"
   | "remover_cupom"
+  | "entrar_na_conta"
   | "tentar_de_novo"
   | "conferir_antes";
 
@@ -167,6 +168,67 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
   {
     padrao:
       /^Opção de entrega não reconhecida\. Volte ao carrinho, calcule o frete e finalize de novo\.$/,
+    acao: "recotar_frete",
+  },
+  // A PORTA DA ENTREGA (revisão de 12/09/2026, item 3c): seis recusas do
+  // portão de convidado/cobertura local/idempotência (20261038000000 e
+  // 20261039000000 em diante) caíam em `conferir_antes`, cujo destino é
+  // "Ver meus pedidos" — mas em NENHUM dos seis casos existe pedido para
+  // ver: a RPC falha ANTES do INSERT. Duas são garantidas na primeira
+  // semana de uma loja nova: `origin_cep` vazio (abaixo) é o estado PADRÃO
+  // de uma loja recém-entregue, e a cobertura local pega todo cliente de
+  // fora da área.
+  //
+  // As duas do gate EXCLUSIVO do convidado (roda só quando `v_user_id IS
+  // NULL`) têm a mesma saída: entrar na conta. Sem conta, o gate roda
+  // sempre; com conta, ele nem executa — a loja passa a valer pela
+  // cobertura NACIONAL (o padrão de fábrica), a não ser que ela também
+  // tenha marcado cobertura local, caso em que nem logar resolve e "entrar
+  // na conta" continua sendo a menos errada das ações existentes (nenhuma
+  // resolve "a loja esqueceu de configurar a própria entrega").
+  {
+    padrao: /^A loja ainda está configurando a entrega\. Fale com a loja\.$/,
+    acao: "entrar_na_conta",
+  },
+  {
+    padrao:
+      /^Compra sem conta é só com entrega na cidade da loja\. Entre na sua conta para receber em outro endereço\.$/,
+    acao: "entrar_na_conta",
+  },
+  // Fora do gate do convidado: roda para QUALQUER pessoa (com ou sem
+  // conta) quando a loja tem cobertura local. Quem chega até aqui logado
+  // tem endereço cadastrado fora da faixa — a saída é trocar o endereço de
+  // entrega. Convidado com CEP fora da faixa já teria sido barrado pelo
+  // gate acima, antes de a RPC alcançar esta guarda.
+  {
+    padrao:
+      /^Esta loja só faz entrega na cidade dela\. Confira o CEP de entrega\.$/,
+    acao: "trocar_endereco",
+  },
+  {
+    padrao: /^Informe o CEP de entrega\.$/,
+    acao: "trocar_endereco",
+  },
+  // A CHAVE DE IDEMPOTÊNCIA (20261038000000): a corrida perdeu E a chave
+  // não tem dono legítimo — o pedido DESTA tentativa provadamente não
+  // nasceu (a RPC só chega aqui depois de procurar o pedido da chave e não
+  // achar). "Atualize a página", na prática, é reconferir o carrinho: a
+  // chave nasce do CONTEÚDO da compra (chave-do-pedido.ts), não do
+  // relógio — um F5 sozinho manda a MESMA chave de novo e recusa de novo.
+  // Mudar algo no carrinho (a própria reconferência) é o que gira uma
+  // chave nova.
+  {
+    padrao:
+      /^Não foi possível criar o pedido\. Atualize a página e tente de novo\.$/,
+    acao: "reconferir_carrinho",
+  },
+  // A RECONCILIAÇÃO DE CEP (item E do laudo de 31/08): a cotação vale para
+  // o CEP que ela cotou, nunca para outro CEP de entrega. O banco já manda
+  // "volte ao carrinho, calcule o frete" — mesmo verbo das regras do Frete
+  // V2 acima.
+  {
+    padrao:
+      /^O frete foi cotado para outro CEP\. Volte ao carrinho, calcule o frete para o CEP de entrega e finalize de novo\.$/,
     acao: "recotar_frete",
   },
   {

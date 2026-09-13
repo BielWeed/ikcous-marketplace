@@ -360,21 +360,23 @@ describe.each(["compact", "detailed"] as const)(
 describe("OrderDetail (ficha do pedido no painel) — mostra o aviso nos DOIS pontos onde usa o badge", () => {
   // A ficha é a tela onde a lojista abre o pedido para AGIR (o card da
   // lista só chama a atenção) — e ela usa `PaymentStatusBadge` duas vezes:
-  // no cabeçalho (`OrderHeader`, ~linha 174) e no card "Consolidado
-  // Financeiro" (`OrderFinanceCard`, ~linha 582). Um teste que olhasse só
-  // `textContent.toContain(...)` passaria com UM dos dois funcionando.
+  // no cabeçalho (`OrderHeader`) e na seção "Pagamento" (`OrderFinanceCard`).
+  // Um teste que olhasse só `textContent.toContain(...)` passaria com UM
+  // dos dois funcionando.
   //
-  // Achado da revisão: uma primeira versão deste teste contava OCORRÊNCIAS
-  // do rótulo (técnica de `order-detail-aviso-pagamento-pendente.test.tsx`
-  // para "Aguardando pagamento") — funcionava, mas sabotar QUALQUER um dos
-  // dois pontos derrubava o MESMO teste (`ocorrencias` caindo de 3 para 2
-  // nos dois casos), sem dizer qual dos dois quebrou. Trocado por duas
-  // asserções SEPARADAS, cada uma escopada ao pedaço de texto de um só
-  // ponto: `OrderHeader` (linha 1127) renderiza ANTES de `OrderFinanceCard`
-  // (linha 1173) — confirmado lendo `OrderDetail.tsx` — então cortar o
-  // `textContent` no índice de "Consolidado Financeiro" separa "tudo antes"
-  // (cabeçalho) de "tudo a partir daqui" (Consolidado Financeiro, cujo
-  // título abre o corte). Cada sabotagem agora derruba só a sua metade.
+  // Achado da revisão: uma primeira versão contava OCORRÊNCIAS do rótulo —
+  // funcionava, mas sabotar QUALQUER um dos dois pontos derrubava o MESMO
+  // teste, sem dizer qual dos dois quebrou. A versão por posição de TEXTO
+  // (`indexOf` do título do card) que veio depois tinha o defeito oposto:
+  // dependia do rótulo do card não mudar jamais — T3 do lote B trocou
+  // "Consolidado Financeiro" por "Pagamento" e o corte ficou cego.
+  //
+  // Agora o corte é por ELEMENTO: a âncora é o HEADING da seção (`h3`
+  // "Pagamento" do OrderFinanceCard) e cada selo de atenção (`div` com
+  // `animate-pulse`, que só o modo needsAttention desenha) é classificado
+  // por `compareDocumentPosition` — selo antes do heading no DOM = badge do
+  // CABEÇALHO; selo depois = badge da seção Pagamento. Nenhum texto de
+  // título entra na conta, e cada sabotagem derruba só o seu teste.
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -422,25 +424,30 @@ describe("OrderDetail (ficha do pedido no painel) — mostra o aviso nos DOIS po
   });
 
   /**
-   * Corta `hospedeiro.textContent` em duas metades no índice de "Consolidado
-   * Financeiro": tudo antes é o CABEÇALHO (e o que vem entre ele e o card
-   * financeiro); tudo a partir dali é o card financeiro. A asserção de
-   * sanidade (`idx > -1`) garante que o corte é real — sem ela, um
-   * `indexOf` que não achasse nada (-1) faria `slice(0, -1)` devolver quase
-   * o texto inteiro e a "metade do cabeçalho" incluiria o financeiro por
-   * engano, escondendo a falta do badge lá.
+   * Heading (h3) da seção "Pagamento" do OrderFinanceCard — a âncora do
+   * corte por elemento. Sanidade: o heading PRECISA existir; sem a asserção,
+   * um `find` que devolvesse undefined faria `compareDocumentPosition`
+   * comparar contra nada e as asserções seguintes passariam por vacuidade.
    */
-  function metadesDaFicha(host: HTMLElement): {
-    cabecalho: string;
-    consolidadoFinanceiro: string;
-  } {
-    const texto = host.textContent ?? "";
-    const idx = texto.indexOf("Consolidado Financeiro");
-    expect(idx).toBeGreaterThan(-1);
-    return {
-      cabecalho: texto.slice(0, idx),
-      consolidadoFinanceiro: texto.slice(idx),
-    };
+  function headingDaSecaoDePagamento(host: HTMLElement): HTMLElement {
+    const heading = Array.from(host.querySelectorAll("h3")).find(
+      (h) => h.textContent?.trim() === "Pagamento",
+    );
+    expect(heading).toBeDefined();
+    return heading as HTMLElement;
+  }
+
+  /**
+   * Selos de atenção renderizados (`div` com `animate-pulse` — classe que
+   * só o modo needsAttention do PaymentStatusBadge desenha). Sanidade:
+   * com pago+cancelled a ficha desenha DOIS (cabeçalho + seção Pagamento).
+   */
+  function selosDeAtencao(host: HTMLElement): HTMLElement[] {
+    const selos = Array.from(host.querySelectorAll("div")).filter((el) =>
+      el.className.includes("animate-pulse"),
+    );
+    expect(selos.length).toBeGreaterThanOrEqual(2);
+    return selos;
   }
 
   it("pago + cancelled: o CABEÇALHO mostra 'Pago e cancelado — precisa de atenção'", async () => {
@@ -453,11 +460,21 @@ describe("OrderDetail (ficha do pedido no painel) — mostra o aviso nos DOIS po
       raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
     });
 
-    const { cabecalho } = metadesDaFicha(hospedeiro);
-    expect(cabecalho).toContain("Pago e cancelado — precisa de atenção");
+    const heading = headingDaSecaoDePagamento(hospedeiro);
+    // Selo que vem ANTES do heading da seção no documento = badge do
+    // cabeçalho (OrderHeader renderiza no topo da comanda).
+    const seloDoCabecalho = selosDeAtencao(hospedeiro).find(
+      (selo) =>
+        selo.compareDocumentPosition(heading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(seloDoCabecalho).toBeDefined();
+    expect(seloDoCabecalho?.textContent).toContain(
+      "Pago e cancelado — precisa de atenção",
+    );
   });
 
-  it("pago + cancelled: o Consolidado Financeiro mostra 'Pago e cancelado — precisa de atenção'", async () => {
+  it("pago + cancelled: a seção Pagamento mostra 'Pago e cancelado — precisa de atenção'", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
@@ -467,8 +484,16 @@ describe("OrderDetail (ficha do pedido no painel) — mostra o aviso nos DOIS po
       raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
     });
 
-    const { consolidadoFinanceiro } = metadesDaFicha(hospedeiro);
-    expect(consolidadoFinanceiro).toContain(
+    const heading = headingDaSecaoDePagamento(hospedeiro);
+    // Selo que vem DEPOIS do heading da seção no documento = badge dentro
+    // do OrderFinanceCard (a seção Pagamento começa no heading).
+    const seloDaSecao = selosDeAtencao(hospedeiro).find(
+      (selo) =>
+        selo.compareDocumentPosition(heading) &
+        Node.DOCUMENT_POSITION_PRECEDING,
+    );
+    expect(seloDaSecao).toBeDefined();
+    expect(seloDaSecao?.textContent).toContain(
       "Pago e cancelado — precisa de atenção",
     );
   });

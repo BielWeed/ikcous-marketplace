@@ -2,18 +2,26 @@
 //
 // Frente glm-visual-canais-avisar-0309 (ondas 2 e 3 do rebuild visual do
 // painel): as telas "Canais de Atendimento" (AdminWhatsAppConfigView) e
-// "Avisar clientes" (AdminPushView) entram na MESMA CASCA premium do rebuild
-// do Frete (PR #414) — AdminPageHeader no topo, zero <h1> manual e conteúdo
-// organizado em seções colapsáveis no padrão dos Ajustes.
+// "Avisar clientes" (AdminPushView) entraram na MESMA CASCA premium do
+// rebuild do Frete (PR #414) — AdminPageHeader no topo, zero <h1> manual e
+// conteúdo em seções colapsáveis no padrão dos Ajustes. Depois, na frente
+// lote-b-telas-admin (12/09), o Atendimento SAIU do colapso: virou
+// FORMULÁRIO DIRETO (direção B aprovada pelo dono) — três blocos numerados,
+// todos abertos. No Avisar clientes (T2, mesma direção B) a COMPOSIÇÃO saiu
+// do colapso junto — virou o cartão fixo "No ar agora" — e o histórico e os
+// Ajustes seguem colapsáveis.
 //
 // A REGRA DE OURO da frente: muda a casa, não o morador. Por isso o contrato
-// prende as duas metades:
-//   1. A CASCA — AdminPageHeader usado, nenhum <h1> copiado na mão, seções
-//      colapsáveis presentes (com estado inicial definido) — é o que este
-//      rebuild constrói;
-//   2. O MORADOR — os campos-chave de cada tela continuam na árvore depois
-//      do rebuild (nenhum campo sumiu), e o editor de mensagem do
-//      Atendimento continua nascendo com o texto salvo quando a seção abre.
+// prende, para cada tela:
+//   1. A CASCA — AdminPageHeader usado, nenhum <h1> copiado na mão (Parte 1,
+//      contrato de fonte por glob);
+//   2. O MORADOR — os campos-chave continuam na árvore (nenhum campo sumiu).
+//      No Atendimento, o editor nasce montado com o texto salvo e NADA do
+//      que o lojista digitou se perde: sem seção que desmonta, o sinal de
+//      alteração não salva (onSetDirty) segue vivo para o App. No Avisar
+//      clientes é igual: a composição é cartão fixo, e o sinal de rascunho
+//      (onSetDirty) é guarda de navegação — nada na tela desmonta o
+//      formulário.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -221,42 +229,38 @@ afterEach(() => {
 const textoDaTela = () => hospedeiro.textContent ?? "";
 
 // ── Parte 2: Canais de Atendimento (AdminWhatsAppConfigView) ──────────────
-async function abrirCanais() {
+async function abrirCanais(aoSujar?: (dirty: boolean) => void) {
   const { AdminWhatsAppConfigView } = await import(
     "@/views/admin/AdminWhatsAppConfigView"
   );
   await act(async () => {
-    raiz.render(<AdminWhatsAppConfigView active={true} onSetDirty={vi.fn()} />);
+    raiz.render(
+      <AdminWhatsAppConfigView active={true} onSetDirty={aoSujar ?? vi.fn()} />,
+    );
   });
   await act(async () => {
     await esperar(50);
   });
 }
 
-describe("Canais de Atendimento — a casca nova guarda o morador", () => {
-  it("nasce no título padrão, com a seção de contato ABERTA e a de mensagem FECHADA", async () => {
+describe("Canais de Atendimento — o formulário direto guarda o morador", () => {
+  it("nasce no título padrão, com os três blocos abertos e todos os campos à vista", async () => {
     await abrirCanais();
 
     // Título padrão (AdminPageHeader), não um h1 avulso.
     expect(hospedeiro.querySelector("h1")?.textContent).toBe("Atendimento");
 
-    // A porta de todo dia (contato e expediente) fica à vista, com os campos.
-    const contato = cabecalhoDeSecao(hospedeiro, "Canais de Atendimento");
-    expect(contato).toBeTruthy();
-    expect(contato!.getAttribute("aria-expanded")).toBe("true");
+    // Formulário direto: zero controle de colapso nesta tela.
+    expect(hospedeiro.querySelectorAll("button[aria-expanded]")).toHaveLength(
+      0,
+    );
+
+    // Os três blocos à vista de uma vez — nada nasce escondido.
     expect(hospedeiro.querySelector("#settings-whatsapp")).not.toBeNull();
     expect(hospedeiro.querySelector("#settings-business-hours")).not.toBeNull();
-
-    // A parte pesada (mockup do WhatsApp + editor) nasce oculta.
-    const mensagem = cabecalhoDeSecao(
-      hospedeiro,
-      "Mensagem de Compartilhamento de Produtos",
-    );
-    expect(mensagem).toBeTruthy();
-    expect(mensagem!.getAttribute("aria-expanded")).toBe("false");
     expect(
       hospedeiro.querySelector("#settings-share-message-editor"),
-    ).toBeNull();
+    ).not.toBeNull();
 
     // O botão Salvar continua na linha do título.
     const salvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
@@ -265,20 +269,10 @@ describe("Canais de Atendimento — a casca nova guarda o morador", () => {
     expect(salvar).toBeTruthy();
   });
 
-  it("expandir a seção de mensagem monta o editor JÁ com o texto salvo (com os chips de tag)", async () => {
+  it("o editor nasce montado JÁ com o texto salvo (com os chips de tag)", async () => {
     await abrirCanais();
 
-    const mensagem = cabecalhoDeSecao(
-      hospedeiro,
-      "Mensagem de Compartilhamento de Produtos",
-    )!;
-    await act(async () => {
-      mensagem.click();
-    });
-    await act(async () => {
-      await esperar(50);
-    });
-
+    // Sem seção para expandir: o editor vive direto na árvore.
     const editor = hospedeiro.querySelector(
       "#settings-share-message-editor",
     ) as HTMLDivElement | null;
@@ -289,7 +283,7 @@ describe("Canais de Atendimento — a casca nova guarda o morador", () => {
     expect(editor!.innerHTML).toContain('data-tag="preco"');
     expect(editor!.innerHTML).toContain('data-tag="link"');
 
-    // Os botões de tag e o atalho de presets continuam na árvore.
+    // Os botões de tag e o atalho de modelos continuam na árvore.
     expect(
       [...hospedeiro.querySelectorAll("button")].find((b) =>
         (b.textContent ?? "").includes("Nome do Produto"),
@@ -297,46 +291,12 @@ describe("Canais de Atendimento — a casca nova guarda o morador", () => {
     ).toBeTruthy();
     expect(
       [...hospedeiro.querySelectorAll("button")].find((b) =>
-        (b.textContent ?? "").includes("Escolher Modelo Pronto"),
+        (b.textContent ?? "").includes("Modelos prontos"),
       ),
     ).toBeTruthy();
   });
 
-  it("fechar e reabrir a seção de mensagem NÃO perde o texto do editor", async () => {
-    await abrirCanais();
-
-    const mensagem = cabecalhoDeSecao(
-      hospedeiro,
-      "Mensagem de Compartilhamento de Produtos",
-    )!;
-    await act(async () => {
-      mensagem.click();
-    });
-    await act(async () => {
-      mensagem.click();
-    });
-    await act(async () => {
-      await esperar(350); // fim da animação de saída
-    });
-    expect(
-      hospedeiro.querySelector("#settings-share-message-editor"),
-    ).toBeNull();
-
-    await act(async () => {
-      mensagem.click();
-    });
-    await act(async () => {
-      await esperar(50);
-    });
-
-    const editor = hospedeiro.querySelector(
-      "#settings-share-message-editor",
-    ) as HTMLDivElement | null;
-    expect(editor).not.toBeNull();
-    expect(editor!.innerHTML).toContain('data-tag="nome"');
-  });
-
-  it("com alteração não salva, a seção aberta não fecha — 'Salve antes de fechar'", async () => {
+  it("nada do que o lojista digitou se perde: sem colapso, nada desmonta", async () => {
     await abrirCanais();
 
     const campo = hospedeiro.querySelector(
@@ -347,52 +307,78 @@ describe("Canais de Atendimento — a casca nova guarda o morador", () => {
       await esperar(500); // flush do LocalBufferedInput (350 ms)
     });
 
-    expect(textoDaTela()).toMatch(/salve antes de fechar/i);
+    // Era o guarda "fechar e reabrir não perde o texto", reancorado: sem
+    // seção que desmonta, o editor continua com o texto salvo e o campo,
+    // com o que foi digitado (já com a máscara aplicada).
+    const editor = hospedeiro.querySelector(
+      "#settings-share-message-editor",
+    ) as HTMLDivElement;
+    expect(editor.innerHTML).toContain('data-tag="nome"');
+    expect(
+      (hospedeiro.querySelector("#settings-whatsapp") as HTMLInputElement)
+        .value,
+    ).toBe("(11) 9876-5432");
+  });
 
-    const contato = cabecalhoDeSecao(hospedeiro, "Canais de Atendimento")!;
+  it("com alteração não salva, o sinal para o App (onSetDirty) segue de pé — e o aviso de fechar saiu com o colapso", async () => {
+    const aoSujar = vi.fn();
+    await abrirCanais(aoSujar);
+
+    const campo = hospedeiro.querySelector(
+      "#settings-whatsapp",
+    ) as HTMLInputElement;
+    await digitarEm(campo, "1198765432");
     await act(async () => {
-      contato.click();
-    });
-    await act(async () => {
-      await esperar(50);
+      await esperar(500); // flush do LocalBufferedInput (350 ms)
     });
 
-    expect(contato.getAttribute("aria-expanded")).toBe("true");
-    expect(hospedeiro.querySelector("#settings-whatsapp")).not.toBeNull();
+    // O App continua sabendo que há trabalho não salvo — é ele quem avisa
+    // antes do texto se perder na navegação.
+    expect(aoSujar).toHaveBeenLastCalledWith(true);
+
+    // A frase "Salve antes de fechar" morava no cabeçalho da seção: sem
+    // seção não há como fechá-la, e a frase sai junto com o colapso.
+    expect(textoDaTela()).not.toMatch(/salve antes de fechar/i);
   });
 });
 
 // ── Parte 3: Avisar clientes (AdminPushView) ───────────────────────────────
-async function abrirAvisar() {
+async function abrirAvisar(aoSujar?: (dirty: boolean) => void) {
   const { AdminPushView } = await import("@/views/admin/AdminPushView");
   await act(async () => {
-    raiz.render(<AdminPushView onNavigate={vi.fn()} />);
+    raiz.render(
+      <AdminPushView onNavigate={vi.fn()} onSetDirty={aoSujar ?? vi.fn()} />,
+    );
   });
   await act(async () => {
     await esperar(50);
   });
 }
 
+// Rótulos reancorados (12/09): a direção B da tela de Notificações (frente
+// T2) renomeou as seções — "No ar agora" (composição), "O que já foi ao ar"
+// (histórico) e uma terceira, "Ajustes", que nasce FECHADA e abriga o
+// interruptor de prova social. E o colapso da composição saiu (revisão do
+// lote B): ela é cartão FIXO — "painel único aceso, nada escondido" —; só
+// histórico e Ajustes recolhem e reabrem. Rascunho pendente sinaliza ao
+// App (onSetDirty), nunca trava colapso.
 describe("Avisar clientes — a casca nova guarda o morador", () => {
-  it("nasce no título padrão, com escrita e histórico visíveis na árvore", async () => {
+  it("nasce no título padrão, com composição e histórico visíveis na árvore", async () => {
     await abrirAvisar();
 
     expect(hospedeiro.querySelector("h1")?.textContent).toBe(
       "Enviar Notificações",
     );
 
-    // Seções colapsáveis presentes e abertas (a porta de trabalho inteira).
-    const escrita = cabecalhoDeSecao(hospedeiro, "Escrever Nova Notificação");
-    const historico = cabecalhoDeSecao(
-      hospedeiro,
-      "Histórico de Mensagens Enviadas",
-    );
-    expect(escrita).toBeTruthy();
+    // A composição é cartão FIXO: zero controle de colapso para ela — o
+    // conteúdo (os campos, logo abaixo) está na árvore sem interação
+    // nenhuma. O histórico segue colapsável e nasce aberto.
+    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
+    const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar");
     expect(historico).toBeTruthy();
-    expect(escrita!.getAttribute("aria-expanded")).toBe("true");
     expect(historico!.getAttribute("aria-expanded")).toBe("true");
 
-    // Campos-chave do envio — nenhum sumiu no rebuild.
+    // Campos-chave do envio — nenhum sumiu no redesenho.
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
     expect(hospedeiro.querySelector("#push-body")).not.toBeNull();
     expect(hospedeiro.querySelector("#push-destination")).not.toBeNull();
@@ -403,27 +389,36 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     ).toBeTruthy();
     expect(
       [...hospedeiro.querySelectorAll("button")].find((b) =>
-        (b.textContent ?? "").includes("Enviar Notificação Agora"),
+        (b.textContent ?? "").includes("Enviar agora para"),
       ),
     ).toBeTruthy();
 
-    // Cartão de métrica, interruptor de prova social e ajuda da tela.
+    // Cartão de métrica e ajuda da tela.
     expect(hospedeiro.querySelector("h2.text-3xl")).not.toBeNull();
-    expect(
-      hospedeiro.querySelector("#realtime-sales-alerts-switch"),
-    ).not.toBeNull();
     expect(
       hospedeiro.querySelector('button[title="Ajuda e explicação desta tela"]'),
     ).not.toBeNull();
+
+    // O interruptor de prova social mora na seção "Ajustes", que nasce
+    // FECHADA — expandir para prová-lo na árvore.
+    const ajustes = cabecalhoDeSecao(hospedeiro, "Ajustes");
+    expect(ajustes).toBeTruthy();
+    expect(ajustes!.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => {
+      ajustes!.click();
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+    expect(
+      hospedeiro.querySelector("#realtime-sales-alerts-switch"),
+    ).not.toBeNull();
   });
 
-  it("as seções recolhem e reabrem (o histórico sai e volta da árvore)", async () => {
+  it("o histórico recolhe e reabre (o conteúdo sai e volta da árvore) — e a composição é fixa", async () => {
     await abrirAvisar();
 
-    const historico = cabecalhoDeSecao(
-      hospedeiro,
-      "Histórico de Mensagens Enviadas",
-    )!;
+    const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar")!;
     expect(textoDaTela()).toContain("Não confirmada");
 
     await act(async () => {
@@ -443,10 +438,17 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     });
     expect(historico.getAttribute("aria-expanded")).toBe("true");
     expect(textoDaTela()).toContain("Não confirmada");
+
+    // A composição NÃO é recolhível — cartão fixo: sem controle de colapso,
+    // o campo nunca sai da árvore (o recolher/reabrir vale só para o
+    // histórico e os Ajustes).
+    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
+    expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
   });
 
-  it("com rascunho não enviado, a seção de escrita não fecha — 'Salve antes de fechar'", async () => {
-    await abrirAvisar();
+  it("com rascunho pendente, a composição continua na árvore — e o sinal para o App segue de pé", async () => {
+    const aoSujar = vi.fn();
+    await abrirAvisar(aoSujar);
 
     const campo = hospedeiro.querySelector("#push-title") as HTMLInputElement;
     await digitarEm(campo, "Oferta da semana");
@@ -454,17 +456,19 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
       await esperar(400); // flush do LocalBufferedInput (200 ms)
     });
 
-    expect(textoDaTela()).toMatch(/salve antes de fechar/i);
+    // A guarda real é de navegação: o App fica sabendo que há rascunho.
+    expect(aoSujar).toHaveBeenLastCalledWith(true);
 
-    const escrita = cabecalhoDeSecao(hospedeiro, "Escrever Nova Notificação")!;
-    await act(async () => {
-      escrita.click();
-    });
-    await act(async () => {
-      await esperar(50);
-    });
+    // A frase "Salve antes de fechar" morava no cabeçalho da seção: sem
+    // seção não há o que fechar, e a frase sai junto (mesmo raciocínio do
+    // Atendimento, na Parte 2).
+    expect(textoDaTela()).not.toMatch(/salve antes de fechar/i);
 
-    expect(escrita.getAttribute("aria-expanded")).toBe("true");
+    // E a composição segue inteira na árvore, com o rascunho no campo.
+    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
+    expect(
+      (hospedeiro.querySelector("#push-title") as HTMLInputElement).value,
+    ).toBe("Oferta da semana");
   });
 });

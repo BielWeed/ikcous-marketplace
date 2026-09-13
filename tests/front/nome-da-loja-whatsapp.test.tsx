@@ -46,16 +46,12 @@ describe("critério 5 — prévia do WhatsApp usa o endereço da loja", () => {
     const { AdminWhatsAppConfigView } = await import(
       "@/views/admin/AdminWhatsAppConfigView"
     );
+    // Formulário direto (frente lote-b-telas-admin, 12/09): a prévia mora
+    // direto no bloco 3, sempre na árvore — não há mais seção para expandir.
     await act(async () => raiz.render(<AdminWhatsAppConfigView active />));
-    const secao = [
-      ...hospedeiro.querySelectorAll<HTMLButtonElement>(
-        "button[aria-expanded]",
-      ),
-    ].find((b) =>
-      b.textContent?.includes("Mensagem de Compartilhamento de Produtos"),
-    );
-    expect(secao).toBeDefined();
-    await act(async () => secao?.click());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
   }
 
   it("os dois marcadores geram links completos realçados e o rodapé usa o host", async () => {

@@ -37,6 +37,26 @@
  * mesmo pedido. O `pago_apos_expirar` encontrado aqui aparece na fila de
  * atenção da Task 9 — não é um push perdido, é um push que não é desta
  * função.
+ *
+ * COMPROVANTE AO CLIENTE: AQUI SIM (PEÇA 5, revisão de
+ * dinheiro-não-recebido, 12/09/2026)
+ *
+ * O push acima fica de fora porque não tem trava contra duplicidade — dois
+ * pushes do mesmo pedido viram spam sem jeito de evitar. O comprovante ao
+ * CLIENTE é diferente: `reivindicar_email_de_confirmacao` (RPC, UPDATE
+ * condicional atômico) é uma reserva ÚNICA por pedido, e o
+ * `webhook-mercadopago` já compete por ela do mesmo jeito. ANTES desta peça,
+ * um pagamento que o webhook perdeu — a razão de esta função existir — e que
+ * a reconciliação confirmava fechava o pedido como pago sem o cliente
+ * receber NADA: o botão manual de reenvio do painel depende do lojista notar
+ * a ausência, e nada avisa. Por isso, a partir daqui, todo 'pago' confirmado
+ * aqui chama `enviarComprovantePedido` (`_shared/comprovante.ts`, o MESMO
+ * caminho do webhook) e todo 'pago_apos_expirar' chama um aviso PRÓPRIO
+ * (`dispararAvisoDePagamentoAtrasadoReal`, abaixo) — que não pode reusar o
+ * comprovante padrão pelo mesmo motivo documentado ao lado da chamada
+ * equivalente em `webhook-mercadopago/index.ts`: o texto padrão mentiria
+ * duas vezes ("aguardando confirmação", "entra na fila de separação") para
+ * um pedido já confirmado e `status='cancelled'`.
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -59,6 +79,15 @@ import {
   type PedidoParaEstorno,
   type ResultadoEstorno,
 } from "../_shared/estorno.ts";
+// PEÇA 5 (12/09/2026): `enviarComprovantePedido` é o MESMO caminho que
+// `webhook-mercadopago` já usa para 'pago'. `enviarEmail`/
+// `remetenteConfigurado`/`escaparHtml`/`numeroDoPedido` são para o aviso
+// PRÓPRIO de 'pago_apos_expirar' (`dispararAvisoDePagamentoAtrasadoReal`,
+// abaixo) — ver o comentário dela para o porquê de não reusar o comprovante
+// padrão.
+import { enviarComprovantePedido } from "../_shared/comprovante.ts";
+import { enviarEmail, remetenteConfigurado } from "../_shared/smtp.ts";
+import { escaparHtml, numeroDoPedido } from "../_shared/pedido.ts";
 
 /** Único texto do app que manda o lojista ao painel do MP (Restrições
  * globais do plano) — só depois de 5 tentativas sem confirmação. */
@@ -207,6 +236,196 @@ function segredoConfere(esperado: string, recebido: string): boolean {
 }
 
 /**
+ * PEÇA 5 (revisão de dinheiro-não-recebido, 12/09/2026): manda ao CLIENTE o
+ * comprovante de um pedido que a RECONCILIAÇÃO confirmou como 'pago' — o
+ * MESMO caminho que `webhook-mercadopago` usa (`enviarComprovantePedido`,
+ * `_shared/comprovante.ts`), inclusive a MESMA trava anti-duplicata
+ * (`reivindicar_email_de_confirmacao`): os dois competem pela mesma reserva,
+ * então o mesmo pedido nunca recebe dois comprovantes.
+ *
+ * Erros aqui NUNCA sobem: o pedido já está 'pago' no banco quando isto roda
+ * — uma falha de e-mail não pode abortar o resto do lote de reconciliação.
+ */
+async function dispararComprovanteReal(args: {
+  supabase: ReturnType<typeof createClient>;
+  orderId: string;
+}): Promise<void> {
+  try {
+    const desfecho = await enviarComprovantePedido({ supabase: args.supabase, orderId: args.orderId });
+    if (!desfecho.ok) {
+      console.error(
+        "reconciliar-pagamentos: comprovante ao cliente não enviado",
+        { orderId: args.orderId, motivo: desfecho.motivo },
+      );
+    }
+  } catch (erro) {
+    console.error(
+      "reconciliar-pagamentos: falha ao disparar comprovante ao cliente",
+      args.orderId,
+      erro,
+    );
+  }
+}
+
+/**
+ * PEÇA 5: o texto HONESTO para 'pago_apos_expirar' — nunca o comprovante
+ * padrão (`htmlDoPedido`, `_shared/comprovante.ts`), que mentiria "aguardando
+ * confirmação" e "entra na fila de separação" para um pedido já confirmado e
+ * `status='cancelled'`.
+ *
+ * DUPLICADA de propósito em `webhook-mercadopago/index.ts` (mesmo nome,
+ * mesmo texto) — `_shared/comprovante.ts` não é arquivo desta peça (outro
+ * executor do mesmo lote edita em paralelo), e os dois arquivos chamam
+ * `serve()` no topo (importar um de dentro do outro subiria um segundo
+ * servidor HTTP dentro da function errada — a mesma razão que já tirou
+ * `numeroDoPedido`/`formatarBRL` de `_shared/pedido.ts` para as cópias
+ * antigas de `notify-new-order`/`webhook-mercadopago`). Consolidar as duas
+ * cópias em `_shared/comprovante.ts` é candidato a tarefa própria, com
+ * revisão própria — a sessão principal decide, não este executor.
+ *
+ * MESMA trava anti-duplicata do comprovante padrão: `reivindicar_email_de_
+ * confirmacao` é uma reserva ÚNICA por pedido — os dois textos (este e o
+ * padrão) competem pela MESMA reserva, e o webhook (que chama a cópia
+ * gêmea desta função) compete pela mesma reserva também.
+ *
+ * NUNCA afirmar "prazo" nem "automaticamente" aqui (achado bloqueante da
+ * revisão, 12/09/2026): `confirmar_pagamento` devolve 'pago_apos_expirar' por
+ * DOIS caminhos (migration 20260810000000, linhas 118-125 e 173-180) — a
+ * varredura de 30 min (aí sim é "prazo" e "automático") E o cliente que
+ * CANCELA pelo app com o QR na mão e paga o PIX segundos depois, dentro da
+ * janela (aí "prazo" e "automático" são as duas mentiras). Mesmo motivo do
+ * "fora do fluxo", não "fora do prazo" do push em `webhook-mercadopago/
+ * index.ts`: só "já estava cancelado" e "estoque já tinha voltado" são
+ * verdade nos dois casos. EXPORTADA (como a cópia gêmea) para o teste
+ * conferir o TEXTO sem tocar SMTP nem banco.
+ */
+export function htmlDoAvisoDePagamentoAtrasado(args: {
+  orderId: string;
+  nomeDaLoja: string;
+}): string {
+  const { orderId, nomeDaLoja } = args;
+  const loja = String(nomeDaLoja ?? "").trim();
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; border: 1px solid #e4e4e7; border-radius: 24px; color: #18181b;">
+      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a1a1aa;">
+        Pedido ${escaparHtml(numeroDoPedido(orderId))}
+      </p>
+      ${loja ? `<p style="margin: 0 0 20px; font-size: 18px; font-weight: 800;">${escaparHtml(loja)}</p>` : ""}
+      <p style="margin: 0 0 16px; font-size: 14px; line-height: 20px; color: #3f3f46;">
+        Recebemos a confirmação do seu pagamento para este pedido, mas ele já estava cancelado e o estoque já tinha voltado para a loja quando o pagamento foi confirmado — por isso não entrou na fila de separação.
+      </p>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #3f3f46;">
+        A loja já foi avisada do pagamento e vai entrar em contato para resolver (reenvio, se ainda houver estoque, ou devolução do valor pago).
+      </p>
+    </div>
+  `;
+}
+
+export function assuntoDoAvisoDePagamentoAtrasado(orderId: string, nomeDaLoja: string): string {
+  const loja = String(nomeDaLoja ?? "").trim();
+  const numero = numeroDoPedido(orderId);
+  return loja ? `Pedido ${numero} · ${loja}` : `Pedido ${numero}`;
+}
+
+/**
+ * Manda ao CLIENTE um aviso HONESTO de pagamento confirmado FORA do prazo,
+ * pela RECONCILIAÇÃO (PEÇA 5, 12/09/2026) — cópia gêmea de
+ * `dispararAvisoDePagamentoAtrasadoReal` em `webhook-mercadopago/index.ts`
+ * (ver o docstring de `htmlDoAvisoDePagamentoAtrasado`, acima, para o porquê
+ * da duplicação). Mesma forma de erro do resto deste arquivo: nunca lança
+ * para quem chama.
+ */
+async function dispararAvisoDePagamentoAtrasadoReal(args: {
+  supabase: ReturnType<typeof createClient>;
+  orderId: string;
+}): Promise<void> {
+  const { supabase, orderId } = args;
+  try {
+    if (!remetenteConfigurado()) {
+      console.error(
+        "reconciliar-pagamentos: SMTP não configurado — aviso de pagamento atrasado não enviado",
+        orderId,
+      );
+      return;
+    }
+
+    const { data: pedido, error: erroPedido } = await supabase
+      .from("marketplace_orders")
+      .select("id, user_id, customer_data")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (erroPedido) throw erroPedido;
+    if (!pedido) {
+      console.warn(
+        "reconciliar-pagamentos: pedido do aviso de pagamento atrasado não encontrado",
+        orderId,
+      );
+      return;
+    }
+
+    let destinatario = String(
+      (pedido as Record<string, unknown>).customer_data
+        ? ((pedido as Record<string, unknown>).customer_data as Record<string, unknown>).email ?? ""
+        : "",
+    ).trim();
+    if (!destinatario && (pedido as Record<string, unknown>).user_id) {
+      const { data: conta } = await supabase.auth.admin.getUserById(
+        String((pedido as Record<string, unknown>).user_id),
+      );
+      destinatario = String(conta?.user?.email ?? "").trim();
+    }
+    if (!destinatario) {
+      console.warn(
+        "reconciliar-pagamentos: pedido pago_apos_expirar sem e-mail de cliente",
+        orderId,
+      );
+      return;
+    }
+
+    const { data: reservou, error: erroReserva } = await supabase.rpc(
+      "reivindicar_email_de_confirmacao",
+      { p_order_id: orderId },
+    );
+    if (erroReserva) throw erroReserva;
+    if (reservou !== true) return; // já enviado (padrão ou este mesmo aviso)
+
+    const { data: config } = await supabase
+      .from("store_config")
+      .select("store_name")
+      .limit(1)
+      .maybeSingle();
+    const nomeDaLoja = (config as Record<string, unknown> | null)?.store_name ?? "";
+
+    try {
+      await enviarEmail({
+        para: destinatario,
+        assunto: assuntoDoAvisoDePagamentoAtrasado(orderId, String(nomeDaLoja ?? "")),
+        html: htmlDoAvisoDePagamentoAtrasado({ orderId, nomeDaLoja: String(nomeDaLoja ?? "") }),
+      });
+    } catch (erroEnvio) {
+      await supabase
+        .rpc("liberar_email_de_confirmacao", { p_order_id: orderId })
+        .then(undefined, (erroLiberar: unknown) => {
+          console.error(
+            "reconciliar-pagamentos: liberar reserva do aviso de pagamento atrasado falhou",
+            orderId,
+            erroLiberar,
+          );
+        });
+      throw erroEnvio;
+    }
+
+    console.log(`reconciliar-pagamentos: aviso de pagamento atrasado enviado para ${orderId}`);
+  } catch (erro) {
+    console.error(
+      "reconciliar-pagamentos: falha ao enviar aviso de pagamento atrasado ao cliente",
+      orderId,
+      erro,
+    );
+  }
+}
+
+/**
  * Mesma costura `handler(req, deps = {})` da Task 4
  * (`webhook-mercadopago/index.ts`): em produção o `serve()` lá embaixo chama
  * `handler(req)` com um único argumento; os testes injetam `supabase` e
@@ -218,6 +437,8 @@ async function handler(
   deps: {
     supabase?: ReturnType<typeof createClient>;
     fetchImpl?: typeof fetch;
+    enviarComprovante?: typeof dispararComprovanteReal;
+    enviarAvisoAtrasado?: typeof dispararAvisoDePagamentoAtrasadoReal;
   } = {},
 ): Promise<Response> {
   // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
@@ -466,6 +687,18 @@ async function handler(
       const resultado = resultadoRpc as string;
       if (resultado === "pago" || resultado === "pago_apos_expirar") {
         confirmados++;
+        // PEÇA 5 (12/09/2026): o cliente não pode ficar mudo quando é a
+        // RECONCILIAÇÃO quem confirma — ver o comentário "COMPROVANTE AO
+        // CLIENTE: AQUI SIM" no topo do arquivo. 'pago' recebe o comprovante
+        // padrão; 'pago_apos_expirar' recebe o aviso honesto (nunca o
+        // padrão — mentiria).
+        if (resultado === "pago") {
+          const enviarComprovante = deps.enviarComprovante ?? dispararComprovanteReal;
+          await enviarComprovante({ supabase, orderId: candidato.order_id });
+        } else {
+          const enviarAvisoAtrasado = deps.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
+          await enviarAvisoAtrasado({ supabase, orderId: candidato.order_id });
+        }
       } else {
         // 'divergente' e 'inexistente' significam que o candidato não bate
         // com o pedido — ninguém deveria descobrir isso só pela contagem.

@@ -222,6 +222,60 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.produto).toBe("");
   });
 
+  // 🔴 ITEM 3c (12/09/2026): seis recusas do portão de entrega
+  // (20261038000000/20261039000000 em diante) caíam em `conferir_antes`,
+  // que devolve "Ver meus pedidos" — mas em nenhum dos seis casos existe
+  // pedido para ver.
+  it("loja sem CEP de origem (convidado) -> entrar na conta", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("A loja ainda está configurando a entrega. Fale com a loja."),
+    );
+    expect(r.acao).toBe("entrar_na_conta");
+  });
+
+  it("convidado fora da cidade da loja -> entrar na conta", () => {
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "Compra sem conta é só com entrega na cidade da loja. Entre na sua conta para receber em outro endereço.",
+      ),
+    );
+    expect(r.acao).toBe("entrar_na_conta");
+  });
+
+  it("cobertura local recusa o CEP entregue -> trocar o endereço", () => {
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "Esta loja só faz entrega na cidade dela. Confira o CEP de entrega.",
+      ),
+    );
+    expect(r.acao).toBe("trocar_endereco");
+  });
+
+  it("nenhum CEP de entrega informado -> trocar o endereço", () => {
+    const r = classificarRecusaDoPedido(p0001("Informe o CEP de entrega."));
+    expect(r.acao).toBe("trocar_endereco");
+  });
+
+  it("chave de idempotência sem dono legítimo -> reconferir o carrinho, não tentar de novo", () => {
+    // A mesma chave (gerada do CONTEÚDO do carrinho) volta idêntica se nada
+    // mudar — "tentar de novo" sem trocar nada bateria na mesma recusa.
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "Não foi possível criar o pedido. Atualize a página e tente de novo.",
+      ),
+    );
+    expect(r.acao).toBe("reconferir_carrinho");
+  });
+
+  it("frete cotado para outro CEP -> recotar o frete", () => {
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "O frete foi cotado para outro CEP. Volte ao carrinho, calcule o frete para o CEP de entrega e finalize de novo.",
+      ),
+    );
+    expect(r.acao).toBe("recotar_frete");
+  });
+
   it("o nome guloso continua resolvendo parenteses dentro do nome", () => {
     // Provado pela revisao: o `.+` guloso ja acertava isto, e trocar para
     // `[\s\S]*` nao pode ter quebrado. Nome do produto contendo o proprio

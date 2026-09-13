@@ -263,7 +263,13 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               {/* Preview Upper Section */}
               <div className="flex items-center justify-between pb-2">
                 <div className="max-w-[70%] rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1">
-                  <span className="block truncate font-mono text-xs font-black uppercase italic tracking-tighter text-white">
+                  {/* `pr-[3px]`: mesmo defeito do card da lista de cupons
+                      (AdminCouponsView, corrigido em 12/09/2026) — `truncate` corta o
+                      que passa da borda, e a inclinação do glifo ITÁLICO do último
+                      caractere cai fora da largura declarada pela fonte. Aqui é a
+                      prévia ao vivo, então o lojista vê o próprio código aparado
+                      enquanto digita. */}
+                  <span className="block truncate pr-[3px] font-mono text-xs font-black uppercase italic tracking-tighter text-white">
                     {formData.code || "CUPOMEXEMPLO"}
                   </span>
                 </div>

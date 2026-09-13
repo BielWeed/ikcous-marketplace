@@ -1,22 +1,22 @@
 // @vitest-environment jsdom
 //
-// Laudo caça-bugs Savy (30/08), achado do Gabriel com print: o botão
-// "Escolher Modelo Pronto (Presets)" do Atendimento não fazia NADA. Causa
-// raiz: o painel era um createPortal DENTRO de <AnimatePresence> — que só
-// aceita elementos de animação como filho direto e descartava o portal em
-// silêncio (estado abria, painel nunca renderizava). A correção inverte a
-// ordem: portal fora, AnimatePresence com contêiner motion (com key) dentro.
+// Laudo caça-bugs Savy (30/08), achado do Gabriel com print: o botão de
+// modelos prontos do Atendimento não fazia NADA. Causa raiz: o painel era um
+// createPortal DENTRO de <AnimatePresence> — que só aceita elementos de
+// animação como filho direto e descartava o portal em silêncio (estado
+// abria, painel nunca renderizava). A correção inverte a ordem: portal fora,
+// AnimatePresence com contêiner motion (com key) dentro.
 //
 // Este teste fixa o contrato: clicar no botão abre o painel de modelos no
 // document.body (portal), com a busca e a lista de modelos visíveis.
 //
-// ATUALIZAÇÃO da frente glm-visual-canais-avisar-0309 (03/09, MUDANÇA DE
-// CASCA, não de regra): a tela entrou no padrão de seções colapsáveis dos
-// Ajustes e a seção "Mensagem de Compartilhamento de Produtos" nasce
-// FECHADA (o mockup pesado do WhatsApp deixa de empurrar o resto da tela).
-// O botão de presets mora dentro dela, então o teste agora EXPANDE a seção
-// antes de clicar — o comportamento provado (portal abre com busca e
-// modelos) é exatamente o mesmo.
+// ATUALIZAÇÃO da frente lote-b-telas-admin (12/09, MUDANÇA DE CASCA, não de
+// regra): a tela saiu das seções colapsáveis e virou formulário direto
+// (direção B aprovada pelo dono). O botão de modelos mora direto no bloco
+// "Mensagem de compartilhamento" e se chama "Modelos prontos (30
+// disponíveis)" — não há mais seção para expandir antes de clicar. O
+// contrato provado é exatamente o mesmo: o clique abre o painel no portal,
+// com busca e lista de modelos.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,7 +47,7 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "u1" } }) }));
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("Atendimento — botão de presets abre o painel de modelos", () => {
+describe("Atendimento — botão de modelos prontos abre o painel de modelos", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -66,7 +66,7 @@ describe("Atendimento — botão de presets abre o painel de modelos", () => {
     vi.restoreAllMocks();
   });
 
-  it("clicar em 'Escolher Modelo Pronto' abre o painel com busca e modelos", async () => {
+  it("clicar em 'Modelos prontos' abre o painel com busca e modelos", async () => {
     const { AdminWhatsAppConfigView } = await import(
       "@/views/admin/AdminWhatsAppConfigView"
     );
@@ -77,25 +77,9 @@ describe("Atendimento — botão de presets abre o painel de modelos", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Casca nova: a seção da mensagem nasce FECHADA — expandir antes de
-    // procurar o botão de presets (que mora dentro dela).
-    const cabecalhoSecao = [
-      ...hospedeiro.querySelectorAll("button[aria-expanded]"),
-    ].find((b) =>
-      (b.textContent ?? "").includes(
-        "Mensagem de Compartilhamento de Produtos",
-      ),
-    ) as HTMLButtonElement;
-    expect(cabecalhoSecao).toBeTruthy();
-    await act(async () => {
-      cabecalhoSecao.click();
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    const botao = [...document.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Escolher Modelo Pronto"),
+    // Formulário direto: o botão vive direto no bloco 3, sem expandir nada.
+    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Modelos prontos"),
     ) as HTMLButtonElement;
     expect(botao).toBeDefined();
     expect(botao.disabled).toBe(false);
@@ -106,7 +90,8 @@ describe("Atendimento — botão de presets abre o painel de modelos", () => {
     });
 
     const texto = document.body.textContent ?? "";
-    expect(texto).toContain("Modelos de Mensagem (Presets)");
+    expect(texto).toContain("Modelos prontos de mensagem");
     expect(texto).toContain("Aplicar");
+    expect(document.getElementById("preset-search-input")).not.toBeNull();
   });
 });

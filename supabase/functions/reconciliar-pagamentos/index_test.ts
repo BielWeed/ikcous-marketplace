@@ -19,8 +19,8 @@
  * candidato criado depois da migração, apagando a rede de segurança
  * exatamente para os pedidos que ela existe para proteger.
  */
-import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { handler } from "./index.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 
 const SEGREDO = "segredo-reconciliacao-teste";
 const UUID_PEDIDO_1 = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -1790,4 +1790,379 @@ Deno.test("R14 - linha 'sistema' em em_processamento NÃO é consultada nem POST
   assertEquals(mp.chamadas.length, 0);
   assertEquals(registro.atualizacoesOrderRefunds.length, 0);
   assertEquals(registro.chamadasConcluirEstorno.length, 0);
+});
+
+// --- PEÇA 5 (revisão de dinheiro-não-recebido, 12/09/2026): a reconciliação
+// confirma pagamento que o webhook perdeu — e, ANTES desta peça, não avisava
+// o cliente NUNCA. --------------------------------------------------------
+
+Deno.test("PEÇA 5 - resultado 'pago' via reconciliação -> dispara o comprovante ao cliente, com o orderId certo", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const req = requisicaoComSegredo(SEGREDO);
+  const chamadasComprovante: unknown[] = [];
+  const enviarComprovante = async (args: unknown) => {
+    chamadasComprovante.push(args);
+  };
+  const chamadasAvisoAtrasado: unknown[] = [];
+  const enviarAvisoAtrasado = async (args: unknown) => {
+    chamadasAvisoAtrasado.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarComprovante, enviarAvisoAtrasado });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.confirmados, 1);
+  assertEquals(chamadasComprovante.length, 1, "confirmação 'pago' pela reconciliação tem de mandar o comprovante — antes desta peça, não mandava nada");
+  assertEquals((chamadasComprovante[0] as { orderId: string }).orderId, UUID_PEDIDO_1);
+  assertEquals(chamadasAvisoAtrasado.length, 0);
+});
+
+Deno.test("PEÇA 5 - resultado 'pago_apos_expirar' via reconciliação -> dispara o aviso HONESTO, NUNCA o comprovante padrão", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago_apos_expirar", registro });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const req = requisicaoComSegredo(SEGREDO);
+  const chamadasComprovante: unknown[] = [];
+  const enviarComprovante = async (args: unknown) => {
+    chamadasComprovante.push(args);
+  };
+  const chamadasAvisoAtrasado: unknown[] = [];
+  const enviarAvisoAtrasado = async (args: unknown) => {
+    chamadasAvisoAtrasado.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarComprovante, enviarAvisoAtrasado });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.confirmados, 1);
+  assertEquals(chamadasComprovante.length, 0, "'pago_apos_expirar' não pode receber o texto do comprovante padrão — mentiria");
+  assertEquals(chamadasAvisoAtrasado.length, 1);
+  assertEquals((chamadasAvisoAtrasado[0] as { orderId: string }).orderId, UUID_PEDIDO_1);
+});
+
+Deno.test("PEÇA 5 - resultado 'ja_pago' (reenvio) via reconciliação -> NÃO dispara comprovante nem aviso atrasado", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "ja_pago", registro });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const req = requisicaoComSegredo(SEGREDO);
+  const chamadasComprovante: unknown[] = [];
+  const enviarComprovante = async (args: unknown) => {
+    chamadasComprovante.push(args);
+  };
+  const chamadasAvisoAtrasado: unknown[] = [];
+  const enviarAvisoAtrasado = async (args: unknown) => {
+    chamadasAvisoAtrasado.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarComprovante, enviarAvisoAtrasado });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadasComprovante.length, 0);
+  assertEquals(chamadasAvisoAtrasado.length, 0);
+});
+
+// --- o caminho REAL (deps.enviarComprovante/enviarAvisoAtrasado não
+// injetados) — prova que a reconciliação alcança a MESMA reserva
+// (`reivindicar_email_de_confirmacao`) que o webhook usa, e que ela é quem
+// impede o e-mail duplicado quando os dois confirmam o mesmo pedido. -------
+
+/**
+ * Cliente supabase mínimo, ad-hoc (fora de `clienteFalso`, mesma técnica de
+ * `webhook-mercadopago/index_test.ts:1990+`): cobre só o que os caminhos
+ * REAIS de `dispararComprovanteReal`/`dispararAvisoDePagamentoAtrasadoReal`
+ * tocam — a leitura de `marketplace_orders` devolve o MESMO objeto para
+ * qualquer `select()` (a projeção por coluna não importa aqui, como no
+ * dublê equivalente do webhook).
+ */
+function supabaseRealMinimo(opts: {
+  candidatos: Array<{ order_id: string; gateway_payment_id: string }>;
+  resultadoConfirmar: string;
+  pedido: Record<string, unknown>;
+  reservaResultados: Array<boolean>;
+  registro: { chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> };
+}) {
+  let indiceReserva = 0;
+  return {
+    rpc: async (nome: string, args: Record<string, unknown>) => {
+      opts.registro.chamadasRpc.push({ nome, args });
+      if (nome === "pagamentos_a_reconciliar") return { data: opts.candidatos, error: null };
+      if (nome === "confirmar_pagamento") return { data: opts.resultadoConfirmar, error: null };
+      if (nome === "reivindicar_email_de_confirmacao") {
+        const reservou = opts.reservaResultados[indiceReserva] ?? false;
+        indiceReserva++;
+        return { data: reservou, error: null };
+      }
+      return { data: null, error: null };
+    },
+    from(tabela: string) {
+      if (tabela === "marketplace_orders") {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return { maybeSingle: async () => ({ data: opts.pedido, error: null }) };
+              },
+            };
+          },
+        };
+      }
+      if (tabela === "store_config") {
+        return {
+          select(_cols: string) {
+            return { limit(_n: number) { return { maybeSingle: async () => ({ data: null, error: null }) }; } };
+          },
+        };
+      }
+      if (tabela === "order_refunds") {
+        return {
+          select(_cols: string) {
+            return {
+              in(_col: string, _vals: string[]) {
+                return {
+                  neq(_c: string, _v: unknown) {
+                    return {
+                      lt(_c2: string, _v2: string) {
+                        return {
+                          order(_c3: string, _o: unknown) {
+                            return {
+                              order(_c4: string, _o2: unknown) {
+                                return { limit: async (_n: number) => ({ data: [], error: null }) };
+                              },
+                            };
+                          },
+                        };
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`from inesperado no dublê mínimo: ${tabela}`);
+    },
+  };
+}
+
+Deno.test("PEÇA 5 (caminho real) - 'pago' -> alcança a MESMA reserva do comprovante padrão (reivindicar_email_de_confirmacao) com o orderId certo", async () => {
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
+  Deno.env.set("SMTP_PASSWORD", "fixture-nao-e-credencial-real");
+  try {
+    const registro = { chamadasRpc: [] as Array<{ nome: string; args: Record<string, unknown> }> };
+    const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+    const pedido = {
+      id: UUID_PEDIDO_1,
+      user_id: null,
+      customer_data: { email: "cliente@exemplo.com" },
+      total: 149.9,
+      total_amount: null,
+    };
+    const supabase = supabaseRealMinimo({
+      candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+      resultadoConfirmar: "pago",
+      pedido,
+      reservaResultados: [false], // basta provar que a reserva foi ALCANÇADA
+      registro,
+    });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+
+    assertEquals(resposta.status, 200);
+    const chamadaReserva = registro.chamadasRpc.find((c) => c.nome === "reivindicar_email_de_confirmacao");
+    assertEquals(chamadaReserva?.args.p_order_id, UUID_PEDIDO_1);
+  } finally {
+    Deno.env.delete("SMTP_USER");
+    Deno.env.delete("SMTP_PASSWORD");
+  }
+});
+
+Deno.test("PEÇA 5 (caminho real) - 'pago_apos_expirar' -> alcança a reserva do aviso atrasado (reivindicar_email_de_confirmacao) com o orderId certo", async () => {
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
+  Deno.env.set("SMTP_PASSWORD", "fixture-nao-e-credencial-real");
+  try {
+    const registro = { chamadasRpc: [] as Array<{ nome: string; args: Record<string, unknown> }> };
+    const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+    const pedido = {
+      id: UUID_PEDIDO_1,
+      user_id: null,
+      customer_data: { email: "cliente@exemplo.com" },
+      total: 149.9,
+      total_amount: null,
+    };
+    const supabase = supabaseRealMinimo({
+      candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+      resultadoConfirmar: "pago_apos_expirar",
+      pedido,
+      reservaResultados: [false],
+      registro,
+    });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+
+    assertEquals(resposta.status, 200);
+    const chamadaReserva = registro.chamadasRpc.find((c) => c.nome === "reivindicar_email_de_confirmacao");
+    assertEquals(chamadaReserva?.args.p_order_id, UUID_PEDIDO_1);
+  } finally {
+    Deno.env.delete("SMTP_USER");
+    Deno.env.delete("SMTP_PASSWORD");
+  }
+});
+
+// --- achado bloqueante da revisão (12/09/2026): a cópia desta função em
+// reconciliar-pagamentos não tinha NENHUMA asserção de conteúdo — o texto
+// podia divergir do gêmeo em webhook-mercadopago/index_test.ts sem nenhum
+// sinal. Mesmo teste, mesmas asserções, agora nas duas cópias. -------------
+
+function numeroDoPedidoEsperado(id: string): string {
+  return `#${String(id).slice(-6).toUpperCase()}`;
+}
+
+Deno.test("htmlDoAvisoDePagamentoAtrasado (reconciliação): texto honesto — NUNCA promete 'aguardando confirmação' nem 'fila de separação', NUNCA afirma 'prazo' nem 'automaticamente'", () => {
+  const html = htmlDoAvisoDePagamentoAtrasado({ orderId: UUID_PEDIDO_1, nomeDaLoja: "Loja Teste" });
+
+  // As duas frases que o comprovante PADRÃO usa e que mentiriam aqui — ver
+  // `htmlDoPedido` em `_shared/comprovante.ts`. A negação ("não entrou na
+  // fila de separação") é o texto HONESTO — o que não pode aparecer é a
+  // afirmação, no presente, de que o pedido ENTRA na fila.
+  assertEquals(html.includes("aguardando"), false, "não pode dizer que o pagamento ainda está aguardando confirmação");
+  assertEquals(html.includes("entra na fila de separação"), false, "o pedido está cancelado — nunca ENTRA na fila de separação");
+  assertStringIncludes(html, "não entrou na fila de separação");
+
+  // Achado bloqueante: 'pago_apos_expirar' também nasce de o CLIENTE cancelar
+  // pelo app e pagar o PIX dentro da janela — "prazo" e "automaticamente" são
+  // falsos nesse caminho. O texto não pode alegar causa nenhuma.
+  assertEquals(html.includes("prazo"), false, "'prazo' só é verdade quando o pedido expirou — a RPC devolve o mesmo valor para o cliente que cancelou e pagou dentro da janela");
+  assertEquals(html.includes("automátic"), false, "'automaticamente' é falso quando foi o CLIENTE quem cancelou pelo app");
+
+  // O que TEM de estar dito: pagamento confirmado, pedido já cancelado.
+  assertStringIncludes(html, "cancelado");
+  assertStringIncludes(html, numeroDoPedidoEsperado(UUID_PEDIDO_1));
+  assertStringIncludes(html, "Loja Teste");
+});
+
+Deno.test("aviso de pagamento atrasado (reconciliação): reserva NÃO concedida (reservou=false) -> não chega a ler store_config nem a enviar e-mail", async () => {
+  // Mesma técnica de "webhook-mercadopago/index_test.ts: reserva NÃO
+  // concedida" — prova, sem tocar SMTP de verdade, que um reenvio (ou o
+  // webhook chegando primeiro pela MESMA reserva) barra ANTES de ler
+  // store_config, e por isso nunca chega a tentar mandar um segundo e-mail.
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
+  Deno.env.set("SMTP_PASSWORD", "fixture-nao-e-credencial-real");
+  try {
+    const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+    const pedido = {
+      id: UUID_PEDIDO_1,
+      user_id: null,
+      customer_data: { email: "cliente@exemplo.com" },
+      total: 149.9,
+      total_amount: null,
+    };
+    let leuStoreConfig = false;
+    const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
+    const supabase = {
+      rpc: async (nome: string, args: Record<string, unknown>) => {
+        chamadasRpc.push({ nome, args });
+        if (nome === "pagamentos_a_reconciliar") return { data: candidatos, error: null };
+        if (nome === "confirmar_pagamento") return { data: "pago_apos_expirar", error: null };
+        if (nome === "reivindicar_email_de_confirmacao") return { data: false, error: null };
+        return { data: null, error: null };
+      },
+      from(tabela: string) {
+        if (tabela === "store_config") {
+          leuStoreConfig = true;
+          return {
+            select(_cols: string) {
+              return { limit(_n: number) { return { maybeSingle: async () => ({ data: null, error: null }) }; } };
+            },
+          };
+        }
+        if (tabela === "marketplace_orders") {
+          return {
+            select(_cols: string) {
+              return {
+                eq(_col: string, _val: unknown) {
+                  return { maybeSingle: async () => ({ data: pedido, error: null }) };
+                },
+              };
+            },
+          };
+        }
+        throw new Error(`from inesperado no dublê mínimo: ${tabela}`);
+      },
+    };
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.confirmados, 1, "a confirmação em si não é bloqueada pela reserva do e-mail — só o aviso é");
+    const chamadaReserva = chamadasRpc.find((c) => c.nome === "reivindicar_email_de_confirmacao");
+    assertEquals(chamadaReserva?.args.p_order_id, UUID_PEDIDO_1, "a reserva tem de ser alcançada com o orderId certo");
+    assertEquals(leuStoreConfig, false, "reservou=false tem de barrar ANTES de ler store_config — é isso que prova que não se tenta enviar de novo");
+  } finally {
+    Deno.env.delete("SMTP_USER");
+    Deno.env.delete("SMTP_PASSWORD");
+  }
+});
+
+Deno.test("PEÇA 5 - AUSÊNCIA DE DUPLICATA: dois candidatos do MESMO pedido no mesmo ciclo -> só a 1ª reserva vinga, a 2ª (reservou=false) não manda nada de novo", async () => {
+  // Cenário artificial (a RPC pagamentos_a_reconciliar não devolveria o
+  // mesmo order_id duas vezes na vida real), mas é o jeito mais direto de
+  // provar, sem tocar SMTP, que a trava é quem impede o e-mail duplicado —
+  // não uma suposição de que "só roda uma vez por pedido". Mesma prova serve
+  // para "webhook confirmou primeiro, a reconciliação chegou depois": dos
+  // dois lados quem chama por último sempre recebe reservou=false.
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
+  Deno.env.set("SMTP_PASSWORD", "fixture-nao-e-credencial-real");
+  try {
+    const registro = { chamadasRpc: [] as Array<{ nome: string; args: Record<string, unknown> }> };
+    const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+    const pedido = {
+      id: UUID_PEDIDO_1,
+      user_id: null,
+      customer_data: { email: "cliente@exemplo.com" },
+      total: 149.9,
+      total_amount: null,
+    };
+    const supabase = supabaseRealMinimo({
+      candidatos: [
+        { order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder },
+        { order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder },
+      ],
+      resultadoConfirmar: "pago_apos_expirar",
+      pedido,
+      // 1ª chamada de reivindicar_email_de_confirmacao reserva (true); a 2ª
+      // (mesmo pedido, mesmo ciclo) já encontra reservado (false).
+      reservaResultados: [true, false],
+      registro,
+    });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.confirmados, 2, "os dois candidatos confirmam — a dedup é do E-MAIL, não da confirmação");
+    const chamadasReserva = registro.chamadasRpc.filter((c) => c.nome === "reivindicar_email_de_confirmacao");
+    assertEquals(chamadasReserva.length, 2, "as duas tentativas de aviso têm de ALCANÇAR a reserva");
+    assertEquals(chamadasReserva[0].args.p_order_id, UUID_PEDIDO_1);
+    assertEquals(chamadasReserva[1].args.p_order_id, UUID_PEDIDO_1);
+  } finally {
+    Deno.env.delete("SMTP_USER");
+    Deno.env.delete("SMTP_PASSWORD");
+  }
 });

@@ -240,11 +240,14 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
   });
 
   // C2 (revisão de 20/08/2026): o título original prometia "mostra 0
-  // (medido)" e "o botão de enviar some ao selecioná-lo" — o corpo nunca
-  // afirmava o "0", e o botão não some, DESABILITA. Corrigido nos dois
-  // lados: o corpo agora prova o "0" que o título promete, e o título
-  // deixou de dizer "some".
-  it("segmento vazio mostra 0 (medido), e o botão de enviar desabilita ao selecioná-lo", async () => {
+  // (medido)" e "o botão de enviar some ao selecioná-lo" — corrigido na
+  // época. Re-ancorado na direção B "Rádio do lojista" (12/09/2026): o chip
+  // de segmento medido como zero agora aparece DESATIVADO, com o número 0 e
+  // o motivo do zero à vista — a trava de "não dá para enviar para um
+  // segmento vazio" subiu para a ORIGEM (a seleção), em vez de só fechar o
+  // botão de enviar depois. O invariante de fundo é o mesmo: zero medido é
+  // afirmação forte, e nunca é caminho para envio.
+  it("segmento vazio mostra 0 medido com o motivo do zero, e o chip fica desativado — a trava agora é na seleção", async () => {
     await abrirTela();
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
@@ -261,15 +264,16 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     });
 
     expect(numeroDoSegmento(botaoInativo as HTMLButtonElement)).toBe("0");
+    // O clique não teve efeito: o chip desativado não troca o segmento.
+    expect((botaoInativo as HTMLButtonElement).disabled).toBe(true);
 
     const botaoEnviar = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => (b.textContent ?? "").includes("Enviar Notificação Agora"),
+      (b) => (b.textContent ?? "").includes("Enviar agora para"),
     ) as HTMLButtonElement | undefined;
     expect(botaoEnviar).toBeTruthy();
-    // effectiveReach === 0 para o segmento vazio selecionado — o botão de
-    // enviar continua desabilitado. Comportamento já existente, não pode
-    // quebrar.
-    expect(botaoEnviar?.disabled).toBe(true);
+    // O segmento SELECIONADO continua sendo "all" (8 aparelhos medidos) —
+    // o botão de enviar segue o segmento selecionado, não o chip clicado.
+    expect(botaoEnviar?.disabled).toBe(false);
   });
 
   it("medição que ainda não chegou (RPC pendente) mostra traço, nunca um número chutado", async () => {
@@ -333,6 +337,12 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
   // selecionado (que lia `effectiveReach`, sempre numérico) virava "0" em
   // vez de "—" mesmo quando a medição daquele segmento nunca chegou.
   it("RPC de um segmento falha depois de outro já medido: mostra traço, não herda o número anterior, e o botão de enviar desabilita", async () => {
+    // Re-ancoragem da direção B (12/09/2026): a falha de medição do segmento
+    // precisa existir ANTES da montagem — no chip novo, segmento com contagem
+    // MEDIDA como zero nasce desativado (não dá para clicá-lo aqui), mas
+    // contagem DESCONHECIDA (null → traço) continua selecionável, que é o
+    // caso deste teste.
+    estadoDoBanco.porSegmento.inactive = null;
     await abrirTela();
 
     const botoes = () => Array.from(hospedeiro.querySelectorAll("button"));
@@ -346,7 +356,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
       );
     const botaoEnviar = () =>
       botoes().find((b) =>
-        (b.textContent ?? "").includes("Enviar Notificação Agora"),
+        (b.textContent ?? "").includes("Enviar agora para"),
       ) as HTMLButtonElement | undefined;
 
     // 1) Seleciona "Gastaram R$ 150+ (pagos)" — mede 2 de verdade.
@@ -360,9 +370,8 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     expect(numeroDoSegmento(botaoVip())).toBe("2");
     expect(botaoEnviar()?.disabled).toBe(false);
 
-    // 2) Agora o segmento "inactive" vai falhar de propósito ao medir.
-    estadoDoBanco.porSegmento.inactive = null;
-
+    // 2) A medição de "inactive" já nasceu falhada (null, lá em cima) — o
+    // clique re-tenta medir e falha de novo.
     await act(async () => {
       botaoInativo()!.click();
     });
@@ -389,6 +398,10 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
   // do flush, quando o `else`/`catch` já tinha gravado `null` de qualquer
   // jeito.
   it("troca de segmento: o número do segmento ANTERIOR não pode aparecer enquanto a medição do novo segmento ainda está no ar", async () => {
+    // Re-ancoragem da direção B (12/09/2026): "inactive" nasce com contagem
+    // DESCONHECIDA (null) — chip com traço é selecionável; com zero medido
+    // ele nasceria desativado e o clique deste teste não existiria.
+    estadoDoBanco.porSegmento.inactive = null;
     await abrirTela();
 
     const botoes = () => Array.from(hospedeiro.querySelectorAll("button"));
@@ -495,7 +508,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     });
 
     const botaoEnviar = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => (b.textContent ?? "").includes("Enviar Notificação Agora"),
+      (b) => (b.textContent ?? "").includes("Enviar agora para"),
     ) as HTMLButtonElement | undefined;
     expect(botaoEnviar?.disabled).toBe(true);
   });
@@ -510,11 +523,13 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
   it("os textos de alcance dizem aparelhos, não clientes — no plural certo", async () => {
     await abrirTela();
 
-    // Segmento "all": 8 aparelhos, real (subCount).
+    // Segmento "all": 8 aparelhos, real (subCount). Direção B (12/09/2026):
+    // o botão deixou de ser "Enviar Notificação Agora (N aparelhos)" e virou
+    // "Enviar agora para N aparelhos" — mesmo número honesto, frase nova.
     expect(texto()).toContain("Receberão: 8 aparelhos");
-    expect(texto()).toContain("Enviar Notificação Agora (8 aparelhos)");
+    expect(texto()).toContain("Enviar agora para 8 aparelhos");
     expect(texto()).not.toMatch(/Receberão:\s*\d+\s*clientes/);
-    expect(texto()).not.toMatch(/Enviar Notificação Agora \(\d+ clientes\)/);
+    expect(texto()).not.toMatch(/Enviar agora para \d+ clientes/);
   });
 
   it("com um único aparelho, o texto de alcance vem no singular", async () => {
@@ -556,7 +571,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     function botaoEnviar(): HTMLButtonElement | undefined {
       return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-        (b.textContent ?? "").includes("Enviar Notificação Agora"),
+        (b.textContent ?? "").includes("Enviar agora para"),
       ) as HTMLButtonElement | undefined;
     }
 
@@ -569,7 +584,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
       expect(numeroDoBadgeTodosOsClientes()).toContain("—");
 
       expect(texto()).toContain("Receberão: — aparelhos");
-      expect(texto()).toContain("Enviar Notificação Agora (— aparelhos)");
+      expect(texto()).toContain("Enviar agora para — aparelhos");
 
       // O ponto mais importante desta tarefa: total desconhecido não pode
       // virar botão liberado. Falhar fechado.

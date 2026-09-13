@@ -361,7 +361,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
   function botaoEnviar(): HTMLButtonElement | undefined {
     return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      (b.textContent ?? "").includes("Enviar Notificação Agora"),
+      (b.textContent ?? "").includes("Enviar agora para"),
     ) as HTMLButtonElement | undefined;
   }
 
@@ -497,7 +497,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
   });
 
   // Conserto 3 (decisão do plano, 20/08/2026, corrigindo o achado 8): dos 16
-  // clientes sem aparelho, o botão "Enviar Notificação Agora" nascia
+  // clientes sem aparelho, o botão de enviar nascia
   // desabilitado (`effectiveReach === 0`) e NUNCA ficava clicável — o aviso
   // gravado no app (achado 8) era, na prática, inalcançável. A correção: se
   // existe `targetUserId` E o alcance foi MEDIDO como zero (não
@@ -512,7 +512,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
       expect(texto()).toMatch(/não tem aparelho/i);
     });
 
-    it("segmento vazio, sem cliente específico: o botão continua DESABILITADO — a trava de sempre", async () => {
+    it("segmento vazio, sem cliente específico: o chip fica DESATIVADO — a trava de sempre subiu para a seleção (re-ancorado na direção B)", async () => {
       estadoDoBanco.porSegmento.inactive = [];
       await abrirTela();
 
@@ -522,14 +522,15 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
         (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
       );
       expect(botaoInativo).toBeTruthy();
-      await act(async () => {
-        botaoInativo!.click();
-      });
-      await act(async () => {
-        await esperar(80);
-      });
-
-      expect(botaoEnviar()?.disabled).toBe(true);
+      // Direção B "Rádio do lojista" (12/09/2026): o chip de segmento
+      // medido como zero nasce desativado — pela interface não dá mais para
+      // chegar ao estado "segmento vazio selecionado". O caminho de envio
+      // para segmento que mediu 1 e sumiu antes do clique continua coberto
+      // pelo teste da corrida ("segmento vazio (sem cliente específico)"),
+      // lá em cima, que é quem exercita o handleSend com alvo zero.
+      expect((botaoInativo as HTMLButtonElement).disabled).toBe(true);
+      // E o segmento selecionado segue sendo o "all" (8), não o vazio.
+      expect(botaoEnviar()?.disabled).toBe(false);
     });
 
     it("alcance desconhecido (a medição falhou): o botão continua DESABILITADO, mesmo com cliente específico", async () => {

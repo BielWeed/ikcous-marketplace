@@ -7,11 +7,8 @@ import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import {
   AlertTriangle,
   Check,
-  ChevronDown,
   Clock,
   ExternalLink,
-  Headset,
-  Info,
   MessageCircle,
   MoreVertical,
   Phone,
@@ -257,93 +254,6 @@ const getProcessedPreviewText = (
   return processed;
 };
 
-/**
- * Seção colapsável da tela de Atendimento (frente glm-visual-canais-avisar-0309):
- * o mesmo padrão da `SecaoColapsavel` dos Ajustes — cabeçalho clicável com
- * `aria-expanded`, conteúdo montado só quando aberta e trava de pendência
- * (fechar desmonta o conteúdo; com alteração não salva, o fechamento é
- * RECUSADO com aviso no cabeçalho — achado A1 da revisão adversária da
- * onda do Frete). Local a este arquivo de propósito: a versão dos Ajustes
- * é o desenho de referência, não um componente exportado.
- *
- * `aberta`/`aoAlternar`: modo controlado opcional — a seção de mensagem
- * precisa dele para o dono da tela reconstruir o editor (contentEditable)
- * toda vez que a seção (re)abre.
- */
-function SecaoColapsavel({
-  titulo,
-  icone: Icone,
-  abertaPorPadrao = false,
-  comPendencia = false,
-  aberta: abertaExterna,
-  aoAlternar,
-  children,
-}: {
-  readonly titulo: string;
-  readonly icone: React.ElementType;
-  readonly abertaPorPadrao?: boolean;
-  readonly comPendencia?: boolean;
-  readonly aberta?: boolean;
-  readonly aoAlternar?: (proxima: boolean) => void;
-  readonly children: React.ReactNode;
-}) {
-  const [abertaInterna, setAbertaInterna] = useState(abertaPorPadrao);
-  const aberta = abertaExterna ?? abertaInterna;
-
-  return (
-    <div className="admin-glass relative overflow-hidden rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6">
-      <button
-        type="button"
-        onClick={() => {
-          // Há trabalho não salvo dentro: fechar desmontaria o conteúdo e
-          // jogaria fora o que foi digitado. A saída é o botão Salvar do topo.
-          if (aberta && comPendencia) return;
-          const proxima = !aberta;
-          if (abertaExterna === undefined) setAbertaInterna(proxima);
-          aoAlternar?.(proxima);
-        }}
-        aria-expanded={aberta}
-        className="flex w-full items-center justify-between gap-3 text-left"
-      >
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-gold/20 bg-admin-gold/10 text-admin-gold">
-            <Icone className="size-5" strokeWidth={2.5} />
-          </span>
-          <span className="truncate text-sm font-black uppercase tracking-wider text-white">
-            {titulo}
-          </span>
-        </span>
-        <span className="flex shrink-0 items-center gap-2">
-          {aberta && comPendencia && (
-            <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
-              Salve antes de fechar
-            </span>
-          )}
-          <ChevronDown
-            className={`size-4 shrink-0 text-zinc-400 transition-transform duration-200 ${
-              aberta ? "rotate-180" : ""
-            }`}
-          />
-        </span>
-      </button>
-
-      <AnimatePresence initial={false}>
-        {aberta && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22, ease: "easeOut" }}
-            className="overflow-hidden"
-          >
-            <div className="pt-4">{children}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 interface AdminWhatsAppConfigViewProps {
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
@@ -353,6 +263,53 @@ const getCleanPhone = (val: string) => {
   const clean = (val || "").toString().replace(/\D/g, "");
   return clean.startsWith("55") && clean.length > 10 ? clean.slice(2) : clean;
 };
+
+/**
+ * Cabeçalho dos blocos do formulário direto (frente lote-b-telas-admin,
+ * 12/09): medalha numerada + título, sem clique e sem colapso — a direção B
+ * aprovada pelo dono abre a tela inteira de uma vez. Local a este arquivo de
+ * propósito: é o desenho desta tela, não um padrão compartilhado.
+ */
+function BlocoNumerado({
+  numero,
+  titulo,
+  descricao,
+  children,
+}: {
+  readonly numero: string;
+  readonly titulo: string;
+  readonly descricao: string;
+  readonly children: React.ReactNode;
+}) {
+  const idDoTitulo = `bloco-atendimento-${numero}`;
+
+  return (
+    <section
+      aria-labelledby={idDoTitulo}
+      className="admin-glass rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6"
+    >
+      <div className="flex items-center gap-3">
+        <span
+          data-numero
+          aria-hidden="true"
+          className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-admin-gold/20 bg-admin-gold/10 text-[13px] font-black text-admin-gold"
+        >
+          {numero}
+        </span>
+        <h2
+          id={idDoTitulo}
+          className="text-[15px] font-black tracking-tight text-white"
+        >
+          {titulo}
+        </h2>
+      </div>
+      <p className="mt-1.5 text-[13px] leading-snug text-zinc-400">
+        {descricao}
+      </p>
+      <div className="mt-5">{children}</div>
+    </section>
+  );
+}
 
 export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
   active,
@@ -373,9 +330,6 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
 
   const [isPresetsOpen, setIsPresetsOpen] = useState(false);
   const [presetSearch, setPresetSearch] = useState("");
-  // Seção "Mensagem de Compartilhamento" (casca nova): controlada pela view
-  // para o efeito abaixo reconstruir o editor toda vez que ela (re)abre.
-  const [isMensagemOpen, setIsMensagemOpen] = useState(false);
   const dragControls = useDragControls();
 
   // Lock scroll when presets bottom sheet is open
@@ -624,11 +578,10 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
   }, [active, refresh]);
 
   // Notify parent of dirty state
-  // A MESMA expressão de antes, agora num valor compartilhado: além de ligar
-  // a guarda do App (onSetDirty), ela trava o fechamento das seções
-  // colapsáveis enquanto houver alteração não salva (fechar desmontaria o
-  // conteúdo e descartaria o que foi digitado — padrão "Salve antes de
-  // fechar" dos Ajustes).
+  // O sinal que liga a guarda do App (onSetDirty): com alteração não salva, o
+  // App sabe que há trabalho em aberto antes de o lojista sair da tela. No
+  // formulário direto nada desmonta ao navegar internamente — este sinal é a
+  // continuação do antigo "Salve antes de fechar" das seções colapsáveis.
   const temAlteracaoNaoSalva =
     !!config &&
     (getCleanPhone(formData.whatsappNumber) !==
@@ -643,20 +596,6 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
       onSetDirty(false);
     };
   }, [temAlteracaoNaoSalva, config, onSetDirty]);
-
-  // A seção fechada DESMONTA o editor (contentEditable). Ao (re)abrir, ele
-  // volta do estado do formulário — sem isto, reabrir mostraria o editor
-  // vazio mesmo com mensagem salva. Roda SÓ na transição de abertura: enquanto
-  // aberta, o que está no editor manda (reescrever o innerHTML a cada tecla
-  // destruiria a posição do cursor e a seleção do lojista).
-  useEffect(() => {
-    if (!isMensagemOpen) return;
-    const editor = document.getElementById("settings-share-message-editor");
-    if (editor) {
-      editor.innerHTML = convertPlainTextToHTML(formData.shareText || "");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMensagemOpen]);
 
   const handleSubmit = async () => {
     if (isOffline) {
@@ -725,7 +664,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
               <button
                 onClick={handleSubmit}
                 disabled={!isLoaded || isOffline || isSaving}
-                className="h-9.5 flex shrink-0 items-center gap-2 rounded-lg bg-admin-gold px-3.5 text-[9.5px] font-black uppercase tracking-widest text-white shadow-[0_0_30px_rgba(212,175,55,0.2)] transition-all hover:bg-admin-gold/90 hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] active:scale-95 disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-3 sm:px-5"
+                className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-gold px-4 text-[10.5px] font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-[#e3c25e] hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-2.5 sm:px-5"
               >
                 {isSaving ? (
                   <>
@@ -747,7 +686,10 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
         </div>
       </div>
 
-      <div className="mx-auto max-w-2xl space-y-4 px-4 pt-4">
+      {/* Formulário direto (direção B): três blocos numerados, todos abertos.
+          Nada de seção colapsável — a tela inteira fica à vista e o que o
+          lojista digita nunca desmonta. */}
+      <div className="mx-auto max-w-4xl space-y-4 px-4 pt-4">
         {isOffline && (
           <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
             <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />
@@ -758,347 +700,305 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
           </div>
         )}
 
-        {/* ── Seção 1: contatos e expediente — a porta de todo dia, nasce
-            aberta. Conteúdo (campos, máscara, validação, avisos) intocado. */}
-        <SecaoColapsavel
-          titulo="Canais de Atendimento"
-          icone={Headset}
-          abertaPorPadrao
-          comPendencia={temAlteracaoNaoSalva}
+        {/* ── Bloco 1: o WhatsApp é a porta de fechamento de pedido — nasce
+            à vista, com a consequência do vazio dita em português de gente. */}
+        <BlocoNumerado
+          numero="1"
+          titulo="WhatsApp da loja"
+          descricao="Número que recebe as mensagens dos clientes. É por ele que a loja fecha pedidos e tira dúvidas."
         >
-          <div className="space-y-5">
-            <p className="text-[10px] leading-snug text-zinc-500">
-              Configure os pontos de contato e expedição do seu suporte
+          <div className="space-y-2">
+            <Label
+              htmlFor="settings-whatsapp"
+              className="ml-1 text-[13px] font-bold text-white"
+            >
+              Número do WhatsApp
+            </Label>
+            <p className="ml-1 text-[13px] leading-snug text-zinc-500">
+              Pode deixar vazio — aí o botão de WhatsApp some da loja. Se
+              preencher, use DDD + número: o +55 do Brasil entra sozinho.
             </p>
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              {/* WhatsApp input */}
-              <div className="flex-grow space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label
-                    htmlFor="settings-whatsapp"
-                    className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
-                  >
-                    WhatsApp da Operação
-                  </Label>
-                  <span className="rounded-full border border-[#25d366]/20 bg-[#25d366]/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#25d366]">
-                    Atendimento & Vendas
-                  </span>
-                </div>
-                <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
-                  Número que receberá contatos diretos de clientes.
-                </p>
-                <div className="group relative">
-                  {/* Âncora no PRIMEIRO 20px do bloco (centro do input h-10),
-                    não em `top-1/2`: o bloco cresce para baixo quando a
-                    validação acusa erro, e o meio do bloco empurrava o
-                    ícone/+55 para fora da linha do campo. */}
-                  <div className="pointer-events-none absolute left-3.5 top-5 flex h-5 -translate-y-1/2 items-center gap-1.5 border-r border-white/10 pr-2.5">
-                    <MessageCircle className="size-3.5 text-[#25d366]" />
-                    <span className="text-[11px] font-black leading-none text-zinc-500">
-                      +55
-                    </span>
-                  </div>
-                  <LocalBufferedInput
-                    id="settings-whatsapp"
-                    name="whatsapp"
-                    useShadcn
-                    mask="phone"
-                    delay={350}
-                    value={formData.whatsappNumber}
-                    onFlush={onChangeWhatsappNumber}
-                    placeholder="(00) 00000-0000"
-                    className="h-10 rounded-xl border-white/10 bg-black/40 pl-16 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
-                    autoComplete="tel"
-                    disabled={isOffline}
-                    validate={(val) => {
-                      // Campo OPCIONAL (decisão do Gabriel, 30/08): vazio é
-                      // estado legítimo — o botão de WhatsApp some da loja.
-                      // Erro só quando digitar errado.
-                      if (!val) return null;
-                      const clean = val.replace(/\D/g, "");
-                      if (clean.length < 10 || clean.length > 11) {
-                        return "Informe DDD + número (10 ou 11 dígitos)";
-                      }
-                      return null;
-                    }}
-                  />
-                </div>
-                <div className="space-y-1 rounded-lg border border-white/5 bg-zinc-950/40 p-2.5">
-                  <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                    <Info className="size-3 text-admin-gold" />
-                    <span>Formato e Protocolo</span>
-                  </div>
-                  <p className="text-[9px] leading-relaxed text-zinc-400">
-                    Campo opcional: vazio, e o botão de WhatsApp some da loja.
-                    Preenchido, use DDD + número — o código{" "}
-                    <code className="font-mono text-zinc-300">55</code> é
-                    adicionado automaticamente.
-                  </p>
-                </div>
+            <div className="group relative">
+              {/* Âncora no PRIMEIRO 20px do bloco (centro do input h-10),
+                não em `top-1/2`: o bloco cresce para baixo quando a
+                validação acusa erro, e o meio do bloco empurrava o
+                ícone/+55 para fora da linha do campo. */}
+              <div className="pointer-events-none absolute left-3.5 top-5 flex h-5 -translate-y-1/2 items-center gap-1.5 border-r border-white/10 pr-2.5">
+                <MessageCircle className="size-3.5 text-[#25d366]" />
+                <span className="text-[11px] font-black leading-none text-zinc-500">
+                  +55
+                </span>
               </div>
-
-              {/* Business Hours */}
-              <div className="flex-grow space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label
-                    htmlFor="settings-business-hours"
-                    className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
-                  >
-                    Horário de Funcionamento
-                  </Label>
-                  <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-blue-400">
-                    Expediente
-                  </span>
-                </div>
-                <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
-                  Informa aos clientes no PWA o expediente de suporte.
-                </p>
-                <div className="group relative">
-                  <div className="pointer-events-none absolute left-3.5 top-1/2 flex -translate-y-1/2 items-center border-r border-white/10 pr-2.5">
-                    <Clock className="size-3.5 text-admin-gold" />
-                  </div>
-                  <LocalBufferedInput
-                    id="settings-business-hours"
-                    name="businessHours"
-                    useShadcn
-                    delay={350}
-                    value={formData.businessHours}
-                    onFlush={onChangeBusinessHours}
-                    placeholder="Ex: Ter a Sáb, 9h às 18h"
-                    className="h-10 rounded-xl border-white/10 bg-black/40 pl-11 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
-                    autoComplete="off"
-                    disabled={isOffline}
-                  />
-                </div>
-                <div className="space-y-1 rounded-lg border border-white/5 bg-zinc-950/40 p-2.5">
-                  <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                    <Clock className="size-3 text-zinc-500" />
-                    <span>Exemplos recomendados</span>
-                  </div>
-                  <p className="text-[9px] leading-relaxed text-zinc-400">
-                    •{" "}
-                    <code className="font-mono text-zinc-300">
-                      Ter a Sáb: 9h às 18h
-                    </code>
-                    <br />•{" "}
-                    <code className="font-mono text-zinc-300">
-                      Seg a Sex: 8h às 18h | Sáb: 8h às 12h
-                    </code>
-                  </p>
-                </div>
-              </div>
+              <LocalBufferedInput
+                id="settings-whatsapp"
+                name="whatsapp"
+                type="tel"
+                useShadcn
+                mask="phone"
+                delay={350}
+                value={formData.whatsappNumber}
+                onFlush={onChangeWhatsappNumber}
+                placeholder="(00) 00000-0000"
+                className="h-10 rounded-xl border-white/10 bg-black/40 pl-16 text-[13px] font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
+                autoComplete="tel"
+                disabled={isOffline}
+                validate={(val) => {
+                  // Campo OPCIONAL (decisão do Gabriel, 30/08): vazio é
+                  // estado legítimo — o botão de WhatsApp some da loja.
+                  // Erro só quando digitar errado.
+                  if (!val) return null;
+                  const clean = val.replace(/\D/g, "");
+                  if (clean.length < 10 || clean.length > 11) {
+                    return "Informe DDD + número (10 ou 11 dígitos)";
+                  }
+                  return null;
+                }}
+              />
             </div>
           </div>
-        </SecaoColapsavel>
+        </BlocoNumerado>
 
-        {/* ── Seção 2: mensagem de compartilhamento — nasce FECHADA (a seção
-            fecha desmonta o mockup pesado do WhatsApp); ao (re)abrir, o
-            editor é reconstruído do estado salvo (efeito `isMensagemOpen`). */}
-        <SecaoColapsavel
-          titulo="Mensagem de Compartilhamento de Produtos"
-          icone={Share2}
-          aberta={isMensagemOpen}
-          aoAlternar={setIsMensagemOpen}
-          comPendencia={temAlteracaoNaoSalva}
+        {/* ── Bloco 2: expediente em campo livre — o lojista escreve como
+            fala, com sugestões prontas ao lado. */}
+        <BlocoNumerado
+          numero="2"
+          titulo="Horário de atendimento"
+          descricao="Aparece na loja para os clientes saberem quando você responde."
+        >
+          <div className="space-y-2">
+            <Label
+              htmlFor="settings-business-hours"
+              className="ml-1 text-[13px] font-bold text-white"
+            >
+              Quando a loja atende
+            </Label>
+            <div className="group relative">
+              <div className="pointer-events-none absolute left-3.5 top-1/2 flex -translate-y-1/2 items-center border-r border-white/10 pr-2.5">
+                <Clock className="size-3.5 text-admin-gold" />
+              </div>
+              <LocalBufferedInput
+                id="settings-business-hours"
+                name="businessHours"
+                useShadcn
+                delay={350}
+                value={formData.businessHours}
+                onFlush={onChangeBusinessHours}
+                placeholder="Ex: Terça a sábado, 9h às 18h"
+                className="h-10 rounded-xl border-white/10 bg-black/40 pl-11 text-[13px] font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
+                autoComplete="off"
+                disabled={isOffline}
+              />
+            </div>
+            <div className="ml-1 space-y-1 pt-1">
+              <p className="text-[13px] leading-snug text-zinc-500">
+                Sugestões que os clientes entendem:
+              </p>
+              <code className="block w-fit rounded-lg border border-white/5 bg-zinc-950/40 px-2.5 py-1 font-mono text-[13px] text-zinc-400">
+                Ter a Sáb: 9h às 18h
+              </code>
+              <code className="block w-fit rounded-lg border border-white/5 bg-zinc-950/40 px-2.5 py-1 font-mono text-[13px] text-zinc-400">
+                Seg a Sex: 8h às 18h | Sáb: 8h às 12h
+              </code>
+            </div>
+          </div>
+        </BlocoNumerado>
+
+        {/* ── Bloco 3: mensagem de compartilhamento — editor, marcadores,
+            modelos prontos e a prévia fiel, tudo na mesma página. O editor
+            vive montado: sem seção que fecha, o que foi digitado não some. */}
+        <BlocoNumerado
+          numero="3"
+          titulo="Mensagem de compartilhamento"
+          descricao="Texto que vai junto quando alguém compartilha um produto da sua loja. A prévia em cima mostra ao vivo o que você digitar embaixo — como a mensagem chega no WhatsApp de quem recebe."
         >
           <div className="space-y-4">
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
-                  Texto anexado quando um usuário compartilha um produto. O nome
-                  do produto, o preço e o link serão adicionados de acordo com
-                  os placeholders.
-                </p>
-                <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-purple-400">
-                  Divulgação
+            {/* Prévia ao vivo — EM CIMA do campo: o lojista digita embaixo e
+                vê a mensagem montando aqui em tempo real, sem rolar para
+                procurar. Fiel: cabeçalho, papal de parede, bolha com o card
+                do produto e o domínio real da loja. */}
+            <div className="space-y-2">
+              <span className="ml-1 flex items-center gap-2 text-[13px] font-bold text-zinc-400">
+                <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
+                  Ao vivo
                 </span>
+                Como chega no WhatsApp de quem recebe
+              </span>
+
+              {/* Chat window mockup ampliado — ocupa a tela de verdade */}
+              <div className="relative mx-auto flex h-[420px] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0b141a] shadow-2xl transition-all duration-300">
+                {/* WhatsApp Custom Header */}
+                <div className="flex items-center justify-between bg-[#1f2c34] px-3.5 py-2 border-b border-[#222e35]/50 z-10 shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    {/* Store avatar mockup */}
+                    <div className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-admin-gold/15 border border-admin-gold/30 text-[9px] font-black text-admin-gold">
+                      IK
+                      <span className="absolute bottom-0 right-0 size-2 rounded-full border border-[#1f2c34] bg-[#25d366]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold text-[#e9edef] truncate">
+                        Cliente (Você)
+                      </p>
+                      <p className="text-[8px] text-[#8696a0] leading-none">
+                        online
+                      </p>
+                    </div>
+                  </div>
+                  {/* Header Icons */}
+                  <div className="flex items-center gap-3.5 text-[#aebac1]">
+                    <Video className="size-4 cursor-pointer hover:text-white transition-colors" />
+                    <Phone className="size-3.5 cursor-pointer hover:text-white transition-colors" />
+                    <div className="h-4 w-px bg-white/5" />
+                    <MoreVertical className="size-4 cursor-pointer hover:text-white transition-colors" />
+                  </div>
+                </div>
+
+                {/* Chat message body with wallpaper pattern */}
+                <div className="relative flex-1 p-3 overflow-y-auto flex flex-col">
+                  {/* Doodle pattern overlay */}
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#25d366_1.2px,transparent_1.2px)] opacity-[0.03] [background-size:14px_14px]" />
+
+                  {/* Sent message bubble wrapper */}
+                  <div className="relative z-10 w-full max-w-[85%] self-end flex items-start justify-end gap-1 mt-auto">
+                    {/* Sent message bubble */}
+                    <div className="relative max-w-full min-w-0 rounded-xl rounded-tr-none bg-[#005c4b] px-3 py-2 text-[#e9edef] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]">
+                      {/* WhatsApp bubble tail SVG */}
+                      <div className="absolute -right-[7px] top-0 text-[#005c4b] fill-current">
+                        <svg width="8" height="13" viewBox="0 0 8 13">
+                          <path d="M5.188 0H0v11.193l6.467-6.467C7.523 3.668 7.02 0 5.188 0z" />
+                        </svg>
+                      </div>
+
+                      {/* OpenGraph Preview Link Card - Exibido de forma fiel ao compartilhamento de produto */}
+                      <div className="w-full min-w-0 overflow-hidden rounded-lg bg-[#013c32] mb-1.5 border border-[#004d40] flex flex-col shadow-sm">
+                        {/* Image and title block */}
+                        <div className="flex gap-2.5 p-2 bg-black/10 w-full min-w-0">
+                          {/* Product photo real/premium */}
+                          <div className="relative flex size-14 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-zinc-900 shadow-inner">
+                            <img
+                              src={
+                                sampleProduct.images?.[0]
+                                  ? sampleProduct.images[0]
+                                  : "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=150&h=150&fit=crop&q=80"
+                              }
+                              alt={sampleProduct.name}
+                              className="size-full object-cover"
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5">
+                            <p className="text-[10px] font-bold text-[#e9edef] truncate">
+                              {sampleProduct.name}
+                            </p>
+                            <p className="text-[8px] text-[#8696a0] line-clamp-2 leading-relaxed">
+                              {sampleProduct.description ||
+                                "Excelente qualidade, preço justo e entrega rápida. Confira os detalhes em nossa loja!"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Domain footer block */}
+                        <div className="flex items-center justify-between px-2.5 py-1 bg-black/20 border-t border-[#004d40]">
+                          <span className="text-[8px] font-medium text-[#8696a0]">
+                            {window.location.host}
+                          </span>
+                          <ExternalLink className="size-2.5 text-[#8696a0]" />
+                        </div>
+                      </div>
+
+                      {/* Main text bubble message with tags parsed */}
+                      <div className="break-words text-[11px] leading-relaxed">
+                        {renderFormattedText(formData.shareText)}
+                      </div>
+
+                      {/* Time and checkmarks */}
+                      <div className="mt-1 flex items-center justify-end gap-1 text-[7.5px] text-[#8696a0]/80">
+                        <span>12:00</span>
+                        <span className="flex text-[#53bdeb] font-bold">
+                          <Check className="size-2.5 text-[#53bdeb]" />
+                          <Check className="size-2.5 -ml-1 text-[#53bdeb]" />
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-6">
-              {/* WhatsApp Fiel Preview no topo */}
-              <div className="space-y-2">
-                <span className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 block">
-                  Visualização da Mensagem no WhatsApp (Fiel)
-                </span>
-
-                {/* Chat window mockup com max-width responsivo e centralizado */}
-                <div className="relative flex flex-col h-[340px] max-w-md mx-auto w-full rounded-2xl overflow-hidden border border-zinc-800 bg-[#0b141a] shadow-2xl transition-all duration-300">
-                  {/* WhatsApp Custom Header */}
-                  <div className="flex items-center justify-between bg-[#1f2c34] px-3.5 py-2 border-b border-[#222e35]/50 z-10 shrink-0">
-                    <div className="flex items-center gap-2.5">
-                      {/* Store avatar mockup */}
-                      <div className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-admin-gold/15 border border-admin-gold/30 text-[9px] font-black text-admin-gold">
-                        IK
-                        <span className="absolute bottom-0 right-0 size-2 rounded-full border border-[#1f2c34] bg-[#25d366]" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold text-[#e9edef] truncate">
-                          Cliente (Você)
-                        </p>
-                        <p className="text-[8px] text-[#8696a0] leading-none">
-                          online
-                        </p>
-                      </div>
-                    </div>
-                    {/* Header Icons */}
-                    <div className="flex items-center gap-3.5 text-[#aebac1]">
-                      <Video className="size-4 cursor-pointer hover:text-white transition-colors" />
-                      <Phone className="size-3.5 cursor-pointer hover:text-white transition-colors" />
-                      <div className="h-4 w-px bg-white/5" />
-                      <MoreVertical className="size-4 cursor-pointer hover:text-white transition-colors" />
-                    </div>
-                  </div>
-
-                  {/* Chat message body with wallpaper pattern */}
-                  <div className="relative flex-1 p-3 overflow-y-auto flex flex-col">
-                    {/* Doodle pattern overlay */}
-                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#25d366_1.2px,transparent_1.2px)] opacity-[0.03] [background-size:14px_14px]" />
-
-                    {/* Sent message bubble wrapper */}
-                    <div className="relative z-10 w-full max-w-[85%] self-end flex items-start justify-end gap-1 mt-auto">
-                      {/* Sent message bubble */}
-                      <div className="relative max-w-full min-w-0 rounded-xl rounded-tr-none bg-[#005c4b] px-3 py-2 text-[#e9edef] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]">
-                        {/* WhatsApp bubble tail SVG */}
-                        <div className="absolute -right-[7px] top-0 text-[#005c4b] fill-current">
-                          <svg width="8" height="13" viewBox="0 0 8 13">
-                            <path d="M5.188 0H0v11.193l6.467-6.467C7.523 3.668 7.02 0 5.188 0z" />
-                          </svg>
-                        </div>
-
-                        {/* OpenGraph Preview Link Card - Exibido de forma fiel ao compartilhamento de produto */}
-                        <div className="w-full min-w-0 overflow-hidden rounded-lg bg-[#013c32] mb-1.5 border border-[#004d40] flex flex-col shadow-sm">
-                          {/* Image and title block */}
-                          <div className="flex gap-2.5 p-2 bg-black/10 w-full min-w-0">
-                            {/* Product photo real/premium */}
-                            <div className="relative flex size-14 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-zinc-900 shadow-inner">
-                              <img
-                                src={
-                                  sampleProduct.images?.[0]
-                                    ? sampleProduct.images[0]
-                                    : "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=150&h=150&fit=crop&q=80"
-                                }
-                                alt={sampleProduct.name}
-                                className="size-full object-cover"
-                              />
-                            </div>
-                            <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5">
-                              <p className="text-[10px] font-bold text-[#e9edef] truncate">
-                                {sampleProduct.name}
-                              </p>
-                              <p className="text-[8px] text-[#8696a0] line-clamp-2 leading-relaxed">
-                                {sampleProduct.description ||
-                                  "Excelente qualidade, preço justo e entrega rápida. Confira os detalhes em nossa loja!"}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Domain footer block */}
-                          <div className="flex items-center justify-between px-2.5 py-1 bg-black/20 border-t border-[#004d40]">
-                            <span className="text-[8px] font-medium text-[#8696a0]">
-                              {window.location.host}
-                            </span>
-                            <ExternalLink className="size-2.5 text-[#8696a0]" />
-                          </div>
-                        </div>
-
-                        {/* Main text bubble message with tags parsed */}
-                        <div className="break-words text-[11px] leading-relaxed">
-                          {renderFormattedText(formData.shareText)}
-                        </div>
-
-                        {/* Time and checkmarks */}
-                        <div className="mt-1 flex items-center justify-end gap-1 text-[7.5px] text-[#8696a0]/80">
-                          <span>12:00</span>
-                          <span className="flex text-[#53bdeb] font-bold">
-                            <Check className="size-2.5 text-[#53bdeb]" />
-                            <Check className="size-2.5 -ml-1 text-[#53bdeb]" />
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+            <div className="space-y-2 border-t border-white/5 pt-4">
+              <Label
+                id="rotulo-texto-mensagem"
+                className="ml-1 text-[13px] font-bold text-white"
+              >
+                Texto da mensagem
+              </Label>
+              <div className="relative">
+                <div className="pointer-events-none absolute left-3.5 top-3.5 z-15">
+                  <Share2 className="size-3.5 text-zinc-500" />
                 </div>
+
+                {/* ContentEditable Rich Text Area Mockup. O rótulo se
+                  associa por aria-labelledby: div editável não é campo
+                  rotulável por `for` — é a associação correta aqui. */}
+                <div
+                  id="settings-share-message-editor"
+                  aria-labelledby="rotulo-texto-mensagem"
+                  contentEditable={!isOffline}
+                  onInput={handleEditorInput}
+                  onBlur={handleEditorBlur}
+                  onPaste={handleEditorPaste}
+                  className="relative min-h-[140px] cursor-text overflow-y-auto rounded-xl border border-white/10 bg-black/40 p-3.5 pl-10 text-[13px] font-medium leading-relaxed text-white outline-none transition-all empty:before:pointer-events-none empty:before:absolute empty:before:left-10 empty:before:top-3.5 empty:before:text-zinc-700 empty:before:content-['Escreva_a_mensagem_de_compartilhamento_do_produto...'] focus:bg-black/60 focus:ring-2 focus:ring-admin-gold/50"
+                />
               </div>
 
-              {/* Painel do Editor abaixo */}
-              <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 sm:p-5">
-                <div className="relative">
-                  <div className="pointer-events-none absolute left-3.5 top-3.5 z-15">
-                    <Share2 className="size-3.5 text-zinc-500" />
-                  </div>
-
-                  {/* ContentEditable Rich Text Area Mockup */}
-                  <div
-                    id="settings-share-message-editor"
-                    contentEditable={!isOffline}
-                    onInput={handleEditorInput}
-                    onBlur={handleEditorBlur}
-                    onPaste={handleEditorPaste}
-                    className="min-h-[120px] rounded-xl border border-white/10 bg-black/40 p-3.5 pl-10 text-xs font-medium leading-relaxed text-white transition-all focus:bg-black/60 focus:ring-2 focus:ring-admin-gold/50 outline-none overflow-y-auto cursor-text relative empty:before:content-['Escreva_a_mensagem_de_compartilhamento_do_produto...'] empty:before:text-zinc-700 empty:before:absolute empty:before:left-10 empty:before:top-3.5 empty:before:pointer-events-none"
-                  />
-                </div>
-
-                {/* Tags Dinâmicas */}
-                <div className="space-y-2">
-                  <div className="flex flex-col ml-1">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400">
-                      Toque para Adicionar ao Texto
-                    </span>
-                    <span className="text-[8.5px] text-zinc-500">
-                      O valor correspondente será injetado ao compartilhar.
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={isOffline}
-                      onClick={() => insertTag("nome")}
-                      className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[9.5px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                    >
-                      <Plus className="size-3.5 text-admin-gold group-hover:rotate-90 transition-transform duration-200" />
-                      <span>Nome do Produto</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isOffline}
-                      onClick={() => insertTag("preco")}
-                      className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[9.5px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                    >
-                      <Plus className="size-3.5 text-admin-gold group-hover:rotate-90 transition-transform duration-200" />
-                      <span>Preço</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isOffline}
-                      onClick={() => insertTag("link")}
-                      className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[9.5px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                    >
-                      <Plus className="size-3.5 text-admin-gold group-hover:rotate-90 transition-transform duration-200" />
-                      <span>Link</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Botão de Presets */}
-                <div>
-                  <button
-                    type="button"
-                    disabled={isOffline}
-                    onClick={() => {
-                      setPresetSearch("");
-                      setIsPresetsOpen(true);
-                    }}
-                    className="flex items-center justify-center gap-2 w-full rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 px-4 py-3.5 text-xs font-bold text-purple-400 hover:text-purple-300 hover:border-purple-500/30 transition-all active:scale-[0.98] shadow-sm cursor-pointer"
-                  >
-                    <Sparkles className="size-4 text-purple-400" />
-                    <span>Escolher Modelo Pronto (Presets)</span>
-                  </button>
-                </div>
+              {/* Tags Dinâmicas */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={isOffline}
+                  onClick={() => insertTag("nome")}
+                  className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Plus className="size-3.5 text-admin-gold transition-transform duration-200 group-hover:rotate-90" />
+                  <span>Nome do Produto</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isOffline}
+                  onClick={() => insertTag("preco")}
+                  className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Plus className="size-3.5 text-admin-gold transition-transform duration-200 group-hover:rotate-90" />
+                  <span>Preço</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isOffline}
+                  onClick={() => insertTag("link")}
+                  className="group flex items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-[#09090b] px-3.5 py-2 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Plus className="size-3.5 text-admin-gold transition-transform duration-200 group-hover:rotate-90" />
+                  <span>Link</span>
+                </button>
               </div>
+            </div>
+
+            {/* Botão de Modelos Prontos */}
+            <div>
+              <button
+                type="button"
+                disabled={isOffline}
+                onClick={() => {
+                  setPresetSearch("");
+                  setIsPresetsOpen(true);
+                }}
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-purple-500/20 bg-purple-500/5 px-4 py-3.5 text-[13px] font-bold text-purple-400 shadow-sm transition-all hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98]"
+              >
+                <Sparkles className="size-4 text-purple-400" />
+                <span>Modelos prontos (30 disponíveis)</span>
+              </button>
             </div>
           </div>
-        </SecaoColapsavel>
+        </BlocoNumerado>
       </div>
 
       {/* Slide-Up Bottom Sheet for Presets.
@@ -1163,7 +1063,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                       <div>
                         <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
                           <Sparkles className="size-4 text-purple-400" />
-                          Modelos de Mensagem (Presets)
+                          Modelos prontos de mensagem
                         </h3>
                         <p className="text-[10px] text-zinc-500 mt-0.5">
                           Selecione um dos 30 modelos prontos de

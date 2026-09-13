@@ -96,8 +96,12 @@ describe("CSV de todos os pedidos do filtro", () => {
     );
   }
   function botao() {
+    // Desde 12/09/2026 o botão é compacto: o texto VISÍVEL é só "CSV" e o
+    // rótulo por extenso vive no nome acessível (aria-label). Procurar pelo
+    // nome acessível é o que continua descrevendo o que o lojista ouve/lê.
     const encontrado = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (item) => /Exportar CSV|Gerando CSV/.test(item.textContent || ""),
+      (item) =>
+        /Exportar CSV|Gerando CSV/.test(item.getAttribute("aria-label") || ""),
     );
     expect(encontrado).toBeDefined();
     return encontrado!;
@@ -106,9 +110,22 @@ describe("CSV de todos os pedidos do filtro", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    });
+    // Espera o botão ficar clicável em vez de um prazo fixo: com 400ms fixos o
+    // teste falhava 4 em 6 vezes mesmo no código original (medido em
+    // 12/09/2026) — a tela ainda carregava, o botão nascia desabilitado e o
+    // clique não exportava.
+    const limite = Date.now() + 5000;
+    for (;;) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      const pronto = Array.from(hospedeiro.querySelectorAll("button")).find(
+        (item) =>
+          /Exportar CSV/.test(item.getAttribute("aria-label") || "") &&
+          !item.disabled,
+      );
+      if (pronto || Date.now() > limite) break;
+    }
   }
 
   beforeEach(() => {
@@ -252,7 +269,7 @@ describe("CSV de todos os pedidos do filtro", () => {
       botao().click();
       botao().click();
     });
-    expect(botao().textContent?.trim()).toBe("Gerando CSV...");
+    expect(botao().getAttribute("aria-label")).toBe("Gerando CSV...");
     expect(botao().disabled).toBe(true);
     expect(baixar).not.toHaveBeenCalled();
     expect(chamadasExportacao()).toHaveLength(2);

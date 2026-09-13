@@ -291,4 +291,63 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     expect(estadoDoBanco.credenciaisSalvas).toHaveLength(0);
     expect(toast.success).not.toHaveBeenCalled();
   });
+
+  it("lote E: a seção veste o idioma visual do novo Ajustes (o card é da casca, não do conteúdo)", async () => {
+    const { TransportadorasSection } = await import(
+      "@/components/admin/settings/TransportadorasCard"
+    );
+    await act(async () => {
+      raiz.render(<TransportadorasSection />);
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    // O card `rounded-3xl border-white/5` passou a ser da CASCA
+    // (SecaoColapsavel — mesma divisão da seção de Identidade, que sempre
+    // foi conteúdo puro). Conteúdo que ainda carrega o próprio vidro
+    // (`admin-glass`) vira card dentro de card no salão novo.
+    expect(hospedeiro.querySelector(".admin-glass")).toBeNull();
+
+    // Vocabulário de gente no rótulo interno — o título da seção é do hub;
+    // dentro, a pergunta que o lojista responde é esta.
+    expect(hospedeiro.textContent).toMatch(/como sua loja envia/i);
+
+    // Rótulos internos no padrão do salão: text-[10px] font-black
+    // uppercase tracking-[0.2em] (o mesmo idioma dos grupos do hub).
+    const rotuloServicos = [
+      ...hospedeiro.querySelectorAll<HTMLElement>("span, p"),
+    ].find(
+      (el) =>
+        el.children.length === 0 &&
+        el.textContent?.trim() === "Serviços que o cliente pode escolher",
+    );
+    expect(rotuloServicos).toBeDefined();
+    for (const classe of [
+      "text-[10px]",
+      "font-black",
+      "uppercase",
+      "tracking-[0.2em]",
+    ]) {
+      expect(rotuloServicos?.classList.contains(classe)).toBe(true);
+    }
+
+    // O cabeçalho "Chave de acesso" carrega o padrão no bloco que empurra o
+    // ícone junto (o span interno é só o texto) — o que se prende é o
+    // elemento que veste as classes.
+    const classesDeRotulo = [
+      "text-[10px]",
+      "font-black",
+      "uppercase",
+      "tracking-[0.2em]",
+    ];
+    const temRotuloChave = [
+      ...hospedeiro.querySelectorAll<HTMLElement>("*"),
+    ].some(
+      (el) =>
+        el.textContent?.trim().startsWith("Chave de acesso") &&
+        classesDeRotulo.every((c) => el.classList.contains(c)),
+    );
+    expect(temRotuloChave).toBe(true);
+  });
 });

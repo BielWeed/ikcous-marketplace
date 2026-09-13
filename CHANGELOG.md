@@ -7,6 +7,52 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.31.0] - 2026-09-13
+
+Um dia de loja arrumado dos dois lados do balcão: o checkout fica mais compacto
+e mais honesto (o resumo dos produtos sobe para a barra de cima, o desconto
+obtido aparece na barra e a seta de voltar deixa de prender), a ficha do pedido
+vira comanda, avisar clientes vira painel de rádio, nasce a tela de Ajustes — e
+o lojista passa a saber quando o dinheiro chega atrasado. Reúne os PRs #548–#555.
+
+### Para quem COMPRA (vitrine)
+
+- **Checkout com barras compactas e resumo em cima** (PR #551): a barra de baixo
+  encolhe e a de cima mostra o resumo dos produtos do carrinho.
+- **A barra mostra o desconto obtido** (PR #552); a seta de voltar fecha o
+  resumo primeiro e só depois sai (PR #552), usando o histórico apenas quando
+  um painel empilhou a entrada (PR #552).
+- **Pílula de desconto nunca aparece cortada em tela estreita** (PR #552).
+- **Recusa do pedido com saída clara, frete grátis no carrinho vazio e subtítulo
+  do cadastro ajustado** (PR #550).
+- **Cupom para de perder o último caractere** (PR #550).
+
+### Para quem VENDE (painel admin)
+
+- **A ficha do pedido vira comanda de coluna única com ação fixa embaixo**
+  (PR #549).
+- **"Avisar clientes" vira painel de rádio com prévia no celular** (PR #549); o
+  rádio trava o comprimento dos textos (PR #549).
+- **Atendimento abre os três blocos sem colapsável** (PR #549), com polimento
+  visual do Lote B a pedido do dono (PR #549).
+- **Nova tela de Ajustes** (PR #555): identidade da loja, transportadoras e
+  histórico de cotações com acabamento premium.
+- **Dinheiro que chega atrasado deixa de ser silêncio** (PR #550): pagamento
+  confirmado depois do vencimento do pedido gera um aviso próprio e honesto por
+  e-mail — no webhook do Mercado Pago e na conciliação.
+- **Exportar CSV compacto no painel de pedidos** (PR #550).
+
+### Para quem DESENVOLVE
+
+- **Sai a era Cursor/Antigravity** (PR #548): `.agents_inactive`, `.cursorrules`
+  e 7 rollbacks deixam o repositório.
+- **Teto de warnings do eslint 503 → 485** (PR #553), número medido pelo CI.
+- **Webhook do Mercado Pago e conciliação de pagamentos** (PR #550): o aviso de
+  pagamento atrasado fala SMTP direto com HTML escapado, e a função é
+  deliberadamente duplicada entre webhook e reconciliar-pagamentos — consolidar
+  em `_shared` é tarefa própria com revisão própria.
+- **Card de produto interativo** (PR #550); o desenho do painel dele será
+  refeito por cima.
 ## [1.30.0] - 2026-09-12
 
 Um site, todas as lojas — agora por inteiro. As quatro últimas coisas que ainda

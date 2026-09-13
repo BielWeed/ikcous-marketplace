@@ -1,18 +1,19 @@
 // @vitest-environment jsdom
 //
 // Pedido do Gabriel (02/09, segunda foto dos Ajustes): a tela precisa estar
-// SEPARADA por partes e as seções técnicas nascerem OCULTAS — "Status de
-// funcionamento do sistema" (termômetro do PIX + diagnóstico de conexão) e
-// "Identidade da loja" (nome, cidade, UF, horário) só exibem
-// o conteúdo quando o lojista clica no cabeçalho da seção.
+// SEPARADA por partes e as seções técnicas nascerem OCULTAS — "Minha loja
+// está no ar?" (termômetro do PIX + diagnóstico de conexão), "Nome, logo e
+// cores" e as demais só exibem o conteúdo quando o lojista clica no
+// cabeçalho da seção. Títulos no vocabulário do desenho SALÃO+PORÃO
+// (13/09/2026).
 //
 // O CONTRATO:
-//   1. A tela abre com as duas seções FECHADAS: os campos da loja e o
-//      termômetro do PIX NÃO estão no DOM (nada de informação técnica
-//      empurrando o que o lojista edita).
+//   1. A tela abre com as seções FECHADAS: os campos da loja e o termômetro
+//      do PIX NÃO estão no DOM (nada de informação técnica empurrando o que
+//      o lojista edita).
 //   2. Um clique no cabeçalho expande o conteúdo; clicar de novo recolhe.
-//   3. A seção "Design & Vitrine" (a parte de estética) continua SEMPRE
-//      visível — é a porta de trabalho.
+//   3. Os atalhos de vitrine (grupo "Sua loja") continuam SEMPRE visíveis —
+//      são a porta de trabalho.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -168,7 +169,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     });
   }
 
-  it("a tela abre com as seções técnicas FECHADAS e o Design & Vitrine visível", async () => {
+  it("a tela abre com as seções técnicas FECHADAS e os atalhos de vitrine visíveis", async () => {
     await renderizar();
 
     // A porta de estética continua à vista.
@@ -181,8 +182,8 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     expect(hospedeiro.textContent).not.toContain("Latência média");
 
     // Os cabeçalhos existem e estão marcados como recolhidos.
-    const status = cabecalhoDaSecao("Status de funcionamento do sistema")!;
-    const loja = cabecalhoDaSecao("Identidade da loja")!;
+    const status = cabecalhoDaSecao("Minha loja está no ar?")!;
+    const loja = cabecalhoDaSecao("Nome, logo e cores")!;
     expect(status).toBeTruthy();
     expect(loja).toBeTruthy();
     expect(status.getAttribute("aria-expanded")).toBe("false");
@@ -192,7 +193,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
   it("clicar no cabeçalho de Status expande o termômetro do PIX e o diagnóstico; segundo clique recolhe", async () => {
     await renderizar();
 
-    const status = cabecalhoDaSecao("Status de funcionamento do sistema")!;
+    const status = cabecalhoDaSecao("Minha loja está no ar?")!;
     await act(async () => {
       status.click();
     });
@@ -217,7 +218,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
 
     expect(hospedeiro.querySelector("#store-name")).toBeNull();
 
-    const loja = cabecalhoDaSecao("Identidade da loja")!;
+    const loja = cabecalhoDaSecao("Nome, logo e cores")!;
     await act(async () => {
       loja.click();
     });
@@ -231,7 +232,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await renderizar();
 
     await act(async () => {
-      cabecalhoDaSecao("Status de funcionamento do sistema")!.click();
+      cabecalhoDaSecao("Minha loja está no ar?")!.click();
     });
 
     expect(hospedeiro.textContent).toContain("Pagamento online (PIX)");
@@ -240,13 +241,11 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
 
   // ── Seções novas da frente glm-visual-admin-0209 (transportadoras e
   // histórico mudaram da tela de Frete para cá) ──────────────────────────
-  it("as seções de Transportadoras e Histórico também nascem FECHADAS", async () => {
+  it("as seções de Entrega e frete e Consultas de frete também nascem FECHADAS", async () => {
     await renderizar();
 
-    const transportadoras = cabecalhoDaSecao(
-      "Transportadoras e cotação de frete",
-    )!;
-    const historico = cabecalhoDaSecao("Histórico de cotações de frete")!;
+    const transportadoras = cabecalhoDaSecao("Entrega e frete")!;
+    const historico = cabecalhoDaSecao("Consultas de frete")!;
     expect(transportadoras).toBeTruthy();
     expect(historico).toBeTruthy();
     expect(transportadoras.getAttribute("aria-expanded")).toBe("false");
@@ -267,7 +266,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
 
     await renderizar();
 
-    const cabecalho = cabecalhoDaSecao("Transportadoras e cotação de frete")!;
+    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
     await act(async () => {
       cabecalho.click();
     });
@@ -348,7 +347,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     // Montagem limpa: nenhuma pendência reportada.
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
 
-    const cabecalho = cabecalhoDaSecao("Transportadoras e cotação de frete")!;
+    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
     await act(async () => {
       cabecalho.click();
     });

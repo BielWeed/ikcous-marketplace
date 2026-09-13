@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { CouponInput } from "@/components/ui/custom/CouponInput";
+import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
@@ -14,6 +15,7 @@ import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
@@ -55,6 +57,7 @@ import {
   FileText,
   Loader2,
   Lock,
+  type LucideIcon,
   MapPin,
   Phone,
   Plus,
@@ -157,14 +160,15 @@ export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido =>
  * `default` silencioso — que é o beco que este trabalho inteiro existe para
  * fechar.
  *
- * Seis das dez levam ao CARRINHO porque é lá que o problema se resolve de fato:
- * quantidade, variação, item indisponível e a cotação do frete são todos
- * editáveis lá, e nenhum deles é editável na tela do checkout.
+ * Seis das onze levam ao CARRINHO porque é lá que o problema se resolve de
+ * fato: quantidade, variação, item indisponível e a cotação do frete são
+ * todos editáveis lá, e nenhum deles é editável na tela do checkout.
  */
 type DestinoDaRecusa =
   | "carrinho"
   | "cupom"
   | "endereco"
+  | "conta"
   | "pedidos"
   | "so_fechar";
 
@@ -177,6 +181,10 @@ const DESTINO_DA_ACAO: Record<AcaoDeRecusa, DestinoDaRecusa> = {
   trocar_entrega: "carrinho",
   remover_cupom: "cupom",
   trocar_endereco: "endereco",
+  // Item 3c (12/09/2026): mesmo destino do aviso "Entrega fora da cidade é
+  // só com conta" já existente nesta tela (`convidadoForaDaCidade`, mais
+  // abaixo) — entrar ou criar conta.
+  entrar_na_conta: "conta",
   conferir_antes: "pedidos",
   // 🔴 `tentar_de_novo` NÃO reenvia sozinho. O botão "Finalizar Pedido"
   // continua na tela e é a pessoa que decide apertá-lo de novo. Reenviar por
@@ -195,6 +203,138 @@ const DESTINO_DA_ACAO: Record<AcaoDeRecusa, DestinoDaRecusa> = {
 const DESTINO_POR_ACAO = new Map(
   Object.entries(DESTINO_DA_ACAO) as [AcaoDeRecusa, DestinoDaRecusa][],
 );
+
+// Até 3 miniaturas na barra superior; a partir do 4º produto DISTINTO a
+// última vira "+N" (pedido do Gabriel, D1 refinado, 12/09/2026).
+const MAX_MINIATURAS_DO_GATILHO = 3;
+
+interface GatilhoDoResumoDoPedidoProps {
+  readonly cart: CartItem[];
+  readonly isOpen: boolean;
+  readonly onToggle: () => void;
+  readonly triggerRef: React.Ref<HTMLButtonElement>;
+  // Achado 3 do bloqueante (12/09/2026): true enquanto a cápsula de aviso
+  // do sino está ativa no Header (mesmo evento global `header-toast-event`
+  // que o Header já escuta) — o Header encolhe o slot para caber só as
+  // miniaturas, e este componente precisa esconder o texto para não
+  // aparecer cortado no meio.
+  readonly compacto: boolean;
+}
+
+/**
+ * Gatilho portado (`createPortal`) para o centro da barra superior
+ * (`HEADER_CENTER_SLOT_ID` do Header). Só EXIBE o que o CheckoutView já
+ * calculou — nenhuma conta de carrinho/frete/total nasce aqui, e o Header
+ * não sabe que este componente existe.
+ *
+ * Carrinho vazio (recarregar /checkout depois de finalizar o pedido): não
+ * renderiza nada — cenário real e alcançável, mesmo tratamento que o
+ * "Finalizar Pedido" antigo já dava (`disabled`, nunca quebrar).
+ */
+function GatilhoDoResumoDoPedido({
+  cart,
+  isOpen,
+  onToggle,
+  triggerRef,
+  compacto,
+}: GatilhoDoResumoDoPedidoProps) {
+  if (cart.length === 0) return null;
+
+  // Produtos DISTINTOS (por id do produto, não por variante/linha do
+  // carrinho) — duas linhas do mesmo produto em variações diferentes
+  // mostram UMA miniatura, não duas.
+  const idsVistos = new Set<string>();
+  const produtosDistintos: CartItem[] = [];
+  for (const item of cart) {
+    if (!idsVistos.has(item.product.id)) {
+      idsVistos.add(item.product.id);
+      produtosDistintos.push(item);
+    }
+  }
+
+  const temOverflow = produtosDistintos.length > MAX_MINIATURAS_DO_GATILHO;
+  const miniaturas = temOverflow
+    ? produtosDistintos.slice(0, MAX_MINIATURAS_DO_GATILHO - 1)
+    : produtosDistintos.slice(0, MAX_MINIATURAS_DO_GATILHO);
+  const overflowCount = produtosDistintos.length - miniaturas.length;
+
+  const quantidadeTotal = cart.reduce((soma, item) => soma + item.quantity, 0);
+  const itensTexto =
+    quantidadeTotal === 1 ? "1 item" : `${quantidadeTotal} itens`;
+  const verMaisTexto = isOpen ? "ver menos" : "ver mais";
+  // Nome acessível completo — vira `aria-label` no modo compacto (achado 3
+  // do bloqueante), quando o texto visível some e só as miniaturas ficam.
+  // Sem isto o botão perderia o nome inteiro para leitor de tela, não só o
+  // visual.
+  const nomeAcessivelCompleto = `${itensTexto}, ${verMaisTexto}, toque para ver os detalhes do pedido`;
+
+  return (
+    <button
+      type="button"
+      ref={triggerRef}
+      onClick={() => {
+        haptic.light();
+        onToggle();
+      }}
+      aria-expanded={isOpen}
+      aria-label={compacto ? nomeAcessivelCompleto : undefined}
+      className="flex min-w-0 max-w-full items-center gap-1 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-zinc-50 active:scale-95"
+    >
+      <span className="flex shrink-0 items-center">
+        {miniaturas.map((item, indice) => {
+          // Produto sem foto: círculo neutro — NUNCA `<img src="">` (um
+          // `src` vazio dispara requisição para a própria URL da página).
+          const foto = item.product.images?.[0];
+          return (
+            <span
+              key={item.product.id}
+              className={cn(
+                "relative size-6 shrink-0 overflow-hidden rounded-full border-2 border-white bg-zinc-100",
+                indice > 0 && "-ml-2.5",
+              )}
+            >
+              {foto && (
+                <img src={foto} alt="" className="size-full object-cover" />
+              )}
+            </span>
+          );
+        })}
+        {temOverflow && (
+          <span className="relative -ml-2.5 flex size-6 shrink-0 items-center justify-center rounded-full border-2 border-white bg-zinc-900 text-[9px] font-bold text-white">
+            +{overflowCount}
+          </span>
+        )}
+      </span>
+      {/* Achado 3 do bloqueante (12/09/2026): texto em DUAS LINHAS
+          (empilhado), não lado a lado — cabe no orçamento de ≤140px do
+          Header independente da largura da logo da loja (antes o espaço só
+          "sobrava" porque a logo desta loja tem 32px; com uma logo de
+          100px, medido a 375px, o "ver mais" cortava no meio). No modo
+          `compacto` (cápsula de aviso do sino ativa) o texto some inteiro —
+          só as miniaturas ficam, como a busca já recolhe (`activeToast`) —
+          e o nome acessível completo migra para o `aria-label` acima. */}
+      {!compacto && (
+        <span className="flex min-w-0 shrink flex-col items-start justify-center gap-0 overflow-hidden leading-tight">
+          <span className="max-w-full truncate text-[10px] font-semibold text-zinc-700">
+            {itensTexto}
+          </span>
+          <span className="flex max-w-full items-center gap-0.5 text-[10px] font-bold text-zinc-500">
+            {verMaisTexto}
+            <ChevronDown
+              className={cn(
+                "size-2.5 shrink-0 transition-transform",
+                isOpen && "rotate-180",
+              )}
+            />
+          </span>
+        </span>
+      )}
+      {!compacto && (
+        <span className="sr-only">, toque para ver os detalhes do pedido</span>
+      )}
+    </button>
+  );
+}
 
 interface CheckoutViewProps {
   readonly cart?: CartItem[];
@@ -229,6 +369,7 @@ export function CheckoutView({
     setSelectedShippingOption,
     setShippingCep,
     freteIndefinido: ctxFreteIndefinido,
+    freteGratis,
   } = useCart();
 
   const cart = propCart ?? ctxCart;
@@ -639,6 +780,24 @@ export function CheckoutView({
     }
   }, [shippingCep, cepDeEntrega, setSelectedShippingOption, setShippingCep]);
 
+  // ECONOMIA DO FRETE (pedido do Gabriel, 12/09/2026, tabela corrigida pelo
+  // crítico de desenho): SÓ EXIBIÇÃO — nunca escreve `selectedShippingOption`
+  // nem `shippingCep`, nunca entra no payload do pedido. A decisão de QUANDO
+  // cotar mora em `modoDeEconomiaDoFrete` (src/lib/economia-do-frete.ts); o
+  // hook cuida do efeito (debounce, cache por CEP, guarda de sequência) —
+  // ver src/hooks/useEconomiaDoFreteExibida.ts.
+  const economiaDoFrete = useEconomiaDoFreteExibida({
+    freteGratis,
+    cepDeEntrega,
+    temUsuario: !!user,
+    originCep: config.originCep,
+    localCepRange: config.localCepRange,
+    localDeliveryFee: config.localDeliveryFee,
+    freeShippingMin: config.freeShippingMin,
+    cart,
+    isOffline,
+  });
+
   // O CUPOM VALE PARA O CARRINHO DE AGORA (laudo 31/08, menor E): o cupom
   // era conferido SÓ no momento de aplicar. O carrinho encolhia depois —
   // item removido, quantidade menor — e o desconto continuava o antigo: a
@@ -764,6 +923,72 @@ export function CheckoutView({
   const summaryPanelRef = useRef<HTMLDivElement>(null);
   const summaryPanelTriggerRef = useRef<HTMLButtonElement>(null);
   const summaryPanelWasOpenRef = useRef(false);
+  // Fechar o painel porque um CAMPO DO FORMULÁRIO ganhou foco (pedido D1
+  // refinado) é diferente de fechar pela setinha/fundo/Escape: nesses três
+  // o foco volta ao gatilho (efeito abaixo); aqui o foco tem que FICAR no
+  // campo que a pessoa acabou de tocar. Esta bandeira avisa o efeito de
+  // foco para não brigar com o teclado do celular.
+  const fechandoPorFocoDoFormularioRef = useRef(false);
+
+  // O Header (lazy) expõe `HEADER_CENTER_SLOT_ID` só quando não há busca —
+  // pode ainda não estar no DOM no primeiro render deste componente (chunk
+  // do Header ainda carregando). `MutationObserver` em vez de polling: some
+  // uma vez, silenciosamente, se o slot nunca aparecer (ex.: Header não
+  // montado neste teste) — o gatilho só deixa de ser PORTADO, nunca quebra.
+  const [headerSlotEl, setHeaderSlotEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const encontrar = () => document.getElementById(HEADER_CENTER_SLOT_ID);
+    const existente = encontrar();
+    if (existente) {
+      setHeaderSlotEl(existente);
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      const el = encontrar();
+      if (el) {
+        setHeaderSlotEl(el);
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  // Achado 3 do bloqueante (12/09/2026): quando a cápsula de aviso do sino
+  // está ativa, o Header encolhe o slot central para caber só as
+  // miniaturas (Header.tsx, `activeToast ? "max-w-[72px]" : "max-w-[140px]"`)
+  // — sem isto o texto do gatilho apareceria cortado no meio em vez de
+  // recolhido. O Header não expõe esse estado por prop (o comentário de
+  // `HEADER_CENTER_SLOT_ID` promete "sem o Header saber nada de carrinho,
+  // frete ou total", e o inverso também vale: o CheckoutView não deveria
+  // precisar de uma prop nova do Header só para isto). O mesmo evento
+  // global que o Header já escuta (`header-toast-event`,
+  // src/utils/headerToast.ts) resolve sem inventar acoplamento novo —
+  // mesma duração, mesmo padrão de limpar o timer anterior.
+  const [avisoDoHeaderAtivo, setAvisoDoHeaderAtivo] = useState(false);
+  const avisoDoHeaderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  useEffect(() => {
+    const handleToastEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ duration?: number }>).detail;
+      setAvisoDoHeaderAtivo(true);
+      if (avisoDoHeaderTimerRef.current) {
+        clearTimeout(avisoDoHeaderTimerRef.current);
+      }
+      avisoDoHeaderTimerRef.current = setTimeout(() => {
+        setAvisoDoHeaderAtivo(false);
+      }, detail?.duration || 2600);
+    };
+    globalThis.addEventListener("header-toast-event", handleToastEvent);
+    return () => {
+      globalThis.removeEventListener("header-toast-event", handleToastEvent);
+      if (avisoDoHeaderTimerRef.current) {
+        clearTimeout(avisoDoHeaderTimerRef.current);
+      }
+    };
+  }, []);
 
   // Solo-ninja: Reset scroll when internal views change (address form or success)
   useEffect(() => {
@@ -850,6 +1075,39 @@ export function CheckoutView({
     return () => globalThis.removeEventListener("keydown", handleKeyDown);
   }, [isSummaryPanelOpen]);
 
+  // Achado 2 do BLOQUEANTE (12/09/2026): o fundo com `onClick` (removido
+  // acima) comia o toque inteiro — a pessoa precisava tocar DUAS vezes para
+  // fechar o painel e ainda acionar o que estava por baixo (ex.: o botão
+  // "Editar" do endereço, ou focar um campo do formulário). Este listener
+  // roda em CAPTURA no `document`, sem `preventDefault`/`stopPropagation`:
+  // o mesmo `pointerdown` que fecha o painel continua o caminho normal até
+  // o elemento de baixo (clique no botão, foco no campo). `pointerdown`
+  // (não `click`) porque dispara ANTES do foco nativo do navegador — a
+  // guarda em `onFocusCapture` (acima) depende de rodar DEPOIS deste
+  // handler ter marcado `fechandoPorFocoDoFormularioRef`, senão os dois
+  // chamariam `history.back()` na mesma interação e consumiriam uma
+  // entrada de histórico A MAIS.
+  useEffect(() => {
+    if (!isSummaryPanelOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const alvo = event.target as Node | null;
+      if (!alvo) return;
+      const dentroDoPainel = summaryPanelRef.current?.contains(alvo);
+      const dentroDoGatilho = summaryPanelTriggerRef.current?.contains(alvo);
+      if (dentroDoPainel || dentroDoGatilho) return;
+      if (fechandoPorFocoDoFormularioRef.current) return;
+      fechandoPorFocoDoFormularioRef.current = true;
+      globalThis.history.back();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, {
+      capture: true,
+    });
+    return () =>
+      document.removeEventListener("pointerdown", handlePointerDown, {
+        capture: true,
+      });
+  }, [isSummaryPanelOpen]);
+
   // Achado 8 da revisão: mover o foco para dentro do painel ao abrir, e
   // devolvê-lo ao botão do total ao fechar — sem isto quem navega por
   // teclado ficava preso no formulário atrás do fundo. `wasOpenRef` evita
@@ -860,7 +1118,14 @@ export function CheckoutView({
       summaryPanelRef.current?.focus();
     } else if (summaryPanelWasOpenRef.current) {
       summaryPanelWasOpenRef.current = false;
-      summaryPanelTriggerRef.current?.focus();
+      // Fechou porque um campo do formulário ganhou foco (D1 refinado): o
+      // foco tem que FICAR no campo, não voltar ao gatilho — senão o
+      // teclado do celular fecha e reabre sozinho a cada toque.
+      if (fechandoPorFocoDoFormularioRef.current) {
+        fechandoPorFocoDoFormularioRef.current = false;
+      } else {
+        summaryPanelTriggerRef.current?.focus();
+      }
     }
   }, [isSummaryPanelOpen]);
 
@@ -1095,28 +1360,12 @@ export function CheckoutView({
   const discount = appliedCoupon?.discount || 0;
   const finalTotal = total - discount;
 
-  // Linha de cima da barra do total: o que está sendo comprado. Defeito
-  // medido (17/08/2026): três das quatro formas de pagamento são "na
-  // entrega" e o cliente não descobre em lugar nenhum do app o que está no
-  // carrinho sem sair da tela — e sair apaga o endereço digitado.
-  const itemsLabel =
-    cart.length === 1
-      ? `${cart[0].quantity}× ${cart[0].product.name}`
-      : cart.length > 1
-        ? `${cart.reduce((soma, item) => soma + item.quantity, 0)} itens no pedido`
-        : "";
-
-  // Linha de baixo: o Gabriel confirmou (17/08/2026) que a entrega está
-  // dentro do valor cobrado — "Inclui" é o texto correto, não uma ressalva.
-  // Achado 6 da revisão: com o carrinho vazio não existe entrega nenhuma
-  // para incluir — "Entrega grátis inclusa" sem nada para entregar é uma
-  // afirmação falsa (o R$ 0,00 é pré-existente e não muda aqui).
-  const entregaLabel =
-    cart.length === 0
-      ? ""
-      : shipping > 0
-        ? `Inclui R$ ${shipping.toFixed(2).replace(".", ",")} de entrega`
-        : "Entrega grátis inclusa";
+  // ECONOMIA total exibida na barra de baixo (pedido do Gabriel,
+  // 12/09/2026): cupom + o que o frete grátis deixou de cobrar. NÃO muda o
+  // Total — a economia do frete já está embutida nele (frete grátis já
+  // entra como 0 em `shipping`/`total`); somar aqui de novo dobraria o
+  // desconto. Isto é só o NÚMERO da pílula.
+  const economiaTotal = discount + economiaDoFrete;
 
   const isValid = form.formState.isValid;
 
@@ -1166,6 +1415,16 @@ export function CheckoutView({
     shipping,
     temOpcaoSelecionada: !!selectedShippingOption,
   });
+
+  // Achado 1 do BLOQUEANTE (12/09/2026): `finalTotal` sempre soma `shipping`
+  // com fallback 0 quando `ctxFreteIndefinido` (linha ~350) — então SEM
+  // cotação válida `finalTotal` já é "produtos, frete zero", nunca "produtos,
+  // frete desconhecido". A linha de Entrega ganhou "a calcular", mas o Total
+  // (painel e barra de baixo) continuava mostrando esse número fechado, e o
+  // pedido do dono é TOTAL = produtos + frete: com frete indefinido não há
+  // total fechado para mostrar. Fonte ÚNICA usada pelos dois lugares — não
+  // mexe em `finalizarBloqueadoPorFrete` nem no CartContext, só na exibição.
+  const totalExibido = semFreteSelecionado ? null : finalTotal;
 
   // `SaidaDaRecusa` promete, por escrito, que `conferir_antes` nunca oferece
   // "tentar de novo" — é o caso em que não se sabe se o pedido nasceu, e
@@ -1223,6 +1482,12 @@ export function CheckoutView({
         return;
       case "endereco":
         setIsAddressModalOpen(true);
+        return;
+      case "conta":
+        // Mesmo destino do aviso "Entrega fora da cidade é só com conta"
+        // (`convidadoForaDaCidade`, mais abaixo) — entrar ou criar conta é
+        // a única saída para o gate de convidado do portão de entrega.
+        onNavigate("auth");
         return;
       case "pedidos":
         // `conferir_antes` é o caso em que NÃO se sabe se o pedido nasceu.
@@ -1732,8 +1997,191 @@ export function CheckoutView({
     );
   }
 
+  // Pedido do dono (12/09/2026): "melhorar essa parte do meio de pagamento,
+  // pra gente ter uma divisão entre pagamentos na entrega e pagamentos no
+  // app, pra ficar mais organizado. E não tudo misturado como está agora."
+  // Os quatro meios continuam sendo A MESMA escolha (um `radiogroup` só,
+  // `paymentMethod` guarda um valor só) — só o AGRUPAMENTO visual é novo.
+  // `opcoesNoApp` fica vazio quando `pagamentoOnlineLigado()` é falso, e o
+  // grupo inteiro (título incluso) some — ele nunca aparece com zero opções
+  // dentro.
+  interface OpcaoDePagamento {
+    value: PaymentMethod;
+    label: string;
+    icon: LucideIcon;
+    color: string;
+    requerConta: boolean;
+  }
+
+  const opcoesNoApp: OpcaoDePagamento[] = pagamentoOnlineLigado()
+    ? [
+        {
+          value: "online",
+          // SÓ PIX, e o rótulo tem de dizer isso. A Fase 3 recusa cartão em
+          // DOIS lugares — o Brick só oferece `bankTransfer`
+          // (PagamentoOnline.tsx) e a criar-pagamento devolve 400 "No
+          // momento aceitamos apenas PIX". O rótulo antigo dizia "(PIX ou
+          // cartão)" e sobreviveu à Fase 3: prometia ao cliente o que o
+          // código nega. Ao religar cartão na Fase 3.5, este rótulo volta
+          // junto.
+          label: "Pagar agora com PIX",
+          icon: CreditCard,
+          color: "text-violet-500 bg-violet-50",
+          // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) —
+          // só esta opção carrega a exigência; as outras (entrega)
+          // continuam abertas a convidado.
+          requerConta: true,
+        },
+      ]
+    : [];
+
+  const opcoesNaEntrega: OpcaoDePagamento[] = [
+    {
+      value: "pix",
+      label: "Pix na Entrega",
+      icon: Smartphone,
+      color: "text-emerald-500 bg-emerald-50",
+      requerConta: false,
+    },
+    {
+      value: "card",
+      label: "Cartão na Entrega",
+      icon: CreditCard,
+      color: "text-blue-500 bg-blue-50",
+      requerConta: false,
+    },
+    {
+      value: "cash",
+      label: "Dinheiro na Entrega",
+      icon: Banknote,
+      color: "text-amber-500 bg-amber-50",
+      requerConta: false,
+    },
+  ];
+
+  // Extraído do `.map()` que existia antes da separação em grupos — o
+  // corpo do botão não mudou UMA linha, só passou a ser chamado duas vezes
+  // (uma por grupo) em vez de uma.
+  const renderOpcaoDePagamento = (option: OpcaoDePagamento) => {
+    const Icon = option.icon;
+    const isSelected = paymentMethod === option.value;
+    // Bloqueada só pela FALTA DE CONTA, nunca só por `requerConta` — um
+    // cliente logado escolhe "Pagar agora com PIX" normalmente. NÃO
+    // esconde a opção: some sem explicação faria o convidado achar que a
+    // loja não aceita PIX pelo site. Mostra com aparência de indisponível,
+    // e o clique vira o caminho para resolver (entrar/criar conta), em vez
+    // de selecionar o método.
+    const bloqueadaPorFaltaDeConta = option.requerConta && !user;
+    return (
+      <button
+        key={option.value}
+        type="button"
+        role="radio"
+        // Fiel ao que se VÊ: opção bloqueada por falta de conta não mostra
+        // seleção (a borda dela não usa `isSelected`), então não anuncia
+        // seleção.
+        aria-checked={isSelected && !bloqueadaPorFaltaDeConta}
+        onClick={() => {
+          if (bloqueadaPorFaltaDeConta) {
+            haptic.light();
+            onNavigate("auth");
+            return;
+          }
+          setPaymentMethod(option.value);
+        }}
+        // Sem `opacity-70` na opção bloqueada: ela multiplicava cores JÁ
+        // claras e derrubava o texto para ~1,9:1 de contraste (medido em
+        // 17/08/2026), abaixo do 4,5:1 que texto pequeno exige — e este é
+        // justamente o único item da lista que precisa ser LIDO, porque
+        // explica o que fazer. Quem diz "indisponível" aqui é o fundo
+        // cinza, o cadeado e a cor do rótulo, não a transparência.
+        className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
+          bloqueadaPorFaltaDeConta
+            ? "border-zinc-100 bg-zinc-50/60"
+            : isSelected
+              ? "z-10 border-zinc-900 bg-white shadow-md"
+              : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
+        }`}
+      >
+        <div
+          className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
+        >
+          <Icon className="size-5" />
+        </div>
+        <div className="flex min-w-0 flex-col items-start gap-1.5 text-left">
+          {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de pagamento
+              não escolhidos ficavam ilegíveis, com cara de desabilitados.
+              `zinc-600` (7:1) mantém a hierarquia (escolhido continua
+              sendo o mais escuro) sem apagar as outras opções. */}
+          <span
+            className={`text-xs font-bold uppercase tracking-wider ${
+              bloqueadaPorFaltaDeConta
+                ? "text-zinc-500"
+                : isSelected
+                  ? "text-zinc-900"
+                  : "text-zinc-600"
+            }`}
+          >
+            {option.label}
+          </span>
+          {bloqueadaPorFaltaDeConta && (
+            // Mesma frase, leitura melhor (02/09/2026): leading normal e
+            // mais respiro da linha de cima — as três linhas da explicação
+            // param de parecer um bloco compacto demais em 375px.
+            <span className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-500">
+              Pagar pelo site exige conta, para você acompanhar o pedido e
+              receber a confirmação. Toque para entrar ou criar a sua.
+            </span>
+          )}
+        </div>
+        {bloqueadaPorFaltaDeConta ? (
+          <Lock className="ml-auto size-4 shrink-0 text-zinc-500" />
+        ) : (
+          <div
+            className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
+          >
+            {isSelected && <Check className="size-3 text-white" />}
+          </div>
+        )}
+      </button>
+    );
+  };
+
   return (
     <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2">
+      {/* Gatilho do resumo do pedido, portado para o CENTRO da barra
+          superior (D1 refinado, 12/09/2026) — o mesmo espaço que ficava
+          vazio quando a busca some. `headerSlotEl` só existe depois que o
+          Header (lazy) montou e expôs `HEADER_CENTER_SLOT_ID`; até lá, ou se
+          o carrinho estiver vazio, o gatilho não porta nada em lugar
+          nenhum. */}
+      {headerSlotEl &&
+        createPortal(
+          <GatilhoDoResumoDoPedido
+            cart={cart}
+            isOpen={isSummaryPanelOpen}
+            // Achado 1 do BLOQUEANTE (12/09/2026): fechar ("ver menos") tinha
+            // um `setState` direto por baixo do mesmo botão que abre — dois
+            // caminhos diferentes para o MESMO painel. Abrir empurra uma
+            // entrada de histórico (efeito acima, linha ~1002); fechar por
+            // `setState` direto NUNCA consumia essa entrada, deixando-a
+            // órfã. Um "voltar" do celular depois disso não fazia nada
+            // visível (a entrada órfã absorvia o voltar), e cada
+            // abre/fecha pelo gatilho empilhava mais uma. `history.back()`
+            // é o MESMO caminho que a setinha, o Escape e o toque fora já
+            // usam — só abrir continua sendo `setState` direto (não existe
+            // entrada para consumir antes de abrir).
+            onToggle={() =>
+              isSummaryPanelOpen
+                ? globalThis.history.back()
+                : setIsSummaryPanelOpen(true)
+            }
+            triggerRef={summaryPanelTriggerRef}
+            compacto={avisoDoHeaderAtivo}
+          />,
+          headerSlotEl,
+        )}
+
       {/* `mx-auto max-w-md` é a largura de conteúdo do resto do app (ver
           AccountSettingsView, ProfileView, UserProfileView, AddressFormView e
           a AddressSelectionView deste mesmo arquivo) e é a mesma que a barra
@@ -1742,7 +2190,28 @@ export function CheckoutView({
           de largura enquanto a barra do total ficava com 448px centralizada —
           formulário esticado de ponta a ponta e desalinhado com o próprio
           rodapé. */}
-      <div className="mx-auto w-full max-w-md space-y-4 px-3.5">
+      <div
+        className="mx-auto w-full max-w-md space-y-4 px-3.5"
+        // D1 refinado: o painel do resumo some quando a pessoa foca um
+        // campo do formulário (teclado do celular aberto + painel aberto =
+        // formulário sem espaço). `onFocusCapture` para pegar o foco de
+        // QUALQUER campo descendente, sem listener por input.
+        onFocusCapture={() => {
+          // Guarda de `fechandoPorFocoDoFormularioRef` (achado 2 do
+          // bloqueante): quando o fechamento já foi disparado pelo
+          // `pointerdown` de fora (efeito abaixo), o próprio toque também
+          // move o foco para o campo em seguida — sem este `if`, os dois
+          // caminhos chamariam `history.back()` na mesma interação e
+          // consumiriam DUAS entradas do histórico (uma a mais que a que o
+          // painel empurrou), jogando a pessoa para fora da tela de
+          // checkout. Fica só para o caso que o toque não cobre: foco por
+          // TECLADO (Tab), sem pointerdown nenhum.
+          if (isSummaryPanelOpen && !fechandoPorFocoDoFormularioRef.current) {
+            fechandoPorFocoDoFormularioRef.current = true;
+            globalThis.history.back();
+          }
+        }}
+      >
         {/* Customer Info */}
         <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
           <div className="flex items-center gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3">
@@ -2184,144 +2653,34 @@ export function CheckoutView({
           {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
               são uma escolha ÚNICA, mas nada anunciava qual estava marcada —
               o "check" era só um desenho. `radiogroup` + `radio` com
-              `aria-checked` dá o estado ao leitor de tela. */}
+              `aria-checked` dá o estado ao leitor de tela.
+              Pedido do dono (12/09/2026): os quatro meios viviam numa lista
+              só, misturando "pagar agora" com "pagar na entrega" — dois
+              subgrupos rotulados dentro do MESMO `radiogroup` (a escolha
+              continua sendo uma só; só o agrupamento visual é novo). */}
           <div
             role="radiogroup"
             aria-label="Meio de pagamento"
-            className="grid grid-cols-1 gap-2.5 p-4"
+            className="space-y-4 p-4"
           >
-            {[
-              ...(pagamentoOnlineLigado()
-                ? [
-                    {
-                      value: "online" as PaymentMethod,
-                      // SÓ PIX, e o rótulo tem de dizer isso. A Fase 3 recusa
-                      // cartão em DOIS lugares — o Brick só oferece
-                      // `bankTransfer` (PagamentoOnline.tsx) e a criar-pagamento
-                      // devolve 400 "No momento aceitamos apenas PIX". O rótulo
-                      // antigo dizia "(PIX ou cartão)" e sobreviveu à Fase 3:
-                      // prometia ao cliente o que o código nega.
-                      // Ao religar cartão na Fase 3.5, este rótulo volta junto.
-                      label: "Pagar agora com PIX",
-                      icon: CreditCard,
-                      color: "text-violet-500 bg-violet-50",
-                      // Pagamento online exige conta (decisão do Gabriel,
-                      // 16/08/2026) — só esta opção carrega a exigência; as
-                      // outras (entrega) continuam abertas a convidado.
-                      requerConta: true,
-                    },
-                  ]
-                : []),
-              {
-                value: "pix" as PaymentMethod,
-                label: "Pix na Entrega",
-                icon: Smartphone,
-                color: "text-emerald-500 bg-emerald-50",
-                requerConta: false,
-              },
-              {
-                value: "card" as PaymentMethod,
-                label: "Cartão na Entrega",
-                icon: CreditCard,
-                color: "text-blue-500 bg-blue-50",
-                requerConta: false,
-              },
-              {
-                value: "cash" as PaymentMethod,
-                label: "Dinheiro na Entrega",
-                icon: Banknote,
-                color: "text-amber-500 bg-amber-50",
-                requerConta: false,
-              },
-            ].map((option) => {
-              const Icon = option.icon;
-              const isSelected = paymentMethod === option.value;
-              // Bloqueada só pela FALTA DE CONTA, nunca só por
-              // `requerConta` — um cliente logado escolhe "Pagar agora com
-              // PIX" normalmente. NÃO esconde a opção: some sem explicação
-              // faria o convidado achar que a loja não aceita PIX pelo
-              // site. Mostra com aparência de indisponível, e o clique vira
-              // o caminho para resolver (entrar/criar conta), em vez de
-              // selecionar o método.
-              const bloqueadaPorFaltaDeConta = option.requerConta && !user;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  // Fiel ao que se VÊ: opção bloqueada por falta de conta não
-                  // mostra seleção (a borda dela não usa `isSelected`), então
-                  // não anuncia seleção.
-                  aria-checked={isSelected && !bloqueadaPorFaltaDeConta}
-                  onClick={() => {
-                    if (bloqueadaPorFaltaDeConta) {
-                      haptic.light();
-                      onNavigate("auth");
-                      return;
-                    }
-                    setPaymentMethod(option.value);
-                  }}
-                  // Sem `opacity-70` na opção bloqueada: ela multiplicava
-                  // cores JÁ claras e derrubava o texto para ~1,9:1 de
-                  // contraste (medido em 17/08/2026), abaixo do 4,5:1 que
-                  // texto pequeno exige — e este é justamente o único item da
-                  // lista que precisa ser LIDO, porque explica o que fazer.
-                  // Quem diz "indisponível" aqui é o fundo cinza, o cadeado e
-                  // a cor do rótulo, não a transparência.
-                  className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
-                    bloqueadaPorFaltaDeConta
-                      ? "border-zinc-100 bg-zinc-50/60"
-                      : isSelected
-                        ? "z-10 border-zinc-900 bg-white shadow-md"
-                        : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
-                  }`}
-                >
-                  <div
-                    className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
-                  >
-                    <Icon className="size-5" />
-                  </div>
-                  <div className="flex min-w-0 flex-col items-start gap-1.5 text-left">
-                    {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de
-                        pagamento não escolhidos ficavam ilegíveis, com cara de
-                        desabilitados. `zinc-600` (7:1) mantém a hierarquia
-                        (escolhido continua sendo o mais escuro) sem apagar as
-                        outras opções. */}
-                    <span
-                      className={`text-xs font-bold uppercase tracking-wider ${
-                        bloqueadaPorFaltaDeConta
-                          ? "text-zinc-500"
-                          : isSelected
-                            ? "text-zinc-900"
-                            : "text-zinc-600"
-                      }`}
-                    >
-                      {option.label}
-                    </span>
-                    {bloqueadaPorFaltaDeConta && (
-                      // Mesma frase, leitura melhor (02/09/2026): leading
-                      // normal e mais respiro da linha de cima — as três
-                      // linhas da explicação param de parecer um bloco
-                      // compacto demais em 375px.
-                      <span className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-500">
-                        Pagar pelo site exige conta, para você acompanhar o
-                        pedido e receber a confirmação. Toque para entrar ou
-                        criar a sua.
-                      </span>
-                    )}
-                  </div>
-                  {bloqueadaPorFaltaDeConta ? (
-                    <Lock className="ml-auto size-4 shrink-0 text-zinc-500" />
-                  ) : (
-                    <div
-                      className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
-                    >
-                      {isSelected && <Check className="size-3 text-white" />}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+            {opcoesNoApp.length > 0 && (
+              <div className="space-y-2.5">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  No app
+                </span>
+                <div className="grid grid-cols-1 gap-2.5">
+                  {opcoesNoApp.map(renderOpcaoDePagamento)}
+                </div>
+              </div>
+            )}
+            <div className="space-y-2.5">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                Na entrega
+              </span>
+              <div className="grid grid-cols-1 gap-2.5">
+                {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2423,14 +2782,27 @@ export function CheckoutView({
         aria-hidden="true"
       />
 
-      {/* Order Summary - Fixed Bottom Bar */}
+      {/* Order Summary - Fixed Bottom Bar (+ painel do resumo, ancorado
+          LOGO ABAIXO DA BARRA SUPERIOR — D1 refinado, 12/09/2026) */}
       {typeof document !== "undefined" &&
         document.body &&
         createPortal(
           <>
-            {/* Fundo que fecha o painel de resumo ao toque fora — portal
-                próprio, z-index abaixo do container da barra (z-[110], que
-                hospeda o painel) para nunca cobrir a barra em si. */}
+            {/* Fundo SÓ VISUAL (escurece por trás do painel) — não fecha
+                mais no próprio `onClick`. Achado 2 do BLOQUEANTE
+                (12/09/2026): um fundo com `onClick` come o toque inteiro —
+                `elementFromPoint` num botão do formulário (ex.: "Editar" do
+                endereço) devolvia este DIV, e o clique de verdade só
+                acontecia numa SEGUNDA tentativa, depois que o fundo já tinha
+                sumido. `pointer-events-none` deixa o toque atravessar direto
+                para o elemento de baixo; quem fecha o painel agora é o
+                listener de `pointerdown` em captura (mais abaixo, no mesmo
+                container do formulário) — mesmo toque fecha o painel E
+                aciona o elemento por baixo, sem preventDefault nem
+                stopPropagation. Começa ONDE O HEADER TERMINA (`top`, não
+                `inset-0`) pelo mesmo motivo de sempre: nunca cobrir
+                visualmente o gatilho "ver mais"/"ver menos" que mora DENTRO
+                do header. */}
             <AnimatePresence>
               {isSummaryPanelOpen && (
                 <motion.div
@@ -2439,19 +2811,186 @@ export function CheckoutView({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="fixed inset-0 z-[105] bg-black/40"
-                  // Achado 5 da revisão (17/08/2026): fechar direto pelo
-                  // estado deixava a entrada do `pushState` (linhas
-                  // 430-441) órfã na pilha do histórico — o próximo "voltar"
-                  // não fazia nada visível. `history.back()` consome a
-                  // entrada e deixa o `popstate` (App.tsx) fechar o painel
-                  // pelo `onSetBackOverride` já registrado — mesmo padrão de
-                  // `onCancel={() => globalThis.history.back()}` (linha ~1116).
-                  onClick={() => globalThis.history.back()}
+                  className="pointer-events-none fixed inset-x-0 bottom-0 z-[105] bg-black/40"
+                  style={{
+                    top: "calc(var(--safe-area-top) + var(--header-height))",
+                  }}
                   aria-hidden="true"
                 />
               )}
             </AnimatePresence>
+
+            {/* Painel do resumo — ancorado logo abaixo da barra superior,
+                por cima do formulário (não empurra a página). Centralização
+                por FLEXBOX (`justify-center`), não por
+                `transform: translateX(-50%)`: essa combinação já quebrou
+                duas vezes neste arquivo, porque o framer-motion escreve
+                `transform` inline no elemento que anima e isso SOBRESCREVE
+                qualquer `-translate-x-1/2` do Tailwind no MESMO elemento.
+                Aqui a animação só mexe em `y` (nunca `x`), e a centralização
+                horizontal fica inteira a cargo do flex do container de
+                fora — sem transform nenhum disputando o mesmo eixo. */}
+            <div
+              className="pointer-events-none fixed inset-x-0 z-[106] flex justify-center px-3.5"
+              style={{
+                top: "calc(var(--safe-area-top) + var(--header-height))",
+              }}
+            >
+              <AnimatePresence>
+                {isSummaryPanelOpen && (
+                  <motion.div
+                    key="checkout-summary-panel"
+                    initial={{ y: -12, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -12, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    ref={summaryPanelRef}
+                    // `role="dialog"` SEM `aria-modal`, de propósito (mesmo
+                    // motivo de sempre: o fundo não cobre nem o header nem a
+                    // barra de baixo, que seguem clicáveis por toque).
+                    role="dialog"
+                    aria-label="Resumo do pedido"
+                    tabIndex={-1}
+                    // 50vh (herdado da versão anterior, ancorada embaixo): o
+                    // bloco de totais é sticky no fundo do painel (SEMPRE
+                    // visível — com carrinho grande ele não rola mais para
+                    // fora).
+                    className="pointer-events-auto mt-2 max-h-[50vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white px-4 pt-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)] outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                        Resumo do Pedido
+                      </span>
+                      <button
+                        type="button"
+                        // Mesmo motivo do fundo: consumir a entrada do
+                        // histórico via `history.back()`, não fechar
+                        // direto pelo estado.
+                        onClick={() => globalThis.history.back()}
+                        aria-label="Fechar resumo do pedido"
+                        // `after:-inset-2` amplia a área de toque para
+                        // 44px (28px do ícone + 16px) sem mudar o visual
+                        // discreto do chevron.
+                        className="relative flex size-7 items-center justify-center rounded-full text-zinc-400 transition-colors after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-50 hover:text-zinc-600"
+                      >
+                        <ChevronDown className="size-4" />
+                      </button>
+                    </div>
+
+                    {/* Sem botão de editar e sem link para o carrinho —
+                        voltar ao carrinho apaga o endereço já digitado
+                        (ver AGENTS.md/comentários do checkout), e este
+                        painel existe justamente para conferir sem sair
+                        da tela. */}
+                    <ul className="space-y-3">
+                      {cart.map((item) => {
+                        // Mesma fórmula de CartContext.tsx (cartTotal) —
+                        // não uma conta nova. Laudo 31/08 (menor E): a
+                        // regra única mora em preco-vendido.ts — `||`
+                        // cobrava o preço cheio de variação com override
+                        // ZERO.
+                        const precoUnitario = precoVendido(
+                          item.product,
+                          item.product.variants?.find(
+                            (v) => v.id === item.variantId,
+                          ),
+                        );
+
+                        return (
+                          <li
+                            key={`${item.product.id}-${item.variantId ?? ""}`}
+                            className="flex items-center gap-3"
+                          >
+                            <img
+                              src={item.product.images?.[0]}
+                              alt=""
+                              className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-zinc-800">
+                                {item.product.name}
+                              </p>
+                              {item.variantNames && (
+                                <p className="truncate text-[11px] text-zinc-400">
+                                  {item.variantNames}
+                                </p>
+                              )}
+                            </div>
+                            <span className="shrink-0 text-xs font-semibold text-zinc-600">
+                              {item.quantity} × R${" "}
+                              {precoUnitario.toFixed(2).replace(".", ",")}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+
+                    {/* Sticky no fundo do painel (ponto de revisão de
+                        02/09/2026): com carrinho grande a lista rola
+                        DEBAIXO deste bloco e o Total nunca mais sai da
+                        tela. O `-mx-4 px-4` estende o fundo branco por
+                        toda a largura do painel (que agora só tem `px-4
+                        pt-3`), para nada aparecer na fresta do padding. */}
+                    <div className="sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 py-3 text-xs">
+                      <div className="flex items-center justify-between text-zinc-500">
+                        <span>Subtotal</span>
+                        <span>R$ {subtotal.toFixed(2).replace(".", ",")}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-zinc-500">
+                        <span>Entrega</span>
+                        <span>
+                          {/* 🔴 Sem cotação válida para o endereço atual
+                              (`semFreteSelecionado`): "a calcular", NUNCA
+                              um valor antigo do carrinho — mesma família da
+                              peça reprovada do lote C (frete cotado para A
+                              não vale para B). Isto é só exibição; a
+                              cotação/recotação em si não muda aqui. */}
+                          {semFreteSelecionado ? (
+                            "a calcular"
+                          ) : shipping > 0 ? (
+                            `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                          ) : economiaDoFrete > 0 ? (
+                            // Frete grátis COM economia conhecida (pedido do
+                            // Gabriel, 12/09/2026): mostra o valor riscado
+                            // para explicar a pílula da barra de baixo — o
+                            // Total não muda (o frete grátis já entra como 0).
+                            <>
+                              <span className="mr-1 text-zinc-300 line-through">
+                                R${" "}
+                                {economiaDoFrete.toFixed(2).replace(".", ",")}
+                              </span>
+                              Grátis
+                            </>
+                          ) : (
+                            "Grátis"
+                          )}
+                        </span>
+                      </div>
+                      {discount > 0 && (
+                        <div className="flex items-center justify-between text-red-500">
+                          <span>Desconto</span>
+                          <span>
+                            -R$ {discount.toFixed(2).replace(".", ",")}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between pt-1 text-sm font-black text-zinc-900">
+                        <span>Total</span>
+                        <span>
+                          {/* Achado 1 do bloqueante: mesma regra da linha de
+                              Entrega — sem cotação válida não existe total
+                              fechado. */}
+                          {totalExibido === null
+                            ? "a calcular"
+                            : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             <AnimatePresence>
               {isPresent && isReady && (
                 // POSICIONAMENTO NO DIV DE FORA, ANIMAÇÃO NO motion.div DE
@@ -2475,182 +3014,12 @@ export function CheckoutView({
                 // uso, para ninguém reabrir a fresta escolhendo o nome que soa
                 // mais seguro.
                 <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
-                  {/* Painel de resumo — sobe ACIMA da barra porque é o
-                      irmão anterior dela dentro deste mesmo container
-                      `fixed`/`bottom-docked-navigation`: cresce para cima em
-                      vez de deslocar a barra, sem tocar no `motion.div` da
-                      barra logo abaixo.
-
-                      LIMITE CONHECIDO, MEDIDO E DEIXADO DE PROPÓSITO
-                      (17/08/2026): a saída deste painel é animada, e
-                      `AnimatePresence` só desmonta o nó quando a animação de
-                      saída TERMINA. Ela depende de `requestAnimationFrame`, que
-                      não dispara em aba oculta — medido 6 de 6 vezes: o estado
-                      React já fechou (`aria-expanded` volta a "false", o
-                      `backOverride` volta a null) e o nó continua no DOM por
-                      tempo indeterminado. Quando a aba volta a ficar visível os
-                      quadros voltam e o nó sai.
-                      E não é só "um nó invisível": medido, o que fica é o FUNDO
-                      em tela cheia com `opacity: 0` e `pointer-events: auto`
-                      cobrindo o viewport inteiro — ou seja, um engolidor de
-                      cliques invisível. Enquanto ele está lá, o formulário não
-                      recebe toque; só a barra (z-110) e a navegação (z-120)
-                      passam por cima.
-                      Por que NÃO consertar mesmo assim: a janela de exposição é
-                      exatamente a aba oculta, onde o cliente não está tocando em
-                      nada, e ela fecha sozinha quando a aba volta a ficar
-                      visível (o `rAF` pendente do framer retoma — é
-                      especificação, não sorte). A única correção possível mexe
-                      na `AnimatePresence` desta barra, a mesma peça que quebrou
-                      DUAS vezes hoje (centralização morta pelo `transform`
-                      inline do framer-motion, e fresta de 12px entre barra e
-                      navegação). Trocar uma barra que funciona por isso é o
-                      negócio errado — mas quem reabrir esta decisão precisa
-                      saber que o preço é engolir clique, não só sujar o DOM.
-                      Se um dia isso precisar de conserto de verdade, a saída é
-                      não depender da animação para remover o nó — nunca
-                      reescrever o esqueleto de posicionamento. */}
-                  <AnimatePresence>
-                    {isSummaryPanelOpen && (
-                      <motion.div
-                        key="checkout-summary-panel"
-                        initial={{ y: 12, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: 12, opacity: 0 }}
-                        transition={{ duration: 0.2, ease: "easeOut" }}
-                        ref={summaryPanelRef}
-                        // `role="dialog"` SEM `aria-modal`, de propósito.
-                        // `aria-modal="true"` manda o leitor de tela esconder
-                        // tudo que está fora daqui — e não é verdade: medido em
-                        // 17/08/2026, o fundo escuro (z-105) cobre o formulário
-                        // mas NÃO cobre a barra (z-110) nem a navegação inferior
-                        // (z-120), que seguem clicáveis por toque. Afirmar modal
-                        // esconderia do leitor de tela justamente o "Finalizar
-                        // Pedido" que continua funcionando.
-                        // O que este painel é de fato: um disclosure — o gatilho
-                        // carrega `aria-expanded` e a dica "toque para ver os
-                        // itens". A outra saída seria subir o fundo acima da
-                        // barra, e isso mexe no empilhamento que já quebrou duas
-                        // vezes hoje.
-                        role="dialog"
-                        aria-label="Resumo do pedido"
-                        tabIndex={-1}
-                        // 50vh (era 45vh): o bloco de totais passou a ser
-                        // sticky no fundo do painel (SEMPRE visível — com
-                        // carrinho grande ele não rola mais para fora), então
-                        // ele consome ~96px fixos do painel; os 5vh extras
-                        // devolvem à lista de itens o espaço que o bloco
-                        // ocupa, mantendo a lista rolável útil.
-                        className="mx-auto mb-2 max-h-[50vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white px-4 pt-3 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50"
-                      >
-                        <div className="mb-3 flex items-center justify-between">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                            Resumo do Pedido
-                          </span>
-                          <button
-                            type="button"
-                            // Mesmo motivo do fundo: consumir a entrada do
-                            // histórico via `history.back()`, não fechar
-                            // direto pelo estado.
-                            onClick={() => globalThis.history.back()}
-                            aria-label="Fechar resumo do pedido"
-                            // `after:-inset-2` amplia a área de toque para
-                            // 44px (28px do ícone + 16px) sem mudar o visual
-                            // discreto do chevron.
-                            className="relative flex size-7 items-center justify-center rounded-full text-zinc-400 transition-colors after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-50 hover:text-zinc-600"
-                          >
-                            <ChevronDown className="size-4" />
-                          </button>
-                        </div>
-
-                        {/* Sem botão de editar e sem link para o carrinho —
-                            voltar ao carrinho apaga o endereço já digitado
-                            (ver AGENTS.md/comentários do checkout), e este
-                            painel existe justamente para conferir sem sair
-                            da tela. */}
-                        <ul className="space-y-3">
-                          {cart.map((item) => {
-                            // Mesma fórmula de CartContext.tsx (cartTotal) —
-                            // não uma conta nova. Laudo 31/08 (menor E): a
-                            // regra única mora em preco-vendido.ts — `||`
-                            // cobrava o preço cheio de variação com override
-                            // ZERO.
-                            const precoUnitario = precoVendido(
-                              item.product,
-                              item.product.variants?.find(
-                                (v) => v.id === item.variantId,
-                              ),
-                            );
-
-                            return (
-                              <li
-                                key={`${item.product.id}-${item.variantId ?? ""}`}
-                                className="flex items-center gap-3"
-                              >
-                                <img
-                                  src={item.product.images?.[0]}
-                                  alt=""
-                                  className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
-                                />
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium text-zinc-800">
-                                    {item.product.name}
-                                  </p>
-                                  {item.variantNames && (
-                                    <p className="truncate text-[11px] text-zinc-400">
-                                      {item.variantNames}
-                                    </p>
-                                  )}
-                                </div>
-                                <span className="shrink-0 text-xs font-semibold text-zinc-600">
-                                  {item.quantity} × R${" "}
-                                  {precoUnitario.toFixed(2).replace(".", ",")}
-                                </span>
-                              </li>
-                            );
-                          })}
-                        </ul>
-
-                        {/* Sticky no fundo do painel (ponto de revisão de
-                            02/09/2026): com carrinho grande a lista rola
-                            DEBAIXO deste bloco e o Total nunca mais sai da
-                            tela. O `-mx-4 px-4` estende o fundo branco por
-                            toda a largura do painel (que agora só tem `px-4
-                            pt-3`), para nada aparecer na fresta do padding. */}
-                        <div className="sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 py-3 text-xs">
-                          <div className="flex items-center justify-between text-zinc-500">
-                            <span>Subtotal</span>
-                            <span>
-                              R$ {subtotal.toFixed(2).replace(".", ",")}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-zinc-500">
-                            <span>Entrega</span>
-                            <span>
-                              {shipping > 0
-                                ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
-                                : "Grátis"}
-                            </span>
-                          </div>
-                          {discount > 0 && (
-                            <div className="flex items-center justify-between text-red-500">
-                              <span>Desconto</span>
-                              <span>
-                                -R$ {discount.toFixed(2).replace(".", ",")}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex items-center justify-between pt-1 text-sm font-black text-zinc-900">
-                            <span>Total</span>
-                            <span>
-                              R$ {finalTotal.toFixed(2).replace(".", ",")}
-                            </span>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
+                  {/* O PAINEL DE RESUMO SAIU DAQUI (D1 refinado, 12/09/2026):
+                      ele subia ACIMA desta barra; agora mora num container
+                      próprio, ancorado logo abaixo da barra SUPERIOR (ver o
+                      bloco `checkout-summary-panel` mais acima, antes deste
+                      `AnimatePresence`). Este container hospeda só a barra
+                      do total. */}
                   <motion.div
                     initial={{ y: "100%", opacity: 0.5 }}
                     animate={{ y: 0, opacity: 1 }}
@@ -2660,71 +3029,62 @@ export function CheckoutView({
                   >
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
-                    <div className="mx-auto flex max-w-md items-center justify-between gap-3">
-                      <button
-                        type="button"
-                        ref={summaryPanelTriggerRef}
-                        onClick={() => {
-                          haptic.light();
-                          setIsSummaryPanelOpen((open) => !open);
-                        }}
-                        // Carrinho vazio não tem o que listar. `disabled` em vez
-                        // de um `return` no clique: o `return` fazia o botão
-                        // parar de funcionar sem PARECER parado — continuava
-                        // focável, com cursor de mão, e anunciado ao leitor de
-                        // tela como "recolhido", coisa que nunca expandiria.
-                        // Cenário real e alcançável: finalizar um pedido e
-                        // recarregar a página (a URL segue /checkout, o carrinho
-                        // já foi limpo). O "Finalizar Pedido" ao lado já se
-                        // explica assim.
-                        disabled={cart.length === 0}
-                        aria-expanded={isSummaryPanelOpen}
-                        className="flex min-w-0 flex-1 flex-col text-left"
-                      >
-                        {/* REDESENHO EM 375px (02/09/2026): eram 4 linhas
-                            empilhadas e, com cupom aplicado, o selo
-                            "(-R$ X OFF)" quebrava para uma 5ª (a coluna tem
-                            ~141px e valor+selo exigem ~180px) — a barra
-                            engordava de ~87 para ~100px. Agora: "itens ·
-                            entrega" numa ÚNICA linha truncada, o valor
-                            dominante em linha própria e o selo INLINE com
-                            truncate (shrink-0 no valor) — nunca empurra a
-                            barra a crescer. O valor completo do desconto
-                            segue no painel de resumo, na linha "Desconto". */}
-                        {(itemsLabel || entregaLabel) && (
-                          <span className="mb-0.5 flex min-w-0 items-center gap-1 text-[10px] font-medium leading-tight text-zinc-400">
-                            {itemsLabel && (
-                              <span className="truncate">{itemsLabel}</span>
-                            )}
-                            {itemsLabel && entregaLabel && (
-                              <span aria-hidden="true" className="shrink-0">
-                                ·
+                    <div className="mx-auto flex max-w-md items-center justify-between gap-2">
+                      {/* Pedido do Gabriel (12/09/2026, D1 refinado): a
+                          barra de baixo perde "1x maleta..." e "Inclui R$ X
+                          de entrega" (foram para o painel/gatilho de cima) e
+                          fica só com SUBTOTAL (produtos) e TOTAL (produtos +
+                          frete − desconto), claros e sem disputar espaço com
+                          o botão. Não é mais um botão — o "ver mais" que
+                          abria o resumo agora mora no gatilho do topo
+                          (`GatilhoDoResumoDoPedido`, portado para o Header). */}
+                      <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                          <span>Subtotal</span>
+                          <span>
+                            R$ {subtotal.toFixed(2).replace(".", ",")}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-sm font-black text-zinc-900">
+                          {/* AJUSTE da re-revisão (Opus, medido a 320/360/375px
+                              com o CSS real): quem cede espaço é a PALAVRA
+                              "Total" (`min-w-0 truncate`), nunca um número.
+                              Truncar a pílula mostrava dinheiro pela metade
+                              ("-R$ 12,…") a 320px mesmo com valores comuns;
+                              a pílula e o valor do total ficam inteiros
+                              (`shrink-0 whitespace-nowrap`). A 375px nada
+                              muda: "Total" aparece inteiro. */}
+                          <span className="flex min-w-0 items-center gap-1">
+                            <span className="min-w-0 truncate whitespace-nowrap">
+                              Total
+                            </span>
+                            {/* Pedido do Gabriel (12/09/2026): pílula
+                                compacta com a ECONOMIA (cupom + o que o
+                                frete grátis deixou de cobrar) — nunca a
+                                porcentagem nem o código do cupom, só o
+                                valor. Some quando não há economia nenhuma;
+                                não altera `totalExibido` (o desconto já
+                                está embutido nele). */}
+                            {economiaTotal > 0 && (
+                              <span
+                                className="shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
+                                aria-label={`Desconto de R$ ${economiaTotal.toFixed(2).replace(".", ",")}`}
+                              >
+                                -R$ {economiaTotal.toFixed(2).replace(".", ",")}
                               </span>
                             )}
-                            {entregaLabel && (
-                              <span className="truncate">{entregaLabel}</span>
-                            )}
                           </span>
-                        )}
-                        <span className="mb-0.5 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-400">
-                          Total a Pagar
-                        </span>
-                        <div className="flex min-w-0 items-baseline gap-1.5">
-                          <span className="shrink-0 text-lg font-black leading-none tracking-tight text-zinc-900">
-                            R$ {finalTotal.toFixed(2).replace(".", ",")}
+                          <span className="shrink-0 whitespace-nowrap">
+                            {/* Achado 1 do bloqueante (12/09/2026): mesmo
+                                valor do painel (`totalExibido`) — sem
+                                cotação válida a barra de baixo não pode
+                                fechar um total que ainda vai mudar. */}
+                            {totalExibido === null
+                              ? "a calcular"
+                              : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
                           </span>
-                          {discount > 0 && (
-                            <span className="min-w-0 truncate text-[11px] font-bold uppercase text-red-500">
-                              (-R$ {discount.toFixed(2).replace(".", ",")} OFF)
-                            </span>
-                          )}
                         </div>
-                        {cart.length > 0 && (
-                          <span className="sr-only">
-                            , toque para ver os itens
-                          </span>
-                        )}
-                      </button>
+                      </div>
 
                       <button
                         type="button"
@@ -2733,8 +3093,17 @@ export function CheckoutView({
                           handleSubmitEvent();
                         }}
                         disabled={botaoFinalizarDesabilitado}
+                        // Texto visível compacto ("Finalizar", não "Finalizar
+                        // Pedido") pedido pelo Gabriel (12/09/2026) — o nome
+                        // completo ocupava espaço demais ao lado do bloco de
+                        // totais. `aria-label` mantém o nome completo para
+                        // quem usa leitor de tela; o `sr-only` " Pedido"
+                        // completa o `textContent` do botão (compatível com
+                        // toda suíte que já procurava "Finalizar Pedido" por
+                        // texto) sem ocupar um pixel a mais na tela.
+                        aria-label="Finalizar pedido"
                         className={cn(
-                          "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
+                          "h-12 px-3 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-1.5 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
                           botaoFinalizarDesabilitado
                             ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
                             : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
@@ -2744,7 +3113,8 @@ export function CheckoutView({
                           <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
                         ) : (
                           <>
-                            <span>Finalizar Pedido</span>
+                            <span>Finalizar</span>
+                            <span className="sr-only"> Pedido</span>
                             <ArrowLeft className="size-4 rotate-180" />
                           </>
                         )}

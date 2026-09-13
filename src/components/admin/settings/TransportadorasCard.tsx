@@ -50,6 +50,13 @@ interface TransportadorasSectionProps {
  * - falha do `updateConfig` para o fluxo ANTES do upsert (ADMIN-010);
  * - mudança de config vinda de fora não sobrescreve escolha não salva
  *   (guarda "já sincronizou E está sujo" — a primeira carga sempre passa).
+ *
+ * LOTE E (13/09/2026, peça C — salão e porão): o conteúdo veste o idioma
+ * visual do novo Ajustes. O card `rounded-3xl border-white/5` passou a ser
+ * da casca (SecaoColapsavel — mesma divisão da seção de Identidade, que
+ * sempre foi conteúdo puro), então aqui sobra conteúdo: rótulos font-black
+ * uppercase tracking-[0.2em], blocos internos em zinc-950/900, admin-gold
+ * como único acento.
  */
 
 const OPCOES: ReadonlyArray<{
@@ -332,269 +339,267 @@ export const TransportadorasSection = memo(function TransportadorasSection({
   const opcaoAtiva = OPCOES.find((o) => o.id === escolha.provider);
 
   return (
-    <div className="space-y-3">
-      <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
-        <div className="flex flex-col gap-3">
-          <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Escolha como o frete é calculado fora da sua cidade: cotado na hora
-            por uma transportadora, ou sem cotação automática (a loja entrega
-            apenas na sua cidade). Quem compra vê o resultado no fechamento do
-            pedido.
-          </p>
+    <div className="flex flex-col gap-3 text-zinc-200">
+      {/* Rótulo em linguagem de gente (lote E): a pergunta que o lojista
+              responde aqui — o título da seção é da casca. */}
+      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+        Como sua loja envia
+      </p>
+      <p className="text-xs leading-relaxed text-zinc-400">
+        Escolha como o frete é calculado fora da sua cidade: cotado na hora por
+        uma transportadora, ou sem cotação automática (a loja entrega apenas na
+        sua cidade). Quem compra vê o resultado no fechamento do pedido.
+      </p>
 
-          {/* Escolha da transportadora — cartões selecionáveis, um por
+      {/* Escolha da transportadora — cartões selecionáveis, um por
                 opção. Selecionado = borda e fundo na cor da opção; o
                 botão inteiro é o alvo de toque (área generosa no celular). */}
-          <div
-            role="radiogroup"
-            aria-label="Transportadora para cotação de frete"
-            className="space-y-2"
-          >
-            {OPCOES.map((opcao) => {
-              const ativa = escolha.provider === opcao.id;
-              return (
-                <button
-                  key={opcao.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={ativa}
-                  disabled={isOffline}
-                  onClick={() => {
-                    setEscolha((prev) => ({ ...prev, provider: opcao.id }));
-                    // Trocar de transportadora invalida o teste anterior:
-                    // ele pertencia à chave da opção de antes.
-                    setTestResult(null);
-                    haptic.light();
-                  }}
-                  className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all active:scale-[0.99] disabled:opacity-40 ${
-                    ativa
-                      ? "border-admin-gold/40 bg-admin-gold/5"
-                      : "border-white/10 bg-black/40 hover:border-white/20"
-                  }`}
-                >
-                  <span
-                    className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl border transition-all ${
-                      ativa
-                        ? "border-admin-gold/30 bg-admin-gold/15 text-admin-gold"
-                        : "border-white/10 bg-zinc-800/80 text-zinc-500"
-                    }`}
-                  >
-                    {opcao.id === "flat_fee" ? (
-                      <Tag className="size-4" strokeWidth={2.2} />
-                    ) : opcao.id === "melhor_envio" ? (
-                      <Truck className="size-4" strokeWidth={2.2} />
-                    ) : (
-                      <Sparkles className="size-4" strokeWidth={2.2} />
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={`block text-xs font-bold ${ativa ? "text-white" : "text-zinc-300"}`}
-                    >
-                      {opcao.nome}
-                    </span>
-                    <span className="mt-0.5 block text-[10.5px] leading-snug text-zinc-400">
-                      {opcao.descricao}
-                    </span>
-                  </span>
-                  {ativa && (
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-admin-gold" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Chave de acesso — só existe quando a transportadora é real. */}
-          {escolha.provider !== "flat_fee" && (
-            <div className="space-y-3 rounded-xl border border-white/10 bg-zinc-950/60 p-3.5">
-              {credsError && (
-                <div className="flex flex-col gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="mt-px size-3.5 shrink-0 text-red-400" />
-                    <p className="text-[11px] font-semibold leading-snug text-red-300">
-                      Não foi possível carregar as chaves de frete.
-                      <span className="mt-0.5 block font-normal text-red-300/70">
-                        O token e o modo Sandbox ficam bloqueados até a leitura
-                        funcionar — assim nada é gravado por cima do que já está
-                        salvo.
-                      </span>
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      fetchShippingCreds();
-                    }}
-                    className="self-start rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
-                  >
-                    Tentar de novo
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-white">
-                  <Lock className="size-3.5 text-admin-gold" />
-                  <span>
-                    Chave de acesso —{" "}
-                    {escolha.provider === "melhor_envio"
-                      ? "Melhor Envio"
-                      : "Frenet"}
-                  </span>
-                </div>
-
-                {escolha.provider === "melhor_envio" && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-zinc-400">
-                      Modo de testes (Sandbox)
-                    </span>
-                    {!credsLoaded ? (
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-admin-gold">
-                        {credsError ? "Indisponível" : "Carregando…"}
-                      </span>
-                    ) : (
-                      <Switch
-                        checked={!!shippingCreds.melhor_envio?.sandbox}
-                        disabled={!credsLoaded}
-                        onCheckedChange={(checked) => {
-                          setShippingCreds((prev) => ({
-                            ...prev,
-                            melhor_envio: {
-                              ...prev.melhor_envio,
-                              sandbox: checked,
-                            },
-                          }));
-                        }}
-                        className="scale-75 data-[state=checked]:bg-admin-gold"
-                      />
-                    )}
-                  </div>
+      <div
+        role="radiogroup"
+        aria-label="Como sua loja envia"
+        className="space-y-2"
+      >
+        {OPCOES.map((opcao) => {
+          const ativa = escolha.provider === opcao.id;
+          return (
+            <button
+              key={opcao.id}
+              type="button"
+              role="radio"
+              aria-checked={ativa}
+              disabled={isOffline}
+              onClick={() => {
+                setEscolha((prev) => ({ ...prev, provider: opcao.id }));
+                // Trocar de transportadora invalida o teste anterior:
+                // ele pertencia à chave da opção de antes.
+                setTestResult(null);
+                haptic.light();
+              }}
+              className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all active:scale-[0.99] disabled:opacity-40 ${
+                ativa
+                  ? "border-admin-gold/40 bg-admin-gold/5"
+                  : "border-white/5 bg-zinc-900/40 hover:border-white/20"
+              }`}
+            >
+              <span
+                className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl border transition-all ${
+                  ativa
+                    ? "border-admin-gold/30 bg-admin-gold/15 text-admin-gold"
+                    : "border-white/5 bg-zinc-900 text-zinc-500"
+                }`}
+              >
+                {opcao.id === "flat_fee" ? (
+                  <Tag className="size-4" strokeWidth={2.2} />
+                ) : opcao.id === "melhor_envio" ? (
+                  <Truck className="size-4" strokeWidth={2.2} />
+                ) : (
+                  <Sparkles className="size-4" strokeWidth={2.2} />
                 )}
-              </div>
-
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  disabled={!credsLoaded}
-                  value={shippingCreds[escolha.provider]?.token || ""}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setShippingCreds((prev) => ({
-                      ...prev,
-                      [escolha.provider]: {
-                        ...prev[escolha.provider],
-                        token: val,
-                      },
-                    }));
-                  }}
-                  placeholder="Cole seu Bearer/API Token aqui..."
-                  className="h-9 flex-1 rounded-lg border border-white/10 bg-black/60 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-                />
-                <button
-                  type="button"
-                  disabled={
-                    isTestingCreds || !shippingCreds[escolha.provider]?.token
-                  }
-                  onClick={handleTestCredentials}
-                  className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+              </span>
+              <span className="min-w-0 flex-1">
+                <span
+                  className={`block text-xs font-bold ${ativa ? "text-white" : "text-zinc-300"}`}
                 >
-                  {isTestingCreds ? (
-                    <RefreshCw className="size-3 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="size-3" />
-                  )}
-                  <span>Testar</span>
-                </button>
-              </div>
-
-              {testResult && (
-                <div
-                  className={`flex items-center gap-2 rounded-lg border p-2.5 text-xs ${
-                    testResult.success
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                      : "border-red-500/30 bg-red-500/10 text-red-300"
-                  }`}
-                >
-                  {testResult.success ? (
-                    <CheckCircle2 className="size-4 shrink-0" />
-                  ) : (
-                    <AlertCircle className="size-4 shrink-0" />
-                  )}
-                  <span>{testResult.message}</span>
-                </div>
-              )}
-
-              {/* Serviços habilitados: o que o cliente pode escolher na
-                    hora de pagar o frete cotado. */}
-              <div className="space-y-1.5 pt-1">
-                <span className="block text-[11px] font-semibold text-zinc-400">
-                  Serviços que o cliente pode escolher
+                  {opcao.nome}
                 </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {SERVICOS.map((method) => {
-                    const selecionado = escolha.methods.some(
-                      (m) => m.toLowerCase() === method,
-                    );
-                    return (
-                      <button
-                        key={method}
-                        type="button"
-                        disabled={isOffline}
-                        onClick={() => {
-                          setEscolha((prev) => {
-                            const tem = prev.methods.some(
-                              (m) => m.toLowerCase() === method,
-                            );
-                            return {
-                              ...prev,
-                              methods: tem
-                                ? prev.methods.filter(
-                                    (m) => m.toLowerCase() !== method,
-                                  )
-                                : [...prev.methods, method],
-                            };
-                          });
-                          haptic.light();
-                        }}
-                        className={`rounded-lg border px-2.5 py-1 text-xs font-bold capitalize transition-all ${
-                          selecionado
-                            ? "border-admin-gold/50 bg-admin-gold/15 text-admin-gold"
-                            : "border-white/10 bg-zinc-900 text-zinc-500 hover:text-white"
-                        }`}
-                      >
-                        {method}
-                      </button>
-                    );
-                  })}
-                </div>
+                <span className="mt-0.5 block text-xs leading-snug text-zinc-400">
+                  {opcao.descricao}
+                </span>
+              </span>
+              {ativa && (
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-admin-gold" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Chave de acesso — só existe quando a transportadora é real. */}
+      {escolha.provider !== "flat_fee" && (
+        <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-3.5">
+          {credsError && (
+            <div className="flex flex-col gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-px size-3.5 shrink-0 text-red-400" />
+                <p className="text-[11px] font-semibold leading-snug text-red-300">
+                  Não foi possível carregar as chaves de frete.
+                  <span className="mt-0.5 block font-normal text-red-300/70">
+                    O token e o modo Sandbox ficam bloqueados até a leitura
+                    funcionar — assim nada é gravado por cima do que já está
+                    salvo.
+                  </span>
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  fetchShippingCreds();
+                }}
+                className="self-start rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
+              >
+                Tentar de novo
+              </button>
             </div>
           )}
 
-          {/* Rodapé do card: o que está ativo agora + Salvar. */}
-          <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-3">
-            <span className="min-w-0 text-[10px] leading-snug text-zinc-500">
-              Ativo agora:{" "}
-              <span className="font-bold text-zinc-300">
-                {opcaoAtiva?.nome}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              <Lock className="size-3.5 text-admin-gold" />
+              <span>
+                Chave de acesso —{" "}
+                {escolha.provider === "melhor_envio"
+                  ? "Melhor Envio"
+                  : "Frenet"}
               </span>
-            </span>
+            </div>
+
+            {escolha.provider === "melhor_envio" && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400">
+                  Modo de testes (Sandbox)
+                </span>
+                {!credsLoaded ? (
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-admin-gold">
+                    {credsError ? "Indisponível" : "Carregando…"}
+                  </span>
+                ) : (
+                  <Switch
+                    checked={!!shippingCreds.melhor_envio?.sandbox}
+                    disabled={!credsLoaded}
+                    onCheckedChange={(checked) => {
+                      setShippingCreds((prev) => ({
+                        ...prev,
+                        melhor_envio: {
+                          ...prev.melhor_envio,
+                          sandbox: checked,
+                        },
+                      }));
+                    }}
+                    className="scale-75 data-[state=checked]:bg-admin-gold"
+                  />
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="password"
+              disabled={!credsLoaded}
+              value={shippingCreds[escolha.provider]?.token || ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                setShippingCreds((prev) => ({
+                  ...prev,
+                  [escolha.provider]: {
+                    ...prev[escolha.provider],
+                    token: val,
+                  },
+                }));
+              }}
+              placeholder="Cole aqui a chave de acesso da sua conta..."
+              className="h-9 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            />
             <button
               type="button"
-              disabled={!isDirty || isSaving || isOffline}
-              onClick={handleSave}
-              className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+              disabled={
+                isTestingCreds || !shippingCreds[escolha.provider]?.token
+              }
+              onClick={handleTestCredentials}
+              className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
             >
-              {isSaving ? (
-                <RefreshCw className="size-3 animate-spin text-admin-gold" />
+              {isTestingCreds ? (
+                <RefreshCw className="size-3 animate-spin" />
               ) : (
-                <Save className="size-3 text-admin-gold" />
+                <CheckCircle2 className="size-3" />
               )}
-              <span>{isSaving ? "Salvando..." : "Salvar"}</span>
+              <span>Testar</span>
             </button>
           </div>
+
+          {testResult && (
+            <div
+              className={`flex items-center gap-2 rounded-lg border p-2.5 text-xs ${
+                testResult.success
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                  : "border-red-500/30 bg-red-500/10 text-red-300"
+              }`}
+            >
+              {testResult.success ? (
+                <CheckCircle2 className="size-4 shrink-0" />
+              ) : (
+                <AlertCircle className="size-4 shrink-0" />
+              )}
+              <span>{testResult.message}</span>
+            </div>
+          )}
+
+          {/* Serviços habilitados: o que o cliente pode escolher na
+                    hora de pagar o frete cotado. */}
+          <div className="space-y-1.5 pt-1">
+            <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              Serviços que o cliente pode escolher
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {SERVICOS.map((method) => {
+                const selecionado = escolha.methods.some(
+                  (m) => m.toLowerCase() === method,
+                );
+                return (
+                  <button
+                    key={method}
+                    type="button"
+                    disabled={isOffline}
+                    onClick={() => {
+                      setEscolha((prev) => {
+                        const tem = prev.methods.some(
+                          (m) => m.toLowerCase() === method,
+                        );
+                        return {
+                          ...prev,
+                          methods: tem
+                            ? prev.methods.filter(
+                                (m) => m.toLowerCase() !== method,
+                              )
+                            : [...prev.methods, method],
+                        };
+                      });
+                      haptic.light();
+                    }}
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-bold capitalize transition-all ${
+                      selecionado
+                        ? "border-admin-gold/50 bg-admin-gold/15 text-admin-gold"
+                        : "border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    {method}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Rodapé do card: o que está ativo agora + Salvar. */}
+      <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-3">
+        <span className="min-w-0 text-[10px] leading-snug text-zinc-500">
+          Ativo agora:{" "}
+          <span className="font-bold text-zinc-300">{opcaoAtiva?.nome}</span>
+        </span>
+        <button
+          type="button"
+          disabled={!isDirty || isSaving || isOffline}
+          onClick={handleSave}
+          className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+        >
+          {isSaving ? (
+            <RefreshCw className="size-3 animate-spin text-admin-gold" />
+          ) : (
+            <Save className="size-3 text-admin-gold" />
+          )}
+          <span>{isSaving ? "Salvando..." : "Salvar"}</span>
+        </button>
       </div>
     </div>
   );
