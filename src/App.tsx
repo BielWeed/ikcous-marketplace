@@ -1199,7 +1199,9 @@ const AppContent = () => {
 
     // Achado do relato do Gabriel (12/09/2026): com um override registrado
     // (painel de resumo do checkout, modal de endereço — `onSetBackOverride`
-    // empurra uma entrada PRÓPRIA no histórico ao abrir), a seta chamava
+    // empurra uma entrada PRÓPRIA no histórico ao abrir, com `{modal: "..."}`
+    // — CheckoutView.tsx:~1009 e ~1025, os DOIS únicos lugares do repo que
+    // gravam esse campo, `git grep -n "modal:" src`), a seta chamava
     // `handleNavigate("home")` DIRETO — o `state.from` daquela entrada
     // pushed é sempre `undefined` (só `handleNavigate` grava `from`), então
     // o `else` abaixo disparava e saía do checkout inteiro no primeiro
@@ -1214,7 +1216,24 @@ const AppContent = () => {
     // direto aqui, que deixaria a entrada pushed órfã (um próximo "voltar"
     // sem efeito visível) e sem risco de laço: esta função não invoca o
     // override, só pede ao navegador para voltar uma posição, uma vez.
-    if (backOverrideRef.current) {
+    //
+    // 🔴 ACHADO DA REVISÃO (Opus): nem todo override empurra uma entrada.
+    // O de sucesso/aguardando pagamento (CheckoutView.tsx:~1044-1049, ativo
+    // em `showSuccess || aguardandoPagamento`) só faz `onNavigate("home")` —
+    // não empilha nada, porque o pedido/pagamento nasceu como consequência
+    // de um clique que JÁ estava numa entrada normal. `/checkout` é tela de
+    // ENTRADA (`src/config/rotas.ts`): quem abre o link direto (WhatsApp,
+    // aba nova), finaliza o pedido e cai na tela do PIX com o QR e o prazo
+    // de 30 min correndo tem, no topo do histórico, a MESMA entrada de
+    // sempre — sem `modal`, às vezes sem entrada nenhuma antes dela. Chamar
+    // `history.back()` incondicionalmente ali é exatamente o que esse
+    // override nasceu para impedir: ou a seta morre (sem entrada anterior),
+    // ou sai da loja inteira (aba tinha outro site antes) — e o pedido
+    // reservado fica para trás. A guarda abaixo só toma o caminho de
+    // `history.back()` quando o TOPO do histórico foi de fato empurrado por
+    // um override (`state.modal` presente); qualquer outro override (como o
+    // de sucesso/pagamento) cai no caminho de sempre, mais abaixo.
+    if (backOverrideRef.current && globalThis.history.state?.modal) {
       globalThis.history.back();
       globalThis.scrollTo(0, 0);
       return;

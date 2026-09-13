@@ -3046,8 +3046,16 @@ export function CheckoutView({
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2 text-sm font-black text-zinc-900">
+                          {/* AJUSTE da revisão (Opus): a pílula é quem
+                              encolhe (`min-w-0 shrink truncate`) — "Total" e
+                              o VALOR nunca podem quebrar linha nem ceder
+                              espaço; `whitespace-nowrap` nos dois barra a
+                              quebra mesmo num 375px apertado com o valor
+                              mais longo. */}
                           <span className="flex min-w-0 items-center gap-1">
-                            <span className="shrink-0">Total</span>
+                            <span className="shrink-0 whitespace-nowrap">
+                              Total
+                            </span>
                             {/* Pedido do Gabriel (12/09/2026): pílula
                                 compacta com a ECONOMIA (cupom + o que o
                                 frete grátis deixou de cobrar) — nunca a
@@ -3057,14 +3065,14 @@ export function CheckoutView({
                                 está embutido nele). */}
                             {economiaTotal > 0 && (
                               <span
-                                className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
+                                className="min-w-0 shrink truncate whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
                                 aria-label={`Desconto de R$ ${economiaTotal.toFixed(2).replace(".", ",")}`}
                               >
                                 -R$ {economiaTotal.toFixed(2).replace(".", ",")}
                               </span>
                             )}
                           </span>
-                          <span>
+                          <span className="shrink-0 whitespace-nowrap">
                             {/* Achado 1 do bloqueante (12/09/2026): mesmo
                                 valor do painel (`totalExibido`) — sem
                                 cotação válida a barra de baixo não pode

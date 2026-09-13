@@ -41,6 +41,67 @@ function assinaturaDoCarrinhoParaExibicao(cart: readonly CartItem[]): string {
     .join(",");
 }
 
+/**
+ * Cache da cotação de EXIBIÇÃO — achado da revisão (Opus): um `useRef`
+ * morre a cada desmontagem/remontagem do `CheckoutView` (troca de aba,
+ * volta do carrinho, `key` do componente mudando por usuário). Sem
+ * persistir ENTRE montagens, quem visita o checkout de novo com o MESMO
+ * CEP e o MESMO carrinho recota a edge de novo — e toda cotação (mesmo a
+ * de exibição) grava uma linha em `shipping_calculation_logs`
+ * (calculate-shipping/index.ts:880-891), poluindo o "Histórico de
+ * Cotações" da lojista com cotações que ninguém pediu.
+ *
+ * Por isso o cache mora no MÓDULO (sobrevive à desmontagem do componente,
+ * dura enquanto a aba/worker do Vite estiver viva) — com validade curta
+ * (`CACHE_TTL_MS`) porque preço de frete muda, e teto de entradas
+ * (`CACHE_MAX_ENTRADAS`) para não crescer sem limite numa sessão longa
+ * trocando de CEP/carrinho muitas vezes.
+ */
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_MAX_ENTRADAS = 50;
+
+interface EntradaDeCacheDeExibicao {
+  valor: number;
+  gravadoEm: number;
+}
+
+const cacheDeExibicaoPorModulo = new Map<string, EntradaDeCacheDeExibicao>();
+
+function lerCacheDeExibicao(chave: string, agora: number): number | undefined {
+  const entrada = cacheDeExibicaoPorModulo.get(chave);
+  if (!entrada) return undefined;
+  if (agora - entrada.gravadoEm > CACHE_TTL_MS) {
+    cacheDeExibicaoPorModulo.delete(chave);
+    return undefined;
+  }
+  return entrada.valor;
+}
+
+function gravarCacheDeExibicao(chave: string, valor: number, agora: number) {
+  if (
+    !cacheDeExibicaoPorModulo.has(chave) &&
+    cacheDeExibicaoPorModulo.size >= CACHE_MAX_ENTRADAS
+  ) {
+    // `Map` preserva ordem de inserção — a primeira chave é a mais velha.
+    const chaveMaisAntiga = cacheDeExibicaoPorModulo.keys().next().value;
+    if (chaveMaisAntiga !== undefined) {
+      cacheDeExibicaoPorModulo.delete(chaveMaisAntiga);
+    }
+  }
+  cacheDeExibicaoPorModulo.set(chave, { valor, gravadoEm: agora });
+}
+
+/**
+ * SÓ PARA TESTE. O cache de módulo sobrevive de propósito entre
+ * montagens — mas não entre SUÍTES de teste, que não podem herdar a
+ * cotação umas das outras. Sem exportar isto, um `vi.resetModules()` por
+ * arquivo seria a única saída, e isso reimportaria (e re-executaria) o
+ * módulo inteiro por teste, mais caro e mais frágil.
+ */
+export function _limparCacheDeEconomiaDoFreteParaTeste(): void {
+  cacheDeExibicaoPorModulo.clear();
+}
+
 export function useEconomiaDoFreteExibida(params: {
   freteGratis: boolean;
   cepDeEntrega: string | null;
@@ -83,9 +144,10 @@ export function useEconomiaDoFreteExibida(params: {
   const [economiaCotada, setEconomiaCotada] = useState(0);
   // Número da rodada em voo — comparado no fechamento de cada resposta;
   // resposta cujo número não é mais o mais recente é descartada (mesmo
-  // mecanismo do `reqRef` do ShippingCalculator).
+  // mecanismo do `reqRef` do ShippingCalculator). Este continua por
+  // INSTÂNCIA do hook (não precisa sobreviver à desmontagem) — só o cache
+  // de valores é que precisa, e esse mora no módulo (acima).
   const reqRef = useRef(0);
-  const cacheRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (modo.tipo !== "cotar" || isOffline || cart.length === 0) {
@@ -100,7 +162,7 @@ export function useEconomiaDoFreteExibida(params: {
     setEconomiaCotada(0);
 
     const chave = `${cepLimpo}:${cartSignature}`;
-    const cacheado = cacheRef.current.get(chave);
+    const cacheado = lerCacheDeExibicao(chave, Date.now());
     if (cacheado !== undefined) {
       setEconomiaCotada(cacheado);
       return;
@@ -122,7 +184,7 @@ export function useEconomiaDoFreteExibida(params: {
           const opcoes = data.options as ShippingOption[];
           const maisBarata = opcaoMaisBarata(opcoes);
           const valor = maisBarata ? maisBarata.price : 0;
-          cacheRef.current.set(chave, valor);
+          gravarCacheDeExibicao(chave, valor, Date.now());
           if (meuId !== reqRef.current) return;
           setEconomiaCotada(valor);
         } catch {

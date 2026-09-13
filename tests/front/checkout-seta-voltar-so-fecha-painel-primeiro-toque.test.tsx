@@ -84,24 +84,46 @@ vi.mock("@/views/customer/ProductView", () => ({
   ProductView: () => <div data-testid="tela-produto" />,
 }));
 
-// Dublê MÍNIMO do CheckoutView: reproduz só o contrato que decide o bug —
-// abrir o painel empurra `{modal:"checkout-summary"}` e registra o override
-// que fecha o painel (EXATAMENTE como CheckoutView.tsx:1002-1023 faz).
+// Dublê MÍNIMO do CheckoutView: reproduz os DOIS contratos de override que
+// decidem a revisão — o do painel (empurra `{modal:"checkout-summary"}` e
+// registra um fechamento, EXATAMENTE como CheckoutView.tsx:1002-1023) e o de
+// sucesso/aguardando pagamento (registra um override que só NAVEGA para
+// home, SEM empurrar entrada nenhuma — EXATAMENTE como
+// CheckoutView.tsx:~1044-1049: `onSetBackOverride(() => () =>
+// onNavigate("home"))`, ativo quando o pedido já nasceu e não há mais
+// formulário para "voltar" recuperar).
 vi.mock("@/views/customer/CheckoutView", () => ({
   CheckoutView: ({
+    onNavigate,
     onSetBackOverride,
   }: {
+    readonly onNavigate: (view: string) => void;
     readonly onSetBackOverride: (override: (() => void) | null) => void;
   }) => {
     const [aberto, setAberto] = React.useState(false);
+    const [aguardandoPagamento, setAguardandoPagamento] = React.useState(false);
+    // `onNavigate` por REF, fora das dependências: neste teste os hooks do
+    // App são dublês que devolvem objeto novo a cada render, então o
+    // `handleNavigate` do App muda de identidade todo render. Com ele nas
+    // dependências, o efeito re-registrava o override -> `setBackOverride`
+    // -> render do App -> `handleNavigate` novo -> efeito de novo: laço
+    // sem erro do React, worker do vitest subindo a 4 GB (12/09/2026).
+    const onNavigateRef = React.useRef(onNavigate);
+    onNavigateRef.current = onNavigate;
+
     React.useEffect(() => {
       if (aberto) {
         onSetBackOverride(() => () => setAberto(false));
+      } else if (aguardandoPagamento) {
+        // Sem `history.pushState` nenhum de propósito — este override não
+        // empilha entrada (a tela do PIX não é um modal por cima do
+        // formulário, é o PRÓPRIO checkout depois de o pedido nascer).
+        onSetBackOverride(() => () => onNavigateRef.current("home"));
       } else {
         onSetBackOverride(null);
       }
       return () => onSetBackOverride(null);
-    }, [aberto, onSetBackOverride]);
+    }, [aberto, aguardandoPagamento, onSetBackOverride]);
 
     return (
       <div data-testid="tela-checkout">
@@ -119,6 +141,13 @@ vi.mock("@/views/customer/CheckoutView", () => ({
           }}
         >
           Ver resumo
+        </button>
+        <button
+          type="button"
+          data-testid="abrir-aguardando-pagamento"
+          onClick={() => setAguardandoPagamento(true)}
+        >
+          Pagar agora
         </button>
       </div>
     );
@@ -475,5 +504,43 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
     // isto não afirma PARA ONDE foi, só que o app continua respondendo
     // (não trava numa tela em branco).
     expect(container?.querySelector("body")).toBeDefined();
+  });
+
+  it("🔴 achado da revisão (Opus): override de sucesso/aguardando pagamento SEM entrada empilhada — a seta navega para home, NUNCA chama history.back()", async () => {
+    // Reproduz o cenário do achado: `/checkout` é tela de ENTRADA
+    // (src/config/rotas.ts) — quem abre o link direto (WhatsApp, aba nova)
+    // chega aqui SEM `state.from` e SEM `state.modal`. O pedido nasce, a
+    // tela de aguardando pagamento registra um override que só NAVEGA (não
+    // empilha nada — diferente do painel/modal de endereço). `history.back()`
+    // nesse caso ou mata a seta (sem entrada anterior) ou tira a pessoa da
+    // loja inteira (aba tinha outro site antes) — exatamente o que este
+    // override existe para impedir.
+    await abrir();
+    expect(globalThis.history.state).toBeNull();
+
+    const historyBackSpy = vi.spyOn(globalThis.history, "back");
+    await clicar("abrir-aguardando-pagamento");
+
+    await clicar("seta-voltar");
+
+    expect(naTelaDeCheckout()).toBe(false);
+    expect(historyBackSpy).not.toHaveBeenCalled();
+  });
+
+  it("🔴 achado da revisão (Opus): painel de resumo aberto numa entrada SEM `from` (mesmo cenário de link direto) — 1º toque ainda só fecha o painel", async () => {
+    // Garante que a guarda nova (`state.modal`) não regrediu o caso do
+    // painel quando a entrada de baixo também não tem `from` — é
+    // exatamente o estado de quem abriu /checkout direto e depois abriu o
+    // painel, sem nunca ter navegado de dentro do app.
+    await abrir();
+    expect(globalThis.history.state).toBeNull();
+
+    await clicar("abrir-painel");
+    expect(estadoDoPainel()).toBe("aberto");
+
+    await clicar("seta-voltar");
+
+    expect(naTelaDeCheckout()).toBe(true);
+    expect(estadoDoPainel()).toBe("fechado");
   });
 });

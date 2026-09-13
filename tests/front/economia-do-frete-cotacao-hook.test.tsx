@@ -48,11 +48,12 @@ function carrinho(overrides: Partial<CartItem> = {}): CartItem[] {
 }
 
 let ultimoValor: number | undefined;
+let limparCacheDeExibicao: () => void;
 
 async function importarSonda() {
-  const { useEconomiaDoFreteExibida } = await import(
-    "@/hooks/useEconomiaDoFreteExibida"
-  );
+  const { useEconomiaDoFreteExibida, _limparCacheDeEconomiaDoFreteParaTeste } =
+    await import("@/hooks/useEconomiaDoFreteExibida");
+  limparCacheDeExibicao = _limparCacheDeEconomiaDoFreteParaTeste;
   return function Sonda(
     props: Parameters<typeof useEconomiaDoFreteExibida>[0],
   ) {
@@ -94,6 +95,13 @@ describe("useEconomiaDoFreteExibida", () => {
     mockInvoke.mockReset();
     ultimoValor = undefined;
     Sonda = await importarSonda();
+    // 🔴 AJUSTE 2 (revisão Opus): o cache agora mora no MÓDULO, não mais
+    // num `useRef` por instância — sobrevive de propósito entre montagens
+    // (é o ponto do ajuste), mas NUNCA pode sobreviver entre testes: sem
+    // isto, o CEP "01310-100" (usado por várias `it`s aqui) chegaria em
+    // cada teste novo já "quente" com o preço gravado por um teste
+    // anterior, mascarando exatamente o que cada teste tenta provar.
+    limparCacheDeExibicao();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -104,6 +112,7 @@ describe("useEconomiaDoFreteExibida", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    limparCacheDeExibicao();
     vi.restoreAllMocks();
   });
 
@@ -257,6 +266,63 @@ describe("useEconomiaDoFreteExibida", () => {
 
     await esperarDebounce();
     expect(ultimoValor).toBe(40);
+  });
+
+  it("🔴 AJUSTE 2 (revisão Opus): cache sobrevive a DESMONTAR e REMONTAR o checkout (mesmo CEP + carrinho) — nunca grava uma 2ª linha em shipping_calculation_logs por causa de uma revisita", async () => {
+    mockInvoke.mockResolvedValue({
+      data: {
+        options: [{ id: "x", name: "X", price: 22.5, deliveryDays: 2 }],
+      },
+      error: null,
+    });
+
+    const cart = carrinho();
+    const params = paramsBase({ cepDeEntrega: "01310-100", cart });
+
+    // 1ª visita: monta, cota, DESMONTA de verdade (troca de aba, sair do
+    // checkout e voltar — o cenário do achado da revisão, não só um
+    // re-render do mesmo componente).
+    await renderizar(params);
+    await esperarDebounce();
+    expect(ultimoValor).toBe(22.5);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+
+    // 2ª visita: host, root e componente NOVOS — só o módulo (import
+    // resolvido uma única vez pelo runner) continua o mesmo, que é
+    // exatamente o que guarda o cache agora.
+    ultimoValor = undefined;
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+
+    await renderizar(paramsBase({ cepDeEntrega: "01310-100", cart }));
+    await esperarDebounce();
+
+    expect(ultimoValor).toBe(22.5);
+    // A prova do ajuste: NENHUMA chamada nova à edge na revisita.
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+    // Mudar o carrinho continua cotando de verdade — o cache é POR
+    // assinatura de CEP+carrinho, não um interruptor global "já visitou".
+    mockInvoke.mockResolvedValueOnce({
+      data: {
+        options: [{ id: "y", name: "Y", price: 41, deliveryDays: 1 }],
+      },
+      error: null,
+    });
+    const carrinhoMaior = carrinho({ quantity: 5 });
+    await renderizar(
+      paramsBase({ cepDeEntrega: "01310-100", cart: carrinhoMaior }),
+    );
+    await esperarDebounce();
+
+    expect(ultimoValor).toBe(41);
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
   });
 
   it("resposta atrasada de um CEP antigo não sobrescreve o CEP atual (guarda de sequência)", async () => {

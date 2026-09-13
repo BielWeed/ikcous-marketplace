@@ -176,6 +176,17 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
   let slotDoHeader: HTMLDivElement;
 
   beforeEach(async () => {
+    // 🔴 AJUSTE 2 (revisão Opus): o cache de cotação de exibição agora mora
+    // no MÓDULO (sobrevive à desmontagem, de propósito). Mais de um teste
+    // aqui usa o MESMO CEP (01310-100, de `mockAddresses`) com o MESMO
+    // carrinho (produto "prod-1", quantidade 1) — sem limpar entre testes,
+    // o 2º teste "herdaria" a cotação do 1º e nunca chamaria a edge de
+    // novo, mascarando exatamente o que a TRAVA DE DINHEIRO abaixo precisa
+    // provar (`mockInvoke` chamado de verdade nesta cotação).
+    const { _limparCacheDeEconomiaDoFreteParaTeste } = await import(
+      "@/hooks/useEconomiaDoFreteExibida"
+    );
+    _limparCacheDeEconomiaDoFreteParaTeste();
     const { HEADER_CENTER_SLOT_ID } = await import(
       "@/components/ui/custom/Header"
     );
@@ -212,12 +223,16 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     raiz = createRoot(hospedeiro);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     act(() => {
       raiz.unmount();
     });
     hospedeiro.remove();
     slotDoHeader.remove();
+    const { _limparCacheDeEconomiaDoFreteParaTeste } = await import(
+      "@/hooks/useEconomiaDoFreteExibida"
+    );
+    _limparCacheDeEconomiaDoFreteParaTeste();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
