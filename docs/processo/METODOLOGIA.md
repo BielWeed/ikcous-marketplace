@@ -436,7 +436,7 @@ flowchart TD
     K --> L["Testa no preview do PR na Vercel<br/>e marca o item 4 da DoD"]
     L --> M{"Revisor aprova?"}
     M -- "pede mudanca" --> H
-    M -- aprova --> N["Merge squash em develop"]
+    M -- aprova --> N["Merge commit em develop"]
     N --> O["Em teste preview<br/>deploy da develop, antes de virar release"]
     O --> P{"Passou?"}
     P -- nao --> Q["Volta pra Em progresso<br/>ou vira cartao novo se for outro problema"]
@@ -458,9 +458,10 @@ Seis pontos deste fluxo que costumam ser esquecidos:
      de pedir revisão;
    - a **coluna `Em teste (preview)`** é o deploy da `develop`, **depois** do merge, antes de
      o conjunto virar release.
-3. **Merge é squash** para PR de feature — está ligado no repositório (`allow_squash_merge`,
-   `delete_branch_on_merge`). Release e hotfix usam merge commit, para preservar os commits
-   individuais.
+3. **Merge é merge commit** para todo PR — feature, release e hotfix. É convenção da casa,
+   não imposição do repositório: `merge_commit_allowed` e `allow_squash_merge` estão ambos
+   ligados, `delete_branch_on_merge` desligado. Squash apagaria a fronteira do PR e as
+   rodadas do laço de revisão (registro do existente: zero squash na janela #541–#567).
 4. **Quem move o cartão é quem fez o trabalho**, exceto a passagem para `Em teste (preview)`,
    que o merge dispara.
 5. **Se o preview da `develop` reprovar, o cartão volta**; ele não fecha "com ressalva". Se o
