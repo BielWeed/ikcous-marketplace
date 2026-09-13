@@ -304,10 +304,7 @@ describe("buscarIdsDeProdutos", () => {
     // Achado da revisão do PR #572: o check do teto só rodava quando a página
     // vinha cheia; catálogo cuja ÚLTIMA página é parcial (10001–10999 produtos
     // com os padrões) escapava sem reprovar, furando a invariante declarada.
-    const { fetchImpl } = fetchPaginado([
-      ["a", "b"],
-      ["c"],
-    ]);
+    const { fetchImpl } = fetchPaginado([["a", "b"], ["c"]]);
     await expect(
       sitemap.buscarIdsDeProdutos(conexaoPublishable, {
         fetchImpl,
