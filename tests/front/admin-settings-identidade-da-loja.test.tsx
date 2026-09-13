@@ -117,6 +117,24 @@ async function flush() {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
+// O título do acordeão mora no hub (AdminSettingsView) e muda com o desenho
+// novo do lote E ("Identidade da loja" → "Nome, logo e cores"; "Horário de
+// atendimento" → "Atendimento", tabela de vocabulário em
+// equipe/entregas/20260913-lote-e-desenho-salao-e-porao.md). O locator aceita
+// os DOIS títulos oficiais — o atual e o do desenho — para o teste sobreviver
+// às duas ordens de pouso (hub antes ou depois desta peça) SEM afrouxar o
+// alvo: continua exigindo o botão de seção colapsável (aria-expanded) cujo
+// texto carrega um dos dois títulos.
+function secaoColapsavel(tituloAtual: string, tituloNovo: string) {
+  const el = [...host.querySelectorAll("button")].find(
+    (node) =>
+      node.getAttribute("aria-expanded") !== null &&
+      (node.textContent?.includes(tituloAtual) ||
+        node.textContent?.includes(tituloNovo)),
+  );
+  expect(el).toBeDefined();
+  return el!;
+}
 async function render(active = true) {
   const { AdminSettingsView } = await import("@/views/admin/AdminSettingsView");
   await act(async () => {
@@ -128,9 +146,7 @@ async function render(active = true) {
       />,
     );
   });
-  const section = [...host.querySelectorAll("button")].find((node) =>
-    node.textContent?.includes("Identidade da loja"),
-  )!;
+  const section = secaoColapsavel("Identidade da loja", "Nome, logo e cores");
   if (section.getAttribute("aria-expanded") === "false")
     await act(async () => section.click());
   await act(async () => {
@@ -212,12 +228,13 @@ describe("Ajustes — identidade da loja pela RPC protegida", () => {
   it("salvar identidade não limpa horário pendente e recolher não perde os campos", async () => {
     await render();
     await type("store-name", "Novo nome");
-    const section = [...host.querySelectorAll("button")].find((node) =>
-      node.textContent?.includes("Identidade da loja"),
-    )!;
+    const section = secaoColapsavel("Identidade da loja", "Nome, logo e cores");
     await act(async () => section.click());
     expect(section.getAttribute("aria-expanded")).toBe("true");
-    await click("Horário de atendimento");
+    await act(async () =>
+      secaoColapsavel("Horário de atendimento", "Atendimento").click(),
+    );
+    await flush();
     await type("store-business-hours", "Novo horário");
     await click("Salvar identidade");
     expect(h.dirty).toHaveBeenLastCalledWith(true);
@@ -249,7 +266,10 @@ describe("Ajustes — identidade da loja pela RPC protegida", () => {
       }),
     );
     await render();
-    await click("Horário de atendimento");
+    await act(async () =>
+      secaoColapsavel("Horário de atendimento", "Atendimento").click(),
+    );
+    await flush();
     await type("store-business-hours", "Antigo usuário");
     await click("Salvar horário");
     h.auth = {
@@ -309,5 +329,21 @@ describe("Ajustes — identidade da loja pela RPC protegida", () => {
     expect(input("store-name").value).toBe("Meu nome");
     expect(h.dirty).toHaveBeenLastCalledWith(true);
     expect(host.textContent).not.toContain("Identidade salva no cadastro");
+  });
+  it("imagens avançadas ficam sob título de gente, com todos os uploads alcançáveis", async () => {
+    await render();
+    expect(host.textContent).toContain(
+      "Mais imagens da loja (favicon, ícones, compartilhamento)",
+    );
+    expect(host.textContent).not.toContain("Ajustes avançados de imagens");
+    // Renomear não pode esconder nada: as entradas de arquivo continuam na
+    // árvore, inclusive a de adicionar fonte (jsdom mantém o conteúdo do
+    // <details> na árvore esteja ele aberto ou fechado).
+    expect(
+      host.querySelector('input[id="identity-upload-Adicionar%20fonte"]'),
+    ).not.toBeNull();
+    expect(
+      host.querySelector('input[id^="identity-upload-Trocar%20"]'),
+    ).not.toBeNull();
   });
 });

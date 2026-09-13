@@ -85,7 +85,10 @@ export function IdentitySettingsSection({
     hint: string,
   ) => (
     <div className="space-y-1.5">
-      <Label htmlFor={`identity-upload-${encodeURIComponent(label)}`}>
+      <Label
+        htmlFor={`identity-upload-${encodeURIComponent(label)}`}
+        className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+      >
         {label}
       </Label>
       <Input
@@ -131,7 +134,12 @@ export function IdentitySettingsSection({
           const color = key.endsWith("Color");
           return (
             <div key={key} className="space-y-1.5">
-              <Label htmlFor={id}>{label}</Label>
+              <Label
+                htmlFor={id}
+                className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+              >
+                {label}
+              </Label>
               <div className="flex items-center gap-2">
                 <Input
                   id={id}
@@ -171,10 +179,12 @@ export function IdentitySettingsSection({
             <section
               key={role}
               aria-label={`Prévia: ${label}`}
-              className="space-y-3 rounded-xl border border-white/10 bg-zinc-950/50 p-3"
+              className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl"
             >
-              <h3 className="text-sm font-semibold">{label}</h3>
-              <div className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900 p-3">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                {label}
+              </h3>
+              <div className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl bg-zinc-900/80 p-3">
                 <img
                   src={url(editor.origin, asset)}
                   alt={`${label} — ${draft.fields.storeName}`}
@@ -210,13 +220,13 @@ export function IdentitySettingsSection({
           );
         })}
       </div>
-      <p className="text-xs text-zinc-400">
+      <p className="text-xs text-zinc-500">
         Estas prévias mostram as escolhas da identidade; o aplicativo instalado
         pode apresentá-las em outros tamanhos.
       </p>
-      <details className="rounded-xl border border-white/10 p-3">
-        <summary className="cursor-pointer text-sm font-semibold">
-          Ajustes avançados de imagens
+      <details className="group rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl">
+        <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 transition-colors group-open:text-admin-gold">
+          Mais imagens da loja (favicon, ícones, compartilhamento)
         </summary>
         <div className="mt-4 space-y-5">
           {advanced.map(([role, label, hint]) => (
@@ -232,7 +242,7 @@ export function IdentitySettingsSection({
             aria-label="Fontes guardadas"
             className="space-y-3 border-t border-white/10 pt-4"
           >
-            <h3 className="font-semibold">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Fontes guardadas ({draft.assets.originals.length}/8)
             </h3>
             <p className="text-xs text-zinc-400">
@@ -242,13 +252,13 @@ export function IdentitySettingsSection({
             {draft.assets.originals.map((asset, index) => (
               <div
                 key={`${asset.path}-${index}`}
-                className="space-y-2 rounded-lg border border-white/10 p-3"
+                className="space-y-2 rounded-xl border border-white/10 bg-zinc-900/40 p-3"
               >
                 <a
                   href={url(editor.origin, asset)}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-3 text-sm underline"
+                  className="flex items-center gap-3 text-sm underline transition-colors hover:text-admin-gold"
                 >
                   <img
                     src={url(editor.origin, asset)}
@@ -347,7 +357,7 @@ export function IdentitySettingsSection({
         </p>
       )}
       {(waiting || hasConflict) && (
-        <div className="space-y-3 rounded-xl border border-amber-400/30 p-3">
+        <div className="space-y-3 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4">
           <Button
             type="button"
             disabled={!active || editor.busy}
@@ -436,7 +446,7 @@ export function IdentitySettingsSection({
         <div
           role="group"
           aria-label="Descartar rascunho de identidade"
-          className="space-y-3 rounded-xl border border-amber-400/30 p-3"
+          className="space-y-3 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4"
         >
           <p>
             Descartar as alterações deste rascunho? Os arquivos enviados

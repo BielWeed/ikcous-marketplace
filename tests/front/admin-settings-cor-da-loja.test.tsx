@@ -117,6 +117,23 @@ async function flush() {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
+// O título do acordeão mora no hub (AdminSettingsView) e muda com o desenho
+// novo do lote E ("Identidade da loja" → "Nome, logo e cores", tabela de
+// vocabulário em equipe/entregas/20260913-lote-e-desenho-salao-e-porao.md).
+// O locator aceita os DOIS títulos oficiais — o atual e o do desenho — para o
+// teste sobreviver às duas ordens de pouso (hub antes ou depois desta peça)
+// SEM afrouxar o alvo: continua exigindo o botão de seção colapsável
+// (aria-expanded) cujo texto carrega um dos dois títulos.
+function secaoColapsavel(tituloAtual: string, tituloNovo: string) {
+  const el = [...host.querySelectorAll("button")].find(
+    (node) =>
+      node.getAttribute("aria-expanded") !== null &&
+      (node.textContent?.includes(tituloAtual) ||
+        node.textContent?.includes(tituloNovo)),
+  );
+  expect(el).toBeDefined();
+  return el!;
+}
 async function render(active = true) {
   const { AdminSettingsView } = await import("@/views/admin/AdminSettingsView");
   await act(async () => {
@@ -128,9 +145,7 @@ async function render(active = true) {
       />,
     );
   });
-  const section = [...host.querySelectorAll("button")].find((node) =>
-    node.textContent?.includes("Identidade da loja"),
-  )!;
+  const section = secaoColapsavel("Identidade da loja", "Nome, logo e cores");
   if (section.getAttribute("aria-expanded") === "false")
     await act(async () => section.click());
   await act(async () => {
