@@ -1,6 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
 import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
+import {
+  ehErroDeChunk,
+  executarRecuperacaoChunk,
+  reportarErroChunk,
+} from "@/lib/recuperacao-chunk";
 import { AlertTriangle, RefreshCcw, WifiOff } from "lucide-react";
 import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
@@ -26,24 +31,11 @@ interface State {
  * trava — a pessoa só saía fechando o app na marra. */
 const PRAZO_SAIDA_CHUNK_MS = 4000;
 
-/** Guarda BOOLEANA de uma recarga automática por sessão. A anterior era uma
- * janela de 10 s (`pwa_chunk_reload_time`): duas falhas de chunk separadas
- * por mais de 10 s recarregavam de novo, cada vez, sem limite. */
-const CHAVE_CHUNK_RELOAD_SESSAO = "pwa_chunk_reload_done";
-
-function isChunkLoadError(error: Error | null | undefined): boolean {
-  if (!error?.message) return false;
-  const msg = error.message.toLowerCase();
-  return (
-    msg.includes("failed to fetch dynamically imported module") ||
-    msg.includes("error loading dynamically imported module") ||
-    msg.includes("loading chunk") ||
-    msg.includes("chunkloaderror") ||
-    msg.includes("importing a module script failed") ||
-    msg.includes("css chunk load failed") ||
-    msg.includes("unexpected token '<'")
-  );
-}
+// Issue #92: a guarda e a decisão de chunk NÃO moram mais aqui. O boundary
+// é a PORTA DE UI e o primeiro capturador; a decisão (check-and-set na
+// chave única, escada ciclo-do-SW → purge seletivo) vive em
+// @/lib/recuperacao-chunk, consumida também pelos canais 'error' e
+// 'unhandledrejection' do main.tsx e pelo sentinela.
 
 export class GlobalErrorBoundary extends Component<Props, State> {
   public state: State = {
@@ -62,15 +54,15 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught fatal error:", error, errorInfo);
 
-    // Automatic chunk reloading logic for Vite dynamic imports
-    const isChunkError = isChunkLoadError(error);
-
-    if (isChunkError) {
+    // Issue #92: UM mecanismo, UMA chave. A decisão é SÍNCRONA
+    // (check-and-set) — entre este boundary e os canais do main.tsx
+    // ('error'/'unhandledrejection'), quem chega primeiro é o dono; quem
+    // chega segundo só acompanha a UI.
+    if (ehErroDeChunk(error.message)) {
       // Laudo #2 (P-3): sem internet, o chunk falhou porque a rede caiu — o
       // service worker está servindo do cache e NENHUM reload conserta isso.
       // Recarregar aqui só engata o loop de recargas e, na segunda falha,
       // exibiria a tela "Atualizando o Aplicativo" eterna (e mentirosa).
-      // Pílula irmã do useUpdateCheck (:352-363), que já checava onLine.
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
         console.warn(
           "[GlobalErrorBoundary] Chunk error SEM internet: tela honesta de offline, cache preservado.",
@@ -79,29 +71,24 @@ export class GlobalErrorBoundary extends Component<Props, State> {
         return;
       }
 
-      console.warn(
-        "[GlobalErrorBoundary] Dynamic chunk import error caught. Attempting silent reload for update recovery...",
-      );
-      try {
-        // UMA recarga automática por sessão, e só. Se a sessão já gastou a
-        // dela, recarregar de novo não conserta nada e prende a pessoa na
-        // rodinha; daqui em diante quem decide é ela, pelo botão.
-        if (sessionStorage.getItem(CHAVE_CHUNK_RELOAD_SESSAO) !== "1") {
-          sessionStorage.setItem(CHAVE_CHUNK_RELOAD_SESSAO, "1");
-          // Laudo #2 (P-1): motivo NOMINAL — recuperação de erro de módulo
-          // não é atualização; o boot não anuncia "Sistema Atualizado".
-          gravaMotivoDeRecarga("recuperacao-erro-modulo");
-          window.location.reload();
-          return;
-        }
-      } catch (e) {
-        // Storage indisponível: não dá para saber se a sessão já recarregou,
-        // então NÃO se recarrega (falha fechado, sem loop) e a saída manual
-        // é armada logo abaixo.
-        console.error("Failed to execute chunk error auto-reload", e);
+      const decisao = reportarErroChunk();
+      // Dono: executa a escada (ciclo do SW → purge seletivo com rede
+      // verificada). A execução é async, mas o dono NÃO cai no laudo de
+      // crash abaixo — o motivo nominal correto é gravado por quem navega.
+      if (decisao.dono) {
+        void executarRecuperacaoChunk(decisao).then((resultado) => {
+          // Purge nomeado, mas a sonda recusou a rede (portal cativo, DNS
+          // mentindo): NADA foi apagado — a tela honesta de offline vale
+          // aqui também, não só quando o onLine já estava falso.
+          if (resultado === "sem-rede-verificada") {
+            this.setState({ chunkSemInternet: true });
+          }
+        });
+        this.armaPrazoDeSaidaChunk();
+        return;
       }
 
-      // Chegou aqui = a recarga automática não vai acontecer. Sem prazo, o
+      // Espectador: outra porta já engajou a recuperação. Sem prazo, o
       // render() ficaria na rodinha "Atualizando o Aplicativo" para sempre.
       this.armaPrazoDeSaidaChunk();
     }
@@ -186,7 +173,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
-      const isChunkError = isChunkLoadError(this.state.error);
+      const isChunkError = ehErroDeChunk(this.state.error?.message);
 
       if (isChunkError && this.state.chunkSemInternet) {
         // Laudo #2 (P-3): honesto — sem sinal não há "nova versão" nenhuma

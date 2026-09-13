@@ -42,6 +42,7 @@ import { GlobalErrorBoundary } from "@/components/ui/custom/GlobalErrorBoundary"
 import { applyBranding } from "@/config/branding";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { instalarCanaisDeErroChunk } from "@/lib/recuperacao-chunk";
 import { initSentinel } from "@/pwa-sentinel";
 import { initHeaderToastInterceptor } from "@/utils/headerToast";
 import App from "./App.tsx";
@@ -51,6 +52,13 @@ applyBranding();
 
 // Initialize external PWA health monitor
 initSentinel();
+
+// Issue #92: os canais globais de erro de chunk ('error' +
+// 'unhandledrejection') nascem AQUI, no chunk inicial — nunca num chunk
+// lazy, senão o chunk que falhar pode ser o do próprio mecanismo. Ambos
+// decidem pela MESMA chave sincrona de @/lib/recuperacao-chunk que o
+// GlobalErrorBoundary e o sentinela: um mecanismo, uma chave, sem corrida.
+instalarCanaisDeErroChunk();
 
 // Initialize Dynamic Header Toast Interceptor
 initHeaderToastInterceptor();

@@ -1,10 +1,59 @@
+import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 /**
  * PWA Sentinel — The Guardian
  * Camada 3 da v23.0 OMNIPOTENCE.
  * Este script roda fora do ciclo de vida principal do React para monitorar a saúde do SW.
  * Se o SW travar ou falhar em responder corações (heartbeats), o Sentinel intervém.
+ *
+ * Issue #92: o sentinela NÃO é mais uma porta paralela de recarga. Ele pede
+ * recarga pela MESMA chave única de @/lib/recuperacao-chunk (uma recuperação
+ * por vez) e, antes de desregistrar qualquer coisa, tenta o caminho gentil:
+ * um SW waiting pronto assume (SKIP_WAITING → controllerchange → reload) —
+ * desregistrar numa transição de SW atiraria no próprio motor da
+ * recuperação. O desregistro sobra como último recurso, sem waiting pronto.
  */
-import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
+import {
+  assumirServiceWorkerNovoERecarregar,
+  pedirRecargaSubordinada,
+} from "@/lib/recuperacao-chunk";
+
+/** Prazo para o waiting pronto assumir antes de recorrer ao desregistro.
+ * Mesmo prazo do ciclo do SW no módulo único. */
+const PRAZO_ASSUMIR_SW_MS = 2500;
+
+/** A recuperação do pulso perdido, extraída para ser testável sem relógio:
+ * subordinada à chave única, waiting primeiro, desregistro por último. */
+export async function recuperarPulsoPerdido(
+  registros: readonly ServiceWorkerRegistration[],
+): Promise<void> {
+  if (!pedirRecargaSubordinada()) {
+    console.warn(
+      "[PWA Sentinel] Recuperação recente já engajada pela chave única; sentinel não intervém agora.",
+    );
+    return;
+  }
+
+  const assumiu = await assumirServiceWorkerNovoERecarregar({
+    motivo: "recuperacao-sentinela",
+    prazoMs: PRAZO_ASSUMIR_SW_MS,
+  });
+  if (assumiu) return;
+
+  for (const registro of registros) {
+    try {
+      await registro.unregister();
+    } catch (e) {
+      console.warn("[PWA Sentinel] Falha ao desregistrar:", e);
+    }
+  }
+  console.warn(
+    "[PWA Sentinel] 🔌 Service Worker Unregistered. Forcing reload.",
+  );
+  // Laudo #2 (P-1): motivo nominal — o boot não anuncia "Sistema
+  // Atualizado" para uma recuperação de pulso.
+  gravaMotivoDeRecarga("recuperacao-sentinela");
+  window.location.reload();
+}
 
 export const initSentinel = () => {
   if (!navigator.serviceWorker) return;
@@ -70,16 +119,7 @@ export const initSentinel = () => {
       );
 
       navigator.serviceWorker.getRegistrations().then((registrations) => {
-        for (const registration of registrations) {
-          registration.unregister();
-        }
-        console.warn(
-          "[PWA Sentinel] 🔌 Service Worker Unregistered. Forcing reload.",
-        );
-        // Laudo #2 (P-1): motivo nominal — o boot não anuncia "Sistema
-        // Atualizado" para uma recuperação de pulso.
-        gravaMotivoDeRecarga("recuperacao-sentinela");
-        window.location.reload();
+        void recuperarPulsoPerdido(registrations);
       });
     } else {
       // Quiet heart-ping

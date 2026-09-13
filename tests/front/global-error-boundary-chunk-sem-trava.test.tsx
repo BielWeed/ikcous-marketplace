@@ -5,22 +5,21 @@
 //
 //   1) A guarda de auto-reload era uma janela de 10s (`pwa_chunk_reload_time`
 //      em sessionStorage). Duas falhas de chunk separadas por mais de 10s
-//      recarregavam de novo cada vez — sem limite. Trocada por uma guarda
-//      booleana de UMA recarga por sessão (`pwa_chunk_reload_done`).
+//      recarregavam de novo cada vez — sem limite.
 //   2) Quando a guarda negava o reload, o `if` simplesmente terminava: nada
 //      de recarga, nada de aviso, e o `render()` ficava preso na rodinha
 //      "Atualizando o Aplicativo" para sempre — sem botão, sem prazo, sem
 //      fim. A pessoa só saía fechando o app na marra.
 //
-// Este arquivo cobre o conserto dos dois: a guarda de sessão (não recarrega
-// sozinha da segunda falha em diante) e o prazo finito que revela uma saída
-// manual (botão) que só recarrega a página — nunca chama handleReset nem
-// limpa storage, então carrinho e sessão sobrevivem.
-//
-// Vermelho contra o código antigo (base 8cfaf0f): pré-carregar a guarda
-// como "já recarregou" e simular uma segunda falha de chunk deixava a tela
-// presa na rodinha sem fim — nenhum dos testes (a)-(d) abaixo tinha como
-// passar, porque não existia nem o prazo, nem o botão, nem o cronômetro.
+// O conserto de 08/09 virou a guarda booleana `pwa_chunk_reload_done`; a
+// issue #92 (13/09/2026) unificou TUDO na chave `pwa_chunk_recovery` do
+// módulo @/lib/recuperacao-chunk: a escada tem DOIS degraus automáticos por
+// versão (ciclo do SW, depois purge seletivo) e, gastos os dois, RECUSA —
+// quem decide é o usuário. Este arquivo cobre a outra metade do contrato,
+// que não mudou: quando a decisão é recusa (espectador), o boundary NÃO
+// recarrega sozinho e o prazo finito revela uma saída manual (botão) que só
+// recarrega a página — nunca chama handleReset nem limpa storage, então
+// carrinho e sessão sobrevivem.
 //
 // Mesmo contorno dos testes irmãos (offline-honesto, recovery-preserva-*):
 // storages com chaves enumeráveis e window.location trocado por cópia com
@@ -37,8 +36,14 @@ import { GlobalErrorBoundary } from "@/components/ui/custom/GlobalErrorBoundary"
 // componente mudar, este teste quebra e avisa.
 const PRAZO_SAIDA_CHUNK_MS = 4000;
 
-// Mesma chave de CHAVE_CHUNK_RELOAD_SESSAO no componente.
-const CHAVE_CHUNK_RELOAD_SESSAO = "pwa_chunk_reload_done";
+// Mesma chave de CHAVE_RECUPERACAO_CHUNK em src/lib/recuperacao-chunk.ts —
+// o dono da decisão desde a issue #92. Duplicada de propósito: se o módulo
+// mudar a chave, este teste quebra e avisa.
+const CHAVE_RECUPERACAO_CHUNK = "pwa_chunk_recovery";
+
+// Mesmo fallback do módulo: `__APP_VERSION__` é undefined no runner
+// (setup-build-identity só stuba `__STORE_IDENTITY__`).
+const VERSAO_FALLBACK_DO_APP = "0.0.0-dev";
 
 function BombaChunk(): never {
   throw new Error(
@@ -145,18 +150,26 @@ function botaoPorTexto(texto: string): HTMLButtonElement | undefined {
   ) as HTMLButtonElement | undefined;
 }
 
-/** Simula "esta sessão já usou a única recarga automática permitida" —
- * é o estado que faz a segunda falha de chunk cair direto no cronômetro de
- * saída em vez de tentar mais um reload silencioso. */
-function marcarSessaoJaRecarregada() {
-  sessionStorage.setItem(CHAVE_CHUNK_RELOAD_SESSAO, "1");
+/** Simula "os dois degraus automáticos desta versão já foram gastos" —
+ * `reportarErroChunk()` lê count=2 dentro da janela e devolve recusa
+ * (espectador): o boundary não recarrega sozinho e cai direto no cronômetro
+ * de saída. É o estado que substitui a velha booleana de sessão. */
+function esgotarRecuperacaoDaVersao() {
+  localStorage.setItem(
+    CHAVE_RECUPERACAO_CHUNK,
+    JSON.stringify({
+      versao: VERSAO_FALLBACK_DO_APP,
+      count: 2,
+      lastAt: Date.now(),
+    }),
+  );
 }
 
 describe("GlobalErrorBoundary — chunk sem trava (prazo finito + saída manual)", () => {
   it("a) depois do prazo, a tela de espera mostra o botão de saída; antes do prazo, não mostra", async () => {
     vi.useFakeTimers();
     definirOnLine(true);
-    marcarSessaoJaRecarregada();
+    esgotarRecuperacaoDaVersao();
 
     await act(async () => {
       raiz.render(
@@ -184,7 +197,7 @@ describe("GlobalErrorBoundary — chunk sem trava (prazo finito + saída manual)
   it("b) clicar no botão de saída recarrega a página e não apaga carrinho nem sessão", async () => {
     vi.useFakeTimers();
     definirOnLine(true);
-    marcarSessaoJaRecarregada();
+    esgotarRecuperacaoDaVersao();
     localStorage.setItem("sb-projeto-auth-token", "token-de-sessao");
     localStorage.setItem("marketplace_cart_v1", JSON.stringify([{ id: 1 }]));
 
@@ -228,7 +241,7 @@ describe("GlobalErrorBoundary — chunk sem trava (prazo finito + saída manual)
   it("c) segunda falha de chunk na mesma sessão não recarrega sozinha — cai na tela com botão", async () => {
     vi.useFakeTimers();
     definirOnLine(true);
-    marcarSessaoJaRecarregada();
+    esgotarRecuperacaoDaVersao();
 
     await act(async () => {
       raiz.render(
@@ -253,7 +266,7 @@ describe("GlobalErrorBoundary — chunk sem trava (prazo finito + saída manual)
   it("d) cancela o temporizador de saída quando o componente desmonta", async () => {
     vi.useFakeTimers();
     definirOnLine(true);
-    marcarSessaoJaRecarregada();
+    esgotarRecuperacaoDaVersao();
 
     // Raiz LOCAL (não a `raiz` do beforeEach): este teste desmonta no meio
     // do próprio corpo para poder afirmar o clearTimeout antes do

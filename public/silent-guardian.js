@@ -33,7 +33,19 @@
     }
   }, 20000);
 
-  // Initialize global app version constant
+  // DONO NUNCA (issue #92): este arquivo é splash + fallback do loader —
+  // ele NÃO decide recuperação de erro de chunk. É estático e sem hash na
+  // URL (o catch-all do sw.ts o serve stale-while-revalidate), então seria
+  // a peça mais VELHA do navegador decidindo sobre código mais novo. A
+  // decisão vive em src/lib/recuperacao-chunk.ts, consumida pelo
+  // GlobalErrorBoundary, pelos canais do main.tsx e pelo sentinela.
+
+  // PONTO DE SINCRONIZAÇÃO DA BUILD — não é dono de nada (issue #92). O
+  // token "1773003981700" é exigido e substituído em tempo de build pela
+  // versão entregue (scripts/identityBuildConfig.ts); apagá-lo quebra o
+  // sistema de identidade hermética (testes identity-build-*). O runtime
+  // do app NÃO lê esta global para decidir: a versão que alimenta a
+  // recuperação de chunk vem do define compile-time do Vite.
   globalThis.__APP_VERSION__ = "1773003981700"; // Build sync point
 
   // Progress Bar Logic

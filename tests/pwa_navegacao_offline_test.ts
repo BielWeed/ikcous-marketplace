@@ -75,19 +75,51 @@ Deno.test("SW - a revalidacao NAO grava HTML novo com update pendente (ressalva 
   );
 });
 
-Deno.test("useUpdateCheck - purge nuclear nao roda sem internet (ressalva 1b do #375)", () => {
-  const u = Deno.readTextFileSync(`${DIR}../src/hooks/useUpdateCheck.ts`);
-  const trecho = u.slice(u.indexOf("ChunkLoadError auto-recovery"));
-  const posGuard = trecho.indexOf("navigator.onLine === false");
-  const posPurge = trecho.indexOf("performNuclearPurge(true)");
-  assert(
-    posGuard > -1,
-    "a guarda de offline sumiu do handler de ChunkLoadError",
+Deno.test("recuperacao de chunk - o purge NAO roda sem rede verificada (ressalva 1b do #375, novo lar)", () => {
+  // Issue #92: o handler de ChunkLoadError saiu do useUpdateCheck (o hook era
+  // chunk LAZY e podia ser o proprio chunk que falhasse). A decisão agora é
+  // do módulo único src/lib/recuperacao-chunk.ts — e o invariante da
+  // ressalva continua sendo ORDEM: a sonda de rede por conteúdo tem de vir
+  // ANTES do purge (portal cativo responde 200 com HTML; sem a ordem, o
+  // purge apagaria o cache que mantem a loja de pe). E o caminho de chunk
+  // NUNCA apaga IndexedDB (aceite 4) — o deleteDatabase aguardado é só do
+  // purge de versão obrigatória (minAppVersion) no hook.
+  const modulo = Deno.readTextFileSync(`${DIR}../src/lib/recuperacao-chunk.ts`);
+  const trecho = modulo.slice(
+    modulo.indexOf("export async function executarRecuperacaoChunk"),
   );
-  assert(posPurge > -1);
+  const posSonda = trecho.indexOf("verificarRedeDeVerdade()");
+  const posPurge = trecho.indexOf("derrubarServiceWorkers()");
+  assert(posSonda > -1, "a sonda de rede sumiu da execução da recuperação");
+  assert(posPurge > -1, "o purge sumiu da execução da recuperação");
   assert(
-    posGuard < posPurge,
-    "a guarda de offline tem de vir ANTES do purge nuclear - offline, o purge apagaria o cache que mantem a loja de pe",
+    posSonda < posPurge,
+    "a sonda de rede tem de vir ANTES do purge - portal cativo responde 200 e o purge apagaria o cache que mantem a loja de pe",
+  );
+  assert(
+    !trecho.includes("apagarIndexedDBAguardando"),
+    "o caminho de chunk NÃO apaga IndexedDB (aceite 4)",
+  );
+});
+
+Deno.test("GlobalErrorBoundary - chunk error offline nao engaja recuperacao nenhuma (laudo #2, P-3)", () => {
+  const boundary = Deno.readTextFileSync(
+    `${DIR}../src/components/ui/custom/GlobalErrorBoundary.tsx`,
+  );
+  const inicio = boundary.indexOf("public componentDidCatch");
+  const trecho = norm(
+    boundary.slice(inicio, boundary.indexOf("Log to PWA forensics")),
+  );
+  const posGuard = trecho.indexOf("navigator.onLine === false");
+  const posDecisao = trecho.indexOf("reportarErroChunk()");
+  assert(posGuard > -1, "a guarda de offline sumiu do componentDidCatch");
+  assert(
+    posDecisao > -1,
+    "a decisão da chave única sumiu do componentDidCatch",
+  );
+  assert(
+    posGuard < posDecisao,
+    "a guarda de offline tem de vir ANTES da decisão de recuperação - sem internet, recarregar só engata o loop",
   );
 });
 
