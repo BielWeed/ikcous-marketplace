@@ -89,8 +89,11 @@ describe("AdminSettingsView — Horário de atendimento", () => {
     });
     // Seções colapsáveis (pedido do Gabriel, 02/09): os campos da loja
     // nascem OCULTOS — o teste expande a seção antes de exercitá-los.
+    // Vocabulário do desenho SALÃO+PORÃO (13/09): a seção se chama
+    // "Atendimento" (com linha de estado no cabeçalho); o rótulo do campo
+    // interno continua "Horário de atendimento".
     const cabecalhoLoja = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Horário de atendimento"),
+      b.textContent?.includes("Atendimento"),
     ) as HTMLButtonElement;
     expect(cabecalhoLoja).toBeDefined();
     await act(async () => {

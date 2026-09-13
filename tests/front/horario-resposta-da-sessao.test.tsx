@@ -110,8 +110,23 @@ function button(label: string) {
   expect(result).toBeDefined();
   return result!;
 }
+// Vocabulário SALÃO+PORÃO (13/09): a seção do horário se chama "Atendimento"
+// e o cabeçalho carrega a linha de estado no textContent — a abertura não é
+// por texto exato, é por cabeçalho de acordeão (aria-expanded) + título.
+function secao(titulo: string) {
+  const result = [...host.querySelectorAll("button")].find(
+    (el) =>
+      el.getAttribute("aria-expanded") !== null &&
+      el.textContent?.includes(titulo),
+  );
+  expect(result, `seção ausente: ${titulo}`).toBeDefined();
+  return result!;
+}
 async function click(label: string) {
   await act(async () => button(label).click());
+}
+async function abrirSecao(titulo: string) {
+  await act(async () => secao(titulo).click());
 }
 function field() {
   return host.querySelector<HTMLInputElement>("#store-business-hours")!;
@@ -126,7 +141,7 @@ async function type(value: string) {
   });
 }
 async function start() {
-  await click("Horário de atendimento");
+  await abrirSecao("Atendimento");
   await type("Escolha de A");
   await click("Salvar horário");
 }
@@ -244,7 +259,7 @@ describe("horário com editor e StoreProvider reais", () => {
     expect(h.dirty).toHaveBeenLastCalledWith(false);
   });
   it("horário vazio envia null e confirma ausência sem perder o contrato", async () => {
-    await click("Horário de atendimento");
+    await abrirSecao("Atendimento");
     await type("   ");
     await click("Salvar horário");
     await act(async () =>
