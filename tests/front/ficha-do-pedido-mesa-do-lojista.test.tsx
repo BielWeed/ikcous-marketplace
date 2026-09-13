@@ -185,6 +185,30 @@ describe("ficha do pedido (mesa do lojista) — frase-situação do dinheiro no 
 
     expect(hospedeiro.textContent).toContain("Recebido na entrega · R$ 100,00");
   });
+
+  it("pedido CANCELADO no dinheiro/pix/cartão da entrega, sem recebimento: 'Cancelado · nada a receber' — não manda cobrar pedido morto (achado 2 da revisão do PR 549)", async () => {
+    await renderizar(
+      pedidoFake({ status: "cancelled", paymentMethod: "cash" }),
+    );
+
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toContain("Cancelado · nada a receber");
+    expect(texto).not.toContain("Falta receber na entrega");
+  });
+
+  it("pedido CANCELADO aguardando no site também não promete dinheiro: a MESMA frase, não 'Aguardando pagamento no site'", async () => {
+    await renderizar(
+      pedidoFake({
+        status: "cancelled",
+        paymentMethod: "online",
+        paymentStatus: "aguardando",
+      }),
+    );
+
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toContain("Cancelado · nada a receber");
+    expect(texto).not.toContain("Aguardando pagamento no site");
+  });
 });
 
 describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", () => {
@@ -214,7 +238,21 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
     });
   }
 
-  it("'Cancelar pedido' (rótulo novo, era 'Abortar Operação') mora numa barra fixed bottom-0, sempre visível ao rolar", async () => {
+  // A barra de ação segue FIXA, mas desde a revisão cruzada do PR 549
+  // (recado 20260912-2320, achado 1) ela SOBE acima do menu inferior do
+  // admin no celular — o seletor antigo `div.fixed.bottom-0` não casa mais
+  // no <lg. A âncora nova: ancestral .fixed com o padrão mobile-safe
+  // (bottom calculado até lg, no pé a partir de lg).
+  function barraDoBotao(
+    botao: Element | null | undefined,
+  ): Element | null | undefined {
+    const barra = botao?.closest("div.fixed");
+    expect(barra?.className).toContain("bottom-[calc(6.5rem");
+    expect(barra?.className).toContain("lg:bottom-0");
+    return barra;
+  }
+
+  it("'Cancelar pedido' (rótulo novo, era 'Abortar Operação') mora na barra fixa, sempre visível ao rolar", async () => {
     await renderizar(pedidoFake({ status: "pending" }));
 
     const botaoCancelar = hospedeiro.querySelector(
@@ -223,10 +261,11 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
     expect(botaoCancelar).not.toBeNull();
     expect(botaoCancelar?.textContent).toContain("Cancelar pedido");
 
-    // A barra é FIXA EMBAIXO (a ação do momento sempre na mão, sem rolar ao
-    // topo): o botão precisa ter ancestral com as classes de fixação.
-    const barra = botaoCancelar?.closest("div.fixed.bottom-0") ?? null;
-    expect(barra).not.toBeNull();
+    // A barra é FIXA (a ação do momento sempre na mão, sem rolar ao topo) e
+    // no celular mora ACIMA do menu inferior do admin (jsdom não faz layout:
+    // é o padrão de classe que garante, conferido por leitura estática na
+    // revisão do PR 549).
+    expect(barraDoBotao(botaoCancelar)).not.toBeNull();
   });
 
   it("avançar é o botão primário dourado com o rótulo 'Avançar → <próxima etapa>', na MESMA barra fixa", async () => {
@@ -238,7 +277,7 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
     expect(botaoAvancar).toBeDefined();
     // pending → próxima etapa é "Separação" (rótulo do statusConfig).
     expect(botaoAvancar?.textContent).toContain("Separação");
-    expect(botaoAvancar?.closest("div.fixed.bottom-0") ?? null).not.toBeNull();
+    expect(barraDoBotao(botaoAvancar)).not.toBeNull();
   });
 
   it("imprimir continua na barra, com o mesmo title de sempre", async () => {
@@ -248,7 +287,22 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
       'button[title="Imprimir Pedido"]',
     );
     expect(botaoImprimir).not.toBeNull();
-    expect(botaoImprimir?.closest("div.fixed.bottom-0") ?? null).not.toBeNull();
+    expect(barraDoBotao(botaoImprimir)).not.toBeNull();
+  });
+
+  it("no celular a barra sobe acima do menu inferior do admin e o rodapé da ficha acompanha (achado 1 da revisão do PR 549)", async () => {
+    await renderizar(pedidoFake({ status: "pending" }));
+
+    // O padrão mobile-safe já é conferido por botão nos testes de cima;
+    // aqui entra a OUTRA metade do achado: o fim da ficha ("Anotações
+    // internas") precisa de padding que cubra a barra LEVANTADA no <lg
+    // (6.5rem de offset + ~69px de barra ≈ 173px) MAIS o inset de safe-area
+    // do iPhone com notch (~34px que o pb-44 fixo não cobria) — 11rem +
+    // safe-area pela var, mesmo padrão do AdminProductFormView. A partir de
+    // lg a barra volta ao pé: pb-28 chega.
+    const folha = hospedeiro.querySelector("div.min-h-screen");
+    expect(folha?.className).toContain("pb-[calc(11rem");
+    expect(folha?.className).toContain("lg:pb-28");
   });
 
   it("pedido finalizado (delivered): sem 'Cancelar pedido' e sem 'Avançar' — as guardas do header antigo migraram junto", async () => {

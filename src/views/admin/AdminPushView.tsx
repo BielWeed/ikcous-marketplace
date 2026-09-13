@@ -579,6 +579,39 @@ export const AdminPushView = memo(function AdminPushView({
     calculateReach();
   }, [calculateReach]);
 
+  // Achado 3 (menor) da revisão cruzada do PR 549 (recado 20260912-2320):
+  // as contagens dos chips nasciam SÓ no efeito de montagem — e o chip de
+  // zero nasce desativado, então "cliente novo cadastrou com a tela aberta"
+  // deixava o chip travado no zero para sempre, sem caminho de remedir (o
+  // clique que remedeia a medição só existe para chip ativo; antes do rádio
+  // era assim que se remedava). Remede-se do jeito barato: o foco voltando
+  // à janela/aba mede os segmentos de novo. O desenho aprovado na direção B
+  // (zero desativado com o motivo na cara) segue igual — só a MEDIDA deixa
+  // de congelar.
+  //
+  // Achado do bot de revisão do GitHub sobre o ef4c1ee: o foco remediava só
+  // os segmentos — o público "Todos" (`subCount`) e o alcance do segmento
+  // selecionado (`predictedReach`) congelavam na mesma situação. Agora o
+  // foco remedeia os três. (O bloco mora DEPOIS do `calculateReach` porque
+  // o array de dependências o lê — declará-lo acima seria TDZ.)
+  useEffect(() => {
+    const remedirAoVoltar = () => {
+      if (document.visibilityState === "visible") {
+        fetchSegmentCounts();
+        fetchSubscribers();
+        if (segment !== "all") {
+          calculateReach();
+        }
+      }
+    };
+    window.addEventListener("focus", remedirAoVoltar);
+    document.addEventListener("visibilitychange", remedirAoVoltar);
+    return () => {
+      window.removeEventListener("focus", remedirAoVoltar);
+      document.removeEventListener("visibilitychange", remedirAoVoltar);
+    };
+  }, [fetchSubscribers, fetchSegmentCounts, calculateReach, segment]);
+
   // Rascunho não enviado = pendência para o APP (onSetDirty): é guarda de
   // navegação — sair da tela com texto não enviado avisa antes de perder.
   // A composição é cartão fixo (nada desmonta o formulário), então o

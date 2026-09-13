@@ -143,6 +143,16 @@ function fraseSituacaoDoPagamento(order: Order): string {
   if (rotuloDoSelo.includes("precisa de atenção")) {
     return `${rotuloDoSelo} · R$ ${valor}`;
   }
+  // Pedido CANCELADO sem dinheiro entrado (achado 2, menor, da revisão
+  // cruzada do PR 549): "Falta receber na entrega" num pedido morto mandava
+  // o lojista cobrar quem nunca vai pagar — o próprio
+  // `podeRegistrarPagamento` já esconde o botão nesses pedidos. Os casos em
+  // que o dinheiro ENTROU e o pedido morreu (pago, recebido_na_entrega)
+  // caíram no ramo de atenção acima; o que chega aqui é "nada entrou, nada
+  // se deve" — cobre também o online aguardando num pedido já cancelado.
+  if (order.status === "cancelled") {
+    return "Cancelado · nada a receber";
+  }
   // Pagamento na entrega (cash/pix/card): quem decide "entrou" é o registro
   // do recebimento — a MESMA verdade que decide o botão "Marcar como
   // recebido" (`podeRegistrarPagamento`). `recebido_na_entrega` + cancelado
@@ -312,8 +322,14 @@ function OrderActionBar({
     orderStatus !== "cancelled" && orderStatus !== "delivered";
   const podeAvancar = nextStatus !== null && orderStatus !== "cancelled";
 
+  // Sobe acima do menu inferior do admin no celular: a barra e o menu
+  // empatam em z-[60] e o menu vem DEPOIS no DOM (AdminLayout), então no
+  // <lg ele pintava por cima — Avançar/Cancelar/imprimir ficavam atrás das
+  // abas (achado 1 da revisão cruzada do PR 549, recado 20260912-2320).
+  // Mesmo padrão do FAB do AdminProductFormView: acima até lg, no pé a
+  // partir de lg (onde o menu some, lg:hidden). O pb da ficha acompanha.
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[60] border-t border-white/5 bg-admin-bg/95 shadow-2xl backdrop-blur-xl">
+    <div className="fixed inset-x-0 bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-[60] border-t border-white/5 bg-admin-bg/95 shadow-2xl backdrop-blur-xl lg:bottom-0">
       <div className="mx-auto flex w-full max-w-[600px] items-center gap-2.5 px-4 py-3">
         <Button
           variant="ghost"
@@ -1441,8 +1457,15 @@ export const OrderDetail = memo(function OrderDetail({
     );
   };
 
+  // pb-[calc(11rem+safe-area)]: no celular a barra fixa mora ACIMA do menu
+  // inferior (6.5rem de offset + ~69px de barra ≈ 173px do fundo) — o pb-28
+  // antigo (112px) deixava o fim de "Anotações internas" atrás da barra
+  // levantada (mesmo achado 1 da revisão do PR 549) — e o iPhone com notch
+  // soma ~34px de inset que o pb-44 fixo (176px) não cobria: o calc com a
+  // var cobre os dois (padrão do AdminProductFormView). A partir de lg a
+  // barra volta ao pé e pb-28 chega.
   return (
-    <div className="min-h-screen bg-admin-bg pb-28 duration-500 animate-in fade-in">
+    <div className="min-h-screen bg-admin-bg pb-[calc(11rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] duration-500 animate-in fade-in lg:pb-28">
       {/* T3 (lote B, 12/09) — "Mesa do lojista": coluna ÚNICA tipo comanda
           (~600px centrados), na ordem em que o lojista LÊ a ficha: header →
           espera → trilha → cliente → itens → pagamento (+ devolução) →
