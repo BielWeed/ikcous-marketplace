@@ -87,6 +87,7 @@ git push origin v1.2.0
 
 gh pr create --base develop --head release/1.2.0 \
   --title "chore: volta a release 1.2.0 para develop"
+gh pr merge release/1.2.0 --merge   # merge commit, NÃO squash: squash cria commit novo e diverge as duas pontas (porquê completo no CONTRIBUTING)
 ```
 
 ---
@@ -108,6 +109,7 @@ git tag -a v1.2.1 -m "hotfix frete zerado" && git push origin v1.2.1
 
 gh pr create --base develop --head hotfix/frete-zerado \
   --title "fix: leva o hotfix do frete para develop"
+gh pr merge hotfix/frete-zerado --merge   # merge commit, NÃO squash: squash cria commit novo e diverge as duas pontas (porquê completo no CONTRIBUTING)
 ```
 
 **Não pule o último comando.** Sem ele o bug volta no próximo release.
