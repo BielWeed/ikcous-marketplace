@@ -9,6 +9,36 @@ import type { ConfigEnv, UserConfig, UserConfigFnPromise } from "vite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createIdentityBuildFixture } from "../../scripts/identityBuildFixture";
 
+// Hermeticidade aos .env* do disco: o factory do vite.config chama
+// loadEnv(mode, root, "") e o loadEnv REAL lê .env/.env.local/
+// .env.production[.local] DO DISCO — vi.stubEnv não alcança arquivos, então
+// na máquina com .env* real da loja o ensaio lia a configuração de produção
+// por cima do stub (IDENTITY_SHA/IDENTITY_FIXTURE falsos). O loadEnv abaixo
+// é o mesmo do vite sem a leitura de arquivos: APENAS process.env — que é
+// o que o stubEnv controla (stubEnv(key, undefined) apaga de process.env).
+// A trava de produção em si (fixture recusar config real) está correta e
+// segue intocada no vite.config/identityBuildConfig.
+vi.mock("vite", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("vite")>();
+  return {
+    ...actual,
+    loadEnv: (
+      _mode: string,
+      _envDir: string,
+      prefixes: string | string[] = "VITE_",
+    ) => {
+      const list = Array.isArray(prefixes) ? prefixes : [prefixes];
+      return Object.fromEntries(
+        Object.entries(process.env).filter(
+          ([key, value]) =>
+            value !== undefined &&
+            list.some((prefix) => key.startsWith(prefix)),
+        ),
+      );
+    },
+  };
+});
+
 const root = path.resolve(import.meta.dirname, "../..");
 const sha = "a".repeat(40);
 const environment = [
