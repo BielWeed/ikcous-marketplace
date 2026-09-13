@@ -15,6 +15,7 @@ import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
@@ -368,6 +369,7 @@ export function CheckoutView({
     setSelectedShippingOption,
     setShippingCep,
     freteIndefinido: ctxFreteIndefinido,
+    freteGratis,
   } = useCart();
 
   const cart = propCart ?? ctxCart;
@@ -777,6 +779,24 @@ export function CheckoutView({
       setShippingCep(null);
     }
   }, [shippingCep, cepDeEntrega, setSelectedShippingOption, setShippingCep]);
+
+  // ECONOMIA DO FRETE (pedido do Gabriel, 12/09/2026, tabela corrigida pelo
+  // crítico de desenho): SÓ EXIBIÇÃO — nunca escreve `selectedShippingOption`
+  // nem `shippingCep`, nunca entra no payload do pedido. A decisão de QUANDO
+  // cotar mora em `modoDeEconomiaDoFrete` (src/lib/economia-do-frete.ts); o
+  // hook cuida do efeito (debounce, cache por CEP, guarda de sequência) —
+  // ver src/hooks/useEconomiaDoFreteExibida.ts.
+  const economiaDoFrete = useEconomiaDoFreteExibida({
+    freteGratis,
+    cepDeEntrega,
+    temUsuario: !!user,
+    originCep: config.originCep,
+    localCepRange: config.localCepRange,
+    localDeliveryFee: config.localDeliveryFee,
+    freeShippingMin: config.freeShippingMin,
+    cart,
+    isOffline,
+  });
 
   // O CUPOM VALE PARA O CARRINHO DE AGORA (laudo 31/08, menor E): o cupom
   // era conferido SÓ no momento de aplicar. O carrinho encolhia depois —
@@ -1339,6 +1359,13 @@ export function CheckoutView({
   // Values are now passed from props to ensure consistency
   const discount = appliedCoupon?.discount || 0;
   const finalTotal = total - discount;
+
+  // ECONOMIA total exibida na barra de baixo (pedido do Gabriel,
+  // 12/09/2026): cupom + o que o frete grátis deixou de cobrar. NÃO muda o
+  // Total — a economia do frete já está embutida nele (frete grátis já
+  // entra como 0 em `shipping`/`total`); somar aqui de novo dobraria o
+  // desconto. Isto é só o NÚMERO da pílula.
+  const economiaTotal = discount + economiaDoFrete;
 
   const isValid = form.formState.isValid;
 
@@ -2918,11 +2945,25 @@ export function CheckoutView({
                               peça reprovada do lote C (frete cotado para A
                               não vale para B). Isto é só exibição; a
                               cotação/recotação em si não muda aqui. */}
-                          {semFreteSelecionado
-                            ? "a calcular"
-                            : shipping > 0
-                              ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
-                              : "Grátis"}
+                          {semFreteSelecionado ? (
+                            "a calcular"
+                          ) : shipping > 0 ? (
+                            `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                          ) : economiaDoFrete > 0 ? (
+                            // Frete grátis COM economia conhecida (pedido do
+                            // Gabriel, 12/09/2026): mostra o valor riscado
+                            // para explicar a pílula da barra de baixo — o
+                            // Total não muda (o frete grátis já entra como 0).
+                            <>
+                              <span className="mr-1 text-zinc-300 line-through">
+                                R${" "}
+                                {economiaDoFrete.toFixed(2).replace(".", ",")}
+                              </span>
+                              Grátis
+                            </>
+                          ) : (
+                            "Grátis"
+                          )}
                         </span>
                       </div>
                       {discount > 0 && (
@@ -3005,8 +3046,35 @@ export function CheckoutView({
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2 text-sm font-black text-zinc-900">
-                          <span>Total</span>
-                          <span>
+                          {/* AJUSTE da re-revisão (Opus, medido a 320/360/375px
+                              com o CSS real): quem cede espaço é a PALAVRA
+                              "Total" (`min-w-0 truncate`), nunca um número.
+                              Truncar a pílula mostrava dinheiro pela metade
+                              ("-R$ 12,…") a 320px mesmo com valores comuns;
+                              a pílula e o valor do total ficam inteiros
+                              (`shrink-0 whitespace-nowrap`). A 375px nada
+                              muda: "Total" aparece inteiro. */}
+                          <span className="flex min-w-0 items-center gap-1">
+                            <span className="min-w-0 truncate whitespace-nowrap">
+                              Total
+                            </span>
+                            {/* Pedido do Gabriel (12/09/2026): pílula
+                                compacta com a ECONOMIA (cupom + o que o
+                                frete grátis deixou de cobrar) — nunca a
+                                porcentagem nem o código do cupom, só o
+                                valor. Some quando não há economia nenhuma;
+                                não altera `totalExibido` (o desconto já
+                                está embutido nele). */}
+                            {economiaTotal > 0 && (
+                              <span
+                                className="shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
+                                aria-label={`Desconto de R$ ${economiaTotal.toFixed(2).replace(".", ",")}`}
+                              >
+                                -R$ {economiaTotal.toFixed(2).replace(".", ",")}
+                              </span>
+                            )}
+                          </span>
+                          <span className="shrink-0 whitespace-nowrap">
                             {/* Achado 1 do bloqueante (12/09/2026): mesmo
                                 valor do painel (`totalExibido`) — sem
                                 cotação válida a barra de baixo não pode
