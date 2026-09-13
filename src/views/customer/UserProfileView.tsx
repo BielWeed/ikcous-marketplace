@@ -142,16 +142,20 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
     [],
   );
 
-  // Regra de produto do Gabriel (11/09/2026): perfil público NÃO exige
-  // login. UM CAMINHO SÓ, com ou sem sessão: `AuthContext` hidrata `user` do
-  // cache local antes de falar com o servidor, e uma sessão em cache com
-  // token expirado/irrecuperável cairia num ramo por tabela e, com a
-  // migration 20261111000000 aplicada, veria "—" PERMANENTE numa tela que é
-  // pública por regra de produto. Por isso `reviews`/`questions` do autor se
-  // leem SEMPRE pelas duas funções da vitrine (nunca devolvem `user_id`).
-  // Efeito visível: no perfil público, o próprio autor e o admin passam a
-  // ver só o que é público (a pendente não aparece aqui; a moderação tem a
-  // tela dela).
+  // Regra de produto (11/09/2026, invertida em 13/09/2026 — #487/#561): o
+  // perfil público EXIGE login igual ao perfil próprio. O portão mora nas
+  // listas de navegação do App.tsx (`handleNavigate` e a sincronização de
+  // rota via `popstate`): mandam o visitante ao `auth` gravando
+  // `requested: "user-profile"` no `history.state`, e `destinoPosLogin`
+  // devolve a pessoa a esta view depois de entrar. Mesmo com o portão, a
+  // carga de dados aqui segue UM CAMINHO SÓ, com ou sem sessão firme:
+  // `AuthContext` hidrata `user` do cache local antes de falar com o
+  // servidor, e uma sessão em cache com token expirado/irrecuperável cairia
+  // num ramo por tabela e, com a migration 20261111000000 aplicada, veria
+  // "—" PERMANENTE. Por isso `reviews`/`questions` do autor se leem SEMPRE
+  // pelas duas funções da vitrine (nunca devolvem `user_id`). Efeito
+  // visível: o próprio autor e o admin veem aqui só o que é público (a
+  // pendente não aparece aqui; a moderação tem a tela dela).
   useEffect(() => {
     if (!userId) return;
 

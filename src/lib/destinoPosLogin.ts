@@ -7,14 +7,16 @@ import type { View } from "@/types";
  * fora daqui é tratado como lixo, nunca como destino.
  *
  * Esta lista existe em MAIS DOIS lugares, sem nada amarrando os três:
- * `App.tsx` (o `if` de `handleNavigate`, perto de "profile" || "account-
- * settings" || "address-form") e `App.tsx` (o mesmo `if`, na sincronização
- * de rota via `popstate`). Adicionar uma quarta view redirecionável exige
- * mudar os três — os dois em `App.tsx` quebram na cara (a pessoa não é
- * redirecionada), mas esquecer este aqui falha em silêncio: a pessoa volta
- * ao perfil depois de logar em vez de ir para a view nova.
+ * `App.tsx` (o `if` de `handleNavigate`, perto de "user-profile" ||
+ * "profile" || "account-settings" || "address-form") e `App.tsx` (o mesmo
+ * `if`, na sincronização de rota via `popstate`). Adicionar uma quinta view
+ * redirecionável exige mudar os três — os dois em `App.tsx` quebram na cara
+ * (a pessoa não é redirecionada), mas esquecer este aqui falha em silêncio:
+ * a pessoa volta ao perfil depois de logar em vez de ir para a view nova
+ * (foi o que aconteceu com "user-profile" no #561, corrigido em 13/09/2026).
  */
 const VIEWS_REDIRECIONAVEIS = new Set<string>([
+  "user-profile",
   "profile",
   "account-settings",
   "address-form",
