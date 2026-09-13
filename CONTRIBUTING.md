@@ -466,7 +466,8 @@ git switch main && git pull
 git tag -a v1.2.0 -m "release 1.2.0"
 git push origin v1.2.0
 
-# 6. E ENTÃO O PASSO QUE TODO MUNDO ESQUECE:
+# 6. E ENTÃO O PASSO QUE TODO MUNDO ESQUECE. MERGE COMMIT, não squash:
+#    mesma estratégia do passo 4, pelo motivo do parágrafo abaixo.
 gh pr create --base develop --head release/1.2.0 --title "chore: volta a release 1.2.0 para develop"
 
 # 7. só DEPOIS do passo 6 mergeado, apague a branch:
@@ -475,6 +476,15 @@ git branch -d release/1.2.0
 git push origin --delete release/1.2.0
 git fetch --prune
 ```
+
+**Por que merge commit no passo 6.** Squash criaria um commit **novo**,
+equivalente em conteúdo ao merge: a `main` e a `develop` passariam a
+registrar a mesma versão em commits diferentes. Foi o que divergiu a 1.0.3 —
+três commits independentes com a mesma versão e a mesma entrada de
+`CHANGELOG`, conflito em `package.json`, `package-lock.json` e `CHANGELOG.md`
+sem uma linha de código em disputa — e o PR da 1.1.0 (#189) nasceu em
+conflito por causa disso; reconciliado em `f0d4b9d`. Diagnóstico completo na
+#191.
 
 **O passo 7 vem por último por um motivo.** O passo 6 precisa da
 `release/1.2.0` viva no remoto: sem ela o `gh pr create` falha com
@@ -520,7 +530,8 @@ gh pr create --base main --title "hotfix: <assunto>"
 git switch main && git pull
 git tag -a v1.2.1 -m "hotfix <assunto>" && git push origin v1.2.1
 
-# 3. O PASSO QUE CAUSA REGRESSÃO QUANDO ESQUECIDO:
+# 3. O PASSO QUE CAUSA REGRESSÃO QUANDO ESQUECIDO. MERGE COMMIT, não squash —
+#    mesmo porquê do passo 6 do Release.
 gh pr create --base develop --head hotfix/<assunto> --title "fix: leva o hotfix <assunto> para develop"
 
 # 4. só depois do passo 3 mergeado, apague a branch:
@@ -613,6 +624,11 @@ O checklist condicional do template de PR cobre isso. Marque a label
 Os cinco bloqueiam. "Bloqueia" aqui significa "os dois combinaram de não mergear
 com isso vermelho" — o GitHub não impede nada, ver
 [A trava que não existe](#a-trava-que-não-existe).
+
+**PR em conflito não dispara CI.** O workflow de `pull_request` de um PR
+conflitante nunca roda, e `gh pr checks` nele mostra só o deploy da Vercel —
+que tem a cara de CI verde e é CI ausente. Quem decide é `gh run list`.
+Medido na 1.1.0, quando o PR #189 nasceu em conflito (#191).
 
 ### A catraca de lint
 
