@@ -153,7 +153,7 @@ semanas seguidas, o problema não é o board — é a fila de decisões.
 flowchart LR
     A["Pronto pra pegar"] -->|"git switch -c feat/x a partir de develop"| B["Em progresso"]
     B -->|"gh pr create --base develop"| C["Em revisao"]
-    C -->|"merge squash"| D["Em teste (preview)"]
+    C -->|"merge commit"| D["Em teste (preview)"]
     D -->|"conferido no preview da develop"| E["Feito"]
     E -->|"quando a onda fecha"| F["release/x.y.z para main"]
 ```
