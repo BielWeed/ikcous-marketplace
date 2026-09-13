@@ -793,7 +793,7 @@ const AppContent = () => {
       // Esta lista de views redirecionáveis existe em MAIS DOIS lugares,
       // sem nada amarrando os três: `src/lib/destinoPosLogin.ts`
       // (VIEWS_REDIRECIONAVEIS) e mais abaixo neste mesmo arquivo, na
-      // sincronização de rota via `popstate`. Adicionar uma quarta view
+      // sincronização de rota via `popstate`. Adicionar uma quinta view
       // aqui e esquecer as outras duas falha em silêncio.
       if (
         (view === "user-profile" ||
@@ -1289,9 +1289,25 @@ const AppContent = () => {
     // idempotência própria é necessária: se a chamada #1 tiver sido engolida
     // (transição travada, guarda com ref defasado), `history.state` continua
     // sendo o do login e a chamada #2 refaz o trabalho sozinha.
-    const destino = destinoPosLogin(globalThis.history.state);
+    const estadoNoLogin = globalThis.history.state;
+    const destino = destinoPosLogin(estadoNoLogin);
     if (destino !== null) {
-      handleNavigate(destino);
+      // O `id` do perfil pedido segue no state do login (o gate grava
+      // {view:"auth", id, requested}) e precisa ser lido AQUI, antes de
+      // `handleNavigate` sobrescrever o state com o pushState do destino.
+      // "user-profile" sem o repasse montaria a view sem `userId` — skeleton
+      // eterno. O repasse é SÓ para ela: id nas outras views criaria `?id`
+      // fantasma em URL que nunca o teve.
+      const idDoPedido =
+        typeof estadoNoLogin === "object" &&
+        estadoNoLogin !== null &&
+        typeof (estadoNoLogin as { id?: unknown }).id === "string"
+          ? (estadoNoLogin as { id: string }).id
+          : undefined;
+      handleNavigate(
+        destino,
+        destino === "user-profile" ? idDoPedido : undefined,
+      );
     }
   }, [handleNavigate]);
 

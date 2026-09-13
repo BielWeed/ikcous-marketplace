@@ -145,9 +145,12 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
   // Regra de produto (11/09/2026, invertida em 13/09/2026 — #487/#561): o
   // perfil público EXIGE login igual ao perfil próprio. O portão mora nas
   // listas de navegação do App.tsx (`handleNavigate` e a sincronização de
-  // rota via `popstate`): mandam o visitante ao `auth` gravando
-  // `requested: "user-profile"` no `history.state`, e `destinoPosLogin`
-  // devolve a pessoa a esta view depois de entrar. Mesmo com o portão, a
+  // rota via `popstate`). Só o portão do `handleNavigate` grava `requested`
+  // + o `id` no `history.state` — é o que `destinoPosLogin` usa para
+  // devolver a pessoa a esta view, com o perfil pedido, depois de entrar.
+  // Pela porta do `popstate` (URL direta, Voltar) o state do login fica sem
+  // `requested` e sem `id`: após entrar a pessoa cai no perfil PRÓPRIO —
+  // limitação conhecida, não regressão. Mesmo com o portão, a
   // carga de dados aqui segue UM CAMINHO SÓ, com ou sem sessão firme:
   // `AuthContext` hidrata `user` do cache local antes de falar com o
   // servidor, e uma sessão em cache com token expirado/irrecuperável cairia

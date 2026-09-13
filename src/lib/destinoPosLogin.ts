@@ -60,7 +60,10 @@ function comoRegistro(valor: unknown): Record<string, unknown> | null {
  *      aba nova com `history.state` nulo, e precisa ser mandado ao perfil,
  *      não travado na tela de login.
  *   1. `requested` presente e pertencente a `VIEWS_REDIRECIONAVEIS` — a
- *      view que a pessoa pediu e foi barrada por falta de conta.
+ *      view que a pessoa pediu e foi barrada por falta de conta. Para
+ *      "user-profile" o pedido só vale com um `id` utilizável no state
+ *      (string não vazia): a view só desenha com `userId`, e honrar sem id
+ *      mandaria a um skeleton eterno. Sem id, cai nas regras seguintes.
  *   2. `from` igual a "checkout" ou "cart" — de onde ela veio.
  *   3. qualquer outra coisa (inclusive `state` nulo, lixo, `from`
  *      desconhecido) — cai no perfil.
@@ -75,7 +78,15 @@ export function destinoPosLogin(state: unknown): View | null {
 
   const requested = registro?.requested;
   if (typeof requested === "string" && VIEWS_REDIRECIONAVEIS.has(requested)) {
-    return requested as View;
+    // `user-profile` sem id utilizável é tela morta: a view só desenha com
+    // `userId`, e honrar o pedido sem id trocaria o login por um skeleton
+    // eterno. Sem id, ignora o `requested` e segue para as regras
+    // seguintes — o pior caso volta a ser o comportamento de antes. As
+    // outras três views não carregam id.
+    const idUtilizavel = typeof registro?.id === "string" && registro.id !== "";
+    if (requested !== "user-profile" || idUtilizavel) {
+      return requested as View;
+    }
   }
 
   const from = registro?.from;
