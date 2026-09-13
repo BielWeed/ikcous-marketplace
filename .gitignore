@@ -32,6 +32,10 @@ build/
 # Log files accumulated during development
 *.log
 *.txt
+# ...exceto o robots.txt da loja, que é entrega versionada (issue #117):
+# sem esta negação, a regra *.txt acima é exatamente o motivo de ele nunca
+# ter entrado no repositório.
+!public/robots.txt
 build_*.txt
 build_*.log
 lint_*.txt
