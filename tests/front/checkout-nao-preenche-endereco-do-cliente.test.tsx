@@ -182,7 +182,11 @@ describe("CheckoutView (convidado) — para de preencher o endereço do cliente"
     expect(state.value).toBe("");
   });
 
-  it("o aviso de região mostra a cidade da loja quando ela configurou", async () => {
+  it("o aviso de região mostra a cidade da loja quando ela configurou (cobertura local)", async () => {
+    // #525: o aviso afirma EXCLUSIVIDADE de entrega — só é verdade com
+    // cobertura LOCAL. O caso nacional (aviso não pode nascer) mora em
+    // aviso-de-regiao-olha-a-cobertura.test.tsx.
+    mockConfig.shippingCoverage = "local";
     mockConfig.storeCity = "Uberlândia";
     mockConfig.storeState = "MG";
     const { CheckoutView } = await import("@/views/customer/CheckoutView");

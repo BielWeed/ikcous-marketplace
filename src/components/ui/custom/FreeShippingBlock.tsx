@@ -163,10 +163,12 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
 
           <div className="min-w-0 flex-1">
             <div className="mb-0.5 flex items-center gap-1.5 overflow-hidden">
-              {/* Sem cidade configurada, o rótulo e o ponto separador somem
-                  os dois — "Entrega Grátis" fica sozinho, nunca "• Entrega
-                  Grátis" com o separador órfão. */}
-              {config.storeCity && (
+              {/* Sem cidade configurada — ou com cobertura NACIONAL, em que
+                  o selo leria como "entrega só em <cidade>" e seria falso
+                  (#525) — o rótulo e o ponto separador somem os dois:
+                  "Entrega Grátis" fica sozinho, nunca "• Entrega Grátis"
+                  com o separador órfão. */}
+              {config.storeCity && config.shippingCoverage === "local" && (
                 <>
                   <span className="whitespace-nowrap text-[9px] font-bold uppercase tracking-wider text-emerald-400">
                     {config.storeCity}
