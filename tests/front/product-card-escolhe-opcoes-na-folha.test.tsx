@@ -211,6 +211,16 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       (b) => b.textContent === "Close",
     )!;
 
+  // A ALÇA (barrinha do topo da folha): peça 03, 13/09 — pedido do dono ao
+  // vivo. Antes era só desenho (div aria-hidden); agora é botão que fecha por
+  // CLIQUE e por ARRASTO para baixo. Endereçada por testid — endereço
+  // estável, imune a ajuste de rótulo (o aria-label dela nomeia o gesto e
+  // se distingue do X; quem endereça por texto teria de acompanhar).
+  const alcaDaFolha = () =>
+    document.querySelector<HTMLButtonElement>(
+      'button[data-testid="product-card-options-handle"]',
+    )!;
+
   async function abrirFolha() {
     await act(async () => {
       botaoDeAcao()!.click();
@@ -384,6 +394,132 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
 
     expect(chip("M").getAttribute("aria-pressed")).toBe("true");
     expect(ctaDaFolha().textContent).toContain("65,00");
+  });
+
+  // ── FECHAR PELA ALÇA (peça 03: pedido do dono ao vivo, 13/09) ──────────
+  // Três caminhos além do X: clicar na barrinha, arrastar a barrinha para
+  // baixo e clicar fora (no véu). Ver cada caso pelo motivo.
+
+  it("a alça é botão de verdade que anuncia 'Fechar (arraste para baixo)' — área de toque generosa, não só o risco de 4px", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    const alca = alcaDaFolha();
+    expect(alca.tagName).toBe("BUTTON");
+    // O anúncio nomeia o GESTO e se DISTINGUE do X (que continua "Fechar"):
+    // dois botões de fechar com o mesmo nome obrigavam o leitor de tela a
+    // adivinhar qual é qual.
+    expect(alca.getAttribute("aria-label")).toBe("Fechar (arraste para baixo)");
+    // h-11 = 44px de alvo de toque (WCAG 2.5.5): a área tocável é o botão
+    // inteiro, altura de dedo — não o risco de 4px dentro dele.
+    expect(alca.className).toContain("h-11");
+  });
+
+  it("clicar na alça (barrinha) fecha a folha — caminho que o dono pediu", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+    expect(folha()).not.toBeNull();
+
+    await act(async () => {
+      alcaDaFolha().click();
+    });
+    expect(folha()).toBeNull();
+  });
+
+  it("arrastar a alça para baixo (além de 64px) fecha a folha", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    // jsdom não tem PointerEvent: MouseEvent com type de pointer dispara os
+    // handlers normalmente (é o que o app escuta).
+    await act(async () => {
+      alcaDaFolha().dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 180 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientY: 172 }),
+      );
+    });
+    expect(folha()).toBeNull();
+  });
+
+  it("arrasto curto (menos de 64px) NÃO fecha — a folha volta ao lugar", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    await act(async () => {
+      alcaDaFolha().dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 130 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientY: 128 }),
+      );
+    });
+    expect(folha()).not.toBeNull();
+  });
+
+  it("o clique sintético logo após um arrasto curto NÃO fecha (guarda movimentou)", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    // Depois de um pointerup, o navegador despacha um click no MESMO
+    // elemento do pointerdown (a alça). Sem a guarda `movimentou`, todo
+    // arrasto curto que voltou ao lugar fecharia a folha "por acidente" —
+    // o gesto de puxar e soltar viraria fecho disfarçado de toque.
+    await act(async () => {
+      alcaDaFolha().dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 130 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientY: 128 }),
+      );
+    });
+    await act(async () => {
+      alcaDaFolha().click();
+    });
+    expect(folha()).not.toBeNull();
+  });
+
+  it("clicar FORA (no véu escuro) fecha a folha — âncora do contrato do Radix", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    // O defeito relatado pelo dono ("clicar fora não fecha") era a ÁREA
+    // MORTA criada pela BottomNav cobrindo o VÉU (nav z-[120] sobre sheet
+    // z-50): o toque na faixa da nav atravessava e acertava o rodapé da
+    // folha, não o véu. O conserto de camada (sheet no z-[130]) elimina a
+    // área morta; este caso ancora o contrato de o véu em si fechar
+    // (outside-pointerdown do Radix Dialog).
+    const overlay = document.querySelector('[data-slot="sheet-overlay"]');
+    expect(overlay).not.toBeNull();
+    await act(async () => {
+      overlay!.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+      overlay!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      overlay!.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      overlay!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(folha()).toBeNull();
   });
 
   it("sem a prop nova, o botão continua levando para a tela do produto (retrocompatível) e nenhuma folha abre", async () => {

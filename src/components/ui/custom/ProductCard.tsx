@@ -135,6 +135,47 @@ export const ProductCard = memo(function ProductCard({
     () => new Map(),
   );
 
+  // ── Arrasto da alça da folha (peça 03, 13/09 — pedido do dono ao vivo) ──
+  // Puxar a barrinha para baixo arrasta a folha junto; soltar além de 64px
+  // fecha, soltar antes devolve ao lugar. Os listeners de move/up moram na
+  // JANELA (não em setPointerCapture): o gesto continua mesmo com o dedo
+  // saindo da alça, e dispensa API que o jsdom não tem. O clique simples é
+  // outro caminho (onClick); depois de um arrasto de verdade o clique
+  // sintético do navegador é engolido (`movimentou`) para um arrasto curto
+  // que voltou ao lugar não fechar por acidente.
+  const arrastoDaAlcaRef = useRef({ y: 0, ativo: false, movimentou: false });
+  const aoPuxarAlcaDaFolha = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const folhaEl = e.currentTarget.closest<HTMLElement>(
+      '[data-slot="sheet-content"]',
+    );
+    if (!folhaEl) return;
+    arrastoDaAlcaRef.current = { y: e.clientY, ativo: true, movimentou: false };
+    // A folha segue o dedo SEM transição — a classe base carrega
+    // `transition` para abrir/fechar, e durante o arrasto ela viraria atraso.
+    folhaEl.style.transition = "none";
+    const aoMover = (ev: PointerEvent) => {
+      if (!arrastoDaAlcaRef.current.ativo) return;
+      const dy = Math.max(0, ev.clientY - arrastoDaAlcaRef.current.y);
+      if (dy > 8) arrastoDaAlcaRef.current.movimentou = true;
+      folhaEl.style.transform = `translateY(${dy}px)`;
+    };
+    const aoSoltar = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", aoMover);
+      window.removeEventListener("pointerup", aoSoltar);
+      window.removeEventListener("pointercancel", aoSoltar);
+      arrastoDaAlcaRef.current.ativo = false;
+      // Limpa o transform ANTES de fechar para a animação de saída
+      // (slide-out-to-bottom) partir do lugar certo.
+      folhaEl.style.transition = "";
+      folhaEl.style.transform = "";
+      const dy = ev.clientY - arrastoDaAlcaRef.current.y;
+      if (dy > 64) setFolhaOpcoesAberta(false);
+    };
+    window.addEventListener("pointermove", aoMover);
+    window.addEventListener("pointerup", aoSoltar);
+    window.addEventListener("pointercancel", aoSoltar);
+  };
+
   const variantGroups = useMemo(() => {
     const grupos = new Map<string, ProductVariant[]>();
     product.variants?.forEach((v) => {
@@ -635,12 +676,32 @@ export const ProductCard = memo(function ProductCard({
             onClick={(e) => e.stopPropagation()}
             className="mx-auto max-h-[88dvh] gap-0 sm:max-w-md sm:rounded-t-3xl"
           >
-            {/* Alça visual: só desenho, sem gesto de arrastar (o mockup B
-                não promete arrasto e o X/fora/Escape já fecham). */}
-            <div
-              aria-hidden="true"
-              className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-zinc-300"
-            />
+            {/* Alça que FECHA (peça 03, 13/09 — pedido do dono ao vivo):
+                clicar nela fecha a folha; arrastar para baixo também
+                (handler acima). Botão real com área de toque generosa
+                (h-11 = 44px, alvo de toque WCAG 2.5.5) — o desenho continua
+                sendo o risco fino DENTRO dele — e o anúncio nomeia o GESTO
+                ("Fechar (arraste para baixo)") para se DISTINGUIR do X, que
+                fica com o "Fechar" simples. */}
+            <button
+              type="button"
+              data-testid="product-card-options-handle"
+              aria-label="Fechar (arraste para baixo)"
+              onClick={() => {
+                if (arrastoDaAlcaRef.current.movimentou) {
+                  arrastoDaAlcaRef.current.movimentou = false;
+                  return;
+                }
+                setFolhaOpcoesAberta(false);
+              }}
+              onPointerDown={aoPuxarAlcaDaFolha}
+              className="focus:outline-hidden mt-3 flex h-11 w-full shrink-0 cursor-pointer touch-none items-center justify-center rounded-full focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              <span
+                aria-hidden="true"
+                className="h-1 w-10 rounded-full bg-zinc-300"
+              />
+            </button>
             <div
               data-testid="product-card-options-scroll"
               className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4 pt-2"
