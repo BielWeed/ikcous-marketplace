@@ -57,11 +57,20 @@ vi.mock("@/components/ui/custom/ProductQA", () => ({
   ProductQA: () => null,
 }));
 
+// Mutável de propósito: o caso #571 reescreve `shippingCoverage` para
+// "national" e o `beforeEach` repõe o padrão — guarda contra vazamento
+// entre testes (mesma técnica de aviso-de-regiao-olha-a-cobertura.test.tsx).
+const { mockConfig } = vi.hoisted(() => ({
+  mockConfig: {
+    enableReviews: true,
+    shippingCoverage: "local" as "national" | "local",
+    storeCity: "Sao Paulo" as string | undefined,
+    storeState: "SP" as string | undefined,
+  },
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: { enableReviews: true, storeCity: "Sao Paulo", storeState: "SP" },
-    isLoaded: true,
-  }),
+  useStore: () => ({ config: mockConfig, isLoaded: true }),
 }));
 
 // @ts-expect-error flag interna do React, sem tipo publico -- mesmo padrao
@@ -90,6 +99,7 @@ describe("ProductView — remove a promessa de troca que o app nao cumpre", () =
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    mockConfig.shippingCoverage = "local";
     getReviewsByProduct.mockClear();
     subscribeToReviews.mockClear();
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
@@ -119,6 +129,7 @@ describe("ProductView — remove a promessa de troca que o app nao cumpre", () =
   });
 
   it("nao mostra 'Troca garantida' em lugar nenhum da pagina", async () => {
+    mockConfig.shippingCoverage = "local";
     const { ProductView } = await import("@/views/customer/ProductView");
 
     await act(async () => {
@@ -136,6 +147,32 @@ describe("ProductView — remove a promessa de troca que o app nao cumpre", () =
     expect(hospedeiro.textContent).not.toContain("Troca garantida");
     // Os dois beneficios verdadeiros continuam de pe: entrega e estoque.
     expect(hospedeiro.textContent).toContain("Entrega em Sao Paulo, SP");
+    expect(hospedeiro.textContent).toContain(
+      "Produto em estoque - Envio rápido",
+    );
+  });
+
+  it("loja com cobertura NACIONAL e cidade configurada nao mostra 'Entrega em' (#571)", async () => {
+    // O caso da issue: a loja entrega para o Brasil todo (frete por API);
+    // com a cidade na identidade, o selo afirmava "Entrega em <cidade>" —
+    // falso para quem não restringe a entrega a ela.
+    mockConfig.shippingCoverage = "national";
+    const { ProductView } = await import("@/views/customer/ProductView");
+
+    await act(async () => {
+      raiz.render(
+        <ProductView
+          product={produto}
+          isFavorite={false}
+          onToggleFavorite={() => {}}
+          onAddToCart={() => {}}
+          onBack={() => {}}
+        />,
+      );
+    });
+
+    expect(hospedeiro.textContent).not.toContain("Entrega em");
+    // O que sumiu foi SÓ o bloco de entrega — o estoque continua de pé.
     expect(hospedeiro.textContent).toContain(
       "Produto em estoque - Envio rápido",
     );

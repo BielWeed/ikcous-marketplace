@@ -1231,9 +1231,11 @@ export const ProductView = React.memo(function ProductView({
                 não existe fluxo de troca/devolução neste app (issues #46 e
                 #108 seguem abertas), então a promessa era falsa. */}
             <div className="mt-6 space-y-3">
-              {/* Sem cidade configurada, o bloco inteiro (ícone e texto)
-                  não é renderizado — nunca "Entrega em" sem destino. */}
-              {config.storeCity && (
+              {/* Sem cidade configurada, ou com cobertura NACIONAL — em que
+                  "Entrega em <cidade>" leria como exclusividade e seria falso
+                  (#571, mesmo gate do #525) — o bloco inteiro (ícone e texto)
+                  não é renderizado. Fail-closed: só cobertura "local" mostra. */}
+              {config.storeCity && config.shippingCoverage === "local" && (
                 <div className="flex items-center gap-3 text-sm text-gray-700">
                   <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
                     <Truck className="size-4" />

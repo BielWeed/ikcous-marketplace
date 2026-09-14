@@ -733,19 +733,20 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                                 neste app (issues #46 e #108 seguem abertas),
                                 e o selo de entrega usa a cidade da loja, se
                                 configurada -- nunca "local" numa loja com
-                                cobertura nacional. */}
+                                cobertura nacional (#571). */}
                             <div className="mt-3 space-y-1.5 border-t border-zinc-100 pt-3">
-                              {config.storeCity && (
-                                <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
-                                  <Truck className="size-3.5 text-zinc-400" />
-                                  <span>
-                                    Entrega em {config.storeCity}
-                                    {config.storeState
-                                      ? `, ${config.storeState}`
-                                      : ""}
-                                  </span>
-                                </div>
-                              )}
+                              {config.storeCity &&
+                                config.shippingCoverage === "local" && (
+                                  <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
+                                    <Truck className="size-3.5 text-zinc-400" />
+                                    <span>
+                                      Entrega em {config.storeCity}
+                                      {config.storeState
+                                        ? `, ${config.storeState}`
+                                        : ""}
+                                    </span>
+                                  </div>
+                                )}
                               <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
                                 <ShoppingCart className="size-3.5 text-zinc-400" />
                                 <span>Produto em estoque - Envio rápido</span>
