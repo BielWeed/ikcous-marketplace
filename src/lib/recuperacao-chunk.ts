@@ -42,6 +42,7 @@ import {
   type MotivoDeRecarga,
   gravaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
+import { versaoLegivelDeResposta } from "@/lib/versao-do-servidor";
 
 declare const __APP_VERSION__: string;
 
@@ -70,6 +71,12 @@ export const PRAZO_SONDA_DE_REDE_MS = 5000;
 
 /** Prazo do ciclo do SW antes de cair no reload seco. */
 export const PRAZO_CICLO_DO_SW_MS = 2500;
+
+/** Prazo do apply da versão nova (botão "Atualizar Agora") antes do reload
+ * de segurança: no caso normal o controllerchange chega em segundos e
+ * recarrega UMA vez; se nunca chegar (SW preso, aba não controlada), o
+ * prazo recarrega do mesmo jeito — o instalador não pode pendurar. */
+export const PRAZO_APLICACAO_UPDATE_MS = 1200;
 
 /** Prazo do deleteDatabase aguardado: `blocked` com conexão aberta (o
  * dataVault mantém uma; Safari/iOS é pior) não pode travar a navegação. */
@@ -227,10 +234,14 @@ export function pedirRecargaSubordinada(agora: number = Date.now()): boolean {
 
 // ─── Sonda de rede por conteúdo ──────────────────────────────────────────────
 
-/** "Rede verificada" é CONTEÚDO de /version.json — status ok + content-type
- * json + corpo com `version` string. Portal cativo e DNS sequestrado
- * respondem 200 com HTML: falha fechado aqui. Falso negativo (não purga) é
- * aceitável — a UI mostra a tela honesta de offline. */
+/** "Rede verificada" é CONTEÚDO de /version.json — a MESMA definição do
+ * módulo único `versao-do-servidor` (status ok + content-type json declarado
+ * + corpo com `version` string): portal cativo e DNS sequestrado respondem
+ * 200 com HTML e falham FECHADO aqui. Falso negativo (não purga) é
+ * aceitável — a UI mostra a tela honesta de offline. A leitura é a mesma do
+ * portão do useUpdateCheck; o que difere é a DECISÃO sobre `null`: aqui
+ * recusa (purge sem rede provada apagaria o offline de quem tinha rede
+ * mentindo), no portão liberta (fail-open). */
 export async function verificarRedeDeVerdade(
   buscar: typeof fetch = fetch,
 ): Promise<boolean> {
@@ -242,11 +253,7 @@ export async function verificarRedeDeVerdade(
         cache: "no-store",
         signal: controle.signal,
       });
-      if (!resposta.ok) return false;
-      const tipo = resposta.headers.get("content-type") ?? "";
-      if (!tipo.includes("json")) return false;
-      const corpo = (await resposta.json()) as { version?: unknown };
-      return typeof corpo?.version === "string";
+      return (await versaoLegivelDeResposta(resposta)) !== null;
     } finally {
       clearTimeout(prazo);
     }
@@ -339,6 +346,59 @@ export async function recuperarPorCicloDoSW(): Promise<boolean> {
     motivo: "recuperacao-erro-modulo",
     prazoMs: PRAZO_CICLO_DO_SW_MS,
   });
+}
+
+/** O APPLY da versão nova — o "Atualizar Agora" do aviso, que vivia no
+ * `useUpdateCheck.handleUpdate`: força o SW esperado a assumir
+ * (`acionar(true)` → skipWaiting) e recarrega UMA vez no controllerchange.
+ * A peça de 14/09 mediu o pendurar: se o controllerchange nunca chega (SW
+ * preso em install falhando, client não controlado, múltiplas abas), nada
+ * recarregava. O prazo de segurança garante o pior caso — recarrega do
+ * mesmo jeito — e um `acionar` que REJEITA não pula mais o prazo (o timer
+ * é agendado depois do resultado, dado ou erro). Sem desregistrar NUNCA. */
+export function aplicarAtualizacaoPendenteERecarregar(opcoes: {
+  acionar: (forcar: boolean) => Promise<void> | void;
+  motivo: MotivoDeRecarga;
+  prazoMs: number;
+}): void {
+  gravaMotivoDeRecarga(opcoes.motivo);
+
+  let recarregou = false;
+  const recarregarUmaVez = () => {
+    if (recarregou) return;
+    recarregou = true;
+    window.location.reload();
+  };
+  const aoAssumir = () => recarregarUmaVez();
+
+  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("controllerchange", aoAssumir);
+  }
+
+  void Promise.resolve(opcoes.acionar(true))
+    .catch(() => {
+      // O resultado (dado ou erro) do acionar NÃO é o fim do caminho: o
+      // prazo de segurança abaixo recarrega do mesmo jeito. Engolir aqui
+      // evita rejeição não-tratada num caminho que já tem dono.
+    })
+    .finally(() => {
+      setTimeout(() => {
+        try {
+          if (
+            typeof navigator !== "undefined" &&
+            "serviceWorker" in navigator
+          ) {
+            navigator.serviceWorker.removeEventListener(
+              "controllerchange",
+              aoAssumir,
+            );
+          }
+        } catch {
+          // sem removeEventListener: a recarga é o fim do caminho mesmo assim
+        }
+        if (!recarregou) recarregarUmaVez();
+      }, opcoes.prazoMs);
+    });
 }
 
 async function derrubarServiceWorkers(): Promise<void> {
