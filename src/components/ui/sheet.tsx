@@ -7,7 +7,9 @@ import { cn } from "@/lib/utils";
 // O onOpenChange do consumidor, publicado para o SheetContent: é por ele
 // que o guardião do clique pós-fecho FECHA a folha no caminho de toque
 // (quando ele mesmo engole o click — ver o guardião lá).
-const ContextoFechoDaFolha = React.createContext<((aberta: boolean) => void) | null>(null);
+const ContextoFechoDaFolha = React.createContext<
+  ((aberta: boolean) => void) | null
+>(null);
 
 function Sheet({
   onOpenChange,
@@ -15,7 +17,11 @@ function Sheet({
 }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return (
     <ContextoFechoDaFolha.Provider value={onOpenChange ?? null}>
-      <SheetPrimitive.Root data-slot="sheet" onOpenChange={onOpenChange} {...props} />
+      <SheetPrimitive.Root
+        data-slot="sheet"
+        onOpenChange={onOpenChange}
+        {...props}
+      />
     </ContextoFechoDaFolha.Provider>
   );
 }
