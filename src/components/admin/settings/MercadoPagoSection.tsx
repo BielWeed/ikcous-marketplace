@@ -72,7 +72,15 @@ const VAZIA: ConfiguracaoMp = {
  * (frases escritas aqui do lado de cá do negócio, sem jargão e sem segredo)
  * e por isso pode ir direto para a tela. Todo o resto passa pelo tradutor
  * da casa, que só conhece causas fixas do SDK.
+ *
+ * A frase de serviço inativo existe porque a seção MENTIU uma vez: com a
+ * edge ainda não publicada no projeto, o dono viu "Verifique sua internet"
+ * com a internet perfeita (14/09/2026, 404 da função nova medido no
+ * gateway). Serviço ausente e rede caída são conselhos diferentes.
  */
+const SERVICO_DE_CHAVES_INATIVO =
+  "O serviço de chaves do Mercado Pago ainda não está ativado nesta instalação. Fale com o suporte para ativá-lo no servidor.";
+
 async function erroAmigavel(error: unknown, generico: string): Promise<string> {
   try {
     const detalhes = error as { name?: unknown; context?: unknown };
@@ -93,6 +101,7 @@ async function erroAmigavel(error: unknown, generico: string): Promise<string> {
   }
   return mensagemAmigavelErroEdgeFunction(error, {
     mensagemGenerica: generico,
+    mensagemServicoInativo: SERVICO_DE_CHAVES_INATIVO,
   });
 }
 
