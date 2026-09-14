@@ -120,7 +120,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             <div className="relative z-10 min-w-0 flex-1 py-0.5">
               <div className="mb-0.5 flex items-center gap-1.5">
                 <span className="text-[8px] font-black uppercase tracking-[0.15em] text-emerald-500">
-                  Premium Delivery
+                  Seu carrinho
                 </span>
                 <div className="size-1 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
               </div>
@@ -138,7 +138,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
               ) : isFree ? (
                 <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-500">
                   <Truck className="size-3" />
-                  <span>Frete VIP Liberado</span>
+                  <span>Frete Grátis Liberado</span>
                 </div>
               ) : (
                 <p className="text-[10px] font-semibold leading-tight text-slate-600">
@@ -147,7 +147,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                     {formatCurrency(amountToFree)}
                   </span>{" "}
                   para o{" "}
-                  <span className="italic text-emerald-500">Frete VIP</span>
+                  <span className="italic text-emerald-500">Frete Grátis</span>
                 </p>
               )}
             </div>

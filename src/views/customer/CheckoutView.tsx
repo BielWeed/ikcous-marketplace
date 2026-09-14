@@ -2730,8 +2730,7 @@ export function CheckoutView({
                   Aviso de Região
                 </h4>
                 <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
-                  Nossos serviços de entrega premium estão ativos exclusivamente
-                  em{" "}
+                  Nossos serviços de entrega estão ativos exclusivamente em{" "}
                   <span className="font-black text-slate-900">
                     {config.storeCity}
                     {config.storeState ? `, ${config.storeState}` : ""}
@@ -3276,8 +3275,8 @@ function SuccessView({
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
-            Sua escolha premium foi registrada. Agora, nossa equipe cuidará de
-            cada detalhe da logística.
+            Sua escolha foi registrada. Agora, nossa equipe cuidará de cada
+            detalhe da logística.
           </p>
         </div>
         {appliedCoupon && (
