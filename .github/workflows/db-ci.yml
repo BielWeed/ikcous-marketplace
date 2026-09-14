@@ -1,0 +1,108 @@
+# CI-BANCO — prova das migrations num Postgres EFÊMERO do Actions (frente
+# despachada em 14/09/2026, fila-despacho/despacho-ci-banco-postgres-efemero.md).
+#
+# O que este job prova, a cada PR que mexe em supabase/migrations/:
+#   (a) a raiz INTEIRA aplica sem erro num banco LIMPO do zero (receita do
+#       scripts/db-prove-banco-zerado.cjs, ADR 0003);
+#   (b) os objetos que o código usa EXISTEM no banco que nasceu do zero —
+#       o MESMO mecanismo do job "objetos" do ci.yml
+#       (scripts/db-check-objetos-do-codigo.mjs), aqui apontado para o
+#       service efêmero em vez do banco de desenvolvimento;
+#   (c) a SEGUNDA passada não explode onde o desenho promete idempotência
+#       (CREATE OR REPLACE / IF NOT EXISTS / DROP IF EXISTS / GRANT) e RELATA
+#       onde não promete — relatório, não falha
+#       (scripts/ci/banco/prova-dupla-aplicacao.cjs);
+#   + inventário INFORMATIVO dos rollback-manual-* (existência e caminho — a
+#       ressalva da #535), anexado ao summary do job.
+#
+# INFORMACIONAL POR NASCIMENTO (mesma regra do cabeçalho do ci.yml: um CI que
+# nasce vermelho é um CI que todo mundo aprende a ignorar): `continue-on-error`
+# abaixo segura o job enquanto a rodada não estabilizar. Para virar BLOQUEANTE
+# depois de estável, basta APAGAR a linha — nenhum outro passo precisa mudar.
+#
+# SEGURANÇA DE BANCO (regra do dia 14/09): este job NUNCA aponta para banco
+# real. A única DATABASE_URL daqui é o service efêmero criado ABAIXO, e os
+# scripts de scripts/ci/banco/ RECUSAM host de Supabase gerenciado e exigem
+# CI_BANCO_EFEMERO=1 (scripts/ci/banco/util.cjs). O secret DATABASE_URL do
+# repositório (job "objetos" do ci.yml) NÃO é usado aqui.
+#
+# CUSTO (dono, 14/09): repo público + runner padrão = R$ 0. Minutos medidos
+# no corpo do PR de origem; timeout-minutes limita o pior caso; cache do npm
+# é obrigatório (mesma régua do ci.yml).
+
+name: CI Banco (migrations do zero)
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/ci/banco/**"
+      - ".github/workflows/db-ci.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/ci/banco/**"
+      - ".github/workflows/db-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mesma versão que o ci.yml (a Vercel de produção usa Node 24.x).
+  NODE_VERSION: "24"
+
+jobs:
+  migrations-do-zero:
+    name: Migrations do zero (efêmero)
+    runs-on: ubuntu-latest
+    # >>> NASCE INFORMACIONAL. Após estável, apague esta linha para o job
+    # >>> passar a BLOQUEAR o merge.
+    continue-on-error: true
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        # PG 17: a versão do projeto (ADR 0003 — baseline gerado com o
+        # pg_dump do PG 17.6; o Supabase do projeto roda 17).
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # ÚNICA conexão desta frente: o service efêmero acima. Ver util.cjs
+      # para a trava que recusa qualquer outro alvo.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      CI_BANCO_EFEMERO: "1"
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # Só pelo pacote `pg` (mesma dependência do job "objetos" do ci.yml).
+      - run: npm ci
+      - name: Provisiona o efêmero (papéis, extensões contrib, auth.*)
+        run: node scripts/ci/banco/provisionar-efemero.cjs
+      - name: Aplica a raiz inteira do zero (1ª passada)
+        run: node scripts/ci/banco/aplicar-migrations.cjs supabase/migrations
+      - name: Objetos que o código usa existem no banco do zero
+        run: node scripts/ci/banco/objetos-do-codigo-efemero.cjs
+      - name: Prova de dupla aplicação (2ª passada + relatório)
+        run: node scripts/ci/banco/prova-dupla-aplicacao.cjs supabase/migrations
+      - name: Inventário de rollback (informativo)
+        run: node scripts/ci/banco/inventario-rollback.cjs supabase/migrations
