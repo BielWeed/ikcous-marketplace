@@ -12,6 +12,9 @@
 // "unificação do verde do app" -- `text-emerald-600` tem outras 20
 // ocorrências em 16 arquivos, não medidas, fora do escopo desta tarefa.
 //
+// Peça 04 (14/09): o selo "Bônus VIP" foi REMOVIDO do rodapé do carrinho —
+// frete grátis não é bônus nem VIP; o describe lá embaixo prende a remoção.
+//
 // POR QUE RENDER DE VERDADE: a classe de cor vive no elemento renderizado,
 // não em nenhum dado estático que dê para inspecionar sem montar a árvore.
 import { act } from "react";
@@ -315,7 +318,7 @@ describe("ReviewCard — selo 'Verificado' usa text-emerald-700, não mais text-
   });
 });
 
-describe("CartFooterSummary — selo 'Bônus VIP' (frete grátis) usa text-emerald-700, não mais text-emerald-600", () => {
+describe("CartFooterSummary — o selo 'Bônus VIP' saiu (peça 04): frete grátis não é bônus nem VIP", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -332,7 +335,7 @@ describe("CartFooterSummary — selo 'Bônus VIP' (frete grátis) usa text-emera
     hospedeiro.remove();
   });
 
-  it("frete grátis: o selo 'Bônus VIP' (portal em document.body) troca de tom", async () => {
+  it("frete grátis: nenhuma tag 'Bônus VIP' no portal — quem comunica é o valor do frete", async () => {
     const { CartFooterSummary } = await import(
       "@/components/ui/custom/CartFooterSummary"
     );
@@ -350,9 +353,9 @@ describe("CartFooterSummary — selo 'Bônus VIP' (frete grátis) usa text-emera
 
     // createPortal insere direto em document.body, fora de `hospedeiro`.
     const spans = Array.from(document.body.querySelectorAll("span"));
-    const selo = spans.find((el) => el.textContent === "Bônus VIP");
-    expect(selo).not.toBeUndefined();
-    expect(selo?.classList.contains("text-emerald-700")).toBe(true);
-    expect(selo?.classList.contains("text-emerald-600")).toBe(false);
+    expect(spans.find((el) => el.textContent === "Bônus VIP")).toBeUndefined();
+    // Quem comunica o frete grátis continua no ar: o valor "GRÁTIS" do frete
+    // (o contrato completo dele vive em cart-footer-frete-a-calcular).
+    expect(document.body.textContent).toContain("GRÁTIS");
   });
 });

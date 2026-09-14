@@ -72,11 +72,11 @@ describe("ShippingProgress — contraste do verde (WCAG AA)", () => {
     });
   }
 
-  it("subtítulo 'Premium Service Ativado' (l.94): usa text-emerald-700 sem opacidade /70, não mais text-emerald-600/70", async () => {
+  it("subtítulo 'Sua sacola já ganhou entrega grátis!' (l.97): usa text-emerald-700 sem opacidade /70, não mais text-emerald-600/70", async () => {
     await renderizar();
 
     const subtitulo = Array.from(hospedeiro.querySelectorAll("p")).find(
-      (el) => el.textContent === "Premium Service Ativado",
+      (el) => el.textContent === "Sua sacola já ganhou entrega grátis!",
     );
     expect(subtitulo).not.toBeUndefined();
     expect(subtitulo?.classList.contains("text-emerald-700")).toBe(true);
