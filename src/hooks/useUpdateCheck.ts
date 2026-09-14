@@ -3,10 +3,16 @@ import { useStore } from "@/contexts/StoreContext";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
 import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 import {
+  PRAZO_APLICACAO_UPDATE_MS,
   apagarCachesDoApp,
   apagarIndexedDBAguardando,
+  aplicarAtualizacaoPendenteERecarregar,
   navegarPreservandoEndereco,
 } from "@/lib/recuperacao-chunk";
+import {
+  partesDoNucleoSemver,
+  versaoLegivelDeResposta,
+} from "@/lib/versao-do-servidor";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -16,15 +22,10 @@ const SAFE_APP_VERSION =
 
 // A versão do build sempre carrega sufixo ("1.0.0-sha.ef7b099", "1.0.0-build.36692"),
 // então comparar com !== contra um min_app_version limpo ("1.0.0") nunca converge
-// e gera loop infinito de purge + reload. Comparar só o núcleo semver.
-const parseSemverCore = (version: string): [number, number, number] | null => {
-  const core = version.trim().split(/[-+]/)[0];
-  const parts = core.split(".").map((p) => Number.parseInt(p, 10));
-  if (parts.length === 0 || parts.length > 3) return null;
-  if (parts.some((n) => Number.isNaN(n))) return null;
-  const [major = 0, minor = 0, patch = 0] = parts;
-  return [major, minor, patch];
-};
+// e gera loop infinito de purge + reload. Comparar só o núcleo semver — o MESMO
+// parse de @/lib/versao-do-servidor que a tela usa para exibir (lição #53: uma
+// definição só; era o parseSemverCore privado daqui).
+const parseSemverCore = partesDoNucleoSemver;
 
 // true apenas quando `local` é comprovadamente MAIS ANTIGA que `required`.
 // Formato desconhecido ou núcleo igual => false (nunca forçar purge por dúvida).
@@ -78,11 +79,16 @@ export function useUpdateCheck() {
       // 08/09/2026). O sw.ts agora ignora /version.json — ela é sonda de
       // frescor —, então quem fura o cache HTTP do navegador é o "no-store",
       // que não inventa URL nova a cada busca.
+      //
+      // FAIL-OPEN (peça de 14/09): a leitura é o contrato único de
+      // @/lib/versao-do-servidor — em dev/prévia o dev server responde esta
+      // rota com o index.html (200 text/html, medido em 5174/5175/5176) e na
+      // produção vem JSON real. Resposta que não é uma versão legível
+      // (HTML, 404, corpo mentido, campo ausente) devolve NULL = "sem
+      // informação de versão = sem atualização": nunca overlay, nunca versão
+      // inventada na tela.
       const response = await fetch("/version.json", { cache: "no-store" });
-      if (response.ok) {
-        const data = await response.json();
-        return data.version as string;
-      }
+      return await versaoLegivelDeResposta(response);
     } catch (e) {
       console.error("[Update] Failed to fetch server version:", e);
     }
@@ -218,36 +224,15 @@ export function useUpdateCheck() {
   const handleUpdate = useCallback(
     async (_immediate?: boolean) => {
       console.log("[Update] Triggering SW update and reload...");
-      gravaMotivoDeRecarga("atualizacao-aplicada");
-
-      let reloaded = false;
-      const onControllerChange = () => {
-        if (!reloaded) {
-          reloaded = true;
-          window.location.reload();
-        }
-      };
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.addEventListener(
-          "controllerchange",
-          onControllerChange,
-        );
-      }
-
-      await updateServiceWorker(true);
-
-      setTimeout(() => {
-        if ("serviceWorker" in navigator) {
-          navigator.serviceWorker.removeEventListener(
-            "controllerchange",
-            onControllerChange,
-          );
-        }
-        if (!reloaded) {
-          reloaded = true;
-          window.location.reload();
-        }
-      }, 1200);
+      // A mecânica do apply mora no módulo único desde a peça de 14/09:
+      // controllerchange recarrega UMA vez, e o prazo de segurança garante o
+      // pior caso — SW preso/nunca assumindo recarrega do mesmo jeito em
+      // ~1,2 s (antes, era isso que pendurava o instalador).
+      aplicarAtualizacaoPendenteERecarregar({
+        acionar: (forcar) => updateServiceWorker(forcar),
+        motivo: "atualizacao-aplicada",
+        prazoMs: PRAZO_APLICACAO_UPDATE_MS,
+      });
     },
     [updateServiceWorker],
   );
@@ -320,13 +305,21 @@ export function useUpdateCheck() {
   useEffect(() => {
     if (needRefresh) {
       console.log("[PWA] New content available! User prompt should appear.");
-      if (!newVersion || newVersion === "Nova Versão") {
+      // Só versão LEGÍVEL entra em newVersion (peça de 14/09): sem
+      // informação no servidor, o selo de→para nem nasce — o valor
+      // inventado "Nova Versão" aqui virava texto na tela (e com o
+      // slice(-6) antigo, um fragmento sem sentido). Recarrega a busca
+      // enquanto a versão não chega; sem núcleo novo que difira do local,
+      // nada é exibido.
+      if (!newVersion) {
         fetchServerVersion().then((ver) => {
-          setNewVersion(ver || "Nova Versão");
+          if (ver && ver !== SAFE_APP_VERSION) {
+            setNewVersion(ver);
+          }
         });
       }
     }
-  }, [needRefresh, newVersion, fetchServerVersion]);
+  }, [needRefresh, newVersion, fetchServerVersion, SAFE_APP_VERSION]);
 
   useEffect(() => {
     if (offlineReady) {
