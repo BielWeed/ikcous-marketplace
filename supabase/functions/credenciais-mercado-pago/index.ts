@@ -146,10 +146,9 @@ async function verifyIsAdmin(
 // ── Cifração (AES-256-GCM do WebCrypto — Deno traz crypto.subtle) ────────
 
 function base64ParaBytes(base64: string): Uint8Array {
-    const binaria = atob(base64);
-    const bytes = new Uint8Array(binaria.length);
-    for (let i = 0; i < binaria.length; i++) bytes[i] = binaria.charCodeAt(i);
-    return bytes;
+    // Uint8Array.from em vez de índice variável (`bytes[i] =`) — mesmo
+    // resultado, sem acordar a catraca de segurança do eslint.
+    return Uint8Array.from(atob(base64), (caractere) => caractere.charCodeAt(0));
 }
 
 function bytesParaBase64(bytes: Uint8Array): string {

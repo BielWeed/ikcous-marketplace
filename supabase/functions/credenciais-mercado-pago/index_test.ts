@@ -128,13 +128,17 @@ function prepararEnv(extra: Record<string, string> = {}): () => void {
         ["MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE],
         ...Object.entries(extra),
     ];
-    const anteriores = pares.map(([chave]) => Deno.env.get(chave));
+    // Pares (nome, valor antigo) de uma vez — sem acesso indexado
+    // (`anteriores[i]`), que a catraca de segurança do eslint acusa.
+    const anteriores = pares.map(
+        ([chave]) => [chave, Deno.env.get(chave)] as const,
+    );
     for (const [chave, valor] of pares) Deno.env.set(chave, valor);
     return () => {
-        pares.forEach(([chave], i) => {
-            if (anteriores[i] === undefined) Deno.env.delete(chave);
-            else Deno.env.set(chave, anteriores[i]!);
-        });
+        for (const [chave, anterior] of anteriores) {
+            if (anterior === undefined) Deno.env.delete(chave);
+            else Deno.env.set(chave, anterior);
+        }
     };
 }
 
