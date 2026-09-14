@@ -5,8 +5,9 @@
 // de progresso, "PREMIUM SERVICE ATIVADO" de eyebrow, tag "BÔNUS VIP" junto
 // ao TOTAL da barra inferior e "Premium Delivery"/"Frete VIP" no lembrete.
 // A funcionalidade é frete grátis, e o tom certo já existe na home
-// ("Oba! Frete Grátis Liberado! / Sua sacola já ganhou entrega grátis!",
-// FreeShippingBlock). Este arquivo prende a regra geral da peça: a jornada
+// ("Oba! Frete Grátis Liberado! / Seu carrinho já ganhou entrega grátis!",
+// FreeShippingBlock; peça 09 trocou sacola→carrinho). Este arquivo prende a
+// regra geral da peça: a jornada
 // do carrinho/frete não fala "VIP", "premium" nem inglês.
 //
 // Padrão de montagem: render real + toContain sobre textContent normalizado
@@ -207,7 +208,7 @@ describe("ShippingProgress com frete grátis — 'Frete Grátis Liberado' no tom
     // O título do banner (h3, maiúsculas via CSS) e o eyebrow com a frase
     // sancionada da home (peça 04, ponto 1).
     expect(texto).toContain("Frete Grátis Liberado");
-    expect(texto).toContain("Sua sacola já ganhou entrega grátis!");
+    expect(texto).toContain("Seu carrinho já ganhou entrega grátis!");
     expect(texto).not.toMatch(/vip/i);
     expect(texto).not.toMatch(/premium/i);
   });

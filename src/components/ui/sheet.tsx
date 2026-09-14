@@ -63,9 +63,15 @@ function SheetContent({
   className,
   children,
   side = "right",
+  showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
+  // Peça 09 (14/09): folhas que têm caminho de fechar próprio (ex.: a folha
+  // de opções do card, fechável pela alça) passam false para não herdar o X
+  // embutido. O default mantém o X em todo consumidor que não decidir nada
+  // (ex.: folha de filtros da busca) — leitor de tela nunca fica sem saída.
+  showCloseButton?: boolean;
 }) {
   return (
     <SheetPortal>
@@ -87,13 +93,15 @@ function SheetContent({
         {...props}
       >
         {children}
-        <SheetPrimitive.Close
-          aria-label="Fechar"
-          className="focus:outline-hidden absolute right-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary"
-        >
-          <XIcon className="size-4" />
-          <span className="sr-only">Close</span>
-        </SheetPrimitive.Close>
+        {showCloseButton && (
+          <SheetPrimitive.Close
+            aria-label="Fechar"
+            className="focus:outline-hidden absolute right-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary"
+          >
+            <XIcon className="size-4" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+        )}
       </SheetPrimitive.Content>
     </SheetPortal>
   );

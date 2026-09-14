@@ -199,13 +199,13 @@ describe("ProductCard -- a folha de opções mora em PORTAL, e abrir opções n�
       'button[data-testid="product-card-options-add"]',
     )!;
 
-  // O X da folha: o SheetContent da casa embute o Close do Radix SEM
-  // data-testid, SEM aria-label e SEM data-slot -- o único endereço estável
-  // que ele oferece hoje é o <span class="sr-only">Close</span> (em inglês;
-  // defeito do sheet.tsx registrado fora de escopo no relatório).
-  const xDaFolha = () =>
-    Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
-      (b) => b.textContent === "Close",
+  // A ALÇA (barrinha do topo da folha): peça 09 (14/09) — o X embutido do
+  // SheetContent saiu desta folha; fechar é pela alça (clique/arrasto) ou
+  // clique fora. Endereço estável por testid, o mesmo do teste irmão
+  // product-card-escolhe-opcoes-na-folha.
+  const alcaDaFolha = () =>
+    document.querySelector<HTMLButtonElement>(
+      'button[data-testid="product-card-options-handle"]',
     )!;
 
   async function abrirFolha() {
@@ -296,13 +296,13 @@ describe("ProductCard -- a folha de opções mora em PORTAL, e abrir opções n�
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it("o X da folha fecha a folha", async () => {
+  it("a alça (barrinha) fecha a folha — peça 09: sem X, é o caminho dedicado", async () => {
     await renderizarCard();
     await abrirFolha();
     expect(folha()).not.toBeNull();
 
     await act(async () => {
-      xDaFolha().click();
+      alcaDaFolha().click();
     });
 
     expect(folha()).toBeNull();
@@ -415,7 +415,7 @@ describe("ProductCard -- a folha de opções mora em PORTAL, e abrir opções n�
     expect(hospedeiro.getAttribute("aria-hidden")).toBe("true");
 
     await act(async () => {
-      xDaFolha().click();
+      alcaDaFolha().click();
     });
 
     expect(hospedeiro.getAttribute("aria-hidden")).toBeNull();

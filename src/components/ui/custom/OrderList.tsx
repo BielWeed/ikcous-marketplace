@@ -209,7 +209,7 @@ export const OrderList = memo(function OrderList({
                 ? "Acesse para ver seu histórico."
                 : guestMessage ||
                   "Seus pedidos são vinculados à sua conta. Acesse para visualizar seu histórico completo."
-              : "Sua sacola de pedidos está vazia. Que tal começar a comprar?")}
+              : "Seu carrinho de pedidos está vazio. Que tal começar a comprar?")}
         </p>
       </div>
     );

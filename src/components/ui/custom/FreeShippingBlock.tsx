@@ -118,7 +118,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
 
   const renderSubtext = () => {
     if (isGoalReached) {
-      return "Sua sacola já ganhou entrega grátis!";
+      return "Seu carrinho já ganhou entrega grátis!";
     }
     if (totalCartValue > 0) {
       return (
