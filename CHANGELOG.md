@@ -7,6 +7,66 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.32.0] - 2026-09-14
+
+Um dia de vitrine mais polida e mais honesta: a escolha de opções do produto
+vira uma folha que desliza de baixo e fecha do jeito que o dedo espera, o
+frete grátis fala português (adeus, "FRETE VIP" e "PREMIUM SERVICE"), a loja
+só promete entrega na cidade quando entrega na cidade mesmo, o app se
+recupera sozinho quando um arquivo dele falha no ar — e, nos bastidores, o
+site passa a nascer com robots.txt e sitemap de produtos. Reúne os PRs
+#558–#570, #572–#575 e #577–#579.
+
+### Para quem COMPRA (vitrine)
+
+- **Escolha de opções do card vira folha deslizante** (PRs #560, #562,
+  #575, #577): a folha sobe de baixo e pinta ACIMA da barra de navegação —
+  o botão "Adicionar ao carrinho" volta a aparecer — e fecha pela alça do
+  topo, arrastando para baixo ou clicando fora, sem X e sem contorno; o card
+  perde a setinha e a "sacola" vira "carrinho" no vocabulário do app.
+- **Frete grátis fala português** (PR #573): "FRETE VIP LIBERADO",
+  "PREMIUM SERVICE ATIVADO" e "BÔNUS VIP" saem do carrinho; o tom que já era
+  certo na home ("Oba! Frete Grátis Liberado!") assume a jornada inteira.
+- **A loja só promete entrega na cidade quando entrega nela** (PRs #570,
+  #578): o aviso de região do checkout, o selo da home, a og:description e a
+  frase "Entrega em <cidade>, <UF>" da página de produto só nascem com
+  cobertura de frete LOCAL — o mesmo gate fail-closed nos quatro lugares
+  (issues #525 e #571).
+- **O app se recupera sozinho de atualização pela metade** (PR #565): um
+  arquivo do PWA que não carrega não quebra mais a loja — recuperação de
+  chunk unificada, com purge seguro de caches e IndexedDB (issue #92).
+- **Login e destino a serviço do visitante** (PRs #561, #563): o perfil
+  público exige login igual ao do perfil próprio (issue #487) e quem loga
+  volta ao perfil público que tinha pedido, em vez de cair em lugar
+  estranho.
+
+### Para quem VENDE (painel admin)
+
+- **Diagnóstico no dialeto da tela** (PR #558): o disclosure declara
+  `aria-expanded` e chevron como o resto do painel.
+- **Espelho de celular honesto** (PR #578): a promessa "Entrega em
+  <cidade>" no espelho admin obedece o mesmo gate de cobertura local da
+  vitrine.
+
+### Para quem DESENVOLVE
+
+- **robots.txt versionado e sitemap de produtos no build** (PR #572, issue
+  #117): a semente do robots entra no repositório (o `.gitignore` `*.txt`
+  global a engolia) e o build gera robots.txt e sitemap.xml por loja, com
+  catálogo vivo.
+- **Contrato do purge do PWA exigido por teste** (PRs #568, #574): apagar
+  IndexedDB e caches sem `await` quebra o teste de contrato — o código
+  vigente já está certo, o teste é que aperta.
+- **Suíte hermética a `.env` locais** (PR #559): o `loadEnv` do teste só lê
+  `process.env` — fim de teste que depende de `.env` do disco.
+- **Upload de identidade sem pisca** (PR #579): espera condicional no teste
+  de prazo do upload (issue #524).
+- **Merge commit vira doutrina** (PRs #564, #567, #569): cola, metodologia,
+  kanban e onboarding ensinam merge commit em todo PR e back-merge de
+  release/hotfix com estratégia documentada.
+- **CI sobe de v4 para v5** (PR #566): `actions/checkout` e
+  `actions/setup-node`.
+
 ## [1.31.0] - 2026-09-13
 
 Um dia de loja arrumado dos dois lados do balcão: o checkout fica mais compacto
