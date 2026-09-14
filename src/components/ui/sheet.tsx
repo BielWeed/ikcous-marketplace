@@ -26,11 +26,16 @@ function SheetPortal({
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
 }
 
-// Régua de z da casa (medida em 13/09, peça do defeito da folha): Header
-// 100 < BottomNav 120 < sheet modal 130 (o mesmo degrau do ImageAdjuster) <
-// barra de progresso 99999 — com UM degrau transitório: enquanto um toast
-// está ativo, o Header sobe para 140 para limpar o modal e o aviso da
-// cápsula pintar acima do véu (ver Header.tsx, revisão da peça 03 em 14/09).
+// Régua de z da casa (medida em 13/09, peça do defeito da folha): barra do
+// topo 100 < BottomNav 120 < sheet modal 130 (o mesmo degrau do
+// ImageAdjuster) < barra de progresso 99999 — com UM degrau transitório:
+// enquanto um toast está ativo, o WRAPPER do header (BarraSuperiorCliente,
+// no App) sobe para 140 para limpar o modal e o aviso da cápsula pintar
+// acima do véu (revisão do bloqueante, 14/09). O degrau mora no WRAPPER e
+// não no <header> interno porque este sheet é portalado em document.body:
+// na raiz, quem compete contra o seu z-[130] é o wrapper (o gpu-accelerated
+// dele cria stacking context) — um z condicional dentro do header era
+// inerte contra o véu.
 // O Sheet padrão shadcn vinha em z-50 — ATRÁS da
 // BottomNav fixa — e o rodapé da folha de opções do card pintava por baixo
 // da barra de navegação (CTA invisível no celular; nav nítida sobre o véu).

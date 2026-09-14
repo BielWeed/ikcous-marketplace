@@ -470,6 +470,57 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       );
     });
     expect(folha()).not.toBeNull();
+
+    // LIMPEZA do gesto: soltar devolve a folha ao lugar sem resquício —
+    // sem transform inline (senão ela ficava deslocada para sempre) e com a
+    // transição de volta ("" e nunca "none": é ela que anima abrir/fechar).
+    const conteudo = document.querySelector<HTMLElement>(
+      '[data-slot="sheet-content"]',
+    )!;
+    expect(conteudo.style.transform).toBe("");
+    expect(conteudo.style.transition).toBe("");
+  });
+
+  it("pointercancel no meio do arrasto solta a alça: folha aberta, estilo restaurado, listeners removidos", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    await act(async () => {
+      alcaDaFolha().dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 130 }),
+      );
+    });
+    // A folha acompanhou o dedo...
+    const conteudo = document.querySelector<HTMLElement>(
+      '[data-slot="sheet-content"]',
+    )!;
+    expect(conteudo.style.transform).toBe("translateY(30px)");
+
+    // ...até o sistema cancelar o gesto (rolagem assumida pelo navegador,
+    // chamada interrompida). Cancelar NÃO é gesto de fechar — e tem de
+    // limpar exatamente como o soltar limpa.
+    await act(async () => {
+      window.dispatchEvent(
+        new MouseEvent("pointercancel", { bubbles: true, clientY: 0 }),
+      );
+    });
+
+    expect(folha()).not.toBeNull();
+    // Estilo restaurado — "" e não "none".
+    expect(conteudo.style.transition).toBe("");
+    expect(conteudo.style.transform).toBe("");
+    // Listeners removidos: pointermove seguinte é INERTE.
+    await act(async () => {
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 400 }),
+      );
+    });
+    expect(conteudo.style.transform).toBe("");
   });
 
   it("o clique sintético logo após um arrasto curto NÃO fecha (guarda movimentou)", async () => {
@@ -497,6 +548,38 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       alcaDaFolha().click();
     });
     expect(folha()).not.toBeNull();
+  });
+
+  it("TECLADO logo após REABRIR a folha fecha de primeira (a guarda movimentou não sobrevive ao reabrir)", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    // Arrasto que FECHA a folha (além de 64px): o marcador movimentou fica
+    // true e, no desenho antigo, só o próximo pointerdown o limpa.
+    await act(async () => {
+      alcaDaFolha().dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 200 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientY: 190 }),
+      );
+    });
+    expect(folha()).toBeNull();
+
+    await abrirFolha();
+
+    // Ativação por TECLADO: Enter/Espaço num <button> disparam click SEM
+    // pointerdown. Com o marcador residual, o primeiro Enter era engolido
+    // (não fazia nada) — só o segundo fechava.
+    await act(async () => {
+      alcaDaFolha().click();
+    });
+    expect(folha()).toBeNull();
   });
 
   it("clicar FORA (no véu escuro) fecha a folha — âncora do contrato do Radix", async () => {

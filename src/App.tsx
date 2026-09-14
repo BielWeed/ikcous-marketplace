@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { BarraSuperiorCliente } from "@/components/ui/custom/BarraSuperiorCliente";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
@@ -2713,7 +2714,10 @@ const AppContent = () => {
         </React.Suspense>
       )}
       {!currentView.startsWith("admin") && (
-        <div className="gpu-accelerated relative z-[100] flex-shrink-0">
+        // Componente (não div literal): é este elemento o stacking context
+        // que compete na raiz contra o sheet portalado no body — o degrau
+        // transitório do toast mora nele (ver BarraSuperiorCliente.tsx).
+        <BarraSuperiorCliente>
           {/* Fallback com a GEOMETRIA do header (safe-area + 52px + borda):
               sem isto o <main> sobe ~53px e volta quando o chunk chega —
               salto de layout no topo, onde o olho está (achado b2 do laudo
@@ -2751,7 +2755,7 @@ const AppContent = () => {
               scrollProgress={scrollProgress}
             />
           </React.Suspense>
-        </div>
+        </BarraSuperiorCliente>
       )}
 
       <main
