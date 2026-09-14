@@ -1,0 +1,140 @@
+# CI do PWA REAL — frente ci-pwa (14/09/2026).
+#
+# O que o ci.yml prova é componente isolado (jsdom não prova service worker).
+# O que este workflow prova é o APP DE PRODUÇÃO com SW de verdade, no
+# Chromium do runner: boot com SW registrado/ativo; navegação OFFLINE pelo
+# precache; RECUPERAÇÃO DE CHUNK (#565 — aba velha com chunk sumido); e o
+# FLUXO DE ATUALIZAÇÃO v1→v2 com DOIS builds reais (overlay → instalação →
+# app na v2 sem pendurar — a dor que o dono viveu em 14/09, print
+# fila-despacho/anexos/tela-atualizando-pendurada-5174.png). Specs em
+# e2e/pwa-*.spec.ts; servidor de teste próprio (e2e/pwa-servidor.mjs) porque
+# requisições do SW não passam pelo page.route.
+#
+# Regra de nascimento (dono, 14/09): nada novo derruba o CI. Este job nasce
+# `continue-on-error` (INFORMATIONAL) e só vira bloqueante depois de estável
+# em 3+ runs — decisão da central.
+#
+# Custo (repo PÚBLICO = grátis; runners padrão, nada pago):
+#   ~8-10 min por run — npm ci ~1 min; DOIS builds fixture ~2 min cada (o
+#   fluxo v1→v2 exige dois SHAs diferentes); Chromium em cache entre runs;
+#   4 specs ~2-3 min (2 boots completos + ciclos de SW por spec). O filtro
+#   por caminho segura run desnecessário. Impacto na PAREDE do PR: ~zero —
+#   corre em paralelo ao gate e é informacional.
+#
+# NÃO mexe em: ci.yml, ci-expansao.yml (expansão-ci), e2e.yml, specs
+# e2e/*.spec.ts existentes, playwright.config.ts, saude.yml, db-ci.yml,
+# migrations/edge, package.json/package-lock.json (Playwright entra por
+# `npm install --no-save`, versão cravada igual à da expansão-ci).
+
+name: CI PWA
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/pwa-ci.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/pwa-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pwa-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mesma versão do gate (ci.yml) — se divergir, um passa e o outro mente.
+  NODE_VERSION: "24"
+  # Mesma versão cravada pela expansão-ci no package.json (quando o PR deles
+  # mergear, `npm ci` passa a instalar a mesma). Cravada AQUI de propósito:
+  # este job não depende da ordem de merge dos dois PRs.
+  PLAYWRIGHT_VERSION: "1.63.0"
+  # Os DOIS SHAs dos builds v1/v2: fixos, 40-hex (formato exigido pelo
+  # buildStore), sem segredo. A diferença entre eles é o que faz sw.js,
+  # __APP_VERSION__ e version.json mudarem de v1 para v2 — sem isso não há
+  # deploy a provar.
+  PWA_SHA_V1: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  PWA_SHA_V2: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+jobs:
+  pwa:
+    name: PWA real no navegador (informacional)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Instala SEM tocar em package.json/package-lock.json (território da
+      # expansão-ci no mural): enquanto o PR deles não mergear, o runner
+      # deste workflow ainda assim tem o @playwright/test resolúvel.
+      - name: Instala o Playwright sem alterar o manifest
+        run: npm install --no-save @playwright/test@${{ env.PLAYWRIGHT_VERSION }}
+      # Receita oficial de cache de browsers (playwright.dev/docs/ci): chave
+      # pela versão CRAVADA — quando sobe, a chave muda e o cache renova. Sem
+      # `restore-keys` de propósito: browser velho mascarando incompatibilidade
+      # é falso verde (e service worker é exatamente o que não pode mentir).
+      - name: Cache dos navegadores do Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-pwa-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Instala o Chromium (e dependências de sistema)
+        run: npx playwright install --with-deps chromium
+      # Receita EXATA do job Build do ci.yml (SEM segredos e SEM env extra —
+      # perturbar VITE_* no build fixture quebra o contrato do buildStore),
+      # feita DUAS vezes com SHAs diferentes: é o deploy v1→v2 que o spec do
+      # fluxo de atualização prova. Build fixture sai em `dist-test`.
+      - name: Build v1 (identidade fictícia, SHA fixo A)
+        run: |
+          npm run build
+          mv dist-test dist-v1
+        env:
+          NODE_ENV: production
+          IKCOUS_IDENTITY_MODE: fixture
+          IKCOUS_CODE_SHA: ${{ env.PWA_SHA_V1 }}
+      - name: Build v2 (identidade fictícia, SHA fixo B)
+        run: |
+          npm run build
+          mv dist-test dist-v2
+        env:
+          NODE_ENV: production
+          IKCOUS_IDENTITY_MODE: fixture
+          IKCOUS_CODE_SHA: ${{ env.PWA_SHA_V2 }}
+      # O webServer do config sobe e2e/pwa-servidor.mjs (porteiro sintético:
+      # ficha no HTML + /identidade.json + /version.json do dist em 127.0.0.1:4174).
+      - name: Specs do PWA contra o build de produção
+        run: npx playwright test --config e2e/pwa-playwright.config.ts
+        env:
+          CI: "true"
+      - name: Relatório e traces de falha
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-pwa
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
