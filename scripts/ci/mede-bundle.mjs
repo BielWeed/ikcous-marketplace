@@ -100,15 +100,11 @@ if (!autoteste && !fs.existsSync(ORCAMENTO)) {
   // Fotografia EXATA (bytes, sem arredondar kB) gravada no checkout do run e
   // publicada como artefato: quem comitar o orçamento baixa o artefato e não
   // transcreve número de summary arredondado.
+  const caminhoFoto = path.join(raiz, "scripts/ci/fotografia-bundle.json");
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de raiz fixa do repo
-  fs.mkdirSync(path.dirname(path.join(raiz, "scripts/ci/fotografia-bundle.json")), {
-    recursive: true,
-  });
+  fs.mkdirSync(path.dirname(caminhoFoto), { recursive: true });
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de raiz fixa do repo
-  fs.writeFileSync(
-    path.join(raiz, "scripts/ci/fotografia-bundle.json"),
-    `${JSON.stringify(fotografia, null, 2)}\n`,
-  );
+  fs.writeFileSync(caminhoFoto, `${JSON.stringify(fotografia, null, 2)}\n`);
   console.log("### 📦 Bundle — FOTOGRAFIA INICIAL (ainda não há orçamento)\n");
   console.log(
     "Medido AGORA no CI (receita fixture do ci.yml). O JSON exato saiu como",
