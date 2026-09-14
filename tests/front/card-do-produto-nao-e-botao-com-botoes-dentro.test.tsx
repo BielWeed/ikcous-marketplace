@@ -156,10 +156,11 @@ describe("ProductCard — o card não é um botão com botões dentro (B3)", () 
     return produto;
   }
 
-  it("estrutura: nenhum botão contém outro botão (mesmo com o painel de opções aberto)", async () => {
+  it("estrutura: nenhum botão contém outro botão (mesmo com a folha de opções aberta)", async () => {
     const produto = await renderizarCard({
-      // Precisa da prop nova para o botão de ação EXPANDIR o painel no card
-      // em vez de navegar (mesmo contrato de product-card-escolhe-opcoes-no-card).
+      // Precisa da prop nova para o botão de ação ABRIR a folha de opções
+      // em vez de navegar (mesmo contrato de
+      // product-card-escolhe-opcoes-na-folha).
       onAddToCartWithVariants: vi.fn(),
       produto: criarProduto({
         variants: [
@@ -176,15 +177,22 @@ describe("ProductCard — o card não é um botão com botões dentro (B3)", () 
     });
     afirmarSemBotaoAninhado(hospedeiro);
 
-    // Abre o painel de opções -- é onde os chips de variação nascem.
+    // Abre a folha de opções -- é onde os chips de variação nascem. Ela
+    // renderiza em PORTAL (fora da árvore do card), então a varredura de
+    // botão-aninhado passa a cobrir o body inteiro, portal incluso.
     const acao = hospedeiro.querySelector<HTMLButtonElement>(
       'button[data-testid="product-card-action"]',
     )!;
     await act(async () => {
       acao.click();
     });
-    expect(hospedeiro.textContent).toContain("P");
-    afirmarSemBotaoAninhado(hospedeiro);
+    const folha = document.body.querySelector(
+      '[data-testid="product-card-options-sheet"]',
+    );
+    expect(folha).not.toBeNull();
+    expect(hospedeiro.contains(folha as Node)).toBe(false);
+    expect(document.body.textContent).toContain("P");
+    afirmarSemBotaoAninhado(document.body);
     void produto;
   });
 

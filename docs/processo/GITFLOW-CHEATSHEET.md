@@ -60,11 +60,13 @@ Sempre `--base develop`. `--base main` só em release e hotfix.
 ## Depois da revisão
 
 ```bash
-gh pr merge --squash --delete-branch
+gh pr merge --merge --delete-branch
 git switch develop && git pull
 ```
 
-Squash em PR de feature. **Merge commit** em release e hotfix.
+**Merge commit em todo PR** — feature, release e hotfix. Squash comprimiria as rodadas
+do laço num commit só e apagaria a fronteira do PR. Registro do existente: zero squash
+na janela #541–#564. Porquê completo no [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
 ---
 
@@ -87,6 +89,7 @@ git push origin v1.2.0
 
 gh pr create --base develop --head release/1.2.0 \
   --title "chore: volta a release 1.2.0 para develop"
+gh pr merge release/1.2.0 --merge   # merge commit, NÃO squash: squash cria commit novo e diverge as duas pontas (porquê completo no CONTRIBUTING)
 ```
 
 ---
@@ -108,6 +111,7 @@ git tag -a v1.2.1 -m "hotfix frete zerado" && git push origin v1.2.1
 
 gh pr create --base develop --head hotfix/frete-zerado \
   --title "fix: leva o hotfix do frete para develop"
+gh pr merge hotfix/frete-zerado --merge   # merge commit, NÃO squash: squash cria commit novo e diverge as duas pontas (porquê completo no CONTRIBUTING)
 ```
 
 **Não pule o último comando.** Sem ele o bug volta no próximo release.

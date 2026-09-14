@@ -159,7 +159,20 @@ export const Header = memo(function Header({
   return (
     <header
       className={cn(
-        "relative top-0 left-0 right-0 z-[100] transition-[background-color,border-color,box-shadow] duration-200 border-b flex-shrink-0",
+        // Régua de z da casa (peça 03, 14/09): header 100 < BottomNav 120 <
+        // sheet modal 130 < barra de progresso 99999. O Sheet subir para o
+        // 130 (conserto do CTA coberto pela nav) criou um efeito colateral:
+        // no celular o toaster flutuante do sonner é display:none e TODO
+        // aviso mora na cápsula daqui — que ficava ATRÁS do véu do sheet.
+        // Com a folha de opções aberta, o "Falta escolher" (disparado pela
+        // própria folha, que não fecha sozinha) pintava escurecido, e tocar
+        // na cápsula para dispensar acertava o overlay e FECHAVA a folha.
+        // Enquanto um toast está ativo, o header limpa o degrau do modal
+        // (140 > 130) por uma janela transitória (~2,6 s, a duração da
+        // cápsula) — fora dela segue no 100, atrás do véu, com os cliques
+        // do topo caindo no overlay (comportamento de "fora" da folha).
+        activeToast ? "z-[140]" : "z-[100]",
+        "relative top-0 left-0 right-0 transition-[background-color,border-color,box-shadow] duration-200 border-b flex-shrink-0",
         isScrolled
           ? "bg-white border-zinc-100/50 shadow-sm"
           : "bg-white border-transparent",

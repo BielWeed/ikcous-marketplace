@@ -549,6 +549,18 @@ describe("entrega preparada chega ao observador e é conferida", () => {
           { headers: { "content-type": "application/json" } },
         );
       }
+      // Catálogo de produtos para o gerador de sitemap (issue #117): a
+      // consulta do build pede só o id, uma página inteira de uma vez —
+      // 2 < 1000 encerra na primeira página.
+      if (url.pathname === "/rest/v1/vw_produtos_public") {
+        return new Response(
+          JSON.stringify([
+            { id: "11111111-1111-1111-1111-111111111111" },
+            { id: "22222222-2222-2222-2222-222222222222" },
+          ]),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
       const file = fixture.files.find((item) =>
         url.pathname.endsWith(item.path),
       );
@@ -642,6 +654,74 @@ describe("entrega preparada chega ao observador e é conferida", () => {
       });
     },
   );
+
+  // Issue #117: em modo database o build regenera robots.txt/sitemap.xml com
+  // o catálogo vivo. Os dois testes abaixo têm que morar AQUI (build real,
+  // databaseTransport), porque no modo fixture o gerador é no-op e o teste
+  // de gravação nunca dispararia.
+  it("database: build real gera robots.txt e sitemap.xml com a URL da loja e dos produtos", async () => {
+    vi.stubEnv("IKCOUS_IDENTITY_MODE", undefined);
+    await databaseTransport();
+    const t = await setup([], true, {
+      env: {
+        IKCOUS_IDENTITY_MODE: undefined,
+        VITE_APP_URL: "https://loja-exclusiva.invalid",
+        VITE_SUPABASE_URL: databaseOrigin,
+        VITE_SUPABASE_PUBLISHABLE_KEY: databasePublishable,
+        VITE_SUPABASE_ANON_KEY: databaseAnon,
+      },
+      resolvePublicAddress: () => "https://loja-exclusiva.invalid",
+      outDir: "dist",
+    });
+    await t.run();
+    const robots = await fs.readFile(
+      path.join(t.root, "dist", "robots.txt"),
+      "utf8",
+    );
+    expect(robots).toBe(
+      "User-agent: *\nAllow: /\n\nSitemap: https://loja-exclusiva.invalid/sitemap.xml\n",
+    );
+    const sitemap = await fs.readFile(
+      path.join(t.root, "dist", "sitemap.xml"),
+      "utf8",
+    );
+    expect(sitemap).toContain(
+      "<loc>https://loja-exclusiva.invalid/product-detail?id=11111111-1111-1111-1111-111111111111</loc>",
+    );
+    expect(sitemap).toContain(
+      "<loc>https://loja-exclusiva.invalid/product-detail?id=22222222-2222-2222-2222-222222222222</loc>",
+    );
+  }, 60000);
+
+  it("falha ao gravar o robots.txt deixa a saída sem version.json", async () => {
+    vi.stubEnv("IKCOUS_IDENTITY_MODE", undefined);
+    await databaseTransport();
+    const t = await setup([], true, {
+      env: {
+        IKCOUS_IDENTITY_MODE: undefined,
+        VITE_APP_URL: "https://loja-exclusiva.invalid",
+        VITE_SUPABASE_URL: databaseOrigin,
+        VITE_SUPABASE_PUBLISHABLE_KEY: databasePublishable,
+        VITE_SUPABASE_ANON_KEY: databaseAnon,
+      },
+      resolvePublicAddress: () => "https://loja-exclusiva.invalid",
+      outDir: "dist",
+    });
+    const original = fs.writeFile;
+    const espiao = vi
+      .spyOn(fs, "writeFile")
+      .mockImplementation(async (destino, ...resto) => {
+        if (String(destino).endsWith("robots.txt"))
+          throw new Error("disco cheio");
+        return original.call(fs, destino, ...resto);
+      });
+    try {
+      await expect(t.run()).rejects.toThrow(/IDENTITY_SITEMAP/);
+    } finally {
+      espiao.mockRestore();
+    }
+    await absent(t.marker);
+  }, 60000);
 
   // As duas abaixo são negativas de propósito: um teste de SUCESSO não pode
   // detectar a remoção de uma guarda que só existe para REJEITAR entrada

@@ -26,6 +26,18 @@ function SheetPortal({
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
 }
 
+// Régua de z da casa (medida em 13/09, peça do defeito da folha): Header
+// 100 < BottomNav 120 < sheet modal 130 (o mesmo degrau do ImageAdjuster) <
+// barra de progresso 99999 — com UM degrau transitório: enquanto um toast
+// está ativo, o Header sobe para 140 para limpar o modal e o aviso da
+// cápsula pintar acima do véu (ver Header.tsx, revisão da peça 03 em 14/09).
+// O Sheet padrão shadcn vinha em z-50 — ATRÁS da
+// BottomNav fixa — e o rodapé da folha de opções do card pintava por baixo
+// da barra de navegação (CTA invisível no celular; nav nítida sobre o véu).
+// Overlay E conteúdo sobem JUNTOS para o z-[130]: só o content deixaria a
+// nav nítida por cima do véu; só o overlay deixaria a nav clicável por cima
+// da folha. Dialog/AlertDialog seguem em z-50 (defeito latente conhecido,
+// fora do escopo desta peça).
 function SheetOverlay({
   className,
   ...props
@@ -34,7 +46,7 @@ function SheetOverlay({
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
       className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[130] bg-black/50",
         className,
       )}
       {...props}
@@ -46,9 +58,15 @@ function SheetContent({
   className,
   children,
   side = "right",
+  showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
+  // Peça 09 (14/09): folhas que têm caminho de fechar próprio (ex.: a folha
+  // de opções do card, fechável pela alça) passam false para não herdar o X
+  // embutido. O default mantém o X em todo consumidor que não decidir nada
+  // (ex.: folha de filtros da busca) — leitor de tela nunca fica sem saída.
+  showCloseButton?: boolean;
 }) {
   return (
     <SheetPortal>
@@ -56,7 +74,7 @@ function SheetContent({
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-[130] flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
           side === "right" &&
             "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm",
           side === "left" &&
@@ -70,10 +88,15 @@ function SheetContent({
         {...props}
       >
         {children}
-        <SheetPrimitive.Close className="focus:outline-hidden absolute right-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-          <XIcon className="size-4" />
-          <span className="sr-only">Close</span>
-        </SheetPrimitive.Close>
+        {showCloseButton && (
+          <SheetPrimitive.Close
+            aria-label="Fechar"
+            className="focus:outline-hidden absolute right-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary"
+          >
+            <XIcon className="size-4" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+        )}
       </SheetPrimitive.Content>
     </SheetPortal>
   );

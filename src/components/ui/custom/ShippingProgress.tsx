@@ -86,7 +86,7 @@ export function ShippingProgress({
               shipping === 0 ? "text-emerald-700" : "text-zinc-900",
             )}
           >
-            {shipping === 0 ? "Frete VIP Liberado" : "Meta Frete Grátis"}
+            {shipping === 0 ? "Frete Grátis Liberado" : "Meta Frete Grátis"}
           </h3>
           <p
             className={cn(
@@ -94,7 +94,9 @@ export function ShippingProgress({
               shipping === 0 ? "text-emerald-700" : "text-zinc-400",
             )}
           >
-            {shipping === 0 ? "Premium Service Ativado" : "Benefício exclusivo"}
+            {shipping === 0
+              ? "Seu carrinho já ganhou entrega grátis!"
+              : "Benefício exclusivo"}
           </p>
         </div>
 

@@ -605,8 +605,8 @@ arquivos `.env*` — as áreas onde um erro derruba a loja. O resto, revisão de
 - Criar `develop` a partir de `main` e publicar
 - Definir `develop` como branch padrão do repositório (assim PR novo já aponta pro lugar certo)
 - Habilitar auto-delete de branch após merge
-- Habilitar apenas squash merge para PRs de feature (histórico limpo); merge commit para
-  release e hotfix
+- Merge commit para todo PR — feature, release e hotfix (merge e squash seguem ambos
+  habilitados no repositório; a convenção da casa, medida, é merge commit)
 
 **NÃO configure branch protection nem rulesets** — retorna 403 neste repositório (ver a
 restrição crítica no topo deste prompt). No lugar disso, o item 5 (lefthook) carrega a trava

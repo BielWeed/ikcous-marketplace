@@ -18,10 +18,19 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Mutável de propósito: o caso #571 reescreve `shippingCoverage` para
+// "national" e o `beforeEach` repõe o padrão — guarda contra vazamento
+// entre testes (mesma técnica de aviso-de-regiao-olha-a-cobertura.test.tsx).
+const { mockConfig } = vi.hoisted(() => ({
+  mockConfig: {
+    shippingCoverage: "local" as "national" | "local",
+    storeCity: "Sao Paulo" as string | undefined,
+    storeState: "SP" as string | undefined,
+  },
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: { storeCity: "Sao Paulo", storeState: "SP" },
-  }),
+  useStore: () => ({ config: mockConfig }),
 }));
 
 // @ts-expect-error flag interna do React, sem tipo publico -- mesmo padrao
@@ -48,6 +57,7 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    mockConfig.shippingCoverage = "local";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -62,6 +72,7 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
   });
 
   it("nao mostra 'Troca garantida' e espelha o selo de entrega da pagina real", async () => {
+    mockConfig.shippingCoverage = "local";
     const { PhoneSimulator } = await import(
       "@/components/admin/PhoneSimulator"
     );
@@ -88,6 +99,39 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
     // Os dois beneficios verdadeiros continuam de pe, iguais aos da pagina
     // real: entrega com a cidade da loja e estoque.
     expect(document.body.textContent).toContain("Entrega em Sao Paulo, SP");
+    expect(document.body.textContent).toContain(
+      "Produto em estoque - Envio rápido",
+    );
+  });
+
+  it("loja com cobertura NACIONAL e cidade configurada nao mostra 'Entrega em' (#571)", async () => {
+    // O caso da issue: a loja entrega para o Brasil todo; com a cidade na
+    // identidade, a previa afirmava "Entrega em <cidade>" — mentira que a
+    // lojista copiaria para o texto do produto.
+    mockConfig.shippingCoverage = "national";
+    const { PhoneSimulator } = await import(
+      "@/components/admin/PhoneSimulator"
+    );
+
+    await act(async () => {
+      raiz.render(
+        <PhoneSimulator
+          onClose={() => {}}
+          formData={formDataBase}
+          previewMode="page"
+          setPreviewMode={() => {}}
+          previewImgIndex={0}
+          setPreviewImgIndex={() => {}}
+          previewSelectedVariants={{}}
+          setPreviewSelectedVariants={() => {}}
+          activeDetailTab="description"
+          setActiveDetailTab={() => {}}
+        />,
+      );
+    });
+
+    expect(document.body.textContent).not.toContain("Entrega em");
+    // O que sumiu foi SÓ o bloco de entrega — o estoque continua de pé.
     expect(document.body.textContent).toContain(
       "Produto em estoque - Envio rápido",
     );

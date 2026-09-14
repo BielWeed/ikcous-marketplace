@@ -222,6 +222,11 @@ duplicado, erro de geração de página; em falha de usuário, os logs de Edge F
 `version.json` e o service worker são regenerados no build — a atualização do PWA é com
 consentimento do usuário (`registerType: "prompt"`).
 
+`robots.txt` e `sitemap.xml` (SEO, issue #117) também nascem no build, por loja: o
+`scripts/sitemap.mjs` consulta a `vw_produtos_public` e sobrescreve as sementes versionadas
+em `public/` (que servem o `vite dev` e envelhecem — o build é a fonte fresca; regenerá-las
+é rodar um build database e copiar do `dist/`). Modo fixture não sai para a rede.
+
 ## Testes e estabilidade
 
 - **Isolamento antes de promover.** Mudança estrutural em estado global (Context de

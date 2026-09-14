@@ -2711,10 +2711,12 @@ export function CheckoutView({
           </div>
         </div>
 
-        {/* Location Notice — some por inteiro quando a loja não configurou
-            cidade. A cobertura de entrega decide para onde ela entrega, mas
-            este aviso é sobre a loja, não sobre o cliente. */}
-        {config.storeCity && (
+        {/* Location Notice — exige cobertura LOCAL porque a frase afirma
+            EXCLUSIVIDADE de entrega na cidade (#525): com cobertura
+            nacional ela seria falsa — a loja entrega para o país, não só
+            para a sede. Some por inteiro quando a loja não configurou
+            cidade. Este aviso é sobre a loja, não sobre o cliente. */}
+        {config.storeCity && config.shippingCoverage === "local" && (
           <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-slate-800 shadow-md">
             <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
               <MapPin className="size-16 text-zinc-500" />
@@ -2728,8 +2730,7 @@ export function CheckoutView({
                   Aviso de Região
                 </h4>
                 <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
-                  Nossos serviços de entrega premium estão ativos exclusivamente
-                  em{" "}
+                  Nossos serviços de entrega estão ativos exclusivamente em{" "}
                   <span className="font-black text-slate-900">
                     {config.storeCity}
                     {config.storeState ? `, ${config.storeState}` : ""}
@@ -3274,8 +3275,8 @@ function SuccessView({
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
-            Sua escolha premium foi registrada. Agora, nossa equipe cuidará de
-            cada detalhe da logística.
+            Sua escolha foi registrada. Agora, nossa equipe cuidará de cada
+            detalhe da logística.
           </p>
         </div>
         {appliedCoupon && (

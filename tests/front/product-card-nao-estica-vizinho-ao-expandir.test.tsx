@@ -2,93 +2,26 @@
 //
 // Relato do Gabriel (12/09): "esse botão de escolha (...) tem vários bugs,
 // como por exemplo um deles é quando é expandido, o card do lado fica com
-// essa parte branca" -- e, na mesma mensagem, o pedido de conserto:
-// "acho melhor expandir a opção de escolha DENTRO do card (...) seria
-// praticamente um card interativo".
+// essa parte branca" -- o painel "Escolha as opções" crescia DENTRO do fluxo
+// do card e a grade de 2 colunas (align-items: stretch) esticava o VIZINHO.
 //
-// A tentativa anterior (lote A, 12/09) atacou o SINTOMA tirando `h-full
-// flex-1` do wrapper raiz -- e isso tinha uma regressão MEDIDA no navegador:
-// sem `h-full`, o rodapé de TODOS os cards desalinhava na grade de 2
-// colunas (28-45px de diferença entre linhas do carrossel/vitrine).
-//
-// A correção desta tarefa ataca a CAUSA: o painel "Escolha as opções" sai do
-// FLUXO do card (vira uma camada `absolute` sobreposta à faixa foto+meta,
-// ver ProductCard.tsx) -- abrir o painel deixa de mudar a altura de
-// conteúdo do card. Sendo a altura constante, `h-full`/`flex-1` VOLTAM ao
-// wrapper raiz: a grade pode esticar o card com segurança, porque não existe
-// mais evento nenhum (abrir o painel) que muda essa altura no meio da vida
-// do card. É por isso que os dois primeiros casos abaixo agora EXIGEM
-// `h-full`/`flex-1` -- o INVERSO do que este arquivo verificava antes desta
-// tarefa.
+// História da correção, em duas etapas:
+//   - 12/09: o painel saiu do FLUXO (virou camada `absolute` sobre a faixa
+//     foto+meta) e `h-full`/`flex-1` voltaram ao wrapper raiz.
+//   - 13/09 (REDESENHO, direção B): o painel MORRE. A escolha virou uma
+//     FOLHA que desliza de baixo (Sheet da casa, Radix side="bottom"),
+//     renderizada em PORTAL fora da árvore do card. O contrato deste arquivo
+//     fica MAIS forte: agora é estruturalmente impossível a folha mudar a
+//     altura do card, porque ela não é descendente dele.
 //
 // jsdom NÃO calcula layout (não existe `getBoundingClientRect` de verdade
-// aqui) -- os testes deste arquivo prova comportamento e estrutura (classe,
-// posição no DOM, o que fecha o quê), nunca a medida em pixel. A medida real
-// (altura do card fechado == aberto, em pixel, na grade e no carrossel) foi
-// feita no navegador e está colada no relatório da tarefa, não neste arquivo.
+// aqui) -- os testes deste arquivo provam comportamento e estrutura (classe,
+// posição no DOM, o que fecha o quê), nunca a medida em pixel.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product, ProductVariant } from "@/types";
-
-// Periferia: framer-motion vira passthrough burro (mesmo dublê de
-// barra-de-rota-fica-montada-para-o-exit.test.tsx e
-// produto-a-produto-nao-carrega-lixo-do-anterior.test.tsx) -- a suíte deste
-// repositório não testa a ANIMAÇÃO do `AnimatePresence`, testa o que ela
-// carrega. Sem o dublê, o `exit` real adia o desmonte do painel além do
-// `act()` síncrono e "fechou" (DOM) e "fechado" (estado) ficariam
-// dessincronizados neste arquivo, que testa ESTADO/estrutura, não a
-// transição visual (essa é prova de navegador, colada no relatório da
-// tarefa).
-vi.mock("framer-motion", async () => {
-  const React = await import("react");
-  const PROPS_DE_ANIMACAO = new Set([
-    "initial",
-    "animate",
-    "exit",
-    "transition",
-    "variants",
-    "custom",
-    "layout",
-    "layoutId",
-    "whileTap",
-    "whileHover",
-    "whileInView",
-    "whileDrag",
-    "drag",
-    "dragConstraints",
-    "dragElastic",
-    "onDragEnd",
-    "onAnimationComplete",
-    "onAnimationStart",
-  ]);
-  const criar = (tag: string) =>
-    function DubleDeMotion({ children, ...resto }: Record<string, unknown>) {
-      const limpo = Object.fromEntries(
-        Object.entries(resto).filter(
-          ([chave]) => !PROPS_DE_ANIMACAO.has(chave),
-        ),
-      );
-      return React.createElement(tag, limpo, children as React.ReactNode);
-    };
-  const cache = new Map<string, unknown>();
-  const motion = new Proxy({} as Record<string, unknown>, {
-    get: (_alvo, tag) => {
-      if (typeof tag !== "string") return undefined;
-      if (!cache.has(tag)) cache.set(tag, criar(tag));
-      return cache.get(tag);
-    },
-  });
-  function AnimatePresence({ children }: { readonly children?: unknown }) {
-    return React.createElement(
-      React.Fragment,
-      null,
-      children as React.ReactNode,
-    );
-  }
-  return { motion, AnimatePresence, useReducedMotion: () => true };
-});
 
 // @ts-expect-error flag interna do React, sem tipo público -- mesmo padrão
 // dos outros testes de componente deste projeto.
@@ -122,7 +55,7 @@ function criarVariantes(): ProductVariant[] {
   ];
 }
 
-/** Muitos grupos, muitos valores cada -- a armadilha que o painel tem de
+/** Muitos grupos, muitos valores cada -- a armadilha que a folha tem de
  * resolver por ROLAGEM interna, sem o card crescer. */
 function criarMuitasVariantes(): ProductVariant[] {
   const cores = ["Azul", "Vermelho", "Verde", "Preto", "Branco", "Rosa"];
@@ -203,7 +136,7 @@ function criarProduto(overrides: Partial<Product> = {}): Product {
   };
 }
 
-describe("ProductCard -- painel de opções não empurra o card, e o card volta a poder ser esticado pela grade", () => {
+describe("ProductCard -- a folha de opções mora em PORTAL, e abrir opções não mexe no card", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -255,23 +188,33 @@ describe("ProductCard -- painel de opções não empurra o card, e o card volta 
       'button[data-testid="product-card-action"]',
     )!;
 
-  const painel = () =>
-    hospedeiro.querySelector<HTMLDivElement>(
-      '[data-testid="product-card-options-panel"]',
-    );
-
-  const fecharBtn = () =>
-    hospedeiro.querySelector<HTMLButtonElement>(
-      'button[aria-label="Fechar opções"]',
+  // A folha é PORTAL: queries por document, nunca pelo hospedeiro.
+  const folha = () =>
+    document.querySelector<HTMLDivElement>(
+      '[data-testid="product-card-options-sheet"]',
     )!;
 
-  async function abrirPainel() {
+  const ctaDaFolha = () =>
+    document.querySelector<HTMLButtonElement>(
+      'button[data-testid="product-card-options-add"]',
+    )!;
+
+  // A ALÇA (barrinha do topo da folha): peça 09 (14/09) — o X embutido do
+  // SheetContent saiu desta folha; fechar é pela alça (clique/arrasto) ou
+  // clique fora. Endereço estável por testid, o mesmo do teste irmão
+  // product-card-escolhe-opcoes-na-folha.
+  const alcaDaFolha = () =>
+    document.querySelector<HTMLButtonElement>(
+      'button[data-testid="product-card-options-handle"]',
+    )!;
+
+  async function abrirFolha() {
     await act(async () => {
       botaoAcao().click();
     });
   }
 
-  it("o wrapper raiz carrega h-full e flex-1 -- pode ser esticado pela grade com segurança, porque abrir o painel não muda a altura de conteúdo", async () => {
+  it("o wrapper raiz carrega h-full e flex-1 -- pode ser esticado pela grade com segurança, porque abrir a folha não muda a altura de conteúdo", async () => {
     await renderizarCard();
 
     const classes = raizDoCard().className;
@@ -279,47 +222,50 @@ describe("ProductCard -- painel de opções não empurra o card, e o card volta 
     expect(classes).toMatch(/(^|\s)flex-1(\s|$)/);
   });
 
-  it("expandir o painel de opções NÃO muda as classes de altura do wrapper raiz (continua com h-full/flex-1)", async () => {
+  it("abrir a folha NÃO muda as classes de altura do wrapper raiz (continua com h-full/flex-1)", async () => {
     await renderizarCard();
-    await abrirPainel();
+    await abrirFolha();
 
-    expect(hospedeiro.textContent).toContain("Escolha as opções");
+    expect(folha()).not.toBeNull();
     const classes = raizDoCard().className;
     expect(classes).toMatch(/(^|\s)h-full(\s|$)/);
     expect(classes).toMatch(/(^|\s)flex-1(\s|$)/);
   });
 
-  it("o painel é uma camada FORA do fluxo (absolute) -- não um filho que cresce no meio do conteúdo", async () => {
+  it("a folha é PORTAL: existe fora do hospedeiro, e o card NÃO ganha nenhum filho novo ao abrir", async () => {
     await renderizarCard();
-    await abrirPainel();
+    const filhosFechado = raizDoCard().children.length;
 
-    const painelEl = painel();
-    expect(painelEl).not.toBeNull();
-    expect(painelEl!.className).toMatch(/(^|\s)absolute(\s|$)/);
+    await abrirFolha();
+
+    const folhaEl = folha();
+    expect(folhaEl).not.toBeNull();
+    expect(hospedeiro.contains(folhaEl)).toBe(false);
+    // Nada entrou na árvore do card -- foi assim que o vizinho esticado
+    // morreu de vez (o painel de 12/09 era descendente do card).
+    expect(raizDoCard().children.length).toBe(filhosFechado);
   });
 
-  it("o painel aparece no DOM logo depois da foto -- antes do preço e do botão de ação (ordem de leitura/Tab bate com a ordem visual)", async () => {
+  it("a folha é camada FIXA fora do fluxo (fixed, colada embaixo) -- nunca um nó dentro do card", async () => {
     await renderizarCard();
-    await abrirPainel();
+    await abrirFolha();
 
-    const painelEl = painel()!;
-    const botao = botaoAcao();
-    const posicao = painelEl.compareDocumentPosition(botao);
-    // DOCUMENT_POSITION_FOLLOWING (4): o botão vem DEPOIS do painel no DOM.
-    expect(posicao & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(folha().className).toMatch(/(^|\s)fixed(\s|$)/);
   });
 
-  it("o botão de ação continua visível e clicável com o painel aberto (senão ninguém consegue adicionar ao carrinho)", async () => {
+  it("o CTA de adicionar está visível e habilitado na folha; o botão do card segue 'Escolher opções' (o literal 'Escolha acima' morreu com o painel)", async () => {
     await renderizarCard();
-    await abrirPainel();
+    await abrirFolha();
 
-    const botao = botaoAcao();
-    expect(botao).not.toBeNull();
-    expect(botao.disabled).toBe(false);
-    expect(hospedeiro.textContent).toContain("Escolha acima");
+    expect(ctaDaFolha()).not.toBeNull();
+    expect(ctaDaFolha().disabled).toBe(false);
+    expect(botaoAcao().textContent).toContain("Escolher opções");
+    expect(hospedeiro.textContent + document.body.textContent).not.toContain(
+      "Escolha acima",
+    );
   });
 
-  it("clicar no botão do produto FORA do painel (área de fundo do card) FECHA o painel em vez de navegar", async () => {
+  it("clique fora da folha (overlay) FECHA a folha em vez de navegar para o produto", async () => {
     const onClick = vi.fn();
     const { ProductCard } = await import("@/components/ui/custom/ProductCard");
     await act(async () => {
@@ -334,48 +280,104 @@ describe("ProductCard -- painel de opções não empurra o card, e o card volta 
         />,
       );
     });
-    await abrirPainel();
-    expect(painel()).not.toBeNull();
+    await abrirFolha();
+    expect(folha()).not.toBeNull();
 
+    // O overlay do Radix (fora do conteúdo) é o que recebe o toque fora --
+    // o wrapper do card nem é alcançável com a folha aberta (a camada opaca
+    // está por cima). Radix fecha por `pointerdown` fora do conteúdo.
     await act(async () => {
-      raizDoCard().click();
+      document
+        .querySelector('[data-slot="sheet-overlay"]')!
+        .dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     });
 
-    expect(painel()).toBeNull();
+    expect(folha()).toBeNull();
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it("Escape, com o foco dentro do painel, fecha o painel", async () => {
+  it("a alça (barrinha) fecha a folha — peça 09: sem X, é o caminho dedicado", async () => {
     await renderizarCard();
-    await abrirPainel();
-    expect(painel()).not.toBeNull();
+    await abrirFolha();
+    expect(folha()).not.toBeNull();
 
     await act(async () => {
-      painel()!.dispatchEvent(
+      alcaDaFolha().click();
+    });
+
+    expect(folha()).toBeNull();
+  });
+
+  it("Escape, com a folha aberta, fecha a folha", async () => {
+    await renderizarCard();
+    await abrirFolha();
+    expect(folha()).not.toBeNull();
+
+    await act(async () => {
+      folha().dispatchEvent(
         new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
       );
     });
 
-    expect(painel()).toBeNull();
+    expect(folha()).toBeNull();
   });
 
-  it("a miniatura da imagem atual continua visível dentro do painel (a promessa de `onAddToCartWithVariants` -- preço e imagem reagem à escolha -- não desaparece atrás do painel)", async () => {
-    await renderizarCard();
-    await abrirPainel();
+  it("a faixa de FOTO da folha reflete a escolha (promessa de `onAddToCartWithVariants`: imagem e preço reagem) -- e o card atrás continua na sua", async () => {
+    const { ProductCard } = await import("@/components/ui/custom/ProductCard");
+    await act(async () => {
+      raiz.render(
+        <ProductCard
+          product={criarProduto({
+            variants: [
+              ...criarVariantes(),
+              {
+                id: "var-m-foto",
+                productId: "prod-caderno",
+                name: "Tamanho",
+                value: "MM",
+                stockIncrement: 3,
+                imageUrl: "https://example.com/foto-da-escolha.png",
+                active: true,
+              },
+            ],
+          })}
+          isFavorite={false}
+          onToggleFavorite={() => {}}
+          onClick={vi.fn()}
+          showRating={false}
+          onAddToCartWithVariants={vi.fn()}
+        />,
+      );
+    });
 
-    const painelEl = painel()!;
-    const img = painelEl.querySelector("img");
-    expect(img).not.toBeNull();
+    await abrirFolha();
+
+    // Antes da escolha: a foto do produto.
+    expect(folha().querySelector("img")!.getAttribute("src")).toBe(
+      "https://example.com/img.png",
+    );
+
+    const chipMM = Array.from(
+      document.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((b) => b.textContent?.trim() === "MM")!;
+    await act(async () => {
+      chipMM.click();
+    });
+
+    // Depois: a foto da variante escolhida, DENTRO da folha.
+    expect(folha().querySelector("img")!.getAttribute("src")).toBe(
+      "https://example.com/foto-da-escolha.png",
+    );
   });
 
-  it("muitos grupos de variante: o painel rola por dentro (overflow-y-auto), o card não ganha um novo bloco no fluxo", async () => {
+  it("muitos grupos de variante: a folha rola por dentro (overflow-y-auto em filho dedicado), o card não ganha um novo bloco no fluxo", async () => {
     await renderizarCard({
       id: "prod-muitas-opcoes",
       variants: criarMuitasVariantes(),
     });
-    await abrirPainel();
+    await abrirFolha();
 
-    const scroll = hospedeiro.querySelector<HTMLDivElement>(
+    const scroll = document.querySelector<HTMLDivElement>(
       '[data-testid="product-card-options-scroll"]',
     );
     expect(scroll).not.toBeNull();
@@ -383,66 +385,40 @@ describe("ProductCard -- painel de opções não empurra o card, e o card volta 
     // Os três grupos estão todos representados (a rolagem é da CAIXA, não
     // filtro de conteúdo) -- isto prova só GEOMETRIA/estrutura. Não prova
     // (e não afirma) que o carrinho recebe a combinação certa de grupos --
-    // isso é ressalva separada, registrada no relatório da tarefa.
-    expect(hospedeiro.textContent).toContain("Cor");
-    expect(hospedeiro.textContent).toContain("Tamanho");
-    expect(hospedeiro.textContent).toContain("Sabor");
+    // isso é cobertura do arquivo de fluxo (escolhe-opcoes-na-folha).
+    expect(document.body.textContent).toContain("Cor");
+    expect(document.body.textContent).toContain("Tamanho");
+    expect(document.body.textContent).toContain("Sabor");
   });
 
-  it("todas as variações sem estoque: o painel mostra um estado vazio honesto, em vez de só chips riscados", async () => {
+  it("todas as variações sem estoque: a folha mostra um estado vazio honesto, em vez de só chips riscados", async () => {
     await renderizarCard({
       id: "prod-sem-estoque",
       variants: criarVariantesTodasSemEstoque(),
     });
-    await abrirPainel();
+    await abrirFolha();
 
-    expect(hospedeiro.textContent).toContain("Sem opções disponíveis");
+    expect(document.body.textContent).toContain("Sem opções disponíveis");
   });
 
-  // Bloqueador da rodada 1 de revisão (12/09): com o painel aberto, o botão
-  // de favoritar e o <button> do nome ficavam cobertos pela camada opaca do
-  // painel mas continuavam focáveis e na árvore de acessibilidade -- um
-  // Shift+Tab a partir do X do painel chegava neles INVISÍVEIS, e Enter
-  // navegava para a página do produto (descartando a escolha) ou favoritava
-  // sem feedback visual algum. `inert` tira os dois blocos cobertos (foto e
-  // meta) da árvore de foco/leitor de tela enquanto o painel está aberto --
-  // nunca o wrapper `relative` do painel em si, que continua totalmente
-  // interativo (X e chips).
-  it("com o painel aberto, a faixa de foto e a de metadados (favoritar + nome do produto) ficam `inert` -- fechado, nenhuma das duas é inerte", async () => {
+  // A folha é MODAL: com ela aberta, o card inteiro (favoritar, nome,
+  // botão de ação) sai da árvore de acessibilidade -- o Radix marca o que
+  // está fora do diálogo com aria-hidden (o `inert` manual de 12/09 morreu
+  // com o painel: quem faz isso agora é o próprio diálogo). Fechar restaura.
+  it("com a folha aberta, o card fica fora da árvore de acessibilidade (aria-hidden); fechado, volta", async () => {
     await renderizarCard();
 
-    const faixaFoto = raizDoCard().children[0]!.children[0] as HTMLElement;
-    const faixaMeta = raizDoCard().children[0]!.children[1] as HTMLElement;
-    const botaoFavoritar = faixaFoto.querySelector("button")!;
-    const botaoNome = faixaMeta.querySelector("button")!;
+    expect(hospedeiro.getAttribute("aria-hidden")).toBeNull();
 
-    // Fechado: nada inerte, os dois controles continuam alcançáveis.
-    expect(faixaFoto.hasAttribute("inert")).toBe(false);
-    expect(faixaMeta.hasAttribute("inert")).toBe(false);
-    expect(botaoFavoritar).not.toBeNull();
-    expect(botaoNome).not.toBeNull();
+    await abrirFolha();
 
-    await abrirPainel();
-
-    // Aberto: as duas faixas cobertas pela camada opaca do painel ficam
-    // inertes -- e os controles que a revisão apontou vivem DENTRO delas.
-    expect(faixaFoto.hasAttribute("inert")).toBe(true);
-    expect(faixaMeta.hasAttribute("inert")).toBe(true);
-    expect(faixaFoto.contains(botaoFavoritar)).toBe(true);
-    expect(faixaMeta.contains(botaoNome)).toBe(true);
-
-    // O wrapper do próprio painel (irmão das duas faixas acima) nunca fica
-    // inerte -- inert ali mataria o X e os chips.
-    const wrapperRelative = raizDoCard().children[0] as HTMLElement;
-    expect(wrapperRelative.hasAttribute("inert")).toBe(false);
+    expect(hospedeiro.getAttribute("aria-hidden")).toBe("true");
 
     await act(async () => {
-      fecharBtn().click();
+      alcaDaFolha().click();
     });
 
-    // Fechar devolve as duas faixas à árvore de foco.
-    expect(faixaFoto.hasAttribute("inert")).toBe(false);
-    expect(faixaMeta.hasAttribute("inert")).toBe(false);
+    expect(hospedeiro.getAttribute("aria-hidden")).toBeNull();
   });
 
   it("opção sem estoque continua riscada e desabilitada", async () => {
@@ -459,10 +435,10 @@ describe("ProductCard -- painel de opções não empurra o card, e o card volta 
         },
       ],
     });
-    await abrirPainel();
+    await abrirFolha();
 
     const botaoG = Array.from(
-      hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
+      document.querySelectorAll<HTMLButtonElement>("button"),
     ).find((b) => b.textContent === "G");
     expect(botaoG).toBeDefined();
     expect(botaoG!.disabled).toBe(true);
