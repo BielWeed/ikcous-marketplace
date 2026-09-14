@@ -85,9 +85,15 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
-      # SEM `npm ci` de propósito: edge e unit rodam sem node_modules
-      # (documentado no job antigo desde antes de 05/08/2026). O
-      # setup-node existe só para o `npm run` existir.
+          cache: npm
+      # O job antigo rodava edge e unit SEM node_modules (documentado desde
+      # antes de 05/08/2026), e o primeiro desenho deste job repetia essa
+      # premissa — o run 34835352133 de 14/09/2026 provou que ela expirou:
+      # o test:unit de hoje resolve `@supabase/supabase-js` via
+      # src/lib/publicStoreIdentity.ts e o Deno recusa ("Did you forget to
+      # run `deno install`?"). O `npm ci` voltou por isso; para removê-lo de
+      # novo, corte primeiro a importação de src/ nos testes de tests/.
+      - run: npm ci
       #
       # `npm test` (na máquina do dev) continua sendo a mesma linha com os
       # três conjuntos; aqui eles dividem jobs: test-deno (este), test-front-a
