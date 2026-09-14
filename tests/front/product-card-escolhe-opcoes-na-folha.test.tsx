@@ -20,7 +20,7 @@
 //   - 🔴 DECISÃO PAGA (herdada do painel de 12/09, portada): depois do
 //     "Salvo!" a folha NÃO fecha e NÃO limpa a escolha — a cliente compra
 //     DUAS variações do mesmo produto (P e M, dois sabores) sem recomeçar
-//     do zero. Fechar é sempre gesto explícito (X, fora, Escape).
+//     do zero. Fechar é sempre gesto explícito (alça, fora, Escape).
 //   - Sem a prop: o botão continua fazendo o que fazia — levar para a tela
 //     do produto (o teste irmão
 //     card-nao-deixa-comprar-sem-escolher-a-variacao.test.tsx continua
@@ -202,20 +202,12 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       (b) => b.textContent?.trim() === texto,
     )!;
 
-  // O X da folha: o SheetContent da casa embute o Close do Radix SEM
-  // data-testid, SEM aria-label e SEM data-slot -- o único endereço estável
-  // que ele oferece hoje é o <span class="sr-only">Close</span> (em inglês;
-  // defeito do sheet.tsx registrado fora de escopo no relatório).
-  const xDaFolha = () =>
-    Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
-      (b) => b.textContent === "Close",
-    )!;
-
   // A ALÇA (barrinha do topo da folha): peça 03, 13/09 — pedido do dono ao
   // vivo. Antes era só desenho (div aria-hidden); agora é botão que fecha por
-  // CLIQUE e por ARRASTO para baixo. Endereçada por testid — endereço
-  // estável, imune a ajuste de rótulo (o aria-label dela nomeia o gesto e
-  // se distingue do X; quem endereça por texto teria de acompanhar).
+  // CLIQUE e por ARRASTO para baixo. Peça 09 (14/09): com o X embutido do
+  // SheetContent DESLIGADO nesta folha, ela é o ÚNICO botão de fechar — e
+  // herdou o anúncio de leitor de tela que o X carregava. Endereçada por
+  // testid — endereço estável, imune a ajuste de rótulo.
   const alcaDaFolha = () =>
     document.querySelector<HTMLButtonElement>(
       'button[data-testid="product-card-options-handle"]',
@@ -376,7 +368,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(ctaDaFolha().textContent).toContain("65,00");
   });
 
-  it("a escolha sobrevive a fechar (X) e reabrir a folha — recomeçar do zero quebraria a compra dupla", async () => {
+  it("a escolha sobrevive a fechar (alça) e reabrir a folha — recomeçar do zero quebraria a compra dupla", async () => {
     await renderizarCard(criarProduto({ variants: criarVariantes() }), {
       onAddToCartWithVariants: vi.fn(),
     });
@@ -386,7 +378,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       chip("M").click();
     });
     await act(async () => {
-      xDaFolha().click();
+      alcaDaFolha().click();
     });
     expect(folha()).toBeNull();
 
@@ -397,8 +389,8 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
   });
 
   // ── FECHAR PELA ALÇA (peça 03: pedido do dono ao vivo, 13/09) ──────────
-  // Três caminhos além do X: clicar na barrinha, arrastar a barrinha para
-  // baixo e clicar fora (no véu). Ver cada caso pelo motivo.
+  // Três caminhos: clicar na barrinha, arrastar a barrinha para baixo e
+  // clicar fora (no véu). Ver cada caso pelo motivo.
 
   it("a alça é botão de verdade que anuncia 'Fechar (arraste para baixo)' — área de toque generosa, não só o risco de 4px", async () => {
     await renderizarCard(criarProduto({ variants: criarVariantes() }), {
@@ -408,9 +400,10 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
 
     const alca = alcaDaFolha();
     expect(alca.tagName).toBe("BUTTON");
-    // O anúncio nomeia o GESTO e se DISTINGUE do X (que continua "Fechar"):
-    // dois botões de fechar com o mesmo nome obrigavam o leitor de tela a
-    // adivinhar qual é qual.
+    // Peça 09 (14/09): o X embutido do SheetContent saiu desta folha — a
+    // alça é o ÚNICO botão de fechar e carrega sozinha o anúncio de leitor
+    // de tela (o "Fechar" simples que o X anunciava migrou para o nome dela,
+    // que além de fechar nomeia o gesto).
     expect(alca.getAttribute("aria-label")).toBe("Fechar (arraste para baixo)");
     // h-11 = 44px de alvo de toque (WCAG 2.5.5): a área tocável é o botão
     // inteiro, altura de dedo — não o risco de 4px dentro dele.
@@ -428,6 +421,44 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       alcaDaFolha().click();
     });
     expect(folha()).toBeNull();
+  });
+
+  it("a folha de opções NÃO renderiza botão X dedicado — a alça é o único botão de fechar (peça 09)", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    // O X embutido do SheetContent (sr-only "Close", aria-label "Fechar")
+    // saiu DESTA folha — fechar é pela alça (clique/arrasto) ou clique fora.
+    // Quem religar o X (default do base) derruba este it: o botão volta a
+    // existir no DOM da folha.
+    const botoes = Array.from(
+      document.querySelectorAll<HTMLButtonElement>("button"),
+    );
+    expect(botoes.find((b) => b.textContent === "Close")).toBeUndefined();
+    expect(
+      botoes.find((b) => b.getAttribute("aria-label") === "Fechar"),
+    ).toBeUndefined();
+    // E exatamente um botão anuncia fechar: a alça, com o gesto no nome.
+    const queAnunciamFechar = botoes.filter((b) =>
+      (b.getAttribute("aria-label") ?? "").startsWith("Fechar"),
+    );
+    expect(queAnunciamFechar).toHaveLength(1);
+    expect(queAnunciamFechar[0]).toBe(alcaDaFolha());
+  });
+
+  it("a folha de opções carrega border-t-0 — sem contorno no topo (peça 09; contrato textual: Tailwind não renderiza no jsdom)", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    const folhaEl = document.querySelector(
+      '[data-testid="product-card-options-sheet"]',
+    );
+    expect(folhaEl).not.toBeNull();
+    expect(folhaEl!.className).toContain("border-t-0");
   });
 
   it("arrastar a alça para baixo (além de 64px) fecha a folha", async () => {

@@ -95,7 +95,7 @@ export function ShippingProgress({
             )}
           >
             {shipping === 0
-              ? "Sua sacola já ganhou entrega grátis!"
+              ? "Seu carrinho já ganhou entrega grátis!"
               : "Benefício exclusivo"}
           </p>
         </div>
