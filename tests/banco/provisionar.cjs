@@ -62,7 +62,10 @@ async function main() {
 
     // 1. Papéis de fábrica (CREATE ROLE não tem IF NOT EXISTS).
     for (const papel of PAPEIS_DE_FABRICA) {
-      const existe = await cliente.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [papel]);
+      const existe = await cliente.query(
+        "SELECT 1 FROM pg_roles WHERE rolname = $1",
+        [papel],
+      );
       if (existe.rowCount === 0) {
         await cliente.query(`CREATE ROLE "${papel}" NOLOGIN`);
       }
@@ -108,10 +111,14 @@ async function main() {
         raw_app_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb
       )
     `);
-    console.log("[provisionar] auth.* emulado (uid lê app.rpc.user_id, users com raw_app_meta_data)");
+    console.log(
+      "[provisionar] auth.* emulado (uid lê app.rpc.user_id, users com raw_app_meta_data)",
+    );
 
     // 4. Publication de realtime (a 20261061000000 pressupõe a da plataforma).
-    const pub = await cliente.query("SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime'");
+    const pub = await cliente.query(
+      "SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime'",
+    );
     if (pub.rowCount === 0) {
       await cliente.query("CREATE PUBLICATION supabase_realtime");
       console.log("[provisionar] publication supabase_realtime criada");
@@ -182,7 +189,9 @@ async function main() {
       END;
       $stub$
     `);
-    console.log("[provisionar] pg_cron emulado por stub (cron.job/schedule/unschedule; nada dispara)");
+    console.log(
+      "[provisionar] pg_cron emulado por stub (cron.job/schedule/unschedule; nada dispara)",
+    );
 
     await cliente.end();
     console.log("[provisionar] efêmero provisionado.");

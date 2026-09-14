@@ -16,10 +16,19 @@
  * USO: node tests/banco/aplicar-migrations.cjs supabase/migrations
  */
 
+/* eslint-disable security/detect-non-literal-fs-filename --
+ * Os caminhos vêm de argumento de linha de comando (diretório de migrations
+ * do próprio repositório) — nunca de entrada de rede nem de terceiro. Mesma
+ * convenção de scripts/db-apply.cjs. */
+
 const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
-const { falhar, lerDatabaseUrlEfemera, anexarAoSummary } = require("./efemero.cjs");
+const {
+  falhar,
+  lerDatabaseUrlEfemera,
+  anexarAoSummary,
+} = require("./efemero.cjs");
 
 // Substituições controladas: o que o Supabase provisiona e o image oficial
 // não tem. Qualquer erro SQL FORA destas duas linhas falha o job.
@@ -35,20 +44,25 @@ const NEUTRALIZACOES = [
 ];
 
 function listarMigrations(diretorio) {
-  return fs
-    .readdirSync(diretorio, { withFileTypes: true })
-    .filter((entrada) => entrada.isFile())
-    .map((entrada) => entrada.name)
-    .filter((nome) => nome.endsWith(".sql"))
-    // Rollback-manual mora ao lado das migrations na raiz e NÃO é migration.
-    .filter((nome) => !nome.startsWith("rollback-"))
-    .sort();
+  return (
+    fs
+      .readdirSync(diretorio, { withFileTypes: true })
+      .filter((entrada) => entrada.isFile())
+      .map((entrada) => entrada.name)
+      .filter((nome) => nome.endsWith(".sql"))
+      // Rollback-manual mora ao lado das migrations na raiz e NÃO é migration.
+      .filter((nome) => !nome.startsWith("rollback-"))
+      .sort()
+  );
 }
 
 async function main() {
   const diretorio = process.argv[2];
   if (!diretorio || !fs.existsSync(diretorio)) {
-    falhar("INDETERMINADO", "Uso: node tests/banco/aplicar-migrations.cjs supabase/migrations");
+    falhar(
+      "INDETERMINADO",
+      "Uso: node tests/banco/aplicar-migrations.cjs supabase/migrations",
+    );
   }
 
   const arquivos = listarMigrations(diretorio);
@@ -67,7 +81,9 @@ async function main() {
   const aplicados = [];
   const avisos = [];
   try {
-    console.log(`[aplicar] arquivos na raiz (ordem de apply): ${arquivos.length}`);
+    console.log(
+      `[aplicar] arquivos na raiz (ordem de apply): ${arquivos.length}`,
+    );
     for (const nome of arquivos) {
       let conteudo = fs.readFileSync(path.join(diretorio, nome), "utf8");
       for (const { padrao, aviso } of NEUTRALIZACOES) {
@@ -88,7 +104,9 @@ async function main() {
         await cliente.query('SET search_path = "$user", public, extensions');
         await cliente.query(conteudo);
         aplicados.push(nome);
-        console.log(`[aplicar] ok ${aplicados.length}/${arquivos.length} ${nome}`);
+        console.log(
+          `[aplicar] ok ${aplicados.length}/${arquivos.length} ${nome}`,
+        );
       } catch (erro) {
         const onde = erro.position
           ? ` (offset ${erro.position} → linha ~${String(conteudo.slice(0, erro.position).split("\n").length)} do arquivo)`
@@ -109,9 +127,14 @@ async function main() {
       "public.coupons",
       "public.frota_lojas",
     ]) {
-      const existe = await cliente.query("SELECT to_regclass($1) AS reg", [objeto]);
+      const existe = await cliente.query("SELECT to_regclass($1) AS reg", [
+        objeto,
+      ]);
       if (!existe.rows[0].reg) {
-        falhar("FALHOU", `Objeto ${objeto} NÃO existe após aplicar a raiz inteira.`);
+        falhar(
+          "FALHOU",
+          `Objeto ${objeto} NÃO existe após aplicar a raiz inteira.`,
+        );
       }
     }
     console.log("[aplicar] sentinela de objetos pós-apply: OK");
@@ -126,10 +149,7 @@ async function main() {
   }
   anexarAoSummary(
     "Migrations aplicadas no efêmero (1ª passada)",
-    `**${resumo}**` +
-      (avisos.length
-        ? `\n\n<details><summary>Emulações (${avisos.length})</summary>\n\n\`\`\`\n${avisos.join("\n")}\n\`\`\`\n\n</details>`
-        : ""),
+    `**${resumo}**${avisos.length ? `\n\n<details><summary>Emulações (${avisos.length})</summary>\n\n\`\`\`\n${avisos.join("\n")}\n\`\`\`\n\n</details>` : ""}`,
   );
 }
 

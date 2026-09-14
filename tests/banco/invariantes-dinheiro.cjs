@@ -23,7 +23,11 @@
 
 const assert = require("node:assert");
 const { Client } = require("pg");
-const { falhar, lerDatabaseUrlEfemera, anexarAoSummary } = require("./efemero.cjs");
+const {
+  falhar,
+  lerDatabaseUrlEfemera,
+  anexarAoSummary,
+} = require("./efemero.cjs");
 
 // ---- Fixtures determinísticos (uuids fixos, nunca gerados por round-trip) --
 const U_CLIENTE = "11111111-1111-1111-1111-111111111111";
@@ -35,7 +39,9 @@ const CHAVE_FROTA = "ci-dinheiro-chave-teste";
 // ---- Helpers de sessão ------------------------------------------------------
 // auth.uid() do provisionar.cjs lê este GUC — é o "login" da prova.
 async function logar(cliente, userId) {
-  await cliente.query("SELECT set_config('app.rpc.user_id', $1, false)", [userId]);
+  await cliente.query("SELECT set_config('app.rpc.user_id', $1, false)", [
+    userId,
+  ]);
 }
 
 async function criarPedido(cliente, { produtos, cupom, total }) {
@@ -70,10 +76,10 @@ async function criarPedido(cliente, { produtos, cupom, total }) {
 }
 
 async function cancelar(cliente, orderId, novoStatus = "cancelled") {
-  return cliente.query("SELECT public.update_order_status_atomic($1::uuid, $2::text)", [
-    orderId,
-    novoStatus,
-  ]);
+  return cliente.query(
+    "SELECT public.update_order_status_atomic($1::uuid, $2::text)",
+    [orderId, novoStatus],
+  );
 }
 
 async function valorUnico(cliente, sql, params = []) {
@@ -124,9 +130,15 @@ PROVAS.push({
       cupom: "CICUPOM10",
       total: "90.00",
     });
-    assert.ok(/^[0-9a-f-]{36}$/i.test(pedidoId), "pedido com cupom deve nascer");
+    assert.ok(
+      /^[0-9a-f-]{36}$/i.test(pedidoId),
+      "pedido com cupom deve nascer",
+    );
     assert.equal(
-      await valorUnico(cliente, "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'"),
+      await valorUnico(
+        cliente,
+        "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'",
+      ),
       1,
       "criar pedido deve consumir a vaga do cupom",
     );
@@ -134,12 +146,19 @@ PROVAS.push({
     // Cancelamento NÃO devolve a vaga (Rodada 4: só a varredura devolve).
     await cancelar(cliente, pedidoId);
     assert.equal(
-      await valorUnico(cliente, "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'"),
+      await valorUnico(
+        cliente,
+        "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'",
+      ),
       1,
       "cancelamento não pode devolver a vaga do cupom",
     );
     assert.equal(
-      await valorUnico(cliente, "SELECT estoque FROM public.produtos WHERE id = $1", [P_PRODUTO_A]),
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_PRODUTO_A],
+      ),
       10,
       "cancelamento devolve o estoque",
     );
@@ -150,12 +169,18 @@ PROVAS.push({
       [pedidoId],
     );
     assert.equal(
-      await valorUnico(cliente, "SELECT public.devolver_cupons_de_pedidos_mortos()"),
+      await valorUnico(
+        cliente,
+        "SELECT public.devolver_cupons_de_pedidos_mortos()",
+      ),
       1,
       "1ª varredura devolve a vaga de exatamente um pedido",
     );
     assert.equal(
-      await valorUnico(cliente, "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'"),
+      await valorUnico(
+        cliente,
+        "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'",
+      ),
       0,
       "vaga devolvida: usage_count volta a zero",
     );
@@ -171,15 +196,25 @@ PROVAS.push({
 
     // 2ª varredura: nada a fazer — é aqui que o dobro morria.
     assert.equal(
-      await valorUnico(cliente, "SELECT public.devolver_cupons_de_pedidos_mortos()"),
+      await valorUnico(
+        cliente,
+        "SELECT public.devolver_cupons_de_pedidos_mortos()",
+      ),
       0,
       "2ª varredura não devolve de novo",
     );
     const contagemFinal = Number(
-      await valorUnico(cliente, "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'"),
+      await valorUnico(
+        cliente,
+        "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'",
+      ),
     );
     assert.ok(contagemFinal >= 0, "usage_limit nunca fica negativo");
-    assert.equal(contagemFinal, 0, "usage_count permanece zero após revarredura");
+    assert.equal(
+      contagemFinal,
+      0,
+      "usage_count permanece zero após revarredura",
+    );
 
     // A vaga devolvida é usável de novo: nasce pedido 2 com o mesmo cupom.
     const segundoPedido = await criarPedido(cliente, {
@@ -187,9 +222,15 @@ PROVAS.push({
       cupom: "CICUPOM10",
       total: "40.00",
     });
-    assert.ok(/^[0-9a-f-]{36}$/i.test(segundoPedido), "vaga devolvida deve aceitar novo pedido");
+    assert.ok(
+      /^[0-9a-f-]{36}$/i.test(segundoPedido),
+      "vaga devolvida deve aceitar novo pedido",
+    );
     assert.equal(
-      await valorUnico(cliente, "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'"),
+      await valorUnico(
+        cliente,
+        "SELECT usage_count FROM public.coupons WHERE code = 'CICUPOM10'",
+      ),
       1,
       "novo pedido consome a vaga devolvida",
     );
@@ -226,7 +267,11 @@ PROVAS.push({
       total: "100.00",
     });
     assert.equal(
-      await valorUnico(cliente, "SELECT estoque FROM public.produtos WHERE id = $1", [P_PRODUTO_B]),
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_PRODUTO_B],
+      ),
       8,
       "criar pedido debita o estoque",
     );
@@ -242,14 +287,20 @@ PROVAS.push({
 
     await cancelar(cliente, pedidoId);
     assert.equal(
-      await valorUnico(cliente, "SELECT estoque FROM public.produtos WHERE id = $1", [P_PRODUTO_B]),
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_PRODUTO_B],
+      ),
       10,
       "1º cancelamento devolve o estoque uma vez",
     );
     assert.equal(
-      await valorUnico(cliente, "SELECT count(*) FROM public.order_refunds WHERE order_id = $1", [
-        pedidoId,
-      ]),
+      await valorUnico(
+        cliente,
+        "SELECT count(*) FROM public.order_refunds WHERE order_id = $1",
+        [pedidoId],
+      ),
       1,
       "pedido pago cancelado abre exatamente um estorno",
     );
@@ -261,7 +312,11 @@ PROVAS.push({
       "re-cancelamento pelo dono deve ser recusado",
     );
     assert.equal(
-      await valorUnico(cliente, "SELECT estoque FROM public.produtos WHERE id = $1", [P_PRODUTO_B]),
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_PRODUTO_B],
+      ),
       10,
       "recusa não mexe no estoque",
     );
@@ -272,21 +327,29 @@ PROVAS.push({
     await logar(cliente, U_ADMIN);
     await cancelar(cliente, pedidoId);
     assert.equal(
-      await valorUnico(cliente, "SELECT estoque FROM public.produtos WHERE id = $1", [P_PRODUTO_B]),
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_PRODUTO_B],
+      ),
       10,
       "re-cancelamento do admin não devolve estoque em dobro",
     );
     assert.equal(
-      await valorUnico(cliente, "SELECT count(*) FROM public.order_refunds WHERE order_id = $1", [
-        pedidoId,
-      ]),
+      await valorUnico(
+        cliente,
+        "SELECT count(*) FROM public.order_refunds WHERE order_id = $1",
+        [pedidoId],
+      ),
       1,
       "re-cancelamento do admin não abre estorno em dobro",
     );
     assert.equal(
-      await valorUnico(cliente, "SELECT status FROM public.marketplace_orders WHERE id = $1", [
-        pedidoId,
-      ]),
+      await valorUnico(
+        cliente,
+        "SELECT status FROM public.marketplace_orders WHERE id = $1",
+        [pedidoId],
+      ),
       "cancelled",
       "pedido permanece cancelado",
     );
@@ -312,23 +375,27 @@ PROVAS.push({
        ON CONFLICT (id) DO NOTHING`,
     );
 
-    const viva = await cliente.query("SELECT * FROM public.resolver_loja($1, $2)", [
-      "LOJA-VIVA.LOJAS.TESTE",
-      CHAVE_FROTA,
-    ]);
-    assert.equal(viva.rows.length, 1, "host ativo resolve (sem sensibilidade a maiúscula)");
+    const viva = await cliente.query(
+      "SELECT * FROM public.resolver_loja($1, $2)",
+      ["LOJA-VIVA.LOJAS.TESTE", CHAVE_FROTA],
+    );
+    assert.equal(
+      viva.rows.length,
+      1,
+      "host ativo resolve (sem sensibilidade a maiúscula)",
+    );
     assert.equal(viva.rows[0].id, "loja-viva", "resolve a loja certa");
 
-    const morta = await cliente.query("SELECT * FROM public.resolver_loja($1, $2)", [
-      "loja-morta.lojas.teste",
-      CHAVE_FROTA,
-    ]);
+    const morta = await cliente.query(
+      "SELECT * FROM public.resolver_loja($1, $2)",
+      ["loja-morta.lojas.teste", CHAVE_FROTA],
+    );
     assert.equal(morta.rows.length, 0, "host inativo não resolve");
 
-    const chaveErrada = await cliente.query("SELECT * FROM public.resolver_loja($1, $2)", [
-      "loja-viva.lojas.teste",
-      "chave-errada-de-propósito",
-    ]);
+    const chaveErrada = await cliente.query(
+      "SELECT * FROM public.resolver_loja($1, $2)",
+      ["loja-viva.lojas.teste", "chave-errada-de-propósito"],
+    );
     assert.equal(chaveErrada.rows.length, 0, "chave errada não resolve nada");
   },
 });
@@ -354,15 +421,23 @@ async function main() {
         console.error(`  FALHOU ${nome}`);
         console.error(`    ${erro.message}`);
         linhas.push(`- ❌ ${nome}\n  - \`${erro.message}\``);
-        anexarAoSummary("Provas de contrato do dinheiro (rpc-ci)", linhas.join("\n"));
-        falhar("FALHOU", "Uma invariante de DINHEIRO foi quebrada — ver acima qual.");
+        anexarAoSummary(
+          "Provas de contrato do dinheiro (rpc-ci)",
+          linhas.join("\n"),
+        );
+        falhar(
+          "FALHOU",
+          "Uma invariante de DINHEIRO foi quebrada — ver acima qual.",
+        );
       }
     }
   } finally {
     await cliente.end().catch(() => {});
   }
 
-  console.log(`\n[invariantes] ${PROVAS.length}/${PROVAS.length} provas passaram.`);
+  console.log(
+    `\n[invariantes] ${PROVAS.length}/${PROVAS.length} provas passaram.`,
+  );
   anexarAoSummary(
     "Provas de contrato do dinheiro (rpc-ci)",
     `${linhas.join("\n")}\n\n**${PROVAS.length}/${PROVAS.length} invariantes provadas** contra as migrations aplicadas do zero.`,

@@ -13,6 +13,10 @@
  * arquivo de outra.
  */
 
+/* eslint-disable security/detect-non-literal-fs-filename --
+ * O único caminho de arquivo daqui é GITHUB_STEP_SUMMARY (definido pelo
+ * próprio Actions), nunca entrada de rede nem de terceiro. */
+
 const fs = require("node:fs");
 
 function falhar(tipo, mensagem) {
@@ -34,7 +38,10 @@ function lerDatabaseUrlEfemera() {
   } catch {
     host = "";
   }
-  if (!url.startsWith("postgres://") || (host !== "localhost" && host !== "127.0.0.1")) {
+  if (
+    !url.startsWith("postgres://") ||
+    (host !== "localhost" && host !== "127.0.0.1")
+  ) {
     falhar(
       "RECUSADO",
       `DATABASE_URL fora do efêmero (host '${host || "ilegível"}'). Este job NUNCA aponta para banco real.`,
