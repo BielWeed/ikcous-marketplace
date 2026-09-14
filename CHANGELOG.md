@@ -7,6 +7,29 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.33.2] - 2026-09-14
+
+**O conserto de verdade do clique fora da folha de opções no CELULAR**: quem
+tocava fora da folha de escolha com o dedo ainda era levado para a tela
+completa do produto (lojas Savy e IKCOUS). O guardião que fecha a folha
+agora também **engole o toque** — ele fecha a folha e não deixa o toque
+atravessar para o card que ficou por baixo. Prova nova e permanente no CI:
+a jornada agora é testada com **dedo de verdade** (toque touchscreen do
+navegador, não só mouse) — tocar fora SÓ fecha, em qualquer loja da
+plataforma. Reúne o PR #597.
+
+### Para quem COMPRA (vitrine)
+
+- **Tocar fora da folha de opções no celular só fecha a folha** (PR #597):
+  o toque não vaza mais para o card atrás — o cliente para na vitrine onde
+  estava, sem cair na tela do produto sem querer.
+
+### Nos bastidores
+
+- **Jornada E2E com toque de dedo real** (PR #597): além do mouse, o CI
+  agora reproduz o gesto de toque do celular (pointer events de dedo +
+  hit-test do navegador) contra a vitrine a cada PR.
+
 ## [1.33.1] - 2026-09-14
 
 Release de garantia: a correção do clique fora da folha de opções (o toque
