@@ -18,7 +18,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const writeText = vi.fn(async () => undefined);
 
 vi.mock("@/lib/supabase", () => ({
-  supabase: { functions: { invoke: vi.fn(async () => ({ data: null, error: null })) } },
+  supabase: {
+    functions: { invoke: vi.fn(async () => ({ data: null, error: null })) },
+  },
 }));
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));

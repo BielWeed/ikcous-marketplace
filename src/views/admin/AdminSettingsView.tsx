@@ -59,9 +59,9 @@ const IdentitySettingsSection = lazy(() =>
 // pronto + teste de conexão — conteúdo inteiro mora no próprio componente
 // (junto do arquivo de conteúdo do guia); aqui só a porta.
 const MercadoPagoSection = lazy(() =>
-  import("@/components/admin/settings/MercadoPagoSection").then(
-    (module) => ({ default: module.MercadoPagoSection }),
-  ),
+  import("@/components/admin/settings/MercadoPagoSection").then((module) => ({
+    default: module.MercadoPagoSection,
+  })),
 );
 
 const BusinessHoursEditor = memo(function BusinessHoursEditor({
@@ -1023,9 +1023,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     </p>
                   }
                 >
-                  <MercadoPagoSection
-                    onDirtyMudou={setPagamentosPendente}
-                  />
+                  <MercadoPagoSection onDirtyMudou={setPagamentosPendente} />
                 </Suspense>
               </SecaoColapsavel>
             </GrupoDeAjustes>

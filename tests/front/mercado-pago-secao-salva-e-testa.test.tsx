@@ -163,12 +163,19 @@ describe("MercadoPagoSection — salva e testa as chaves do lojista", () => {
     expect(document.body.textContent).toContain("••••4321");
     expect(document.body.textContent).not.toContain(TOKEN_FALSO);
     // o placeholder convida a MANTER a chave, não a exibi-la
-    const campo = document.getElementById("mp-access-token") as HTMLInputElement;
+    const campo = document.getElementById(
+      "mp-access-token",
+    ) as HTMLInputElement;
     expect(campo.placeholder).toContain("Deixe vazio para manter");
   });
 
   it("S2 — salvar manda as chaves para a edge e limpa os segredos da tela", async () => {
-    cenario.salvo = { ...CONFIGURADO, configurado: false, public_key: null, mascara_token: null };
+    cenario.salvo = {
+      ...CONFIGURADO,
+      configurado: false,
+      public_key: null,
+      mascara_token: null,
+    };
     raiz = await montarSecao();
 
     digitar("mp-public-key", PUBLICA_FALSA);
@@ -182,7 +189,9 @@ describe("MercadoPagoSection — salva e testa as chaves do lojista", () => {
 
     expect(toastSuccess).toHaveBeenCalled();
     // o campo de segredo nasce vazio de novo; a máscara atualizada volta
-    expect((document.getElementById("mp-access-token") as HTMLInputElement).value).toBe("");
+    expect(
+      (document.getElementById("mp-access-token") as HTMLInputElement).value,
+    ).toBe("");
     expect(document.body.textContent).toContain("••••9999");
     expect(document.body.textContent).not.toContain(TOKEN_FALSO);
   });

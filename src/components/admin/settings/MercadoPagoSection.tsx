@@ -80,9 +80,10 @@ async function erroAmigavel(error: unknown, generico: string): Promise<string> {
       detalhes?.name === "FunctionsHttpError" &&
       detalhes.context instanceof Response
     ) {
-      const corpo = (await detalhes.context.clone().json().catch(() => null)) as
-        | { erro?: unknown }
-        | null;
+      const corpo = (await detalhes.context
+        .clone()
+        .json()
+        .catch(() => null)) as { erro?: unknown } | null;
       if (corpo && typeof corpo.erro === "string" && corpo.erro) {
         return corpo.erro;
       }
@@ -180,7 +181,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       return;
     }
     if (!config.configurado && !accessToken.trim()) {
-      toast.error("Cole também o Access Token — é a chave que processa os pagamentos.");
+      toast.error(
+        "Cole também o Access Token — é a chave que processa os pagamentos.",
+      );
       return;
     }
 
@@ -214,7 +217,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     } catch (err) {
       haptic.error();
       toast.error(
-        await erroAmigavel(err, "Não consegui salvar as chaves agora. Tente de novo."),
+        await erroAmigavel(
+          err,
+          "Não consegui salvar as chaves agora. Tente de novo.",
+        ),
       );
     } finally {
       setSalvando(false);
@@ -255,7 +261,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     } catch (err) {
       haptic.error();
       toast.error(
-        await erroAmigavel(err, "Não consegui testar a conexão agora. Tente de novo."),
+        await erroAmigavel(
+          err,
+          "Não consegui testar a conexão agora. Tente de novo.",
+        ),
       );
     } finally {
       setTestando(false);
@@ -267,7 +276,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       await navigator.clipboard.writeText(PROMPT_PARA_AGENTE_MP);
       setCopiado(true);
       haptic.light();
-      if (copiadoTimer.current !== null) window.clearTimeout(copiadoTimer.current);
+      if (copiadoTimer.current !== null)
+        window.clearTimeout(copiadoTimer.current);
       copiadoTimer.current = window.setTimeout(() => setCopiado(false), 2000);
     } catch {
       toast.error(
@@ -470,7 +480,13 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
 
           <button
             type="button"
-            disabled={testando || carregando || isOffline || dirty || !config.configurado}
+            disabled={
+              testando ||
+              carregando ||
+              isOffline ||
+              dirty ||
+              !config.configurado
+            }
             onClick={testarConexao}
             title={
               dirty
