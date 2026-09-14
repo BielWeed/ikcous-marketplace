@@ -125,8 +125,14 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      # `db reset` aplica TODAS as migrations de supabase/migrations/, na
-      # ordem, num banco descartável — a prova de que a cadeia inteira
+      # O `db reset` de versões recentes do CLI exige o stack local DE PÉ
+      # (medido no run 34819706254: sem isto, "supabase start is not
+      # running" em 8 s). É a mesma ordem dos docs oficiais de CI do
+      # Supabase (supabase.com/docs/guides/deployment/managing-environments).
+      - name: Sobe o stack local do Supabase (Docker do runner)
+        run: supabase start
+      # `db reset` derruba e recria o banco, aplicando TODAS as migrations de
+      # supabase/migrations/, na ordem — a prova de que a cadeia inteira
       # constrói um banco do zero. As migrations usam schemas auth./storage.
       # do Supabase (por isso Postgres puro não serve; medido na matriz).
       - name: Aplica a cadeia inteira num banco descartável
