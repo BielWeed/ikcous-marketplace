@@ -1,0 +1,37 @@
+# DEPENDABOT — frente CI-SAÚDE (14/09/2026).
+#
+# O que ele faz sem ninguém lembrar: uma vez por semana abre PRs de atualização
+# agrupada (minor+patch juntos, para não inundar a caixa) e PRs de segurança
+# (esses não se agrupam por natureza — cada um é um conserto).
+#
+# Custo zero: dependabot é grátis em repositório público. Ele só abre PR —
+# quem decide é o PR gate de sempre (CI + central).
+#
+# Mínores quebram API e por isso NÃO entram no grupo: chegam sozinhos, um PR
+# cada, onde a discussão deles cabe.
+
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      menores-e-patches:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Os workflows atualizam actions (checkout@v5, setup-node@v5...) — deixar
+  # essa roda girar sozinha evita o dia em que a action velha é desligada e o
+  # CI inteiro morre por causa de versão de infra.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      acoes-menores-e-patches:
+        update-types:
+          - "minor"
+          - "patch"

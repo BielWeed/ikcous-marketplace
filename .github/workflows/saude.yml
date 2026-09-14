@@ -1,0 +1,126 @@
+# SAÚDE DA SUPERFÍCIE — workflow informativo da frente CI-SAÚDE (14/09/2026).
+#
+# O que este arquivo É: visibilidade permanente de coisas que só se olhavam
+# quando doíam — cobertura de testes, peso do bundle, saúde das dependências
+# e fumaça de performance. Tudo publicado no SUMMARY do run (aba "Summary"),
+# legível para quem não abre log.
+#
+# O que este arquivo NÃO é: porteiro. TODO job nasce `continue-on-error: true`
+# (informativo-first, decisão do dono de 14/09): vermelho aqui nunca bloqueia
+# merge enquanto os números amadurecem. O dia em que um número virar contrato,
+# ele migra para o ci.yml com a discussão que isso merece — não silenciosamente
+# aqui dentro.
+#
+# CUSTO (declarado no PR que trouxe este arquivo): repo PÚBLICO = runners
+# padrão grátis, R$ 0 por rodada. Parede: ~7 min (3 jobs em paralelo).
+# `cancel-in-progress` não deixa a fila de pushes empilhar rodadas velhas.
+# Nenhuma ferramenta aqui cobra: vitest + provedor de cobertura e o Lighthouse
+# CI entram via `npm install --no-save` DENTRO do job (package.json e lockfile
+# intocados — mudança neles é outro trabalho, com outra discussão).
+#
+# Por que o build aqui usa `IKCOUS_IDENTITY_MODE: fixture` e mede `dist-test/`:
+# é a MESMA receita provada do ci.yml (job "Build e tamanho"), sem segredo —
+# medir outra coisa que não o que o CI já prova seria medir ficção.
+
+name: Saúde da superfície
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saude-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mesma versão do ci.yml (e da Vercel). Divergência aqui = número medido
+  # num Node e entregue noutro.
+  NODE_VERSION: "24"
+
+jobs:
+  cobertura:
+    name: Cobertura de testes
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # O vitest precisa do provedor v8 e ele NÃO está no package.json. Em vez
+      # de mudar o lockfile (território de outro trabalho), o job instala a
+      # versão EXATA do vitest já travado no lock — --no-save/--no-package-lock
+      # garantem que nada volta alterado para o repositório.
+      - name: Descobre a versão exata do vitest
+        run: echo "VITEST_VERSION=$(node -p 'require("vitest/package.json").version')" >> "$GITHUB_ENV"
+      - name: Instala o provedor de cobertura sem tocar no package.json
+        run: npm install --no-save --no-package-lock "@vitest/coverage-v8@${{ env.VITEST_VERSION }}"
+      # Cobertura sobre `src/**`: o que interessa é a saúde do APP, não dos
+      # arquivos de teste. O `--coverage.include` também faz arquivos nunca
+      # tocados por teste entrarem na conta com 0% — denominador honesto.
+      - name: Suíte do front com cobertura (só no CI, por ordem do dono)
+        run: npx vitest run --coverage --coverage.include "src/**" --coverage.reporter text --coverage.reporter json-summary
+      - name: Publica o resumo por diretório
+        run: node scripts/ci/resumo-cobertura.mjs >> "$GITHUB_STEP_SUMMARY"
+
+  peso:
+    name: Peso do bundle e Lighthouse
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Mesma receita provada do ci.yml: build completo, sem segredo, fixture
+      # de identidade. O resultado cai em dist-test/ (nunca promovível).
+      - name: Build de teste com identidade fictícia
+        run: npm run build
+        env:
+          NODE_ENV: production
+          IKCOUS_IDENTITY_MODE: fixture
+          IKCOUS_CODE_SHA: ${{ github.sha }}
+      # Compara com scripts/ci/orcamento-bundle.json (fotografia medida no
+      # primeiro run). Acima do orçamento = AVISO no summary, nunca falha.
+      - name: Orçamento de bundle
+        run: node scripts/ci/mede-bundle.mjs >> "$GITHUB_STEP_SUMMARY"
+      # Prova viva de que o aviso dispara: roda de novo com um orçamento
+      # falsificado 1 byte abaixo do medido e afirma que o aviso apareceu.
+      # Custa < 1 s e impede o detector nascer mudo.
+      - name: Autoteste do aviso
+        run: node scripts/ci/mede-bundle.mjs --autoteste
+      # Fumaça de performance. O upload do lhci fica DESLIGADO (filesystem
+      # local do runner): nada do repositório vai para serviço externo.
+      - name: Instala o Lighthouse CI sem tocar no package.json
+        run: npm install --no-save --no-package-lock "@lhci/cli@0.15.1"
+      - name: Lighthouse fumaça sobre o build fixture
+        run: npx lhci collect --staticDistDir=dist-test --numberOfRuns=1
+      - name: Publica o resumo do Lighthouse
+        run: node scripts/ci/resumo-lighthouse.mjs >> "$GITHUB_STEP_SUMMARY"
+
+  dependencias:
+    name: Auditoria de dependências
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # O npm audit lê o package-lock e pergunta ao registry: não precisa de
+      # `npm ci` (~40 s poupados). Saída sempre em JSON; o resumo separa o que
+      # importa (alta/crítica) do ruído.
+      - name: Audita o package-lock
+        run: npm audit --json > "${{ runner.temp }}/auditoria.json" || true
+      - name: Publica o resumo da auditoria
+        run: node scripts/ci/resumo-audit.mjs "${{ runner.temp }}/auditoria.json" >> "$GITHUB_STEP_SUMMARY"
