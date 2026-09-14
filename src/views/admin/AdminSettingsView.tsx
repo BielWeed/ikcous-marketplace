@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   ChevronDown,
   Clock,
+  CreditCard,
   HelpCircle,
   History,
   Layers,
@@ -51,6 +52,15 @@ interface AdminSettingsViewProps {
 const IdentitySettingsSection = lazy(() =>
   import("@/components/admin/settings/IdentitySettingsSection").then(
     (module) => ({ default: module.IdentitySettingsSection }),
+  ),
+);
+
+// Peça 20 (14/09/2026): chaves do Mercado Pago do lojista + guia com prompt
+// pronto + teste de conexão — conteúdo inteiro mora no próprio componente
+// (junto do arquivo de conteúdo do guia); aqui só a porta.
+const MercadoPagoSection = lazy(() =>
+  import("@/components/admin/settings/MercadoPagoSection").then(
+    (module) => ({ default: module.MercadoPagoSection }),
   ),
 );
 
@@ -714,6 +724,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
   const [identidadePendente, setIdentidadePendente] = useState(false);
   const [horarioPendente, setHorarioPendente] = useState(false);
+  // Peça 20: mesma trava das demais — chave digitada e não salva não pode
+  // sumir num clique no cabeçalho da seção.
+  const [pagamentosPendente, setPagamentosPendente] = useState(false);
 
   // Espelha a soma das pendências para o App (onSetDirty = setIsAdminDirty):
   // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
@@ -721,13 +734,17 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   useEffect(() => {
     if (active !== false)
       onSetDirty?.(
-        transportadorasPendentes || identidadePendente || horarioPendente,
+        transportadorasPendentes ||
+          identidadePendente ||
+          horarioPendente ||
+          pagamentosPendente,
       );
   }, [
     active,
     transportadorasPendentes,
     identidadePendente,
     horarioPendente,
+    pagamentosPendente,
     onSetDirty,
   ]);
 
@@ -983,6 +1000,34 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               {/* Lugar reservado (desenho SALÃO+PORÃO): o liga/desliga de
                   retirada na loja (`enabled_shipping_methods`) entra aqui —
                   peça do Claude. NÃO criar stub. */}
+            </GrupoDeAjustes>
+
+            {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
+                lojista cadastra as chaves do Mercado Pago dele — guia com
+                prompt pronto para o agente de IA do app do MP, salvar e
+                testar conexão ali mesmo. O Pix de hoje segue intocado (o
+                painel acima continua mostrando o estado DELE); plugar estas
+                chaves no checkout é frente futura. Nascida FECHADA como as
+                demais: ajuste feito uma vez. */}
+            <GrupoDeAjustes titulo="Pagamentos">
+              <SecaoColapsavel
+                titulo="Mercado Pago"
+                subtitulo="Chaves do seu Mercado Pago no app"
+                icone={CreditCard}
+                comPendencia={pagamentosPendente}
+              >
+                <Suspense
+                  fallback={
+                    <p className="text-sm text-zinc-400">
+                      Carregando Mercado Pago…
+                    </p>
+                  }
+                >
+                  <MercadoPagoSection
+                    onDirtyMudou={setPagamentosPendente}
+                  />
+                </Suspense>
+              </SecaoColapsavel>
             </GrupoDeAjustes>
 
             {/*
