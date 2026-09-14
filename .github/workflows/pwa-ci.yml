@@ -96,11 +96,18 @@ jobs:
       # pela versão CRAVADA — quando sobe, a chave muda e o cache renova. Sem
       # `restore-keys` de propósito: browser velho mascarando incompatibilidade
       # é falso verde (e service worker é exatamente o que não pode mentir).
+      #
+      # Chave UNIFICADA entre os workflows de navegador (pwa-ci e e2e-jornadas
+      # usam o MESMO Chromium, mesma versão cravada): uma entrada só. Cache é
+      # write-once — segunda gravação simultânea vira warning inofensivo e o
+      # run segue verde; e o `playwright install --with-deps` roda DEPOIS do
+      # restore e é idempotente, então "cache errado" não existe na prática.
+      # Quando a expansão (#582) mergear, alinhar a chave dela (hoje hashFiles).
       - name: Cache dos navegadores do Playwright
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-pwa-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
       - name: Instala o Chromium (e dependências de sistema)
         run: npx playwright install --with-deps chromium
       # Receita EXATA do job Build do ci.yml (SEM segredos e SEM env extra —
