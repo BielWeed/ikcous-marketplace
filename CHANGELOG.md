@@ -7,6 +7,24 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.33.1] - 2026-09-14
+
+Release de garantia: a correção do clique fora da folha de opções (o toque
+fora só fecha a folha — nunca mais leva para a tela completa do produto)
+ganhou uma **prova automática de navegador de verdade** que roda a cada PR
+junto das jornadas do cliente. Com ela, esse defeito — o mesmo que o dono
+viu ao vivo — não volta a chegar ao ar sem ser caçado antes. Não muda nada
+no que o cliente vê: é o mesmo app da 1.33.0, agora com o certificado.
+Reúne o PR #594.
+
+### Nos bastidores
+
+- **Prova E2E do clique fora da folha** (PR #594): jornada nova no CI que
+  abre a folha de opções do card, clica fora com mouse de verdade (eventos
+  de ponteiro completos + hit-test do navegador) e exige que a vitrine
+  continue no lugar — o guardião do clique pós-fecho provado no navegador,
+  não só em teste de componente.
+
 ## [1.33.0] - 2026-09-14
 
 Polimento fino da jornada de compra e o fim da tela fantasma de atualização:
