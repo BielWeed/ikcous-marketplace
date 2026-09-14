@@ -14,7 +14,6 @@ import type { Product, ProductVariant } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
 import {
   Check,
-  ChevronDown,
   Flame,
   Heart,
   Loader2,
@@ -212,7 +211,7 @@ export const ProductCard = memo(function ProductCard({
 
   // Loja recém-criada ou produto com variantes cadastradas mas TODAS sem
   // estoque: sem isso a folha abre só com chips riscados e nada pode ser
-  // escolhido -- a única saída seria o X, o que parece a tela travada com
+  // escolhido -- a única saída seria fechar, o que parece a tela travada com
   // o card coberto pela folha.
   const nenhumaOpcaoDisponivel =
     temGruposDeOpcao &&
@@ -309,7 +308,7 @@ export const ProductCard = memo(function ProductCard({
     // depois do "Salvo!". Fechar automático apagava junto a escolha de quem
     // estava comprando DUAS variações do mesmo produto (P e M, dois
     // sabores), forçando recomeçar do zero. Fechar é sempre um gesto
-    // explícito: X, toque fora (overlay) ou Escape.
+    // explícito: alça, toque fora (overlay) ou Escape.
     const idLoading = window.setTimeout(() => {
       setCartStatus("success");
       const idSuccess = window.setTimeout(() => {
@@ -598,8 +597,8 @@ export const ProductCard = memo(function ProductCard({
         {/* Action Button: com variação, o rótulo é SEMPRE "Escolher opções"
             (13/09) -- ele só abre a folha; os estados de salvamento
             ("Salvando..."/"Salvo!") e o rótulo de valor moram no CTA do
-            rodapé da folha. O ChevronDown girando é o sinal de estado
-            (folha aberta). */}
+            rodapé da folha. Peça 09 (14/09): SEM chevron/setinha — pedido
+            do dono; o estado aberto/fechado é visível na própria folha. */}
         <div className="mt-1.5">
           <button
             data-testid="product-card-action"
@@ -632,16 +631,6 @@ export const ProductCard = memo(function ProductCard({
                       ? "Salvando..."
                       : "Salvo!"}
             </span>
-            {hasActiveVariant &&
-              onAddToCartWithVariants &&
-              estoqueAtual > 0 && (
-                <ChevronDown
-                  className={cn(
-                    "size-3 shrink-0 transition-transform duration-200",
-                    folhaOpcoesAberta && "rotate-180",
-                  )}
-                />
-              )}
           </button>
         </div>
       </div>
@@ -674,15 +663,18 @@ export const ProductCard = memo(function ProductCard({
             side="bottom"
             data-testid="product-card-options-sheet"
             onClick={(e) => e.stopPropagation()}
-            className="mx-auto max-h-[88dvh] gap-0 sm:max-w-md sm:rounded-t-3xl"
+            showCloseButton={false}
+            className="mx-auto max-h-[88dvh] gap-0 border-t-0 sm:max-w-md sm:rounded-t-3xl"
           >
             {/* Alça que FECHA (peça 03, 13/09 — pedido do dono ao vivo):
                 clicar nela fecha a folha; arrastar para baixo também
-                (handler acima). Botão real com área de toque generosa
-                (h-11 = 44px, alvo de toque WCAG 2.5.5) — o desenho continua
-                sendo o risco fino DENTRO dele — e o anúncio nomeia o GESTO
-                ("Fechar (arraste para baixo)") para se DISTINGUIR do X, que
-                fica com o "Fechar" simples. */}
+                (handler acima). Peça 09 (14/09): o X embutido do SheetContent
+                saiu (showCloseButton={false}, pedido do dono) — esta alça é o
+                ÚNICO botão de fechar e carrega sozinha o anúncio de leitor de
+                tela que o X fazia ("Fechar"), mais o gesto ("arraste para
+                baixo"). Botão real com área de toque generosa (h-11 = 44px,
+                alvo de toque WCAG 2.5.5) — o desenho continua sendo o risco
+                fino DENTRO dele. */}
             <button
               type="button"
               data-testid="product-card-options-handle"
