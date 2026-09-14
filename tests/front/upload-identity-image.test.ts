@@ -67,13 +67,28 @@ afterEach(() => {
   control.start = undefined;
   control.find = undefined;
 });
-// Da tempo real ao event loop (crypto.subtle.digest, import dinamico,
-// createIdentityUploadResume) sem mexer no relogio falso do vi.useFakeTimers.
-async function drain(turns = 50) {
-  for (let i = 0; i < turns; i++) {
-    await new Promise<void>((resolve) => setImmediate(resolve));
+// Espera CONDICIONAL por condicao: cede macrotasks (ceder captura o setImmediate
+// nativo ANTES de qualquer useFakeTimers — se toFake um dia o incluir, o laco nao
+// pende) e avanca o relogio falso de 0 em 0 ms, sem mover o orcamento do teste
+// (os avancos de regra ficam explicitos no corpo). O teto e guarda contra loop
+// infinito, NAO orcamento: ao esgotar, a assercao roda FORA do try e o erro real
+// (ex. "expected [] to have a length of 1") estoura — no pior caso o testTimeout
+// (5000 ms no CI) vence a disputa e degrada o diagnostico, nunca vira
+// falso-positivo; a cura e mudar UNTIL_TURNS.
+const ceder = setImmediate;
+const UNTIL_TURNS = 5000;
+async function until(condicao: () => void): Promise<void> {
+  for (let volta = 0; volta < UNTIL_TURNS; volta++) {
+    try {
+      condicao();
+      return;
+    } catch {
+      /* condicao ainda nao vale: cede o event loop e tenta de novo */
+    }
+    await new Promise<void>((resolve) => ceder(resolve));
     await vi.advanceTimersByTimeAsync(0);
   }
+  condicao(); // esgotado: fora do try — o erro real da assercao propaga
 }
 it("onSuccess nao confirma objeto publico diferente de mesmo tamanho", async () => {
   const publicBytes = bytes.slice();
@@ -473,15 +488,13 @@ it("GET publico pendente respeita timeout mesmo quando o prazo interno vence ant
     options({ fetchImpl, timeoutMs: 100 }),
   );
   void pending.catch(() => {});
-  await drain();
-  expect(control.instances).toHaveLength(1);
+  await until(() => expect(control.instances).toHaveLength(1));
   // 30.4ms de "trabalho" antes do SDK chamar onSuccess: o prazo interno do
   // confirm() vira Math.floor(100 - 30.4) = 69, vencendo em 30.4+69=99.4,
   // ou seja, 0.6ms antes do prazo externo de 100.
   await vi.advanceTimersByTimeAsync(30.4);
   success(control.instances[0]!);
-  await drain();
-  expect(fetchImpl).toHaveBeenCalledOnce();
+  await until(() => expect(fetchImpl).toHaveBeenCalledOnce());
   // O GET publico nunca responde (wait.promise fica pendente): so o timer
   // interno do verificador (69ms) tem chance de vencer aqui; o externo
   // (100ms, agendado desde o inicio) ainda nao chegou.
