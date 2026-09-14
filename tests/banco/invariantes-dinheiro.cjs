@@ -81,6 +81,20 @@ async function valorUnico(cliente, sql, params = []) {
   return resultado.rows[0][Object.keys(resultado.rows[0])[0]];
 }
 
+// Loja fixture: frete sempre grátis (sentinela 0.01 zera o frete sem cotação
+// nem opção de entrega) e cobertura nacional (nenhum portão de CEP). As
+// colunas vão no INSERT e no UPDATE: só no DO UPDATE, a linha NOVA nasceria
+// com o default (free_shipping_min=100) — medido no CI em 14/09.
+async function garantirLojaFixture(cliente) {
+  await cliente.query(
+    `INSERT INTO public.store_config (id, free_shipping_min, shipping_coverage)
+     VALUES (1, 0.01, 'national')
+     ON CONFLICT (id) DO UPDATE
+       SET free_shipping_min = EXCLUDED.free_shipping_min,
+           shipping_coverage = EXCLUDED.shipping_coverage`,
+  );
+}
+
 // ---- Provas -----------------------------------------------------------------
 const PROVAS = [];
 
@@ -88,11 +102,7 @@ const PROVAS = [];
 PROVAS.push({
   nome: "(a) cupom: limite não fica negativo e não devolve duas vezes no mesmo pedido",
   corpo: async (cliente) => {
-    await cliente.query(
-      `INSERT INTO public.store_config (id) VALUES (1)
-       ON CONFLICT (id) DO UPDATE
-         SET free_shipping_min = 0.01, shipping_coverage = 'national'`,
-    );
+    await garantirLojaFixture(cliente);
     await cliente.query(
       `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
        VALUES ($1, 'Produto Prova Cupom', 30.00, 50.00, 10, true, false)`,
@@ -191,11 +201,7 @@ PROVAS.push({
 PROVAS.push({
   nome: "(b) cancelamento duplo: não devolve estoque/estorno em dobro e recusa a 2ª do dono",
   corpo: async (cliente) => {
-    await cliente.query(
-      `INSERT INTO public.store_config (id) VALUES (1)
-       ON CONFLICT (id) DO UPDATE
-         SET free_shipping_min = 0.01, shipping_coverage = 'national'`,
-    );
+    await garantirLojaFixture(cliente);
     await cliente.query(
       `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
        VALUES ($1, 'Produto Prova Cancelamento', 30.00, 50.00, 10, true, false)`,
