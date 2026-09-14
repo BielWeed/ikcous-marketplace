@@ -15,6 +15,11 @@
 #   npm run secretlint   -> exit 0  (0 achados)              BLOQUEIA
 #   npm run lint:ratchet -> exit 0  (dívida no teto, não subiu)  BLOQUEIA SE SUBIR
 #   npm run lint:links   -> exit 0  (164 links, 0 quebrados) BLOQUEIA
+# Medido em 14/09/2026, já no CI (o job `test` único da época levava 317 s):
+#   npm test             -> exit 0  (edge 539 casos ~2 s + unit 380 casos ~4 s
+#                                    + vitest front 498 arquivos 278,35 s =
+#                                    88% do job — o número que motivou o
+#                                    shard; repita esta medição se mexer)
 #
 # `npm run lint` cru sai com 1 e sempre sairá enquanto houver dívida antiga.
 # Quem entra no CI é a catraca, que compara com `.lint-baseline.json`.
@@ -30,9 +35,13 @@ on:
   push:
     branches: [develop, main]
 
-# Não existe branch protection neste repositório (privado + plano Free = 403),
-# então estes checks não conseguem BLOQUEAR um merge no GitHub. Eles informam.
-# A decisão de não mergear com o CI vermelho é acordo entre os dois devs.
+# NOTA (14/09/2026): o raciocínio abaixo nasceu quando o repositório era
+# privado e a API de branch protection devolvia 403 no plano Free. Essa
+# premissa EXPIROU: o repositório hoje é PÚBLICO e branch protection é
+# GRÁTIS em repositório público. Ativar a trava (ou não) é decisão do
+# dono/central. Enquanto ela não existe, estes checks não conseguem
+# BLOQUEAR um merge no GitHub. Eles informam. A decisão de não mergear com
+# o CI vermelho continua sendo acordo entre os dois devs.
 # Ver a seção "A trava que não existe" do CONTRIBUTING.md.
 
 permissions:
@@ -65,8 +74,8 @@ jobs:
       # este job vira verde falso. (INFRA-020 / INFRA-120)
       - run: npm run typecheck
 
-  test:
-    name: Testes
+  test-deno:
+    name: Testes (Deno — edge + unit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -77,18 +86,25 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      # O `npm ci` entrou aqui com o vitest (INFRA-150): ate 05/08/2026 este job
-      # so precisava do Deno, porque os dois conjuntos de teste rodavam sem
-      # node_modules. Nao vale a pena partir em dois jobs: um `npm test` unico
-      # e a mesma linha que o dev roda na maquina dele, e job separado abre
-      # espaco para o CI e a maquina divergirem sem ninguem notar.
+      # O job antigo rodava edge e unit SEM node_modules (documentado desde
+      # antes de 05/08/2026), e o primeiro desenho deste job repetia essa
+      # premissa — o run 34835352133 de 14/09/2026 provou que ela expirou:
+      # o test:unit de hoje resolve `@supabase/supabase-js` via
+      # src/lib/publicStoreIdentity.ts e o Deno recusa ("Did you forget to
+      # run `deno install`?"). O `npm ci` voltou por isso; para removê-lo de
+      # novo, corte primeiro a importação de src/ nos testes de tests/.
       - run: npm ci
-      # `npm test` roda tres conjuntos, 798 casos somados (medidos em
-      # 20/08/2026: 294 + 60 + 444). Se voce mexer na suite, MEDA de novo em
-      # vez de somar a diferenca no numero antigo — os sub-totais abaixo ja
-      # ficaram anos-luz atras por terem sido mantidos assim.
       #
-      # test:edge — 294 casos em Deno, varrendo supabase/functions/ inteiro.
+      # `npm test` (na máquina do dev) continua sendo a mesma linha com os
+      # três conjuntos; aqui eles dividem jobs: test-deno (este), test-front-a
+      # e test-front-b. Medido em 14/09/2026: edge 539 casos (~2 s) + unit
+      # 380 casos (~4 s) + front 498 arquivos de vitest (278,35 s, 88% do
+      # antigo job único de 317 s — o número que motivou a divisão). Se você
+      # mexer na suíte, MEDA de novo em vez de somar a diferença no número
+      # antigo — os sub-totais abaixo já ficaram anos-luz atrás por terem
+      # sido mantidos assim.
+      - run: npm run test:edge
+      # test:edge — 539 casos em Deno, varrendo supabase/functions/ inteiro.
       # Historico de como a pasta encheu: calculate-shipping existia desde
       # antes e nunca tinha sido executada por ninguem (INFRA-140); send-push
       # (PUSH-010) sobe um push service local para provar o envio sem tocar a
@@ -97,8 +113,8 @@ jobs:
       # nascer fora do CI, que foi o que aconteceu com a send-push — e a
       # prova de que funciona e que os 11 da notify-new-order entraram aqui
       # sozinhos, sem ninguem editar este workflow.
-      #
-      # test:unit — 60 testes / 73 steps em tests/, em Deno, sobre os axiomas
+      - run: npm run test:unit
+      # test:unit — 380 casos em tests/, em Deno, sobre os axiomas
       # do Truth Gate (PR #145), sobre o cabeçalho condicional do rollback do
       # db-apply (PR do buraco "restaurada vs criada") e sobre o veredito da
       # verificacao pos-aplicacao do db-apply (resumirVerificacao,
@@ -106,10 +122,38 @@ jobs:
       # duas migrations sem verificacao saiam como "Tudo aplicado e
       # verificado"). Moram fora de src/ de proposito: um _test.ts la dentro
       # entraria no `tsc -b` e quebraria o job de tipos com os globais do Deno.
+
+  test-front-a:
+    name: Testes front (shard 1/2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # O job único `test` já foi um `npm test` de 6 s de Deno — foi quando se
+      # escreveu ali que "nao vale a pena partir em dois jobs". Essa premissa
+      # EXPIROU: medido em 14/09/2026, o job levava 317 s, dos quais 278,35 s
+      # eram vitest front (498 arquivos) = 88%. O `npm test` LOCAL não muda:
+      # continua a mesma linha que o dev roda na máquina. Aqui a suíte front
+      # roda em 2 shards porque o vitest reparte os arquivos de forma
+      # determinística pelo NOME DO ARQUIVO — os dois shards somados cobrem
+      # 100% da suíte, nada fica fora — e cada runner carrega metade da carga,
+      # o que ataca a causa física do timeout documentado abaixo.
       #
-      # test:front — 444 casos de vitest em 78 arquivos de tests/front/, que o
-      # script do Deno ignora explicitamente. Comecou em src/lib/mappers.ts
-      # (INFRA-150) e hoje cobre tela.
+      # O `--retry=1` existe SÓ no CI, por causa do flaky medido em
+      # 14/09/2026: 5 runs vermelhos em 2 horas (develop 2x, main 1x, PRs 2x),
+      # sempre o caso "chega no checkout pela URL direta" de
+      # tests/front/checkout-seta-voltar-so-fecha-painel-primeiro-toque.test.tsx
+      # com `Test timed out in 5000ms` sob carga. Teste quebrado de verdade
+      # falha as 2 tentativas e o job continua vermelho; quem consertar a
+      # causa-raiz pode tirar o retry.
+      #
+      # test:front — vitest em 498 arquivos de tests/front/ (medido em
+      # 14/09/2026), que o script do Deno ignora explicitamente. Comecou em
+      # src/lib/mappers.ts (INFRA-150) e hoje cobre tela.
       #
       # Os tres somados nao tocam rede externa. No Linux do CI rodam em poucos
       # segundos. Na maquina Windows do Gabriel o test:front leva ~40 s e o
@@ -121,7 +165,23 @@ jobs:
       # defeito: vermelho de test:front nesta maquina nao distingue codigo
       # quebrado de PC ocupado, e verde tambem nao prova muito. Quem cobra e'
       # o CI, no Linux.
-      - run: npm test
+      - run: npm run test:front -- --shard=1/2 --retry=1
+
+  test-front-b:
+    name: Testes front (shard 2/2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Mesma suíte do test-front-a, outra metade dos arquivos — o shard do
+      # vitest é determinístico por nome de arquivo, então os dois shards
+      # juntos continuam cobrindo os 498 arquivos. Os comentários de casa
+      # (shard, retry do flaky e a história do front) moram no test-front-a.
+      - run: npm run test:front -- --shard=2/2 --retry=1
 
   build:
     name: Build e tamanho

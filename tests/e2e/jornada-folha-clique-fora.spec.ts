@@ -45,3 +45,34 @@ test("folha de opções: clicar fora SÓ fecha — o fundo não navega", async (
 
   expect(errosNoFim().erros).toEqual([]);
 });
+
+// O gesto do DONO (relato pós-1.33.1, lojas Savy e IKCOUS): DEDO no celular,
+// não mouse. `hasTouch` + `touchscreen.tap` disparam a sequência de toque de
+// verdade (pointer events com pointerType=touch + hit-test do navegador) — é
+// o caminho que o guardião do sheet.tsx cobre com regras próprias.
+test.describe("toque de dedo real", () => {
+  test.use({ hasTouch: true });
+
+  test("folha de opções: TOQUE fora SÓ fecha — o fundo não navega", async ({
+    page,
+  }) => {
+    await instalarLojaFixtura(page);
+    const errosNoFim = await abrirLoja(page);
+
+    await page.getByRole("button", { name: "Escolher opções" }).first().click();
+    const folha = page.locator('[data-slot="sheet-content"]');
+    await expect(folha).toBeVisible();
+
+    const tamanho = page.viewportSize() ?? { width: 1280, height: 720 };
+    await page.touchscreen.tap(
+      Math.round(tamanho.width / 2),
+      Math.round(tamanho.height * 0.2),
+    );
+
+    await expect(folha).toHaveCount(0, { timeout: 10_000 });
+    expect(page.url()).not.toContain("product-detail");
+    await expect(page.getByText(PRODUTO_ROUPAS).first()).toBeVisible();
+
+    expect(errosNoFim().erros).toEqual([]);
+  });
+});
