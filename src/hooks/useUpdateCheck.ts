@@ -319,7 +319,9 @@ export function useUpdateCheck() {
         });
       }
     }
-  }, [needRefresh, newVersion, fetchServerVersion, SAFE_APP_VERSION]);
+    // SAFE_APP_VERSION é constante de módulo (define de build): fora do
+    // array de propósito — listá-la é warning do exhaustive-deps.
+  }, [needRefresh, newVersion, fetchServerVersion]);
 
   useEffect(() => {
     if (offlineReady) {
