@@ -84,7 +84,7 @@ describe("useUpdateCheck — sem mecanismo próprio de chunk, delegando ao módu
 
   it("o purge obrigatório usa os procedimentos seguros do módulo único", () => {
     expect({
-      cachesSoDoApp: FONTE.includes("apagarCachesDoApp()"),
+      cachesSoDoApp: FONTE.includes("await apagarCachesDoApp()"),
       deleteDatabaseAguardado: FONTE.includes(
         "await apagarIndexedDBAguardando()",
       ),
