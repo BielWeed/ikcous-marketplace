@@ -1,0 +1,38 @@
+# Atualizações de versão pelo Dependabot (frente expansao-ci, 14/09/2026).
+#
+# Por que existe: o bump de actions de 13/09 (PR #566, issue #165) foi MANUAL —
+# e o risco da issue era todos os jobs do CI caírem juntos no dia em que o
+# GitHub parar de compensar actions velhas. O ecosystem github-actions
+# automatiza exatamente isso; o npm cobre o resto.
+#
+# Anti-ruído (receita "Tame Dependabot" do blog do GitHub): cadência SEMANAL,
+# minor+patch AGRUPADOS num PR só por ecosystem (majors continuam vindo em PR
+# separado, que é onde merecem olhar), limite de PRs abertos.
+#
+# Custo real: o Dependabot não consome minuto de Actions; cada PR dele dispara
+# o gate (ci.yml) + este workflow — ~10-15 min de minutos por semana no ritmo
+# de 1-2 PRs agrupados. Repo público: R$ 0.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm-minor-e-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-minor-e-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
