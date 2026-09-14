@@ -1,19 +1,25 @@
 # CI de expansão — frente expansao-ci (14/09/2026), desenhado na matriz
 # equipe/entregas/20260914-expansao-ci/matriz-de-pesquisa.md.
 #
-# Regra de nascimento (despacho, critério 3): NADA novo derruba o CI. Os dois
-# jobs nascem `continue-on-error` (informacional) e só viram bloqueantes
-# depois de estáveis — decisão da central, um de cada vez.
+# Regra de nascimento (despacho, critério 3): NADA novo derruba o CI. O job
+# nasce `continue-on-error` (informacional) e só vira bloqueante depois de
+# estável — decisão da central.
 #
 # Por que num arquivo SEPARADO do ci.yml: o gate existente não é tocado
 # (conflito zero com as outras frentes), tem `concurrency` próprio e filtro
 # por caminho próprio. O ci.yml continua sendo o único que bloqueia.
 #
+# MIGRATIONS DO ZERO NÃO É MAIS DAQUI (14/09, portão da central): o tema foi
+# escopado para a frente ci-banco, dona designada — prova de migrations do
+# zero vive em .github/workflows/db-ci.yml (PR #585, mergeado no develop).
+# O job daqui achou o defeito real (LOCK TABLE fora de transação no applier
+# do `db reset`, migration 20261121000000) e foi desligado; o achado ficou
+# registrado na mesa para o dono da migration.
+#
 # Custo (medido na matriz; repo PÚBLICO = grátis, a conta prova eficiência):
-#   e2e        ~5-6 min por run — MAS nasce dispatch-only (ver job): zero
-#              custo recorrente até a peça de ativação ligar o primeiro spec
-#   migrations ~4-6 min por run (pull das imagens Docker do stack local)
-# Impacto no tempo de PAREDE do PR: ~zero — correm em paralelo ao gate.
+#   e2e ~5-6 min por run — MAS nasce dispatch-only (ver job): zero custo
+#   recorrente até a peça de ativação ligar o primeiro spec
+# Impacto no tempo de PAREDE do PR: ~zero — corre em paralelo ao gate.
 
 name: CI Expansão
 
@@ -23,7 +29,6 @@ on:
     paths:
       - "src/**"
       - "e2e/**"
-      - "supabase/**"
       - "middleware.ts"
       - "package.json"
       - "package-lock.json"
@@ -36,7 +41,6 @@ on:
     paths:
       - "src/**"
       - "e2e/**"
-      - "supabase/**"
       - "middleware.ts"
       - "package.json"
       - "package-lock.json"
@@ -44,11 +48,6 @@ on:
       - "vite.config.ts"
       - "tsconfig*.json"
       - ".github/workflows/ci-expansao.yml"
-  # Semanal (segunda, 05:30 UTC = 02:30 BRT): pega drift sem PR nenhum —
-  # ex.: atualização da imagem do stack Supabase que quebra a cadeia de
-  # migrations. Runs agendados só acontecem na branch padrão (develop).
-  schedule:
-    - cron: "30 5 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -113,27 +112,3 @@ jobs:
           name: relatorio-playwright
           path: playwright-report/
           retention-days: 7
-
-  migrations:
-    name: Migrations aplicam do zero (informacional)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v5
-      # O stack LOCAL do Supabase é open source e roda no Docker do runner:
-      # sem conta, sem cartão (custo zero é lei do dono, 14/09).
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-      # O `db reset` de versões recentes do CLI exige o stack local DE PÉ
-      # (medido no run 34819706254: sem isto, "supabase start is not
-      # running" em 8 s). É a mesma ordem dos docs oficiais de CI do
-      # Supabase (supabase.com/docs/guides/deployment/managing-environments).
-      - name: Sobe o stack local do Supabase (Docker do runner)
-        run: supabase start
-      # `db reset` derruba e recria o banco, aplicando TODAS as migrations de
-      # supabase/migrations/, na ordem — a prova de que a cadeia inteira
-      # constrói um banco do zero. As migrations usam schemas auth./storage.
-      # do Supabase (por isso Postgres puro não serve; medido na matriz).
-      - name: Aplica a cadeia inteira num banco descartável
-        run: supabase db reset
