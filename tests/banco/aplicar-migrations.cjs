@@ -67,6 +67,7 @@ async function main() {
   const aplicados = [];
   const avisos = [];
   try {
+    console.log(`[aplicar] arquivos na raiz (ordem de apply): ${arquivos.length}`);
     for (const nome of arquivos) {
       let conteudo = fs.readFileSync(path.join(diretorio, nome), "utf8");
       for (const { padrao, aviso } of NEUTRALIZACOES) {
@@ -79,13 +80,33 @@ async function main() {
       try {
         await cliente.query(conteudo);
         aplicados.push(nome);
+        console.log(`[aplicar] ok ${aplicados.length}/${arquivos.length} ${nome}`);
       } catch (erro) {
+        const onde = erro.position
+          ? ` (offset ${erro.position} → linha ~${String(conteudo.slice(0, erro.position).split("\n").length)} do arquivo)`
+          : "";
         falhar(
           "FALHOU",
-          `Migration ${nome} falhou no efêmero: ${erro.message}\n${erro.detail || ""}`,
+          `Migration ${nome} falhou no efêmero: ${erro.message}${onde}\n${erro.detail || ""}\n${erro.where || ""}`,
         );
       }
     }
+
+    // Sentinela de sanidade: objetos que as provas de dinheiro vão tocar
+    // precisam existir após a raiz inteira. Falhar aqui aponta o apply (e
+    // não as provas) como o lado quebrado.
+    for (const objeto of [
+      "public.store_config",
+      "public.marketplace_orders",
+      "public.coupons",
+      "public.frota_lojas",
+    ]) {
+      const existe = await cliente.query("SELECT to_regclass($1) AS reg", [objeto]);
+      if (!existe.rows[0].reg) {
+        falhar("FALHOU", `Objeto ${objeto} NÃO existe após aplicar a raiz inteira.`);
+      }
+    }
+    console.log("[aplicar] sentinela de objetos pós-apply: OK");
   } finally {
     await cliente.end().catch(() => {});
   }
