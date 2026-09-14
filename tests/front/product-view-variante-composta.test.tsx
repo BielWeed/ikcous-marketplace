@@ -121,7 +121,13 @@ function botaoDaCombinacao(raiz: ParentNode, valor: string) {
 describe("ProductView — a combinação de atributos vira UMA opção com estoque próprio", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
-  let adicionarAoCarrinho: ReturnType<typeof vi.fn>;
+  let adicionarAoCarrinho: ReturnType<
+    typeof vi.fn<(
+      quantity: number,
+      variantId?: string,
+      variantNames?: string,
+    ) => void>
+  >;
 
   beforeEach(() => {
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
@@ -139,7 +145,7 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
-    adicionarAoCarrinho = vi.fn();
+    adicionarAoCarrinho = vi.fn<(q: number, v?: string, n?: string) => void>();
   });
 
   afterEach(() => {

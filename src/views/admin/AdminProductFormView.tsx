@@ -334,7 +334,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   // estoque próprio — ver `variante-composta.ts`. O modal nasce com um par;
   // "+ Atributo" empilha os demais.
   const [variantFormData, setVariantFormData] = useState<{
-    pares: ParNoForm;
+    pares: ParNoForm[];
     sku: string;
     stockIncrement: string;
     priceOverride: string;
