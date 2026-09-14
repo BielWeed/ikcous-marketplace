@@ -29,6 +29,12 @@ on:
       - "supabase/migrations/**"
       - "tests/banco/**"
       - ".github/workflows/rpc-ci.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "supabase/migrations/**"
+      - "tests/banco/**"
+      - ".github/workflows/rpc-ci.yml"
   workflow_dispatch:
 
 permissions:
