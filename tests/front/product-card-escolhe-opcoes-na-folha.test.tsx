@@ -636,6 +636,86 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(folha()).toBeNull();
   });
 
+  // ── CLICAR FORA TEM QUE SÓ FECHAR (14/09, relato do dono ao vivo) ────────
+  // O MESMO clique que fecha a folha não pode ATINGIR o card de fundo: o
+  // Radix desmonta a folha no pointerdown (e no toque, no próprio click),
+  // e o click sintetizado do gesto cai no que ficou por baixo — o dono viu
+  // o app NAVEGAR para o produto ao tentar só fechar. O guardião do clique
+  // pós-fecho (sheet.tsx) engole esse click órfão. Estes dois casos são o
+  // defeito do dono, ponta a ponta com o card de verdade (o spy da prop
+  // onClick é o mesmo gatilho do pushState do App).
+
+  // Gesto físico completo num botão: pointerdown + pointerup + click — é o
+  // que TODO gesto real produz (e o que desarma o guardião de um fecho
+  // anterior: nenhum click nasce sem pointerdown).
+  async function gestoFisicoNo(elemento: HTMLElement) {
+    await act(async () => {
+      elemento.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+      elemento.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+      elemento.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+  }
+
+  it("clique fora fecha a folha e NÃO navega: o card de fundo não recebe o click atravessado", async () => {
+    const onProductClick = vi.fn();
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onProductClick,
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await gestoFisicoNo(botaoDeAcao());
+    expect(folha()).not.toBeNull();
+
+    // Gesto real: pointerdown no véu fecha (Radix)...
+    const overlay = document.querySelector('[data-slot="sheet-overlay"]')!;
+    await act(async () => {
+      overlay.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    });
+    expect(folha()).toBeNull();
+
+    // ...e o click do MESMO gesto cai no CARD (que ficou por baixo): o card
+    // inteiro é clicável — é exatamente por aqui que o app navegava.
+    const card = hospedeiro.firstElementChild as HTMLElement;
+    await act(async () => {
+      card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onProductClick).not.toHaveBeenCalled();
+  });
+
+  it("soltar o arrasto da alça FORA da folha não navega: o click pós-arrasto também morre", async () => {
+    const onProductClick = vi.fn();
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onProductClick,
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await gestoFisicoNo(botaoDeAcao());
+    expect(folha()).not.toBeNull();
+
+    // Arrasto que fecha: dedo desce na ALÇA (dentro), passa de 64px e o
+    // pointerup cai no CARD (fora da folha — é o que o browser faz: o
+    // evento vai ao elemento sob o cursor). O click do soltar cai no card.
+    await act(async () => {
+      alcaDaFolha().dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 200 }),
+      );
+      (hospedeiro.firstElementChild as HTMLElement).dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientY: 190 }),
+      );
+    });
+    expect(folha()).toBeNull();
+
+    await act(async () => {
+      (hospedeiro.firstElementChild as HTMLElement).dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    expect(onProductClick).not.toHaveBeenCalled();
+  });
+
   it("sem a prop nova, o botão continua levando para a tela do produto (retrocompatível) e nenhuma folha abre", async () => {
     const onProductClick = vi.fn();
     await renderizarCard(criarProduto({ variants: criarVariantes() }), {
