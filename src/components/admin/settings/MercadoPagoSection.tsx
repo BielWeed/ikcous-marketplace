@@ -1,10 +1,12 @@
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   Copy,
   KeyRound,
   Loader2,
@@ -105,6 +107,68 @@ async function erroAmigavel(error: unknown, generico: string): Promise<string> {
   });
 }
 
+/**
+ * Expansor de SEGUNDA camada (pedido do dono, 14/09 à noite vendo a tela:
+ * o grupo "Mercado Pago" aberto despejava guia + formulário de uma vez e
+ * poluía a tela). Nasce FECHADO, como o grupo que o abriga (decisão do dono
+ * de 02/09); abrir/fechar é um clique no cabeçalho. O conteúdo DESMONTA
+ * quando fecha — mesma semântica do SecaoColapsavel da view — mas o estado
+ * do formulário mora no componente pai: fechar e reabrir não perde o que
+ * foi digitado (e a trava "Salve antes de fechar" do grupo segue de pé
+ * enquanto houver pendência).
+ */
+function Expansor({
+  titulo,
+  subtitulo,
+  icone: Icone,
+  aberto,
+  onAlternar,
+  children,
+}: {
+  readonly titulo: string;
+  readonly subtitulo: string;
+  readonly icone: React.ElementType;
+  readonly aberto: boolean;
+  readonly onAlternar: () => void;
+  readonly children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/5 bg-zinc-950/60">
+      <button
+        type="button"
+        onClick={onAlternar}
+        aria-expanded={aberto}
+        className="group flex w-full items-center justify-between gap-3 p-3 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-admin-gold/10 text-admin-gold ring-1 ring-admin-gold/20">
+            <Icone className="size-3.5" strokeWidth={2.25} />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[11px] font-black uppercase tracking-[0.2em] text-white">
+              {titulo}
+            </span>
+            <span className="block truncate text-[10px] normal-case tracking-normal text-zinc-500">
+              {subtitulo}
+            </span>
+          </span>
+        </span>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-zinc-500 transition-transform duration-200 group-hover:text-zinc-300",
+            aberto && "rotate-180",
+          )}
+        />
+      </button>
+      {aberto && (
+        <div className="space-y-3 border-t border-white/5 p-3.5 duration-200 animate-in fade-in">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const MercadoPagoSection = memo(function MercadoPagoSection({
   onDirtyMudou,
 }: {
@@ -127,6 +191,12 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   const [salvando, setSalvando] = useState(false);
   const [testando, setTestando] = useState(false);
   const [copiado, setCopiado] = useState(false);
+
+  // Segunda camada (pedido do dono, 14/09 à noite): guia e chaves em
+  // expandidores próprios, ambos FECHADOS por padrão — o grupo abre
+  // mostrando só o resumo do status.
+  const [guiaAberto, setGuiaAberto] = useState(false);
+  const [chavesAberto, setChavesAberto] = useState(false);
 
   const copiadoTimer = useRef<number | null>(null);
   useEffect(
@@ -299,7 +369,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
 
   return (
     <div className="space-y-4">
-      {/* ── Estado da conexão ─────────────────────────────────────────── */}
+      {/* ── Resumo curto: status da conexão + máscaras à vista, sem abrir
+          nada (pedido do dono, 14/09: o grupo abre ENXUTO) ─────────────── */}
       {carregando ? (
         <p className="flex items-center gap-2 text-xs text-zinc-400">
           <Loader2 className="size-3.5 animate-spin" /> Lendo as chaves salvas…
@@ -332,22 +403,42 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           )}
           <span>{teste.mensagem}</span>
         </div>
-      ) : config.configurado ? (
+      ) : (
         <p className="flex items-center gap-2 text-xs text-zinc-400">
-          <ShieldCheck className="size-4 shrink-0 text-admin-gold" /> Chaves
-          salvas. Falta testar a conexão.
+          {config.configurado ? (
+            <>
+              <ShieldCheck className="size-4 shrink-0 text-admin-gold" /> Chaves
+              salvas. Falta testar a conexão.
+            </>
+          ) : (
+            "Nenhuma chave do Mercado Pago salva ainda."
+          )}
         </p>
-      ) : null}
+      )}
 
-      {/* ── Guia passo a passo com o prompt pronto ────────────────────── */}
-      <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-4">
-        <div className="flex items-center gap-2">
-          <KeyRound className="size-4 text-admin-gold" />
-          <h4 className="text-xs font-black uppercase tracking-[0.2em] text-white">
-            Como pegar suas chaves
-          </h4>
-        </div>
+      {/* As máscaras (só o finalzinho da chave) fazem parte do resumo:
+          o lojista reconhece o que tem salvo sem abrir camada nenhuma. */}
+      {config.configurado &&
+        (config.mascara_token || config.mascara_webhook) && (
+          <p className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-zinc-500">
+            {config.mascara_token && (
+              <span>Access Token {config.mascara_token}</span>
+            )}
+            {config.mascara_webhook && (
+              <span>Notificações {config.mascara_webhook}</span>
+            )}
+          </p>
+        )}
 
+      {/* ── Camada 2a: o guia, escondido até pedido (expande o passo a
+          passo e o botão de copiar o prompt) ──────────────────────────── */}
+      <Expansor
+        titulo="Como pegar suas chaves"
+        subtitulo="O passo a passo com o prompt pronto para o agente do app"
+        icone={KeyRound}
+        aberto={guiaAberto}
+        onAlternar={() => setGuiaAberto((antes) => !antes)}
+      >
         <ol className="space-y-3">
           {PASSOS_DO_GUIA.map((passo, indice) => (
             <li key={passo.titulo} className="flex gap-3">
@@ -392,137 +483,145 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             <span>{copiado ? "Copiado!" : "Copiar prompt"}</span>
           </button>
         </div>
-      </div>
+      </Expansor>
 
-      {/* ── Formulário das chaves ─────────────────────────────────────── */}
-      <div className="space-y-3">
-        <div className="space-y-1.5">
-          <label
-            htmlFor="mp-public-key"
-            className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
-          >
-            Public Key
-          </label>
-          <input
-            id="mp-public-key"
-            type="text"
-            disabled={carregando}
-            value={publicKey}
-            onChange={(e) => setPublicKey(e.target.value)}
-            placeholder="APP_USR-…"
-            autoComplete="off"
-            spellCheck={false}
-            className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-          />
-        </div>
+      {/* ── Camada 2b: as chaves em si — campos, salvar e testar ──────── */}
+      <Expansor
+        titulo="Suas chaves"
+        subtitulo="Cole as chaves, salve e teste a conexão"
+        icone={Lock}
+        aberto={chavesAberto}
+        onAlternar={() => setChavesAberto((antes) => !antes)}
+      >
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="mp-public-key"
+              className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+            >
+              Public Key
+            </label>
+            <input
+              id="mp-public-key"
+              type="text"
+              disabled={carregando}
+              value={publicKey}
+              onChange={(e) => setPublicKey(e.target.value)}
+              placeholder="APP_USR-…"
+              autoComplete="off"
+              spellCheck={false}
+              className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            />
+          </div>
 
-        <div className="space-y-1.5">
-          <label
-            htmlFor="mp-access-token"
-            className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
-          >
-            <span>Access Token</span>
-            {config.mascara_token && (
-              <span className="font-mono normal-case tracking-normal text-zinc-400">
-                salva: {config.mascara_token}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="mp-access-token"
+              className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+            >
+              <span>Access Token</span>
+              {config.mascara_token && (
+                <span className="font-mono normal-case tracking-normal text-zinc-400">
+                  salva: {config.mascara_token}
+                </span>
+              )}
+            </label>
+            <input
+              id="mp-access-token"
+              type="password"
+              disabled={carregando}
+              value={accessToken}
+              onChange={(e) => setAccessToken(e.target.value)}
+              placeholder={
+                config.mascara_token
+                  ? "Deixe vazio para manter a chave salva"
+                  : "Cole aqui o Access Token de produção…"
+              }
+              autoComplete="new-password"
+              className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="mp-webhook-secret"
+              className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+            >
+              <span>Chave de notificações (opcional)</span>
+              {config.mascara_webhook && (
+                <span className="font-mono normal-case tracking-normal text-zinc-400">
+                  salva: {config.mascara_webhook}
+                </span>
+              )}
+            </label>
+            <input
+              id="mp-webhook-secret"
+              type="password"
+              disabled={carregando}
+              value={webhookSecret}
+              onChange={(e) => setWebhookSecret(e.target.value)}
+              placeholder={
+                config.mascara_webhook
+                  ? "Deixe vazio para manter a salva"
+                  : "Opcional: a chave de validação de notificações do MP"
+              }
+              autoComplete="new-password"
+              className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={salvando || carregando || isOffline}
+              onClick={salvar}
+              className="flex items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
+            >
+              {salvando ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Save className="size-3.5" />
+              )}
+              <span>Salvar chaves</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={
+                testando ||
+                carregando ||
+                isOffline ||
+                dirty ||
+                !config.configurado
+              }
+              onClick={testarConexao}
+              title={
+                dirty
+                  ? "Salve as chaves primeiro — o teste fala com o Mercado Pago usando o que está salvo."
+                  : undefined
+              }
+              className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-2 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+            >
+              {testando ? (
+                <RefreshCw className="size-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-3.5" />
+              )}
+              <span>Testar conexão</span>
+            </button>
+
+            {dirty && (
+              <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
+                Salve para testar
               </span>
             )}
-          </label>
-          <input
-            id="mp-access-token"
-            type="password"
-            disabled={carregando}
-            value={accessToken}
-            onChange={(e) => setAccessToken(e.target.value)}
-            placeholder={
-              config.mascara_token
-                ? "Deixe vazio para manter a chave salva"
-                : "Cole aqui o Access Token de produção…"
-            }
-            autoComplete="new-password"
-            className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-          />
+          </div>
+
+          <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-zinc-500">
+            <Lock className="mt-0.5 size-3 shrink-0" /> {RECADO_DE_SEGURANCA}
+          </p>
         </div>
-
-        <div className="space-y-1.5">
-          <label
-            htmlFor="mp-webhook-secret"
-            className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
-          >
-            <span>Chave de notificações (opcional)</span>
-            {config.mascara_webhook && (
-              <span className="font-mono normal-case tracking-normal text-zinc-400">
-                salva: {config.mascara_webhook}
-              </span>
-            )}
-          </label>
-          <input
-            id="mp-webhook-secret"
-            type="password"
-            disabled={carregando}
-            value={webhookSecret}
-            onChange={(e) => setWebhookSecret(e.target.value)}
-            placeholder={
-              config.mascara_webhook
-                ? "Deixe vazio para manter a salva"
-                : "Opcional: a chave de validação de notificações do MP"
-            }
-            autoComplete="new-password"
-            className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <button
-            type="button"
-            disabled={salvando || carregando || isOffline}
-            onClick={salvar}
-            className="flex items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
-          >
-            {salvando ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <Save className="size-3.5" />
-            )}
-            <span>Salvar chaves</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={
-              testando ||
-              carregando ||
-              isOffline ||
-              dirty ||
-              !config.configurado
-            }
-            onClick={testarConexao}
-            title={
-              dirty
-                ? "Salve as chaves primeiro — o teste fala com o Mercado Pago usando o que está salvo."
-                : undefined
-            }
-            className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-2 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
-          >
-            {testando ? (
-              <RefreshCw className="size-3.5 animate-spin" />
-            ) : (
-              <CheckCircle2 className="size-3.5" />
-            )}
-            <span>Testar conexão</span>
-          </button>
-
-          {dirty && (
-            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
-              Salve para testar
-            </span>
-          )}
-        </div>
-
-        <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-zinc-500">
-          <Lock className="mt-0.5 size-3 shrink-0" /> {RECADO_DE_SEGURANCA}
-        </p>
-      </div>
+      </Expansor>
     </div>
   );
 });

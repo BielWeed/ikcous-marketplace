@@ -44,6 +44,22 @@ import {
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// Retomada 14/09: o guia virou expandidor que nasce FECHADO (pedido do
+// dono — o grupo aberto poluía a tela). As provas passam com a camada
+// "Como pegar suas chaves" aberta.
+async function abrirGuia() {
+  const cabecalho = [
+    ...document.body.querySelectorAll("button[aria-expanded]"),
+  ].find((b) => b.textContent?.includes("Como pegar suas chaves"));
+  if (!cabecalho) throw new Error('Expansor "Como pegar suas chaves" ausente.');
+  await act(async () => {
+    (cabecalho as HTMLButtonElement).click();
+  });
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 10));
+  });
+}
+
 function botaoPorTexto(texto: string): HTMLButtonElement {
   const botao = [...document.body.querySelectorAll("button")].find((b) =>
     b.textContent?.includes(texto),
@@ -82,6 +98,7 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));
     });
+    await abrirGuia();
 
     const itens = document.body.querySelectorAll("ol li");
     expect(itens.length).toBe(PASSOS_DO_GUIA.length);
@@ -103,6 +120,7 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));
     });
+    await abrirGuia();
 
     const copiar = botaoPorTexto("Copiar prompt");
     await act(async () => {

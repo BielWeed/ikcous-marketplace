@@ -128,6 +128,17 @@ async function montarSecao(): Promise<Root> {
   return raiz;
 }
 
+// Retomada 14/09: guia e formulário viraram expandidores que nascem
+// FECHADOS (pedido do dono — o grupo aberto poluía a tela). Todo teste que
+// toca campo ou botão do formulário abre a camada "Suas chaves" antes.
+async function abrirExpansor(texto: string) {
+  const cabecalho = [
+    ...document.body.querySelectorAll("button[aria-expanded]"),
+  ].find((b) => b.textContent?.includes(texto));
+  if (!cabecalho) throw new Error(`Expansor "${texto}" não está na tela.`);
+  await clique(cabecalho as HTMLButtonElement);
+}
+
 const CONFIGURADO = {
   configurado: true,
   public_key: PUBLICA_FALSA,
@@ -159,6 +170,7 @@ describe("MercadoPagoSection — salva e testa as chaves do lojista", () => {
       mascara_token: "••••4321",
     };
     raiz = await montarSecao();
+    await abrirExpansor("Suas chaves");
 
     expect(document.body.textContent).toContain("••••4321");
     expect(document.body.textContent).not.toContain(TOKEN_FALSO);
@@ -177,6 +189,7 @@ describe("MercadoPagoSection — salva e testa as chaves do lojista", () => {
       mascara_token: null,
     };
     raiz = await montarSecao();
+    await abrirExpansor("Suas chaves");
 
     digitar("mp-public-key", PUBLICA_FALSA);
     digitar("mp-access-token", TOKEN_FALSO);
@@ -205,6 +218,7 @@ describe("MercadoPagoSection — salva e testa as chaves do lojista", () => {
       conta: "Loja Teste",
     };
     raiz = await montarSecao();
+    await abrirExpansor("Suas chaves");
 
     await clique(botaoPorTexto("Testar conexão"));
 
@@ -222,6 +236,7 @@ describe("MercadoPagoSection — salva e testa as chaves do lojista", () => {
         "O Mercado Pago recusou a chave: o Access Token está errado, expirou ou veio incompleto. Cole a chave de novo e salve.",
     };
     raiz = await montarSecao();
+    await abrirExpansor("Suas chaves");
 
     await clique(botaoPorTexto("Testar conexão"));
 
@@ -232,6 +247,7 @@ describe("MercadoPagoSection — salva e testa as chaves do lojista", () => {
   it("S5 — com chave digitada e não salva, o teste fica bloqueado", async () => {
     cenario.salvo = { ...CONFIGURADO };
     raiz = await montarSecao();
+    await abrirExpansor("Suas chaves");
 
     const testarAntes = botaoPorTexto("Testar conexão");
     expect(testarAntes.disabled).toBe(false);
