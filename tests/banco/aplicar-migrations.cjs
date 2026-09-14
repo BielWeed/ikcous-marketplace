@@ -78,6 +78,12 @@ async function main() {
         padrao.lastIndex = 0;
       }
       try {
+        // O baseline (pg_dump) seta search_path vazio PARA A SESSÃO no 1º
+        // statement (`set_config('search_path', '', false)`). Sem este
+        // reset, todo arquivo seguinte herda search_path vazio e a primeira
+        // referência não-qualificada explode ("relation does not exist") —
+        // medido no CI em 14/09. Mesma receita da ci-banco.
+        await cliente.query("RESET ALL");
         await cliente.query(conteudo);
         aplicados.push(nome);
         console.log(`[aplicar] ok ${aplicados.length}/${arquivos.length} ${nome}`);
