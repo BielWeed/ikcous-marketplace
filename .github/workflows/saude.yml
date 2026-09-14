@@ -66,10 +66,21 @@ jobs:
       # Cobertura sobre `src/**`: o que interessa é a saúde do APP, não dos
       # arquivos de teste. O `--coverage.include` também faz arquivos nunca
       # tocados por teste entrarem na conta com 0% — denominador honesto.
+      #
+      # SOBRE O `|| true`: este job é MEDIDOR, não porteiro — sob cobertura a
+      # suíte fica ~3,7x mais lenta (314 s contra ~84 s, medido no primeiro
+      # run) e teste sensível a tempo pode falhar aqui sem ser defeito. O gate
+      # de correção é o job "Testes" do ci.yml no MESMO commit. O resumo
+      # publica o estado da suíte junto com os números — nada vira verde falso.
       - name: Suíte do front com cobertura (só no CI, por ordem do dono)
-        run: npx vitest run --coverage --coverage.include "src/**" --coverage.reporter text --coverage.reporter json-summary
+        run: |
+          npx vitest run --coverage --coverage.include "src/**" \
+            --coverage.reporter text --coverage.reporter json-summary \
+            --reporter default --reporter json \
+            --outputFile.json "${{ runner.temp }}/resultados-vitest.json" \
+            || true
       - name: Publica o resumo por diretório
-        run: node scripts/ci/resumo-cobertura.mjs >> "$GITHUB_STEP_SUMMARY"
+        run: node scripts/ci/resumo-cobertura.mjs "${{ runner.temp }}/resultados-vitest.json" >> "$GITHUB_STEP_SUMMARY"
 
   peso:
     name: Peso do bundle e Lighthouse
@@ -94,6 +105,16 @@ jobs:
       # primeiro run). Acima do orçamento = AVISO no summary, nunca falha.
       - name: Orçamento de bundle
         run: node scripts/ci/mede-bundle.mjs >> "$GITHUB_STEP_SUMMARY"
+      # Enquanto não há orçamento, o script fotografa e grava o JSON EXATO
+      # (bytes, sem arredondar kB) em scripts/ci/fotografia-bundle.json.
+      # Comitado como orcamento-bundle.json, a rodada seguinte compara.
+      - name: Publica a fotografia exata como artefato
+        if: hashFiles('scripts/ci/orcamento-bundle.json') == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: fotografia-do-bundle
+          path: scripts/ci/fotografia-bundle.json
+          if-no-files-found: error
       # Prova viva de que o aviso dispara: roda de novo com um orçamento
       # falsificado 1 byte abaixo do medido e afirma que o aviso apareceu.
       # Custa < 1 s e impede o detector nascer mudo.

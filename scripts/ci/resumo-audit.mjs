@@ -15,16 +15,21 @@ const gravidade = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
 
 let auditoria;
 try {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho vem do próprio workflow (${{ runner.temp }}), não de usuário
   auditoria = JSON.parse(fs.readFileSync(arquivo, "utf8"));
 } catch {
-  console.log("### 🛡️ Dependências\n\n::warning::`npm audit --json` não produziu saída legível — conferir o log do passo de auditoria.");
+  console.log(
+    "### 🛡️ Dependências\n\n::warning::`npm audit --json` não produziu saída legível — conferir o log do passo de auditoria.",
+  );
   process.exit(0);
 }
 
 const metadados = auditoria.metadata?.vulnerabilities;
 if (!metadados) {
   // npm devolve {} quando não há lock auditável; não é silêncio, é recado.
-  console.log("### 🛡️ Dependências\n\nAuditoria não retornou metadados (lock ausente ou registry indisponível).");
+  console.log(
+    "### 🛡️ Dependências\n\nAuditoria não retornou metadados (lock ausente ou registry indisponível).",
+  );
   process.exit(0);
 }
 
@@ -49,13 +54,19 @@ if (graves.length === 0) {
         : v.fixAvailable && typeof v.fixAvailable === "object"
           ? `sim — atualizar \`${v.fixAvailable.name}\` p/ ${v.fixAvailable.version}${v.fixAvailable.isSemVerMajor ? " (major: pode quebrar)" : ""}`
           : "**ainda sem correção**";
-    console.log(`| \`${v.name}\` | ${v.severity === "critical" ? "🔴 crítica" : "🟠 alta"} | ${v.isDirect ? "sim" : "transitivo"} | ${correcao} |`);
+    console.log(
+      `| \`${v.name}\` | ${v.severity === "critical" ? "🔴 crítica" : "🟠 alta"} | ${v.isDirect ? "sim" : "transitivo"} | ${correcao} |`,
+    );
   }
   console.log("");
   for (const v of graves) {
-    console.log(`::warning::Dependência ${v.severity === "critical" ? "CRÍTICA" : "DE ALTA SEVERIDADE"}: ${v.name} (${v.range}).`);
+    console.log(
+      `::warning::Dependência ${v.severity === "critical" ? "CRÍTICA" : "DE ALTA SEVERIDADE"}: ${v.name} (${v.range}).`,
+    );
   }
 }
 
-console.log("\nFonte: `npm audit` sobre o `package-lock.json` do PR, dev+prod. Informativo — o gate continua sendo o de sempre.");
+console.log(
+  "\nFonte: `npm audit` sobre o `package-lock.json` do PR, dev+prod. Informativo — o gate continua sendo o de sempre.",
+);
 process.exit(0);

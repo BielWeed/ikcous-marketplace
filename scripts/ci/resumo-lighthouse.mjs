@@ -16,29 +16,49 @@ import process from "node:process";
 
 const pasta = path.join(process.cwd(), ".lighthouseci");
 
+// Pasta fixa do próprio lhci, criada pelo passo anterior do workflow.
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do repo
 if (!fs.existsSync(pasta)) {
-  console.log("### 🚦 Lighthouse\n\n::warning::`.lighthouseci/` não existe — o `lhci collect` não rodou ou morreu antes. Conferir o log.");
+  console.log(
+    "### 🚦 Lighthouse\n\n::warning::`.lighthouseci/` não existe — o `lhci collect` não rodou ou morreu antes. Conferir o log.",
+  );
   process.exit(0);
 }
 
-const relatorios = fs
-  .readdirSync(pasta)
-  .filter((nome) => nome.startsWith("lighthouse-") && nome.endsWith(".report.json"))
-  .map((nome) => ({ nome, mtime: fs.statSync(path.join(pasta, nome)).mtimeMs }))
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- pasta fixa do lhci, criada pelo passo anterior
+const nomes = fs.readdirSync(pasta);
+const relatorios = nomes
+  .filter(
+    (nome) => nome.startsWith("lighthouse-") && nome.endsWith(".report.json"),
+  )
+  .map((nome) => ({
+    nome,
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- nome vem do readdir imediatamente acima
+    mtime: fs.statSync(path.join(pasta, nome)).mtimeMs,
+  }))
   .sort((a, b) => a.mtime - b.mtime);
 
 if (relatorios.length === 0) {
-  console.log("### 🚦 Lighthouse\n\n::warning::Nenhum `lighthouse-*.report.json` em `.lighthouseci/` — fumaça sem relatório é fumaça não feita.");
+  console.log(
+    "### 🚦 Lighthouse\n\n::warning::Nenhum `lighthouse-*.report.json` em `.lighthouseci/` — fumaça sem relatório é fumaça não feita.",
+  );
   process.exit(0);
 }
 
-const relatorio = JSON.parse(fs.readFileSync(path.join(pasta, relatorios.at(-1).nome), "utf8"));
+const caminhoRelatorio = path.join(pasta, relatorios.at(-1).nome);
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de pasta fixa do lhci e nome saído do readdir
+const relatorio = JSON.parse(fs.readFileSync(caminhoRelatorio, "utf8"));
 
 const score = (categorias, chave) => {
+  // `chave` é literal nos 4 pontos de chamada; categorias vem do relatório do lhci.
+  // eslint-disable-next-line security/detect-object-injection -- chave literal
   const valor = categorias?.[chave]?.score;
-  return valor === null || valor === undefined ? "—" : `${Math.round(valor * 100)}`;
+  return valor === null || valor === undefined
+    ? "—"
+    : `${Math.round(valor * 100)}`;
 };
 const ms = (auditorias, chave) => {
+  // eslint-disable-next-line security/detect-object-injection -- chave literal
   const valor = auditorias?.[chave]?.numericValue;
   return valor === undefined ? "—" : `${Math.round(valor)} ms`;
 };
@@ -49,7 +69,9 @@ const auditorias = relatorio.audits ?? {};
 console.log("### 🚦 Lighthouse fumaça (1 rodada, build fixture)\n");
 console.log("| Performance | Acessibilidade | Boas práticas | SEO |");
 console.log("|---|---|---|---|");
-console.log(`| **${score(categorias, "performance")}** | ${score(categorias, "accessibility")} | ${score(categorias, "best-practices")} | ${score(categorias, "seo")} |\n`);
+console.log(
+  `| **${score(categorias, "performance")}** | ${score(categorias, "accessibility")} | ${score(categorias, "best-practices")} | ${score(categorias, "seo")} |\n`,
+);
 console.log("| FCP | LCP | TBT | CLS | Speed Index |");
 console.log("|---|---|---|---|---|");
 console.log(
