@@ -1,6 +1,7 @@
 import { useStore } from "@/contexts/StoreContext";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
+import { nucleoSemver } from "@/lib/versao-do-servidor";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Rocket } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -13,8 +14,10 @@ interface UpdateNotificationProps {
 }
 
 declare const __APP_VERSION__: string;
-
-const SHORT_VERSION = (v: string) => v.slice(-6);
+// Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
+// fora dele (runner de teste), o componente segue de pé.
+const VERSAO_DO_APP =
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "";
 
 export function UpdateNotification({
   show,
@@ -31,8 +34,13 @@ export function UpdateNotification({
   const [isUpdating, setIsUpdating] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const fromVer = SHORT_VERSION(currentVersion || __APP_VERSION__);
-  const toVer = newVersion ? SHORT_VERSION(newVersion) : null;
+  // O selo de→para mostra o NÚCLEO semver limpo ("1.31.0 → 1.32.0"). Era
+  // `v.slice(-6)`: como a versão de build é "1.32.0-sha.2526bdd", o lojista
+  // via o fragmento do hash ("526bdd") — o "código estranho" da peça de
+  // 14/09. Sem núcleo legível de algum lado, o selo NÃO nasce (nada de
+  // inventar código na tela).
+  const fromVer = nucleoSemver(currentVersion || VERSAO_DO_APP);
+  const toVer = nucleoSemver(newVersion);
 
   const handleUpdate = useCallback(() => {
     setIsUpdating(true);
@@ -96,8 +104,8 @@ export function UpdateNotification({
                 </p>
               </div>
 
-              {/* Version De→Para */}
-              {toVer && (
+              {/* Version De→Para: só com AMBOS os núcleos legíveis */}
+              {toVer && fromVer && (
                 <div className="flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-1.5 font-mono text-xs">
                   <span className="text-zinc-400">{fromVer}</span>
                   <ArrowRight className="size-3 text-amber-400" />
