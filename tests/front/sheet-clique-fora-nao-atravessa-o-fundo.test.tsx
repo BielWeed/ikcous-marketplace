@@ -163,7 +163,7 @@ describe("Sheet — clique fora tem que SÓ fechar (nada atravessa o véu)", () 
     expect(spyFundo).not.toHaveBeenCalled();
   });
 
-  it("toque: o fecho por TOQUE fora continua fechando — o guardião não engole o click de que o Radix precisa", async () => {
+  it("toque: o fecho por TOQUE fora continua fechando — o guardião fecha por conta e engole o click", async () => {
     const spyFundo = vi.fn();
     const spyDentro = vi.fn();
     await montarCena(spyFundo, spyDentro);
@@ -204,6 +204,43 @@ describe("Sheet — clique fora tem que SÓ fechar (nada atravessa o véu)", () 
       botaoDentro().dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(spyDentro).toHaveBeenCalledTimes(1);
+  });
+
+  it("toque: o fecho por TOQUE fora continua fechando — e o ANCESTRAL da folha não recebe o click (bug do dono, pós-1.33.1)", async () => {
+    // CENÁRIO REAL do app: a folha nasce DENTRO do wrapper clicável do card
+    // (ancestral dela na árvore React — o portal borbulha até ele). O dono
+    // tocou fora da folha no celular e o app NAVEGOU para a tela do produto:
+    // o ramo de toque do guardião fechava a folha mas deixava o click
+    // atravessar até esse ancestral. Este teste monta o ANCESTRAL espiado
+    // envolvendo a folha — exatamente a anatomia do ProductCard.
+    const spyAncestral = vi.fn();
+    const spyDentro = vi.fn();
+    await act(async () => {
+      raiz.render(
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- mesmo padrão do wrapper do ProductCard: div clicável intencional (é o "fundo" que não pode receber o click)
+        <div onClick={spyAncestral} data-testid="ancestral-clicavel">
+          <PainelDeProva spyDentro={spyDentro} registrarControles={() => {}} />
+        </div>,
+      );
+    });
+    await espera(10);
+    expect(folha()).not.toBeNull();
+
+    // Toque fora: pointerdown (pointerType touch) arma o guardião e o Radix
+    // ADIA o fecho para o click; o click do gesto cai no véu vivo.
+    await act(async () => {
+      const baixou = new MouseEvent("pointerdown", { bubbles: true });
+      Object.defineProperty(baixou, "pointerType", { value: "touch" });
+      veu()!.dispatchEvent(baixou);
+    });
+    await act(async () => {
+      veu()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // A folha fechou E o ancestral clicável NÃO recebeu o click (sem
+    // navegação para a tela do produto).
+    expect(folha()).toBeNull();
+    expect(spyAncestral).not.toHaveBeenCalled();
   });
 
   it("folha reaberta: clique dentro funciona de primeira (guardião da janela anterior já morreu)", async () => {

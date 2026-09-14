@@ -194,6 +194,16 @@ function SheetContent({
         //    fecha por conta; no mouse o fecho já foi no pointerdown.
         if (el.isConnected) {
           if (gestoDeToque && fecharFolha) {
+            // Toque: ENGOLE E fecha por conta. Engolir aqui é seguro: com o
+            // onOpenChange do consumidor desmontando a folha, o layer do
+            // Radix desarma o próprio click-once (listener once morre no
+            // unmount). Deixar o click passar era o buraco que o dono viu
+            // pós-1.33.1 (lojas Savy e IKCOUS): ele borbulhava na árvore
+            // React até o wrapper clicável do card e o app navegava para a
+            // tela do produto.
+            evento.preventDefault();
+            evento.stopPropagation();
+            evento.stopImmediatePropagation();
             fecharFolha(false);
           } else if (!(gestoDeToque && !fecharFolha)) {
             // mouse: engole. Toque SEM onOpenChange (folha que não sabe
