@@ -145,10 +145,16 @@ export const HomeView = React.memo(function HomeView({
   // (SearchBar.tsx:119 e :173) sempre filtrou. Um ponto só: as listas abaixo
   // derivam desta, então nenhuma pode esquecer o filtro.
   // Card inteligente (02/09): leva a escolha de opções feita NO CARD até o
-  // addToCart real, que já aceita variante desde o App.
+  // addToCart real, que já aceita variante desde o App. Peça 18 (14/09):
+  // repassa também a QUANTIDADE escolhida na folha (padrão 1).
   const handleAddToCartWithVariants = useCallback(
-    (product: Product, variantId: string | undefined, variantNames: string) => {
-      onAddToCart?.(product, 1, variantId, variantNames);
+    (
+      product: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity = 1,
+    ) => {
+      onAddToCart?.(product, quantity, variantId, variantNames);
     },
     [onAddToCart],
   );

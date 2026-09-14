@@ -19,6 +19,7 @@ interface ProductCarouselProps {
     product: Product,
     variantId: string | undefined,
     variantNames: string,
+    quantity?: number,
   ) => void;
   onQuickBuy?: (product: Product) => void;
   icon?: React.ReactNode;
@@ -94,8 +95,13 @@ export const ProductCarousel = React.memo(function ProductCarousel({
   );
 
   const handleAddToCartWithVariants = useCallback(
-    (product: Product, variantId: string | undefined, variantNames: string) => {
-      onAddToCartWithVariants?.(product, variantId, variantNames);
+    (
+      product: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity?: number,
+    ) => {
+      onAddToCartWithVariants?.(product, variantId, variantNames, quantity);
     },
     [onAddToCartWithVariants],
   );
