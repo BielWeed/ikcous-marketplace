@@ -33,10 +33,10 @@ import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
 import {
+  type ParDeAtributo,
   dividirEmAtributos,
   juntarAtributos,
   validarAtributos,
-  type ParDeAtributo,
 } from "@/utils/variante-composta";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -1735,9 +1735,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                               onClick={() =>
                                 setVariantFormData((p) => ({
                                   ...p,
-                                  pares: p.pares.filter(
-                                    (_, j) => j !== indice,
-                                  ),
+                                  pares: p.pares.filter((_, j) => j !== indice),
                                 }))
                               }
                               className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"

@@ -110,9 +110,9 @@ describe("validarAtributos", () => {
   });
 
   it("barra par pela metade: só valor, sem atributo", () => {
-    expect(
-      validarAtributos([{ name: "", value: "Branca" }]),
-    ).toBe("O nome do atributo (ex: Cor, Tamanho) é obrigatório.");
+    expect(validarAtributos([{ name: "", value: "Branca" }])).toBe(
+      "O nome do atributo (ex: Cor, Tamanho) é obrigatório.",
+    );
   });
 
   it("tudo vazio diz o que preencher", () => {

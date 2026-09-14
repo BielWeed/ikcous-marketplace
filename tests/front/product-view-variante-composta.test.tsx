@@ -122,11 +122,9 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let adicionarAoCarrinho: ReturnType<
-    typeof vi.fn<(
-      quantity: number,
-      variantId?: string,
-      variantNames?: string,
-    ) => void>
+    typeof vi.fn<
+      (quantity: number, variantId?: string, variantNames?: string) => void
+    >
   >;
 
   beforeEach(() => {
