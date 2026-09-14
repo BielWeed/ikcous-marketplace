@@ -2,7 +2,7 @@ import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
-import type { HeaderToastData } from "@/utils/headerToast";
+import { type HeaderToastData, useToastDoHeader } from "@/utils/headerToast";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -54,7 +54,11 @@ export const Header = memo(function Header({
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isChecking, setIsChecking] = useState(false);
-  const [activeToast, setActiveToast] = useState<HeaderToastData | null>(null);
+  // Estado do toast vem do canal ÚNICO (utils/headerToast.ts): o wrapper
+  // BarraSuperiorCliente (App.tsx) lê o mesmo estado para o degrau z-[140]
+  // — dispensar a cápsula desce o degrau junto, sem estados que divergem.
+  const { detalhe: activeToast, dispensar: dispensarToast } =
+    useToastDoHeader();
   const logoUrl = config.logoUrl || null;
   const [logoSelection, setLogoSelection] = useState<{
     url: string | null;
@@ -73,7 +77,6 @@ export const Header = memo(function Header({
   const logoState = logoSelection.stage;
 
   const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   let logoSrc: string | null = null;
   if (logoState === "db" && config.logoUrl) {
@@ -98,30 +101,15 @@ export const Header = memo(function Header({
       updateTimerRef.current = setTimeout(() => setIsChecking(false), 2000);
     };
 
-    const handleToastEvent = (e: Event) => {
-      const customEvent = e as CustomEvent<HeaderToastData>;
-      if (customEvent.detail?.message) {
-        haptic.light();
-        setActiveToast(customEvent.detail);
-        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-        toastTimerRef.current = setTimeout(() => {
-          setActiveToast(null);
-        }, customEvent.detail.duration || 2600);
-      }
-    };
-
     globalThis.addEventListener("online", handleOnline);
     globalThis.addEventListener("offline", handleOffline);
     globalThis.addEventListener("pwa-update-available", handleUpdateCheck);
-    globalThis.addEventListener("header-toast-event", handleToastEvent);
 
     return () => {
       globalThis.removeEventListener("online", handleOnline);
       globalThis.removeEventListener("offline", handleOffline);
       globalThis.removeEventListener("pwa-update-available", handleUpdateCheck);
-      globalThis.removeEventListener("header-toast-event", handleToastEvent);
       if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
 
@@ -159,19 +147,17 @@ export const Header = memo(function Header({
   return (
     <header
       className={cn(
-        // Régua de z da casa (peça 03, 14/09): header 100 < BottomNav 120 <
-        // sheet modal 130 < barra de progresso 99999. O Sheet subir para o
-        // 130 (conserto do CTA coberto pela nav) criou um efeito colateral:
-        // no celular o toaster flutuante do sonner é display:none e TODO
-        // aviso mora na cápsula daqui — que ficava ATRÁS do véu do sheet.
-        // Com a folha de opções aberta, o "Falta escolher" (disparado pela
-        // própria folha, que não fecha sozinha) pintava escurecido, e tocar
-        // na cápsula para dispensar acertava o overlay e FECHAVA a folha.
-        // Enquanto um toast está ativo, o header limpa o degrau do modal
-        // (140 > 130) por uma janela transitória (~2,6 s, a duração da
-        // cápsula) — fora dela segue no 100, atrás do véu, com os cliques
-        // do topo caindo no overlay (comportamento de "fora" da folha).
-        activeToast ? "z-[140]" : "z-[100]",
+        // z-[100] ESTÁTICO de propósito (régua da casa: barra 100 < nav 120
+        // < sheet 130 < progresso 99999). O degrau transitório do toast
+        // (140 durante a janela do aviso) mora no WRAPPER
+        // BarraSuperiorCliente (App.tsx) — o `gpu-accelerated` dele
+        // (transform + will-change) cria o stacking context que compete na
+        // raiz contra o sheet portalado em document.body; o z deste header
+        // compete só DENTRO do wrapper, então um condicional aqui era
+        // inerte: o aviso pintava sob o véu e tocar na cápsula fechava a
+        // folha (revisão do bloqueante, 14/09). O estado do toast vem do
+        // canal único (useToastDoHeader), o mesmo que o wrapper assina.
+        "z-[100]",
         "relative top-0 left-0 right-0 transition-[background-color,border-color,box-shadow] duration-200 border-b flex-shrink-0",
         isScrolled
           ? "bg-white border-zinc-100/50 shadow-sm"
@@ -343,7 +329,7 @@ export const Header = memo(function Header({
                 }}
                 onClick={() => {
                   haptic.light();
-                  setActiveToast(null);
+                  dispensarToast();
                 }}
                 // Laudo de acessibilidade 05/09 (onda 3, item B9): era um
                 // motion.div com onClick — invisível para quem navega por
@@ -351,7 +337,7 @@ export const Header = memo(function Header({
                 // fecha nativo; falta só o Esc.
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
-                    setActiveToast(null);
+                    dispensarToast();
                   }
                 }}
                 className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"

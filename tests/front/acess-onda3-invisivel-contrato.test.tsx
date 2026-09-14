@@ -200,7 +200,7 @@ describe("item 6 — B9: aviso do topo do Header alcançável por teclado", () =
     const aberturaDoBotao = src.slice(inicio, fim);
     expect(aberturaDoBotao).toContain('type="button"');
     expect(aberturaDoBotao).toMatch(/e\.key === "Escape"/);
-    expect(aberturaDoBotao).toContain("setActiveToast(null)");
+    expect(aberturaDoBotao).toContain("dispensarToast()");
   });
 
   it("classes visuais do card do aviso preservadas byte a byte", () => {

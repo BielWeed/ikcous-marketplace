@@ -501,6 +501,57 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       );
     });
     expect(folha()).not.toBeNull();
+
+    // LIMPEZA do gesto: soltar devolve a folha ao lugar sem resquício —
+    // sem transform inline (senão ela ficava deslocada para sempre) e com a
+    // transição de volta ("" e nunca "none": é ela que anima abrir/fechar).
+    const conteudo = document.querySelector<HTMLElement>(
+      '[data-slot="sheet-content"]',
+    )!;
+    expect(conteudo.style.transform).toBe("");
+    expect(conteudo.style.transition).toBe("");
+  });
+
+  it("pointercancel no meio do arrasto solta a alça: folha aberta, estilo restaurado, listeners removidos", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    await act(async () => {
+      alcaDaFolha().dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 130 }),
+      );
+    });
+    // A folha acompanhou o dedo...
+    const conteudo = document.querySelector<HTMLElement>(
+      '[data-slot="sheet-content"]',
+    )!;
+    expect(conteudo.style.transform).toBe("translateY(30px)");
+
+    // ...até o sistema cancelar o gesto (rolagem assumida pelo navegador,
+    // chamada interrompida). Cancelar NÃO é gesto de fechar — e tem de
+    // limpar exatamente como o soltar limpa.
+    await act(async () => {
+      window.dispatchEvent(
+        new MouseEvent("pointercancel", { bubbles: true, clientY: 0 }),
+      );
+    });
+
+    expect(folha()).not.toBeNull();
+    // Estilo restaurado — "" e não "none".
+    expect(conteudo.style.transition).toBe("");
+    expect(conteudo.style.transform).toBe("");
+    // Listeners removidos: pointermove seguinte é INERTE.
+    await act(async () => {
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 400 }),
+      );
+    });
+    expect(conteudo.style.transform).toBe("");
   });
 
   it("o clique sintético logo após um arrasto curto NÃO fecha (guarda movimentou)", async () => {
@@ -530,6 +581,38 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(folha()).not.toBeNull();
   });
 
+  it("TECLADO logo após REABRIR a folha fecha de primeira (a guarda movimentou não sobrevive ao reabrir)", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+
+    // Arrasto que FECHA a folha (além de 64px): o marcador movimentou fica
+    // true e, no desenho antigo, só o próximo pointerdown o limpa.
+    await act(async () => {
+      alcaDaFolha().dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 200 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientY: 190 }),
+      );
+    });
+    expect(folha()).toBeNull();
+
+    await abrirFolha();
+
+    // Ativação por TECLADO: Enter/Espaço num <button> disparam click SEM
+    // pointerdown. Com o marcador residual, o primeiro Enter era engolido
+    // (não fazia nada) — só o segundo fechava.
+    await act(async () => {
+      alcaDaFolha().click();
+    });
+    expect(folha()).toBeNull();
+  });
+
   it("clicar FORA (no véu escuro) fecha a folha — âncora do contrato do Radix", async () => {
     await renderizarCard(criarProduto({ variants: criarVariantes() }), {
       onAddToCartWithVariants: vi.fn(),
@@ -551,6 +634,86 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       overlay!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(folha()).toBeNull();
+  });
+
+  // ── CLICAR FORA TEM QUE SÓ FECHAR (14/09, relato do dono ao vivo) ────────
+  // O MESMO clique que fecha a folha não pode ATINGIR o card de fundo: o
+  // Radix desmonta a folha no pointerdown (e no toque, no próprio click),
+  // e o click sintetizado do gesto cai no que ficou por baixo — o dono viu
+  // o app NAVEGAR para o produto ao tentar só fechar. O guardião do clique
+  // pós-fecho (sheet.tsx) engole esse click órfão. Estes dois casos são o
+  // defeito do dono, ponta a ponta com o card de verdade (o spy da prop
+  // onClick é o mesmo gatilho do pushState do App).
+
+  // Gesto físico completo num botão: pointerdown + pointerup + click — é o
+  // que TODO gesto real produz (e o que desarma o guardião de um fecho
+  // anterior: nenhum click nasce sem pointerdown).
+  async function gestoFisicoNo(elemento: HTMLElement) {
+    await act(async () => {
+      elemento.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+      elemento.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+      elemento.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+  }
+
+  it("clique fora fecha a folha e NÃO navega: o card de fundo não recebe o click atravessado", async () => {
+    const onProductClick = vi.fn();
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onProductClick,
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await gestoFisicoNo(botaoDeAcao());
+    expect(folha()).not.toBeNull();
+
+    // Gesto real: pointerdown no véu fecha (Radix)...
+    const overlay = document.querySelector('[data-slot="sheet-overlay"]')!;
+    await act(async () => {
+      overlay.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    });
+    expect(folha()).toBeNull();
+
+    // ...e o click do MESMO gesto cai no CARD (que ficou por baixo): o card
+    // inteiro é clicável — é exatamente por aqui que o app navegava.
+    const card = hospedeiro.firstElementChild as HTMLElement;
+    await act(async () => {
+      card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onProductClick).not.toHaveBeenCalled();
+  });
+
+  it("soltar o arrasto da alça FORA da folha não navega: o click pós-arrasto também morre", async () => {
+    const onProductClick = vi.fn();
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onProductClick,
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await gestoFisicoNo(botaoDeAcao());
+    expect(folha()).not.toBeNull();
+
+    // Arrasto que fecha: dedo desce na ALÇA (dentro), passa de 64px e o
+    // pointerup cai no CARD (fora da folha — é o que o browser faz: o
+    // evento vai ao elemento sob o cursor). O click do soltar cai no card.
+    await act(async () => {
+      alcaDaFolha().dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientY: 200 }),
+      );
+      (hospedeiro.firstElementChild as HTMLElement).dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientY: 190 }),
+      );
+    });
+    expect(folha()).toBeNull();
+
+    await act(async () => {
+      (hospedeiro.firstElementChild as HTMLElement).dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    expect(onProductClick).not.toHaveBeenCalled();
   });
 
   it("sem a prop nova, o botão continua levando para a tela do produto (retrocompatível) e nenhuma folha abre", async () => {

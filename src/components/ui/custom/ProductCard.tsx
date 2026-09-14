@@ -143,6 +143,15 @@ export const ProductCard = memo(function ProductCard({
   // sintético do navegador é engolido (`movimentou`) para um arrasto curto
   // que voltou ao lugar não fechar por acidente.
   const arrastoDaAlcaRef = useRef({ y: 0, ativo: false, movimentou: false });
+  // A guarda `movimentou` (clique sintético pós-arrasto) só era limpa no
+  // próximo pointerdown — mas ativação por TECLADO (Enter/Espaço num button)
+  // dispara click SEM pointerdown: logo depois de um arrasto-que-fechou,
+  // reabrir a folha e dar Enter na alça era engolido na primeira tentativa.
+  // Limpar o marcador quando a folha ABRE cobre todos os caminhos de
+  // abertura; o arrasto corrente dentro da sessão continua guardado.
+  useEffect(() => {
+    if (folhaOpcoesAberta) arrastoDaAlcaRef.current.movimentou = false;
+  }, [folhaOpcoesAberta]);
   const aoPuxarAlcaDaFolha = (e: React.PointerEvent<HTMLButtonElement>) => {
     const folhaEl = e.currentTarget.closest<HTMLElement>(
       '[data-slot="sheet-content"]',
@@ -687,7 +696,7 @@ export const ProductCard = memo(function ProductCard({
                 setFolhaOpcoesAberta(false);
               }}
               onPointerDown={aoPuxarAlcaDaFolha}
-              className="focus:outline-hidden mt-3 flex h-11 w-full shrink-0 cursor-pointer touch-none items-center justify-center rounded-full focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              className="focus:outline-hidden mt-3 flex h-11 w-full shrink-0 cursor-pointer touch-none items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <span
                 aria-hidden="true"

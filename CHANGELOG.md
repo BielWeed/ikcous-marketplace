@@ -7,6 +7,50 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.33.0] - 2026-09-14
+
+Polimento fino da jornada de compra e o fim da tela fantasma de atualização:
+clicar fora da folha de opções fecha só a folha (nada por baixo sofre), o
+aviso de "Nova Versão" volta a falar português de gente — mostra `1.32.0`,
+não um código estranho — e o instalador de atualização nunca mais deixa o
+app pendurado: sem informação confiável, ele não inventa aviso; com
+atualização confirmada, instala e volta sozinho. Nos bastidores, o CI ganhou
+provas automáticas que rodam a cada PR: as migrations nascem do zero num
+banco de verdade, o app é usado de verdade num navegador (jornadas de
+compra, offline e atualização com service worker) e as regras do dinheiro
+(cupom, cancelamento, loja ativa) são provadas num banco descartável.
+Reúne os PRs #576 e #584–#588.
+
+### Para quem COMPRA (vitrine)
+
+- **Clicar fora da folha fecha só a folha** (PR #576): o toque fora da
+  folha de opções não atinge mais nada do plano de fundo — só fecha a
+  folha; e o aviso temporário (toast) mora num lugar que não briga com o
+  cabeçalho.
+- **Aviso de atualização fala português de gente** (PR #588): o selo
+  "de → para" mostra as versões limpas (ex.: `1.31.0 → 1.32.0`) em vez do
+  pedaço de código estranho que aparecia (tipo `526bdd`).
+
+### Confiabilidade
+
+- **O instalador de atualização não pendura mais** (PR #588): o app só
+  aceita informação de versão comprovada — resposta mentida ou quebrada vira
+  "sem informação" e NUNCA vira aviso de atualização nem tela eterna; com
+  atualização confirmada, a instalação termina e o app volta sozinho em
+  ~1,2 s, sem toque.
+
+### Nos bastidores
+
+- **Migrations nascem do zero num banco de verdade a cada PR** (PR #585):
+  a fila inteira aplicada num Postgres descartável do GitHub Actions, com o
+  banco real de produção nunca conectado.
+- **Regras do dinheiro provadas no CI** (PR #586): cupom, cancelamento
+  duplo e loja ativa provados como invariantes no mesmo esquema efêmero —
+  dados 100% de teste, R$ 0 de custo.
+- **O app é testado como o cliente usa** (PRs #584, #587): jornadas de
+  compra num navegador de verdade e o modo offline com service worker
+  provado do boot à atualização de versão.
+
 ## [1.32.0] - 2026-09-14
 
 Um dia de vitrine mais polida e mais honesta: a escolha de opções do produto

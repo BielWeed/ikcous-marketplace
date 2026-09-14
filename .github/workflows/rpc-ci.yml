@@ -1,0 +1,89 @@
+# RPC-CI — CONTRATO DO DINHEIRO (frente CI-CONTRATO-DINHEIRO, 14/09/2026).
+#
+# O dinheiro do marketplace vive em funções SQL (create_marketplace_order_v24,
+# update_order_status_atomic, validate_coupon_secure_v2,
+# devolver_cupons_de_pedidos_mortos, resolver_loja). O lint "código x banco"
+# confere que elas EXISTEM; este job prova que elas SE COMPORTAM: aplica as
+# migrations do zero num Postgres efêmero e executa as invariantes de
+# tests/banco/ (cupom, cancelamento duplo, resolver_loja).
+#
+# SEGURANÇA DE BANCO (regra do dia 14/09): a única DATABASE_URL daqui é o
+# service efêmero ABAIXO. Nenhum secret do repositório é usado; nenhum banco
+# real é contactado. A suíte RECUSA rodar fora do efêmero (tests/banco/efemero.cjs).
+# Dinheiro em teste é dado de FIXTURE.
+#
+# INFORMATIONAL POR NASCIMENTO (mesma régua do db-ci.yml da ci-banco e do
+# cabeçalho do ci.yml: CI que nasce vermelho é CI que se aprende a ignorar):
+# o `continue-on-error` abaixo segura o job enquanto a rodada não estabiliza.
+# Para virar BLOQUEANTE depois de estável, basta APAGAR a linha — nada mais muda.
+#
+# CUSTO (dono, 14/09 — declarado no corpo do PR): repo público + runner
+# padrão = R$ 0; estimativa ~2-4 min por run, timeout-minutes limita o pior
+# caso; cache do npm obrigatório (setup-node cache: npm).
+
+name: RPC CI (contrato do dinheiro)
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "tests/banco/**"
+      - ".github/workflows/rpc-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rpc-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mesma versão do ci.yml e do db-ci.yml (produção roda Node 24.x).
+  NODE_VERSION: "24"
+
+jobs:
+  contrato-dinheiro:
+    name: Invariantes de dinheiro (Postgres efêmero)
+    runs-on: ubuntu-latest
+    # >>> NASCE INFORMATIONAL. Após estável, APAGUE esta linha para bloquear.
+    continue-on-error: true
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        # PG 17: a versão do projeto (ADR 0003; o Supabase do projeto roda 17)
+        # — mesma imagem do db-ci.yml da ci-banco.
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # ÚNICA conexão deste job: o service efêmero acima. A trava de
+      # tests/banco/efemero.cjs recusa qualquer outro alvo.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      CI_BANCO_EFEMERO: "1"
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # Só pelo pacote `pg` (dependência do repositório, usada pelo job
+      # "objetos" do ci.yml).
+      - run: npm ci
+      - name: Provisiona o efêmero (fábrica do Supabase, emulada)
+        run: node tests/banco/provisionar.cjs
+      - name: Aplica as migrations do zero
+        run: node tests/banco/aplicar-migrations.cjs supabase/migrations
+      - name: Prova os invariantes de dinheiro
+        run: node tests/banco/invariantes-dinheiro.cjs

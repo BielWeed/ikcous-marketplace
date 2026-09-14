@@ -102,11 +102,21 @@ describe("Sheet — pinta acima do chrome fixo (z-[130] no overlay e no content)
 // própria folha, que não fecha sozinha) pintava escurecido por baixo do véu,
 // e tocar na cápsula para dispensar acertava o OVERLAY e fechava a FOLHA —
 // regressão de coisa que funcionava (a ilha z-100 era nítida sobre o véu
-// z-50 antigo). O contrato: ENQUANTO um toast está ativo, o header sobe um
-// degrau ACIMA do sheet modal (régua: header 100/140-durante-toast < nav
-// 120 < modal 130 < progresso 99999) — transitório (a cápsula dura ~2,6 s),
-// sem tocar na morfologia dela nem tornar o header clicável sobre a folha
+// z-50 antigo). O contrato: ENQUANTO um toast está ativo, a BARRA sobe um
+// degrau ACIMA do sheet modal (régua: barra 100/140-durante-toast < nav 120
+// < modal 130 < progresso 99999) — transitório (a cápsula dura ~2,6 s), sem
+// tocar na morfologia da cápsula nem tornar o header clicável sobre a folha
 // fora da janela do aviso.
+//
+// Revisão do bloqueante (14/09): o degrau condicional estava DENTRO do
+// <header> — e é INERTE lá. O Header de produção é filho do wrapper do App
+// (`gpu-accelerated relative z-[100]`), que é um STACKING CONTEXT (o
+// gpu-accelerated traz transform + will-change, index.css); o z-[140]
+// interno compete só DENTRO dele. Quem compete com o sheet na RAIZ é o
+// wrapper (o sheet é portalado em document.body via Radix) — logo o degrau
+// mora no wrapper, e o <header> volta a z-[100] estático. Os dois testes
+// abaixo ancoram os dois lados: a BarraSuperiorCliente (o wrapper) obedece
+// ao ciclo do toast; o header interno NUNCA carrega o degrau.
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { logoUrl: null, storeName: "Loja" } }),
 }));
@@ -125,7 +135,7 @@ vi.mock("@/components/ui/custom/SearchBar", () => ({
 
 import { Header } from "@/components/ui/custom/Header";
 
-describe("Header — o toast ativo limpa o degrau do sheet modal (z-[140])", () => {
+describe("Header — o degrau transitório NÃO mora aqui (mora no wrapper)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -150,6 +160,7 @@ describe("Header — o toast ativo limpa o degrau do sheet modal (z-[140])", () 
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => {
       raiz.unmount();
     });
@@ -164,7 +175,12 @@ describe("Header — o toast ativo limpa o degrau do sheet modal (z-[140])", () 
     expect(header?.className).not.toContain("z-[140]");
   });
 
-  it("com toast ativo, o header sobe para z-[140] e a cápsula está no DOM", async () => {
+  it("com toast ativo, o header CONTINUA z-[100] (o degrau é do wrapper) e a cápsula está no DOM", async () => {
+    // Fake SÓ de setTimeout/clearTimeout: o estado do toast drena por timer
+    // (o default é 2600 ms), mas framer-motion — que anima a cápsula —
+    // precisa de rAF e relógio vivos para montar.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
     await act(async () => {
       globalThis.dispatchEvent(
         new CustomEvent("header-toast-event", {
@@ -177,14 +193,87 @@ describe("Header — o toast ativo limpa o degrau do sheet modal (z-[140])", () 
       );
     });
 
+    // O z do <header> é ESTÁTICO: dentro do wrapper (gpu-accelerated) ele
+    // competiria só com irmãos internos — inerte contra o sheet portalado
+    // no body. Se o degrau voltar para cá, o aviso volta a pintar sob o véu.
     const header = document.querySelector("header");
-    expect(header?.className).toContain("z-[140]");
-    expect(header?.className).not.toContain("z-[100]");
+    expect(header?.className).toContain("z-[100]");
+    expect(header?.className).not.toContain("z-[140]");
 
-    // O canal em si está ativo: a cápsula clicável carrega a mensagem.
+    // O canal segue vivo: a cápsula clicável carrega a mensagem (o hook do
+    // canal alimenta a cápsula; só o degrau saiu daqui).
     const capsula = Array.from(document.querySelectorAll("button")).find((b) =>
       b.textContent?.includes("Falta escolher"),
     );
     expect(capsula).toBeDefined();
+
+    // Drena a janela do toast (2600 ms default): o estado do canal é único
+    // no módulo — sem isto, vaza para o próximo teste do arquivo.
+    await act(async () => {
+      vi.advanceTimersByTime(2600);
+    });
+  });
+});
+
+// ── O WRAPPER é quem carrega o degrau (o stacking context que compete na raiz) ──
+describe("BarraSuperiorCliente — o wrapper do header sobe a z-[140] com toast ativo", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("acompanha o ciclo do toast: z-[100] sem toast, z-[140] com toast, z-[100] ao expirar", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { BarraSuperiorCliente } = await import(
+      "@/components/ui/custom/BarraSuperiorCliente"
+    );
+
+    await act(async () => {
+      raiz.render(
+        <BarraSuperiorCliente>
+          <div>x</div>
+        </BarraSuperiorCliente>,
+      );
+    });
+
+    const barra = hospedeiro.firstElementChild as HTMLElement;
+    expect(barra.className).toContain("z-[100]");
+    expect(barra.className).not.toContain("z-[140]");
+
+    await act(async () => {
+      globalThis.dispatchEvent(
+        new CustomEvent("header-toast-event", {
+          detail: {
+            id: "teste-falta-escolher",
+            message: "Falta escolher a opção de Cor",
+            type: "warning",
+            duration: 100,
+          },
+        }),
+      );
+    });
+    expect(barra.className).toContain("z-[140]");
+    expect(barra.className).not.toContain("z-[100]");
+
+    // Transitório de verdade: expirada a janela (aqui 100 ms), a barra volta
+    // ao degrau do chrome — o header não fica clicável sobre a folha.
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(barra.className).toContain("z-[100]");
+    expect(barra.className).not.toContain("z-[140]");
   });
 });
