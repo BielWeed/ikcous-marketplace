@@ -1,0 +1,114 @@
+# E2E das JORNADAS de usuário — frente e2e-jornadas (14/09/2026).
+#
+# O que o ci.yml prova hoje é componente isolado (tela, mapper, migration).
+# O que este workflow prova é a JORNADA do cliente com navegador de verdade:
+# home → categoria → produto → folha de opções → carrinho; voltar preserva
+# a categoria; carrinho chega ao passo de endereço sem cobrar nada. Os specs
+# moram em tests/e2e/jornada-*.spec.ts e usam a receita de boot do smoke da
+# frente expansão-ci (ficha da loja fixture + filtro do EnvGuard).
+#
+# Regra de nascimento (dono, 14/09): nada novo derruba o CI. Este job nasce
+# `continue-on-error` (INFORMATIONAL) e só vira bloqueante depois de estável
+# em 3+ runs — decisão da central.
+#
+# Custo (repo PÚBLICO = grátis; runners padrão, nada pago):
+#   ~4-6 min por run (npm ci ~1 min, build ~1-2 min, Chromium em cache
+#   entre runs, 3 jornadas ~1-2 min). O filtro por caminho segura o custo:
+#   roda só quando o que a jornada percorre muda de verdade.
+# Impacto no tempo de PAREDE do PR: ~zero — corre em paralelo ao gate.
+
+name: CI Jornadas E2E
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "src/**"
+      - "tests/e2e/**"
+      - "middleware.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - ".github/workflows/e2e-jornadas.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "src/**"
+      - "tests/e2e/**"
+      - "middleware.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - ".github/workflows/e2e-jornadas.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-jornadas-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mesma versão do gate (ci.yml) — se divergir, um passa e o outro mente.
+  NODE_VERSION: "24"
+  # Mesma versão cravada pela expansão-ci no package.json (quando o PR deles
+  # mergear, `npm ci` passa a instalar a mesma). Cravada AQUI de propósito:
+  # este job não depende da ordem de merge dos dois PRs.
+  PLAYWRIGHT_VERSION: "1.63.0"
+
+jobs:
+  jornadas:
+    name: Jornadas do cliente no navegador (informacional)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Instala SEM tocar em package.json/package-lock.json (território da
+      # expansão-ci no mural): enquanto o PR deles não mergear, o runner
+      # deste workflow ainda assim tem o @playwright/test resolúvel.
+      - name: Instala o Playwright sem alterar o manifest
+        run: npm install --no-save @playwright/test@${{ env.PLAYWRIGHT_VERSION }}
+      # Receita oficial de cache de browsers (playwright.dev/docs/ci), como
+      # no ci-expansao.yml: chaveada pela versão CRAVADA — quando sobe, a
+      # chave muda e o cache renova. Sem `restore-keys` de propósito: browser
+      # velho mascarando incompatibilidade é falso verde.
+      - name: Cache dos navegadores do Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-jornadas-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Instala o Chromium (e dependências de sistema)
+        run: npx playwright install --with-deps chromium
+      # Mesma receita EXATA do job Build do ci.yml: build completo SEM
+      # segredos e SEM env extra — medido pela expansão-ci em 14/09:
+      # perturbar VITE_* no build fixture quebra o contrato do buildStore
+      # ("entrega não confirmada").
+      - name: Build de teste com identidade fictícia
+        run: npm run build
+        env:
+          NODE_ENV: production
+          IKCOUS_IDENTITY_MODE: fixture
+          IKCOUS_CODE_SHA: ${{ github.sha }}
+      # A ficha da loja fixture entra PELO TESTE (page.route em
+      # tests/e2e/kit-jornadas.ts) — o caminho de ativação planejado pelo
+      # smoke da expansão-ci. Nada de rede externa: o banco e a marca são
+      # interceptados e respondidos sinteticamente.
+      - name: Jornadas contra o preview do build
+        run: npx playwright test --config tests/e2e/playwright.jornadas.config.ts
+        env:
+          CI: "true"
+      - name: Relatório e traces de falha
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-jornadas
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
