@@ -124,7 +124,8 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(hospedeiro.querySelector("script")).toBeNull();
     expect(hospedeiro.querySelector("[onerror]")).toBeNull();
 
-    // Mapa real embutido: o CEP de origem é a query do embed e do link de GPS.
+    // Mapa real embutido DENTRO do cartão da marca (ordem do dono: entre o
+    // nome e a cidade), clicável → o link inteiro abre o Google Maps.
     const mapa = hospedeiro.querySelector<HTMLIFrameElement>(
       "iframe[title^='Mapa da loja']",
     );
@@ -132,17 +133,28 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(mapa!.getAttribute("src")).toBe(
       "https://maps.google.com/maps?q=38500-000&z=15&output=embed",
     );
-    const abrirMaps = [...hospedeiro.querySelectorAll("a")].find((a) =>
-      a.textContent?.includes("Abrir no Google Maps"),
+    const abrirMaps = hospedeiro.querySelector<HTMLAnchorElement>(
+      "a[aria-label='Abrir no Google Maps']",
     );
-    expect(abrirMaps).toBeDefined();
+    expect(abrirMaps).not.toBeNull();
+    expect(
+      abrirMaps!.querySelector("iframe[title^='Mapa da loja']"),
+    ).not.toBeNull();
     expect(abrirMaps!.getAttribute("href")).toBe(
       "https://www.google.com/maps/search/?api=1&query=38500-000",
     );
+    expect(abrirMaps!.textContent?.toLowerCase()).toContain(
+      "abre no google maps",
+    );
 
-    // Pin balão da CASA sobre o mapa: desenhado em SVG com a LOGO da loja
-    // dentro do círculo (image href) + aviso honesto de localização
-    // aproximada enquanto o dado é o CEP.
+    // Pin balão da CASA: gota PRETA sólida (contorno e corpo #18181b, sem
+    // "buraco" branco), a LOGO da loja ocupando o círculo (image href) e o
+    // aviso honesto de localização aproximada enquanto o dado é o CEP.
+    const corpoDoPin = hospedeiro.querySelector(
+      "svg path[d^='M28,64']",
+    ) as SVGPathElement | null;
+    expect(corpoDoPin).not.toBeNull();
+    expect(corpoDoPin!.getAttribute("fill")).toBe("#18181b");
     expect(
       hospedeiro.querySelector(
         "svg image[href='https://cdn.example/atelie/logo.png']",
@@ -178,7 +190,9 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(texto).not.toContain("Horário de atendimento");
     expect(texto).not.toContain("Monte Carmelo");
     expect(texto).not.toContain("Peças de decoração escolhidas a dedo");
-    expect(texto).not.toContain("Abrir no Google Maps");
+    expect(
+      hospedeiro.querySelector("a[aria-label='Abrir no Google Maps']"),
+    ).toBeNull();
     expect(
       hospedeiro.querySelector("iframe[title^='Mapa da loja']"),
     ).toBeNull();

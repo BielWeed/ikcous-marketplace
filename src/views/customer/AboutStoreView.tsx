@@ -7,7 +7,7 @@ import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { haptic } from "@/utils/haptic";
 import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
-import { ChevronRight, Clock, MapPin, Navigation } from "lucide-react";
+import { Clock, MapPin, Navigation } from "lucide-react";
 import { useEffect, useState } from "react";
 
 // Página de LEITURA da marca do lojista assinante (peça 24). Fonte ÚNICA dos
@@ -88,12 +88,14 @@ export function AboutStoreView() {
           </p>
         </motion.div>
 
-        {/* Marca + descrição */}
+        {/* Marca + localização + descrição. Ordem do dono (14/09): o mapa
+            mora AQUI, entre o nome da loja e a cidade. Clicar em QUALQUER
+            ponto do mapa abre o Google Maps — sem botão separado. */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.05 }}
-          className="flex flex-col items-center gap-4 rounded-[2.5rem] border border-zinc-100 bg-white p-8 text-center shadow-sm"
+          className="flex flex-col items-center gap-4 rounded-[2.5rem] border border-zinc-100 bg-white p-6 text-center shadow-sm sm:p-8"
         >
           {logoSrc && !logoFalhou ? (
             <img
@@ -108,17 +110,96 @@ export function AboutStoreView() {
               {inicial}
             </div>
           )}
-          <div>
-            <h2 className="text-lg font-black tracking-tight text-zinc-900">
-              {storeName}
-            </h2>
-            {local && (
-              <p className="mt-1.5 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                <MapPin className="size-3" />
-                {local}
-              </p>
-            )}
-          </div>
+          <h2 className="text-lg font-black tracking-tight text-zinc-900">
+            {storeName}
+          </h2>
+          {queryMaps && (
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => haptic.light()}
+              aria-label="Abrir no Google Maps"
+              className="group block w-full overflow-hidden rounded-[2rem] border border-zinc-100"
+            >
+              {/* Recorte do topo esconde o chip "Open in Maps" do embed do
+                  Google. Mapa ESTÁTICO (pointer-events none) porque o pin é
+                  da CASA, fixo no centro — enquanto a loja não crava a
+                  localização exata no painel (peça futura), o dado é o CEP de
+                  origem: aproximação, com aviso. */}
+              <div className="relative h-48 w-full overflow-hidden">
+                <iframe
+                  title={`Mapa da loja ${storeName}`}
+                  src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
+                />
+                {/* Pin balão da casa em UM SVG: gota PRETA sólida (contorno
+                    e corpo), a LOGO da loja ocupando o círculo e a ponta de
+                    baixo como âncora no centro do mapa. Sem logo, a inicial
+                    branca. */}
+                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
+                  <svg
+                    width="60"
+                    height="73"
+                    viewBox="0 0 56 68"
+                    role="img"
+                    aria-label={`Local da loja ${storeName}`}
+                  >
+                    <defs>
+                      <clipPath id="pin-logo-recorte">
+                        <circle cx="28" cy="28" r="14.5" />
+                      </clipPath>
+                    </defs>
+                    <path
+                      d="M28,64 C28,64 12,46.5 12,28 A16,16 0 1,1 44,28 C44,46.5 28,64 28,64 Z"
+                      fill="#18181b"
+                      stroke="#18181b"
+                      strokeWidth="3"
+                      strokeLinejoin="round"
+                    />
+                    <g clipPath="url(#pin-logo-recorte)">
+                      {logoSrc && !logoFalhou ? (
+                        <image
+                          href={logoSrc}
+                          x="13.5"
+                          y="13.5"
+                          width="29"
+                          height="29"
+                          preserveAspectRatio="xMidYMid slice"
+                        />
+                      ) : (
+                        <text
+                          x="28"
+                          y="33"
+                          textAnchor="middle"
+                          fontSize="15"
+                          fontWeight="900"
+                          fill="white"
+                        >
+                          {inicial}
+                        </text>
+                      )}
+                    </g>
+                  </svg>
+                </div>
+                <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">
+                  Localização aproximada
+                </p>
+              </div>
+              <span className="flex items-center justify-center gap-1.5 bg-zinc-50 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-colors group-hover:text-zinc-900">
+                <Navigation className="size-3" />
+                Toque no mapa · abre no Google Maps
+              </span>
+            </a>
+          )}
+          {local && (
+            <p className="-mt-1 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+              <MapPin className="size-3" />
+              {local}
+            </p>
+          )}
           {descricaoHtml && (
             <div
               className="w-full border-t border-zinc-100 pt-4 text-left text-[13px] leading-relaxed text-zinc-600 [&_a]:font-bold [&_a]:text-zinc-900 [&_a]:underline [&_h1]:mt-3 [&_h1]:text-sm [&_h1]:font-black [&_h1]:text-zinc-900 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-black [&_h2]:text-zinc-900 [&_h3]:mt-2 [&_h3]:text-[13px] [&_h3]:font-black [&_h3]:text-zinc-900 [&_img]:my-3 [&_img]:w-full [&_img]:rounded-2xl [&_li]:my-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_strong]:font-bold [&_strong]:text-zinc-800 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
@@ -126,109 +207,6 @@ export function AboutStoreView() {
             />
           )}
         </motion.div>
-
-        {/* Onde a loja está — mapa real com o pin da query (CEP de origem ou
-            cidade/UF) + link para levar o GPS até lá. Sem dado nenhum de
-            localização, o cartão nem renderiza. */}
-        {queryMaps && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
-          >
-            {/* Recorte do topo esconde o chip "Open in Maps" do embed do
-                Google (controle nosso, não do iframe): o mapa sobe 56px para
-                fora do wrapper e continua navegável. Mapa ESTÁTICO
-                (pointer-events none) porque o pin é da CASA, fixo no centro —
-                enquanto a loja não crava a localização exata no painel (peça
-                futura), o dado é o CEP de origem: aproximação, com aviso. */}
-            <div className="relative h-56 w-full overflow-hidden">
-              <iframe
-                title={`Mapa da loja ${storeName}`}
-                src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
-              />
-              {/* Pin balão da casa, desenhado em UM SVG (gota de contorno
-                  preto, cauda arredondada fundida ao círculo — sem peças
-                  sobrepostas): a LOGO da loja vive dentro do círculo (com
-                  recorte) e a ponta de baixo é a âncora no centro do mapa.
-                  Sem logo configurada, a inicial da loja entra no lugar. */}
-              <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
-                <svg
-                  width="64"
-                  height="78"
-                  viewBox="0 0 56 68"
-                  role="img"
-                  aria-label={`Local da loja ${storeName}`}
-                >
-                  <defs>
-                    <clipPath id="pin-logo-recorte">
-                      <circle cx="28" cy="28" r="14.5" />
-                    </clipPath>
-                  </defs>
-                  <path
-                    d="M28,64 C28,64 12,46.5 12,28 A16,16 0 1,1 44,28 C44,46.5 28,64 28,64 Z"
-                    fill="white"
-                    stroke="#18181b"
-                    strokeWidth="3"
-                    strokeLinejoin="round"
-                  />
-                  <g clipPath="url(#pin-logo-recorte)">
-                    {logoSrc && !logoFalhou ? (
-                      <image
-                        href={logoSrc}
-                        x="13.5"
-                        y="13.5"
-                        width="29"
-                        height="29"
-                        preserveAspectRatio="xMidYMid slice"
-                      />
-                    ) : (
-                      <text
-                        x="28"
-                        y="33"
-                        textAnchor="middle"
-                        fontSize="15"
-                        fontWeight="900"
-                        fill="#18181b"
-                      >
-                        {inicial}
-                      </text>
-                    )}
-                  </g>
-                </svg>
-              </div>
-              <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">
-                Localização aproximada
-              </p>
-            </div>
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => haptic.light()}
-              className="group flex w-full items-center justify-between border-t border-zinc-50 p-5 transition-colors hover:bg-zinc-50"
-            >
-              <div className="flex items-center gap-4">
-                <div className="flex size-10 items-center justify-center rounded-2xl bg-zinc-50 transition-colors group-hover:bg-white">
-                  <Navigation className="size-5 text-zinc-400" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">
-                    Abrir no Google Maps
-                  </p>
-                  <p className="text-[9px] font-bold uppercase tracking-tighter text-zinc-400">
-                    Levar o GPS até a loja
-                  </p>
-                </div>
-              </div>
-              <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
-            </a>
-          </motion.div>
-        )}
 
         {/* Horário de atendimento — só quando a loja preencheu (mesma fonte
             do rodapé da home: config.businessHours) */}
