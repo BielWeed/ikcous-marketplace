@@ -58,12 +58,29 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
  * sem prometer o que o agente do MP não faz (ele ORIENTA; quem cria as
  * credenciais é o lojista no painel dele). Diz que as chaves são secretas —
  * o lojista não deve colá-las no chat nem enviá-las a ninguém.
+ *
+ * Melhoria pedida pelo dono (14/09 à noite): o lojista é LEIGO — o prompt
+ * agora diz a tecnologia exata da nossa integração (Checkout API, Pix criado
+ * pela API do Mercado Pago dentro do app, sem site externo), pede guia
+ * INTERATIVO de UM passo por vez com confirmação, onde tocar exatamente,
+ * explicação de palavras difíceis, produção × teste, e reforça a segurança
+ * das chaves.
  */
-export const PROMPT_PARA_AGENTE_MP = `Oi! Eu tenho uma loja que vende pelo meu próprio aplicativo e quero ativar o pagamento pelo Mercado Pago nele. Me guie com calma, passo a passo, para eu obter as duas credenciais de PRODUÇÃO da minha própria conta do Mercado Pago: a Public Key e o Access Token.
+export const PROMPT_PARA_AGENTE_MP = `Olá! Eu tenho uma loja que vende dentro do MEU PRÓPRIO aplicativo (o app da minha marca) e quero receber pagamento de PIX dentro dele, pelo Mercado Pago. Meu app foi montado para usar a integração oficial chamada CHECKOUT API do Mercado Pago: é o meu aplicativo quem cria o Pix do cliente automaticamente, conversando com a API do Mercado Pago — não usa maquininha, nem link de pagamento, nem site externo.
 
-Eu sei que elas ficam no painel de desenvolvedores do Mercado Pago (developers.mercadopago.com), na área "Suas integrações", criando a aplicação da minha loja e abrindo "Credenciais de produção". Me diga exatamente onde tocar, o que preencher e como ativar as credenciais de produção; se alguma tela não aparecer para mim, me explique o que pode estar faltando.
+Para isso eu preciso de 2 credenciais da MINHA própria conta do Mercado Pago, e as duas têm que ser de PRODUÇÃO (as de verdade, que recebem dinheiro de verdade — não as de teste):
+1) PUBLIC KEY (chave pública)
+2) ACCESS TOKEN (token de acesso)
 
-No final, me lembre de copiar as duas chaves completas (Public Key e Access Token) para eu colar no aplicativo da minha loja. Importante: essas chaves são secretas — eu vou digitá-las somente no painel do Mercado Pago e no aplicativo da minha loja, nunca vou enviá-las para outra pessoa nem colá-las aqui no chat.`;
+Me guie como se eu nunca tivesse usado o Mercado Pago na vida — eu sou leigo nesse assunto. É importante que você:
+- Me dê UM passo por vez, bem curtinho, dizendo exatamente ONDE eu toco: o nome do menu, do ícone ou do botão, do jeito que aparece na tela do celular.
+- Espere eu responder que consegui, antes de me dar o próximo passo.
+- Explique com calma as palavras difíceis (por exemplo: o que é uma credencial, e por que tem que ser de produção e não de teste).
+- Se algo não aparecer para mim, me dê o caminho alternativo: entrar com a minha conta no site developers.mercadopago.com, abrir "Suas integrações", criar a aplicação da minha loja e abrir "Credenciais de produção".
+- Sempre usar a MESMA conta que eu uso no aplicativo do Mercado Pago do meu celular.
+- Quando eu chegar nas credenciais, me mostrar exatamente o botão de copiar cada uma — primeiro a Public Key, depois o Access Token — e me avisar que vou colar as duas no aplicativo da minha loja, nos Ajustes, na parte "Suas chaves".
+
+Importante: essas chaves são SECRETAS. Eu só vou usá-las no painel do Mercado Pago e no aplicativo da minha loja; nunca vou enviá-las para outra pessoa, nem colar em outro site, nem em outra conversa.`;
 
 /** Recado de segurança exibido embaixo do formulário. */
 export const RECADO_DE_SEGURANCA =
