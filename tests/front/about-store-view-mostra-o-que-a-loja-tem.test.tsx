@@ -44,6 +44,9 @@ const LOJA_COMPLETA: ConfigDeTeste = {
   storeState: "MG",
   businessHours: "Seg-Sex: 8h às 19h",
   whatsappNumber: "(34) 99999-9999",
+  storeDescription:
+    "Peças de decoração escolhidas a dedo, direto do ateliê para a sua casa.",
+  originCep: "38500-000",
 };
 
 const LOJA_VAZIA: ConfigDeTeste = {
@@ -53,6 +56,7 @@ const LOJA_VAZIA: ConfigDeTeste = {
   storeState: null,
   businessHours: null,
   whatsappNumber: null,
+  storeDescription: null,
 };
 
 describe("AboutStoreView — a página mostra o que a loja tem e omite o resto", () => {
@@ -96,6 +100,25 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(texto).toContain("Seg-Sex: 8h às 19h");
     expect(texto).toContain("Horário de atendimento");
 
+    // Descrição da loja (campo do dono — quando existir no banco, aparece).
+    expect(texto).toContain("Peças de decoração escolhidas a dedo");
+
+    // Mapa real embutido: o CEP de origem é a query do embed e do link de GPS.
+    const mapa = hospedeiro.querySelector<HTMLIFrameElement>(
+      "iframe[title^='Mapa da loja']",
+    );
+    expect(mapa).not.toBeNull();
+    expect(mapa!.getAttribute("src")).toBe(
+      "https://maps.google.com/maps?q=38500-000&z=15&output=embed",
+    );
+    const abrirMaps = [...hospedeiro.querySelectorAll("a")].find((a) =>
+      a.textContent?.includes("Abrir no Google Maps"),
+    );
+    expect(abrirMaps).toBeDefined();
+    expect(abrirMaps!.getAttribute("href")).toBe(
+      "https://www.google.com/maps/search/?api=1&query=38500-000",
+    );
+
     const logo = hospedeiro.querySelector<HTMLImageElement>(
       "img[alt^='Logo da loja']",
     );
@@ -124,6 +147,11 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(texto).not.toContain("Horário de atendimento");
     expect(texto).not.toContain("Falar com a loja");
     expect(texto).not.toContain("Monte Carmelo");
+    expect(texto).not.toContain("Peças de decoração escolhidas a dedo");
+    expect(texto).not.toContain("Abrir no Google Maps");
+    expect(
+      hospedeiro.querySelector("iframe[title^='Mapa da loja']"),
+    ).toBeNull();
 
     // Nem liço de renderização: nenhum "undefined"/"null" vaza para a tela.
     expect(texto).not.toContain("undefined");

@@ -139,18 +139,26 @@ describe("ProfileView — botão Sobre a Loja para TODOS os usuários (peça 24)
     expect(botaoSobreALoja()).toBeDefined();
   });
 
-  it("o botão vive no cartão PRÓPRIO abaixo de Segurança e Conta / Encerrar Sessão", async () => {
+  it("ordem do dono: Sobre a Loja logo abaixo de Segurança e Conta; Encerrar Sessão em cartão separado embaixo", async () => {
     flagAdmin = false;
 
     await renderizarPerfil(() => {});
 
     const botao = botaoSobreALoja();
     expect(botao).toBeDefined();
-    // O cartão (avo do botão) não contém nem a linha de segurança nem a de
-    // encerrar sessão — cartão próprio, não uma linha colada no cartão antigo.
+    // O botão novo vive NO MESMO cartão de Segurança e Conta (a linha acima
+    // dele), e esse cartão NÃO contém a ação destrutiva.
     const cartao = botao!.closest("div.overflow-hidden");
     expect(cartao).not.toBeNull();
+    expect(cartao!.textContent).toContain("Segurança e Conta");
     expect(cartao!.textContent).not.toContain("Encerrar Sessão");
-    expect(cartao!.textContent).not.toContain("Segurança e Conta");
+
+    // Encerrar Sessão ganhou cartão PRÓPRIO, DEPOIS do cartão do botão novo.
+    const cartoes = [...hospedeiro.querySelectorAll("div.overflow-hidden")];
+    const indiceDoCartao = cartoes.indexOf(cartao!);
+    const cartaoEncerrar = cartoes
+      .slice(indiceDoCartao + 1)
+      .find((c) => c.textContent?.includes("Encerrar Sessão"));
+    expect(cartaoEncerrar).toBeDefined();
   });
 });

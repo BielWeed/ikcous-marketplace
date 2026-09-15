@@ -5,7 +5,13 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
-import { ChevronRight, Clock, MapPin, MessageCircle } from "lucide-react";
+import {
+  ChevronRight,
+  Clock,
+  MapPin,
+  MessageCircle,
+  Navigation,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 // Página de LEITURA da marca do lojista assinante (peça 24). Fonte ÚNICA dos
@@ -13,17 +19,26 @@ import { useEffect, useState } from "react";
 // (logo/nome) e o rodapé da home (horário). Régua da casa: o dado que a loja
 // não preencheu não vira bloco vazio nem "undefined" — o bloco simplesmente
 // não existe na tela (migration 20261033000000). A descrição editável da loja
-// ainda não tem coluna: é peça futura, não inventada aqui.
+// depende de coluna nova (decisão do dono): enquanto ela não existir no
+// banco, o campo nunca chega e o bloco fica oculto — nunca inventado aqui.
 export function AboutStoreView() {
   const { config } = useStore();
 
   const storeName = nomeDaLoja(config);
   const horario = config.businessHours?.trim() || "";
+  const descricao = config.storeDescription?.trim() || "";
   const local = [config.storeCity?.trim(), config.storeState?.trim()]
     .filter(Boolean)
     .join(", ");
   const temWhatsapp = lojaTemWhatsapp(config.whatsappNumber);
   const inicial = storeName.charAt(0).toUpperCase();
+
+  // Onde a loja está: o CEP de origem do frete é o dado mais "certinho" que a
+  // loja JÁ TEM no sistema (cai na rua do CEP); sem CEP, centra na cidade/UF;
+  // sem nenhum dos dois, o cartão de mapa nem existe. O Google geocodifica a
+  // query sozinho no embed — sem chave, sem serviço pago, sem geocoder nosso.
+  const onde = config.originCep?.trim() || local;
+  const queryMaps = onde ? encodeURIComponent(onde) : "";
 
   // Mesma cascata do Header: logo do banco → asset local do build → inicial.
   // A máquina de estados de troca em tempo real fica no Header; aqui basta a
@@ -59,15 +74,20 @@ export function AboutStoreView() {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="flex flex-col gap-1 border-b border-zinc-100 pb-4 text-center"
+          className="flex flex-col items-center gap-1.5 border-b border-zinc-100 pb-5 text-center"
         >
-          <h1 className="text-xl font-extrabold tracking-tight text-zinc-900">
+          <p className="text-[9px] font-black uppercase tracking-[0.35em] text-admin-gold">
+            A loja
+          </p>
+          <h1 className="text-3xl font-black leading-none tracking-tight text-zinc-900">
             Sobre a Loja
           </h1>
-          <p className="text-xs text-zinc-500">A marca por trás deste app.</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            A marca por trás deste app.
+          </p>
         </motion.div>
 
-        {/* Marca */}
+        {/* Marca + descrição */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -98,7 +118,54 @@ export function AboutStoreView() {
               </p>
             )}
           </div>
+          {descricao && (
+            <p className="border-t border-zinc-100 pt-4 text-[13px] leading-relaxed text-zinc-600">
+              {descricao}
+            </p>
+          )}
         </motion.div>
+
+        {/* Onde a loja está — mapa real com o pin da query (CEP de origem ou
+            cidade/UF) + link para levar o GPS até lá. Sem dado nenhum de
+            localização, o cartão nem renderiza. */}
+        {queryMaps && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
+          >
+            <iframe
+              title={`Mapa da loja ${storeName}`}
+              src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              className="block h-56 w-full border-0"
+            />
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => haptic.light()}
+              className="group flex w-full items-center justify-between border-t border-zinc-50 p-5 transition-colors hover:bg-zinc-50"
+            >
+              <div className="flex items-center gap-4">
+                <div className="flex size-10 items-center justify-center rounded-2xl bg-zinc-50 transition-colors group-hover:bg-white">
+                  <Navigation className="size-5 text-zinc-400" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">
+                    Abrir no Google Maps
+                  </p>
+                  <p className="text-[9px] font-bold uppercase tracking-tighter text-zinc-400">
+                    Levar o GPS até a loja
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
+            </a>
+          </motion.div>
+        )}
 
         {/* Horário de atendimento — só quando a loja preencheu (mesma fonte
             do rodapé da home: config.businessHours) */}
@@ -106,7 +173,7 @@ export function AboutStoreView() {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
+            transition={{ duration: 0.3, delay: 0.15 }}
             className="rounded-[2rem] border border-zinc-100 bg-zinc-50/50 p-6 text-center"
           >
             <p className="flex items-center justify-center gap-2 text-sm font-bold text-zinc-700">
@@ -124,7 +191,7 @@ export function AboutStoreView() {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.15 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
             className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
           >
             <button

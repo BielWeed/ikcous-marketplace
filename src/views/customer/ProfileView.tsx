@@ -669,35 +669,11 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
             <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
           </button>
 
-          <button
-            onClick={logout}
-            className="group flex w-full items-center justify-between p-6 transition-colors hover:bg-red-50"
-          >
-            <div className="flex items-center gap-4">
-              <div className="flex size-10 items-center justify-center rounded-2xl bg-red-50 transition-colors group-hover:bg-white">
-                <LogOut className="size-5 text-red-500" />
-              </div>
-              <div className="text-left">
-                <p className="text-[10px] font-black uppercase tracking-widest text-red-600">
-                  Encerrar Sessão
-                </p>
-                <p className="text-[9px] font-bold uppercase tracking-tighter text-red-400">
-                  Sair da sua conta premium
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="size-4 text-red-200 transition-transform group-hover:translate-x-1" />
-          </button>
-        </motion.div>
-
-        {/* Sobre a Loja — a marca do lojista assinante (peça 24). Cartão
-            próprio, mesma linguagem visual dos vizinhos, visível a TODOS os
-            usuários do perfil: não mora dentro de isAdmin nem de nenhum
-            outro ramo condicional. */}
-        <motion.div
-          variants={itemVariants}
-          className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
-        >
+          {/* Sobre a Loja — a marca do lojista assinante (peça 24). Ordem do
+              dono (14/09): logo ABAIXO de Segurança e Conta, no mesmo cartão;
+              Encerrar Sessão ganha cartão próprio no fim do perfil. Visível a
+              TODOS os usuários: não mora dentro de isAdmin nem de nenhum
+              outro ramo condicional. */}
           <button
             type="button"
             onClick={() => onNavigate("about-store")}
@@ -717,6 +693,33 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
               </div>
             </div>
             <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
+          </button>
+        </motion.div>
+
+        {/* Encerrar Sessão — cartão PRÓPRIO no fim do perfil (ordem do dono,
+            14/09): a ação destrutiva fica separada das navegações. */}
+        <motion.div
+          variants={itemVariants}
+          className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
+        >
+          <button
+            onClick={logout}
+            className="group flex w-full items-center justify-between p-6 transition-colors hover:bg-red-50"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex size-10 items-center justify-center rounded-2xl bg-red-50 transition-colors group-hover:bg-white">
+                <LogOut className="size-5 text-red-500" />
+              </div>
+              <div className="text-left">
+                <p className="text-[10px] font-black uppercase tracking-widest text-red-600">
+                  Encerrar Sessão
+                </p>
+                <p className="text-[9px] font-bold uppercase tracking-tighter text-red-400">
+                  Sair da sua conta premium
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="size-4 text-red-200 transition-transform group-hover:translate-x-1" />
           </button>
         </motion.div>
       </motion.div>

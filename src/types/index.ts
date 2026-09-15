@@ -265,6 +265,14 @@ export interface StoreConfig {
   storeCity?: string | null;
   /** UF de onde a loja opera. Ausente ou `null` = não configurado. */
   storeState?: string | null;
+  /**
+   * Texto "Sobre a loja" exibido na página Sobre a Loja (peça 24). CAMPO
+   * FUTURO: a coluna `store_description` ainda não existe em
+   * `store_config`/`v_store_config` (migration é decisão do dono). Enquanto
+   * não existir, o campo NUNCA chega do banco e o bloco fica oculto — a
+   * tela omite, nunca inventa.
+   */
+  storeDescription?: string | null;
   originCep?: string;
   shippingProvider?: "flat_fee" | "melhor_envio" | "frenet";
   enabledShippingMethods?: string[];
