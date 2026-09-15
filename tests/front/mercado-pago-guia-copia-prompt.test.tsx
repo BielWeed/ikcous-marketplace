@@ -134,4 +134,32 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     expect(writeText).toHaveBeenCalledWith(PROMPT_PARA_AGENTE_MP);
     expect(botaoPorTexto("Copiado!")).toBeTruthy();
   });
+
+  // Peça 27 (15/09): o campo "Chave de notificações (opcional)" da tela não
+  // era ensinado em lugar nenhum. O prompt agora pede ao agente o passo a
+  // passo leigo de onde copiar essa chave, e o guia diz que ela é OPCIONAL —
+  // o Pix funciona sem ela (o teste real do dono foi feito sem ela).
+  it("G4 e G5 — chave de notificações opcional: o prompt ensina onde copiar e o guia diz que pode ficar para depois", async () => {
+    // G4 — o PROMPT copiável menciona a chave de notificações como opcional
+    // e pede ao agente o caminho exato (área de Webhooks) para copiá-la.
+    const promptMinusculo = PROMPT_PARA_AGENTE_MP.toLowerCase();
+    expect(promptMinusculo).toContain("chave de notificações");
+    expect(promptMinusculo).toContain("opcional");
+    expect(promptMinusculo).toContain("webhook");
+    expect(promptMinusculo).toContain("pix já funciona sem ela");
+
+    // G5 — o guia NA TELA diz o mesmo: pode deixar vazio e colar depois.
+    raiz = createRoot(hospedeiro);
+    await act(async () => {
+      raiz.render(<MercadoPagoSection />);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    await abrirGuia();
+    const tela = document.body.textContent ?? "";
+    expect(tela).toContain("Chave de notificações (opcional)");
+    expect(tela).toContain("pode deixar vazio e colar depois");
+    expect(tela).toContain("já funciona sem ela");
+  });
 });
