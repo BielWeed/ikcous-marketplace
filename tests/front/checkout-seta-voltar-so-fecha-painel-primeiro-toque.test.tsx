@@ -444,6 +444,11 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
       raiz?.render(<App />);
     });
     await assentar();
+    // Peça 17 (P1 da revisão do PR): o assentar de voltas fixas não garante
+    // o commit da tela sob carga — quase todo caso clica num botão do
+    // checkout logo em seguida, e o botão só existe com a tela montada. A
+    // espera condicional mora AQUI, dentro de `abrir`, para todos os casos.
+    await esperarAte(() => naTelaDeCheckout() === true);
   };
 
   const clicar = async (testId: string) => {
@@ -463,11 +468,11 @@ describe("checkout: a seta Voltar com o painel de resumo aberto só fecha o pain
     container?.querySelector('[data-testid="tela-checkout"]') !== null;
 
   it("chega no checkout pela URL direta", async () => {
-    await abrir();
     // Flaky medido no gate (peça 17, 14/09): a tela pinta por efeito
-    // assíncrono do App e sob carga o assentar fixo não alcança — espera
-    // condicional, não contagem.
-    await esperarAte(() => naTelaDeCheckout() === true);
+    // assíncrono do App e sob carga o assentar fixo não alcança — a espera
+    // condicional pela tela mora dentro de `abrir()` (vale para todos os
+    // casos); aqui fica só a asserção explícita.
+    await abrir();
     expect(naTelaDeCheckout()).toBe(true);
   });
 
