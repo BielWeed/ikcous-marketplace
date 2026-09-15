@@ -7,7 +7,51 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.34.0] - 2026-09-14
+
+**A atualização das 3 frentes ditadas pelo dono em 14/09**: a folha de escolha
+do produto ficou viva (animação de voo até o carrinho, fecho sozinha e
+escolha de quantidade), o lojista ganhou a variante completa de roupa
+(Cor + Tamanho com estoque por combinação) e o caminho do pagamento dentro do
+app se abriu (tela de chaves do Mercado Pago com guia guiado pelo agente de IA
+do próprio app). Reúne os PRs #600, #601 e #602.
+
+### Para quem COMPRA (vitrine)
+
+- **Animação de voo ao adicionar pela folha de escolha** (PR #600): a bolinha
+  do produto voa até o ícone do carrinho — o mesmo efeito que já existia no
+  caminho do card.
+- **A folha de escolha fecha sozinha depois de adicionar** (PR #600): sem
+  folha parada na tela depois da escolha.
+- **Seletor de quantidade na folha de escolha** (PR #600): levar 3 unidades de
+  uma vez, respeitando o estoque do produto.
+- **Grade completa na escolha** (PR #601): produto com Cor + Tamanho mostra as
+  combinações (ex.: Branca/PP) e o carrinho recebe a combinação certa, com o
+  estoque e o preço DELA.
+
+### Para o LOJISTA (painel)
+
+- **"Nova Variante" com múltiplos atributos** (PR #601): empilhe Cor e
+  Tamanho; cada combinação vira um item com estoque, preço, SKU e imagem
+  próprios — e o caso de 1 atributo segue idêntico ao de antes.
+- **Ajustes > Pagamentos > Mercado Pago** (PR #602): cadastro das chaves do
+  Mercado Pago com guia passo a passo (com prompt pronto para o agente de IA
+  do app do MP), salvar e TESTAR a conexão na própria tela. Chaves cifradas no
+  servidor, visíveis só como máscara, só para admin. O Pix de hoje segue
+  intocado.
+
+### Nos bastidores
+
+- **Guardião do clique-fora intacto** (PR #600): os E2E de mouse e de toque
+  continuam no CI — o conserto da 1.33.2 não foi tocado.
+- **Sem migration de banco** (PR #601): a combinação reusa a tabela
+  `product_variants`; a cadeia de pedido (RPCs) não mudou.
+- **Revisão de segurança independente** (PR #602): cifragem AES-256-GCM no
+  servidor, teste de conexão server-side, portão duplo de admin — aprovada com
+  ressalvas menores registradas na mesa.
+
 ## [1.33.2] - 2026-09-14
+
 
 **O conserto de verdade do clique fora da folha de opções no CELULAR**: quem
 tocava fora da folha de escolha com o dedo ainda era levado para a tela
