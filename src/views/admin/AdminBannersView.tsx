@@ -408,8 +408,16 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
       )}
     >
       <div className={cn("flex w-full flex-col gap-3 p-3", detalhado && "sm:p-4")}>
-        {/* Conteúdo: miniatura + título + situação + rota */}
-        <div className="flex min-w-0 items-center gap-3">
+        {/* Conteúdo: miniatura + título + situação + rota.
+            No detalhado abaixo de sm, empilha (imagem em cima) — com w-full +
+            shrink-0 numa linha horizontal, a miniatura consumiria a largura
+            inteira e espremeria o texto até sumir atrás do overflow-hidden. */}
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-3",
+            detalhado && "flex-col items-stretch sm:flex-row sm:items-center",
+          )}
+        >
           <div
             className={cn(
               "relative shrink-0 overflow-hidden rounded-xl border border-white/5 bg-zinc-900",
@@ -1867,9 +1875,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                 key={i}
                 className="rounded-2xl border border-white/5 bg-zinc-950/40 p-3"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <Skeleton className="aspect-[21/9] w-full shrink-0 rounded-xl bg-white/5 sm:w-44 lg:w-64 xl:w-80" />
-                  <div className="hidden min-w-0 flex-1 space-y-2 sm:block">
+                  <div className="min-w-0 flex-1 space-y-2">
                     <Skeleton className="h-4 w-1/2 rounded bg-white/5" />
                     <Skeleton className="h-3 w-1/3 rounded bg-white/5" />
                   </div>
