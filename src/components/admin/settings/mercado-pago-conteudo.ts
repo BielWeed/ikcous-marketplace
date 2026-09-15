@@ -16,6 +16,19 @@
  * o CAMINHO exato dentro do app varia também, então o guia não promete
  * nenhum dos dois: ensina a achar e, se o agente não levar lá, dá o
  * caminho direto pelo site.
+ *
+ * Fatos verificados na doc OFICIAL em 14/09/2026 (peça 26 — investigação
+ * pedida pelo dono depois de questionar o termo "Checkout API"): a
+ * integração do app é a Checkout API do Mercado Pago na variante ATUAL
+ * (via Orders API — a cobrança do Pix nasce no nosso servidor, POST
+ * /v1/orders), com o Payment Brick (componente oficial de interface do MP)
+ * embutido na nossa tela; a variante antiga via POST /v1/payments está
+ * marcada "legacy" na doc de hoje. A doc usa "Checkout Transparente" para
+ * o MESMO produto — por isso o prompt cita os dois nomes. Fontes (acesso
+ * 14/09/2026):
+ *   https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/overview
+ *   https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/pix
+ *   https://www.mercadopago.com.br/developers/pt/docs/checkout-bricks/overview
  */
 
 export type PassoDoGuia = {
@@ -65,8 +78,16 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
  * INTERATIVO de UM passo por vez com confirmação, onde tocar exatamente,
  * explicação de palavras difíceis, produção × teste, e reforça a segurança
  * das chaves.
+ *
+ * Correção da peça 26 (14/09, investigação com a doc oficial — o dono
+ * questionou o termo): "Checkout API" estava CERTO e continua no prompt,
+ * com a descrição reescrita para bater com a doc de HOJE — o mesmo produto
+ * que a doc também chama de "Checkout Transparente", na variante via Orders
+ * API (a cobrança do Pix nasce no nosso servidor), com o componente oficial
+ * de pagamento (Payment Brick) embutido na nossa tela. Os endpoints ficam no
+ * código, não no prompt — provas no relatório o-que-nosso-app-usa.md na mesa.
  */
-export const PROMPT_PARA_AGENTE_MP = `Olá! Eu tenho uma loja que vende dentro do MEU PRÓPRIO aplicativo (o app da minha marca) e quero receber pagamento de PIX dentro dele, pelo Mercado Pago. Meu app foi montado para usar a integração oficial chamada CHECKOUT API do Mercado Pago: é o meu aplicativo quem cria o Pix do cliente automaticamente, conversando com a API do Mercado Pago — não usa maquininha, nem link de pagamento, nem site externo.
+export const PROMPT_PARA_AGENTE_MP = `Olá! Eu tenho uma loja que vende dentro do MEU PRÓPRIO aplicativo (o app da minha marca) e quero receber pagamento de PIX dentro dele, pelo Mercado Pago. Meu app foi montado para usar a integração oficial chamada CHECKOUT API do Mercado Pago (na documentação ela também aparece como Checkout Transparente): a tela de pagamento abre dentro do meu aplicativo, com o componente oficial de pagamento do Mercado Pago embutido nela, e o Pix do cliente é criado automaticamente pelo meu sistema conversando direto com a API do Mercado Pago — não usa maquininha, nem link de pagamento, nem site externo.
 
 Para isso eu preciso de 2 credenciais da MINHA própria conta do Mercado Pago, e as duas têm que ser de PRODUÇÃO (as de verdade, que recebem dinheiro de verdade — não as de teste):
 1) PUBLIC KEY (chave pública)
