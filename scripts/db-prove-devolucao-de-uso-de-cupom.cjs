@@ -91,11 +91,14 @@ const { Client } = require("pg");
 const RAIZ = path.resolve(__dirname, "..");
 const MIGRATION = "20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql";
 // PECA 12 (Fase 2): as duas migrations do ramo nunca-cobrado + mensagens.
-const MIGRATION_MENSAGENS = "20261151000000_cupom_preso_diz_que_a_vaga_volta.sql";
-const MIGRATION_VARREDURA = "20261152000000_varredura_libera_vaga_de_pedido_sem_cobranca.sql";
+const MIGRATION_MENSAGENS =
+  "20261151000000_cupom_preso_diz_que_a_vaga_volta.sql";
+const MIGRATION_VARREDURA =
+  "20261152000000_varredura_libera_vaga_de_pedido_sem_cobranca.sql";
 // A frase canonica, exatamente como as tres funcoes a escrevem (lição #53:
 // o classificador do front casa um texto so).
-const FRASE_VAGA_PRESA = "está no limite de usos. A vaga dele volta sozinha quando o pagamento de um pedido cancelado deixar de ser possível (em até 24 horas).";
+const FRASE_VAGA_PRESA =
+  "está no limite de usos. A vaga dele volta sozinha quando o pagamento de um pedido cancelado deixar de ser possível (em até 24 horas).";
 
 // Cenario: 1 unidade de um produto de R$ 100,00 + frete fixo de R$ 10,00.
 const PRECO = 100;
@@ -376,8 +379,13 @@ async function provarFase2(client, produtoId, adminSub) {
   // =========================================================================
   // FICHAS: as funcoes vivas (na transacao) carregam a Fase 2 inteira
   // =========================================================================
-  console.log("\n=== fichas (peca 12): as funcoes vivas tem a Fase 2 inteira ===");
-  const corpoVarredura = await corposFuncaoViva(client, "devolver_cupons_de_pedidos_mortos");
+  console.log(
+    "\n=== fichas (peca 12): as funcoes vivas tem a Fase 2 inteira ===",
+  );
+  const corpoVarredura = await corposFuncaoViva(
+    client,
+    "devolver_cupons_de_pedidos_mortos",
+  );
   conferir(
     "ficha/varredura: a carencia de 15 minutos esta viva",
     corpoVarredura.includes(
@@ -390,7 +398,9 @@ async function provarFase2(client, produtoId, adminSub) {
   );
   conferir(
     "ficha/varredura: a 7a clausula (cancelled_after_shipping) permanece",
-    corpoVarredura.includes("cancelled_after_shipping = false OR returned_to_seller_at IS NOT NULL"),
+    corpoVarredura.includes(
+      "cancelled_after_shipping = false OR returned_to_seller_at IS NOT NULL",
+    ),
   );
   conferir(
     "ficha/varredura: o laco segue com FOR UPDATE SKIP LOCKED e o fato gravado",
@@ -415,11 +425,13 @@ async function provarFase2(client, produtoId, adminSub) {
            has_function_privilege('authenticated', 'public.devolver_cupons_de_pedidos_mortos()', 'EXECUTE') AS auth_varredura`);
   conferir(
     "ficha/grants: anon e authenticated alcancam o validate (convidado aplica cupom)",
-    privilegios[0].anon_validate === true && privilegios[0].auth_validate === true,
+    privilegios[0].anon_validate === true &&
+      privilegios[0].auth_validate === true,
   );
   conferir(
     "ficha/grants: papeis web NAO alcancam a varredura (so o pg_cron)",
-    privilegios[0].anon_varredura === false && privilegios[0].auth_varredura === false,
+    privilegios[0].anon_varredura === false &&
+      privilegios[0].auth_varredura === false,
   );
 
   // =========================================================================
@@ -445,7 +457,10 @@ async function provarFase2(client, produtoId, adminSub) {
 
   // --- 6b. vencido DENTRO da carencia -> a vaga NAO volta --------------------
   const cupomCarencia = await criarCupom(client, { code: "G6_CARENCIA" });
-  const pCarencia = await criarPedido(client, { produtoId, codigo: "G6_CARENCIA" });
+  const pCarencia = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_CARENCIA",
+  });
   await dentroDaCarencia(client, pCarencia);
   await cancelarComoAdmin(client, pCarencia, adminSub);
   await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
@@ -497,7 +512,8 @@ async function provarFase2(client, produtoId, adminSub) {
   const estadoB1 = await pedido(client, pB1);
   conferir(
     "grupo6/B1: payment_status NAO virou 'pago' e a vaga segue devolvida (usage 0)",
-    estadoB1.payment_status !== "pago" && (await usosDoCupom(client, cupomB1)) === 0,
+    estadoB1.payment_status !== "pago" &&
+      (await usosDoCupom(client, cupomB1)) === 0,
   );
 
   // --- 6d-bis. dentro da carencia, a gravação em voo aterra e o pedido SAI --
@@ -523,7 +539,10 @@ async function provarFase2(client, produtoId, adminSub) {
 
   // --- 6e. gateway NOT NULL dentro das 24h -> ramo antigo segue de pe -------
   const cupomComGateway = await criarCupom(client, { code: "G6_COM_GATEWAY" });
-  const pComGateway = await criarPedido(client, { produtoId, codigo: "G6_COM_GATEWAY" });
+  const pComGateway = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_COM_GATEWAY",
+  });
   await amarrarGateway(client, pComGateway, "PAY_G6_GATEWAY");
   await client.query(
     `UPDATE public.marketplace_orders SET expires_at = now() - interval '1 hour' WHERE id = $1`,
@@ -538,8 +557,14 @@ async function provarFase2(client, produtoId, adminSub) {
 
   // --- 6f. piso em zero NO ramo novo ------------------------------------------
   const cupomPisoNovo = await criarCupom(client, { code: "G6_PISO_NOVO" });
-  const pPisoNovo = await criarPedido(client, { produtoId, codigo: "G6_PISO_NOVO" });
-  await client.query("UPDATE public.coupons SET usage_count = 0 WHERE id = $1", [cupomPisoNovo]);
+  const pPisoNovo = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_PISO_NOVO",
+  });
+  await client.query(
+    "UPDATE public.coupons SET usage_count = 0 WHERE id = $1",
+    [cupomPisoNovo],
+  );
   await foraDaCarencia(client, pPisoNovo);
   await cancelarComoAdmin(client, pPisoNovo, adminSub);
   await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
@@ -555,25 +580,33 @@ async function provarFase2(client, produtoId, adminSub) {
 
   // --- 6g. varredura DUAS vezes no ramo novo -> devolve UMA vez ---------------
   const cupomIdemNovo = await criarCupom(client, { code: "G6_IDEM_NOVO" });
-  const pIdemNovo = await criarPedido(client, { produtoId, codigo: "G6_IDEM_NOVO" });
+  const pIdemNovo = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_IDEM_NOVO",
+  });
   await foraDaCarencia(client, pIdemNovo);
   await cancelarComoAdmin(client, pIdemNovo, adminSub);
   // Controle positivo vivo: um pedido no ramo ANTIGO (janela de 24h vencida),
   // para provar que a 2a chamada nao e' no-op geral.
   const cupomIdemAntigo = await criarCupom(client, { code: "G6_IDEM_ANTIGO" });
-  const pIdemAntigo = await criarPedido(client, { produtoId, codigo: "G6_IDEM_ANTIGO" });
+  const pIdemAntigo = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_IDEM_ANTIGO",
+  });
   await foraDaJanela(client, pIdemAntigo);
   await cancelarComoAdmin(client, pIdemAntigo, adminSub);
 
   await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
   conferir(
     "grupo6/idempotencia (1a chamada): ramo novo devolveu (1 -> 0) e ramo antigo devolveu (1 -> 0)",
-    (await usosDoCupom(client, cupomIdemNovo)) === 0 && (await usosDoCupom(client, cupomIdemAntigo)) === 0,
+    (await usosDoCupom(client, cupomIdemNovo)) === 0 &&
+      (await usosDoCupom(client, cupomIdemAntigo)) === 0,
   );
   await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
   conferir(
     "grupo6/idempotencia (2a chamada): NEM o ramo novo NEM o antigo foram mexidos de novo",
-    (await usosDoCupom(client, cupomIdemNovo)) === 0 && (await usosDoCupom(client, cupomIdemAntigo)) === 0,
+    (await usosDoCupom(client, cupomIdemNovo)) === 0 &&
+      (await usosDoCupom(client, cupomIdemAntigo)) === 0,
   );
   const estadoIdemNovo = await pedido(client, pIdemNovo);
   conferir(
@@ -583,15 +616,23 @@ async function provarFase2(client, produtoId, adminSub) {
 
   // --- 6h. a 7a clausula bloqueia TAMBEM no ramo novo -------------------------
   const cupomAposEnvio = await criarCupom(client, { code: "G6_APOS_ENVIO" });
-  const pAposEnvio = await criarPedido(client, { produtoId, codigo: "G6_APOS_ENVIO" });
-  await client.query("UPDATE public.marketplace_orders SET status = 'shipping' WHERE id = $1", [pAposEnvio]);
+  const pAposEnvio = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_APOS_ENVIO",
+  });
+  await client.query(
+    "UPDATE public.marketplace_orders SET status = 'shipping' WHERE id = $1",
+    [pAposEnvio],
+  );
   await cancelarComoAdmin(client, pAposEnvio, adminSub); // grava cancelled_after_shipping = true
   conferir(
     "grupo6/apos-envio: o cancelamento apos o envio ficou registrado (cancelled_after_shipping = true)",
-    (await client.query(
-      "SELECT cancelled_after_shipping AS c FROM public.marketplace_orders WHERE id = $1",
-      [pAposEnvio],
-    )).rows[0].c === true,
+    (
+      await client.query(
+        "SELECT cancelled_after_shipping AS c FROM public.marketplace_orders WHERE id = $1",
+        [pAposEnvio],
+      )
+    ).rows[0].c === true,
   );
   await foraDaCarencia(client, pAposEnvio);
   await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
@@ -638,7 +679,9 @@ async function main() {
       const produtoId = await criarProduto(client);
       const admin = await descobrirAdmin(client);
       await confirmarAdmin(client, admin.id, admin.email);
-      console.log(`Admin de teste: ${admin.email} (is_admin() = true, conferido)\n`);
+      console.log(
+        `Admin de teste: ${admin.email} (is_admin() = true, conferido)\n`,
+      );
 
       await provarFase2(client, produtoId, admin.id);
       return; // o finally faz o ROLLBACK e encerra
