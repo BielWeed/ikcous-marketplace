@@ -1828,7 +1828,9 @@ export const AdminBannersView = memo(function AdminBannersView({
         value: activeBanners,
         accent: "text-[#FFBF00]",
         subValue: `/ ${totalBanners} total`,
-        footer: "Banners atualmente visíveis no app",
+        // Fiel à contagem (que é só o flag `active`): "visíveis no app" era
+        // falso — a vitrine também respeita início/fim da programação.
+        footer: "Ligados; a vitrine também aplica o período",
       },
       {
         id: "distribuicao",
@@ -1958,7 +1960,11 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <div className="flex items-center gap-1.5 text-[10px] font-medium text-zinc-500">
                     <span className="size-1.5 rounded-full bg-emerald-400/90" />
                     <span className="text-zinc-400">
-                      {activeBanners} no ar
+                      {/* "Ligados" = só o interruptor (active). "No ar" seria
+                          falso: a vitrine também respeita início/fim
+                          (getBannersByPosition), então banner agendado ou
+                          expirado fica ligado mas fora do ar. */}
+                      {activeBanners} ligados
                     </span>
                     <span className="text-zinc-700">•</span>
                     <span>{totalBanners} no total</span>
