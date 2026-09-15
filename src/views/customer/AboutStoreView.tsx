@@ -80,36 +80,22 @@ export function AboutStoreView() {
           transition={{ duration: 0.3 }}
           className="flex flex-col items-center gap-1.5 border-b border-zinc-100 pb-5 text-center"
         >
-          {/* Título em SVG VETORIAL (pedido do dono, 15/09): duas camadas de
-              texto — dourado atrás deslocado, preto na frente — nítido em
-              qualquer zoom. `textLength` trava a largura para o desenho não
-              depender do momento em que a fonte carrega. O h1 permanece
+          {/* Título em SVG VETORIAL (pedido do dono, 15/09): nítido em
+              qualquer zoom. Aprovado pelo dono SEM a camada dourada de fundo —
+              texto único preto. `textLength` trava a largura para o desenho
+              não depender do momento em que a fonte carrega. O h1 permanece
               nomeado (aria-label) para leitores de tela. */}
           <h1 className="flex justify-center">
             <svg
               width="252"
-              height="42"
-              viewBox="0 0 252 42"
+              height="40"
+              viewBox="0 0 252 40"
               role="img"
               aria-label="Sobre a Loja"
             >
               <text
                 x="126"
-                y="32"
-                textAnchor="middle"
-                textLength="244"
-                lengthAdjust="spacingAndGlyphs"
-                fontFamily="Inter, Arial, sans-serif"
-                fontSize="34"
-                fontWeight="900"
-                letterSpacing="-1"
-                fill="#eab308"
-              >
-                Sobre a Loja
-              </text>
-              <text
-                x="124"
-                y="30"
+                y="31"
                 textAnchor="middle"
                 textLength="244"
                 lengthAdjust="spacingAndGlyphs"
