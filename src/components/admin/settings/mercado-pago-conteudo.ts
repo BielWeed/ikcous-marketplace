@@ -56,12 +56,12 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
   {
     titulo: "Siga a orientação do agente",
     descricao:
-      'As chaves ficam no painel de desenvolvedores do Mercado Pago (developers.mercadopago.com), com a MESMA conta do seu app. Se o agente não conseguir te levar até lá, o caminho direto é: entrar no site com a sua conta, abrir "Suas integrações", criar a aplicação da sua loja e abrir "Credenciais de produção".',
+      'As chaves ficam no painel de desenvolvedores do Mercado Pago (developers.mercadopago.com), com a MESMA conta do seu app. Se o agente não conseguir te levar até lá, o caminho direto é: entrar no site com a sua conta, abrir "Suas integrações", criar a aplicação da sua loja e abrir "Credenciais de produção". Nessa tela, toque em "Ativar credenciais de produção" — aceite os termos e conclua o reCAPTCHA; sem esse passo, as chaves não recebem dinheiro de verdade.',
   },
   {
     titulo: "Volte aqui, cole as chaves, salve e teste",
     descricao:
-      'Copie a Public Key e o Access Token de produção e cole nos campos abaixo. Toque em "Salvar chaves" e depois em "Testar conexão" — a resposta aparece aqui mesmo, na hora.',
+      'Copie a Public Key e o Access Token de produção e cole nos campos abaixo. Toque em "Salvar chaves" e depois em "Testar conexão" — a resposta aparece aqui mesmo, na hora. Importante: para o dinheiro do Pix cair na sua conta, ela precisa ter uma CHAVE PIX registrada — veja isso na sua conta do Mercado Pago (área do Pix), não aqui no app.',
   },
 ];
 
