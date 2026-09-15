@@ -90,6 +90,12 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     return hospedeiro.textContent ?? "";
   }
 
+  function botaoWhatsapp() {
+    return hospedeiro.querySelector<HTMLButtonElement>(
+      "button[aria-label='Falar com a loja no WhatsApp']",
+    );
+  }
+
   it("loja completa: nome, logo, local, horário e contato — nada inventado", async () => {
     configAtual = LOJA_COMPLETA;
 
@@ -134,9 +140,14 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
       "https://www.google.com/maps/search/?api=1&query=38500-000",
     );
 
-    // Pin da CASA sobre o mapa (o ponteiro do Google fica no recorte do
-    // topo) + aviso honesto de localização aproximada enquanto o dado é CEP.
-    expect(hospedeiro.querySelector(".lucide-map-pin")).not.toBeNull();
+    // Pin balão da CASA sobre o mapa: desenhado em SVG com a LOGO da loja
+    // dentro do círculo (image href) + aviso honesto de localização
+    // aproximada enquanto o dado é o CEP.
+    expect(
+      hospedeiro.querySelector(
+        "svg image[href='https://cdn.example/atelie/logo.png']",
+      ),
+    ).not.toBeNull();
     expect(texto).toContain("Localização aproximada");
 
     const logo = hospedeiro.querySelector<HTMLImageElement>(
@@ -165,13 +176,14 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
 
     // O que a loja não preencheu NÃO vira bloco vazio.
     expect(texto).not.toContain("Horário de atendimento");
-    expect(texto).not.toContain("Falar com a loja");
     expect(texto).not.toContain("Monte Carmelo");
     expect(texto).not.toContain("Peças de decoração escolhidas a dedo");
     expect(texto).not.toContain("Abrir no Google Maps");
     expect(
       hospedeiro.querySelector("iframe[title^='Mapa da loja']"),
     ).toBeNull();
+    // Sem WhatsApp, nem o botão ancorado existe.
+    expect(botaoWhatsapp()).toBeNull();
 
     // Nem liço de renderização: nenhum "undefined"/"null" vaza para a tela.
     expect(texto).not.toContain("undefined");
@@ -203,10 +215,10 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
 
     await renderizarPagina();
 
-    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Falar com a loja"),
-    );
-    expect(botao).toBeDefined();
+    // Botão ANCORADO (FAB): identificado por aria-label, não por texto.
+    const botao = botaoWhatsapp();
+    expect(botao).not.toBeNull();
+    expect(botao!.querySelector("svg")).not.toBeNull();
     await act(async () => {
       botao!.click();
     });

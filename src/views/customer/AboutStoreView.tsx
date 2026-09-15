@@ -1,3 +1,4 @@
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { buildIdentity } from "@/config/buildIdentity";
 import { useStore } from "@/contexts/StoreContext";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
@@ -6,13 +7,7 @@ import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { haptic } from "@/utils/haptic";
 import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
-import {
-  ChevronRight,
-  Clock,
-  MapPin,
-  MessageCircle,
-  Navigation,
-} from "lucide-react";
+import { ChevronRight, Clock, MapPin, Navigation } from "lucide-react";
 import { useEffect, useState } from "react";
 
 // Página de LEITURA da marca do lojista assinante (peça 24). Fonte ÚNICA dos
@@ -156,11 +151,55 @@ export function AboutStoreView() {
                 referrerPolicy="no-referrer-when-downgrade"
                 className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
               />
-              <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-full flex-col items-center">
-                <div className="flex size-10 items-center justify-center rounded-full border-4 border-white bg-zinc-900 shadow-premium">
-                  <MapPin className="size-4 text-white" />
-                </div>
-                <div className="-mt-0.5 size-3 rotate-45 border-b-4 border-r-4 border-white bg-zinc-900" />
+              {/* Pin balão da casa, desenhado em UM SVG (gota de contorno
+                  preto, cauda arredondada fundida ao círculo — sem peças
+                  sobrepostas): a LOGO da loja vive dentro do círculo (com
+                  recorte) e a ponta de baixo é a âncora no centro do mapa.
+                  Sem logo configurada, a inicial da loja entra no lugar. */}
+              <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
+                <svg
+                  width="64"
+                  height="78"
+                  viewBox="0 0 56 68"
+                  role="img"
+                  aria-label={`Local da loja ${storeName}`}
+                >
+                  <defs>
+                    <clipPath id="pin-logo-recorte">
+                      <circle cx="28" cy="28" r="14.5" />
+                    </clipPath>
+                  </defs>
+                  <path
+                    d="M28,64 C28,64 12,46.5 12,28 A16,16 0 1,1 44,28 C44,46.5 28,64 28,64 Z"
+                    fill="white"
+                    stroke="#18181b"
+                    strokeWidth="3"
+                    strokeLinejoin="round"
+                  />
+                  <g clipPath="url(#pin-logo-recorte)">
+                    {logoSrc && !logoFalhou ? (
+                      <image
+                        href={logoSrc}
+                        x="13.5"
+                        y="13.5"
+                        width="29"
+                        height="29"
+                        preserveAspectRatio="xMidYMid slice"
+                      />
+                    ) : (
+                      <text
+                        x="28"
+                        y="33"
+                        textAnchor="middle"
+                        fontSize="15"
+                        fontWeight="900"
+                        fill="#18181b"
+                      >
+                        {inicial}
+                      </text>
+                    )}
+                  </g>
+                </svg>
               </div>
               <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">
                 Localização aproximada
@@ -209,38 +248,24 @@ export function AboutStoreView() {
             </p>
           </motion.div>
         )}
-
-        {/* Contato — só quando a loja tem WhatsApp configurado */}
-        {temWhatsapp && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.2 }}
-            className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
-          >
-            <button
-              type="button"
-              onClick={falarComALoja}
-              className="group flex w-full items-center justify-between p-6 transition-colors hover:bg-emerald-50"
-            >
-              <div className="flex items-center gap-4">
-                <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 transition-colors group-hover:bg-white">
-                  <MessageCircle className="size-5 text-emerald-600" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">
-                    Falar com a loja
-                  </p>
-                  <p className="text-[9px] font-bold uppercase tracking-tighter text-zinc-400">
-                    Atendimento pelo WhatsApp
-                  </p>
-                </div>
-              </div>
-              <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
-            </button>
-          </motion.div>
-        )}
       </div>
+
+      {/* WhatsApp ANCORADO (pedido do dono, 14/09): sai da lista e vira botão
+          flutuante, sempre visível enquanto a pessoa rola a descrição e o
+          mapa. Ícone oficial do WhatsApp (IconeWhatsapp). Só existe se a loja
+          configurou o número. O offset nasce ACIMA da nav do app
+          (--nav-height); z sob a nav para nunca competir com ela. */}
+      {temWhatsapp && (
+        <button
+          type="button"
+          onClick={falarComALoja}
+          aria-label="Falar com a loja no WhatsApp"
+          className="fixed right-4 z-[115] flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 transition-transform hover:bg-emerald-700 active:scale-95"
+          style={{ bottom: "calc(var(--nav-height, 56px) + 20px)" }}
+        >
+          <IconeWhatsapp className="size-7" />
+        </button>
+      )}
     </div>
   );
 }
