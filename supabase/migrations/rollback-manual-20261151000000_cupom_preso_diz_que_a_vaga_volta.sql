@@ -4,14 +4,20 @@
 -- DUAS PARTES, cada uma com a fonte do corpo anterior:
 --
 -- PARTE 1 — v23 e v24: NÃO HÁ SQL NECESSÁRIO NESTE ARQUIVO. O corpo
--- anterior delas está INTEIRO na
--- 20261025000000_cupom_diz_por_que_e_recusado.sql. O desfazer é re-aplicar
--- aquele arquivo (CREATE OR REPLACE é idempotente):
+-- anterior delas (assinatura VIVA de 13 argumentos, com a chave de
+-- idempotência) está INTEIRO na
+-- 20261081000000_a_regra_do_frete_gratis_mora_no_servidor.sql — o ÚLTIMO
+-- escritor vivo das duas, que toca SÓ elas (DROP IF EXISTS do overload de
+-- 12 args + CREATE OR REPLACE). O desfazer é re-aplicar aquele arquivo:
 --
 --   node scripts/db-apply.cjs \
---     supabase/migrations/20261025000000_cupom_diz_por_que_e_recusado.sql
+--     supabase/migrations/20261081000000_a_regra_do_frete_gratis_mora_no_servidor.sql
 --
--- (ou colar o conteúdo dela no SQL editor do Supabase)
+-- (ou colar o conteúdo dele no SQL editor do Supabase)
+--
+-- ⚠️ NÃO é a 20261025000000: a assinatura de 12 argumentos daquela era foi
+-- DROPADA do banco vivo (20261040000000/20261081000000) — re-aplicá-la
+-- recriaria um overload-sombra sem a guarda de idempotência.
 --
 -- EFEITO COLATERAL HONESTO da parte 1: a recusa por limite volta a não
 -- distinguir "esgotado de verdade" de "vaga presa" — o GAP 2 volta — e a

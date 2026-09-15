@@ -126,7 +126,7 @@ export function podeCobrar(
     gateway_payment_id: string | null;
   },
   agora: Date,
-): { acao: "criar" } | { acao: "recusar"; motivo: string } {
+): { acao: "criar" } | { acao: "reconsultar" } | { acao: "recusar"; motivo: string } {
   if (pedido.payment_status !== "aguardando") {
     return { acao: "recusar", motivo: "Este pedido não está aguardando pagamento." };
   }

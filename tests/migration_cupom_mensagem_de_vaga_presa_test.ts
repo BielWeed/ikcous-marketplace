@@ -24,7 +24,14 @@ const { avaliarFase0 } = require("../scripts/db-prove-rollback.cjs");
 const DIR = fromFileUrl(new URL(".", import.meta.url));
 const NOME_A = "20261151000000_cupom_preso_diz_que_a_vaga_volta.sql";
 const NOME_B = "20261152000000_varredura_libera_vaga_de_pedido_sem_cobranca.sql";
-const NOME_FONTE_A = "20261025000000_cupom_diz_por_que_e_recusado.sql";
+// 🔴 A FONTE das v23/v24 é o ÚLTIMO ESCRITOR VIVO delas — a
+// 20261081000000 (assinatura de 13 argumentos com a chave de idempotência,
+// portão de entrega e frete grátis no servidor). A 20261025000000 é fonte
+// MORTA: a assinatura de 12 argumentos dela foi DROPADA do banco vivo
+// (20261040000000/20261081000000) — recriar por ela nasceria como
+// OVERLOAD-sombra sem as proteções vivas (achado BLOQUEANTE da revisão cara
+// da peça 12). Nenhuma migration pode renascer por fonte morta.
+const NOME_FONTE_A = "20261081000000_a_regra_do_frete_gratis_mora_no_servidor.sql";
 const NOME_FONTE_B = "20260970000000_cancelamento_respeita_o_envio.sql";
 
 const caminho = (nome: string) => `${DIR}../supabase/migrations/${nome}`;
@@ -149,7 +156,7 @@ Deno.test("a frase canônica existe no validate_coupon_secure_v2, com o código 
   assertStringIncludes(corpo, "AND o.coupon_usage_returned = FALSE");
 });
 
-Deno.test("fora do bloco da recusa, v23 e v24 são CARACTERE A CARACTERE a 20261025000000 (cálculo involuto)", () => {
+Deno.test("fora do bloco da recusa, v23 e v24 são CARACTERE A CARACTERE a 20261081000000 (cálculo involuto)", () => {
   for (const funcao of ["create_marketplace_order_v23", "create_marketplace_order_v24"]) {
     const { cabecaFonte, cabecaNova, meioFonte, meioNovo } =
       fatiasForaDaRecusa(corpoDaFuncao(fonteA, funcao), corpoDaFuncao(migrationA, funcao));
@@ -213,8 +220,8 @@ Deno.test("fora da cláusula do prazo, o CÓDIGO da varredura é CARACTERE A CAR
   );
 });
 
-Deno.test("o rollback A restaura as frases ANTERIORES (sem a frase nova) e aponta a 20261025000000", () => {
-  assertStringIncludes(rollbackA, "20261025000000_cupom_diz_por_que_e_recusado.sql");
+Deno.test("o rollback A restaura as frases ANTERIORES (sem a frase nova) e aponta a 20261081000000", () => {
+  assertStringIncludes(rollbackA, "20261081000000_a_regra_do_frete_gratis_mora_no_servidor.sql");
   // O corpo anterior do validate_coupon_secure_v2 volta embutido (a fonte
   // dele é o baseline — reprocessar o baseline inteiro NÃO é caminho).
   assertStringIncludes(rollbackA, "Cupom atingiu o limite de uso.");
