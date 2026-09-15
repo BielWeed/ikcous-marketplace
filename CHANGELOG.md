@@ -7,6 +7,16 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.34.3] - 2026-09-14
+
+**O guia do Mercado Pago ficou completo** (descobertas do teste REAL do dono
+na conta dele): o guia agora avisa o passo que faltava — **"Ativar
+credenciais de produção"** (aceitar os termos e concluir o reCAPTCHA; sem isso
+as chaves não recebem dinheiro de verdade) — e o requisito que ninguém tinha
+contado: a conta do lojista precisa ter uma **CHAVE PIX registrada** para o
+dinheiro do Pix chegar. Mudança só de texto nas descrições dos passos 4 e 5
+(os 5 passos continuam os mesmos). Reúne o PR #615.
+
 ## [1.34.2] - 2026-09-14
 
 **A descrição do pagamento do Mercado Pago no guia ficou tecnicamente correta**
