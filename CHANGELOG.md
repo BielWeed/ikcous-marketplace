@@ -7,6 +7,18 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.34.1] - 2026-09-14
+
+**O guia do Mercado Pago ficou bem mais mastigado** (pedido do dono, para
+lojistas leigos): o texto pronto que o lojista copia e cola no agente de IA do
+app do Mercado Pago agora diz a tecnologia exata da nossa integração
+(**Checkout API** — o app cria o Pix do cliente direto pela API, sem maquininha
+nem link externo), pede um guia **interativo de um passo por vez** (com
+confirmação antes de avançar, onde tocar exatamente, explicação de palavras
+difíceis, e o aviso de que as credenciais têm que ser de **PRODUÇÃO**), e
+reforça que as chaves são secretas. Mudança só de texto — nenhuma
+funcionalidade tocada. Reúne o PR #607.
+
 ## [1.34.0] - 2026-09-14
 
 **A atualização das 3 frentes ditadas pelo dono em 14/09**: a folha de escolha
