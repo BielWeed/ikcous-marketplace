@@ -407,7 +407,9 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
         !banner.active && "opacity-60",
       )}
     >
-      <div className={cn("flex w-full flex-col gap-3 p-3", detalhado && "sm:p-4")}>
+      <div
+        className={cn("flex w-full flex-col gap-3 p-3", detalhado && "sm:p-4")}
+      >
         {/* Conteúdo: miniatura + título + situação + rota.
             No detalhado abaixo de sm, empilha (imagem em cima) — com w-full +
             shrink-0 numa linha horizontal, a miniatura consumiria a largura
@@ -455,8 +457,12 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
             </div>
 
             <div className="flex items-center gap-1.5 text-[11px]">
-              <span className={cn("size-1.5 shrink-0 rounded-full", situacao.ponto)} />
-              <span className={cn("min-w-0 truncate font-medium", situacao.texto)}>
+              <span
+                className={cn("size-1.5 shrink-0 rounded-full", situacao.ponto)}
+              />
+              <span
+                className={cn("min-w-0 truncate font-medium", situacao.texto)}
+              >
                 {situacao.rotulo}
               </span>
             </div>
