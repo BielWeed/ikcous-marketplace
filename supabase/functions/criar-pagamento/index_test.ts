@@ -8,7 +8,10 @@
  *
  * A chamada ao MP em si já é coberta pelos testes de _shared/mercadopago.ts.
  */
-import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import {
+  assertArrayIncludes,
+  assertEquals,
+} from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   descricaoDoPedido,
   donoConfere,
@@ -57,7 +60,8 @@ function montarToken(sub: string | null): string {
  * Cliente Supabase falso que reproduz só as duas cadeias de chamada que
  * `index.ts` realmente usa:
  *   - leitura do pedido:        .from().select().eq().maybeSingle()
- *   - gravação da cobrança:     .from().update().eq().eq().is().select().maybeSingle()
+ *   - gravação da cobrança:     .from().update().eq(…).is(…).select().maybeSingle()
+ *     (cadeia recursiva de .eq/.is — ver o comentário dentro do update())
  * A primeira `select()` devolve `pedido`; qualquer `select()` seguinte (a
  * releitura pós-UPDATE-falho) devolve `releitura` — se não for informado, cai
  * de volta em `pedido`, o que já basta para os testes que não mexem no
@@ -125,31 +129,32 @@ function clienteFalso(opts: {
           const registrarFiltro = (coluna: string, valor: unknown) => {
             opts.registro?.filtrosUpdate?.push([coluna, valor]);
           };
-          return {
-            eq(c1: string, v1: unknown) {
-              registrarFiltro(c1, v1);
+          // Cadeia de filtros RECURSIVA (.eq/.is em qualquer ordem e
+          // quantidade, sempre terminável por .select()): a peça 12 acrescentou
+          // `.eq("status","pending")` à guarda do UPDATE, e a cadeia de
+          // profundidade FIXA (eq→eq→is) quebraria o mock antes de a produção
+          // mudar — o teste acusaria a forma da cadeia, não o defeito. O que
+          // prova o WHERE continua sendo a asserção de CONTEÚDO
+          // (registro.filtrosUpdate, na ordem em que a produção encadeia).
+          const cadeia = {
+            eq(c: string, v: unknown) {
+              registrarFiltro(c, v);
+              return cadeia;
+            },
+            is(c: string, v: unknown) {
+              registrarFiltro(c, v);
+              return cadeia;
+            },
+            select(_cols: string) {
               return {
-                eq(c2: string, v2: unknown) {
-                  registrarFiltro(c2, v2);
-                  return {
-                    is(c3: string, v3: unknown) {
-                      registrarFiltro(c3, v3);
-                      return {
-                        select(_cols: string) {
-                          return {
-                            maybeSingle: async () => ({
-                              data: projetarColunas(opts.gravado, _cols),
-                              error: null,
-                            }),
-                          };
-                        },
-                      };
-                    },
-                  };
-                },
+                maybeSingle: async () => ({
+                  data: projetarColunas(opts.gravado, _cols),
+                  error: null,
+                }),
               };
             },
           };
+          return cadeia;
         },
       };
     },
@@ -215,6 +220,7 @@ function pedidoBase(overrides: Record<string, unknown> = {}) {
     id: UUID,
     user_id: null,
     total: 100,
+    status: "pending",
     payment_status: "aguardando",
     expires_at: "2099-01-01T00:00:00.000Z",
     gateway_payment_id: null,
@@ -244,6 +250,7 @@ Deno.test("aceita UUID e recusa o que não é", () => {
 Deno.test("podeCobrar cria quando o pedido está aguardando, no prazo, e sem cobrança", () => {
   const r = podeCobrar(
     {
+      status: "pending",
       payment_status: "aguardando",
       expires_at: "2026-08-06T12:20:00.000Z",
       gateway_payment_id: null,
@@ -261,6 +268,7 @@ Deno.test("podeCobrar reconsulta quando o pedido já tem cobrança, em vez de re
   // 63 dos 64 pedidos da loja em PIX, esse é o caminho principal.
   const r = podeCobrar(
     {
+      status: "pending",
       payment_status: "aguardando",
       expires_at: "2026-08-06T12:20:00.000Z",
       gateway_payment_id: "1234567890",
@@ -275,6 +283,7 @@ Deno.test("podeCobrar recusa pedido expirado mesmo que já tenha cobrança — a
   // expirado com cobrança reconsultaria em vez de recusar.
   const r = podeCobrar(
     {
+      status: "pending",
       payment_status: "aguardando",
       expires_at: "2026-08-06T11:59:00.000Z",
       gateway_payment_id: "1234567890",
@@ -287,6 +296,7 @@ Deno.test("podeCobrar recusa pedido expirado mesmo que já tenha cobrança — a
 Deno.test("podeCobrar recusa pedido fora do prazo", () => {
   const r = podeCobrar(
     {
+      status: "pending",
       payment_status: "aguardando",
       expires_at: "2026-08-06T11:59:00.000Z",
       gateway_payment_id: null,
@@ -299,7 +309,7 @@ Deno.test("podeCobrar recusa pedido fora do prazo", () => {
 Deno.test("podeCobrar recusa qualquer payment_status que não seja aguardando", () => {
   for (const st of ["pago", "recusado", "expirado", "estornado", "pago_apos_expirar", null]) {
     const r = podeCobrar(
-      { payment_status: st, expires_at: "2026-08-06T12:20:00.000Z", gateway_payment_id: null },
+      { status: "pending", payment_status: st, expires_at: "2026-08-06T12:20:00.000Z", gateway_payment_id: null },
       AGORA,
     );
     assertEquals(r.acao, "recusar", `deveria recusar payment_status=${String(st)}`);
@@ -310,10 +320,46 @@ Deno.test("podeCobrar recusa pedido sem prazo carimbado", () => {
   // Pedido criado pela v23 (flag desligada) não tem expires_at. Cobrar um
   // desses criaria cobrança que a expiração nunca varre.
   const r = podeCobrar(
-    { payment_status: "aguardando", expires_at: null, gateway_payment_id: null },
+    { status: "pending", payment_status: "aguardando", expires_at: null, gateway_payment_id: null },
     AGORA,
   );
   assertEquals(r.acao, "recusar");
+});
+
+// --- peça 12 (porta B1): pedido CANCELADO não gera cobrança NENHUMA. Hoje o
+// cancelamento manual grava status='cancelled' SEM tocar payment_status (que
+// fica 'aguardando'), e podeCobrar não olhava o status — um pedido cancelado
+// com prazo ainda no futuro podia RECEBER um PIX novo. É essa porta que
+// fecha a corrida da varredura de cupom (B1 do crítico da peça 12).
+Deno.test("podeCobrar recusa pedido cancelado com prazo no futuro e sem cobrança — o caso B1 da peça 12", () => {
+  const r = podeCobrar(
+    {
+      status: "cancelled",
+      payment_status: "aguardando",
+      expires_at: "2026-08-06T12:20:00.000Z",
+      gateway_payment_id: null,
+    },
+    AGORA,
+  );
+  assertEquals(r.acao, "recusar");
+  assertEquals((r as { motivo?: string }).motivo, "Este pedido foi cancelado.");
+});
+
+Deno.test("podeCobrar recusa a RECONSULTA de pedido cancelado que já teve cobrança — status vem antes do gateway", () => {
+  // O QR de um pedido cancelado continua tecnicamente pagável (envelope
+  // aceito, cai em 'pago_apos_expirar'), mas a criar-pagamento não pode mais
+  // SERVIR esse QR como se o pedido estivesse de pé: cancelado é cancelado.
+  const r = podeCobrar(
+    {
+      status: "cancelled",
+      payment_status: "aguardando",
+      expires_at: "2026-08-06T12:20:00.000Z",
+      gateway_payment_id: "ORD789",
+    },
+    AGORA,
+  );
+  assertEquals(r.acao, "recusar");
+  assertEquals((r as { motivo?: string }).motivo, "Este pedido foi cancelado.");
 });
 
 // --- expiracaoRealinhavel: janela sã do date_of_expiration do MP, para
@@ -826,6 +872,62 @@ Deno.test("handler: recusa por prazo vencido (expires_at no passado) devolve ter
   assertEquals(corpo.terminal, true);
 });
 
+// --- handler: peça 12 (porta B1) — pedido cancelado não recebe cobrança e o
+// UPDATE que grava a cobrança exige status 'pending'.
+
+Deno.test("handler: pedido cancelado é recusado com a mensagem de cancelado e NADA chega ao Mercado Pago (peça 12)", async () => {
+  // O estado exato do cenário B1 do crítico da peça 12: cliente cancelou
+  // antes de gerar o PIX — status='cancelled', payment_status ainda
+  // 'aguardando', prazo no futuro, sem cobrança. Antes da porta, esta chamada
+  // CRIAVA um PIX pagável para um pedido morto.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ status: "cancelled", user_id: DONO_LOGADO });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const fetchImpl = fetchFalsoMP({});
+  let chamouFetch = false;
+  const fetchEspiao: typeof fetchImpl = async (...args) => {
+    chamouFetch = true;
+    return fetchImpl(...args);
+  };
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: fetchEspiao },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.error, "Este pedido foi cancelado.");
+  assertEquals(corpo.terminal, true);
+  // A prova que importa além do status: nada foi cobrado (mesma régua do
+  // teste do guard de convidado).
+  assertEquals(chamouFetch, false);
+});
+
+Deno.test("handler: o UPDATE que grava a cobrança carrega status 'pending' na guarda — defesa em profundidade da corrida B1", async () => {
+  // O WHERE do UPDATE é a última linha de defesa: entre a leitura e a
+  // gravação (segundos, dentro da chamada ao MP), o cliente pode cancelar. Se
+  // a guarda não estiver lá, a cobrança criada ANTES do cancelamento grava
+  // gateway_payment_id num pedido cancelado — e o ramo nunca-cobrado da
+  // varredura de cupom (20261152000000) passaria a não enxergá-lo mais.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro = {
+    chamadasUpdate: 0,
+    filtrosUpdate: [] as Array<[string, unknown]>,
+  };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = fetchFalsoMP({});
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
+
+  assertEquals(resposta.status, 200);
+  assertArrayIncludes(registro.filtrosUpdate, [["status", "pending"]]);
+});
+
 // --- handler: rodada 2 — reconsultar em vez de recusar quando já tem cobrança
 
 /** `fetch` falso da reconsulta: devolve exatamente o corpo que o teste
@@ -1094,6 +1196,10 @@ Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway
   assertEquals(registro.filtrosUpdate, [
     ["id", UUID],
     ["payment_status", "aguardando"],
+    // PEÇA 12 (porta B1): defesa em profundidade da corrida leitura→gravação —
+    // se o pedido virar 'cancelled' entre a leitura e o UPDATE, a cobrança
+    // criada no MP NÃO é gravada no pedido (fica órfã, para a reconciliação).
+    ["status", "pending"],
     ["gateway_payment_id", null],
   ]);
 });

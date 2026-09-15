@@ -15,8 +15,9 @@
  * 1. `pareceUuid` — corta varredura antes de tocar o banco.
  * 2. `donoConfere` — pedido com `user_id` só é cobrado pelo próprio dono, lido
  *    do JWT. Pedido de convidado (`user_id` NULL) não tem dono a conferir.
- * 3. `podeCobrar` — decide CRIAR (pedido 'aguardando', no prazo, sem cobrança
- *    anterior), RECONSULTAR (mesmo estado, mas já tem `gateway_payment_id` —
+ * 3. `podeCobrar` — decide CRIAR (pedido 'pending' e 'aguardando', no prazo,
+ *    sem cobrança anterior), RECONSULTAR (mesmo estado, mas já tem
+ *    `gateway_payment_id` —
  *    devolve a MESMA cobrança em vez de criar outra, porque o QR do PIX só
  *    existe na resposta da criação e o navegador mobile some com a aba
  *    enquanto o cliente paga) ou RECUSAR (não está 'aguardando', sem prazo,
@@ -119,6 +120,7 @@ export function donoConfere(
  */
 export function podeCobrar(
   pedido: {
+    status: string | null;
     payment_status: string | null;
     expires_at: string | null;
     gateway_payment_id: string | null;
@@ -127,6 +129,20 @@ export function podeCobrar(
 ): { acao: "criar" } | { acao: "reconsultar" } | { acao: "recusar"; motivo: string } {
   if (pedido.payment_status !== "aguardando") {
     return { acao: "recusar", motivo: "Este pedido não está aguardando pagamento." };
+  }
+  // PEÇA 12 (porta B1): pedido CANCELADO não gera cobrança NENHUMA — nem
+  // cria, nem reconsulta. O cancelamento manual grava status='cancelled'
+  // SEM tocar payment_status (que fica 'aguardando'), então antes desta
+  // guarda um pedido cancelado com prazo no futuro RECEBIA um PIX novo. É
+  // esta porta que, com a carência de 15 minutos na varredura de cupom
+  // (20261152000000), fecha a corrida B1: a única gravação de
+  // gateway_payment_id possível sobre pedido cancelado é a de uma cobrança
+  // criada ANTES do cancelamento — que cai no ramo gateway NOT NULL das
+  // 24h. Na prática, o único status ≠ 'pending' alcançável com
+  // payment_status='aguardando' é o 'cancelled' — a mensagem diz a verdade
+  // para todo caso alcançável. Falha fechado: status NULL também recusa.
+  if (pedido.status !== "pending") {
+    return { acao: "recusar", motivo: "Este pedido foi cancelado." };
   }
   if (pedido.expires_at === null) {
     return { acao: "recusar", motivo: "Este pedido não tem prazo de pagamento." };
@@ -347,7 +363,9 @@ async function handler(
 
   const { data: pedido, error } = await supabase
     .from("marketplace_orders")
-    .select("id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data")
+    // `status`: a porta B1 da peça 12 — podeCobrar recusa pedido fora de
+    // 'pending' (cancelado não gera cobrança nenhuma).
+    .select("id, user_id, total, status, payment_status, expires_at, gateway_payment_id, customer_data")
     .eq("id", body.orderId)
     .maybeSingle();
 
@@ -792,6 +810,14 @@ async function handler(
     .update(valoresUpdate)
     .eq("id", pedido.id)
     .eq("payment_status", "aguardando")
+    // PEÇA 12 (porta B1): defesa em profundidade da corrida leitura→gravação.
+    // Entre a leitura de cima e este UPDATE (segundos, dentro da chamada ao
+    // MP), o cliente pode ter cancelado. Sem esta guarda, a cobrança criada
+    // ANTES do cancelamento gravava gateway_payment_id num pedido cancelado —
+    // e o ramo nunca-cobrado da varredura de cupom (20261152000000) passaria
+    // a não enxergá-lo. Com ela, a cobrança fica ÓRFÃ no MP (o caso que a
+    // reconciliação já resolve), igual à corrida com o pg_cron abaixo.
+    .eq("status", "pending")
     .is("gateway_payment_id", null)
     // `expires_at` além de `id`: a resposta abaixo precisa do prazo
     // EFETIVAMENTE gravado, não do que `pedido` (lido ANTES deste UPDATE)
