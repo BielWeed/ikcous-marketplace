@@ -659,9 +659,7 @@ async function main() {
       const carenciaViva = await clausulaPeca12VivaAoVivo(client);
       if (!carenciaViva) {
         throw new Error(
-          "devolver_cupons_de_pedidos_mortos ja existe AO VIVO, mas SEM a clausula da peca 12 " +
-            "(gateway_payment_id IS NULL AND expires_at < now() - interval '15 minutes'). " +
-            `Aplique ${MIGRATION_MENSAGENS} e ${MIGRATION_VARREDURA} pelo db-apply (fluxo da casa) antes de rodar esta prova.`,
+          `devolver_cupons_de_pedidos_mortos ja existe AO VIVO, mas SEM a clausula da peca 12 (gateway_payment_id IS NULL AND expires_at < now() - interval '15 minutes'). Aplique ${MIGRATION_MENSAGENS} e ${MIGRATION_VARREDURA} pelo db-apply (fluxo da casa) antes de rodar esta prova.`,
         );
       }
       console.log(
