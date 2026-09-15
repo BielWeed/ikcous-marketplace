@@ -23,8 +23,10 @@ import {
   carregarChavesVapid,
   classificarFalha,
   endpointResumido,
+  enviarComOrcamentoDeTempo,
   enviarParaInscritos,
   jwkDoParVapidCru,
+  paginarTudo,
   resumir,
 } from "./index.ts";
 
@@ -435,4 +437,146 @@ Deno.test("lote não perde nem embaralha inscrição", async () => {
   } finally {
     await service.encerrar();
   }
+});
+
+// ---------------------------------------------------------------------------
+// Paginação e orçamento de tempo (index-133)
+//
+// Sem isto, o broadcast fazia um `select('*')` sem `.limit()` e mandava TODOS
+// os lotes em série dentro do mesmo handler HTTP, sem teto: numa base grande
+// a soma dos lotes estoura o tempo de execução da function e ela é cortada no
+// meio, sem responder nada e sem dizer quantos dispositivos ficaram sem
+// tentativa. Os dois testes abaixo provam separadamente a leitura paginada
+// (`paginarTudo`) e o corte por orçamento de tempo (`enviarComOrcamentoDeTempo`),
+// sem precisar de banco nem de push service de verdade.
+// ---------------------------------------------------------------------------
+
+Deno.test("paginarTudo percorre todas as páginas até a base acabar", async () => {
+  // Três páginas de 3, a última cheia — por isso a função só sabe que
+  // acabou quando uma chamada seguinte devolve vazio. Se `paginarTudo`
+  // parasse na primeira página "cheia" que via, este teste perderia a
+  // terceira leva (ids 6, 7, 8).
+  const paginas = [
+    [{ id: 0 }, { id: 1 }, { id: 2 }],
+    [{ id: 3 }, { id: 4 }, { id: 5 }],
+    [{ id: 6 }, { id: 7 }, { id: 8 }],
+    [],
+  ];
+  const offsetsPedidos: number[] = [];
+  const buscarPagina = async (offset: number, tamanho: number) => {
+    offsetsPedidos.push(offset);
+    assertEquals(tamanho, 3);
+    return paginas.shift() ?? [];
+  };
+
+  const tudo = await paginarTudo(buscarPagina, 3);
+
+  assertEquals(tudo.map((l: any) => l.id), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  assertEquals(offsetsPedidos, [0, 3, 6, 9]);
+});
+
+Deno.test("paginarTudo para na primeira página vazia sem pedir mais nenhuma", async () => {
+  let chamadas = 0;
+  const tudo = await paginarTudo(async () => {
+    chamadas += 1;
+    return [];
+  }, 200);
+
+  assertEquals(tudo, []);
+  assertEquals(chamadas, 1);
+});
+
+Deno.test("paginarTudo para assim que uma página vem menor que o tamanho pedido", async () => {
+  const paginas = [
+    [{ id: "a" }, { id: "b" }],
+    [{ id: "c" }], // menor que o tamanho da página: é a última, não pede outra
+  ];
+  let chamadas = 0;
+  const tudo = await paginarTudo(async () => {
+    chamadas += 1;
+    return paginas.shift() ?? [];
+  }, 2);
+
+  assertEquals(tudo.map((l: any) => l.id), ["a", "b", "c"]);
+  assertEquals(chamadas, 2);
+});
+
+/** Servidor de aplicação falso: "envia" na hora, sem cripto nem rede — só o
+ * suficiente para `enviarParaInscritos` ter o que chamar. */
+function servidorDeAplicacaoFalso() {
+  return {
+    subscribe: (_sub: any) => ({
+      pushTextMessage: async () => {},
+    }),
+  };
+}
+
+Deno.test("enviarComOrcamentoDeTempo manda tudo quando o orçamento sobra", async () => {
+  const inscricoes = Array.from({ length: 4 }, (_, i) => ({
+    endpoint: `https://a.example/p/${i}`,
+    p256dh: "x",
+    auth: "y",
+  }));
+
+  const { itens, naoTentados } = await enviarComOrcamentoDeTempo({
+    servidor: servidorDeAplicacaoFalso(),
+    inscricoes,
+    mensagem: "{}",
+    tamanhoDoLote: 2,
+    orcamentoMs: 30_000,
+    agora: () => 0, // relógio parado: nunca estoura
+  });
+
+  assertEquals(itens.length, 4);
+  assertEquals(itens.every((i: any) => i.ok), true);
+  assertEquals(naoTentados, 0);
+});
+
+Deno.test("enviarComOrcamentoDeTempo corta quando o tempo estoura e reporta os não tentados", async () => {
+  // 5 inscrições, lotes de 2: a 1ª fatia (índices 0-1) cabe no orçamento; a
+  // checagem antes da 2ª fatia já vê o relógio estourado, e a função corta
+  // ali — a 2ª fatia (2-3) e a 3ª (4) nunca são tentadas.
+  const inscricoes = Array.from({ length: 5 }, (_, i) => ({
+    endpoint: `https://a.example/p/${i}`,
+    p256dh: "x",
+    auth: "y",
+  }));
+
+  let chamadasAoRelogio = 0;
+  const agora = () => {
+    chamadasAoRelogio += 1;
+    // 1ª chamada: marca o início (0). 2ª chamada: checagem antes da 1ª
+    // fatia, ainda dentro do orçamento (0). Da 3ª em diante: já estourou.
+    return chamadasAoRelogio <= 2 ? 0 : 40_000;
+  };
+
+  const { itens, naoTentados } = await enviarComOrcamentoDeTempo({
+    servidor: servidorDeAplicacaoFalso(),
+    inscricoes,
+    mensagem: "{}",
+    tamanhoDoLote: 2,
+    orcamentoMs: 30_000,
+    agora,
+  });
+
+  assertEquals(itens.length, 2);
+  assertEquals(itens.every((i: any) => i.ok), true);
+  assertEquals(naoTentados, 3);
+});
+
+Deno.test("enviarComOrcamentoDeTempo com orçamento já estourado não tenta nenhuma", async () => {
+  const inscricoes = [
+    { endpoint: "https://a.example/p/0", p256dh: "x", auth: "y" },
+  ];
+
+  const { itens, naoTentados } = await enviarComOrcamentoDeTempo({
+    servidor: servidorDeAplicacaoFalso(),
+    inscricoes,
+    mensagem: "{}",
+    orcamentoMs: 0,
+    agora: () => 0,
+  });
+
+  assertEquals(itens.length, 0);
+  assertEquals(naoTentados, 1);
 });
