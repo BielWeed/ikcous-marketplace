@@ -32,6 +32,12 @@ import { useProducts } from "@/hooks/useProducts";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
+import {
+  type ParDeAtributo,
+  dividirEmAtributos,
+  juntarAtributos,
+  validarAtributos,
+} from "@/utils/variante-composta";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -54,6 +60,7 @@ import {
   TrendingDown,
   TrendingUp,
   Truck,
+  X,
 } from "lucide-react";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -143,6 +150,21 @@ export const compressProductImage = (
     img.src = objectUrl;
   });
 };
+
+/** Par de atributo enquanto está no formulário, com chave estável de render:
+ *  remover um par do meio não pode fazer o React reaproveitar a instância do
+ *  vizinho com o rascunho que o `LocalBufferedInput` ainda guarda no debounce. */
+type ParNoForm = ParDeAtributo & { chave: string };
+
+let contadorDePares = 0;
+const parNovo = (): ParNoForm => {
+  contadorDePares += 1;
+  return { chave: `par-${contadorDePares}`, name: "", value: "" };
+};
+
+/** Pares que vieram de fora (edição de linha gravada) ganham chave de render. */
+const comChaveDeRender = (pares: ParDeAtributo[]): ParNoForm[] =>
+  pares.map((par) => ({ ...parNovo(), ...par }));
 
 interface AdminProductFormViewProps {
   productId?: string;
@@ -307,9 +329,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(
     null,
   );
-  const [variantFormData, setVariantFormData] = useState({
-    name: "",
-    value: "",
+  // Uma variante é UMA OU MAIS duplas atributo+valor ("Cor"+"Branca" ou
+  // "Cor"+"Branca" com "Tamanho"+"PP") que viram UMA linha de variante com
+  // estoque próprio — ver `variante-composta.ts`. O modal nasce com um par;
+  // "+ Atributo" empilha os demais.
+  const [variantFormData, setVariantFormData] = useState<{
+    pares: ParNoForm[];
+    sku: string;
+    stockIncrement: string;
+    priceOverride: string;
+    active: boolean;
+    imageUrl: string;
+  }>({
+    pares: [parNovo()],
     sku: "",
     stockIncrement: "0",
     priceOverride: "",
@@ -956,24 +988,44 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     }));
   }, []);
 
+  const atualizarParDeAtributo = (
+    indice: number,
+    campo: "name" | "value",
+    valor: string,
+  ) => {
+    setVariantFormData((p) => ({
+      ...p,
+      pares: p.pares.map((par, i) =>
+        i === indice ? { ...par, [campo]: valor } : par,
+      ),
+    }));
+  };
+
   const handleVariantSubmit = () => {
-    if (!variantFormData.name.trim()) {
-      toast.error("O nome do atributo (ex: Cor, Tamanho) é obrigatório.");
+    const erroDosPares = validarAtributos(variantFormData.pares);
+    if (erroDosPares) {
+      toast.error(erroDosPares);
       return;
     }
-    if (!variantFormData.value.trim()) {
-      toast.error("O valor do atributo (ex: Espacial Grey) é obrigatório.");
-      return;
-    }
+
+    // A combinação inteira vira UMA linha: "Cor"+"Branca" com "Tamanho"+"PP"
+    // grava name="Cor / Tamanho", value="Branca / PP", com o estoque deste
+    // formulário — a branca PP tem o estoque DELA. Um par só sai cru, igual
+    // ao caso simples de hoje. Ver `variante-composta.ts`.
+    const { name: nomeComposto, value: valorComposto } = juntarAtributos(
+      variantFormData.pares,
+    );
 
     // Um grupo por produto. Com dois, o estoque passa a ser somado em dobro, o
     // carrinho funde combinacoes diferentes numa linha so e o pedido guarda
     // metade da escolha -- quem compra um P e um M recebe dois P. O porque
-    // inteiro, medido, esta em `src/utils/um-grupo-de-variacao.ts`.
+    // inteiro, medido, esta em `src/utils/um-grupo-de-variacao.ts`. A variante
+    // composta respeita a trava de casa: todas as linhas compostas do produto
+    // compartilham o mesmo `name`, logo um grupo so.
     const trava = travaDeUmGrupoSo(
       formData.variants,
       editingVariant?.id ?? null,
-      variantFormData.name,
+      nomeComposto,
     );
     if (trava.bloqueia) {
       toast.error(`Este produto já usa "${trava.grupoEmUso}"`, {
@@ -1008,8 +1060,8 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
     const vData = {
       productId: productId || "",
-      name: variantFormData.name.trim(),
-      value: variantFormData.value.trim(),
+      name: nomeComposto,
+      value: valorComposto,
       sku: sanitizedVarSku || undefined,
       stockIncrement: Number.parseInt(sanitizedVarStock) || 0,
       priceOverride:
@@ -1043,8 +1095,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     setShowVariantForm(false);
     setEditingVariant(null);
     setVariantFormData({
-      name: "",
-      value: "",
+      pares: [parNovo()],
       sku: "",
       stockIncrement: "0",
       priceOverride: "",
@@ -1060,8 +1111,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const handleEditVariant = useCallback((v: ProductVariant) => {
     setEditingVariant(v);
     setVariantFormData({
-      name: v.name,
-      value: v.value,
+      // Reabre a linha em pares ("Cor / Tamanho"+"Branca / PP" volta a ser
+      // Cor/Branca e Tamanho/PP); linha que não desmonta limpo abre como um
+      // par com o texto bruto — e round-tripa idêntico. Ver
+      // `dividirEmAtributos` em `variante-composta.ts`.
+      pares: comChaveDeRender(dividirEmAtributos(v.name, v.value)),
       sku: v.sku || "",
       stockIncrement: v.stockIncrement.toString(),
       priceOverride: v.priceOverride?.toString() || "",
@@ -1579,71 +1633,135 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                   </div>
 
                   <div className="scrollbar-hide flex-1 space-y-6 overflow-y-auto p-8 py-6">
-                    {/* Atributo */}
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="variant-name"
-                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                      >
-                        Atributo (ex: Cor, Tamanho)
-                      </label>
-                      <LocalBufferedInput
-                        id="variant-name"
-                        name="variant-name"
-                        type="text"
-                        value={variantFormData.name}
-                        onFlush={(val) =>
-                          setVariantFormData((p) => ({ ...p, name: val }))
-                        }
-                        className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        placeholder="Ex: Cor"
-                      />
-                      {suggestedAttributes.length > 0 && (
-                        <div className="ml-1 mt-1.5 flex flex-wrap gap-1.5">
-                          {suggestedAttributes.map((attr) => (
+                    {/* Atributos da variante. Um par é o caso simples de
+                        sempre; "+ Atributo" empilha dimensões (Cor E Tamanho)
+                        que viram UMA combinação com estoque próprio — ver
+                        `variante-composta.ts`. */}
+                    {variantFormData.pares.map((par, indice) => (
+                      <div key={par.chave} className="space-y-2">
+                        {indice === 0 ? (
+                          <>
+                            <label
+                              htmlFor="variant-name"
+                              className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                            >
+                              Atributo (ex: Cor, Tamanho)
+                            </label>
+                            <LocalBufferedInput
+                              id="variant-name"
+                              name="variant-name"
+                              type="text"
+                              value={par.name}
+                              onFlush={(val) =>
+                                atualizarParDeAtributo(indice, "name", val)
+                              }
+                              className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              placeholder="Ex: Cor"
+                            />
+                            {suggestedAttributes.length > 0 && (
+                              <div className="ml-1 mt-1.5 flex flex-wrap gap-1.5">
+                                {suggestedAttributes.map((attr) => (
+                                  <button
+                                    key={attr}
+                                    type="button"
+                                    onClick={() =>
+                                      atualizarParDeAtributo(
+                                        indice,
+                                        "name",
+                                        attr,
+                                      )
+                                    }
+                                    className={cn(
+                                      "px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95",
+                                      par.name === attr
+                                        ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                                        : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
+                                    )}
+                                  >
+                                    {attr}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <label
+                              htmlFor="variant-value"
+                              className="ml-1 pt-2 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                            >
+                              Valor do Atributo
+                            </label>
+                            <LocalBufferedInput
+                              id="variant-value"
+                              name="variant-value"
+                              type="text"
+                              value={par.value}
+                              onFlush={(val) =>
+                                atualizarParDeAtributo(indice, "value", val)
+                              }
+                              className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              placeholder="Ex: Espacial Grey"
+                            />
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-2 pt-1">
+                            <div className="grid flex-1 grid-cols-2 gap-3">
+                              <LocalBufferedInput
+                                id={`variant-name-${indice}`}
+                                name={`variant-name-${indice}`}
+                                type="text"
+                                aria-label={`Atributo ${indice + 1}`}
+                                value={par.name}
+                                onFlush={(val) =>
+                                  atualizarParDeAtributo(indice, "name", val)
+                                }
+                                className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                placeholder="Ex: Tamanho"
+                              />
+                              <LocalBufferedInput
+                                id={`variant-value-${indice}`}
+                                name={`variant-value-${indice}`}
+                                type="text"
+                                aria-label={`Valor do atributo ${indice + 1}`}
+                                value={par.value}
+                                onFlush={(val) =>
+                                  atualizarParDeAtributo(indice, "value", val)
+                                }
+                                className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                placeholder="Ex: PP"
+                              />
+                            </div>
                             <button
-                              key={attr}
                               type="button"
+                              aria-label={`Remover atributo ${indice + 1}`}
                               onClick={() =>
                                 setVariantFormData((p) => ({
                                   ...p,
-                                  name: attr,
+                                  pares: p.pares.filter((_, j) => j !== indice),
                                 }))
                               }
-                              className={cn(
-                                "px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95",
-                                variantFormData.name === attr
-                                  ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                                  : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
-                              )}
+                              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
                             >
-                              {attr}
+                              <X className="size-4" />
                             </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
 
-                    {/* Valor do Atributo */}
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="variant-value"
-                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                      >
-                        Valor do Atributo
-                      </label>
-                      <LocalBufferedInput
-                        id="variant-value"
-                        name="variant-value"
-                        type="text"
-                        value={variantFormData.value}
-                        onFlush={(val) =>
-                          setVariantFormData((p) => ({ ...p, value: val }))
-                        }
-                        className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        placeholder="Ex: Espacial Grey"
-                      />
-                    </div>
+                    {/* Mais uma dimensão da combinação (ex: além de Cor,
+                        Tamanho). A trava de um grupo por produto vale para o
+                        resultado inteiro, não por par. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVariantFormData((p) => ({
+                          ...p,
+                          pares: [...p.pares, parNovo()],
+                        }))
+                      }
+                      className="w-full rounded-2xl border border-dashed border-white/10 bg-zinc-950/60 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
+                    >
+                      + Atributo
+                    </button>
 
                     {/* SKU & Status */}
                     <div className="grid grid-cols-2 gap-4">
@@ -2345,8 +2463,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               onClick={() => {
                 setEditingVariant(null);
                 setVariantFormData({
-                  name: "",
-                  value: "",
+                  pares: [parNovo()],
                   sku: "",
                   stockIncrement: "0",
                   priceOverride: "",
