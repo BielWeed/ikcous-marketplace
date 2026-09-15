@@ -144,15 +144,27 @@ export function AboutStoreView() {
           >
             {/* Recorte do topo esconde o chip "Open in Maps" do embed do
                 Google (controle nosso, não do iframe): o mapa sobe 56px para
-                fora do wrapper e continua navegável. */}
+                fora do wrapper e continua navegável. Mapa ESTÁTICO
+                (pointer-events none) porque o pin é da CASA, fixo no centro —
+                enquanto a loja não crava a localização exata no painel (peça
+                futura), o dado é o CEP de origem: aproximação, com aviso. */}
             <div className="relative h-56 w-full overflow-hidden">
               <iframe
                 title={`Mapa da loja ${storeName}`}
                 src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
-                className="absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
+                className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
               />
+              <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-full flex-col items-center">
+                <div className="flex size-10 items-center justify-center rounded-full border-4 border-white bg-zinc-900 shadow-premium">
+                  <MapPin className="size-4 text-white" />
+                </div>
+                <div className="-mt-0.5 size-3 rotate-45 border-b-4 border-r-4 border-white bg-zinc-900" />
+              </div>
+              <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">
+                Localização aproximada
+              </p>
             </div>
             <a
               href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}

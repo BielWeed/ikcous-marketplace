@@ -134,6 +134,11 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
       "https://www.google.com/maps/search/?api=1&query=38500-000",
     );
 
+    // Pin da CASA sobre o mapa (o ponteiro do Google fica no recorte do
+    // topo) + aviso honesto de localização aproximada enquanto o dado é CEP.
+    expect(hospedeiro.querySelector(".lucide-map-pin")).not.toBeNull();
+    expect(texto).toContain("Localização aproximada");
+
     const logo = hospedeiro.querySelector<HTMLImageElement>(
       "img[alt^='Logo da loja']",
     );
