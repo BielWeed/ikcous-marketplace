@@ -422,21 +422,26 @@ export const StrategicIntelligenceBlocks = React.memo(
             </div>
 
             {/*
-              #104: legenda da divergência entre bases. O total deste
-              gráfico soma `get_category_analytics` — SÓ itens, SEM
-              subtrair desconto e SEM frete (a linha sintética 'Frete'
-              saiu na migration 20261003000000; antes ela entrava aqui).
-              O card "Volume Total" (KpiSummaryCards) usa
-              `SUM(marketplace_orders.total)`, já líquido de desconto.
-              Com qualquer pedido com cupom os dois números divergem —
-              decisão do brief da Trilha 4/#104 é não mudar o cálculo,
-              só explicitar a diferença aqui. Par da frase guardado por
-              tests/front/grafico-de-categorias-nao-promete-frete.test.tsx.
+              #104: a divergência que esta nota descrevia foi FECHADA pela
+              migration 20261063000000_o_donut_soma_o_dinheiro_do_kpi.sql
+              (09/09/2026) — `get_category_analytics` deixou de somar
+              `oi.price * oi.quantity` bruto e passou a ratear
+              `marketplace_orders.total` (já líquido de cupom, COM frete)
+              proporcionalmente por categoria. A soma deste gráfico é hoje
+              o MESMO dinheiro do card "Volume Total" (KpiSummaryCards,
+              `SUM(marketplace_orders.total)`). Única exceção, prevista no
+              próprio cabeçalho da migration: um pedido cujos itens são
+              TODOS de produtos excluídos do catálogo não sobrevive ao
+              JOIN com `produtos`, fica sem categoria para receber sua
+              fatia e sai inteiro do rateio — só nesse caso o donut fica
+              ABAIXO do Volume Total, nunca acima. Par da frase guardado
+              por tests/front/grafico-de-categorias-nao-promete-frete.test.tsx.
             */}
             <p className="relative z-10 mb-3 text-[9px] font-medium normal-case leading-snug text-zinc-600 sm:mb-5">
-              Total deste gráfico = itens, sem desconto e sem frete. Pode
-              divergir do card "Volume Total" (líquido de desconto — e com
-              frete).
+              Total deste gráfico = mesmo dinheiro do card "Volume Total"
+              (rateado por categoria, já líquido de desconto e com frete). Só
+              fica abaixo se algum pedido tiver todos os produtos excluídos do
+              catálogo.
             </p>
 
             {/* CONTAINER DO GRÁFICO E DA LEGENDA DETALHADA */}
