@@ -8,7 +8,7 @@ import { haptic } from "@/utils/haptic";
 import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
 import { Clock, MapPin, Navigation } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 // Página de LEITURA da marca do lojista assinante (peça 24). Fonte ÚNICA dos
 // dados = StoreConfig da loja (useStore) — a mesma que alimenta o cabeçalho
@@ -45,13 +45,40 @@ export function AboutStoreView() {
   const queryMaps = onde ? encodeURIComponent(onde) : "";
 
   // Mesma cascata do Header: logo do banco → asset local do build → inicial.
-  // A máquina de estados de troca em tempo real fica no Header; aqui basta a
-  // imagem com fallback, reiniciada quando a fonte muda.
-  const logoSrc = config.logoUrl?.trim() || buildIdentity.localUrls.header;
-  const [logoFalhou, setLogoFalhou] = useState(false);
-  useEffect(() => {
-    setLogoFalhou(false);
-  }, [logoSrc]);
+  // A logo do banco que falha NÃO pula para a inicial: avança para a
+  // candidata seguinte — a inicial só vence quando a do build também falha.
+  // A máquina de troca em tempo real fica no Header; aqui basta o estágio com
+  // revisão, reiniciado quando a fonte (logoUrl) muda.
+  const logoUrl = config.logoUrl?.trim() || null;
+  const [logoSelection, setLogoSelection] = useState<{
+    url: string | null;
+    revision: number;
+    stage: "db" | "local" | "text";
+  }>({ url: logoUrl, revision: 0, stage: logoUrl ? "db" : "local" });
+  if (logoSelection.url !== logoUrl) {
+    setLogoSelection({
+      url: logoUrl,
+      revision: logoSelection.revision + 1,
+      stage: logoUrl ? "db" : "local",
+    });
+  }
+  let logoSrc: string | null = null;
+  if (logoSelection.stage === "db" && logoUrl) {
+    logoSrc = logoUrl;
+  } else if (logoSelection.stage === "local") {
+    logoSrc = buildIdentity.localUrls.header;
+  }
+  const logoFalhou = () => {
+    setLogoSelection((current) => {
+      // Falha só avança a candidata que a originou.
+      if (current !== logoSelection) return current;
+      const stage =
+        current.stage === "db" && logoSrc !== buildIdentity.localUrls.header
+          ? "local"
+          : "text";
+      return { ...current, stage };
+    });
+  };
 
   useDocumentMeta({ title: `Sobre a loja | ${storeName}` });
 
@@ -123,12 +150,12 @@ export function AboutStoreView() {
           transition={{ duration: 0.3, delay: 0.05 }}
           className="flex flex-col items-center gap-4 rounded-[2.5rem] border border-zinc-100 bg-white p-6 text-center shadow-sm sm:p-8"
         >
-          {logoSrc && !logoFalhou ? (
+          {logoSrc ? (
             <img
-              key={logoSrc}
+              key={`${logoSelection.revision}:${logoSelection.stage}`}
               src={logoSrc}
               alt={`Logo da loja ${storeName}`}
-              onError={() => setLogoFalhou(true)}
+              onError={logoFalhou}
               className="size-24 rounded-[1.75rem] border border-zinc-100 bg-white object-contain"
             />
           ) : (
@@ -186,7 +213,7 @@ export function AboutStoreView() {
                       strokeLinejoin="round"
                     />
                     <g clipPath="url(#pin-logo-recorte)">
-                      {logoSrc && !logoFalhou ? (
+                      {logoSrc ? (
                         <image
                           href={logoSrc}
                           x="13.5"

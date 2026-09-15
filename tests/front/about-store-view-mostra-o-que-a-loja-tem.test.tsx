@@ -205,7 +205,7 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(texto).not.toContain("null");
   });
 
-  it("logo quebrado (onError) degrada para a inicial, sem erro de render", async () => {
+  it("logo do banco quebrada cai na LOGO DO BUILD; só quando ela também falha vem a inicial", async () => {
     configAtual = {
       ...LOJA_COMPLETA,
       logoUrl: "https://cdn.example/quebrado.png",
@@ -217,12 +217,80 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
       "img[alt^='Logo da loja']",
     );
     expect(logo).not.toBeNull();
+    expect(logo!.getAttribute("src")).toBe("https://cdn.example/quebrado.png");
+
+    // 1ª falha (logo do banco): avança para a logo do build (fixture Aurora),
+    // NÃO para a inicial — o pin do mapa acompanha a mesma candidata.
     await act(async () => {
       logo!.dispatchEvent(new globalThis.Event("error"));
     });
-    // A imagem sai e a inicial da loja entra no lugar — sem "undefined".
+    const logoDoBuild = hospedeiro.querySelector<HTMLImageElement>(
+      "img[alt^='Logo da loja']",
+    );
+    expect(logoDoBuild).not.toBeNull();
+    expect(logoDoBuild!.getAttribute("src")).toBe(
+      "/identity/aurora/header.webp",
+    );
+    expect(
+      hospedeiro.querySelector(
+        "svg image[href='/identity/aurora/header.webp']",
+      ),
+    ).not.toBeNull();
+
+    // 2ª falha (logo do build também quebrada): aí sim a inicial entra —
+    // sem "undefined" e sem erro de render.
+    await act(async () => {
+      logoDoBuild!.dispatchEvent(new globalThis.Event("error"));
+    });
     expect(hospedeiro.querySelector("img[alt^='Logo da loja']")).toBeNull();
     expect(hospedeiro.textContent).toContain("Ateliê da Serra");
+  });
+
+  it("a fonte da logo mudando no ar reinicia a cascata do começo", async () => {
+    configAtual = {
+      ...LOJA_COMPLETA,
+      logoUrl: "https://cdn.example/velha.png",
+    };
+
+    await renderizarPagina();
+
+    let logo = hospedeiro.querySelector<HTMLImageElement>(
+      "img[alt^='Logo da loja']",
+    );
+    expect(logo).not.toBeNull();
+    expect(logo!.getAttribute("src")).toBe("https://cdn.example/velha.png");
+
+    // Banco quebra → build assume.
+    await act(async () => {
+      logo!.dispatchEvent(new globalThis.Event("error"));
+    });
+    logo = hospedeiro.querySelector<HTMLImageElement>(
+      "img[alt^='Logo da loja']",
+    );
+    expect(logo!.getAttribute("src")).toBe("/identity/aurora/header.webp");
+
+    // O lojista troca a logo no painel: a logo nova do banco volta a ser a
+    // candidata — a cascata NÃO fica presa na falha antiga.
+    configAtual = {
+      ...LOJA_COMPLETA,
+      logoUrl: "https://cdn.example/nova.png",
+    };
+    await renderizarPagina();
+
+    logo = hospedeiro.querySelector<HTMLImageElement>(
+      "img[alt^='Logo da loja']",
+    );
+    expect(logo).not.toBeNull();
+    expect(logo!.getAttribute("src")).toBe("https://cdn.example/nova.png");
+
+    // E a logo nova quebrada cai no build normalmente.
+    await act(async () => {
+      logo!.dispatchEvent(new globalThis.Event("error"));
+    });
+    logo = hospedeiro.querySelector<HTMLImageElement>(
+      "img[alt^='Logo da loja']",
+    );
+    expect(logo!.getAttribute("src")).toBe("/identity/aurora/header.webp");
   });
 
   it("WhatsApp: clique abre wa.me com prefixo 55 e sem quebrar em número formatado", async () => {
