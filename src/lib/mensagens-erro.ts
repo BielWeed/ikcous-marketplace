@@ -26,8 +26,15 @@
 //     específica aqui — só esse rótulo genérico do SDK. Por isso este caso
 //     cai no genérico de quem chamou, e não presume qual foi a causa real.
 //   - `FunctionsFetchError` (o `fetch` em si falhou, sem chegar a existir
-//     resposta HTTP): É rede, sempre — o único caso em que dá para nomear a
-//     causa com segurança.
+//     resposta HTTP): quase sempre rede — MAS há uma segunda causa medida na
+//     peça 20 (14/09/2026): FUNÇÃO NÃO PUBLICADA. O gateway do Supabase
+//     responde "não existe" SEM os headers de CORS, o navegador bloqueia a
+//     resposta e o SDK recebe... um fetch error. Dono viu "Verifique sua
+//     internet" com a internet perfeita — a causa real era a função nova
+//     ainda não publicada no projeto (404 medido direto no gateway). Por
+//     isso o chamador que passa `mensagemServicoInativo` (opt-in) recebe
+//     essa frase quando o navegador está ONLINE; offline segue a frase de
+//     rede, que ali é a verdade.
 //   - `FunctionsRelayError` (o relay da Supabase não alcançou a função):
 //     infraestrutura, não é nem "sem internet da pessoa" nem uma causa de
 //     negócio — cai no genérico também.
@@ -44,9 +51,21 @@ export function mensagemAmigavelErroEdgeFunction(
     mensagensSeguras?: string[];
     /** Frase para toda causa sem tradução específica conhecida. */
     mensagemGenerica: string;
+    /**
+     * Frase para "serviço não está no ar nesta instalação" — OPT-IN: quem
+     * não passa, mantém o comportamento de sempre (o frete, por exemplo,
+     * não muda nada). Ativa dois caminhos: resposta HTTP 404/503 do
+     * gateway, e fetch error com navegador online (a função não publicada
+     * vira fetch error por falta de CORS — histórico no comentário acima).
+     */
+    mensagemServicoInativo?: string;
   },
 ): string {
-  const detalhes = (error ?? {}) as { name?: unknown; message?: unknown };
+  const detalhes = (error ?? {}) as {
+    name?: unknown;
+    message?: unknown;
+    context?: unknown;
+  };
   const nome = typeof detalhes.name === "string" ? detalhes.name : "";
   const textoOriginal =
     typeof detalhes.message === "string" ? detalhes.message : "";
@@ -56,10 +75,36 @@ export function mensagemAmigavelErroEdgeFunction(
   }
 
   if (nome === "FunctionsFetchError") {
+    if (opcoes.mensagemServicoInativo && navegadorOnline()) {
+      return opcoes.mensagemServicoInativo;
+    }
     return "Sem conexão com o servidor. Verifique sua internet e tente novamente.";
   }
 
+  if (nome === "FunctionsHttpError" && opcoes.mensagemServicoInativo) {
+    const status =
+      detalhes.context instanceof Response ? detalhes.context.status : null;
+    if (status === 404 || status === 503) {
+      return opcoes.mensagemServicoInativo;
+    }
+  }
+
   return opcoes.mensagemGenerica;
+}
+
+/**
+ * Presença de rede pelo olho do NAVEGADOR (`navigator.onLine`): true não
+ * prova internet boa, mas false é rede caída de verdade — é o único sinal
+ * de que a máquina dispõe para separar "sua internet" de "serviço no ar".
+ * Sem `navigator` (fora de navegador) trata como online: a frase de rede
+ * erraria mais que a de serviço.
+ */
+function navegadorOnline(): boolean {
+  try {
+    return navigator.onLine !== false;
+  } catch {
+    return true;
+  }
 }
 
 // Só o código escolhe uma frase conhecida pelo front: texto vindo do servidor

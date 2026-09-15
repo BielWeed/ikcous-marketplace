@@ -370,6 +370,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
       "Como está sua loja",
       "Sua loja",
       "Entrega",
+      // Peça 20 (pedido do dono, 14/09): o Mercado Pago vira grupo próprio,
+      // ao lado de Entrega e antes do PORÃO (Ferramentas).
+      "Pagamentos",
       "Ferramentas",
     ]);
   });
@@ -381,6 +384,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
       "Nome, logo e cores",
       "Atendimento",
       "Entrega e frete",
+      "Mercado Pago",
       "Minha loja está no ar?",
       "Consultas de frete",
     ]) {
@@ -402,7 +406,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     const cabecalhos = [
       ...hospedeiro.querySelectorAll("button[aria-expanded]"),
     ];
-    expect(cabecalhos.length).toBe(5);
+    // Peça 20: o Mercado Pago entra como sexto acordeão, nascido fechado
+    // como os demais (mesma decisão do dono de 02/09).
+    expect(cabecalhos.length).toBe(6);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }

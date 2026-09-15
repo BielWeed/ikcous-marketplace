@@ -102,3 +102,13 @@ verify_jwt = false
 # PR #439; o bloco faltando deixava o verify_jwt invisível em revisão).
 [functions."estornar-pagamento"]
 verify_jwt = true
+
+# Peça 20 (14/09/2026): o lojista cadastra as chaves DELE do Mercado Pago na
+# tela de Ajustes ("Pagamentos > Mercado Pago"). Chamada pelo painel do
+# lojista logado: verify_jwt = true no portão E porta interna de admin na
+# função (JWT + papel via service role) — MESMO desenho do
+# estornar-pagamento. O segredo entra cifrado e JAMAIS volta para o
+# navegador (só máscara); o teste de conexão com o MP roda dentro da
+# função. O Pix de hoje não passa por aqui.
+[functions."credenciais-mercado-pago"]
+verify_jwt = true
