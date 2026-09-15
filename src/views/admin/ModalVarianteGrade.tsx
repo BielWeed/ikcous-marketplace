@@ -60,6 +60,10 @@ interface ModalVarianteGradeProps {
   /** O grupo em uso no produto, quando ele já tem variante — a trava de um
    *  grupo compara com o nome da grade no "Gerar". */
   grupoUnicoEmUso: string | null;
+  /** SKUs de TODA a loja (a UNIQUE do banco é global, não por produto).
+   *  Melhor esforço: pode vir vazio se a lista de produtos não carregou —
+   *  aí a guarda final é a UNIQUE do banco, que falha alto no salvar. */
+  skusDaLoja: string[];
   onEfetivar: (linhas: LinhaProntaDaGrade[]) => void;
 }
 
@@ -170,6 +174,7 @@ export function ModalVarianteGrade({
   variantesExistentes,
   sugestoesDeAtributo,
   grupoUnicoEmUso,
+  skusDaLoja,
   onEfetivar,
 }: ModalVarianteGradeProps) {
   const [passo, setPasso] = useState<1 | 2>(1);
@@ -311,15 +316,15 @@ export function ModalVarianteGrade({
       value: linha.value,
     }));
     const skus = skusDaGrade(skuBase, identidades);
-    const colisao = primeiroSkuEmColisao(
-      skus,
-      variantesExistentes.map((v) => v.sku ?? ""),
-    );
+    const colisao = primeiroSkuEmColisao(skus, [
+      ...skusDaLoja,
+      ...variantesExistentes.map((v) => v.sku ?? ""),
+    ]);
     if (colisao) {
-      toast.error(`O SKU "${colisao}" já existe neste produto`, {
+      toast.error(`O SKU "${colisao}" já existe na loja`, {
         description:
-          "SKU é único na loja. Ajuste o SKU base para a grade nascer com " +
-          "códigos livres.",
+          "SKU é único em TODA a loja, não só neste produto. Ajuste o SKU " +
+          "base para a grade nascer com códigos livres.",
       });
       return;
     }

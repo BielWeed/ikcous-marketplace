@@ -22,6 +22,8 @@ const fetchProduct = vi.fn();
 const upsertVariants = vi.fn().mockResolvedValue(undefined);
 const updateProduct = vi.fn().mockResolvedValue(undefined);
 const addProduct = vi.fn().mockResolvedValue(undefined);
+// A lista da loja alimenta a checagem de SKU (UNIQUE global da tabela).
+let produtosDaLoja: Array<Record<string, unknown>> = [];
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
@@ -31,6 +33,7 @@ vi.mock("@/hooks/useProducts", () => ({
     deleteVariants: vi.fn().mockResolvedValue(undefined),
     uploadProductImages: vi.fn().mockResolvedValue([]),
     fetchProduct,
+    products: produtosDaLoja,
   }),
 }));
 
@@ -171,6 +174,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
 
   beforeEach(() => {
     vi.clearAllMocks();
+    produtosDaLoja = [];
     armazem = new Map();
     vi.stubGlobal("localStorage", {
       getItem: (c: string) => armazem.get(c) ?? null,
@@ -409,6 +413,7 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
     vi.clearAllMocks();
     upsertVariants.mockResolvedValue(undefined);
     updateProduct.mockResolvedValue(undefined);
+    produtosDaLoja = [];
     armazem = new Map();
     vi.stubGlobal("localStorage", {
       getItem: (c: string) => armazem.get(c) ?? null,
@@ -527,8 +532,7 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
     expect(String(nova?.id)).toMatch(/^temp-/);
   });
 
-  it("colisão de SKU com linha existente RECUSA o efetivar — sem sucesso falso", async () => {
-    await montarEmEdicao([
+  it("colisão de SKU com linha existente RECUSA o efetivar — sem sucesso falso", async () => {    await montarEmEdicao([
       {
         id: "v1",
         productId: "prod-1",
@@ -569,6 +573,42 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
     // lojista corrigir o SKU base — a falha não vira "criado com sucesso".
     expect(variantesNaTela()).toEqual(["Cor / Tamanho: Branca / P"]);
     expect(botaoPorTexto(document.body, "Efetivar 1 variante")).toBeDefined();
+  });
+
+  it("colisão de SKU com OUTRO produto da loja também recusa (a UNIQUE é global)", async () => {
+    // A linha que ocupa o SKU mora em OUTRO produto — a checagem só olhando
+    // este produto deixaria passar e o banco derrubaria o lote no salvar.
+    produtosDaLoja = [
+      {
+        id: "prod-2",
+        variants: [{ id: "x1", sku: "BLU-AMA-P" }],
+      },
+    ];
+
+    await montarEmEdicao();
+    await act(async () => {
+      clicarObrigatorio("+ Grade");
+    });
+    await digitarCampo("grade-valor-0", "Amarela");
+    await act(async () => {
+      clicarPorRotulo("Adicionar valor do atributo 1");
+    });
+    await digitarCampo("grade-valor-1", "P");
+    await act(async () => {
+      clicarPorRotulo("Adicionar valor do atributo 2");
+    });
+    await act(async () => {
+      clicarObrigatorio("Gerar grade");
+    });
+    await digitarCampo("grade-sku-base", "blu");
+
+    await act(async () => {
+      clicarObrigatorio("Efetivar 1 variante");
+    });
+
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError.mock.calls[0][0]).toContain('O SKU "BLU-AMA-P"');
+    expect(variantesNaTela()).toEqual(["Cor / Tamanho: Branca / PP"]);
   });
 
   it("trava de um grupo: grade com atributo novo em produto legado recebe diagnóstico e NÃO converte", async () => {

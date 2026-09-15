@@ -31,6 +31,7 @@ vi.mock("@/hooks/useProducts", () => ({
     deleteVariants,
     uploadProductImages: vi.fn().mockResolvedValue([]),
     fetchProduct,
+    products: [],
   }),
 }));
 
@@ -143,6 +144,11 @@ async function digitarCampo(id: string, valor: string) {
     digitar(id, valor);
     await new Promise((r) => setTimeout(r, 300));
   });
+}
+
+function valorDoCampo(id: string): string {
+  const el = document.getElementById(id) as HTMLInputElement | null;
+  return el?.value ?? "";
 }
 
 function variantesNaTela(): string[] {
@@ -378,6 +384,36 @@ describe("AdminProductFormView — completar grade, chips e desativar (A3)", () 
     expect(
       document.body.querySelector('[aria-label="Desativar Branca / PP"]'),
     ).not.toBeNull();
+  });
+
+  it("desativar TODAS as linhas deixa o estoque do produto em 0 — a soma das ativas é zero", async () => {
+    // O estoque congelado na soma antiga fazia a loja continuar vendendo
+    // "solto" (sem combinação, sem variant_id) com número que não existia —
+    // revisão da peça 21: zero é o estoque honesto quando nada está ativo.
+    await montarEmEdicao();
+
+    await act(async () => {
+      clicarPorRotulo("Desativar Branca / PP");
+    });
+    await act(async () => {
+      clicarObrigatorio("Desativar");
+    });
+    await act(async () => {
+      clicarPorRotulo("Desativar Branca / P");
+    });
+    await act(async () => {
+      clicarObrigatorio("Desativar");
+    });
+
+    // As duas linhas continuam na lista (desativadas, reativáveis)...
+    expect(
+      document.body.querySelector('[aria-label="Reativar Branca / PP"]'),
+    ).not.toBeNull();
+    expect(
+      document.body.querySelector('[aria-label="Reativar Branca / P"]'),
+    ).not.toBeNull();
+    // ...e o estoque do produto foi para a soma das ativas: ZERO.
+    expect(valorDoCampo("product-stock")).toBe("0");
   });
 
   it("linha já INATIVA continua existindo: a grade não recria nem reativa por trás do lojista", async () => {

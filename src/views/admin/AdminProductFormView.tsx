@@ -65,7 +65,13 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 // Exportado só para o teste chamar direto (não passa pelo componente inteiro)
@@ -274,7 +280,24 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     deleteVariants,
     uploadProductImages,
     fetchProduct,
+    // `= []`: consumidor que não expõe a lista (testes de contrato da tela)
+    // deixa a checagem de SKU global degenerar para o produto atual.
+    products = [],
   } = useProducts({ autoFetch: false });
+
+  // Peça 21 (revisão): o SKU é UNIQUE na tabela INTEIRA, não por produto.
+  // A grade gera códigos previsíveis (base reaproveitada, sufixo por valor),
+  // então a checagem do modal precisa enxergar a loja, não só este produto.
+  // Melhor esforço: se a lista de produtos ainda não carregou, a checagem
+  // degenera para o produto atual — e a UNIQUE do banco segue sendo a
+  // guarda final (falha alto, sem sucesso falso).
+  const skusDaLoja = useMemo(
+    () =>
+      products.flatMap((p: { variants?: ProductVariant[] }) =>
+        (p.variants ?? []).map((v) => v.sku ?? ""),
+      ),
+    [products],
+  );
   const { categories: dbCategories, addCategory } = useCategories();
   const isOffline = useOnlineStatus();
   const { config } = useStore();
@@ -429,13 +452,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   // da primeira, sugerir "Tamanho" a quem ja escolheu "Cor" seria convidar
   // para o estado que a trava logo abaixo recusa.
   const gruposJaUsados = formData.variants.map((v) => v.name).filter(Boolean);
+  // Peça 21 (revisão): nome composto ("Cor / Tamanho") como SUGESTÃO de
+  // atributo é rua sem saída — o "/" é o separador da casa e o util da grade
+  // recusa. As partes certas já chegam pelo pré-fill do modo Completar.
   const suggestedAttributes = Array.from(
     new Set(
       gruposJaUsados.length > 0
         ? gruposJaUsados
         : ["Cor", "Tamanho", "Voltagem"],
     ),
-  ).filter(Boolean);
+  ).filter((attr) => attr !== "" && !attr.includes("/"));
   const produtoTemGrupoDemais = temGrupoDemais(formData.variants);
 
   useEffect(() => {
@@ -850,6 +876,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   }, [formData.stock]);
 
   // Sync stock dynamically if there are active variants
+  //
+  // Peça 21 (revisão): o produto que desativou TODAS as variantes tem soma
+  // das ativas = ZERO — e zero é o estoque honesto, porque a loja não tem
+  // combinação nenhuma à venda. Sem o ramo do `else`, o campo congelava na
+  // soma antiga e o produto continuava comprável "solto" (sem escolher
+  // variação, sem `variant_id` no pedido) com o estoque mentindo.
   useEffect(() => {
     const activeVariants = formData.variants.filter((v) => v.active);
     if (activeVariants.length > 0) {
@@ -860,6 +892,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       if (formData.stock !== sum.toString()) {
         setFormData((prev) => ({ ...prev, stock: sum.toString() }));
       }
+    } else if (formData.variants.length > 0 && formData.stock !== "0") {
+      // Há linhas no produto, nenhuma ativa: a soma das ativas é 0.
+      setFormData((prev) => ({ ...prev, stock: "0" }));
     }
   }, [formData.variants, formData.stock]);
 
@@ -1172,7 +1207,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     }));
     setVarianteParaDesativar(null);
     toast.info(
-      "Variante desativada — saiu da loja; o histórico dos pedidos fica.",
+      "Variante desativada — vai sair da loja quando você salvar o produto; o histórico dos pedidos fica.",
     );
   };
 
@@ -1185,7 +1220,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
         linha.id === v.id ? { ...linha, active: true } : linha,
       ),
     }));
-    toast.info("Variante reativada — voltou para a loja.");
+    toast.info(
+      "Variante reativada — volta para a loja quando você salvar o produto.",
+    );
   }, []);
 
   const handleEditVariant = useCallback((v: ProductVariant) => {
@@ -2102,6 +2139,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             variantesExistentes={formData.variants}
             sugestoesDeAtributo={suggestedAttributes}
             grupoUnicoEmUso={gruposDeVariacao(formData.variants)[0] ?? null}
+            skusDaLoja={skusDaLoja}
             onEfetivar={handleEfetivarGrade}
           />,
           document.body,
@@ -3633,10 +3671,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               {varianteParaDesativar?.value || "variante"}?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-zinc-400">
-              Ela sai da loja na hora e o estoque total do produto recalcula.
-              A linha NÃO é apagada: o histórico dos pedidos que já venderam
-              esta combinação continua intacto. Para gravar no banco, salve o
-              formulário do produto. Para desfazer, use "Reativar" na linha.
+              Ela sai da loja e o estoque total do produto recalcula QUANDO
+              VOCÊ SALVAR o produto. A linha NÃO é apagada: o histórico dos
+              pedidos que já venderam esta combinação continua intacto. Para
+              desfazer, use "Reativar" na linha.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
