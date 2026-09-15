@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { QuantitySelector } from "./QuantitySelector";
 import { StarRating } from "./StarRating";
 
 interface ProductCardProps {
@@ -37,12 +38,14 @@ interface ProductCardProps {
    * preço e imagem do card reagem à escolha, e o CTA do rodapé da folha
    * entrega a variação escolhida. Ausente, o botão leva para a tela do
    * produto (comportamento de sempre, retrocompatível). Assinatura igual ao
-   * `handleAddToCart` do App com quantity fixo em 1.
+   * `handleAddToCart` do App; peça 18 (14/09): a folha ganhou seletor de
+   * quantidade e o CTA entrega também a quantidade escolhida (padrão 1).
    */
   onAddToCartWithVariants?: (
     product: Product,
     variantId: string | undefined,
     variantNames: string,
+    quantity?: number,
   ) => void;
   onClick: (productId: string) => void;
   onMouseEnter?: (productId: string) => void;
@@ -133,6 +136,18 @@ export const ProductCard = memo(function ProductCard({
   const [selecionadas, setSelecionadas] = useState<Map<string, string>>(
     () => new Map(),
   );
+  // ── Quantidade na folha (peça 18, 14/09 — pedido do dono) ──────────────
+  // Mínimo 1; teto = estoque do item escolhido (`estoqueAtual`, o menor
+  // stockIncrement da escolha) — o mesmo número que os selos da folha
+  // anunciam. O seletor da casa (QuantitySelector, o da página do produto)
+  // já desabilita "+" na borda.
+  const [quantidade, setQuantidade] = useState(1);
+  // Foto grande da folha: é dela que a bolinha do voo até o carrinho parte
+  // (pedido do dono: "arrasta aquela bolinha do ícone do produto"). A folha
+  // já disparava o MESMO trigger do card, mas a partir do CTA do rodapé —
+  // que fica colado no carrinho na base da tela, um pulo curto que o olho
+  // não pega. Partir da foto devolve o voo inteiro, igual ao caminho do card.
+  const imagemDaFolhaRef = useRef<HTMLDivElement>(null);
 
   // ── Arrasto da alça da folha (peça 03, 13/09 — pedido do dono ao vivo) ──
   // Puxar a barrinha para baixo arrasta a folha junto; soltar além de 64px
@@ -218,6 +233,14 @@ export const ProductCard = memo(function ProductCard({
     selecionadas.size >= variantGroups.size &&
     Array.from(variantGroups.keys()).every((nome) => selecionadas.has(nome));
 
+  // A quantidade nunca passa do estoque do item VIVO: trocar a variação com
+  // quantidade 5 na mão para uma com estoque 3 tem que descer para 3 — sem
+  // isso o CTA entregaria pedido acima do que existe (o CartContext corta,
+  // mas o seletor da folha não podia nem oferecer).
+  useEffect(() => {
+    setQuantidade((atual) => Math.min(atual, Math.max(estoqueAtual, 1)));
+  }, [estoqueAtual]);
+
   // Loja recém-criada ou produto com variantes cadastradas mas TODAS sem
   // estoque: sem isso a folha abre só com chips riscados e nada pode ser
   // escolhido -- a única saída seria fechar, o que parece a tela travada com
@@ -286,6 +309,7 @@ export const ProductCard = memo(function ProductCard({
 
   const handleAdicionarComOpcoes = (e: React.MouseEvent) => {
     if (cartStatus !== "idle") return;
+    if (estoqueAtual <= 0) return;
 
     // Mesma exigência da página de produto: TODOS os grupos de opção
     // precisam de uma escolha antes do carrinho — e a mensagem diz qual
@@ -309,21 +333,39 @@ export const ProductCard = memo(function ProductCard({
     const imgSrc = imagemDaVariante || product.images?.[0] || "";
 
     setCartStatus("loading");
-    triggerFlyingCartAnimation(e.currentTarget as HTMLElement, imgSrc);
-    onAddToCartWithVariants?.(product, variantId, variantNames);
+    // Peça 18 (14/09): o MESMO trigger de voo do caminho do card, agora
+    // partindo da FOTO da folha (o "ícone do produto" do pedido do dono) —
+    // antes partia do CTA do rodapé, colado no carrinho, e o voo era um
+    // pulo invisível na base da tela. Fallback: sem foto medida, o CTA.
+    triggerFlyingCartAnimation(
+      imagemDaFolhaRef.current ?? (e.currentTarget as HTMLElement),
+      imgSrc,
+    );
+    onAddToCartWithVariants?.(
+      product,
+      variantId,
+      variantNames,
+      // Defesa na origem: quantity nunca acima do estoque do item (o
+      // CartContext corta de novo, do lado de lá).
+      Math.min(quantidade, estoqueAtual),
+    );
 
-    // DECISÃO PAGA (12/09, portada para a folha em 13/09 -- ver relatório
-    // da tarefa original): a folha NÃO fecha nem limpa a escolha sozinho
-    // depois do "Salvo!". Fechar automático apagava junto a escolha de quem
-    // estava comprando DUAS variações do mesmo produto (P e M, dois
-    // sabores), forçando recomeçar do zero. Fechar é sempre um gesto
-    // explícito: alça, toque fora (overlay) ou Escape.
+    // PEÇA 18 (14/09 — novo pedido do dono, que REVOGOU a decisão de
+    // 12/09): depois do "Salvo!" a folha FECHA sozinha. O fecho é pelo
+    // mecanismo de sempre da folha (setFolhaOpcoesAberta — alça, clique
+    // fora, Escape e guardião do sheet.tsx seguem intactos). A escolha de
+    // variação continua viva no card (reabrir mantém; ver teste irmão), e a
+    // quantidade volta a 1 — pedido novo começa do um.
     const idLoading = window.setTimeout(() => {
       setCartStatus("success");
-      const idSuccess = window.setTimeout(() => {
+      // 700 ms de "Salvo!" visível: o voo (750 ms) já aterrissou e o olho
+      // registra a confirmação antes da folha deslizar para fora.
+      const idFechar = window.setTimeout(() => {
         setCartStatus("idle");
-      }, 1500);
-      timersRef.current.push(idSuccess);
+        setQuantidade(1);
+        setFolhaOpcoesAberta(false);
+      }, 700);
+      timersRef.current.push(idFechar);
     }, 600);
     timersRef.current.push(idLoading);
   };
@@ -713,14 +755,22 @@ export const ProductCard = memo(function ProductCard({
               {/* Banda de FOTO grande (a promessa da direção B: a foto da
                   folha era MENOR que a do card atrás no thumbnail antigo e
                   viciava a comparação -- 104x130 vs 165x206, medido 13/09).
-                  Reage à variante escolhida via `srcImagem`. */}
-              <LazyImage
-                src={srcImagem}
-                alt={product.name}
-                priority
-                sizes="(min-width: 640px) 448px, 100vw"
-                className="h-44 w-full rounded-2xl"
-              />
+                  Reage à variante escolhida via `srcImagem`. Peça 18 (14/09):
+                  o wrapper com ref é a âncora do VOO até o carrinho — é daqui
+                  que a bolinha parte quando o CTA entrega (mesmo trigger do
+                  caminho do card, triggerFlyingCartAnimation). */}
+              <div
+                ref={imagemDaFolhaRef}
+                data-testid="product-card-options-image"
+              >
+                <LazyImage
+                  src={srcImagem}
+                  alt={product.name}
+                  priority
+                  sizes="(min-width: 640px) 448px, 100vw"
+                  className="h-44 w-full rounded-2xl"
+                />
+              </div>
               <div className="flex flex-col gap-1.5">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   {product.category}
@@ -850,6 +900,26 @@ export const ProductCard = memo(function ProductCard({
                     </div>
                   </div>
                 ))
+              )}
+
+              {/* ── QUANTIDADE (peça 18, 14/09 — pedido do dono) ──────────
+                  Seletor da casa (o mesmo da página do produto): mínimo 1,
+                  teto = estoque do item escolhido (o número que os selos
+                  desta folha já anunciam). "+"/"−" desabilitam nas bordas.
+                  Some só quando não há nada em estoque para escolher. */}
+              {estoqueAtual > 0 && (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                    Quantidade
+                  </span>
+                  <div>
+                    <QuantitySelector
+                      quantity={quantidade}
+                      maxQuantity={Math.max(estoqueAtual, 1)}
+                      onChange={setQuantidade}
+                    />
+                  </div>
+                </div>
               )}
             </div>
 
