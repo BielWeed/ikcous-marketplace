@@ -7,6 +7,20 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.34.2] - 2026-09-14
+
+**A descrição do pagamento do Mercado Pago no guia ficou tecnicamente correta**
+(pedido do dono, que questionou o termo): a peça 26 investigou a documentação
+OFICIAL do Mercado Pago (com links e data de acesso no relatório) e confirmou
+— o app usa a **Checkout API na variante atual, via Orders API** (o Pix é
+criado pelo nosso servidor, `POST /v1/orders`), com o **Payment Brick**
+(componente oficial de pagamento do MP) embutido na nossa tela de checkout. O
+prompt do guia agora descreve exatamente isso (a doc também chama o mesmo
+produto de "Checkout Transparente") — a variante antiga via `POST /v1/payments`
+está marcada como legada na doc e saiu da descrição. Zero mudança de
+funcionalidade: só o texto do guia e comentários. Nenhum defeito de
+implementação foi encontrado. Reúne o PR #612.
+
 ## [1.34.1] - 2026-09-14
 
 **O guia do Mercado Pago ficou bem mais mastigado** (pedido do dono, para
