@@ -925,7 +925,7 @@ describe("entrega preparada chega ao observador e é conferida", () => {
         path.join(saida, "_redirects"),
         "utf8",
       );
-      expect(redirecionamentos.trimEnd().split("\n")).toHaveLength(108);
+      expect(redirecionamentos.trimEnd().split("\n")).toHaveLength(110);
       expect(
         JSON.parse(await fs.readFile(path.join(saida, "_routes.json"), "utf8")),
       ).toEqual({

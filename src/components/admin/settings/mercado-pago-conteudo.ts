@@ -61,7 +61,7 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
   {
     titulo: "Volte aqui, cole as chaves, salve e teste",
     descricao:
-      'Copie a Public Key e o Access Token de produção e cole nos campos abaixo. Toque em "Salvar chaves" e depois em "Testar conexão" — a resposta aparece aqui mesmo, na hora. Importante: para o dinheiro do Pix cair na sua conta, ela precisa ter uma CHAVE PIX registrada — veja isso na sua conta do Mercado Pago (área do Pix), não aqui no app.',
+      'Copie a Public Key e o Access Token de produção e cole nos campos abaixo. Toque em "Salvar chaves" e depois em "Testar conexão" — a resposta aparece aqui mesmo, na hora. O campo "Chave de notificações (opcional)" é OPCIONAL: pode deixar vazio e colar depois, quando quiser — o pagamento por Pix já funciona sem ela. Importante: para o dinheiro do Pix cair na sua conta, ela precisa ter uma CHAVE PIX registrada — veja isso na sua conta do Mercado Pago (área do Pix), não aqui no app.',
   },
 ];
 
@@ -86,12 +86,21 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
  * API (a cobrança do Pix nasce no nosso servidor), com o componente oficial
  * de pagamento (Payment Brick) embutido na nossa tela. Os endpoints ficam no
  * código, não no prompt — provas no relatório o-que-nosso-app-usa.md na mesa.
+ *
+ * Peça 27 (15/09, pedido do dono depois do teste REAL dele): o prompt não
+ * mencionava a CHAVE DE NOTIFICAÇÕES (webhook secret) — terceira chave do
+ * painel do MP, OPCIONAL nesta integração (o campo existe na tela; o Pix
+ * funciona sem ela — o teste do dono foi feito sem ela). O prompt agora
+ * pede ao agente o passo a passo leigo de onde copiar essa chave (área de
+ * Webhooks da aplicação, se for lá), e o guia diz que ela é opcional.
  */
 export const PROMPT_PARA_AGENTE_MP = `Olá! Eu tenho uma loja que vende dentro do MEU PRÓPRIO aplicativo (o app da minha marca) e quero receber pagamento de PIX dentro dele, pelo Mercado Pago. Meu app foi montado para usar a integração oficial chamada CHECKOUT API do Mercado Pago (na documentação ela também aparece como Checkout Transparente): a tela de pagamento abre dentro do meu aplicativo, com o componente oficial de pagamento do Mercado Pago embutido nela, e o Pix do cliente é criado automaticamente pelo meu sistema conversando direto com a API do Mercado Pago — não usa maquininha, nem link de pagamento, nem site externo.
 
 Para isso eu preciso de 2 credenciais da MINHA própria conta do Mercado Pago, e as duas têm que ser de PRODUÇÃO (as de verdade, que recebem dinheiro de verdade — não as de teste):
 1) PUBLIC KEY (chave pública)
 2) ACCESS TOKEN (token de acesso)
+
+Existe também uma TERCEIRA chave, que é OPCIONAL: a CHAVE DE NOTIFICAÇÕES (na documentação aparece como "Webhook secret" ou "chave secreta de webhooks"). O pagamento por Pix JÁ FUNCIONA sem ela, então sem pressa — mas se for rápido, me ensine onde copiá-la no final.
 
 Me guie como se eu nunca tivesse usado o Mercado Pago na vida — eu sou leigo nesse assunto. É importante que você:
 - Me dê UM passo por vez, bem curtinho, dizendo exatamente ONDE eu toco: o nome do menu, do ícone ou do botão, do jeito que aparece na tela do celular.
@@ -100,6 +109,7 @@ Me guie como se eu nunca tivesse usado o Mercado Pago na vida — eu sou leigo n
 - Se algo não aparecer para mim, me dê o caminho alternativo: entrar com a minha conta no site developers.mercadopago.com, abrir "Suas integrações", criar a aplicação da minha loja e abrir "Credenciais de produção".
 - Sempre usar a MESMA conta que eu uso no aplicativo do Mercado Pago do meu celular.
 - Quando eu chegar nas credenciais, me mostrar exatamente o botão de copiar cada uma — primeiro a Public Key, depois o Access Token — e me avisar que vou colar as duas no aplicativo da minha loja, nos Ajustes, na parte "Suas chaves".
+- No final, me ensinar onde copiar a chave OPCIONAL de notificações (Webhook secret) que mencionei: me mostre o caminho exato na área de "Webhooks" da minha aplicação no painel de desenvolvedores (se for lá que ela fica), o botão de copiar, e me lembre que ela é OPCIONAL — o Pix já funciona sem ela, então posso colar depois.
 
 Importante: essas chaves são SECRETAS. Eu só vou usá-las no painel do Mercado Pago e no aplicativo da minha loja; nunca vou enviá-las para outra pessoa, nem colar em outro site, nem em outra conversa.`;
 

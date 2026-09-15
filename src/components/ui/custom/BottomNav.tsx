@@ -68,6 +68,9 @@ export const BottomNav = memo(function BottomNav({
             (item.view === "profile" &&
               [
                 "profile",
+                // Peça 24: "Sobre a Loja" abre a partir do Perfil — a aba
+                // segue selecionada (aria-current) com a página da loja no ar.
+                "about-store",
                 "account-settings",
                 "address-form",
                 "login",

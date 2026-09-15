@@ -314,6 +314,271 @@ const containerVariants: Variants = {
   visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
 };
 
+// ── Redesenho do gerenciador (peça 23): situação em UMA linha por banner ──
+// Mesmos dados de antes (active/startDate/endDate + formatDistanceToNow),
+// só que em vez de espalhar badges empilhadas, cada card mostra um ponto
+// colorido e uma frase: "qual banner está onde e ligado ou não" em 1 olhar.
+const situacaoDoBanner = (
+  banner: Banner,
+): { rotulo: string; ponto: string; texto: string } => {
+  if (!banner.active) {
+    return { rotulo: "Pausado", ponto: "bg-zinc-500", texto: "text-zinc-500" };
+  }
+  const agora = new Date();
+  if (banner.startDate && new Date(banner.startDate) > agora) {
+    return {
+      rotulo: `Agendado — entra no ar ${formatDistanceToNow(banner.startDate)}`,
+      ponto: "bg-[#FFBF00]",
+      texto: "text-[#FFBF00]",
+    };
+  }
+  if (banner.endDate && new Date(banner.endDate) < agora) {
+    return {
+      rotulo: `Expirado — saiu do ar ${formatDistanceToNow(banner.endDate)}`,
+      ponto: "bg-rose-400",
+      texto: "text-rose-400",
+    };
+  }
+  if (banner.endDate) {
+    return {
+      rotulo: `No ar — expira ${formatDistanceToNow(banner.endDate)}`,
+      ponto: "bg-emerald-400",
+      texto: "text-emerald-400",
+    };
+  }
+  if (banner.startDate) {
+    return {
+      rotulo: `No ar — começou ${formatDistanceToNow(banner.startDate)}`,
+      ponto: "bg-emerald-400",
+      texto: "text-emerald-400",
+    };
+  }
+  return {
+    rotulo: "No ar",
+    ponto: "bg-emerald-400",
+    texto: "text-emerald-400",
+  };
+};
+
+interface ControleAtivo {
+  id: string;
+  type: "up" | "down" | "toggle" | "delete";
+}
+
+interface CartaoDoBannerProps {
+  readonly banner: Banner;
+  /** Rótulo curto da posição (mostrado só quando a lista mistura setores). */
+  readonly posicaoCurta: string | null;
+  readonly indice: number;
+  readonly total: number;
+  readonly detalhado: boolean;
+  readonly isProcessing: boolean;
+  readonly isOffline: boolean;
+  readonly activeAction: ControleAtivo | null;
+  readonly onMover: (banner: Banner, direcao: "up" | "down") => void;
+  readonly onAlternar: (banner: Banner) => void;
+  readonly onEditar: (banner: Banner) => void;
+  readonly onExcluir: (id: string, imageUrl: string) => void;
+}
+
+const CartaoDoBanner = memo(function CartaoDoBanner({
+  banner,
+  posicaoCurta,
+  indice,
+  total,
+  detalhado,
+  isProcessing,
+  isOffline,
+  activeAction,
+  onMover,
+  onAlternar,
+  onEditar,
+  onExcluir,
+}: CartaoDoBannerProps) {
+  const situacao = situacaoDoBanner(banner);
+  const ocupado = activeAction?.id === banner.id;
+
+  return (
+    <motion.div
+      layout
+      variants={itemVariants}
+      className={cn(
+        "group relative w-full max-w-full overflow-hidden rounded-2xl border border-white/[0.06] bg-zinc-950/60 transition-colors duration-300 hover:border-white/[0.12] hover:bg-zinc-900/40",
+        !banner.active && "opacity-60",
+      )}
+    >
+      <div
+        className={cn("flex w-full flex-col gap-3 p-3", detalhado && "sm:p-4")}
+      >
+        {/* Conteúdo: miniatura + título + situação + rota.
+            No detalhado abaixo de sm, empilha (imagem em cima) — com w-full +
+            shrink-0 numa linha horizontal, a miniatura consumiria a largura
+            inteira e espremeria o texto até sumir atrás do overflow-hidden. */}
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-3",
+            detalhado && "flex-col items-stretch sm:flex-row sm:items-center",
+          )}
+        >
+          <div
+            className={cn(
+              "relative shrink-0 overflow-hidden rounded-xl border border-white/5 bg-zinc-900",
+              detalhado
+                ? "aspect-[21/9] w-full sm:w-44 lg:w-64 xl:w-80"
+                : "aspect-[21/9] w-28 sm:w-32",
+              !banner.active && "opacity-70 grayscale",
+            )}
+          >
+            <LazyImage
+              src={banner.imageUrl}
+              alt={banner.title || "Banner"}
+              className="size-full object-cover"
+            />
+          </div>
+
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h3
+                className={cn(
+                  "min-w-0 max-w-full truncate font-semibold text-white",
+                  detalhado ? "text-sm sm:text-base" : "text-sm",
+                )}
+              >
+                {banner.title || "Campanha sem Título"}
+              </h3>
+              <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+                #{banner.order}
+              </span>
+              {posicaoCurta && (
+                <span className="hidden shrink-0 text-[10px] text-zinc-500 sm:inline">
+                  · {posicaoCurta}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 text-[11px]">
+              <span
+                className={cn("size-1.5 shrink-0 rounded-full", situacao.ponto)}
+              />
+              <span
+                className={cn("min-w-0 truncate font-medium", situacao.texto)}
+              >
+                {situacao.rotulo}
+              </span>
+            </div>
+
+            {banner.link && (
+              <div className="flex min-w-0 items-center gap-1 font-mono text-[10px] text-zinc-500">
+                <ExternalLink className="size-2.5 shrink-0" />
+                <span className="min-w-0 truncate">{banner.link}</span>
+              </div>
+            )}
+
+            {banner.startDate &&
+              banner.endDate &&
+              banner.active &&
+              (() => {
+                const agora = new Date();
+                const inicio = new Date(banner.startDate!);
+                const fim = new Date(banner.endDate!);
+                if (agora < inicio || agora > fim) return null;
+                const totalMs = fim.getTime() - inicio.getTime();
+                const decorrido = agora.getTime() - inicio.getTime();
+                const pct = Math.min(
+                  100,
+                  Math.max(0, (decorrido / totalMs) * 100),
+                );
+                return (
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <div className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/5">
+                      <div
+                        className="h-full rounded-full bg-emerald-400/80"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="shrink-0 font-mono text-[9px] text-zinc-500">
+                      {Math.round(pct)}%
+                    </span>
+                  </div>
+                );
+              })()}
+          </div>
+        </div>
+
+        {/* Controles: ordem · exibir · editar · excluir */}
+        <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] pt-2.5">
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center rounded-lg border border-white/[0.06] bg-white/[0.03] p-0.5">
+              <button
+                onClick={() => onMover(banner, "up")}
+                disabled={indice === 0 || isProcessing || isOffline}
+                className="flex size-9 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
+                title="Mover para cima"
+              >
+                {ocupado && activeAction?.type === "up" ? (
+                  <Loader2 className="size-4 animate-spin text-[#FFBF00]" />
+                ) : (
+                  <ArrowUp className="size-4" />
+                )}
+              </button>
+              <button
+                onClick={() => onMover(banner, "down")}
+                disabled={indice === total - 1 || isProcessing || isOffline}
+                className="flex size-9 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
+                title="Mover para baixo"
+              >
+                {ocupado && activeAction?.type === "down" ? (
+                  <Loader2 className="size-4 animate-spin text-[#FFBF00]" />
+                ) : (
+                  <ArrowDown className="size-4" />
+                )}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">
+                Exibir
+              </span>
+              <Switch
+                id={`banner-card-active-${banner.id}`}
+                checked={banner.active}
+                onCheckedChange={() => onAlternar(banner)}
+                disabled={
+                  (ocupado && activeAction?.type === "toggle") || isOffline
+                }
+                className="scale-90 data-[state=checked]:bg-[#FFBF00]"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => onEditar(banner)}
+              disabled={isProcessing || isOffline}
+              className="flex size-9 items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.03] text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+              title="Editar"
+            >
+              <Edit className="size-4 text-[#FFBF00]" />
+            </button>
+            <button
+              onClick={() => onExcluir(banner.id, banner.imageUrl)}
+              disabled={isProcessing || isOffline}
+              className="flex size-9 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-400 transition-colors hover:bg-rose-500 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+              title="Excluir"
+            >
+              {ocupado && activeAction?.type === "delete" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash className="size-4" />
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+});
+
 const itemVariants: Variants = {
   hidden: { opacity: 0, y: 15, scale: 0.98 },
   visible: {
@@ -1569,7 +1834,9 @@ export const AdminBannersView = memo(function AdminBannersView({
         value: activeBanners,
         accent: "text-[#FFBF00]",
         subValue: `/ ${totalBanners} total`,
-        footer: "Banners atualmente visíveis no app",
+        // Fiel à contagem (que é só o flag `active`): "visíveis no app" era
+        // falso — a vitrine também respeita início/fim da programação.
+        footer: "Ligados; a vitrine também aplica o período",
       },
       {
         id: "distribuicao",
@@ -1601,40 +1868,26 @@ export const AdminBannersView = memo(function AdminBannersView({
   );
 
   const renderSkeleton = () => (
-    <div className="animate-pulse select-none space-y-16">
+    <div className="animate-pulse select-none space-y-10">
       {visiblePositions.map((pos) => (
-        <div key={pos.value} className="space-y-6">
+        <div key={pos.value} className="space-y-3">
           {selectedTab === "all" && (
-            <div className="flex items-center justify-between border-b border-white/5 px-2 pb-4">
-              <div className="flex items-center gap-3">
-                <Skeleton className="size-3.5 rounded-full bg-white/5" />
-                <Skeleton className="h-4.5 w-32 rounded bg-white/5" />
-              </div>
+            <div className="flex items-center justify-between px-0.5">
+              <Skeleton className="h-3 w-44 rounded bg-white/5" />
               <Skeleton className="h-3 w-16 rounded bg-white/5" />
             </div>
           )}
-          <div className="grid gap-6">
+          <div className="space-y-3">
             {[1, 2].map((i) => (
               <div
                 key={i}
-                className="flex h-[230px] flex-col items-center gap-6 rounded-[2.5rem] border border-white/5 bg-zinc-950/30 p-4 sm:h-[180px] sm:p-5 lg:h-[230px] lg:flex-row xl:h-[180px]"
+                className="rounded-2xl border border-white/5 bg-zinc-950/40 p-3"
               >
-                <Skeleton className="aspect-[21/9] w-full shrink-0 rounded-2xl bg-white/5 lg:w-[380px] xl:w-[440px]" />
-                <div className="w-full flex-1 space-y-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-5 w-1/2 rounded bg-white/5" />
-                      <div className="flex gap-2">
-                        <Skeleton className="h-4.5 w-16 rounded bg-white/5" />
-                        <Skeleton className="h-4.5 w-16 rounded bg-white/5" />
-                      </div>
-                    </div>
-                    <Skeleton className="h-8 w-16 rounded bg-white/5" />
-                  </div>
-                  <div className="h-px w-full bg-white/5" />
-                  <div className="flex gap-3">
-                    <Skeleton className="h-9 flex-1 rounded-xl bg-white/5" />
-                    <Skeleton className="h-9 w-20 rounded-xl bg-white/5" />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Skeleton className="aspect-[21/9] w-full shrink-0 rounded-xl bg-white/5 sm:w-44 lg:w-64 xl:w-80" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-4 w-1/2 rounded bg-white/5" />
+                    <Skeleton className="h-3 w-1/3 rounded bg-white/5" />
                   </div>
                 </div>
               </div>
@@ -1646,40 +1899,27 @@ export const AdminBannersView = memo(function AdminBannersView({
   );
 
   const renderCompactSkeleton = () => (
-    <div className="animate-pulse select-none space-y-12">
+    <div className="animate-pulse select-none space-y-10">
       {visiblePositions.map((pos) => (
-        <div key={pos.value} className="space-y-4">
+        <div key={pos.value} className="space-y-3">
           {selectedTab === "all" && (
-            <div className="flex items-center justify-between border-b border-white/5 px-2 pb-2">
-              <div className="flex items-center gap-2">
-                <Skeleton className="size-2 rounded-full bg-white/5" />
-                <Skeleton className="h-4 w-24 rounded bg-white/5" />
-              </div>
-              <Skeleton className="h-3 w-12 rounded bg-white/5" />
+            <div className="flex items-center justify-between px-0.5">
+              <Skeleton className="h-3 w-36 rounded bg-white/5" />
+              <Skeleton className="h-3 w-14 rounded bg-white/5" />
             </div>
           )}
-          <div className="grid gap-3">
+          <div className="space-y-3">
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-zinc-950/10 p-3 sm:flex-row sm:items-center sm:justify-between"
+                className="rounded-2xl border border-white/5 bg-zinc-950/40 p-3"
               >
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <Skeleton className="aspect-[21/9] w-24 shrink-0 rounded-lg bg-white/5 sm:w-28" />
+                <div className="flex items-center gap-3">
+                  <Skeleton className="aspect-[21/9] w-28 shrink-0 rounded-xl bg-white/5 sm:w-32" />
                   <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex items-center gap-1.5">
-                      <Skeleton className="h-4 w-1/3 rounded bg-white/5" />
-                      <Skeleton className="h-3.5 w-8 rounded bg-white/5" />
-                    </div>
-                    <Skeleton className="h-3 w-1/2 rounded bg-white/5" />
+                    <Skeleton className="h-4 w-1/2 rounded bg-white/5" />
+                    <Skeleton className="h-3 w-1/3 rounded bg-white/5" />
                   </div>
-                </div>
-                <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/5 pt-2 sm:justify-end sm:border-t-0 sm:pt-0">
-                  <div className="flex gap-1">
-                    <Skeleton className="size-7 rounded bg-white/5" />
-                    <Skeleton className="size-7 rounded bg-white/5" />
-                  </div>
-                  <Skeleton className="h-5 w-10 rounded-full bg-white/5" />
                 </div>
               </div>
             ))}
@@ -1723,17 +1963,17 @@ export const AdminBannersView = memo(function AdminBannersView({
                       </button>
                     </AdminPageHeader>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[9px] font-medium text-zinc-400">
-                    <span className="flex items-center gap-1">
-                      <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)] animate-pulse" />
-                      <span className="font-semibold text-emerald-400 uppercase text-[9px] tracking-wider">
-                        {activeBanners} Ativo{activeBanners !== 1 ? "s" : ""}
-                      </span>
+                  <div className="flex items-center gap-1.5 text-[10px] font-medium text-zinc-500">
+                    <span className="size-1.5 rounded-full bg-emerald-400/90" />
+                    <span className="text-zinc-400">
+                      {/* "Ligados" = só o interruptor (active). "No ar" seria
+                          falso: a vitrine também respeita início/fim
+                          (getBannersByPosition), então banner agendado ou
+                          expirado fica ligado mas fora do ar. */}
+                      {activeBanners} ligados
                     </span>
-                    <span className="text-zinc-600">•</span>
-                    <span className="text-zinc-400 text-[9px] uppercase tracking-wider">
-                      {totalBanners} Total
-                    </span>
+                    <span className="text-zinc-700">•</span>
+                    <span>{totalBanners} no total</span>
                   </div>
                 </div>
               </div>
@@ -1766,97 +2006,41 @@ export const AdminBannersView = memo(function AdminBannersView({
 
             {/* Filter Tabs & Options */}
             {isLoaded && banners.length > 0 && (
-              <div className="select-none space-y-4">
-                <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-3">
-                  <div className="relative flex items-center rounded-xl border border-white/5 bg-zinc-950 p-0.5">
-                    <button
-                      onClick={() => setSelectedTab("all")}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-300 relative",
-                        selectedTab === "all"
-                          ? "text-black"
-                          : "text-zinc-500 hover:text-zinc-300",
-                      )}
-                    >
-                      <span className="relative z-10">Todos</span>
-                      {selectedTab === "all" && (
-                        <motion.div
-                          layoutId="activeBannerTab"
-                          className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FFBF00] to-amber-500 shadow-md"
-                          transition={{
-                            type: "spring",
-                            stiffness: 380,
-                            damping: 30,
-                          }}
-                        />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setSelectedTab("home_top")}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-300 relative",
-                        selectedTab === "home_top"
-                          ? "text-black"
-                          : "text-zinc-500 hover:text-zinc-300",
-                      )}
-                    >
-                      <span className="relative z-10">Topo</span>
-                      {selectedTab === "home_top" && (
-                        <motion.div
-                          layoutId="activeBannerTab"
-                          className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FFBF00] to-amber-500 shadow-md"
-                          transition={{
-                            type: "spring",
-                            stiffness: 380,
-                            damping: 30,
-                          }}
-                        />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setSelectedTab("home_middle")}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-300 relative",
-                        selectedTab === "home_middle"
-                          ? "text-black"
-                          : "text-zinc-500 hover:text-zinc-300",
-                      )}
-                    >
-                      <span className="relative z-10">Meio</span>
-                      {selectedTab === "home_middle" && (
-                        <motion.div
-                          layoutId="activeBannerTab"
-                          className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FFBF00] to-amber-500 shadow-md"
-                          transition={{
-                            type: "spring",
-                            stiffness: 380,
-                            damping: 30,
-                          }}
-                        />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setSelectedTab("home_bottom")}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-300 relative",
-                        selectedTab === "home_bottom"
-                          ? "text-black"
-                          : "text-zinc-500 hover:text-zinc-300",
-                      )}
-                    >
-                      <span className="relative z-10">Base</span>
-                      {selectedTab === "home_bottom" && (
-                        <motion.div
-                          layoutId="activeBannerTab"
-                          className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FFBF00] to-amber-500 shadow-md"
-                          transition={{
-                            type: "spring",
-                            stiffness: 380,
-                            damping: 30,
-                          }}
-                        />
-                      )}
-                    </button>
+              <div className="select-none space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-zinc-950/60 p-1">
+                    {(
+                      [
+                        ["all", "Todos"],
+                        ["home_top", "Topo"],
+                        ["home_middle", "Meio"],
+                        ["home_bottom", "Base"],
+                      ] as const
+                    ).map(([valor, rotulo]) => (
+                      <button
+                        key={valor}
+                        onClick={() => setSelectedTab(valor)}
+                        className={cn(
+                          "relative rounded-lg px-3.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors duration-300",
+                          selectedTab === valor
+                            ? "text-black"
+                            : "text-zinc-400 hover:text-white",
+                        )}
+                      >
+                        <span className="relative z-10">{rotulo}</span>
+                        {selectedTab === valor && (
+                          <motion.div
+                            layoutId="activeBannerTab"
+                            className="absolute inset-0 rounded-lg bg-[#FFBF00]"
+                            transition={{
+                              type: "spring",
+                              stiffness: 380,
+                              damping: 30,
+                            }}
+                          />
+                        )}
+                      </button>
+                    ))}
                   </div>
 
                   <Button
@@ -1867,7 +2051,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         prev === "detailed" ? "compact" : "detailed",
                       )
                     }
-                    className="group size-8 shrink-0 rounded-lg border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    className="group size-10 shrink-0 rounded-xl border-zinc-800 bg-zinc-950/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:ring-0 focus-visible:ring-offset-0"
                     title={
                       viewMode === "detailed"
                         ? "Visualização Compacta"
@@ -1875,15 +2059,15 @@ export const AdminBannersView = memo(function AdminBannersView({
                     }
                   >
                     {viewMode === "detailed" ? (
-                      <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                      <List className="size-4.5 text-zinc-400 transition-colors group-hover:text-admin-gold" />
                     ) : (
-                      <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                      <LayoutGrid className="size-4.5 text-zinc-400 transition-colors group-hover:text-admin-gold" />
                     )}
                   </Button>
                 </div>
 
                 {/* Search & Status Filters Row */}
-                <div className="flex w-full items-center gap-2 border-b border-white/5 pb-3">
+                <div className="flex w-full items-center gap-2">
                   <div className="relative flex-1">
                     <Input
                       id="banner-search-input"
@@ -1892,19 +2076,20 @@ export const AdminBannersView = memo(function AdminBannersView({
                       placeholder="Buscar campanhas..."
                       value={searchQueryList}
                       onChange={(e) => setSearchQueryList(e.target.value)}
-                      className="h-10 rounded-xl border-white/10 bg-zinc-900/50 px-10 text-xs text-white placeholder:text-zinc-500 focus:ring-[#FFBF00]"
+                      className="h-11 rounded-xl border-white/10 bg-zinc-950/60 px-10 text-sm text-white placeholder:text-zinc-500 focus:ring-[#FFBF00]"
                     />
                     <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
                     {searchQueryList && (
                       <button
                         onClick={() => setSearchQueryList("")}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+                        className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-500 hover:text-white"
+                        title="Limpar busca"
                       >
                         <X className="size-4" />
                       </button>
                     )}
                   </div>
-                  <div className="w-28 shrink-0">
+                  <div className="w-32 shrink-0">
                     <Select
                       name="statusFilter"
                       value={statusFilter}
@@ -1912,7 +2097,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     >
                       <SelectTrigger
                         id="banner-status-filter"
-                        className="h-10 rounded-xl border-white/10 bg-zinc-900/50 text-[10px] font-bold uppercase tracking-wider focus:ring-[#FFBF00]"
+                        className="h-11 rounded-xl border-white/10 bg-zinc-950/60 text-[11px] font-bold uppercase tracking-wider focus:ring-[#FFBF00]"
                       >
                         <SelectValue placeholder="Status" />
                       </SelectTrigger>
@@ -1974,7 +2159,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                 initial="hidden"
                 animate="visible"
                 className={cn(
-                  viewMode === "compact" ? "space-y-10" : "space-y-16",
+                  viewMode === "compact" ? "space-y-8" : "space-y-10",
                 )}
               >
                 {visiblePositions.map((pos) => {
@@ -1986,33 +2171,30 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <div
                       key={pos.value}
                       className={cn(
-                        viewMode === "compact" ? "space-y-4" : "space-y-6",
+                        viewMode === "compact" ? "space-y-3" : "space-y-3",
                       )}
                     >
                       {selectedTab === "all" && (
-                        <div className="flex select-none items-center justify-between border-b border-white/5 px-2 pb-2">
-                          <div className="flex items-center gap-3">
-                            <div className="size-2.5 animate-pulse rounded-full bg-gradient-to-br from-[#FFBF00] to-amber-500 shadow-[0_0_10px_rgba(255,191,0,0.5)]" />
-                            <h2 className="text-xs font-black uppercase italic tracking-widest text-white">
-                              {pos.label}
-                            </h2>
-                          </div>
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                        <div className="flex select-none items-baseline justify-between px-0.5">
+                          <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-zinc-400">
+                            <span className="size-1.5 rounded-full bg-[#FFBF00]/80" />
+                            {pos.label}
+                          </h2>
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                             {positionBanners.length}{" "}
                             {positionBanners.length === 1
-                              ? "Banner"
-                              : "Banners"}
+                              ? "banner"
+                              : "banners"}
                           </span>
                         </div>
                       )}
 
                       {positionBanners.length === 0 ? (
-                        <div className="group/empty flex flex-col items-center justify-center rounded-[2.5rem] border border-dashed border-white/5 bg-zinc-950/20 p-12 text-center backdrop-blur-sm transition-all duration-300 hover:border-zinc-800">
-                          <Layout className="mb-3 size-8 text-zinc-700 transition-colors group-hover/empty:text-zinc-500" />
-                          <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-zinc-950/20 px-6 py-10 text-center">
+                          <p className="mb-3 text-[11px] font-medium text-zinc-500">
                             {searchQueryList || statusFilter !== "all"
-                              ? "Nenhum Banner neste setor para os filtros ativos"
-                              : "Nenhum Banner cadastrado neste Setor"}
+                              ? "Nenhum banner neste setor para os filtros ativos"
+                              : "Nenhum banner cadastrado neste setor"}
                           </p>
                           {!searchQueryList && statusFilter === "all" && (
                             <button
@@ -2022,527 +2204,40 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 } as Banner)
                               }
                               disabled={isOffline}
-                              className="text-[10px] font-black uppercase tracking-widest text-[#FFBF00] underline transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-50 disabled:grayscale"
+                              className="rounded-lg border border-[#FFBF00]/30 bg-[#FFBF00]/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#FFBF00] transition-colors hover:bg-[#FFBF00]/20 disabled:pointer-events-none disabled:opacity-50"
                             >
                               + Adicionar Primeiro Banner
                             </button>
                           )}
                         </div>
                       ) : (
-                        <motion.div
-                          layout
+                        <div
                           className={
-                            viewMode === "compact" ? "grid gap-3" : "grid gap-6"
+                            viewMode === "compact" ? "grid gap-3" : "grid gap-4"
                           }
                         >
-                          {positionBanners.map((banner, index) => {
-                            if (viewMode === "compact") {
-                              return (
-                                <motion.div
-                                  layout
-                                  key={banner.id}
-                                  variants={itemVariants}
-                                  className={cn(
-                                    "group relative w-full max-w-full overflow-hidden bg-zinc-950/20 border border-white/5 rounded-2xl p-3 transition-all duration-300 hover:border-zinc-800 hover:bg-zinc-950/40 hover:shadow-lg",
-                                    !banner.active && "opacity-60",
-                                  )}
-                                >
-                                  <div className="flex w-full max-w-full flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                                    {/* Left Side: Thumbnail, Title, Sector/Order badges, and Link */}
-                                    <div className="flex min-w-0 w-full flex-1 items-center gap-3">
-                                      {/* Thumbnail */}
-                                      <div className="relative aspect-[21/9] w-24 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-zinc-900 shadow-md sm:w-28">
-                                        <LazyImage
-                                          src={banner.imageUrl}
-                                          alt={banner.title || "Banner"}
-                                          className="size-full object-cover"
-                                        />
-                                        {!banner.active && (
-                                          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-[7px] font-black uppercase tracking-wider text-white/80">
-                                            Pausado
-                                          </div>
-                                        )}
-                                      </div>
-
-                                      {/* Title, Badge and Link Info */}
-                                      <div className="min-w-0 flex-1 space-y-1 overflow-hidden">
-                                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                                          <h4 className="truncate min-w-0 max-w-full text-xs font-bold text-white transition-colors group-hover:text-admin-gold">
-                                            {banner.title ||
-                                              "Campanha sem Título"}
-                                          </h4>
-                                          <div className="shrink-0 rounded border border-white/5 bg-zinc-900 px-1.5 py-0.5 text-[8px] font-bold text-zinc-400">
-                                            #{banner.order}
-                                          </div>
-                                          {selectedTab === "all" && (
-                                            <div className="shrink-0 rounded border border-white/5 bg-zinc-900 px-1.5 py-0.5 text-[8px] font-bold text-zinc-400">
-                                              {pos.label.split(" ")[0]}
-                                            </div>
-                                          )}
-                                          {(() => {
-                                            if (!banner.active) return null;
-                                            const now = new Date();
-                                            if (
-                                              banner.startDate &&
-                                              new Date(banner.startDate) > now
-                                            ) {
-                                              return (
-                                                <div className="shrink-0 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase text-[#FFBF00]">
-                                                  Agendado (
-                                                  {formatDistanceToNow(
-                                                    banner.startDate,
-                                                  )}
-                                                  )
-                                                </div>
-                                              );
-                                            }
-                                            if (
-                                              banner.endDate &&
-                                              new Date(banner.endDate) < now
-                                            ) {
-                                              return (
-                                                <div className="shrink-0 rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase text-rose-400">
-                                                  Expirado (
-                                                  {formatDistanceToNow(
-                                                    banner.endDate,
-                                                  )}
-                                                  )
-                                                </div>
-                                              );
-                                            }
-                                            if (
-                                              banner.endDate &&
-                                              new Date(banner.endDate) >= now
-                                            ) {
-                                              return (
-                                                <div className="shrink-0 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase text-emerald-400">
-                                                  Ativo (expira{" "}
-                                                  {formatDistanceToNow(
-                                                    banner.endDate,
-                                                  )}
-                                                  )
-                                                </div>
-                                              );
-                                            }
-                                            if (
-                                              banner.startDate &&
-                                              new Date(banner.startDate) <= now
-                                            ) {
-                                              return (
-                                                <div className="shrink-0 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase text-emerald-400">
-                                                  Ativo (iniciou{" "}
-                                                  {formatDistanceToNow(
-                                                    banner.startDate,
-                                                  )}
-                                                  )
-                                                </div>
-                                              );
-                                            }
-                                            return null;
-                                          })()}
-                                        </div>
-                                        <div className="flex min-w-0 w-full items-center gap-1 font-mono text-[8px] text-zinc-500">
-                                          <ExternalLink className="size-2.5 shrink-0 text-amber-500" />
-                                          <span className="truncate min-w-0 flex-1">
-                                            {banner.link || "Início (Sem Rota)"}
-                                          </span>
-                                        </div>
-                                        {banner.startDate &&
-                                          banner.endDate &&
-                                          banner.active &&
-                                          (() => {
-                                            const now = new Date();
-                                            const start = new Date(
-                                              banner.startDate,
-                                            );
-                                            const end = new Date(
-                                              banner.endDate,
-                                            );
-                                            if (now >= start && now <= end) {
-                                              const total =
-                                                end.getTime() - start.getTime();
-                                              const elapsed =
-                                                now.getTime() - start.getTime();
-                                              const pct = Math.min(
-                                                100,
-                                                Math.max(
-                                                  0,
-                                                  (elapsed / total) * 100,
-                                                ),
-                                              );
-                                              return (
-                                                <div className="w-full space-y-1 pt-1 duration-300 animate-in fade-in">
-                                                  <div className="flex items-center justify-between text-[7px] font-bold uppercase tracking-widest text-zinc-500">
-                                                    <span>Campanha</span>
-                                                    <span className="text-emerald-450 font-mono">
-                                                      {Math.round(pct)}%
-                                                    </span>
-                                                  </div>
-                                                  <div className="h-0.5 w-full overflow-hidden rounded-full border border-white/5 bg-zinc-900">
-                                                    <div
-                                                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
-                                                      style={{
-                                                        width: `${pct}%`,
-                                                      }}
-                                                    />
-                                                  </div>
-                                                </div>
-                                              );
-                                            }
-                                            return null;
-                                          })()}
-                                      </div>
-                                    </div>
-
-                                    {/* Right Side: Reordering, Switch & Actions */}
-                                    <div className="flex w-full shrink-0 items-center justify-between gap-2 border-t border-white/5 pt-2 sm:w-auto sm:justify-end sm:border-t-0 sm:pt-0">
-                                      {/* Reordering & Status Toggle */}
-                                      <div className="flex items-center gap-1.5 sm:gap-2">
-                                        {/* Up/Down buttons in a small pill */}
-                                        <div className="flex items-center gap-0.5 rounded-lg border border-white/5 bg-zinc-900/40 p-0.5">
-                                          <button
-                                            onClick={() =>
-                                              moveBanner(banner, "up")
-                                            }
-                                            disabled={
-                                              index === 0 ||
-                                              isProcessing ||
-                                              isOffline
-                                            }
-                                            className="flex size-6 items-center justify-center rounded bg-zinc-950 text-zinc-400 transition-colors hover:text-white disabled:opacity-10"
-                                            title="Mover para cima"
-                                          >
-                                            {activeAction?.id === banner.id &&
-                                            activeAction?.type === "up" ? (
-                                              <Loader2 className="size-3 animate-spin text-[#FFBF00]" />
-                                            ) : (
-                                              <ArrowUp className="size-3" />
-                                            )}
-                                          </button>
-                                          <button
-                                            onClick={() =>
-                                              moveBanner(banner, "down")
-                                            }
-                                            disabled={
-                                              index ===
-                                                positionBanners.length - 1 ||
-                                              isProcessing ||
-                                              isOffline
-                                            }
-                                            className="flex size-6 items-center justify-center rounded bg-zinc-950 text-zinc-400 transition-colors hover:text-white disabled:opacity-10"
-                                            title="Mover para baixo"
-                                          >
-                                            {activeAction?.id === banner.id &&
-                                            activeAction?.type === "down" ? (
-                                              <Loader2 className="size-3 animate-spin text-[#FFBF00]" />
-                                            ) : (
-                                              <ArrowDown className="size-3" />
-                                            )}
-                                          </button>
-                                        </div>
-
-                                        {/* Visibility Switch */}
-                                        <div className="flex items-center gap-1 rounded-lg border border-white/5 bg-zinc-900/40 px-1.5 py-1">
-                                          <span className="text-[7px] font-bold uppercase tracking-wider text-zinc-500">
-                                            Exibir
-                                          </span>
-                                          <Switch
-                                            checked={banner.active}
-                                            onCheckedChange={() =>
-                                              handleToggleActive(banner)
-                                            }
-                                            disabled={
-                                              (activeAction?.id === banner.id &&
-                                                activeAction?.type ===
-                                                  "toggle") ||
-                                              isOffline
-                                            }
-                                            className="scale-75 data-[state=checked]:bg-[#FFBF00]"
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {/* Actions Toolbar */}
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() =>
-                                            handleOpenDialog(banner)
-                                          }
-                                          disabled={isProcessing || isOffline}
-                                          className="flex size-7 items-center justify-center rounded-md border border-white/5 bg-zinc-900 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white active:scale-95"
-                                          title="Editar"
-                                        >
-                                          <Edit className="size-3.5 text-[#FFBF00]" />
-                                        </button>
-                                        <button
-                                          onClick={() =>
-                                            handleDelete(
-                                              banner.id,
-                                              banner.imageUrl,
-                                            )
-                                          }
-                                          disabled={isProcessing || isOffline}
-                                          className="flex size-7 items-center justify-center rounded-md border border-red-500/20 bg-red-500/10 text-red-400 transition-all hover:bg-red-500 hover:text-white active:scale-95"
-                                          title="Excluir"
-                                        >
-                                          {activeAction?.id === banner.id &&
-                                          activeAction?.type === "delete" ? (
-                                            <Loader2 className="size-3 animate-spin" />
-                                          ) : (
-                                            <Trash className="size-3.5" />
-                                          )}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </motion.div>
-                              );
-                            }
-
-                            return (
-                              <motion.div
-                                layout
-                                key={banner.id}
-                                variants={itemVariants}
-                                className={cn(
-                                  "group relative w-full max-w-full overflow-hidden bg-zinc-950/30 backdrop-blur-md border border-white/5 rounded-2xl p-3 sm:p-5 sm:rounded-[2.5rem] transition-all duration-300 hover:border-zinc-800 hover:bg-zinc-950/50 hover:shadow-2xl",
-                                  !banner.active && "opacity-50",
-                                )}
-                              >
-                                <div className="flex w-full max-w-full flex-col gap-3 sm:gap-6 lg:flex-row lg:items-center">
-                                  {/* Top Row / Main Area: Image Thumbnail + Details */}
-                                  <div className="flex min-w-0 w-full flex-1 items-center gap-3 sm:gap-4">
-                                    {/* Image Preview Thumbnail */}
-                                    <div className="relative aspect-[21/9] w-24 shrink-0 overflow-hidden rounded-xl border border-white/5 bg-zinc-900 shadow-md transition-all duration-300 sm:w-48 sm:rounded-2xl lg:w-[360px] xl:w-[420px]">
-                                      <LazyImage
-                                        src={banner.imageUrl}
-                                        alt={banner.title || "Banner"}
-                                        className="size-full object-cover transition-transform duration-700 group-hover:scale-105"
-                                      />
-                                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80" />
-                                      {!banner.active && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/65 px-2 text-center text-[7.5px] font-black uppercase italic tracking-wider text-white/80 backdrop-blur-[1px] sm:text-[9px]">
-                                          Pausado
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Details and Metadata */}
-                                    <div className="min-w-0 flex-1 space-y-1 overflow-hidden">
-                                      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 min-w-0">
-                                        <h3 className="truncate min-w-0 max-w-full text-xs font-bold leading-snug tracking-tight text-white transition-colors duration-300 group-hover:text-admin-gold sm:text-base">
-                                          {banner.title ||
-                                            "Campanha sem Título"}
-                                        </h3>
-                                        <div className="shrink-0 rounded border border-white/5 bg-zinc-900 px-1.5 py-0.5 text-[8px] font-bold text-zinc-400 sm:text-[9px]">
-                                          #{banner.order}
-                                        </div>
-                                        {selectedTab === "all" && (
-                                          <div className="shrink-0 rounded border border-white/5 bg-zinc-900 px-1.5 py-0.5 text-[8px] font-bold text-zinc-400 sm:text-[9px]">
-                                            {pos.label.split(" ")[0]}
-                                          </div>
-                                        )}
-                                        {(() => {
-                                          if (!banner.active) return null;
-                                          const now = new Date();
-                                          if (
-                                            banner.startDate &&
-                                            new Date(banner.startDate) > now
-                                          ) {
-                                            return (
-                                              <div className="shrink-0 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase text-[#FFBF00]">
-                                                Agendado
-                                              </div>
-                                            );
-                                          }
-                                          if (
-                                            banner.endDate &&
-                                            new Date(banner.endDate) < now
-                                          ) {
-                                            return (
-                                              <div className="shrink-0 rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase text-rose-400">
-                                                Expirado
-                                              </div>
-                                            );
-                                          }
-                                          if (
-                                            banner.startDate ||
-                                            banner.endDate
-                                          ) {
-                                            return (
-                                              <div className="shrink-0 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase text-emerald-400">
-                                                Programado
-                                              </div>
-                                            );
-                                          }
-                                          return null;
-                                        })()}
-                                      </div>
-
-                                      {/* Link Route Line */}
-                                      <div className="flex min-w-0 w-full max-w-full items-center gap-1 font-mono text-[8.5px] text-zinc-400 sm:text-xs">
-                                        <ExternalLink className="size-2.5 shrink-0 text-[#FFBF00] sm:size-3" />
-                                        <span className="truncate min-w-0 flex-1">
-                                          {banner.link || "Início (Sem Rota)"}
-                                        </span>
-                                      </div>
-
-                                      {/* Campaign Progress Bar */}
-                                      {banner.startDate &&
-                                        banner.endDate &&
-                                        banner.active &&
-                                        (() => {
-                                          const now = new Date();
-                                          const start = new Date(
-                                            banner.startDate,
-                                          );
-                                          const end = new Date(banner.endDate);
-                                          if (now >= start && now <= end) {
-                                            const total =
-                                              end.getTime() - start.getTime();
-                                            const elapsed =
-                                              now.getTime() - start.getTime();
-                                            const pct = Math.min(
-                                              100,
-                                              Math.max(
-                                                0,
-                                                (elapsed / total) * 100,
-                                              ),
-                                            );
-                                            return (
-                                              <div className="w-full space-y-0.5 pt-0.5">
-                                                <div className="flex items-center justify-between text-[7px] font-bold uppercase tracking-widest text-zinc-500">
-                                                  <span>Progresso</span>
-                                                  <span className="font-mono text-emerald-400">
-                                                    {Math.round(pct)}%
-                                                  </span>
-                                                </div>
-                                                <div className="h-0.5 w-full overflow-hidden rounded-full border border-white/5 bg-zinc-900">
-                                                  <div
-                                                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
-                                                    style={{
-                                                      width: `${pct}%`,
-                                                    }}
-                                                  />
-                                                </div>
-                                              </div>
-                                            );
-                                          }
-                                          return null;
-                                        })()}
-                                    </div>
-                                  </div>
-
-                                  {/* Controls & Actions Toolbar */}
-                                  <div className="flex w-full shrink-0 items-center justify-between gap-1.5 border-t border-white/5 pt-2 sm:w-auto sm:justify-end sm:border-t-0 sm:pt-0">
-                                    {/* Reordering arrows & Visibility Switch */}
-                                    <div className="flex items-center gap-1.5 sm:gap-2">
-                                      {/* Up/Down buttons pill */}
-                                      <div className="flex items-center gap-0.5 rounded-lg border border-white/5 bg-zinc-900/40 p-0.5">
-                                        <button
-                                          onClick={() =>
-                                            moveBanner(banner, "up")
-                                          }
-                                          disabled={
-                                            index === 0 ||
-                                            isProcessing ||
-                                            isOffline
-                                          }
-                                          className="flex size-6 sm:size-7 items-center justify-center rounded bg-zinc-950 text-zinc-400 transition-colors hover:text-white disabled:opacity-10"
-                                          title="Mover para cima"
-                                        >
-                                          {activeAction?.id === banner.id &&
-                                          activeAction?.type === "up" ? (
-                                            <Loader2 className="size-3 animate-spin text-[#FFBF00]" />
-                                          ) : (
-                                            <ArrowUp className="size-3" />
-                                          )}
-                                        </button>
-                                        <button
-                                          onClick={() =>
-                                            moveBanner(banner, "down")
-                                          }
-                                          disabled={
-                                            index ===
-                                              positionBanners.length - 1 ||
-                                            isProcessing ||
-                                            isOffline
-                                          }
-                                          className="flex size-6 sm:size-7 items-center justify-center rounded bg-zinc-950 text-zinc-400 transition-colors hover:text-white disabled:opacity-10"
-                                          title="Mover para baixo"
-                                        >
-                                          {activeAction?.id === banner.id &&
-                                          activeAction?.type === "down" ? (
-                                            <Loader2 className="size-3 animate-spin text-[#FFBF00]" />
-                                          ) : (
-                                            <ArrowDown className="size-3" />
-                                          )}
-                                        </button>
-                                      </div>
-
-                                      {/* Fast Status Switch */}
-                                      <div className="flex items-center gap-1 rounded-lg border border-white/5 bg-zinc-900/40 px-1.5 py-1">
-                                        <span className="text-[7.5px] sm:text-[9px] font-bold uppercase tracking-wider text-zinc-500">
-                                          Exibir
-                                        </span>
-                                        <Switch
-                                          id={`banner-card-active-${banner.id}`}
-                                          checked={banner.active}
-                                          onCheckedChange={() =>
-                                            handleToggleActive(banner)
-                                          }
-                                          disabled={
-                                            (activeAction?.id === banner.id &&
-                                              activeAction?.type ===
-                                                "toggle") ||
-                                            isOffline
-                                          }
-                                          className="scale-75 data-[state=checked]:bg-[#FFBF00]"
-                                        />
-                                      </div>
-                                    </div>
-
-                                    {/* Action Buttons Toolbar */}
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        onClick={() => handleOpenDialog(banner)}
-                                        disabled={isProcessing || isOffline}
-                                        className="flex h-7 sm:h-8 items-center justify-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-2 sm:px-3 text-[10px] sm:text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                                        title="Editar Banner"
-                                      >
-                                        <Edit className="size-3 shrink-0 text-[#FFBF00]" />
-                                        <span className="hidden sm:inline">
-                                          Editar
-                                        </span>
-                                      </button>
-                                      <button
-                                        onClick={() =>
-                                          handleDelete(
-                                            banner.id,
-                                            banner.imageUrl,
-                                          )
-                                        }
-                                        disabled={isProcessing || isOffline}
-                                        className="flex h-7 sm:h-8 items-center justify-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2 sm:px-3 text-[10px] sm:text-xs font-semibold text-red-400 transition-all hover:border-transparent hover:bg-red-500 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                                        title="Excluir Banner"
-                                      >
-                                        {activeAction?.id === banner.id &&
-                                        activeAction?.type === "delete" ? (
-                                          <Loader2 className="size-3 animate-spin" />
-                                        ) : (
-                                          <Trash className="size-3 shrink-0" />
-                                        )}
-                                        <span className="hidden sm:inline">
-                                          Excluir
-                                        </span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            );
-                          })}
-                        </motion.div>
+                          {positionBanners.map((banner, index) => (
+                            <CartaoDoBanner
+                              key={banner.id}
+                              banner={banner}
+                              posicaoCurta={
+                                selectedTab === "all"
+                                  ? pos.label.split(" ")[0]
+                                  : null
+                              }
+                              indice={index}
+                              total={positionBanners.length}
+                              detalhado={viewMode === "detailed"}
+                              isProcessing={isProcessing}
+                              isOffline={isOffline}
+                              activeAction={activeAction}
+                              onMover={moveBanner}
+                              onAlternar={handleToggleActive}
+                              onEditar={handleOpenDialog}
+                              onExcluir={handleDelete}
+                            />
+                          ))}
+                        </div>
                       )}
                     </div>
                   );
