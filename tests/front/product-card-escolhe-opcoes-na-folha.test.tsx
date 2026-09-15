@@ -14,13 +14,22 @@
 //     a folha (não navega); os chips da folha selecionam variações (tocar de
 //     novo DESELECIONA — toggle); o preço do card e da folha reflete o
 //     `priceOverride` da escolha; o CTA do RODAPÉ da folha entrega
-//     (product, variantId, "Grupo: valor") para a prop; grupo sem escolha →
-//     toast nomeando o que falta e nada é entregue; variação sem estoque →
-//     chip morto.
-//   - 🔴 DECISÃO PAGA (herdada do painel de 12/09, portada): depois do
-//     "Salvo!" a folha NÃO fecha e NÃO limpa a escolha — a cliente compra
-//     DUAS variações do mesmo produto (P e M, dois sabores) sem recomeçar
-//     do zero. Fechar é sempre gesto explícito (alça, fora, Escape).
+//     (product, variantId, "Grupo: valor", quantidade) para a prop; grupo sem
+//     escolha → toast nomeando o que falta e nada é entregue; variação sem
+//     estoque → chip morto.
+//   - 🟢 PEÇA 18 (14/09 — novo pedido do dono, ditado por voz ~17:58, que
+//     REVOGA a decisão de 12/09): depois do "Salvo!" a folha FECHA sozinha,
+//     pelo mecanismo dela (setFolhaOpcoesAberta; alça, clique fora, Escape e
+//     o guardião do sheet.tsx seguem intactos). A escolha de variação
+//     continua viva no card (reabrir mantém), a quantidade volta a 1.
+//   - 🟢 PEÇA 18: a folha tem SELETOR DE QUANTIDADE (o QuantitySelector da
+//     casa, o da página do produto): nasce em 1, teto = estoque do item
+//     escolhido, "+" e "−" desabilitam nas bordas, e a quantidade escolhida
+//     viaja no 4º argumento da prop.
+//   - 🟢 PEÇA 18: o "Adicionar" da folha dispara o MESMO voo de bolinha do
+//     caminho do card (triggerFlyingCartAnimation) — agora a partir da FOTO
+//     da folha; antes partia do CTA do rodapé, colado no carrinho, e o olho
+//     não pegava o voo.
 //   - Sem a prop: o botão continua fazendo o que fazia — levar para a tela
 //     do produto (o teste irmão
 //     card-nao-deixa-comprar-sem-escolher-a-variacao.test.tsx continua
@@ -159,6 +168,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
         product: Product,
         variantId: string | undefined,
         variantNames: string,
+        quantity?: number,
       ) => void;
     } = {},
   ) {
@@ -211,6 +221,24 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
   const alcaDaFolha = () =>
     document.querySelector<HTMLButtonElement>(
       'button[data-testid="product-card-options-handle"]',
+    )!;
+
+  // ── SELETOR DE QUANTIDADE (peça 18) ────────────────────────────────────
+  // O número vive na região live do QuantitySelector (aria-live="polite");
+  // os botões têm aria-label "Diminuir/Aumentar quantidade". No jsdom a
+  // AnimatePresence (framer-motion) NUNCA completa a saída do número antigo,
+  // então os spans se acumulam ("12345") — o número VIGENTE é o ÚLTIMO span
+  // (ordem de inserção: cada troca acrescenta o novo depois dos que estão
+  // saindo).
+  const numeroDaQuantidade = () => {
+    const spans = document.querySelectorAll<HTMLElement>(
+      '[aria-live="polite"] span',
+    );
+    return spans[spans.length - 1]!.textContent!.trim();
+  };
+  const botaoQuantidade = (direcao: "Diminuir" | "Aumentar") =>
+    document.querySelector<HTMLButtonElement>(
+      `button[aria-label="${direcao} quantidade"]`,
     )!;
 
   async function abrirFolha() {
@@ -332,7 +360,7 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(chipG.getAttribute("title")).toBe("G — sem estoque");
   });
 
-  it("🔴 depois do 'Salvo!' a folha NÃO fecha e NÃO limpa a escolha (compra de duas variações)", async () => {
+  it("🟢 depois do 'Salvo!' a folha FECHA sozinha (peça 18: o dono revogou a decisão de 12/09 em 14/09)", async () => {
     vi.useFakeTimers();
     const onAddToCartWithVariants = vi.fn();
     await renderizarCard(criarProduto({ variants: criarVariantes() }), {
@@ -352,20 +380,171 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     });
 
     expect(ctaDaFolha().textContent).toContain("Salvo!");
-    // A folha continua aberta...
+    // O "Salvo!" tem um batimento visível ANTES do fecho: a folha ainda
+    // está na tela neste ponto (600 ms de voo + confirmação).
     expect(folha()).not.toBeNull();
-    // ...a escolha continua lá (chip marcado e preço da escolha no card)...
+
+    // +700 ms: o voo (750 ms, no total) já aterrissou e a folha fecha
+    // sozinha — pelo mecanismo dela (setFolhaOpcoesAberta), sem tocar no
+    // guardião do sheet.tsx.
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(folha()).toBeNull();
+
+    // Reabrindo: a ESCOLHA continua viva no card (contrato que sobreviveu —
+    // reabrir mantém o M e o preço da escolha), mas a QUANTIDADE voltou a 1:
+    // pedido novo começa do um.
+    await abrirFolha();
     expect(chip("M").getAttribute("aria-pressed")).toBe("true");
     expect(hospedeiro.textContent).toContain("65,00");
+    expect(numeroDaQuantidade()).toBe("1");
+  });
 
-    // ...e voltando a idle (mais 1500 ms), nada foi descartado: o CTA já
-    // está pronto para adicionar a MESMA escolha de novo (segunda variação).
-    await act(async () => {
-      vi.advanceTimersByTime(1500);
+  // ── SELETOR DE QUANTIDADE (peça 18, 14/09 — pedido do dono) ────────────
+
+  it("a folha tem seletor de quantidade: nasce em 1 e trava nas bordas 1 e estoque-da-escolha", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
     });
-    expect(folha()).not.toBeNull();
-    expect(chip("M").getAttribute("aria-pressed")).toBe("true");
-    expect(ctaDaFolha().textContent).toContain("65,00");
+    await abrirFolha();
+    await act(async () => {
+      chip("M").click(); // M tem stockIncrement 3
+    });
+
+    const menos = botaoQuantidade("Diminuir");
+    const mais = botaoQuantidade("Aumentar");
+    // Nasce em 1: primeiro render, um span só — e "−" já desabilitado.
+    expect(numeroDaQuantidade()).toBe("1");
+    expect(menos.disabled).toBe(true);
+
+    await act(async () => {
+      mais.click();
+    });
+    // Andou: "−" volta a existir.
+    expect(menos.disabled).toBe(false);
+
+    await act(async () => {
+      mais.click();
+    });
+    // Teto = estoque do item escolhido (M = 3): "+" desabilita.
+    expect(mais.disabled).toBe(true);
+
+    // Trocar para P (estoque 5) solta o teto: "+" volta a andar até 5.
+    await act(async () => {
+      chip("P").click();
+    });
+    expect(mais.disabled).toBe(false);
+    await act(async () => {
+      mais.click();
+    });
+    await act(async () => {
+      mais.click();
+    });
+    expect(mais.disabled).toBe(true);
+  });
+
+  it("trocar para uma variação com MENOS estoque aperta a quantidade para caber", async () => {
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants: vi.fn(),
+    });
+    await abrirFolha();
+    await act(async () => {
+      chip("P").click(); // P tem estoque 5
+    });
+    const menos = botaoQuantidade("Diminuir");
+    const mais = botaoQuantidade("Aumentar");
+    await act(async () => {
+      mais.click();
+    });
+    await act(async () => {
+      mais.click();
+    });
+    await act(async () => {
+      mais.click();
+    });
+    await act(async () => {
+      mais.click();
+    });
+    // No teto do P (5): "+" travado.
+    expect(mais.disabled).toBe(true);
+
+    // Troca para M (estoque 3): a quantidade DESCE para 3 — a folha não
+    // deixa pedir mais do que existe. Prova POR COMPORTAMENTO (o dígito
+    // animado do framer-motion não é confiável no jsdom): se a quantidade
+    // tivesse ficado em 5, UM "−" deixaria "+" travado (4 >= 3); como
+    // desceu a 3, um "−" a traz para 2 e "+" volta a andar.
+    await act(async () => {
+      chip("M").click();
+    });
+    expect(mais.disabled).toBe(true);
+    await act(async () => {
+      menos.click();
+    });
+    expect(mais.disabled).toBe(false);
+    expect(menos.disabled).toBe(false);
+  });
+
+  it("'Adicionar' entrega a QUANTIDADE escolhida no 4º argumento (escolhe 3 → carrinho soma 3)", async () => {
+    const onAddToCartWithVariants = vi.fn();
+    await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+      onAddToCartWithVariants,
+    });
+    await abrirFolha();
+    await act(async () => {
+      chip("M").click();
+    });
+    const mais = botaoQuantidade("Aumentar");
+    await act(async () => {
+      mais.click();
+    });
+    await act(async () => {
+      mais.click();
+    });
+    await act(async () => {
+      ctaDaFolha().click();
+    });
+
+    expect(onAddToCartWithVariants).toHaveBeenCalledTimes(1);
+    expect(onAddToCartWithVariants.mock.calls[0][1]).toBe("var-m");
+    expect(onAddToCartWithVariants.mock.calls[0][2]).toBe("Tamanho: M");
+    expect(onAddToCartWithVariants.mock.calls[0][3]).toBe(3);
+  });
+
+  it("o 'Adicionar' da folha dispara o MESMO voo de bolinha do caminho do card (triggerFlyingCartAnimation)", async () => {
+    // O trigger de voo só atira com o alvo do carrinho no DOM
+    // (#bottom-nav-cart — a BottomNav planta na vitrine real; no jsdom, um
+    // pino de teste). Sem o pino, o trigger sai cedo com só um aviso.
+    const alvoDoCarrinho = document.createElement("div");
+    alvoDoCarrinho.id = "bottom-nav-cart";
+    document.body.appendChild(alvoDoCarrinho);
+
+    try {
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants: vi.fn(),
+      });
+      await abrirFolha();
+      await act(async () => {
+        chip("M").click();
+      });
+      await act(async () => {
+        ctaDaFolha().click();
+      });
+
+      // A bolinha NASCEU: o container do voo existe, no BODY (fora da folha,
+      // mesma anatomia do caminho do card) carregando a foto do produto.
+      const voo = document.querySelector(".cart-flyer-container");
+      expect(voo).not.toBeNull();
+      expect(voo!.parentElement).toBe(document.body);
+      const bolinha = voo!.querySelector("img");
+      expect(bolinha).not.toBeNull();
+      expect(bolinha!.getAttribute("src")).toBe("https://example.com/img.png");
+    } finally {
+      // O voo se limpa sozinho aos 750 ms; no teste, limpar na mão para não
+      // vazar nó para o caso seguinte.
+      document.querySelector(".cart-flyer-container")?.remove();
+      alvoDoCarrinho.remove();
+    }
   });
 
   it("a escolha sobrevive a fechar (alça) e reabrir a folha — recomeçar do zero quebraria a compra dupla", async () => {
