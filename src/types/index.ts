@@ -338,7 +338,8 @@ export type View =
   | "admin"
   | "product-detail"
   | "address-form"
-  | "user-profile";
+  | "user-profile"
+  | "about-store";
 
 export type SortOption = "default" | "price-asc" | "price-desc" | "sold";
 

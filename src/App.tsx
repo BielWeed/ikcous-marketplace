@@ -240,6 +240,11 @@ const UserProfileView = lazyWithPreload(() =>
     default: m.UserProfileView,
   })),
 );
+const AboutStoreView = lazyWithPreload(() =>
+  import("@/views/customer/AboutStoreView").then((m) => ({
+    default: m.AboutStoreView,
+  })),
+);
 
 // --- LAZY LOADED ADMIN VIEWS ---
 // O portao do painel mora em `@/components/layouts/AdminAreaGate`. Ele saiu de
@@ -356,6 +361,7 @@ const VIEW_COMPONENTS = {
   "address-form": AddressFormView,
   "admin-login": AdminLogin,
   "user-profile": UserProfileView,
+  "about-store": AboutStoreView,
 };
 
 // F1 (glm-perf-1paint-0309): PushNotificationBanner usa framer-motion —
@@ -2246,6 +2252,9 @@ const AppContent = () => {
             }}
           />
         );
+
+      case "about-store":
+        return <PreloadedOrLazy component={AboutStoreView} props={{}} />;
 
       case "order-details":
         return (

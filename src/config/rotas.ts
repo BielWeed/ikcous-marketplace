@@ -43,6 +43,7 @@ export const TELAS_DE_ENTRADA = [
   "address-form",
   "admin-login",
   "user-profile",
+  "about-store",
 ] as const satisfies readonly View[];
 
 export type TelaDeEntrada = (typeof TELAS_DE_ENTRADA)[number];

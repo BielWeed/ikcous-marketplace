@@ -39,6 +39,7 @@ import {
   Plus,
   Settings,
   Shield,
+  Store,
   Trash2,
   UploadCloud,
   User,
@@ -686,6 +687,36 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
               </div>
             </div>
             <ChevronRight className="size-4 text-red-200 transition-transform group-hover:translate-x-1" />
+          </button>
+        </motion.div>
+
+        {/* Sobre a Loja — a marca do lojista assinante (peça 24). Cartão
+            próprio, mesma linguagem visual dos vizinhos, visível a TODOS os
+            usuários do perfil: não mora dentro de isAdmin nem de nenhum
+            outro ramo condicional. */}
+        <motion.div
+          variants={itemVariants}
+          className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
+        >
+          <button
+            type="button"
+            onClick={() => onNavigate("about-store")}
+            className="group flex w-full items-center justify-between p-6 transition-colors hover:bg-zinc-50"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex size-10 items-center justify-center rounded-2xl bg-zinc-50 transition-colors group-hover:bg-white">
+                <Store className="size-5 text-zinc-400" />
+              </div>
+              <div className="text-left">
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">
+                  Sobre a Loja
+                </p>
+                <p className="text-[9px] font-bold uppercase tracking-tighter text-zinc-400">
+                  A loja por trás deste app
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
           </button>
         </motion.div>
       </motion.div>
