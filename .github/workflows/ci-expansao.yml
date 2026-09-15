@@ -1,0 +1,114 @@
+# CI de expansão — frente expansao-ci (14/09/2026), desenhado na matriz
+# equipe/entregas/20260914-expansao-ci/matriz-de-pesquisa.md.
+#
+# Regra de nascimento (despacho, critério 3): NADA novo derruba o CI. O job
+# nasce `continue-on-error` (informacional) e só vira bloqueante depois de
+# estável — decisão da central.
+#
+# Por que num arquivo SEPARADO do ci.yml: o gate existente não é tocado
+# (conflito zero com as outras frentes), tem `concurrency` próprio e filtro
+# por caminho próprio. O ci.yml continua sendo o único que bloqueia.
+#
+# MIGRATIONS DO ZERO NÃO É MAIS DAQUI (14/09, portão da central): o tema foi
+# escopado para a frente ci-banco, dona designada — prova de migrations do
+# zero vive em .github/workflows/db-ci.yml (PR #585, mergeado no develop).
+# O job daqui achou o defeito real (LOCK TABLE fora de transação no applier
+# do `db reset`, migration 20261121000000) e foi desligado; o achado ficou
+# registrado na mesa para o dono da migration.
+#
+# Custo (medido na matriz; repo PÚBLICO = grátis, a conta prova eficiência):
+#   e2e ~5-6 min por run — MAS nasce dispatch-only (ver job): zero custo
+#   recorrente até a peça de ativação ligar o primeiro spec
+# Impacto no tempo de PAREDE do PR: ~zero — corre em paralelo ao gate.
+
+name: CI Expansão
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "middleware.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "playwright.config.ts"
+      - "vite.config.ts"
+      - "tsconfig*.json"
+      - ".github/workflows/ci-expansao.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "middleware.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "playwright.config.ts"
+      - "vite.config.ts"
+      - "tsconfig*.json"
+      - ".github/workflows/ci-expansao.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-expansao-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mesma versão do gate (ci.yml) — se divergir, um passa e o outro mente.
+  NODE_VERSION: "24"
+
+jobs:
+  e2e:
+    # NASCE workflow_dispatch-ONLY (14/09): os dois specs de e2e estão
+    # test.fixme porque a página do build fixture não boota sem a ficha do
+    # porteiro (diagnóstico completo em
+    # e2e/app-boota-sem-tela-branca.spec.ts). Job que roda 5-6 min por PR
+    # para só pular testes é minuto morto — eficiência é lei do dono. Quando
+    # a peça de ativação entregar o caminho de boot, remover este `if` NO
+    # MESMO PR que desligar os .fixme.
+    if: github.event_name == 'workflow_dispatch'
+    name: E2E navegador de verdade (informacional)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Receita oficial de cache de browsers (playwright.dev/docs/ci):
+      # chaveada pelo lock — quando o @playwright/test sobe, a chave muda e
+      # o cache baixa a versão nova. Sem `restore-keys` de propósito: browser
+      # velho mascarando incompatibilidade é falso verde.
+      - name: Cache dos navegadores do Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instala o Chromium (e dependências de sistema)
+        run: npx playwright install --with-deps chromium
+      # Mesma receita EXATA do job Build do ci.yml: build completo SEM
+      # segredos e SEM env extra — medido em 14/09: perturbar VITE_* no build
+      # fixture quebra o contrato do buildStore ("entrega não confirmada").
+      - name: Build de teste com identidade fictícia
+        run: npm run build
+        env:
+          NODE_ENV: production
+          IKCOUS_IDENTITY_MODE: fixture
+          IKCOUS_CODE_SHA: ${{ github.sha }}
+      - name: E2E contra o preview do build
+        run: npx playwright test
+        env:
+          CI: "true"
+      - name: Relatório e traces de falha
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-playwright
+          path: playwright-report/
+          retention-days: 7

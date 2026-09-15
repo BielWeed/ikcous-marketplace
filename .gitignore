@@ -64,6 +64,7 @@ nsecure-result.json
 ship-safe-report.html
 hint-report/
 test-results/
+playwright-report/
 
 # Scratch & local scripts
 scratch/
