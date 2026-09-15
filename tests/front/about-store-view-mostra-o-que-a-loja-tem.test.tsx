@@ -45,7 +45,7 @@ const LOJA_COMPLETA: ConfigDeTeste = {
   businessHours: "Seg-Sex: 8h às 19h",
   whatsappNumber: "(34) 99999-9999",
   storeDescription:
-    "Peças de decoração escolhidas a dedo, direto do ateliê para a sua casa.",
+    '<p>Peças de decoração escolhidas a dedo, direto do ateliê para a sua casa.</p><p><strong>Lançamento da semana</strong> já disponível.</p><img src="https://cdn.example/atelie/foto.png" alt="foto" /><img src="x" onerror="alert(1)" /><script>alert(1)</script>',
   originCep: "38500-000",
 };
 
@@ -100,8 +100,23 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(texto).toContain("Seg-Sex: 8h às 19h");
     expect(texto).toContain("Horário de atendimento");
 
-    // Descrição da loja (campo do dono — quando existir no banco, aparece).
+    // Descrição RICA da loja (campo do dono — quando existir no banco):
+    // texto, negrito e imagem renderizam; conteúdo malicioso NÃO.
     expect(texto).toContain("Peças de decoração escolhidas a dedo");
+    expect(
+      [...hospedeiro.querySelectorAll("strong")].some(
+        (s) => s.textContent === "Lançamento da semana",
+      ),
+    ).toBe(true);
+    expect(
+      hospedeiro.querySelector(
+        "img[src='https://cdn.example/atelie/foto.png']",
+      ),
+    ).not.toBeNull();
+    // Sanitização (DOMPurify): script some e handler de evento some — a
+    // imagem do ataque até sobrevive, mas INERTE (sem onerror).
+    expect(hospedeiro.querySelector("script")).toBeNull();
+    expect(hospedeiro.querySelector("[onerror]")).toBeNull();
 
     // Mapa real embutido: o CEP de origem é a query do embed e do link de GPS.
     const mapa = hospedeiro.querySelector<HTMLIFrameElement>(

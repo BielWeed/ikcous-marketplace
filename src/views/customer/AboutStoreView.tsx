@@ -4,6 +4,7 @@ import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { haptic } from "@/utils/haptic";
+import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
 import {
   ChevronRight,
@@ -26,12 +27,20 @@ export function AboutStoreView() {
 
   const storeName = nomeDaLoja(config);
   const horario = config.businessHours?.trim() || "";
-  const descricao = config.storeDescription?.trim() || "";
   const local = [config.storeCity?.trim(), config.storeState?.trim()]
     .filter(Boolean)
     .join(", ");
   const temWhatsapp = lojaTemWhatsapp(config.whatsappNumber);
   const inicial = storeName.charAt(0).toUpperCase();
+
+  // A descrição é RICA (o lojista formata texto e anexa imagem no painel —
+  // peça futura do editor). Conteúdo do lojista renderizado como HTML SEMPRE
+  // passa pelo DOMPurify: script, handler de evento e URL perigosa são
+  // removidos; se a sanitização esvaziar tudo, o bloco não existe.
+  const descricao = config.storeDescription?.trim() || "";
+  const descricaoHtml = descricao
+    ? DOMPurify.sanitize(descricao, { USE_PROFILES: { html: true } })
+    : "";
 
   // Onde a loja está: o CEP de origem do frete é o dado mais "certinho" que a
   // loja JÁ TEM no sistema (cai na rua do CEP); sem CEP, centra na cidade/UF;
@@ -76,9 +85,6 @@ export function AboutStoreView() {
           transition={{ duration: 0.3 }}
           className="flex flex-col items-center gap-1.5 border-b border-zinc-100 pb-5 text-center"
         >
-          <p className="text-[9px] font-black uppercase tracking-[0.35em] text-admin-gold">
-            A loja
-          </p>
           <h1 className="text-3xl font-black leading-none tracking-tight text-zinc-900">
             Sobre a Loja
           </h1>
@@ -118,10 +124,11 @@ export function AboutStoreView() {
               </p>
             )}
           </div>
-          {descricao && (
-            <p className="border-t border-zinc-100 pt-4 text-[13px] leading-relaxed text-zinc-600">
-              {descricao}
-            </p>
+          {descricaoHtml && (
+            <div
+              className="w-full border-t border-zinc-100 pt-4 text-left text-[13px] leading-relaxed text-zinc-600 [&_a]:font-bold [&_a]:text-zinc-900 [&_a]:underline [&_h1]:mt-3 [&_h1]:text-sm [&_h1]:font-black [&_h1]:text-zinc-900 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-black [&_h2]:text-zinc-900 [&_h3]:mt-2 [&_h3]:text-[13px] [&_h3]:font-black [&_h3]:text-zinc-900 [&_img]:my-3 [&_img]:w-full [&_img]:rounded-2xl [&_li]:my-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_strong]:font-bold [&_strong]:text-zinc-800 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+              dangerouslySetInnerHTML={{ __html: descricaoHtml }}
+            />
           )}
         </motion.div>
 
@@ -135,13 +142,18 @@ export function AboutStoreView() {
             transition={{ duration: 0.3, delay: 0.1 }}
             className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
           >
-            <iframe
-              title={`Mapa da loja ${storeName}`}
-              src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              className="block h-56 w-full border-0"
-            />
+            {/* Recorte do topo esconde o chip "Open in Maps" do embed do
+                Google (controle nosso, não do iframe): o mapa sobe 56px para
+                fora do wrapper e continua navegável. */}
+            <div className="relative h-56 w-full overflow-hidden">
+              <iframe
+                title={`Mapa da loja ${storeName}`}
+                src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                className="absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
+              />
+            </div>
             <a
               href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}
               target="_blank"
