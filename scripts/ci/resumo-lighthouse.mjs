@@ -27,10 +27,16 @@ if (!fs.existsSync(pasta)) {
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- pasta fixa do lhci, criada pelo passo anterior
 const nomes = fs.readdirSync(pasta);
+// NOME REAL do relatório que o `lhci collect` grava: `lhr-<timestamp>.json`
+// (montado em @lhci/utils/src/saved-reports.js: `lhr-${Date.now()}` — o filtro
+// antigo, `lighthouse-*.report.json`, não casa com NENHUM arquivo e o resumo
+// publicava warning sem número com o job verde). O padrão do CLI do lighthouse
+// standalone fica como fallback, caso a receita do workflow mude um dia.
+const ehRelatorio = (nome) =>
+  (nome.startsWith("lhr-") && nome.endsWith(".json")) ||
+  (nome.startsWith("lighthouse-") && nome.endsWith(".report.json"));
 const relatorios = nomes
-  .filter(
-    (nome) => nome.startsWith("lighthouse-") && nome.endsWith(".report.json"),
-  )
+  .filter(ehRelatorio)
   .map((nome) => ({
     nome,
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- nome vem do readdir imediatamente acima
@@ -39,8 +45,15 @@ const relatorios = nomes
   .sort((a, b) => a.mtime - b.mtime);
 
 if (relatorios.length === 0) {
+  // Diagnóstico: "não achei" precisa dizer o que esperava e o que havia —
+  // fumaça sem relatório é fumaça não feita, e o aviso tem de dar o caminho.
+  const amostra = nomes.slice(0, 5).join(", ");
+  const total =
+    nomes.length > 5
+      ? `${nomes.length} arquivos (amostra: ${amostra}…)`
+      : amostra || "pasta vazia";
   console.log(
-    "### 🚦 Lighthouse\n\n::warning::Nenhum `lighthouse-*.report.json` em `.lighthouseci/` — fumaça sem relatório é fumaça não feita.",
+    `### 🚦 Lighthouse\n\n::warning::Nenhum relatório Lighthouse em \`.lighthouseci/\` — esperava \`lhr-<timestamp>.json\` (o que o \`lhci collect\` grava) ou \`lighthouse-*.report.json\`. Fumaça sem relatório é fumaça não feita. Havia: ${total}.`,
   );
   process.exit(0);
 }
