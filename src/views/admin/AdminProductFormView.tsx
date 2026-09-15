@@ -6,6 +6,8 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { PhoneSimulator } from "@/components/admin/PhoneSimulator";
+import { ModalVarianteGrade } from "@/views/admin/ModalVarianteGrade";
+import type { LinhaProntaDaGrade } from "@/views/admin/ModalVarianteGrade";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,7 +33,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
-import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
+import { gruposDeVariacao, temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
 import {
   type ParDeAtributo,
   dividirEmAtributos,
@@ -53,6 +55,7 @@ import {
   Loader2,
   Package,
   Plus,
+  Power,
   Scissors,
   ShieldCheck,
   Smartphone,
@@ -326,6 +329,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const [showSuccess, setShowSuccess] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
   const [showVariantForm, setShowVariantForm] = useState(false);
+  // Grade de combinações (peça 21): o modal de lote ao lado do unitário.
+  const [showGradeForm, setShowGradeForm] = useState(false);
+  // Desativação de linha (peça 21): `active = false` com aviso — a linha
+  // continua no banco (histórico de pedido) e só some da loja. Nunca DELETE.
+  const [varianteParaDesativar, setVarianteParaDesativar] =
+    useState<ProductVariant | null>(null);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(
     null,
   );
@@ -478,13 +487,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
   // Lock body scroll when variant or category forms are open
   useEffect(() => {
-    if (showVariantForm || showCategoryForm) {
+    if (showVariantForm || showCategoryForm || showGradeForm) {
       document.body.classList.add("admin-modal-open");
       return () => {
         document.body.classList.remove("admin-modal-open");
       };
     }
-  }, [showVariantForm, showCategoryForm]);
+  }, [showVariantForm, showCategoryForm, showGradeForm]);
 
   const openAdjuster = (url: string, index: number) => {
     setAdjustingImgUrl(url);
@@ -1106,6 +1115,77 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
   const handleDeleteVariant = useCallback((vId: string) => {
     setVariantToDelete(vId);
+  }, []);
+
+  /**
+   * Grade (peça 21): as linhas que o modal entregou entram na lista como
+   * variantes comuns com id `temp-` — o MESMO caminho da variante unitária.
+   * A gravação em lote é o `upsertVariants` de sempre, no salvar do produto;
+   * nada de caminho novo de persistência. A trava de um grupo é conferida
+   * AQUI de novo (o modal já bloqueou no "Gerar") porque o estado do
+   * formulário é dono deste lado da parede.
+   */
+  const handleEfetivarGrade = (linhas: LinhaProntaDaGrade[]) => {
+    if (linhas.length === 0) return;
+
+    const trava = travaDeUmGrupoSo(formData.variants, null, linhas[0].name);
+    if (trava.bloqueia) {
+      toast.error(`Este produto já usa "${trava.grupoEmUso}"`, {
+        description:
+          "Cada produto aceita um tipo de variação só. A grade precisa usar " +
+          "o atributo que o produto já tem.",
+        duration: 10000,
+      });
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      variants: [
+        ...prev.variants,
+        ...linhas.map((linha) => ({
+          ...linha,
+          id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        }) as any),
+      ],
+    }));
+    setShowGradeForm(false);
+    toast.success(
+      linhas.length === 1
+        ? "Variante da grade criada — ela entra na loja quando o produto for salvo."
+        : `${linhas.length} variantes da grade criadas — elas entram na loja quando o produto for salvo.`,
+    );
+  };
+
+  /** Desativar (peça 21): `active = false`, SEM DELETE — o id e a linha
+   *  continuam no banco (pedidos antigos mantêm referência), a combinação
+   *  some da loja na hora e o estoque total recalcula (é a soma das ativas).
+   *  A gravação segue pelo `upsertVariants` no salvar do produto. */
+  const confirmDesativarVariante = () => {
+    if (!varianteParaDesativar) return;
+    const alvo = varianteParaDesativar;
+    setFormData((prev) => ({
+      ...prev,
+      variants: prev.variants.map((v) =>
+        v.id === alvo.id ? { ...v, active: false } : v,
+      ),
+    }));
+    setVarianteParaDesativar(null);
+    toast.info(
+      "Variante desativada — saiu da loja; o histórico dos pedidos fica.",
+    );
+  };
+
+  /** Reativar é o caminho de volta da desativação — direto, sem diálogo:
+   *  não apaga nada, só devolve a combinação para a loja. */
+  const handleReativarVariante = useCallback((v: ProductVariant) => {
+    setFormData((prev) => ({
+      ...prev,
+      variants: prev.variants.map((linha) =>
+        linha.id === v.id ? { ...linha, active: true } : linha,
+      ),
+    }));
+    toast.info("Variante reativada — voltou para a loja.");
   }, []);
 
   const handleEditVariant = useCallback((v: ProductVariant) => {
@@ -2011,6 +2091,22 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           document.body,
         )}
 
+      {/* Modal da grade de combinações (peça 21). Ele não grava nada:
+          efetivar entrega as linhas e elas entram na lista de variantes
+          acima, gravadas pelo upsertVariants de sempre no salvar. */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <ModalVarianteGrade
+            aberto={showGradeForm}
+            onFechar={() => setShowGradeForm(false)}
+            variantesExistentes={formData.variants}
+            sugestoesDeAtributo={suggestedAttributes}
+            grupoUnicoEmUso={gruposDeVariacao(formData.variants)[0] ?? null}
+            onEfetivar={handleEfetivarGrade}
+          />,
+          document.body,
+        )}
+
       <header className="sticky top-0 z-30 border-b border-white/5 bg-zinc-950/80 px-4 py-3 backdrop-blur-md md:px-6 md:py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-3 md:gap-4">
@@ -2476,6 +2572,17 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             >
               + Novo
             </button>
+            {/* Grade de combinações (peça 21): gera Cor × Tamanho de uma vez,
+                com reaproveitamento dos valores já usados. O "+ Novo" de uma
+                combinação só continua lá, intacto. */}
+            <button
+              type="button"
+              data-testid="abrir-grade"
+              onClick={() => setShowGradeForm(true)}
+              className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+            >
+              + Grade
+            </button>
           </div>
 
           {/* O produto ja esta no estado que mente: dois grupos de variacao.
@@ -2585,6 +2692,8 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                   variant={v}
                   onEdit={handleEditVariant}
                   onDelete={handleDeleteVariant}
+                  onDesativar={setVarianteParaDesativar}
+                  onReativar={handleReativarVariante}
                 />
               ))
             )}
@@ -3508,6 +3617,41 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Aviso de Desativação (peça 21): tirar a combinação da loja é
+          `active = false`, nunca DELETE — pedido antigo continua com a
+          referência viva da linha. O aviso explica o que some, o que fica
+          e que o estoque total recalcula. */}
+      <AlertDialog
+        open={varianteParaDesativar !== null}
+        onOpenChange={(open) => !open && setVarianteParaDesativar(null)}
+      >
+        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
+              Desativar{" "}
+              {varianteParaDesativar?.value || "variante"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-zinc-400">
+              Ela sai da loja na hora e o estoque total do produto recalcula.
+              A linha NÃO é apagada: o histórico dos pedidos que já venderam
+              esta combinação continua intacto. Para gravar no banco, salve o
+              formulário do produto. Para desfazer, use "Reativar" na linha.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDesativarVariante}
+              className="rounded-xl border-0 bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700"
+            >
+              Desativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 });
@@ -3516,12 +3660,19 @@ interface VariantItemProps {
   readonly variant: ProductVariant;
   readonly onEdit: (v: ProductVariant) => void;
   readonly onDelete: (id: string) => void;
+  /** Desativar (peça 21): `active = false` com aviso — a linha fica no
+   *  banco, a combinação some da loja. Nunca DELETE. */
+  readonly onDesativar: (v: ProductVariant) => void;
+  /** Reativar: o caminho de volta da desativação, sem diálogo. */
+  readonly onReativar: (v: ProductVariant) => void;
 }
 
 const VariantItem = React.memo(function VariantItem({
   variant,
   onEdit,
   onDelete,
+  onDesativar,
+  onReativar,
 }: VariantItemProps) {
   return (
     <div className="group flex items-center justify-between rounded-2xl border border-white/5 bg-zinc-900 p-4 transition-all hover:border-emerald-500/30">
@@ -3572,6 +3723,32 @@ const VariantItem = React.memo(function VariantItem({
           className="flex size-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-white/5 hover:text-white"
         >
           <Edit2 className="size-3.5" />
+        </button>
+        {/* Peça 21: tirar da loja é desativar (`active = false`, linha fica
+            no banco, histórico de pedido intacto); inativa reativa por aqui
+            mesmo. O caminho do DELETE (lixeira) continua ao lado — cuidado:
+            são dois caminhos para "tirar da loja" e só um preserva história. */}
+        <button
+          type="button"
+          aria-label={
+            variant.active
+              ? `Desativar ${variant.value}`
+              : `Reativar ${variant.value}`
+          }
+          title={
+            variant.active
+              ? "Desativar — some da loja; histórico dos pedidos fica"
+              : "Reativar — devolve a combinação para a loja"
+          }
+          onClick={() => (variant.active ? onDesativar(variant) : onReativar(variant))}
+          className={cn(
+            "flex size-8 items-center justify-center rounded-lg transition-all",
+            variant.active
+              ? "text-emerald-500/70 hover:bg-emerald-500/10 hover:text-emerald-400"
+              : "text-zinc-600 hover:bg-white/5 hover:text-white",
+          )}
+        >
+          <Power className="size-3.5" />
         </button>
         <button
           type="button"
