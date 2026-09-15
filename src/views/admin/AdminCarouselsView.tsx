@@ -1,6 +1,13 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -12,7 +19,6 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
-  ChevronDown,
   Edit,
   Eye,
   EyeOff,
@@ -690,46 +696,55 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         </div>
 
                         {/* limite por vitrine */}
-                        <div className="relative flex h-9 items-center gap-1 rounded-xl border border-white/10 bg-black/30 px-2">
+                        <div className="flex h-9 items-center gap-1 rounded-xl border border-white/10 bg-black/30 pl-2 pr-1">
                           <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
                             Máx
                           </span>
-                          <select
-                            value={sec.maxItems ?? 6}
-                            onChange={(e) =>
-                              handleUpdateMaxItems(
-                                sec.id,
-                                Number(e.target.value),
-                              )
+                          <Select
+                            value={String(sec.maxItems ?? 6)}
+                            onValueChange={(valor) =>
+                              handleUpdateMaxItems(sec.id, Number(valor))
                             }
-                            className="cursor-pointer appearance-none bg-transparent pr-4 font-mono text-xs font-bold text-white focus:outline-none"
                           >
-                            <option
-                              value={4}
-                              className="bg-zinc-900 text-white"
+                            <SelectTrigger
+                              size="sm"
+                              aria-label={`Máximo de produtos em ${sec.title}`}
+                              className="h-7 gap-0.5 rounded-lg border-white/10 bg-transparent pl-1.5 pr-1 font-mono text-xs font-bold text-white shadow-none hover:bg-white/5 focus-visible:ring-1 data-[size=sm]:h-7"
                             >
-                              4
-                            </option>
-                            <option
-                              value={6}
-                              className="bg-zinc-900 text-white"
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent
+                              position="popper"
+                              align="end"
+                              sideOffset={6}
+                              className="border-white/10 bg-zinc-950/95 backdrop-blur-md"
                             >
-                              6
-                            </option>
-                            <option
-                              value={8}
-                              className="bg-zinc-900 text-white"
-                            >
-                              8
-                            </option>
-                            <option
-                              value={10}
-                              className="bg-zinc-900 text-white"
-                            >
-                              10
-                            </option>
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-2 size-3.5 text-zinc-500" />
+                              <SelectItem
+                                className="rounded-lg font-mono text-xs font-bold text-zinc-300 focus:bg-white/10 focus:text-white"
+                                value="4"
+                              >
+                                4
+                              </SelectItem>
+                              <SelectItem
+                                className="rounded-lg font-mono text-xs font-bold text-zinc-300 focus:bg-white/10 focus:text-white"
+                                value="6"
+                              >
+                                6
+                              </SelectItem>
+                              <SelectItem
+                                className="rounded-lg font-mono text-xs font-bold text-zinc-300 focus:bg-white/10 focus:text-white"
+                                value="8"
+                              >
+                                8
+                              </SelectItem>
+                              <SelectItem
+                                className="rounded-lg font-mono text-xs font-bold text-zinc-300 focus:bg-white/10 focus:text-white"
+                                value="10"
+                              >
+                                10
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
 
                         {/* exclusão: só vitrine customizada tem */}
