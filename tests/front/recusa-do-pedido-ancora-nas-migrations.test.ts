@@ -54,6 +54,13 @@ const FRASES_DO_BANCO = [
   "O cupom % expirou em %.",
   "O cupom % já atingiu o limite de usos.",
   "O cupom % exige uma compra mínima de R$ %.",
+  // PEÇA 12 (Fase 2, migration 20261151000000): a recusa por limite COM vaga
+  // presa em pedido cancelado diz QUANDO a vaga volta. A frase de limite
+  // antiga permanece para o caso sem vaga presa — esta âncora morre se a
+  // frase nova sair do SQL sem a regra irmã em recusaDoPedido.ts (e o teste
+  // irmão migration_cupom_mensagem_de_vaga_presa_test.ts crava a frase nas
+  // TRÊS funções: validate_coupon_secure_v2, v23 e v24).
+  "O cupom % está no limite de usos. A vaga dele volta sozinha quando o pagamento de um pedido cancelado deixar de ser possível (em até 24 horas).",
   "Os valores do pedido mudaram. Atualize o carrinho e tente novamente.",
   "Estoque insuficiente para o produto %",
   // ITEM 3c (12/09/2026): a porta da entrega (20261039000000 em diante) e a
