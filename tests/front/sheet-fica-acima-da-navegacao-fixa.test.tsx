@@ -135,6 +135,36 @@ vi.mock("@/components/ui/custom/SearchBar", () => ({
 
 import { Header } from "@/components/ui/custom/Header";
 
+// Peça 17 (14/09): os DOIS testes do canal de toast derrubaram o gate da
+// release 1.33.1 e passaram no re-run — flaky de timing sob carga (worker
+// jsdom compartilhado): o boot do framer-motion REAL (rAF, não fake) e a
+// importação dinâmica do wrapper demoram mais que o default de 5 s do caso
+// quando a máquina está carregada. A LÓGICA interna dos dois é determinística
+// (fake timers só de setTimeout/clearTimeout); o tempo extra é só boot —
+// timeout DE CASO maior com o porquê aqui, não espera solta.
+const TIMEOUT_CASO_CARGA = 20000;
+
+async function esperarAte(
+  condicao: () => boolean,
+  { timeoutMs = 10000 } = {},
+) {
+  const inicio = Date.now();
+  while (!condicao()) {
+    if (Date.now() - inicio > timeoutMs) {
+      throw new Error(
+        `esperarAte: condição não ficou verdadeira em ${timeoutMs}ms`,
+      );
+    }
+    // Os testes abaixo FAKEIAM setTimeout — o passo aqui NÃO PODE usá-lo
+    // (nunca dispararia sem advanceTimersByTime). setImmediate é macrotask
+    // real, não fakeada por `toFake: ["setTimeout", "clearTimeout"]`, e cede
+    // o event loop para o rAF do framer-motion commitar.
+    await act(async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+    });
+  }
+}
+
 describe("Header — o degrau transitório NÃO mora aqui (mora no wrapper)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -201,10 +231,16 @@ describe("Header — o degrau transitório NÃO mora aqui (mora no wrapper)", ()
     expect(header?.className).not.toContain("z-[140]");
 
     // O canal segue vivo: a cápsula clicável carrega a mensagem (o hook do
-    // canal alimenta a cápsula; só o degrau saiu daqui).
-    const capsula = Array.from(document.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Falta escolher"),
-    );
+    // canal alimenta a cápsula; só o degrau saiu daqui). A cápsula monta via
+    // rAF do framer-motion — sob carga ela chega TARDE ao DOM: espera
+    // condicional pelo elemento, não asserção no primeiro tique (peça 17).
+    let capsula: HTMLButtonElement | undefined;
+    await esperarAte(() => {
+      capsula = Array.from(document.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Falta escolher"),
+      );
+      return capsula !== undefined;
+    });
     expect(capsula).toBeDefined();
 
     // Drena a janela do toast (2600 ms default): o estado do canal é único
@@ -212,7 +248,7 @@ describe("Header — o degrau transitório NÃO mora aqui (mora no wrapper)", ()
     await act(async () => {
       vi.advanceTimersByTime(2600);
     });
-  });
+  }, TIMEOUT_CASO_CARGA);
 });
 
 // ── O WRAPPER é quem carrega o degrau (o stacking context que compete na raiz) ──
@@ -275,5 +311,5 @@ describe("BarraSuperiorCliente — o wrapper do header sobe a z-[140] com toast 
     });
     expect(barra.className).toContain("z-[100]");
     expect(barra.className).not.toContain("z-[140]");
-  });
+  }, TIMEOUT_CASO_CARGA);
 });
