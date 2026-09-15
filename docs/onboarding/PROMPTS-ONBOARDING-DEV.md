@@ -604,7 +604,10 @@ arquivos `.env*` — as áreas onde um erro derruba a loja. O resto, revisão de
 
 - Criar `develop` a partir de `main` e publicar
 - Definir `develop` como branch padrão do repositório (assim PR novo já aponta pro lugar certo)
-- Habilitar auto-delete de branch após merge
+- Auto-delete de branch DESLIGADO (`delete_branch_on_merge` false) — decisão da casa
+  (INFRA-290, #150): o auto-delete apagava a branch de release no instante do merge e
+  inviabilizava o PR de volta para a develop; a limpeza é manual de propósito (`git push
+  origin --delete <branch>`, `git fetch --prune`, `git branch -d`)
 - Merge commit para todo PR — feature, release e hotfix (merge e squash seguem ambos
   habilitados no repositório; a convenção da casa, medida, é merge commit)
 
