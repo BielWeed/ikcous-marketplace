@@ -25,6 +25,14 @@
 //   C11 salvar com Access Token malformado -> 400, nada gravado
 //   C12 trocar o token derruba o ultimo_teste antigo (ele falava da chave
 //       anterior — recado velho com cara de novo é pior que nenhum)
+//   C13 peça 27: testar SEM dublê injetado (o caminho que produção corre,
+//       fetch global patcheado) CONECTA — reproduz o defeito em que o default
+//       de `buscar` era o fetchComTempo cru (assinatura (fetchFn, url, init)),
+//       chamado como (url, init): a URL virava "função" e todo testar caía no
+//       catch de rede, mesmo com chave boa e internet boa
+//   C14 rede caiu DE VERDADE no caminho de produção (fetch global rejeita) ->
+//       recado de internet honesto, distinto do recado de chave recusada (C7),
+//       e a falha fica gravada no ultimo_teste
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 // ── Costura de REDE para a porta de admin (verifyIsAdmin monta os PRÓPRIOS
@@ -495,6 +503,95 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             const salvo = JSON.parse(estado.valor!);
             assertEquals(salvo.ultimo_teste, null);
             assertEquals(salvo.mascara_token, `••••${TOKEN_FALSO_2.slice(-4)}`);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C13 — testar SEM dublê injetado (caminho de produção) conecta", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        // Fetch global patcheado (a mesma costura que os testes usam para a
+        // porta de admin): rotas do Supabase caem no dublê de admin, a rota do
+        // MP é anotada e respondida — NENHUMA rede real. É o caminho que a
+        // produção corre quando ninguém injeta `buscar` em deps.
+        const chamadasMp: string[] = [];
+        const fetchProducao = ((input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input);
+            if (url.includes("api.mercadopago.com")) {
+                chamadasMp.push(url);
+                return Promise.resolve(
+                    new Response(
+                        JSON.stringify({ live_mode: true, nickname: "Loja Real" }),
+                        { status: 200, headers: { "Content-Type": "application/json" } },
+                    ),
+                );
+            }
+            return fetchAdminFalso(input, init);
+        }) as any;
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            // SEM `buscar` nas deps: o default da function é quem fala.
+            const resposta = await comFetch(fetchProducao, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.conectado, true);
+            assertEquals(corpo.conta, "Loja Real");
+            assertEquals(chamadasMp.length, 1);
+            assertEquals(chamadasMp[0], "https://api.mercadopago.com/users/me");
+            const salvo = JSON.parse(estado.valor!);
+            assertEquals(salvo.ultimo_teste.conectado, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C14 — rede caiu de verdade (produção) -> recado de internet honesto", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        // O fetch global REJEITA para o MP (internet fora de verdade) e as
+        // rotas do Supabase seguem no dublê de admin. Distinto do C7 (o MP
+        // RESPONDEU recusando a chave): aqui nem chegou a haver resposta.
+        const fetchSemRede = ((input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input);
+            if (url.includes("api.mercadopago.com")) {
+                return Promise.reject(new TypeError("falha de rede simulada"));
+            }
+            return fetchAdminFalso(input, init);
+        }) as any;
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const resposta = await comFetch(fetchSemRede, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.conectado, false);
+            assertEquals(corpo.mensagem.includes("internet"), true);
+            // A falha fica gravada como falha — e nada do token aparece.
+            assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO), false);
+            const salvo = JSON.parse(estado.valor!);
+            assertEquals(salvo.ultimo_teste.conectado, false);
         } finally {
             desfazerEnv();
         }

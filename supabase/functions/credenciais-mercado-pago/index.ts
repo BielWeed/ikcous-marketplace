@@ -307,7 +307,15 @@ export async function handler(
     }
 
     const supabase = deps.supabase ?? createClient(supabaseUrl, serviceRoleKey);
-    const buscar = deps.buscar ?? fetchComTempo;
+    // fetchComTempo (shared/mercadopago.ts) tem assinatura (fetchFn, url,
+    // init, tempoMs) — o PRIMEIRO parâmetro é o próprio fetch. Usá-lo cru aqui
+    // (peça 27) fazia a URL string ocupar o lugar do fetch e todo `testar`
+    // morria em TypeError dentro dele, caindo no catch de rede — o lojista
+    // via "sem internet" SEMPRE, mesmo com chave boa e internet boa. A seta
+    // adapta a assinatura: quem chega aqui é (url, init), como o dublê dos
+    // testes e o resto da casa usam.
+    const buscar = deps.buscar ??
+        ((url: string, init?: RequestInit) => fetchComTempo(fetch, url, init));
 
     try {
         // ── ler: o que a tela mostra — só máscaras e último teste ──────────
