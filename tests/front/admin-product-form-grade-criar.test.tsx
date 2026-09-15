@@ -137,12 +137,6 @@ function digitar(id: string, valor: string) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-async function esperarFlushDosCampos() {
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, 300));
-  });
-}
-
 async function digitarCampo(id: string, valor: string) {
   await act(async () => {
     digitar(id, valor);
@@ -438,7 +432,10 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
     vi.restoreAllMocks();
   });
 
-  async function montarEmEdicao(variantes = produtoBase.variants) {
+  async function montarEmEdicao(
+    // `unknown[]`: variantes falsas dos testes não precisam do tipo inteiro.
+    variantes: unknown[] = produtoBase.variants,
+  ) {
     fetchProduct.mockResolvedValue({ ...produtoBase, variants: variantes });
     const { AdminProductFormView } = await import(
       "@/views/admin/AdminProductFormView"
