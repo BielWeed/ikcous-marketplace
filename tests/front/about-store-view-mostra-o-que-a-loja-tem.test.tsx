@@ -180,10 +180,11 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
 
     const texto = await renderizarPagina();
 
-    // A página continua de pé, com o cabeçalho e o nome da marca do build.
-    expect(hospedeiro.querySelector("h1")?.textContent).toContain(
-      "Sobre a Loja",
-    );
+    // A página continua de pé: título em SVG vetorial nomeado + nome da
+    // marca do build.
+    expect(
+      hospedeiro.querySelector("svg[aria-label='Sobre a Loja']"),
+    ).not.toBeNull();
     expect(texto).toContain("Aurora");
 
     // O que a loja não preencheu NÃO vira bloco vazio.

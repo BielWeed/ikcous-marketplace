@@ -80,8 +80,48 @@ export function AboutStoreView() {
           transition={{ duration: 0.3 }}
           className="flex flex-col items-center gap-1.5 border-b border-zinc-100 pb-5 text-center"
         >
-          <h1 className="text-3xl font-black leading-none tracking-tight text-zinc-900">
-            Sobre a Loja
+          {/* Título em SVG VETORIAL (pedido do dono, 15/09): duas camadas de
+              texto — dourado atrás deslocado, preto na frente — nítido em
+              qualquer zoom. `textLength` trava a largura para o desenho não
+              depender do momento em que a fonte carrega. O h1 permanece
+              nomeado (aria-label) para leitores de tela. */}
+          <h1 className="flex justify-center">
+            <svg
+              width="252"
+              height="42"
+              viewBox="0 0 252 42"
+              role="img"
+              aria-label="Sobre a Loja"
+            >
+              <text
+                x="126"
+                y="32"
+                textAnchor="middle"
+                textLength="244"
+                lengthAdjust="spacingAndGlyphs"
+                fontFamily="Inter, Arial, sans-serif"
+                fontSize="34"
+                fontWeight="900"
+                letterSpacing="-1"
+                fill="#eab308"
+              >
+                Sobre a Loja
+              </text>
+              <text
+                x="124"
+                y="30"
+                textAnchor="middle"
+                textLength="244"
+                lengthAdjust="spacingAndGlyphs"
+                fontFamily="Inter, Arial, sans-serif"
+                fontSize="34"
+                fontWeight="900"
+                letterSpacing="-1"
+                fill="#18181b"
+              >
+                Sobre a Loja
+              </text>
+            </svg>
           </h1>
           <p className="mt-1 text-xs text-zinc-500">
             A marca por trás deste app.
@@ -241,7 +281,7 @@ export function AboutStoreView() {
           className="fixed right-4 z-[115] flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 transition-transform hover:bg-emerald-700 active:scale-95"
           style={{ bottom: "calc(var(--nav-height, 56px) + 20px)" }}
         >
-          <IconeWhatsapp className="size-7" />
+          <IconeWhatsapp className="size-8" />
         </button>
       )}
     </div>
