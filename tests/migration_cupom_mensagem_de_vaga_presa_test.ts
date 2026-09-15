@@ -23,7 +23,8 @@ const { avaliarFase0 } = require("../scripts/db-prove-rollback.cjs");
 
 const DIR = fromFileUrl(new URL(".", import.meta.url));
 const NOME_A = "20261151000000_cupom_preso_diz_que_a_vaga_volta.sql";
-const NOME_B = "20261152000000_varredura_libera_vaga_de_pedido_sem_cobranca.sql";
+const NOME_B =
+  "20261152000000_varredura_libera_vaga_de_pedido_sem_cobranca.sql";
 // 🔴 A FONTE das v23/v24 é o ÚLTIMO ESCRITOR VIVO delas — a
 // 20261081000000 (assinatura de 13 argumentos com a chave de idempotência,
 // portão de entrega e frete grátis no servidor). A 20261025000000 é fonte
@@ -31,7 +32,8 @@ const NOME_B = "20261152000000_varredura_libera_vaga_de_pedido_sem_cobranca.sql"
 // (20261040000000/20261081000000) — recriar por ela nasceria como
 // OVERLOAD-sombra sem as proteções vivas (achado BLOQUEANTE da revisão cara
 // da peça 12). Nenhuma migration pode renascer por fonte morta.
-const NOME_FONTE_A = "20261081000000_a_regra_do_frete_gratis_mora_no_servidor.sql";
+const NOME_FONTE_A =
+  "20261081000000_a_regra_do_frete_gratis_mora_no_servidor.sql";
 const NOME_FONTE_B = "20260970000000_cancelamento_respeita_o_envio.sql";
 
 const caminho = (nome: string) => `${DIR}../supabase/migrations/${nome}`;
@@ -89,7 +91,10 @@ function fatiasForaDaRecusa(corpoFonte: string, corpoNovo: string) {
   const fatia = (corpo: string, de: string, ate: string) => {
     const i = corpo.indexOf(de);
     const j = corpo.indexOf(ate);
-    assert(i >= 0 && j > i, `marcadores ${de.slice(0, 30)}… / ${ate.slice(0, 30)}… não encontrados na ordem esperada`);
+    assert(
+      i >= 0 && j > i,
+      `marcadores ${de.slice(0, 30)}… / ${ate.slice(0, 30)}… não encontrados na ordem esperada`,
+    );
     return corpo.slice(i, j);
   };
   return {
@@ -128,7 +133,11 @@ Deno.test("avaliarFase0 não recusa os pares migration+rollback das duas migrati
     [migrationA, rollbackA],
     [migrationB, rollbackB],
   ] as const) {
-    const r = avaliarFase0({ sqlMigration: sql, sqlRollback: rollback, temRollback: true });
+    const r = avaliarFase0({
+      sqlMigration: sql,
+      sqlRollback: rollback,
+      temRollback: true,
+    });
     assertEquals(r.recusado, false, `motivos: ${(r.motivos || []).join("; ")}`);
   }
 });
@@ -136,13 +145,18 @@ Deno.test("avaliarFase0 não recusa os pares migration+rollback das duas migrati
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 Deno.test("a frase canônica de vaga presa existe AMARRADA à subconsulta nas v23 e v24", () => {
-  for (const funcao of ["create_marketplace_order_v23", "create_marketplace_order_v24"]) {
+  for (const funcao of [
+    "create_marketplace_order_v23",
+    "create_marketplace_order_v24",
+  ]) {
     const corpo = corpoDaFuncao(migrationA, funcao);
     // Amarrado: a subconsulta de vaga presa seguida do RAISE novo — um não
     // sobrevive sem o outro. (Marcador solto casaria contra comentário — a
     // falha da Rodada 5.)
     assertStringIncludes(corpo, SUBCONSULTA_VAGA_PRESA);
-    const depoisDaSubconsulta = corpo.slice(corpo.indexOf(SUBCONSULTA_VAGA_PRESA));
+    const depoisDaSubconsulta = corpo.slice(
+      corpo.indexOf(SUBCONSULTA_VAGA_PRESA),
+    );
     assertStringIncludes(depoisDaSubconsulta, FRASE_V23_V24);
   }
 });
@@ -150,21 +164,37 @@ Deno.test("a frase canônica de vaga presa existe AMARRADA à subconsulta nas v2
 Deno.test("a frase canônica existe no validate_coupon_secure_v2, com o código concatenado", () => {
   const corpo = corpoDaFuncao(migrationA, "validate_coupon_secure_v2");
   // Fonte única (lição #53): a MESMA cauda de frase nas três funções.
-  assertStringIncludes(corpo, `'O cupom ' || p_code || ' ${CAUDA_FRASE_VALIDATE}`);
+  assertStringIncludes(
+    corpo,
+    `'O cupom ' || p_code || ' ${CAUDA_FRASE_VALIDATE}`,
+  );
   // A subconsulta de vaga presa do validate usa v_coupon (o RECORD dele).
   assertStringIncludes(corpo, "WHERE o.coupon_id = v_coupon.id");
   assertStringIncludes(corpo, "AND o.coupon_usage_returned = FALSE");
 });
 
 Deno.test("fora do bloco da recusa, v23 e v24 são CARACTERE A CARACTERE a 20261081000000 (cálculo involuto)", () => {
-  for (const funcao of ["create_marketplace_order_v23", "create_marketplace_order_v24"]) {
-    const { cabecaFonte, cabecaNova, meioFonte, meioNovo } =
-      fatiasForaDaRecusa(corpoDaFuncao(fonteA, funcao), corpoDaFuncao(migrationA, funcao));
-    assertEquals(cabecaNova.trimEnd(), cabecaFonte.trimEnd(), `cabeça de ${funcao} divergiu da fonte`);
+  for (const funcao of [
+    "create_marketplace_order_v23",
+    "create_marketplace_order_v24",
+  ]) {
+    const { cabecaFonte, cabecaNova, meioFonte, meioNovo } = fatiasForaDaRecusa(
+      corpoDaFuncao(fonteA, funcao),
+      corpoDaFuncao(migrationA, funcao),
+    );
+    assertEquals(
+      cabecaNova.trimEnd(),
+      cabecaFonte.trimEnd(),
+      `cabeça de ${funcao} divergiu da fonte`,
+    );
     const CAUDA = "IF v_coupon_type = 'percentage' THEN";
     const caudaFonte = ateFimDaFuncao(corpoDaFuncao(fonteA, funcao), CAUDA);
     const caudaNova = ateFimDaFuncao(corpoDaFuncao(migrationA, funcao), CAUDA);
-    assertEquals(caudaNova.trimEnd(), caudaFonte.trimEnd(), `cauda (cálculo/INSERT) de ${funcao} divergiu da fonte`);
+    assertEquals(
+      caudaNova.trimEnd(),
+      caudaFonte.trimEnd(),
+      `cauda (cálculo/INSERT) de ${funcao} divergiu da fonte`,
+    );
     // O miolo NOVO traz a frase nova E preserva a frase antiga de limite
     // (caso sem vaga presa) e a residual da corrida.
     assertStringIncludes(meioNovo, FRASE_V23_V24);
@@ -176,12 +206,18 @@ Deno.test("fora do bloco da recusa, v23 e v24 são CARACTERE A CARACTERE a 20261
 });
 
 Deno.test("o SELECT do diagnóstico ganhou o id da coupon (a subconsulta casa por coupon_id)", () => {
-  for (const funcao of ["create_marketplace_order_v23", "create_marketplace_order_v24"]) {
+  for (const funcao of [
+    "create_marketplace_order_v23",
+    "create_marketplace_order_v24",
+  ]) {
     const meio = fatiasForaDaRecusa(
       corpoDaFuncao(fonteA, funcao),
       corpoDaFuncao(migrationA, funcao),
     ).meioNovo;
-    assertStringIncludes(meio, "SELECT id, active, valid_until, usage_limit, usage_count, min_purchase");
+    assertStringIncludes(
+      meio,
+      "SELECT id, active, valid_until, usage_limit, usage_count, min_purchase",
+    );
   }
 });
 
@@ -221,7 +257,10 @@ Deno.test("fora da cláusula do prazo, o CÓDIGO da varredura é CARACTERE A CAR
 });
 
 Deno.test("o rollback A restaura as frases ANTERIORES (sem a frase nova) e aponta a 20261081000000", () => {
-  assertStringIncludes(rollbackA, "20261081000000_a_regra_do_frete_gratis_mora_no_servidor.sql");
+  assertStringIncludes(
+    rollbackA,
+    "20261081000000_a_regra_do_frete_gratis_mora_no_servidor.sql",
+  );
   // O corpo anterior do validate_coupon_secure_v2 volta embutido (a fonte
   // dele é o baseline — reprocessar o baseline inteiro NÃO é caminho).
   assertStringIncludes(rollbackA, "Cupom atingiu o limite de uso.");
