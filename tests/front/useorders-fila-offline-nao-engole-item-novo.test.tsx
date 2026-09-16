@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mesclarFilaOfflineAposPassada, useOrders } from "@/hooks/useOrders";
-import { act } from "react";
+import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -82,8 +82,20 @@ const item1 = {
   timestamp: 1,
 };
 
+// useOrders-2892: precisa chamar `loadOrders` de dentro do teste (para
+// registrar a última consulta do admin, como a tela do painel faz de
+// verdade) — expõe o retorno mais recente do hook num módulo-level em vez
+// de recriar o mock inteiro do supabase só para isto.
+let ultimoRetornoDoHook: ReturnType<typeof useOrders> | null = null;
+
 function Sonda({ enabled = true }: { enabled?: boolean }) {
-  useOrders(enabled, authState.isAdmin);
+  const retorno = useOrders(enabled, authState.isAdmin);
+  // Guardar em módulo é side effect — mora num useEffect, não no corpo do
+  // render (regra das hooks: variável de módulo não pode ser reatribuída
+  // durante a renderização).
+  useEffect(() => {
+    ultimoRetornoDoHook = retorno;
+  });
   return null;
 }
 
@@ -182,6 +194,7 @@ describe("useOrders — a fila offline não engole item novo", () => {
     rpcMock.mockReset();
     rpcMock.mockResolvedValue({ data: null, error: null });
     vi.mocked(toast.loading).mockReturnValue(toastId);
+    ultimoRetornoDoHook = null;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -226,6 +239,20 @@ describe("useOrders — a fila offline não engole item novo", () => {
         },
       });
       await montar();
+      if (isAdmin) {
+        // useOrders-2892: a revisão de useOrders-2867 provava só a AUSÊNCIA
+        // de chamada (sonda que nunca tinha carregado nada — recarga vira
+        // no-op de propósito, ver use-orders-reconexao-nao-zera-lista-do-
+        // admin.test.ts). Isso é a MESMA asserção do caso "só falha
+        // transitória", logo abaixo: não prova que a recarga REPETE a
+        // última consulta, só que ela não inventa uma nova. Registra aqui
+        // uma consulta real (como a tela do painel faz) para depois provar
+        // as duas coisas: que a recarga acontece E que ela preserva página/
+        // filtro/busca em vez da consulta fixa que useOrders-2867 corrigiu.
+        await act(async () => {
+          await ultimoRetornoDoHook?.loadOrders(2, 12, "processing", "termo");
+        });
+      }
       fromMock.mockClear();
       adminOrdersMock.mockClear();
 
@@ -235,16 +262,19 @@ describe("useOrders — a fila offline não engole item novo", () => {
       expect(localStorage.getItem(chave)).toBeNull();
       expect(toast.info).toHaveBeenCalled();
       if (isAdmin) {
-        // useOrders-2867: a recarga pós-sync deixou de ser uma consulta FIXA
-        // ("all"/página 0/10 por página) — agora repete a ÚLTIMA consulta do
-        // admin (`recarregarAposReconexaoRef`, via `ultimaConsultaAdminRef`).
-        // Esta sonda nunca chamou `loadOrders`, então não há consulta
-        // anterior a repetir: a recarga do admin vira no-op de propósito
-        // (mesma regra provada em
-        // use-orders-reconexao-nao-zera-lista-do-admin.test.ts, caso "admin
-        // que ainda não carregou nada") — chamar com valores padrão jogaria
-        // a lojista de volta para a página 1 sem filtro.
-        expect(adminOrdersMock).not.toHaveBeenCalled();
+        // Repete EXATAMENTE a consulta registrada acima — não a consulta
+        // fixa ("all"/página 0/10 por página) que useOrders-2867 corrigiu.
+        // `p_page_size: 12`, não 20 (o default de `loadOrders`), é o que
+        // prova que veio da última consulta e não de um valor-padrão que
+        // por acaso bateria com a página certa.
+        expect(adminOrdersMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            p_page: 2,
+            p_page_size: 12,
+            p_status: "processing",
+            p_search: "termo",
+          }),
+        );
         expect(fromMock).not.toHaveBeenCalled();
       } else {
         expect(fromMock).toHaveBeenCalledWith("marketplace_orders");
@@ -472,5 +502,48 @@ describe("useOrders — a fila offline não engole item novo", () => {
       expect.stringContaining("1 alterações não se aplicam mais"),
       { id: toastId },
     );
+  });
+
+  it("tenta sincronizar de novo quando a sessão passa de nula para presente (retentativa ao autenticar)", async () => {
+    // useOrders-2892: revisão de useOrders-2867 zerou as deps do efeito de
+    // sincronização por "online" para `[]` — o corpo só lê refs, então
+    // parecia inofensivo. Mas isso também matou a RE-EXECUÇÃO do efeito
+    // quando `user?.id` muda: se o dispositivo já está online no mount e a
+    // sessão ainda não terminou de carregar, a passada roda com o usuário
+    // ainda nulo, a RPC falha (RLS sem sessão) e o item fica preso na fila
+    // até o PRÓXIMO evento "online" real — que pode nunca acontecer numa
+    // aba que não voltou a cair. Restaurar `[user?.id]` faz a autenticação
+    // terminar de carregar DISPARAR essa retentativa sozinha.
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    authState.user = null;
+    localStorage.setItem(chave, JSON.stringify([item1]));
+    // Falha transitória (não é RLS de verdade neste mock, mas o mesmo
+    // balde: "não sei" não pode descartar o item) — o item continua na
+    // fila depois desta primeira passada, exatamente como ficaria com uma
+    // sessão ainda não pronta.
+    rpcMock.mockResolvedValueOnce({ data: null, error: { status: 500 } });
+
+    await act(async () => {
+      raiz.render(<Sonda />);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem(chave) ?? "null")).toEqual([item1]);
+
+    // A sessão termina de autenticar — mesmo componente, sem nenhum evento
+    // "online" novo disparar.
+    authState.user = { id: "cliente-1" };
+    await act(async () => {
+      raiz.render(<Sonda />);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(rpcMock).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem(chave)).toBeNull();
   });
 });

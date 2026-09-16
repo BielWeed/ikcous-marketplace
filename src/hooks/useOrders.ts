@@ -1643,13 +1643,42 @@ export function useOrders(
   /**
    * IDs cancelados por ESTE hook (via `updateOrderStatus`, abaixo) cujo eco
    * do próprio realtime ainda não voltou. `handleRealtimeUpdate` consulta
-   * este conjunto para saber se um pedido "cancelled" que chegou pelo canal
-   * é o eco do que ele mesmo acabou de fazer (não é gatilho novo — o bump
-   * já aconteceu em `updateOrderStatus`) ou um cancelamento genuinamente de
+   * este mapa para saber se um pedido "cancelled" que chegou pelo canal é o
+   * eco do que ele mesmo acabou de fazer (não é gatilho novo — o bump já
+   * aconteceu em `updateOrderStatus`) ou um cancelamento genuinamente de
    * fora (cliente, outra sessão admin — É gatilho novo). Sem isto não dá
    * para diferenciar os dois só olhando o payload do realtime.
+   *
+   * Ressalva da revisão de useOrders-1417 (tarefa
+   * useOrders-cancelados-janela-e-colunas): a versão anterior era um
+   * `Set<string>` que NUNCA expirava. Se o eco de verdade se perdesse
+   * (canal caiu, mensagem descartada), a entrada ficava aqui para sempre —
+   * e o PRÓXIMO evento "cancelled" para aquele MESMO id, ainda que fosse um
+   * cancelamento genuinamente novo (reaberto e cancelado de novo por outra
+   * sessão), era consumido como se fosse aquele eco velho: o gatilho não
+   * avançava, e um cancelamento real podia ficar servido do cache da janela
+   * anti-redundância como se nada tivesse mudado. Guardar o INSTANTE em que
+   * cada id entrou (`Map<string, number>`, valor = `Date.now()`) deixa
+   * `handleRealtimeUpdate` tratar uma entrada mais velha que
+   * `ECO_CANCELAMENTO_LOCAL_EXPIRACAO_MS` como se não existisse — o evento
+   * conta como gatilho normal, igual a qualquer cancelamento de fora.
    */
-  const pedidosCanceladosLocalmenteRef = useRef<Set<string>>(new Set());
+  const pedidosCanceladosLocalmenteRef = useRef<Map<string, number>>(new Map());
+  const ECO_CANCELAMENTO_LOCAL_EXPIRACAO_MS = 30000;
+  /**
+   * Ressalva 'b' da revisão (useOrders-cancelados-janela-e-colunas): o
+   * cleanup de desmonte (abaixo, perto de `cancelledOrdersAbortControllerRef`)
+   * já cancelava a requisição EM VOO e a releitura de arrasto — mas não a
+   * TERCEIRA forma de religar depois do desmonte: o "voo sujo" de
+   * `dispararOuEncadearBuscaCancelados`, que encadeia
+   * `.catch(() => {}).then(() => dispararOuEncadearBuscaCancelados(...))`
+   * sobre o voo em curso. Esse `.then` roda DEPOIS do voo assentar, sem
+   * checar se o componente ainda existe, e cria um `AbortController` NOVO —
+   * uma chamada de rede a mais depois que ninguém olha para o resultado, e
+   * um `setPedidosCancelados` numa instância morta. Esta flag é checada
+   * ali antes de religar.
+   */
+  const desmontadoRef = useRef(false);
 
   const fetchPedidosCancelados = useCallback(async (): Promise<Order[]> => {
     if (!enabled) return [];
@@ -1785,7 +1814,15 @@ export function useOrders(
         // resolvendo com o resultado DELA.
         return buscaCanceladosEmVooRef.current
           .catch(() => {})
-          .then(() => dispararOuEncadearBuscaCancelados(meuGatilho));
+          .then(() => {
+            // Ressalva 'b' da revisão: o componente pode ter desmontado
+            // ENQUANTO o voo atual ainda estava em voo — religar aqui
+            // criaria um AbortController novo e uma requisição que
+            // ninguém mais espera. Devolve o último resultado conhecido
+            // em vez de encadear mais uma volta.
+            if (desmontadoRef.current) return pedidosCanceladosRef.current;
+            return dispararOuEncadearBuscaCancelados(meuGatilho);
+          });
       }
 
       const dentroDaJanela =
@@ -1821,6 +1858,25 @@ export function useOrders(
 
     return dispararOuEncadearBuscaCancelados(gatilhoCanceladosSeqRef.current);
   }, [enabled]);
+
+  /**
+   * Item 5 da tarefa useOrders-cancelados-janela-e-colunas: o ramo
+   * "recarregar" do INSERT (abaixo, em `handleRealtimeInsert`) chamava
+   * `recarregarAposReconexaoRef.current` na hora, uma vez por evento — uma
+   * rajada de pedidos PIX quase simultâneos (o cenário de loja real que
+   * motivou isto) virava uma rajada equivalente de `get_admin_orders_paged`,
+   * uma por pedido. Um debounce TRAILING de 400ms (dentro da faixa
+   * 300–500ms pedida) faz N eventos dentro da janela pagarem UMA recarga só,
+   * disparada depois que a rajada some — timer dedicado, não compartilhado
+   * com o da reconexão: aquele vive dentro do efeito de assinatura do
+   * realtime (criado/destruído a cada (re)conexão do canal), e esta rotina
+   * roda fora dele; compartilhar exigiria içar o timer para fora do efeito
+   * de conexão, o que moveria bem mais código do que este achado pede.
+   */
+  const debounceRecarregarInsertRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const DEBOUNCE_RECARREGAR_INSERT_MS = 400;
 
   const handleRealtimeInsert = useCallback(
     async (newPayload: any) => {
@@ -1874,9 +1930,22 @@ export function useOrders(
             // ela está vendo. Repete a última consulta (mesmo mecanismo de
             // `escolherRecargaDeReconexao`) pra trazer o total certo sem
             // mexer na lista visível.
-            recarregarAposReconexaoRef
-              .current({ silencioso: true })
-              .catch(() => {});
+            //
+            // Debounce TRAILING (item 5, ver o docstring de
+            // `debounceRecarregarInsertRef`, acima): uma rajada de INSERTs
+            // que caem todos em "recarregar" (rajada de PIX) reagenda o
+            // MESMO timer em vez de disparar uma recarga por evento —
+            // só a última reagendada de fato dispara, depois que a rajada
+            // termina.
+            if (debounceRecarregarInsertRef.current) {
+              clearTimeout(debounceRecarregarInsertRef.current);
+            }
+            debounceRecarregarInsertRef.current = setTimeout(() => {
+              debounceRecarregarInsertRef.current = null;
+              recarregarAposReconexaoRef
+                .current({ silencioso: true })
+                .catch(() => {});
+            }, DEBOUNCE_RECARREGAR_INSERT_MS);
           }
           // "ignorar": o pedido não pertence a esta visão — nem a lista
           // nem o total dela mudam.
@@ -1923,9 +1992,22 @@ export function useOrders(
         // evento. Um cancelamento que chega só pelo canal (cliente, outra
         // sessão admin) nunca passou por `updateOrderStatus` deste hook, e
         // esse É um gatilho de verdade.
-        if (pedidosCanceladosLocalmenteRef.current.has(updatedOrder.id)) {
+        const marcadoEm = pedidosCanceladosLocalmenteRef.current.get(
+          updatedOrder.id,
+        );
+        // Ressalva 'a' da revisão (useOrders-cancelados-janela-e-colunas):
+        // uma marca mais velha que a expiração não conta mais como "eco
+        // pendente" — o eco de verdade se perdeu, e este evento É um
+        // gatilho novo (mesmo tratamento de quem nunca esteve no mapa).
+        const ecoAindaValido =
+          marcadoEm !== undefined &&
+          Date.now() - marcadoEm < ECO_CANCELAMENTO_LOCAL_EXPIRACAO_MS;
+        if (ecoAindaValido) {
           pedidosCanceladosLocalmenteRef.current.delete(updatedOrder.id);
         } else {
+          if (marcadoEm !== undefined) {
+            pedidosCanceladosLocalmenteRef.current.delete(updatedOrder.id);
+          }
           gatilhoCanceladosSeqRef.current += 1;
         }
         fetchPedidosCancelados().catch(() => {});
@@ -2572,7 +2654,7 @@ export function useOrders(
           // este pedido como "cancelado por este hook" para aquele eco saber
           // que é eco, não um cancelamento de fora.
           gatilhoCanceladosSeqRef.current += 1;
-          pedidosCanceladosLocalmenteRef.current.add(orderId);
+          pedidosCanceladosLocalmenteRef.current.set(orderId, Date.now());
           fetchPedidosCancelados().catch(() => {});
         }
       } catch (err: any) {
@@ -3267,9 +3349,22 @@ export function useOrders(
   // já existe para isto: repete a ÚLTIMA consulta admin (guardada em
   // ultimaConsultaAdminRef por `loadOrders`) ou a consulta pessoal do
   // cliente — mesmo mecanismo usado pela reconexão do realtime (linhas
-  // ~1824/~1868) e pela recarga por visibilidade, logo abaixo. Deps `[]`
-  // pelo mesmo motivo do efeito de visibilidade: o corpo só lê o ref,
-  // atualizado a cada render fora daqui.
+  // ~1824/~1868) e pela recarga por visibilidade, logo abaixo.
+  //
+  // Ressalva da revisão de useOrders-2867 (useOrders-2892): a mesma troca
+  // para deps `[]` também apagou `[user?.id]`, que aqui NÃO é decorativa —
+  // o corpo não precisa da variável, mas a RE-EXECUÇÃO do efeito É a
+  // retentativa ao autenticar. Se o dispositivo já está online quando o
+  // componente monta e a sessão ainda não terminou de carregar, esta
+  // passada roda com `user` nulo, a RPC falha por falta de sessão (RLS) e o
+  // item fica preso na fila até o PRÓXIMO evento "online" de verdade — que
+  // pode nunca vir numa aba que não caiu de novo. `[user?.id]` faz a
+  // autenticação terminar de carregar disparar essa retentativa sozinha
+  // (cleanup remove o listener antigo, o corpo roda de novo e, com
+  // `navigator.onLine` true, chama `handleOnlineSync` na hora). Isto é
+  // diferente do efeito de visibilidade, abaixo: lá `user?.id`/`isAdmin`
+  // eram mesmo decorativas e SÓ atrapalhavam (derrubavam um timer
+  // pendente) — aqui a mudança de `user?.id` é o próprio gatilho que falta.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleOnlineSync = () => {
@@ -3291,10 +3386,20 @@ export function useOrders(
     return () => {
       window.removeEventListener("online", handleOnlineSync);
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
+    // Em StrictMode (dev) o React roda setup → cleanup → setup na PRIMEIRA
+    // montagem: sem rearmar aqui, a bandeira ficaria `true` numa instância
+    // viva e o encadeamento do voo sujo nunca mais religaria (revisão).
+    desmontadoRef.current = false;
     return () => {
+      // Ressalva 'b' da revisão (useOrders-cancelados-janela-e-colunas):
+      // marca o desmonte ANTES de qualquer outra limpeza abaixo — é o que
+      // `dispararOuEncadearBuscaCancelados` consulta para não religar o
+      // "voo sujo" depois que esta instância já morreu (ver o docstring de
+      // `desmontadoRef`, acima).
+      desmontadoRef.current = true;
       if (userOrdersAbortControllerRef.current) {
         userOrdersAbortControllerRef.current.abort();
       }
@@ -3311,6 +3416,14 @@ export function useOrders(
       if (releituraDeArrastoAgendadaRef.current) {
         clearTimeout(releituraDeArrastoAgendadaRef.current);
         releituraDeArrastoAgendadaRef.current = null;
+      }
+      // Item 5 da tarefa useOrders-cancelados-janela-e-colunas: o debounce
+      // do INSERT "recarregar" (ver `handleRealtimeInsert`, acima) é o
+      // mesmo tipo de `setTimeout` pendente — sem isto, ele dispararia
+      // depois do desmonte.
+      if (debounceRecarregarInsertRef.current) {
+        clearTimeout(debounceRecarregarInsertRef.current);
+        debounceRecarregarInsertRef.current = null;
       }
     };
   }, []);
