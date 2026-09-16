@@ -36,15 +36,21 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { BASE_URL_PADRAO, fetchComTempo } from "../_shared/mercadopago.ts";
+import {
+    chaveDeCifra,
+    cifrar,
+    CHAVE_SETTINGS,
+    decifrar,
+    lerRegistroMp,
+    type Registro,
+    type UltimoTeste,
+} from "../_shared/credenciais-mp.ts";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers":
         "authorization, x-client-info, apikey, content-type",
 };
-
-/** Linha única do lojista em app_settings (app único, banco por cliente). */
-const CHAVE_SETTINGS = "pagamentos_mercado_pago";
 
 /**
  * Formato RELAXADO das credenciais MP: prefixo APP_USR- (produção e teste
@@ -53,26 +59,10 @@ const CHAVE_SETTINGS = "pagamentos_mercado_pago";
  */
 const FORMATO_CREDENCIAL = /^(APP_USR|TEST)-[A-Za-z0-9_-]{10,}$/;
 
-export type UltimoTeste = {
-    quando: string;
-    conectado: boolean;
-    mensagem: string;
-    ambiente: "producao" | "teste" | null;
-    conta: string | null;
-};
-
-/** O que dorme em app_settings — segredos só em ciphertext + iv. */
-export type Registro = {
-    public_key: string;
-    token_cifrado: string;
-    token_iv: string;
-    mascara_token: string;
-    webhook_cifrado: string | null;
-    webhook_iv: string | null;
-    mascara_webhook: string | null;
-    ultimo_teste: UltimoTeste | null;
-    atualizado_em: string;
-};
+// O formato do registro e o de UltimoTeste moram no módulo compartilhado
+// (quem cobra precisa do MESMO formato que esta tela grava); seguem saindo
+// por aqui para quem já importava desta function.
+export type { Registro, UltimoTeste };
 
 /** O que sai para a tela — JAMAIS ciphertext nem segredo. */
 export type RespostaLer = {
@@ -143,65 +133,11 @@ async function verifyIsAdmin(
     }
 }
 
-// ── Cifração (AES-256-GCM do WebCrypto — Deno traz crypto.subtle) ────────
-
-function base64ParaBytes(base64: string): Uint8Array {
-    // Uint8Array.from em vez de índice variável (`bytes[i] =`) — mesmo
-    // resultado, sem acordar a catraca de segurança do eslint.
-    return Uint8Array.from(atob(base64), (caractere) => caractere.charCodeAt(0));
-}
-
-function bytesParaBase64(bytes: Uint8Array): string {
-    let binaria = "";
-    for (const byte of bytes) binaria += String.fromCharCode(byte);
-    return btoa(binaria);
-}
-
-/** Chave da env; ausente/malformada devolve null — a function falha FECHADA. */
-async function chaveDeCifra(): Promise<CryptoKey | null> {
-    const segredo = Deno.env.get("MP_CHAVES_ENCRYPTION_KEY")?.trim() ?? "";
-    if (!segredo) return null;
-    let bytes: Uint8Array;
-    try {
-        bytes = base64ParaBytes(segredo);
-    } catch {
-        return null;
-    }
-    if (bytes.length !== 32) return null;
-    return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, [
-        "encrypt",
-        "decrypt",
-    ]);
-}
-
-async function cifrar(
-    texto: string,
-    chave: CryptoKey,
-): Promise<{ cifrado: string; iv: string }> {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const buffer = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv },
-        chave,
-        new TextEncoder().encode(texto),
-    );
-    return {
-        cifrado: bytesParaBase64(new Uint8Array(buffer)),
-        iv: bytesParaBase64(iv),
-    };
-}
-
-async function decifrar(
-    cifrado: string,
-    iv: string,
-    chave: CryptoKey,
-): Promise<string> {
-    const buffer = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: base64ParaBytes(iv) },
-        chave,
-        base64ParaBytes(cifrado),
-    );
-    return new TextDecoder().decode(buffer);
-}
+// As primitivas de cifra (chaveDeCifra/cifrar/decifrar, AES-256-GCM do
+// WebCrypto) saíram daqui para ../_shared/credenciais-mp.ts na tarefa mp-1:
+// quem GRAVA o segredo (esta tela) e quem o LÊ na hora de cobrar
+// (criar-pagamento, webhook, reconciliar, estornar) têm de usar exatamente a
+// mesma cifra — duas cópias divergem calado e o dinheiro para de entrar.
 
 /** Só o rabo da chave — o suficiente para o lojista reconhecer qual colou. */
 function mascaraDe(segredo: string): string {
@@ -209,17 +145,6 @@ function mascaraDe(segredo: string): string {
 }
 
 // ── app_settings (via supabase client injetável) ─────────────────────────
-
-async function lerRegistro(supabase: any): Promise<Registro | null> {
-    const { data, error } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", CHAVE_SETTINGS)
-        .maybeSingle();
-    if (error) throw new Error(`storage_leitura: ${error.message}`);
-    if (!data?.value) return null;
-    return JSON.parse(data.value) as Registro;
-}
 
 async function gravarRegistro(supabase: any, registro: Registro): Promise<void> {
     const { error } = await supabase
@@ -320,7 +245,7 @@ export async function handler(
     try {
         // ── ler: o que a tela mostra — só máscaras e último teste ──────────
         if (body.acao === "ler") {
-            const registro = await lerRegistro(supabase);
+            const registro = await lerRegistroMp(supabase);
             return json(respostaLer(registro), 200);
         }
 
@@ -352,7 +277,7 @@ export async function handler(
                 );
             }
 
-            const registroAntigo = await lerRegistro(supabase);
+            const registroAntigo = await lerRegistroMp(supabase);
             if (!accessToken && !registroAntigo?.token_cifrado) {
                 return json(
                     { erro: "Cole também o Access Token — é a chave que processa os pagamentos." },
@@ -407,7 +332,7 @@ export async function handler(
 
         // ── testar: fala com o MP DAQUI, com a chave decifrada no servidor ──
         if (body.acao === "testar") {
-            const registro = await lerRegistro(supabase);
+            const registro = await lerRegistroMp(supabase);
             if (!registro?.token_cifrado) {
                 return json(
                     { erro: "Salve o Access Token antes de testar a conexão." },
