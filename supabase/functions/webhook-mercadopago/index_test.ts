@@ -15,8 +15,16 @@
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
-// do lojista nos testes MP-W1..MP-W3 do fim deste arquivo.
-import { chaveDeCifra, cifrar } from "../_shared/credenciais-mp.ts";
+// do lojista nos testes MP-W1..MP-W3 do fim deste arquivo. Desde a tarefa
+// mp-6 o fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a
+// mesma montagem copiada em cinco suítes, e cópia de fixture envelhece
+// calada quando a forma do registro em app_settings muda.
+import {
+  CHAVE_CIFRA_TESTE,
+  registroMpDeTeste,
+  TOKEN_LOJISTA_FALSO,
+  WEBHOOK_LOJISTA_FALSO as SEGREDO_WEBHOOK_LOJISTA,
+} from "../_shared/credenciais-mp_fixtures.ts";
 
 const SEGREDO = "segredo-webhook-teste";
 const UUID_PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -3484,41 +3492,9 @@ Deno.test("aviso de pagamento atrasado: SMTP não configurado -> não chega a ch
 // legítima), o TOKEN não tem reserva nenhuma — cobrar/consultar na conta
 // errada é o erro que esta frente existe para impedir.
 
-/** Cofre de MENTIRA, 32 bytes determinísticos — mesma receita de
- * _shared/credenciais-mp_test.ts. Nunca a chave real de ninguém. */
-const CHAVE_CIFRA_TESTE = btoa(
-  String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (i * 7 + 3) % 256)),
-);
-const TOKEN_LOJISTA_FALSO = "APP_USR-token-falso-do-lojista-9999";
-// DIFERENTE do `SEGREDO` da plataforma (topo do arquivo), de propósito: é a
+// O `SEGREDO_WEBHOOK_LOJISTA` (o `WEBHOOK_LOJISTA_FALSO` do fixture) é
+// DIFERENTE do `SEGREDO` da plataforma lá do topo, de propósito: é essa
 // diferença que prova de quem é o segredo que valida a assinatura.
-const SEGREDO_WEBHOOK_LOJISTA = "segredo-falso-de-webhook-do-lojista";
-
-/** Registro do lojista cifrado com a MESMA primitiva da produção — fixture
- * escrito à mão não provaria que o webhook decifra de verdade. */
-async function registroMpDeTeste(
-  opcoes: { segredoWebhook?: string | null } = {},
-): Promise<Record<string, unknown>> {
-  const chave = await chaveDeCifra({
-    get: (nome: string) => (nome === "MP_CHAVES_ENCRYPTION_KEY" ? CHAVE_CIFRA_TESTE : undefined),
-  });
-  const token = await cifrar(TOKEN_LOJISTA_FALSO, chave!);
-  const segredo = opcoes.segredoWebhook === null
-    ? null
-    : opcoes.segredoWebhook ?? SEGREDO_WEBHOOK_LOJISTA;
-  const webhook = segredo ? await cifrar(segredo, chave!) : null;
-  return {
-    public_key: "APP_USR-publica-falsa-do-lojista",
-    token_cifrado: token.cifrado,
-    token_iv: token.iv,
-    mascara_token: "••••9999",
-    webhook_cifrado: webhook?.cifrado ?? null,
-    webhook_iv: webhook?.iv ?? null,
-    mascara_webhook: segredo ? `••••${segredo.slice(-4)}` : null,
-    ultimo_teste: null,
-    atualizado_em: "2026-09-15T00:00:00.000Z",
-  };
-}
 
 /** Como `fetchConsulta`, mas guardando os headers: é no `Authorization` que
  * mora a resposta de "com a chave de quem este webhook está perguntando". */
@@ -3584,7 +3560,7 @@ Deno.test("MP-W2 — lojista com TOKEN mas SEM segredo de webhook: o MP_WEBHOOK_
       rpcResultado: "pago",
       pedido: pedidoDeTeste(),
       registro,
-      registroMp: await registroMpDeTeste({ segredoWebhook: null }),
+      registroMp: await registroMpDeTeste({ webhookSecret: null }),
     });
     // Assinada com o segredo DO AMBIENTE — a reserva que este teste prende.
     const req = await requisicaoAssinada("999");
@@ -3638,4 +3614,200 @@ Deno.test("MP-W3 — chave do lojista cadastrada + cofre ausente: 500 (o MP reen
   assertEquals(resposta.status, 500);
   assertEquals(capturado.chamadas, 0);
   assertEquals(registro.chamadasRpc.length, 0);
+});
+
+// ── Tarefa mp-7 (16/09/2026): cofre ausente FECHA antes da assinatura, e
+// lixo sem assinatura não paga banco ─────────────────────────────────────
+//
+// Dois achados da revisão de contexto limpo da mp-2, e as duas provas aqui:
+//
+// 1. Com registro do lojista presente e cofre ilegível (`origem:
+//    "indisponivel"`), a reserva do ambiente NÃO vale para o HMAC. O lojista
+//    cadastrou o segredo DELE, o MP assina com ELE, e comparar contra o
+//    `MP_WEBHOOK_SECRET` da plataforma devolvia 401 "assinatura inválida" —
+//    diagnóstico MENTIROSO durante os 30 min do PIX: quem está de plantão
+//    caça o segredo errado em vez de devolver a chave do cofre ao lugar. O
+//    500 com o motivo certo (`cofre_ausente`) já existia no código e era
+//    INALCANÇÁVEL nesse estado. MP-W3 (acima) prova o mesmo estado quando a
+//    notificação vem assinada pelo AMBIENTE; MP-W4 é o caso que de fato
+//    acontece em produção — assinada pelo LOJISTA.
+//
+// 2. Toda requisição pagava um SELECT em app_settings ANTES de qualquer
+//    autenticação. MP-W5/MP-W6 prendem a recusa barata: sem `x-signature`,
+//    ou com `x-signature` sem `v1=`, a resposta é 401 sem tocar o banco.
+
+/** Conta cada `from(tabela)` do cliente falso — é assim que MP-W5/MP-W6
+ * provam "ZERO acesso a app_settings", que nenhuma asserção de resposta
+ * conseguiria distinguir de "acessou e recusou depois". */
+function contandoFrom(
+  cliente: Record<string, unknown>,
+  tabelas: string[],
+): Record<string, unknown> {
+  const original = cliente.from as (tabela: string) => unknown;
+  return {
+    ...cliente,
+    from(tabela: string) {
+      tabelas.push(tabela);
+      return original(tabela);
+    },
+  };
+}
+
+Deno.test("MP-W4 — registro do lojista + cofre ausente + notificação assinada pelo SEGREDO DELE: 500 com o motivo certo, nunca 401", async () => {
+  // Cifra o registro com o cofre e DEPOIS tira a chave do ambiente: é o
+  // estado real de "a variável sumiu do deploy", não um fixture inventado.
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  const registroCifrado = await registroMpDeTeste();
+  Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+
+  const registro = { chamadasRpc: [] };
+  const tabelas: string[] = [];
+  const supabase = contandoFrom(
+    clienteFalso({
+      rpcResultado: "pago",
+      pedido: pedidoDeTeste(),
+      registro,
+      registroMp: registroCifrado,
+    }),
+    tabelas,
+  );
+  // Assinada com o segredo DO LOJISTA — que é o que o MP usa, porque foi ele
+  // que o lojista cadastrou. Contra a reserva do ambiente isto NÃO bate.
+  const req = await requisicaoAssinada("999", { segredo: SEGREDO_WEBHOOK_LOJISTA });
+  const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+  const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+    transaction_amount: 149.9,
+  });
+
+  const chamadasErro: unknown[][] = [];
+  const console_error = console.error;
+  console.error = (...args: unknown[]) => {
+    chamadasErro.push(args);
+  };
+  let resposta: Response;
+  try {
+    resposta = await handler(req, { supabase, fetchImpl });
+  } finally {
+    console.error = console_error;
+  }
+
+  // 500, não 401: o MP reenvia, e quem está de plantão lê o motivo CERTO.
+  assertEquals(resposta.status, 500);
+  assertEquals(
+    chamadasErro.some((args) =>
+      args.some(
+        (v) =>
+          typeof v === "string" &&
+          v.includes("origem: indisponivel") &&
+          v.includes("motivo: cofre_ausente"),
+      ),
+    ),
+    true,
+    "o log tem de nomear o cofre ausente — é o diagnóstico que o 401 escondia",
+  );
+  assertEquals(capturado.chamadas, 0, "não deveria consultar o MP sem credencial");
+  assertEquals(registro.chamadasRpc.length, 0);
+  // Nada além da leitura das credenciais.
+  assertEquals(tabelas, ["app_settings"]);
+});
+
+Deno.test("MP-W5 — requisição SEM x-signature: 401 sem pagar um SELECT em app_settings", async () => {
+  const registro = { chamadasRpc: [] };
+  const tabelas: string[] = [];
+  const supabase = contandoFrom(clienteFalso({ rpcResultado: "pago", registro }), tabelas);
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response("{}", { status: 200 });
+  };
+  const req = requisicao({ data: { id: "999" } });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 401);
+  // O ponto desta prova: lixo sem assinatura custa ZERO banco.
+  assertEquals(tabelas, []);
+  assertEquals(chamouFetch, false);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("MP-W6 — x-signature malformada (sem v1=): 401 sem pagar um SELECT em app_settings", async () => {
+  const registro = { chamadasRpc: [] };
+  const tabelas: string[] = [];
+  const supabase = contandoFrom(clienteFalso({ rpcResultado: "pago", registro }), tabelas);
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response("{}", { status: 200 });
+  };
+  // Só `ts=`: é a mesma coisa que `avaliarAssinatura` já recusa sem sequer
+  // importar a chave do HMAC — agora recusa antes de tocar o banco.
+  const req = requisicao({ data: { id: "999" } }, { "x-signature": "ts=1730000000" });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 401);
+  assertEquals(tabelas, []);
+  assertEquals(chamouFetch, false);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+// --- Tarefa mp-6: UMA resolução de credenciais por invocação ---------------
+//
+// Ressalva da revisão de mp-1. Nesta function a credencial é usada DUAS
+// vezes na mesma requisição: o `segredoWebhook` valida o HMAC e o `token`
+// consulta o pagamento no MP. Resolver duas vezes custaria um SELECT extra
+// em app_settings e um AES-GCM extra por notificação — e o MP reenvia a
+// mesma notificação várias vezes —, mas o caro não é o custo: entre as duas
+// resoluções o registro pode MUDAR (o lojista salvando a chave nova na tela
+// de Ajustes). O webhook validaria a assinatura com o segredo velho e
+// consultaria o MP com o token novo, ou o contrário; o diagnóstico disso em
+// produção é impossível. MP-W7 prende a resolução única — e falharia na
+// hora em que alguém movesse `resolverCredenciaisMp` para dentro do trecho
+// que consulta o MP, que é a refatoração "óbvia" que quebra isto.
+
+Deno.test("MP-W7 — notificação processada do começo ao fim resolve as credenciais UMA vez (um só SELECT em app_settings)", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  try {
+    const registro = { chamadasRpc: [] };
+    const tabelas: string[] = [];
+    const supabase = contandoFrom(
+      clienteFalso({
+        rpcResultado: "pago",
+        pedido: pedidoDeTeste(),
+        registro,
+        registroMp: await registroMpDeTeste(),
+      }),
+      tabelas,
+    );
+    // Assinada com o segredo DO LOJISTA: o HMAC e a consulta ao MP têm de
+    // sair da MESMA resolução, senão o caminho nem chega ao fim.
+    const req = await requisicaoAssinada("999", { segredo: SEGREDO_WEBHOOK_LOJISTA });
+    const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+    const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+      transaction_amount: 149.9,
+    });
+
+    const resposta = await handler(req, { supabase, fetchImpl });
+
+    // O caminho completo: HMAC validado, MP consultado, RPC chamada.
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.chamadasRpc.length, 1);
+    assertEquals(capturado.chamadas, 1);
+    assertEquals(capturado.autorizacoes[0], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+    // E UMA leitura de app_settings, não duas.
+    assertEquals(
+      tabelas.filter((tabela) => tabela === "app_settings").length,
+      1,
+      "as credenciais têm de ser resolvidas uma vez só e reaproveitadas pelo HMAC e pela consulta ao MP",
+    );
+  } finally {
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  }
 });

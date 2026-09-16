@@ -67,6 +67,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Tarefa mp-2 (15/09/2026): as DUAS chaves deste webhook (o segredo que
 // autentica a notificação e o token que reconsulta o MP) saem daqui — da
 // chave do LOJISTA quando ela existe, do ambiente quando não existe cadastro.
+// Tarefa mp-7 (16/09/2026), a regra fechada do SEGREDO em uma frase: a
+// reserva do ambiente (`MP_WEBHOOK_SECRET`) só vale quando não há cadastro
+// nenhum (origem "ambiente") ou quando o lojista cadastrou a chave de
+// cobrança e NÃO o segredo de notificação (origem "lojista" com
+// `segredoWebhook` nulo) — NUNCA quando existe cadastro ilegível (origem
+// "indisponivel"), estado em que esta função fecha com 500 antes da
+// assinatura, porque o MP está assinando com o segredo DO LOJISTA.
 import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
@@ -994,6 +1001,32 @@ async function registrarDesfechoDoEstorno(args: {
  * um único argumento porque é mais claro e não depende de todo fallback
  * continuar correto para sempre — não porque seja uma trava de segurança.
  */
+/**
+ * Os dois campos que o `x-signature` do MP carrega (`ts=<epoch>,v1=<hex>`),
+ * lidos pela MESMA regra que `avaliarAssinatura` usa
+ * (`_shared/mercadopago.ts`): separa por vírgula, parte no primeiro `=`, o
+ * valor é o resto. Existe aqui porque este arquivo precisa dos dois campos
+ * em três lugares (a recusa barata no topo do handler, o log de entrada e o
+ * log de falha) e porque a recusa TEM de concordar com o que a validação
+ * aceitaria — duas grafias diferentes de parse fariam a porta recusar
+ * notificação legítima que o HMAC aprovaria. Devolve `null` (não string
+ * vazia) para campo ausente, que é a mesma condição que faz
+ * `avaliarAssinatura` recusar sem nem importar a chave do HMAC.
+ */
+function camposDaAssinatura(
+  xSignature: string | null,
+): { ts: string | null; v1: string | null } {
+  let ts = "";
+  let v1 = "";
+  for (const parte of xSignature?.split(",") ?? []) {
+    const [chave, ...resto] = parte.split("=");
+    const valor = resto.join("=").trim();
+    if (chave?.trim() === "ts") ts = valor;
+    if (chave?.trim() === "v1") v1 = valor;
+  }
+  return { ts: ts || null, v1: v1 || null };
+}
+
 async function handler(
   req: Request,
   deps: {
@@ -1035,12 +1068,36 @@ async function handler(
   // 64 caracteres sobra folga sobre o maior `data.id` legítimo do MP (ULID
   // de Order, 29 caracteres; id de payment clássico é numérico, menor ainda).
   const LIMITE_LOG_DATA_ID = 64;
-  const tsDoHeader = req.headers.get("x-signature")?.match(/(?:^|,)\s*ts=([^,]*)/)?.[1] ?? null;
+  const { ts: tsDoHeader, v1: v1Recebido } = camposDaAssinatura(req.headers.get("x-signature"));
   console.log("webhook-mercadopago: notificação recebida", {
     dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
     temXRequestId: req.headers.get("x-request-id") !== null,
     ts: tsDoHeader,
   });
+
+  // PORTA BARATA (tarefa mp-7, 16/09/2026): requisição que não tem NEM A
+  // FORMA de uma notificação do MP morre aqui — antes do client de service
+  // role, antes de resolver credenciais, antes do SELECT em `app_settings`.
+  // Até esta tarefa, TODA requisição que chegasse à URL pagava esse SELECT
+  // antes de qualquer autenticação (a função roda com `verify_jwt = false`),
+  // então quem descobrisse a URL fazia a loja gastar banco de graça. A
+  // decisão é IDÊNTICA à que `avaliarAssinatura` já tomaria — sem `ts` ou
+  // sem `v1` ela devolve `valido: false` sem sequer importar a chave do
+  // HMAC — só que agora sem pagar nada; por isso lê os campos pela MESMA
+  // função de parse, e não por uma segunda regra que pudesse divergir.
+  //
+  // `console.warn` CURTO e sem o bloco de diagnóstico da assinatura
+  // inválida (dataId, x-request-id, v1, candidatos): isto é o chão de ruído
+  // da internet, não um caso para investigar, e logar tudo aqui seria dar a
+  // quem varre a URL um jeito de encher o log.
+  //
+  // O que NÃO entra: cache/memoização da resolução de credenciais. O que
+  // barateia é recusar antes, não guardar segredo em memória entre
+  // requisições.
+  if (!tsDoHeader || !v1Recebido) {
+    console.warn("webhook-mercadopago: sem x-signature utilizável — recusado antes de tocar o banco");
+    return json({ error: "Assinatura inválida." }, 401);
+  }
 
   // Tarefa mp-2 (15/09/2026): o client de service role SUBIU para cá — ele
   // era montado lá embaixo, depois da consulta ao MP, e agora é preciso
@@ -1060,11 +1117,40 @@ async function handler(
   // token do ambiente quando existe cadastro ilegível — mora em
   // `_shared/credenciais-mp.ts`.
   const credenciaisMp = await resolverCredenciaisMp(supabase);
-  // RESERVA SÓ DO SEGREDO: o lojista pode ter cadastrado a chave de cobrança
-  // e não o segredo de notificação (o campo é opcional na tela). Sem esta
-  // reserva, notificação LEGÍTIMA viraria 401 e o pedido pago ficaria
-  // "aguardando" até expirar. O TOKEN não tem reserva nenhuma — consultar
-  // (e cobrar) na conta errada é o erro que esta frente existe para impedir.
+
+  // Tarefa mp-7 (16/09/2026): cadastro do lojista PRESENTE e ilegível
+  // (`origem: "indisponivel"` — cofre ausente ou chave trocada) fecha AQUI,
+  // antes de avaliar a assinatura. Nesse estado o lojista cadastrou o
+  // segredo DELE, o MP assina a notificação com ELE, e a reserva do
+  // ambiente abaixo não bate: a resposta era 401 "assinatura inválida" e o
+  // 500 com o motivo certo (mais abaixo, na checagem do token) ficava
+  // INALCANÇÁVEL. O dinheiro não se perdia (`reconciliar-pagamentos` pega em
+  // 24h), mas o diagnóstico MENTIA durante os 30 min do PIX — quem estava de
+  // plantão caçava o segredo errado em vez de devolver a chave do cofre.
+  //
+  // 500 e não 200 pelo mesmo motivo de sempre: o evento FICA na fila do MP,
+  // que reenvia, e a notificação volta sozinha quando a credencial voltar ao
+  // lugar. Vem ANTES do roteamento, então neste estado até tópico
+  // irrelevante recebe 500 — é o estado quebrado da loja inteira, e o custo
+  // é um reenvio do MP, não dinheiro.
+  if (credenciaisMp.origem === "indisponivel") {
+    // Só origem e motivo: nem token nem segredo entram em log.
+    console.error(
+      `webhook-mercadopago: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+      dataIdStr,
+    );
+    return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
+  }
+
+  // RESERVA SÓ DO SEGREDO, E SÓ NESTES DOIS ESTADOS: sem cadastro nenhum
+  // (origem "ambiente") ou cadastro com a chave de cobrança e SEM o segredo
+  // de notificação (origem "lojista" com `segredoWebhook` nulo — o campo é
+  // opcional na tela). Sem esta reserva, notificação LEGÍTIMA viraria 401 e o
+  // pedido pago ficaria "aguardando" até expirar. NUNCA para origem
+  // "indisponivel", que já saiu com 500 logo acima: ali existe segredo do
+  // lojista, ele só não abre, e usar o do ambiente autenticaria pela chave
+  // errada. O TOKEN não tem reserva nenhuma em estado nenhum — consultar (e
+  // cobrar) na conta errada é o erro que esta frente existe para impedir.
   const segredoWebhook = credenciaisMp.segredoWebhook ??
     Deno.env.get("MP_WEBHOOK_SECRET") ?? "";
 
@@ -1105,7 +1191,6 @@ async function handler(
     // que transforma suspeita em causa provada quando o MP reenviar a
     // notificação real. NUNCA loga o segredo — nem o do lojista, nem o
     // `MP_WEBHOOK_SECRET` da plataforma.
-    const v1Recebido = req.headers.get("x-signature")?.match(/(?:^|,)\s*v1=([^,]*)/)?.[1] ?? null;
     console.warn("webhook-mercadopago: assinatura inválida", {
       dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
       xRequestId: req.headers.get("x-request-id"),
@@ -1184,6 +1269,11 @@ async function handler(
   // devolver a credencial ao lugar a notificação volta e o pedido confirma.
   // Depois do roteamento, e não antes: tópico irrelevante continua sendo
   // descartado com 200 sem nunca ter precisado de credencial nenhuma.
+  //
+  // Tarefa mp-7: o que sobra para este ramo é a origem "ambiente" sem
+  // `MP_ACCESS_TOKEN` (motivo `ambiente_sem_token`) — a origem
+  // "indisponivel" já fechou lá em cima, antes da assinatura, porque naquele
+  // estado o 401 saía primeiro e escondia este mesmo log.
   if (!credenciaisMp.token) {
     // Só origem e motivo: nem token nem segredo entram em log.
     console.error(
