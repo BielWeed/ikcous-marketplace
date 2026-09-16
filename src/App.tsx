@@ -1101,7 +1101,10 @@ const AppContent = () => {
   useBehavioralPrefetch(currentView, prefetchView);
   useWebVitals();
 
-  // Prefetching of admin views is handled internally within the secure AdminArea.tsx bundle.
+  // Prefetch por hover/touch das views admin é feito dentro do AdminLayout
+  // (handleHoverTab). O prefetch em massa do boot (useEffect abaixo, com
+  // prefetchAll) só inclui essas views quando isAdminRef confirma o
+  // visitante como lojista — ver App-2114.
 
   const favoriteIds = React.useMemo(
     () => favorites.map((p) => p.id),
@@ -2131,11 +2134,16 @@ const AppContent = () => {
     return () => clearTimeout(safetyTimer);
   }, [authLoading, productsLoading]);
 
-  // Preemptively prefetch all view chunks in background when network is idle
+  // Preemptively prefetch all view chunks in background when network is idle.
+  // App-2114: as views "admin-*" só entram quando `isAdminRef` já confirma o
+  // visitante como lojista — antes disso, prefetchAll baixava o painel
+  // inteiro (1,23 MB + recharts do dashboard) para todo cliente. Lê o ref
+  // (não `isAdmin` direto) para não reiniciar este timer de boot toda vez
+  // que o status de admin mudar — só importa o valor no instante do disparo.
   useEffect(() => {
     if (!authLoading && !productsLoading) {
       const timer = setTimeout(() => {
-        prefetchAll();
+        prefetchAll(isAdminRef.current);
       }, 800); // 800ms delay to ensure first paint is completely done
       return () => clearTimeout(timer);
     }
