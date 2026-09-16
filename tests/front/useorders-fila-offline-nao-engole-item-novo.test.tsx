@@ -235,15 +235,16 @@ describe("useOrders — a fila offline não engole item novo", () => {
       expect(localStorage.getItem(chave)).toBeNull();
       expect(toast.info).toHaveBeenCalled();
       if (isAdmin) {
-        expect(adminOrdersMock).toHaveBeenCalledWith({
-          p_search: "",
-          p_status: "all",
-          p_start_date: "",
-          p_end_date: "",
-          p_page: 0,
-          p_page_size: 10,
-          p_payment_status: "all",
-        });
+        // useOrders-2867: a recarga pós-sync deixou de ser uma consulta FIXA
+        // ("all"/página 0/10 por página) — agora repete a ÚLTIMA consulta do
+        // admin (`recarregarAposReconexaoRef`, via `ultimaConsultaAdminRef`).
+        // Esta sonda nunca chamou `loadOrders`, então não há consulta
+        // anterior a repetir: a recarga do admin vira no-op de propósito
+        // (mesma regra provada em
+        // use-orders-reconexao-nao-zera-lista-do-admin.test.ts, caso "admin
+        // que ainda não carregou nada") — chamar com valores padrão jogaria
+        // a lojista de volta para a página 1 sem filtro.
+        expect(adminOrdersMock).not.toHaveBeenCalled();
         expect(fromMock).not.toHaveBeenCalled();
       } else {
         expect(fromMock).toHaveBeenCalledWith("marketplace_orders");

@@ -204,6 +204,55 @@ async function processarFilaOfflineDePedidos(
           ? item.timestamp
           : Number.NEGATIVE_INFINITY;
       tentados.set(orderId, timestamp);
+
+      // useOrders-196 (15/09/2026): a fila offline nunca guardou o status
+      // ESPERADO do pedido, e `update_order_status_atomic` não valida a
+      // transição para admin — só restringe destino para NÃO-admin (mesma
+      // regra de `validateStatusUpdate`, acima neste arquivo; migration
+      // 2026110000000, bloco `IF NOT v_is_admin`). Sem isto, um AVANÇO
+      // enfileirado offline (ex.: pending -> processing) aplicado por cima
+      // de um cancelamento feito nesse meio-tempo reativa um pedido morto
+      // sem re-debitar o estoque que `devolver_estoque` já devolveu.
+      // Cancelar (status === "cancelled") fica de fora da releitura: não
+      // reativa nada, e é o próprio caminho terminal que a RPC já guarda do
+      // lado não-admin.
+      if (status !== "cancelled") {
+        try {
+          const { data: linhaAtual, error: erroReleitura } = await supabase
+            .from("marketplace_orders")
+            .select("status")
+            .eq("id", orderId)
+            .single();
+
+          if (erroReleitura) throw erroReleitura;
+
+          const statusAtual = linhaAtual?.status as OrderStatus | undefined;
+          if (statusAtual === "cancelled" || statusAtual === "delivered") {
+            // Pedido morreu (cancelado) ou já foi concluído (entregue)
+            // enquanto o avanço esperava na fila: aplicar agora reativaria
+            // um pedido morto, ou reabriria um já concluído. Mesmo balde —
+            // e mesmo toast honesto — que `erroDeSincronizacaoEhTerminal`
+            // usa para os descartes que a própria RPC recusa.
+            descartesTerminais++;
+            processados.set(orderId, timestamp);
+            continue;
+          }
+        } catch (err) {
+          // "Não sei" nunca vira "pode avançar" (mesma regra do L-9 em
+          // `updateOrderStatus`): sem confirmar o status atual, o item
+          // volta para a fila e tenta de novo na próxima reconexão, em vez
+          // de aplicar o avanço às cegas.
+          console.error(
+            "[Offline Sync] Failed to confirm order status before sync %s:",
+            orderId,
+            err,
+          );
+          falhasTransitorias++;
+          remainingQueue.push(item);
+          continue;
+        }
+      }
+
       try {
         const { error } = await (supabase.rpc as any)(
           "update_order_status_atomic",
@@ -2857,17 +2906,26 @@ export function useOrders(
   // Revisão do PR #498 (08/09/2026): AdminLayout usa enabled=false e é o único
   // sincronizador do painel fora da aba Pedidos; o listener precisa continuar ativo.
   // sincronizacaoEmVoo serializa N listeners em uma só passada, sem duplicação.
+  //
+  // useOrders-2867: a recarga pós-sincronização usava uma consulta FIXA
+  // (loadOrders(0, 10, "all", ...)) — trocava silenciosamente a lista do
+  // painel para "Todos"/página 0/10 por página, por cima do filtro, página
+  // e itemsPerPage=12 que a lojista estava vendo. `recarregarAposReconexaoRef`
+  // já existe para isto: repete a ÚLTIMA consulta admin (guardada em
+  // ultimaConsultaAdminRef por `loadOrders`) ou a consulta pessoal do
+  // cliente — mesmo mecanismo usado pela reconexão do realtime (linhas
+  // ~1824/~1868) e pela recarga por visibilidade, logo abaixo. Deps `[]`
+  // pelo mesmo motivo do efeito de visibilidade: o corpo só lê o ref,
+  // atualizado a cada render fora daqui.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleOnlineSync = () => {
       setTimeout(() => {
         syncOfflineOrderUpdates().then((filaAvancou) => {
           if (filaAvancou) {
-            if (isAdmin) {
-              loadOrders(0, 10, "all", "", "", "", true).catch(() => {});
-            } else if (user?.id) {
-              fetchUserOrders().catch(() => {});
-            }
+            recarregarAposReconexaoRef
+              .current({ silencioso: true })
+              .catch(() => {});
           }
         });
       }, 1000);
@@ -2880,7 +2938,7 @@ export function useOrders(
     return () => {
       window.removeEventListener("online", handleOnlineSync);
     };
-  }, [user?.id, isAdmin, loadOrders, fetchUserOrders]);
+  }, []);
 
   useEffect(() => {
     return () => {
