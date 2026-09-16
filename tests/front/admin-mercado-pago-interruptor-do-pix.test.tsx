@@ -18,7 +18,13 @@
 //   X6  PIX ligado com a Public Key fora da ficha da loja é contado na tela
 //       (é exatamente o caso em que o cliente não vê PIX);
 //   X7  o guia (texto que o lojista lê) manda LIGAR o interruptor — parar em
-//       "salve e teste" era prometer Pix que ninguém recebe.
+//       "salve e teste" era prometer Pix que ninguém recebe;
+//   X8  (mp-9) PIX ligado com a credencial SEM teste guardado ganha aviso
+//       âmbar e o "Testar conexão" ao alcance — a chave que está cobrando
+//       nunca passou no teste e a tela calava;
+//   X9  (mp-9) salvar credencial nova faz a edge desligar o PIX
+//       (`pix_desligado`): a tela mostra a mensagem dela e o interruptor
+//       volta para desligado.
 //
 // Mesmo padrão dos vizinhos (mercado-pago-secao-salva-e-testa.test.tsx):
 // createRoot + act do React puro, dependências de fora mockadas, a edge
@@ -39,6 +45,7 @@ const { invokeFalso, cenario } = vi.hoisted(() => ({
   cenario: {
     salvo: {} as Record<string, unknown>,
     respostaLigar: {} as Record<string, unknown>,
+    respostaSalvar: {} as Record<string, unknown>,
     erroLigar: null as unknown,
   },
 }));
@@ -56,6 +63,9 @@ invokeFalso.mockImplementation(async (nome: string, { body }: any) => {
   }
   if (body?.acao === "desligar_pix") {
     return { data: { pix_ligado: false }, error: null };
+  }
+  if (body?.acao === "salvar") {
+    return { data: cenario.respostaSalvar, error: null };
   }
   return { data: null, error: null };
 });
@@ -90,6 +100,14 @@ async function clique(elemento: HTMLElement) {
     elemento.click();
   });
   await assentar();
+}
+
+function botaoPorTexto(texto: string): HTMLButtonElement {
+  const botao = [...document.body.querySelectorAll("button")].find((b) =>
+    b.textContent?.includes(texto),
+  );
+  if (!botao) throw new Error(`Botão "${texto}" não está na tela.`);
+  return botao;
 }
 
 function interruptorDoPix(): HTMLButtonElement {
@@ -144,6 +162,7 @@ describe("MercadoPagoSection — interruptor honesto do PIX no app", () => {
     chamadas.length = 0;
     cenario.salvo = { ...CONFIGURADO };
     cenario.respostaLigar = {};
+    cenario.respostaSalvar = { ...CONFIGURADO };
     cenario.erroLigar = null;
   });
 
@@ -263,5 +282,61 @@ describe("MercadoPagoSection — interruptor honesto do PIX no app", () => {
 
     expect(interruptorDoPix().getAttribute("aria-checked")).toBe("true");
     expect(document.body.textContent).toContain("ficha da loja");
+  });
+
+  it("X8 — PIX ligado com credencial nunca testada avisa e oferece o teste", async () => {
+    // O estado intermediário que a mp-8 criou no servidor: salvar um Access
+    // Token novo zera o `ultimo_teste`. Com o PIX ainda aceso, a loja cobra
+    // por uma chave que ninguém provou — e até aqui a tela só mostrava o
+    // interruptor ligado, sem uma palavra.
+    cenario.salvo = { ...CONFIGURADO, ultimo_teste: null, pix_ligado: true };
+    raiz = await montarSecaoComChavesAbertas();
+
+    expect(interruptorDoPix().getAttribute("aria-checked")).toBe("true");
+    expect(document.body.textContent).toContain(
+      "ainda não passou pelo teste de conexão",
+    );
+    // O conserto tem de estar ao alcance da mão, não em outra camada.
+    const testes = [...document.body.querySelectorAll("button")].filter((b) =>
+      b.textContent?.includes("Testar conexão"),
+    );
+    expect(testes.length).toBeGreaterThan(1);
+  });
+
+  it("X8b — com teste conectado guardado o aviso âmbar não aparece", async () => {
+    cenario.salvo = {
+      ...CONFIGURADO,
+      ultimo_teste: CONECTADO,
+      pix_ligado: true,
+    };
+    raiz = await montarSecaoComChavesAbertas();
+
+    expect(document.body.textContent).not.toContain(
+      "ainda não passou pelo teste de conexão",
+    );
+  });
+
+  it("X9 — salvar credencial nova: a tela mostra o desligamento que a edge fez", async () => {
+    cenario.salvo = {
+      ...CONFIGURADO,
+      ultimo_teste: CONECTADO,
+      pix_ligado: true,
+    };
+    cenario.respostaSalvar = {
+      ...CONFIGURADO,
+      ultimo_teste: null,
+      pix_ligado: false,
+      pix_desligado: true,
+      aviso:
+        "Desliguei o PIX no app: teste a conexão com a credencial nova e ligue de novo.",
+    };
+    raiz = await montarSecaoComChavesAbertas();
+
+    expect(interruptorDoPix().getAttribute("aria-checked")).toBe("true");
+
+    await clique(botaoPorTexto("Salvar chaves"));
+
+    expect(interruptorDoPix().getAttribute("aria-checked")).toBe("false");
+    expect(document.body.textContent).toContain("Desliguei o PIX no app");
   });
 });

@@ -760,9 +760,23 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // contrato de pix-configurado-no-build exige este import cru DENTRO deste
   // arquivo (mesma regra do AdminDashboardView) — não extrair para
   // componente/arquivo novo sem atualizar aquele teste.
-  const pixLigado = pagamentoOnlineLigado();
-  const pixChaveOk = pixConfiguradoNoBuild(
-    chavePublicaMercadoPago() ?? undefined,
+  //
+  // mp-9: `pagamentoOnlineLigado()` é o retrato SÍNCRONO da ficha injetada
+  // no BOOT da página. O interruptor "Receber PIX no app" (MercadoPagoSection,
+  // logo abaixo) escreve `store_config.pagamento_online` pela edge e devolve
+  // o estado GRAVADO — sem este eco, a mesma tela mostrava dois estados do
+  // dinheiro (tile "Pagamento", subtítulo "PIX: …" e termômetro presos no
+  // valor velho) até um recarregamento completo, enquanto a própria seção
+  // dizia "a vitrine reflete em até 1 minuto". Estado LOCAL da sessão de
+  // propósito: a ficha global (configuracaoDaLoja) não se reescreve em
+  // memória, e a vitrine segue com o atraso do cache do porteiro.
+  const [pixLigado, setPixLigado] = useState(() => pagamentoOnlineLigado());
+  // Também estado local: `ligar_pix` só devolve ligado com a Public Key
+  // publicada na ficha junto (edge, mp-8), então o eco de "ligado" também
+  // acende a chave — senão o painel trocaria "Desligado" por um alarme
+  // vermelho falso até o próximo reload (ressalva da revisão de mp-9).
+  const [pixChaveOk, setPixChaveOk] = useState(() =>
+    pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined),
   );
   const nivelDoPix: NivelDoPix = !pixLigado
     ? "off"
@@ -1005,10 +1019,11 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
                 lojista cadastra as chaves do Mercado Pago dele — guia com
                 prompt pronto para o agente de IA do app do MP, salvar e
-                testar conexão ali mesmo. O Pix de hoje segue intocado (o
-                painel acima continua mostrando o estado DELE); plugar estas
-                chaves no checkout é frente futura. Nascida FECHADA como as
-                demais: ajuste feito uma vez. */}
+                testar conexão ali mesmo. Desde a mp-4 o interruptor
+                "Receber PIX no app" mora aqui dentro, e desde a mp-9 o que
+                ele grava volta por `onPixAlternado` para o painel acima —
+                era a mesma tela contando dois estados do dinheiro. Nascida
+                FECHADA como as demais: ajuste feito uma vez. */}
             <GrupoDeAjustes titulo="Pagamentos">
               <SecaoColapsavel
                 titulo="Mercado Pago"
@@ -1023,7 +1038,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     </p>
                   }
                 >
-                  <MercadoPagoSection onDirtyMudou={setPagamentosPendente} />
+                  <MercadoPagoSection
+                    onDirtyMudou={setPagamentosPendente}
+                    onPixAlternado={(ligado) => {
+                      setPixLigado(ligado);
+                      if (ligado) setPixChaveOk(true);
+                    }}
+                  />
                 </Suspense>
               </SecaoColapsavel>
             </GrupoDeAjustes>

@@ -52,6 +52,15 @@ import {
  *   ficha da loja), nunca um palpite otimista do clique.
  * - Chave de sandbox conecta igual à de produção: o aviso amarelo de
  *   ambiente "teste" vem PRONTO da edge e é mostrado como veio.
+ * - (mp-9) Salvar credencial NOVA zera o teste guardado no servidor — e a
+ *   edge desliga o PIX nesse mesmo salvar (`pix_desligado`). Enquanto o
+ *   estado gravado for "ligado sem teste", a tela DIZ isso em âmbar com o
+ *   "Testar conexão" ao alcance: a loja estaria cobrando por uma chave que
+ *   ninguém provou, e calar seria a tela mentindo por omissão de novo.
+ * - (mp-9) O resultado do interruptor sobe pelo `onPixAlternado` para quem
+ *   hospeda a seção (a tela de Ajustes), porque o painel "Minha loja está
+ *   no ar?" lê o retrato do BOOT da ficha e ficaria contando o estado
+ *   antigo até um recarregamento completo.
  *
  * Fluxo do dono, ditado por voz: a lojista cola as chaves, ELA SALVA e ELA
  * TESTA. Por isso "Testar conexão" fica bloqueado enquanto houver coisa
@@ -208,10 +217,16 @@ function Expansor({
 
 export const MercadoPagoSection = memo(function MercadoPagoSection({
   onDirtyMudou,
+  onPixAlternado,
 }: {
   /** Mesma trava das demais seções: avisa o pai para BLOQUEAR o fecho da
    * seção colapsável enquanto houver chave digitada e não salva. */
   readonly onDirtyMudou?: (dirty: boolean) => void;
+  /** Eco do estado do PIX que o SERVIDOR devolveu (mp-9), para a tela que
+   * hospeda esta seção não seguir mostrando o retrato do boot. Só dispara
+   * quando a ficha da loja mudou de verdade: liga/desliga e o salvar que a
+   * edge usou para desligar o PIX. */
+  readonly onPixAlternado?: (ligado: boolean) => void;
 }) {
   const isOffline = useOnlineStatus();
 
@@ -334,6 +349,19 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       setPublicKey(salva.public_key ?? "");
       setAccessToken("");
       setWebhookSecret("");
+
+      // Credencial nova derruba o PIX no servidor (mp-8). Quem descobre
+      // isso pelo cliente sem receber descobre tarde: a mensagem vem
+      // PRONTA da edge e sobe também para o painel da tela de Ajustes.
+      const desligouNoSalvar = (data ?? {}) as {
+        pix_desligado?: boolean;
+        aviso?: string;
+      };
+      if (desligouNoSalvar.pix_desligado === true) {
+        setAvisoPix(desligouNoSalvar.aviso ?? null);
+        setEcoDaVitrine(false);
+        onPixAlternado?.(salva.pix_ligado);
+      }
       haptic.success();
       toast.success("Chaves do Mercado Pago salvas!", {
         description: 'Agora toque em "Testar conexão" para conferir.',
@@ -428,12 +456,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         pix_ligado?: boolean;
         aviso?: string;
       };
-      setConfig((antes) => ({
-        ...antes,
-        pix_ligado: resposta.pix_ligado === true,
-      }));
+      const ligadoNaFicha = resposta.pix_ligado === true;
+      setConfig((antes) => ({ ...antes, pix_ligado: ligadoNaFicha }));
       setAvisoPix(resposta.aviso ?? null);
       setEcoDaVitrine(true);
+      onPixAlternado?.(ligadoNaFicha);
       haptic.success();
     } catch (err) {
       haptic.error();
@@ -471,6 +498,21 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   // a tela só não deixa o lojista descobrir isso por um erro). DESLIGAR
   // nunca é bloqueado: é o lado seguro, e trancar a saída seria pior.
   const faltaTestarParaLigar = !config.pix_ligado && !teste?.conectado;
+
+  // LIGADO SEM TESTE (mp-9): a edge zera `ultimo_teste` quando o lojista
+  // salva uma credencial nova, então "sem teste guardado" é justamente o
+  // caso em que a chave que está cobrando nunca passou pelo Mercado Pago.
+  // Não dá para saber de QUAL credencial é um teste antigo — o servidor
+  // apaga o registro no lugar de carimbar a chave —, então a ausência é o
+  // único sinal que existe, e ele basta para avisar.
+  // Um teste que FALHOU (`conectado: false`) é notícia pior, não melhor: o
+  // aviso continua até um teste CONECTADO (ressalva da revisão de mp-9).
+  const ligadoSemTeste = config.pix_ligado && !teste?.conectado;
+
+  // Mesma trava do fluxo do dono nos DOIS botões de testar (o do formulário
+  // e o do aviso âmbar): testar coisa diferente do que está salvo enganaria.
+  const testeBloqueado =
+    testando || carregando || isOffline || dirty || !config.configurado;
 
   return (
     <div className="space-y-4">
@@ -692,13 +734,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
 
             <button
               type="button"
-              disabled={
-                testando ||
-                carregando ||
-                isOffline ||
-                dirty ||
-                !config.configurado
-              }
+              disabled={testeBloqueado}
               onClick={testarConexao}
               title={
                 dirty
@@ -760,6 +796,36 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   abre o PIX com uma chave que o Mercado Pago não aceitou.
                 </span>
               </p>
+            )}
+
+            {/* LIGADO SEM TESTE: a loja está cobrando por uma credencial
+                que nunca falou com o Mercado Pago (o servidor zera o teste
+                ao salvar chave nova). O conserto — testar — fica no próprio
+                aviso: mandar o lojista procurar o botão lá em cima era
+                contar o problema e esconder a saída. */}
+            {ligadoSemTeste && !carregando && (
+              <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300">
+                  <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    O PIX está ligado, mas a chave salva ainda não passou pelo
+                    teste de conexão. Teste agora ou desligue até testar.
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  disabled={testeBloqueado}
+                  onClick={testarConexao}
+                  className="flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                >
+                  {testando ? (
+                    <RefreshCw className="size-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="size-3.5" />
+                  )}
+                  <span>Testar conexão</span>
+                </button>
+              </div>
             )}
 
             {/* O aviso de chave de sandbox vem PRONTO da edge (ela é quem
