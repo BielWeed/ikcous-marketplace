@@ -740,6 +740,27 @@ const AppContent = () => {
 
   const handleNavigate = useCallback(
     async (view: View, id?: string, bypassDirtyCheck = false) => {
+      // App-743: tocar a própria aba/view JÁ ativa é sempre só scroll-to-top
+      // (ramo espelhado abaixo, em 834-842) — não há "para onde ir", então
+      // isso precisa vencer o gate de formulário sujo, nunca abrir o
+      // diálogo "Alterações Não Salvas". Antes esse gate rodava primeiro
+      // (usando `isAdminDirtyRef` puro) e tocar a aba ativa com dirty=true
+      // abria o diálogo; "Descartar e Sair" reentrava aqui com a MESMA view
+      // e caía neste mesmo caso de "mesmo destino" — só rolava pro topo,
+      // nunca desmontava o formulário, mas já tinha desligado a guarda.
+      if (
+        currentViewRef.current === view &&
+        selectedProductIdRef.current === (id || null)
+      ) {
+        const scrollContainer = view.startsWith("admin")
+          ? document.querySelector(".active-scroll-container")
+          : mainRef.current;
+        if (scrollContainer) {
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        return;
+      }
+
       if (isAdminDirtyRef.current && !bypassDirtyCheck) {
         setPendingNavigation({ view, id });
         return;
