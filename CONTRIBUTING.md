@@ -19,6 +19,16 @@ Se você está chegando agora, leia antes `docs/onboarding/03-SETUP-AMBIENTE.md`
 
 ## A trava que não existe
 
+> **Nota (14/09/2026):** a premissa abaixo (repositório privado, plano Free,
+> 403 na API de branch protection) **EXPIROU** — o `ci.yml` já registra isso
+> por escrito e aponta de volta para esta seção. O repositório hoje é
+> **público**, e branch protection é **grátis** em repositório público.
+> Ligar a trava (ou não) passou a ser **decisão do dono** (Gabriel), não mais
+> um limite técnico do plano. Enquanto ele não decidir, nada muda na prática:
+> a tabela abaixo continua sendo o que existe. O relato de 30/07/2026 fica
+> como histórico — é onde a falta de trava foi medida e explicada pela
+> primeira vez.
+
 Em 30/07/2026 o repositório passou a ser **privado**, porque havia chave
 `service_role` do Supabase no histórico enquanto ele era público. A conta é
 pessoal e está no plano Free. Consequência, testada na API e não deduzida:
@@ -174,6 +184,12 @@ Duas coisas que continuam verdadeiras e que a correção **não** resolve:
 O caminho para uma trava de verdade é GitHub Pro (US$ 4/mês, mantém o repositório
 privado) ou tornar o repositório público com o histórico purgado. **O Gabriel
 adiou essa decisão em 30/07/2026.** Está registrada como INFRA-240 no backlog.
+
+> **Atualização (14/09/2026):** a escolha entre as duas opções já aconteceu —
+> o repositório está público hoje (ver nota no topo da seção). Se o histórico
+> foi purgado antes disso, não medido aqui; confira o histórico do próprio
+> repositório antes de assumir. INFRA-240 no backlog hoje trata de outro
+> assunto (tamanho do histórico), não mais desta escolha.
 
 Enquanto isso: se você usar `--no-verify`, avise no Discord. Não é proibido —
 tem hora que é a saída certa. É que ninguém mais tem como saber.

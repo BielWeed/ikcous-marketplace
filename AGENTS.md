@@ -46,9 +46,10 @@ customer`) — **lojista = staff** (`admin` manda: `is_admin()`, SECURITY DEFINE
 do painel; o front espelha via RPC com cache). `public_profiles` é a projeção pública.
 RLS de pedidos: `auth.uid() = user_id` — **convidado não vê pedido nenhum sem OTP**.
 
-**Entidades (35 tabelas vivas).** Catálogo: categorias → produtos → product_variants;
-banners; perguntas/respostas; reviews (com voto útil **revertido** — a tabela
-`review_votes` NÃO existe no schema vivo); favoritos. Compra: carrinho →
+**Entidades (36 tabelas vivas).** Catálogo: categorias → produtos → product_variants;
+banners; perguntas/respostas; reviews (voto útil com memória no servidor — tabela
+`review_votes`, `UNIQUE (review_id, user_id)`: a deduplicação mora na constraint,
+não no cliente; `increment_helpful` foi reescrita em cima dela); favoritos. Compra: carrinho →
 `marketplace_orders` (status: pending|processing|shipping|delivered|cancelled|new) →
 itens (snapshot de preço) + histórico de status + payment_history (registro **manual**
 do lojista: recebido|desfeito). Pessoas: profiles, public_profiles, user_addresses.
@@ -59,8 +60,10 @@ Auditoria: `vor_receipts` (recibos de operação com hash SHA-256 encadeado:
 `marketplace_ai_state` é órfã (estado genérico por componente, sem uso vivo no front).
 
 **Dinheiro (BRL, numeric 10,2).** `payment_status` CHECK: `aguardando | pago | recusado |
-expirado | estornado | pago_apos_expirar`. Reserva de estoque de **30 minutos** (pg_cron
-expira e devolve estoque).
+expirado | estornado | pago_apos_expirar | recebido_na_entrega`. O sétimo valor (venda
+paga na mão, ex.: PDV) só é gravado pela RPC `registrar_pagamento_recebido`
+(SECURITY DEFINER, só admin) — nunca por UPDATE direto. Reserva de estoque de
+**30 minutos** (pg_cron expira e devolve estoque).
 
 **Fluxo do dinheiro (PIX é o único método ligado; cartão é código morto "Fase 3.5"):**
 1. Checkout **exige conta** para pagar online (política P6).
