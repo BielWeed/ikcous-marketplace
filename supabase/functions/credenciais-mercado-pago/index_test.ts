@@ -33,6 +33,18 @@
 //   C14 rede caiu DE VERDADE no caminho de produção (fetch global rejeita) ->
 //       recado de internet honesto, distinto do recado de chave recusada (C7),
 //       e a falha fica gravada no ultimo_teste
+//   C15 mp-3: salvar PUBLICA a Public Key na ficha da loja
+//       (store_config.mp_public_key, id = 1) — sem isso o checkout do cliente
+//       nunca mostra o PIX, por mais que a tela diga "salvo"
+//   C16 mp-3: ficha da loja recusou o UPDATE -> erro EXPLÍCITO na resposta
+//       (nunca "salvo" calado com a loja sem a chave)
+//   C17 mp-3: ligar_pix sem teste conectado -> 409 e a ficha NÃO liga
+//   C18 mp-3: ligar_pix depois de teste conectado -> ficha liga e o registro
+//       guarda pix_ligado_em/pix_ligado_por (uid de QUEM ligou)
+//   C19 mp-3: ligar_pix com chave de TESTE -> liga, mas com aviso de que não
+//       entra dinheiro de verdade
+//   C20 mp-3: desligar_pix sempre desliga; e `ler` conta a verdade da ficha
+//       (pix_ligado / public_key_na_loja)
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 // ── Costura de REDE para a porta de admin (verifyIsAdmin monta os PRÓPRIOS
@@ -150,10 +162,23 @@ function prepararEnv(extra: Record<string, string> = {}): () => void {
     };
 }
 
-/** Dublê do client de app_settings: guarda o valor e expira o que gravou. */
-function supabaseFalso() {
-    const estado = { valor: null as string | null, upserts: [] as any[] };
-    const tabela = {
+/**
+ * Dublê do client: app_settings (guarda o valor e expira o que gravou) E
+ * store_config (a ficha da loja que o checkout do cliente lê — id = 1).
+ * `falhaNaLoja` simula o UPDATE recusado pela ficha (na vida real, o trigger
+ * dominio_publico_so_muda_pela_frota recusando quem não é service_role).
+ */
+function supabaseFalso(opcoes: { falhaNaLoja?: boolean } = {}) {
+    const estado = {
+        valor: null as string | null,
+        upserts: [] as any[],
+        loja: {
+            pagamento_online: false as boolean,
+            mp_public_key: null as string | null,
+        },
+        updatesLoja: [] as any[],
+    };
+    const appSettings = {
         select() {
             return this;
         },
@@ -172,7 +197,38 @@ function supabaseFalso() {
             return Promise.resolve({ error: null });
         },
     };
-    return { cliente: { from: () => tabela }, estado };
+    const storeConfig = {
+        select() {
+            return this;
+        },
+        eq() {
+            return this;
+        },
+        maybeSingle() {
+            return Promise.resolve({ data: { ...estado.loja }, error: null });
+        },
+        update(linha: any) {
+            estado.updatesLoja.push(linha);
+            if (opcoes.falhaNaLoja) {
+                // `.update(...).eq('id', 1)` — o erro volta no fim da cadeia.
+                return {
+                    eq: () =>
+                        Promise.resolve({
+                            error: { message: "DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA" },
+                        }),
+                };
+            }
+            Object.assign(estado.loja, linha);
+            return { eq: () => Promise.resolve({ error: null }) };
+        },
+    };
+    return {
+        cliente: {
+            from: (nome: string) =>
+                nome === "store_config" ? storeConfig : appSettings,
+        },
+        estado,
+    };
 }
 
 function requisicao(corpo: unknown): Request {
@@ -592,6 +648,216 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO), false);
             const salvo = JSON.parse(estado.valor!);
             assertEquals(salvo.ultimo_teste.conectado, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C15 — salvar publica a Public Key na ficha da loja", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            assertEquals(resposta.status, 200);
+            // A ficha que o checkout do cliente lê recebeu a MESMA Public Key.
+            assertEquals(estado.loja.mp_public_key, PUBLIC_KEY_FALSA);
+            assertEquals(estado.updatesLoja.length, 1);
+            assertEquals(estado.updatesLoja[0].mp_public_key, PUBLIC_KEY_FALSA);
+            // Publicar a chave NÃO liga o PIX sozinho (isso é ligar_pix).
+            assertEquals(estado.loja.pagamento_online, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C16 — ficha recusou o UPDATE -> erro explícito, nunca calado", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso({ falhaNaLoja: true });
+        try {
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            assertEquals(resposta.status, 500);
+            const corpo = await resposta.json();
+            assertEquals(corpo.erro.includes("ficha da loja"), true);
+            // O segredo continua sem aparecer nem nesse caminho de erro.
+            assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO), false);
+            assertEquals(estado.loja.mp_public_key, null);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C17 — ligar_pix sem teste conectado -> 409 e ficha desligada", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 409);
+            const corpo = await resposta.json();
+            assertEquals(
+                corpo.erro.includes("Teste a conexão com sucesso antes de ligar"),
+                true,
+            );
+            assertEquals(estado.loja.pagamento_online, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C18 — ligar_pix com teste conectado liga e carimba quem ligou", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const { buscar } = buscarMpFalso(200, {
+                live_mode: true,
+                nickname: "Loja Teste",
+            });
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+            );
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            // Chave de produção: nada de aviso de dinheiro de mentira.
+            assertEquals(corpo.aviso, undefined);
+            assertEquals(estado.loja.pagamento_online, true);
+            // Auditoria: quem ligou e quando, no registro.
+            const salvo = JSON.parse(estado.valor!);
+            assertEquals(salvo.pix_ligado_por, ID_ADMIN);
+            assertEquals(typeof salvo.pix_ligado_em, "string");
+            // E o carimbo sobrevive a um novo salvar (auditoria não some).
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({ acao: "salvar", public_key: PUBLIC_KEY_FALSA }),
+                    { supabase: cliente },
+                )
+            );
+            assertEquals(JSON.parse(estado.valor!).pix_ligado_por, ID_ADMIN);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C19 — ligar_pix com chave de TESTE liga com aviso", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const { buscar } = buscarMpFalso(200, {
+                live_mode: false,
+                nickname: "Loja Sandbox",
+            });
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+            );
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.aviso.includes("TESTE"), true);
+            assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C20 — desligar_pix desliga e ler conta a verdade da ficha", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const { buscar } = buscarMpFalso(200, { live_mode: true, nickname: "Loja Teste" });
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+            );
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            const respostaLigada = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ler" }), { supabase: cliente })
+            );
+            const corpoLigado = await respostaLigada.json();
+            assertEquals(corpoLigado.pix_ligado, true);
+            assertEquals(corpoLigado.public_key_na_loja, true);
+
+            const respostaDesligar = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "desligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(respostaDesligar.status, 200);
+            assertEquals((await respostaDesligar.json()).pix_ligado, false);
+            assertEquals(estado.loja.pagamento_online, false);
+
+            // Ficha com OUTRA Public Key (semeada por fora): `ler` acusa a
+            // divergência em vez de dizer que está tudo certo.
+            estado.loja.mp_public_key = "APP_USR-publica-de-outra-loja";
+            const respostaDivergente = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ler" }), { supabase: cliente })
+            );
+            const corpoDivergente = await respostaDivergente.json();
+            assertEquals(corpoDivergente.pix_ligado, false);
+            assertEquals(corpoDivergente.public_key_na_loja, false);
         } finally {
             desfazerEnv();
         }
