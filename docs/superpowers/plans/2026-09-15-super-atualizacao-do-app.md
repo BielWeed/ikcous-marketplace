@@ -209,11 +209,11 @@ Frente vitrine:
 | A9.12 | Selo "Frete Grátis" do card segue o preset da loja (`ProductCard.tsx:520`) | `ProductCard.tsx`, `ProductView.tsx` | P |
 | A9.13 | Convidado da própria cidade não recebe "fora da cidade" no primeiro dígito do CEP (`CheckoutView.tsx:1381`) | `CheckoutView.tsx` (frente do checkout) | P |
 
-### A10 — PWA e cofre offline (a confirmar: a verificação adversarial desta área foi interrompida pelo limite de uso e é refeita antes de codar)
+### A10 — PWA e cofre offline (verificação adversarial refeita em 16/09: 7 de 9 confirmados pelas duas lentes; A10.1 ficou dividido e começa por confirmar; teto do `app-cache` e relógio do líder rebaixados a anotado)
 
 | # | Tarefa | Onde | Esforço |
 | --- | --- | --- | --- |
-| A10.1 | Confirmar: a sentinela desregistra o service worker a cada 5 min de aba visível, e o pulso nunca chega à página | `src/pwa-sentinel.ts:79` | P |
+| A10.1 | Confirmar (as lentes divergiram): a sentinela desregistra o service worker a cada 5 min de aba visível, e o pulso nunca chega à página | `src/pwa-sentinel.ts:79` | P |
 | A10.2 | Aviso de atualização com saída ("depois") e sem cobrir a tela do lojista no meio de uma venda; semântica de diálogo (foco, Escape) | `UpdateNotification.tsx:138`, `PWAUpdateGate.tsx` | M |
 | A10.3 | `catchUp` fatia o `.in("id", [...])` (teto de ids por chamada) | `realtimeSyncEngine.ts:955` | M |
 | A10.4 | Um só esquema de registro de produto no cofre (os três caminhos gravam colunas diferentes) | `realtimeSyncEngine.ts:952`, `StoreContext.tsx:726` | M |
@@ -221,7 +221,7 @@ Frente vitrine:
 | A10.6 | Volta à aba não dispara quatro rodadas de rede e um ciclo de liderança | `realtimeSyncEngine.ts:317`, `useLeaderElection.ts:231` | M |
 | A10.7 | `app-cache-<versao>` com teto de entradas | `sw.ts:354` | P |
 
-### A11 — Catálogo (a confirmar pela mesma razão; os quatro primeiros são bloqueantes se confirmados)
+### A11 — Catálogo (verificação adversarial refeita em 16/09: os 13 achados não anotados confirmados pelas duas lentes; A11.1 segue bloqueante, A11.3 e A11.4 rebaixados a "antes de crescer" por uma das lentes)
 
 | # | Tarefa | Onde | Esforço |
 | --- | --- | --- | --- |
@@ -237,7 +237,7 @@ Frente vitrine:
 | A11.10 | Modais de variante e categoria viram diálogos (role, foco preso, Escape) | `AdminProductFormView.tsx:1609` | M |
 | A11.11 | Busca do painel com índice (`unaccent` imutável em índice de expressão ou coluna normalizada) | `baseline:1734`, migration | M |
 
-### A12 — Testes, tooling e CI (a confirmar; os três primeiros mudam o que o CI garante)
+### A12 — Testes, tooling e CI (uma lente confirmou os 8; a segunda lente roda em 16/09; A12.3 é o único que a lente manteve como bloqueante)
 
 | # | Tarefa | Onde | Esforço |
 | --- | --- | --- | --- |
@@ -408,7 +408,7 @@ Agora (em paralelo, arquivos disjuntos):
   A9 frete (edge | vitrine) ────┤
   A13 docs ─────────────────────┘
 Depois de A1..A6:            A7 banco/RPCs (migrations em série, um timestamp por vez)
-Confirmar antes de codar:    A10 PWA · A11 catálogo · A12 tooling (verificação adversarial refeita)
+Confirmados em 16/09:        A10 PWA (menos A10.1) · A11 catálogo · A12 tooling (segunda lente em curso)
 Onda C:                      C1 (com A7, na mesma fila de migrations) ‖ C2 (após A12.2/A12.3)
                              C3 e C5 após C1+C2 · C4 após C1 · C6 após uso real
 Onda B (por área, após a A da área):  B4 → B5 · B2 → B3 · B1 por último (toca App.tsx, que todos usam)
