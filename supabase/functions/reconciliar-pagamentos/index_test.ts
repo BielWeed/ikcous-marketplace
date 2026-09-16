@@ -22,8 +22,15 @@
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
-// do lojista nos testes MP-1/MP-2 do fim deste arquivo.
-import { chaveDeCifra, cifrar } from "../_shared/credenciais-mp.ts";
+// do lojista nos testes MP-1/MP-2 do fim deste arquivo. Desde a tarefa mp-6
+// o fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a
+// mesma montagem copiada em cinco suítes, e cópia de fixture envelhece
+// calada quando a forma do registro em app_settings muda.
+import {
+  CHAVE_CIFRA_TESTE,
+  registroMpDeTeste,
+  TOKEN_LOJISTA_FALSO,
+} from "../_shared/credenciais-mp_fixtures.ts";
 
 const SEGREDO = "segredo-reconciliacao-teste";
 const UUID_PEDIDO_1 = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -2235,33 +2242,6 @@ Deno.test("PEÇA 5 - AUSÊNCIA DE DUPLICATA: dois candidatos do MESMO pedido no 
 // order dele — a rede de segurança do dinheiro calada, que é exatamente o
 // buraco que esta reconciliação existe para tapar.
 
-/** Cofre de MENTIRA, 32 bytes determinísticos — mesma receita de
- * _shared/credenciais-mp_test.ts. Nunca a chave real de ninguém. */
-const CHAVE_CIFRA_TESTE = btoa(
-  String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (i * 7 + 3) % 256)),
-);
-const TOKEN_LOJISTA_FALSO = "APP_USR-token-falso-do-lojista-9999";
-
-/** Registro do lojista cifrado com a MESMA primitiva da produção — fixture
- * escrito à mão não provaria que o cron decifra de verdade. */
-async function registroMpDeTeste(): Promise<Record<string, unknown>> {
-  const chave = await chaveDeCifra({
-    get: (nome: string) => (nome === "MP_CHAVES_ENCRYPTION_KEY" ? CHAVE_CIFRA_TESTE : undefined),
-  });
-  const token = await cifrar(TOKEN_LOJISTA_FALSO, chave!);
-  return {
-    public_key: "APP_USR-publica-falsa-do-lojista",
-    token_cifrado: token.cifrado,
-    token_iv: token.iv,
-    mascara_token: "••••9999",
-    webhook_cifrado: null,
-    webhook_iv: null,
-    mascara_webhook: null,
-    ultimo_teste: null,
-    atualizado_em: "2026-09-15T00:00:00.000Z",
-  };
-}
-
 /** Como `fetchConsulta`, mas guardando os headers: é no `Authorization` que
  * mora a resposta de "com a chave de quem este cron está perguntando". */
 function fetchConsultaComHeaders(
@@ -2385,4 +2365,76 @@ Deno.test("MP-3 — cofre ausente: a fila de ESTORNOS também para fechada (falh
   assertEquals(capturado.chamadas, 0);
   assertEquals(registro.atualizacoesOrderRefunds.length, 0);
   assertEquals(registro.chamadasConcluirEstorno.length, 0);
+});
+
+// --- Tarefa mp-6: UMA resolução de credenciais por invocação ---------------
+//
+// Ressalva da revisão de mp-1. Aqui o risco é de escala: este cron roda de
+// 10 em 10 minutos sobre um LOTE de candidatos. Resolver a credencial
+// dentro do laço multiplicaria por N o SELECT em app_settings e o AES-GCM —
+// e, pior, o lote passaria a rodar com credenciais DIFERENTES entre um
+// candidato e outro se o lojista salvasse a chave nova no meio da execução:
+// metade dos pedidos consultada na conta velha, metade na nova, e o relatório
+// de `falhas` sem como explicar. A resolução mora ANTES do laço; MP-4 prende
+// isso contando as leituras de app_settings com DOIS candidatos.
+
+/** Conta cada `from(tabela)` do cliente falso — mesma ideia do
+ * `contandoFrom` do webhook-mercadopago. */
+function contandoFrom(
+  cliente: Record<string, unknown>,
+  tabelas: string[],
+): Record<string, unknown> {
+  const original = cliente.from as (tabela: string) => unknown;
+  return {
+    ...cliente,
+    from(tabela: string) {
+      tabelas.push(tabela);
+      return original(tabela);
+    },
+  };
+}
+
+Deno.test("MP-4 — lote com DOIS candidatos resolve as credenciais UMA vez (um só SELECT em app_settings, não um por candidato)", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  try {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const idOrder1 = "ORDTST11LOTEUM4WC79335A68CZ5NZ7X";
+    const idOrder2 = "ORDTST12LOTEDOIS4WC79335A68CZ5NZ";
+    const tabelas: string[] = [];
+    const supabase = contandoFrom(
+      clienteFalso({
+        candidatos: [
+          { order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder1 },
+          { order_id: UUID_PEDIDO_2, gateway_payment_id: idOrder2 },
+        ],
+        rpcConfirmarResultado: "pago",
+        registro,
+        registroMp: await registroMpDeTeste(),
+      }),
+      tabelas,
+    );
+    const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+    const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+      id: idOrder1,
+      status: "processed",
+      status_detail: "accredited",
+    });
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    // Os DOIS candidatos passaram pelo laço com o token do lojista.
+    assertEquals(corpo.verificados, 2);
+    assertEquals(capturado.chamadas, 2);
+    assertEquals(capturado.autorizacoes[0], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+    assertEquals(capturado.autorizacoes[1], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+    // E UMA leitura de app_settings para o lote inteiro.
+    assertEquals(
+      tabelas.filter((tabela) => tabela === "app_settings").length,
+      1,
+      "a credencial tem de ser resolvida antes do laço, não uma vez por candidato",
+    );
+  } finally {
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  }
 });

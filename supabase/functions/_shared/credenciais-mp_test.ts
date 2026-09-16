@@ -30,6 +30,13 @@
 //       ciclo e chaveDeCifra devolve null para cofre ausente/curto/inválido
 //   R12 lerRegistroMp traduz erro do banco em storage_leitura (o recado que
 //       a edge credenciais-mercado-pago já mapeia para o lojista)
+//   R13 client de USUÁRIO (chave anon) -> "indisponivel": a RLS de
+//       app_settings esconderia a linha do lojista e o resolvedor cairia
+//       calado no "ambiente" — cobrar na conta ERRADA sem nem um log
+//   R14 o mesmo com a chave publicável do formato novo (sb_publishable_)
+//   R15 client de service role (JWT e formato novo) resolve normalmente, e
+//       client dublê sem chave nenhuma também — a trava só fecha quando dá
+//       para AFIRMAR que a chave não é de service role
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
     chaveDeCifra,
@@ -39,119 +46,27 @@ import {
     type Registro,
     resolverCredenciaisMp,
 } from "./credenciais-mp.ts";
-
-// Chave de cifra dos testes: 32 bytes determinísticos em base64 — chave de
-// MENTIRA, só para o AES rodar de verdade dentro do teste. MESMA receita do
-// credenciais-mercado-pago/index_test.ts (quem escreve o registro lá é quem
-// lê aqui).
-export const CHAVE_CIFRA_TESTE = btoa(
-    String.fromCharCode(
-        ...Array.from({ length: 32 }, (_, i) => (i * 7 + 3) % 256),
-    ),
-);
-
-/** Outro cofre, igualmente falso — para o caso "trocaram a chave". */
-export const CHAVE_CIFRA_TESTE_OUTRA = btoa(
-    String.fromCharCode(
-        ...Array.from({ length: 32 }, (_, i) => (i * 11 + 5) % 256),
-    ),
-);
-
-export const PUBLIC_KEY_LOJISTA_FALSA = "APP_USR-publica-falsa-do-lojista";
-export const TOKEN_LOJISTA_FALSO = "APP_USR-token-falso-do-lojista-9999";
-export const WEBHOOK_LOJISTA_FALSO = "segredo-falso-de-webhook-do-lojista";
-export const TOKEN_AMBIENTE_FALSO = "APP_USR-token-falso-da-plataforma-1111";
-export const WEBHOOK_AMBIENTE_FALSO = "segredo-falso-de-webhook-da-plataforma";
-
-/**
- * Ambiente dublê com a MESMA forma que o módulo usa (`get`). Map em vez de
- * `pares[chave]`: acesso indexado por variável acorda a catraca de segurança
- * do eslint (mesmo motivo do Uint8Array.from lá no módulo).
- */
-export function envFalso(
-    pares: Record<string, string>,
-): { get(chave: string): string | undefined } {
-    const mapa = new Map(Object.entries(pares));
-    return { get: (chave: string) => mapa.get(chave) };
-}
-
-/** Ambiente da plataforma "completo" — o que existe hoje em produção. */
-function envDaPlataforma(): { get(chave: string): string | undefined } {
-    return envFalso({
-        MP_CHAVES_ENCRYPTION_KEY: CHAVE_CIFRA_TESTE,
-        MP_ACCESS_TOKEN: TOKEN_AMBIENTE_FALSO,
-        MP_WEBHOOK_SECRET: WEBHOOK_AMBIENTE_FALSO,
-    });
-}
-
-/**
- * Fixture do registro cifrado do lojista — exportada de propósito: as
- * functions de pagamento (mp-2) precisam do MESMO registro para provar que o
- * Bearer que sai daqui é o token do lojista.
- */
-export async function registroMpDeTeste(
-    opcoes: {
-        token?: string;
-        webhookSecret?: string | null;
-        publicKey?: string;
-        chaveCifra?: string;
-    } = {},
-): Promise<Registro> {
-    const chave = await chaveDeCifra(
-        envFalso({
-            MP_CHAVES_ENCRYPTION_KEY: opcoes.chaveCifra ?? CHAVE_CIFRA_TESTE,
-        }),
-    );
-    if (!chave) throw new Error("fixture: chave de cifra de teste inválida");
-    const token = opcoes.token ?? TOKEN_LOJISTA_FALSO;
-    const tokenCifrado = await cifrar(token, chave);
-    const segredo = opcoes.webhookSecret === null
-        ? null
-        : opcoes.webhookSecret ?? WEBHOOK_LOJISTA_FALSO;
-    const webhookCifrado = segredo ? await cifrar(segredo, chave) : null;
-    return {
-        public_key: opcoes.publicKey ?? PUBLIC_KEY_LOJISTA_FALSA,
-        token_cifrado: tokenCifrado.cifrado,
-        token_iv: tokenCifrado.iv,
-        mascara_token: `••••${token.slice(-4)}`,
-        webhook_cifrado: webhookCifrado?.cifrado ?? null,
-        webhook_iv: webhookCifrado?.iv ?? null,
-        mascara_webhook: segredo ? `••••${segredo.slice(-4)}` : null,
-        ultimo_teste: null,
-        atualizado_em: new Date().toISOString(),
-    };
-}
-
-/**
- * Client do Supabase dublê para app_settings — só o que lerRegistroMp usa
- * (select/eq/maybeSingle). Aceita registro, texto cru (para o caso do valor
- * ilegível) ou erro de leitura.
- */
-export function supabaseComRegistro(
-    registro: Registro | string | null,
-    erro: { message: string } | null = null,
-): any {
-    const valor = registro === null
-        ? null
-        : typeof registro === "string"
-        ? registro
-        : JSON.stringify(registro);
-    const tabela = {
-        select() {
-            return this;
-        },
-        eq() {
-            return this;
-        },
-        maybeSingle() {
-            return Promise.resolve({
-                data: erro || !valor ? null : { value: valor },
-                error: erro,
-            });
-        },
-    };
-    return { from: () => tabela };
-}
+// Os dublês moram em `credenciais-mp_fixtures.ts` (ressalva da revisão de
+// mp-1): este arquivo era a origem deles e as quatro functions de pagamento
+// copiavam o registro à mão. Fixture em um lugar só — e num módulo que o
+// `deno test` NÃO coleta, senão estes casos rodariam dentro de cada suíte.
+import {
+    CHAVE_ANON_FALSA,
+    CHAVE_CIFRA_TESTE,
+    CHAVE_CIFRA_TESTE_OUTRA,
+    CHAVE_PUBLISHABLE_NOVA_FALSA,
+    CHAVE_SECRET_NOVA_FALSA,
+    CHAVE_SERVICE_ROLE_FALSA,
+    envDaPlataforma,
+    envFalso,
+    PUBLIC_KEY_LOJISTA_FALSA,
+    registroMpDeTeste,
+    supabaseComRegistro,
+    TOKEN_AMBIENTE_FALSO,
+    TOKEN_LOJISTA_FALSO,
+    WEBHOOK_AMBIENTE_FALSO,
+    WEBHOOK_LOJISTA_FALSO,
+} from "./credenciais-mp_fixtures.ts";
 
 /** Anota o que foi para o console — nenhum segredo pode passar por aqui. */
 async function comConsoleAnotado(
@@ -330,6 +245,59 @@ Deno.test("credenciais-mp (módulo compartilhado)", async (t) => {
             ),
             null,
         );
+    });
+
+    await t.step("R13 — client de USUÁRIO (anon) -> indisponivel", async () => {
+        // O cenário que a revisão de mp-1 apontou: alguém passa o client do
+        // usuário logado (como o `userClient` que estornar-pagamento monta
+        // para conferir admin). A RLS de app_settings é só-admin, então a
+        // leitura volta VAZIA — indistinguível de "o lojista nunca
+        // cadastrou chave". Sem esta trava a resolução seguiria para o
+        // ambiente e cobraria o cliente na conta da PLATAFORMA, calada.
+        const credenciais = await resolverCredenciaisMp(
+            supabaseComRegistro(null, null, CHAVE_ANON_FALSA),
+            envDaPlataforma(),
+        );
+        assertEquals(credenciais.origem, "indisponivel");
+        assertEquals(credenciais.token, null);
+        assertEquals(credenciais.segredoWebhook, null);
+        assertEquals(credenciais.motivo, "client_sem_service_role");
+    });
+
+    await t.step("R14 — chave publicável do formato novo -> indisponivel", async () => {
+        const credenciais = await resolverCredenciaisMp(
+            supabaseComRegistro(null, null, CHAVE_PUBLISHABLE_NOVA_FALSA),
+            envDaPlataforma(),
+        );
+        assertEquals(credenciais.origem, "indisponivel");
+        assertEquals(credenciais.motivo, "client_sem_service_role");
+    });
+
+    await t.step("R15 — service role (e dublê sem chave) seguem passando", async () => {
+        // JWT de service role: o caminho de verdade das quatro functions.
+        const comJwt = await resolverCredenciaisMp(
+            supabaseComRegistro(await registroMpDeTeste(), null, CHAVE_SERVICE_ROLE_FALSA),
+            envDaPlataforma(),
+        );
+        assertEquals(comJwt.origem, "lojista");
+        assertEquals(comJwt.token, TOKEN_LOJISTA_FALSO);
+
+        // Formato novo da chave secreta — o repositório já lê as duas.
+        const comChaveNova = await resolverCredenciaisMp(
+            supabaseComRegistro(await registroMpDeTeste(), null, CHAVE_SECRET_NOVA_FALSA),
+            envDaPlataforma(),
+        );
+        assertEquals(comChaveNova.origem, "lojista");
+
+        // Client dublê SEM `supabaseKey` (o que as suítes das functions
+        // montam à mão): não dá para afirmar nada, então NÃO fecha. A trava
+        // existe para pegar erro de programação provado, não para chutar.
+        const semChave = await resolverCredenciaisMp(
+            { from: supabaseComRegistro(null).from },
+            envDaPlataforma(),
+        );
+        assertEquals(semChave.origem, "ambiente");
+        assertEquals(semChave.token, TOKEN_AMBIENTE_FALSO);
     });
 
     await t.step("R12 — erro de leitura vira storage_leitura", async () => {

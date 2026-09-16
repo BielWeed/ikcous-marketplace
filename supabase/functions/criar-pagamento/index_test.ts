@@ -21,8 +21,15 @@ import {
 } from "./index.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes do fim deste arquivo — fixture escrito à mão não
-// provaria que a function decifra de verdade.
-import { chaveDeCifra, cifrar } from "../_shared/credenciais-mp.ts";
+// provaria que a function decifra de verdade. Desde a tarefa mp-6 o fixture
+// vem PRONTO de `_shared/credenciais-mp_fixtures.ts`: era a mesma montagem
+// copiada em cinco suítes, e cópia de fixture envelhece calada.
+import {
+  CHAVE_CIFRA_TESTE,
+  registroMpDeTeste,
+  TOKEN_AMBIENTE_FALSO as TOKEN_PLATAFORMA_FALSO,
+  TOKEN_LOJISTA_FALSO,
+} from "../_shared/credenciais-mp_fixtures.ts";
 
 const UUID = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 const AGORA = new Date("2026-08-06T12:00:00.000Z");
@@ -2225,34 +2232,6 @@ Deno.test("emailDoToken: sem claim de e-mail, lixo ou e-mail sem @ devolve null"
 // o segundo prova a falha FECHADA, que é a regra de dinheiro desta frente:
 // registro cadastrado + cofre fora do ar NÃO pode cair no token da
 // plataforma, porque cobrar na conta errada é pior do que não cobrar.
-
-/** Cofre de MENTIRA, 32 bytes determinísticos — mesma receita de
- * `_shared/credenciais-mp_test.ts`. Nunca a chave real de ninguém. */
-const CHAVE_CIFRA_TESTE = btoa(
-  String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (i * 7 + 3) % 256)),
-);
-const TOKEN_LOJISTA_FALSO = "APP_USR-token-falso-do-lojista-9999";
-const TOKEN_PLATAFORMA_FALSO = "APP_USR-token-falso-da-plataforma-1111";
-
-/** Monta o registro do lojista com a MESMA cifra da produção (a do módulo
- * compartilhado) — um fixture escrito à mão não provaria a decifração. */
-async function registroMpDeTeste(): Promise<Record<string, unknown>> {
-  const chave = await chaveDeCifra({
-    get: (nome: string) => (nome === "MP_CHAVES_ENCRYPTION_KEY" ? CHAVE_CIFRA_TESTE : undefined),
-  });
-  const token = await cifrar(TOKEN_LOJISTA_FALSO, chave!);
-  return {
-    public_key: "APP_USR-publica-falsa-do-lojista",
-    token_cifrado: token.cifrado,
-    token_iv: token.iv,
-    mascara_token: "••••9999",
-    webhook_cifrado: null,
-    webhook_iv: null,
-    mascara_webhook: null,
-    ultimo_teste: null,
-    atualizado_em: "2026-09-15T00:00:00.000Z",
-  };
-}
 
 /** Igual ao `fetchFalsoMP`, mas guardando TAMBÉM os headers — é no
  * `Authorization` que mora a resposta de "quem está cobrando". */

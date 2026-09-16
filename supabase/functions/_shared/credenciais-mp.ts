@@ -27,6 +27,14 @@
 //     ilegível)? Também FECHA. Na dúvida sobre existir chave do lojista,
 //     usar a do ambiente é justamente o risco de cobrar na conta errada.
 //
+// O CLIENT É DE SERVICE ROLE — e isso é parte da regra, não detalhe de
+// implementação (ressalva da revisão de mp-1). app_settings é só-admin por
+// RLS, e RLS não devolve erro: com client de usuário o SELECT volta VAZIO,
+// idêntico a "o lojista nunca cadastrou chave". O resolvedor cairia no
+// "ambiente" e cobraria na conta da PLATAFORMA sem um único log de falha —
+// o pior jeito de errar, porque ninguém fica sabendo. Daí o parâmetro
+// `supabaseServiceRole` e a trava `client_sem_service_role`.
+//
 // NADA DE SEGREDO EM LOG: daqui só saem `origem` e `motivo` (palavras
 // fixas, sem token, sem ciphertext, sem segredo de webhook).
 //
@@ -149,14 +157,22 @@ export async function decifrar(
 // ── app_settings (via supabase client injetável) ─────────────────────────
 
 /**
- * Lê o registro do lojista. Precisa de client com SERVICE ROLE: a linha de
- * app_settings é só-admin por RLS, e quem chama daqui é edge function.
+ * Lê o registro do lojista.
+ *
+ * **O client TEM de ser de SERVICE ROLE.** A linha de app_settings é
+ * só-admin por RLS, e RLS não devolve erro: com client de usuário (ou anon)
+ * o SELECT volta VAZIO, indistinguível de "o lojista nunca cadastrou
+ * chave". Quem lê daqui conclui que não há registro, cai no token da
+ * PLATAFORMA e cobra o cliente na conta ERRADA — calado, sem log de falha.
+ * É o motivo de o nome do parâmetro ser `supabaseServiceRole`.
  *
  * Erro de banco vira `storage_leitura:` — o prefixo que a edge
  * credenciais-mercado-pago já traduz em recado para o lojista.
  */
-export async function lerRegistroMp(supabase: any): Promise<Registro | null> {
-    const { data, error } = await supabase
+export async function lerRegistroMp(
+    supabaseServiceRole: any,
+): Promise<Registro | null> {
+    const { data, error } = await supabaseServiceRole
         .from("app_settings")
         .select("value")
         .eq("key", CHAVE_SETTINGS)
@@ -167,17 +183,65 @@ export async function lerRegistroMp(supabase: any): Promise<Registro | null> {
 }
 
 /**
+ * Papel declarado pela chave com que o client do Supabase foi construído,
+ * quando dá para saber — `null` quando não dá (dublê de teste sem chave,
+ * formato desconhecido). É leitura local: nenhuma ida ao banco, nenhuma
+ * validação de assinatura (a chave aqui nunca é usada para autenticar).
+ *
+ * `supabaseKey` é onde o supabase-js v2 guarda a chave passada ao
+ * `createClient` — a mesma que vai no header `apikey` de toda requisição.
+ */
+function papelDaChaveDoClient(supabase: any): string | null {
+    const chave: unknown = supabase?.supabaseKey;
+    if (typeof chave !== "string" || !chave) return null;
+    // Formato novo do Supabase: o prefixo JÁ é a resposta.
+    if (chave.startsWith("sb_secret_")) return "service_role";
+    if (chave.startsWith("sb_publishable_")) return "publishable";
+    // Formato legado: JWT, e o papel mora na claim `role` do payload.
+    const partes = chave.split(".");
+    if (partes.length !== 3) return null;
+    const [, corpo] = partes;
+    try {
+        const base64 = corpo.replace(/-/g, "+").replace(/_/g, "/");
+        const payload = JSON.parse(
+            atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")),
+        );
+        return typeof payload?.role === "string" ? payload.role : null;
+    } catch {
+        // Payload ilegível não acusa ninguém: quem decide é o ramo de baixo,
+        // e ele só fecha quando o papel foi AFIRMADO.
+        return null;
+    }
+}
+
+/**
  * Responde, para quem vai falar com o Mercado Pago, QUAL credencial usar.
  * Ver o cabeçalho deste arquivo para o porquê de cada ramo — em especial o
  * de nunca cair no ambiente quando o lojista já cadastrou chave.
+ *
+ * **O client TEM de ser de SERVICE ROLE** (ver `lerRegistroMp`): com client
+ * de usuário a RLS de app_settings esconde a linha do lojista SEM erro, e
+ * esta função responderia "ambiente" — cobrando na conta errada, calada.
+ * Por isso o parâmetro se chama `supabaseServiceRole` e, quando a chave do
+ * client DIZ que não é de service role, a resolução FECHA
+ * (`client_sem_service_role`) em vez de adivinhar. Quando a chave não diz
+ * nada (dublê de teste), segue — a trava pega erro provado, não palpite.
  */
 export async function resolverCredenciaisMp(
-    supabase: any,
+    supabaseServiceRole: any,
     env: AmbienteLeitura = Deno.env,
 ): Promise<CredenciaisMp> {
+    const papel = papelDaChaveDoClient(supabaseServiceRole);
+    if (papel !== null && papel !== "service_role") {
+        // Erro de programação, não de operação: a leitura viria vazia por
+        // RLS e o "ambiente" resultante é justamente o dinheiro na conta
+        // errada. Fecha — e o motivo nomeia o defeito para quem lê o log.
+        return fechado("client_sem_service_role");
+    }
+
     let registro: Registro | null;
     try {
-        registro = await lerRegistroMp(supabase);
+        registro = await lerRegistroMp(supabaseServiceRole);
     } catch {
         // Banco recusou a leitura ou o valor não é JSON: não dá para afirmar
         // que NÃO existe chave do lojista, então fecha (nunca o ambiente).

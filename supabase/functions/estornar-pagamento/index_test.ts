@@ -25,8 +25,15 @@
 //       responde 409 estorno_ja_tratado (M1/M2 do laudo do PR #439)
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts"
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
-// do lojista nos testes M1/M2 do fim deste arquivo.
-import { chaveDeCifra, cifrar } from "../_shared/credenciais-mp.ts"
+// do lojista nos testes M1/M2 do fim deste arquivo. Desde a tarefa mp-6 o
+// fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a mesma
+// montagem copiada em cinco suítes, e cópia de fixture envelhece calada
+// quando a forma do registro em app_settings muda.
+import {
+    CHAVE_CIFRA_TESTE,
+    registroMpDeTeste,
+    TOKEN_LOJISTA_FALSO,
+} from "../_shared/credenciais-mp_fixtures.ts"
 
 // ── Costura de REDE para a porta de admin (verifyIsAdmin monta os PRÓPRIOS
 // clients do supabase-js — a costura deps não os cobre). Mesma estratégia do
@@ -934,38 +941,15 @@ Deno.test("T-1b - SEM outra linha reivindicando o refund (idsJaReivindicados vaz
 // linha NÃO é marcada em_processamento, a mesma razão do passo 4 da edge:
 // nada fica preso na fila por falta de configuração.
 
-/** Cofre de MENTIRA, 32 bytes determinísticos — mesma receita de
- * _shared/credenciais-mp_test.ts. Nunca a chave real de ninguém. */
-const CHAVE_CIFRA_TESTE = btoa(
-    String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (i * 7 + 3) % 256)),
-)
-const TOKEN_LOJISTA_FALSO = "APP_USR-token-falso-do-lojista-9999"
-
-/** Registro do lojista cifrado com a MESMA primitiva da produção — fixture
- * escrito à mão não provaria que a edge decifra de verdade. */
-async function registroMpDeTeste(): Promise<any> {
-    const chave = await chaveDeCifra({
-        get: (nome: string) => (nome === "MP_CHAVES_ENCRYPTION_KEY" ? CHAVE_CIFRA_TESTE : undefined),
-    })
-    const token = await cifrar(TOKEN_LOJISTA_FALSO, chave!)
-    return {
-        public_key: "APP_USR-publica-falsa-do-lojista",
-        token_cifrado: token.cifrado,
-        token_iv: token.iv,
-        mascara_token: "••••9999",
-        webhook_cifrado: null,
-        webhook_iv: null,
-        mascara_webhook: null,
-        ultimo_teste: null,
-        atualizado_em: "2026-09-15T00:00:00.000Z",
-    }
-}
+// O fixture compartilhado recebe o cofre por parâmetro (`envFalso` lá
+// dentro), então montar o registro NÃO precisa mais de `comEnv` em volta —
+// só a chamada do handler precisa, que é quem lê o Deno.env de verdade.
 
 Deno.test("M1 - com chave do LOJISTA cadastrada, o token do executor e o Bearer do MP sao o DECIFRADO dele, nunca o MP_ACCESS_TOKEN da plataforma", async () => {
     const { cliente } = clienteSupaFalso({
         linha: LINHA_SOLICITADA,
         pedido: PEDIDO_PAGO,
-        registroMp: await comEnv({ MP_CHAVES_ENCRYPTION_KEY: CHAVE_CIFRA_TESTE }, registroMpDeTeste),
+        registroMp: await registroMpDeTeste(),
     })
     const executor = executorFalso(
         { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
@@ -987,10 +971,7 @@ Deno.test("M1 - com chave do LOJISTA cadastrada, o token do executor e o Bearer 
 })
 
 Deno.test("M2 - chave do lojista cadastrada + cofre ausente: falha FECHADA (500), executor nao chamado e linha NAO marcada", async () => {
-    const registroCifrado = await comEnv(
-        { MP_CHAVES_ENCRYPTION_KEY: CHAVE_CIFRA_TESTE },
-        registroMpDeTeste,
-    )
+    const registroCifrado = await registroMpDeTeste()
     const { cliente, registro } = clienteSupaFalso({
         linha: LINHA_SOLICITADA,
         pedido: PEDIDO_PAGO,
