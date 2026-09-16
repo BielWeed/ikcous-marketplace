@@ -607,13 +607,20 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
   });
 
   it("BLOQUEIO 1 (#197): sem conexão, o clique NÃO chama a RPC, NÃO navega e avisa que é preciso se reconectar", async () => {
-    // Ligado ANTES do render — a leitura de `isOffline` acontece no render
-    // do componente (hook `useOnlineStatus`), não no clique. O caminho mais
-    // provável descrito na revisão (perder sinal no meio do pagamento) já
-    // deixa o app offline bem antes deste clique.
-    mockIsOffline = true;
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    // Ligado DEPOIS de chegar à tela de aguardar pagamento (CheckoutView-1451,
+    // 15/09/2026): o "Finalizar Pedido" que chega até aqui agora também lê
+    // `isOffline` (achado offline — o botão passou a travar preventivamente
+    // sem rede), então ligar a bandeira antes do clique inicial impediria o
+    // pedido de nascer e este teste nunca chegaria à tela que ele quer
+    // examinar. O caminho mais provável descrito na revisão (perder sinal no
+    // meio do pagamento, já com o pedido criado) é justamente ficar offline
+    // DEPOIS de chegar aqui — a leitura de `isOffline` acontece no próximo
+    // render do componente (hook `useOnlineStatus`), e o `act` do clique de
+    // "Cancelar pedido" abaixo já provoca esse render.
+    mockIsOffline = true;
 
     await act(async () => {
       pagamentoOnlineOnErro[0](

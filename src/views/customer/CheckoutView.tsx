@@ -145,13 +145,73 @@ const ORDEM_CAMPOS_FOCO = [
  * (`tests/front/checkout-oferece-saida-na-recusa.test.tsx`) exercita esta função,
  * não a view.
  *
- * Hoje ela apenas delega — o valor de existir é o ponto de costura ficar
- * nomeado e testável. Se um dia a tela precisar de uma regra que só ela conhece
- * (por exemplo: sem cupom aplicado, `remover_cupom` não faz sentido), é aqui que
- * ela entra, e o teste já está montado.
+ * Hoje ela só acrescenta UMA regra própria antes de delegar — o valor de
+ * existir continua sendo o ponto de costura ficar nomeado e testável. Se um
+ * dia a tela precisar de mais uma regra que só ela conhece (por exemplo: sem
+ * cupom aplicado, `remover_cupom` não faz sentido), é aqui que ela entra, e
+ * o teste já está montado.
  */
-export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido =>
-  classificarRecusaDoPedido(error);
+export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido => {
+  if (ehFalhaDeRedeAntesDoEnvio(error)) {
+    // Sem rede o POST não chega ao servidor (ou a resposta não volta), e
+    // `classificarRecusaDoPedido` mandaria esse `code` vazio para o caso
+    // genérico `conferir_antes` (achado offline, 15/09/2026), que TRAVA o
+    // botão e manda "confira se ele já apareceu" — o conselho errado para o
+    // convidado, que não tem lista de pedidos para conferir. Tentar de novo é
+    // SEGURO desde 08/09/2026: a chave de idempotência (chave-do-pedido.ts) é
+    // a mesma para a mesma compra, e a RPC devolve o pedido já nascido em vez
+    // de criar outro. `tentar_de_novo` já existe e já NÃO trava o botão
+    // (aguardandoConferenciaDaRecusa só olha `conferir_antes`, mais abaixo);
+    // a mensagem é PRÓPRIA, não uma das `REGRAS` de recusaDoPedido.ts, porque
+    // o banco nunca escreveu esta frase — ela fala do cliente, não do pedido.
+    // O toast do catch usa ESTA mesma frase (ver handleSubmitEvent): toast e
+    // painel nunca podem dizer coisas opostas sobre a mesma falha.
+    return {
+      acao: "tentar_de_novo",
+      mensagem:
+        "Sem conexão — o pedido não foi confirmado. Tente de novo quando a internet voltar: ele não sai em dobro.",
+    };
+  }
+  return classificarRecusaDoPedido(error);
+};
+
+/**
+ * Prova de que a falha é de REDE — o fetch nunca chegou a existir ou o
+ * navegador sabe que está sem internet —, nunca uma resposta do servidor.
+ *
+ * `code === "P0001"` COM `message` prova o oposto: a chamada chegou ao
+ * Postgres e ele respondeu com `RAISE EXCEPTION` (que reverte a transação
+ * inteira) — aí o pedido definitivamente não nasceu por um motivo que o
+ * banco já escreveu, e isso vale mesmo que `navigator.onLine` esteja
+ * mentindo pela corrida entre a resposta chegar e o evento `offline`
+ * disparar. Por isso este caso sai cedo, ANTES de olhar `navigator.onLine`.
+ *
+ * As duas provas de rede, qualquer uma basta:
+ *   - `navigator.onLine === false` no instante da recusa;
+ *   - a assinatura exata que o postgrest-js devolve quando o PRÓPRIO fetch
+ *     lança (confirmado em node_modules/@supabase/postgrest-js/dist/
+ *     index.cjs:356-364, o mesmo trecho citado por `mensagemAmigavelErroPedido`
+ *     em useOrders.ts): `code` vazio E `message` começando pelo NOME da
+ *     exceção do fetch (`TypeError: Failed to fetch`, `AbortError: ...`).
+ *     Um corpo de resposta HTTP sem `code` (502/504 de gateway, por exemplo)
+ *     nunca chega com esse prefixo — só um texto cru, então não casa aqui.
+ */
+const PREFIXO_DE_EXCECAO_DE_FETCH =
+  /^(TypeError|FetchError|AbortError|NetworkError):/;
+
+const ehFalhaDeRedeAntesDoEnvio = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
+
+  if (codigo === "P0001" && mensagem) return false;
+
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return true;
+  }
+
+  return codigo === "" && PREFIXO_DE_EXCECAO_DE_FETCH.test(mensagem);
+};
 
 /**
  * Para ONDE cada ação leva. Tabela, e não cadeia de `if`, pelo mesmo motivo do
@@ -1452,6 +1512,7 @@ export function CheckoutView({
     !isValid ||
     isSubmitting ||
     semFreteSelecionado ||
+    isOffline ||
     aguardandoConferenciaDaRecusa ||
     convidadoForaDaCidade;
 
@@ -1594,6 +1655,23 @@ export function CheckoutView({
     const data = form.getValues();
 
     setIsSubmitting(true);
+
+    // Trava de rede, mesmo espírito da trava de frete logo abaixo: o
+    // `disabled` do botão já impede o clique de mouse/toque quando
+    // `isOffline` (via `botaoFinalizarDesabilitado`), mas não protege quem
+    // chama `handleSubmitEvent` por outro caminho (Enter no formulário, por
+    // exemplo). Achado offline (15/09/2026): sem rede o POST nem sai do
+    // aparelho — tentar mesmo assim só gastaria o tempo do próprio `await`
+    // até cair no catch, com o mesmo aviso que já dava para escrever aqui,
+    // antes de tentar.
+    if (isOffline) {
+      toast.error(
+        "Sem conexão — nada foi enviado. Tente de novo quando a internet voltar.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
 
     if (user && !selectedAddressId) {
       toast.error("Por favor, adicione ou selecione um endereço de entrega.");
@@ -1750,12 +1828,25 @@ export function CheckoutView({
       // comprador recebia. Agora mensagemAmigavelErroPedido NUNCA devolve
       // vazio, então o toast sempre carrega uma frase utilizável e o alerta
       // deixou de ter um gatilho útil.
-      toast.error(`Falha no Pedido: ${mensagemAmigavelErroPedido(error)}`);
+      //
+      // A saída é decidida UMA vez e alimenta o toast e o painel: na falha de
+      // rede a regra é própria desta tela (decidirSaidaDoCheckout), e o toast
+      // tem de dizer a mesma coisa que o painel — "confira se ele já apareceu"
+      // num e "tente de novo" no outro, para a mesma falha, é a divergência que
+      // recusa-e-toast-nao-divergem.test.ts proíbe entre as regras do banco.
+      const saida = decidirSaidaDoCheckout(error);
+      toast.error(
+        `Falha no Pedido: ${
+          ehFalhaDeRedeAntesDoEnvio(error)
+            ? saida.mensagem
+            : mensagemAmigavelErroPedido(error)
+        }`,
+      );
       // O toast é o AVISO — ele alcança quem não está olhando esta parte da
       // tela. O painel abaixo é a AÇÃO. Os dois convivem de propósito: até
       // 28/08/2026 só existia o toast, ele sumia sozinho e não levava a lugar
       // nenhum, e a pessoa ficava parada no último clique com o dinheiro na mão.
-      setRecusaDoUltimoClique(decidirSaidaDoCheckout(error));
+      setRecusaDoUltimoClique(saida);
     } finally {
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -3143,6 +3234,26 @@ export function CheckoutView({
                           : "Volte ao carrinho e calcule o frete para continuar"}
                       </p>
                     )}
+                    {!semFreteSelecionado && isOffline && (
+                      // Mesmo padrão do aviso de frete acima: botão apagado
+                      // sem explicação faz a pessoa achar que travou de
+                      // verdade, em vez de só estar esperando a rede voltar.
+                      // Achado offline (15/09/2026): cliente no metrô perde
+                      // a conexão e via só um botão cinza, sem nenhuma pista
+                      // de que o motivo era a própria rede — e não o pedido.
+                      // `!semFreteSelecionado` evita empilhar dois avisos de
+                      // motivos diferentes ao mesmo tempo; o de frete já é
+                      // acionável primeiro (escolher frete não depende de
+                      // rede) e o texto seria confuso lado a lado.
+                      <p
+                        role="alert"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                      >
+                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                        Sem conexão — nada foi enviado. Aguarde a internet
+                        voltar para finalizar
+                      </p>
+                    )}
                     {convidadoForaDaCidade && (
                       // Motivo visível da regra do convidado (decisão do
                       // Gabriel, 30/08/2026): entrega para fora da cidade é
@@ -3251,6 +3362,34 @@ function SuccessView({
   discount,
   onNavigate,
 }: Readonly<SuccessViewProps>) {
+  // CheckoutView-3301 (16/09/2026): "Ver Meus Pedidos" leva ao OrderSearch,
+  // que EXIGE e-mail válido (OrderSearch.tsx:63-66) para mandar o OTP — mas
+  // o formulário de convidado nunca coletou e-mail, e `customer_data.email`
+  // nasce vazio. O botão nunca poderia achar o pedido do convidado; era um
+  // beco com cara de recurso. A correção de fundo (pedir e-mail e gravá-lo
+  // em customer_data.email) exige mudar o payload de useOrders.createOrder
+  // para create_marketplace_order_v23/v24 — nenhuma das duas RPCs aceita
+  // `p_customer_email` hoje (conferido em 20261081000000, a versão mais
+  // recente das duas), e useOrders.ts é arquivo de outra frente nesta
+  // árvore agora. Enquanto isso não existe, quem não tem conta ganha o
+  // mesmo mecanismo já usado em PagamentoForaDoPrazoView (linha ~3508
+  // abaixo): WhatsApp da loja com o número do pedido na mensagem — nunca um
+  // botão que promete um recurso que não funciona para ele.
+  const { user } = useAuth();
+  const { config } = useStore();
+  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
+
+  const handleFalarComALoja = () => {
+    if (!lojaTemWhatsappAgora) return;
+    let numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
+    if (numeroLimpo.length === 11 || numeroLimpo.length === 10) {
+      numeroLimpo = `55${numeroLimpo}`;
+    }
+    const mensagem = `Olá! Quero acompanhar o meu pedido #${orderId.slice(-6).toUpperCase()}.`;
+    const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
+    globalThis.open(url, "_blank");
+  };
+
   return (
     <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
       <div className="group relative mb-12">
@@ -3294,12 +3433,26 @@ function SuccessView({
           Retornar à Vitrine
           <ArrowLeft className="size-5 rotate-180" />
         </button>
-        <button
-          onClick={() => onNavigate("orders")}
-          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
-        >
-          Ver Meus Pedidos
-        </button>
+        {user ? (
+          <button
+            onClick={() => onNavigate("orders")}
+            className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+          >
+            Ver Meus Pedidos
+          </button>
+        ) : lojaTemWhatsappAgora ? (
+          <button
+            onClick={handleFalarComALoja}
+            className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+          >
+            Acompanhar pelo WhatsApp
+          </button>
+        ) : (
+          <p className="text-xs leading-relaxed text-zinc-500">
+            Guarde o identificador acima — é por ele que a loja localiza o seu
+            pedido.
+          </p>
+        )}
       </div>
     </div>
   );
