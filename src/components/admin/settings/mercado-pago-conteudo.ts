@@ -29,6 +29,15 @@
  *   https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/overview
  *   https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/pix
  *   https://www.mercadopago.com.br/developers/pt/docs/checkout-bricks/overview
+ *
+ * Correção da tarefa mp-4 (16/09/2026): o guia parava em "salve e teste" e
+ * deixava o lojista achando que o Pix do app estava resolvido — o texto
+ * dizia, na prática, que o Pix seguia intocado por estas chaves. Não segue
+ * mais: as chaves daqui são as que cobram o cliente, e quem abre a porta é
+ * o interruptor "Receber PIX no app" (ações ligar_pix/desligar_pix da edge
+ * credenciais-mercado-pago, que acendem `store_config.pagamento_online`).
+ * O passo 5 passou a dizer isso com todas as letras, inclusive o atraso de
+ * até 1 minuto da vitrine (cache fresco do porteiro, CACHE_FRESCO_MS).
  */
 
 export type PassoDoGuia = {
@@ -59,9 +68,9 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
       'As chaves ficam no painel de desenvolvedores do Mercado Pago (developers.mercadopago.com), com a MESMA conta do seu app. Se o agente não conseguir te levar até lá, o caminho direto é: entrar no site com a sua conta, abrir "Suas integrações", criar a aplicação da sua loja e abrir "Credenciais de produção". Nessa tela, toque em "Ativar credenciais de produção" — aceite os termos e conclua o reCAPTCHA; sem esse passo, as chaves não recebem dinheiro de verdade.',
   },
   {
-    titulo: "Volte aqui, cole as chaves, salve e teste",
+    titulo: "Volte aqui: cole as chaves, salve, teste e LIGUE o PIX",
     descricao:
-      'Copie a Public Key e o Access Token de produção e cole nos campos abaixo. Toque em "Salvar chaves" e depois em "Testar conexão" — a resposta aparece aqui mesmo, na hora. O campo "Chave de notificações (opcional)" é OPCIONAL: pode deixar vazio e colar depois, quando quiser — o pagamento por Pix já funciona sem ela. Importante: para o dinheiro do Pix cair na sua conta, ela precisa ter uma CHAVE PIX registrada — veja isso na sua conta do Mercado Pago (área do Pix), não aqui no app.',
+      'Copie a Public Key e o Access Token de produção e cole nos campos abaixo. Toque em "Salvar chaves" e depois em "Testar conexão" — a resposta aparece aqui mesmo, na hora. O campo "Chave de notificações (opcional)" é OPCIONAL: pode deixar vazio e colar depois, quando quiser — o pagamento por Pix já funciona sem ela. Com o teste dando certo, LIGUE o interruptor "Receber PIX no app": é ele que abre o Pix para o seu cliente no fim da compra — com as chaves salvas e o interruptor desligado, ninguém paga por Pix no seu app. Depois de ligar (ou desligar), a sua vitrine passa a refletir em até 1 minuto. Importante: para o dinheiro do Pix cair na sua conta, ela precisa ter uma CHAVE PIX registrada — veja isso na sua conta do Mercado Pago (área do Pix), não aqui no app.',
   },
 ];
 
