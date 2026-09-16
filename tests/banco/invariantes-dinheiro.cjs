@@ -36,6 +36,19 @@ const P_PRODUTO_A = "aaaaaaaa-0000-0000-0000-000000000001";
 const P_PRODUTO_B = "aaaaaaaa-0000-0000-0000-000000000002";
 const CHAVE_FROTA = "ci-dinheiro-chave-teste";
 
+// Venda no balcão (prova (d)): um produto SEM variação e um COM variação
+// ativa — é o par mínimo que expõe a baixa XOR (variante OU produto, nunca os
+// dois). A chave de idempotência é fixa de propósito: é ela que a prova
+// repete para exigir o MESMO pedido de volta.
+const P_BALCAO_SIMPLES = "aaaaaaaa-0000-0000-0000-000000000003";
+const P_BALCAO_COM_VARIACAO = "aaaaaaaa-0000-0000-0000-000000000004";
+const V_BALCAO_VARIACAO = "bbbbbbbb-0000-0000-0000-000000000001";
+const CHAVE_BALCAO = "dddddddd-0000-0000-0000-000000000001";
+// Segundo balconista e chave de um pedido da VITRINE: é com esses dois que a
+// guarda de idempotência do balcão (canal + vendedor, nunca user_id) se prova.
+const U_ADMIN_2 = "22222222-2222-2222-2222-222222222223";
+const CHAVE_DA_VITRINE = "dddddddd-0000-0000-0000-000000000002";
+
 // ---- Helpers de sessão ------------------------------------------------------
 // auth.uid() do provisionar.cjs lê este GUC — é o "login" da prova.
 async function logar(cliente, userId) {
@@ -397,6 +410,361 @@ PROVAS.push({
       ["loja-viva.lojas.teste", "chave-errada-de-propósito"],
     );
     assert.equal(chaveErrada.rows.length, 0, "chave errada não resolve nada");
+  },
+});
+
+// (d) VENDA PRESENCIAL — o dinheiro do balcão sai do BANCO, a baixa é XOR, a
+// chave repetida devolve o mesmo pedido e o cancelamento entra no caminho de
+// sempre. Sem esta prova, a RPC poderia debitar estoque nos dois lugares,
+// aceitar preço do chamador ou nascer sem histórico, e tudo isso aplicaria
+// verde (a prova estática só lê o texto do arquivo).
+PROVAS.push({
+  nome: "(d) venda presencial: preço do banco, baixa XOR, idempotência, histórico e recusa sem admin",
+  corpo: async (cliente) => {
+    await garantirLojaFixture(cliente);
+
+    // (a) Sementes: um produto simples (estoque 10) e um com variação ativa
+    // (stock_increment 5, price_override 7.50 — DIFERENTE do preco_venda do
+    // pai, que é o que prova de onde o preço do item saiu).
+    await cliente.query(
+      `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
+       VALUES ($1, 'Produto Balcão Simples', 10.00, 25.00, 10, true, false)`,
+      [P_BALCAO_SIMPLES],
+    );
+    await cliente.query(
+      `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
+       VALUES ($1, 'Produto Balcão Com Variação', 4.00, 99.00, 7, true, false)`,
+      [P_BALCAO_COM_VARIACAO],
+    );
+    await cliente.query(
+      `INSERT INTO public.product_variants (id, product_id, name, value, stock_increment, price_override, active)
+       VALUES ($1, $2, 'Tamanho', 'PP', 5, 7.50, true)`,
+      [V_BALCAO_VARIACAO, P_BALCAO_COM_VARIACAO],
+    );
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data)
+       VALUES ($1, 'cliente@prova.teste', '{}'::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [U_CLIENTE],
+    );
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data)
+       VALUES ($1, 'admin@prova.teste', '{"role":"admin"}'::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data)
+       VALUES ($1, 'admin2@prova.teste', '{"role":"admin"}'::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN_2],
+    );
+    // Um pedido da VITRINE carimbado com uma chave conhecida: é o controle
+    // negativo da guarda de idempotência (canal diferente).
+    await cliente.query(
+      `INSERT INTO public.marketplace_orders
+         (customer_name, customer_data, total, subtotal, status, canal, idempotency_key)
+       VALUES ('Pedido da Vitrine', '{}'::jsonb, 10.00, 10.00, 'pending', 'online', $1)`,
+      [CHAVE_DA_VITRINE],
+    );
+
+    const vender = (itens, extras = {}) =>
+      cliente.query(
+        `SELECT public.registrar_venda_presencial(
+            $1::jsonb, $2::text, $3::uuid, $4::text, $5::text,
+            $6::numeric, $7::text, $8::uuid
+          ) AS venda`,
+        [
+          JSON.stringify(itens),
+          extras.pagamento || "cash",
+          extras.clienteUserId || null,
+          extras.clienteNome || null,
+          extras.whatsapp || null,
+          extras.desconto === undefined ? 0 : extras.desconto,
+          extras.observacao === undefined ? null : extras.observacao,
+          extras.chave === undefined ? null : extras.chave,
+        ],
+      );
+
+    // (b) Quem não é da loja não registra venda — o gate é a PRIMEIRA coisa.
+    await logar(cliente, U_CLIENTE);
+    await assert.rejects(
+      () => vender([{ product_id: P_BALCAO_SIMPLES, quantity: 2 }]),
+      /Acesso negado/,
+      "cliente comum não pode registrar venda no balcão",
+    );
+
+    // (c) A venda do admin nasce inteira.
+    await logar(cliente, U_ADMIN);
+    const primeira = (
+      await vender([{ product_id: P_BALCAO_SIMPLES, quantity: 2 }], {
+        chave: CHAVE_BALCAO,
+      })
+    ).rows[0].venda;
+    assert.equal(primeira.ja_existia, false, "a primeira venda não existia");
+    const pedidoSimples = primeira.order.id;
+    assert.ok(
+      /^[0-9a-f-]{36}$/i.test(pedidoSimples),
+      "a venda de balcão devolve o pedido que nasceu",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_BALCAO_SIMPLES],
+      ),
+      8,
+      "a venda de balcão debita o estoque do produto",
+    );
+    const cabecalho = (
+      await cliente.query(
+        `SELECT canal, status, payment_status, shipping, expires_at,
+                vendedor_id, pagamento_recebido_por, pagamento_recebido_em, total, subtotal
+           FROM public.marketplace_orders WHERE id = $1`,
+        [pedidoSimples],
+      )
+    ).rows[0];
+    assert.equal(cabecalho.canal, "presencial", "canal do balcão");
+    assert.equal(cabecalho.status, "delivered", "venda de balcão já saiu");
+    assert.equal(
+      cabecalho.payment_status,
+      "recebido_na_entrega",
+      "o dinheiro do balcão é recebido na mão (D1: sem oitavo valor)",
+    );
+    assert.equal(Number(cabecalho.shipping), 0, "balcão não tem frete");
+    assert.equal(
+      cabecalho.expires_at,
+      null,
+      "expires_at é da reserva do PIX — venda de balcão não reserva nada",
+    );
+    assert.equal(cabecalho.vendedor_id, U_ADMIN, "vendedor_id é auth.uid()");
+    assert.equal(
+      cabecalho.pagamento_recebido_por,
+      U_ADMIN,
+      "quem recebeu é auth.uid()",
+    );
+    assert.ok(
+      cabecalho.pagamento_recebido_em instanceof Date,
+      "o recebimento é carimbado na hora",
+    );
+
+    // (d) O total é 2 × preco_venda do BANCO — não há como o chamador mandar
+    // preço, total ou subtotal (não existe parâmetro para isso).
+    assert.equal(Number(cabecalho.subtotal), 50, "subtotal = 2 × 25,00");
+    assert.equal(Number(cabecalho.total), 50, "total = subtotal - desconto");
+
+    // (e) A MESMA chave devolve o MESMO pedido, sem segunda baixa de estoque
+    // nem segundo item.
+    const repetida = (
+      await vender([{ product_id: P_BALCAO_SIMPLES, quantity: 2 }], {
+        chave: CHAVE_BALCAO,
+      })
+    ).rows[0].venda;
+    assert.equal(repetida.ja_existia, true, "a repetição diz que já existia");
+    assert.equal(
+      repetida.order.id,
+      pedidoSimples,
+      "a repetição devolve o MESMO pedido",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_BALCAO_SIMPLES],
+      ),
+      8,
+      "a repetição não debita estoque de novo",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT count(*) FROM public.marketplace_order_items WHERE order_id = $1",
+        [pedidoSimples],
+      ),
+      1,
+      "a repetição não grava item de novo",
+    );
+
+    // (e-bis) Chave já usada por pedido de OUTRO CANAL ou de OUTRO VENDEDOR é
+    // recusada com 23505 — nunca devolvida. É esta guarda que separa a
+    // idempotência do balcão da guarda da v23 (que casa por `user_id`, o
+    // CLIENTE, e aqui devolveria pedido alheio).
+    const chaveRecusada = (erro) =>
+      erro.code === "23505" &&
+      /já foi usada por outro pedido/.test(erro.message);
+    await assert.rejects(
+      () =>
+        vender([{ product_id: P_BALCAO_SIMPLES, quantity: 1 }], {
+          chave: CHAVE_DA_VITRINE,
+        }),
+      chaveRecusada,
+      "chave de pedido da vitrine não vira venda de balcão",
+    );
+    await logar(cliente, U_ADMIN_2);
+    await assert.rejects(
+      () =>
+        vender([{ product_id: P_BALCAO_SIMPLES, quantity: 1 }], {
+          chave: CHAVE_BALCAO,
+        }),
+      chaveRecusada,
+      "a chave de um balconista não devolve o pedido dele para outro",
+    );
+    await logar(cliente, U_ADMIN);
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_BALCAO_SIMPLES],
+      ),
+      8,
+      "as duas recusas de chave não mexeram no estoque",
+    );
+
+    // (f) Baixa XOR: a variação debita stock_increment e NÃO toca no estoque
+    // do produto pai; o preço do item é o price_override.
+    const daVariacao = (
+      await vender([
+        {
+          product_id: P_BALCAO_COM_VARIACAO,
+          variant_id: V_BALCAO_VARIACAO,
+          quantity: 1,
+        },
+      ])
+    ).rows[0].venda;
+    const pedidoVariacao = daVariacao.order.id;
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT stock_increment FROM public.product_variants WHERE id = $1",
+        [V_BALCAO_VARIACAO],
+      ),
+      4,
+      "a venda da variação debita a variação",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_BALCAO_COM_VARIACAO],
+      ),
+      7,
+      "a venda da variação NÃO debita o produto pai (baixa XOR)",
+    );
+    assert.equal(
+      Number(
+        await valorUnico(
+          cliente,
+          "SELECT price FROM public.marketplace_order_items WHERE order_id = $1",
+          [pedidoVariacao],
+        ),
+      ),
+      7.5,
+      "o item gravou o price_override da variação, não o preco_venda do pai",
+    );
+
+    // (g) Os DOIS históricos, um de cada.
+    assert.equal(
+      await valorUnico(
+        cliente,
+        `SELECT count(*) FROM public.marketplace_order_history
+          WHERE order_id = $1 AND old_status IS NULL AND new_status = 'delivered'`,
+        [pedidoSimples],
+      ),
+      1,
+      "uma linha de histórico de status (NULL → delivered)",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        `SELECT count(*) FROM public.marketplace_order_payment_history
+          WHERE order_id = $1 AND acao = 'recebido'
+            AND payment_status_depois = 'recebido_na_entrega'`,
+        [pedidoSimples],
+      ),
+      1,
+      "uma linha de histórico de pagamento (recebido)",
+    );
+
+    // (h) Desconto: maior que o subtotal é erro de digitação, não
+    // arredondamento (falha FECHADA); e desconto sem motivo não passa (D4).
+    await assert.rejects(
+      () =>
+        vender([{ product_id: P_BALCAO_SIMPLES, quantity: 1 }], {
+          desconto: 999,
+          observacao: "promoção do dia",
+        }),
+      /desconto não pode ser maior/i,
+      "desconto maior que o subtotal é recusado",
+    );
+    await assert.rejects(
+      () =>
+        vender([{ product_id: P_BALCAO_SIMPLES, quantity: 1 }], {
+          desconto: 5,
+        }),
+      /motivo do desconto/i,
+      "desconto sem motivo é recusado",
+    );
+
+    // (i) Estoque insuficiente derruba a venda INTEIRA — nada de pedido sem
+    // baixa nem baixa sem pedido.
+    await assert.rejects(
+      () => vender([{ product_id: P_BALCAO_SIMPLES, quantity: 999 }]),
+      /Estoque insuficiente/i,
+      "venda além do estoque é recusada",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_BALCAO_SIMPLES],
+      ),
+      8,
+      "a recusa não deixou estoque debitado pela metade",
+    );
+
+    // (j) A venda de balcão entra no MESMO caminho de cancelamento do resto
+    // do app: devolve o estoque uma vez, e só uma.
+    await cancelar(cliente, pedidoSimples);
+    await cancelar(cliente, pedidoVariacao);
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_BALCAO_SIMPLES],
+      ),
+      10,
+      "cancelar a venda de balcão devolve o estoque do produto",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT stock_increment FROM public.product_variants WHERE id = $1",
+        [V_BALCAO_VARIACAO],
+      ),
+      5,
+      "cancelar a venda de balcão devolve o estoque da variação",
+    );
+    await cancelar(cliente, pedidoSimples);
+    await cancelar(cliente, pedidoVariacao);
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_BALCAO_SIMPLES],
+      ),
+      10,
+      "o 2º cancelamento não devolve estoque em dobro",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT stock_increment FROM public.product_variants WHERE id = $1",
+        [V_BALCAO_VARIACAO],
+      ),
+      5,
+      "o 2º cancelamento não devolve a variação em dobro",
+    );
+    await logar(cliente, U_CLIENTE);
   },
 });
 
