@@ -1152,10 +1152,60 @@ export const AdminBannersView = memo(function AdminBannersView({
     }
   }, [active]);
 
+  // Empurra uma entrada de histórico virtual quando o diálogo abre e a
+  // consome (history.back()) quando ele fecha — por QUALQUER caminho
+  // (Cancelar, Salvar com sucesso, Escape, Voltar físico do Android ou o
+  // botão Voltar do AdminLayout). Antes desta correção (achado
+  // AdminBannersView-1156) este componente não empurrava nada: o Voltar
+  // físico pulava direto para a URL que já estava uma posição abaixo
+  // (ex.: Ajustes) e o app trocava de tela por baixo do diálogo, em vez
+  // de só fechá-lo. Mesmo padrão de CheckoutView.tsx
+  // (`hasPushedAddressModalState`): copia o state atual e só acrescenta
+  // `modal: "banner"`, sem mudar a URL visível.
+  //
+  // A checagem `window.history.state?.modal === "banner"` antes do
+  // `back()` é o que torna o fechamento à prova de duas coisas: (1) o
+  // Voltar FÍSICO, onde o navegador já fez o pop sozinho antes do
+  // popstate chegar até este componente — sem a checagem, este efeito
+  // consumiria MAIS UMA entrada e o app sairia da tela de verdade, o
+  // exato bug que está sendo corrigido; e (2) uma navegação real para
+  // outra aba que aconteça com o diálogo aberto — o pushState dessa
+  // navegação já está por cima do nosso, então a flag não bate mais e
+  // este efeito não mexe no histórico dela.
+  const temEntradaDeHistoricoPendenteRef = useRef(false);
+  useEffect(() => {
+    if (isDialogOpen) {
+      if (!temEntradaDeHistoricoPendenteRef.current) {
+        window.history.pushState(
+          { ...window.history.state, modal: "banner" },
+          "",
+          window.location.pathname + window.location.search,
+        );
+        temEntradaDeHistoricoPendenteRef.current = true;
+      }
+    } else if (temEntradaDeHistoricoPendenteRef.current) {
+      temEntradaDeHistoricoPendenteRef.current = false;
+      if (window.history.state?.modal === "banner") {
+        window.history.back();
+      }
+    }
+  }, [isDialogOpen]);
+
+  // Registra o fechamento do diálogo como override do Voltar. O botão
+  // Voltar do AdminLayout (AdminArea.tsx:705) chama esta mesma função
+  // DIRETO (sem passar pelo popstate), e o history.back() disparado pelo
+  // efeito acima pode entregar um popstate que também tenta rodá-la de
+  // novo antes deste efeito desregistrar — `efetuouFechamentoRef` torna a
+  // segunda chamada um no-op em vez de repetir a limpeza de
+  // `handleOpenChange` (ex.: apagar upload órfão duas vezes).
+  const efetuouFechamentoRef = useRef(false);
   useEffect(() => {
     if (onSetBackOverride) {
       if (isDialogOpen) {
+        efetuouFechamentoRef.current = false;
         onSetBackOverride(() => () => {
+          if (efetuouFechamentoRef.current) return;
+          efetuouFechamentoRef.current = true;
           handleOpenChange(false);
         });
       } else {
