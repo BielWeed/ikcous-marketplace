@@ -139,7 +139,11 @@ function fraseSituacaoDoPagamento(order: Order): string {
   const valor = (order?.total || 0).toLocaleString("pt-BR", {
     minimumFractionDigits: 2,
   });
-  const rotuloDoSelo = rotuloDoPagamento(order.paymentStatus, order.status);
+  const rotuloDoSelo = rotuloDoPagamento(
+    order.paymentStatus,
+    order.status,
+    order.canal,
+  );
   if (rotuloDoSelo.includes("precisa de atenção")) {
     return `${rotuloDoSelo} · R$ ${valor}`;
   }
@@ -158,6 +162,15 @@ function fraseSituacaoDoPagamento(order: Order): string {
   // recebido" (`podeRegistrarPagamento`). `recebido_na_entrega` + cancelado
   // já caiu no ramo de atenção acima.
   if (order.paymentMethod !== "online") {
+    // D1 (lote C4): o banco não ganhou canal como oitavo payment_status — a
+    // venda de balcão grava o MESMO `recebido_na_entrega`/pagamento pendente
+    // de sempre. Só a FRASE muda de "entrega" para "balcão" quando o canal
+    // é presencial; sem canal presencial, nada muda.
+    if (order.canal === "presencial") {
+      return order.pagamentoRecebidoEm
+        ? `Recebido no balcão · R$ ${valor}`
+        : `Falta receber no balcão · R$ ${valor}`;
+    }
     return order.pagamentoRecebidoEm
       ? `Recebido na entrega · R$ ${valor}`
       : `Falta receber na entrega · R$ ${valor}`;
@@ -279,6 +292,7 @@ function OrderHeader({ order }: Readonly<OrderHeaderProps>) {
         <PaymentStatusBadge
           paymentStatus={order.paymentStatus}
           orderStatus={order.status}
+          canal={order.canal}
         />
       </div>
       <p className="text-[11px] font-medium text-zinc-500">
@@ -662,10 +676,15 @@ function OrderFinanceCard({
   // "precisa de atenção", que não podem pintar de verde só porque a frase
   // começa com "Pago" (pago e cancelado é dinheiro PRESO, não resolvido).
   const situacao = fraseSituacaoDoPagamento(order);
+  // "Recebido no balcão" (D1, lote C4) é o MESMO fato que "Recebido na
+  // entrega" num canal diferente — dinheiro entrou, sem pendência. Sem esta
+  // linha, a venda de balcão paga ficava âmbar (cor de pendência), o
+  // oposto da verdade.
   const situacaoPositiva =
     !situacao.includes("precisa de atenção") &&
     (situacao.startsWith("Pago no site") ||
-      situacao.startsWith("Recebido na entrega"));
+      situacao.startsWith("Recebido na entrega") ||
+      situacao.startsWith("Recebido no balcão"));
 
   return (
     <div className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 p-6 text-white shadow-2xl">
@@ -752,6 +771,7 @@ function OrderFinanceCard({
                 <PaymentStatusBadge
                   paymentStatus={order.paymentStatus}
                   orderStatus={order.status}
+                  canal={order.canal}
                 />
               </div>
               <p className="mt-1 truncate text-xs font-bold uppercase tracking-tight text-white">

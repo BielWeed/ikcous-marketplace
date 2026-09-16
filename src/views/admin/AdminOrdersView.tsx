@@ -47,7 +47,13 @@ import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
-import type { Order, OrderStatus, PaymentStatus, View } from "@/types";
+import type {
+  CanalDaVenda,
+  Order,
+  OrderStatus,
+  PaymentStatus,
+  View,
+} from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import { motion } from "framer-motion";
@@ -767,16 +773,21 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     id: string;
     total?: number | null;
     customer?: { name?: string | null } | null;
+    // D1 (lote C4): venda de balcão nunca passou por gateway nenhum — o
+    // `confirm` não pode mandar o lojista abrir o painel do Mercado Pago
+    // para um dinheiro que ele recebeu na mão. Opcional: os chamadores de
+    // hoje (pedido de canal online) continuam sem passar o campo.
+    canal?: CanalDaVenda;
   }) => {
     const valor = (pedido.total || 0).toLocaleString("pt-BR", {
       minimumFractionDigits: 2,
     });
     const cliente = pedido.customer?.name || "o cliente";
-    if (
-      !globalThis.confirm(
-        `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`,
-      )
-    ) {
+    const pergunta =
+      pedido.canal === "presencial"
+        ? `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no balcão?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`
+        : `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
+    if (!globalThis.confirm(pergunta)) {
       return;
     }
     setEstornandoId(pedido.id);
@@ -2041,6 +2052,7 @@ const AdminOrderCard = memo(function AdminOrderCard({
             <PaymentStatusBadge
               paymentStatus={order.paymentStatus}
               orderStatus={order.status}
+              canal={order.canal}
             />
           </div>
         </div>
@@ -2263,6 +2275,7 @@ const AdminOrderCard = memo(function AdminOrderCard({
           <PaymentStatusBadge
             paymentStatus={order.paymentStatus}
             orderStatus={order.status}
+            canal={order.canal}
             compact
           />
         </div>

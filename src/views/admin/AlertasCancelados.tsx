@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import type { Order } from "@/types";
+import type { CanalDaVenda, Order } from "@/types";
 import { AlertTriangle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -32,6 +32,8 @@ interface PedidoDaLista {
   id: string;
   total?: number | null;
   customer?: { name?: string | null } | null;
+  /** Canal da venda (C4.2): o confirm do estorno manual fala 'no balcão' quando presencial. */
+  canal?: CanalDaVenda;
 }
 
 interface AlertasCanceladosProps {
