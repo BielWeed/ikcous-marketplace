@@ -1246,12 +1246,20 @@ export const ProductView = React.memo(function ProductView({
                   </span>
                 </div>
               )}
-              <div className="flex items-center gap-3 text-sm text-gray-700">
-                <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
-                  <ShoppingCart className="size-4" />
+              {/* "Envio rapido" saiu daqui: nao existe envio rapido/expresso
+                  neste app, a mesma promessa ja removida de CartView.tsx e
+                  HomeView.tsx. E o selo so aparece com `!isOutOfStock` -- sem
+                  essa guarda, a mesma tela dizia "Esgotado" no topo (linhas
+                  922-947, `isOutOfStock`) e "em estoque" aqui embaixo, para o
+                  mesmo produto (achado ProductView-1253). */}
+              {!isOutOfStock && (
+                <div className="flex items-center gap-3 text-sm text-gray-700">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
+                    <ShoppingCart className="size-4" />
+                  </div>
+                  <span>Produto em estoque</span>
                 </div>
-                <span>Produto em estoque - Envio rápido</span>
-              </div>
+              )}
             </div>
           </div>
         </div>
