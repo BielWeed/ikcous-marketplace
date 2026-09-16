@@ -1,4 +1,9 @@
 import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
+import {
+  getBaseScale as calcularEscalaBase,
+  calcularParametrosDeRecorte,
+  clampOffset as limitarOffset,
+} from "@/lib/geometria-do-recorte";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
@@ -365,26 +370,25 @@ export function ImageAdjuster({
   const viewportHeight = containerSize.height;
 
   // Calculate base scale to cover viewport
-  const getBaseScale = useCallback(() => {
-    if (!imageSize.naturalWidth || !imageSize.naturalHeight) return 1;
-
-    // Rotate checks - swap width/height if rotated 90 or 270 deg
-    const rotated = rotation === 90 || rotation === 270;
-    const w = rotated ? imageSize.naturalHeight : imageSize.naturalWidth;
-    const h = rotated ? imageSize.naturalWidth : imageSize.naturalHeight;
-
-    const scaleX = viewportWidth / w;
-    const scaleY = viewportHeight / h;
-
-    // Cover the viewport
-    return Math.max(scaleX, scaleY);
-  }, [
-    imageSize.naturalWidth,
-    imageSize.naturalHeight,
-    viewportWidth,
-    viewportHeight,
-    rotation,
-  ]);
+  // Matemática movida para src/lib/geometria-do-recorte.ts (ImageAdjuster-963):
+  // a mesma conta, agora testável sem montar este componente de 1800+ linhas.
+  const getBaseScale = useCallback(
+    () =>
+      calcularEscalaBase({
+        naturalWidth: imageSize.naturalWidth,
+        naturalHeight: imageSize.naturalHeight,
+        viewportWidth,
+        viewportHeight,
+        rotation,
+      }),
+    [
+      imageSize.naturalWidth,
+      imageSize.naturalHeight,
+      viewportWidth,
+      viewportHeight,
+      rotation,
+    ],
+  );
 
   const baseScale = getBaseScale();
   const currentScale = baseScale * zoom;
@@ -441,37 +445,21 @@ export function ImageAdjuster({
   }, [aspectRatio, userSetWidth]);
 
   // Bounds enforcement helper
+  // Matemática movida para src/lib/geometria-do-recorte.ts (ImageAdjuster-963):
+  // mesma conta de clamp, agora coberta por teste próprio.
   const clampOffset = useCallback(
-    (x: number, y: number, currentZoom: number) => {
-      const scale = baseScale * currentZoom;
-      const rotated = rotation === 90 || rotation === 270;
-      const w =
-        (rotated ? imageSize.naturalHeight : imageSize.naturalWidth) * scale;
-      const h =
-        (rotated ? imageSize.naturalWidth : imageSize.naturalHeight) * scale;
-
-      let minX = viewportWidth - w / 2 - imageSize.naturalWidth / 2;
-      let maxX = w / 2 - imageSize.naturalWidth / 2;
-      let minY = viewportHeight - h / 2 - imageSize.naturalHeight / 2;
-      let maxY = h / 2 - imageSize.naturalHeight / 2;
-
-      // If image is smaller than viewport, center it
-      if (minX > maxX) {
-        const cx = (viewportWidth - imageSize.naturalWidth) / 2;
-        minX = cx;
-        maxX = cx;
-      }
-      if (minY > maxY) {
-        const cy = (viewportHeight - imageSize.naturalHeight) / 2;
-        minY = cy;
-        maxY = cy;
-      }
-
-      return {
-        x: Math.max(minX, Math.min(maxX, x)),
-        y: Math.max(minY, Math.min(maxY, y)),
-      };
-    },
+    (x: number, y: number, currentZoom: number) =>
+      limitarOffset({
+        x,
+        y,
+        zoom: currentZoom,
+        baseScale,
+        rotation,
+        naturalWidth: imageSize.naturalWidth,
+        naturalHeight: imageSize.naturalHeight,
+        viewportWidth,
+        viewportHeight,
+      }),
     [
       baseScale,
       rotation,
@@ -991,9 +979,22 @@ export function ImageAdjuster({
       img.src = corsImageUrl;
       await loadPromise;
 
-      // Draw the image onto canvas using rotation, scale and offset
-      // Calculate scale relative to physical canvas size
-      const scaleCanvas = targetWidth / viewportWidth;
+      // Draw the image onto canvas using rotation, scale and offset.
+      // Matemática movida para src/lib/geometria-do-recorte.ts
+      // (ImageAdjuster-963): mesma conta de translate/rotate/drawImage,
+      // agora coberta por teste próprio sem precisar de canvas de verdade.
+      const params = calcularParametrosDeRecorte({
+        exportWidth: targetWidth,
+        viewportWidth,
+        viewportHeight,
+        baseScale,
+        zoom,
+        offset,
+        naturalWidth: imageSize.naturalWidth,
+        naturalHeight: imageSize.naturalHeight,
+        rotation,
+        fineRotation,
+      });
 
       ctx.save();
 
@@ -1001,33 +1002,26 @@ export function ImageAdjuster({
       ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) grayscale(${grayscale}%) sepia(${sepia}%)`;
 
       // Move to center of canvas
-      ctx.translate(targetWidth / 2, targetHeight / 2);
+      ctx.translate(params.translateParaCentro.x, params.translateParaCentro.y);
 
-      // Calculate physical scale
-      const physScale = baseScale * zoom * scaleCanvas;
-
-      // Compute coordinates of the image's center in viewport coordinate system, relative to viewport center
-      const viewCenterX = viewportWidth / 2;
-      const viewCenterY = viewportHeight / 2;
-      const imgLeftFromCenter =
-        offset.x + imageSize.naturalWidth / 2 - viewCenterX;
-      const imgTopFromCenter =
-        offset.y + imageSize.naturalHeight / 2 - viewCenterY;
-
-      // Convert these translations to canvas coordinates and translate BEFORE rotation
+      // Convert the image's offset from viewport to canvas coordinates and
+      // translate BEFORE rotation
       ctx.translate(
-        imgLeftFromCenter * scaleCanvas,
-        imgTopFromCenter * scaleCanvas,
+        params.translateAntesDaRotacao.x,
+        params.translateAntesDaRotacao.y,
       );
 
       // Rotate around the center of the translated image
-      ctx.rotate(((rotation + fineRotation) * Math.PI) / 180);
+      ctx.rotate(params.anguloEmRadianos);
 
       // Now draw the image centered on this coordinate
-      const imgDrawW = imageSize.naturalWidth * physScale;
-      const imgDrawH = imageSize.naturalHeight * physScale;
-
-      ctx.drawImage(img, -imgDrawW / 2, -imgDrawH / 2, imgDrawW, imgDrawH);
+      ctx.drawImage(
+        img,
+        params.desenho.x,
+        params.desenho.y,
+        params.desenho.largura,
+        params.desenho.altura,
+      );
       ctx.restore();
 
       // Convert canvas to Blob
