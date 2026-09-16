@@ -569,6 +569,7 @@ export type Database = {
       marketplace_orders: {
         Row: {
           address_id: string | null;
+          canal: string;
           cancelled_after_shipping: boolean;
           confirmation_email_sent_at: string | null;
           coupon_code: string | null;
@@ -604,9 +605,11 @@ export type Database = {
           updated_at: string;
           user_id: string | null;
           valor_estornado: number;
+          vendedor_id: string | null;
         };
         Insert: {
           address_id?: string | null;
+          canal?: string;
           cancelled_after_shipping?: boolean;
           confirmation_email_sent_at?: string | null;
           coupon_code?: string | null;
@@ -642,9 +645,11 @@ export type Database = {
           updated_at?: string;
           user_id?: string | null;
           valor_estornado?: number;
+          vendedor_id?: string | null;
         };
         Update: {
           address_id?: string | null;
+          canal?: string;
           cancelled_after_shipping?: boolean;
           confirmation_email_sent_at?: string | null;
           coupon_code?: string | null;
@@ -680,6 +685,7 @@ export type Database = {
           updated_at?: string;
           user_id?: string | null;
           valor_estornado?: number;
+          vendedor_id?: string | null;
         };
         Relationships: [
           {
@@ -887,6 +893,7 @@ export type Database = {
       product_variants: {
         Row: {
           active: boolean | null;
+          codigo_barras: string | null;
           created_at: string;
           id: string;
           image_url: string | null;
@@ -899,6 +906,7 @@ export type Database = {
         };
         Insert: {
           active?: boolean | null;
+          codigo_barras?: string | null;
           created_at?: string;
           id?: string;
           image_url?: string | null;
@@ -911,6 +919,7 @@ export type Database = {
         };
         Update: {
           active?: boolean | null;
+          codigo_barras?: string | null;
           created_at?: string;
           id?: string;
           image_url?: string | null;
@@ -952,6 +961,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string;
@@ -984,6 +994,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string;
@@ -1016,6 +1027,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string;
@@ -1751,6 +1763,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string | null;
@@ -1783,6 +1796,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string | null;
@@ -1815,6 +1829,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string | null;
@@ -1850,6 +1865,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           data_cadastro: string | null;
           descricao: string | null;
@@ -1878,6 +1894,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           data_cadastro?: string | null;
           descricao?: string | null;
@@ -1906,6 +1923,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           data_cadastro?: string | null;
           descricao?: string | null;
@@ -2188,6 +2206,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string;
@@ -2375,6 +2394,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string;
