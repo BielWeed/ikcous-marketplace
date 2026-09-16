@@ -36,6 +36,16 @@ export interface CompraParaImpressao {
   addressId?: string | null;
   /** CEP do endereço digitado (convidado) — entra na impressão porque mudar a entrega é mudar a compra. */
   cepDoEndereco?: string | null;
+  /**
+   * Meio de pagamento (achado chave-do-pedido-25, 15/09/2026): "online" e
+   * "cash" gravam pedidos em RPCs diferentes (v24 x v23, com colunas
+   * diferentes — expires_at só existe no online). Sem este campo, trocar de
+   * meio no mesmo carrinho repetia a impressão e a MESMA chave devolvia o
+   * pedido gravado pelo OUTRO meio: cliente pagando na entrega via confetti
+   * de um pedido que na verdade ficou "aguardando" pagamento online (e
+   * vice-versa, terminando em "pedido não está aguardando pagamento").
+   */
+  paymentMethod?: string | null;
 }
 
 function texto(valor: string | number | null | undefined): string {
@@ -60,6 +70,7 @@ export function impressaoDaCompra(compra: CompraParaImpressao): string {
     texto(compra.couponCode ?? ""),
     texto(compra.addressId ?? ""),
     texto(compra.cepDoEndereco ?? ""),
+    texto(compra.paymentMethod ?? ""),
   ].join("~");
 }
 
