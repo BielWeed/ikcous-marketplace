@@ -1,0 +1,53 @@
+-- ============================================================================
+-- Rollback manual — o balcão acha o produto pelo código
+-- (20261161000000)
+-- ============================================================================
+-- Desfaz UMA coisa só, porque a migration fez uma coisa só: derruba a função
+-- `public.buscar_por_codigo_barras(text)`.
+--
+-- POR QUE NÃO HÁ `CREATE OR REPLACE FUNCTION` AQUI (a pergunta que este
+-- arquivo tem de responder): a função é NOVA na 20261161000000 — ela não
+-- existia antes, em versão nenhuma. Não há corpo anterior para restaurar, e
+-- recriar um seria inventar um estado que nunca existiu no banco. Este é o
+-- caso em que `DROP` é o rollback FIEL; nas migrations que SUBSTITUEM o corpo
+-- de uma função viva (ex.: `get_product_recommendations` no rollback da
+-- 20261160000000), o rollback tem obrigatoriamente de trazer o corpo antigo
+-- de volta, e não é o que acontece aqui.
+--
+-- O `DROP` leva junto os `GRANT EXECUTE` e o `COMMENT ON FUNCTION` da função
+-- — o que é correto: eles nascem com ela e não existem sem ela. Nenhum grant
+-- precisa ser refeito à mão neste arquivo (ao contrário do rollback da
+-- 20261160000000, onde o `DROP VIEW` apagava o ACL de uma view que tinha de
+-- CONTINUAR existindo).
+--
+-- O QUE ESTE ARQUIVO NÃO DESFAZ, de propósito: as colunas `codigo_barras` de
+-- `produtos` e `product_variants`, os índices únicos parciais e tudo o mais
+-- que a 20261160000000 (C1.1) criou. A RPC apenas LÊ essas colunas; desfazê-
+-- las é o rollback DAQUELE arquivo, e fazer isso aqui derrubaria também o que
+-- C1.3/C1.4 já dependem. Nenhum dado é lido, escrito ou apagado por este
+-- rollback: a função é de leitura e não deixou rastro em tabela nenhuma.
+--
+-- EFEITO COLATERAL ESPERADO (é a razão de o rollback ser "manual"): qualquer
+-- tela que já chame a RPC passa a receber «function public.buscar_por_codigo_
+-- barras(text) does not exist» (SQLSTATE 42883). Na ordem do lote C1 isso não
+-- acontece — C1 inteiro entra ANTES de qualquer chamada em `src/` —, mas se
+-- este rollback for rodado DEPOIS de C3 estar no ar, a tela do PDV para de
+-- achar produto por bipe até a migration voltar.
+--
+-- IDEMPOTÊNCIA: `DROP FUNCTION IF EXISTS` — rodar duas vezes dá o mesmo
+-- estado. A assinatura `(text)` é obrigatória: sem ela, um dia em que exista
+-- outra sobrecarga o comando erraria com "function name is not unique".
+--
+-- COMO APLICAR: `node scripts/db-apply.cjs <este arquivo>` ou `psql -1`. Sem
+-- `BEGIN`/`COMMIT` de nível superior neste arquivo (regra da casa).
+--
+-- VERIFICAÇÃO pós-rollback:
+--   SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--    WHERE n.nspname = 'public' AND p.proname = 'buscar_por_codigo_barras';
+--   -- esperado: 0.
+--   SELECT count(*) FROM information_schema.columns
+--    WHERE table_schema = 'public' AND column_name = 'codigo_barras';
+--   -- esperado: 4 (as colunas da C1.1 CONTINUAM lá — este rollback não as toca).
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS public.buscar_por_codigo_barras(text);
