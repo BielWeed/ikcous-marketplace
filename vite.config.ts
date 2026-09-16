@@ -62,7 +62,9 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       icons: [],
     },
     injectManifest: {
-      globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],
+      // wasm: o binário do leitor de código de barras do balcão (C2) —
+      // precisa estar disponível offline, senão o balcão para de ler.
+      globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2,wasm}"],
       // Identity resources are added explicitly by role, including JPEG.
       // Originals and OG stay available but are not downloaded at installation.
       globIgnores: [
@@ -109,6 +111,12 @@ export default defineConfig(async (context): Promise<UserConfig> => {
         "AdminIdentityTus",
       ],
       ["node_modules/image-dimensions/index.js", "AdminIdentityDimensions"],
+      // A tela do balcão precisa estar no precache (vender offline é o
+      // ponto): com o nome padrão ela nasceria `assets/AdminPdvView-<hash>.js`
+      // e cairia na exclusão `assets/Admin*.js` do globIgnores do
+      // injectManifest. Se o lote C3 mudar o caminho do arquivo, mude aqui
+      // junto — o Map casa por caminho absoluto.
+      ["src/views/admin/AdminPdvView.tsx", "PdvBalcao"],
     ].map(([file, name]) => [
       path.resolve(root, file).replace(/\\/g, "/"),
       name,
@@ -163,6 +171,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
               return "vendor-react";
             }
             if (id.includes("node_modules")) {
+              if (normalizedId.includes("zxing-wasm")) {
+                // O leitor do balcão: chunk com nome PRÓPRIO para (1) entrar
+                // no precache (a exclusão de vite.config.ts é
+                // `assets/Admin*.js`) e (2) ser um arquivo previsível no
+                // `npm run size`. Continua preguiçoso: só o import() do
+                // fallback (C2.5) o referencia.
+                return "leitor-zxing";
+              }
               if (
                 normalizedId.includes("react-router-dom") ||
                 normalizedId.includes("@remix-run/router")
