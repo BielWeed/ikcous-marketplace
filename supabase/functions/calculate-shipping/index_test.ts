@@ -10,6 +10,7 @@ import {
   nomeAmigavelDoServico,
   precoDeContingenciaDoTopo,
   precoResolvidoSemCache,
+  servicoCasaChave,
   validarOrigemEFrete,
 } from "./index.ts";
 
@@ -278,6 +279,46 @@ Deno.test("nomeAmigavelDoServico - nome desconhecido volta LIMPO, sem o sufixo d
   assertEquals(nomeAmigavelDoServico({}), "");
 });
 
+// ── Filtro de métodos habilitados casa por SERVIÇO, não por substring ──────
+//
+// A tela do lojista oferece três chaves fixas ("sedex", "pac", "jadlog" —
+// TransportadorasCard.tsx:95). O filtro antigo comparava a chave com
+// `includes` cru sobre o nome comercial: ".package".includes("pac") é TRUE
+// (liga a Jadlog achando que é PAC dos Correios) e ".package".includes(
+// "jadlog") é FALSE (desliga a Jadlog mesmo com a chave marcada) — a MESMA
+// armadilha que `nomeAmigavelDoServico` evita para o PAC com `\bpac\b`, só
+// que o filtro (650 linhas abaixo) não usava a mesma régua.
+
+Deno.test("servicoCasaChave - chave 'pac' NÃO casa '.Package' (não liga a Jadlog)", () => {
+  assertEquals(servicoCasaChave(".Package", "pac"), false);
+  assertEquals(servicoCasaChave(".Package Centralizado", "pac"), false);
+});
+
+Deno.test("servicoCasaChave - chave 'pac' casa o PAC de verdade (fronteira de palavra)", () => {
+  assertEquals(servicoCasaChave("PAC", "pac"), true);
+  assertEquals(servicoCasaChave("PAC Mini", "pac"), true);
+});
+
+Deno.test("servicoCasaChave - chave 'jadlog' casa '.Package' (não desliga tudo)", () => {
+  assertEquals(servicoCasaChave(".Package", "jadlog"), true);
+  assertEquals(servicoCasaChave(".Package Centralizado", "jadlog"), true);
+});
+
+Deno.test("servicoCasaChave - chave 'jadlog' NÃO casa PAC nem SEDEX", () => {
+  assertEquals(servicoCasaChave("PAC", "jadlog"), false);
+  assertEquals(servicoCasaChave("SEDEX", "jadlog"), false);
+});
+
+Deno.test("servicoCasaChave - chave 'sedex' casa SEDEX e não casa .Package", () => {
+  assertEquals(servicoCasaChave("SEDEX", "sedex"), true);
+  assertEquals(servicoCasaChave(".Package", "sedex"), false);
+});
+
+Deno.test("servicoCasaChave - nome ausente/nulo não estoura (anotado vizinho)", () => {
+  assertEquals(servicoCasaChave(undefined, "pac"), false);
+  assertEquals(servicoCasaChave(null as any, "jadlog"), false);
+});
+
 Deno.test("filtro de métodos habilitados com CEP FORA: PAC devolvido x só sedex habilitado -> só a expressa sai (R2 da revisão)", async () => {
   // R2 da revisão do commit 3f90033: os testes de filtro antigos caíam no
   // retorno cedo do cliente local (que passa antes do filtro) e o filtro
@@ -314,6 +355,81 @@ Deno.test("filtro de métodos habilitados com CEP FORA: PAC devolvido x só sede
     assertEquals(corpo.options.length, 1);
     assertEquals(corpo.options[0].id, "melhor-envio-2");
     assertEquals(corpo.options[0].name, "Entrega expressa");
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+Deno.test("filtro de métodos habilitados: chave 'pac' NÃO liga a Jadlog '.Package' (fim a fim)", async () => {
+  // Reprodução do achado index-1019: loja marca só "pac" e a transportadora
+  // devolve a Jadlog como ".Package". Com o filtro por substring cru,
+  // ".package".includes("pac") era true e a Jadlog vazava como se fosse PAC.
+  // Corrigido o casamento, a ÚNICA opção devolvida (Jadlog) fica de fora do
+  // filtro — sobra zero opção válida, e o ramo de "nenhum método habilitado
+  // sobrou" (index.ts:1163, já existente e coberto acima em "gravação falha
+  // e NENHUMA opção dispensa o cache") responde 503 sem `options`, não 200
+  // com array vazio.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify([{ id: 1, name: ".Package", price: "31.20", delivery_time: 6 }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["pac"] },
+      }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.options, undefined);
+    assertEquals(typeof corpo.error, "string");
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+Deno.test("filtro de métodos habilitados: chave 'jadlog' NÃO desliga tudo — '.Package' sai normalmente (fim a fim)", async () => {
+  // Reprodução do achado index-1019, sentido inverso: loja desmarca tudo
+  // menos "jadlog". ".package".includes("jadlog") era false, então a única
+  // opção (a Jadlog) caía, shippingOptions ficava vazio e o cliente via 503.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify([{ id: 7, name: ".Package", price: "31.20", delivery_time: 6 }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["jadlog"] },
+      }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options.length, 1);
+    assertEquals(corpo.options[0].id, "melhor-envio-7");
   } finally {
     globalThis.fetch = fetchOriginal;
   }
@@ -411,20 +527,60 @@ function clienteFalso(opts: {
    * preset por_produto).
    */
   produtos?: any[];
+  /**
+   * Linhas que a leitura de `shipping_quotes_cache` encontra para a chave
+   * (origin_cep, destination_cep, cart_hash), NA ORDEM que `created_at desc`
+   * devolveria — índice 0 é a mais recente. Default `[]` (miss, o caminho
+   * que cota na transportadora e grava). Existe para o index-880: a tabela
+   * não tem UNIQUE nessa chave, então mais de uma linha é o cenário real de
+   * corrida (duas cotações do mesmo carrinho ao mesmo tempo).
+   */
+  cacheLookup?: Array<{ options: unknown }>;
+  /**
+   * Linhas que o `.update(...).eq(...).select('id')` do cache "acha" — não
+   * vazio simula a chave já ter linha (o upsert de aplicação deve ATUALIZAR
+   * e NUNCA inserir outra); default `[]` simula "sem linha ainda", que é o
+   * caminho que todo teste antigo deste arquivo já exercita via `insert`.
+   */
+  cacheUpdateMatches?: Array<{ id: unknown }>;
 }) {
   const { registro } = opts;
   const config = opts.config ?? CONFIG_DA_LOJA;
 
   const leitura = (tabela: string) => {
+    let usouSingleOuMaybeSingle = false;
+    let limiteRequisitado: number | null = null;
     const resolver = () => {
       switch (tabela) {
         case "store_config":
           return Promise.resolve({ data: config, error: null });
         case "produtos":
           return Promise.resolve({ data: opts.produtos ?? [], error: null });
-        case "shipping_quotes_cache":
-          // Cache miss: é o caminho que cota na transportadora e grava.
-          return Promise.resolve({ data: null, error: null });
+        case "shipping_quotes_cache": {
+          const linhas = opts.cacheLookup ?? [];
+          if (usouSingleOuMaybeSingle) {
+            // `.maybeSingle()`/`.single()` de verdade ESTOURAM quando mais
+            // de uma linha bate no filtro — é a trava do index-880: sem
+            // UNIQUE em (origin_cep, destination_cep, cart_hash), duas
+            // cotações concorrentes da mesma chave inserem duas linhas e
+            // toda leitura seguinte passa a cair aqui.
+            if (linhas.length > 1) {
+              return Promise.resolve({
+                data: null,
+                error: {
+                  message: "JSON object requested, multiple (or no) rows returned",
+                  code: "PGRST116",
+                },
+              });
+            }
+            return Promise.resolve({ data: linhas[0] ?? null, error: null });
+          }
+          // Sem `.single()`/`.maybeSingle()` o formato do supabase-js é um
+          // ARRAY — é dele que a leitura tolerante (`order` + `limit`) do
+          // index-880 depende para nunca estourar com duplicata.
+          const linhasLimitadas = limiteRequisitado != null ? linhas.slice(0, limiteRequisitado) : linhas;
+          return Promise.resolve({ data: linhasLimitadas, error: null });
+        }
         case "store_shipping_credentials":
           if (opts.falhaAoLerCredenciais) {
             return Promise.reject(new Error("conexão perdida ao buscar credenciais"));
@@ -451,10 +607,45 @@ function clienteFalso(opts: {
       lt: () => construtor,
       in: () => construtor,
       order: () => construtor,
-      limit: () => construtor,
-      single: resolver,
-      maybeSingle: resolver,
+      limit: (n: number) => {
+        limiteRequisitado = n;
+        return construtor;
+      },
+      single: () => {
+        usouSingleOuMaybeSingle = true;
+        return resolver();
+      },
+      maybeSingle: () => {
+        usouSingleOuMaybeSingle = true;
+        return resolver();
+      },
       then: (ok: any, falha: any) => resolver().then(ok, falha),
+    };
+    return construtor;
+  };
+
+  /**
+   * `.update(...)` do cache — só usada pelo upsert de aplicação do
+   * index-880 (a tabela não tem UNIQUE para um `.upsert()` de verdade
+   * funcionar, então a gravação tenta ATUALIZAR a linha da chave antes de
+   * inserir outra). Registra em `registro.updates`, separado de
+   * `registro.inserts`, para os testes distinguirem os dois caminhos.
+   */
+  const atualizacao = (tabela: string, linha: any) => {
+    // Os filtros do UPDATE são a parte nova e perigosa do upsert de
+    // aplicação: ficam registrados para o teste afirmar EM QUE chave grava.
+    const filtros: Array<[string, unknown]> = [];
+    const construtor: any = {
+      eq: (coluna: string, valor: unknown) => {
+        filtros.push([coluna, valor]);
+        return construtor;
+      },
+      select: () => {
+        registro.updates = registro.updates ?? [];
+        registro.updates.push({ tabela, linha, filtros });
+        const linhasQueBatem = tabela === "shipping_quotes_cache" ? (opts.cacheUpdateMatches ?? []) : [];
+        return { then: (ok: any, falha: any) => Promise.resolve({ data: linhasQueBatem, error: null }).then(ok, falha) };
+      },
     };
     return construtor;
   };
@@ -514,6 +705,7 @@ function clienteFalso(opts: {
     from: (tabela: string) => ({
       select: () => leitura(tabela),
       insert: (linha: any) => escrita(tabela, linha),
+      update: (linha: any) => atualizacao(tabela, linha),
     }),
   };
 }
@@ -573,6 +765,118 @@ async function cotar(
     await new Promise((r) => setTimeout(r, 30));
   }
 }
+
+// --- index-880: corrida de dois misses simultâneos derrubando o cache -----
+//
+// `shipping_quotes_cache` não tem UNIQUE em (origin_cep, destination_cep,
+// cart_hash) — só PK em `id`. O INSERT só acontece no miss, então duas
+// cotações do MESMO carrinho ao mesmo tempo (duas abas, ou o debounce de
+// 700ms cruzando com o clique manual em "Calcular") erram o cache juntas e
+// inserem DUAS linhas. Os dois testes abaixo prendem as duas metades da
+// correção: a LEITURA tem que tolerar mais de uma linha (nunca estourar) e a
+// GRAVAÇÃO tem que preferir atualizar a linha já existente a empilhar outra.
+
+Deno.test("cache com DUAS linhas da mesma chave (corrida de dois misses) não estoura — pega a mais recente", async () => {
+  const registro = {
+    inserts: [] as Array<{ tabela: string; linha: any }>,
+    execucoes: [] as Array<{ tabela: string; linha: any }>,
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const fetchOriginal = globalThis.fetch;
+  let transportadoraChamada = false;
+  globalThis.fetch = (() => {
+    transportadoraChamada = true;
+    return Promise.resolve(
+      new Response(
+        JSON.stringify([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5 }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+  }) as any;
+
+  try {
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        // Duas linhas da MESMA chave, na ordem que `created_at desc`
+        // devolveria — índice 0 é a mais recente.
+        cacheLookup: [
+          { options: [{ id: "melhor-envio-1", name: "PAC", price: 40, deliveryDays: 5, provider: "melhor_envio" }] },
+          { options: [{ id: "melhor-envio-2", name: "PAC", price: 55, deliveryDays: 5, provider: "melhor_envio" }] },
+        ],
+      }),
+    });
+    const texto = await resposta.text();
+    const corpo = JSON.parse(texto);
+
+    // Com `.maybeSingle()` a consulta ESTOURA (mais de uma linha bate no
+    // filtro), o cache vira miss por erro, a transportadora é chamada de
+    // novo e MAIS uma linha é inserida — o loop de 2h do index-880. Com a
+    // leitura tolerante, é um HIT normal com a linha mais recente.
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options[0].price, 40);
+    assertEquals(transportadoraChamada, false);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+});
+
+Deno.test("gravação da cotação ATUALIZA a linha existente da chave — upsert sem depender de UNIQUE", async () => {
+  const registro = {
+    inserts: [] as Array<{ tabela: string; linha: any }>,
+    execucoes: [] as Array<{ tabela: string; linha: any }>,
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5 }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+
+  try {
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        // A chave já tem linha: o `.update(...).select('id')` "acha" um
+        // registro. Sem UNIQUE para um `.upsert()` de verdade, é isso que
+        // tem que impedir o INSERT de empilhar outra linha em cima dela.
+        cacheUpdateMatches: [{ id: "linha-existente" }],
+      }),
+    });
+    await resposta.text();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(
+      registro.inserts.some((i) => i.tabela === "shipping_quotes_cache"),
+      false,
+    );
+    assertEquals(
+      registro.updates?.some((u: { tabela: string }) => u.tabela === "shipping_quotes_cache"),
+      true,
+    );
+    // A chave do UPDATE tem de ser exatamente (origin_cep, destination_cep,
+    // cart_hash): um filtro a menos sobrescreveria a cotação de OUTRO
+    // carrinho ou de OUTRO destino (ressalva da revisão de index-880).
+    const atualizacaoDoCache = registro.updates?.find(
+      (u: { tabela: string }) => u.tabela === "shipping_quotes_cache",
+    ) as { filtros: Array<[string, unknown]> };
+    assertEquals(
+      atualizacaoDoCache.filtros.map(([coluna]) => coluna).sort(),
+      ["cart_hash", "destination_cep", "origin_cep"],
+    );
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+});
 
 Deno.test("cotação gravada com sucesso devolve o preço normalmente", async () => {
   // Controle positivo: sem ele, "o teste passa" e "o teste não exercita nada"
@@ -1497,4 +1801,65 @@ Deno.test("o catch de topo NÃO devolve o texto cru do erro ao navegador", async
   const texto = JSON.stringify(corpo);
   assertEquals(texto.includes("password authentication"), false);
   assertEquals(texto.includes("Não foi possível calcular o frete"), true);
+});
+
+// --- index-736: a regra do por_produto tem que ser a MESMA nos três lugares -
+//
+// A RPC do pedido (20261081000000:294-296, :315) usa `some`: BASTA um item
+// marcado para `v_has_free_shipping_item` ligar e zerar o frete do PEDIDO
+// INTEIRO. O front (CartContext.tsx:803) também usa `some`. Até aqui a edge
+// usava `every` para o `allFree` e, quando ele não batia (carrinho MISTO),
+// caía num segundo ramo (`nonFreeCart`) que cotava só os itens NÃO marcados —
+// uma TERCEIRA resposta para a mesma pergunta. Este teste prende a
+// convergência com a RPC: carrinho com um item marcado e um não marcado tem
+// que virar a MESMA promoção de R$ 0 que a RPC cobraria, sem consultar
+// transportadora nenhuma.
+
+Deno.test("index-736: carrinho MISTO no preset por_produto — um item marcado zera o pedido INTEIRO (mesma regra `some` da RPC)", async () => {
+  const carrinhoMisto = [
+    { product: { id: "p1", price: 100 }, quantity: 1 },
+    { product: { id: "p2", price: 50 }, quantity: 1 },
+  ];
+  const registro = {
+    inserts: [] as Array<{ tabela: string; linha: any }>,
+    execucoes: [] as Array<{ tabela: string; linha: any }>,
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const fetchOriginal = globalThis.fetch;
+  let transportadoraChamada = false;
+  globalThis.fetch = (() => {
+    transportadoraChamada = true;
+    return Promise.reject(
+      new Error(
+        "NÃO DEVE SER CHAMADO: carrinho misto no por_produto é frete grátis do pedido inteiro, sem consultar transportadora",
+      ),
+    );
+  }) as any;
+  try {
+    const req = new Request("http://localhost/calculate-shipping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cep: "01001-000", cart: carrinhoMisto }),
+    });
+    const resposta = await handler(req, {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, free_shipping_min: -1 },
+        produtos: [
+          { id: "p1", nome: "Marcado", frete_gratis: true, preco_venda: 100 },
+          { id: "p2", nome: "Não marcado", frete_gratis: false, preco_venda: 50 },
+        ],
+      }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options.map((o: any) => o.id), ["free-shipping-promo"]);
+    assertEquals(corpo.options[0].price, 0);
+    assertEquals(transportadoraChamada, false);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
 });
