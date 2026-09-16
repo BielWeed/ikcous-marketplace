@@ -8,5 +8,5 @@
     "supabase/functions/*/index.ts"
   ],
   "project": ["src/**/*.{ts,tsx}", "supabase/functions/**/*.ts"],
-  "ignore": ["src/**/*.d.ts", "src/types/supabase.ts"]
+  "ignore": ["src/**/*.d.ts"]
 }
