@@ -2269,6 +2269,7 @@ export type Database = {
       };
       get_admin_orders_paged: {
         Args: {
+          p_canal?: string;
           p_end_date?: string;
           p_page?: number;
           p_page_size?: number;
