@@ -1134,10 +1134,12 @@ async function handler(
   // irrelevante recebe 500 — é o estado quebrado da loja inteira, e o custo
   // é um reenvio do MP, não dinheiro.
   if (credenciaisMp.origem === "indisponivel") {
-    // Só origem e motivo: nem token nem segredo entram em log.
+    // Só origem e motivo: nem token nem segredo entram em log. O data.id vai
+    // truncado (LIMITE_LOG_DATA_ID): este ramo roda ANTES da assinatura, e
+    // quem descobrir a URL não pode escrever conteúdo próprio sem limite aqui.
     console.error(
       `webhook-mercadopago: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
-      dataIdStr,
+      dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
     );
     return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
   }
@@ -1278,7 +1280,7 @@ async function handler(
     // Só origem e motivo: nem token nem segredo entram em log.
     console.error(
       `webhook-mercadopago: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
-      dataIdStr,
+      dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
     );
     return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
   }
