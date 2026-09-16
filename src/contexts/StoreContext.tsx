@@ -282,7 +282,19 @@ export function StoreProvider({
   // desistia e nunca mais era reavaliado — a aba passava a sessão inteira sem
   // atualização ao vivo.
   const [cofrePronto, setCofrePronto] = useState(false);
-  const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
+  // StoreContext-576: o estado ANTES do primeiro fetchConfig não pode
+  // carregar o freeShippingMin de `defaultStoreConfig` (350, o limiar mais
+  // caro do config) -- `mapConfig` já usa 0 (desligado) como fallback de
+  // ausência, e as duas fontes têm de concordar. Sem isso, uma loja cujo
+  // config bate exatamente nos defaults (ex.: teste/mock com `data: []`)
+  // faz `configIgual` enxergar diferença que não existe (350 em memória x 0
+  // vindo da leitura), e o app grava no DataVault um "config mudou" que
+  // nunca mudou de verdade.
+  const configInicial: StoreConfig = {
+    ...defaultStoreConfig,
+    freeShippingMin: 0,
+  };
+  const [config, setConfig] = useState<StoreConfig>(configInicial);
   const [isLoaded, setIsLoaded] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -454,11 +466,14 @@ export function StoreProvider({
       return fallback;
     };
 
-    const freeMin = getVal(
-      "free_shipping_min",
-      "freeShippingMin",
-      defaultStoreConfig.freeShippingMin,
-    );
+    // 0 aqui, NUNCA defaultStoreConfig.freeShippingMin (StoreContext-576):
+    // esse default ainda carrega 350 — o limiar mais caro do config — e
+    // devolvê-lo quando a coluna faltar inventaria a MESMA regra de frete
+    // grátis que ninguém escolheu. `presetDoConfig(0)` já lê 0 como
+    // "desligado" (src/lib/presets-de-frete-gratis.ts), a mesma semântica
+    // que a RPC do pedido usa para ausência (COALESCE(...,0)) — ausência
+    // aqui tem que significar desligado, como já significa lá.
+    const freeMin = getVal("free_shipping_min", "freeShippingMin", 0);
     const shipFee = getVal(
       "shipping_fee",
       "shippingFee",
@@ -573,7 +588,13 @@ export function StoreProvider({
           // Initialize if missing (admin only)
           const dbInsert = {
             id: 1,
-            free_shipping_min: 350,
+            // 0 (desligado), NUNCA 350 (StoreContext-576): a loja nova não
+            // escolheu regra nenhuma de frete grátis, e semear o limiar mais
+            // caro do config fazia o carrinho anunciar "Acima de R$ 350" e a
+            // RPC do pedido zerar o frete de verdade sem o lojista ter
+            // ligado nada. `presetDoConfig(0)` já lê "desligado" e é a mesma
+            // sentinela de ausência que a RPC usa (COALESCE(...,0)).
+            free_shipping_min: 0,
             shipping_fee: 15,
             // Laudo 31/08 (menor E): a semente gravava "" (o default do
             // front) em whatsapp_number/business_hours — uma SEGUNDA
