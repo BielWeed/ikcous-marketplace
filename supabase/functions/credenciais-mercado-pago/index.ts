@@ -20,6 +20,18 @@
 //   * `ligar_pix` / `desligar_pix` acendem e apagam `pagamento_online`, e
 //     ligar exige teste de conexão bem-sucedido (ver a ação, abaixo).
 //
+// O PIX SÓ ACENDE COM A LOJA INTEIRA (tarefa mp-8, 16/09/2026):
+//   * `ligar_pix` publica a Public Key no MESMO update que acende — e recusa
+//     com 409 se o registro não tiver Public Key em formato válido.
+//   * `salvar` com credencial NOVA (token ou Public Key) desliga o PIX no
+//     mesmo update e conta isso na resposta (`pix_desligado` + `aviso`);
+//     re-salvar sem trocar credencial não derruba quem está vendendo.
+//   * O carimbo de auditoria do liga (pix_ligado_em/pix_ligado_por) tem
+//     try/catch próprio: falhou, sai 200 com `aviso` — a verdade é a ficha,
+//     e "falhou" com o PIX aceso faz o lojista ligar duas vezes.
+//   * Escrita na ficha sem linha afetada é RECUSA, não sucesso (o UPDATE pede
+//     `select('id')`): ficha ausente vira 500 honesto, nunca "salvo" calado.
+//
 // DINHEIRO/CREDENCIAL — as proteções desta function:
 //   * Admin-only duas vezes: verify_jwt = true no portão (config.toml) E a
 //     porta interna aqui — JWT do lojista validado com anon key e papel
@@ -215,16 +227,26 @@ async function lerFichaDaLoja(supabase: any): Promise<FichaDaLoja> {
  * certo) em vez de estourar: quem chama precisa dizer ao lojista O QUE ficou
  * pela metade — "salvei as chaves mas não publiquei" é recado diferente de
  * "não salvei nada", e o genérico do catch confundiria os dois.
+ *
+ * O `.select("id")` não é enfeite (mp-8): sem ele, UPDATE que não achou a
+ * linha id = 1 volta SEM error e com zero linha afetada — ficha inexistente
+ * (banco novo) ou RLS/trigger recusando calado passariam por "publicado", e a
+ * tela diria "salvo" com o cliente sem PIX. Zero linha é recusa.
  */
 async function escreverNaFichaDaLoja(
     supabase: any,
     campos: Partial<FichaDaLoja>,
 ): Promise<string | null> {
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from("store_config")
         .update(campos)
-        .eq("id", 1);
-    return error ? String(error.message ?? "recusado") : null;
+        .eq("id", 1)
+        .select("id");
+    if (error) return String(error.message ?? "recusado");
+    if (!Array.isArray(data) || data.length === 0) {
+        return "a ficha da loja não foi encontrada ou recusou a gravação";
+    }
+    return null;
 }
 
 function respostaLer(
@@ -382,6 +404,10 @@ export async function handler(
             // anterior, não desta — recado velho com cara de novo é pior
             // que recado nenhum.
             const trocouToken = Boolean(accessToken);
+            // A Public Key também conta como troca de credencial (mp-8):
+            // chave de outra conta publicada na ficha é Payment Brick de uma
+            // conta cobrando pela outra. Sem registro anterior, é troca.
+            const trocouPublicKey = registroAntigo?.public_key !== publicKey;
             const agora = new Date().toISOString();
 
             const novoToken = accessToken
@@ -419,11 +445,23 @@ export async function handler(
             };
             await gravarRegistro(supabase, registro);
 
+            // Credencial nova com o PIX aceso é vitrine cobrando por uma chave
+            // que ninguém testou (mp-8): o token pode estar errado e TODA
+            // tentativa de PIX morre no fim da compra, com a tela dizendo
+            // "nunca testado" e o interruptor ligado. Desligamos no MESMO
+            // update que publica a chave — dois updates deixariam uma janela
+            // com a chave nova e o PIX ainda aceso. Re-salvar sem trocar
+            // credencial (a tela manda o token vazio) não derruba ninguém.
+            const fichaAntes = await lerFichaDaLoja(supabase);
+            const desligarPix = (trocouToken || trocouPublicKey) &&
+                fichaAntes.pagamento_online;
+
             // A Public Key não é segredo: é a credencial de FRENTE, e o
             // checkout do cliente lê a da ficha da loja, não a daqui. Sem
             // publicar, a tela diz "salvo" e o cliente segue sem PIX.
             const recusa = await escreverNaFichaDaLoja(supabase, {
                 mp_public_key: publicKey,
+                ...(desligarPix ? { pagamento_online: false } : {}),
             });
             if (recusa) {
                 console.error(
@@ -436,7 +474,20 @@ export async function handler(
                 );
             }
             const ficha = await lerFichaDaLoja(supabase);
-            return json(respostaLer(registro, ficha), 200);
+            // Só ACRESCENTA campos (a tela de Ajustes já consome o resto):
+            // desligar o PIX calado seria o lojista descobrindo pelo cliente.
+            return json(
+                {
+                    ...respostaLer(registro, ficha),
+                    ...(desligarPix
+                        ? {
+                            pix_desligado: true,
+                            aviso: "Desliguei o PIX no app: teste a conexão com a credencial nova e ligue de novo.",
+                        }
+                        : {}),
+                },
+                200,
+            );
         }
 
         // ── testar: fala com o MP DAQUI, com a chave decifrada no servidor ──
@@ -537,9 +588,22 @@ export async function handler(
                     409,
                 );
             }
+            // O Payment Brick do checkout não sobe sem a Public Key: acender o
+            // PIX sem ela é o cliente chegando no fim da compra e vendo
+            // "Pagamento indisponível". Mesma validação de formato do salvar.
+            const publicKeyDoRegistro = String(registro.public_key ?? "").trim();
+            if (!FORMATO_CREDENCIAL.test(publicKeyDoRegistro)) {
+                return json(
+                    { erro: "Salve a Public Key do Mercado Pago antes de ligar o PIX — sem ela o cliente vê o PIX e trava no fim da compra." },
+                    409,
+                );
+            }
 
+            // As DUAS colunas no MESMO update: a ficha nunca fica meio ligada
+            // (aceso sem chave é justamente o beco sem saída do checkout).
             const recusa = await escreverNaFichaDaLoja(supabase, {
                 pagamento_online: true,
+                mp_public_key: publicKeyDoRegistro,
             });
             if (recusa) {
                 console.error(
@@ -555,20 +619,40 @@ export async function handler(
             // Carimbo depois da ficha: o que vale para o cliente é a ficha, e
             // carimbar antes deixaria auditoria de um "ligou" que não ligou.
             const agora = new Date().toISOString();
-            await gravarRegistro(supabase, {
-                ...registro,
-                pix_ligado_em: agora,
-                pix_ligado_por: uidAdmin,
-                atualizado_em: agora,
-            } as Registro);
-
             // Chave de sandbox conecta igualzinho à de produção — quem não
             // for avisado vai achar que vendeu.
-            const aviso = registro.ultimo_teste.ambiente === "teste"
-                ? "Chave de TESTE: o PIX não vai receber dinheiro de verdade"
-                : null;
+            const avisos: string[] = [];
+            if (registro.ultimo_teste.ambiente === "teste") {
+                avisos.push(
+                    "Chave de TESTE: o PIX não vai receber dinheiro de verdade",
+                );
+            }
+            // Try/catch PRÓPRIO do carimbo (mp-8): a verdade do estado é a
+            // ficha, e ela JÁ acendeu. Deixar a falha da auditoria cair no
+            // catch geral devolvia 500 "não consegui gravar" com o PIX aceso —
+            // o lojista tentava de novo achando que estava desligado.
+            try {
+                await gravarRegistro(supabase, {
+                    ...registro,
+                    pix_ligado_em: agora,
+                    pix_ligado_por: uidAdmin,
+                    atualizado_em: agora,
+                } as Registro);
+            } catch (err) {
+                console.error(
+                    "[credenciais-mp] PIX ligado, mas o carimbo de auditoria falhou:",
+                    err instanceof Error ? err.message : err,
+                );
+                avisos.push(
+                    "O PIX está ligado, mas não consegui registrar quem ligou; tente salvar de novo mais tarde.",
+                );
+            }
             return json(
-                { pix_ligado: true, quando: agora, ...(aviso ? { aviso } : {}) },
+                {
+                    pix_ligado: true,
+                    quando: agora,
+                    ...(avisos.length ? { aviso: avisos.join(" ") } : {}),
+                },
                 200,
             );
         }
