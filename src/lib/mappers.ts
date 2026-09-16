@@ -274,6 +274,12 @@ export function mapOrderFromDB(
     // database.types.ts, por isso o cast — igual às duas linhas acima.
     pagamentoRecebidoEm: (row as any).pagamento_recebido_em ?? null,
     pagamentoRecebidoPor: (row as any).pagamento_recebido_por ?? null,
+    // Colunas da migration 20261160000000 (canal da venda, PDV). Ao contrário
+    // das quatro linhas acima, estas duas JÁ estão tipadas em OrderRow, então
+    // o acesso é direto: o compilador é a trava se a coluna mudar de nome.
+    // Qualquer valor fora de "presencial" (inclusive ausência) vira "online".
+    canal: row.canal === "presencial" ? "presencial" : "online",
+    vendedorId: row.vendedor_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
