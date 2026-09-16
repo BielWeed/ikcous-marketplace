@@ -1438,10 +1438,17 @@ export function CheckoutView({
   // a regra fica silenciosa — sem origem o próprio `semFreteSelecionado`
   // já trava o pedido, e o aviso aqui diria a mentira errada.
   const cepDoConvidado = form.watch("cep");
+  // Achado CheckoutView-1381: a mesma ressalva do efeito irmão
+  // (CheckoutView.tsx:832 — "CEP parcial é digitação em curso, decidir com
+  // ele inventaria 'local' ou 'fora da cidade' no primeiro dígito") faltava
+  // aqui. Sem ela, `cepEhLocal` comparava os 5 primeiros dígitos contra um
+  // CEP de 1 dígito ("3"), batia falso, e o convidado da PRÓPRIA cidade via
+  // o aviso "fora da cidade" antes de terminar de digitar.
   const convidadoForaDaCidade =
     !user &&
     !!config.originCep &&
     !!cepDoConvidado &&
+    soDigitos(cepDoConvidado).length === 8 &&
     !cepEhLocal(config.originCep, cepDoConvidado, config.localCepRange);
 
   // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
@@ -1753,6 +1760,9 @@ export function CheckoutView({
     // mesmo F5) devolve a MESMA chave — é o que faz o servidor devolver o
     // pedido original em vez de criar um gêmeo. Impressão nova (mudou
     // carrinho, frete, cupom ou endereço) gira chave nova.
+    // O eixo online x entrega é decidido UMA vez e serve à impressão da
+    // chave e à escolha da RPC (ressalva da revisão de CheckoutView-1756).
+    const ehOnline = paymentMethod === "online";
     gerenteDaChaveRef.current ??= criarGerenciadorDeChave(
       globalThis.sessionStorage,
     );
@@ -1766,11 +1776,17 @@ export function CheckoutView({
         couponCode: orderData.couponCode,
         addressId: orderData.addressId,
         cepDoEndereco: orderData.addressData?.cep ?? null,
+        // Achado chave-do-pedido-25 (15/09/2026): só o EIXO que muda a RPC
+        // (online x entrega) entra na impressão — nunca o método fino
+        // (pix/card/cash), que gravam todos na MESMA RPC de entrega e
+        // continuam sendo a mesma retentativa aos olhos do servidor. Sem
+        // isto, trocar de meio no mesmo carrinho repetia a impressão e a
+        // MESMA chave devolvia o pedido gravado pelo OUTRO meio.
+        paymentMethod: ehOnline ? "online" : "entrega",
       }),
     );
 
     try {
-      const ehOnline = paymentMethod === "online";
       const order = await createOrder(orderData, {
         comPagamentoOnline: ehOnline,
       });

@@ -52,6 +52,15 @@ function texto(valor: string | number | null | undefined): string {
   return valor === null || valor === undefined ? "" : String(valor);
 }
 
+// Prefixo de versão (achado chave-do-pedido-25, revisão de contexto limpo,
+// 15/09/2026): a composição da impressão já mudou uma vez sem que o único
+// chamador acompanhasse (o campo `paymentMethod` foi acrescentado aqui e
+// ficou sem uso em CheckoutView.tsx por uma tarefa inteira). "v2~" não muda
+// NADA de comportamento — é só um marcador para o PRÓXIMO campo: se a
+// composição mudar nesta função sem mudar aqui, quem procurar por "v1~"/"v2~"
+// no chamador acha o descompasso antes que ele chegue à produção de novo.
+const VERSAO_DA_IMPRESSAO = "v2";
+
 export function impressaoDaCompra(compra: CompraParaImpressao): string {
   const itens = [...compra.items]
     .map(
@@ -62,6 +71,7 @@ export function impressaoDaCompra(compra: CompraParaImpressao): string {
     .join("|");
 
   return [
+    VERSAO_DA_IMPRESSAO,
     itens,
     compra.totalAmount.toFixed(2),
     compra.shippingCost.toFixed(2),
