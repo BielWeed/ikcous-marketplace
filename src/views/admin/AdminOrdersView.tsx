@@ -562,6 +562,26 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
   // Sync selectedOrder with selectedOrderId prop driven by URL
   const lastSelectedOrderIdRef = useRef<string | null | undefined>(undefined);
+  // AdminOrdersView-648: guarda o id do pedido já RESOLVIDO (achado em
+  // `orders` OU trazido por `fetchSingleOrder`, abaixo). Antes, este efeito
+  // reentrava em `fetchSingleOrder` — e acendia o spinner de tela cheia por
+  // cima da ficha — toda vez que `orders` ganhava NOVA REFERÊNCIA (recarga
+  // silenciosa por visibilidade/reconexão, realtime INSERT/UPDATE de OUTRO
+  // pedido), mesmo com `selectedOrderId` intacto. Como a ficha aberta por
+  // deep link (pedido fora da página/filtro carregado) nunca aparece em
+  // `orders`, isso remontava `<OrderDetail>` do zero a cada mudança alheia,
+  // apagando anotação em edição e o diálogo "Recebeu?" (useState local de
+  // OrderDetail.tsx). Comparando contra este ref, só refazemos a busca de
+  // rede quando o ID realmente muda — `orders` continua na dependência para
+  // pegar o pedido assim que ele aparecer na página carregada.
+  const resolvedOrderIdRef = useRef<string | null | undefined>(undefined);
+  // Revalidação SILENCIOSA da ficha de deep link (ressalva da revisão de
+  // 648): como esse pedido não está em `orders`, um UPDATE de realtime
+  // sobre ele não chega pela lista — sem isto a ficha congelaria no retrato
+  // da primeira busca. O handler de realtime (abaixo) bumpa o contador; o
+  // efeito refaz a busca SEM acender o spinner (a ficha continua montada).
+  const [revalidacaoDaFicha, setRevalidacaoDaFicha] = useState(0);
+  const revalidacaoSilenciosaRef = useRef(false);
   useEffect(() => {
     if (!active) return;
 
@@ -593,26 +613,41 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     };
 
     // B1+B2 da 3a revisao: limpar AMBOS os estados de detalhe no TOPO do
-    // efeito, ANTES dos retornos rapidos — senao "Voltar aos pedidos" e
-    // "clicar noutro pedido da lista" deixavam detailError=true e o painel
-    // morria ate o F5 (a view nunca desmonta por causa do DeferredTabContent).
+    // efeito, ANTES dos retornos rapidos — senao "Voltar aos pedidos",
+    // "clicar noutro pedido da lista" e o retorno antecipado de um id ja
+    // resolvido (linha abaixo) deixavam detailError=true ou loadingDetail=true
+    // presos de uma busca ANTERIOR de OUTRO id, e o painel morria ate o F5
+    // (a view nunca desmonta por causa do DeferredTabContent).
     setDetailError(false);
     setLoadingDetail(false);
 
     if (!selectedOrderId) {
+      resolvedOrderIdRef.current = null;
       triggerUpdate(null);
       return;
     }
 
     if (nextOrder) {
+      resolvedOrderIdRef.current = selectedOrderId;
       triggerUpdate(nextOrder);
       return;
     }
 
+    // Pedido fora da página/filtro carregado (deep link, vindo do sino ou
+    // da ficha do cliente). Se ESTE MESMO id já foi resolvido antes (por
+    // uma busca anterior que teve sucesso), não refaz a busca nem acende o
+    // spinner só porque `orders` mudou de referência por causa de OUTRO
+    // pedido — é exatamente isso que desmontava a ficha em edição.
+    const revalidar = revalidacaoSilenciosaRef.current;
+    revalidacaoSilenciosaRef.current = false;
+    if (resolvedOrderIdRef.current === selectedOrderId && !revalidar) return;
+
     // Fetch from Supabase if not found locally (e.g., deep link or pagination)
     let isCurrent = true;
     const fetchSingleOrder = async () => {
-      setLoadingDetail(true);
+      // Na revalidação a ficha já está na tela: nada de spinner de tela
+      // cheia (era ele que desmontava o OrderDetail em edição).
+      if (!revalidar) setLoadingDetail(true);
       setDetailError(false);
       try {
         const { data, error } = await supabase
@@ -628,6 +663,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         if (error) throw error;
         if (data && isCurrent) {
           const mapped = mapOrderFromDB(data as any);
+          resolvedOrderIdRef.current = selectedOrderId;
           triggerUpdate(mapped);
         }
       } catch (err) {
@@ -645,7 +681,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     return () => {
       isCurrent = false;
     };
-  }, [selectedOrderId, orders, active]);
+  }, [selectedOrderId, orders, active, revalidacaoDaFicha]);
 
   useEffect(() => {
     const container =
@@ -842,6 +878,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       } else if (payload.eventType === "UPDATE") {
         const updatedId = payload.new?.id;
         const newStatus = payload.new?.status as OrderStatus;
+        // Ficha de deep link aberta para ESTE pedido: revalida em silêncio
+        // (ver revalidacaoDaFicha, acima).
+        if (
+          updatedId &&
+          updatedId === selectedOrderId &&
+          resolvedOrderIdRef.current === selectedOrderId
+        ) {
+          revalidacaoSilenciosaRef.current = true;
+          setRevalidacaoDaFicha((n) => n + 1);
+        }
         toast.info(
           `Pedido #${updatedId ? updatedId.slice(-6) : ""} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
         );
@@ -850,7 +896,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // Atualiza apenas os KPIs (listagem já é atualizada reativamente em memória)
       loadStats();
     };
-  }, [loadStats, handleSelectOrder]);
+  }, [loadStats, handleSelectOrder, selectedOrderId]);
 
   const totalPages = Math.ceil(totalOrders / itemsPerPage);
   const paginatedOrders = useMemo(
