@@ -14,6 +14,9 @@
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
+// Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
+// do lojista nos testes MP-W1..MP-W3 do fim deste arquivo.
+import { chaveDeCifra, cifrar } from "../_shared/credenciais-mp.ts";
 
 const SEGREDO = "segredo-webhook-teste";
 const UUID_PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -227,6 +230,11 @@ function clienteFalso(opts: {
   // interessa, sem afetar outras.
   erroConcluirEstorno?: (args: Record<string, unknown>) => unknown;
   concluirEstornoResultado?: unknown;
+  // Tarefa mp-2: o registro CIFRADO do lojista, como ele dorme em
+  // app_settings (_shared/credenciais-mp.ts). Default ausente — a loja que
+  // ainda roda pelas chaves da plataforma, que é o que todos os testes
+  // anteriores a esta tarefa exercitam.
+  registroMp?: Record<string, unknown> | null;
 }) {
   // Fila VIVA de order_refunds — mutável: um INSERT desta MESMA chamada de
   // handler (ou de uma chamada seguinte, com o MESMO cliente falso — W3/W5
@@ -279,6 +287,30 @@ function clienteFalso(opts: {
       throw new Error(`rpc inesperada nos testes: ${nome}`);
     },
     from(tabela: string) {
+      // Tarefa mp-2: a resolução das credenciais (_shared/credenciais-mp.ts)
+      // lê app_settings pelo MESMO client. Ramo PRÓPRIO — se caísse na
+      // cadeia de `marketplace_orders` lá embaixo, esta leitura entraria em
+      // `registro.chamadasFrom`, e as asserções que provam QUAL linha o
+      // handler lê (a mutação "M8") passariam a olhar para a leitura errada.
+      if (tabela === "app_settings") {
+        return {
+          select(_colunas: string) {
+            return {
+              eq(_coluna: string, _valor: unknown) {
+                return {
+                  maybeSingle: async () => ({
+                    data: opts.registroMp
+                      ? { value: JSON.stringify(opts.registroMp) }
+                      : null,
+                    error: null,
+                  }),
+                };
+              },
+            };
+          },
+        };
+      }
+
       if (tabela === "order_refunds") {
         return {
           select(colunas: string) {
@@ -3435,4 +3467,175 @@ Deno.test("aviso de pagamento atrasado: SMTP não configurado -> não chega a ch
     if (valorUser !== undefined) Deno.env.set("SMTP_USER", valorUser);
     if (valorPass !== undefined) Deno.env.set("SMTP_PASSWORD", valorPass);
   }
+});
+
+// ── Tarefa mp-2 (15/09/2026): de QUEM são as chaves deste webhook ─────────
+//
+// Duas chaves vivem aqui, e as duas passaram a sair de
+// `resolverCredenciaisMp` (_shared/credenciais-mp.ts): o SEGREDO que
+// autentica a notificação (HMAC) e o TOKEN que reconsulta o MP. Com chave do
+// lojista cadastrada, as duas são as DELE; sem cadastro nenhum, as da
+// plataforma (comportamento de sempre, provado pelos 80 testes acima, que
+// não passam registro nenhum).
+//
+// A assimetria testada em MP-W2 é de propósito e está escrita no módulo: o
+// SEGREDO tem reserva no ambiente (o lojista pode ter cadastrado só a chave
+// de cobrança, e sem reserva o webhook devolveria 401 para notificação
+// legítima), o TOKEN não tem reserva nenhuma — cobrar/consultar na conta
+// errada é o erro que esta frente existe para impedir.
+
+/** Cofre de MENTIRA, 32 bytes determinísticos — mesma receita de
+ * _shared/credenciais-mp_test.ts. Nunca a chave real de ninguém. */
+const CHAVE_CIFRA_TESTE = btoa(
+  String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (i * 7 + 3) % 256)),
+);
+const TOKEN_LOJISTA_FALSO = "APP_USR-token-falso-do-lojista-9999";
+// DIFERENTE do `SEGREDO` da plataforma (topo do arquivo), de propósito: é a
+// diferença que prova de quem é o segredo que valida a assinatura.
+const SEGREDO_WEBHOOK_LOJISTA = "segredo-falso-de-webhook-do-lojista";
+
+/** Registro do lojista cifrado com a MESMA primitiva da produção — fixture
+ * escrito à mão não provaria que o webhook decifra de verdade. */
+async function registroMpDeTeste(
+  opcoes: { segredoWebhook?: string | null } = {},
+): Promise<Record<string, unknown>> {
+  const chave = await chaveDeCifra({
+    get: (nome: string) => (nome === "MP_CHAVES_ENCRYPTION_KEY" ? CHAVE_CIFRA_TESTE : undefined),
+  });
+  const token = await cifrar(TOKEN_LOJISTA_FALSO, chave!);
+  const segredo = opcoes.segredoWebhook === null
+    ? null
+    : opcoes.segredoWebhook ?? SEGREDO_WEBHOOK_LOJISTA;
+  const webhook = segredo ? await cifrar(segredo, chave!) : null;
+  return {
+    public_key: "APP_USR-publica-falsa-do-lojista",
+    token_cifrado: token.cifrado,
+    token_iv: token.iv,
+    mascara_token: "••••9999",
+    webhook_cifrado: webhook?.cifrado ?? null,
+    webhook_iv: webhook?.iv ?? null,
+    mascara_webhook: segredo ? `••••${segredo.slice(-4)}` : null,
+    ultimo_teste: null,
+    atualizado_em: "2026-09-15T00:00:00.000Z",
+  };
+}
+
+/** Como `fetchConsulta`, mas guardando os headers: é no `Authorization` que
+ * mora a resposta de "com a chave de quem este webhook está perguntando". */
+function fetchConsultaComHeaders(
+  capturado: { autorizacoes: string[]; chamadas: number },
+  status: number,
+  corpo: Record<string, unknown>,
+) {
+  return async (_url: string, init?: RequestInit) => {
+    capturado.chamadas++;
+    capturado.autorizacoes.push(
+      (init?.headers as Record<string, string> | undefined)?.Authorization ?? "",
+    );
+    return new Response(JSON.stringify(corpo), { status });
+  };
+}
+
+function pedidoDeTeste(): Record<string, unknown> {
+  return {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_CLASSICO_DIFERENTE,
+  };
+}
+
+Deno.test("MP-W1 — lojista com chave cadastrada: a assinatura vale pelo SEGREDO DELE e o Bearer da consulta é o TOKEN DECIFRADO dele", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  try {
+    const registro = { chamadasRpc: [] };
+    const supabase = clienteFalso({
+      rpcResultado: "pago",
+      pedido: pedidoDeTeste(),
+      registro,
+      registroMp: await registroMpDeTeste(),
+    });
+    // Assinada com o segredo DO LOJISTA — com o do ambiente ela seria 401.
+    const req = await requisicaoAssinada("999", { segredo: SEGREDO_WEBHOOK_LOJISTA });
+    const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+    const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+      transaction_amount: 149.9,
+    });
+
+    const resposta = await handler(req, { supabase, fetchImpl });
+
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.chamadasRpc.length, 1);
+    assertEquals(capturado.autorizacoes[0], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+  } finally {
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  }
+});
+
+Deno.test("MP-W2 — lojista com TOKEN mas SEM segredo de webhook: o MP_WEBHOOK_SECRET do ambiente é a reserva do SEGREDO, e o token continua sendo o do lojista", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  try {
+    const registro = { chamadasRpc: [] };
+    const supabase = clienteFalso({
+      rpcResultado: "pago",
+      pedido: pedidoDeTeste(),
+      registro,
+      registroMp: await registroMpDeTeste({ segredoWebhook: null }),
+    });
+    // Assinada com o segredo DO AMBIENTE — a reserva que este teste prende.
+    const req = await requisicaoAssinada("999");
+    const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+    const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+      transaction_amount: 149.9,
+    });
+
+    const resposta = await handler(req, { supabase, fetchImpl });
+
+    assertEquals(resposta.status, 200, "sem a reserva do segredo, notificação legítima viraria 401");
+    assertEquals(registro.chamadasRpc.length, 1);
+    // O TOKEN não tem reserva: continua o do lojista, nunca o da plataforma.
+    assertEquals(capturado.autorizacoes[0], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+  } finally {
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  }
+});
+
+Deno.test("MP-W3 — chave do lojista cadastrada + cofre ausente: 500 (o MP reenvia) e NENHUMA consulta com o token da plataforma", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  const registroCifrado = await registroMpDeTeste();
+  Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({
+    rpcResultado: "pago",
+    pedido: pedidoDeTeste(),
+    registro,
+    registroMp: registroCifrado,
+  });
+  // Assinada pelo ambiente: a notificação é legítima do ponto de vista do
+  // HMAC (a reserva do segredo vale), e ainda assim o pagamento não é
+  // processado — é a falha FECHADA do token.
+  const req = await requisicaoAssinada("999");
+  const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+  const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+    transaction_amount: 149.9,
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  // 500 e não 200: o evento FICA na fila do MP, que reenvia — quando alguém
+  // devolver o cofre ao lugar, a notificação volta e o pedido confirma.
+  assertEquals(resposta.status, 500);
+  assertEquals(capturado.chamadas, 0);
+  assertEquals(registro.chamadasRpc.length, 0);
 });

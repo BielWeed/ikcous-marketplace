@@ -71,6 +71,10 @@ import {
   TOLERANCIA_DE_VALOR,
 } from "../_shared/mercadopago.ts";
 import { readKey } from "../_shared/webpush.ts";
+// Tarefa mp-2 (15/09/2026): a chave do Mercado Pago pode ser a do LOJISTA
+// (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
+// fecha a porta quando não dá para decidir com segurança, é este módulo.
+import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import {
   confirmarPorConsulta,
   consultarTransacaoDaOrder,
@@ -471,6 +475,25 @@ async function handler(
       readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
     );
 
+  // Tarefa mp-2 (15/09/2026): de QUEM é a chave que este cron usa para
+  // perguntar ao MP — a do LOJISTA (cadastrada na tela de Ajustes, guardada
+  // cifrada em app_settings) ou, só quando não existe cadastro nenhum, o
+  // MP_ACCESS_TOKEN da plataforma. UMA resolução por ciclo, aqui fora do
+  // laço: é a mesma loja para todos os candidatos (app único, banco por
+  // cliente), e resolver por candidato seria uma leitura de app_settings por
+  // pedido sem mudar resposta nenhuma.
+  const credenciaisMp = await resolverCredenciaisMp(supabase);
+  if (!credenciaisMp.token) {
+    // Log só com origem e motivo — token nenhum, de ninguém, entra aqui. O
+    // ciclo NÃO aborta, e a resposta continua contando tudo: cada candidato
+    // de pagamento vira `falhas++` e cada linha da fila de estornos (mais
+    // abaixo) vira `estornos.falhos++` — o rótulo honesto de "não deu para
+    // verificar", nunca `ignorados`, e nunca uma chamada ao MP sem chave.
+    console.error(
+      `reconciliar-pagamentos: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+    );
+  }
+
   // Em try: uma REJEIÇÃO (rede, cliente mal configurado) não pode escapar do
   // handler inteiro — o `webhook-mercadopago` envolve a chamada equivalente
   // pelo mesmo motivo.
@@ -496,7 +519,16 @@ async function handler(
   for (const candidato of candidatos ?? []) {
     verificados++;
     try {
-      const mpToken = Deno.env.get("MP_ACCESS_TOKEN") ?? "";
+      const mpToken = credenciaisMp.token;
+      if (!mpToken) {
+        // Falha FECHADA (tarefa mp-2): com chave do lojista cadastrada e
+        // ilegível, consultar o MP com a chave da PLATAFORMA devolveria 404
+        // para toda order dele — a rede de segurança calada, e um pedido
+        // pago virando `expirado`. Pular contando falha deixa o candidato na
+        // fila para o próximo ciclo, depois de alguém consertar o cofre.
+        falhas++;
+        continue;
+      }
 
       // Tarefa 4 (CHECKOUT-070), correção pós-revisão: discrimina pela FORMA
       // do id (`idEhClassico`, `_shared/mercadopago.ts`), não pelo código de
@@ -753,7 +785,10 @@ async function handler(
       .limit(20);
     if (erroRefunds) throw erroRefunds;
 
-    const mpToken = Deno.env.get("MP_ACCESS_TOKEN") ?? "";
+    // MESMA credencial resolvida lá em cima (tarefa mp-2): o estorno sai da
+    // conta que recebeu — devolver dinheiro pela conta da plataforma tiraria
+    // de quem NÃO vendeu, e por isso aqui também não há reserva de token.
+    const mpToken = credenciaisMp.token ?? "";
     // Mesmo timeout de 15s de toda chamada ao MP (Restrições globais) — o
     // `buscar` injetado pelos testes (`deps.fetchImpl`) nunca vê o `fetch`
     // cru por fora deste envelope, igual à edge do clique (T3).
@@ -780,6 +815,19 @@ async function handler(
 
     for (const refund of refundsPendentes ?? []) {
       refundsVistos++;
+      // Falha FECHADA também na fila de estornos (tarefa mp-2), pelo MESMO
+      // motivo do laço de pagamentos — e com um preço a mais aqui: sair com
+      // Bearer vazio faria o MP recusar e a linha voltaria para a fila
+      // GASTANDO uma `tentativas` por ciclo, até o teto de 5. Passado o teto
+      // a linha entra no regime "só consulta" e o cron nunca mais repete o
+      // POST, mesmo depois de alguém devolver o cofre ao lugar: uma
+      // indisponibilidade de configuração teria consumido, sozinha, o
+      // orçamento de tentativas de uma devolução de dinheiro. Pular contando
+      // falha deixa a linha intacta para o próximo ciclo.
+      if (!mpToken) {
+        refundsFalhos++;
+        continue;
+      }
       // Cada linha no seu próprio try: a reconciliação de estornos existe
       // para pegar o que já falhou uma vez — um item não pode custar a vez
       // do seguinte (mesma defesa do laço de pagamentos acima).

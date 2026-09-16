@@ -24,7 +24,9 @@
  * assinatura barra isso), mas o corpo em si nunca carrega o pedido: quem
  * sabe a qual pedido um pagamento pertence é o `external_reference` que
  * `criarPagamento`/`consultarPagamento` leem de volta da API do MP,
- * autenticada pelo `MP_ACCESS_TOKEN`. Por isso o pedido sai de
+ * autenticada pelo token do gateway (o do LOJISTA quando ele cadastrou a
+ * chave dele, o `MP_ACCESS_TOKEN` da plataforma quando não —
+ * `_shared/credenciais-mp.ts`, tarefa mp-2). Por isso o pedido sai de
  * `consulta.externalReference`, nunca de `body`.
  *
  * `pareceUuid` nesse valor é a segunda trava: sem forma de UUID (ausente,
@@ -62,6 +64,10 @@
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Tarefa mp-2 (15/09/2026): as DUAS chaves deste webhook (o segredo que
+// autentica a notificação e o token que reconsulta o MP) saem daqui — da
+// chave do LOJISTA quando ela existe, do ambiente quando não existe cadastro.
+import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
   avaliarAssinatura,
@@ -1036,6 +1042,32 @@ async function handler(
     ts: tsDoHeader,
   });
 
+  // Tarefa mp-2 (15/09/2026): o client de service role SUBIU para cá — ele
+  // era montado lá embaixo, depois da consulta ao MP, e agora é preciso
+  // ANTES: as credenciais do Mercado Pago (segredo do HMAC e token de
+  // consulta) moram no registro cifrado do lojista em app_settings, e é este
+  // client que o lê. Nada mais muda de ordem; quem já usava `supabase` mais
+  // abaixo continua com o MESMO objeto.
+  const supabase =
+    deps.supabase ??
+    createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+    );
+
+  // De QUEM são as chaves desta loja: do lojista (cadastro na tela de
+  // Ajustes, cifrado) ou da plataforma (env). A regra fechada — nunca cair no
+  // token do ambiente quando existe cadastro ilegível — mora em
+  // `_shared/credenciais-mp.ts`.
+  const credenciaisMp = await resolverCredenciaisMp(supabase);
+  // RESERVA SÓ DO SEGREDO: o lojista pode ter cadastrado a chave de cobrança
+  // e não o segredo de notificação (o campo é opcional na tela). Sem esta
+  // reserva, notificação LEGÍTIMA viraria 401 e o pedido pago ficaria
+  // "aguardando" até expirar. O TOKEN não tem reserva nenhuma — consultar
+  // (e cobrar) na conta errada é o erro que esta frente existe para impedir.
+  const segredoWebhook = credenciaisMp.segredoWebhook ??
+    Deno.env.get("MP_WEBHOOK_SECRET") ?? "";
+
   // A ÚNICA autenticação: sem ela, quem descobrir a URL forja um "aprovado".
   // Amarra SEMPRE o `data.id` do CORPO (nunca o da query string — ver o
   // comentário de `avaliarAssinatura` em `_shared/mercadopago.ts`), porque é
@@ -1045,7 +1077,7 @@ async function handler(
     xSignature: req.headers.get("x-signature"),
     xRequestId: req.headers.get("x-request-id"),
     dataId: dataIdStr,
-    segredo: Deno.env.get("MP_WEBHOOK_SECRET") ?? "",
+    segredo: segredoWebhook,
     // Number.POSITIVE_INFINITY: a janela de `ts` fica DESLIGADA nesta
     // função. Corrigido em 09/08/2026 (rodada de conserto 1) — a versão
     // anterior usava 86400s (24h), medida contra um limite que não existe:
@@ -1069,9 +1101,10 @@ async function handler(
     // Log de FALHA: dataId (corpo, truncado), x-request-id, ts, o v1
     // recebido e os RÓTULOS dos candidatos tentados (sem hash nenhum, nem
     // prefixo dele — publicar hash calculado é um oráculo de verificação
-    // offline do `MP_WEBHOOK_SECRET`, achado de revisão de 16/08/2026) — o
+    // offline do segredo do webhook, achado de revisão de 16/08/2026) — o
     // que transforma suspeita em causa provada quando o MP reenviar a
-    // notificação real. NUNCA loga `MP_WEBHOOK_SECRET`.
+    // notificação real. NUNCA loga o segredo — nem o do lojista, nem o
+    // `MP_WEBHOOK_SECRET` da plataforma.
     const v1Recebido = req.headers.get("x-signature")?.match(/(?:^|,)\s*v1=([^,]*)/)?.[1] ?? null;
     console.warn("webhook-mercadopago: assinatura inválida", {
       dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
@@ -1145,6 +1178,21 @@ async function handler(
     console.log(`webhook-mercadopago: type ausente, decidido pela forma do id -> rota "${rota}"`, dataIdStr);
   }
 
+  // Tarefa mp-2: sem token não há como perguntar ao MP o que de fato
+  // aconteceu — e o webhook NUNCA confia no corpo que chegou. 500 (não 200)
+  // de propósito: o evento FICA na fila do MP, que reenvia, e quando alguém
+  // devolver a credencial ao lugar a notificação volta e o pedido confirma.
+  // Depois do roteamento, e não antes: tópico irrelevante continua sendo
+  // descartado com 200 sem nunca ter precisado de credencial nenhuma.
+  if (!credenciaisMp.token) {
+    // Só origem e motivo: nem token nem segredo entram em log.
+    console.error(
+      `webhook-mercadopago: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+      dataIdStr,
+    );
+    return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
+  }
+
   // As duas rotas convergem nestas cinco variáveis antes do restante do
   // handler (leitura do pedido, conferência de valor, RPC, push, logs) — o
   // que não muda entre elas. `statusBrutoParaLog`
@@ -1167,7 +1215,7 @@ async function handler(
 
   if (rota === "payment") {
     const consulta = await consultarPagamento({
-      token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+      token: credenciaisMp.token,
       paymentId: dataIdStr,
       fetchImpl: deps.fetchImpl,
     });
@@ -1196,7 +1244,7 @@ async function handler(
     corpoConsultado = (consulta as Record<string, unknown>).corpo as Record<string, unknown> | undefined ?? null;
   } else {
     const consulta = await consultarOrder({
-      token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+      token: credenciaisMp.token,
       orderId: dataIdStr,
       fetchImpl: deps.fetchImpl,
     });
@@ -1268,13 +1316,6 @@ async function handler(
     return json({ ok: true, ignorado: "external_reference inválido" }, 200);
   }
   const orderId = externalReference as string;
-
-  const supabase =
-    deps.supabase ??
-    createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
-    );
 
   // PASSO NOVO (T5): gatilhos lidos do objeto CONSULTADO, nunca do corpo do
   // webhook. Fora disso o passo não roda (0 leituras extras) — ver o

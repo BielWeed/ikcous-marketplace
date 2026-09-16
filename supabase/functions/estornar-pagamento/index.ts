@@ -28,8 +28,11 @@
 //     confirmar_pagamento, laudo C1 do PR #439): esta edge chama com
 //     SERVICE ROLE — a autorização do clique do lojista é AQUI (porta de
 //     admin acima), não no banco.
-//   * MP_ACCESS_TOKEN só via Deno.env; SEM token a function falha ANTES de
-//     marcar a linha (nada fica preso em_processamento por falta de
+//   * O TOKEN DO MP vem de resolverCredenciaisMp (_shared/credenciais-mp.ts,
+//     tarefa mp-2): a chave do LOJISTA quando ela existe, a do ambiente
+//     (MP_ACCESS_TOKEN) só quando não há cadastro nenhum, e NENHUMA quando o
+//     cadastro existe mas não dá para decifrar. SEM token a function falha
+//     ANTES de marcar a linha (nada fica preso em_processamento por falta de
 //     configuração). Nunca se decide NADA de dinheiro pelo prefixo do token.
 //   * Timeout: o buscar entregue ao executor já embute o fetchComTempo de
 //     15 s (padrão da casa) — o executor pode ter o seu, e o de fora é o
@@ -48,6 +51,10 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { fetchComTempo } from "../_shared/mercadopago.ts"
+// Tarefa mp-2 (15/09/2026): quem decide se o dinheiro volta pela chave do
+// LOJISTA (cofre em app_settings) ou pela da plataforma (env) — e quem fecha
+// a porta quando existe cadastro que não dá para decifrar.
+import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -252,9 +259,23 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         // 4. Token do MP ANTES da marca: sem token não há execução — e uma
         //    linha marcada em_processamento sem chamada é fila parada à toa
         //    (o cron recuperaria em 2 min, mas não há por que marcar).
-        const token = Deno.env.get('MP_ACCESS_TOKEN') ?? ''
+        //
+        //    Tarefa mp-2 (15/09/2026): o token sai de `resolverCredenciaisMp`
+        //    (_shared/credenciais-mp.ts), não mais do Deno.env cru — é a
+        //    chave do LOJISTA quando ele cadastrou uma (Ajustes > Pagamentos
+        //    > Mercado Pago), e só a da plataforma quando não há cadastro
+        //    nenhum. Com cadastro ilegível (cofre fora do ar, chave trocada)
+        //    a resolução FECHA: devolver dinheiro pela conta da plataforma
+        //    seria tirar de quem não vendeu. O recado ao lojista é o mesmo
+        //    que já existia para "sem credencial" — o que muda é só de onde
+        //    a credencial vem.
+        const credenciaisMp = await resolverCredenciaisMp(supabase)
+        const token = credenciaisMp.token ?? ''
         if (!token) {
-            console.error('[estornar-pagamento] MP_ACCESS_TOKEN ausente no ambiente da function.')
+            // Só origem e motivo: token nenhum, de ninguém, entra em log.
+            console.error(
+                `[estornar-pagamento] sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? 'sem_token'}).`,
+            )
             return json(
                 { erro: 'A devolução não pôde ser iniciada agora (integração com o Mercado Pago sem credencial). Tente novamente em instantes; se persistir, contate o suporte.' },
                 500,

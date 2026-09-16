@@ -21,6 +21,9 @@
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
+// Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
+// do lojista nos testes MP-1/MP-2 do fim deste arquivo.
+import { chaveDeCifra, cifrar } from "../_shared/credenciais-mp.ts";
 
 const SEGREDO = "segredo-reconciliacao-teste";
 const UUID_PEDIDO_1 = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -108,6 +111,11 @@ function clienteFalso(opts: {
   // antes (nenhum id excluído).
   idsJaReivindicadosPorPedido?: (orderId: string, idAtual: string) => string[];
   erroIdsJaReivindicados?: unknown;
+  // --- Tarefa mp-2: o registro CIFRADO do lojista, como ele dorme em
+  // app_settings (_shared/credenciais-mp.ts). Default ausente — a loja que
+  // ainda roda pelas chaves da plataforma, que é o que todos os testes
+  // anteriores a esta tarefa exercitam.
+  registroMp?: Record<string, unknown> | null;
 }) {
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
@@ -297,6 +305,29 @@ function clienteFalso(opts: {
                         error: null,
                       };
                   },
+                };
+              },
+            };
+          },
+        };
+      }
+
+      // Tarefa mp-2: a leitura das credenciais do lojista
+      // (_shared/credenciais-mp.ts) passa pelo MESMO client de service role
+      // que o cron já usa — ramo próprio, porque `from` desconhecido aqui
+      // LANÇA de propósito.
+      if (tabela === "app_settings") {
+        return {
+          select(_colunas: string) {
+            return {
+              eq(_coluna: string, _valor: string) {
+                return {
+                  maybeSingle: async () => ({
+                    data: opts.registroMp
+                      ? { value: JSON.stringify(opts.registroMp) }
+                      : null,
+                    error: null,
+                  }),
                 };
               },
             };
@@ -1923,6 +1954,20 @@ function supabaseRealMinimo(opts: {
           },
         };
       }
+      // Tarefa mp-2: a resolução das credenciais (_shared/credenciais-mp.ts)
+      // lê app_settings pelo MESMO client. Sem registro — estes testes são
+      // os do caminho de sempre, com a chave da plataforma (MP_ACCESS_TOKEN).
+      if (tabela === "app_settings") {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return { maybeSingle: async () => ({ data: null, error: null }) };
+              },
+            };
+          },
+        };
+      }
       if (tabela === "order_refunds") {
         return {
           select(_cols: string) {
@@ -2100,6 +2145,19 @@ Deno.test("aviso de pagamento atrasado (reconciliação): reserva NÃO concedida
             },
           };
         }
+        // Tarefa mp-2: sem registro do lojista — este teste é o do caminho de
+        // sempre, com a chave da plataforma (MP_ACCESS_TOKEN).
+        if (tabela === "app_settings") {
+          return {
+            select(_cols: string) {
+              return {
+                eq(_col: string, _val: unknown) {
+                  return { maybeSingle: async () => ({ data: null, error: null }) };
+                },
+              };
+            },
+          };
+        }
         throw new Error(`from inesperado no dublê mínimo: ${tabela}`);
       },
     };
@@ -2165,4 +2223,166 @@ Deno.test("PEÇA 5 - AUSÊNCIA DE DUPLICATA: dois candidatos do MESMO pedido no 
     Deno.env.delete("SMTP_USER");
     Deno.env.delete("SMTP_PASSWORD");
   }
+});
+
+// --- Tarefa mp-2 (15/09/2026): de QUEM é o token que o cron consulta -------
+//
+// `resolverCredenciaisMp` (_shared/credenciais-mp.ts) decide entre a chave do
+// LOJISTA (registro cifrado em app_settings) e a da PLATAFORMA
+// (MP_ACCESS_TOKEN), e FECHA quando existe cadastro que não dá para decifrar.
+// Aqui o efeito é diferente das outras três functions: consultar o MP com a
+// chave da plataforma quando o lojista tem a dele devolveria 404 para toda
+// order dele — a rede de segurança do dinheiro calada, que é exatamente o
+// buraco que esta reconciliação existe para tapar.
+
+/** Cofre de MENTIRA, 32 bytes determinísticos — mesma receita de
+ * _shared/credenciais-mp_test.ts. Nunca a chave real de ninguém. */
+const CHAVE_CIFRA_TESTE = btoa(
+  String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (i * 7 + 3) % 256)),
+);
+const TOKEN_LOJISTA_FALSO = "APP_USR-token-falso-do-lojista-9999";
+
+/** Registro do lojista cifrado com a MESMA primitiva da produção — fixture
+ * escrito à mão não provaria que o cron decifra de verdade. */
+async function registroMpDeTeste(): Promise<Record<string, unknown>> {
+  const chave = await chaveDeCifra({
+    get: (nome: string) => (nome === "MP_CHAVES_ENCRYPTION_KEY" ? CHAVE_CIFRA_TESTE : undefined),
+  });
+  const token = await cifrar(TOKEN_LOJISTA_FALSO, chave!);
+  return {
+    public_key: "APP_USR-publica-falsa-do-lojista",
+    token_cifrado: token.cifrado,
+    token_iv: token.iv,
+    mascara_token: "••••9999",
+    webhook_cifrado: null,
+    webhook_iv: null,
+    mascara_webhook: null,
+    ultimo_teste: null,
+    atualizado_em: "2026-09-15T00:00:00.000Z",
+  };
+}
+
+/** Como `fetchConsulta`, mas guardando os headers: é no `Authorization` que
+ * mora a resposta de "com a chave de quem este cron está perguntando". */
+function fetchConsultaComHeaders(
+  capturado: { autorizacoes: string[]; chamadas: number },
+  status: number,
+  corpo: Record<string, unknown>,
+) {
+  return async (_url: string, init?: RequestInit) => {
+    capturado.chamadas++;
+    capturado.autorizacoes.push(
+      (init?.headers as Record<string, string> | undefined)?.Authorization ?? "",
+    );
+    return new Response(JSON.stringify(corpo), { status });
+  };
+}
+
+Deno.test("MP-1 — com chave do LOJISTA cadastrada, o Bearer da consulta ao MP é o token DECIFRADO dele, nunca o MP_ACCESS_TOKEN da plataforma", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  try {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const idOrder = "ORDTST09LOJISTA4WC79335A68CZ5NZ7X";
+    const supabase = clienteFalso({
+      candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+      rpcConfirmarResultado: "pago",
+      registro,
+      registroMp: await registroMpDeTeste(),
+    });
+    const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+    const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+      id: idOrder,
+      status: "processed",
+      status_detail: "accredited",
+    });
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(corpo.confirmados, 1);
+    assertEquals(capturado.autorizacoes[0], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+  } finally {
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  }
+});
+
+Deno.test("MP-2 — chave do lojista cadastrada + cofre ausente: o candidato é PULADO (falhas:1) e o MP não é consultado com a chave da plataforma", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  const registroCifrado = await registroMpDeTeste();
+  Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const idOrder = "ORDTST10COFREAUSENTE4WC79335A68C";
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    rpcConfirmarResultado: "pago",
+    registro,
+    registroMp: registroCifrado,
+  });
+  const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+  const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+    id: idOrder,
+    status: "processed",
+    status_detail: "accredited",
+  });
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.verificados, 1);
+  assertEquals(corpo.confirmados, 0);
+  assertEquals(corpo.falhas, 1);
+  // Nem uma consulta: o candidato some do lote sem o token da plataforma
+  // encostar na conta do lojista.
+  assertEquals(capturado.chamadas, 0);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("MP-3 — cofre ausente: a fila de ESTORNOS também para fechada (falhos:1), sem POST de Bearer vazio e sem gastar `tentativas` da linha", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  const registroCifrado = await registroMpDeTeste();
+  Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 50 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    registroMp: registroCifrado,
+    refundsPendentes: [
+      { id: "r1", order_id: pedido.id, amount: 50, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+  const fetchImpl = fetchConsultaComHeaders(capturado, 201, {
+    id: 999,
+    status: "approved",
+    amount: 50,
+  });
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // `falhos` e não `adiados`: "não deu para tentar" é falha honesta, do mesmo
+  // jeito que o candidato de pagamento pulado lá em cima.
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 0, falhos: 1 });
+  // Nenhum POST com Bearer vazio: o MP recusaria, e o preço dessa recusa é
+  // uma `tentativas` queimada por ciclo até o teto de 5 — depois do teto a
+  // linha entra no regime "só consulta" e o cron NUNCA mais repete o POST,
+  // mesmo depois de alguém devolver o cofre ao lugar. Cofre fora do ar é
+  // conserto de operador; não pode consumir o orçamento de tentativas de uma
+  // devolução de dinheiro.
+  assertEquals(capturado.chamadas, 0);
+  assertEquals(registro.atualizacoesOrderRefunds.length, 0);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
 });
