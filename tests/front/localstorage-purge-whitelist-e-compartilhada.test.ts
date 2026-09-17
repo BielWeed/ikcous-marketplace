@@ -38,6 +38,13 @@ describe("chaveSobreviveAPurga — critério ÚNICO usado pela Nuclear Purge e p
     expect(chaveSobreviveAPurga("admin_banner_form_draft")).toBe(true);
   });
 
+  // C3.1 (PDV de balcão): o rascunho da venda em curso é a MESMA classe de
+  // escrita pendente do rascunho de banner — um cupom montado não pode
+  // sumir sozinho no boot antes de a venda ser registrada.
+  it("preserva o rascunho da venda de balcão", () => {
+    expect(chaveSobreviveAPurga("admin_pdv_venda_draft")).toBe(true);
+  });
+
   it("preserva sessão, carrinho, favoritos e aviso lido — o que a Nuclear Purge original já cobria", () => {
     expect(chaveSobreviveAPurga("sb-projeto-auth-token")).toBe(true);
     expect(chaveSobreviveAPurga("supabase.auth.token")).toBe(true);
