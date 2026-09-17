@@ -1,177 +1,168 @@
 {
- "frente": "pwa",
- "tarefas": [
-  {
-   "id": "UpdateNotification-138",
-   "titulo": "Aviso de atualização é modal sem saída: trava o painel do lojista até ele recarregar",
-   "arquivo_principal": "src/components/pwa/UpdateNotification.tsx",
-   "linha": 138,
-   "severidade": "bloqueia",
-   "tipo": "ux",
-   "esforco": "M",
-   "descricao": "O cartão tem um único botão, \"Atualizar Agora\". Não existe \"depois\", \"X\" nem Escape, e o backdrop é `pointer-events-auto` cobrindo `inset-0` em `z-[10000]` (linhas 65-72). `needRefresh` do `useRegisterSW` não volta a false sozinho, então uma vez mostrado o modal fica para sempre. O gate só o suprime nas telas de compra do CLIENTE (`TELAS_DE_COMPRA` em PWAUpdateGate.tsx:19-26: cart, checkout, address-form, order-success, auth, login) — nenhuma tela de admin está na lista.",
-   "cenario": "Sai um deploy às 14h. O lojista está em `admin-product-form` com um produto meio preenchido (ou, no futuro PDV, com um cupom de venda montado). O SW novo entra em `waiting`, `needRefresh` vira true, o modal cobre a tela inteira e o único caminho é \"Atualizar Agora\" → `aplicarAtualizacaoPendenteERecarregar` → `window.location.reload()`. Tudo o que estava na tela e não foi salvo morre, e não havia como adiar.",
-   "evidencia": "src/components/pwa/UpdateNotification.tsx:65-72 (backdrop `pointer-events-auto absolute inset-0`) e 138-146 (único botão); src/components/pwa/PWAUpdateGate.tsx:19-26 e 54 `show={updateAvailable && !TELAS_DE_COMPRA.has(currentView)}`; src/lib/recuperacao-chunk.ts:359-401 (`aplicarAtualizacaoPendenteERecarregar` recarrega em no máximo 1200ms).",
-   "correcao_sugerida_pelo_leitor": "Acrescentar um botão \"Agora não\" que esconda o cartão nesta sessão (reagendando o aviso para a próxima troca de tela ou para daqui a N minutos) e um `guardaDeFormularioSujo` como o que o App já usa. Enquanto o PDV não existir, incluir as telas de admin com trabalho em andamento na lista de telas protegidas — atualizar no meio de uma venda presencial é o pior momento possível.",
-   "vereditos_da_verificacao": [
+  "frente": "pwa",
+  "tarefas": [
     {
-     "lente": "guarda existente",
-     "motivo": "Confirmado no código: o cartão tem um único botão, o backdrop é `pointer-events-auto inset-0` sem `onClick`, não há Escape, `updateAvailable` é o `needRefresh` do `useRegisterSW` cujo setter é descartado (`_setNeedRefresh`) e portanto nunca volta a false, e `TELAS_DE_COMPRA` não inclui nenhuma view de admin.",
-     "evidencia": "src/components/pwa/UpdateNotification.tsx:65-72 (backdrop) e 136-146 (só \"Atualizar Agora\"); src/hooks/useUpdateCheck.ts:100 `needRefresh: [needRefresh, _setNeedRefresh]` e :345 `updateAvailable: needRefresh` (nada reseta); src/components/pwa/PWAUpdateGate.tsx:19-26 e :54; src/App.tsx:2952 monta o gate para TODA view. Ressalva ao cenário do achado: existe uma guarda PARCIAL — src/App.tsx:536-547 arma `beforeunload` quando `isAdminDirty`, e o form de produto alimenta esse flag via `onSetDirty: setIsAdminDirty` (src/components/layouts/AdminArea.tsx:389,512,545,570,583). Logo o trabalho não morre calado: aparece o diálogo nativo do navegador. Mas cancelar o diálogo NÃO tira o modal (needRefresh continua true e o reload só é tentado uma vez, por causa do latch `recarregou` em src/lib/recuperacao-chunk.ts:363-367), então o lojista fica com a tela coberta e sem saída — o defeito central do achado se confirma, e piora.",
-     "severidade": "antes_de_crescer",
-     "correcao": "Acrescentar \"Agora não\" que zere o cartão nesta sessão (reagendando para a próxima troca de tela) e suprimir o aviso enquanto `isAdminDirty` for true — reaproveitando o flag que o App já mantém, em vez de crescer a lista de views na mão."
+      "id": "UpdateNotification-138",
+      "titulo": "Aviso de atualização é modal sem saída: trava o painel do lojista até ele recarregar",
+      "arquivo_principal": "src/components/pwa/UpdateNotification.tsx",
+      "linha": 138,
+      "severidade": "bloqueia",
+      "tipo": "ux",
+      "esforco": "M",
+      "descricao": "O cartão tem um único botão, \"Atualizar Agora\". Não existe \"depois\", \"X\" nem Escape, e o backdrop é `pointer-events-auto` cobrindo `inset-0` em `z-[10000]` (linhas 65-72). `needRefresh` do `useRegisterSW` não volta a false sozinho, então uma vez mostrado o modal fica para sempre. O gate só o suprime nas telas de compra do CLIENTE (`TELAS_DE_COMPRA` em PWAUpdateGate.tsx:19-26: cart, checkout, address-form, order-success, auth, login) — nenhuma tela de admin está na lista.",
+      "cenario": "Sai um deploy às 14h. O lojista está em `admin-product-form` com um produto meio preenchido (ou, no futuro PDV, com um cupom de venda montado). O SW novo entra em `waiting`, `needRefresh` vira true, o modal cobre a tela inteira e o único caminho é \"Atualizar Agora\" → `aplicarAtualizacaoPendenteERecarregar` → `window.location.reload()`. Tudo o que estava na tela e não foi salvo morre, e não havia como adiar.",
+      "evidencia": "src/components/pwa/UpdateNotification.tsx:65-72 (backdrop `pointer-events-auto absolute inset-0`) e 138-146 (único botão); src/components/pwa/PWAUpdateGate.tsx:19-26 e 54 `show={updateAvailable && !TELAS_DE_COMPRA.has(currentView)}`; src/lib/recuperacao-chunk.ts:359-401 (`aplicarAtualizacaoPendenteERecarregar` recarrega em no máximo 1200ms).",
+      "correcao_sugerida_pelo_leitor": "Acrescentar um botão \"Agora não\" que esconda o cartão nesta sessão (reagendando o aviso para a próxima troca de tela ou para daqui a N minutos) e um `guardaDeFormularioSujo` como o que o App já usa. Enquanto o PDV não existir, incluir as telas de admin com trabalho em andamento na lista de telas protegidas — atualizar no meio de uma venda presencial é o pior momento possível.",
+      "vereditos_da_verificacao": [
+        {
+          "lente": "guarda existente",
+          "motivo": "Confirmado no código: o cartão tem um único botão, o backdrop é `pointer-events-auto inset-0` sem `onClick`, não há Escape, `updateAvailable` é o `needRefresh` do `useRegisterSW` cujo setter é descartado (`_setNeedRefresh`) e portanto nunca volta a false, e `TELAS_DE_COMPRA` não inclui nenhuma view de admin.",
+          "evidencia": "src/components/pwa/UpdateNotification.tsx:65-72 (backdrop) e 136-146 (só \"Atualizar Agora\"); src/hooks/useUpdateCheck.ts:100 `needRefresh: [needRefresh, _setNeedRefresh]` e :345 `updateAvailable: needRefresh` (nada reseta); src/components/pwa/PWAUpdateGate.tsx:19-26 e :54; src/App.tsx:2952 monta o gate para TODA view. Ressalva ao cenário do achado: existe uma guarda PARCIAL — src/App.tsx:536-547 arma `beforeunload` quando `isAdminDirty`, e o form de produto alimenta esse flag via `onSetDirty: setIsAdminDirty` (src/components/layouts/AdminArea.tsx:389,512,545,570,583). Logo o trabalho não morre calado: aparece o diálogo nativo do navegador. Mas cancelar o diálogo NÃO tira o modal (needRefresh continua true e o reload só é tentado uma vez, por causa do latch `recarregou` em src/lib/recuperacao-chunk.ts:363-367), então o lojista fica com a tela coberta e sem saída — o defeito central do achado se confirma, e piora.",
+          "severidade": "antes_de_crescer",
+          "correcao": "Acrescentar \"Agora não\" que zere o cartão nesta sessão (reagendando para a próxima troca de tela) e suprimir o aviso enquanto `isAdminDirty` for true — reaproveitando o flag que o App já mantém, em vez de crescer a lista de views na mão."
+        },
+        {
+          "lente": "reprodução",
+          "motivo": "O cartão é modal sem escape (backdrop `pointer-events-auto inset-0` sem onClick, botão único, nenhum handler de Escape) e o gate só o suprime nas 6 telas de compra do cliente, nenhuma de admin — com `needRefresh` que nunca volta a false, o painel fica coberto até o lojista recarregar.",
+          "evidencia": "src/components/pwa/UpdateNotification.tsx:71 (backdrop `pointer-events-auto absolute inset-0`, sem onClick) e :140-144 (único botão \"Atualizar Agora\"); src/components/pwa/PWAUpdateGate.tsx:19-26 e :54 (`TELAS_DE_COMPRA` = cart/checkout/address-form/order-success/auth/login); src/hooks/useUpdateCheck.ts:105 (`needRefresh: [needRefresh, _setNeedRefresh]` — o setter é descartado).",
+          "severidade": "antes_de_crescer",
+          "correcao": "Botão \"Agora não\" que esconde o cartão nesta sessão e o rearma na próxima troca de tela; NÃO é preciso inventar guarda de formulário para o produto (já há auto-save de rascunho em AdminProductFormView.tsx:892 + restauração em :610/:687, e o botão de update não passa pelo purge de localStorage) — o que falta é a saída, não o rascunho. Corrigido o cenário: o que se perde hoje são as telas de admin SEM rascunho (banners, configurações), não o formulário de produto."
+        }
+      ],
+      "arquivos_permitidos": [
+        "src/components/pwa/UpdateNotification.tsx",
+        "src/components/pwa/PWAUpdateGate.tsx",
+        "tests/front/"
+      ],
+      "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. O aviso de atualização é modal sem saída e cobre o painel do lojista (inclusive no meio de uma operação). Correção: botão 'Depois' (adia por 1 h, guardando o instante em sessionStorage/localStorage com try/catch), semântica de diálogo (role=dialog, aria-modal, foco preso, Escape = Depois), e não cobrir telas do admin enquanto houver formulário sujo (respeitar o mesmo sinal de dirty que o App usa, se acessível; senão, ao menos permitir 'Depois'). PWAUpdateGate.tsx pode ser tocado se for onde a decisão mora. Preserve a atualização com consentimento (registerType prompt). Testes em tests/front/update-notification-tem-saida-e-e-dialogo.test.tsx."
     },
     {
-     "lente": "reprodução",
-     "motivo": "O cartão é modal sem escape (backdrop `pointer-events-auto inset-0` sem onClick, botão único, nenhum handler de Escape) e o gate só o suprime nas 6 telas de compra do cliente, nenhuma de admin — com `needRefresh` que nunca volta a false, o painel fica coberto até o lojista recarregar.",
-     "evidencia": "src/components/pwa/UpdateNotification.tsx:71 (backdrop `pointer-events-auto absolute inset-0`, sem onClick) e :140-144 (único botão \"Atualizar Agora\"); src/components/pwa/PWAUpdateGate.tsx:19-26 e :54 (`TELAS_DE_COMPRA` = cart/checkout/address-form/order-success/auth/login); src/hooks/useUpdateCheck.ts:105 (`needRefresh: [needRefresh, _setNeedRefresh]` — o setter é descartado).",
-     "severidade": "antes_de_crescer",
-     "correcao": "Botão \"Agora não\" que esconde o cartão nesta sessão e o rearma na próxima troca de tela; NÃO é preciso inventar guarda de formulário para o produto (já há auto-save de rascunho em AdminProductFormView.tsx:892 + restauração em :610/:687, e o botão de update não passa pelo purge de localStorage) — o que falta é a saída, não o rascunho. Corrigido o cenário: o que se perde hoje são as telas de admin SEM rascunho (banners, configurações), não o formulário de produto."
-    }
-   ],
-   "arquivos_permitidos": [
-    "src/components/pwa/UpdateNotification.tsx",
-    "src/components/pwa/PWAUpdateGate.tsx",
-    "tests/front/"
-   ],
-   "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. O aviso de atualização é modal sem saída e cobre o painel do lojista (inclusive no meio de uma operação). Correção: botão 'Depois' (adia por 1 h, guardando o instante em sessionStorage/localStorage com try/catch), semântica de diálogo (role=dialog, aria-modal, foco preso, Escape = Depois), e não cobrir telas do admin enquanto houver formulário sujo (respeitar o mesmo sinal de dirty que o App usa, se acessível; senão, ao menos permitir 'Depois'). PWAUpdateGate.tsx pode ser tocado se for onde a decisão mora. Preserve a atualização com consentimento (registerType prompt). Testes em tests/front/update-notification-tem-saida-e-e-dialogo.test.tsx."
-  },
-  {
-   "id": "realtimeSyncEngine-955",
-   "titulo": "catchUp monta um `.in(\"id\", [...])` sem teto — URL estoura e o cofre para de receber produtos",
-   "arquivo_principal": "src/lib/realtimeSyncEngine.ts",
-   "linha": 955,
-   "severidade": "antes_de_crescer",
-   "tipo": "escalabilidade",
-   "esforco": "M",
-   "descricao": "`outOfDateIds` é construído a partir do resumo de TODOS os produtos do servidor (a consulta de resumo, por decisão explícita do comentário em 899-907, não pode ter `.limit()`), e depois vira um único GET `produtos?id=in.(uuid,uuid,...)`. Cada UUID custa 37 caracteres na query string. Não há paginação nem fatiamento.",
-   "cenario": "Loja com 400 produtos e cofre vazio (primeiro boot, ou logo depois de um purge de versão obrigatória). `localProducts` = [] → `outOfDateIds` = os 400 ids → a query string passa de 15 KB, acima do limite de linha de requisição do gateway do Supabase (~8 KB). A resposta é 414/431; `erroDetalhes` é logado em `console.error` (linhas 962-967) e o `if (rawProducts)` nunca entra. Efeito: o cofre nunca é preenchido pelo catchUp, e como isso se repete a cada foco da aba, a loja fica permanentemente sem catálogo offline sem nenhum aviso na tela.",
-   "evidencia": "src/lib/realtimeSyncEngine.ts:912-931 (monta `outOfDateIds` sem teto), 941-955 (`.in(\"id\", outOfDateIds)`), 962-967 (erro só vai para o console), 899-907 (comentário proibindo `.limit()` no resumo).",
-   "correcao_sugerida_pelo_leitor": "Fatiar `outOfDateIds` em lotes (ex.: 100 ids por requisição) e concatenar os resultados, ou trocar o filtro por `ultima_atualizacao > <lastSync do _meta>` (o DataVault já guarda `getLastSync('products')` e ninguém usa esse dado para nada hoje). Em qualquer dos dois, o erro precisa chegar à UI, não só ao console.",
-   "vereditos_da_verificacao": [
-    {
-     "lente": "guarda existente",
-     "motivo": "O `.in(\"id\", outOfDateIds)` é montado sem fatiamento nenhum e alimentado por um resumo deliberadamente sem `.limit()`, e o erro só vai para `console.error` — não existe guarda de tamanho em lugar nenhum do caminho; o que não consigo provar aqui é o ponto exato em que o gateway devolve 414/431.",
-     "evidencia": "src/lib/realtimeSyncEngine.ts:678-683 (resumo `select(\"id, ultima_atualizacao\")` sem limite — e o comentário de :763-768 proíbe explicitamente pôr um), :912-931 (`outOfDateIds` sem teto), :955 `.in(\"id\", outOfDateIds)`, :957-967 (`erroDetalhes` só no console, e o `if (rawProducts)` não entra). O ramo admin ainda soma ~450 caracteres de lista de colunas explícitas (:951) à mesma query string. Nenhum helper de lote existe no arquivo. O gatilho por foco é real: src/lib/realtimeSyncEngine.ts:317-327.",
-     "severidade": "antes_de_crescer",
-     "correcao": "Fatiar `outOfDateIds` em lotes de ~100 e concatenar (uma função só, usada também pelo ramo de `deletedIds`), e fazer `erroDetalhes` publicar um SyncEvent de falha para a UI — catálogo que não sincroniza não pode ser um log."
+      "id": "realtimeSyncEngine-955",
+      "titulo": "catchUp monta um `.in(\"id\", [...])` sem teto — URL estoura e o cofre para de receber produtos",
+      "arquivo_principal": "src/lib/realtimeSyncEngine.ts",
+      "linha": 955,
+      "severidade": "antes_de_crescer",
+      "tipo": "escalabilidade",
+      "esforco": "M",
+      "descricao": "`outOfDateIds` é construído a partir do resumo de TODOS os produtos do servidor (a consulta de resumo, por decisão explícita do comentário em 899-907, não pode ter `.limit()`), e depois vira um único GET `produtos?id=in.(uuid,uuid,...)`. Cada UUID custa 37 caracteres na query string. Não há paginação nem fatiamento.",
+      "cenario": "Loja com 400 produtos e cofre vazio (primeiro boot, ou logo depois de um purge de versão obrigatória). `localProducts` = [] → `outOfDateIds` = os 400 ids → a query string passa de 15 KB, acima do limite de linha de requisição do gateway do Supabase (~8 KB). A resposta é 414/431; `erroDetalhes` é logado em `console.error` (linhas 962-967) e o `if (rawProducts)` nunca entra. Efeito: o cofre nunca é preenchido pelo catchUp, e como isso se repete a cada foco da aba, a loja fica permanentemente sem catálogo offline sem nenhum aviso na tela.",
+      "evidencia": "src/lib/realtimeSyncEngine.ts:912-931 (monta `outOfDateIds` sem teto), 941-955 (`.in(\"id\", outOfDateIds)`), 962-967 (erro só vai para o console), 899-907 (comentário proibindo `.limit()` no resumo).",
+      "correcao_sugerida_pelo_leitor": "Fatiar `outOfDateIds` em lotes (ex.: 100 ids por requisição) e concatenar os resultados, ou trocar o filtro por `ultima_atualizacao > <lastSync do _meta>` (o DataVault já guarda `getLastSync('products')` e ninguém usa esse dado para nada hoje). Em qualquer dos dois, o erro precisa chegar à UI, não só ao console.",
+      "vereditos_da_verificacao": [
+        {
+          "lente": "guarda existente",
+          "motivo": "O `.in(\"id\", outOfDateIds)` é montado sem fatiamento nenhum e alimentado por um resumo deliberadamente sem `.limit()`, e o erro só vai para `console.error` — não existe guarda de tamanho em lugar nenhum do caminho; o que não consigo provar aqui é o ponto exato em que o gateway devolve 414/431.",
+          "evidencia": "src/lib/realtimeSyncEngine.ts:678-683 (resumo `select(\"id, ultima_atualizacao\")` sem limite — e o comentário de :763-768 proíbe explicitamente pôr um), :912-931 (`outOfDateIds` sem teto), :955 `.in(\"id\", outOfDateIds)`, :957-967 (`erroDetalhes` só no console, e o `if (rawProducts)` não entra). O ramo admin ainda soma ~450 caracteres de lista de colunas explícitas (:951) à mesma query string. Nenhum helper de lote existe no arquivo. O gatilho por foco é real: src/lib/realtimeSyncEngine.ts:317-327.",
+          "severidade": "antes_de_crescer",
+          "correcao": "Fatiar `outOfDateIds` em lotes de ~100 e concatenar (uma função só, usada também pelo ramo de `deletedIds`), e fazer `erroDetalhes` publicar um SyncEvent de falha para a UI — catálogo que não sincroniza não pode ser um log."
+        },
+        {
+          "lente": "reprodução",
+          "motivo": "`outOfDateIds` sai do resumo do catálogo inteiro (proibido `.limit()` por decisão explícita) e vira um único `.in(\"id\", [...])` em GET, sem fatiamento: postgrest-js concatena os UUIDs crus na query string (~37 bytes cada), então a partir de algumas centenas de produtos com cofre vazio a linha de requisição passa dos limites usuais de gateway e o catchUp de detalhes falha só no console.",
+          "evidencia": "src/lib/realtimeSyncEngine.ts:912-931 (monta a lista sem teto), :955 (`.in(\"id\", outOfDateIds)`), :960-967 (erro só em console.error), :899-907 (comentário proibindo `.limit()` no resumo); node_modules/@supabase/postgrest-js/dist/index.mjs:1618-1623 (`in.(${cleanedValues})` na searchParams, sem lote).",
+          "severidade": "antes_de_crescer",
+          "correcao": "Fatiar `outOfDateIds` em lotes (≈100 ids) e concatenar, e levar o erro à UI. Ressalva do cenário: a loja não fica \"permanentemente sem catálogo offline\" — `fetchProducts` continua gravando até 200 produtos no cofre (StoreContext.tsx:726); o que morre é a reconciliação do restante."
+        }
+      ],
+      "arquivos_permitidos": ["src/lib/realtimeSyncEngine.ts", "tests/front/"],
+      "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. catchUp monta `.in('id', [...])` sem teto: a URL estoura com muitos ids. Correção: fatiar em lotes (ex.: 100 ids por chamada) e juntar os resultados; erro em um lote não some com os outros (registrar e seguir). Teste em tests/front/realtime-catchup-fatia-os-ids.test.ts com dublê do supabase contando chamadas. Só este arquivo + teste."
     },
     {
-     "lente": "reprodução",
-     "motivo": "`outOfDateIds` sai do resumo do catálogo inteiro (proibido `.limit()` por decisão explícita) e vira um único `.in(\"id\", [...])` em GET, sem fatiamento: postgrest-js concatena os UUIDs crus na query string (~37 bytes cada), então a partir de algumas centenas de produtos com cofre vazio a linha de requisição passa dos limites usuais de gateway e o catchUp de detalhes falha só no console.",
-     "evidencia": "src/lib/realtimeSyncEngine.ts:912-931 (monta a lista sem teto), :955 (`.in(\"id\", outOfDateIds)`), :960-967 (erro só em console.error), :899-907 (comentário proibindo `.limit()` no resumo); node_modules/@supabase/postgrest-js/dist/index.mjs:1618-1623 (`in.(${cleanedValues})` na searchParams, sem lote).",
-     "severidade": "antes_de_crescer",
-     "correcao": "Fatiar `outOfDateIds` em lotes (≈100 ids) e concatenar, e levar o erro à UI. Ressalva do cenário: a loja não fica \"permanentemente sem catálogo offline\" — `fetchProducts` continua gravando até 200 produtos no cofre (StoreContext.tsx:726); o que morre é a reconciliação do restante."
-    }
-   ],
-   "arquivos_permitidos": [
-    "src/lib/realtimeSyncEngine.ts",
-    "tests/front/"
-   ],
-   "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. catchUp monta `.in('id', [...])` sem teto: a URL estoura com muitos ids. Correção: fatiar em lotes (ex.: 100 ids por chamada) e juntar os resultados; erro em um lote não some com os outros (registrar e seguir). Teste em tests/front/realtime-catchup-fatia-os-ids.test.ts com dublê do supabase contando chamadas. Só este arquivo + teste."
-  },
-  {
-   "id": "realtimeSyncEngine-952",
-   "titulo": "Três caminhos gravam o MESMO registro de produto no cofre com conjuntos de colunas diferentes",
-   "arquivo_principal": "src/lib/realtimeSyncEngine.ts",
-   "linha": 952,
-   "severidade": "antes_de_crescer",
-   "tipo": "bug",
-   "esforco": "M",
-   "descricao": "O store `products` do DataVault recebe produtos de três fontes com esquemas divergentes: (1) `StoreContext.fetchProducts` usa `vw_produtos_admin`/`vw_produtos_public` com `select(\"*\")` — traz `custo` no ramo admin; (2) `catchUp` usa uma lista FIXA de 29 colunas de `produtos`, escolhida a dedo para excluir `custo` (comentário em 944-950); (3) o Realtime entrega a linha crua da tabela, sujeita a privilégio de coluna. `mapProductFromDB` transforma coluna ausente em campo `undefined` (mappers.ts:72-77: `custo` ausente → `costPrice: undefined`), e `vault.put`/`putMany` sobrescreve o registro inteiro. Não existe merge com o que já estava gravado, a não ser o caso especial de `variants` (510-526).",
-   "cenario": "Admin abre o painel: `fetchProducts` grava no cofre produtos COM `costPrice`. O lojista troca de app e volta → `visibilitychange` dispara `catchUp` → os produtos que mudaram no servidor são regravados pela lista de 29 colunas → `costPrice: undefined` no cofre e, via `useSyncListener([\"products\"])`, também no `products` do StoreContext. Metade do catálogo em cache tem o campo, metade não, e qual metade depende de quem gravou por último. Exatamente o mesmo vai acontecer com `codigo_barras` no dia em que a coluna existir: o PDV vai reconhecer o código de uns produtos e não de outros, sem padrão nenhum.",
-   "evidencia": "src/lib/realtimeSyncEngine.ts:941-955 (lista fixa de 29 colunas, sem `custo`); src/contexts/StoreContext.tsx:664-684 (views com `*`); src/lib/mappers.ts:72-77 (`rawCusto` ausente → `costPrice: undefined`); src/lib/realtimeSyncEngine.ts:528 (`await vault.put(config.store, mapped)` sem merge).",
-   "correcao_sugerida_pelo_leitor": "Uma fonte só para o produto do admin: fazer o `catchUp` ler `vw_produtos_admin` (que é a porta do admin e já resolve o `custo` por `is_admin()`) em vez da tabela com lista manual, e no `_applyChangeAndNotify` mesclar o registro novo por cima do que já está no cofre em vez de substituir. Sem isso, toda coluna nova precisa ser adicionada em três lugares e o esquecimento é silencioso.",
-   "vereditos_da_verificacao": [
-    {
-     "lente": "guarda existente",
-     "motivo": "Os três caminhos gravam no MESMO store com conjuntos de colunas diferentes e `vault.put` substitui o registro inteiro (o único merge é o de `variants`), então `custo` presente por `vw_produtos_admin` some quando o catchUp regrava pela lista de 29 colunas — e isso chega à tela do lojista.",
-     "evidencia": "src/contexts/StoreContext.tsx:664-670 (`vw_produtos_admin` com `*`) vs src/lib/realtimeSyncEngine.ts:943-951 (lista fixa de 29 colunas, sem `custo`, com o comentário dizendo que foi de propósito) vs o payload cru do Realtime; src/lib/mappers.ts:72-77 (`rawCusto` ausente → `costPrice: undefined`); src/lib/realtimeSyncEngine.ts:528 `await vault.put(config.store, mapped)` (merge só para `variants`, :505-526). Consequência observável: src/views/admin/AdminProductsView.tsx:1509-1523 decide margem/capital investido por `product.costPrice != null` — metade do catálogo passa a exibir \"sem custo\" conforme quem gravou por último.",
-     "severidade": "antes_de_crescer",
-     "correcao": "Fazer o catchUp admin ler `vw_produtos_admin` (a mesma porta do `fetchProducts`, que já resolve `custo` por `is_admin()`) e, no `_applyChangeAndNotify`, mesclar o registro novo por cima do que já está no cofre em vez de substituir — assim uma coluna nova (o futuro `codigo_barras`) entra num lugar só."
+      "id": "realtimeSyncEngine-952",
+      "titulo": "Três caminhos gravam o MESMO registro de produto no cofre com conjuntos de colunas diferentes",
+      "arquivo_principal": "src/lib/realtimeSyncEngine.ts",
+      "linha": 952,
+      "severidade": "antes_de_crescer",
+      "tipo": "bug",
+      "esforco": "M",
+      "descricao": "O store `products` do DataVault recebe produtos de três fontes com esquemas divergentes: (1) `StoreContext.fetchProducts` usa `vw_produtos_admin`/`vw_produtos_public` com `select(\"*\")` — traz `custo` no ramo admin; (2) `catchUp` usa uma lista FIXA de 29 colunas de `produtos`, escolhida a dedo para excluir `custo` (comentário em 944-950); (3) o Realtime entrega a linha crua da tabela, sujeita a privilégio de coluna. `mapProductFromDB` transforma coluna ausente em campo `undefined` (mappers.ts:72-77: `custo` ausente → `costPrice: undefined`), e `vault.put`/`putMany` sobrescreve o registro inteiro. Não existe merge com o que já estava gravado, a não ser o caso especial de `variants` (510-526).",
+      "cenario": "Admin abre o painel: `fetchProducts` grava no cofre produtos COM `costPrice`. O lojista troca de app e volta → `visibilitychange` dispara `catchUp` → os produtos que mudaram no servidor são regravados pela lista de 29 colunas → `costPrice: undefined` no cofre e, via `useSyncListener([\"products\"])`, também no `products` do StoreContext. Metade do catálogo em cache tem o campo, metade não, e qual metade depende de quem gravou por último. Exatamente o mesmo vai acontecer com `codigo_barras` no dia em que a coluna existir: o PDV vai reconhecer o código de uns produtos e não de outros, sem padrão nenhum.",
+      "evidencia": "src/lib/realtimeSyncEngine.ts:941-955 (lista fixa de 29 colunas, sem `custo`); src/contexts/StoreContext.tsx:664-684 (views com `*`); src/lib/mappers.ts:72-77 (`rawCusto` ausente → `costPrice: undefined`); src/lib/realtimeSyncEngine.ts:528 (`await vault.put(config.store, mapped)` sem merge).",
+      "correcao_sugerida_pelo_leitor": "Uma fonte só para o produto do admin: fazer o `catchUp` ler `vw_produtos_admin` (que é a porta do admin e já resolve o `custo` por `is_admin()`) em vez da tabela com lista manual, e no `_applyChangeAndNotify` mesclar o registro novo por cima do que já está no cofre em vez de substituir. Sem isso, toda coluna nova precisa ser adicionada em três lugares e o esquecimento é silencioso.",
+      "vereditos_da_verificacao": [
+        {
+          "lente": "guarda existente",
+          "motivo": "Os três caminhos gravam no MESMO store com conjuntos de colunas diferentes e `vault.put` substitui o registro inteiro (o único merge é o de `variants`), então `custo` presente por `vw_produtos_admin` some quando o catchUp regrava pela lista de 29 colunas — e isso chega à tela do lojista.",
+          "evidencia": "src/contexts/StoreContext.tsx:664-670 (`vw_produtos_admin` com `*`) vs src/lib/realtimeSyncEngine.ts:943-951 (lista fixa de 29 colunas, sem `custo`, com o comentário dizendo que foi de propósito) vs o payload cru do Realtime; src/lib/mappers.ts:72-77 (`rawCusto` ausente → `costPrice: undefined`); src/lib/realtimeSyncEngine.ts:528 `await vault.put(config.store, mapped)` (merge só para `variants`, :505-526). Consequência observável: src/views/admin/AdminProductsView.tsx:1509-1523 decide margem/capital investido por `product.costPrice != null` — metade do catálogo passa a exibir \"sem custo\" conforme quem gravou por último.",
+          "severidade": "antes_de_crescer",
+          "correcao": "Fazer o catchUp admin ler `vw_produtos_admin` (a mesma porta do `fetchProducts`, que já resolve `custo` por `is_admin()`) e, no `_applyChangeAndNotify`, mesclar o registro novo por cima do que já está no cofre em vez de substituir — assim uma coluna nova (o futuro `codigo_barras`) entra num lugar só."
+        },
+        {
+          "lente": "reprodução",
+          "motivo": "Os três caminhos gravam o mesmo registro com conjuntos de colunas diferentes e `put`/`putMany` substituem o registro inteiro (só `variants` tem merge), então depois de um catchUp de admin o produto no cofre perde `costPrice` — e `mapProductFromDB` não distingue \"coluna ausente\" de \"sem custo\".",
+          "evidencia": "src/lib/realtimeSyncEngine.ts:944-952 (lista fixa de 29 colunas de `produtos`, sem `custo`, no ramo admin) e :528 (`await vault.put(config.store, mapped)`, merge só de variants em :511-526); src/contexts/StoreContext.tsx:665-668 (`vw_produtos_admin` com `*`, que é `SELECT * FROM produtos WHERE is_admin()`); src/lib/mappers.ts:69-73 (`row.custo ?? row.cost_price` ausente → `costPrice: undefined`). Consequência visível hoje: src/hooks/useProducts.ts:1362,1426,1569 passam `costPrice` do cache ao TruthGate, e src/utils/truth_gate.ts:334-336 pula o Axioma 5 (margem) quando o custo é `undefined` — o aviso de venda abaixo do custo some sem ninguém saber.",
+          "severidade": "antes_de_crescer",
+          "correcao": "Fazer o catchUp de detalhes do admin ler `vw_produtos_admin` (mesma porta do `fetchProducts`, que já resolve `custo` por `is_admin()`) e mesclar o registro novo por cima do que já está no cofre em `_applyChangeAndNotify`, em vez de substituir — senão cada coluna nova (inclusive `codigo_barras` do PDV) precisa ser lembrada em três lugares."
+        }
+      ],
+      "arquivos_permitidos": ["src/lib/realtimeSyncEngine.ts", "tests/front/"],
+      "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. Três caminhos gravam o mesmo registro de produto no cofre com colunas diferentes (fetchProducts grava o * da view; catchUp grava a lista fixa de 29 colunas lendo a tabela; realtime grava a linha crua). Correção mínima: o catchUp do admin lê a MESMA view que o fetchProducts (vw_produtos_admin com product_variants) em vez da tabela com lista fixa, e passa pelo mesmo mapper — um esquema só. Teste em tests/front/realtime-catchup-usa-o-mesmo-esquema-da-vitrine.test.ts. Confira que a coluna nova do PDV (codigo_barras, futura) passaria a viajar sozinha."
     },
     {
-     "lente": "reprodução",
-     "motivo": "Os três caminhos gravam o mesmo registro com conjuntos de colunas diferentes e `put`/`putMany` substituem o registro inteiro (só `variants` tem merge), então depois de um catchUp de admin o produto no cofre perde `costPrice` — e `mapProductFromDB` não distingue \"coluna ausente\" de \"sem custo\".",
-     "evidencia": "src/lib/realtimeSyncEngine.ts:944-952 (lista fixa de 29 colunas de `produtos`, sem `custo`, no ramo admin) e :528 (`await vault.put(config.store, mapped)`, merge só de variants em :511-526); src/contexts/StoreContext.tsx:665-668 (`vw_produtos_admin` com `*`, que é `SELECT * FROM produtos WHERE is_admin()`); src/lib/mappers.ts:69-73 (`row.custo ?? row.cost_price` ausente → `costPrice: undefined`). Consequência visível hoje: src/hooks/useProducts.ts:1362,1426,1569 passam `costPrice` do cache ao TruthGate, e src/utils/truth_gate.ts:334-336 pula o Axioma 5 (margem) quando o custo é `undefined` — o aviso de venda abaixo do custo some sem ninguém saber.",
-     "severidade": "antes_de_crescer",
-     "correcao": "Fazer o catchUp de detalhes do admin ler `vw_produtos_admin` (mesma porta do `fetchProducts`, que já resolve `custo` por `is_admin()`) e mesclar o registro novo por cima do que já está no cofre em `_applyChangeAndNotify`, em vez de substituir — senão cada coluna nova (inclusive `codigo_barras` do PDV) precisa ser lembrada em três lugares."
-    }
-   ],
-   "arquivos_permitidos": [
-    "src/lib/realtimeSyncEngine.ts",
-    "tests/front/"
-   ],
-   "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. Três caminhos gravam o mesmo registro de produto no cofre com colunas diferentes (fetchProducts grava o * da view; catchUp grava a lista fixa de 29 colunas lendo a tabela; realtime grava a linha crua). Correção mínima: o catchUp do admin lê a MESMA view que o fetchProducts (vw_produtos_admin com product_variants) em vez da tabela com lista fixa, e passa pelo mesmo mapper — um esquema só. Teste em tests/front/realtime-catchup-usa-o-mesmo-esquema-da-vitrine.test.ts. Confira que a coluna nova do PDV (codigo_barras, futura) passaria a viajar sozinha."
-  },
-  {
-   "id": "dataVault-129",
-   "titulo": "Depois de `onversionchange`, quem segura a instância antiga escreve no vazio e o catchUp acha que o cofre está vazio",
-   "arquivo_principal": "src/lib/dataVault.ts",
-   "linha": 129,
-   "severidade": "antes_de_crescer",
-   "tipo": "bug",
-   "esforco": "M",
-   "descricao": "`db.onversionchange` fecha a conexão e zera `_instance`/`_initPromise`, mas quem já guardou o OBJETO `DataVault` continua com o handle fechado: `StoreContext.vaultRef.current` (linha 296) e, pior, o `vault` que `RealtimeSyncEngine.start` capturou por closure (realtimeSyncEngine.ts:214) e usa até o `stop()`. Toda operação a partir daí lança `InvalidStateError` no `this.db.transaction(...)` síncrono. `putMany`/`put` rejeitam e o `catch` do `_applyChangeAndNotify` (636-643) só imprime no console, mas continua notificando os listeners como se tivesse gravado. E `getAll` engole o throw e devolve `[]` (dataVault.ts:231-235) — a existência de `getAllOrThrow` ao lado prova que já sabiam que isso confunde \"quebrou\" com \"está vazio\".",
-   "cenario": "Lojista tem a PWA instalada aberta (build 1.35, DATA_VAULT_VERSION=2). Sai um deploy que sobe o DataVault para v3 e ele abre a loja numa aba do navegador. A aba antiga recebe `onversionchange` e fecha a conexão. Daí em diante: (a) todo evento Realtime aplica-se a um cofre morto, com erro só no console, e a vitrine passa a divergir do banco até alguém recarregar; (b) `catchUp` chama `vault.getAll(\"products\")` na linha 856, recebe `[]`, conclui que não há nada local e coloca TODOS os ids do catálogo em `outOfDateIds` — voltando ao achado do `.in(...)` sem teto, agora a cada foco da aba.",
-   "evidencia": "src/lib/dataVault.ts:129-136 (`onversionchange` fecha e zera o singleton), 221-236 (`getAll` resolve `[]` no catch), 250-267 (`getAllOrThrow`, a versão que não engole); src/lib/realtimeSyncEngine.ts:214 (captura `vault` por closure), 636-643 (erro só no console), 856 (`vault.getAll` alimenta a reconciliação).",
-   "correcao_sugerida_pelo_leitor": "Parar de passar a instância: `RealtimeSyncEngine` deve chamar `DataVault.init()` em cada operação (é singleton com promessa memorizada, custo desprezível) ou expor um `DataVault.current()` que reabre sozinho. E `catchUp` deve usar `getAllOrThrow` na linha 856 — uma leitura quebrada não pode virar \"reconcilie o catálogo inteiro\".",
-   "vereditos_da_verificacao": [
-    {
-     "lente": "guarda existente",
-     "motivo": "O `onversionchange` zera o singleton mas o motor segue com a instância que capturou em `start(vault, ...)`, e o `catchUp` lê com `getAll`, que engole o throw e resolve `[]` — exatamente a armadilha que o próprio repo documenta num teste e que os outros três consumidores já evitam com `getAllOrThrow`.",
-     "evidencia": "src/lib/dataVault.ts:129-136 (`db.close(); _instance = null; _initPromise = null`), :221-236 (`getAll` → `resolve([])` no catch), :250-267 (`getAllOrThrow`); src/lib/realtimeSyncEngine.ts:214 `start(vault: DataVault, ...)` e :856 `await vault.getAll<Product>(\"products\")`; src/contexts/StoreContext.tsx:981-995 (o efeito do motor não depende de `vaultRef.current`, então não reinicia quando a conexão morre) e :636-643 do motor (erro só no console, listeners avisados assim mesmo). A guarda existe mas não foi aplicada aqui: `getAllOrThrow` é usada em src/hooks/useCategories.ts:294, src/hooks/useBanners.ts:643 e src/contexts/StoreContext.tsx:1072 — realtimeSyncEngine.ts:856 é o único ponto que ficou com `getAll`. tests/front/data-vault-leitura-quebrada-nao-vira-lista-vazia.test.ts:84 prova o comportamento.",
-     "severidade": "antes_de_crescer",
-     "correcao": "Trocar a linha 856 por `getAllOrThrow` (uma leitura quebrada precisa abortar o catchUp, não pedir o catálogo inteiro) e o motor deixar de guardar a instância: `await DataVault.init()` no início de cada operação, já que o singleton memoriza a promessa."
+      "id": "dataVault-129",
+      "titulo": "Depois de `onversionchange`, quem segura a instância antiga escreve no vazio e o catchUp acha que o cofre está vazio",
+      "arquivo_principal": "src/lib/dataVault.ts",
+      "linha": 129,
+      "severidade": "antes_de_crescer",
+      "tipo": "bug",
+      "esforco": "M",
+      "descricao": "`db.onversionchange` fecha a conexão e zera `_instance`/`_initPromise`, mas quem já guardou o OBJETO `DataVault` continua com o handle fechado: `StoreContext.vaultRef.current` (linha 296) e, pior, o `vault` que `RealtimeSyncEngine.start` capturou por closure (realtimeSyncEngine.ts:214) e usa até o `stop()`. Toda operação a partir daí lança `InvalidStateError` no `this.db.transaction(...)` síncrono. `putMany`/`put` rejeitam e o `catch` do `_applyChangeAndNotify` (636-643) só imprime no console, mas continua notificando os listeners como se tivesse gravado. E `getAll` engole o throw e devolve `[]` (dataVault.ts:231-235) — a existência de `getAllOrThrow` ao lado prova que já sabiam que isso confunde \"quebrou\" com \"está vazio\".",
+      "cenario": "Lojista tem a PWA instalada aberta (build 1.35, DATA_VAULT_VERSION=2). Sai um deploy que sobe o DataVault para v3 e ele abre a loja numa aba do navegador. A aba antiga recebe `onversionchange` e fecha a conexão. Daí em diante: (a) todo evento Realtime aplica-se a um cofre morto, com erro só no console, e a vitrine passa a divergir do banco até alguém recarregar; (b) `catchUp` chama `vault.getAll(\"products\")` na linha 856, recebe `[]`, conclui que não há nada local e coloca TODOS os ids do catálogo em `outOfDateIds` — voltando ao achado do `.in(...)` sem teto, agora a cada foco da aba.",
+      "evidencia": "src/lib/dataVault.ts:129-136 (`onversionchange` fecha e zera o singleton), 221-236 (`getAll` resolve `[]` no catch), 250-267 (`getAllOrThrow`, a versão que não engole); src/lib/realtimeSyncEngine.ts:214 (captura `vault` por closure), 636-643 (erro só no console), 856 (`vault.getAll` alimenta a reconciliação).",
+      "correcao_sugerida_pelo_leitor": "Parar de passar a instância: `RealtimeSyncEngine` deve chamar `DataVault.init()` em cada operação (é singleton com promessa memorizada, custo desprezível) ou expor um `DataVault.current()` que reabre sozinho. E `catchUp` deve usar `getAllOrThrow` na linha 856 — uma leitura quebrada não pode virar \"reconcilie o catálogo inteiro\".",
+      "vereditos_da_verificacao": [
+        {
+          "lente": "guarda existente",
+          "motivo": "O `onversionchange` zera o singleton mas o motor segue com a instância que capturou em `start(vault, ...)`, e o `catchUp` lê com `getAll`, que engole o throw e resolve `[]` — exatamente a armadilha que o próprio repo documenta num teste e que os outros três consumidores já evitam com `getAllOrThrow`.",
+          "evidencia": "src/lib/dataVault.ts:129-136 (`db.close(); _instance = null; _initPromise = null`), :221-236 (`getAll` → `resolve([])` no catch), :250-267 (`getAllOrThrow`); src/lib/realtimeSyncEngine.ts:214 `start(vault: DataVault, ...)` e :856 `await vault.getAll<Product>(\"products\")`; src/contexts/StoreContext.tsx:981-995 (o efeito do motor não depende de `vaultRef.current`, então não reinicia quando a conexão morre) e :636-643 do motor (erro só no console, listeners avisados assim mesmo). A guarda existe mas não foi aplicada aqui: `getAllOrThrow` é usada em src/hooks/useCategories.ts:294, src/hooks/useBanners.ts:643 e src/contexts/StoreContext.tsx:1072 — realtimeSyncEngine.ts:856 é o único ponto que ficou com `getAll`. tests/front/data-vault-leitura-quebrada-nao-vira-lista-vazia.test.ts:84 prova o comportamento.",
+          "severidade": "antes_de_crescer",
+          "correcao": "Trocar a linha 856 por `getAllOrThrow` (uma leitura quebrada precisa abortar o catchUp, não pedir o catálogo inteiro) e o motor deixar de guardar a instância: `await DataVault.init()` no início de cada operação, já que o singleton memoriza a promessa."
+        },
+        {
+          "lente": "reprodução",
+          "motivo": "O motor captura a instância `DataVault` por closure em `start()` e usa esse handle até o `stop()`; depois de um `onversionchange` a conexão está fechada, as escritas rejeitam com erro só no console (mas os listeners são notificados assim mesmo) e `getAll` devolve `[]` no catch, o que faz o catchUp concluir \"cofre vazio\" e pedir o catálogo inteiro.",
+          "evidencia": "src/lib/dataVault.ts:129-136 (`onversionchange` → `db.close()` + zera singleton), :221-235 (`getAll` faz `resolve([])` no catch — a existência de `getAllOrThrow` em :250-267 é o reconhecimento do problema); src/lib/realtimeSyncEngine.ts:214 (`start(vault, ...)` captura a instância), :528 (escrita nessa instância), :634-641 (catch só loga) seguido de :644-662 (notifica os listeners de qualquer jeito), :856 (`vault.getAll(\"products\")` alimenta a reconciliação).",
+          "severidade": "antes_de_crescer",
+          "correcao": "O motor deve chamar `DataVault.init()` por operação (singleton com promessa memorizada, reabre sozinho) e o catchUp usar `getAllOrThrow` em :856, abortando a rodada em vez de tratar leitura quebrada como cofre vazio. Ressalva: o StoreContext já faz isso certo nos caminhos quentes (StoreContext.tsx:631,722 e o listener de products usam `DataVault.init()`); quem segura handle morto é só o motor — o `vaultRef.current` citado no achado só é usado no put de config de :616 e como guarda do efeito."
+        }
+      ],
+      "arquivos_permitidos": ["src/lib/dataVault.ts", "tests/front/"],
+      "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. Depois de onversionchange (outra aba abriu versão nova do IndexedDB), quem segura a instância antiga escreve no vazio e o catchUp acha o cofre vazio. Correção: ao receber versionchange, fechar a conexão E marcar a instância como inválida para que a próxima operação reabra (ou lance um erro claro que o chamador trate recarregando), nunca gravar em silêncio no vazio. Teste em tests/front/datavault-reabre-apos-versionchange.test.ts (fake-indexeddb já está nas devDependencies? confira; senão dublê mínimo)."
     },
     {
-     "lente": "reprodução",
-     "motivo": "O motor captura a instância `DataVault` por closure em `start()` e usa esse handle até o `stop()`; depois de um `onversionchange` a conexão está fechada, as escritas rejeitam com erro só no console (mas os listeners são notificados assim mesmo) e `getAll` devolve `[]` no catch, o que faz o catchUp concluir \"cofre vazio\" e pedir o catálogo inteiro.",
-     "evidencia": "src/lib/dataVault.ts:129-136 (`onversionchange` → `db.close()` + zera singleton), :221-235 (`getAll` faz `resolve([])` no catch — a existência de `getAllOrThrow` em :250-267 é o reconhecimento do problema); src/lib/realtimeSyncEngine.ts:214 (`start(vault, ...)` captura a instância), :528 (escrita nessa instância), :634-641 (catch só loga) seguido de :644-662 (notifica os listeners de qualquer jeito), :856 (`vault.getAll(\"products\")` alimenta a reconciliação).",
-     "severidade": "antes_de_crescer",
-     "correcao": "O motor deve chamar `DataVault.init()` por operação (singleton com promessa memorizada, reabre sozinho) e o catchUp usar `getAllOrThrow` em :856, abortando a rodada em vez de tratar leitura quebrada como cofre vazio. Ressalva: o StoreContext já faz isso certo nos caminhos quentes (StoreContext.tsx:631,722 e o listener de products usam `DataVault.init()`); quem segura handle morto é só o motor — o `vaultRef.current` citado no achado só é usado no put de config de :616 e como guarda do efeito."
+      "id": "realtimeSyncEngine-317",
+      "titulo": "Cada volta à aba dispara quatro rodadas de rede independentes e um ciclo de perde/retoma liderança",
+      "arquivo_principal": "src/lib/realtimeSyncEngine.ts",
+      "linha": 317,
+      "severidade": "antes_de_crescer",
+      "tipo": "performance",
+      "esforco": "M",
+      "descricao": "Quatro módulos registram `visibilitychange` separados e todos fazem trabalho de rede ao voltar: `realtimeSyncEngine` roda um `catchUp` completo (5 consultas + resumo do catálogo inteiro + busca de detalhes); `useUpdateCheck` faz `fetch(\"/version.json\")` + `registration.update()`; `useOnlineStatus` sonda `/rest/v1/banners`; `useLeaderElection` renuncia à liderança 3s depois de esconder a aba e a reivindica ao voltar — e a renúncia derruba o `RealtimeSyncEngine` inteiro (o efeito de StoreContext depende de `isLeader`), então o websocket é fechado e reaberto. Nenhum desses caminhos tem intervalo mínimo entre execuções.",
+      "cenario": "Lojista no celular alterna entre o app e o WhatsApp cinco vezes em um minuto para responder clientes (rotina de balcão). Cada volta: websocket Realtime derrubado e refeito, catchUp completo (com o resumo de todos os produtos), sonda de versão, `registration.update()` e sonda de banners. Em rede 3G isso são segundos de bloqueio e consumo de dados a cada troca de app, sem que nada tenha mudado no servidor.",
+      "evidencia": "src/lib/realtimeSyncEngine.ts:317-327 (visibilitychange → catchUp, sem debounce); src/hooks/useUpdateCheck.ts:133-140; src/hooks/useOnlineStatus.ts:162-166; src/hooks/useLeaderElection.ts:251-278 (renúncia em 3s de aba oculta) + src/contexts/StoreContext.tsx:981-995 (efeito do motor depende de `isLeader`).",
+      "correcao_sugerida_pelo_leitor": "Um único observador de visibilidade na casa, com janela mínima (ex.: não repetir catchUp/sonda se a última rodou há menos de 60s) distribuindo para os assinantes; e não renunciar à liderança por aba oculta enquanto o app estiver instalado (standalone) — o custo de manter é menor que o do ciclo derrubar/reabrir.",
+      "vereditos_da_verificacao": [
+        {
+          "lente": "guarda existente",
+          "motivo": "Os quatro registros de `visibilitychange` existem e todos fazem rede ao voltar, sem janela mínima entre rodadas; a renúncia de liderança por aba oculta realmente derruba o motor inteiro porque o efeito que o inicia depende de `isLeader`.",
+          "evidencia": "src/lib/realtimeSyncEngine.ts:317-327 (catchUp a cada `visible`, sem debounce); src/hooks/useUpdateCheck.ts:133-140 (`/version.json` + `registration.update()`); src/hooks/useOnlineStatus.ts:162-166 + :139 (sonda `${url}/rest/v1/banners?select=id&limit=1`); src/hooks/useLeaderElection.ts:251-278 (renúncia 300ms + 3000ms depois de ocultar) e src/contexts/StoreContext.tsx:981-995 (`RealtimeSyncEngine.start` na lista de deps com `isLeader` → stop/start do websocket). Duas ressalvas que não derrubam o achado: `useOnlineStatus` já é fonte única por aba com mutex (:216-226, `checkingGen`), e o handler de liderança tem debounce de 300ms — o que falta em TODOS é intervalo mínimo entre rodadas.",
+          "severidade": "antes_de_crescer",
+          "correcao": "Um observador de visibilidade único no módulo, com janela mínima (não repetir catchUp/sondas se a última rodou há menos de 60s), e não renunciar à liderança por aba oculta quando o app está em `display-mode: standalone`."
+        },
+        {
+          "lente": "reprodução",
+          "motivo": "São mesmo quatro (na verdade mais) observadores de visibilidade independentes fazendo rede ao voltar, nenhum com janela mínima, e a renúncia de liderança após 3,3s de aba oculta derruba e reabre o websocket do motor a cada alternância de app.",
+          "evidencia": "src/lib/realtimeSyncEngine.ts:317-327 (visibilitychange → catchUp completo, sem debounce; só há o mutex `_isCatchingUp`); src/hooks/useUpdateCheck.ts:133-146 (fetch /version.json + registration.update()); src/hooks/useOnlineStatus.ts:162-166 e :95 (sonda `rest/v1/banners?select=id&limit=1`); src/hooks/useLeaderElection.ts:245-275 (debounce 300ms + resign em 3000ms ao ocultar; reclaim em 120ms ao voltar) + src/contexts/StoreContext.tsx:980-995 (o efeito do motor depende de `isLeader` → stop/start do canal). Ainda há mais: AdminLayout.tsx:387, useOrders.ts:2008, AdminKpiCarousel.tsx:224.",
+          "severidade": "antes_de_crescer",
+          "correcao": "Um observador de visibilidade único no módulo (padrão que useOnlineStatus já usa) distribuindo para assinantes com janela mínima por assinante, e não renunciar à liderança por aba oculta quando não há outra aba reivindicando — o ciclo derrubar/reabrir do websocket custa mais que manter."
+        }
+      ],
+      "arquivos_permitidos": [
+        "src/lib/realtimeSyncEngine.ts",
+        "src/hooks/useLeaderElection.ts",
+        "tests/front/"
+      ],
+      "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. Cada volta à aba dispara quatro rodadas de rede independentes e um ciclo de perde/retoma liderança. Correção: um único gatilho de 'voltou à aba' com coalescência (debounce curto) que decide UMA passada de catchUp, e o hook de liderança não solta/retoma a liderança só por visibilidade. Se useLeaderElection.ts precisar mudar, pode. Teste em tests/front/realtime-volta-a-aba-uma-rodada-so.test.ts."
     }
-   ],
-   "arquivos_permitidos": [
-    "src/lib/dataVault.ts",
-    "tests/front/"
-   ],
-   "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. Depois de onversionchange (outra aba abriu versão nova do IndexedDB), quem segura a instância antiga escreve no vazio e o catchUp acha o cofre vazio. Correção: ao receber versionchange, fechar a conexão E marcar a instância como inválida para que a próxima operação reabra (ou lance um erro claro que o chamador trate recarregando), nunca gravar em silêncio no vazio. Teste em tests/front/datavault-reabre-apos-versionchange.test.ts (fake-indexeddb já está nas devDependencies? confira; senão dublê mínimo)."
-  },
-  {
-   "id": "realtimeSyncEngine-317",
-   "titulo": "Cada volta à aba dispara quatro rodadas de rede independentes e um ciclo de perde/retoma liderança",
-   "arquivo_principal": "src/lib/realtimeSyncEngine.ts",
-   "linha": 317,
-   "severidade": "antes_de_crescer",
-   "tipo": "performance",
-   "esforco": "M",
-   "descricao": "Quatro módulos registram `visibilitychange` separados e todos fazem trabalho de rede ao voltar: `realtimeSyncEngine` roda um `catchUp` completo (5 consultas + resumo do catálogo inteiro + busca de detalhes); `useUpdateCheck` faz `fetch(\"/version.json\")` + `registration.update()`; `useOnlineStatus` sonda `/rest/v1/banners`; `useLeaderElection` renuncia à liderança 3s depois de esconder a aba e a reivindica ao voltar — e a renúncia derruba o `RealtimeSyncEngine` inteiro (o efeito de StoreContext depende de `isLeader`), então o websocket é fechado e reaberto. Nenhum desses caminhos tem intervalo mínimo entre execuções.",
-   "cenario": "Lojista no celular alterna entre o app e o WhatsApp cinco vezes em um minuto para responder clientes (rotina de balcão). Cada volta: websocket Realtime derrubado e refeito, catchUp completo (com o resumo de todos os produtos), sonda de versão, `registration.update()` e sonda de banners. Em rede 3G isso são segundos de bloqueio e consumo de dados a cada troca de app, sem que nada tenha mudado no servidor.",
-   "evidencia": "src/lib/realtimeSyncEngine.ts:317-327 (visibilitychange → catchUp, sem debounce); src/hooks/useUpdateCheck.ts:133-140; src/hooks/useOnlineStatus.ts:162-166; src/hooks/useLeaderElection.ts:251-278 (renúncia em 3s de aba oculta) + src/contexts/StoreContext.tsx:981-995 (efeito do motor depende de `isLeader`).",
-   "correcao_sugerida_pelo_leitor": "Um único observador de visibilidade na casa, com janela mínima (ex.: não repetir catchUp/sonda se a última rodou há menos de 60s) distribuindo para os assinantes; e não renunciar à liderança por aba oculta enquanto o app estiver instalado (standalone) — o custo de manter é menor que o do ciclo derrubar/reabrir.",
-   "vereditos_da_verificacao": [
-    {
-     "lente": "guarda existente",
-     "motivo": "Os quatro registros de `visibilitychange` existem e todos fazem rede ao voltar, sem janela mínima entre rodadas; a renúncia de liderança por aba oculta realmente derruba o motor inteiro porque o efeito que o inicia depende de `isLeader`.",
-     "evidencia": "src/lib/realtimeSyncEngine.ts:317-327 (catchUp a cada `visible`, sem debounce); src/hooks/useUpdateCheck.ts:133-140 (`/version.json` + `registration.update()`); src/hooks/useOnlineStatus.ts:162-166 + :139 (sonda `${url}/rest/v1/banners?select=id&limit=1`); src/hooks/useLeaderElection.ts:251-278 (renúncia 300ms + 3000ms depois de ocultar) e src/contexts/StoreContext.tsx:981-995 (`RealtimeSyncEngine.start` na lista de deps com `isLeader` → stop/start do websocket). Duas ressalvas que não derrubam o achado: `useOnlineStatus` já é fonte única por aba com mutex (:216-226, `checkingGen`), e o handler de liderança tem debounce de 300ms — o que falta em TODOS é intervalo mínimo entre rodadas.",
-     "severidade": "antes_de_crescer",
-     "correcao": "Um observador de visibilidade único no módulo, com janela mínima (não repetir catchUp/sondas se a última rodou há menos de 60s), e não renunciar à liderança por aba oculta quando o app está em `display-mode: standalone`."
-    },
-    {
-     "lente": "reprodução",
-     "motivo": "São mesmo quatro (na verdade mais) observadores de visibilidade independentes fazendo rede ao voltar, nenhum com janela mínima, e a renúncia de liderança após 3,3s de aba oculta derruba e reabre o websocket do motor a cada alternância de app.",
-     "evidencia": "src/lib/realtimeSyncEngine.ts:317-327 (visibilitychange → catchUp completo, sem debounce; só há o mutex `_isCatchingUp`); src/hooks/useUpdateCheck.ts:133-146 (fetch /version.json + registration.update()); src/hooks/useOnlineStatus.ts:162-166 e :95 (sonda `rest/v1/banners?select=id&limit=1`); src/hooks/useLeaderElection.ts:245-275 (debounce 300ms + resign em 3000ms ao ocultar; reclaim em 120ms ao voltar) + src/contexts/StoreContext.tsx:980-995 (o efeito do motor depende de `isLeader` → stop/start do canal). Ainda há mais: AdminLayout.tsx:387, useOrders.ts:2008, AdminKpiCarousel.tsx:224.",
-     "severidade": "antes_de_crescer",
-     "correcao": "Um observador de visibilidade único no módulo (padrão que useOnlineStatus já usa) distribuindo para assinantes com janela mínima por assinante, e não renunciar à liderança por aba oculta quando não há outra aba reivindicando — o ciclo derrubar/reabrir do websocket custa mais que manter."
-    }
-   ],
-   "arquivos_permitidos": [
-    "src/lib/realtimeSyncEngine.ts",
-    "src/hooks/useLeaderElection.ts",
-    "tests/front/"
-   ],
-   "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. Cada volta à aba dispara quatro rodadas de rede independentes e um ciclo de perde/retoma liderança. Correção: um único gatilho de 'voltou à aba' com coalescência (debounce curto) que decide UMA passada de catchUp, e o hook de liderança não solta/retoma a liderança só por visibilidade. Se useLeaderElection.ts precisar mudar, pode. Teste em tests/front/realtime-volta-a-aba-uma-rodada-so.test.ts."
-  }
- ]
+  ]
 }
