@@ -175,6 +175,56 @@ Deno.test("texto digitado entra ESCAPADO no corpo do e-mail", () => {
   assertEquals(html.includes("Rua <b>A</b>"), false);
 });
 
+// --- C4.3: venda de balcão no e-mail de confirmação ------------------------
+// D1 do plano (docs/superpowers/plans/2026-09-15-super-atualizacao-do-app.md,
+// seção 6): a venda de balcão não é "aguardando pagamento" nem "entrega" —
+// ela já aconteceu, na loja, com o dinheiro na mão. O parâmetro `canal` é
+// OPCIONAL de propósito: os testes acima (:46, :115, :128, :165) montam sem
+// ele e continuam provando o caminho online de sempre.
+
+Deno.test("htmlDoPedido com canal presencial abre com 'Compra na loja' e nao fala em fila de separacao nem em entrega", () => {
+  const html = htmlDoPedido({
+    pedido: PEDIDO,
+    itens: ITENS,
+    endereco: "",
+    nomeDaLoja: "Loja Teste",
+    // `aguardandoPagamento: true` de propósito: prova que o canal presencial
+    // VENCE — venda de balcão nunca fica esperando confirmação de pagamento.
+    aguardandoPagamento: true,
+    canal: "presencial",
+  });
+  assertStringIncludes(html, "Compra na loja");
+  assertEquals(html.includes("fila de separacao"), false);
+  assertEquals(html.includes("aguardando a confirmacao do pagamento"), false);
+  assertEquals(html.includes("Entrega em"), false);
+});
+
+Deno.test("htmlDoPedido com canal presencial, frete 0 e endereco vazio nao mostra a linha Entrega (frete some sozinho)", () => {
+  const html = htmlDoPedido({
+    pedido: { ...PEDIDO, shipping: 0 },
+    itens: ITENS,
+    endereco: "",
+    nomeDaLoja: "Loja Teste",
+    aguardandoPagamento: false,
+    canal: "presencial",
+  });
+  // Linha de VALOR "Entrega" (frete): `linhaDeValor` já some com valor 0.
+  assertEquals(html.includes(">Entrega<"), false);
+  // Bloco de ENDEREÇO "Entrega em": `bloco` já some com conteúdo vazio.
+  assertEquals(html.includes("Entrega em"), false);
+  assertStringIncludes(html, "Compra na loja");
+});
+
+Deno.test("htmlDoPedido SEM o campo `canal` continua o caminho online de sempre — chamador antigo nao muda", () => {
+  const html = base(); // molde `base()` (:44-52) nao passa `canal`, de propósito
+  assertEquals(html.includes("Compra na loja"), false);
+  assertStringIncludes(
+    html,
+    "Recebemos seu pedido. Guarde este e-mail: ele e o resumo do que voce comprou.",
+  );
+  assertStringIncludes(html, "Entrega em");
+});
+
 Deno.test("montarResposta traduz cada desfecho para o status certo", () => {
   assertEquals(montarResposta({ ok: true }).status, 200);
   // 502: a loja falhou, e nao ha nada que quem compra possa corrigir.

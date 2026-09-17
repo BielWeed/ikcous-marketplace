@@ -258,6 +258,50 @@ Deno.test("reserva concedida + SMTP configurado -> envia com o texto certo e dev
   assertStringIncludes(chamadasEnvio[0].html, "Blusa");
 });
 
+// --- canal presencial: o canal sai do BANCO e chega ao e-mail ----------------
+//
+// Os testes de htmlDoPedido passam o canal na mão; este prova a única linha
+// que liga as duas pontas (a coluna `canal` no select e o
+// `canal: String(pedido.canal ?? "online")` do montador) — ressalva da
+// revisão de C4.3.
+
+Deno.test("pedido com canal 'presencial' no banco -> o e-mail abre com 'Compra na loja'; sem canal, não", async () => {
+  async function htmlEnviadoPara(canal: string | undefined): Promise<string> {
+    const pedido: Record<string, unknown> = {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com" },
+      subtotal: 100,
+      total: 100,
+      payment_method: "cash",
+      payment_status: "recebido_na_entrega",
+    };
+    if (canal !== undefined) pedido.canal = canal;
+    const chamadasEnvio: Array<{ para: string; assunto: string; html: string }> = [];
+    const supabase = clienteFalso({
+      pedido,
+      itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+      storeConfig: { store_name: "Loja Teste" },
+      reservou: true,
+    });
+    const desfecho = await enviarComprovantePedido({
+      supabase: supabase as never,
+      orderId: UUID_PEDIDO,
+      deps: {
+        remetenteConfigurado: () => true,
+        enviarEmail: async (args) => {
+          chamadasEnvio.push(args);
+        },
+      },
+    });
+    assertEquals(desfecho, { ok: true });
+    assertEquals(chamadasEnvio.length, 1);
+    return chamadasEnvio[0].html;
+  }
+
+  assertStringIncludes(await htmlEnviadoPara("presencial"), "Compra na loja");
+  assertEquals((await htmlEnviadoPara(undefined)).includes("Compra na loja"), false);
+});
+
 // --- PIX pelo site: a abertura do e-mail depende do STATUS, não só do MÉTODO
 //
 // Achado de revisão de contexto limpo, 25/08/2026: mutar `comprovante.ts:331-

@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 const CABECALHO =
-  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto";
+  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto;Canal";
 
 function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
   return {
@@ -61,9 +61,7 @@ describe("pedidosParaCsv", () => {
     });
     const antes = structuredClone(original);
     const csv = pedidosParaCsv([original]);
-    expect(csv.split("\r\n")[0]).toBe(
-      "\uFEFFNúmero do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto",
-    );
+    expect(csv.split("\r\n")[0]).toBe(`\uFEFF${CABECALHO}`);
     expect(csv).toContain(
       ';131,25;São Paulo;SP;"Café; ""Seleção""\n250 g (2 x 12,34) | Chá de maçã (1 x 5,60)";123,45;16,70;8,90',
     );
@@ -109,8 +107,10 @@ describe("pedidosParaCsv", () => {
   it("gera BOM UTF-8, colunas na ordem contratada, ponto e vírgula e CRLF", () => {
     const csv = pedidosParaCsv([pedido()]);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
+    // ";Site" no fim: o fixture `pedido()` não declara `canal`, e pedido
+    // sem canal é tratado como online (lote C4 — C4.1/C4.3).
     expect(csv).toBe(
-      `\uFEFF${CABECALHO}\r\n#ABC123;08/09/2026 09:07;João Silva;11987654321;Novo Pedido;PIX Instantâneo;Aguardando pagamento;1234,50;São Paulo;SP;;1234,50;0,00;0,00`,
+      `\uFEFF${CABECALHO}\r\n#ABC123;08/09/2026 09:07;João Silva;11987654321;Novo Pedido;PIX Instantâneo;Aguardando pagamento;1234,50;São Paulo;SP;;1234,50;0,00;0,00;Site`,
     );
   });
 
