@@ -28,6 +28,11 @@ const AdminOrders = lazyWithPreload(() =>
     default: m.AdminOrdersView,
   })),
 );
+const AdminPdv = lazyWithPreload(() =>
+  import("@/views/admin/AdminPdvView").then((m) => ({
+    default: m.AdminPdvView,
+  })),
+);
 const AdminCoupons = lazyWithPreload(() =>
   import("@/views/admin/AdminCouponsView").then((m) => ({
     default: m.AdminCouponsView,
@@ -161,6 +166,8 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   if (view === "admin-dashboard" || view === "admin") title = "Dashboard";
   else if (view === "admin-products") title = "Produtos";
   else if (view === "admin-orders") title = "Pedidos";
+  // Mesma palavra do botão da barra, não "PDV".
+  else if (view === "admin-pdv") title = "Vender";
   else if (view === "admin-customers") title = "Clientes";
   else if (view === "admin-settings") title = "Ajustes";
   else if (view === "admin-coupons") title = "Cupons";
@@ -568,6 +575,20 @@ export function AdminArea({
                             couponId: selectedProductId || undefined,
                             onNavigate: onNavigate,
                             onSetDirty: setIsAdminDirty,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-pdv":
+                    return (
+                      <LocalErrorBoundary key="admin-pdv">
+                        <PreloadedOrLazy
+                          component={AdminPdv}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-pdv",
+                            onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
                           }}
                         />
                       </LocalErrorBoundary>

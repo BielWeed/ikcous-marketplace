@@ -126,6 +126,20 @@ describe("paiDaTelaDoAdmin", () => {
     expect(paiDaTelaDoAdmin("home" as never, null, false)).toBe("profile");
   });
 
+  // C3.3 (plano §5.3): "Vender" é sub-view do painel PRINCIPAL, não uma
+  // sensível à origem como admin-push/admin-notifications/admin-whatsapp-
+  // config — sem este `case` o `default` devolveria "profile" e o botão
+  // Voltar do AdminLayout sairia do painel inteiro (nova-tela.md:45).
+  it("admin-pdv sempre volta para admin-dashboard, com ou sem origem do admin conhecida", () => {
+    expect(paiDaTelaDoAdmin("admin-pdv", null, false)).toBe("admin-dashboard");
+    expect(paiDaTelaDoAdmin("admin-pdv", "home", false)).toBe(
+      "admin-dashboard",
+    );
+    expect(paiDaTelaDoAdmin("admin-pdv", "admin-orders", false)).toBe(
+      "admin-dashboard",
+    );
+  });
+
   it("admin-notifications com origem admin-orders volta para admin-orders (a tela anterior real)", () => {
     // Decisão do Gabriel (30/08/2026), na prévia da cliente-01: o botão que
     // dizia "Perfil" na tela de notificações do painel estava errado — o

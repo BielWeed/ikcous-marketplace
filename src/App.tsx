@@ -345,6 +345,7 @@ const VIEW_COMPONENTS = {
   "admin-products": AdminArea,
   "admin-product-form": AdminArea,
   "admin-orders": AdminArea,
+  "admin-pdv": AdminArea,
   "admin-coupons": AdminArea,
   "admin-coupon-form": AdminArea,
   "admin-banners": AdminArea,
@@ -410,6 +411,7 @@ const getNavigationDirection = (
     "admin-push": 0.5,
     "admin-notifications": 0.3,
     "admin-orders": 1,
+    "admin-pdv": 1.2,
     "admin-reviews": 1.4,
     "admin-qa": 1.6,
     "admin-products": 2,
@@ -1597,6 +1599,7 @@ const AppContent = () => {
           "admin-product-form",
           "admin-user-detail",
           "admin-push",
+          "admin-pdv",
           "admin-banners",
           "admin-carousels",
           "admin-coupons",
@@ -1643,8 +1646,13 @@ const AppContent = () => {
             );
           } else if (
             currView === "admin-push" ||
-            currView === "admin-banners"
+            currView === "admin-banners" ||
+            currView === "admin-pdv"
           ) {
+            // Mesmo pai de `paiDaTelaDoAdmin("admin-pdv", ...)` — o
+            // checklist (nova-tela.md:39) avisa que já existem casos onde o
+            // reroute do popstate diverge do pai declarado ali; aqui os dois
+            // concordam de propósito.
             targetView = "admin-dashboard";
             globalThis.history.replaceState(
               { view: "admin-dashboard" },
@@ -2342,6 +2350,7 @@ const AppContent = () => {
       "admin-products",
       "admin-product-form",
       "admin-orders",
+      "admin-pdv",
       "admin-coupons",
       "admin-coupon-form",
       "admin-banners",

@@ -33,6 +33,11 @@ const VIEW_PREFETCH_MAP: Record<string, () => Promise<unknown>> = {
   "admin-products": () => import("@/views/admin/AdminProductsView"),
   "admin-product-form": () => import("@/views/admin/AdminProductFormView"),
   "admin-orders": () => import("@/views/admin/AdminOrdersView"),
+  // `chavesParaPrefetchAll` (abaixo) já filtra tudo que começa com "admin"
+  // do prefetch em massa do boot para quem não é admin confirmado — o
+  // chunk do PDV (que arrasta o leitor de código) nunca desce para
+  // cliente nenhum; só aquece no hover/touch de quem já está no painel.
+  "admin-pdv": () => import("@/views/admin/AdminPdvView"),
   "admin-coupons": () => import("@/views/admin/AdminCouponsView"),
   "admin-coupon-form": () => import("@/views/admin/AdminCouponFormView"),
   "admin-banners": () => import("@/views/admin/AdminBannersView"),
