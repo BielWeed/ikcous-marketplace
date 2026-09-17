@@ -45,6 +45,18 @@ export function ShippingProgress({
     }));
   };
 
+  // Rede de segurança (achado CartView-328): quem monta este componente
+  // (CartView) já filtra pela regra de frete via `deveExibirMetaDeFreteGratis`,
+  // mas o componente não pode DEPENDER de o chamador lembrar disso. Uma meta
+  // de valor genuinamente ativa nunca chega com os dois zerados ao mesmo
+  // tempo: 0% só acontece enquanto falta valor (`amountToFree` > 0), e faltar
+  // R$ 0,00 só acontece com a meta batida (progresso 100%, e mesmo assim o
+  // grátis já garantido entra aqui com progressPercent=100 — CartView.tsx).
+  // 0%/R$ 0,00 juntos só significa "não existe meta nenhuma configurada".
+  if (progressPercent === 0 && amountToFree === 0) {
+    return null;
+  }
+
   return (
     <div
       className={cn(
