@@ -259,7 +259,13 @@ describe("CheckoutView — o comprador para de ler o erro cru do banco ao fechar
     expect(alertSpy).not.toHaveBeenCalled();
   });
 
-  it("falha de rede: a frase avisa para conferir se o pedido já apareceu, sem prometer que tentar de novo é seguro", async () => {
+  // Até 16/09/2026 este caso exigia "Verifique se ele já apareceu": a chave
+  // de idempotência (08/09/2026) ainda não existia quando a frase foi
+  // escrita, e tentar de novo podia duplicar o pedido. Hoje a mesma compra
+  // reaproveita a mesma chave e a RPC devolve o pedido já nascido — tentar de
+  // novo é seguro, e o painel de saída (decidirSaidaDoCheckout) já dizia
+  // isso. O toast tem de dizer o MESMO que o painel para a mesma falha.
+  it("falha de rede: toast e painel dizem a mesma coisa — o pedido não foi confirmado e tentar de novo é seguro", async () => {
     createOrder.mockRejectedValueOnce({
       code: "",
       message: "TypeError: Failed to fetch",
@@ -279,7 +285,9 @@ describe("CheckoutView — o comprador para de ler o erro cru do banco ao fechar
 
     expect(toastError).toHaveBeenCalledTimes(1);
     const mensagemMostrada = String(toastError.mock.calls[0][0]);
-    expect(mensagemMostrada).toContain("Verifique se ele já apareceu");
+    expect(mensagemMostrada).toContain("não foi confirmado");
+    expect(mensagemMostrada).toContain("não sai em dobro");
+    expect(mensagemMostrada).not.toContain("Verifique se ele já apareceu");
   });
 
   it("recusa de negócio (P0001, ex.: estoque insuficiente): o toast mostra o texto da RPC, já em português e específico", async () => {

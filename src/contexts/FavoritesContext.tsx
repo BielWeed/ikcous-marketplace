@@ -97,6 +97,20 @@ function mesclarSemDuplicar(listas: Product[][]): Product[] {
   return Array.from(mapa.values());
 }
 
+// FavoritesContext-535 — a chave anônima ("ikcous_favorites", balde do
+// visitante SEM conta) guardava o `Product` INTEIRO, congelado no instante
+// do toque no coração: preço e estoque nunca eram revalidados contra o
+// catálogo (diferente do cliente logado, que sempre filtra `allProducts`
+// vivo pelos ids confirmados — ver o memo de `favorites` abaixo). A partir
+// desta correção a chave guarda só o ID; uma entrada ainda pode chegar como
+// `Product` inteiro num aparelho que favoritou ANTES desta correção — a
+// migração (efeito logo abaixo, no Provider) resolve isso UMA vez.
+type EntradaFavoritoLocal = string | Product;
+
+function idDaEntradaLocal(entrada: EntradaFavoritoLocal): string {
+  return typeof entrada === "string" ? entrada : entrada.id;
+}
+
 interface FavoritesContextType {
   favorites: Product[];
   toggleFavorite: (product: Product) => void;
@@ -127,10 +141,22 @@ export function FavoritesProvider({
   const { user } = useAuth();
   const { isLeader } = useLeaderElection();
   const { products: allProducts } = useProducts();
-  const [localFavorites, setLocalFavorites] = useLocalStorage<Product[]>(
-    FAVORITES_KEY,
-    [],
-  );
+  // Tipado como "pode ser string OU Product" (ver `EntradaFavoritoLocal`
+  // acima) porque o primeiro render lê o disco como ele estiver — um
+  // aparelho antigo ainda tem o `Product` inteiro aqui, e a migração
+  // (efeito abaixo) só tem chance de agir DEPOIS desse primeiro render.
+  const [localFavoritesRaw, setLocalFavoritesRaw] = useLocalStorage<
+    EntradaFavoritoLocal[]
+  >(FAVORITES_KEY, []);
+  // Cache EM MEMÓRIA (nunca em disco — o disco só guarda id, de propósito)
+  // do último retrato conhecido de cada favorito do visitante. Ela só entra
+  // em jogo quando o id não bate com NENHUM produto de `allProducts` — ou
+  // porque o catálogo ainda não carregou, ou porque a lojista excluiu o
+  // produto. Para um produto que ainda existe no catálogo, o memo de
+  // `favorites` abaixo SEMPRE prefere o dado vivo; este cache nunca compete
+  // com ele, só cobre a ausência (sem isto, o favorito sumiria da lista sem
+  // explicação nenhuma assim que o id parasse de bater com o catálogo).
+  const snapshotsSemCatalogoRef = useRef<Map<string, Product>>(new Map());
   const [dbFavoriteIds, setDbFavoriteIds] = useState<string[]>([]);
   // Escrita pendente de um usuário IDENTIFICADO que falhou ao sincronizar
   // — chave por usuário, nunca a chave anônima (ver getPendingFavoritesKey
@@ -149,6 +175,40 @@ export function FavoritesProvider({
   // isto, o efeito de sync abaixo só sabe que `user` MUDOU, nunca se o
   // usuário anterior era outra pessoa (troca) ou ninguém (login normal).
   const previousUserIdRef = useRef<string | null>(user?.id ?? null);
+
+  // Forma normalizada (só ids) de `localFavoritesRaw`, usada em todo lugar
+  // que só precisa SABER QUAL produto está favoritado (memo de `favorites`,
+  // `isFavorite`, `toggleFavorite`) — nenhum deles decide nada a partir do
+  // retrato antigo que uma entrada no formato anterior possa carregar.
+  const localFavoriteIds = React.useMemo(
+    () => localFavoritesRaw.map(idDaEntradaLocal),
+    [localFavoritesRaw],
+  );
+
+  // Migração (FavoritesContext-535): um aparelho que favoritou ANTES desta
+  // correção tem o `Product` inteiro gravado sob `FAVORITES_KEY`. Só roda
+  // para o VISITANTE (`!user`) — é o único dono legítimo desta chave; se a
+  // pessoa já está logada, o efeito de sync abaixo já resolve cada entrada
+  // (formato antigo ou novo) para o servidor e zera o balde de qualquer
+  // jeito, então não há necessidade de migrar aqui, e rodar mesmo assim só
+  // criaria uma corrida gratuita com aquele efeito.
+  //
+  // Guarda o retrato de cada entrada antiga no cache de fallback ANTES de
+  // regravar a chave só com ids — depois desta linha, o retrato original só
+  // existe em memória (ver `snapshotsSemCatalogoRef` acima).
+  useEffect(() => {
+    if (user) return;
+    const temFormatoAntigo = localFavoritesRaw.some(
+      (entrada): entrada is Product => typeof entrada !== "string",
+    );
+    if (!temFormatoAntigo) return;
+    for (const entrada of localFavoritesRaw) {
+      if (typeof entrada !== "string") {
+        snapshotsSemCatalogoRef.current.set(entrada.id, entrada);
+      }
+    }
+    setLocalFavoritesRaw((prev) => prev.map(idDaEntradaLocal));
+  }, [user, localFavoritesRaw, setLocalFavoritesRaw]);
 
   const fetchDbFavorites = useCallback(async () => {
     if (!user) return;
@@ -304,8 +364,22 @@ export function FavoritesProvider({
         // quem acabou de sair. O que não gravar vai para a fila deste
         // usuário, nunca de volta para o balde anônimo.
         const pendentesDaSessaoAnterior = lerFavoritosPendentes(user.id);
+        // `localFavoritesRaw` pode trazer as duas formas (ver
+        // `EntradaFavoritoLocal`/migração acima): uma entrada no formato
+        // antigo já É o retrato a usar; uma entrada nova (só o id) resolve
+        // contra o catálogo vivo e, na falta dele, contra o cache de
+        // fallback. Isto é só o retrato que vai para a fila DESTE usuário
+        // (`ikcous_favorites_pendentes:<uuid>`) se o upsert falhar — nunca
+        // decide o que aparece em `favorites` (isso é sempre o memo abaixo).
+        const candidatosLocais = localFavoritesRaw.map((entrada) =>
+          typeof entrada !== "string"
+            ? entrada
+            : (allProducts.find((p) => p.id === entrada) ??
+              snapshotsSemCatalogoRef.current.get(entrada) ??
+              ({ id: entrada } as unknown as Product)),
+        );
         const candidatos = mesclarSemDuplicar([
-          localFavorites,
+          candidatosLocais,
           pendentesDaSessaoAnterior,
         ]);
 
@@ -331,8 +405,8 @@ export function FavoritesProvider({
         gravarFavoritosPendentes(user.id, candidatos);
         setPendingFavorites(candidatos);
 
-        if (localFavorites.length > 0) {
-          setLocalFavorites([]);
+        if (localFavoritesRaw.length > 0) {
+          setLocalFavoritesRaw([]);
           if (typeof window !== "undefined") {
             localStorage.removeItem(FAVORITES_KEY);
           }
@@ -532,10 +606,28 @@ export function FavoritesProvider({
   // resolve sozinha assim que a rede volta. O contrato para pagar esse custo
   // sem reintroduzir os três defeitos é informar SEM criar superfície: o
   // número de pendentes sai por `pendingCount`, nunca por um item da lista.
+  //
+  // FavoritesContext-535 — o ramo do visitante (`!user`) tinha uma raiz de
+  // defeito PARALELA a esta, sem nenhuma relação com a fila pendente: ele
+  // devolvia `localFavorites` cru, o `Product` congelado no instante do
+  // toque no coração, e nunca revalidava preço/estoque contra o catálogo.
+  // Agora ele faz o MESMO que o cliente logado faz uma linha abaixo —
+  // resolve cada id contra `allProducts` (dado vivo) — e só cai para o
+  // cache de fallback (`snapshotsSemCatalogoRef`) quando o catálogo (já
+  // carregado) não tem mais aquele id, para o favorito não desaparecer sem
+  // explicação nenhuma por causa de uma lojista que excluiu o produto.
   const favorites = React.useMemo(() => {
-    if (!user) return localFavorites;
+    if (!user) {
+      return localFavoriteIds
+        .map(
+          (id) =>
+            allProducts.find((p) => p.id === id) ??
+            snapshotsSemCatalogoRef.current.get(id),
+        )
+        .filter((p): p is Product => p !== undefined);
+    }
     return allProducts.filter((p) => dbFavoriteIds.includes(p.id));
-  }, [user, allProducts, dbFavoriteIds, localFavorites]);
+  }, [user, allProducts, dbFavoriteIds, localFavoriteIds]);
 
   // 3. Actions
   const addToFavorites = useCallback(
@@ -573,14 +665,24 @@ export function FavoritesProvider({
           toast.success("Adicionado aos favoritos");
         }
       } else {
-        setLocalFavorites((prev) => {
-          if (prev.find((p) => p.id === product.id)) return prev;
-          return [...prev, product];
+        // Guarda só o id (ver `EntradaFavoritoLocal`/migração acima) — o
+        // retrato completo vem do catálogo vivo, no memo de `favorites`.
+        // Ainda assim alimenta o cache de fallback com o que o chamador já
+        // tem em mãos: se a lojista excluir o produto antes do catálogo
+        // recarregar, o favorito não desaparece sem explicação nenhuma.
+        snapshotsSemCatalogoRef.current.set(product.id, product);
+        setLocalFavoritesRaw((prev) => {
+          if (
+            prev.some((entrada) => idDaEntradaLocal(entrada) === product.id)
+          ) {
+            return prev;
+          }
+          return [...prev, product.id];
         });
         toast.success("Adicionado aos favoritos");
       }
     },
-    [user, setLocalFavorites],
+    [user, setLocalFavoritesRaw],
   );
 
   const removeFromFavorites = useCallback(
@@ -611,25 +713,37 @@ export function FavoritesProvider({
           toast.success("Removido dos favoritos");
         }
       } else {
-        setLocalFavorites((prev) => prev.filter((p) => p.id !== productId));
+        setLocalFavoritesRaw((prev) =>
+          prev.filter((entrada) => idDaEntradaLocal(entrada) !== productId),
+        );
+        // O produto acabou de ser removido de propósito — não faz sentido
+        // continuar oferecendo o retrato antigo dele como fallback (ver o
+        // cache acima).
+        snapshotsSemCatalogoRef.current.delete(productId);
         toast.success("Removido dos favoritos");
       }
     },
-    [user, setLocalFavorites],
+    [user, setLocalFavoritesRaw],
   );
 
   const toggleFavorite = useCallback(
     (product: Product) => {
       const isFav = user
         ? dbFavoriteIds.includes(product.id)
-        : localFavorites.some((p) => p.id === product.id);
+        : localFavoriteIds.includes(product.id);
       if (isFav) {
         removeFromFavorites(product.id);
       } else {
         addToFavorites(product);
       }
     },
-    [user, dbFavoriteIds, localFavorites, removeFromFavorites, addToFavorites],
+    [
+      user,
+      dbFavoriteIds,
+      localFavoriteIds,
+      removeFromFavorites,
+      addToFavorites,
+    ],
   );
 
   const isFavorite = useCallback(
@@ -637,9 +751,9 @@ export function FavoritesProvider({
       if (user) {
         return dbFavoriteIds.includes(productId);
       }
-      return localFavorites.some((p) => p.id === productId);
+      return localFavoriteIds.includes(productId);
     },
-    [user, dbFavoriteIds, localFavorites],
+    [user, dbFavoriteIds, localFavoriteIds],
   );
 
   const contextValue = React.useMemo(

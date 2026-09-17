@@ -246,6 +246,9 @@ describe("CSV de todos os pedidos do filtro", () => {
           p_start_date: inicio,
           p_end_date: fim,
           p_payment_status: pagamento,
+          // C4.4: a exportação respeita o filtro de canal da lista; sem chip
+          // marcado, o hook manda 'all' (e a RPC de 8 args recebe o default).
+          p_canal: "all",
         })),
       );
     },

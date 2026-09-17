@@ -53,6 +53,8 @@ const {
     normalizarTracking,
     erroDePagamentoParaEtiqueta,
     erroDePedidoParaEtiqueta,
+    erroDeServicoParaEtiqueta,
+    normalizarServicoEscolhidoPeloLojista,
 } = await import('./index.ts')
 globalThis.fetch = fetchNativo
 
@@ -133,6 +135,42 @@ Deno.test("service id - frete fixo, entrega local e null não casam", () => {
   assertEquals(extrairServiceIdDaOpcao("local-delivery"), null)
   assertEquals(extrairServiceIdDaOpcao(null), null)
   assertEquals(extrairServiceIdDaOpcao("melhor-envio-abc"), null)
+})
+
+// ── erroDeServicoParaEtiqueta (achado index-691: a recusa tem que dizer a
+// verdade — frete grátis NÃO é frete fixo nem entrega local) ────────────────
+
+Deno.test("erro de serviço - frete grátis (sem opção, shipping=0) diz a verdade e oferece escolher o serviço", () => {
+  const { mensagem, podeEscolherServico } = erroDeServicoParaEtiqueta(null, 0)
+  const msg = mensagem.toLowerCase()
+  assertEquals(msg.includes("frete fixo"), false)
+  assertEquals(msg.includes("entrega local"), false)
+  assertEquals(msg.includes("grátis") || msg.includes("gratis"), true)
+  assertEquals(podeEscolherServico, true)
+})
+
+Deno.test("erro de serviço - entrega local de verdade continua sem oferecer serviço do ME", () => {
+  const { mensagem, podeEscolherServico } = erroDeServicoParaEtiqueta("local-delivery", 10)
+  assertEquals(mensagem.toLowerCase().includes("entrega local"), true)
+  assertEquals(podeEscolherServico, false)
+})
+
+Deno.test("erro de serviço - pedido antigo sem opção salva (shipping > 0) recebe mensagem genérica honesta", () => {
+  const { mensagem, podeEscolherServico } = erroDeServicoParaEtiqueta(null, 45.9)
+  const msg = mensagem.toLowerCase()
+  assertEquals(msg.includes("frete fixo"), false)
+  assertEquals(podeEscolherServico, true)
+})
+
+// ── normalizarServicoEscolhidoPeloLojista ───────────────────────────────────
+
+Deno.test("serviço escolhido pelo lojista - só dígitos, igual ao formato do checkout", () => {
+  assertEquals(normalizarServicoEscolhidoPeloLojista("77"), "77")
+  assertEquals(normalizarServicoEscolhidoPeloLojista(" 77 "), "77")
+  assertEquals(normalizarServicoEscolhidoPeloLojista("melhor-envio-77"), null)
+  assertEquals(normalizarServicoEscolhidoPeloLojista(""), null)
+  assertEquals(normalizarServicoEscolhidoPeloLojista(null), null)
+  assertEquals(normalizarServicoEscolhidoPeloLojista(77), null)
 })
 
 // ── extrairEnderecoDoPedido ────────────────────────────────────────────────
@@ -486,12 +524,19 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[] 
  * timeout/queda de rede pós-reivindicação).
  */
 function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'erro-5xx' } = {}) {
-    const registro = { carrinho: 0, remocoes: 0, checkouts: 0, geracoes: 0 }
+    const registro = { carrinho: 0, remocoes: 0, checkouts: 0, geracoes: 0, ultimoServico: null as string | null }
     const buscar = (async (input: any, init?: any) => {
         const url = String(input instanceof Request ? input.url : input)
         const metodo = String(init?.method || 'GET')
         if (url.endsWith('/api/v2/me/cart') && metodo === 'POST') {
             registro.carrinho++
+            // Assento para os testes de índice-691: qual `service` chegou de
+            // fato no carrinho do ME (o do checkout ou o escolhido pelo lojista).
+            try {
+                registro.ultimoServico = JSON.parse(String(init?.body || '{}'))?.service ?? null
+            } catch {
+                registro.ultimoServico = null
+            }
             return new Response(JSON.stringify({ id: LABEL_ID, protocol: 'proto-1' }), {
                 status: 201,
                 headers: { 'Content-Type': 'application/json' },
@@ -548,11 +593,11 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'e
     return { buscar, registro }
 }
 
-function requisicaoGerar(action = "gerar_etiqueta"): Request {
+function requisicaoGerar(action = "gerar_etiqueta", extra: Record<string, unknown> = {}): Request {
   return new Request("http://localhost/melhor-envio-etiqueta", {
     method: "POST",
     headers: { Authorization: "Bearer jwt-admin-de-teste" },
-    body: JSON.stringify({ action, orderId: "pedido-1" }),
+    body: JSON.stringify({ action, orderId: "pedido-1", ...extra }),
   })
 }
 
@@ -667,5 +712,130 @@ Deno.test("handler - checkout responde 5xx de gateway: INDETERMINADO — reivind
         assertEquals(evento !== undefined, true)
         assertEquals(evento.event_type, 'erro')
         assertEquals(evento.payload.label_id, LABEL_ID)
+    })
+})
+
+// ── handler: achado index-691 — pedido de frete grátis não gera etiqueta e a
+// recusa mentia o motivo ("foi frete fixo ou entrega local"). ──────────────
+
+Deno.test("handler - frete grátis sem opção escolhida: recusa 400 diz o motivo VERDADEIRO e nunca chega a criar etiqueta no ME", async () => {
+    await comEnvAdmin(async () => {
+        // CartView.tsx:495 esconde a calculadora no grátis — nasce sem
+        // shipping_option_id, com shipping=0 (não é frete fixo nem local).
+        const pedidoFreteGratis = {
+            ...PEDIDO_FELIZ,
+            shipping: 0,
+            customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: null },
+        }
+        const supa = clienteFalso({ pedido: pedidoFreteGratis })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        const mensagem = String(corpo.error).toLowerCase()
+        // a recusa NÃO pode mais culpar um motivo que não é o verdadeiro
+        assertEquals(mensagem.includes('frete fixo'), false)
+        assertEquals(mensagem.includes('entrega local'), false)
+        assertEquals(mensagem.includes('grátis') || mensagem.includes('gratis'), true)
+        // contrato para o card (tarefa irmã EtiquetasEnvioCard): sinaliza que
+        // dá para oferecer a escolha do serviço em vez de só recusar
+        assertEquals(corpo.precisa_escolher_servico, true)
+        // recusou ANTES de gastar qualquer chamada de dinheiro no ME
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+Deno.test("handler - entrega local de verdade continua recusando (aqui o motivo É esse) e não ganha seletor de serviço", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoEntregaLocal = {
+            ...PEDIDO_FELIZ,
+            shipping: 10,
+            customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: 'local-delivery' },
+        }
+        const supa = clienteFalso({ pedido: pedidoEntregaLocal })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).toLowerCase().includes('entrega local'), true)
+        assertEquals(corpo.precisa_escolher_servico, false)
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+Deno.test("handler - entrega local com serviceId no corpo continua recusando: o override só vale quando a recusa autoriza", async () => {
+    await comEnvAdmin(async () => {
+        // Ressalva da revisão de index-691: a mensagem dizia
+        // podeEscolherServico=false, mas o servidor aceitava o serviceId do
+        // corpo mesmo assim — pedido de entrega local (quem despacha é a
+        // própria loja) NUNCA pode comprar etiqueta.
+        const pedidoEntregaLocal = {
+            ...PEDIDO_FELIZ,
+            shipping: 10,
+            customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: 'local-delivery' },
+        }
+        const supa = clienteFalso({ pedido: pedidoEntregaLocal })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar('gerar_etiqueta', { serviceId: '77' }), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(corpo.precisa_escolher_servico, false)
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+Deno.test("handler - pedido antigo com frete em shipping_cost (shipping no DEFAULT 0) não é tratado como frete grátis", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoAntigo = {
+            ...PEDIDO_FELIZ,
+            shipping: 0,
+            shipping_cost: 45.9,
+            customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: null },
+        }
+        const supa = clienteFalso({ pedido: pedidoAntigo })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).toLowerCase().includes('frete grátis'), false)
+        assertEquals(corpo.precisa_escolher_servico, true)
+    })
+})
+
+Deno.test("handler - lojista escolhe o serviço na hora de etiquetar um pedido de frete grátis: etiqueta sai normalmente", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoFreteGratis = {
+            ...PEDIDO_FELIZ,
+            shipping: 0,
+            customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: null },
+        }
+        const supa = clienteFalso({ pedido: pedidoFreteGratis })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar('gerar_etiqueta', { serviceId: '77' }), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        const corpo = await res.json()
+        assertEquals(corpo.success, true)
+        assertEquals(corpo.label_id, LABEL_ID)
+        // o serviço que chegou no carrinho do ME foi o que o LOJISTA escolheu
+        assertEquals(me.registro.carrinho, 1)
+        assertEquals(me.registro.ultimoServico, '77')
+    })
+})
+
+Deno.test("handler - opção do checkout (quando existe) SEMPRE vence o serviço escolhido no card — override só serve para o caso sem opção", async () => {
+    await comEnvAdmin(async () => {
+        // PEDIDO_FELIZ já tem shipping_option_id: 'melhor-envio-1' — um
+        // serviceId no corpo não pode reescrever o que o CLIENTE pagou.
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar('gerar_etiqueta', { serviceId: '999' }), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoServico, '1')
     })
 })

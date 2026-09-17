@@ -27,6 +27,7 @@ export const TELAS_DE_ENTRADA = [
   "admin-products",
   "admin-product-form",
   "admin-orders",
+  "admin-pdv",
   "admin-coupons",
   "admin-coupon-form",
   "admin-banners",

@@ -65,6 +65,41 @@ import {
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+// achado AdminProductFormView-499: o ImageAdjuster SEMPRE exporta
+// `image/webp` (ImageAdjuster.tsx, `canvas.toBlob(cb, "image/webp", ...)`),
+// mas o recorte confirmado subia com nome/tipo FIXOS em `.jpg`/`image/jpeg`
+// — mentindo sobre o conteúdo real. `uploadProductImages` (useProducts.ts)
+// deriva a extensão do bucket a partir do NOME, e o Storage serve o
+// Content-Type do `File.type`: um ".jpg" que é webp por dentro falha na
+// transformação de imagem do Storage, e o LazyImage cai no fallback da
+// imagem ORIGINAL (sem redimensionar) em toda a vitrine.
+//
+// Exportada só para o teste chamar direto, mesmo motivo de
+// `compressProductImage` logo abaixo.
+function extensaoDoContentType(tipo: string): string {
+  switch (tipo) {
+    case "image/webp":
+      return "webp";
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+      return "jpg";
+    default:
+      // Sem tipo reconhecido (ex.: `Blob.type` vazio em algum ambiente),
+      // cai no formato que o ImageAdjuster de fato produz hoje — nunca no
+      // jpeg mentiroso que este achado corrige.
+      return "webp";
+  }
+}
+
+export function arquivoDaImagemRecortada(croppedBlob: Blob): File {
+  const tipo = croppedBlob.type || "image/webp";
+  const extensao = extensaoDoContentType(tipo);
+  return new File([croppedBlob], `product-image-${Date.now()}.${extensao}`, {
+    type: tipo,
+  });
+}
+
 // Exportado só para o teste chamar direto (não passa pelo componente inteiro)
 // — continua sendo um detalhe interno desta tela, não uma API pública. Nome
 // `compressProductImage` (não `compressImage`) de propósito: já existe um
@@ -496,9 +531,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (adjustingImgIndex === null) return;
     setIsUploadingAdjusted(true);
 
-    const file = new File([croppedBlob], `product-image-${Date.now()}.jpg`, {
-      type: "image/jpeg",
-    });
+    const file = arquivoDaImagemRecortada(croppedBlob);
     const loadingToast = toast.loading("Enviando imagem recortada...");
 
     try {
@@ -2549,11 +2582,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
                       <span>
-                        <b className="text-zinc-350">Ajuste de Estoque:</b>{" "}
-                        Defina a variação de estoque (ex: se o produto principal
-                        tem 10 unidades e a variante G tem mais 5, use o
-                        incremento correto de estoque para que o cliente saiba
-                        exatamente o que há disponível).
+                        <b className="text-zinc-350">Estoque da Variação:</b>{" "}
+                        Informe o estoque físico real desta variação — não é um
+                        extra somado ao estoque do produto. Assim que qualquer
+                        variação estiver ativa, o estoque do produto acima passa
+                        a ser a <b>soma</b> de todas as variações ativas, e o
+                        campo dele fica travado enquanto isso.
                       </span>
                     </li>
                     <li className="flex items-start gap-2.5">
@@ -2666,19 +2700,20 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
-                        <b className="text-zinc-350">Código SKU:</b> Código
-                        identificador único do produto (Stock Keeping Unit).
-                        Útil para controle interno, integração de estoque e
-                        identificação ágil.
+                        <b className="text-zinc-350">Código SKU:</b> Referência
+                        interna sua (Stock Keeping Unit), livre de repetir —
+                        útil para controle e identificação ágil. Quem precisa
+                        ser único é o SKU de cada variação.
                       </span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
                         <b className="text-zinc-350">Estoque Base:</b>{" "}
-                        Quantidade física disponível. Se utilizar variações, o
-                        estoque de cada variante será somado ou deduzido deste
-                        total conforme as vendas.
+                        Quantidade física disponível quando o produto não tem
+                        variação ativa. Com qualquer variação ativa, o estoque
+                        do produto passa a ser a SOMA das variações ativas e
+                        este campo fica travado.
                       </span>
                     </li>
                   </ul>
@@ -3415,8 +3450,8 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 </div>
                 <p className="text-xs text-zinc-400">
                   Nome do produto, descrição detalhada e o{" "}
-                  <strong className="text-white">SKU</strong> (código único de
-                  controle de estoque interno da sua loja).
+                  <strong className="text-white">SKU</strong> (referência
+                  interna livre; só o SKU de cada variação precisa ser único).
                 </p>
               </div>
 
@@ -3471,8 +3506,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 materiais e políticas de garantia.
               </li>
               <li>
-                Certifique-se de que o SKU cadastrado é único na loja para
-                evitar problemas na baixa de estoque.
+                O SKU do produto é livre — a loja não te impede de repetir (é só
+                uma referência sua). Já o SKU de cada VARIAÇÃO precisa ser
+                único: o sistema recusa salvar um que já exista em qualquer
+                outra variação já cadastrada (inclusive de produtos excluídos).
               </li>
             </ul>
           </div>

@@ -19,6 +19,17 @@ import {
   podeCobrar,
   subDoToken,
 } from "./index.ts";
+// Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
+// do lojista nos testes do fim deste arquivo — fixture escrito à mão não
+// provaria que a function decifra de verdade. Desde a tarefa mp-6 o fixture
+// vem PRONTO de `_shared/credenciais-mp_fixtures.ts`: era a mesma montagem
+// copiada em cinco suítes, e cópia de fixture envelhece calada.
+import {
+  CHAVE_CIFRA_TESTE,
+  registroMpDeTeste,
+  TOKEN_AMBIENTE_FALSO as TOKEN_PLATAFORMA_FALSO,
+  TOKEN_LOJISTA_FALSO,
+} from "../_shared/credenciais-mp_fixtures.ts";
 
 const UUID = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 const AGORA = new Date("2026-08-06T12:00:00.000Z");
@@ -87,10 +98,37 @@ function clienteFalso(opts: {
     filtrosUpdate?: Array<[string, unknown]>;
     valoresUpdate?: Record<string, unknown>;
   };
+  // Tarefa mp-2: o registro CIFRADO do lojista, como ele dorme em
+  // app_settings (`_shared/credenciais-mp.ts`). Default ausente — a loja
+  // que ainda roda pelas chaves da plataforma, que é o que todos os testes
+  // anteriores a esta tarefa exercitam.
+  registroMp?: Record<string, unknown> | null;
 }) {
   let chamadasSelect = 0;
   return {
-    from(_tabela: string) {
+    from(tabela: string) {
+      // Tabela PRÓPRIA no dublê, e não a cadeia de marketplace_orders
+      // abaixo: a leitura das credenciais gastaria a PRIMEIRA `select()`
+      // (a que carrega `erroLeitura` e o fixture do pedido), e todo teste
+      // de leitura de pedido passaria a medir outra coisa em silêncio.
+      if (tabela === "app_settings") {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return {
+                  maybeSingle: async () => ({
+                    data: opts.registroMp
+                      ? { value: JSON.stringify(opts.registroMp) }
+                      : null,
+                    error: null,
+                  }),
+                };
+              },
+            };
+          },
+        };
+      }
       return {
         select(_cols: string) {
           chamadasSelect++;
@@ -2179,4 +2217,85 @@ Deno.test("emailDoToken: sem claim de e-mail, lixo ou e-mail sem @ devolve null"
     .replace(/\//g, "_")
     .replace(/=+$/, "");
   assertEquals(emailDoToken(`cabecalho.${semArroba}.assinatura`), null);
+});
+
+// ── Tarefa mp-2 (15/09/2026): de QUEM é o token que cobra o cliente ───────
+//
+// A chave do lojista (Ajustes > Pagamentos > Mercado Pago) passou a valer de
+// verdade: `resolverCredenciaisMp` (`_shared/credenciais-mp.ts`) decide entre
+// a chave do LOJISTA (registro cifrado em app_settings) e a da PLATAFORMA
+// (MP_ACCESS_TOKEN), e fecha quando existe registro que não dá para decifrar.
+// Os dois testes abaixo são o que prende essa decisão AQUI, no lugar onde o
+// dinheiro é cobrado: o primeiro prova que o Bearer que sai para o MP é o
+// token DECIFRADO do lojista (com o da plataforma presente no ambiente, e
+// diferente, de propósito — sem isso a asserção passaria por coincidência);
+// o segundo prova a falha FECHADA, que é a regra de dinheiro desta frente:
+// registro cadastrado + cofre fora do ar NÃO pode cair no token da
+// plataforma, porque cobrar na conta errada é pior do que não cobrar.
+
+/** Igual ao `fetchFalsoMP`, mas guardando TAMBÉM os headers — é no
+ * `Authorization` que mora a resposta de "quem está cobrando". */
+function fetchFalsoMpComHeaders(capturado: { autorizacao?: string; chamadas: number }) {
+  const base = fetchFalsoMP({});
+  return async (url: string, init?: RequestInit) => {
+    capturado.chamadas++;
+    capturado.autorizacao = (init?.headers as Record<string, string> | undefined)?.Authorization;
+    return base(url, init);
+  };
+}
+
+Deno.test("handler: com chave do LOJISTA cadastrada, o Bearer que vai ao MP é o token DECIFRADO dele — nunca o MP_ACCESS_TOKEN da plataforma", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", TOKEN_PLATAFORMA_FALSO);
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  try {
+    const pedido = pedidoBase({ user_id: DONO_LOGADO });
+    const supabase = clienteFalso({
+      pedido,
+      gravado: { id: UUID },
+      registroMp: await registroMpDeTeste(),
+    });
+    const capturado = { chamadas: 0 } as { autorizacao?: string; chamadas: number };
+
+    const resposta = await handler(
+      requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+      { supabase, fetchImpl: fetchFalsoMpComHeaders(capturado) },
+    );
+
+    assertEquals(resposta.status, 200);
+    assertEquals(capturado.autorizacao, `Bearer ${TOKEN_LOJISTA_FALSO}`);
+  } finally {
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  }
+});
+
+Deno.test("handler: chave do lojista cadastrada + cofre (MP_CHAVES_ENCRYPTION_KEY) ausente -> 503 terminal e NENHUMA chamada ao MP (falha fechada: não cai no token da plataforma)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", TOKEN_PLATAFORMA_FALSO);
+  Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const supabase = clienteFalso({
+    pedido,
+    gravado: { id: UUID },
+    registroMp: await (async () => {
+      // O registro é montado COM o cofre; só a leitura é que acontece sem
+      // ele — é exatamente o dia em que a env sumiu do deploy.
+      Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+      const r = await registroMpDeTeste();
+      Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+      return r;
+    })(),
+  });
+  const capturado = { chamadas: 0 } as { autorizacao?: string; chamadas: number };
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: fetchFalsoMpComHeaders(capturado) },
+  );
+  const corpo = await resposta.json();
+
+  // Mesma resposta do "sem token" de sempre (laudo 0109, D1): configuração
+  // de longa duração não prende o cliente no "Tentar de novo".
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo.error, "Pagamento indisponível.");
+  assertEquals(corpo.terminal, true);
+  assertEquals(capturado.chamadas, 0);
 });

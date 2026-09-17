@@ -73,6 +73,95 @@ export {
 };
 
 // ---------------------------------------------------------------------------
+// Paginação e orçamento de tempo (index-133)
+//
+// O broadcast ("avisar todo mundo") fazia `select('*')` em `push_subscriptions`
+// sem `.limit()` e mandava os lotes de `enviarParaInscritos` em série dentro do
+// mesmo handler HTTP, sem teto de tempo. Com a base de inscritos pequena isso
+// nunca doeu; no dia que a loja crescer pra alguns milhares, a soma dos lotes
+// pode ultrapassar o tempo de execução da edge function — a function é
+// cortada NO MEIO, sem responder nada, e quem disparou a campanha não fica
+// sabendo quantos dispositivos ficaram sem tentativa (só o que já tivesse
+// sido processado entraria num resumo que nunca chega a sair).
+//
+// A correção fica em duas peças pequenas e testáveis sem banco nem rede:
+// `paginarTudo` troca o `select('*')` por leitura em páginas, e
+// `enviarComOrcamentoDeTempo` para de abrir lote novo quando o relógio passa
+// do orçamento, devolvendo `naoTentados` em vez de escondê-los.
+// ---------------------------------------------------------------------------
+
+const TAMANHO_DA_PAGINA_DE_LEITURA = 200;
+const TAMANHO_DO_LOTE_DE_ENVIO = 20;
+const ORCAMENTO_DE_TEMPO_MS = 50_000;
+
+/**
+ * Chama `buscarPagina(offset, tamanho)` até ela devolver uma página vazia ou
+ * menor que `tamanho` (fim dos dados), acumulando tudo num array só.
+ *
+ * `buscarPagina` é injetada de propósito: a única coisa específica do
+ * Supabase é o `.range()` montado no handler — aqui dá pra provar que a
+ * volta completa das páginas acontece sem precisar de banco nenhum.
+ */
+export async function paginarTudo(
+  buscarPagina: (offset: number, tamanho: number) => Promise<any[]>,
+  tamanhoDaPagina: number = TAMANHO_DA_PAGINA_DE_LEITURA,
+): Promise<any[]> {
+  const tudo: any[] = [];
+  let offset = 0;
+  for (;;) {
+    const pagina = await buscarPagina(offset, tamanhoDaPagina);
+    if (!pagina || pagina.length === 0) break;
+    tudo.push(...pagina);
+    if (pagina.length < tamanhoDaPagina) break;
+    offset += tamanhoDaPagina;
+  }
+  return tudo;
+}
+
+/**
+ * Manda `inscricoes` em fatias de `tamanhoDoLote` (cada fatia é UM
+ * `Promise.all` dentro de `enviarParaInscritos` — concorrência limitada ao
+ * tamanho da fatia), mas para de abrir fatia nova assim que
+ * `agora() - inicio` passar de `orcamentoMs`.
+ *
+ * Isso é o que falta pra um broadcast grande nunca estourar o teto de
+ * execução da function sem avisar: a checagem acontece ANTES de cada fatia,
+ * nunca no meio de uma já em voo, e o que não deu tempo de tentar volta
+ * contado em `naoTentados` — nunca escondido dentro de um `enviados` que não
+ * é verdade (a PUSH-010 já existe por causa de contagem que mentia).
+ *
+ * `agora` é injetado para o teste controlar o relógio sem `setTimeout` real.
+ */
+export async function enviarComOrcamentoDeTempo({
+  servidor,
+  inscricoes,
+  mensagem,
+  aoDetectarMorta,
+  rotulo = "push",
+  tamanhoDoLote = TAMANHO_DO_LOTE_DE_ENVIO,
+  orcamentoMs = ORCAMENTO_DE_TEMPO_MS,
+  agora = () => Date.now(),
+}: any): Promise<{ itens: any[]; naoTentados: number }> {
+  const inicio = agora();
+  const itens: any[] = [];
+  let i = 0;
+  for (; i < inscricoes.length; i += tamanhoDoLote) {
+    if (agora() - inicio >= orcamentoMs) break;
+    const lote = inscricoes.slice(i, i + tamanhoDoLote);
+    const itensDoLote = await enviarParaInscritos({
+      servidor,
+      inscricoes: lote,
+      mensagem,
+      aoDetectarMorta,
+      rotulo,
+      tamanhoDoLote: lote.length,
+    });
+    itens.push(...itensDoLote);
+  }
+  return { itens, naoTentados: Math.max(inscricoes.length - i, 0) };
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -131,11 +220,21 @@ if (!emTeste) {
           auth: t.keys?.auth || t.auth,
         }));
       } else {
-        const query = supabaseClient.from("push_subscriptions").select("*");
-        if (targetUserId) query.eq("user_id", targetUserId);
-        const { data: linhas, error: subError } = await query;
-        if (subError) throw subError;
-        inscricoes = linhas || [];
+        // Paginado (index-133): era `select('*')` sem `.limit()`, carregando
+        // a base de inscritos inteira de uma vez. `.order("id")` fixa uma
+        // ordem estável entre páginas — sem ela o `.range()` pode repetir ou
+        // pular linha se a tabela mudar entre duas chamadas.
+        inscricoes = await paginarTudo(async (offset, tamanho) => {
+          let query = supabaseClient
+            .from("push_subscriptions")
+            .select("*")
+            .order("id", { ascending: true })
+            .range(offset, offset + tamanho - 1);
+          if (targetUserId) query = query.eq("user_id", targetUserId);
+          const { data: linhas, error: subError } = await query;
+          if (subError) throw subError;
+          return linhas || [];
+        }, TAMANHO_DA_PAGINA_DE_LEITURA);
       }
 
       console.log(
@@ -150,6 +249,7 @@ if (!emTeste) {
             enviados: 0,
             falharam: 0,
             removidas: 0,
+            naoTentados: 0,
             falhas: [],
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -180,11 +280,19 @@ if (!emTeste) {
         data: data || null,
       });
 
-      const itens = await enviarParaInscritos({
+      // Orçamento de tempo (index-133): sem teto, a soma dos lotes de uma
+      // campanha grande pode ultrapassar o limite de execução da function e
+      // ela é cortada no meio — sem responder nada e sem dizer quanto ficou
+      // sem tentativa. Com o orçamento o handler sempre responde a tempo, e
+      // o que não deu pra tentar entra no resumo como `naoTentados` em vez
+      // de desaparecer.
+      const { itens, naoTentados } = await enviarComOrcamentoDeTempo({
         servidor,
         inscricoes,
         mensagem,
         rotulo: "send-push",
+        tamanhoDoLote: TAMANHO_DO_LOTE_DE_ENVIO,
+        orcamentoMs: ORCAMENTO_DE_TEMPO_MS,
         aoDetectarMorta: (endpoint: string) =>
           supabaseClient
             .from("push_subscriptions")
@@ -194,7 +302,7 @@ if (!emTeste) {
 
       const resumo = resumir(itens);
       console.log(
-        `send-push: ${resumo.enviados} entregues, ${resumo.falharam} falharam, ${resumo.removidas} inscrições removidas`,
+        `send-push: ${resumo.enviados} entregues, ${resumo.falharam} falharam, ${resumo.removidas} inscrições removidas, ${naoTentados} não tentadas (orçamento de tempo)`,
       );
 
       // HTTP 200 mesmo com falha parcial, e de propósito: o `functions.invoke`
@@ -203,7 +311,7 @@ if (!emTeste) {
       // admin — então os números vêm no corpo, e quem decide o que mostrar é a
       // tela. `ok` é falso quando ninguém recebeu.
       return new Response(
-        JSON.stringify({ ok: resumo.enviados > 0, ...resumo }),
+        JSON.stringify({ ok: resumo.enviados > 0, ...resumo, naoTentados }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     } catch (error: any) {

@@ -37,6 +37,8 @@ export interface Product {
   metaDescription?: string;
   /** `null` = limpar o codigo; `undefined` = nao mexer. Ver [ADMIN-050, #96]. */
   sku?: string | null;
+  /** Mesma convencao do sku acima: `null` = limpar o codigo de barras; `undefined` = nao mexer. */
+  codigoBarras?: string | null;
   weightKg?: number | null;
   widthCm?: number | null;
   heightCm?: number | null;
@@ -47,6 +49,7 @@ export interface ProductVariant {
   id: string;
   productId: string;
   sku?: string;
+  codigoBarras?: string;
   name: string;
   value: string;
   stockIncrement: number;
@@ -142,6 +145,13 @@ export type PaymentStatus =
   | "pago_apos_expirar"
   | "recebido_na_entrega";
 
+/**
+ * De onde a venda veio. `online` é a loja (checkout); `presencial` é o balcão
+ * (PDV). A coluna é `marketplace_orders.canal`, NOT NULL DEFAULT 'online'
+ * (migration 20261160000000) — pedido antigo nenhum fica sem canal.
+ */
+export type CanalDaVenda = "online" | "presencial";
+
 export interface OrderItem {
   productId: string;
   variantId?: string;
@@ -182,6 +192,16 @@ export interface Order {
   pagamentoRecebidoEm?: string | null;
   /** Qual admin confirmou o recebimento. */
   pagamentoRecebidoPor?: string | null;
+  /**
+   * De onde a venda veio. Opcional porque existe `Order` sem a chave em
+   * RUNTIME: o cache de pedidos do cliente em localStorage gravado por versão
+   * anterior do app é hidratado sem passar pelo mapper (useOrders). Regra para
+   * todo consumidor: ramifique por `canal === "presencial"`, nunca por
+   * `=== "online"` — ausente é online.
+   */
+  canal?: CanalDaVenda;
+  /** Qual admin registrou a venda no balcão. NULL em venda online. */
+  vendedorId?: string | null;
 }
 
 export interface Review {
@@ -325,6 +345,7 @@ export type View =
   | "admin-products"
   | "admin-product-form"
   | "admin-orders"
+  | "admin-pdv"
   | "admin-coupons"
   | "admin-coupon-form"
   | "admin-banners"

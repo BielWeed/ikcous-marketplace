@@ -112,11 +112,21 @@ export const AdminShippingView = memo(function AdminShippingView({
 
   // Leitura da credencial de transportadora (mesma tabela que Ajustes
   // grava) — só para dizer a VERDADE sobre a conexão na faixa e na seção
-  // "Fora da cidade". Esta tela nunca grava credencial. Map (não Record
-  // indexado por variável): indexação dinâmica dispara
-  // `security/detect-object-injection` do eslint e o teto do lint reprova
-  // warning novo.
-  const [credsMapa, setCredsMapa] = useState<Map<string, any>>(() => new Map());
+  // "Fora da cidade". Esta tela nunca grava credencial e, desde o achado
+  // AdminShippingView-126 (segurança), também não LÊ o token: baixar o
+  // JSON inteiro (`credentials`, com o token da conta real do Melhor
+  // Envio/Frenet) só para acender um booleano deixava o segredo parado no
+  // estado React durante toda a sessão, exposto a extensão, DevTools e
+  // qualquer captura de estado — para uma tela que só precisa saber SE
+  // existe conexão. O filtro `credentials->>token` roda no PRÓPRIO
+  // Postgres (RLS já restringe a linha ao admin da loja; o filtro só
+  // decide quais linhas voltam) e a coluna `credentials` nem entra no
+  // `select` — o navegador recebe só o `provider` de quem já tem token.
+  // Set (não Map com o valor da credencial): não há mais nada para
+  // guardar além de "este provedor tem token".
+  const [credsConectados, setCredsConectados] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [credsErro, setCredsErro] = useState(false);
 
   const fetchCreds = useCallback(async () => {
@@ -124,13 +134,13 @@ export const AdminShippingView = memo(function AdminShippingView({
     try {
       const { data, error } = await supabase
         .from("store_shipping_credentials")
-        .select("*");
+        .select("provider")
+        .not("credentials->>token", "is", null)
+        .neq("credentials->>token", "");
       if (!error && data) {
-        const mapa = new Map<string, any>();
-        data.forEach((row: { provider: string; credentials: any }) => {
-          mapa.set(row.provider, row.credentials);
-        });
-        setCredsMapa(mapa);
+        setCredsConectados(
+          new Set(data.map((row: { provider: string }) => row.provider)),
+        );
       } else {
         setCredsErro(true);
       }
@@ -201,11 +211,11 @@ export const AdminShippingView = memo(function AdminShippingView({
         ? "desconectado"
         : credsErro
           ? "indeterminado"
-          : credsMapa.get(provedorSalvo)?.token
+          : credsConectados.has(provedorSalvo)
             ? "conectado"
             : "desconectado";
     return { estado, provedorNome: nome };
-  }, [config?.shippingProvider, credsMapa, credsErro]);
+  }, [config?.shippingProvider, credsConectados, credsErro]);
 
   // ── A faixa-resumo descreve o que está SALVO (a realidade da loja hoje) ──
   // Frases derivadas do config, nunca do formulário pendente: quem abriu a

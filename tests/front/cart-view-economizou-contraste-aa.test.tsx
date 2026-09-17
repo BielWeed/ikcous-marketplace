@@ -66,12 +66,23 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: null }),
 }));
 
-// ShippingCalculator (importado por CartView, mesmo não renderizando com
-// `hasFreeShippingItem=true`) importa `@/lib/supabase` no topo do módulo --
-// o import estático roda ao carregar o arquivo, não só quando o componente
-// monta. Sem este dublê, `createClient` tentaria abrir um client de verdade
-// (Web Worker, indisponível no jsdom).
+// ShippingCalculator importa `@/lib/supabase` no topo do módulo -- o import
+// estático roda ao carregar o arquivo, não só quando o componente monta.
+// Sem este dublê, `createClient` tentaria abrir um client de verdade (Web
+// Worker, indisponível no jsdom).
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+
+// CORREÇÃO CartView-495 (15/09): a CartView passou a montar a
+// ShippingCalculator MESMO com `freteGratis=true` (ver comentário em
+// CartView.tsx) -- ela lê `useCartState()` (CartContext real via
+// `useContext`), que exige um `CartProvider` de verdade na árvore. Este
+// arquivo testa só o selo do resumo (fora da calculadora) e usa um dublê de
+// `useCart`, não um `CartProvider` real -- por isso a calculadora vira
+// dublê aqui também, mesmo padrão de
+// cart-view-promessas-que-a-loja-nao-cumpre.test.tsx.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => <div data-testid="calculadora" />,
+}));
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

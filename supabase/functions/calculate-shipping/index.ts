@@ -196,6 +196,54 @@ async function gravarCotacao(gravar: () => PromiseLike<unknown>): Promise<unknow
 }
 
 /**
+ * "Upsert" de aplicação para `shipping_quotes_cache` (index-880).
+ *
+ * A tabela não tem UNIQUE em (origin_cep, destination_cep, cart_hash) — só
+ * PK em `id` — e criar esse índice é migration, que é outra frente. Sem ele,
+ * `.upsert(...)` do supabase-js não serve: sem um alvo de conflito real, ele
+ * teria de ser feito no `id` (que é sempre novo) e nunca "acharia" a linha
+ * da chave. Por isso a gravação aqui faz o upsert NA MÃO: tenta ATUALIZAR a
+ * linha já existente da chave e só INSERE quando não existe nenhuma.
+ *
+ * Isso não fecha 100% a corrida (dois misses VERDADEIRAMENTE simultâneos
+ * ainda podem os dois não achar nada para atualizar e inserir um cada um),
+ * mas para a reincidência que perpetuava o bug: hoje toda cotação seguinte
+ * da MESMA chave — inclusive as que vêm de uma corrida anterior — atualiza a
+ * linha em vez de empilhar outra. O resto da proteção é a leitura tolerante
+ * em `buscarCotacaoEmCache`, que nunca estoura mesmo se sobrar duplicata.
+ */
+async function salvarCotacaoNoCache(
+    supabaseClient: any,
+    chave: { originCep: string; destinationCep: string; cartHash: string; options: unknown },
+): Promise<unknown | null> {
+    let linhasAtualizadas: unknown[] | null = null
+
+    const erroDeUpdate = await gravarCotacao(async () => {
+        const resultado = await supabaseClient
+            .from('shipping_quotes_cache')
+            .update({ options: chave.options, created_at: new Date().toISOString() })
+            .eq('origin_cep', chave.originCep)
+            .eq('destination_cep', chave.destinationCep)
+            .eq('cart_hash', chave.cartHash)
+            .select('id')
+        linhasAtualizadas = (resultado as { data?: unknown[] } | null)?.data ?? null
+        return resultado
+    })
+
+    if (erroDeUpdate) return erroDeUpdate
+    if (linhasAtualizadas && linhasAtualizadas.length > 0) return null
+
+    return await gravarCotacao(() =>
+        supabaseClient.from('shipping_quotes_cache').insert({
+            origin_cep: chave.originCep,
+            destination_cep: chave.destinationCep,
+            cart_hash: chave.cartHash,
+            options: chave.options,
+        }),
+    )
+}
+
+/**
  * Texto legível de um erro que pode ser exceção (`Error`) ou objeto do
  * PostgREST (`{ message, code }`) — as duas formas que `gravarCotacao`
  * devolve. Só vai para `shipping_calculation_logs`, que é tabela de admin;
@@ -366,6 +414,34 @@ export function nomeAmigavelDoServico(service: { name?: string }): string {
     if (low.includes('package') || /\bpac\b/.test(low)) return 'Entrega econômica'
     if (low.includes('.com') || low.includes('express')) return 'Entrega expressa'
     return nome
+}
+
+/**
+ * Casa o nome COMERCIAL que a transportadora devolve com a CHAVE que o
+ * lojista liga/desliga em `enabled_shipping_methods` (as três chaves fixas
+ * da tela: "sedex", "pac", "jadlog" — TransportadorasCard.tsx:95).
+ *
+ * O filtro antigo comparava a chave com `includes` cru sobre o nome
+ * comercial: `".package".includes("pac")` é TRUE (liga a Jadlog pensando
+ * que é o PAC dos Correios) e `".package".includes("jadlog")` é FALSE
+ * (desliga a Jadlog mesmo com a chave marcada, e some a única opção) — a
+ * MESMA armadilha que `nomeAmigavelDoServico`, alguns parágrafos acima, já
+ * evita para o PAC com `\bpac\b`; o filtro só não usava a mesma régua.
+ *
+ * Cada chave casa por um padrão que identifica o SERVIÇO, não uma
+ * substring qualquer do nome comercial. Chave desconhecida (ex.: nova
+ * transportadora ainda sem regra própria) cai no `includes` de antes, para
+ * não desligar sozinho um método que o lojista pediu por nome.
+ */
+export function servicoCasaChave(nomeDoServico: string | null | undefined, chave: string): boolean {
+    const nome = String(nomeDoServico || '').toLowerCase()
+    const chaveNormalizada = String(chave || '').toLowerCase().trim()
+
+    if (chaveNormalizada === 'pac') return /\bpac\b/.test(nome)
+    if (chaveNormalizada === 'jadlog') return /jadlog|package|centralizado|\.com/.test(nome)
+    if (chaveNormalizada === 'sedex') return nome.includes('sedex')
+
+    return nome.includes(chaveNormalizada)
 }
 
 // Helper to check if destination is a local CEP
@@ -727,13 +803,24 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // lados).
         const presetPorProduto = Number(storeConfig.free_shipping_min ?? 0) < 0
 
-        // 3. Check if all items in the cart are free shipping — SÓ no preset
+        // 3. Check if the order's shipping should be free — SÓ no preset
         // por_produto. Fora dele (desligado/sempre/acima_de_valor) TODOS os
         // itens são tratados como não-grátis: antes este `allFree` honrava a
         // marcação INCONDICIONALMENTE e devolvia "Frete Grátis (Promoção)"
         // R$ 0 para loja com o grátis desligado — preço que a RPC do pedido
         // NÃO honrava (ela cobra a entrega local real no último clique).
-        const allFree = presetPorProduto && cart && Array.isArray(cart) && cart.length > 0 && cart.every((item: any) => {
+        //
+        // index-736: aqui era `cart.every(...)` — exigia TODOS os itens
+        // marcados. A RPC do pedido (20261081000000:294-296, :315) e o front
+        // (CartContext.tsx:803) usam `some`: BASTA um item marcado para o
+        // frete do PEDIDO INTEIRO zerar. Com `every`, um carrinho MISTO (um
+        // item marcado + um não marcado) não batia aqui e caía no ramo de
+        // baixo, que cotava só os itens não marcados (`nonFreeCart`, morto
+        // nesta mesma correção) — uma TERCEIRA resposta para a mesma
+        // pergunta que a RPC e o front já respondem igual. `some` alinha os
+        // três: um item marcado é o bastante para o pedido inteiro sair de
+        // graça, do mesmo jeito que sairia de graça no checkout.
+        const allFree = presetPorProduto && cart && Array.isArray(cart) && cart.length > 0 && cart.some((item: any) => {
             const prodId = item.product?.id || item.productId
             const dbProd = dbProductsMap.get(prodId)
             return !!(dbProd?.frete_gratis ?? item.product?.freeShipping)
@@ -809,7 +896,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         }
 
         if (allFree) {
-            console.log('[calculate-shipping] All cart items have free shipping. Returning 0 freight cost.')
+            console.log('[calculate-shipping] Item com frete grátis no carrinho (preset por_produto): frete zerado para o pedido inteiro.')
             return new Response(
                 JSON.stringify({
                     options: [
@@ -864,15 +951,33 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // ── CACHE LOOKUP ──
         const cartHash = getCartHash(cart)
         const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-        
-        const { data: cachedQuote, error: cacheQueryError } = await supabaseClient
+
+        // Leitura TOLERANTE a mais de uma linha para a mesma chave
+        // (index-880). `shipping_quotes_cache` não tem UNIQUE em
+        // (origin_cep, destination_cep, cart_hash) — só PK em `id` — e o
+        // INSERT só acontece no miss. Duas cotações do MESMO carrinho que
+        // erram o cache ao mesmo tempo (duas abas, ou o debounce de 700ms
+        // cruzando com o clique manual em "Calcular") gravam DUAS linhas.
+        // `.maybeSingle()` ESTOURA quando mais de uma linha bate no filtro,
+        // e o erro derrubava o cache daquela chave por até 2h: toda
+        // releitura seguinte caía no mesmo erro, ia de novo para a
+        // transportadora e GRAVAVA MAIS uma linha, realimentando o problema.
+        // `.order(created_at desc).limit(1)` nunca estoura com duplicata —
+        // pega a mais recente e ignora o resto, a mesma disciplina que a RPC
+        // do pedido já usa para este caso (`ORDER BY q.created_at DESC
+        // LIMIT 1`). A gravação em `salvarCotacaoNoCache`, abaixo, faz a
+        // outra metade: evita empilhar mais linha na mesma chave.
+        const { data: linhasDoCache, error: cacheQueryError } = await supabaseClient
             .from('shipping_quotes_cache')
             .select('options')
             .eq('origin_cep', originCep)
             .eq('destination_cep', cleanCep)
             .eq('cart_hash', cartHash)
             .gt('created_at', twoHoursAgo)
-            .maybeSingle()
+            .order('created_at', { ascending: false })
+            .limit(1)
+
+        const cachedQuote = linhasDoCache?.[0] ?? null
 
         if (cachedQuote && !cacheQueryError && cachedQuote.options) {
             console.log(`[calculate-shipping] Caching hit for CEP: ${cleanCep}`)
@@ -927,35 +1032,16 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
         const credentials = credsData.credentials || {}
         let shippingOptions: any[] = []
-        // Mesmo predicado do `allFree` (revisão A1): fora do por_produto o
-        // carrinho INTEIRO entra na cotação — é ele que a transportadora vai
-        // pesar e cobrar; item marcado não some da balança.
-        const nonFreeCart = presetPorProduto
-            ? cart.filter((item: any) => {
-                const prodId = item.product?.id || item.productId
-                const dbProd = dbProductsMap.get(prodId)
-                return !(dbProd?.frete_gratis ?? item.product?.freeShipping ?? false)
-            })
-            : cart
 
-        if (nonFreeCart.length === 0) {
-            return new Response(
-                JSON.stringify({
-                    options: [
-                        {
-                            id: 'free-shipping-promo',
-                            name: 'Frete Grátis (Promoção)',
-                            price: 0,
-                            deliveryDays: 3,
-                            provider: 'free'
-                        }
-                    ],
-                    cotacaoIncompleta: false
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
+        // index-736: até aqui existia um `nonFreeCart` neste ponto — cotava
+        // só os itens NÃO marcados quando o preset por_produto não zerava o
+        // pedido inteiro (`every` não batia). Com `allFree` agora em `some`
+        // (acima), chegar até aqui com `presetPorProduto` true só é possível
+        // quando NENHUM item está marcado (senão `some` já teria disparado o
+        // retorno `Frete Grátis` logo acima) — ou seja, o filtro do
+        // `nonFreeCart` sempre devolvia o `cart` inteiro sem tirar nada.
+        // Cotar o `cart` direto é o mesmo resultado, sem o ramo morto que
+        // fingia cobrar só parte do carrinho.
         const apiStartTime = performance.now()
         let apiError: string | null = null
 
@@ -964,7 +1050,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 const token = credentials.token
                 if (!token) throw new Error('Token do Melhor Envio ausente')
 
-                const products = nonFreeCart.map((item: any) => {
+                const products = cart.map((item: any) => {
                     const prodId = item.product?.id || item.productId
                     const dbProd = dbProductsMap.get(prodId)
 
@@ -1015,8 +1101,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     shippingOptions = data
                         .filter(service => !service.error && service.price)
                         .map(service => {
-                            const serviceNameLower = service.name.toLowerCase()
-                            const isEnabled = enabledMethods.length === 0 || enabledMethods.some((m: string) => serviceNameLower.includes(m.toLowerCase()))
+                            const isEnabled = enabledMethods.length === 0 || enabledMethods.some((m: string) => servicoCasaChave(service.name, m))
                             if (!isEnabled) return null
 
                             return {
@@ -1034,14 +1119,14 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 const token = credentials.token
                 if (!token) throw new Error('Token da Frenet ausente')
 
-                const invoiceValue = nonFreeCart.reduce((sum: number, item: any) => {
+                const invoiceValue = cart.reduce((sum: number, item: any) => {
                     const prodId = item.product?.id || item.productId
                     const dbProd = dbProductsMap.get(prodId)
                     const price = Number(dbProd?.preco_venda ?? item.product?.price ?? 0)
                     return sum + (price * Number(item.quantity || 1))
                 }, 0)
 
-                const items = nonFreeCart.map((item: any) => {
+                const items = cart.map((item: any) => {
                     const prodId = item.product?.id || item.productId
                     const dbProd = dbProductsMap.get(prodId)
 
@@ -1084,8 +1169,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 shippingOptions = services
                     .filter((s: any) => !s.Error && s.ShippingPrice)
                     .map((s: any) => {
-                        const descLower = s.ServiceDescription.toLowerCase()
-                        const isEnabled = enabledMethods.length === 0 || enabledMethods.some((m: string) => descLower.includes(m.toLowerCase()))
+                        const isEnabled = enabledMethods.length === 0 || enabledMethods.some((m: string) => servicoCasaChave(s.ServiceDescription, m))
                         if (!isEnabled) return null
 
                         return {
@@ -1189,14 +1273,12 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
             // preenchia endereço, escolhia pagamento, clicava em finalizar, e
             // só ali era recusada. Falhar aqui custa um clique; falhar lá
             // custa a compra inteira.
-            const erroDeGravacao = await gravarCotacao(
-                () => supabaseClient.from('shipping_quotes_cache').insert({
-                    origin_cep: originCep,
-                    destination_cep: cleanCep,
-                    cart_hash: cartHash,
-                    options: shippingOptions
-                }),
-            )
+            const erroDeGravacao = await salvarCotacaoNoCache(supabaseClient, {
+                originCep,
+                destinationCep: cleanCep,
+                cartHash,
+                options: shippingOptions,
+            })
 
             // Log — DEPOIS de saber se a gravação deu certo, e derivado dela.
             //

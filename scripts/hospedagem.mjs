@@ -34,6 +34,7 @@ export const telasDeEntrada = Object.freeze([
   "admin-products",
   "admin-product-form",
   "admin-orders",
+  "admin-pdv",
   "admin-coupons",
   "admin-coupon-form",
   "admin-banners",

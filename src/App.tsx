@@ -345,6 +345,7 @@ const VIEW_COMPONENTS = {
   "admin-products": AdminArea,
   "admin-product-form": AdminArea,
   "admin-orders": AdminArea,
+  "admin-pdv": AdminArea,
   "admin-coupons": AdminArea,
   "admin-coupon-form": AdminArea,
   "admin-banners": AdminArea,
@@ -410,6 +411,7 @@ const getNavigationDirection = (
     "admin-push": 0.5,
     "admin-notifications": 0.3,
     "admin-orders": 1,
+    "admin-pdv": 1.2,
     "admin-reviews": 1.4,
     "admin-qa": 1.6,
     "admin-products": 2,
@@ -740,6 +742,27 @@ const AppContent = () => {
 
   const handleNavigate = useCallback(
     async (view: View, id?: string, bypassDirtyCheck = false) => {
+      // App-743: tocar a própria aba/view JÁ ativa é sempre só scroll-to-top
+      // (ramo espelhado abaixo, em 834-842) — não há "para onde ir", então
+      // isso precisa vencer o gate de formulário sujo, nunca abrir o
+      // diálogo "Alterações Não Salvas". Antes esse gate rodava primeiro
+      // (usando `isAdminDirtyRef` puro) e tocar a aba ativa com dirty=true
+      // abria o diálogo; "Descartar e Sair" reentrava aqui com a MESMA view
+      // e caía neste mesmo caso de "mesmo destino" — só rolava pro topo,
+      // nunca desmontava o formulário, mas já tinha desligado a guarda.
+      if (
+        currentViewRef.current === view &&
+        selectedProductIdRef.current === (id || null)
+      ) {
+        const scrollContainer = view.startsWith("admin")
+          ? document.querySelector(".active-scroll-container")
+          : mainRef.current;
+        if (scrollContainer) {
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        return;
+      }
+
       if (isAdminDirtyRef.current && !bypassDirtyCheck) {
         setPendingNavigation({ view, id });
         return;
@@ -1080,7 +1103,10 @@ const AppContent = () => {
   useBehavioralPrefetch(currentView, prefetchView);
   useWebVitals();
 
-  // Prefetching of admin views is handled internally within the secure AdminArea.tsx bundle.
+  // Prefetch por hover/touch das views admin é feito dentro do AdminLayout
+  // (handleHoverTab). O prefetch em massa do boot (useEffect abaixo, com
+  // prefetchAll) só inclui essas views quando isAdminRef confirma o
+  // visitante como lojista — ver App-2114.
 
   const favoriteIds = React.useMemo(
     () => favorites.map((p) => p.id),
@@ -1573,6 +1599,7 @@ const AppContent = () => {
           "admin-product-form",
           "admin-user-detail",
           "admin-push",
+          "admin-pdv",
           "admin-banners",
           "admin-carousels",
           "admin-coupons",
@@ -1619,8 +1646,13 @@ const AppContent = () => {
             );
           } else if (
             currView === "admin-push" ||
-            currView === "admin-banners"
+            currView === "admin-banners" ||
+            currView === "admin-pdv"
           ) {
+            // Mesmo pai de `paiDaTelaDoAdmin("admin-pdv", ...)` — o
+            // checklist (nova-tela.md:39) avisa que já existem casos onde o
+            // reroute do popstate diverge do pai declarado ali; aqui os dois
+            // concordam de propósito.
             targetView = "admin-dashboard";
             globalThis.history.replaceState(
               { view: "admin-dashboard" },
@@ -2110,11 +2142,16 @@ const AppContent = () => {
     return () => clearTimeout(safetyTimer);
   }, [authLoading, productsLoading]);
 
-  // Preemptively prefetch all view chunks in background when network is idle
+  // Preemptively prefetch all view chunks in background when network is idle.
+  // App-2114: as views "admin-*" só entram quando `isAdminRef` já confirma o
+  // visitante como lojista — antes disso, prefetchAll baixava o painel
+  // inteiro (1,23 MB + recharts do dashboard) para todo cliente. Lê o ref
+  // (não `isAdmin` direto) para não reiniciar este timer de boot toda vez
+  // que o status de admin mudar — só importa o valor no instante do disparo.
   useEffect(() => {
     if (!authLoading && !productsLoading) {
       const timer = setTimeout(() => {
-        prefetchAll();
+        prefetchAll(isAdminRef.current);
       }, 800); // 800ms delay to ensure first paint is completely done
       return () => clearTimeout(timer);
     }
@@ -2313,6 +2350,7 @@ const AppContent = () => {
       "admin-products",
       "admin-product-form",
       "admin-orders",
+      "admin-pdv",
       "admin-coupons",
       "admin-coupon-form",
       "admin-banners",

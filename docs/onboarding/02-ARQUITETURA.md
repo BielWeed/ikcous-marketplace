@@ -32,7 +32,7 @@ Todo `arquivo:linha` abaixo foi conferido abrindo o arquivo em 30/07/2026. O que
 | `src/views/` | 32 | `admin/` (17), `customer/` (14), `shared/` (1 — só `AuthView.tsx`). |
 | `src/components/` | 75 | `ui/` (53, dos quais 34 em `ui/custom/`), `admin/` (16, com dois subdiretórios aninhados: `admin/dashboard/` e `admin/orders/`), `layouts/` (2), `pwa/` (2), `debug/` (1), mais `LazyImage.tsx` solto na raiz. |
 | `src/utils/` | 8 | Helpers sem estado — exceto `truth_gate.ts`, que é validação de negócio. |
-| `src/types/` | 4 | 2.160 linhas em `database.types.ts`, e `supabase.ts` é **byte a byte idêntico**, com zero importadores. |
+| `src/types/` | 3 | `database.types.ts` é a única fonte de tipos do banco (a cópia `supabase.ts` divergiu 839 linhas e foi apagada em 16/09/2026). |
 | `src/sw/` | 1 | `sw.ts` (354). Fonte do Service Worker, compilada pelo `injectManifest`. |
 | `src/config/` | 1 `.ts` + 1 `.json` | `branding.json` é lido **duas vezes**: no build (`vite.config.ts:26-28`) e em runtime (`branding.ts`, 108 linhas). |
 
@@ -570,8 +570,9 @@ produtos o sintoma não é erro: é o número de produtos mudando a cada troca d
   `supabase gen types` emite. Daí a inferência de que **existe em produção e foi criada fora do histórico de migrations** — é
   inferência, não observação: nenhum script do `package.json` regenera esses tipos e não rodei query. Nenhum arquivo do repo
   descreve suas colunas.
-- **`src/types/supabase.ts` é byte a byte idêntico a `database.types.ts`** (2.160 linhas cada) e tem **zero importadores**. Está
-  em `knip.json:11` na lista `ignore`, então o knip nunca reclama. Mesmo padrão: `src/App.css` (179 linhas) não é importado.
+- **`src/types/supabase.ts` foi apagado em 16/09/2026.** Era cópia de `database.types.ts` que divergiu 839 linhas e ainda
+  era importada por `useCoupons.ts`; o teste `supabase-ts-nao-diverge-de-database-types` impede que volte. Padrão parecido
+  ainda vivo: `src/App.css` (179 linhas) não é importado.
 - **Os dois `globIgnores` de `vite.config.ts` têm comentário obsoleto.** `images/demo/**` aponta para `public/images/`, que está
   **vazio** hoje; e `og-image.png`, comentado como "~670 kB", tem **30 kB** desde o commit `78e7d3c`. A economia real é menor.
 - **`CompareView.tsx`** (267 linhas) está completa, é renderizada com `products: []` e handlers vazios (`App.tsx:2062-2074`), e nenhum lugar do app navega para `compare`.

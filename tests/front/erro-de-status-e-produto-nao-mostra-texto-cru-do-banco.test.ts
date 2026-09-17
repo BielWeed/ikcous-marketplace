@@ -133,15 +133,15 @@ describe("mensagemAmigavelErroAtualizacaoStatus — as causas de update_order_st
 });
 
 describe("mensagemAmigavelErroProduto — as causas de INSERT/UPDATE em vw_produtos_admin", () => {
-  it("mensagem do TruthGate (validação local, sem chamada de rede): passa direto — é a única causa possível nos três pontos que a usam", () => {
+  it("mensagem do TruthGate (validação local, sem chamada de rede): mantém o prefixo e traduz o código do axioma para a regra em português", () => {
     const erroDeValidacao = new Error(
       "Validação de Produto Falhou: Axiom violation: price_non_negative",
     );
     expect(mensagemAmigavelErroProduto(erroDeValidacao, "cadastrar")).toBe(
-      "Validação de Produto Falhou: Axiom violation: price_non_negative",
+      "Validação de Produto Falhou: o preço não pode ser negativo.",
     );
     expect(mensagemAmigavelErroProduto(erroDeValidacao, "atualizar")).toBe(
-      "Validação de Produto Falhou: Axiom violation: price_non_negative",
+      "Validação de Produto Falhou: o preço não pode ser negativo.",
     );
   });
 

@@ -543,7 +543,13 @@ export const AdminProductsView = memo(function AdminProductsView({
         (productToDuplicate.variants || []).map(async (v: any) => ({
           name: v.name,
           value: v.value,
-          sku: v.sku ? `${v.sku}-COPY` : undefined,
+          // Achado AdminProductsView-546 (Missão 05): o sufixo era FIXO
+          // ('-COPY'), e product_variants.sku é UNIQUE global — duplicar a
+          // MESMA origem uma segunda vez repetia o SKU da primeira cópia, o
+          // insert das variantes caía em 23505 e o segundo clone nascia sem
+          // grade nenhuma. Sem SKU, a lojista preenche o que quiser depois
+          // e não há literal para colidir, duplicar quantas vezes for.
+          sku: undefined,
           stockIncrement: v.stockIncrement,
           priceOverride: v.priceOverride,
           active: v.active,

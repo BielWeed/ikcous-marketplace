@@ -589,6 +589,76 @@ const itemVariants: Variants = {
   },
 };
 
+// Fonte única do shape "banner vazio" (~20 campos), achado
+// AdminBannersView-1198: o literal completo (title, imageUrl, link,
+// position, active, order, subtitle, titleColor, ..., templateType,
+// productId, startDate, endDate, showTextOverlay) era reescrito à mão no
+// useState inicial do formData, nos dois "initial" de fallback
+// (dirty-check e auto-save, byte-a-byte iguais) e nas duas ramificações de
+// handleOpenDialog. Um campo novo que só entrasse em um desses blocos
+// deixava o indicador de "alterações não salvas" ou o rascunho do
+// auto-save sistematicamente errados, sem erro visível — agora os 5 pontos
+// chamam esta função e só podem divergir editando ela.
+// Exportada para o teste em
+// tests/front/admin-banners-default-nao-diverge.test.tsx.
+export const defaultBannerFor = (
+  position: Banner["position"],
+  order: number,
+): Omit<Banner, "id"> => ({
+  title: "",
+  imageUrl: "",
+  link: "",
+  position,
+  active: true,
+  order,
+  subtitle: "",
+  titleColor: "",
+  subtitleColor: "",
+  buttonText: "",
+  buttonBgColor: "",
+  buttonTextColor: "",
+  fontFamily: "",
+  overlayColor: "",
+  overlayOpacity: 40,
+  badgeText: "",
+  templateType: "default",
+  productId: "",
+  startDate: null,
+  endDate: null,
+  showTextOverlay: true,
+});
+
+// Comparação campo a campo de formData contra o baseline do formulário.
+// Mesmo achado AdminBannersView-1198: dirty-check e auto-save repetiam a
+// MESMA comparação de ~20 campos palavra por palavra; agora os dois chamam
+// esta função. Exportada pelo mesmo motivo de defaultBannerFor.
+export const isBannerFormDirty = (
+  formData: Partial<Banner>,
+  initial: Banner,
+): boolean =>
+  (formData.title || "") !== (initial.title || "") ||
+  (formData.imageUrl || "") !== (initial.imageUrl || "") ||
+  (formData.link || "") !== (initial.link || "") ||
+  formData.position !== initial.position ||
+  formData.active !== initial.active ||
+  Number(formData.order) !== Number(initial.order) ||
+  (formData.subtitle || "") !== (initial.subtitle || "") ||
+  (formData.titleColor || "") !== (initial.titleColor || "") ||
+  (formData.subtitleColor || "") !== (initial.subtitleColor || "") ||
+  (formData.buttonText || "") !== (initial.buttonText || "") ||
+  (formData.buttonBgColor || "") !== (initial.buttonBgColor || "") ||
+  (formData.buttonTextColor || "") !== (initial.buttonTextColor || "") ||
+  (formData.fontFamily || "") !== (initial.fontFamily || "") ||
+  (formData.overlayColor || "") !== (initial.overlayColor || "") ||
+  Number(formData.overlayOpacity ?? 40) !==
+    Number(initial.overlayOpacity ?? 40) ||
+  (formData.badgeText || "") !== (initial.badgeText || "") ||
+  (formData.templateType || "default") !==
+    (initial.templateType || "default") ||
+  (formData.productId || "") !== (initial.productId || "") ||
+  formData.startDate !== initial.startDate ||
+  formData.endDate !== initial.endDate;
+
 export const AdminBannersView = memo(function AdminBannersView({
   onNavigate: _onNavigate,
   active = true,
@@ -663,29 +733,9 @@ export const AdminBannersView = memo(function AdminBannersView({
   >("titleColor");
   const [extractedColors, setExtractedColors] = useState<string[]>([]);
 
-  const [formData, setFormData] = useState<Partial<Banner>>({
-    title: "",
-    imageUrl: "",
-    link: "",
-    position: "home_top",
-    active: true,
-    order: 0,
-    subtitle: "",
-    titleColor: "",
-    subtitleColor: "",
-    buttonText: "",
-    buttonBgColor: "",
-    buttonTextColor: "",
-    fontFamily: "",
-    overlayColor: "",
-    overlayOpacity: 40,
-    badgeText: "",
-    templateType: "default",
-    productId: "",
-    startDate: null,
-    endDate: null,
-    showTextOverlay: true,
-  });
+  const [formData, setFormData] = useState<Partial<Banner>>(() =>
+    defaultBannerFor("home_top", 0),
+  );
 
   // Sync destinationMode based on link or productId
   useEffect(() => {
@@ -1117,16 +1167,21 @@ export const AdminBannersView = memo(function AdminBannersView({
     editingBanner,
   ]);
 
-  // Suporte a fechamento via tecla Escape
+  // Suporte a fechamento via tecla Escape.
+  // Ordem de captura: o ImageAdjuster é renderizado por cima do diálogo de
+  // banner (abre a partir de dentro dele, via openAdjuster), então é o
+  // overlay mais no topo e precisa ser checado ANTES de isDialogOpen — senão
+  // o Esc fecha o formulário inteiro (e apaga o upload) enquanto só o
+  // recorte deveria fechar.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (isDialogOpen) {
+        if (isAdjusterOpen) {
+          setIsAdjusterOpen(false);
+        } else if (isDialogOpen) {
           handleOpenChange(false);
         } else if (showHelpModal) {
           setShowHelpModal(false);
-        } else if (isAdjusterOpen) {
-          setIsAdjusterOpen(false);
         }
       }
     };
@@ -1152,10 +1207,60 @@ export const AdminBannersView = memo(function AdminBannersView({
     }
   }, [active]);
 
+  // Empurra uma entrada de histórico virtual quando o diálogo abre e a
+  // consome (history.back()) quando ele fecha — por QUALQUER caminho
+  // (Cancelar, Salvar com sucesso, Escape, Voltar físico do Android ou o
+  // botão Voltar do AdminLayout). Antes desta correção (achado
+  // AdminBannersView-1156) este componente não empurrava nada: o Voltar
+  // físico pulava direto para a URL que já estava uma posição abaixo
+  // (ex.: Ajustes) e o app trocava de tela por baixo do diálogo, em vez
+  // de só fechá-lo. Mesmo padrão de CheckoutView.tsx
+  // (`hasPushedAddressModalState`): copia o state atual e só acrescenta
+  // `modal: "banner"`, sem mudar a URL visível.
+  //
+  // A checagem `window.history.state?.modal === "banner"` antes do
+  // `back()` é o que torna o fechamento à prova de duas coisas: (1) o
+  // Voltar FÍSICO, onde o navegador já fez o pop sozinho antes do
+  // popstate chegar até este componente — sem a checagem, este efeito
+  // consumiria MAIS UMA entrada e o app sairia da tela de verdade, o
+  // exato bug que está sendo corrigido; e (2) uma navegação real para
+  // outra aba que aconteça com o diálogo aberto — o pushState dessa
+  // navegação já está por cima do nosso, então a flag não bate mais e
+  // este efeito não mexe no histórico dela.
+  const temEntradaDeHistoricoPendenteRef = useRef(false);
+  useEffect(() => {
+    if (isDialogOpen) {
+      if (!temEntradaDeHistoricoPendenteRef.current) {
+        window.history.pushState(
+          { ...window.history.state, modal: "banner" },
+          "",
+          window.location.pathname + window.location.search,
+        );
+        temEntradaDeHistoricoPendenteRef.current = true;
+      }
+    } else if (temEntradaDeHistoricoPendenteRef.current) {
+      temEntradaDeHistoricoPendenteRef.current = false;
+      if (window.history.state?.modal === "banner") {
+        window.history.back();
+      }
+    }
+  }, [isDialogOpen]);
+
+  // Registra o fechamento do diálogo como override do Voltar. O botão
+  // Voltar do AdminLayout (AdminArea.tsx:705) chama esta mesma função
+  // DIRETO (sem passar pelo popstate), e o history.back() disparado pelo
+  // efeito acima pode entregar um popstate que também tenta rodá-la de
+  // novo antes deste efeito desregistrar — `efetuouFechamentoRef` torna a
+  // segunda chamada um no-op em vez de repetir a limpeza de
+  // `handleOpenChange` (ex.: apagar upload órfão duas vezes).
+  const efetuouFechamentoRef = useRef(false);
   useEffect(() => {
     if (onSetBackOverride) {
       if (isDialogOpen) {
+        efetuouFechamentoRef.current = false;
         onSetBackOverride(() => () => {
+          if (efetuouFechamentoRef.current) return;
+          efetuouFechamentoRef.current = true;
           handleOpenChange(false);
         });
       } else {
@@ -1198,53 +1303,10 @@ export const AdminBannersView = memo(function AdminBannersView({
       banners.filter((b) => b.position === defaultPosition).length + 1;
     const initial: Banner = editingBanner || {
       id: "",
-      imageUrl: "",
-      title: "",
-      link: "",
-      position: defaultPosition,
-      active: true,
-      order: defaultOrder,
-      subtitle: "",
-      titleColor: "",
-      subtitleColor: "",
-      buttonText: "",
-      buttonBgColor: "",
-      buttonTextColor: "",
-      fontFamily: "",
-      overlayColor: "",
-      overlayOpacity: 40,
-      badgeText: "",
-      templateType: "default",
-      productId: "",
-      startDate: null,
-      endDate: null,
+      ...defaultBannerFor(defaultPosition, defaultOrder),
     };
 
-    const isDirty =
-      (formData.title || "") !== (initial.title || "") ||
-      (formData.imageUrl || "") !== (initial.imageUrl || "") ||
-      (formData.link || "") !== (initial.link || "") ||
-      formData.position !== initial.position ||
-      formData.active !== initial.active ||
-      Number(formData.order) !== Number(initial.order) ||
-      (formData.subtitle || "") !== (initial.subtitle || "") ||
-      (formData.titleColor || "") !== (initial.titleColor || "") ||
-      (formData.subtitleColor || "") !== (initial.subtitleColor || "") ||
-      (formData.buttonText || "") !== (initial.buttonText || "") ||
-      (formData.buttonBgColor || "") !== (initial.buttonBgColor || "") ||
-      (formData.buttonTextColor || "") !== (initial.buttonTextColor || "") ||
-      (formData.fontFamily || "") !== (initial.fontFamily || "") ||
-      (formData.overlayColor || "") !== (initial.overlayColor || "") ||
-      Number(formData.overlayOpacity ?? 40) !==
-        Number(initial.overlayOpacity ?? 40) ||
-      (formData.badgeText || "") !== (initial.badgeText || "") ||
-      (formData.templateType || "default") !==
-        (initial.templateType || "default") ||
-      (formData.productId || "") !== (initial.productId || "") ||
-      formData.startDate !== initial.startDate ||
-      formData.endDate !== initial.endDate;
-
-    onSetDirty(isDirty);
+    onSetDirty(isBannerFormDirty(formData, initial));
   }, [isDialogOpen, formData, editingBanner, banners, selectedTab, onSetDirty]);
 
   // State to manage draft recovery
@@ -1289,51 +1351,10 @@ export const AdminBannersView = memo(function AdminBannersView({
       banners.filter((b) => b.position === defaultPosition).length + 1;
     const initial: Banner = editingBanner || {
       id: "",
-      imageUrl: "",
-      title: "",
-      link: "",
-      position: defaultPosition,
-      active: true,
-      order: defaultOrder,
-      subtitle: "",
-      titleColor: "",
-      subtitleColor: "",
-      buttonText: "",
-      buttonBgColor: "",
-      buttonTextColor: "",
-      fontFamily: "",
-      overlayColor: "",
-      overlayOpacity: 40,
-      badgeText: "",
-      templateType: "default",
-      productId: "",
-      startDate: null,
-      endDate: null,
+      ...defaultBannerFor(defaultPosition, defaultOrder),
     };
 
-    const hasChanges =
-      (formData.title || "") !== (initial.title || "") ||
-      (formData.imageUrl || "") !== (initial.imageUrl || "") ||
-      (formData.link || "") !== (initial.link || "") ||
-      formData.position !== initial.position ||
-      formData.active !== initial.active ||
-      Number(formData.order) !== Number(initial.order) ||
-      (formData.subtitle || "") !== (initial.subtitle || "") ||
-      (formData.titleColor || "") !== (initial.titleColor || "") ||
-      (formData.subtitleColor || "") !== (initial.subtitleColor || "") ||
-      (formData.buttonText || "") !== (initial.buttonText || "") ||
-      (formData.buttonBgColor || "") !== (initial.buttonBgColor || "") ||
-      (formData.buttonTextColor || "") !== (initial.buttonTextColor || "") ||
-      (formData.fontFamily || "") !== (initial.fontFamily || "") ||
-      (formData.overlayColor || "") !== (initial.overlayColor || "") ||
-      Number(formData.overlayOpacity ?? 40) !==
-        Number(initial.overlayOpacity ?? 40) ||
-      (formData.badgeText || "") !== (initial.badgeText || "") ||
-      (formData.templateType || "default") !==
-        (initial.templateType || "default") ||
-      (formData.productId || "") !== (initial.productId || "") ||
-      formData.startDate !== initial.startDate ||
-      formData.endDate !== initial.endDate;
+    const hasChanges = isBannerFormDirty(formData, initial);
 
     if (!hasChanges) {
       return;
@@ -1377,57 +1398,53 @@ export const AdminBannersView = memo(function AdminBannersView({
         !banner.buttonText?.trim() &&
         !banner.badgeText?.trim();
       setBannerMode(isSimple ? "simple" : "complete");
+      // Fallback campo a campo contra defaultBannerFor (não um spread cego):
+      // banner vem do banco e pode ter nascido ANTES de um campo novo
+      // existir (coluna ainda não preenchida para linhas antigas) — o
+      // default de "editar um banner sem esse campo" precisa ser o MESMO
+      // default de "criar um banner do zero", nunca um valor hardcoded à
+      // parte que alguém esqueça de manter igual (achado AdminBannersView-1198).
+      const defaultsParaEdicao = defaultBannerFor(
+        banner.position || "home_top",
+        banner.order || 0,
+      );
       setFormData({
-        title: banner.title || "",
-        imageUrl: banner.imageUrl || "",
-        link: banner.link || "",
-        position: banner.position || "home_top",
-        active: banner.active ?? true,
-        order: banner.order || 0,
-        subtitle: banner.subtitle || "",
-        titleColor: banner.titleColor || "",
-        subtitleColor: banner.subtitleColor || "",
-        buttonText: banner.buttonText || "",
-        buttonBgColor: banner.buttonBgColor || "",
-        buttonTextColor: banner.buttonTextColor || "",
-        fontFamily: banner.fontFamily || "",
-        overlayColor: banner.overlayColor || "",
-        overlayOpacity: banner.overlayOpacity ?? 40,
-        badgeText: banner.badgeText || "",
-        templateType: banner.templateType || "default",
-        productId: banner.productId || "",
-        startDate: banner.startDate || null,
-        endDate: banner.endDate || null,
-        showTextOverlay: banner.showTextOverlay ?? true,
+        title: banner.title || defaultsParaEdicao.title,
+        imageUrl: banner.imageUrl || defaultsParaEdicao.imageUrl,
+        link: banner.link || defaultsParaEdicao.link,
+        position: banner.position || defaultsParaEdicao.position,
+        active: banner.active ?? defaultsParaEdicao.active,
+        order: banner.order || defaultsParaEdicao.order,
+        subtitle: banner.subtitle || defaultsParaEdicao.subtitle,
+        titleColor: banner.titleColor || defaultsParaEdicao.titleColor,
+        subtitleColor: banner.subtitleColor || defaultsParaEdicao.subtitleColor,
+        buttonText: banner.buttonText || defaultsParaEdicao.buttonText,
+        buttonBgColor: banner.buttonBgColor || defaultsParaEdicao.buttonBgColor,
+        buttonTextColor:
+          banner.buttonTextColor || defaultsParaEdicao.buttonTextColor,
+        fontFamily: banner.fontFamily || defaultsParaEdicao.fontFamily,
+        overlayColor: banner.overlayColor || defaultsParaEdicao.overlayColor,
+        overlayOpacity:
+          banner.overlayOpacity ?? defaultsParaEdicao.overlayOpacity,
+        badgeText: banner.badgeText || defaultsParaEdicao.badgeText,
+        templateType: banner.templateType || defaultsParaEdicao.templateType,
+        productId: banner.productId || defaultsParaEdicao.productId,
+        startDate: banner.startDate || defaultsParaEdicao.startDate,
+        endDate: banner.endDate || defaultsParaEdicao.endDate,
+        showTextOverlay:
+          banner.showTextOverlay ?? defaultsParaEdicao.showTextOverlay,
       });
     } else {
       setEditingBanner(null);
       setBannerMode("simple");
       const defaultPosition =
         banner?.position || (selectedTab !== "all" ? selectedTab : "home_top");
-      setFormData({
-        title: "",
-        imageUrl: "",
-        link: "",
-        position: defaultPosition,
-        active: true,
-        order: banners.filter((b) => b.position === defaultPosition).length + 1,
-        subtitle: "",
-        titleColor: "",
-        subtitleColor: "",
-        buttonText: "",
-        buttonBgColor: "",
-        buttonTextColor: "",
-        fontFamily: "",
-        overlayColor: "",
-        overlayOpacity: 40,
-        badgeText: "",
-        templateType: "default",
-        productId: "",
-        startDate: null,
-        endDate: null,
-        showTextOverlay: true,
-      });
+      setFormData(
+        defaultBannerFor(
+          defaultPosition,
+          banners.filter((b) => b.position === defaultPosition).length + 1,
+        ),
+      );
     }
     setIsDialogOpen(true);
   };
@@ -1750,6 +1767,10 @@ export const AdminBannersView = memo(function AdminBannersView({
       await updateBanner(banner.id, { active: !banner.active });
     } catch (error) {
       console.error("Erro ao alternar status do banner:", error);
+      // Igual aos irmãos confirmDeleteBanner/moveBanner: sem isto o Switch só
+      // voltava a ficar habilitado em silêncio e o lojista achava que a
+      // troca tinha sido aplicada quando na verdade falhou.
+      toast.error("Erro ao alternar status do banner.");
     } finally {
       setIsProcessing(false);
       setActiveAction(null);

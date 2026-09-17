@@ -3,10 +3,43 @@
 //
 // O LOJISTA CADASTRA AS CHAVES DELE do Mercado Pago na tela de Ajustes
 // (grupo "Pagamentos", seção "Mercado Pago") sem depender de ninguém de
-// fora. O Pix de hoje (criar-pagamento + webhook + reconciliar) continua
-// intocado com o MP_ACCESS_TOKEN do ambiente da plataforma; esta function
-// só GUARDA, ESCONDE e TESTA as chaves que o lojista colar. Plugar essas
-// chaves no checkout é FRENTE FUTURA — não acontece aqui.
+// fora: esta function GUARDA, ESCONDE e TESTA as chaves que ele colar.
+//
+// A FICHA DA LOJA (tarefa mp-3, 15/09/2026) — por que esta function mexe em
+// store_config: o checkout do cliente só mostra PIX quando a ficha pública
+// da loja (lida de v_store_config pelo porteiro, ver
+// src/config/configuracaoDaLoja.ts) traz `pagamento_online = true` E
+// `mp_public_key` preenchida. Chave cadastrada aqui sem essas duas colunas é
+// tela dizendo "salvo" e cliente sem forma de pagar. Essas colunas só aceitam
+// escrita com o claim service_role (trigger
+// dominio_publico_so_muda_pela_frota, migrations 20261140000000 e
+// 20261150000000) — e esta function é exatamente quem tem esse claim e já
+// está trancada por admin. Por isso:
+//   * `salvar` PUBLICA a Public Key na ficha (store_config.mp_public_key);
+//     se a ficha recusar, o lojista OUVE isso — nunca "salvo" calado.
+//   * `ligar_pix` / `desligar_pix` acendem e apagam `pagamento_online`, e
+//     ligar exige teste de conexão bem-sucedido (ver a ação, abaixo).
+//
+// O PIX SÓ ACENDE COM A LOJA INTEIRA (tarefa mp-8, 16/09/2026):
+//   * `ligar_pix` publica a Public Key no MESMO update que acende — e recusa
+//     com 409 se o registro não tiver Public Key em formato válido.
+//   * `salvar` com credencial NOVA (token ou Public Key) desliga o PIX no
+//     mesmo update e conta isso na resposta (`pix_desligado` + `aviso`);
+//     re-salvar sem trocar credencial não derruba quem está vendendo.
+//   * O carimbo de auditoria do liga (pix_ligado_em/pix_ligado_por) tem
+//     try/catch próprio: falhou, sai 200 com `aviso` — a verdade é a ficha,
+//     e "falhou" com o PIX aceso faz o lojista ligar duas vezes.
+//   * Escrita na ficha sem linha afetada é RECUSA, não sucesso (o UPDATE pede
+//     `select('id')`): ficha ausente vira 500 honesto, nunca "salvo" calado.
+//
+// SOBRAS DAS REVISÕES (tarefa mp-10, 16/09/2026):
+//   * `salvar` escreve a FICHA antes do REGISTRO (era o contrário): se a
+//     ficha recusar, a credencial anterior (a que está vendendo de verdade)
+//     continua intacta, em vez de já trocada com o PIX aceso na chave velha.
+//   * Ficha AUSENTE (zero linha, sem `error`) tem recado PRÓPRIO — "fale com
+//     o suporte", nunca "tente de novo" (nenhum retry cria a linha sozinho).
+//   * `avisos.join(" ")` normaliza cada frase para terminar em ponto antes de
+//     juntar — sem isso, dois avisos grudavam sem separação de leitura.
 //
 // DINHEIRO/CREDENCIAL — as proteções desta function:
 //   * Admin-only duas vezes: verify_jwt = true no portão (config.toml) E a
@@ -36,15 +69,21 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { BASE_URL_PADRAO, fetchComTempo } from "../_shared/mercadopago.ts";
+import {
+    chaveDeCifra,
+    cifrar,
+    CHAVE_SETTINGS,
+    decifrar,
+    lerRegistroMp,
+    type Registro,
+    type UltimoTeste,
+} from "../_shared/credenciais-mp.ts";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers":
         "authorization, x-client-info, apikey, content-type",
 };
-
-/** Linha única do lojista em app_settings (app único, banco por cliente). */
-const CHAVE_SETTINGS = "pagamentos_mercado_pago";
 
 /**
  * Formato RELAXADO das credenciais MP: prefixo APP_USR- (produção e teste
@@ -53,25 +92,19 @@ const CHAVE_SETTINGS = "pagamentos_mercado_pago";
  */
 const FORMATO_CREDENCIAL = /^(APP_USR|TEST)-[A-Za-z0-9_-]{10,}$/;
 
-export type UltimoTeste = {
-    quando: string;
-    conectado: boolean;
-    mensagem: string;
-    ambiente: "producao" | "teste" | null;
-    conta: string | null;
-};
+// O formato do registro e o de UltimoTeste moram no módulo compartilhado
+// (quem cobra precisa do MESMO formato que esta tela grava); seguem saindo
+// por aqui para quem já importava desta function.
+export type { Registro, UltimoTeste };
 
-/** O que dorme em app_settings — segredos só em ciphertext + iv. */
-export type Registro = {
-    public_key: string;
-    token_cifrado: string;
-    token_iv: string;
-    mascara_token: string;
-    webhook_cifrado: string | null;
-    webhook_iv: string | null;
-    mascara_webhook: string | null;
-    ultimo_teste: UltimoTeste | null;
-    atualizado_em: string;
+/**
+ * O registro de app_settings mais o carimbo de auditoria do liga/desliga do
+ * PIX. Fica AQUI, e não no módulo compartilhado, porque só esta tela liga e
+ * desliga o PIX — quem cobra (criar-pagamento, webhook) não olha o carimbo.
+ */
+type RegistroComPix = Registro & {
+    pix_ligado_em?: string | null;
+    pix_ligado_por?: string | null;
 };
 
 /** O que sai para a tela — JAMAIS ciphertext nem segredo. */
@@ -82,6 +115,16 @@ export type RespostaLer = {
     mascara_webhook: string | null;
     ultimo_teste: UltimoTeste | null;
     atualizado_em: string | null;
+    /** `store_config.pagamento_online` — o PIX está aceso para o cliente? */
+    pix_ligado: boolean;
+    /** A ficha da loja já carrega ESTA Public Key (e não outra, nem nenhuma). */
+    public_key_na_loja: boolean;
+};
+
+/** A parte da ficha pública da loja que esta tela precisa enxergar. */
+type FichaDaLoja = {
+    pagamento_online: boolean;
+    mp_public_key: string | null;
 };
 
 const json = (corpo: unknown, status: number): Response =>
@@ -106,16 +149,18 @@ function readKey(newVar: string, legacyVar: string): string {
 }
 
 /**
- * Verifica se quem chamou é admin. MESMA cópia do padrão
- * estornar-pagamento/melhor-envio-etiqueta: valida o JWT com a anon key e
- * sobe o papel de `profiles` com service role.
+ * Verifica se quem chamou é admin e devolve o UID dele (null = não é
+ * admin). MESMA cópia do padrão estornar-pagamento/melhor-envio-etiqueta —
+ * valida o JWT com a anon key e sobe o papel de `profiles` com service role;
+ * a única diferença é devolver o uid em vez de um booleano, porque ligar o
+ * PIX é ato de dinheiro e fica carimbado com QUEM ligou (`pix_ligado_por`).
  */
-async function verifyIsAdmin(
+async function uidDoAdmin(
     authHeader: string | null,
     supabaseUrl: string,
     serviceRoleKey: string,
-): Promise<boolean> {
-    if (!authHeader) return false;
+): Promise<string | null> {
+    if (!authHeader) return null;
     try {
         const anonKey = readKey(
             "SUPABASE_PUBLISHABLE_KEYS",
@@ -128,98 +173,44 @@ async function verifyIsAdmin(
             data: { user },
             error: userError,
         } = await userClient.auth.getUser();
-        if (userError || !user) return false;
+        if (userError || !user) return null;
         const systemClient = createClient(supabaseUrl, serviceRoleKey);
         const { data: profile, error: profileError } = await systemClient
             .from("profiles")
             .select("role")
             .eq("id", user.id)
             .single();
-        if (profileError || !profile) return false;
-        return profile.role === "admin";
+        if (profileError || !profile) return null;
+        return profile.role === "admin" ? user.id : null;
     } catch (err) {
         console.error("[credenciais-mp] Falha no check de admin:", err);
-        return false;
-    }
-}
-
-// ── Cifração (AES-256-GCM do WebCrypto — Deno traz crypto.subtle) ────────
-
-function base64ParaBytes(base64: string): Uint8Array {
-    // Uint8Array.from em vez de índice variável (`bytes[i] =`) — mesmo
-    // resultado, sem acordar a catraca de segurança do eslint.
-    return Uint8Array.from(atob(base64), (caractere) => caractere.charCodeAt(0));
-}
-
-function bytesParaBase64(bytes: Uint8Array): string {
-    let binaria = "";
-    for (const byte of bytes) binaria += String.fromCharCode(byte);
-    return btoa(binaria);
-}
-
-/** Chave da env; ausente/malformada devolve null — a function falha FECHADA. */
-async function chaveDeCifra(): Promise<CryptoKey | null> {
-    const segredo = Deno.env.get("MP_CHAVES_ENCRYPTION_KEY")?.trim() ?? "";
-    if (!segredo) return null;
-    let bytes: Uint8Array;
-    try {
-        bytes = base64ParaBytes(segredo);
-    } catch {
         return null;
     }
-    if (bytes.length !== 32) return null;
-    return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, [
-        "encrypt",
-        "decrypt",
-    ]);
 }
 
-async function cifrar(
-    texto: string,
-    chave: CryptoKey,
-): Promise<{ cifrado: string; iv: string }> {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const buffer = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv },
-        chave,
-        new TextEncoder().encode(texto),
-    );
-    return {
-        cifrado: bytesParaBase64(new Uint8Array(buffer)),
-        iv: bytesParaBase64(iv),
-    };
-}
-
-async function decifrar(
-    cifrado: string,
-    iv: string,
-    chave: CryptoKey,
-): Promise<string> {
-    const buffer = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: base64ParaBytes(iv) },
-        chave,
-        base64ParaBytes(cifrado),
-    );
-    return new TextDecoder().decode(buffer);
-}
+// As primitivas de cifra (chaveDeCifra/cifrar/decifrar, AES-256-GCM do
+// WebCrypto) saíram daqui para ../_shared/credenciais-mp.ts na tarefa mp-1:
+// quem GRAVA o segredo (esta tela) e quem o LÊ na hora de cobrar
+// (criar-pagamento, webhook, reconciliar, estornar) têm de usar exatamente a
+// mesma cifra — duas cópias divergem calado e o dinheiro para de entrar.
 
 /** Só o rabo da chave — o suficiente para o lojista reconhecer qual colou. */
 function mascaraDe(segredo: string): string {
     return `••••${segredo.slice(-4)}`;
 }
 
-// ── app_settings (via supabase client injetável) ─────────────────────────
-
-async function lerRegistro(supabase: any): Promise<Registro | null> {
-    const { data, error } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", CHAVE_SETTINGS)
-        .maybeSingle();
-    if (error) throw new Error(`storage_leitura: ${error.message}`);
-    if (!data?.value) return null;
-    return JSON.parse(data.value) as Registro;
+/**
+ * Garante que a frase termine em pontuação (mp-10): `avisos.join(" ")`
+ * gruda a frase seguinte sem espaço de leitura quando a anterior não
+ * termina em ponto — "...de verdadeO PIX está ligado..." em vez de duas
+ * frases. Idempotente: frase que já termina em `.`/`!`/`?` sai igual.
+ */
+function comPontoFinal(frase: string): string {
+    const limpa = frase.trim();
+    return /[.!?]$/.test(limpa) ? limpa : `${limpa}.`;
 }
+
+// ── app_settings (via supabase client injetável) ─────────────────────────
 
 async function gravarRegistro(supabase: any, registro: Registro): Promise<void> {
     const { error } = await supabase
@@ -235,7 +226,83 @@ async function gravarRegistro(supabase: any, registro: Registro): Promise<void> 
     if (error) throw new Error(`storage_escrita: ${error.message}`);
 }
 
-function respostaLer(registro: Registro | null): RespostaLer {
+// ── store_config: a ficha que o checkout do cliente lê (linha única id = 1) ─
+
+/** Lê a ficha da loja. Erro de banco vira `storage_` — o catch traduz. */
+async function lerFichaDaLoja(supabase: any): Promise<FichaDaLoja> {
+    const { data, error } = await supabase
+        .from("store_config")
+        .select("pagamento_online, mp_public_key")
+        .eq("id", 1)
+        .maybeSingle();
+    if (error) throw new Error(`storage_leitura_loja: ${error.message}`);
+    return {
+        pagamento_online: data?.pagamento_online === true,
+        mp_public_key: data?.mp_public_key ?? null,
+    };
+}
+
+/**
+ * Escreve na ficha da loja. Devolve a mensagem da recusa (ou null quando deu
+ * certo) em vez de estourar: quem chama precisa dizer ao lojista O QUE ficou
+ * pela metade — "não consegui ligar o PIX" é recado diferente de "a ficha
+ * nem existe, chame o suporte" (`mensagemDeRecusaDaFicha`, abaixo), e o
+ * genérico do catch confundiria os dois.
+ *
+ * O `.select("id")` não é enfeite (mp-8): sem ele, UPDATE que não achou a
+ * linha id = 1 volta SEM error e com zero linha afetada — ficha inexistente
+ * (banco novo) ou RLS/trigger recusando calado passariam por "publicado", e a
+ * tela diria "salvo" com o cliente sem PIX. Zero linha é recusa.
+ */
+/**
+ * Zero linha afetada SEM `error` (mp-10): o comentário desta function já
+ * explicava a causa real — banco novo sem a linha `id = 1` (RLS/trigger
+ * recusando calado devolve `error`, tratado acima). É esse texto exato que
+ * `mensagemDeRecusaDaFicha` reconhece para trocar "tente de novo" (promessa
+ * vazia — tentar de novo não cria a linha) por "fale com o suporte".
+ */
+const FICHA_NAO_EXISTE = "a ficha da loja (store_config id=1) não existe";
+
+async function escreverNaFichaDaLoja(
+    supabase: any,
+    campos: Partial<FichaDaLoja>,
+): Promise<string | null> {
+    const { data, error } = await supabase
+        .from("store_config")
+        .update(campos)
+        .eq("id", 1)
+        .select("id");
+    if (error) return String(error.message ?? "recusado");
+    if (!Array.isArray(data) || data.length === 0) {
+        return FICHA_NAO_EXISTE;
+    }
+    return null;
+}
+
+/**
+ * Traduz a recusa da ficha para o recado do lojista (mp-10). Ficha AUSENTE
+ * é caso de suporte (nenhum retry cria a linha `id = 1` sozinho — prometer
+ * "tente de novo" é mentira); qualquer outra recusa (RLS/trigger) usa o
+ * recado específico de quem chamou, que já sabe o que ficou pela metade.
+ */
+function mensagemDeRecusaDaFicha(
+    recusa: string,
+    mensagemPadrao: string,
+): string {
+    return recusa === FICHA_NAO_EXISTE
+        ? "A ficha da loja (store_config id=1) não existe. Isto não se resolve tentando de novo — fale com o suporte."
+        : mensagemPadrao;
+}
+
+function respostaLer(
+    registro: Registro | null,
+    ficha: FichaDaLoja,
+): RespostaLer {
+    // A Public Key da ficha só "confere" quando existe dos DOIS lados e é a
+    // mesma: ficha vazia, ou ficha com a chave de outra loja, é exatamente o
+    // caso em que o cliente não vê PIX — a tela precisa poder contar isso.
+    const public_key_na_loja = Boolean(registro?.public_key) &&
+        ficha.mp_public_key === registro?.public_key;
     if (!registro) {
         return {
             configurado: false,
@@ -244,6 +311,8 @@ function respostaLer(registro: Registro | null): RespostaLer {
             mascara_webhook: null,
             ultimo_teste: null,
             atualizado_em: null,
+            pix_ligado: ficha.pagamento_online,
+            public_key_na_loja,
         };
     }
     return {
@@ -253,6 +322,8 @@ function respostaLer(registro: Registro | null): RespostaLer {
         mascara_webhook: registro.mascara_webhook,
         ultimo_teste: registro.ultimo_teste,
         atualizado_em: registro.atualizado_em,
+        pix_ligado: ficha.pagamento_online,
+        public_key_na_loja,
     };
 }
 
@@ -273,7 +344,10 @@ export async function handler(
         return new Response("ok", { headers: corsHeaders });
     }
     if (req.method !== "POST") {
-        return json({ erro: "Use POST com { acao: ler | salvar | testar }." }, 405);
+        return json(
+            { erro: "Use POST com { acao: ler | salvar | testar | ligar_pix | desligar_pix }." },
+            405,
+        );
     }
 
     let body: {
@@ -294,12 +368,12 @@ export async function handler(
         "SUPABASE_SECRET_KEYS",
         "SUPABASE_SERVICE_ROLE_KEY",
     );
-    const isAdmin = await verifyIsAdmin(
+    const uidAdmin = await uidDoAdmin(
         req.headers.get("Authorization"),
         supabaseUrl,
         serviceRoleKey,
     );
-    if (!isAdmin) {
+    if (!uidAdmin) {
         return json(
             { erro: "Não autorizado: só o dono da loja mexe nas chaves de pagamento." },
             401,
@@ -320,8 +394,9 @@ export async function handler(
     try {
         // ── ler: o que a tela mostra — só máscaras e último teste ──────────
         if (body.acao === "ler") {
-            const registro = await lerRegistro(supabase);
-            return json(respostaLer(registro), 200);
+            const registro = await lerRegistroMp(supabase);
+            const ficha = await lerFichaDaLoja(supabase);
+            return json(respostaLer(registro, ficha), 200);
         }
 
         // ── salvar: valida, cifra e grava; segredo vazio = mantém o salvo ──
@@ -352,7 +427,9 @@ export async function handler(
                 );
             }
 
-            const registroAntigo = await lerRegistro(supabase);
+            const registroAntigo = await lerRegistroMp(
+                supabase,
+            ) as RegistroComPix | null;
             if (!accessToken && !registroAntigo?.token_cifrado) {
                 return json(
                     { erro: "Cole também o Access Token — é a chave que processa os pagamentos." },
@@ -372,6 +449,10 @@ export async function handler(
             // anterior, não desta — recado velho com cara de novo é pior
             // que recado nenhum.
             const trocouToken = Boolean(accessToken);
+            // A Public Key também conta como troca de credencial (mp-8):
+            // chave de outra conta publicada na ficha é Payment Brick de uma
+            // conta cobrando pela outra. Sem registro anterior, é troca.
+            const trocouPublicKey = registroAntigo?.public_key !== publicKey;
             const agora = new Date().toISOString();
 
             const novoToken = accessToken
@@ -381,7 +462,9 @@ export async function handler(
                 ? await cifrar(webhookSecret, chave)
                 : null;
 
-            const registro: Registro = {
+            // RegistroComPix (e não Registro): o carimbo do liga/desliga do
+            // PIX viaja junto com o que é gravado em app_settings.
+            const registro: RegistroComPix = {
                 public_key: publicKey,
                 token_cifrado: novoToken?.cifrado ??
                     registroAntigo?.token_cifrado ?? "",
@@ -399,15 +482,101 @@ export async function handler(
                 ultimo_teste: trocouToken
                     ? null
                     : registroAntigo?.ultimo_teste ?? null,
+                // O carimbo de quem ligou o PIX ATRAVESSA o salvar: auditoria
+                // que some porque o lojista reeditou a chave não é auditoria.
+                pix_ligado_em: registroAntigo?.pix_ligado_em ?? null,
+                pix_ligado_por: registroAntigo?.pix_ligado_por ?? null,
                 atualizado_em: agora,
             };
-            await gravarRegistro(supabase, registro);
-            return json(respostaLer(registro), 200);
+
+            // Credencial nova com o PIX aceso é vitrine cobrando por uma chave
+            // que ninguém testou (mp-8): o token pode estar errado e TODA
+            // tentativa de PIX morre no fim da compra, com a tela dizendo
+            // "nunca testado" e o interruptor ligado. Desligamos no MESMO
+            // update que publica a chave — dois updates deixariam uma janela
+            // com a chave nova e o PIX ainda aceso. Re-salvar sem trocar
+            // credencial (a tela manda o token vazio) não derruba ninguém.
+            const fichaAntes = await lerFichaDaLoja(supabase);
+            const desligarPix = (trocouToken || trocouPublicKey) &&
+                fichaAntes.pagamento_online;
+
+            // A FICHA PRIMEIRO, o REGISTRO (app_settings) DEPOIS (mp-10): a
+            // versão anterior gravava o registro (a credencial NOVA) antes de
+            // publicar a Public Key, e esse update na ficha vinha DEPOIS. Se a
+            // ficha recusasse, o 500 saía com a credencial nova já em vigor e
+            // o PIX ainda aceso na ficha com a chave ANTIGA — toda tentativa
+            // de PIX cairia numa credencial que ninguém testou, e "tente
+            // salvar de novo" não desfazia nada. Nesta ordem, uma ficha que
+            // recusa deixa a credencial anterior — a que está de fato vendendo
+            // — intacta; só gravamos o registro depois de a ficha confirmar.
+            //
+            // A Public Key não é segredo: é a credencial de FRENTE, e o
+            // checkout do cliente lê a da ficha da loja, não a daqui. Sem
+            // publicar, a tela diz "salvo" e o cliente segue sem PIX.
+            const recusa = await escreverNaFichaDaLoja(supabase, {
+                mp_public_key: publicKey,
+                ...(desligarPix ? { pagamento_online: false } : {}),
+            });
+            if (recusa) {
+                console.error(
+                    "[credenciais-mp] ficha da loja recusou a Public Key:",
+                    recusa,
+                );
+                return json(
+                    {
+                        erro: mensagemDeRecusaDaFicha(
+                            recusa,
+                            "Não consegui publicar a Public Key na ficha da loja — as chaves não foram salvas, para o PIX não ficar aceso com uma credencial que ninguém testou. Tente salvar de novo.",
+                        ),
+                    },
+                    500,
+                );
+            }
+            try {
+                await gravarRegistro(supabase, registro);
+            } catch (err) {
+                // A ficha JÁ gravou (linha acima) — se `desligarPix` for
+                // verdadeiro, ela já apagou `pagamento_online` também. O
+                // catch geral (fim do arquivo) devolveria "não consegui
+                // gravar as chaves agora", que é verdade sobre o registro e
+                // SILÊNCIO sobre o PIX que acabou de ser desligado; o
+                // lojista só descobriria recarregando a tela (ressalva da
+                // revisão de mp-10). Sem `desligarPix`, nada mudou na ficha
+                // além da Public Key — o catch geral já diz a coisa certa.
+                if (desligarPix) {
+                    console.error(
+                        "[credenciais-mp] gravarRegistro falhou com o PIX já desligado na ficha:",
+                        err instanceof Error ? err.message : err,
+                    );
+                    return json(
+                        {
+                            erro: "Não salvei as chaves novas E desliguei o PIX por segurança (a credencial trocou e ninguém testou a nova ainda). Ligue de novo depois de salvar e testar.",
+                        },
+                        500,
+                    );
+                }
+                throw err;
+            }
+            const ficha = await lerFichaDaLoja(supabase);
+            // Só ACRESCENTA campos (a tela de Ajustes já consome o resto):
+            // desligar o PIX calado seria o lojista descobrindo pelo cliente.
+            return json(
+                {
+                    ...respostaLer(registro, ficha),
+                    ...(desligarPix
+                        ? {
+                            pix_desligado: true,
+                            aviso: "Desliguei o PIX no app: teste a conexão com a credencial nova e ligue de novo.",
+                        }
+                        : {}),
+                },
+                200,
+            );
         }
 
         // ── testar: fala com o MP DAQUI, com a chave decifrada no servidor ──
         if (body.acao === "testar") {
-            const registro = await lerRegistro(supabase);
+            const registro = await lerRegistroMp(supabase);
             if (!registro?.token_cifrado) {
                 return json(
                     { erro: "Salve o Access Token antes de testar a conexão." },
@@ -466,9 +635,21 @@ export async function handler(
                     mensagem =
                         "O Mercado Pago não respondeu como esperado agora. Tente de novo em instantes.";
                 }
-            } catch {
+            } catch (err) {
+                // A causa vai para os Registros da function: sem isto a tela
+                // dizia "confira a internet" e o log ficava mudo, impossível
+                // separar DNS, TLS, tempo esgotado ou versão publicada errada.
+                // Quem não alcançou o Mercado Pago foi ESTE servidor, não o
+                // navegador do lojista — a frase agora diz isso.
+                const causa = err instanceof Error
+                    ? `${err.name}: ${err.message}`
+                    : String(err);
+                console.error(
+                    "[credenciais-mp] testar: a chamada a api.mercadopago.com falhou:",
+                    causa,
+                );
                 mensagem =
-                    "Não consegui falar com o Mercado Pago agora. Confira a internet e tente de novo.";
+                    `Não consegui falar com o Mercado Pago agora: o servidor não conseguiu chamar a API do Mercado Pago (${err instanceof Error ? err.name : "erro"}). Tente de novo em instantes; se continuar, a causa está nos registros da function credenciais-mercado-pago.`;
             }
 
             const ultimoTeste: UltimoTeste = {
@@ -489,8 +670,130 @@ export async function handler(
             );
         }
 
+        // ── ligar_pix: acende o PIX no checkout do cliente ────────────────
+        // Só liga depois de um teste de conexão BEM-SUCEDIDO: ligar com chave
+        // que o Mercado Pago recusa é vitrine aberta que não cobra ninguém —
+        // o cliente chega no fim da compra e trava.
+        if (body.acao === "ligar_pix") {
+            const registro = await lerRegistroMp(
+                supabase,
+            ) as RegistroComPix | null;
+            if (!registro?.ultimo_teste?.conectado) {
+                return json(
+                    { erro: "Teste a conexão com sucesso antes de ligar o PIX." },
+                    409,
+                );
+            }
+            // O Payment Brick do checkout não sobe sem a Public Key: acender o
+            // PIX sem ela é o cliente chegando no fim da compra e vendo
+            // "Pagamento indisponível". Mesma validação de formato do salvar.
+            const publicKeyDoRegistro = String(registro.public_key ?? "").trim();
+            if (!FORMATO_CREDENCIAL.test(publicKeyDoRegistro)) {
+                return json(
+                    { erro: "Salve a Public Key do Mercado Pago antes de ligar o PIX — sem ela o cliente vê o PIX e trava no fim da compra." },
+                    409,
+                );
+            }
+
+            // As DUAS colunas no MESMO update: a ficha nunca fica meio ligada
+            // (aceso sem chave é justamente o beco sem saída do checkout).
+            const recusa = await escreverNaFichaDaLoja(supabase, {
+                pagamento_online: true,
+                mp_public_key: publicKeyDoRegistro,
+            });
+            if (recusa) {
+                console.error(
+                    "[credenciais-mp] ficha da loja recusou ligar o PIX:",
+                    recusa,
+                );
+                return json(
+                    {
+                        erro: mensagemDeRecusaDaFicha(
+                            recusa,
+                            "Não consegui ligar o PIX na ficha da loja agora. Tente de novo em instantes.",
+                        ),
+                    },
+                    500,
+                );
+            }
+
+            // Carimbo depois da ficha: o que vale para o cliente é a ficha, e
+            // carimbar antes deixaria auditoria de um "ligou" que não ligou.
+            const agora = new Date().toISOString();
+            // Chave de sandbox conecta igualzinho à de produção — quem não
+            // for avisado vai achar que vendeu.
+            const avisos: string[] = [];
+            if (registro.ultimo_teste.ambiente === "teste") {
+                avisos.push(
+                    "Chave de TESTE: o PIX não vai receber dinheiro de verdade",
+                );
+            }
+            // Try/catch PRÓPRIO do carimbo (mp-8): a verdade do estado é a
+            // ficha, e ela JÁ acendeu. Deixar a falha da auditoria cair no
+            // catch geral devolvia 500 "não consegui gravar" com o PIX aceso —
+            // o lojista tentava de novo achando que estava desligado.
+            try {
+                await gravarRegistro(supabase, {
+                    ...registro,
+                    pix_ligado_em: agora,
+                    pix_ligado_por: uidAdmin,
+                    atualizado_em: agora,
+                } as Registro);
+            } catch (err) {
+                console.error(
+                    "[credenciais-mp] PIX ligado, mas o carimbo de auditoria falhou:",
+                    err instanceof Error ? err.message : err,
+                );
+                avisos.push(
+                    "O PIX está ligado, mas não consegui registrar quem ligou; tente salvar de novo mais tarde.",
+                );
+            }
+            return json(
+                {
+                    pix_ligado: true,
+                    quando: agora,
+                    // `comPontoFinal` (mp-10): sem ele, dois avisos juntos
+                    // grudavam sem pontuação ("...de verdadeO PIX está
+                    // ligado...") — a primeira frase termina em "de
+                    // verdade", sem ponto.
+                    ...(avisos.length
+                        ? { aviso: avisos.map(comPontoFinal).join(" ") }
+                        : {}),
+                },
+                200,
+            );
+        }
+
+        // ── desligar_pix: sempre permitido ────────────────────────────────
+        // Desligar é o lado seguro (o cliente volta a ver só os meios de
+        // pagamento manuais), então não depende de teste nem de chave salva.
+        if (body.acao === "desligar_pix") {
+            const recusa = await escreverNaFichaDaLoja(supabase, {
+                pagamento_online: false,
+            });
+            if (recusa) {
+                console.error(
+                    "[credenciais-mp] ficha da loja recusou desligar o PIX:",
+                    recusa,
+                );
+                return json(
+                    {
+                        erro: mensagemDeRecusaDaFicha(
+                            recusa,
+                            "Não consegui desligar o PIX na ficha da loja agora. Tente de novo em instantes.",
+                        ),
+                    },
+                    500,
+                );
+            }
+            return json({ pix_ligado: false }, 200);
+        }
+
         return json(
-            { erro: "Ação desconhecida: use ler, salvar ou testar." },
+            {
+                erro:
+                    "Ação desconhecida: use ler, salvar, testar, ligar_pix ou desligar_pix.",
+            },
             400,
         );
     } catch (err) {

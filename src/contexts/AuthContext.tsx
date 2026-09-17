@@ -4,6 +4,7 @@ import {
   MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
 } from "@/lib/mensagens-auth";
 import { supabase } from "@/lib/supabase";
+import { limparCachesDeAdmin } from "@/utils/admin_cache";
 import {
   isAuthApiError,
   isAuthRetryableFetchError,
@@ -108,6 +109,15 @@ let initPromise: Promise<any> | null = null;
 // dispositivo compartilhado acumula cache de vários usuários, não só do que
 // acabou de sair.
 function clearLocalUserData() {
+  // admin_cache-17 — os quatro caches de admin (customers/coupons/reviews/
+  // questions) são variáveis de módulo em src/utils/admin_cache.ts, fora do
+  // localStorage: sem esta chamada, sobreviviam ao logout e o próximo login
+  // na mesma aba via `onAuthStateChange` (tablet de balcão compartilhado)
+  // reaproveitava o cache do lojista anterior. Fica ANTES do `return` de
+  // SSR/teste sem `window` de propósito — memória de módulo não depende de
+  // `window`, e assim continua valendo em qualquer ambiente que chame esta
+  // função.
+  limparCachesDeAdmin();
   if (typeof window === "undefined") return;
   localStorage.removeItem("marketplace_cart_v1");
   localStorage.removeItem("ikcous_recently_viewed");
@@ -672,6 +682,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const previousUserId = activeUserIdRef.current;
       const currentUserId = session?.user?.id || null;
       activeUserIdRef.current = currentUserId;
+
+      // admin_cache-17 — troca de conta na MESMA aba sem passar por
+      // SIGNED_OUT explícito (ex.: sessão expira e outra pessoa loga em
+      // seguida no mesmo tablet de balcão) também precisa zerar os caches de
+      // admin; sem isto, o caso coberto por `clearLocalUserData()` no
+      // SIGNED_OUT (abaixo) não pegaria essa troca direta uid→uid.
+      if (previousUserId && currentUserId && previousUserId !== currentUserId) {
+        limparCachesDeAdmin();
+      }
 
       // Only set loading screen for explicit critical transitions (login/logout).
       // Do not block UI on background events (such as TOKEN_REFRESHED) or initial load recovery.

@@ -1,4 +1,4 @@
-import type { OrderStatus, PaymentStatus } from "@/types";
+import type { CanalDaVenda, OrderStatus, PaymentStatus } from "@/types";
 import { CheckCircle, Clock, Package, Truck, XCircle } from "lucide-react";
 import type React from "react";
 import { memo } from "react";
@@ -223,6 +223,13 @@ interface PaymentStatusBadgeProps {
   // Opcional para não quebrar chamador nenhum: sem ela, o comportamento é
   // idêntico ao de antes desta correção.
   orderStatus?: OrderStatus | null;
+  /**
+   * De onde a venda veio (D1, lote C4). Opcional para não quebrar chamador
+   * nenhum: sem ela, o comportamento é idêntico ao de antes — só troca o
+   * rótulo de "Recebido na entrega" para "Recebido no balcão" quando vale
+   * "presencial" e o pagamento já entrou.
+   */
+  canal?: CanalDaVenda;
   className?: string;
   /**
    * Rótulo CURTO (`shortLabel`) para grades de cards: "Pago fora do fluxo —
@@ -257,22 +264,49 @@ const PAGO_E_CANCELADO: PaymentStatusEntry = {
   needsAttention: true,
 };
 
+/**
+ * D1 do plano (docs/superpowers/plans/2026-09-15-super-atualizacao-do-app.md,
+ * seção 6): a venda de balcão grava o MESMO `recebido_na_entrega` — o banco
+ * não ganhou um oitavo valor. Só o rótulo muda, e muda aqui, num lugar só.
+ * Mesma cor de `recebido_na_entrega` de propósito: é o mesmo fato (dinheiro
+ * entrou fora do gateway), só o canal é outro.
+ */
+const RECEBIDO_NO_BALCAO: PaymentStatusEntry = {
+  label: "Recebido no balcão",
+  color: paymentStatusConfig.recebido_na_entrega.color,
+  bgColor: paymentStatusConfig.recebido_na_entrega.bgColor,
+  borderColor: paymentStatusConfig.recebido_na_entrega.borderColor,
+};
+
 function configDoPagamento(
   paymentStatus: PaymentStatus | null | undefined,
   orderStatus?: OrderStatus | null,
+  canal?: CanalDaVenda,
 ): PaymentStatusEntry {
   const key = paymentStatusKey(paymentStatus);
-  return (key === "pago" || key === "recebido_na_entrega") &&
+  // O cruzamento com `cancelled` VENCE o canal: venda de balcão cancelada
+  // com o dinheiro recebido continua "Pago e cancelado — precisa de
+  // atenção", porque o problema ali é dinheiro preso, não onde a venda
+  // aconteceu. Só DEPOIS de descartar esse caso é que o canal pode trocar o
+  // rótulo neutro por "Recebido no balcão".
+  if (
+    (key === "pago" || key === "recebido_na_entrega") &&
     orderStatus === "cancelled"
-    ? PAGO_E_CANCELADO
-    : getPaymentStatusConfig(key);
+  ) {
+    return PAGO_E_CANCELADO;
+  }
+  if (key === "recebido_na_entrega" && canal === "presencial") {
+    return RECEBIDO_NO_BALCAO;
+  }
+  return getPaymentStatusConfig(key);
 }
 
 export function rotuloDoPagamento(
   paymentStatus: PaymentStatus | null | undefined,
   orderStatus?: OrderStatus | null,
+  canal?: CanalDaVenda,
 ): string {
-  return configDoPagamento(paymentStatus, orderStatus).label;
+  return configDoPagamento(paymentStatus, orderStatus, canal).label;
 }
 
 /**
@@ -288,6 +322,7 @@ export function rotuloDoPagamento(
 export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   paymentStatus,
   orderStatus,
+  canal,
   className,
   compact = false,
 }: Readonly<PaymentStatusBadgeProps>) {
@@ -295,8 +330,8 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md) entra no
   // mesmo cruzamento que `pago`: dinheiro que entrou fora do gateway e o
   // pedido morreu depois é exatamente o mesmo alerta.
-  const cfg = configDoPagamento(paymentStatus, orderStatus);
-  const label = rotuloDoPagamento(paymentStatus, orderStatus);
+  const cfg = configDoPagamento(paymentStatus, orderStatus, canal);
+  const label = rotuloDoPagamento(paymentStatus, orderStatus, canal);
 
   return (
     <div

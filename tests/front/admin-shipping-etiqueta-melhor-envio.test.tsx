@@ -39,7 +39,9 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 // `marketplace_orders` responde o que o teste armou em `pedidosState`;
 // qualquer outra tabela devolve vazio sem erro. A cadeia espelha a consulta
-// real: select → in(status) → in(payment_status) → order → limit.
+// real: select → in(status) → in(payment_status) → order → range (achado
+// 116: paginação de verdade — a lista não corta mais tudo com um
+// `.limit()` cego).
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (_table: string) => ({
@@ -49,7 +51,7 @@ vi.mock("@/lib/supabase", () => ({
             filtrosIn.push([colunaA, valoresA], [colunaB, valoresB]);
             return {
               order: () => ({
-                limit: () =>
+                range: () =>
                   Promise.resolve({
                     data: pedidosState.data,
                     error: pedidosState.error,

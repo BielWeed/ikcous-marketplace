@@ -925,7 +925,9 @@ describe("entrega preparada chega ao observador e é conferida", () => {
         path.join(saida, "_redirects"),
         "utf8",
       );
-      expect(redirecionamentos.trimEnd().split("\n")).toHaveLength(110);
+      // 114 = 57 formas × 2 (com e sem barra): a tela admin-pdv (C3.3) entrou
+      // em telasDeEntrada e trouxe 4 linhas, como hospedagem-rotas.test.ts prende.
+      expect(redirecionamentos.trimEnd().split("\n")).toHaveLength(114);
       expect(
         JSON.parse(await fs.readFile(path.join(saida, "_routes.json"), "utf8")),
       ).toEqual({

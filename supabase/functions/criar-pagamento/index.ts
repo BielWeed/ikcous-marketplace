@@ -69,6 +69,10 @@ import {
 // (SUPABASE_SERVICE_ROLE_KEY) enquanto as duas coexistirem. Sem isto, no dia
 // em que a legada for desligada, esta function (a do checkout) para junto.
 import { readKey } from "../_shared/webpush.ts";
+// Tarefa mp-2 (15/09/2026): a chave do Mercado Pago pode ser a do LOJISTA
+// (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
+// fecha a porta quando não dá para decidir com segurança, é este módulo.
+import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -299,17 +303,6 @@ async function handler(
     return json({ error: "No momento aceitamos apenas PIX." }, 400);
   }
 
-  const mpToken = Deno.env.get("MP_ACCESS_TOKEN");
-  if (!mpToken) {
-    console.error("criar-pagamento: MP_ACCESS_TOKEN ausente no ambiente");
-    // Laudo 0109 (D1): sem chave, TENTAR DE NOVO bate na mesma recusa —
-    // é falha de configuração do operador, não do cliente. `terminal: true`
-    // tira o cliente do loop de "Tentar de novo" pelo contrato do
-    // CHECKOUT-050 (a categoria viaja no corpo, NUNCA por comparação de
-    // mensagem no front).
-    return json({ error: "Pagamento indisponível.", terminal: true }, 503);
-  }
-
   // PEDIDO-07 (auditoria de 26/08/2026): este createClient PRECISA ficar
   // dentro de um try — readKey nunca lança (devolve "" quando nenhuma das
   // duas variáveis existe, ver o comentário dela em _shared/webpush.ts), mas
@@ -320,8 +313,9 @@ async function handler(
   // O QUE ESTA CORREÇÃO NÃO MUDA, DE PROPÓSITO: o laço de "Tentar de novo"
   // do cliente continua existindo depois dela, igual a antes. useOrders.ts
   // só para de tentar quando o CORPO da resposta traz `terminal: true`, e
-  // este 503 NÃO traz — DIFERENTE do "MP_ACCESS_TOKEN ausente" (D1), que
-  // virou terminal, porque os dois têm escalas de conserto diferentes:
+  // este 503 NÃO traz — DIFERENTE do "sem credencial do Mercado Pago"
+  // (D1, logo abaixo), que virou terminal, porque os dois têm escalas de
+  // conserto diferentes:
   // chave de service role é ajuste de operador em MINUTOS (dentro da
   // janela de 30 min do PIX, retentar é o comportamento certo); chaves do
   // Mercado Pago numa loja nova são cadastro na aplicação MP do lojista —
@@ -343,6 +337,36 @@ async function handler(
       console.error("criar-pagamento: falha ao criar o client do Supabase", err);
       return json({ error: "Pagamento indisponível." }, 503);
     }
+  }
+
+  // Tarefa mp-2 (15/09/2026): QUEM cobra este cliente — a chave do LOJISTA
+  // (cadastrada em Ajustes > Pagamentos > Mercado Pago, guardada cifrada em
+  // app_settings) ou, só quando não existe cadastro nenhum, o MP_ACCESS_TOKEN
+  // da plataforma. A regra fechada mora em `_shared/credenciais-mp.ts`: com
+  // chave do lojista cadastrada e cofre fora do ar, ninguém cobra — cair no
+  // token da plataforma aqui é cobrar o cliente na conta ERRADA.
+  //
+  // POR QUE ESTA CHECAGEM DESCEU para depois do client: ela dependia só do
+  // `Deno.env` e ficava lá em cima, antes da leitura do pedido; agora ela
+  // precisa do client de service role para ler o registro do lojista. A
+  // ordem relativa que isso troca é só uma — falha ao montar o client
+  // (503 recuperável) passa a vir ANTES de "sem credencial do MP" (503
+  // terminal). Nenhuma das duas depende do pedido, as duas continuam
+  // acontecendo antes de qualquer chamada ao MP, e um servidor sem chave de
+  // service role não tem como saber de quem é o token do Mercado Pago.
+  const credenciaisMp = await resolverCredenciaisMp(supabase);
+  const mpToken = credenciaisMp.token;
+  if (!mpToken) {
+    // Só origem e motivo — token nenhum, de ninguém, entra em log.
+    console.error(
+      `criar-pagamento: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+    );
+    // Laudo 0109 (D1): sem chave, TENTAR DE NOVO bate na mesma recusa —
+    // é falha de configuração do operador, não do cliente. `terminal: true`
+    // tira o cliente do loop de "Tentar de novo" pelo contrato do
+    // CHECKOUT-050 (a categoria viaja no corpo, NUNCA por comparação de
+    // mensagem no front).
+    return json({ error: "Pagamento indisponível.", terminal: true }, 503);
   }
 
   const { data: pedido, error } = await supabase

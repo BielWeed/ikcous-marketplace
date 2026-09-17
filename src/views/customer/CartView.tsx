@@ -4,6 +4,7 @@ import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
 import { precoVendido } from "@/lib/preco-vendido";
+import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem, Order, Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -74,6 +75,29 @@ export const mesclarListaAposRecarga = <T,>(
   const lista = nova || [];
   return lista.length > 0 || atual.length === 0 ? lista : atual;
 };
+
+/**
+ * Achado CartView-328: com o preset "desligado" (ou "por_produto" sem item
+ * marcado) o carrinho renderizava `ShippingProgress` do mesmo jeito,
+ * passando progressPercent=0 e amountToFree=0 — e o componente, que não
+ * distingue "zero porque falta tudo" de "zero porque não existe meta",
+ * imprimia "META FRETE GRÁTIS ... Faltam R$ 0,00". Só existe meta de VALOR
+ * no preset "acima_de_valor" (fonte única em presets-de-frete-gratis.ts);
+ * "desligado" e "por_produto" sem marcação não têm limiar nenhum para
+ * anunciar. Quando o frete já está garantido (`freteGratis` — inclui os
+ * presets "sempre" e "por_produto" com item marcado) o bloco também deve
+ * aparecer, só que para comemorar "Liberado", não para uma meta.
+ *
+ * Função pura exportada pelo mesmo motivo de `mesclarListaAposRecarga`
+ * acima: montar a `CartView` inteira no teste arrasta o mundo (useOrders,
+ * useProducts, realtime...) só para exercitar uma decisão de booleano.
+ */
+export function deveExibirMetaDeFreteGratis(
+  freteGratis: boolean,
+  freeShippingMin: number,
+): boolean {
+  return freteGratis || presetDoConfig(freeShippingMin) === "acima_de_valor";
+}
 
 export function CartView({
   cart: propCart,
@@ -325,7 +349,8 @@ export function CartView({
     // login (mesmo padrão do CartReminder na frente B). "desligado" (0) e
     // "por_produto" (sentinela -1) não têm barra de valor — quem comunica o
     // grátis é a marcação no produto dentro do próprio preset.
-    const isRuleActive = (config.freeShippingMin || 0) > 0;
+    const isRuleActive =
+      presetDoConfig(config.freeShippingMin) === "acima_de_valor";
     const progress = isRuleActive
       ? Math.min((subtotal / config.freeShippingMin) * 100, 100)
       : 0;
@@ -491,8 +516,26 @@ export function CartView({
                     {/* FRETE V2 (onda D-1): o grátis agora é o veredito
                         único do CartContext (`freteGratis` — a cópia antiga
                         `hasFreeShippingItem` lia a marcação incondicional e
-                        escondia a calculadora mesmo com o preset desligado). */}
-                    {cart.length > 0 && !freteGratis && (
+                        escondia a calculadora mesmo com o preset desligado).
+                        CORREÇÃO CartView-495 (15/09): a calculadora NÃO
+                        soma mais `&& !freteGratis` na condição. No preset
+                        "por_produto" o `freteGratis` do CartContext lê a
+                        marcação `product.freeShipping` do SNAPSHOT do
+                        carrinho (localStorage) — a RPC do pedido lê
+                        `produtos.frete_gratis` FRESCO do banco na hora de
+                        fechar (20261081000000:294-318) e recusa o pedido
+                        pedindo uma opção de entrega (:324-326) quando os
+                        dois discordam. Esconder a calculadora enquanto o
+                        cliente ACHA que é grátis tirava dele a única chance
+                        de deixar um `shipping_option_id` pronto para esse
+                        caso. A própria `ShippingCalculator` já lê o mesmo
+                        `freteGratis` (via `useCartState`) e se rotula
+                        sozinha como "GRÁTIS" nesse estado — ver
+                        shipping-calculator-frete-gratis-fonte-unica.test.tsx —,
+                        então nada muda visualmente quando os dois lados
+                        concordam; só passa a existir uma saída quando
+                        discordam. */}
+                    {cart.length > 0 && (
                       <div className="mt-3">
                         <ShippingCalculator
                           cart={cart}
@@ -508,19 +551,25 @@ export function CartView({
                         verde enquanto o rodapé dizia "A calcular" — duas
                         frases opostas na mesma tela (revisão da frente
                         horário-e-convidado, achado baixa). */}
-                    {user && cart.length > 0 && !freteIndefinido && (
-                      <ShippingProgress
-                        shipping={shipping ?? 0}
-                        savings={savings}
-                        progressPercent={progressPercent}
-                        amountToFree={amountToFree}
-                        isNearlyThere={isNearlyThere}
-                        freeShippingProducts={freeShippingProducts}
-                        onAddToCart={onAddToCart}
-                        deferred={!isReady}
-                        onNavigate={onNavigate}
-                      />
-                    )}
+                    {user &&
+                      cart.length > 0 &&
+                      !freteIndefinido &&
+                      deveExibirMetaDeFreteGratis(
+                        freteGratis,
+                        config.freeShippingMin,
+                      ) && (
+                        <ShippingProgress
+                          shipping={shipping ?? 0}
+                          savings={savings}
+                          progressPercent={progressPercent}
+                          amountToFree={amountToFree}
+                          isNearlyThere={isNearlyThere}
+                          freeShippingProducts={freeShippingProducts}
+                          onAddToCart={onAddToCart}
+                          deferred={!isReady}
+                          onNavigate={onNavigate}
+                        />
+                      )}
 
                     {!user && cart.length > 0 && (
                       <div className="group relative overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-zinc-50 p-6 shadow-lg shadow-black/10 sm:p-8">

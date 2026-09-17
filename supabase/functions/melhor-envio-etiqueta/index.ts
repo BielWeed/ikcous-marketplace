@@ -225,6 +225,67 @@ export function erroDePagamentoParaEtiqueta(paymentStatus: unknown): string | nu
 }
 
 /**
+ * Mensagem de recusa para quando o pedido NÃO tem serviço do Melhor Envio
+ * para etiquetar (`extrairServiceIdDaOpcao` devolveu null) — achado
+ * index-691. ANTES este caminho tinha UMA frase fixa, "foi frete fixo ou
+ * entrega local", para qualquer opção ausente. Mas a taxa fixa MORREU na
+ * migração do frete v2 (a RPC recusa `flat-fee-%`, calculate-shipping
+ * index.ts:278) e o caso mais comum de opção ausente hoje é OUTRO: um preset
+ * de frete grátis esconde a calculadora do carrinho inteira
+ * (CartView.tsx:495), então o pedido nasce sem NENHUMA opção — não com uma
+ * opção fixa/local que alguém escolheu. Dizer "foi frete fixo ou entrega
+ * local" nesse caso manda o lojista atrás do motivo errado.
+ *
+ * `podeEscolherServico` é o sinal para o CARD (contrato com a tarefa irmã
+ * EtiquetasEnvioCard): true quando a causa é FALTA de opção — grátis, pedido
+ * antigo sem opção salva, ou a taxa fixa morta — porque nesses casos o
+ * lojista pode escolher o serviço agora e reenviar com `serviceId` (ver
+ * `normalizarServicoEscolhidoPeloLojista`); false quando o pedido de fato foi
+ * por ENTREGA LOCAL — aí quem despacha é a própria loja, não existe serviço
+ * de transportadora para escolher.
+ */
+export function erroDeServicoParaEtiqueta(
+    shippingOptionId: unknown,
+    shippingFee: unknown,
+): { mensagem: string; podeEscolherServico: boolean } {
+    if (shippingOptionId === 'local-delivery') {
+        return {
+            mensagem: 'Este pedido foi por entrega local — quem despacha é a própria loja. Não existe etiqueta pela API do Melhor Envio para este caso.',
+            podeEscolherServico: false,
+        }
+    }
+    if (typeof shippingOptionId === 'string' && shippingOptionId.startsWith('flat-fee-')) {
+        return {
+            mensagem: 'Este pedido usou uma taxa de frete fixa (recurso desativado) e não tem serviço do Melhor Envio associado. Escolha o serviço abaixo para gerar a etiqueta.',
+            podeEscolherServico: true,
+        }
+    }
+    if (!(Number(shippingFee) > 0)) {
+        return {
+            mensagem: 'O pedido saiu com frete grátis e sem serviço do Melhor Envio escolhido no checkout (a calculadora do carrinho fica oculta quando o frete é grátis). Escolha o serviço abaixo para gerar a etiqueta.',
+            podeEscolherServico: true,
+        }
+    }
+    return {
+        mensagem: 'Este pedido não registrou um serviço do Melhor Envio no checkout. Escolha o serviço abaixo para gerar a etiqueta.',
+        podeEscolherServico: true,
+    }
+}
+
+/**
+ * Serviço que o LOJISTA escolhe na hora de etiquetar um pedido sem opção
+ * (índice-691) — só entra em jogo quando `extrairServiceIdDaOpcao` não achou
+ * nada no checkout. Mesmo formato de dígitos que ela devolve (sem o prefixo
+ * `melhor-envio-`): quem manda aqui é o seletor do card, não a opção salva no
+ * pedido.
+ */
+export function normalizarServicoEscolhidoPeloLojista(valor: unknown): string | null {
+    if (typeof valor !== 'string') return null
+    const limpo = valor.trim()
+    return /^\d+$/.test(limpo) ? limpo : null
+}
+
+/**
  * Produtos e volumes do corpo do carrinho do ME, a partir dos itens do pedido
  * (JOIN `marketplace_order_items` × `produtos`) — mesmo padrão de leitura do
  * `calculate-shipping`: peso/dimensões vêm do BANCO, com fallbacks iguais aos
@@ -416,7 +477,10 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
     try {
         const body = await req.json()
-        const { action, orderId } = body
+        // `serviceId` (índice-691): o serviço que o LOJISTA escolhe no card
+        // quando o pedido não tem opção do Melhor Envio salva no checkout —
+        // ver `erroDeServicoParaEtiqueta` / `normalizarServicoEscolhidoPeloLojista`.
+        const { action, orderId, serviceId: serviceIdEscolhidoNoCard } = body
 
         if (!orderId || typeof orderId !== 'string') {
             return new Response(
@@ -571,7 +635,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         //    pagamento para o portão e a URL da etiqueta para o `already`).
         const { data: pedido, error: pedidoError } = await supabaseClient
             .from('marketplace_orders')
-            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, customer_name, customer_data')
+            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, customer_name, customer_data, shipping, shipping_cost')
             .eq('id', orderId)
             .maybeSingle()
 
@@ -683,17 +747,36 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             )
         }
 
-        // 5. O serviço de transporte: o que o cliente ESCOLHEU no checkout.
-        //    Pedido sem opção do Melhor Envio (frete fixo, entrega local,
-        //    null) NÃO etiqueta pela API: cotar de novo aqui escolheria
-        //    opcoes[0] SEM o filtro de métodos que a loja habilitou, e
-        //    entrega fixa/local é o próprio lojista entregando — sem etiqueta.
-        const serviceId = extrairServiceIdDaOpcao(customerData.shipping_option_id)
+        // 5. O serviço de transporte: o que o cliente ESCOLHEU no checkout —
+        //    ou, quando não há opção nenhuma salva (índice-691), o que o
+        //    LOJISTA escolhe agora no card (`serviceId` do corpo). A opção do
+        //    CHECKOUT sempre vence quando existe: um `serviceId` no corpo não
+        //    pode reescrever o que o cliente efetivamente pagou. Cotar de
+        //    novo aqui em vez de pedir a escolha ao lojista escolheria
+        //    `opcoes[0]` SEM o filtro de métodos que a loja habilitou — por
+        //    isso quem decide é o lojista, não um recálculo automático; e a
+        //    recusa, quando não há como prosseguir, tem que dizer o motivo
+        //    VERDADEIRO (`erroDeServicoParaEtiqueta`), não mais sempre "foi
+        //    frete fixo ou entrega local" (a taxa fixa nem existe mais).
+        const serviceIdDoCheckout = extrairServiceIdDaOpcao(customerData.shipping_option_id)
+        // O frete efetivo: pedido antigo (RPC anterior à v23) gravava o frete
+        // em shipping_cost e deixava shipping no DEFAULT 0 — sem olhar as
+        // duas colunas, a recusa afirmaria "saiu com frete grátis" para um
+        // pedido que cobrou frete.
+        const freteEfetivo = Number(pedido.shipping) > 0 ? pedido.shipping : pedido.shipping_cost
+        // O veredito é calculado ANTES de aceitar a escolha do lojista: o
+        // `serviceId` do corpo só vale quando a recusa autoriza
+        // (`podeEscolherServico`). Entrega local, por exemplo, NUNCA vira
+        // etiqueta — quem despacha é a própria loja.
+        const recusa = serviceIdDoCheckout ? null : erroDeServicoParaEtiqueta(customerData.shipping_option_id, freteEfetivo)
+        const serviceIdEscolhidoAgora = recusa?.podeEscolherServico
+            ? normalizarServicoEscolhidoPeloLojista(serviceIdEscolhidoNoCard)
+            : null
+        const serviceId = serviceIdDoCheckout ?? serviceIdEscolhidoAgora
         if (!serviceId) {
+            const { mensagem, podeEscolherServico } = recusa ?? erroDeServicoParaEtiqueta(customerData.shipping_option_id, freteEfetivo)
             return new Response(
-                JSON.stringify({
-                    error: 'Este pedido não tem frete do Melhor Envio escolhido no checkout (foi frete fixo ou entrega local — entregue você mesmo). A etiqueta pela API só sai para pedido com opção do Melhor Envio.',
-                }),
+                JSON.stringify({ error: mensagem, precisa_escolher_servico: podeEscolherServico }),
                 { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
             )
         }

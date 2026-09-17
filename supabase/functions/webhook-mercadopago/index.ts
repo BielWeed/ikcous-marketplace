@@ -24,7 +24,9 @@
  * assinatura barra isso), mas o corpo em si nunca carrega o pedido: quem
  * sabe a qual pedido um pagamento pertence é o `external_reference` que
  * `criarPagamento`/`consultarPagamento` leem de volta da API do MP,
- * autenticada pelo `MP_ACCESS_TOKEN`. Por isso o pedido sai de
+ * autenticada pelo token do gateway (o do LOJISTA quando ele cadastrou a
+ * chave dele, o `MP_ACCESS_TOKEN` da plataforma quando não —
+ * `_shared/credenciais-mp.ts`, tarefa mp-2). Por isso o pedido sai de
  * `consulta.externalReference`, nunca de `body`.
  *
  * `pareceUuid` nesse valor é a segunda trava: sem forma de UUID (ausente,
@@ -62,9 +64,21 @@
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Tarefa mp-2 (15/09/2026): as DUAS chaves deste webhook (o segredo que
+// autentica a notificação e o token que reconsulta o MP) saem daqui — da
+// chave do LOJISTA quando ela existe, do ambiente quando não existe cadastro.
+// Tarefa mp-7 (16/09/2026), a regra fechada do SEGREDO em uma frase: a
+// reserva do ambiente (`MP_WEBHOOK_SECRET`) só vale quando não há cadastro
+// nenhum (origem "ambiente") ou quando o lojista cadastrou a chave de
+// cobrança e NÃO o segredo de notificação (origem "lojista" com
+// `segredoWebhook` nulo) — NUNCA quando existe cadastro ilegível (origem
+// "indisponivel"), estado em que esta função fecha com 500 antes da
+// assinatura, porque o MP está assinando com o segredo DO LOJISTA.
+import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
   avaliarAssinatura,
+  camposDaAssinatura,
   consultarOrder,
   consultarPagamento,
   extrairValorDaOrder,
@@ -988,6 +1002,13 @@ async function registrarDesfechoDoEstorno(args: {
  * um único argumento porque é mais claro e não depende de todo fallback
  * continuar correto para sempre — não porque seja uma trava de segurança.
  */
+// `camposDaAssinatura` (mp-10): morava AQUI, copiada — este arquivo precisa
+// dos dois campos em três lugares (a recusa barata logo abaixo, o log de
+// entrada e o log de falha), e a recusa TEM de concordar com o que
+// `avaliarAssinatura` aceitaria. Duas cópias do mesmo parse podiam divergir
+// em silêncio; agora as duas usam a MESMA função, importada de
+// `_shared/mercadopago.ts`.
+
 async function handler(
   req: Request,
   deps: {
@@ -1029,12 +1050,93 @@ async function handler(
   // 64 caracteres sobra folga sobre o maior `data.id` legítimo do MP (ULID
   // de Order, 29 caracteres; id de payment clássico é numérico, menor ainda).
   const LIMITE_LOG_DATA_ID = 64;
-  const tsDoHeader = req.headers.get("x-signature")?.match(/(?:^|,)\s*ts=([^,]*)/)?.[1] ?? null;
+  const { ts: tsDoHeader, v1: v1Recebido } = camposDaAssinatura(req.headers.get("x-signature"));
   console.log("webhook-mercadopago: notificação recebida", {
     dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
     temXRequestId: req.headers.get("x-request-id") !== null,
     ts: tsDoHeader,
   });
+
+  // PORTA BARATA (tarefa mp-7, 16/09/2026): requisição que não tem NEM A
+  // FORMA de uma notificação do MP morre aqui — antes do client de service
+  // role, antes de resolver credenciais, antes do SELECT em `app_settings`.
+  // Até esta tarefa, TODA requisição que chegasse à URL pagava esse SELECT
+  // antes de qualquer autenticação (a função roda com `verify_jwt = false`),
+  // então quem descobrisse a URL fazia a loja gastar banco de graça. A
+  // decisão é IDÊNTICA à que `avaliarAssinatura` já tomaria — sem `ts` ou
+  // sem `v1` ela devolve `valido: false` sem sequer importar a chave do
+  // HMAC — só que agora sem pagar nada; por isso lê os campos pela MESMA
+  // função de parse, e não por uma segunda regra que pudesse divergir.
+  //
+  // `console.warn` CURTO e sem o bloco de diagnóstico da assinatura
+  // inválida (dataId, x-request-id, v1, candidatos): isto é o chão de ruído
+  // da internet, não um caso para investigar, e logar tudo aqui seria dar a
+  // quem varre a URL um jeito de encher o log.
+  //
+  // O que NÃO entra: cache/memoização da resolução de credenciais. O que
+  // barateia é recusar antes, não guardar segredo em memória entre
+  // requisições.
+  if (!tsDoHeader || !v1Recebido) {
+    console.warn("webhook-mercadopago: sem x-signature utilizável — recusado antes de tocar o banco");
+    return json({ error: "Assinatura inválida." }, 401);
+  }
+
+  // Tarefa mp-2 (15/09/2026): o client de service role SUBIU para cá — ele
+  // era montado lá embaixo, depois da consulta ao MP, e agora é preciso
+  // ANTES: as credenciais do Mercado Pago (segredo do HMAC e token de
+  // consulta) moram no registro cifrado do lojista em app_settings, e é este
+  // client que o lê. Nada mais muda de ordem; quem já usava `supabase` mais
+  // abaixo continua com o MESMO objeto.
+  const supabase =
+    deps.supabase ??
+    createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+    );
+
+  // De QUEM são as chaves desta loja: do lojista (cadastro na tela de
+  // Ajustes, cifrado) ou da plataforma (env). A regra fechada — nunca cair no
+  // token do ambiente quando existe cadastro ilegível — mora em
+  // `_shared/credenciais-mp.ts`.
+  const credenciaisMp = await resolverCredenciaisMp(supabase);
+
+  // Tarefa mp-7 (16/09/2026): cadastro do lojista PRESENTE e ilegível
+  // (`origem: "indisponivel"` — cofre ausente ou chave trocada) fecha AQUI,
+  // antes de avaliar a assinatura. Nesse estado o lojista cadastrou o
+  // segredo DELE, o MP assina a notificação com ELE, e a reserva do
+  // ambiente abaixo não bate: a resposta era 401 "assinatura inválida" e o
+  // 500 com o motivo certo (mais abaixo, na checagem do token) ficava
+  // INALCANÇÁVEL. O dinheiro não se perdia (`reconciliar-pagamentos` pega em
+  // 24h), mas o diagnóstico MENTIA durante os 30 min do PIX — quem estava de
+  // plantão caçava o segredo errado em vez de devolver a chave do cofre.
+  //
+  // 500 e não 200 pelo mesmo motivo de sempre: o evento FICA na fila do MP,
+  // que reenvia, e a notificação volta sozinha quando a credencial voltar ao
+  // lugar. Vem ANTES do roteamento, então neste estado até tópico
+  // irrelevante recebe 500 — é o estado quebrado da loja inteira, e o custo
+  // é um reenvio do MP, não dinheiro.
+  if (credenciaisMp.origem === "indisponivel") {
+    // Só origem e motivo: nem token nem segredo entram em log. O data.id vai
+    // truncado (LIMITE_LOG_DATA_ID): este ramo roda ANTES da assinatura, e
+    // quem descobrir a URL não pode escrever conteúdo próprio sem limite aqui.
+    console.error(
+      `webhook-mercadopago: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+      dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+    );
+    return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
+  }
+
+  // RESERVA SÓ DO SEGREDO, E SÓ NESTES DOIS ESTADOS: sem cadastro nenhum
+  // (origem "ambiente") ou cadastro com a chave de cobrança e SEM o segredo
+  // de notificação (origem "lojista" com `segredoWebhook` nulo — o campo é
+  // opcional na tela). Sem esta reserva, notificação LEGÍTIMA viraria 401 e o
+  // pedido pago ficaria "aguardando" até expirar. NUNCA para origem
+  // "indisponivel", que já saiu com 500 logo acima: ali existe segredo do
+  // lojista, ele só não abre, e usar o do ambiente autenticaria pela chave
+  // errada. O TOKEN não tem reserva nenhuma em estado nenhum — consultar (e
+  // cobrar) na conta errada é o erro que esta frente existe para impedir.
+  const segredoWebhook = credenciaisMp.segredoWebhook ??
+    Deno.env.get("MP_WEBHOOK_SECRET") ?? "";
 
   // A ÚNICA autenticação: sem ela, quem descobrir a URL forja um "aprovado".
   // Amarra SEMPRE o `data.id` do CORPO (nunca o da query string — ver o
@@ -1045,7 +1147,7 @@ async function handler(
     xSignature: req.headers.get("x-signature"),
     xRequestId: req.headers.get("x-request-id"),
     dataId: dataIdStr,
-    segredo: Deno.env.get("MP_WEBHOOK_SECRET") ?? "",
+    segredo: segredoWebhook,
     // Number.POSITIVE_INFINITY: a janela de `ts` fica DESLIGADA nesta
     // função. Corrigido em 09/08/2026 (rodada de conserto 1) — a versão
     // anterior usava 86400s (24h), medida contra um limite que não existe:
@@ -1069,10 +1171,10 @@ async function handler(
     // Log de FALHA: dataId (corpo, truncado), x-request-id, ts, o v1
     // recebido e os RÓTULOS dos candidatos tentados (sem hash nenhum, nem
     // prefixo dele — publicar hash calculado é um oráculo de verificação
-    // offline do `MP_WEBHOOK_SECRET`, achado de revisão de 16/08/2026) — o
+    // offline do segredo do webhook, achado de revisão de 16/08/2026) — o
     // que transforma suspeita em causa provada quando o MP reenviar a
-    // notificação real. NUNCA loga `MP_WEBHOOK_SECRET`.
-    const v1Recebido = req.headers.get("x-signature")?.match(/(?:^|,)\s*v1=([^,]*)/)?.[1] ?? null;
+    // notificação real. NUNCA loga o segredo — nem o do lojista, nem o
+    // `MP_WEBHOOK_SECRET` da plataforma.
     console.warn("webhook-mercadopago: assinatura inválida", {
       dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
       xRequestId: req.headers.get("x-request-id"),
@@ -1145,6 +1247,26 @@ async function handler(
     console.log(`webhook-mercadopago: type ausente, decidido pela forma do id -> rota "${rota}"`, dataIdStr);
   }
 
+  // Tarefa mp-2: sem token não há como perguntar ao MP o que de fato
+  // aconteceu — e o webhook NUNCA confia no corpo que chegou. 500 (não 200)
+  // de propósito: o evento FICA na fila do MP, que reenvia, e quando alguém
+  // devolver a credencial ao lugar a notificação volta e o pedido confirma.
+  // Depois do roteamento, e não antes: tópico irrelevante continua sendo
+  // descartado com 200 sem nunca ter precisado de credencial nenhuma.
+  //
+  // Tarefa mp-7: o que sobra para este ramo é a origem "ambiente" sem
+  // `MP_ACCESS_TOKEN` (motivo `ambiente_sem_token`) — a origem
+  // "indisponivel" já fechou lá em cima, antes da assinatura, porque naquele
+  // estado o 401 saía primeiro e escondia este mesmo log.
+  if (!credenciaisMp.token) {
+    // Só origem e motivo: nem token nem segredo entram em log.
+    console.error(
+      `webhook-mercadopago: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+      dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+    );
+    return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
+  }
+
   // As duas rotas convergem nestas cinco variáveis antes do restante do
   // handler (leitura do pedido, conferência de valor, RPC, push, logs) — o
   // que não muda entre elas. `statusBrutoParaLog`
@@ -1167,7 +1289,7 @@ async function handler(
 
   if (rota === "payment") {
     const consulta = await consultarPagamento({
-      token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+      token: credenciaisMp.token,
       paymentId: dataIdStr,
       fetchImpl: deps.fetchImpl,
     });
@@ -1196,7 +1318,7 @@ async function handler(
     corpoConsultado = (consulta as Record<string, unknown>).corpo as Record<string, unknown> | undefined ?? null;
   } else {
     const consulta = await consultarOrder({
-      token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+      token: credenciaisMp.token,
       orderId: dataIdStr,
       fetchImpl: deps.fetchImpl,
     });
@@ -1268,13 +1390,6 @@ async function handler(
     return json({ ok: true, ignorado: "external_reference inválido" }, 200);
   }
   const orderId = externalReference as string;
-
-  const supabase =
-    deps.supabase ??
-    createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
-    );
 
   // PASSO NOVO (T5): gatilhos lidos do objeto CONSULTADO, nunca do corpo do
   // webhook. Fora disso o passo não roda (0 leituras extras) — ver o

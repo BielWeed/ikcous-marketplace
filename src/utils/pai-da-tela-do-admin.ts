@@ -102,6 +102,11 @@ export function paiDaTelaDoAdmin(
       return "admin-dashboard";
     case "admin-notifications":
       return "admin-dashboard";
+    // "Vender" é sub-view do painel principal, não da aba Pedidos (plano
+    // §5.3: "sub-view; não é sexta aba") — por isso o pai é admin-dashboard,
+    // não admin-orders, mesmo sendo vizinha temática em adminViewIndices.
+    case "admin-pdv":
+      return "admin-dashboard";
     case "admin-reviews":
     case "admin-qa":
       return "admin-orders";

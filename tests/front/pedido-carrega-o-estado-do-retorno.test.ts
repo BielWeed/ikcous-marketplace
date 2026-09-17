@@ -18,6 +18,7 @@ type OrderRow = Database["public"]["Tables"]["marketplace_orders"]["Row"];
 /** Base copiada de tests/front/mappers.test.ts (PEDIDO_BASE) — não inventar o formato. */
 const PEDIDO_BASE: OrderRow = {
   address_id: null,
+  canal: "online",
   cancelled_after_shipping: false,
   confirmation_email_sent_at: null,
   coupon_code: null,
@@ -53,6 +54,7 @@ const PEDIDO_BASE: OrderRow = {
   tracking_code: null,
   updated_at: "2026-08-01T11:00:00.000Z",
   user_id: null,
+  vendedor_id: null,
 };
 
 describe("mapper do pedido — o estado do retorno do produto", () => {
