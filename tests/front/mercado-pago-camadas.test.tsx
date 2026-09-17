@@ -52,7 +52,16 @@ vi.mock("sonner", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 import { MercadoPagoSection } from "@/components/admin/settings/MercadoPagoSection";
-import { PROMPT_PARA_AGENTE_MP } from "@/components/admin/settings/mercado-pago-conteudo";
+import {
+  montarPromptParaAgenteMp,
+  urlDeNotificacoesDoWebhook,
+} from "@/components/admin/settings/mercado-pago-conteudo";
+import { lerSupabaseUrl } from "@/lib/env-valores";
+
+// Peça 28: a tela copia o prompt MONTADO com o endereço desta loja.
+const PROMPT_NA_TELA = montarPromptParaAgenteMp({
+  urlDeNotificacoes: urlDeNotificacoesDoWebhook(lerSupabaseUrl()),
+});
 
 function expansorPorTexto(texto: string): HTMLButtonElement {
   const cabecalho = [
@@ -180,6 +189,6 @@ describe("MercadoPagoSection — o grupo abre em camadas, enxuto", () => {
     await clicar(copiar);
 
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText).toHaveBeenCalledWith(PROMPT_PARA_AGENTE_MP);
+    expect(writeText).toHaveBeenCalledWith(PROMPT_NA_TELA);
   });
 });

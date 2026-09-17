@@ -1,5 +1,6 @@
 import { Switch } from "@/components/ui/switch";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { lerSupabaseUrl } from "@/lib/env-valores";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -20,8 +21,9 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   PASSOS_DO_GUIA,
-  PROMPT_PARA_AGENTE_MP,
   RECADO_DE_SEGURANCA,
+  montarPromptParaAgenteMp,
+  urlDeNotificacoesDoWebhook,
 } from "./mercado-pago-conteudo";
 
 /**
@@ -511,9 +513,16 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     }
   };
 
+  // O prompt leva o endereço de notificações DESTA loja (peça 28): é o que
+  // o lojista cola no painel do MP para o painel gerar a "Assinatura
+  // secreta". Sem URL conhecida, o prompt pede o endereço em vez de inventar.
+  const promptDoAgente = montarPromptParaAgenteMp({
+    urlDeNotificacoes: urlDeNotificacoesDoWebhook(lerSupabaseUrl()),
+  });
+
   const copiarPrompt = async () => {
     try {
-      await navigator.clipboard.writeText(PROMPT_PARA_AGENTE_MP);
+      await navigator.clipboard.writeText(promptDoAgente);
       setCopiado(true);
       haptic.light();
       if (copiadoTimer.current !== null)
@@ -645,7 +654,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             Pedido pronto para colar no agente
           </span>
           <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/5 bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
-            {PROMPT_PARA_AGENTE_MP}
+            {promptDoAgente}
           </pre>
           <button
             type="button"

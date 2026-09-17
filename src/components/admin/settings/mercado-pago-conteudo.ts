@@ -102,25 +102,94 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
  * funciona sem ela — o teste do dono foi feito sem ela). O prompt agora
  * pede ao agente o passo a passo leigo de onde copiar essa chave (área de
  * Webhooks da aplicação, se for lá), e o guia diz que ela é opcional.
+ *
+ * Peça 28 (17/09/2026, depois do teste real do dono): o prompt virou um
+ * roteiro em blocos (quem fala, o que o app usa, o que precisa sair da
+ * conversa, como guiar, a chave opcional no final, segurança) e passou a
+ * ser MONTADO com o endereço de notificações desta loja — ver
+ * `montarPromptParaAgenteMp` e `urlDeNotificacoesDoWebhook` abaixo.
  */
-export const PROMPT_PARA_AGENTE_MP = `Olá! Eu tenho uma loja que vende dentro do MEU PRÓPRIO aplicativo (o app da minha marca) e quero receber pagamento de PIX dentro dele, pelo Mercado Pago. Meu app foi montado para usar a integração oficial chamada CHECKOUT API do Mercado Pago (na documentação ela também aparece como Checkout Transparente): a tela de pagamento abre dentro do meu aplicativo, com o componente oficial de pagamento do Mercado Pago embutido nela, e o Pix do cliente é criado automaticamente pelo meu sistema conversando direto com a API do Mercado Pago — não usa maquininha, nem link de pagamento, nem site externo.
+/**
+ * Endereço que o Mercado Pago precisa conhecer para gerar a "Assinatura
+ * secreta" das notificações: é a edge `webhook-mercadopago` do projeto da
+ * loja (criar-pagamento já manda esse mesmo endereço em cada order, como
+ * `notification_url`). Função pura: recebe a URL base do Supabase (a ficha
+ * da loja ou o ambiente de build, ver `lerSupabaseUrl`) e devolve null quando
+ * ela não existe ou não parece uma origem — o prompt então pede o endereço ao
+ * lojista em vez de inventar um.
+ */
+export function urlDeNotificacoesDoWebhook(
+  supabaseUrl: string | null | undefined,
+): string | null {
+  const base = (supabaseUrl ?? "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\/[^\s/]+$/.test(base)) return null;
+  return `${base}/functions/v1/webhook-mercadopago`;
+}
 
-Para isso eu preciso de 2 credenciais da MINHA própria conta do Mercado Pago, e as duas têm que ser de PRODUÇÃO (as de verdade, que recebem dinheiro de verdade — não as de teste):
-1) PUBLIC KEY (chave pública)
-2) ACCESS TOKEN (token de acesso)
+export type OpcoesDoPromptParaAgenteMp = {
+  /** Endereço de notificações desta loja, ou null quando desconhecido. */
+  readonly urlDeNotificacoes: string | null;
+};
 
-Existe também uma TERCEIRA chave, que é OPCIONAL: a CHAVE DE NOTIFICAÇÕES (na documentação aparece como "Webhook secret" ou "chave secreta de webhooks"). O pagamento por Pix JÁ FUNCIONA sem ela, então sem pressa — mas se for rápido, me ensine onde copiá-la no final.
+/**
+ * Monta o PROMPT PRONTO que o lojista cola no agente de IA do app do Mercado
+ * Pago. Peça 28 (17/09/2026, pedido do dono depois do teste real): o prompt
+ * anterior descrevia a integração, mas não dizia ao agente QUEM está falando
+ * (um lojista leigo, não um programador), o que exatamente tem de sair da
+ * conversa, como tirar dúvidas no meio, nem como tratar a chave de
+ * notificações. Agora é um roteiro em blocos: quem fala, o que o app usa, o
+ * que precisa sair, como guiar, a chave opcional no final (com o endereço
+ * real de notificações desta loja, quando conhecido) e a segurança.
+ *
+ * Texto corrido em blocos, e não JSON, de propósito: o agente do Mercado Pago
+ * é um assistente de conversa e lê português melhor do que chaves de objeto;
+ * e o lojista LÊ o prompt antes de copiar — JSON o assustaria.
+ */
+export function montarPromptParaAgenteMp({
+  urlDeNotificacoes,
+}: OpcoesDoPromptParaAgenteMp): string {
+  const trechoDaUrl = urlDeNotificacoes
+    ? `colar exatamente este endereço no campo da URL de produção: ${urlDeNotificacoes}`
+    : "colar no campo da URL de produção o endereço de notificações do meu aplicativo (eu te passo quando você pedir; ele fica com quem cuida do meu app)";
 
-Me guie como se eu nunca tivesse usado o Mercado Pago na vida — eu sou leigo nesse assunto. É importante que você:
-- Me dê UM passo por vez, bem curtinho, dizendo exatamente ONDE eu toco: o nome do menu, do ícone ou do botão, do jeito que aparece na tela do celular.
-- Espere eu responder que consegui, antes de me dar o próximo passo.
-- Explique com calma as palavras difíceis (por exemplo: o que é uma credencial, e por que tem que ser de produção e não de teste).
-- Se algo não aparecer para mim, me dê o caminho alternativo: entrar com a minha conta no site developers.mercadopago.com, abrir "Suas integrações", criar a aplicação da minha loja e abrir "Credenciais de produção".
-- Sempre usar a MESMA conta que eu uso no aplicativo do Mercado Pago do meu celular.
-- Quando eu chegar nas credenciais, me mostrar exatamente o botão de copiar cada uma — primeiro a Public Key, depois o Access Token — e me avisar que vou colar as duas no aplicativo da minha loja, nos Ajustes, na parte "Suas chaves".
-- No final, me ensinar onde copiar a chave OPCIONAL de notificações (Webhook secret) que mencionei: me mostre o caminho exato na área de "Webhooks" da minha aplicação no painel de desenvolvedores (se for lá que ela fica), o botão de copiar, e me lembre que ela é OPCIONAL — o Pix já funciona sem ela, então posso colar depois.
+  return `QUEM ESTÁ FALANDO COM VOCÊ
+Sou o dono de uma loja e NÃO sou programador. A minha loja vende dentro do MEU PRÓPRIO aplicativo (o app da minha marca), que já está pronto e funcionando. Eu só preciso pegar as credenciais da MINHA conta do Mercado Pago e colar dentro desse aplicativo, na tela de Ajustes dele. Ninguém precisa programar nada nesta conversa.
 
-Importante: essas chaves são SECRETAS. Eu só vou usá-las no painel do Mercado Pago e no aplicativo da minha loja; nunca vou enviá-las para outra pessoa, nem colar em outro site, nem em outra conversa.`;
+O QUE O MEU APLICATIVO USA (só para você entender o cenário)
+O app usa a integração oficial CHECKOUT API do Mercado Pago (a documentação também chama de Checkout Transparente): o cliente paga por Pix sem sair do aplicativo, e o QR Code do Pix é criado pelo meu sistema falando direto com o Mercado Pago. NÃO é maquininha, NÃO é link de pagamento, NÃO é Checkout Pro e NÃO é site externo.
+
+O QUE EU PRECISO TER EM MÃOS NO FIM DESTA CONVERSA
+1) A PUBLIC KEY de PRODUÇÃO.
+2) O ACCESS TOKEN de PRODUÇÃO.
+As duas da MESMA conta que eu uso no app do Mercado Pago do meu celular, e as duas de PRODUÇÃO (as que recebem dinheiro de verdade). As credenciais de TESTE não me servem agora.
+3) Só no final, e só se eu quiser: a CHAVE DE NOTIFICAÇÕES (no painel aparece como "Assinatura secreta", na área de Webhooks). Ela é OPCIONAL: o Pix já funciona sem ela.
+
+COMO EU QUERO QUE VOCÊ ME GUIE
+- UM passo por vez, bem curto, dizendo exatamente ONDE eu toco: o nome do menu, do ícone ou do botão, do jeito que aparece na tela. Espere eu dizer que consegui antes de passar ao próximo.
+- Português simples. Se precisar usar uma palavra técnica, explique em uma frase o que ela significa (por exemplo: o que é uma credencial, e qual é a diferença entre produção e teste).
+- Se eu fizer uma pergunta no meio, responda e depois volte para o passo em que paramos.
+- Se algo não aparecer no app do celular, me leve pelo site: entrar em developers.mercadopago.com com a minha conta, abrir "Suas integrações", criar a aplicação da minha loja (se ainda não existir) e abrir "Credenciais de produção".
+- Se aparecer o botão "Ativar credenciais de produção", me ajude a concluir esse passo (aceitar os termos e o reCAPTCHA). Sem isso as chaves não recebem dinheiro de verdade.
+- Quando eu chegar nas credenciais, me mostre o botão de copiar de cada uma: primeiro a Public Key, depois o Access Token. Me lembre de colar as duas no aplicativo da minha loja, em Ajustes, Pagamentos, Mercado Pago, na parte "Suas chaves", e depois tocar em "Salvar chaves" e em "Testar conexão".
+- Me lembre de conferir se a minha conta do Mercado Pago tem uma CHAVE PIX cadastrada (na área do Pix do app). Sem ela, o dinheiro do Pix não tem onde cair.
+
+NO FINAL: A CHAVE DE NOTIFICAÇÕES, SE EU QUISER
+Depois que eu tiver as duas chaves, me pergunte se quero configurar a chave de notificações agora ou deixar para depois. As duas respostas estão certas.
+- Se eu quiser: explique em uma frase para que ela serve (é uma assinatura que permite ao meu aplicativo conferir que o aviso de "pagamento aprovado" veio mesmo do Mercado Pago, e não de outra pessoa). Depois me leve até ela, um passo por vez: na mesma aplicação do painel, abrir "Webhooks" (ou "Notificações"), escolher "Configurar notificações", modo "Produção", ${trechoDaUrl}, marcar os eventos de pagamento ("Pagamentos" e, se aparecer, "Pedidos" ou "Orders"), salvar, e então copiar a "Assinatura secreta" que o painel mostra. Eu vou colar essa assinatura no aplicativo da minha loja, no campo "Chave de notificações (opcional)".
+- Se eu não quiser agora: tudo bem, o Pix já funciona sem ela e eu posso voltar a isso outro dia.
+
+SEGURANÇA
+Essas chaves são SECRETAS. Eu só vou usá-las no painel do Mercado Pago e dentro do aplicativo da minha loja. Não vou enviá-las para ninguém, nem colar em outro site, nem colar aqui nesta conversa. Se eu tentar colar uma chave aqui, me avise para não fazer isso.`;
+}
+
+/**
+ * A versão do prompt sem o endereço desta loja — o que a tela mostra e copia
+ * quando a URL do Supabase não é conhecida, e a referência dos testes de
+ * conteúdo. A tela prefere `montarPromptParaAgenteMp` com o endereço real.
+ */
+export const PROMPT_PARA_AGENTE_MP = montarPromptParaAgenteMp({
+  urlDeNotificacoes: null,
+});
 
 /** Recado de segurança exibido embaixo do formulário. */
 export const RECADO_DE_SEGURANCA =
