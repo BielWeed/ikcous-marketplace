@@ -118,11 +118,19 @@
     "as 3 telas admin (atendimento, notificacoes e ficha do pedido) com os",
     "testes delas, e os warnings que as versoes velhas carregavam sumiram",
     "junto. Biome ficou 19/1, sem mudanca. Baixado SO' DEPOIS do CI, como as",
-    "quedas anteriores."
+    "quedas anteriores.",
+    "",
+    "17/09/2026 — warnings de eslint de 485 para 467. Medido no CI, run",
+    "35171941467 (PR #624, super atualização, head f745091): 'eslint warnings",
+    "467 / teto 485 — baixou -18 — abaixe o teto'. A queda VEIO do PR: as",
+    "tarefas da Onda A e do PDV entraram com 0 warning novo cada (medido",
+    "arquivo a arquivo contra o HEAD) e algumas reescritas levaram warnings",
+    "velhos junto. Biome ficou 19/1, sem mudança. Baixado SO' DEPOIS do CI,",
+    "como as quedas anteriores."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 485
+    "warnings": 467
   },
   "biome": {
     "errors": 19,
