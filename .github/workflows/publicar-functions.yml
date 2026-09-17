@@ -1,0 +1,147 @@
+# Publica edge functions do Supabase sob demanda, a partir do GitHub.
+#
+# POR QUE EXISTE (17/09/2026): o deploy das functions sempre foi manual, da
+# máquina do dono, com `supabase functions deploy <nome> --project-ref ...`
+# (DEPLOYMENT.md §2 e §5.3). Quando ninguém está com o CLI logado à mão, a
+# correção fica parada no repositório enquanto a loja roda a versão velha —
+# foi assim que o teste de conexão do Mercado Pago ficou falhando com a
+# versão de 14/09 publicada e a correção de 15/09 parada em `develop`.
+#
+# O QUE ELE NÃO FAZ, DE PROPÓSITO:
+#   - não dispara sozinho: só `workflow_dispatch`. Push em develop/main NÃO
+#     publica nada — publicar em produção continua sendo um ato humano.
+#   - não publica "todas": cada nome é validado contra supabase/functions/ e
+#     o CLI recebe sempre um nome (sem nome ele publica o diretório inteiro,
+#     inclusive o que ninguém revisou — DEPLOYMENT.md §2).
+#   - não passa `--no-verify-jwt`: a verdade do verify_jwt de cada function é
+#     `supabase/config.toml`, que o CLI lê sozinho. Flag na linha de comando
+#     ganharia do arquivo, e trocar isso já derrubou o OTP uma vez (#162).
+#   - não publica a `send-order-whatsapp`: despublicada em 11/08/2026, a pasta
+#     fica no repositório só como registro (README dela).
+#
+# CREDENCIAL: o segredo `SUPABASE_ACCESS_TOKEN` do repositório (GitHub →
+# Settings → Secrets and variables → Actions) é um token pessoal da conta do
+# Supabase (Account → Access Tokens). Ele vale para TODOS os projetos da
+# conta — por isso o destino é uma escolha fechada (loja | sandbox) e o log
+# imprime o ref antes de publicar. Revogar: na mesma página do Supabase.
+#
+# Testado por tests/ci_publicar_functions_test.ts: o bloco de validação é
+# extraído DESTE arquivo e rodado com bash contra os casos que importam.
+
+name: Publicar edge functions (Supabase)
+
+on:
+  workflow_dispatch:
+    inputs:
+      functions:
+        description: >-
+          Nomes das functions, separados por vírgula ou espaço
+          (ex.: credenciais-mercado-pago). "cobranca" = as cinco do Mercado Pago
+          (criar-pagamento, webhook-mercadopago, reconciliar-pagamentos,
+          estornar-pagamento, credenciais-mercado-pago).
+        required: true
+        type: string
+      projeto:
+        description: "Projeto de destino: loja (cafkrminfnokvgjqtkle) ou sandbox (lofznuxcvezrhxsgjqyg)"
+        required: true
+        type: choice
+        default: loja
+        options:
+          - loja
+          - sandbox
+
+permissions:
+  contents: read
+
+# Um deploy por projeto de cada vez, e nunca cancelado no meio: um bundle
+# publicado pela metade é pior do que esperar o anterior terminar.
+concurrency:
+  group: publicar-functions-${{ inputs.projeto }}
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    name: Publica em ${{ inputs.projeto }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve o projeto e valida os nomes
+        id: alvo
+        env:
+          PROJETO: ${{ inputs.projeto }}
+          PEDIDAS: ${{ inputs.functions }}
+        run: |
+          set -euo pipefail
+          case "$PROJETO" in
+            loja) REF=cafkrminfnokvgjqtkle ;;
+            sandbox) REF=lofznuxcvezrhxsgjqyg ;;
+            *) echo "::error::projeto desconhecido: $PROJETO (use loja ou sandbox)"; exit 1 ;;
+          esac
+          if [ "$(echo "$PEDIDAS" | tr -d '[:space:]')" = "cobranca" ]; then
+            PEDIDAS="criar-pagamento webhook-mercadopago reconciliar-pagamentos estornar-pagamento credenciais-mercado-pago"
+          fi
+          NOMES=""
+          for n in $(echo "$PEDIDAS" | tr ',' ' '); do
+            if ! [[ "$n" =~ ^[a-z][a-z0-9-]+$ ]]; then
+              echo "::error::nome inválido: '$n' (só letras minúsculas, dígitos e hífen)"; exit 1
+            fi
+            if [ "$n" = "send-order-whatsapp" ]; then
+              echo "::error::send-order-whatsapp foi despublicada em 11/08/2026 e não volta (DEPLOYMENT.md §2)"; exit 1
+            fi
+            if [ ! -f "supabase/functions/$n/index.ts" ]; then
+              echo "::error::não existe supabase/functions/$n/index.ts"; exit 1
+            fi
+            case " $NOMES " in
+              *" $n "*) ;;
+              *) NOMES="${NOMES:+$NOMES }$n" ;;
+            esac
+          done
+          if [ -z "$NOMES" ]; then
+            echo "::error::nenhuma function informada"; exit 1
+          fi
+          echo "Projeto: $PROJETO ($REF)"
+          echo "Functions: $NOMES"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "nomes=$NOMES" >> "$GITHUB_OUTPUT"
+
+      - name: Confere o segredo
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::segredo SUPABASE_ACCESS_TOKEN ausente no repositório (Settings → Secrets and variables → Actions)"; exit 1
+          fi
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Publica, uma function por vez, sempre pelo nome
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ steps.alvo.outputs.ref }}
+          NOMES: ${{ steps.alvo.outputs.nomes }}
+        run: |
+          set -euo pipefail
+          for n in $NOMES; do
+            echo "::group::supabase functions deploy $n --project-ref $REF"
+            supabase functions deploy "$n" --project-ref "$REF"
+            echo "::endgroup::"
+          done
+
+      - name: Lista o que ficou publicado
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ steps.alvo.outputs.ref }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Publicado em \`$REF\`"
+            echo
+            echo '```'
+            supabase functions list --project-ref "$REF"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

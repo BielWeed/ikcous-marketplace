@@ -35,6 +35,12 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    Enter direto publica no lugar errado sem erro nenhum. Para pular a escolha:
    `--project-ref cafkrminfnokvgjqtkle`.
 
+   Desde 17/09/2026 dá para publicar sem CLI na máquina: o workflow
+   `publicar-functions` (GitHub → Actions → "Publicar edge functions
+   (Supabase)") roda o mesmo comando num runner do GitHub, com o destino
+   escolhido numa lista fechada — `loja` ou `sandbox`, sem cursor no lugar
+   errado. Como disparar e o que ele recusa: §5.3.2.
+
    O `lofznuxcvezrhxsgjqyg` é o **sandbox do MCP** — apesar do nome, não é loja
    de cliente. É para onde os `mcp.json` das IDEs apontam, para o servidor MCP
    do Supabase não tocar na loja. Ele já tem os três functions em v1, de 15/07,
@@ -254,6 +260,7 @@ regra inteira está na §5.2.1 — leia-a antes de mexer em qualquer linha `MP_`
 | `MP_SANDBOX_PAYER_EMAIL` | Supabase → Edge Functions → Secrets | **opcional**, só faz sentido em ambiente de TESTE. Presente (e não vazia), `criar-pagamento` troca o e-mail do pagador do PIX por este valor e liga `payer.first_name = "APRO"` — o valor mágico que a doc de teste de PIX do MP exige para a order simular o fluxo completo. Desde 13/08/2026 uma string vazia já se comporta como ausente (achado de revisão: CHECKOUT-070), mas a forma CERTA de desligar o sandbox continua sendo **apagar o secret**, não deixar o campo em branco — é a única sem margem para engano |
 | `MP_WEBHOOK_SECRET` | Supabase → Secrets | a assinatura secreta do 5.1, também **RESERVA**: vale quando o lojista não cadastrou chave nenhuma e — sozinha entre as duas — também quando ele cadastrou o token mas deixou a "Chave de notificações" vazia (o campo é opcional na tela). Sem essa segunda reserva, notificação legítima viraria `401` e o pedido pago ficaria "aguardando" até expirar. O TOKEN não tem reserva nenhuma (§5.2.1) |
 | `RECONCILIACAO_SECRET` | Supabase → Secrets | **tem de bater** com o segredo homônimo no Vault |
+| `SUPABASE_ACCESS_TOKEN` | GitHub → Settings → Secrets and variables → Actions | **só para o workflow `publicar-functions`** (§5.3.2): token pessoal da conta do Supabase (avatar → Account → Access Tokens). Vale para **todos** os projetos da conta, não só a loja — por isso o workflow tem destino fechado (`loja` ou `sandbox`) e imprime o ref antes de publicar. Nunca em `.env`, nunca no código, nunca em Supabase → Secrets (lá não serve para nada). Revogar: na mesma página do Supabase; a partir daí o workflow falha no passo "Confere o segredo", antes de tocar em qualquer coisa |
 
 Os dois segredos do Vault (`reconciliacao_url` e `reconciliacao_secret`) foram criados em
 10/08/2026 pela migration `20260808000100`, **fora** dela, com `vault.create_secret`. Se o
@@ -424,6 +431,50 @@ perde; o inventário é que fica preso enquanto a janela durar.
 **Isto vale para CADA loja clonada deste molde**, em todo upgrade que cruze uma versão de
 `criar-pagamento` que mude o vocabulário do campo `statusPagamento`/`status` — não só nesta
 migração específica.
+
+### 5.3.2 Publicar pelo GitHub, sem CLI na máquina (workflow `publicar-functions`, desde 17/09/2026)
+
+Os comandos da §5.3 continuam valendo. O que mudou é que deixaram de ser o ÚNICO caminho:
+[`.github/workflows/publicar-functions.yml`](.github/workflows/publicar-functions.yml) roda o mesmo
+`supabase functions deploy` num runner do GitHub, a partir do commit da branch que você escolher.
+Nasceu de um caso concreto, em 17/09/2026: a `credenciais-mercado-pago` publicada era a de 14/09
+(a que falhava todo teste de conexão, peça 27) e a correção de 15/09 estava parada em `develop`
+porque ninguém estava com o CLI logado na máquina.
+
+**Como disparar:** GitHub → Actions → "Publicar edge functions (Supabase)" → *Run workflow* →
+escolher a **branch** (o que sobe é o código daquele commit) e preencher:
+
+- `functions`: os nomes, separados por vírgula ou espaço (`credenciais-mercado-pago`), ou o
+  apelido `cobranca`, que vira as cinco da §5.3 na ordem certa;
+- `projeto`: `loja` (`cafkrminfnokvgjqtkle`, o padrão) ou `sandbox` (`lofznuxcvezrhxsgjqyg`).
+
+O log imprime projeto e nomes antes de publicar e termina com o `supabase functions list` do
+projeto, que também vai para o resumo do job — é a prova de que a versão subiu (a tabela da §2
+envelhece; esse resumo não).
+
+**O que ele faz diferente dos comandos da §5.3, de propósito:**
+
+- **não passa `--no-verify-jwt` nunca.** A verdade de cada function é o `supabase/config.toml`,
+  que o CLI lê sozinho; a flag na linha de comando ganharia do arquivo (§5.3), e é exatamente o
+  erro que já derrubou o OTP (#162). Se uma function precisa mudar de `verify_jwt`, muda no
+  `config.toml`, com revisão, e não num campo de formulário;
+- **recusa publicar sem nome** (cada chamada ao CLI leva um nome; sem nome ele publicaria o
+  diretório inteiro, §2), **recusa a `send-order-whatsapp`** (despublicada em 11/08/2026) e recusa
+  nome que não exista em `supabase/functions/`;
+- **só dispara à mão.** Push em `develop` ou `main` não publica nada: publicar em produção
+  continua sendo um ato humano, só que sem exigir CLI e login na máquina de quem publica.
+
+**O que ele precisa, uma vez só:** o segredo `SUPABASE_ACCESS_TOKEN` no repositório (§5.2). É um
+token pessoal da conta do Supabase e vale para todos os projetos dela — trate-o como a senha do
+painel. Sem o segredo o workflow falha no passo "Confere o segredo", antes de tocar em qualquer
+coisa.
+
+O que ele NÃO faz: migrations (`supabase db push` continua proibido, AGENTS.md) e secrets das
+functions (esses continuam no painel, §5.2). Publicar uma function que depende de uma migration
+ainda não aplicada continua sendo erro de ordem, workflow ou não (§5.3.1).
+
+Testado por `tests/ci_publicar_functions_test.ts`: o bloco de validação é extraído do workflow e
+rodado com bash contra os casos acima.
 
 ### 5.4 O teste de ponta a ponta — e como o PIX de teste é pago
 
