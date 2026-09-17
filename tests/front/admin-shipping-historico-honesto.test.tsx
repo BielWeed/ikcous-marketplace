@@ -136,6 +136,35 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     );
   });
 
+  // RODADA DE CORREÇÃO (achado "ANTES DE CRESCER" na revisão): a frase
+  // antiga deste ramo dizia que o vazio era "por desenho" ("a edge já
+  // responde o frete direto, sem consultar transportadora") — o FRETE V2
+  // tornou isso falso. Hoje `respostaSemCotacaoDeFora`
+  // (calculate-shipping/index.ts:941-948) trata `flat_fee` como "sem
+  // transportadora conectada" e GRAVA UM ERRO a cada tentativa de fora da
+  // cidade. Uma loja `flat_fee` com 0 logs pode estar recusando toda venda
+  // nacional, não vivendo um silêncio normal.
+  it("RODADA DE CORREÇÃO: o texto do vazio flat_fee conta a verdade do frete v2 (erro a cada tentativa de fora, não 'silêncio por desenho')", async () => {
+    mockConfig.shippingProvider = "flat_fee";
+    logsState.data = [];
+    await abrirSecao();
+
+    // Continua nomeando a Taxa Única Fixa (é ela que está configurada)...
+    expect(textoDoHistorico()).toMatch(/Taxa Única Fixa/i);
+    // ...mas não mais como se o vazio fosse inofensivo por desenho.
+    expect(textoDoHistorico()).not.toMatch(
+      /já responde o frete direto, sem consultar transportadora/i,
+    );
+    expect(textoDoHistorico()).not.toMatch(
+      /não existe cotação para registrar aqui/i,
+    );
+    // A verdade medida no index.ts: sem transportadora conectada, é erro a
+    // cada tentativa de fora da cidade — e o caminho para sair disso.
+    expect(textoDoHistorico()).toMatch(/erro/i);
+    expect(textoDoHistorico()).toMatch(/fora da cidade/i);
+    expect(textoDoHistorico()).toMatch(/Melhor Envio ou Frenet/i);
+  });
+
   it("provedor salvo melhor_envio + 0 linhas: diz 'nenhuma cotação registrada', e NÃO mostra a explicação do flat_fee", async () => {
     mockConfig.shippingProvider = "melhor_envio";
     logsState.data = [];
