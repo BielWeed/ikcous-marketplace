@@ -71,9 +71,44 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
       if (tabela === "store_shipping_credentials") {
+        // AdminShippingView-126: a tela de Frete pede só `provider` e
+        // filtra `credentials->>token` no "banco" via `.not()/.neq()` —
+        // ela não lê mais o token. O builder abaixo é "thenable" (resolve
+        // sozinho se ninguém encadear `.not`/`.neq`) e também aceita a
+        // cadeia de filtro.
+        // `Object.assign` sobre um Promise DE VERDADE, não um objeto com
+        // `then` próprio (o Biome recusa thenable disfarçado): os métodos
+        // extras ficam pendurados no Promise real, que continua
+        // `await`ável no fim da cadeia.
+        const construirConsulta = (colunas: string, linhas: any[]): any =>
+          Object.assign(
+            Promise.resolve({
+              data:
+                colunas === "provider"
+                  ? linhas.map((l) => ({ provider: l.provider }))
+                  : linhas,
+              error: null,
+            }),
+            {
+              not: (coluna: string) =>
+                construirConsulta(
+                  colunas,
+                  coluna === "credentials->>token"
+                    ? linhas.filter((l) => l.credentials?.token != null)
+                    : linhas,
+                ),
+              neq: (coluna: string, valor: unknown) =>
+                construirConsulta(
+                  colunas,
+                  coluna === "credentials->>token"
+                    ? linhas.filter((l) => l.credentials?.token !== valor)
+                    : linhas,
+                ),
+            },
+          );
         return {
-          select: () =>
-            Promise.resolve({ data: estadoDoBanco.credenciais, error: null }),
+          select: (colunas: string) =>
+            construirConsulta(colunas, estadoDoBanco.credenciais),
         };
       }
       return {

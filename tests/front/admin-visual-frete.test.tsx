@@ -60,9 +60,47 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
       if (tabela === "store_shipping_credentials") {
+        // AdminShippingView-126: a tela de Frete não lê mais `credentials`
+        // (o token) — ela pede só `provider` e filtra no "banco" com
+        // `.not()/.neq()` em `credentials->>token`. TransportadorasSection
+        // continua pedindo a linha inteira (`select("*")`, sem chamar
+        // `.not`/`.neq`) porque ela EDITA a credencial. O builder abaixo
+        // serve os dois formatos: é "thenable" direto (o `await` de
+        // TransportadorasSection resolve sem passar por `.not`/`.neq`) e
+        // também aceita a cadeia de filtro da tela de Frete.
+        // `Object.assign` sobre um Promise DE VERDADE, não um objeto com
+        // `then` próprio (o Biome recusa thenable disfarçado): os métodos
+        // extras ficam pendurados no Promise real, que continua
+        // `await`ável no fim da cadeia.
+        const construirConsulta = (colunas: string, linhas: any[]): any =>
+          Object.assign(
+            Promise.resolve({
+              data:
+                colunas === "provider"
+                  ? linhas.map((l) => ({ provider: l.provider }))
+                  : linhas,
+              error: null,
+            }),
+            {
+              not: (coluna: string) =>
+                construirConsulta(
+                  colunas,
+                  coluna === "credentials->>token"
+                    ? linhas.filter((l) => l.credentials?.token != null)
+                    : linhas,
+                ),
+              neq: (coluna: string, valor: unknown) =>
+                construirConsulta(
+                  colunas,
+                  coluna === "credentials->>token"
+                    ? linhas.filter((l) => l.credentials?.token !== valor)
+                    : linhas,
+                ),
+            },
+          );
         return {
-          select: () =>
-            Promise.resolve({ data: estadoDoBanco.credenciais, error: null }),
+          select: (colunas: string) =>
+            construirConsulta(colunas, estadoDoBanco.credenciais),
           upsert: (linha: any) => {
             estadoDoBanco.credenciaisSalvas.push(linha);
             return Promise.resolve({ error: null });
