@@ -406,6 +406,11 @@ export type ConsultaAdmin = [
   endDate?: string,
   silent?: boolean,
   paymentStatus?: string,
+  // C4.4: NONA posição, no FIM — as duas desestruturações abaixo são
+  // posicionais a partir do início, então uma posição nova aqui não desloca
+  // nenhuma delas (ver `escolherRecargaDeReconexao` e
+  // `decidirRealtimeInsertAdmin`).
+  canal?: string,
 ];
 
 /**
@@ -455,6 +460,7 @@ export function escolherRecargaDeReconexao(deps: {
     endDate,
     ,
     paymentStatus,
+    canal,
   ] = ultimaConsultaAdmin;
 
   return () =>
@@ -467,6 +473,7 @@ export function escolherRecargaDeReconexao(deps: {
       endDate,
       true,
       paymentStatus,
+      canal,
     );
 }
 
@@ -1121,6 +1128,7 @@ export function decidirRealtimeInsertAdmin(
     endDate,
     ,
     paymentStatus,
+    canal,
   ] = ultimaConsultaAdmin;
 
   // Filtro de PAGAMENTO é filtro de servidor (p_payment_status na RPC), e a
@@ -1129,6 +1137,10 @@ export function decidirRealtimeInsertAdmin(
   // "recarregar": a RPC devolve lista e total certos. (Ressalva da revisão
   // de useOrders-1508.)
   const filtroDePagamentoAtivo = !!paymentStatus && paymentStatus !== "all";
+  // Mesmo precedente para o filtro de CANAL (C4.4, p_canal na RPC): nada de
+  // reimplementar "esse pedido é do canal filtrado?" aqui — quando o chip
+  // está ligado, a RPC já sabe recortar lista e total certos.
+  const filtroDeCanalAtivo = !!canal && canal !== "all";
 
   const filtro = statusFilter || "all";
   // Mesma regra do "Em Aberto" que a RPC aplica no banco (get_admin_orders_
@@ -1157,7 +1169,7 @@ export function decidirRealtimeInsertAdmin(
 
   if (!casaStatus || !casaPeriodo || !casaBusca) return "ignorar";
 
-  if (filtroDePagamentoAtivo) return "recarregar";
+  if (filtroDePagamentoAtivo || filtroDeCanalAtivo) return "recarregar";
 
   return (page ?? 0) === 0 ? "inserir" : "recarregar";
 }
@@ -1344,6 +1356,7 @@ export function useOrders(
       endDate?: string,
       silent = false,
       paymentStatus?: string,
+      canal?: string,
     ) => {
       if (!enabled) return { orders: [], total: 0 };
 
@@ -1358,6 +1371,7 @@ export function useOrders(
         endDate,
         silent,
         paymentStatus,
+        canal,
       ];
 
       if (adminOrdersAbortControllerRef.current) {
@@ -1381,6 +1395,9 @@ export function useOrders(
           // Achado 10 do laudo (29/08): o filtro de pagamento passa a
           // filtrar NO BANCO (migration 20261028000000) — contagem e dados.
           p_payment_status: paymentStatus || "all",
+          // C4.4: o chip "Balcão" também filtra NO BANCO (`p_canal` em
+          // `get_admin_orders_paged`, migration 20261163000000, C1.4).
+          p_canal: canal || "all",
         }).abortSignal(signal);
 
         const { data, error } = await query;
@@ -1433,12 +1450,14 @@ export function useOrders(
       startDate,
       endDate,
       paymentStatus,
+      canal,
     }: {
       statusFilter?: string;
       searchQuery?: string;
       startDate?: string;
       endDate?: string;
       paymentStatus?: string;
+      canal?: string;
     }): Promise<Order[]> => {
       const PAGE_SIZE = 100;
       const MAX_ORDERS = 5000;
@@ -1459,6 +1478,11 @@ export function useOrders(
             p_page_size: PAGE_SIZE,
             // A RPC filtra tanto os dados quanto a contagem por pagamento.
             p_payment_status: paymentStatus || "all",
+            // C4.4: sem isto, o CSV exportaria um filtro diferente do que
+            // está na tela quando o chip "Balcão" está ligado — mesma
+            // classe de defeito que o comentário acima já cobre para
+            // pagamento.
+            p_canal: canal || "all",
           },
         );
         if (error) throw error;
