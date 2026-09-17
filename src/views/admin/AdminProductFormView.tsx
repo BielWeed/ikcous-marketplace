@@ -29,6 +29,9 @@ import { useStore } from "@/contexts/StoreContext";
 import { useCategories } from "@/hooks/useCategories";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
+// Só o TIPO da resposta da RPC do PDV — import "type" some da build, então
+// não puxa `useVendaPresencial.ts` (nem o cliente Supabase) para este chunk.
+import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
@@ -62,7 +65,14 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  lazy,
+  Suspense,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 // achado AdminProductFormView-499: o ImageAdjuster SEMPRE exporta
@@ -98,6 +108,47 @@ export function arquivoDaImagemRecortada(croppedBlob: Blob): File {
   return new File([croppedBlob], `product-image-${Date.now()}.${extensao}`, {
     type: tipo,
   });
+}
+
+// C5.2 — formato aceito para o código de barras (decisão do lote pdv-c5,
+// §5.6): depois de aparar e remover espaços INTERNOS, só letras, números e
+// hífen, de 4 a 64 caracteres. EAN/UPC/GTIN são dígitos, mas Code 128/39 têm
+// letras — por isso não restringe a dígitos, e não valida dígito
+// verificador (fora do escopo deste lote).
+const REGEX_CODIGO_BARRAS = /^[A-Za-z0-9-]{4,64}$/;
+const MSG_CODIGO_BARRAS_FORMATO_INVALIDO =
+  "Só letras, números e hífen, de 4 a 64 caracteres.";
+const MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA =
+  "Este código já está em outra variação deste produto.";
+
+/** Mesma string que vai para a RPC (btrim + igualdade exata, migration
+ * 20261161000000) e para o banco — aparar as pontas e remover os espaços
+ * do meio (código colado ou digitado com separador visual). */
+function normalizarCodigoBarras(valor: string): string {
+  return valor.trim().replace(/\s+/g, "");
+}
+
+// C5.3 — o leitor de câmera (LeitorDeCodigo, componente de C2) só entra no
+// chunk desta tela quando o lojista realmente clica em "Ler com a câmera":
+// import DINÂMICO via `React.lazy`, do mesmo jeito que `conferirCodigoNoBanco`
+// (acima) já faz com o cliente Supabase. Estático puxaria o decodificador de
+// código de barras (e a câmera) para todo carregamento do formulário.
+const LeitorDeCodigo = lazy(() =>
+  import("@/components/admin/pdv/LeitorDeCodigo").then((modulo) => ({
+    default: modulo.LeitorDeCodigo,
+  })),
+);
+
+// C5.3 — sem câmera (desktop sem webcam, navegador sem suporte) o botão
+// some: quem lê o código ali é o leitor FÍSICO USB, que digita direto no
+// campo (dispensa o modal). Chamada a cada render de propósito — é barata e
+// `navigator.mediaDevices` pode mudar entre uma leitura e outra (permissão
+// revogada, por exemplo).
+function temCameraDisponivel(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    typeof navigator.mediaDevices?.getUserMedia === "function"
+  );
 }
 
 // Exportado só para o teste chamar direto (não passa pelo componente inteiro)
@@ -238,6 +289,7 @@ interface ProductFormFields {
   metaTitle: string;
   metaDescription: string;
   sku: string;
+  codigoBarras: string;
   variants: ProductVariant[];
   weightKg: string;
   widthCm: string;
@@ -262,6 +314,7 @@ function isProductFormDirty(
   if (a.metaTitle !== b.metaTitle) return true;
   if (a.metaDescription !== b.metaDescription) return true;
   if (a.sku !== b.sku) return true;
+  if (a.codigoBarras !== b.codigoBarras) return true;
   if (a.weightKg !== b.weightKg) return true;
   if (a.widthCm !== b.widthCm) return true;
   if (a.heightCm !== b.heightCm) return true;
@@ -280,6 +333,7 @@ function isProductFormDirty(
       vA.id !== vB.id ||
       vA.productId !== vB.productId ||
       vA.sku !== vB.sku ||
+      vA.codigoBarras !== vB.codigoBarras ||
       vA.name !== vB.name ||
       vA.value !== vB.value ||
       vA.stockIncrement !== vB.stockIncrement ||
@@ -328,6 +382,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     metaTitle: "",
     metaDescription: "",
     sku: "",
+    codigoBarras: "",
     variants: [] as ProductVariant[],
     weightKg: "",
     widthCm: "",
@@ -350,6 +405,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     metaTitle: "",
     metaDescription: "",
     sku: "",
+    codigoBarras: "",
     variants: [] as ProductVariant[],
     weightKg: "",
     widthCm: "",
@@ -371,6 +427,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const [variantFormData, setVariantFormData] = useState<{
     pares: ParNoForm[];
     sku: string;
+    codigoBarras: string;
     stockIncrement: string;
     priceOverride: string;
     active: boolean;
@@ -378,6 +435,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   }>({
     pares: [parNovo()],
     sku: "",
+    codigoBarras: "",
     stockIncrement: "0",
     priceOverride: "",
     active: true,
@@ -391,6 +449,30 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const [isPromoActive, setIsPromoActive] = useState(false);
 
   const [skuError, setSkuError] = useState("");
+  // C5.2 — três estados para o código de barras do PRODUTO: `ErroLocal`
+  // (formato + duplicidade DENTRO da tela, sem rede) e `ErroRede`
+  // (duplicidade no CATÁLOGO inteiro, achada pela RPC no blur) ficam
+  // separados de propósito — se fossem um só, editar qualquer variação
+  // (que recalcula o `ErroLocal`) apagaria sozinho o aviso de rede que o
+  // blur tinha acabado de encontrar. `AvisoRede` é a falha de conexão, que
+  // NUNCA bloqueia o salvar (só avisa). Ver `codigoBarrasError` mais abaixo,
+  // que combina os dois primeiros para o render e o `isValid`.
+  const [codigoBarrasErroLocal, setCodigoBarrasErroLocal] = useState("");
+  const [codigoBarrasErroRede, setCodigoBarrasErroRede] = useState("");
+  const [codigoBarrasAvisoRede, setCodigoBarrasAvisoRede] = useState("");
+  // Código de barras da VARIANTE em edição no modal: só formato local +
+  // duplicidade no catálogo (a duplicidade DENTRO da tela é uma conta do
+  // produto inteiro, recalculada quando a variante entra em
+  // `formData.variants` — ver o efeito do produto acima).
+  const [variantCodigoBarrasError, setVariantCodigoBarrasError] = useState("");
+  const [variantCodigoBarrasAvisoRede, setVariantCodigoBarrasAvisoRede] =
+    useState("");
+  // C5.3 — qual campo o leitor de câmera está preenchendo agora (`null` =
+  // fechado). Só um de cada vez: o modal de variação já cobre o campo do
+  // produto, então não há como os dois estarem abertos ao mesmo tempo.
+  const [leitorAberto, setLeitorAberto] = useState<
+    "produto" | "variacao" | null
+  >(null);
   const [priceError, setPriceError] = useState("");
   const [costError, setCostError] = useState("");
   const [originalPriceError, setOriginalPriceError] = useState("");
@@ -618,6 +700,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             metaTitle: product.metaTitle || "",
             metaDescription: product.metaDescription || "",
             sku: product.sku || "",
+            codigoBarras: product.codigoBarras || "",
             variants: product.variants || [],
             weightKg: product.weightKg?.toString() || "",
             widthCm: product.widthCm?.toString() || "",
@@ -659,6 +742,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             metaTitle: parsed.metaTitle || "",
             metaDescription: parsed.metaDescription || "",
             sku: parsed.sku || "",
+            codigoBarras: parsed.codigoBarras || "",
             variants: parsed.variants || [],
             weightKg: parsed.weightKg || "",
             widthCm: parsed.widthCm || "",
@@ -691,6 +775,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                   metaTitle: "",
                   metaDescription: "",
                   sku: "",
+                  codigoBarras: "",
                   variants: [] as ProductVariant[],
                   weightKg: "",
                   widthCm: "",
@@ -748,6 +833,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             metaDescription:
               parsed.metaDescription ?? initialData.metaDescription,
             sku: parsed.sku ?? initialData.sku,
+            codigoBarras: parsed.codigoBarras ?? initialData.codigoBarras,
             variants: parsed.variants ?? initialData.variants,
             weightKg: parsed.weightKg ?? initialData.weightKg,
             widthCm: parsed.widthCm ?? initialData.widthCm,
@@ -816,6 +902,187 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       setSkuError("");
     }
   }, [formData.sku]);
+
+  useEffect(() => {
+    // C5.2: formato do código de barras do PRODUTO e duplicidade DENTRO da
+    // tela (o próprio código contra o de cada variação, e as variações
+    // entre si) — sem rede. A duplicidade contra o CATÁLOGO inteiro mora em
+    // `conferirCodigoNoBanco` (chamada no blur), que escreve em
+    // `codigoBarrasErroRede`, um estado À PARTE: se estivesse aqui,
+    // qualquer mudança em `formData.variants` (editar o estoque de uma
+    // variação, por exemplo) apagaria sozinha o aviso "já está em outro
+    // produto" que o blur tinha acabado de achar.
+    const normalizado = normalizarCodigoBarras(formData.codigoBarras);
+    if (normalizado && !REGEX_CODIGO_BARRAS.test(normalizado)) {
+      setCodigoBarrasErroLocal(MSG_CODIGO_BARRAS_FORMATO_INVALIDO);
+      return;
+    }
+    const vistos = new Set<string>();
+    if (normalizado) vistos.add(normalizado);
+    let duplicadoNaTela = false;
+    for (const variante of formData.variants) {
+      const codigoVariante = normalizarCodigoBarras(
+        variante.codigoBarras || "",
+      );
+      if (!codigoVariante) continue;
+      if (vistos.has(codigoVariante)) {
+        duplicadoNaTela = true;
+        break;
+      }
+      vistos.add(codigoVariante);
+    }
+    setCodigoBarrasErroLocal(
+      duplicadoNaTela ? MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA : "",
+    );
+  }, [formData.codigoBarras, formData.variants]);
+
+  useEffect(() => {
+    // O código do produto mudou: o veredito de rede anterior (achado no
+    // blur de ANTES) ficou velho. Só um blur novo decide de novo — ver
+    // `conferirCodigoNoBanco`.
+    setCodigoBarrasErroRede("");
+    setCodigoBarrasAvisoRede("");
+  }, [formData.codigoBarras]);
+
+  useEffect(() => {
+    // Mesmo formato acima, para o código de barras da VARIANTE em edição no
+    // modal. A duplicidade dela contra o produto e as outras variações só
+    // aparece depois de "Efetivar Variante" (quando ela entra em
+    // `formData.variants` e o efeito de cima recalcula) — este efeito cobre
+    // só o formato, e o mesmo estado é reaproveitado por
+    // `conferirCodigoNoBanco` para o achado de rede (alvo "variacao").
+    const normalizado = normalizarCodigoBarras(variantFormData.codigoBarras);
+    setVariantCodigoBarrasError(
+      normalizado && !REGEX_CODIGO_BARRAS.test(normalizado)
+        ? MSG_CODIGO_BARRAS_FORMATO_INVALIDO
+        : "",
+    );
+    setVariantCodigoBarrasAvisoRede("");
+  }, [variantFormData.codigoBarras]);
+
+  // C5.2: duplicidade pelo CATÁLOGO inteiro, pela MESMA RPC que o PDV usa
+  // para bipar no balcão (AdminPdvView.tsx:170-179) — chamada ao sair do
+  // campo (blur) e, mais tarde (C5.3), depois de uma leitura pela câmera.
+  // Import DINÂMICO de propósito: esta view não tinha outro motivo para
+  // carregar o cliente Supabase (os hooks de dados fazem isso por trás), e
+  // um import ESTÁTICO aqui derrubaria os sete testes desta tela que não
+  // mockam "@/lib/supabase" — o módulo real lança sem as variáveis de
+  // ambiente do Supabase (`src/lib/env.ts`), medido nesta tarefa.
+  // Devolve "" quando o código está livre (ou é o próprio registro conferido,
+  // ou a rede falhou — nada que bloqueie) e a MENSAGEM de duplicado quando a
+  // RPC o encontra em outro produto/variação. Escreve nos estados de erro
+  // para o blur continuar tendo o mesmo efeito de sempre; o retorno é quem
+  // permite ao handleSubmit ESPERAR o veredito antes de gravar (ressalva da
+  // revisão: sem isso, salvar durante uma checagem em voo gravava antes da
+  // resposta). `idDaVariacao` é o id do registro conferido quando o alvo é
+  // variação: no modal, `editingVariant?.id`; no salvar, o id de cada
+  // variação do formulário.
+  async function conferirCodigoNoBanco(
+    codigoNormalizado: string,
+    alvo: "produto" | "variacao",
+    idDaVariacao?: string,
+  ): Promise<string> {
+    const setErroDeRede =
+      alvo === "produto"
+        ? setCodigoBarrasErroRede
+        : setVariantCodigoBarrasError;
+    const setAviso =
+      alvo === "produto"
+        ? setCodigoBarrasAvisoRede
+        : setVariantCodigoBarrasAvisoRede;
+
+    setAviso("");
+    if (!codigoNormalizado) {
+      setErroDeRede("");
+      return "";
+    }
+
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      const { data, error } = await (supabase.rpc as any)(
+        "buscar_por_codigo_barras",
+        { p_codigo: codigoNormalizado },
+      );
+      if (error) throw error;
+      const resposta = data as RespostaDoCodigo;
+
+      if (!resposta.encontrado || !resposta.produto) {
+        setErroDeRede("");
+        return "";
+      }
+
+      // O próprio produto/variação conferido nunca conta como duplicado —
+      // mas só na direção certa: um código que já é o do PRODUTO não deixa
+      // de ser duplicado só porque estamos conferindo o campo da VARIAÇÃO
+      // (e vice-versa). Ver pdv-c5.json, decisão (c).
+      const idDoProprio = alvo === "produto" ? productId : idDaVariacao;
+      const ehOProprio =
+        alvo === "produto"
+          ? resposta.origem === "produto" &&
+            !!idDoProprio &&
+            resposta.produto.id === idDoProprio
+          : resposta.origem === "variante" &&
+            idDoProprio != null &&
+            resposta.variante?.variant_id === idDoProprio;
+
+      if (ehOProprio) {
+        setErroDeRede("");
+        return "";
+      }
+
+      let mensagem = `Este código já está em ${resposta.produto.nome}`;
+      if (resposta.origem === "variante" && resposta.variante) {
+        mensagem += `, variação ${resposta.variante.nome}: ${resposta.variante.valor}`;
+      }
+      setErroDeRede(mensagem);
+      return mensagem;
+    } catch (erro) {
+      // Rede/RPC fora do ar: NÃO há veredito, então NÃO bloqueia — o índice
+      // único do banco só cobre a COLISÃO na hora de gravar (23505 vira
+      // mensagem amigável pela C5.1), não esta checagem em voo; quem fecha a
+      // corrida com o salvar é o await no início do handleSubmit. Só avisa,
+      // discreto, para o lojista tentar de novo.
+      console.warn(
+        "[AdminProductFormView] Não consegui conferir o código de barras agora:",
+        erro,
+      );
+      setAviso("Não consegui conferir agora.");
+      return "";
+    }
+  }
+
+  function aoSairDoCampoDeCodigoDeBarras(
+    valorBruto: string,
+    alvo: "produto" | "variacao",
+    idDaVariacao?: string,
+  ): void {
+    const normalizado = normalizarCodigoBarras(valorBruto);
+    // Formato inválido já tem o próprio erro (efeito acima); chamar a RPC
+    // aqui só teria a resposta assíncrona chegando depois e sobrescrevendo
+    // esse erro local, sem nenhuma corrida clara para decidir quem venceu.
+    if (!normalizado || !REGEX_CODIGO_BARRAS.test(normalizado)) return;
+    void conferirCodigoNoBanco(normalizado, alvo, idDaVariacao);
+  }
+
+  // C5.3 — a câmera achou um código: preenche o campo do alvo certo (o
+  // produto ou a variação em edição no modal), fecha o leitor e dispara a
+  // MESMA checagem de duplicidade do onBlur (C5.2) — uma leitura é, para
+  // este formulário, equivalente a digitar o código e sair do campo.
+  function aoLerCodigoDeBarras(leitura: { codigo: string }): void {
+    const normalizado = normalizarCodigoBarras(leitura.codigo);
+    if (leitorAberto === "produto") {
+      setFormData((prev) => ({ ...prev, codigoBarras: normalizado }));
+    } else if (leitorAberto === "variacao") {
+      setVariantFormData((prev) => ({ ...prev, codigoBarras: normalizado }));
+    }
+    const alvo = leitorAberto ?? "produto";
+    setLeitorAberto(null);
+    aoSairDoCampoDeCodigoDeBarras(
+      normalizado,
+      alvo,
+      alvo === "variacao" ? editingVariant?.id : undefined,
+    );
+  }
 
   useEffect(() => {
     // Validar Preço de Venda
@@ -1071,6 +1338,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       return;
     }
 
+    if (variantCodigoBarrasError) {
+      toast.error(variantCodigoBarrasError);
+      return;
+    }
+
     const cleanNumberString = (val: string) => {
       if (!val) return "";
       let clean = val.replace(",", ".").replace(/[^\d.-]/g, "");
@@ -1090,12 +1362,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     const sanitizedVarSku = variantFormData.sku
       ? variantFormData.sku.trim().toUpperCase().replace(/\s+/g, "-")
       : undefined;
+    const sanitizedVarCodigoBarras = variantFormData.codigoBarras
+      ? normalizarCodigoBarras(variantFormData.codigoBarras)
+      : undefined;
 
     const vData = {
       productId: productId || "",
       name: nomeComposto,
       value: valorComposto,
       sku: sanitizedVarSku || undefined,
+      codigoBarras: sanitizedVarCodigoBarras || undefined,
       stockIncrement: Number.parseInt(sanitizedVarStock) || 0,
       priceOverride:
         parsedPriceOverride !== undefined
@@ -1130,6 +1406,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     setVariantFormData({
       pares: [parNovo()],
       sku: "",
+      codigoBarras: "",
       stockIncrement: "0",
       priceOverride: "",
       active: true,
@@ -1142,6 +1419,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   }, []);
 
   const handleEditVariant = useCallback((v: ProductVariant) => {
+    // Ressalva da revisão da C5.2: erros/avisos de código de barras da
+    // edição ANTERIOR não podem atravessar para esta — se o código não
+    // mudar entre uma abertura e outra, o efeito que valida não dispara e
+    // o erro velho ficaria preso no modal.
+    setVariantCodigoBarrasError("");
+    setVariantCodigoBarrasAvisoRede("");
     setEditingVariant(v);
     setVariantFormData({
       // Reabre a linha em pares ("Cor / Tamanho"+"Branca / PP" volta a ser
@@ -1150,6 +1433,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       // `dividirEmAtributos` em `variante-composta.ts`.
       pares: comChaveDeRender(dividirEmAtributos(v.name, v.value)),
       sku: v.sku || "",
+      codigoBarras: v.codigoBarras || "",
       stockIncrement: v.stockIncrement.toString(),
       priceOverride: v.priceOverride?.toString() || "",
       active: v.active,
@@ -1182,6 +1466,45 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       return;
     }
     setIsSubmitting(true);
+
+    // Ressalva da revisão da C5.2: o salvar ESPERA a checagem de duplicidade.
+    // Sem este trecho, um clique durante uma checagem em voo (o blur do campo
+    // acabou de disparar a RPC) gravava antes do veredito chegar. A checagem
+    // aqui é nova — não lê o estado que o blur escreveu — e cobre o produto
+    // e cada variação com código. O `isSubmitting` já está true: re-cliques
+    // caem na guarda acima enquanto se espera. Falha de rede NÃO bloqueia
+    // (conferirCodigoNoBanco devolve "" sem veredito); a colisão real que
+    // escapar vira 23505 traduzido pela C5.1.
+    const codigoDoProdutoNoSubmit = normalizarCodigoBarras(
+      formData.codigoBarras,
+    );
+    if (codigoDoProdutoNoSubmit) {
+      const mensagem = await conferirCodigoNoBanco(
+        codigoDoProdutoNoSubmit,
+        "produto",
+      );
+      if (mensagem) {
+        toast.error(mensagem);
+        setIsSubmitting(false);
+        return;
+      }
+    }
+    for (const variante of formData.variants) {
+      const codigoDaVariante = normalizarCodigoBarras(
+        variante.codigoBarras || "",
+      );
+      if (!codigoDaVariante) continue;
+      const mensagem = await conferirCodigoNoBanco(
+        codigoDaVariante,
+        "variacao",
+        variante.id,
+      );
+      if (mensagem) {
+        toast.error(mensagem);
+        setIsSubmitting(false);
+        return;
+      }
+    }
 
     const cleanNumberString = (val: string) => {
       if (!val) return "";
@@ -1249,6 +1572,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     const sanitizedSku = formData.sku
       ? formData.sku.trim().toUpperCase().replace(/\s+/g, "-")
       : undefined;
+    const sanitizedCodigoBarras = formData.codigoBarras
+      ? normalizarCodigoBarras(formData.codigoBarras)
+      : undefined;
 
     /*
       CAMPO VAZIO VAI COMO `null`, NUNCA COMO `undefined` (ADMIN-050, #96).
@@ -1280,6 +1606,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       metaTitle: formData.metaTitle.trim(),
       metaDescription: formData.metaDescription.trim(),
       sku: sanitizedSku || null,
+      codigoBarras: sanitizedCodigoBarras || null,
       variants: formData.variants,
       sold: productId ? currentProduct?.sold || 0 : 0,
       /*
@@ -1329,6 +1656,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             sku: v.sku
               ? v.sku.trim().toUpperCase().replace(/\s+/g, "-")
               : undefined,
+            codigoBarras: v.codigoBarras
+              ? normalizarCodigoBarras(v.codigoBarras)
+              : undefined,
           }));
           await upsertVariants(productId, variantsWithSanitizedSku);
         }
@@ -1337,6 +1667,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           ...v,
           sku: v.sku
             ? v.sku.trim().toUpperCase().replace(/\s+/g, "-")
+            : undefined,
+          codigoBarras: v.codigoBarras
+            ? normalizarCodigoBarras(v.codigoBarras)
             : undefined,
         }));
         await addProduct({
@@ -1386,6 +1719,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     };
   }, []);
 
+  // Combina os dois estados de erro do código de barras do produto (ver o
+  // comentário perto das declarações de estado, acima) para o render e para
+  // este gate — a duplicidade de REDE não bloqueia sozinha por mais tempo do
+  // que o campo continuar com o mesmo valor que a gerou.
+  const codigoBarrasError = codigoBarrasErroLocal || codigoBarrasErroRede;
+
   const isValid =
     formData.name &&
     formData.description &&
@@ -1395,6 +1734,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     Number.parseFloat(formData.price) > 0 &&
     Number.parseInt(formData.stock) >= 0 &&
     !skuError &&
+    !codigoBarrasError &&
     !priceError &&
     (!costError || costError.startsWith("Aviso")) &&
     !originalPriceError &&
@@ -1861,6 +2201,72 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                       </div>
                     </div>
 
+                    {/* Código de Barras (C5.2) — a caixa da PP tem um código
+                        diferente da caixa da M: cada variação leva o seu.
+                        O botão "Ler com a câmera" (C5.3) usa o slot
+                        reservado ao lado do input. */}
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="variant-codigo-barras"
+                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                      >
+                        Código de Barras
+                      </label>
+                      <div className="flex gap-2">
+                        <LocalBufferedInput
+                          id="variant-codigo-barras"
+                          name="variant-codigo-barras"
+                          type="text"
+                          inputMode="numeric"
+                          data-testid="codigo-barras-variacao"
+                          value={variantFormData.codigoBarras}
+                          onFlush={(val) =>
+                            setVariantFormData((p) => ({
+                              ...p,
+                              codigoBarras: normalizarCodigoBarras(val),
+                            }))
+                          }
+                          onBlur={(e) =>
+                            aoSairDoCampoDeCodigoDeBarras(
+                              e.target.value,
+                              "variacao",
+                              editingVariant?.id,
+                            )
+                          }
+                          className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          placeholder="EAN, UPC ou GTIN — 7891234567890"
+                        />
+                        {/* C5.3 — some sem câmera: o leitor físico USB digita
+                            direto no campo acima, sem precisar deste botão. */}
+                        {temCameraDisponivel() && (
+                          <button
+                            type="button"
+                            onClick={() => setLeitorAberto("variacao")}
+                            className="flex shrink-0 items-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                            title="Ler com a câmera"
+                          >
+                            <Camera className="size-4" />
+                            Ler com a câmera
+                          </button>
+                        )}
+                      </div>
+                      <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
+                        Opcional. É o código impresso na embalagem desta
+                        variação; o PDV lê ele pela câmera.
+                      </span>
+                      {variantCodigoBarrasError && (
+                        <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                          {variantCodigoBarrasError}
+                        </span>
+                      )}
+                      {!variantCodigoBarrasError &&
+                        variantCodigoBarrasAvisoRede && (
+                          <span className="ml-1 mt-1 block text-[10px] font-bold text-amber-500">
+                            {variantCodigoBarrasAvisoRede}
+                          </span>
+                        )}
+                    </div>
+
                     {/* Quantidade em Estoque & Sobrescrever Preço */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -2017,6 +2423,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                     <button
                       type="button"
                       onClick={() => {
+                        // Ressalva da revisão da C5.2: o rascunho do modal
+                        // permanece (reabrir recupera o que estava digi-
+                        // tado), mas veredito de duplicidade e aviso de rede
+                        // são da checagem passada — não sobrevivem ao
+                        // fechar. O leitor de câmera aberto também morre
+                        // aqui (sem isto, um Cancelar durante a leitura
+                        // deixaria um leitor órfão na página).
+                        setVariantCodigoBarrasError("");
+                        setVariantCodigoBarrasAvisoRede("");
+                        setLeitorAberto(null);
                         setShowVariantForm(false);
                         setEditingVariant(null);
                       }}
@@ -2182,102 +2598,158 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               </button>
             </div>
 
-            {/* "+" Button - Only visible when images exist */}
+            {/* "+" Button e "Tirar Foto" - só visíveis quando já há imagens */}
             {formData.images.length > 0 && (
-              <label
-                htmlFor="product-image-upload"
-                className={cn(
-                  "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
-                  (isSubmitting || isImageUploading) &&
-                    "opacity-40 pointer-events-none",
-                )}
-                title="Adicionar Mais Imagens"
-              >
-                <Plus className="size-5" />
-                <input
-                  id="product-image-upload"
-                  name="product-images"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  disabled={isSubmitting || isImageUploading}
-                />
-              </label>
+              <div className="flex items-center gap-2">
+                {/* C5.3 — "Tirar foto": SEGUNDO input, com `capture`, para
+                    não tirar a galeria do celular do input de cima (ver
+                    comentário completo no estado vazio, abaixo). */}
+                <label
+                  htmlFor="product-image-capture"
+                  className={cn(
+                    "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+                    (isSubmitting || isImageUploading) &&
+                      "opacity-40 pointer-events-none",
+                  )}
+                  title="Tirar Foto"
+                >
+                  <Camera className="size-5" />
+                  <input
+                    id="product-image-capture"
+                    name="product-image-capture"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
+                </label>
+                <label
+                  htmlFor="product-image-upload"
+                  className={cn(
+                    "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+                    (isSubmitting || isImageUploading) &&
+                      "opacity-40 pointer-events-none",
+                  )}
+                  title="Adicionar Mais Imagens"
+                >
+                  <Plus className="size-5" />
+                  <input
+                    id="product-image-upload"
+                    name="product-images"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
+                </label>
+              </div>
             )}
           </div>
 
           <div className="w-full">
             {formData.images.length === 0 ? (
-              // Falso positivo: o label TEM texto visível ("Adicionar Fotos do
-              // Produto" e a instrução de arrastar), e o input com o id casado
-              // está dentro dele. A regra só olha `depth: 2` por padrão e o
-              // texto está em label > div > div > p. Pôr `aria-label` aqui
-              // resolveria o lint e pioraria a acessibilidade: substituiria
-              // esse texto rico pelo rótulo curto no nome acessível.
-              // eslint-disable-next-line jsx-a11y/label-has-associated-control
-              <label
-                htmlFor="product-image-upload"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={async (e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  if (isOffline) {
-                    toast.error("Não é possível enviar imagens offline.");
-                    return;
-                  }
-                  if (isImageUploading) return;
-                  const files = Array.from(e.dataTransfer.files || []);
-                  await processAndUploadImages(files);
-                }}
-                className={cn(
-                  "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
-                  isDragging
-                    ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
-                    : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
-                  (isSubmitting || isImageUploading) &&
-                    "opacity-40 pointer-events-none",
-                )}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
-                <div className="relative z-10 flex flex-col items-center text-center p-6 space-y-3">
-                  <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all duration-300 shadow-xl">
-                    <Camera className="size-6" />
+              <>
+                {/* Falso positivo: o label TEM texto visível ("Adicionar
+                    Fotos do Produto" e a instrução de arrastar), e o input
+                    com o id casado está dentro dele. A regra só olha
+                    `depth: 2` por padrão e o texto está em label > div >
+                    div > p. Pôr `aria-label` aqui resolveria o lint e
+                    pioraria a acessibilidade: substituiria esse texto rico
+                    pelo rótulo curto no nome acessível. */}
+                {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                <label
+                  htmlFor="product-image-upload"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    if (isOffline) {
+                      toast.error("Não é possível enviar imagens offline.");
+                      return;
+                    }
+                    if (isImageUploading) return;
+                    const files = Array.from(e.dataTransfer.files || []);
+                    await processAndUploadImages(files);
+                  }}
+                  className={cn(
+                    "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
+                    isDragging
+                      ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+                      : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
+                    (isSubmitting || isImageUploading) &&
+                      "opacity-40 pointer-events-none",
+                  )}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
+                  <div className="relative z-10 flex flex-col items-center text-center p-6 space-y-3">
+                    <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all duration-300 shadow-xl">
+                      <Camera className="size-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-black uppercase tracking-widest text-zinc-300 group-hover/upload:text-emerald-400 transition-colors">
+                        {isDragging
+                          ? "Solte para enviar!"
+                          : "Adicionar Fotos do Produto"}
+                      </p>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                        Arraste as imagens aqui ou clique para buscar
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 pt-2 text-[8px] font-black uppercase tracking-widest text-zinc-650">
+                      <span>Proporção ideal: 4:5</span>
+                      <span className="size-1 rounded-full bg-zinc-700" />
+                      <span>Máx: 10 fotos</span>
+                      <span className="size-1 rounded-full bg-zinc-700" />
+                      <span>Até 12MB cada</span>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-black uppercase tracking-widest text-zinc-300 group-hover/upload:text-emerald-400 transition-colors">
-                      {isDragging
-                        ? "Solte para enviar!"
-                        : "Adicionar Fotos do Produto"}
-                    </p>
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                      Arraste as imagens aqui ou clique para buscar
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 pt-2 text-[8px] font-black uppercase tracking-widest text-zinc-650">
-                    <span>Proporção ideal: 4:5</span>
-                    <span className="size-1 rounded-full bg-zinc-700" />
-                    <span>Máx: 10 fotos</span>
-                    <span className="size-1 rounded-full bg-zinc-700" />
-                    <span>Até 12MB cada</span>
-                  </div>
-                </div>
-                <input
-                  id="product-image-upload"
-                  name="product-images"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  disabled={isSubmitting || isImageUploading}
-                />
-              </label>
+                  <input
+                    id="product-image-upload"
+                    name="product-images"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
+                </label>
+                {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`, fora
+                  do label de cima. O input de galeria (acima) fica SEM
+                  `capture` de propósito — com `capture` o celular deixa de
+                  oferecer a galeria e só abre a câmera. Os dois chamam o
+                  MESMO `handleImageUpload`: a origem do arquivo (câmera ou
+                  galeria) não muda o que a tela faz com ele. */}
+                <label
+                  htmlFor="product-image-capture"
+                  className={cn(
+                    "mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/30 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
+                    (isSubmitting || isImageUploading) &&
+                      "opacity-40 pointer-events-none",
+                  )}
+                >
+                  <Camera className="size-4" />
+                  Tirar Foto
+                  <input
+                    id="product-image-capture"
+                    name="product-image-capture"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
+                </label>
+              </>
             ) : (
               <div className="relative w-full">
                 {/* Single horizontal scroll carousel for ALL images */}
@@ -2495,9 +2967,18 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               type="button"
               onClick={() => {
                 setEditingVariant(null);
+                // Achado ANTES DE CRESCER da revisão: o gate do SALVAR pode
+                // ter escrito erro/aviso de duplicidade no estado do modal
+                // com ele FECHADO (a checagem das variações no submit). O
+                // reset do form abaixo não dispara o efeito limpador quando
+                // o código já estava vazio — limpar aqui garante que uma
+                // variação nova e inocente nunca abra bloqueada.
+                setVariantCodigoBarrasError("");
+                setVariantCodigoBarrasAvisoRede("");
                 setVariantFormData({
                   pares: [parNovo()],
                   sku: "",
+                  codigoBarras: "",
                   stockIncrement: "0",
                   priceOverride: "",
                   active: true,
@@ -2709,6 +3190,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
+                        <b className="text-zinc-350">Código de Barras:</b>{" "}
+                        Opcional — é o código impresso na EMBALAGEM física
+                        (EAN/UPC/GTIN ou Code 128/39), diferente do SKU (que é
+                        uso interno seu). Precisa ser único no catálogo inteiro:
+                        o mesmo código não pode estar em outro produto ou
+                        variação. É o que o leitor do PDV bipa no balcão. Se o
+                        produto tem variações, cadastre o código em CADA
+                        variação — a caixa da PP é diferente da caixa da M.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                      <span>
                         <b className="text-zinc-350">Estoque Base:</b>{" "}
                         Quantidade física disponível quando o produto não tem
                         variação ativa. Com qualquer variação ativa, o estoque
@@ -2841,6 +3335,63 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               {skuError && (
                 <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
                   {skuError}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-codigo-barras"
+                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Código de Barras
+              </label>
+              <div className="flex gap-2">
+                <LocalBufferedInput
+                  id="product-codigo-barras"
+                  name="product-codigo-barras"
+                  type="text"
+                  inputMode="numeric"
+                  data-testid="codigo-barras-produto"
+                  value={formData.codigoBarras}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      codigoBarras: normalizarCodigoBarras(val),
+                    }))
+                  }
+                  onBlur={(e) =>
+                    aoSairDoCampoDeCodigoDeBarras(e.target.value, "produto")
+                  }
+                  placeholder="EAN, UPC ou GTIN — 7891234567890"
+                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                />
+                {/* C5.3 — some sem câmera: o leitor físico USB digita direto
+                    no campo acima, sem precisar deste botão. */}
+                {temCameraDisponivel() && (
+                  <button
+                    type="button"
+                    onClick={() => setLeitorAberto("produto")}
+                    className="flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
+                    title="Ler com a câmera"
+                  >
+                    <Camera className="size-4" />
+                    Ler com a câmera
+                  </button>
+                )}
+              </div>
+              <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
+                Opcional. É o código impresso na embalagem; o PDV lê ele pela
+                câmera.
+              </span>
+              {codigoBarrasError && (
+                <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                  {codigoBarrasError}
+                </span>
+              )}
+              {!codigoBarrasError && codigoBarrasAvisoRede && (
+                <span className="ml-1 mt-1 block text-[10px] font-bold text-amber-500">
+                  {codigoBarrasAvisoRede}
                 </span>
               )}
             </div>
@@ -3451,7 +4002,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 <p className="text-xs text-zinc-400">
                   Nome do produto, descrição detalhada e o{" "}
                   <strong className="text-white">SKU</strong> (referência
-                  interna livre; só o SKU de cada variação precisa ser único).
+                  interna livre; só o SKU de cada variação precisa ser único). O{" "}
+                  <strong className="text-white">Código de Barras</strong> é
+                  opcional, identifica a embalagem física, precisa ser único no
+                  catálogo inteiro e é o que o leitor do PDV bipa no balcão.
                 </p>
               </div>
 
@@ -3511,6 +4065,14 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 único: o sistema recusa salvar um que já exista em qualquer
                 outra variação já cadastrada (inclusive de produtos excluídos).
               </li>
+              <li>
+                O Código de Barras (opcional) identifica a EMBALAGEM física do
+                produto — diferente do SKU, que é uso interno seu. Ele precisa
+                ser único no catálogo inteiro (o mesmo código não pode estar em
+                outro produto ou variação) e é o que o leitor do PDV lê no
+                balcão. Se o produto tem variações, cadastre o código em CADA
+                variação: a caixa da PP tem um código diferente da caixa da M.
+              </li>
             </ul>
           </div>
         </div>
@@ -3545,6 +4107,33 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* C5.3 — o leitor só existe no DOM enquanto está aberto, e entra num
+          OVERLAY FIXO acima dos modais desta tela (z-[120] vence o z-[110]
+          do modal de categoria e o z-[100] do modal de variação). Sem isto o
+          painel nasceria no fim do fluxo da página — fora da vista no alvo
+          produto e ATRÁS do overlay do modal de variação, invisível e
+          inclicável (achado BLOQUEIA da revisão em contexto limpo; o jsdom
+          não faz empilhamento, por isso a prova é o teste estrutural do
+          container). O `Suspense` segura o import dinâmico, com
+          `fallback={null}` porque a abertura já é o clique do lojista. */}
+      {leitorAberto !== null && (
+        <div
+          data-testid="container-do-leitor"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
+        >
+          <Suspense fallback={null}>
+            <LeitorDeCodigo
+              aberto
+              modo="unico"
+              titulo="Ler o código de barras"
+              dica="Aponte para o código da embalagem"
+              aoLer={aoLerCodigoDeBarras}
+              aoFechar={() => setLeitorAberto(null)}
+            />
+          </Suspense>
+        </div>
+      )}
     </div>
   );
 });
