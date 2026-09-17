@@ -233,12 +233,18 @@ export function ShippingCalculator({
             // precisa de proteção.
             setOptions(opcoesEmCache);
 
-            // Auto-select first/cheapest option if none selected
+            // Auto-select: MENOR PREÇO, não a primeira do envelope (mesma
+            // correção do laudo 31/08 que já vale para a resposta fresca,
+            // logo abaixo). O envelope preserva a ordem em que a
+            // transportadora respondeu — não é ordem de preço — então
+            // `opcoesEmCache[0]` podia reintroduzir, na SEGUNDA visita dentro
+            // da validade do cache, o mesmo travamento na opção cara que
+            // `opcaoMaisBarata` já eliminou na primeira.
             const hasMatch = opcoesEmCache.some(
               (opt) => opt.id === selectedOption?.id,
             );
             if (!hasMatch) {
-              onSelectOption(opcoesEmCache[0]);
+              onSelectOption(opcaoMaisBarata(opcoesEmCache)!);
             }
             onCepValidated?.(cep);
             setLoading(false);
@@ -475,7 +481,10 @@ export function ShippingCalculator({
         </button>
       </form>
 
-      {error && (
+      {/* Com a calculadora montada também no carrinho grátis (CartView-495),
+          o alerta de erro de cotação não pode aparecer sozinho: a cotação
+          continua (ela dá o shipping_option_id de reserva), só o aviso cala. */}
+      {!isFree && error && (
         // Laudo de acessibilidade 05/09, M1: o erro do frete aparecia em
         // pixels, em silêncio — `role="alert"` fala na hora (mesmo
         // tratamento da recusa do cupom em CouponInput.tsx).
