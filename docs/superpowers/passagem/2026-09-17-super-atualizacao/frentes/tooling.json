@@ -1,0 +1,142 @@
+{
+ "frente": "tooling",
+ "tarefas": [
+  {
+   "id": "lint-ratchet-103",
+   "titulo": "A catraca de lint aprova em silêncio quando o Biome não consegue rodar",
+   "arquivo_principal": "scripts/lint-ratchet.mjs",
+   "linha": 103,
+   "severidade": "bloqueia",
+   "tipo": "bug",
+   "esforco": "P",
+   "descricao": "`contarBiome()` extrai o número só por regex (`/Found (\\d+) errors?\\./`) e, quando a regex não casa, devolve `{errors: 0, warnings: 0}` sem distinguir 'zero achados' de 'a ferramenta não rodou'. `rodar()` (linha 47-67) engole o exit code e devolve stdout+stderr, então falha de execução chega até aqui como texto qualquer. O irmão `contarEslint()` (linha 86-93) TEM o guarda certo: lança se a saída não contiver JSON. A assimetria é o defeito.",
+   "cenario": "Entrada: um PR que sobe `@biomejs/biome` de ^1.9.4 para 2.x (na v2 a chave `files.ignore` do biome.json foi substituída por `files.includes`, então a config atual vira inválida) — ou qualquer coisa que faça `npx biome check .` sair sem a linha de resumo. Estado: `.lint-baseline.json` tem `biome.errors: 19`. Resultado errado: medido=0, teto=19, delta=-19 → situação 'baixou -19 — abaixe o teto', `subiu=false`, `process.exit` não é chamado, o job 'Catraca de lint' fica VERDE e o resumo do GitHub anuncia 'Aprovado'. O Biome não olhou um único arquivo e o CI diz que a dívida CAIU. Reproduzi a saída sem resumo com `npx biome check /tmp/naoexiste-xyz` (imprime 'Checked 0 files' e nenhum 'Found N errors.') e confirmei o cálculo: {errors:0, warnings:0} → delta -19 → exit 0.",
+   "evidencia": "scripts/lint-ratchet.mjs:103-111 `function contarBiome(){ const saida = rodar(\"npx biome check .\"); const erros = saida.match(/Found (\\d+) errors?\\./); ... return { errors: erros ? Number(erros[1]) : 0, ... } }` — contra scripts/lint-ratchet.mjs:90-93 `const inicio = saida.indexOf(\"[\"); if (inicio === -1) { throw new Error(...) }`.",
+   "correcao_sugerida_pelo_leitor": "Dar ao Biome o mesmo guarda do eslint: exigir a linha de resumo e lançar quando ela não existir (`if (!erros && !/Checked \\d+ files/.test(saida)) throw new Error(...)`), ou trocar por `npx biome check . --reporter=json` e parsear o JSON, que falha alto. Cobrir com um teste em tests/ que alimenta a função com uma saída de erro e exige que o script REPROVE.",
+   "vereditos_da_verificacao": [
+    {
+     "lente": "guarda existente",
+     "motivo": "Não existe guarda nenhuma: `contarBiome` devolve `{errors:0}` para qualquer saída sem a linha de resumo, e com `cobra: NO_CI` (que é `Boolean(process.env.CI)`, ou seja, COBRADO no CI) o resultado é delta -19 → `baixou=true` → `process.exit` nunca chamado → job verde.",
+     "evidencia": "scripts/lint-ratchet.mjs:102-111 (sem guarda) contra :90-93 (`if (inicio === -1) throw`); reproduzido: `npx biome check /tmp/naoexiste-xyz` imprime `internalError/io ... Checked 0 files` e NENHUM `Found N errors.` → regex não casa → 0. `.lint-baseline.json` tem biome.errors=19, biome.warnings=1; scripts/lint-ratchet.mjs:176-180 marca `cobra: NO_CI` e .github/workflows/ci.yml:304 roda `npm run lint:ratchet` com CI=true. Nenhum outro job roda biome (`biome:check` do package.json:41 não aparece em .github/workflows/).",
+     "severidade": "antes_de_crescer",
+     "correcao": "Trocar por `npx biome check . --reporter=json` e parsear (falha alto, igual ao eslint); enquanto isso, exigir a âncora `Checked \\d+ files` e lançar quando ela faltar. Gatilho é upgrade deliberado (pin é ^1.9.4), por isso não bloqueia hoje."
+    },
+    {
+     "lente": "reprodução",
+     "motivo": "Reproduzi a assimetria: `rodar()` engole o exit code e `contarBiome()` devolve {0,0} quando a regex não casa, então uma falha de execução do Biome vira 'dívida caiu' e o CI aprova.",
+     "evidencia": "scripts/lint-ratchet.mjs:45-62 (catch devolve stdout+stderr), :103-111 (regex sem guarda) contra :90-93 (eslint lança sem JSON). Repro em /tmp/bt com biome.json inválido (chave `files.includes` da v2): saída 'Biome exited because the configuration resulted in errors', exit 1; replicando contarBiome nessa saída → medido {\"errors\":0,\"warnings\":0} → delta -19 → 'baixou' → process.exit não é chamado. `npx biome check /tmp/naoexiste-xyz` sai com 0 e imprime só 'Checked 0 files', também sem 'Found N errors.'",
+     "severidade": "antes_de_crescer",
+     "correcao": "Dar simetria ao guarda: `rodar()` devolve também o status, e `contarBiome()` lança se a saída não tiver `Checked (\\d+) files` com N>0 ou contiver 'exited because the configuration'. Melhor ainda: `npx biome check . --reporter=json` e parsear — falha alto como o eslint. (Fora do escopo do achado, mas medido agora: `npx biome check .` nesta branch dá 20 erros contra teto 19 — a catraca reprova hoje no CI.)"
+    }
+   ],
+   "arquivos_permitidos": [
+    "scripts/lint-ratchet.mjs",
+    "tests/"
+   ],
+   "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. A catraca aprova em silêncio quando o Biome não consegue rodar (erro de execução vira contagem zero). Correção: distinguir 'Biome rodou e contou N' de 'Biome não rodou' — no segundo caso reprovar com mensagem clara (exit 1) no CI, e localmente avisar sem reprovar só se for o caso documentado de Windows/CRLF. Teste Deno em tests/lint_ratchet_biome_nao_rodou_test.ts (padrão createRequire de tests/ler_migration_test.ts) cobrindo: saída inválida do Biome → reprova; contagem válida abaixo do teto → passa. Rode npm run lint:ratchet depois para provar que o caminho normal continua verde."
+  },
+  {
+   "id": "size-limit-16",
+   "titulo": "O portão de 800 kB mede 606 kB enquanto o servidor entrega 777 kB — 170 kB de folga que não existe",
+   "arquivo_principal": ".size-limit.cjs",
+   "linha": 16,
+   "severidade": "bloqueia",
+   "tipo": "performance",
+   "esforco": "P",
+   "descricao": "A entrada de JS não passa `webpack: false` (a entrada de CSS na linha seguinte passa). Sem isso o size-limit joga os 107 chunks num projeto webpack vazio, re-minifica e comprime UMA VEZ em brotli — medindo um artefato fundido que ninguém baixa. O que o navegador realmente recebe são 107 respostas brotli independentes, cada uma com seu próprio dicionário.",
+   "cenario": "Entrada: a árvore atual em 4ce2c5f, `IKCOUS_IDENTITY_MODE=fixture NODE_ENV=production npm run build && npm run size`. Estado: 107 chunks .js em dist-test/assets, 3.130,79 kB crus. Resultado errado: o portão reporta 'Size: 606.29 kB' de 800 kB, ou seja 193,71 kB de folga. Medido no mesmo diretório com zlib: brotli de cada arquivo somado = 776,93 kB (folga real 23,07 kB); gzip de cada arquivo somado = 894,18 kB; brotli do concatenado = 642,53 kB. O portão está 170,64 kB (28%) abaixo do que o CDN transfere. Consequência direta para o PDV: uma lib de leitura de código de barras de ~60 kB brotli passa folgada no portão (606→~660) e leva o total entregue de 776,93 para ~837 kB, estourando o teto que o portão diz estar protegendo.",
+   "evidencia": ".size-limit.cjs:16 `{ path: `${output}/assets/*.js`, limit: \"800 kB\" }` — sem `webpack: false`, que a linha 17 tem para o CSS. Saída medida de `npm run size`: lista os 107 arquivos e conclui `Size: 606.29 kB with all dependencies, minified and brotlied`. Contra-medição: `node -e` com zlib.brotliCompressSync por arquivo = 776.93 kB.",
+   "correcao_sugerida_pelo_leitor": "Acrescentar `webpack: false` à entrada de JS, igual à do CSS: o checker de arquivo soma a compressão de cada arquivo casado, que é o que o servidor entrega. Reajustar o teto de 800 kB na mesma mudança (o número novo nasce em ~777 kB) e registrar no comentário que os dois números não são comparáveis com o histórico de '515 kB em 30/07/2026'.",
+   "vereditos_da_verificacao": [
+    {
+     "lente": "guarda existente",
+     "motivo": "Confirmado que o preset instalado é `@size-limit/preset-big-lib` (traz @size-limit/webpack) e a rodada real imprime 'Adding to empty webpack project' → mede o bundle fundido (606,29 kB) enquanto a soma brotli arquivo a arquivo, que é o que o CDN entrega, dá 758,72 kB de um teto de 800 kB.",
+     "evidencia": ".size-limit.cjs:16 (`{ path: `${output}/assets/*.js`, limit: \"800 kB\" }`, sem `webpack: false`) contra :17 (CSS com `webpack: false`); node_modules/@size-limit/preset-big-lib/package.json lista `@size-limit/webpack`; `IKCOUS_IDENTITY_MODE=fixture npx size-limit` → 'Adding to empty webpack project' e 'Size: 606.29 kB'; medição própria com zlib nos 107 .js de dist-test/assets: raw 3057,41 kB, brotli por arquivo 758,72 kB, gzip por arquivo 873,22 kB.",
+     "severidade": "antes_de_crescer",
+     "correcao": "Acrescentar `webpack: false` à entrada de JS e, no mesmo PR, recravar o teto a partir do número novo (~759 kB medido no CI, não na máquina local) anotando que ele não é comparável ao histórico de '515 kB' citado em .github/workflows/ci.yml:11. A folga real hoje é ~41 kB, menos que uma lib de leitura de código de barras."
+    },
+    {
+     "lente": "reprodução",
+     "motivo": "Confirmado: sem `webpack: false` o size-limit funde os 107 chunks num projeto webpack e comprime uma vez só, medindo 606,29 kB onde a soma brotli por arquivo (o que o CDN entrega) é 776,93 kB.",
+     "evidencia": ".size-limit.cjs:16 sem `webpack:false` (a linha 17, do CSS, tem). `IKCOUS_IDENTITY_MODE=fixture npm run size` → 'Adding to empty webpack project' / 'Size: 606.29 kB'. Contra-medição com zlib em dist-test/assets (107 .js): raw 3.130,79 kB, brotli por arquivo 776,93 kB, gzip por arquivo 894,18 kB, brotli do concatenado 642,53 kB.",
+     "severidade": "antes_de_crescer",
+     "correcao": "Acrescentar `webpack: false` à entrada de JS e rebaselinar o teto no mesmo PR com o número por arquivo (~777 kB hoje), anotando em .size-limit.cjs e no comentário de .github/workflows/ci.yml:11 que o histórico de '515 kB' não é comparável. Não é 'portão cego': em modo webpack ele ainda captura crescimento — o que ele não dá é o número absoluto de transferência, e é esse número que o orçamento do PDV precisa."
+    }
+   ],
+   "arquivos_permitidos": [
+    ".size-limit.cjs",
+    "package.json",
+    "scripts/"
+   ],
+   "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. O portão mede 606 kB (webpack re-empacotado, comprimido uma vez) enquanto a entrega real (brotli por arquivo, somado) é 777 kB. Correção: medir cada arquivo de dist*/assets/*.js com brotli individual e somar (size-limit aceita `brotli: true` e `webpack: false` por entrada; se a soma por arquivo exigir script, faça um scripts/medir-bundle.mjs chamado pelo `npm run size` com o mesmo teto de 800 kB e saída legível). Também medir o `dist` promovível quando existir (o modo database). Documentar no próprio arquivo o porquê. Prova: rode IKCOUS_IDENTITY_MODE=fixture NODE_ENV=production npm run build e IKCOUS_IDENTITY_MODE=fixture npm run size, cole os números antes/depois. NÃO mude o teto de 800 kB (decisão do dono, D8); se a medida honesta passar do teto, relate — não force verde."
+  },
+  {
+   "id": "vite-214",
+   "titulo": "Todo cliente da loja baixa o recharts (92 kB brotli) por causa do clsx",
+   "arquivo_principal": "vite.config.ts",
+   "linha": 214,
+   "severidade": "bloqueia",
+   "tipo": "performance",
+   "esforco": "P",
+   "descricao": "O `manualChunks` manda `recharts|d3` para `vendor-charts`, mas não classifica `clsx`. Sem regra, o Rollup funde o clsx no `vendor-charts` (o recharts depende dele). Como `src/lib/utils.ts:1` importa clsx para montar o `cn()` usado em toda a UI, o chunk de ENTRADA passa a importar estaticamente o `vendor-charts`, e o Vite emite `<link rel=\"modulepreload\">` para ele no index.html. O recharts só é usado por dois componentes do painel (OperationalPerformanceChart.tsx e StrategicIntelligenceBlocks.tsx, ambos só em AdminDashboardView).",
+   "cenario": "Entrada: um cliente da loja abre a vitrine no celular em 3G. Estado: index.html precarrega 9 arquivos. Resultado errado: entre eles vai `vendor-charts-DbegZ8fu.js` — 420,60 kB crus, 92,04 kB brotli de biblioteca de GRÁFICO — para entregar uma função de ~200 bytes que concatena className. Medido: o boot (os 9 arquivos referenciados no index.html) soma 359,84 kB brotli; sem o vendor-charts seriam 267,80 kB, isto é 25,6% a menos em toda primeira visita. Provado que é o clsx: o chunk de entrada contém `import{c as mn}from\"./vendor-charts-DbegZ8fu.js\"` e o export `c` do vendor-charts é `function J(){for(var e,t,r=0,n=\"\",i=arguments.length;r<i;r++)(e=arguments[r])&&(t=Lb(e))&&(n&&(n+=\" \"),n+=t);return n}` — a implementação do clsx.",
+   "evidencia": "vite.config.ts:214-219 (`if (normalizedId.includes(\"recharts\") || normalizedId.includes(\"d3\")) return \"vendor-charts\";` e nenhuma regra para clsx/tailwind-merge); src/lib/utils.ts:1 `import { type ClassValue, clsx } from \"clsx\";`; dist-test/index.html `<link rel=\"modulepreload\" href=\"/assets/vendor-charts-DbegZ8fu.js\">`.",
+   "correcao_sugerida_pelo_leitor": "Classificar explicitamente os utilitários de className junto com os outros helpers de UI: acrescentar `clsx`, `tailwind-merge` e `class-variance-authority` à regra que hoje devolve `vendor-ui-helpers` (vite.config.ts:184-191). Depois reconferir no index.html que `vendor-charts` sumiu do modulepreload e re-medir o boot. Libera ~92 kB brotli do teto de tamanho — que é exatamente o orçamento que o leitor de código de barras vai pedir.",
+   "vereditos_da_verificacao": [
+    {
+     "lente": "guarda existente",
+     "motivo": "Provado no artefato: o chunk de entrada importa estaticamente só `c` de vendor-charts, `c` é o `J` do clsx, e o index.html precarrega vendor-charts (89,89 kB brotli de recharts) em toda primeira visita do cliente da loja.",
+     "evidencia": "vite.config.ts:214-219 manda recharts/d3 para `vendor-charts` e não classifica clsx; src/lib/utils.ts:1-6 (`cn` = twMerge(clsx(...))); dist-test/assets/index-C1mBFlU1.js contém `import{c as mn}from\"./vendor-charts-DbegZ8fu.js\"`; dist-test/assets/vendor-charts-DbegZ8fu.js termina em `export{... J as c ...}` com `function J(){for(var e,t,r=0,n=\"\",i=arguments.length...` (clsx); dist-test/index.html tem `<link rel=\"modulepreload\" crossorigin href=\"/assets/vendor-charts-DbegZ8fu.js\">`; recharts só é importado por src/components/admin/dashboard/OperationalPerformanceChart.tsx e StrategicIntelligenceBlocks.tsx; tamanho do chunk: 410,74 kB cru / 89,89 kB brotli.",
+     "severidade": "bloqueia",
+     "correcao": "Acrescentar `clsx`, `tailwind-merge` e `class-variance-authority` à regra que já devolve `vendor-ui-helpers` (vite.config.ts:184-191) — vendor-ui-helpers já é estático na entrada, então o preload de vendor-charts cai sem novo chunk — e travar com um teste que leia o index.html do build e reprove se `vendor-charts` aparecer no modulepreload."
+    },
+    {
+     "lente": "reprodução",
+     "motivo": "Provado no artefato: o chunk de entrada importa um único símbolo do vendor-charts — o clsx — e por isso o index.html precarrega 92,04 kB brotli de recharts para todo cliente da loja.",
+     "evidencia": "vite.config.ts:214-219 (regra recharts|d3) e :184-191 (vendor-ui-helpers, sem clsx); src/lib/utils.ts:1. No build: `import{c as mn}from\"./vendor-charts-DbegZ8fu.js\"` é a ÚNICA importação do entry para esse chunk, e o export `c` é `function J(){for(var e,t,r=0,n=\"\",i=arguments.length;...)}` (clsx). dist-test/index.html precarrega vendor-charts. Medido: vendor-charts 420,60 kB crus / 92,04 kB brotli; boot (9 arquivos do index.html) 359,84 kB brotli, 267,80 kB sem ele = -25,6%. tailwind-merge já mora no chunk de entrada; recharts só é importado por src/components/admin/dashboard/OperationalPerformanceChart.tsx e StrategicIntelligenceBlocks.tsx.",
+     "severidade": "bloqueia",
+     "correcao": "Classificar `clsx`, `tailwind-merge` e `class-variance-authority` na regra de vite.config.ts:184-191 (vendor-ui-helpers já está no boot, então não nasce requisição nova). Trancar com um teste que leia o index.html do build e exija que nenhum chunk `vendor-charts*` apareça em modulepreload — senão a próxima dependência refunde o mesmo problema sem aviso."
+    }
+   ],
+   "arquivos_permitidos": [
+    "vite.config.ts",
+    "tests/front/"
+   ],
+   "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. Todo cliente baixa o recharts (92 kB brotli) no boot porque `clsx` cai no chunk vendor-charts pelo manualChunks. Correção mínima: ajustar o manualChunks para que clsx/tailwind-merge/class-variance-authority fiquem no vendor de UI (ou no chunk principal), e o recharts só no chunk dos gráficos do admin. Prova: build antes/depois e a lista de chunks (mostrar que o chunk vendor-charts não é mais importado pela entrada do cliente: grep no dist/index-*.js ou análise do manifest). Teste em tests/front/vendor-charts-nao-entra-no-boot-do-cliente.test.ts que leia vite.config.ts (ou o manifest do build fixture, se existir no CI) e trave a regra. Não toque no size-limit aqui (tarefa irmã)."
+  },
+  {
+   "id": "package-34",
+   "titulo": "lockfile-lint está declarado e nunca é executado; dependência nova entra sem nenhuma checagem de origem",
+   "arquivo_principal": "package.json",
+   "linha": 34,
+   "severidade": "antes_de_crescer",
+   "tipo": "seguranca",
+   "esforco": "P",
+   "descricao": "`npm run lint:lockfile` valida que todo `resolved` do package-lock.json aponta para o registry npm por HTTPS. Nenhum workflow nem o lefthook o chamam. A lista exata de invocações de `npm run` em .github/workflows/*.yml + lefthook.yml tem 11 entradas — build(4), typecheck(2), secretlint(2), test:front(2), test:unit, test:edge, size, lint:ratchet, lint:links — e lint:lockfile não está entre elas. Também não há dependabot.yml, nem `npm audit`, nem checagem de licença. O repositório é PÚBLICO e já teve service_role e senha de banco no histórico.",
+   "cenario": "Entrada: um PR (humano ou robô) acrescenta uma dependência cujo `resolved` no package-lock.json aponta para `git+ssh://` ou para um tarball http de terceiro. Estado: `npm ci` no CI honra o lockfile e instala dessa origem. Resultado errado: os 8 jobs ficam verdes — typecheck compila, os testes passam, o secretlint não procura URL de origem, o size-limit só olha bytes — e o código de terceiro vai para o build que a Vercel promove. Gatilho: a PRIMEIRA dependência nova, e o PDV vai adicionar pelo menos uma (leitor de código de barras).",
+   "evidencia": "package.json:34 `\"lint:lockfile\": \"lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https\"`; `grep -rn \"lockfile\" .github/ lefthook.yml` → nenhum resultado; `ls .github/` → CODEOWNERS, ISSUE_TEMPLATE, copilot-instructions.md, pull_request_template.md, workflows (sem dependabot.yml).",
+   "correcao_sugerida_pelo_leitor": "Pendurar `npm run lint:lockfile` num job existente que já faz `npm ci` — o job `lint` (catraca) é o natural, custa segundos. No mesmo PR, adicionar .github/dependabot.yml para npm e github-actions.",
+   "vereditos_da_verificacao": [
+    {
+     "lente": "guarda existente",
+     "motivo": "Confirmado que `npm run lint:lockfile` existe e não é chamado por nenhum workflow nem pelo lefthook; a única mitigação vizinha é `min-release-age = 7` do .npmrc, que atrasa versão recém-publicada mas não valida origem do `resolved`.",
+     "evidencia": "package.json:34 define o script; `grep -rn lockfile .github/ lefthook.yml` → exit 1, zero ocorrências; fora do package.json/package-lock.json só há menção em docs/superpowers/plans/2026-09-15-super-atualizacao-do-app.md:247 (item A12.4, ainda não feito) e em .claude/settings.json (permissão, não execução); `ls -a .github/` → sem dependabot.yml; .npmrc = `legacy-peer-deps=true` + `min-release-age = 7`.",
+     "severidade": "antes_de_crescer",
+     "correcao": "Pendurar `npm run lint:lockfile` logo após o `npm ci` do job `lint` (.github/workflows/ci.yml:302-304), que é o mais barato, e adicionar .github/dependabot.yml para npm e github-actions no mesmo PR."
+    },
+    {
+     "lente": "reprodução",
+     "motivo": "Verificado: `lint:lockfile` existe no package.json e não é chamado por nenhum workflow nem pelo lefthook, e não há dependabot.yml nem `npm audit` em lugar nenhum.",
+     "evidencia": "package.json:34 define o script; `grep -rn lockfile .github/ lefthook.yml` → zero; `grep -rn 'npm audit' .github/ package.json lefthook.yml` → zero; `ls -a .github` → CODEOWNERS, ISSUE_TEMPLATE, copilot-instructions.md, pull_request_template.md, workflows (sem dependabot.yml). Jobs do ci.yml: typecheck, test-deno, test-front-a, test-front-b, build, secrets, lint, docs, objetos — 8 deles com `npm ci`.",
+     "severidade": "antes_de_crescer",
+     "correcao": "Pendurar `npm run lint:lockfile` no job `lint` (já faz npm ci) e criar .github/dependabot.yml para npm e github-actions. Corrigir a premissa ao escrever o PR: o repositório é PRIVADO hoje (lefthook.yml:4 e CONTRIBUTING.md:175) — o risco é cadeia de suprimento de dependência nova, não exposição do histórico."
+    }
+   ],
+   "arquivos_permitidos": [
+    "package.json",
+    ".github/workflows/ci.yml"
+   ],
+   "instrucoes": "ATENÇÃO (incidente real de 15/09, 23:41): um agente usou `git stash` para 'provar que o teste falha' e, por um minuto, APAGOU da árvore as edições de TODAS as outras frentes — um commit por caminho feito nessa janela saiu SEM a correção e o CI ficou vermelho. É PROIBIDO `git stash`, `git checkout -- <arquivo>`, `git restore`, `git reset`, `git clean` em qualquer situação, inclusive para medir 'antes'. Para comparar com o original ou provar que o teste falharia: `git show HEAD:<caminho> > /tmp/<nome>` e rode a prova sobre uma CÓPIA em /tmp (copie src/ e tests/ necessários), nunca sobre a árvore compartilhada. lint:lockfile está declarado e nunca roda em CI nem hook. Correção: acrescentar um passo ao job `secrets` (ou `lint`) do .github/workflows/ci.yml que rode `npm run lint:lockfile`; conferir que o comando passa hoje (rode-o). Comentar no workflow por que existe (histórico de credencial no repo, dependência nova do PDV). Nada de teste automatizado além de rodar o comando; se falhar hoje, relate em vez de afrouxar as regras."
+  }
+ ]
+}
