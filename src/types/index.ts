@@ -37,6 +37,8 @@ export interface Product {
   metaDescription?: string;
   /** `null` = limpar o codigo; `undefined` = nao mexer. Ver [ADMIN-050, #96]. */
   sku?: string | null;
+  /** Mesma convencao do sku acima: `null` = limpar o codigo de barras; `undefined` = nao mexer. */
+  codigoBarras?: string | null;
   weightKg?: number | null;
   widthCm?: number | null;
   heightCm?: number | null;
@@ -47,6 +49,7 @@ export interface ProductVariant {
   id: string;
   productId: string;
   sku?: string;
+  codigoBarras?: string;
   name: string;
   value: string;
   stockIncrement: number;

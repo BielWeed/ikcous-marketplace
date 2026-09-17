@@ -300,6 +300,22 @@ describe("mapProductFromDB", () => {
     expect(produto.freeShipping).toBe(true);
     expect(produto.costPrice).toBe(4);
   });
+
+  it("traz codigoBarras quando a linha tem a coluna preenchida (C5.1)", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      codigo_barras: "7891234567890",
+    });
+    expect(produto.codigoBarras).toBe("7891234567890");
+  });
+
+  it("codigo_barras nulo vira undefined, não string vazia (C5.1)", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      codigo_barras: null,
+    });
+    expect(produto.codigoBarras).toBeUndefined();
+  });
 });
 
 describe("mapVariantFromDB", () => {
@@ -331,6 +347,16 @@ describe("mapVariantFromDB", () => {
     expect(
       mapVariantFromDB(variante({ price_override: null })).priceOverride,
     ).toBeUndefined();
+  });
+
+  it("traz codigoBarras quando a linha tem a coluna preenchida (C5.1)", () => {
+    const v = mapVariantFromDB(variante({ codigo_barras: "7891234567890" }));
+    expect(v.codigoBarras).toBe("7891234567890");
+  });
+
+  it("codigo_barras nulo vira undefined, não string vazia (C5.1)", () => {
+    const v = mapVariantFromDB(variante({ codigo_barras: null }));
+    expect(v.codigoBarras).toBeUndefined();
   });
 });
 

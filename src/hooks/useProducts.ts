@@ -161,6 +161,8 @@ async function syncOfflineUpdates(): Promise<boolean> {
         if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
         if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
         if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
+        if (updates.codigoBarras !== undefined)
+          dbUpdates.codigo_barras = updates.codigoBarras || null;
 
         const { error } = await supabase
           .from("produtos")
@@ -274,29 +276,56 @@ function traduzirRecusaDoTruthGate(texto: string): string {
 }
 
 /**
+ * Os dois índices únicos parciais que a migration 20261160000000 criou para
+ * `codigo_barras` (um em `produtos`, outro em `product_variants` — a
+ * unicidade não cruza entre as duas tabelas, mas o 23505 de qualquer um dos
+ * dois chega aqui pela mesma mensagem amigável). Checar pelo nome E pela
+ * substring "codigo_barras" (redundante de propósito: o nome do índice já
+ * contém a substring, mas se o Postgres um dia devolver só o detail sem o
+ * nome da constraint, a substring ainda pega).
+ */
+const INDICE_CODIGO_DE_BARRAS =
+  /produtos_codigo_barras_unico|product_variants_codigo_barras_unico|codigo_barras/;
+
+/**
  * Traduz a recusa crua de cadastrar/atualizar produto ou variação
  * (INSERT/UPDATE/UPSERT em `vw_produtos_admin`/`product_variants`, ou a
  * validação do TruthGate que roda antes deles nos oito pontos que chamam
  * esta função) para o que a lojista lê na tela.
  *
- * Qualquer coisa que NÃO seja a mensagem do TruthGate — erro do PostgREST
- * (nome de coluna, restrição, código Postgres), falha de rede, ou causa
- * nunca vista — não tem tradução específica conhecida aqui: sem uma
- * definição viva das colunas/constraints de `vw_produtos_admin` para mapear
- * causa por causa (ao contrário de `mensagemAmigavelErroPedido`, que tem o
- * `RAISE EXCEPTION` da própria RPC em português como fonte), o único jeito
- * de não presumir é cair no genérico de acordo com a ação em curso.
+ * Qualquer coisa que NÃO seja a mensagem do TruthGate ou o 23505 do índice de
+ * código de barras — erro do PostgREST (nome de coluna, restrição, código
+ * Postgres), falha de rede, ou causa nunca vista — não tem tradução
+ * específica conhecida aqui: sem uma definição viva das colunas/constraints
+ * de `vw_produtos_admin` para mapear causa por causa (ao contrário de
+ * `mensagemAmigavelErroPedido`, que tem o `RAISE EXCEPTION` da própria RPC em
+ * português como fonte), o único jeito de não presumir é cair no genérico de
+ * acordo com a ação em curso.
  */
 export function mensagemAmigavelErroProduto(
   error: unknown,
   acao: "cadastrar" | "atualizar",
 ): string {
-  const detalhes = (error ?? {}) as { message?: unknown };
+  const detalhes = (error ?? {}) as {
+    message?: unknown;
+    details?: unknown;
+    code?: unknown;
+  };
   const textoOriginal =
     typeof detalhes.message === "string" ? detalhes.message : "";
 
   if (PREFIXO_ERRO_TRUTHGATE.test(textoOriginal)) {
     return traduzirRecusaDoTruthGate(textoOriginal);
+  }
+
+  const textoDetalhe =
+    typeof detalhes.details === "string" ? detalhes.details : "";
+  const ehUnicoViolado = detalhes.code === "23505";
+  if (
+    ehUnicoViolado &&
+    INDICE_CODIGO_DE_BARRAS.test(`${textoOriginal} ${textoDetalhe}`)
+  ) {
+    return "Este código de barras já está em outro produto ou variação.";
   }
 
   return acao === "cadastrar"
@@ -685,6 +714,7 @@ export function useProducts({ autoFetch = true } = {}) {
             meta_description: productData.metaDescription,
             tags: productData.tags || [],
             codigo: productData.sku || null,
+            codigo_barras: productData.codigoBarras || null,
             sold: 0,
             peso_kg: productData.weightKg,
             largura_cm: productData.widthCm,
@@ -709,6 +739,7 @@ export function useProducts({ autoFetch = true } = {}) {
               name: v.name,
               value: v.value,
               sku: v.sku || null,
+              codigo_barras: v.codigoBarras || null,
               stock_increment: v.stockIncrement,
               // Mesmo `?? null` do upsertVariants (laudo 0109, A1).
               price_override: v.priceOverride ?? null,
@@ -739,6 +770,7 @@ export function useProducts({ autoFetch = true } = {}) {
                 name: v.name,
                 value: v.value,
                 sku: v.sku || undefined,
+                codigoBarras: v.codigo_barras || undefined,
                 stockIncrement: v.stock_increment,
                 priceOverride: v.price_override,
                 active: v.active,
@@ -887,6 +919,8 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
         if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
         if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
+        if (updates.codigoBarras !== undefined)
+          dbUpdates.codigo_barras = updates.codigoBarras || null;
         if (updates.weightKg !== undefined)
           dbUpdates.peso_kg = updates.weightKg;
         if (updates.widthCm !== undefined)
@@ -1422,6 +1456,7 @@ export function useProducts({ autoFetch = true } = {}) {
             name: variantData.name,
             value: variantData.value,
             sku: variantData.sku || null,
+            codigo_barras: variantData.codigoBarras || null,
             stock_increment: variantData.stockIncrement,
             price_override: variantData.priceOverride,
             active: variantData.active,
@@ -1442,6 +1477,7 @@ export function useProducts({ autoFetch = true } = {}) {
             priceOverride: data.price_override,
             active: data.active,
             sku: data.sku,
+            codigoBarras: data.codigo_barras || undefined,
             imageUrl: (data as any).image_url,
           } as ProductVariant;
 
@@ -1496,6 +1532,8 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.name !== undefined) dbUpdates.name = updates.name;
         if (updates.value !== undefined) dbUpdates.value = updates.value;
         if (updates.sku !== undefined) dbUpdates.sku = updates.sku || null;
+        if (updates.codigoBarras !== undefined)
+          dbUpdates.codigo_barras = updates.codigoBarras || null;
         if (updates.stockIncrement !== undefined)
           dbUpdates.stock_increment = updates.stockIncrement;
         // Chave presente grava — e vazio vira NULL de verdade (laudo 0109,
@@ -1641,6 +1679,10 @@ export function useProducts({ autoFetch = true } = {}) {
             name: v.name,
             value: v.value,
             sku: v.sku || null,
+            // Mesma regra do `sku` acima, não a de `price_override` logo
+            // abaixo: `codigoBarras` é texto (como o sku), não número — não
+            // existe "zero legítimo" a proteger, então vazio vira NULL direto.
+            codigo_barras: v.codigoBarras || null,
             stock_increment: v.stockIncrement,
             // `?? null` (laudo 0109, A1): `undefined` some na serialização do
             // supabase-js, o UPDATE da variante existente saía SEM a coluna e

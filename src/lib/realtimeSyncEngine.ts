@@ -949,7 +949,7 @@ export const RealtimeSyncEngine = {
               // a mesma leitura funcionar; o custo do admin segue vindo por
               // vw_produtos_admin/RPCs, que são as portas de propósito.
               isAdmin
-                ? "id, nome, descricao, categoria, codigo, preco_venda, preco_original, imagem_url, imagem_urls, estoque, estoque_minimo, ativo, deleted_at, data_cadastro, ultima_atualizacao, peso_kg, altura_cm, largura_cm, comprimento_cm, frete_gratis, tags, meta_title, meta_description, rating, review_count, sold, calculated_points, fornecedor_id, is_bestseller, product_variants(*)"
+                ? "id, nome, descricao, categoria, codigo, codigo_barras, preco_venda, preco_original, imagem_url, imagem_urls, estoque, estoque_minimo, ativo, deleted_at, data_cadastro, ultima_atualizacao, peso_kg, altura_cm, largura_cm, comprimento_cm, frete_gratis, tags, meta_title, meta_description, rating, review_count, sold, calculated_points, fornecedor_id, is_bestseller, product_variants(*)"
                 : "*, product_variants(*)",
             )
             .in("id", outOfDateIds);

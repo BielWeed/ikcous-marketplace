@@ -133,6 +133,7 @@ export function mapProductFromDB(
       metaTitle: row.meta_title || undefined,
       metaDescription: row.meta_description || undefined,
       sku: row.codigo || row.sku || undefined,
+      codigoBarras: row.codigo_barras || undefined,
       variants: Array.isArray(row.product_variants)
         ? row.product_variants.map(mapVariantFromDB)
         : [],
@@ -174,6 +175,7 @@ export function mapVariantFromDB(row: VariantRow): ProductVariant {
     id: row.id,
     productId: row.product_id,
     sku: row.sku || undefined,
+    codigoBarras: row.codigo_barras || undefined,
     name: row.name || "Padrão",
     value: row.value || "",
     stockIncrement: Number(row.stock_increment) || 0,
