@@ -116,9 +116,7 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     expect(document.body.textContent).toContain("Abra o app do Mercado Pago");
     expect(document.body.textContent).toContain("salve e teste");
     // o prompt pronto é visível para quem vai copiar
-    expect(document.body.textContent).toContain(
-      PROMPT_NA_TELA.slice(0, 40),
-    );
+    expect(document.body.textContent).toContain(PROMPT_NA_TELA.slice(0, 40));
   });
 
   it("G3 — copiar manda o texto exato da constante e mostra 'Copiado!'", async () => {
@@ -207,7 +205,9 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
       expect(prompt).not.toMatch(/undefined|null|\{\{/);
     }
     // com endereço conhecido, o prompt manda colar EXATAMENTE ele
-    expect(comUrl).toContain(`colar exatamente este endereço no campo da URL de produção: ${url}`);
+    expect(comUrl).toContain(
+      `colar exatamente este endereço no campo da URL de produção: ${url}`,
+    );
     // sem endereço, pede ao lojista em vez de inventar
     expect(semUrl).toContain("eu te passo quando você pedir");
     expect(semUrl).not.toContain("https://");
@@ -216,7 +216,9 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
   });
 
   it("G7 — o endereço de notificações nasce da URL do Supabase, e só dela", () => {
-    expect(urlDeNotificacoesDoWebhook("https://cafkrminfnokvgjqtkle.supabase.co")).toBe(
+    expect(
+      urlDeNotificacoesDoWebhook("https://cafkrminfnokvgjqtkle.supabase.co"),
+    ).toBe(
       "https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago",
     );
     expect(urlDeNotificacoesDoWebhook("https://x.supabase.co/")).toBe(
@@ -225,7 +227,15 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     expect(urlDeNotificacoesDoWebhook("http://127.0.0.1:54321")).toBe(
       "http://127.0.0.1:54321/functions/v1/webhook-mercadopago",
     );
-    for (const ruim of ["", "   ", null, undefined, "supabase.co", "https://", "https://x.supabase.co/rest/v1"]) {
+    for (const ruim of [
+      "",
+      "   ",
+      null,
+      undefined,
+      "supabase.co",
+      "https://",
+      "https://x.supabase.co/rest/v1",
+    ]) {
       expect(urlDeNotificacoesDoWebhook(ruim)).toBeNull();
     }
   });
