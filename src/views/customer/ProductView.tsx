@@ -17,6 +17,7 @@ import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -552,11 +553,16 @@ export const ProductView = React.memo(function ProductView({
       )
     : 0;
 
-  // O selo/aviso de frete grátis desta tela só pode afirmar o que é
-  // verdade PARA ESTE produto: `config.freeShippingMin` é a regra por
-  // valor de compra da loja inteira (carrinho + login), não uma garantia
-  // deste produto isolado -- ver o mesmo raciocínio em ProductCard.tsx.
-  const isEligibleForFreeShipping = product.freeShipping;
+  // ProductCard-520: `product.freeShipping` só é verdade DENTRO do preset
+  // "por_produto" (ou em "sempre", que vale para qualquer produto) desde a
+  // migração de presets de 03/09 -- mesmo raciocínio de ProductCard.tsx.
+  // Fora desses dois presets a marcação pode ser resíduo de campanha antiga
+  // que a loja já desligou; sem esta guarda a folha do produto anunciava
+  // grátis que o carrinho (que já obedece o preset) ia cobrar.
+  const presetDaLoja = presetDoConfig(config.freeShippingMin);
+  const isEligibleForFreeShipping =
+    presetDaLoja === "sempre" ||
+    (presetDaLoja === "por_produto" && product.freeShipping);
 
   const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (cartStatus !== "idle") return;
@@ -1427,6 +1433,7 @@ export const ProductView = React.memo(function ProductView({
                       onQuickBuy={handleQuickBuyFromCard}
                       onClick={handleProductClick}
                       showRating={config.enableReviews}
+                      freeShippingPreset={presetDaLoja}
                     />
                   ))}
             </div>
