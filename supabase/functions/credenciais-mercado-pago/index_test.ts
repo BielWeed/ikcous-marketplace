@@ -691,7 +691,14 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
             assertEquals(corpo.conectado, false);
-            assertEquals(corpo.mensagem.includes("internet"), true);
+            // O recado honesto diz QUEM falhou (este servidor, não o navegador
+            // do lojista), carrega o nome do erro e aponta para os registros.
+            assertEquals(
+                corpo.mensagem.includes("o servidor não conseguiu chamar a API do Mercado Pago"),
+                true,
+            );
+            assertEquals(corpo.mensagem.includes("TypeError"), true);
+            assertEquals(corpo.mensagem.includes("Confira a internet"), false);
             // A falha fica gravada como falha — e nada do token aparece.
             assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO), false);
             const salvo = JSON.parse(estado.valor!);

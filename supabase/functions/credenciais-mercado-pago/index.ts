@@ -635,9 +635,21 @@ export async function handler(
                     mensagem =
                         "O Mercado Pago não respondeu como esperado agora. Tente de novo em instantes.";
                 }
-            } catch {
+            } catch (err) {
+                // A causa vai para os Registros da function: sem isto a tela
+                // dizia "confira a internet" e o log ficava mudo, impossível
+                // separar DNS, TLS, tempo esgotado ou versão publicada errada.
+                // Quem não alcançou o Mercado Pago foi ESTE servidor, não o
+                // navegador do lojista — a frase agora diz isso.
+                const causa = err instanceof Error
+                    ? `${err.name}: ${err.message}`
+                    : String(err);
+                console.error(
+                    "[credenciais-mp] testar: a chamada a api.mercadopago.com falhou:",
+                    causa,
+                );
                 mensagem =
-                    "Não consegui falar com o Mercado Pago agora. Confira a internet e tente de novo.";
+                    `Não consegui falar com o Mercado Pago agora: o servidor não conseguiu chamar a API do Mercado Pago (${err instanceof Error ? err.name : "erro"}). Tente de novo em instantes; se continuar, a causa está nos registros da function credenciais-mercado-pago.`;
             }
 
             const ultimoTeste: UltimoTeste = {
