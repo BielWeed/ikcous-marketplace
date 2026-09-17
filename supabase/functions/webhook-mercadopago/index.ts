@@ -78,6 +78,7 @@ import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
   avaliarAssinatura,
+  camposDaAssinatura,
   consultarOrder,
   consultarPagamento,
   extrairValorDaOrder,
@@ -1001,31 +1002,12 @@ async function registrarDesfechoDoEstorno(args: {
  * um único argumento porque é mais claro e não depende de todo fallback
  * continuar correto para sempre — não porque seja uma trava de segurança.
  */
-/**
- * Os dois campos que o `x-signature` do MP carrega (`ts=<epoch>,v1=<hex>`),
- * lidos pela MESMA regra que `avaliarAssinatura` usa
- * (`_shared/mercadopago.ts`): separa por vírgula, parte no primeiro `=`, o
- * valor é o resto. Existe aqui porque este arquivo precisa dos dois campos
- * em três lugares (a recusa barata no topo do handler, o log de entrada e o
- * log de falha) e porque a recusa TEM de concordar com o que a validação
- * aceitaria — duas grafias diferentes de parse fariam a porta recusar
- * notificação legítima que o HMAC aprovaria. Devolve `null` (não string
- * vazia) para campo ausente, que é a mesma condição que faz
- * `avaliarAssinatura` recusar sem nem importar a chave do HMAC.
- */
-function camposDaAssinatura(
-  xSignature: string | null,
-): { ts: string | null; v1: string | null } {
-  let ts = "";
-  let v1 = "";
-  for (const parte of xSignature?.split(",") ?? []) {
-    const [chave, ...resto] = parte.split("=");
-    const valor = resto.join("=").trim();
-    if (chave?.trim() === "ts") ts = valor;
-    if (chave?.trim() === "v1") v1 = valor;
-  }
-  return { ts: ts || null, v1: v1 || null };
-}
+// `camposDaAssinatura` (mp-10): morava AQUI, copiada — este arquivo precisa
+// dos dois campos em três lugares (a recusa barata logo abaixo, o log de
+// entrada e o log de falha), e a recusa TEM de concordar com o que
+// `avaliarAssinatura` aceitaria. Duas cópias do mesmo parse podiam divergir
+// em silêncio; agora as duas usam a MESMA função, importada de
+// `_shared/mercadopago.ts`.
 
 async function handler(
   req: Request,

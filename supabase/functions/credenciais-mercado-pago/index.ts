@@ -32,6 +32,15 @@
 //   * Escrita na ficha sem linha afetada é RECUSA, não sucesso (o UPDATE pede
 //     `select('id')`): ficha ausente vira 500 honesto, nunca "salvo" calado.
 //
+// SOBRAS DAS REVISÕES (tarefa mp-10, 16/09/2026):
+//   * `salvar` escreve a FICHA antes do REGISTRO (era o contrário): se a
+//     ficha recusar, a credencial anterior (a que está vendendo de verdade)
+//     continua intacta, em vez de já trocada com o PIX aceso na chave velha.
+//   * Ficha AUSENTE (zero linha, sem `error`) tem recado PRÓPRIO — "fale com
+//     o suporte", nunca "tente de novo" (nenhum retry cria a linha sozinho).
+//   * `avisos.join(" ")` normaliza cada frase para terminar em ponto antes de
+//     juntar — sem isso, dois avisos grudavam sem separação de leitura.
+//
 // DINHEIRO/CREDENCIAL — as proteções desta function:
 //   * Admin-only duas vezes: verify_jwt = true no portão (config.toml) E a
 //     porta interna aqui — JWT do lojista validado com anon key e papel
@@ -190,6 +199,17 @@ function mascaraDe(segredo: string): string {
     return `••••${segredo.slice(-4)}`;
 }
 
+/**
+ * Garante que a frase termine em pontuação (mp-10): `avisos.join(" ")`
+ * gruda a frase seguinte sem espaço de leitura quando a anterior não
+ * termina em ponto — "...de verdadeO PIX está ligado..." em vez de duas
+ * frases. Idempotente: frase que já termina em `.`/`!`/`?` sai igual.
+ */
+function comPontoFinal(frase: string): string {
+    const limpa = frase.trim();
+    return /[.!?]$/.test(limpa) ? limpa : `${limpa}.`;
+}
+
 // ── app_settings (via supabase client injetável) ─────────────────────────
 
 async function gravarRegistro(supabase: any, registro: Registro): Promise<void> {
@@ -225,14 +245,24 @@ async function lerFichaDaLoja(supabase: any): Promise<FichaDaLoja> {
 /**
  * Escreve na ficha da loja. Devolve a mensagem da recusa (ou null quando deu
  * certo) em vez de estourar: quem chama precisa dizer ao lojista O QUE ficou
- * pela metade — "salvei as chaves mas não publiquei" é recado diferente de
- * "não salvei nada", e o genérico do catch confundiria os dois.
+ * pela metade — "não consegui ligar o PIX" é recado diferente de "a ficha
+ * nem existe, chame o suporte" (`mensagemDeRecusaDaFicha`, abaixo), e o
+ * genérico do catch confundiria os dois.
  *
  * O `.select("id")` não é enfeite (mp-8): sem ele, UPDATE que não achou a
  * linha id = 1 volta SEM error e com zero linha afetada — ficha inexistente
  * (banco novo) ou RLS/trigger recusando calado passariam por "publicado", e a
  * tela diria "salvo" com o cliente sem PIX. Zero linha é recusa.
  */
+/**
+ * Zero linha afetada SEM `error` (mp-10): o comentário desta function já
+ * explicava a causa real — banco novo sem a linha `id = 1` (RLS/trigger
+ * recusando calado devolve `error`, tratado acima). É esse texto exato que
+ * `mensagemDeRecusaDaFicha` reconhece para trocar "tente de novo" (promessa
+ * vazia — tentar de novo não cria a linha) por "fale com o suporte".
+ */
+const FICHA_NAO_EXISTE = "a ficha da loja (store_config id=1) não existe";
+
 async function escreverNaFichaDaLoja(
     supabase: any,
     campos: Partial<FichaDaLoja>,
@@ -244,9 +274,24 @@ async function escreverNaFichaDaLoja(
         .select("id");
     if (error) return String(error.message ?? "recusado");
     if (!Array.isArray(data) || data.length === 0) {
-        return "a ficha da loja não foi encontrada ou recusou a gravação";
+        return FICHA_NAO_EXISTE;
     }
     return null;
+}
+
+/**
+ * Traduz a recusa da ficha para o recado do lojista (mp-10). Ficha AUSENTE
+ * é caso de suporte (nenhum retry cria a linha `id = 1` sozinho — prometer
+ * "tente de novo" é mentira); qualquer outra recusa (RLS/trigger) usa o
+ * recado específico de quem chamou, que já sabe o que ficou pela metade.
+ */
+function mensagemDeRecusaDaFicha(
+    recusa: string,
+    mensagemPadrao: string,
+): string {
+    return recusa === FICHA_NAO_EXISTE
+        ? "A ficha da loja (store_config id=1) não existe. Isto não se resolve tentando de novo — fale com o suporte."
+        : mensagemPadrao;
 }
 
 function respostaLer(
@@ -443,7 +488,6 @@ export async function handler(
                 pix_ligado_por: registroAntigo?.pix_ligado_por ?? null,
                 atualizado_em: agora,
             };
-            await gravarRegistro(supabase, registro);
 
             // Credencial nova com o PIX aceso é vitrine cobrando por uma chave
             // que ninguém testou (mp-8): o token pode estar errado e TODA
@@ -456,6 +500,16 @@ export async function handler(
             const desligarPix = (trocouToken || trocouPublicKey) &&
                 fichaAntes.pagamento_online;
 
+            // A FICHA PRIMEIRO, o REGISTRO (app_settings) DEPOIS (mp-10): a
+            // versão anterior gravava o registro (a credencial NOVA) antes de
+            // publicar a Public Key, e esse update na ficha vinha DEPOIS. Se a
+            // ficha recusasse, o 500 saía com a credencial nova já em vigor e
+            // o PIX ainda aceso na ficha com a chave ANTIGA — toda tentativa
+            // de PIX cairia numa credencial que ninguém testou, e "tente
+            // salvar de novo" não desfazia nada. Nesta ordem, uma ficha que
+            // recusa deixa a credencial anterior — a que está de fato vendendo
+            // — intacta; só gravamos o registro depois de a ficha confirmar.
+            //
             // A Public Key não é segredo: é a credencial de FRENTE, e o
             // checkout do cliente lê a da ficha da loja, não a daqui. Sem
             // publicar, a tela diz "salvo" e o cliente segue sem PIX.
@@ -469,9 +523,39 @@ export async function handler(
                     recusa,
                 );
                 return json(
-                    { erro: "Guardei as chaves, mas não consegui publicar a Public Key na ficha da loja — o cliente ainda não verá o PIX. Tente salvar de novo." },
+                    {
+                        erro: mensagemDeRecusaDaFicha(
+                            recusa,
+                            "Não consegui publicar a Public Key na ficha da loja — as chaves não foram salvas, para o PIX não ficar aceso com uma credencial que ninguém testou. Tente salvar de novo.",
+                        ),
+                    },
                     500,
                 );
+            }
+            try {
+                await gravarRegistro(supabase, registro);
+            } catch (err) {
+                // A ficha JÁ gravou (linha acima) — se `desligarPix` for
+                // verdadeiro, ela já apagou `pagamento_online` também. O
+                // catch geral (fim do arquivo) devolveria "não consegui
+                // gravar as chaves agora", que é verdade sobre o registro e
+                // SILÊNCIO sobre o PIX que acabou de ser desligado; o
+                // lojista só descobriria recarregando a tela (ressalva da
+                // revisão de mp-10). Sem `desligarPix`, nada mudou na ficha
+                // além da Public Key — o catch geral já diz a coisa certa.
+                if (desligarPix) {
+                    console.error(
+                        "[credenciais-mp] gravarRegistro falhou com o PIX já desligado na ficha:",
+                        err instanceof Error ? err.message : err,
+                    );
+                    return json(
+                        {
+                            erro: "Não salvei as chaves novas E desliguei o PIX por segurança (a credencial trocou e ninguém testou a nova ainda). Ligue de novo depois de salvar e testar.",
+                        },
+                        500,
+                    );
+                }
+                throw err;
             }
             const ficha = await lerFichaDaLoja(supabase);
             // Só ACRESCENTA campos (a tela de Ajustes já consome o resto):
@@ -611,7 +695,12 @@ export async function handler(
                     recusa,
                 );
                 return json(
-                    { erro: "Não consegui ligar o PIX na ficha da loja agora. Tente de novo em instantes." },
+                    {
+                        erro: mensagemDeRecusaDaFicha(
+                            recusa,
+                            "Não consegui ligar o PIX na ficha da loja agora. Tente de novo em instantes.",
+                        ),
+                    },
                     500,
                 );
             }
@@ -651,7 +740,13 @@ export async function handler(
                 {
                     pix_ligado: true,
                     quando: agora,
-                    ...(avisos.length ? { aviso: avisos.join(" ") } : {}),
+                    // `comPontoFinal` (mp-10): sem ele, dois avisos juntos
+                    // grudavam sem pontuação ("...de verdadeO PIX está
+                    // ligado...") — a primeira frase termina em "de
+                    // verdade", sem ponto.
+                    ...(avisos.length
+                        ? { aviso: avisos.map(comPontoFinal).join(" ") }
+                        : {}),
                 },
                 200,
             );
@@ -670,7 +765,12 @@ export async function handler(
                     recusa,
                 );
                 return json(
-                    { erro: "Não consegui desligar o PIX na ficha da loja agora. Tente de novo em instantes." },
+                    {
+                        erro: mensagemDeRecusaDaFicha(
+                            recusa,
+                            "Não consegui desligar o PIX na ficha da loja agora. Tente de novo em instantes.",
+                        ),
+                    },
                     500,
                 );
             }

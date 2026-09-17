@@ -14,13 +14,20 @@
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
+// mp-10: prova que a porta barata do handler e `avaliarAssinatura` usam a
+// MESMA regra de parse (ver o teste "camposDaAssinatura vem do módulo
+// compartilhado" mais abaixo) — não duas cópias que pudessem divergir.
+import { camposDaAssinatura } from "../_shared/mercadopago.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes MP-W1..MP-W3 do fim deste arquivo. Desde a tarefa
 // mp-6 o fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a
 // mesma montagem copiada em cinco suítes, e cópia de fixture envelhece
-// calada quando a forma do registro em app_settings muda.
+// calada quando a forma do registro em app_settings muda. Desde a mp-10 o
+// `contandoFrom` (dublê que conta os `from(tabela)`) também vem de lá — era
+// copiado igualzinho no `reconciliar-pagamentos/index_test.ts`.
 import {
   CHAVE_CIFRA_TESTE,
+  contandoFrom,
   registroMpDeTeste,
   TOKEN_LOJISTA_FALSO,
   WEBHOOK_LOJISTA_FALSO as SEGREDO_WEBHOOK_LOJISTA,
@@ -3636,22 +3643,11 @@ Deno.test("MP-W3 — chave do lojista cadastrada + cofre ausente: 500 (o MP reen
 //    autenticação. MP-W5/MP-W6 prendem a recusa barata: sem `x-signature`,
 //    ou com `x-signature` sem `v1=`, a resposta é 401 sem tocar o banco.
 
-/** Conta cada `from(tabela)` do cliente falso — é assim que MP-W5/MP-W6
- * provam "ZERO acesso a app_settings", que nenhuma asserção de resposta
- * conseguiria distinguir de "acessou e recusou depois". */
-function contandoFrom(
-  cliente: Record<string, unknown>,
-  tabelas: string[],
-): Record<string, unknown> {
-  const original = cliente.from as (tabela: string) => unknown;
-  return {
-    ...cliente,
-    from(tabela: string) {
-      tabelas.push(tabela);
-      return original(tabela);
-    },
-  };
-}
+// `contandoFrom` (conta cada `from(tabela)` do cliente falso — é assim que
+// MP-W5/MP-W6 provam "ZERO acesso a app_settings", que nenhuma asserção de
+// resposta conseguiria distinguir de "acessou e recusou depois") vem agora de
+// `_shared/credenciais-mp_fixtures.ts` (mp-10) — era copiado igual no
+// `reconciliar-pagamentos/index_test.ts`.
 
 Deno.test("MP-W4 — registro do lojista + cofre ausente + notificação assinada pelo SEGREDO DELE: 500 com o motivo certo, nunca 401", async () => {
   // Cifra o registro com o cofre e DEPOIS tira a chave do ambiente: é o
@@ -3732,6 +3728,26 @@ Deno.test("MP-W5 — requisição SEM x-signature: 401 sem pagar um SELECT em ap
   assertEquals(tabelas, []);
   assertEquals(chamouFetch, false);
   assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("mp-10 — camposDaAssinatura vem do módulo compartilhado (UMA regra de parse, não duas cópias)", () => {
+  // Este parse existia DUAS vezes: aqui (para a porta barata acima) e dentro
+  // de `avaliarAssinatura`, em `_shared/mercadopago.ts` — duas grafias
+  // podiam divergir em silêncio e fazer a porta barata recusar (ou aceitar)
+  // notificação que a validação de verdade decidiria diferente. Sem o
+  // `export` desta função em `_shared/mercadopago.ts`, este `import` (topo
+  // do arquivo) já quebra o arquivo inteiro.
+  assertEquals(camposDaAssinatura(null), { ts: null, v1: null });
+  assertEquals(
+    camposDaAssinatura("ts=1730000000,v1=abcdef"),
+    { ts: "1730000000", v1: "abcdef" },
+  );
+  // Só `ts=`: `v1` fica null — é exatamente a condição que MP-W6 (abaixo)
+  // prova que recusa sem tocar o banco.
+  assertEquals(
+    camposDaAssinatura("ts=1730000000"),
+    { ts: "1730000000", v1: null },
+  );
 });
 
 Deno.test("MP-W6 — x-signature malformada (sem v1=): 401 sem pagar um SELECT em app_settings", async () => {

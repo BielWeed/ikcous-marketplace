@@ -51,10 +51,20 @@
 //       para salvar a chave primeiro, e a ficha NÃO liga
 //   C23 mp-8: salvar com credencial NOVA desliga o PIX aceso no mesmo update
 //       (com aviso); re-salvar sem trocar credencial NÃO desliga
-//   C24 mp-8: UPDATE da ficha que não achou a linha id = 1 (zero linhas, sem
-//       error) é FALHA explícita: 500 no salvar e 500 no ligar_pix sem acender
+//   C24/C24b mp-8+mp-10: UPDATE da ficha que não achou a linha id = 1 (zero
+//       linhas, sem error) é FALHA explícita: 500 no salvar (e NADA se salva
+//       — nem ficha, nem registro) e 500 no ligar_pix sem acender; a partir
+//       da mp-10 o recado certo é "fale com o suporte", nunca "tente de novo"
 //   C25 mp-8: carimbo de auditoria falhou DEPOIS de acender -> 200 com
 //       pix_ligado true e aviso; a auditoria nunca diz "falhou" com o PIX aceso
+//   C26 mp-10: trocar SÓ a Public Key (Access Token vazio, sem mexer no
+//       token) com o PIX aceso TAMBÉM desliga o PIX — prende a mutação
+//       `trocouPublicKey = false`, que a suíte deixava passar até aqui
+//   C27 mp-10: `salvar` grava a FICHA antes do REGISTRO — uma ficha que
+//       recusa no meio de uma troca de credencial não pode deixar a
+//       credencial NOVA gravada com o PIX ainda aceso na chave ANTIGA
+//   C28 mp-10: dois avisos de `ligar_pix` juntos saem com pontuação entre
+//       eles (a mensagem de chave de TESTE não terminava em ponto)
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 // ── Costura de REDE para a porta de admin (verifyIsAdmin monta os PRÓPRIOS
@@ -180,7 +190,12 @@ function prepararEnv(extra: Record<string, string> = {}): () => void {
  * `lojaSemLinha` simula o UPDATE que não acha a linha id = 1 (sem error e sem
  * linha afetada — recusa silenciosa); `estado.falhaNoUpsert` liga em pleno
  * roteiro a falha do app_settings, para provar o carimbo de auditoria caindo
- * DEPOIS de a ficha já ter acendido o PIX.
+ * DEPOIS de a ficha já ter acendido o PIX; `estado.falhaNaLojaAgora` é a
+ * MESMA recusa de `falhaNaLoja`, mas ligável NO MEIO do roteiro (C27), para
+ * provar que uma ficha que só passa a recusar DEPOIS de já haver credencial
+ * antiga funcionando não deixa a credencial NOVA gravada; `estado.lojaSemLinhaAgora`
+ * é o mesmo, para `lojaSemLinha` (C24b: a linha id = 1 some SÓ a partir de um
+ * ponto do roteiro, não desde o primeiro `salvar`).
  */
 function supabaseFalso(
     opcoes: { falhaNaLoja?: boolean; lojaSemLinha?: boolean } = {},
@@ -188,6 +203,8 @@ function supabaseFalso(
     const estado = {
         valor: null as string | null,
         falhaNoUpsert: false,
+        falhaNaLojaAgora: false,
+        lojaSemLinhaAgora: false,
         upserts: [] as any[],
         loja: {
             pagamento_online: false as boolean,
@@ -231,16 +248,17 @@ function supabaseFalso(
         },
         update(linha: any) {
             estado.updatesLoja.push(linha);
-            const recusa = opcoes.falhaNaLoja
+            const recusa = (opcoes.falhaNaLoja || estado.falhaNaLojaAgora)
                 ? { message: "DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA" }
                 : null;
-            if (!recusa && !opcoes.lojaSemLinha) Object.assign(estado.loja, linha);
+            const zeroLinha = opcoes.lojaSemLinha || estado.lojaSemLinhaAgora;
+            if (!recusa && !zeroLinha) Object.assign(estado.loja, linha);
             // O PostgREST devolve as linhas afetadas só quando pedem `select`;
             // sem linha afetada, `data` volta VAZIO e `error` nulo — é essa
-            // recusa silenciosa que `lojaSemLinha` encena.
+            // recusa silenciosa que `lojaSemLinha`/`lojaSemLinhaAgora` encena.
             const resultado = {
                 error: recusa,
-                data: recusa ? null : opcoes.lojaSemLinha ? [] : [{ id: 1 }],
+                data: recusa ? null : zeroLinha ? [] : [{ id: 1 }],
             };
             // `.update(...).eq('id', 1).select('id')` — e o `.eq()` continua
             // aguardável sozinho (cadeia curta dos testes C1–C20).
@@ -1064,7 +1082,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C24 — ficha sem a linha id = 1 (zero linhas) é falha explícita, não sucesso", async () => {
+    await t.step("C24 — ficha sem a linha id = 1: salvar falha, o recado é o certo e NADA fica pela metade", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso({ lojaSemLinha: true });
         try {
@@ -1080,12 +1098,39 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             );
             // UPDATE sem error e sem linha afetada NÃO é "publicado".
             assertEquals(respostaSalvar.status, 500);
-            assertEquals(
-                (await respostaSalvar.json()).erro.includes("ficha da loja"),
-                true,
-            );
+            const corpoSalvar = await respostaSalvar.json();
+            // mp-10: a causa certa ("não existe") e o conselho certo
+            // ("suporte") — nunca "tente de novo", que aqui é promessa vazia
+            // (nenhum retry cria a linha id = 1 sozinho).
+            assertEquals(corpoSalvar.erro.includes("não existe"), true);
+            assertEquals(corpoSalvar.erro.includes("suporte"), true);
+            assertEquals(corpoSalvar.erro.includes("Tente de novo"), false);
             assertEquals(estado.loja.mp_public_key, null);
+            // mp-10: FICHA primeiro — como ela recusou, o REGISTRO (a
+            // credencial cifrada) nem chegou a ser gravado em app_settings.
+            // A versão anterior gravava o registro ANTES da ficha, e um
+            // 500 aqui saía com a credencial nova já em vigor.
+            assertEquals(estado.upserts.length, 0);
+            assertEquals(estado.valor, null);
+        } finally {
+            desfazerEnv();
+        }
+    });
 
+    await t.step("C24b — ligar_pix com a ficha sem a linha id = 1 também é falha explícita e honesta", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
             const { buscar } = buscarMpFalso(200, {
                 live_mode: true,
                 nickname: "Loja Teste",
@@ -1093,12 +1138,20 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             await comFetch(fetchAdminFalso, () =>
                 handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
             );
+            // A linha id = 1 some ENTRE o teste e o ligar (ex.: restauração
+            // de backup) — o mesmo estado que C24 encena, só que a partir
+            // daqui, com credencial já salva e testada por trás.
+            estado.lojaSemLinhaAgora = true;
+
             const respostaLigar = await comFetch(fetchAdminFalso, () =>
                 handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
             );
             assertEquals(respostaLigar.status, 500);
             const corpoLigar = await respostaLigar.json();
             assertEquals(corpoLigar.pix_ligado, undefined);
+            assertEquals(corpoLigar.erro.includes("não existe"), true);
+            assertEquals(corpoLigar.erro.includes("suporte"), true);
+            assertEquals(corpoLigar.erro.includes("Tente de novo"), false);
             // Nada acendeu — e o registro não carimbou um "ligou" que não ligou.
             assertEquals(estado.loja.pagamento_online, false);
             assertEquals(JSON.parse(estado.valor!).pix_ligado_por ?? null, null);
@@ -1142,6 +1195,225 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(corpo.erro, undefined);
             assertEquals(corpo.aviso.includes("quem ligou"), true);
             assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C26 — trocar SÓ a Public Key (sem mexer no Access Token) com o PIX aceso também desliga o PIX", async () => {
+        // Prende a mutação `trocouPublicKey = false`: com ela, este cenário
+        // (token vazio no corpo — nenhuma troca de TOKEN) não desligaria o
+        // PIX, e a loja ficaria vendendo com o Payment Brick de OUTRA conta
+        // sem uma palavra ao lojista.
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const { buscar } = buscarMpFalso(200, {
+                live_mode: true,
+                nickname: "Loja Teste",
+            });
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+            );
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(estado.loja.pagamento_online, true);
+            estado.updatesLoja.length = 0;
+
+            // SÓ a Public Key muda; nenhum access_token no corpo (a tela
+            // manda vazio quando o lojista não reeditou o Access Token).
+            const PUBLIC_KEY_TROCADA = "APP_USR-publica-falsa-de-outra-conta";
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({ acao: "salvar", public_key: PUBLIC_KEY_TROCADA }),
+                    { supabase: cliente },
+                )
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_desligado, true);
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.loja.mp_public_key, PUBLIC_KEY_TROCADA);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C27 — salvar grava a FICHA antes do REGISTRO: uma ficha que passa a recusar não troca a credencial de quem já vende", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const { buscar } = buscarMpFalso(200, {
+                live_mode: true,
+                nickname: "Loja Teste",
+            });
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+            );
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(estado.loja.pagamento_online, true);
+            const registroAntesDaFalha = estado.valor;
+
+            // A partir de agora, todo UPDATE na ficha é recusado (trigger
+            // dominio_publico_so_muda_pela_frota caído, por exemplo).
+            estado.falhaNaLojaAgora = true;
+
+            const PUBLIC_KEY_NOVA = "APP_USR-publica-falsa-de-outra-conta";
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_NOVA,
+                        access_token: TOKEN_FALSO_2,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            assertEquals(resposta.status, 500);
+            // A credencial ANTIGA — a que está vendendo de verdade — não foi
+            // tocada: com a ordem trocada (registro ANTES da ficha), este
+            // `estado.valor` já estaria com o token/mascara NOVOS mesmo a
+            // ficha tendo recusado.
+            assertEquals(estado.valor, registroAntesDaFalha);
+            assertEquals(
+                JSON.parse(estado.valor!).mascara_token,
+                `••••${TOKEN_FALSO.slice(-4)}`,
+            );
+            // A ficha também não mudou: PIX segue aceso com a chave antiga.
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(estado.loja.mp_public_key, PUBLIC_KEY_FALSA);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C28 — dois avisos de ligar_pix juntos saem com pontuação entre eles", async () => {
+        // Chave de SANDBOX (gera o primeiro aviso, que termina em "de
+        // verdade" sem ponto) + app_settings fora do ar (gera o segundo,
+        // depois de a ficha já ter acendido): os DOIS avisos saem juntos.
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const { buscar } = buscarMpFalso(200, {
+                live_mode: false,
+                nickname: "Loja Sandbox",
+            });
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+            );
+            estado.falhaNoUpsert = true;
+
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            // A frase da chave de TESTE termina em "de verdade" (sem ponto
+            // no código-fonte) — sem a normalização, o `join(" ")` colava a
+            // frase seguinte direto nela: "...de verdade O PIX está ligado"
+            // sem separação de leitura nenhuma. Com o ponto, as DUAS frases
+            // ficam legíveis e discretas uma da outra.
+            assertEquals(
+                corpo.aviso.includes("de verdade. O PIX está ligado"),
+                true,
+            );
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C29 — gravarRegistro falha DEPOIS de a ficha já ter desligado o PIX: o recado soma as duas metades", async () => {
+        // Ordem ficha-primeiro (C27): a ficha já apagou `pagamento_online`
+        // quando o `app_settings` (o registro cifrado) estoura. O catch
+        // geral do handler diria só "não consegui gravar as chaves agora",
+        // que é verdade sobre o registro e SILÊNCIO sobre o PIX que acabou
+        // de ser desligado — o lojista só descobriria recarregando a tela.
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const { buscar } = buscarMpFalso(200, {
+                live_mode: true,
+                nickname: "Loja Teste",
+            });
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+            );
+            await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(estado.loja.pagamento_online, true);
+            const registroAntesDaFalha = estado.valor;
+
+            // A partir de agora, todo upsert em app_settings estoura — no
+            // MEIO do próximo `salvar`, depois de a ficha já ter escrito.
+            estado.falhaNoUpsert = true;
+
+            const PUBLIC_KEY_NOVA = "APP_USR-publica-falsa-de-outra-conta";
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_NOVA,
+                        access_token: TOKEN_FALSO_2,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            assertEquals(resposta.status, 500);
+            const corpo = await resposta.json();
+            // O recado soma as DUAS metades: nem promete "salvei" (o
+            // registro não gravou), nem cala sobre o PIX (que a ficha já
+            // desligou por segurança).
+            assertEquals(corpo.erro.includes("Não salvei as chaves"), true);
+            assertEquals(corpo.erro.includes("desliguei o PIX"), true);
+            // A ficha REALMENTE desligou — não é só o texto do erro.
+            assertEquals(estado.loja.pagamento_online, false);
+            // O registro (a credencial) NÃO trocou: gravarRegistro recusou.
+            assertEquals(estado.valor, registroAntesDaFalha);
         } finally {
             desfazerEnv();
         }

@@ -12,6 +12,10 @@
 // "Pronto. A vitrine passa a refletir em até 1 minuto".
 //
 // O que este arquivo prova, sem nenhum remount:
+//   P0  (mp-10) o `ler` que a seção dispara sozinha ao ABRIR também ecoa
+//       para o painel — sem clicar em nada. Sem isso, um boot desatualizado
+//       (a ficha mudou por fora entre o boot da página e abrir esta seção)
+//       deixava o painel MENTINDO até o lojista mexer no interruptor.
 //   P1  ligar o interruptor acende o painel inteiro na mesma sessão;
 //   P2  desligar apaga o painel inteiro na mesma sessão;
 //   P3  salvar uma credencial NOVA (a edge devolve `pix_desligado`) também
@@ -224,6 +228,43 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
   async function abrirOTermometro() {
     await clicar(botaoPorTexto("Minha loja está no ar?"));
   }
+
+  it("P0 — abrir a seção com o boot desatualizado corrige o painel pelo que o `ler` devolveu, sem clicar em nada", async () => {
+    // O retrato do BOOT (a ficha injetada na página) diz "ligado", mas o
+    // servidor — o que `ler` traz ao abrir a seção — já está desligado:
+    // cenário real de alguém ter mudado a ficha por outro caminho (SQL,
+    // outra aba) depois do boot desta página. Sem o eco do `ler`, o painel
+    // ficava preso no retrato velho até um F5 completo, exatamente o
+    // problema que este arquivo inteiro existe para fechar.
+    mockFlags.pagamentoOnlineLigado.mockReturnValue(true);
+    cenario.salvo = { ...CONFIGURADO, pix_ligado: false };
+    await abrirOInterruptor();
+
+    expect(hospedeiro.textContent).toContain("PIX: Desligado");
+    expect(hospedeiro.textContent).not.toContain("PIX: Funcionando");
+  });
+
+  it("P0b — abrir a seção com o PIX ligado mas a Public Key ausente da ficha NÃO acende o painel (achado BLOQUEIA da revisão)", async () => {
+    // O MESMO estado que o X6 deste repo já modela (MercadoPagoSection):
+    // `store_config.pagamento_online = true` com `mp_public_key` ausente —
+    // o checkout de PIX nem carrega. Retrato do BOOT já correto ("Chave
+    // ausente", porque `chavePublicaMercadoPago()` é nula); o bug era o eco
+    // do `ler` mandando só `pix_ligado: true` e o painel inferindo "ligado
+    // -> chave OK" (inferência válida para `ligar_pix`/`salvar`, que a edge
+    // só acende com a chave publicada JUNTO, mas NÃO para `ler`, que devolve
+    // o retrato cru da ficha).
+    mockFlags.pagamentoOnlineLigado.mockReturnValue(true);
+    mockChave.chavePublicaMercadoPago.mockReturnValue(null);
+    cenario.salvo = {
+      ...CONFIGURADO,
+      pix_ligado: true,
+      public_key_na_loja: false,
+    };
+    await abrirOInterruptor();
+
+    expect(hospedeiro.textContent).toContain("PIX: Chave ausente");
+    expect(hospedeiro.textContent).not.toContain("PIX: Funcionando");
+  });
 
   it("P1 — ligar o interruptor acende o painel inteiro na mesma sessão", async () => {
     await abrirOInterruptor();

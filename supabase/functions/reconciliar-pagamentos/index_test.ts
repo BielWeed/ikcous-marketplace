@@ -28,6 +28,7 @@ import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 // calada quando a forma do registro em app_settings muda.
 import {
   CHAVE_CIFRA_TESTE,
+  contandoFrom,
   registroMpDeTeste,
   TOKEN_LOJISTA_FALSO,
 } from "../_shared/credenciais-mp_fixtures.ts";
@@ -2378,21 +2379,8 @@ Deno.test("MP-3 — cofre ausente: a fila de ESTORNOS também para fechada (falh
 // de `falhas` sem como explicar. A resolução mora ANTES do laço; MP-4 prende
 // isso contando as leituras de app_settings com DOIS candidatos.
 
-/** Conta cada `from(tabela)` do cliente falso — mesma ideia do
- * `contandoFrom` do webhook-mercadopago. */
-function contandoFrom(
-  cliente: Record<string, unknown>,
-  tabelas: string[],
-): Record<string, unknown> {
-  const original = cliente.from as (tabela: string) => unknown;
-  return {
-    ...cliente,
-    from(tabela: string) {
-      tabelas.push(tabela);
-      return original(tabela);
-    },
-  };
-}
+// `contandoFrom` vem de `_shared/credenciais-mp_fixtures.ts` (mp-10) — era
+// copiado igual no `webhook-mercadopago/index_test.ts`.
 
 Deno.test("MP-4 — lote com DOIS candidatos resolve as credenciais UMA vez (um só SELECT em app_settings, não um por candidato)", async () => {
   Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);

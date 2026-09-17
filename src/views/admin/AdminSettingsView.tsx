@@ -1040,9 +1040,25 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 >
                   <MercadoPagoSection
                     onDirtyMudou={setPagamentosPendente}
-                    onPixAlternado={(ligado) => {
+                    onPixAlternado={(ligado, chaveNaLoja) => {
                       setPixLigado(ligado);
-                      if (ligado) setPixChaveOk(true);
+                      // `chaveNaLoja` só vem preenchido no eco do `ler`
+                      // (mp-10): é o único dos quatro que NÃO garante chave
+                      // publicada quando `ligado` é `true` — `ler` devolve o
+                      // retrato cru da ficha (`pagamento_online`), que pode
+                      // estar ligada com a Public Key ausente (teste X6).
+                      // Com o dado do servidor em mãos, usamos ELE; sem ele
+                      // (eco de `ligar_pix`/`salvar`, que a edge só acende
+                      // com a chave publicada JUNTO — mp-8), a inferência
+                      // antiga continua válida: ligado -> chave OK. Sem esta
+                      // distinção o painel acendia "Funcionando" com o PIX
+                      // quebrado assim que o lojista abria esta seção
+                      // (achado BLOQUEIA da revisão de mp-10).
+                      if (chaveNaLoja !== undefined) {
+                        setPixChaveOk(chaveNaLoja);
+                      } else if (ligado) {
+                        setPixChaveOk(true);
+                      }
                     }}
                   />
                 </Suspense>

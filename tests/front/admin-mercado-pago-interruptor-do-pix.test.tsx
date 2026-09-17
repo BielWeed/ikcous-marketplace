@@ -22,9 +22,11 @@
 //   X8  (mp-9) PIX ligado com a credencial SEM teste guardado ganha aviso
 //       âmbar e o "Testar conexão" ao alcance — a chave que está cobrando
 //       nunca passou no teste e a tela calava;
-//   X9  (mp-9) salvar credencial nova faz a edge desligar o PIX
-//       (`pix_desligado`): a tela mostra a mensagem dela e o interruptor
-//       volta para desligado.
+//   X9  (mp-9/mp-10) salvar credencial nova faz a edge desligar o PIX
+//       (`pix_desligado`): a tela mostra a mensagem dela, o interruptor
+//       volta para desligado E o painel que hospeda a seção recebe o eco
+//       (`onPixAlternado(false)`) — só `aria-checked` não discrimina isso,
+//       porque lê o estado PRÓPRIO da seção, não o que chegou ao pai.
 //
 // Mesmo padrão dos vizinhos (mercado-pago-secao-salva-e-testa.test.tsx):
 // createRoot + act do React puro, dependências de fora mockadas, a edge
@@ -117,12 +119,14 @@ function interruptorDoPix(): HTMLButtonElement {
   return alvo as HTMLButtonElement;
 }
 
-async function montarSecaoComChavesAbertas(): Promise<Root> {
+async function montarSecaoComChavesAbertas(
+  onPixAlternado?: (ligado: boolean) => void,
+): Promise<Root> {
   const hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   const raiz = createRoot(hospedeiro);
   await act(async () => {
-    raiz.render(<MercadoPagoSection />);
+    raiz.render(<MercadoPagoSection onPixAlternado={onPixAlternado} />);
   });
   await assentar();
   // O bloco do PIX vive na camada "Suas chaves", logo abaixo do teste de
@@ -316,7 +320,7 @@ describe("MercadoPagoSection — interruptor honesto do PIX no app", () => {
     );
   });
 
-  it("X9 — salvar credencial nova: a tela mostra o desligamento que a edge fez", async () => {
+  it("X9 — salvar credencial nova: a tela mostra o desligamento que a edge fez e ecoa para o painel", async () => {
     cenario.salvo = {
       ...CONFIGURADO,
       ultimo_teste: CONECTADO,
@@ -330,7 +334,13 @@ describe("MercadoPagoSection — interruptor honesto do PIX no app", () => {
       aviso:
         "Desliguei o PIX no app: teste a conexão com a credencial nova e ligue de novo.",
     };
-    raiz = await montarSecaoComChavesAbertas();
+    // mp-10: `aria-checked === "false"` sozinho já passava no HEAD ANTES
+    // desta tarefa mesmo com o eco quebrado — o interruptor lê o PRÓPRIO
+    // `config.pix_ligado` da seção, que `salvar` sempre atualiza; isso não
+    // discrimina se o painel de Ajustes (fora daqui) FICOU SABENDO da
+    // mudança. O mock de `onPixAlternado` é o que prova o eco de verdade.
+    const onPixAlternado = vi.fn();
+    raiz = await montarSecaoComChavesAbertas(onPixAlternado);
 
     expect(interruptorDoPix().getAttribute("aria-checked")).toBe("true");
 
@@ -338,5 +348,6 @@ describe("MercadoPagoSection — interruptor honesto do PIX no app", () => {
 
     expect(interruptorDoPix().getAttribute("aria-checked")).toBe("false");
     expect(document.body.textContent).toContain("Desliguei o PIX no app");
+    expect(onPixAlternado).toHaveBeenCalledWith(false);
   });
 });

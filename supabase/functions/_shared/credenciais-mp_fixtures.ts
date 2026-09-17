@@ -97,6 +97,29 @@ export const CHAVE_PUBLISHABLE_NOVA_FALSA = "sb_" +
     "publishable_de-mentira-nao-e-chave";
 
 /**
+ * Conta cada `from(tabela)` que o cliente falso recebe — é assim que
+ * `webhook-mercadopago` (MP-W5/MP-W6/MP-W7) e `reconciliar-pagamentos`
+ * (MP-4) provam "ZERO acesso a app_settings" ou "UM SÓ acesso", que nenhuma
+ * asserção sobre a RESPOSTA conseguiria distinguir de "acessou e recusou
+ * depois" ou "acessou duas vezes". Era a MESMA função copiada nos dois
+ * `index_test.ts` (ressalva da revisão de mp-10, mesmo motivo do resto deste
+ * arquivo: cópia de fixture envelhece calada).
+ */
+export function contandoFrom(
+    cliente: Record<string, unknown>,
+    tabelas: string[],
+): Record<string, unknown> {
+    const original = cliente.from as (tabela: string) => unknown;
+    return {
+        ...cliente,
+        from(tabela: string) {
+            tabelas.push(tabela);
+            return original(tabela);
+        },
+    };
+}
+
+/**
  * Ambiente dublê com a MESMA forma que o módulo usa (`get`). Map em vez de
  * `pares[chave]`: acesso indexado por variável acorda a catraca de
  * segurança do eslint (mesmo motivo do `Uint8Array.from` lá no módulo).

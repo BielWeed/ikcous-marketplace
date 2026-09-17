@@ -223,10 +223,20 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
    * seção colapsável enquanto houver chave digitada e não salva. */
   readonly onDirtyMudou?: (dirty: boolean) => void;
   /** Eco do estado do PIX que o SERVIDOR devolveu (mp-9), para a tela que
-   * hospeda esta seção não seguir mostrando o retrato do boot. Só dispara
-   * quando a ficha da loja mudou de verdade: liga/desliga e o salvar que a
-   * edge usou para desligar o PIX. */
-  readonly onPixAlternado?: (ligado: boolean) => void;
+   * hospeda esta seção não seguir mostrando o retrato do boot. Dispara em
+   * liga/desliga, no salvar que a edge usou para desligar o PIX, e no `ler`
+   * do mount (mp-10).
+   *
+   * O segundo argumento (`chaveNaLoja`) só vem preenchido no eco do `ler`:
+   * é a ÚNICA das quatro chamadas em que "ligado" não garante Public Key
+   * publicada — `ligar_pix`/`salvar` só devolvem `pix_ligado: true` quando a
+   * edge PUBLICOU a chave junto (mp-8), mas `ler` devolve o retrato cru da
+   * ficha (`pagamento_online`), que pode estar `true` com a Public Key
+   * ausente (o mesmo estado do teste X6 deste arquivo). Sem este segundo
+   * argumento, quem hospeda a seção teria de adivinhar "ligado = chave OK",
+   * o que é falso justamente para o `ler` — e o painel de Ajustes acenderia
+   * "Funcionando" com o PIX quebrado (achado da revisão de mp-10). */
+  readonly onPixAlternado?: (ligado: boolean, chaveNaLoja?: boolean) => void;
 }) {
   const isOffline = useOnlineStatus();
 
@@ -268,6 +278,18 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     [],
   );
 
+  // Ref para o callback mais recente (mesmo padrão de useRealtimeUpdate /
+  // useDataVault): `ler` só PRECISA rodar uma vez no mount — colocar
+  // `onPixAlternado` nas deps do useCallback abaixo faria a identidade de
+  // `ler` mudar a cada render do pai (o prop chega como arrow function
+  // inline em AdminSettingsView), e o `useEffect(() => ler(), [ler])`
+  // re-executaria a leitura inteira a cada render alheio. O ref sempre
+  // aponta para o callback mais atual sem participar da identidade de `ler`.
+  const onPixAlternadoRef = useRef(onPixAlternado);
+  useEffect(() => {
+    onPixAlternadoRef.current = onPixAlternado;
+  }, [onPixAlternado]);
+
   const ler = useCallback(async () => {
     setCarregando(true);
     setErroCarga(null);
@@ -280,6 +302,18 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       const lida = comoConfig(data);
       setConfig(lida);
       setPublicKey(lida.public_key ?? "");
+      // Eco do `ler` (mp-10): sem isto, o painel que hospeda esta seção
+      // (AdminSettingsView) ficava preso no retrato do BOOT até o lojista
+      // ligar/desligar ou salvar por aqui — a mesma tela contando dois
+      // estados do dinheiro quando o boot já estava desatualizado (ex.:
+      // alguém mudou a ficha por fora entre o boot e abrir esta seção).
+      //
+      // O SEGUNDO argumento (`lida.public_key_na_loja`) vai JUNTO: `ler`
+      // não garante chave publicada como `ligar_pix`/`salvar` garantem — sem
+      // ele, quem recebe o eco teria de inferir "ligado = chave OK", que é
+      // falso bem aqui (achado BLOQUEIA da revisão de mp-10; ver o
+      // comentário do prop `onPixAlternado`, acima).
+      onPixAlternadoRef.current?.(lida.pix_ligado, lida.public_key_na_loja);
     } catch (err) {
       setErroCarga(
         await erroAmigavel(
