@@ -1,0 +1,19 @@
+{
+  "execucao": "47ff36b7ffc14b56922feda1145a18f8",
+  "resumo": "Modo somente-instalar: o dono escolheu as quatro arquiteturas (feature-dev, superpowers, bmad-method, github-spec-kit) para uso puro e limpo, e foi criada a pasta docs/mapa com retrato verificado e datado do projeto; o repositório git e o remote origin já existiam e o mapa foi commitado na branch atual.",
+  "modo": "somente-instalar",
+  "arquiteturas": [
+    { "slug": "feature-dev", "como": "somente-instalar" },
+    { "slug": "superpowers", "como": "somente-instalar" },
+    { "slug": "bmad-method", "como": "somente-instalar" },
+    { "slug": "github-spec-kit", "como": "somente-instalar" }
+  ],
+  "plano_criado": false,
+  "passos": 0,
+  "git": {
+    "repositorio_criado": false,
+    "remoto": "https://github.com/BielWeed/ikcous-marketplace.git",
+    "branch": "claude/app-major-upgrade-wmc8x2",
+    "commit": "914b6427fffdac369771ec6527e01d7d49a95854"
+  }
+}
