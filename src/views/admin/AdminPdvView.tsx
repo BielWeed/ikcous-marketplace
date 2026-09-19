@@ -170,12 +170,11 @@ export function AdminPdvView({
   async function buscarPorCodigo(codigo: string): Promise<RespostaDoCodigo> {
     // `leitura.codigo` vai DIRETO, sem normalizar (pdv-c2.json é explícito:
     // a RPC casa por igualdade e o campo é texto).
-    const { data, error } = await (supabase.rpc as any)(
-      "buscar_por_codigo_barras",
-      { p_codigo: codigo },
-    );
+    const { data, error } = await supabase.rpc("buscar_por_codigo_barras", {
+      p_codigo: codigo,
+    });
     if (error) throw error;
-    return data as RespostaDoCodigo;
+    return data as unknown as RespostaDoCodigo;
   }
 
   async function aoLerCodigo(leitura: Leitura): Promise<void> {
@@ -204,39 +203,33 @@ export function AdminPdvView({
     termo: string,
   ): Promise<readonly LinhaDeClienteEncontrado[]> {
     const rodada = ++rodadaClientesRef.current;
-    const { data, error } = await (supabase.rpc as any)(
-      "get_admin_customers_paged",
-      {
-        p_search: termo,
-        p_sort_field: "created_at",
-        p_sort_direction: "desc",
-        p_page: 0,
-        p_page_size: 8,
-      },
-    );
+    const { data, error } = await supabase.rpc("get_admin_customers_paged", {
+      p_search: termo,
+      p_sort_field: "created_at",
+      p_sort_direction: "desc",
+      p_page: 0,
+      p_page_size: 8,
+    });
     if (rodada !== rodadaClientesRef.current) return [];
     if (error) throw error;
-    return (data?.data ?? []) as LinhaDeClienteEncontrado[];
+    return ((data as any)?.data ?? []) as LinhaDeClienteEncontrado[];
   }
 
   async function buscarProdutos(
     termo: string,
   ): Promise<readonly ProdutoEncontradoNaBusca[]> {
     const rodada = ++rodadaProdutosRef.current;
-    const { data, error } = await (supabase.rpc as any)(
-      "get_admin_products_paged",
-      {
-        p_search: termo,
-        p_category: "all",
-        p_status: "active",
-        p_stock: "all",
-        p_page: 0,
-        p_page_size: 8,
-      },
-    );
+    const { data, error } = await supabase.rpc("get_admin_products_paged", {
+      p_search: termo,
+      p_category: "all",
+      p_status: "active",
+      p_stock: "all",
+      p_page: 0,
+      p_page_size: 8,
+    });
     if (rodada !== rodadaProdutosRef.current) return [];
     if (error) throw error;
-    return (data?.data ?? []) as ProdutoEncontradoNaBusca[];
+    return ((data as any)?.data ?? []) as ProdutoEncontradoNaBusca[];
   }
 
   // A linha inteira de `marketplace_orders` que `to_jsonb(o.*)` devolve
@@ -314,31 +307,36 @@ export function AdminPdvView({
     // RPC) e `p_itens` com EXATAMENTE as três chaves que a RPC lê
     // (:302-304) — nunca preço nem nome, que vêm SEMPRE do banco (nunca da
     // tela, contexto da tarefa).
-    const { data, error } = await (supabase.rpc as any)(
-      "registrar_venda_presencial",
-      {
-        p_itens: estado.itens.map((item) => ({
-          product_id: item.productId,
-          variant_id: item.variantId,
-          quantity: item.quantidade,
-        })),
-        p_pagamento: estado.pagamento,
-        p_cliente_user_id:
-          estado.cliente.tipo === "cadastrado" ? estado.cliente.userId : null,
-        p_cliente_nome:
-          estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
-        p_cliente_whatsapp:
-          estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
-        p_desconto: estado.desconto,
-        p_observacao: estado.motivoDoDesconto || null,
-        // A MESMA chave em toda retentativa do MESMO cupom — nasce em
-        // `estadoInicialDaVenda`/`cupom_limpo` (C3.1), nunca aqui. É o que
-        // faz a segunda tentativa de uma venda que já foi gravada (rede
-        // caindo na resposta, F5 no meio do envio) devolver `ja_existia:
-        // true` em vez de debitar estoque duas vezes.
-        p_idempotency_key: estado.chaveDeIdempotencia,
-      },
-    );
+    //
+    // A máquina só chega aqui com o meio de pagamento escolhido (o botão do
+    // `FechamentoDaVenda` nasce desabilitado até `pagamento` ser não nulo) —
+    // a guarda torna o invariante explícito ao compilador; antes ele vivia
+    // escondido pelo `as any` da chamada.
+    if (!estado.pagamento) {
+      throw new Error("A venda saiu sem meio de pagamento escolhido.");
+    }
+    const { data, error } = await supabase.rpc("registrar_venda_presencial", {
+      p_itens: estado.itens.map((item) => ({
+        product_id: item.productId,
+        variant_id: item.variantId,
+        quantity: item.quantidade,
+      })),
+      p_pagamento: estado.pagamento,
+      p_cliente_user_id:
+        estado.cliente.tipo === "cadastrado" ? estado.cliente.userId : null,
+      p_cliente_nome:
+        estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
+      p_cliente_whatsapp:
+        estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
+      p_desconto: estado.desconto,
+      p_observacao: estado.motivoDoDesconto || null,
+      // A MESMA chave em toda retentativa do MESMO cupom — nasce em
+      // `estadoInicialDaVenda`/`cupom_limpo` (C3.1), nunca aqui. É o que
+      // faz a segunda tentativa de uma venda que já foi gravada (rede
+      // caindo na resposta, F5 no meio do envio) devolver `ja_existia:
+      // true` em vez de debitar estoque duas vezes.
+      p_idempotency_key: estado.chaveDeIdempotencia,
+    });
 
     // Deixa o erro CRU subir: quem traduz para português é
     // `mensagemDaFalhaDaVenda` (C3.4), chamada de dentro de
@@ -351,7 +349,7 @@ export function AdminPdvView({
     // estavam. É a invariante de D3, não um `if`.
     if (error) throw error;
 
-    const resposta = data as RespostaDoFechamento;
+    const resposta = data as unknown as RespostaDoFechamento;
     const pedido = resposta.order;
 
     const recibo: ReciboDaVendaRegistrada = {

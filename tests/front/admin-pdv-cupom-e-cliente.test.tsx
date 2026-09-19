@@ -181,13 +181,27 @@ async function bipar(codigo: string): Promise<void> {
 describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
+  // O localStorage global deste runner (Node >= 25 traz o experimental do
+  // Node por cima do do jsdom) não tem clear/removeItem confiáveis — o
+  // rascunho do `useVendaPresencial` é limpo num dublê Map-based, o MESMO
+  // padrão dos outros testes da casa.
+  let armazem: Map<string, string>;
 
   beforeEach(() => {
     // Cada teste começa com um cupom NOVO — sem isto, o rascunho gravado
     // por `useVendaPresencial` (C3.1) no `localStorage` de um teste
     // anterior seria restaurado no próximo mount (F5 é para o lojista, não
     // para o teste seguinte).
-    window.localStorage.clear();
+    armazem = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (chave: string) => armazem.get(chave) ?? null,
+      setItem: (chave: string, valor: string) => {
+        armazem.set(chave, valor);
+      },
+      removeItem: (chave: string) => {
+        armazem.delete(chave);
+      },
+    });
     vi.useFakeTimers();
     rpcMock.mockReset();
     rpcMock.mockImplementation(async (nome: string, params: any) => {
@@ -217,6 +231,7 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     hospedeiro.remove();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   async function montar(): Promise<void> {

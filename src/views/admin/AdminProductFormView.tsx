@@ -999,12 +999,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
     try {
       const { supabase } = await import("@/lib/supabase");
-      const { data, error } = await (supabase.rpc as any)(
-        "buscar_por_codigo_barras",
-        { p_codigo: codigoNormalizado },
-      );
+      const { data, error } = await supabase.rpc("buscar_por_codigo_barras", {
+        p_codigo: codigoNormalizado,
+      });
       if (error) throw error;
-      const resposta = data as RespostaDoCodigo;
+      const resposta = data as unknown as RespostaDoCodigo;
 
       if (!resposta.encontrado || !resposta.produto) {
         setErroDeRede("");

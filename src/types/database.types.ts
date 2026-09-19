@@ -2180,6 +2180,10 @@ export type Database = {
         };
         Returns: string;
       };
+      buscar_por_codigo_barras: {
+        Args: { p_codigo: string };
+        Returns: Json;
+      };
       decrement_stock: {
         Args: { p_id: string; quantity: number };
         Returns: undefined;
@@ -2548,6 +2552,19 @@ export type Database = {
       registrar_estorno_manual: { Args: { p_order_id: string }; Returns: Json };
       registrar_pagamento_recebido: {
         Args: { p_order_id: string; p_recebido: boolean };
+        Returns: Json;
+      };
+      registrar_venda_presencial: {
+        Args: {
+          p_cliente_nome?: string | null;
+          p_cliente_user_id?: string | null;
+          p_cliente_whatsapp?: string | null;
+          p_desconto?: number;
+          p_idempotency_key?: string | null;
+          p_itens: unknown;
+          p_observacao?: string | null;
+          p_pagamento: string;
+        };
         Returns: Json;
       };
       reivindicar_email_de_confirmacao: {

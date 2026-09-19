@@ -128,6 +128,8 @@ describe("roteador — TELAS_DE_ENTRADA reconhece admin-pdv", () => {
 describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
+  // Dublê do localStorage (ver o comentário no beforeEach).
+  let armazem: Map<string, string>;
 
   // Mesmo contrato do molde de banners: em produção `onSetBackOverride` É
   // o `setBackOverride` de um `useState<(() => void) | null>` — o
@@ -147,7 +149,19 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     // Cupom novo a cada teste — sem isto o rascunho gravado por
     // `useVendaPresencial` (C3.1) no `localStorage` de um teste anterior
     // seria restaurado no próximo mount.
-    window.localStorage.clear();
+    // O localStorage global deste runner (Node >= 25 traz o experimental do
+    // Node por cima do do jsdom) não tem clear/removeItem confiáveis —
+    // dublê Map-based, o MESMO padrão dos outros testes da casa.
+    armazem = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (chave: string) => armazem.get(chave) ?? null,
+      setItem: (chave: string, valor: string) => {
+        armazem.set(chave, valor);
+      },
+      removeItem: (chave: string) => {
+        armazem.delete(chave);
+      },
+    });
     vi.useFakeTimers();
     overrideAtual = null;
     onSetBackOverride.mockClear();
@@ -198,6 +212,7 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     hospedeiro.remove();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   async function montar(): Promise<void> {
