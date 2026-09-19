@@ -192,6 +192,31 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
       if (nome === "get_admin_products_paged") {
         return { data: { data: [] }, error: null };
       }
+      if (nome === "registrar_venda_presencial") {
+        return {
+          data: {
+            ja_existia: false,
+            order: {
+              id: "pedido-balcao-teste",
+              created_at: new Date().toISOString(),
+              total: 39.9,
+              subtotal: 39.9,
+              discount: 0,
+              payment_method: params.p_pagamento ?? "cash",
+            },
+            items: [
+              {
+                product_id: "produto-1",
+                variant_id: null,
+                quantity: 1,
+                price: 39.9,
+                product_name: "Camiseta Lisa",
+              },
+            ],
+          },
+          error: null,
+        };
+      }
       throw new Error(`RPC não mockada neste teste: ${nome}`);
     });
 
@@ -332,6 +357,65 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     await avancar();
 
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
+  });
+
+  it("caso 5c — venda registrada com camada aberta consome a entrada de histórico com replaceState e NUNCA history.back (o popstate disparava o diálogo 'alterações não salvas' sobre o recibo — relato do dono, 19/09)", async () => {
+    await montar();
+    await bipar(PRODUTO_SIMPLES.codigo);
+    await abrirCamadaDeCliente();
+
+    const backSpy = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => {});
+    const replaceSpy = vi
+      .spyOn(window.history, "replaceState")
+      .mockImplementation(() => {});
+
+    // Da camada de cliente até o recibo: voltar ao cupom, fechar a venda,
+    // escolher o pagamento e registrar (o mock da RPC resolve com um pedido
+    // gravado mínimo, no formato de `RespostaDoFechamento`).
+    const voltarAoCupom = localizarBotaoPorTexto(
+      hospedeiro,
+      "Voltar ao cupom",
+    )!;
+    await act(async () => {
+      voltarAoCupom.click();
+    });
+    await avancar();
+
+    const fecharVenda = localizarBotaoPorTexto(hospedeiro, "Fechar venda")!;
+    await act(async () => {
+      fecharVenda.click();
+    });
+    await avancar();
+
+    const dinheiro = localizarBotaoPorTexto(hospedeiro, "Dinheiro")!;
+    await act(async () => {
+      dinheiro.click();
+    });
+    await avancar();
+
+    const registrar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Registrar venda",
+    ) as HTMLButtonElement;
+    // A volta ao cupom já consumiu a entrada da camada por back() — o que
+    // este caso prova é o que acontece NA VIRADA PARA O RECIBO: aí não pode
+    // existir navegação nenhuma.
+    backSpy.mockClear();
+    replaceSpy.mockClear();
+    await act(async () => {
+      registrar.click();
+    });
+    await avancar(100);
+
+    // O recibo chegou (a venda existe)…
+    expect(hospedeiro.textContent).toContain("Compra na loja");
+    // …e o consumo da entrada de histórico da camada NÃO foi por back(): o
+    // popstate dele corria antes do dirty cair no painel e abria o diálogo
+    // "alterações não salvas" sobre o recibo de uma venda JÁ registrada.
+    expect(backSpy).not.toHaveBeenCalled();
+    expect(replaceSpy).toHaveBeenCalled();
   });
 
   it("caso 5c — desmontar com item ainda no cupom desliga o dirty (false) no unmount", async () => {

@@ -100,10 +100,25 @@ export function AdminPdvView({
     } else if (temEntradaDeHistoricoPendenteRef.current) {
       temEntradaDeHistoricoPendenteRef.current = false;
       if (window.history.state?.modal === "pdv") {
-        window.history.back();
+        if (estado.etapa === "recibo") {
+          // VENDA REGISTRADA: consumir a entrada SEM navegação. O
+          // `history.back()` daqui dispara um popstate que corre ANTES do
+          // dirty cair no painel (efeitos passivos perdem para a tarefa do
+          // popstate) — e o diálogo "alterações não salvas" abria sobre o
+          // RECIBO de uma venda já registrada (relato do dono em teste
+          // real no celular, 19/09). replaceState limpa a marca `{modal}`
+          // sem navegar: o recibo é um estado limpo, nada a perder.
+          window.history.replaceState(
+            {},
+            "",
+            window.location.pathname + window.location.search,
+          );
+        } else {
+          window.history.back();
+        }
       }
     }
-  }, [camadaAberta]);
+  }, [camadaAberta, estado.etapa]);
 
   // Registra o fechamento da camada como override do Voltar do celular. O
   // botão Voltar do AdminLayout (AdminArea.tsx: `onBack={backOverride ||
