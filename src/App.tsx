@@ -2966,7 +2966,11 @@ const AppContent = () => {
       </AlertDialog>
 
       <React.Suspense fallback={null}>
-        <PWAUpdateManager currentView={currentView} />
+        {/* UpdateNotification-138: o mesmo sinal de dirty que arma o
+            beforeunload acima — o aviso de atualização não cobre a tela
+            com formulário do admin no meio da edição; fica armado e volta
+            quando o trabalho termina. */}
+        <PWAUpdateManager currentView={currentView} adminDirty={isAdminDirty} />
       </React.Suspense>
       <Toaster />
     </div>
