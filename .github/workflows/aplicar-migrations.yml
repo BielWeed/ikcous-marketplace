@@ -99,21 +99,25 @@ jobs:
                 console.log('=== APLICADA:', arquivo);
               }
 
-              // 4. VERIFICAÇÃO — objetos que o front acabou de ganhar.
-              const verificacao = await sql('verificação', \`select
-                  has_function_privilege('authenticated', 'public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)', 'EXECUTE') as paged8,
-                  has_function_privilege('authenticated', 'public.get_admin_orders_cancelados_recentes(integer,integer,integer)', 'EXECUTE') as cancelados,
-                  has_function_privilege('authenticated', 'public.buscar_por_codigo_barras(text)', 'EXECUTE') as codigo,
-                  has_function_privilege('authenticated', 'public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)', 'EXECUTE') as venda,
-                  exists (select 1 from information_schema.columns where table_name='marketplace_orders' and column_name='canal') as col_canal,
-                  exists (select 1 from information_schema.columns where table_name='produtos' and column_name='codigo_barras') as col_codigo\`);
-              console.log('VERIFICAÇÃO:', verificacao);
+              // 4. VERIFICAÇÃO — só quando houve apply (sem migrations, as
+              // funções novas ainda não existem e o run de fingerprint
+              // falharia à toa).
+              if (arquivos.length > 0) {
+                const verificacao = await sql('verificação', \`select
+                    has_function_privilege('authenticated', 'public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)', 'EXECUTE') as paged8,
+                    has_function_privilege('authenticated', 'public.get_admin_orders_cancelados_recentes(integer,integer,integer)', 'EXECUTE') as cancelados,
+                    has_function_privilege('authenticated', 'public.buscar_por_codigo_barras(text)', 'EXECUTE') as codigo,
+                    has_function_privilege('authenticated', 'public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)', 'EXECUTE') as venda,
+                    exists (select 1 from information_schema.columns where table_name='marketplace_orders' and column_name='canal') as col_canal,
+                    exists (select 1 from information_schema.columns where table_name='produtos' and column_name='codigo_barras') as col_codigo\`);
+                console.log('VERIFICAÇÃO:', verificacao);
 
-              // 5. Smoke: as RPCs de leitura respondem de verdade.
-              const paged = await sql('smoke paged', \"select get_admin_orders_paged(p_search=>'',p_status=>'open',p_start_date=>'',p_end_date=>'',p_page=>0,p_page_size=>1,p_payment_status=>'all',p_canal=>'all')->>'total_count' as abertos8args\");
-              console.log('SMOKE paged (8 args):', paged);
-              const cancel = await sql('smoke cancelados', \"select get_admin_orders_cancelados_recentes(90,0,1)->>'total_count' as cancelados90d\");
-              console.log('SMOKE cancelados:', cancel);
+                // 5. Smoke: as RPCs de leitura respondem de verdade.
+                const paged = await sql('smoke paged', \"select get_admin_orders_paged(p_search=>'',p_status=>'open',p_start_date=>'',p_end_date=>'',p_page=>0,p_page_size=>1,p_payment_status=>'all',p_canal=>'all')->>'total_count' as abertos8args\");
+                console.log('SMOKE paged (8 args):', paged);
+                const cancel = await sql('smoke cancelados', \"select get_admin_orders_cancelados_recentes(90,0,1)->>'total_count' as cancelados90d\");
+                console.log('SMOKE cancelados:', cancel);
+              }
               console.log('FIM: tudo aplicado e verificado.');
             })().catch((e) => { console.error('FALHOU:', e.message); process.exit(1); });
           "
