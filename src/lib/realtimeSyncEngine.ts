@@ -978,35 +978,71 @@ export const RealtimeSyncEngine = {
           // `deleted_at` preenchido -- e o `putMany` o grava no cofre como se
           // estivesse vivo. A view `vw_produtos_public` já filtra por conta
           // própria e não expõe a coluna, então o filtro só entra no ramo admin.
-          let detailQuery = supabase
-            .from(isAdmin ? "produtos" : ("vw_produtos_public" as any))
-            .select(
-              // Laudo #2 (achado da revisão do PR #395): no ramo admin, o
-              // `*` pedia `custo` — coluna com SELECT NEGADO ao authenticated
-              // desde o BANCO-010 — e o `const { data }` sem checar `error`
-              // ENGOLIA o permission denied: o catch-up de detalhes do painel
-              // falhava em silêncio. Colunas explícitas (as 29 públicas) fazem
-              // a mesma leitura funcionar; o custo do admin segue vindo por
-              // vw_produtos_admin/RPCs, que são as portas de propósito.
-              isAdmin
-                ? "id, nome, descricao, categoria, codigo, codigo_barras, preco_venda, preco_original, imagem_url, imagem_urls, estoque, estoque_minimo, ativo, deleted_at, data_cadastro, ultima_atualizacao, peso_kg, altura_cm, largura_cm, comprimento_cm, frete_gratis, tags, meta_title, meta_description, rating, review_count, sold, calculated_points, fornecedor_id, is_bestseller, product_variants(*)"
-                : "*, product_variants(*)",
-            )
-            .in("id", outOfDateIds);
-          if (isAdmin) {
-            detailQuery = detailQuery.is("deleted_at", null);
+          //
+          // realtimeSyncEngine-955: o `.in("id", [...])` é montado em LOTES de
+          // 100 ids. Cada UUID custa ~37 caracteres na query string; o resumo
+          // de onde nasce `outOfDateIds` é deliberadamente sem `.limit()` (um
+          // limite causaria falso-sync), então uma loja com algumas centenas de
+          // produtos e cofre vazio (primeiro boot, purge de versão) passava de
+          // 8 KB de linha de requisição num GET único — 414/431 no gateway, a
+          // falha morria no console e o cofre NUNCA recebia nada pelo catchUp.
+          // Erro num lote não descarta os outros: os lotes que chegaram são
+          // gravados e marcados com setLastSync; o que faltou tenta de novo na
+          // próxima rodada (o resumo dele continua desatualizado).
+          const TAMANHO_DO_LOTE_DE_IDS = 100;
+          const rawProducts: any[] = [];
+          let lotesComErro = 0;
+          for (
+            let inicio = 0;
+            inicio < outOfDateIds.length;
+            inicio += TAMANHO_DO_LOTE_DE_IDS
+          ) {
+            const lote = outOfDateIds.slice(
+              inicio,
+              inicio + TAMANHO_DO_LOTE_DE_IDS,
+            );
+            let detailQuery = supabase
+              .from(isAdmin ? "produtos" : ("vw_produtos_public" as any))
+              .select(
+                // Laudo #2 (achado da revisão do PR #395): no ramo admin, o
+                // `*` pedia `custo` — coluna com SELECT NEGADO ao authenticated
+                // desde o BANCO-010 — e o `const { data }` sem checar `error`
+                // ENGOLIA o permission denied: o catch-up de detalhes do painel
+                // falhava em silêncio. Colunas explícitas (as 29 públicas) fazem
+                // a mesma leitura funcionar; o custo do admin segue vindo por
+                // vw_produtos_admin/RPCs, que são as portas de propósito.
+                isAdmin
+                  ? "id, nome, descricao, categoria, codigo, codigo_barras, preco_venda, preco_original, imagem_url, imagem_urls, estoque, estoque_minimo, ativo, deleted_at, data_cadastro, ultima_atualizacao, peso_kg, altura_cm, largura_cm, comprimento_cm, frete_gratis, tags, meta_title, meta_description, rating, review_count, sold, calculated_points, fornecedor_id, is_bestseller, product_variants(*)"
+                  : "*, product_variants(*)",
+              )
+              .in("id", lote);
+            if (isAdmin) {
+              detailQuery = detailQuery.is("deleted_at", null);
+            }
+            const { data: rawDoLote, error: erroDoLote } = await detailQuery;
+            // Laudo #2: o catchup de detalhes não pode engolir falha em
+            // silêncio — loga, conta o lote como perdido e segue para o
+            // próximo (-955): um lote que falha não derruba os que chegaram.
+            if (erroDoLote || !rawDoLote) {
+              lotesComErro += 1;
+              console.error(
+                "[RealtimeSync] Falha no catchup de detalhes de produtos (lote de %d ids):",
+                lote.length,
+                erroDoLote?.message,
+              );
+              continue;
+            }
+            rawProducts.push(...rawDoLote);
           }
-          const { data: rawProducts, error: erroDetalhes } = await detailQuery;
-          // Laudo #2: o catchup de detalhes não pode engolir falha em
-          // silêncio — loga e segue (o próximo catchup tenta de novo).
-          if (erroDetalhes) {
+          if (lotesComErro > 0) {
             console.error(
-              "[RealtimeSync] Falha no catchup de detalhes de produtos:",
-              erroDetalhes.message,
+              "[RealtimeSync] Catchup de detalhes: %d de %d lote(s) falharam — os demais foram gravados; a próxima rodada tenta os que faltaram.",
+              lotesComErro,
+              Math.ceil(outOfDateIds.length / TAMANHO_DO_LOTE_DE_IDS),
             );
           }
 
-          if (rawProducts) {
+          if (rawProducts.length > 0) {
             const variantRecord = TABLE_CONFIGS.find(
               (c) => c.table === "product_variants",
             );
