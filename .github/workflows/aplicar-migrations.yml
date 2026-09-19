@@ -1,3 +1,120 @@
+name: Aplicar migrations (Supabase)
+
+# Aplica migrations NO PROJETO ALVO pela API de gestão do Supabase, com a
+# disciplina da casa: para cada arquivo roda primeiro a PROVA
+# (BEGIN; <sql>; ROLLBACK;) e só então o apply; no fim, verifica que as RPCs
+# novas existem e estão alcançáveis por authenticated. Nenhuma credencial
+# nova: usa o segredo SUPABASE_ACCESS_TOKEN que já publica as functions.
+#
+# Só roda a PEDIDO (workflow_dispatch), nunca em push. A impressão digital do
+# banco vem antes de qualquer DDL.
+#
+# USO: Actions → Run workflow → migracoes = arquivos de supabase/migrations/
+# separados por vírgula, NA ORDEM (fila serializada). Vazio = só fingerprint.
+
+on:
+  workflow_dispatch:
+    inputs:
+      migracoes:
+        description: "Arquivos em supabase/migrations/ (vírgula, na ordem; vazio = só fingerprint)"
+        required: false
+        default: ""
+      projeto_ref:
+        description: "Ref do projeto Supabase (default: o projeto da loja)"
+        required: false
+        default: "cafkrminfnokvgjqtkle"
+
+jobs:
+  aplicar:
+    name: Aplicar migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - name: "Prova, apply e verificação"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          MIGRACOES: ${{ inputs.migracoes }}
+          PROJETO_REF: ${{ inputs.projeto_ref }}
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const ref = process.env.PROJETO_REF;
+            const token = process.env.SUPABASE_ACCESS_TOKEN;
+            if (!token) { console.error('SEM SUPABASE_ACCESS_TOKEN'); process.exit(1); }
+
+            async function sql(titulo, query) {
+              const r = await fetch(
+                'https://api.supabase.com/v1/projects/' + ref + '/database/query',
+                {
+                  method: 'POST',
+                  headers: {
+                    Authorization: 'Bearer ' + token,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ query }),
+                },
+              );
+              const corpo = await r.text();
+              if (!r.ok) throw new Error(titulo + ' -> HTTP ' + r.status + ': ' + corpo.slice(0, 300));
+              if (corpo.includes('\"error\"') || corpo.includes('\"message\":\"')) {
+                throw new Error(titulo + ' -> ' + corpo.slice(0, 300));
+              }
+              return corpo;
+            }
+
+            (async () => {
+              // 1. Fingerprint — antes de qualquer DDL.
+              const fp = await sql('fingerprint', \`select
+                  (select count(*)::int from marketplace_orders) as pedidos,
+                  (select count(*)::int from marketplace_orders where status='cancelled') as cancelados\`);
+              console.log('FINGERPRINT (pedidos, cancelados):', fp);
+
+              const arquivos = process.env.MIGRACOES.split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
+              for (const arquivo of arquivos) {
+                if (!/^[0-9]{14}_[a-z0-9_-]+\\.sql\$/.test(arquivo)) {
+                  throw new Error('RECUSADO (nome fora do padrão): ' + arquivo);
+                }
+                const caminho = 'supabase/migrations/' + arquivo;
+                if (!fs.existsSync(caminho)) throw new Error('NÃO EXISTE: ' + caminho);
+                const corpo = fs.readFileSync(caminho, 'utf8');
+
+                // 2. PROVA: o arquivo inteiro dentro de BEGIN/ROLLBACK — o
+                // mesmo que o CONTRIBUTING manda rodar à mão antes.
+                console.log('=== PROVA (rollback no fim):', arquivo);
+                await sql('prova ' + arquivo, 'BEGIN;\\n' + corpo + '\\nROLLBACK;');
+
+                // 3. APPLY de verdade.
+                console.log('=== APLICANDO:', arquivo);
+                await sql('apply ' + arquivo, corpo);
+                console.log('=== APLICADA:', arquivo);
+              }
+
+              // 4. VERIFICAÇÃO — só quando houve apply (sem migrations, as
+              // funções novas ainda não existem e o run de fingerprint
+              // falharia à toa).
+              if (arquivos.length > 0) {
+                const verificacao = await sql('verificação', \`select
+                    has_function_privilege('authenticated', 'public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)', 'EXECUTE') as paged8,
+                    has_function_privilege('authenticated', 'public.get_admin_orders_cancelados_recentes(integer,integer,integer)', 'EXECUTE') as cancelados,
+                    has_function_privilege('authenticated', 'public.buscar_por_codigo_barras(text)', 'EXECUTE') as codigo,
+                    has_function_privilege('authenticated', 'public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)', 'EXECUTE') as venda,
+                    exists (select 1 from information_schema.columns where table_name='marketplace_orders' and column_name='canal') as col_canal,
+                    exists (select 1 from information_schema.columns where table_name='produtos' and column_name='codigo_barras') as col_codigo\`);
+                console.log('VERIFICAÇÃO:', verificacao);
+                // (A execução de fumaca das RPCs fica de fora DE PROPÓSITO: o
+                // gate `is_admin()` delas nega o role `postgres` da API de
+                // gestão — o RAISE é o próprio gate provando que a função
+                // está instalada; quem executa como admin é o app.)
               }
               console.log('FIM: tudo aplicado e verificado.');
             })().catch((e) => { console.error('FALHOU:', e.message); process.exit(1); });
