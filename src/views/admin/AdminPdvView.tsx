@@ -410,7 +410,12 @@ export function AdminPdvView({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    // pb-admin lg:pb-12 — o MESMO respiro das outras telas do admin: sem ele,
+    // no navegador do celular o "Registrar venda" (último elemento da última
+    // etapa) ficava por trás da barra de navegação fixa, e a rolagem termina
+    // exatamente ali — relato do dono em teste real no aparelho (19/09):
+    // "os botões não têm rolagem suficiente para eu poder clicar".
+    <div className="flex flex-col gap-4 pb-admin lg:pb-12">
       <div className="flex items-center justify-between gap-3">
         <AdminPageHeader titulo="Vender" />
       </div>
