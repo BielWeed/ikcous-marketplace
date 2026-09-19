@@ -101,7 +101,12 @@ export function LeitorDeCodigo({
             className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 p-4 text-center text-sm text-white"
           >
             <p>{erro.mensagem}</p>
-            <Button type="button" size="sm" onClick={tentarDeNovo}>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-admin-gold text-black hover:bg-admin-gold/90"
+              onClick={tentarDeNovo}
+            >
               Tentar de novo
             </Button>
           </div>
@@ -137,7 +142,11 @@ export function LeitorDeCodigo({
               className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
             />
           </div>
-          <Button type="submit" size="sm">
+          <Button
+            type="submit"
+            size="sm"
+            className="bg-admin-gold text-black hover:bg-admin-gold/90"
+          >
             Usar este código
           </Button>
         </form>

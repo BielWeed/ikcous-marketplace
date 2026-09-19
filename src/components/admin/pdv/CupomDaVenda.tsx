@@ -313,6 +313,7 @@ export function CupomDaVenda({
             <Button
               type="button"
               size="sm"
+              className="bg-admin-gold text-black hover:bg-admin-gold/90"
               onClick={() => onNavigate("admin-product-form")}
             >
               Cadastrar produto
@@ -545,7 +546,11 @@ export function CupomDaVenda({
         )}
       </div>
 
-      {/* Navegação para as próximas camadas. */}
+      {/* Navegação para as próximas camadas. As ações do PDV usam cor
+          PRÓPRIA do admin (a mesma do botão Vender) e nunca o tema da loja:
+          o Button padrão pinta com `bg-primary` — a cor do TEMA — e com o
+          tema escuro do molde virava preto sobre preto, botão invisível
+          (relato do dono em teste real no celular, 19/09). */}
       <div className="flex gap-2">
         <Button
           type="button"
@@ -559,7 +564,7 @@ export function CupomDaVenda({
         </Button>
         <Button
           type="button"
-          className="flex-1"
+          className="flex-1 bg-admin-gold text-black hover:bg-admin-gold/90"
           disabled={estado.itens.length === 0}
           onClick={() =>
             despachar({ tipo: "etapa_pedida", etapa: "fechamento" })

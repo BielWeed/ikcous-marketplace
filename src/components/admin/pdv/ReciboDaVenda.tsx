@@ -194,7 +194,11 @@ export function ReciboDaVenda({
           <Printer className="mr-1.5 size-4" />
           Imprimir
         </Button>
-        <Button type="button" className="flex-1" onClick={limparCupom}>
+        <Button
+          type="button"
+          className="flex-1 bg-admin-gold text-black hover:bg-admin-gold/90"
+          onClick={limparCupom}
+        >
           <ShoppingCart className="mr-1.5 size-4" />
           Nova venda
         </Button>

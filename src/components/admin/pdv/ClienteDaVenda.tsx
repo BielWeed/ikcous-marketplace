@@ -142,8 +142,13 @@ export function ClienteDaVenda({
       <div className="flex gap-2">
         <Button
           type="button"
-          variant={modo === "sem_cliente" ? "default" : "outline"}
+          variant="outline"
           size="sm"
+          className={
+            modo === "sem_cliente"
+              ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
+              : ""
+          }
           onClick={() => setModo("sem_cliente")}
         >
           <UserRoundX className="mr-1 size-3.5" />
@@ -151,8 +156,13 @@ export function ClienteDaVenda({
         </Button>
         <Button
           type="button"
-          variant={modo === "buscar" ? "default" : "outline"}
+          variant="outline"
           size="sm"
+          className={
+            modo === "buscar"
+              ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
+              : ""
+          }
           onClick={() => setModo("buscar")}
         >
           <UserCheck className="mr-1 size-3.5" />
@@ -160,8 +170,13 @@ export function ClienteDaVenda({
         </Button>
         <Button
           type="button"
-          variant={modo === "avulso" ? "default" : "outline"}
+          variant="outline"
           size="sm"
+          className={
+            modo === "avulso"
+              ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
+              : ""
+          }
           onClick={() => setModo("avulso")}
         >
           <UserRoundPlus className="mr-1 size-3.5" />
@@ -179,7 +194,11 @@ export function ClienteDaVenda({
               ? "A venda entra sem nenhum cliente vinculado."
               : `A venda ainda está com ${cliente.nome} — confirme para desvincular.`}
           </p>
-          <Button type="button" onClick={aoConfirmarSemCliente}>
+          <Button
+            type="button"
+            className="bg-admin-gold text-black hover:bg-admin-gold/90"
+            onClick={aoConfirmarSemCliente}
+          >
             Confirmar sem cliente
           </Button>
         </div>
@@ -275,6 +294,7 @@ export function ClienteDaVenda({
           <Button
             type="button"
             disabled={nomeAvulso.trim() === ""}
+            className="bg-admin-gold text-black hover:bg-admin-gold/90"
             onClick={() => {
               atualizarAvulso(nomeAvulso, whatsappAvulso);
               despachar({ tipo: "etapa_pedida", etapa: "cupom" });

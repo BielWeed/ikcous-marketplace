@@ -318,6 +318,20 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     expect(hospedeiro.querySelectorAll("li").length).toBe(0);
   });
 
+  it("caso 5b — 'Fechar venda' carrega cor própria do admin, não o tema da loja (relato do dono: botão invisível no celular, 19/09)", async () => {
+    // O Button padrão do shadcn pinta com `bg-primary` — a COR DA LOJA. Com
+    // o tema escuro do molde, virava preto sobre preto: o botão existia, o
+    // texto era invisível e o lojista não via a porta do fechamento. As
+    // ações do PDV têm cor própria (a mesma do botão Vender).
+    await montar();
+    await bipar(PRODUTO_SIMPLES.codigo);
+
+    const botaoFechar = localizarBotaoPorTexto(hospedeiro, "Fechar venda")!;
+    expect(botaoFechar).toBeTruthy();
+    expect(botaoFechar.className).toContain("bg-admin-gold");
+    expect(botaoFechar.className).toContain("text-black");
+  });
+
   it("caso 6 — busca de cliente lista e escolher preenche o cliente", async () => {
     await montar();
 

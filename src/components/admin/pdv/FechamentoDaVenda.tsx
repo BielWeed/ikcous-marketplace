@@ -272,7 +272,10 @@ export function FechamentoDaVenda({
         type="button"
         disabled={desabilitado}
         onClick={aoClicarRegistrar}
-        className="h-12 text-base font-bold"
+        // Cor própria do admin (a mesma do botão Vender): o Button padrão
+        // pinta com a cor do TEMA da loja — no tema escuro do molde era
+        // preto sobre preto (relato do dono no celular, 19/09).
+        className="h-12 bg-admin-gold text-base font-bold text-black hover:bg-admin-gold/90"
       >
         {estado.enviando ? "Registrando…" : "Registrar venda"}
       </Button>
