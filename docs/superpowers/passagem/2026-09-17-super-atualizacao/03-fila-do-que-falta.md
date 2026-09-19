@@ -39,6 +39,11 @@ D12 (valor divergente no PIX registra `recusado`, avisa e pede novo pagamento).
 
 ## 5. Onda B — reescritas por área
 
+> **RESERVADA (decisão do dono, 17/09): a Onda B NÃO é de quem estiver terminando as frentes acima.**
+> Ela fica arquivada aqui e será feita pela sessão original a partir de terça (reset da cota), em
+> branch própria por área, DEPOIS que a atualização atual estiver publicada. Quem chegar até aqui
+> para na publicação (lista "Antes de tirar o PR do rascunho") e avisa o dono.
+
 Plano §4 (tabela de partição dos arquivos acima de 1.500 linhas) e §8: `B4 → B5`, `B2 → B3`, `B1 por
 último` (toca `App.tsx`). Cada B só depois do A da mesma área. Um escritor por arquivo grande.
 
