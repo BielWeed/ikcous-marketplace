@@ -825,10 +825,15 @@ export function AdminLayout({
             {navItems.map((item, idx) => {
               const Icon = item.icon;
               const parentView = getParentView(currentView);
+              // Relato do dono em teste real (19/09, print): no PDV a barra
+              // marcava GERAL como ativa. O pai do admin-pdv (dashboard)
+              // existe para o botão VOLTAR, não para herdar destaque —
+              // "Vender" é AÇÃO com botão próprio (o redondo, que se marca
+              // com anel). Na tela dele, nenhuma aba acende.
               const isActive =
                 currentView === item.view ||
                 (item.view === "admin-dashboard" && currentView === "admin") ||
-                parentView === item.view;
+                (parentView === item.view && currentView !== "admin-pdv");
 
               return (
                 <button
@@ -1203,11 +1208,14 @@ export function AdminLayout({
               {navItems.map((item, idx) => {
                 const Icon = item.icon;
                 const parentView = getParentView(currentView);
+                // Mesma regra da sidebar acima (relato do dono, 19/09): o pai
+                // do admin-pdv não herda destaque na barra do celular — na
+                // tela de venda o único marcado é o botão redondo Vender.
                 const isActive =
                   currentView === item.view ||
                   (item.view === "admin-dashboard" &&
                     currentView === "admin") ||
-                  parentView === item.view;
+                  (parentView === item.view && currentView !== "admin-pdv");
 
                 return (
                   <button
