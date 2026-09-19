@@ -1,18 +1,16 @@
 name: Aplicar migrations (Supabase)
 
-# Aplica migrations pela RECEITA DA CASA: scripts/db-apply.cjs, que envolve o
-# arquivo numa transação única, roda a verificação de VERIFICACOES e só
-# commita se tudo bater (saída 0). A conexão sai SEMPRE do segredo
-# DATABASE_URL do repositório — nada de credencial no workflow.
+# Aplica migrations NO PROJETO ALVO pela API de gestão do Supabase, com a
+# disciplina da casa: para cada arquivo roda primeiro a PROVA
+# (BEGIN; <sql>; ROLLBACK;) e só então o apply; no fim, verifica que as RPCs
+# novas existem e estão alcançáveis por authenticated. Nenhuma credencial
+# nova: usa o segredo SUPABASE_ACCESS_TOKEN que já publica as functions.
 #
 # Só roda a PEDIDO (workflow_dispatch), nunca em push. A impressão digital do
-# banco roda ANTES de qualquer DDL: quem dispara lê o log e sabe qual banco
-# é (nome, contagem de pedidos, nome da loja) antes da primeira migration.
+# banco vem antes de qualquer DDL.
 #
-# USO: Actions → "Aplicar migrations (Supabase)" → Run workflow → lista de
-# arquivos de supabase/migrations/, separados por vírgula, NA ORDEM (a fila é
-# serializada). Vazio = só imprime a impressão digital (use para conferir o
-# banco antes de decidir).
+# USO: Actions → Run workflow → migracoes = arquivos de supabase/migrations/
+# separados por vírgula, NA ORDEM (fila serializada). Vazio = só fingerprint.
 
 on:
   workflow_dispatch:
@@ -21,6 +19,10 @@ on:
         description: "Arquivos em supabase/migrations/ (vírgula, na ordem; vazio = só fingerprint)"
         required: false
         default: ""
+      projeto_ref:
+        description: "Ref do projeto Supabase (default: o projeto da loja)"
+        required: false
+        default: "cafkrminfnokvgjqtkle"
 
 jobs:
   aplicar:
@@ -36,49 +38,82 @@ jobs:
 
       - run: npm ci
 
-      - name: Impressão digital do banco (antes de qualquer DDL)
+      - name: "Prova, apply e verificação"
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          MIGRACOES: ${{ inputs.migracoes }}
+          PROJETO_REF: ${{ inputs.projeto_ref }}
         run: |
           node -e "
-            const { Client } = require('pg');
+            const fs = require('node:fs');
+            const ref = process.env.PROJETO_REF;
+            const token = process.env.SUPABASE_ACCESS_TOKEN;
+            if (!token) { console.error('SEM SUPABASE_ACCESS_TOKEN'); process.exit(1); }
+
+            async function sql(titulo, query) {
+              const r = await fetch(
+                'https://api.supabase.com/v1/projects/' + ref + '/database/query',
+                {
+                  method: 'POST',
+                  headers: {
+                    Authorization: 'Bearer ' + token,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ query }),
+                },
+              );
+              const corpo = await r.text();
+              if (!r.ok) throw new Error(titulo + ' -> HTTP ' + r.status + ': ' + corpo.slice(0, 300));
+              if (corpo.includes('\"error\"') || corpo.includes('\"message\":\"')) {
+                throw new Error(titulo + ' -> ' + corpo.slice(0, 300));
+              }
+              return corpo;
+            }
+
             (async () => {
-              const c = new Client({ connectionString: process.env.DATABASE_URL });
-              await c.connect();
-              const banco = await c.query('select current_database() as db, version() as v');
-              const pedidos = await c.query('select count(*)::int as total from marketplace_orders');
-              const loja = await c.query(\"select config_json->>'storeName' as loja from store_config limit 1\");
-              const migrations = await c.query(\"select count(*)::int as aplicadas from supabase_migrations.schema_migrations\");
-              console.log('BANCO:', banco.rows[0].db);
-              console.log('LOJA:', loja.rows[0]?.loja ?? '(sem store_config)');
-              console.log('PEDIDOS:', pedidos.rows[0].total);
-              console.log('MIGRATIONS JA APLICADAS (ledger supabase):', migrations.rows[0].aplicadas);
-              await c.end();
-            })().catch((e) => { console.error(e.message); process.exit(1); });
+              // 1. Fingerprint — antes de qualquer DDL.
+              const fp = await sql('fingerprint', \`select
+                  (select count(*)::int from marketplace_orders) as pedidos,
+                  (select count(*)::int from marketplace_orders where status='cancelled') as cancelados\`);
+              console.log('FINGERPRINT (pedidos, cancelados):', fp);
+
+              const arquivos = process.env.MIGRACOES.split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
+              for (const arquivo of arquivos) {
+                if (!/^[0-9]{14}_[a-z0-9_-]+\\.sql\$/.test(arquivo)) {
+                  throw new Error('RECUSADO (nome fora do padrão): ' + arquivo);
+                }
+                const caminho = 'supabase/migrations/' + arquivo;
+                if (!fs.existsSync(caminho)) throw new Error('NÃO EXISTE: ' + caminho);
+                const corpo = fs.readFileSync(caminho, 'utf8');
+
+                // 2. PROVA: o arquivo inteiro dentro de BEGIN/ROLLBACK — o
+                // mesmo que o CONTRIBUTING manda rodar à mão antes.
+                console.log('=== PROVA (rollback no fim):', arquivo);
+                await sql('prova ' + arquivo, 'BEGIN;\\n' + corpo + '\\nROLLBACK;');
+
+                // 3. APPLY de verdade.
+                console.log('=== APLICANDO:', arquivo);
+                await sql('apply ' + arquivo, corpo);
+                console.log('=== APLICADA:', arquivo);
+              }
+
+              // 4. VERIFICAÇÃO — objetos que o front acabou de ganhar.
+              const verificacao = await sql('verificação', \`select
+                  has_function_privilege('authenticated', 'public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)', 'EXECUTE') as paged8,
+                  has_function_privilege('authenticated', 'public.get_admin_orders_cancelados_recentes(integer,integer,integer)', 'EXECUTE') as cancelados,
+                  has_function_privilege('authenticated', 'public.buscar_por_codigo_barras(text)', 'EXECUTE') as codigo,
+                  has_function_privilege('authenticated', 'public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)', 'EXECUTE') as venda,
+                  exists (select 1 from information_schema.columns where table_name='marketplace_orders' and column_name='canal') as col_canal,
+                  exists (select 1 from information_schema.columns where table_name='produtos' and column_name='codigo_barras') as col_codigo\`);
+              console.log('VERIFICAÇÃO:', verificacao);
+
+              // 5. Smoke: as RPCs de leitura respondem de verdade.
+              const paged = await sql('smoke paged', \"select get_admin_orders_paged(p_search=>'',p_status=>'open',p_start_date=>'',p_end_date=>'',p_page=>0,p_page_size=>1,p_payment_status=>'all',p_canal=>'all')->>'total_count' as abertos8args\");
+              console.log('SMOKE paged (8 args):', paged);
+              const cancel = await sql('smoke cancelados', \"select get_admin_orders_cancelados_recentes(90,0,1)->>'total_count' as cancelados90d\");
+              console.log('SMOKE cancelados:', cancel);
+              console.log('FIM: tudo aplicado e verificado.');
+            })().catch((e) => { console.error('FALHOU:', e.message); process.exit(1); });
           "
-
-      - name: "Aplica cada migration — transação única + verificação do db-apply"
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          MIGRACOES: ${{ inputs.migracoes }}
-        run: |
-          IFS=',' read -ra ARQS <<< "$MIGRACOES"
-          for f in "${ARQS[@]}"; do
-            arquivo=$(echo "$f" | xargs)
-            [ -z "$arquivo" ] && continue
-            # Guarda: só arquivo de migration com nome da casa; nada de caminho
-            # arbitrário vindo do input.
-            echo "$arquivo" | grep -Eq '^[0-9]{14}_[a-z0-9_-]+\.sql$' || { echo "RECUSADO (nome fora do padrão): $arquivo"; exit 1; }
-            [ -f "supabase/migrations/$arquivo" ] || { echo "NÃO EXISTE: supabase/migrations/$arquivo"; exit 1; }
-            echo "=== APLICANDO: $arquivo ==="
-            node scripts/db-apply.cjs "$arquivo" || exit 1
-          done
-          [ ${#ARQS[@]} -eq 0 ] || [ -z "${ARQS[0]}" ] && echo "(nenhuma migration pedida — só fingerprint)"
-
-      - name: Pós-checagem (objetos do código no banco)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          # O mesmo detector do CI: reprova se RPC que o código chama ficou
-          # AUSENTE ou INALCANÇÁVEL depois das migrations.
-          node scripts/db-check-objetos-do-codigo.mjs
