@@ -198,11 +198,21 @@ export default defineConfig(async (context): Promise<UserConfig> => {
                 return "vendor-date";
               }
               if (
+                normalizedId.includes("clsx") ||
+                normalizedId.includes("tailwind-merge") ||
+                normalizedId.includes("class-variance-authority") ||
                 normalizedId.includes("vaul") ||
                 normalizedId.includes("cmdk") ||
                 normalizedId.includes("sonner") ||
                 normalizedId.includes("canvas-confetti")
               ) {
+                // vite-214 (A12.3): clsx/tailwind-merge/cva classificados
+                // AQUI de propósito. Sem regra, o Rollup funde o clsx no
+                // chunk do primeiro importador pesado — o recharts (vendor-
+                // charts) — e o `cn()` de src/lib/utils.ts arrastava 92 kB
+                // brotli de biblioteca de gráfico para o boot de todo
+                // cliente da vitrine (modulepreload no index.html). Este
+                // vendor já é estático na entrada: zero requisição nova.
                 return "vendor-ui-helpers";
               }
               if (normalizedId.includes("react-resizable-panels")) {
