@@ -57,7 +57,7 @@ jobs:
             })().catch((e) => { console.error(e.message); process.exit(1); });
           "
 
-      - name: Aplica cada migration (db-apply: transação única + verificação)
+      - name: "Aplica cada migration — transação única + verificação do db-apply"
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           MIGRACOES: ${{ inputs.migracoes }}
