@@ -1611,6 +1611,24 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // Frente pedidos-4 (janela de cancelados pela data do CANCELAMENTO +
+  // colunas mínimas): o primeiro marcador é a janela certa — sobre o
+  // COALESCE(historico, updated_at); trocar por o.created_at é exatamente o
+  // BLOQUEIA da revisão de 17/09 (pedido criado há 100 dias e cancelado
+  // ontem sumiria da lista de pendências). O fora_da_janela é o número que
+  // impede o recorte de mentir; e o new_status = 'cancelled' aparece 2x no
+  // corpo (contagem e dados) — se cair para 1, uma das duas JOIN LATERAL
+  // perdeu o filtro e a data de cancelamento vira updated_at puro.
+  "20261164000000_a_varredura_de_cancelados_enxerga_o_cancelamento.sql": [
+    {
+      funcao: "get_admin_orders_cancelados_recentes",
+      esperado: [
+        "COALESCE(h.cancelado_em, o.updated_at) >= now() - make_interval(days => p_dias)",
+        "'fora_da_janela', v_fora_da_janela",
+        { texto: "hi.new_status = 'cancelled'", vezes: 2 },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

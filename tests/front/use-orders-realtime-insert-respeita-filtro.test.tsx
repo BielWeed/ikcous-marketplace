@@ -102,10 +102,28 @@ describe("decidirRealtimeInsertAdmin (#1508)", () => {
     expect(decisao).toBe("ignorar");
   });
 
-  it("busca 'maria' ativa, pedido de outro cliente: ignora", () => {
+  it("pedidos-4: busca 'maria' ativa, pedido de outro cliente: RECARREGA — a RPC decide (telefone e product_name só o servidor casa)", () => {
+    // Item 4 da tarefa useOrders-cancelados-janela-e-colunas: a busca NÃO é
+    // decisão local. O Order do realtime vem sem itens, então um pedido
+    // comprado pela "Maria" cujo cliente é anônimo no payload não casa
+    // aqui, mas casa na RPC (unaccent no product_name dos itens, telefone
+    // por dígito). Descartar em silêncio era esconder do lojista um pedido
+    // que ele está procurando; a recarga é debounced pelo chamador.
     const decisao = decidirRealtimeInsertAdmin(
       pedido({ customer: { name: "João da Silva" } as Order["customer"] }),
       consulta(0, "all", "maria"),
+    );
+    expect(decisao).toBe("recarregar");
+  });
+
+  it("pedidos-4: busca ativa E status fora do filtro: IGNORA do mesmo jeito — busca não resgata pedido de outra visão", () => {
+    // A recarga por busca só vale quando o pedido É candidato à visão
+    // (status e período casam): sem esta ordem, todo INSERT com busca ativa
+    // viraria recarga — uma rajada de pedidos de outra visão pagaria RPC de
+    // toco.
+    const decisao = decidirRealtimeInsertAdmin(
+      pedido({ status: "pending" }),
+      consulta(0, "cancelled", "maria"),
     );
     expect(decisao).toBe("ignorar");
   });

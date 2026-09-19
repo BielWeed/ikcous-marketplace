@@ -180,12 +180,16 @@ describe("fetchPedidosCancelados não repete a varredura inteira sem necessidade
     rpc.mockReset();
     chamadasGetAdminOrdersPaged = [];
     rpc.mockImplementation((nome: string, args: any) => {
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         chamadasGetAdminOrdersPaged.push(args);
         return {
           abortSignal: () =>
             Promise.resolve({
-              data: { data: [linhaCanceladaFake("p1")], total_count: 1 },
+              data: {
+                data: [linhaCanceladaFake("p1")],
+                total_count: 1,
+                fora_da_janela: 0,
+              },
               error: null,
             }),
         };
@@ -217,7 +221,7 @@ describe("fetchPedidosCancelados não repete a varredura inteira sem necessidade
     });
 
     // O DEFEITO: sem a janela anti-redundância, esta segunda chamada
-    // dispara `get_admin_orders_paged` de novo — mesmo sem nada ter
+    // dispara a varredura de cancelados de novo — mesmo sem nada ter
     // mudado desde a primeira, um instante atrás (a mesma reativação de
     // aba que o `useEffect([active, fetchPedidosCancelados])` de
     // AdminOrdersView.tsx dispara a cada troca de aba).
@@ -280,14 +284,18 @@ describe("achado 1 (BLOQUEIA, rodada de correção 15/09/2026): a janela anti-re
     // sem argumento nenhum).
     let pedidoBAindaNaLista = true;
     rpc.mockImplementation((nome: string) => {
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         const linhas = pedidoBAindaNaLista
           ? [linhaCanceladaFake("pedido-A"), linhaCanceladaFake("pedido-B")]
           : [linhaCanceladaFake("pedido-A")];
         return {
           abortSignal: () =>
             Promise.resolve({
-              data: { data: linhas, total_count: linhas.length },
+              data: {
+                data: linhas,
+                total_count: linhas.length,
+                fora_da_janela: 0,
+              },
               error: null,
             }),
         };
@@ -367,7 +375,7 @@ describe("achado 2 (BLOQUEIA, rodada de correção 15/09/2026): uma busca já em
     const chamadasGetAdminOrdersPaged: any[] = [];
 
     rpc.mockImplementation((nome: string, args: any) => {
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         numeroDaChamada += 1;
         chamadasGetAdminOrdersPaged.push(args);
         if (numeroDaChamada === 1) {
@@ -383,6 +391,7 @@ describe("achado 2 (BLOQUEIA, rodada de correção 15/09/2026): uma busca já em
               data: {
                 data: [linhaCanceladaFake("pedido-B")],
                 total_count: 1,
+                fora_da_janela: 0,
               },
               error: null,
             }),
@@ -415,7 +424,7 @@ describe("achado 2 (BLOQUEIA, rodada de correção 15/09/2026): uma busca já em
     // O voo 1 finalmente assenta, com um retrato de ANTES do cancelamento
     // de B (nenhum pedido).
     resolverPrimeiraChamada({
-      data: { data: [], total_count: 0 },
+      data: { data: [], total_count: 0, fora_da_janela: 0 },
       error: null,
     });
     await act(async () => {
@@ -442,7 +451,7 @@ describe("achado 2 (BLOQUEIA, rodada de correção 15/09/2026): uma busca já em
       if (nome === "update_order_status_atomic") {
         return Promise.resolve({ error: null });
       }
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         chamadasGetAdminOrdersPaged.push(args);
         return {
           abortSignal: () =>
@@ -450,6 +459,7 @@ describe("achado 2 (BLOQUEIA, rodada de correção 15/09/2026): uma busca já em
               data: {
                 data: [linhaCanceladaFake("pedido-A")],
                 total_count: 1,
+                fora_da_janela: 0,
               },
               error: null,
             }),

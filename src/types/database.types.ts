@@ -2267,6 +2267,14 @@ export type Database = {
         };
         Returns: Json;
       };
+      get_admin_orders_cancelados_recentes: {
+        Args: {
+          p_dias?: number | null;
+          p_page?: number;
+          p_page_size?: number;
+        };
+        Returns: Json;
+      };
       get_admin_orders_paged: {
         Args: {
           p_canal?: string;

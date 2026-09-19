@@ -2,6 +2,7 @@ import { statusConfig } from "@/components/admin/orders/OrderStatusBadge";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
@@ -1167,7 +1168,16 @@ export function decidirRealtimeInsertAdmin(
       .filter(Boolean)
       .some((campo) => String(campo).toLowerCase().includes(busca));
 
-  if (!casaStatus || !casaPeriodo || !casaBusca) return "ignorar";
+  // Item 4 da tarefa useOrders-cancelados-janela-e-colunas: BUSCA não é
+  // decisão local. A RPC casa unaccent (nome/cupom/rastreio), telefone por
+  // dígito e product_name NOS ITENS (20261163000000:230-234) — o último é
+  // impossível de conferir na memória, porque o Order do realtime vem sem
+  // itens. Um pedido que não casa aqui pode muito bem casar lá: manda a
+  // RPC decidir (o chamador debounced a recarga), em vez de descartar em
+  // silêncio um pedido que a lojista está procurando.
+  if (!casaStatus || !casaPeriodo) return "ignorar";
+
+  if (!casaBusca) return "recarregar";
 
   if (filtroDePagamentoAtivo || filtroDeCanalAtivo) return "recarregar";
 
@@ -1571,6 +1581,16 @@ export function useOrders(
   const [pedidosCanceladosIncompleto, setPedidosCanceladosIncompleto] =
     useState(false);
 
+  // pedidos-4 (migration 20261164000000): cancelados com cancelamento
+  // ANTERIOR à janela da varredura enxuta — o número que o servidor devolve
+  // em 'fora_da_janela'. Sem ele, o recorte de 90 dias esconderia pendência
+  // antiga (estorno devido, mercadoria a voltar) em silêncio — e a lista de
+  // cancelados é lista de PENDÊNCIAS: o BLOQUEIA da revisão de 17/09 foi
+  // exatamente sobre pendência invisível. O dropdown de alertas
+  // (AlertasCancelados) mostra o número e oferece a varredura completa
+  // (`buscarTambemCanceladosAntigos`, abaixo).
+  const [canceladosForaDaJanela, setCanceladosForaDaJanela] = useState(0);
+
   // useOrders-1417 (revisão de 15/09/2026): espelho SÓ-LEITURA de
   // `pedidosCancelados` num ref — a janela anti-redundância abaixo precisa
   // devolver o último resultado conhecido de dentro de uma função estável
@@ -1646,11 +1666,17 @@ export function useOrders(
    *      `updateOrderStatus` nem pelo canal) — a defasagem passa a ter
    *      teto de `JANELA_ANTI_REDUNDANCIA_MS`, nunca mais ilimitada.
    *
-   * A correção NÃO pode mudar o que a RPC recebe (página/tamanho/filtro):
-   * o teste "os seis argumentos da primeira página são exatamente os
-   * fixos" (tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx)
-   * trava esse contrato com igualdade exata — não é este achado que decide
-   * mexer nele. Só o SUCESSO grava o instante/gatilho da última busca: uma
+   * Desde a frente pedidos-4 (migration 20261164000000) a consulta NÃO é
+   * mais a get_admin_orders_paged: a varredura fala com a RPC enxuta
+   * própria get_admin_orders_cancelados_recentes, que recorta pela data do
+   * CANCELAMENTO (não pela de criação — o BLOQUEIA da revisão de 17/09:
+   * pedido criado há 100 dias e cancelado ontem não pode sumir da lista)
+   * e devolve só as colunas que o painel lê, com `fora_da_janela`
+   * contando quem ficou fora da janela. O laço de paginação e o teto de
+   * páginas continuam travados por teste com igualdade exata
+   * (tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx
+   * e tests/front/use-orders-cancelados-janela-de-tempo.test.tsx). Só o
+   * SUCESSO grava o instante/gatilho da última busca: uma
    * falha (achado B, abaixo) não pode virar cache — a próxima chamada tem
    * que tentar de novo, não repetir a lista vazia/incompleta pela janela
    * inteira.
@@ -1703,6 +1729,11 @@ export function useOrders(
    * ali antes de religar.
    */
   const desmontadoRef = useRef(false);
+  // pedidos-4: modo "buscar também os antigos" — quando o lojista pede, a
+  // varredura passa a ir SEM janela (p_dias null) e FICA assim (sticky):
+  // depois que ele pediu a lista completa, servir de novo a recortada
+  // esconde justamente o que ele já sabe que existe.
+  const varreduraSemJanelaRef = useRef(false);
 
   const fetchPedidosCancelados = useCallback(async (): Promise<Order[]> => {
     if (!enabled) return [];
@@ -1732,21 +1763,35 @@ export function useOrders(
         let page = 0;
         let acumulado: Order[] = [];
         let totalCount = 0;
+        let foraDaJanela = 0;
         do {
-          const query = (supabase.rpc as any)("get_admin_orders_paged", {
-            p_search: "",
-            p_status: "cancelled",
-            p_start_date: "",
-            p_end_date: "",
-            p_page: page,
-            p_page_size: PAGE_SIZE,
-          }).abortSignal(signal);
+          const response = await supabase
+            .rpc("get_admin_orders_cancelados_recentes", {
+              // pedidos-4: a janela é sobre a data do CANCELAMENTO (o
+              // servidor resolve pela última linha 'cancelled' do histórico
+              // de status — 20261164000000). p_dias null EXPLÍCITO desliga
+              // a janela: omitir o argumento recairia no DEFAULT 90 do
+              // banco, e o "buscar também os antigos" viraria no-op.
+              p_dias: varreduraSemJanelaRef.current
+                ? null
+                : JANELA_PEDIDOS_CANCELADOS_DIAS,
+              p_page: page,
+              p_page_size: PAGE_SIZE,
+            })
+            .abortSignal(signal);
 
-          const { data, error } = await query;
+          const { data, error } = response;
           if (error) throw error;
 
-          const orderData = data?.data || [];
-          totalCount = Number(data?.total_count) || 0;
+          // Returns jsonb: { data, total_count, fora_da_janela }.
+          const payload = (data ?? {}) as {
+            data?: any[];
+            total_count?: number | string;
+            fora_da_janela?: number | string;
+          };
+          const orderData = payload.data || [];
+          totalCount = Number(payload.total_count) || 0;
+          foraDaJanela = Number(payload.fora_da_janela) || 0;
           acumulado = acumulado.concat(
             orderData.map((item: any) => mapOrderFromDB(item)),
           );
@@ -1758,6 +1803,10 @@ export function useOrders(
         // `totalCount` — sem esta linha a lista truncada era gravada como se
         // fosse a íntegra, e a tela não tinha como diferenciar as duas.
         setPedidosCanceladosIncompleto(acumulado.length !== totalCount);
+        // pedidos-4: a honestidade do recorte — quem ficou fora da janela é
+        // contado pelo servidor ('fora_da_janela') e exposto na tela; com
+        // p_dias null o próprio servidor devolve 0.
+        setCanceladosForaDaJanela(foraDaJanela);
         // Só grava quando a busca de verdade terminou (sucesso, completa ou
         // truncada) — é o que faz a janela anti-redundância, acima, servir
         // cache só de um resultado que existiu de verdade.
@@ -1882,6 +1931,20 @@ export function useOrders(
 
     return dispararOuEncadearBuscaCancelados(gatilhoCanceladosSeqRef.current);
   }, [enabled]);
+
+  /**
+   * pedidos-4: o "buscar também os antigos" do dropdown de alertas
+   * (AlertasCancelados). Liga o modo sem janela (sticky —
+   * `varreduraSemJanelaRef`, acima) e avança o gatilho ANTES de chamar:
+   * devolver o cache da janela anti-redundância aqui seria responder
+   * "já busquei" com justamente a lista recortada que o lojista pediu para
+   * completar — o gatilho novo força um voo real.
+   */
+  const buscarTambemCanceladosAntigos = useCallback(() => {
+    varreduraSemJanelaRef.current = true;
+    gatilhoCanceladosSeqRef.current += 1;
+    return fetchPedidosCancelados();
+  }, [fetchPedidosCancelados]);
 
   /**
    * Item 5 da tarefa useOrders-cancelados-janela-e-colunas: o ramo
@@ -3476,6 +3539,10 @@ export function useOrders(
     // Achados B/D da revisão de 26/08/2026 (rodada 4) — ver o docstring de
     // `pedidosCanceladosIncompleto`, acima.
     pedidosCanceladosIncompleto,
+    // pedidos-4 (20261164000000): a honestidade do recorte de 90 dias —
+    // quantos cancelados ficaram fora da janela e como buscar os de fora.
+    canceladosForaDaJanela,
+    buscarTambemCanceladosAntigos,
     fetchPedidosCancelados,
     fetchOrdersByWhatsapp,
     generateOrderOtp,

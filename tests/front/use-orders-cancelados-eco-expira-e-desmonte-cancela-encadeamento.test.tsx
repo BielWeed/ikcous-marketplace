@@ -183,12 +183,16 @@ describe("pedidosCanceladosLocalmenteRef expira em 30s (ressalva 'a' da revisão
       if (nome === "update_order_status_atomic") {
         return Promise.resolve({ error: null });
       }
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         chamadasGetAdminOrdersPaged.push(true);
         return {
           abortSignal: () =>
             Promise.resolve({
-              data: { data: [linhaCanceladaFake("pedido-A")], total_count: 1 },
+              data: {
+                data: [linhaCanceladaFake("pedido-A")],
+                total_count: 1,
+                fora_da_janela: 0,
+              },
               error: null,
             }),
         };
@@ -273,7 +277,7 @@ describe("cleanup de desmonte cancela o encadeamento do voo sujo (ressalva 'b' d
     const chamadasGetAdminOrdersPaged: any[] = [];
 
     rpc.mockImplementation((nome: string) => {
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         numeroDaChamada += 1;
         chamadasGetAdminOrdersPaged.push(true);
         if (numeroDaChamada === 1) {
@@ -285,7 +289,7 @@ describe("cleanup de desmonte cancela o encadeamento do voo sujo (ressalva 'b' d
         return {
           abortSignal: () =>
             Promise.resolve({
-              data: { data: [], total_count: 0 },
+              data: { data: [], total_count: 0, fora_da_janela: 0 },
               error: null,
             }),
         };
@@ -325,7 +329,10 @@ describe("cleanup de desmonte cancela o encadeamento do voo sujo (ressalva 'b' d
     // Só agora o voo #1 assenta — o encadeamento (`.then`) dispararia a
     // religação, se não fosse cancelado pelo cleanup de desmonte.
     await act(async () => {
-      resolverVoo1({ data: { data: [], total_count: 0 }, error: null });
+      resolverVoo1({
+        data: { data: [], total_count: 0, fora_da_janela: 0 },
+        error: null,
+      });
       await resultadoVoo1.catch(() => {});
       // dá tempo para a cadeia `.catch().then(...)` rodar, se for rodar
       await Promise.resolve();

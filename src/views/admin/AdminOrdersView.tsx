@@ -287,6 +287,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // Achados B/D da revisão de 26/08/2026 (rodada 4) — mesma razão do
     // default acima, campo mais novo ainda.
     pedidosCanceladosIncompleto = false,
+    // pedidos-4 (20261164000000) — mesma razão dos defaults acima: quem
+    // mocou o hook antes deste campo não o conhece; 0 = nada fora da janela.
+    canceladosForaDaJanela = 0,
+    buscarTambemCanceladosAntigos = async () => [],
   } = useOrders(active ?? false, true, {
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload),
   });
@@ -1348,6 +1352,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               pedidosEsperandoRetorno={pedidosEsperandoRetorno}
               pedidosParaDevolverAgora={pedidosParaDevolverAgora}
               incompleto={pedidosCanceladosIncompleto}
+              foraDaJanela={canceladosForaDaJanela}
+              onIncluirAntigos={() => {
+                void buscarTambemCanceladosAntigos();
+              }}
               confirmandoRetornoId={confirmandoRetornoId}
               onConfirmarRetorno={handleConfirmarRetorno}
               estornandoId={estornandoId}
