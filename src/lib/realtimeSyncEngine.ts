@@ -16,7 +16,7 @@
  * @module realtimeSyncEngine
  */
 
-import type { DataVault, StoreName } from "@/lib/dataVault";
+import { DataVault, type StoreName } from "@/lib/dataVault";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
@@ -199,6 +199,30 @@ const bc =
     : null;
 
 // ─── Engine ──────────────────────────────────────────────────────────────────
+
+/**
+ * dataVault-129: quem chegou até aqui segurando uma instância capturada há
+ * tempo (o `start(vault)` do StoreContext guarda-a por closure) pode estar
+ * segurando uma CONEXÃO MORTA — `onversionchange` fechou-a quando outra aba
+ * subiu a versão do cofre. Escrever nela é InvalidStateError (só console) e
+ * ler com `getAll` devolve `[]`, que o catchUp leria como "cofre vazio".
+ * Nas bordas ASSÍNCRONAS (`_applyChangeAndNotify`, `catchUp`) a instância é
+ * re-resolvida: a sadia volta como está; a morta é substituída pela
+ * reaberta (o init memoriza a promessa do singleton — custo desprezível).
+ * Dublês de teste não implementam `isClosed` e passam direto.
+ *
+ * Exportada por ser a peça testável do conserto (prova de mutação: remover
+ * a consulta a `isClosed` faz o teste de reabertura falhar).
+ */
+export async function cofreVivo(instancia: DataVault): Promise<DataVault> {
+  if (typeof instancia.isClosed === "function" && instancia.isClosed()) {
+    console.warn(
+      "[RealtimeSyncEngine] DataVault fechado (versionchange de outra aba) — reabrindo o singleton antes de tocar nele.",
+    );
+    return DataVault.init();
+  }
+  return instancia;
+}
 
 export const RealtimeSyncEngine = {
   /**
@@ -466,6 +490,11 @@ export const RealtimeSyncEngine = {
     raw: any,
     old: any,
   ): Promise<void> {
+    // dataVault-129: toda borda assíncrona re-resolve o cofre — o handle
+    // capturado em start() pode ter sido fechado por um versionchange de
+    // outra aba; gravar nele seria InvalidStateError com aviso à tela como
+    // se tivesse gravado.
+    vault = await cofreVivo(vault);
     // A exclusão de produto deste app é *soft-delete*: `useProducts` grava
     // `deleted_at` com um UPDATE, então a exclusão chega aqui como UPDATE. Sem
     // esta checagem o `case "UPDATE"` daria `vault.put` e gravaria de volta no
@@ -668,6 +697,9 @@ export const RealtimeSyncEngine = {
   async catchUp(vault: DataVault, isAdmin: boolean): Promise<void> {
     if (_isCatchingUp) return;
     _isCatchingUp = true;
+    // dataVault-129: mesma regra da borda de escrita — a rodada inteira
+    // (leituras e reconciliação) passa a rodar sobre o cofre VIVO.
+    vault = await cofreVivo(vault);
     console.log("[RealtimeSyncEngine] 🔄 Running catchUp/reconciliation...");
 
     try {
@@ -853,7 +885,15 @@ export const RealtimeSyncEngine = {
       if (serverProductsSummary) {
         const serverSummary = serverProductsSummary as any[];
         const serverIds = new Set(serverSummary.map((p: any) => p.id));
-        const localProducts = await vault.getAll<Product>("products");
+        // dataVault-129: getAllOrThrow, e não getAll. Uma leitura quebrada
+        // (conexão fechada por versionchange, store ausente) precisa ABORTAR
+        // a rodada — o getAll engolia o throw e devolvia [], que aqui embaixo
+        // significaria "o cofre está vazio": TODO o catálogo entraria em
+        // outOfDateIds/deletedIds a cada foco da aba. O rejection sobe até o
+        // catch do próprio catchUp (log) e o finally libera a trava — sem
+        // setLastSync (nada é marcado como sincronizado), sem escrita, sem
+        // aviso à tela com estado que o cofre não tem.
+        const localProducts = await vault.getAllOrThrow<Product>("products");
 
         // Find deleted/inactive items: in local but not on server
         const deletedIds = localProducts

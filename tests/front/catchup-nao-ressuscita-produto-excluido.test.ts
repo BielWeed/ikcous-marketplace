@@ -170,6 +170,9 @@ function criarDubleVault(conteudoDoCofre: any[] = []) {
     // caso da reconciliação começa com o cofre JÁ populado, porque é dele
     // que sai a lista de "está aqui e não está no servidor".
     getAll: vi.fn(async () => conteudoDoCofre),
+    // dataVault-129: o DataVault real tem o par; o motor passa a ler pelo
+    // getAllOrThrow (leitura quebrada NÃO vira "cofre vazio").
+    getAllOrThrow: vi.fn(async () => conteudoDoCofre),
   };
 }
 

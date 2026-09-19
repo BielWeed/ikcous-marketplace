@@ -83,9 +83,22 @@ let _initPromise: Promise<DataVault> | null = null;
 
 export class DataVault {
   private db: IDBDatabase;
+  // dataVault-129: marcada quando `onversionchange` fecha ESTA conexão
+  // (outra aba subiu o DATA_VAULT_VERSION). Quem já segurou a instância
+  // (o RealtimeSyncEngine a captura em start() e guarda por closure)
+  // consulta `isClosed()` para REABRIR o singleton em vez de escrever na
+  // conexão morta (InvalidStateError, só console) ou ler `[]` do getAll —
+  // que o catchUp leria como "cofre vazio" e reconciliaria o catálogo
+  // inteiro, a cada foco da aba, para sempre.
+  private _fechada = false;
 
   private constructor(db: IDBDatabase) {
     this.db = db;
+  }
+
+  /** A conexão desta instância foi fechada por um versionchange de outra aba? */
+  isClosed(): boolean {
+    return this._fechada;
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -124,10 +137,20 @@ export class DataVault {
 
         request.onsuccess = () => {
           const db = request.result;
+          // A instância DESTA conexão — o onversionchange abaixo precisa
+          // distinguir "a instância viva é a minha" de "o singleton já foi
+          // reaberto por outra rodada": marcar a instância ERRADA apagaria
+          // uma conexão saudável.
+          let instanciaDestaConexao: DataVault | null = null;
 
           // Handle version change from another tab
           db.onversionchange = () => {
             db.close();
+            // dataVault-129: marca ANTES de soltar o singleton — quem já
+            // capturou a instância só descobre a morte consultando-a.
+            if (_instance !== null && _instance === instanciaDestaConexao) {
+              _instance._fechada = true;
+            }
             _instance = null;
             _initPromise = null;
             console.warn(
@@ -148,7 +171,8 @@ export class DataVault {
             window.addEventListener("beforeunload", cleanClose);
           }
 
-          _instance = new DataVault(db);
+          instanciaDestaConexao = new DataVault(db);
+          _instance = instanciaDestaConexao;
           console.log(
             "[DataVault] Ready (v%s, stores: %s)",
             DATA_VAULT_VERSION,
