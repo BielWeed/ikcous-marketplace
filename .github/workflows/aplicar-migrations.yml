@@ -1,0 +1,84 @@
+name: Aplicar migrations (Supabase)
+
+# Aplica migrations pela RECEITA DA CASA: scripts/db-apply.cjs, que envolve o
+# arquivo numa transação única, roda a verificação de VERIFICACOES e só
+# commita se tudo bater (saída 0). A conexão sai SEMPRE do segredo
+# DATABASE_URL do repositório — nada de credencial no workflow.
+#
+# Só roda a PEDIDO (workflow_dispatch), nunca em push. A impressão digital do
+# banco roda ANTES de qualquer DDL: quem dispara lê o log e sabe qual banco
+# é (nome, contagem de pedidos, nome da loja) antes da primeira migration.
+#
+# USO: Actions → "Aplicar migrations (Supabase)" → Run workflow → lista de
+# arquivos de supabase/migrations/, separados por vírgula, NA ORDEM (a fila é
+# serializada). Vazio = só imprime a impressão digital (use para conferir o
+# banco antes de decidir).
+
+on:
+  workflow_dispatch:
+    inputs:
+      migracoes:
+        description: "Arquivos em supabase/migrations/ (vírgula, na ordem; vazio = só fingerprint)"
+        required: false
+        default: ""
+
+jobs:
+  aplicar:
+    name: Aplicar migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Impressão digital do banco (antes de qualquer DDL)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node -e "
+            const { Client } = require('pg');
+            (async () => {
+              const c = new Client({ connectionString: process.env.DATABASE_URL });
+              await c.connect();
+              const banco = await c.query('select current_database() as db, version() as v');
+              const pedidos = await c.query('select count(*)::int as total from marketplace_orders');
+              const loja = await c.query(\"select config_json->>'storeName' as loja from store_config limit 1\");
+              const migrations = await c.query(\"select count(*)::int as aplicadas from supabase_migrations.schema_migrations\");
+              console.log('BANCO:', banco.rows[0].db);
+              console.log('LOJA:', loja.rows[0]?.loja ?? '(sem store_config)');
+              console.log('PEDIDOS:', pedidos.rows[0].total);
+              console.log('MIGRATIONS JA APLICADAS (ledger supabase):', migrations.rows[0].aplicadas);
+              await c.end();
+            })().catch((e) => { console.error(e.message); process.exit(1); });
+          "
+
+      - name: Aplica cada migration (db-apply: transação única + verificação)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MIGRACOES: ${{ inputs.migracoes }}
+        run: |
+          IFS=',' read -ra ARQS <<< "$MIGRACOES"
+          for f in "${ARQS[@]}"; do
+            arquivo=$(echo "$f" | xargs)
+            [ -z "$arquivo" ] && continue
+            # Guarda: só arquivo de migration com nome da casa; nada de caminho
+            # arbitrário vindo do input.
+            echo "$arquivo" | grep -Eq '^[0-9]{14}_[a-z0-9_-]+\.sql$' || { echo "RECUSADO (nome fora do padrão): $arquivo"; exit 1; }
+            [ -f "supabase/migrations/$arquivo" ] || { echo "NÃO EXISTE: supabase/migrations/$arquivo"; exit 1; }
+            echo "=== APLICANDO: $arquivo ==="
+            node scripts/db-apply.cjs "$arquivo" || exit 1
+          done
+          [ ${#ARQS[@]} -eq 0 ] || [ -z "${ARQS[0]}" ] && echo "(nenhuma migration pedida — só fingerprint)"
+
+      - name: Pós-checagem (objetos do código no banco)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # O mesmo detector do CI: reprova se RPC que o código chama ficou
+          # AUSENTE ou INALCANÇÁVEL depois das migrations.
+          node scripts/db-check-objetos-do-codigo.mjs
