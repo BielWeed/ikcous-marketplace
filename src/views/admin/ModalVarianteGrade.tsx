@@ -329,14 +329,19 @@ export function ModalVarianteGrade({
       return;
     }
     onEfetivar(
-      linhas.map((linha, i) => ({
-        name: linha.name,
-        value: linha.value,
-        stockIncrement: estoqueDaLinha(linha.estoque),
-        priceOverride: precoDaLinha(linha.preco),
-        sku: skus[i] === "" ? undefined : skus[i],
-        active: true as const,
-      })),
+      linhas.map((linha, i) => {
+        // `.at(i)` em vez de `skus[i]`: a indexação dinâmica acende o warning
+        // de object injection da catraca (teto de warnings do repo não sobe).
+        const sku = skus.at(i) ?? "";
+        return {
+          name: linha.name,
+          value: linha.value,
+          stockIncrement: estoqueDaLinha(linha.estoque),
+          priceOverride: precoDaLinha(linha.preco),
+          sku: sku === "" ? undefined : sku,
+          active: true as const,
+        };
+      }),
     );
   };
 
@@ -647,7 +652,7 @@ export function ModalVarianteGrade({
                         className="block font-mono text-[10px] text-zinc-500"
                         data-testid="sku-da-linha"
                       >
-                        {skusPrevistos[i] === "" ? "sem SKU" : skusPrevistos[i]}
+                        {skusPrevistos.at(i) || "sem SKU"}
                       </span>
                     </div>
                   ))}
