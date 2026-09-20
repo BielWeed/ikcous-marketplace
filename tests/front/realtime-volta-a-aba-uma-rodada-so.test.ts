@@ -30,7 +30,7 @@
 // localStorage experimental do Node 25 substitui o do jsdom sem clear/
 // removeItem, então nenhum teste novo da casa depende do de verdade.
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão já
@@ -66,6 +66,7 @@ vi.mock("@/lib/supabase", () => ({
         Promise.resolve({ data: null, error: null }),
       );
       consulta.select = vi.fn(() => consulta);
+      // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase
       consulta.then = (
         onOk: (v: { data: null; error: null }) => unknown,
         onErro: (e: unknown) => unknown,
@@ -126,9 +127,7 @@ describe("voltar à aba custa UMA rodada (realtimeSyncEngine-317)", () => {
     const { RealtimeSyncEngine: engine } = await import(
       "@/lib/realtimeSyncEngine"
     );
-    const espiao = vi
-      .spyOn(engine, "catchUp")
-      .mockResolvedValue(undefined);
+    const espiao = vi.spyOn(engine, "catchUp").mockResolvedValue(undefined);
     const parar = engine.start(dubleDeCofreVazio() as any, true, true);
 
     disparaVisibilidade("visible");

@@ -75,6 +75,7 @@ function builderDeProduto(tabela: string): any {
     chamadasDeProduto.push({ tabela, select: colunas });
     return consulta;
   });
+  // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase
   consulta.then = (
     onOk: (v: unknown) => unknown,
     onErro: (e: unknown) => unknown,
@@ -109,6 +110,7 @@ function builderDeOutraTabela(): any {
   consulta.eq = vi.fn(() => consulta);
   consulta.limit = vi.fn(() => consulta);
   consulta.single = vi.fn(() => Promise.resolve({ data: null, error: null }));
+  // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase
   consulta.then = (
     onOk: (v: { data: null; error: null }) => unknown,
     onErro: (e: unknown) => unknown,
@@ -192,16 +194,12 @@ describe("catchUp — admin lê o mesmo esquema da vitrine (realtimeSyncEngine-9
     );
 
     await engine.catchUp(dubleDeCofreVazio() as any, true);
-    const selectDoAdmin = chamadasDeProduto
-      .slice(1)
-      .map((c) => c.select);
+    const selectDoAdmin = chamadasDeProduto.slice(1).map((c) => c.select);
 
     chamadasDeProduto = [];
     consultasDeProduto = 0;
     await engine.catchUp(dubleDeCofreVazio() as any, false);
-    const selectDaVitrine = chamadasDeProduto
-      .slice(1)
-      .map((c) => c.select);
+    const selectDaVitrine = chamadasDeProduto.slice(1).map((c) => c.select);
 
     expect(selectDoAdmin.length).toBeGreaterThan(0);
     expect(selectDoAdmin).toEqual(selectDaVitrine);
