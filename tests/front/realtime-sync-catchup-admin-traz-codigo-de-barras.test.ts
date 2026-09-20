@@ -3,20 +3,27 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * C5.1 — o ramo ADMIN do catchUp (src/lib/realtimeSyncEngine.ts) busca os
- * detalhes de produto por uma LISTA EXPLÍCITA de colunas (o comentário
- * ao lado explica por quê: `*` pediria `custo`, coluna com SELECT negado ao
- * `authenticated`). `codigo_barras` é coluna nova (migration 20261160000000)
- * e, sem entrar nessa lista, o catch-up do admin nunca traz o código de
- * barras para o IndexedDB — o PDV bipa e não encontra nada até a próxima
- * carga completa da página.
+ * C5.1 → realtimeSyncEngine-952 — a garantia mudou de mecanismo, o compromisso
+ * não: o catch-up do ADMIN continua trazendo `codigo_barras` para o cofre.
  *
- * Prova ESTÁTICA por regex sobre o texto-fonte, no molde de
- * tests/front/pwa-precache-wasm-e-chunk-do-leitor.test.ts: mais barata que
- * montar um Supabase dublê inteiro para uma checagem que é, no fundo, sobre
- * o texto de uma string de `.select(...)`. `path.resolve` com
- * `import.meta.dirname` de propósito: caminho ESTÁTICO aos olhos do
- * security/detect-non-literal-fs-filename, sem acordar warning novo.
+ * ANTES (C5.1): o ramo admin buscava detalhes na TABELA `produtos` com uma
+ * LISTA EXPLÍCITA de colunas (nascida no laudo #2 do PR #395 para contornar o
+ * SELECT negado de `custo`), e este teste travava `codigo, codigo_barras`
+ * dentro da lista — coluna nova esquecida na lista era coluna que o PDV não
+ * bipava até a próxima carga completa.
+ *
+ * AGORA (-952, frentes/pwa.json da passagem de 17/09): a lista foi APOSENTADA.
+ * O ramo admin lê a MESMA VIEW do `fetchProducts` (`vw_produtos_admin`) com
+ * `*, product_variants(*)` — um esquema só, do qual `codigo_barras` (e
+ * qualquer coluna futura) participa sozinho. A prova PROFUNDA (a coluna
+ * chegando viva ao cofre pelo mapper) é comportamental, em
+ * tests/front/realtime-catchup-usa-o-mesmo-esquema-da-vitrine.test.ts; esta
+ * aqui é a catraca estática: se alguém devolver uma lista de colunas escolhida
+ * à mão ao catch-up de detalhes, ou trocar a view pela tabela, estes dois
+ * regex falham antes de o defeito chegar ao PDV.
+ *
+ * `path.resolve` com `import.meta.dirname` de propósito: caminho ESTÁTICO aos
+ * olhos do security/detect-non-literal-fs-filename, sem acordar warning novo.
  */
 const texto = readFileSync(
   path.resolve(import.meta.dirname, "../../src/lib/realtimeSyncEngine.ts"),
@@ -24,21 +31,17 @@ const texto = readFileSync(
 );
 
 describe("catchUp admin (realtimeSyncEngine.ts) traz codigo_barras", () => {
-  it("a lista explícita do ramo admin contém codigo_barras logo depois de codigo", () => {
-    // Âncora em "codigo, codigo_barras" (e não só um toContain solto de
-    // "codigo_barras") para não passar por acidente se a string aparecer só
-    // no comentário do arquivo, e para travar a posição pedida pela tarefa
-    // ("logo depois de codigo").
-    expect(texto).toMatch(/\bcodigo,\s*codigo_barras\b/);
+  it("não existe mais lista de colunas escolhida a dedo no catch-up de detalhes", () => {
+    // A assinatura da lista antiga: "codigo, codigo_barras" lado a lado. Se
+    // este regex casar, alguém recriou a lista (e esqueceu a próxima coluna
+    // nova do PDV nela).
+    expect(texto).not.toMatch(/\bcodigo,\s*codigo_barras\b/);
   });
 
-  it("a mesma linha ainda pede product_variants(*) — a lista não perdeu a grade de variações", () => {
+  it("o ramo admin busca os detalhes na vw_produtos_admin, a porta do fetchProducts", () => {
     const casamento = texto.match(
-      /isAdmin\s*\?\s*"([^"]*product_variants\(\*\))"/,
+      /from\(\s*isAdmin\s*\?\s*"vw_produtos_admin"/,
     );
     expect(casamento).not.toBeNull();
-    const listaDoRamoAdmin = casamento?.[1] ?? "";
-    expect(listaDoRamoAdmin).toContain("codigo_barras");
-    expect(listaDoRamoAdmin).toContain("product_variants(*)");
   });
 });

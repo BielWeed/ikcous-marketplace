@@ -191,6 +191,12 @@ export const TABLE_CONFIGS: TableConfig[] = [
 let _channel: RealtimeChannel | null = null;
 let _bcListener: ((event: MessageEvent) => void) | null = null;
 let _isCatchingUp = false;
+// realtimeSyncEngine-317: janela mínima entre rodadas de catchUp disparadas
+// pelos gatilhos de reconexão/visibilidade (ver `rodadaPorGatilho` em
+// `start`). Rodadas por outros caminhos (inscrição no canal, chamada direta)
+// não passam pela janela.
+const JANELA_MINIMA_ENTRE_GATILHOS_MS = 60_000;
+let _ultimoGatilhoDeRodada = 0;
 let _connectivityListeners: (() => void) | null = null;
 const _listeners = new Set<SyncCallback>();
 const bc =
@@ -331,11 +337,35 @@ export const RealtimeSyncEngine = {
 
       // Register connectivity/visibility change listeners
       if (typeof window !== "undefined") {
+        // realtimeSyncEngine-317: cada volta à aba disparava um catchUp
+        // COMPLETO (5 consultas + resumo do catálogo inteiro + detalhes) sem
+        // janela mínima — o mutex `_isCatchingUp` só evita rodadas
+        // CONCORRENTES, não repetidas. Alternar app/WhatsApp cinco vezes em
+        // um minuto (rotina de balcão) eram cinco varreduras completas sem
+        // nada ter mudado no servidor. Os dois gatilhos passam agora pela
+        // mesma janela: disparou há menos de um minuto, adia — o dado que
+        // mudou de verdade não depende da janela (chega pelo websocket, que
+        // não passa por aqui) e o catchUp do fim da janela cobre o resto.
+        const rodadaPorGatilho = (motivo: string) => {
+          const agora = Date.now();
+          if (
+            agora - _ultimoGatilhoDeRodada <
+            JANELA_MINIMA_ENTRE_GATILHOS_MS
+          ) {
+            console.log(
+              `[RealtimeSyncEngine] ${motivo}: última rodada há menos de ${JANELA_MINIMA_ENTRE_GATILHOS_MS / 1000}s — catchUp adiado.`,
+            );
+            return;
+          }
+          _ultimoGatilhoDeRodada = agora;
+          this.catchUp(vault, isAdmin).catch(() => {});
+        };
+
         const handleOnline = () => {
           console.log(
             "[RealtimeSyncEngine] Connection restored (online). Triggering catchUp...",
           );
-          this.catchUp(vault, isAdmin).catch(() => {});
+          rodadaPorGatilho("Conexão restabelecida");
         };
 
         const handleVisibilityChange = () => {
@@ -343,7 +373,7 @@ export const RealtimeSyncEngine = {
             console.log(
               "[RealtimeSyncEngine] Tab active (visible). Triggering catchUp...",
             );
-            this.catchUp(vault, isAdmin).catch(() => {});
+            rodadaPorGatilho("Aba ativa");
           }
         };
 
@@ -1002,18 +1032,23 @@ export const RealtimeSyncEngine = {
               inicio + TAMANHO_DO_LOTE_DE_IDS,
             );
             let detailQuery = supabase
-              .from(isAdmin ? "produtos" : ("vw_produtos_public" as any))
+              .from(
+                isAdmin ? "vw_produtos_admin" : ("vw_produtos_public" as any),
+              )
               .select(
-                // Laudo #2 (achado da revisão do PR #395): no ramo admin, o
-                // `*` pedia `custo` — coluna com SELECT NEGADO ao authenticated
-                // desde o BANCO-010 — e o `const { data }` sem checar `error`
-                // ENGOLIA o permission denied: o catch-up de detalhes do painel
-                // falhava em silêncio. Colunas explícitas (as 29 públicas) fazem
-                // a mesma leitura funcionar; o custo do admin segue vindo por
-                // vw_produtos_admin/RPCs, que são as portas de propósito.
-                isAdmin
-                  ? "id, nome, descricao, categoria, codigo, codigo_barras, preco_venda, preco_original, imagem_url, imagem_urls, estoque, estoque_minimo, ativo, deleted_at, data_cadastro, ultima_atualizacao, peso_kg, altura_cm, largura_cm, comprimento_cm, frete_gratis, tags, meta_title, meta_description, rating, review_count, sold, calculated_points, fornecedor_id, is_bestseller, product_variants(*)"
-                  : "*, product_variants(*)",
+                // realtimeSyncEngine-952: MESMA PORTA E MESMA LITERAL do
+                // `fetchProducts` (StoreContext) — um esquema só. A view
+                // resolve `custo` por `is_admin()` e traz `codigo_barras`
+                // sem ninguém precisar lembrar de coluna em lista. A lista
+                // escolhida a dedo que morava aqui (laudo #2 do PR #395,
+                // nascida porque `*` na TABELA pedia `custo` com SELECT
+                // negado ao authenticated) aposentou: toda coluna nova
+                // precisava entrar nela à mão, e o esquecimento era
+                // silencioso — o `putMany` SOBRESCREVE o registro do cofre,
+                // então cada catchUp regravava o produto sem o campo que
+                // ficou fora da lista (custo sumia; metade do catálogo com
+                // custo, metade sem, dependendo de quem gravou por último).
+                "*, product_variants(*)",
               )
               .in("id", lote);
             if (isAdmin) {
