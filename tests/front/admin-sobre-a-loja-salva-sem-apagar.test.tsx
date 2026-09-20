@@ -141,6 +141,15 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     });
   }
 
+  it("na montagem limpa o botão Salvar nasce desabilitado — ele é SÓ do form (pendência de identidade/horário não o habilita)", async () => {
+    await renderizarTela();
+    const botao = hospedeiro.querySelector(
+      "button.bg-admin-gold",
+    ) as HTMLButtonElement | null;
+    expect(botao).not.toBeNull();
+    expect(botao?.disabled).toBe(true);
+  });
+
   it("salvar manda SÓ os campos da tela (endereço + descrição), nunca horário/nome/whatsapp", async () => {
     await renderizarTela();
     await preencherESalvar(

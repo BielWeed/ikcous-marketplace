@@ -148,26 +148,34 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     .join(", ");
   const queryPrevia = endereco.trim() || config.originCep?.trim() || local;
 
-  const temAlteracaoNaoSalva =
-    formDirty || identidadePendente || horarioPendente;
+  // O guard de navegação cobre o TODO (qualquer seção pendente). Já o botão
+  // Salvar é SÓ do formulário (endereço/descrição) — identidade e horário
+  // têm saves próprios; habilitar o Salvar com pendência deles era botão
+  // mentiroso (achado da 1ª execução real, 20/09/2026).
 
   async function handleSubmit() {
-    if (saving || !active || isOffline) return;
+    if (saving || !active || isOffline || !formDirty) return;
     const life = lifecycle.current;
     const serial = ++life.serial;
     const isCurrent = () =>
       life.mounted && life.active && life.serial === serial;
+    const chosenEndereco = endereco.trim();
     setSaving(true);
     try {
       const success = await updateConfig(
         {
-          storeAddress: endereco.trim() || null,
+          storeAddress: chosenEndereco || null,
           storeDescription: descricaoDaLojaParaHtml(descricao) || null,
         },
         { isCurrent, silent: true },
       );
       if (!isCurrent()) return;
       if (success) {
+        // Re-sincroniza o formulário com o que foi GRAVADO (o baseline vem
+        // do config, que o updateConfig atualiza; sem isto, qualquer
+        // diferença de normalização deixava o botão habilitado para sempre).
+        setEndereco(chosenEndereco);
+        setDescricao(descricao.trim());
         toast.success("Sobre a Loja salvo");
       }
     } catch {
@@ -189,9 +197,8 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             acoes={
               <button
                 onClick={() => void handleSubmit()}
-                disabled={
-                  !isLoaded || isOffline || !temAlteracaoNaoSalva || saving
-                }
+                disabled={!isLoaded || isOffline || !formDirty || saving}
+                title="Salva o endereço e a descrição desta tela"
                 className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-gold px-4 text-[10.5px] font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-[#e3c25e] hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-2.5 sm:px-5"
               >
                 {saving ? (
