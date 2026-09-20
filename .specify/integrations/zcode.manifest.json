@@ -1,0 +1,16 @@
+{
+  "integration": "zcode",
+  "version": "1.0.7",
+  "files": {
+    ".zcode/skills/speckit-analyze/SKILL.md": "6204f7992f6a7e1d80d9290f2554022c7475e0bb272e1d0f091bd538f389fa2c",
+    ".zcode/skills/speckit-checklist/SKILL.md": "dcc6ae0c549001c02e0a3a4e3cdd156538f686df30f607eb507a67f83a437e7a",
+    ".zcode/skills/speckit-clarify/SKILL.md": "94040912e8cf66a281b7ad9de9cb29bcd7bb555e26a82b97468e98d6db594e49",
+    ".zcode/skills/speckit-constitution/SKILL.md": "ed73e673a9156d2fe206a8f2159a8d8a259908daea855bbea58937d0fa171d4c",
+    ".zcode/skills/speckit-converge/SKILL.md": "8272cbe46cfeb6230f2b17598e20166f0b8c6dfafff17183cca10fc03252677c",
+    ".zcode/skills/speckit-implement/SKILL.md": "f797dec68cb2265c27476621ae6a37601246739f8e42c6573717c5e6eadd3e1f",
+    ".zcode/skills/speckit-plan/SKILL.md": "11b448e1ccd4274825ee195a84f64673587fafc9fd380c0cf9bee295f5bd0745",
+    ".zcode/skills/speckit-specify/SKILL.md": "229d7cc276e60d16c18e18edd7ed5635a81a5e5a5c7607571e14d75f355a00b9",
+    ".zcode/skills/speckit-tasks/SKILL.md": "aae023a96e4db906c8bbb69dc7f1667728122b203dfc76aa3f331ea10d37a637",
+    ".zcode/skills/speckit-taskstoissues/SKILL.md": "f286e47c0e2f095a29d597f88777f66792a2972862c98982631df67be53877f3"
+  }
+}

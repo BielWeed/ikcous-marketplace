@@ -1,0 +1,130 @@
+{
+  "resultado": "instalado",
+  "arquitetura": "github-spec-kit",
+  "versao": "1.0.7",
+  "carregado_no_zcode": false,
+  "tarball_sha256": "6957b08053a315211644a4a52fc41c4062e3f6306db0ea32a159c8f5c1a404c0",
+  "destino": "C:/Users/Gabriel/agente-zcode-ambiente/trabalho-windows/ikcous-marketplace/isolamento/execucoes/a0c5d2ece0be491292c297dceadd0eb3/projeto",
+  "arquivos": [
+    {
+      "arquivo": ".specify/.gitignore",
+      "sha256_instalado": "8c908410d177a1ef3d0dee16d7ad55f2ac3333df3104c4d4adee1c9b82f1dbc1"
+    },
+    {
+      "arquivo": ".specify/init-options.json",
+      "sha256_instalado": "67bd4ce5cce2157fd4cf7f0d329e7feb3ef6c8449210c04ac1cc22675f8c7fc2"
+    },
+    {
+      "arquivo": ".specify/integrations/speckit.manifest.json",
+      "sha256_instalado": "7d55e03c20d20b056c6c5fb7d8807b265bcb834d9e12da41994f5ac981daa65a"
+    },
+    {
+      "arquivo": ".specify/integrations/zcode.manifest.json",
+      "sha256_instalado": "d4fd6f962a9051b99de05f66d55df466dfa8d3583a0b23b459bc8f190ad00743"
+    },
+    {
+      "arquivo": ".specify/memory/.constitution-template.json",
+      "sha256_instalado": "8fc4b39294bae0c10d59547ad7d415b6f0e890d656cbf7171dd567f4e9054711"
+    },
+    {
+      "arquivo": ".specify/memory/constitution.md",
+      "sha256_instalado": "ce7549540fa45543cca797a150201d868e64495fdff39dc38246fb17bd4024b3"
+    },
+    {
+      "arquivo": ".specify/scripts/bash/check-prerequisites.sh",
+      "sha256_instalado": "13be175548848bd84e96a90cf9be87665c2e68603b2eaa3e19187e7ca8b4fcb0"
+    },
+    {
+      "arquivo": ".specify/scripts/bash/common.sh",
+      "sha256_instalado": "31721d8b6a7740c8bf9194c46619041e6bbd1c5bb1497cb89d5dea11d0e2e8b5"
+    },
+    {
+      "arquivo": ".specify/scripts/bash/create-new-feature.sh",
+      "sha256_instalado": "9f7a741d9766a6c1c5d5e44368f2c6bea6026b399ff6f0055870f760afdb8726"
+    },
+    {
+      "arquivo": ".specify/scripts/bash/resolve-template.sh",
+      "sha256_instalado": "829e227096abc8bf0889889ec9f792f503ca5d395b7836a8a7eb739ee75214e7"
+    },
+    {
+      "arquivo": ".specify/scripts/bash/setup-plan.sh",
+      "sha256_instalado": "d0bd298c026446f3c63167130d65e49e4aa4485de6bef18bcdfd57b19aa0de96"
+    },
+    {
+      "arquivo": ".specify/scripts/bash/setup-tasks.sh",
+      "sha256_instalado": "0350b2def158c4dc333cd888fc5a3b10785b3d5c2cf936f93e910242ea9d507d"
+    },
+    {
+      "arquivo": ".specify/spec-kit-LICENSE",
+      "sha256_instalado": "2510b446bc1f0cf9702453075d20cd88631e20e5642658edb7325d9c1eb534f7"
+    },
+    {
+      "arquivo": ".specify/templates/checklist-template.md",
+      "sha256_instalado": "70bbc48e884fab372ffb09e83e78ff983e28b69caebf8cd9964a02b6836683ac"
+    },
+    {
+      "arquivo": ".specify/templates/constitution-template.md",
+      "sha256_instalado": "ce7549540fa45543cca797a150201d868e64495fdff39dc38246fb17bd4024b3"
+    },
+    {
+      "arquivo": ".specify/templates/plan-template.md",
+      "sha256_instalado": "a828ad6206526574ab3fc99be6d0154588cb1c9774c5919d71b81ab5b2dbffa0"
+    },
+    {
+      "arquivo": ".specify/templates/spec-template.md",
+      "sha256_instalado": "3945437fc35cd30a5b2bf7beea680337c3516826d3efa5a6b92c4a7eca1ba28e"
+    },
+    {
+      "arquivo": ".specify/templates/tasks-template.md",
+      "sha256_instalado": "b0f527d41e546af0c31903e04f9b20965b6b497b573792198f663a64ce128863"
+    },
+    {
+      "arquivo": ".specify/workflows/speckit/workflow.yml",
+      "sha256_instalado": "177761c5e7df28126beea043b5cb45aeaf7958090c022dc11ac71399422fcfbc"
+    },
+    {
+      "arquivo": ".specify/workflows/workflow-registry.json",
+      "sha256_instalado": "04143493f398463f5d2428fd1b9efaebf93c607dbed74fc66ade1d078fc3edc5"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-analyze/SKILL.md",
+      "sha256_instalado": "6204f7992f6a7e1d80d9290f2554022c7475e0bb272e1d0f091bd538f389fa2c"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-checklist/SKILL.md",
+      "sha256_instalado": "dcc6ae0c549001c02e0a3a4e3cdd156538f686df30f607eb507a67f83a437e7a"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-clarify/SKILL.md",
+      "sha256_instalado": "94040912e8cf66a281b7ad9de9cb29bcd7bb555e26a82b97468e98d6db594e49"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-constitution/SKILL.md",
+      "sha256_instalado": "ed73e673a9156d2fe206a8f2159a8d8a259908daea855bbea58937d0fa171d4c"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-converge/SKILL.md",
+      "sha256_instalado": "8272cbe46cfeb6230f2b17598e20166f0b8c6dfafff17183cca10fc03252677c"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-implement/SKILL.md",
+      "sha256_instalado": "f797dec68cb2265c27476621ae6a37601246739f8e42c6573717c5e6eadd3e1f"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-plan/SKILL.md",
+      "sha256_instalado": "11b448e1ccd4274825ee195a84f64673587fafc9fd380c0cf9bee295f5bd0745"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-specify/SKILL.md",
+      "sha256_instalado": "229d7cc276e60d16c18e18edd7ed5635a81a5e5a5c7607571e14d75f355a00b9"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-tasks/SKILL.md",
+      "sha256_instalado": "aae023a96e4db906c8bbb69dc7f1667728122b203dfc76aa3f331ea10d37a637"
+    },
+    {
+      "arquivo": ".zcode/skills/speckit-taskstoissues/SKILL.md",
+      "sha256_instalado": "f286e47c0e2f095a29d597f88777f66792a2972862c98982631df67be53877f3"
+    }
+  ]
+}

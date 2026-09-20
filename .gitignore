@@ -154,3 +154,10 @@ rollback-*.sql
 # de ALTER TABLE so existe se alguem o escrever, e ele tem de estar no git:
 # fora dele, a unica copia mora numa maquina so.
 !rollback-manual-*.sql
+
+# Worktrees de agentes (comando /wt): cópias de trabalho locais com estado
+# próprio em estado.json — trabalho em andamento de uma sessão, não entrega.
+.worktrees/
+
+.vercel
+.env*
