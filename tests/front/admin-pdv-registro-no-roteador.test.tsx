@@ -287,10 +287,7 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
 
   // Preenche um <input> controlado do React pelo setter nativo + evento
   // `input`, e espera o flush do buffer do `LocalBufferedInput` (delay 200).
-  async function preencherInputPorId(
-    id: string,
-    valor: string,
-  ): Promise<void> {
+  async function preencherInputPorId(id: string, valor: string): Promise<void> {
     const input = hospedeiro.querySelector<HTMLInputElement>(`#${id}`)!;
     expect(input).toBeDefined();
     const definidor = Object.getOwnPropertyDescriptor(
@@ -468,11 +465,11 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
       abaAvulso.click();
     });
     await avancar();
-    await preencherInputPorId("nome-do-cliente-avulso", "Maria digitada na tela");
     await preencherInputPorId(
-      "whatsapp-do-cliente-avulso",
-      "11999999999",
+      "nome-do-cliente-avulso",
+      "Maria digitada na tela",
     );
+    await preencherInputPorId("whatsapp-do-cliente-avulso", "11999999999");
     const confirmarAvulso = localizarBotaoPorTexto(
       hospedeiro,
       "Confirmar cliente avulso",

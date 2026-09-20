@@ -189,11 +189,7 @@ vi.mock("@/components/ui/alert-dialog", async () => {
     AlertDialogAction: nada,
     AlertDialogCancel: nada,
     AlertDialogContent: ({ children }: { readonly children?: unknown }) =>
-      React.createElement(
-        React.Fragment,
-        null,
-        children as React.ReactNode,
-      ),
+      React.createElement(React.Fragment, null, children as React.ReactNode),
     AlertDialogDescription: nada,
     AlertDialogFooter: nada,
     AlertDialogHeader: nada,
@@ -354,11 +350,7 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
     // @ts-expect-error — bandeira interna do React para o `act`
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-    globalThis.history.replaceState(
-      { view: "admin-pdv" },
-      "",
-      "/admin-pdv",
-    );
+    globalThis.history.replaceState({ view: "admin-pdv" }, "", "/admin-pdv");
 
     container = document.createElement("div");
     document.body.append(container);
@@ -461,11 +453,7 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
     // O histórico precisa de uma entrada ANTERIOR para o Voltar existir (o
     // `back()` do jsdom com pilha de uma entrada só não dispara popstate) —
     // o caminho de entrada do PDV no app real empurra entradas ao navegar.
-    globalThis.history.pushState(
-      { view: "admin-orders" },
-      "",
-      "/admin-orders",
-    );
+    globalThis.history.pushState({ view: "admin-orders" }, "", "/admin-orders");
     await act(async () => {
       globalThis.history.back();
     });
