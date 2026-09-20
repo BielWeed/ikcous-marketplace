@@ -7,6 +7,28 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.35.0] - 2026-09-15
+
+**A tela de banners do painel ficou nova** — cartão único por banner com
+situação em uma linha (No ar / Agendado / Expirado / Pausado), visual mais
+calmo e mobile-first. No celular, o cartão detalhado não corta mais o
+conteúdo (a foto empilha em cima do texto) e o contador diz "X ligados",
+fiel ao que a contagem mede. Visual aprovado pelo dono ("gostei") com 3
+reparos de revisão. Reúne o PR #608.
+
+**A página "Sobre a loja" não perde mais a logo** — se a logo cadastrada no
+banco falhar, entra a logo do sistema; só se as duas falharem aparece a
+inicial (a mesma máquina de estágios do Header). E a aba Perfil do menu
+fica acesa enquanto a pessoa navega na página da loja. Reúne o PR #605.
+
+**O "Testar conexão" do Mercado Pago funciona de verdade** — o teste do
+painel conversa com a API e distingue internet caída de chave recusada,
+gravando o resultado; o guia deixa claro que a chave de notificações é
+opcional e como colá-la depois. Reúne o PR #618.
+
+Para dentro: conserto de teste instável do checkout (#611) e guia de
+instalação/onboarding (#619).
+
 ## [1.34.3] - 2026-09-14
 
 **O guia do Mercado Pago ficou completo** (descobertas do teste REAL do dono

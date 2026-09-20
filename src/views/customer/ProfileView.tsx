@@ -39,6 +39,7 @@ import {
   Plus,
   Settings,
   Shield,
+  Store,
   Trash2,
   UploadCloud,
   User,
@@ -668,6 +669,39 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
             <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
           </button>
 
+          {/* Sobre a Loja — a marca do lojista assinante (peça 24). Ordem do
+              dono (14/09): logo ABAIXO de Segurança e Conta, no mesmo cartão;
+              Encerrar Sessão ganha cartão próprio no fim do perfil. Visível a
+              TODOS os usuários: não mora dentro de isAdmin nem de nenhum
+              outro ramo condicional. */}
+          <button
+            type="button"
+            onClick={() => onNavigate("about-store")}
+            className="group flex w-full items-center justify-between p-6 transition-colors hover:bg-zinc-50"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex size-10 items-center justify-center rounded-2xl bg-zinc-50 transition-colors group-hover:bg-white">
+                <Store className="size-5 text-zinc-400" />
+              </div>
+              <div className="text-left">
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">
+                  Sobre a Loja
+                </p>
+                <p className="text-[9px] font-bold uppercase tracking-tighter text-zinc-400">
+                  A loja por trás deste app
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="size-4 text-zinc-300 transition-transform group-hover:translate-x-1" />
+          </button>
+        </motion.div>
+
+        {/* Encerrar Sessão — cartão PRÓPRIO no fim do perfil (ordem do dono,
+            14/09): a ação destrutiva fica separada das navegações. */}
+        <motion.div
+          variants={itemVariants}
+          className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
+        >
           <button
             onClick={logout}
             className="group flex w-full items-center justify-between p-6 transition-colors hover:bg-red-50"

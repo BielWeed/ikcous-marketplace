@@ -43,6 +43,21 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+// Peça 17 (14/09 — flaky de revokeObjectURL medido 3x no dia): a limpeza de
+// recursos após abort corre em tick ASSÍNCRONO próprio; a espera antiga era
+// um setTimeout(10) FIXO — sob carga (suíte inteira no CI) o tique não cabia
+// nos 10 ms e a asserção corria antes da limpeza. Espera CONDICIONAL pelo
+// efeito, não tempo fixo; timeout de 10 s é teto de segurança.
+async function esperarAte(condicao: () => boolean, oQue: string) {
+  const inicio = Date.now();
+  while (!condicao()) {
+    if (Date.now() - inicio > 10000) {
+      throw new Error(`esperarAte: ${oQue} não veio em 10000ms`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
 let decode = vi.fn<() => Promise<void>>();
 let images: FakeImage[];
 class FakeImage {
@@ -582,7 +597,18 @@ describe("cancelamento prazo e erros fechados", () => {
         code: "IDENTITY_IMAGE_CANCELED",
       });
       pending.reject(Error("LATE_SECRET"));
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (stage === "read") {
+        // Asserção NEGATIVA: abortado antes de ler, NADA libera URL — a
+        // janela fixa é a própria semântica (esperar mais não prova mais).
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      } else {
+        // Pós-abertura a limpeza é assíncrona de verdade: espera pelo efeito
+        // (raça de timing sob carga — peça 17), não por 10 ms fixos.
+        await esperarAte(
+          () => vi.mocked(URL.revokeObjectURL).mock.calls.length === 1,
+          `revokeObjectURL após abort durante ${stage}`,
+        );
+      }
       expect(URL.revokeObjectURL).toHaveBeenCalledTimes(
         stage === "read" ? 0 : 1,
       );

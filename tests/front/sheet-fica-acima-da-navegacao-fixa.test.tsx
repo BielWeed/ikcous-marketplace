@@ -135,6 +135,33 @@ vi.mock("@/components/ui/custom/SearchBar", () => ({
 
 import { Header } from "@/components/ui/custom/Header";
 
+// Peça 17 (14/09): os DOIS testes do canal de toast derrubaram o gate da
+// release 1.33.1 e passaram no re-run — flaky de timing sob carga (worker
+// jsdom compartilhado): o boot do framer-motion REAL (rAF, não fake) e a
+// importação dinâmica do wrapper demoram mais que o default de 5 s do caso
+// quando a máquina está carregada. A LÓGICA interna dos dois é determinística
+// (fake timers só de setTimeout/clearTimeout); o tempo extra é só boot —
+// timeout DE CASO maior com o porquê aqui, não espera solta.
+const TIMEOUT_CASO_CARGA = 20000;
+
+async function esperarAte(condicao: () => boolean, { timeoutMs = 10000 } = {}) {
+  const inicio = Date.now();
+  while (!condicao()) {
+    if (Date.now() - inicio > timeoutMs) {
+      throw new Error(
+        `esperarAte: condição não ficou verdadeira em ${timeoutMs}ms`,
+      );
+    }
+    // Os testes abaixo FAKEIAM setTimeout — o passo aqui NÃO PODE usá-lo
+    // (nunca dispararia sem advanceTimersByTime). setImmediate é macrotask
+    // real, não fakeada por `toFake: ["setTimeout", "clearTimeout"]`, e cede
+    // o event loop para o rAF do framer-motion commitar.
+    await act(async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+    });
+  }
+}
+
 describe("Header — o degrau transitório NÃO mora aqui (mora no wrapper)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -175,44 +202,54 @@ describe("Header — o degrau transitório NÃO mora aqui (mora no wrapper)", ()
     expect(header?.className).not.toContain("z-[140]");
   });
 
-  it("com toast ativo, o header CONTINUA z-[100] (o degrau é do wrapper) e a cápsula está no DOM", async () => {
-    // Fake SÓ de setTimeout/clearTimeout: o estado do toast drena por timer
-    // (o default é 2600 ms), mas framer-motion — que anima a cápsula —
-    // precisa de rAF e relógio vivos para montar.
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  it(
+    "com toast ativo, o header CONTINUA z-[100] (o degrau é do wrapper) e a cápsula está no DOM",
+    async () => {
+      // Fake SÓ de setTimeout/clearTimeout: o estado do toast drena por timer
+      // (o default é 2600 ms), mas framer-motion — que anima a cápsula —
+      // precisa de rAF e relógio vivos para montar.
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
-    await act(async () => {
-      globalThis.dispatchEvent(
-        new CustomEvent("header-toast-event", {
-          detail: {
-            id: "teste-falta-escolher",
-            message: "Falta escolher a opção de Cor",
-            type: "warning",
-          },
-        }),
-      );
-    });
+      await act(async () => {
+        globalThis.dispatchEvent(
+          new CustomEvent("header-toast-event", {
+            detail: {
+              id: "teste-falta-escolher",
+              message: "Falta escolher a opção de Cor",
+              type: "warning",
+            },
+          }),
+        );
+      });
 
-    // O z do <header> é ESTÁTICO: dentro do wrapper (gpu-accelerated) ele
-    // competiria só com irmãos internos — inerte contra o sheet portalado
-    // no body. Se o degrau voltar para cá, o aviso volta a pintar sob o véu.
-    const header = document.querySelector("header");
-    expect(header?.className).toContain("z-[100]");
-    expect(header?.className).not.toContain("z-[140]");
+      // O z do <header> é ESTÁTICO: dentro do wrapper (gpu-accelerated) ele
+      // competiria só com irmãos internos — inerte contra o sheet portalado
+      // no body. Se o degrau voltar para cá, o aviso volta a pintar sob o véu.
+      const header = document.querySelector("header");
+      expect(header?.className).toContain("z-[100]");
+      expect(header?.className).not.toContain("z-[140]");
 
-    // O canal segue vivo: a cápsula clicável carrega a mensagem (o hook do
-    // canal alimenta a cápsula; só o degrau saiu daqui).
-    const capsula = Array.from(document.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Falta escolher"),
-    );
-    expect(capsula).toBeDefined();
+      // O canal segue vivo: a cápsula clicável carrega a mensagem (o hook do
+      // canal alimenta a cápsula; só o degrau saiu daqui). A cápsula monta via
+      // rAF do framer-motion — sob carga ela chega TARDE ao DOM: espera
+      // condicional pelo elemento, não asserção no primeiro tique (peça 17).
+      let capsula: HTMLButtonElement | undefined;
+      await esperarAte(() => {
+        capsula = Array.from(document.querySelectorAll("button")).find((b) =>
+          b.textContent?.includes("Falta escolher"),
+        );
+        return capsula !== undefined;
+      });
+      expect(capsula).toBeDefined();
 
-    // Drena a janela do toast (2600 ms default): o estado do canal é único
-    // no módulo — sem isto, vaza para o próximo teste do arquivo.
-    await act(async () => {
-      vi.advanceTimersByTime(2600);
-    });
-  });
+      // Drena a janela do toast (2600 ms default): o estado do canal é único
+      // no módulo — sem isto, vaza para o próximo teste do arquivo.
+      await act(async () => {
+        vi.advanceTimersByTime(2600);
+      });
+    },
+    TIMEOUT_CASO_CARGA,
+  );
 });
 
 // ── O WRAPPER é quem carrega o degrau (o stacking context que compete na raiz) ──
@@ -235,45 +272,49 @@ describe("BarraSuperiorCliente — o wrapper do header sobe a z-[140] com toast 
     vi.unstubAllGlobals();
   });
 
-  it("acompanha o ciclo do toast: z-[100] sem toast, z-[140] com toast, z-[100] ao expirar", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const { BarraSuperiorCliente } = await import(
-      "@/components/ui/custom/BarraSuperiorCliente"
-    );
-
-    await act(async () => {
-      raiz.render(
-        <BarraSuperiorCliente>
-          <div>x</div>
-        </BarraSuperiorCliente>,
+  it(
+    "acompanha o ciclo do toast: z-[100] sem toast, z-[140] com toast, z-[100] ao expirar",
+    async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { BarraSuperiorCliente } = await import(
+        "@/components/ui/custom/BarraSuperiorCliente"
       );
-    });
 
-    const barra = hospedeiro.firstElementChild as HTMLElement;
-    expect(barra.className).toContain("z-[100]");
-    expect(barra.className).not.toContain("z-[140]");
+      await act(async () => {
+        raiz.render(
+          <BarraSuperiorCliente>
+            <div>x</div>
+          </BarraSuperiorCliente>,
+        );
+      });
 
-    await act(async () => {
-      globalThis.dispatchEvent(
-        new CustomEvent("header-toast-event", {
-          detail: {
-            id: "teste-falta-escolher",
-            message: "Falta escolher a opção de Cor",
-            type: "warning",
-            duration: 100,
-          },
-        }),
-      );
-    });
-    expect(barra.className).toContain("z-[140]");
-    expect(barra.className).not.toContain("z-[100]");
+      const barra = hospedeiro.firstElementChild as HTMLElement;
+      expect(barra.className).toContain("z-[100]");
+      expect(barra.className).not.toContain("z-[140]");
 
-    // Transitório de verdade: expirada a janela (aqui 100 ms), a barra volta
-    // ao degrau do chrome — o header não fica clicável sobre a folha.
-    await act(async () => {
-      vi.advanceTimersByTime(100);
-    });
-    expect(barra.className).toContain("z-[100]");
-    expect(barra.className).not.toContain("z-[140]");
-  });
+      await act(async () => {
+        globalThis.dispatchEvent(
+          new CustomEvent("header-toast-event", {
+            detail: {
+              id: "teste-falta-escolher",
+              message: "Falta escolher a opção de Cor",
+              type: "warning",
+              duration: 100,
+            },
+          }),
+        );
+      });
+      expect(barra.className).toContain("z-[140]");
+      expect(barra.className).not.toContain("z-[100]");
+
+      // Transitório de verdade: expirada a janela (aqui 100 ms), a barra volta
+      // ao degrau do chrome — o header não fica clicável sobre a folha.
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(barra.className).toContain("z-[100]");
+      expect(barra.className).not.toContain("z-[140]");
+    },
+    TIMEOUT_CASO_CARGA,
+  );
 });
