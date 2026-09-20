@@ -359,6 +359,7 @@ const VIEW_COMPONENTS = {
   "admin-push": AdminArea,
   "admin-notifications": AdminArea,
   "admin-whatsapp-config": AdminArea,
+  "admin-about-store": AdminArea,
   "address-form": AddressFormView,
   "admin-login": AdminLogin,
   "user-profile": UserProfileView,
@@ -423,6 +424,7 @@ const getNavigationDirection = (
     "admin-shipping": 2.7,
     "admin-customers": 3,
     "admin-whatsapp-config": 3.4,
+    "admin-about-store": 4.2,
     "admin-user-detail": 3.5,
     "admin-settings": 4,
   };
@@ -1608,6 +1610,7 @@ const AppContent = () => {
           "admin-reviews",
           "admin-qa",
           "admin-whatsapp-config",
+          "admin-about-store",
         ];
         if (
           subAdminViews.includes(currView) &&
@@ -1633,6 +1636,15 @@ const AppContent = () => {
               { view: "admin-products" },
               "",
               "/admin-products",
+            );
+          } else if (currView === "admin-about-store") {
+            // Porta única: a tela "Sobre a Loja" nasce do cartão nos Ajustes
+            // — o Voltar do navegador volta para lá, nunca para a vitrine.
+            targetView = "admin-settings";
+            globalThis.history.replaceState(
+              { view: "admin-settings" },
+              "",
+              "/admin-settings",
             );
           } else if (
             currView === "admin-user-detail" ||
@@ -2376,6 +2388,7 @@ const AppContent = () => {
       "admin-push",
       "admin-notifications",
       "admin-whatsapp-config",
+      "admin-about-store",
     ];
 
     const privateViews: View[] = [

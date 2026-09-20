@@ -41,6 +41,7 @@ export const TELAS_DE_ENTRADA = [
   "admin-push",
   "admin-notifications",
   "admin-whatsapp-config",
+  "admin-about-store",
   "address-form",
   "admin-login",
   "user-profile",

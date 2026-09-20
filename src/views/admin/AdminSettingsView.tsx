@@ -11,23 +11,22 @@ import {
   Layers,
   Palette,
   RefreshCw,
+  Store,
   Truck,
   Wallet,
   Wifi,
 } from "lucide-react";
-import { Suspense, lazy, memo, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { Suspense, lazy, memo, useEffect, useState } from "react";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { BusinessHoursSection } from "@/components/admin/settings/BusinessHoursSection";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import { TransportadorasSection } from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useStore } from "@/contexts/StoreContext";
-import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { lerSupabaseUrl } from "@/lib/env-valores";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
@@ -64,142 +63,10 @@ const MercadoPagoSection = lazy(() =>
   })),
 );
 
-const BusinessHoursEditor = memo(function BusinessHoursEditor({
-  onDirtyChange,
-  active = true,
-}: { onDirtyChange: (dirty: boolean) => void; active?: boolean }) {
-  const { config, updateConfig } = useStore();
-  const saved = config.businessHours ?? "";
-  const [baseline, setBaseline] = useState(saved);
-  const [value, setValue] = useState(saved);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(false);
-  const lifecycle = useRef({ mounted: true, active, serial: 0 });
-  if (lifecycle.current.active && !active) lifecycle.current.serial++;
-  lifecycle.current.active = active;
-  useEffect(() => {
-    // Sair da aba invalida o pedido, mas preserva o texto para uma nova tentativa.
-    if (!active) setSaving(false);
-  }, [active]);
-  const lastIncoming = useRef(saved);
-  const dirty = value !== baseline;
-  // Incoming data only refreshes a pristine editor. A shipping refresh cannot erase typing.
-  useEffect(() => {
-    if (saved === lastIncoming.current) return;
-    lastIncoming.current = saved;
-    if (!dirty && !saving) {
-      setBaseline(saved);
-      setValue(saved);
-    }
-  }, [saved, dirty, saving]);
-  useEffect(() => {
-    onDirtyChange(dirty || saving);
-  }, [dirty, saving, onDirtyChange]);
-  useEffect(() => {
-    const life = lifecycle.current;
-    life.mounted = true;
-    return () => {
-      life.mounted = false;
-      life.serial++;
-    };
-  }, []);
-  async function save() {
-    if (saving || !active) return;
-    const life = lifecycle.current;
-    const serial = ++life.serial;
-    const isCurrent = () =>
-      life.mounted && life.active && life.serial === serial;
-    const chosen = value.trim();
-    setSaving(true);
-    setError(false);
-    try {
-      const success = await updateConfig(
-        { businessHours: chosen || null },
-        { isCurrent, silent: true },
-      );
-      if (!isCurrent()) return;
-      if (success) {
-        setBaseline(chosen);
-        setValue(chosen);
-        toast.success("Horário de atendimento salvo");
-      } else setError(true);
-    } catch {
-      if (isCurrent()) setError(true);
-    } finally {
-      if (isCurrent()) setSaving(false);
-    }
-  }
-  return (
-    <div className="space-y-3 text-sm text-zinc-300">
-      <p>
-        Informe quando a loja atende. Em branco, o aplicativo omite o horário.
-      </p>
-      <label htmlFor="store-business-hours">Horário de atendimento</label>
-      <input
-        id="store-business-hours"
-        value={value}
-        disabled={saving || !active}
-        onChange={(event) => setValue(event.target.value)}
-        placeholder="Ex: Ter a Sáb, 9h às 18h"
-        className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white"
-      />
-      {error && (
-        <p role="alert">
-          Não foi possível salvar o horário. O texto foi preservado.
-        </p>
-      )}
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          disabled={saving || !active || !dirty}
-          onClick={() => void save()}
-          className="rounded-lg border border-white/10 px-3 py-2"
-        >
-          {saving ? "Salvando…" : "Salvar horário"}
-        </button>
-        <button
-          type="button"
-          disabled={saving || !active || !dirty}
-          onClick={() => {
-            setBaseline(saved);
-            setValue(saved);
-            setError(false);
-          }}
-          className="rounded-lg border border-white/10 px-3 py-2"
-        >
-          Descartar horário
-        </button>
-      </div>
-    </div>
-  );
-});
-
-function BusinessHoursSection({
-  onDirtyChange,
-  active,
-}: {
-  onDirtyChange: (dirty: boolean) => void;
-  active?: boolean;
-}) {
-  const { user, session, isAdmin, adminStatus } = useAuth();
-  const allowed =
-    isAdmin &&
-    adminStatus === "admin" &&
-    !!user &&
-    session?.user.id === user.id;
-  useEffect(() => {
-    if (!allowed) onDirtyChange(false);
-  }, [allowed, onDirtyChange]);
-  if (!allowed)
-    return <p role="alert">Entre como administrador para editar o horário.</p>;
-  return (
-    <BusinessHoursEditor
-      key={`${lerSupabaseUrl()}|${user.id}`}
-      onDirtyChange={onDirtyChange}
-      active={active}
-    />
-  );
-}
+// O editor do horário de atendimento mora em
+// @/components/admin/settings/BusinessHoursSection desde 20/09/2026 — a tela
+// "Sobre a Loja" (AdminAboutStoreView) edita o MESMO campo com o MESMO
+// componente; não nasceram duas lógicas de salvamento.
 
 // ==========================================
 // Connection Diagnostics Section (Glassmorphism)
@@ -954,6 +821,43 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   </div>
                   <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-amber-500" />
                 </div>
+
+                {/* Sobre a Loja (pedido do dono, 20/09/2026): a página
+                    pública "Sobre a Loja" ganhou tela de configuração —
+                    marca, endereço do mapa, horário e descrição. Porta
+                    única: o Voltar do navegador volta para cá. */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onNavigate("admin-about-store")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onNavigate("admin-about-store");
+                    }
+                  }}
+                  className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-amber-500/30 hover:bg-zinc-900/30 active:scale-[0.98]"
+                >
+                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 shadow-[0_2px_12px_-4px] shadow-amber-500/25 ring-1 ring-amber-500/20">
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-amber-500/[0.32] to-amber-500/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                    />
+                    <Store
+                      className="relative size-[18px]"
+                      strokeWidth={2.25}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
+                      Sobre a Loja
+                    </h3>
+                    <p className="mt-0.5 truncate text-[10px] text-zinc-500">
+                      Marca, endereço, horário e descrição
+                    </p>
+                  </div>
+                  <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-amber-500" />
+                </div>
               </div>
 
               <SecaoColapsavel
@@ -962,9 +866,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 icone={Palette}
                 comPendencia={identidadePendente}
               >
-                {/* Lugar reservado (desenho SALÃO+PORÃO): o endereço físico
-                    da loja entra aqui, ao lado de Cidade/UF — peça do
-                    Claude. NÃO criar stub. */}
+                {/* O endereço físico da loja mora na tela "Sobre a Loja"
+                    (admin-about-store, 20/09/2026) — junto do mapa que ele
+                    alimenta, não aqui. */}
                 <Suspense
                   fallback={
                     <p className="text-sm text-zinc-400">

@@ -73,6 +73,11 @@ const AdminWhatsAppConfig = lazyWithPreload(() =>
     default: m.AdminWhatsAppConfigView,
   })),
 );
+const AdminAboutStore = lazyWithPreload(() =>
+  import("@/views/admin/AdminAboutStoreView").then((m) => ({
+    default: m.AdminAboutStoreView,
+  })),
+);
 const AdminQA = lazyWithPreload(() =>
   import("@/views/admin/AdminQAView").then((m) => ({ default: m.AdminQAView })),
 );
@@ -703,6 +708,19 @@ export function AdminArea({
                           component={AdminWhatsAppConfig}
                           props={{
                             active: currentView === "admin-whatsapp-config",
+                            onSetDirty: setIsAdminDirty,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-about-store":
+                    return (
+                      <LocalErrorBoundary key="admin-about-store">
+                        <PreloadedOrLazy
+                          component={AdminAboutStore}
+                          props={{
+                            onNavigate,
+                            active: currentView === "admin-about-store",
                             onSetDirty: setIsAdminDirty,
                           }}
                         />

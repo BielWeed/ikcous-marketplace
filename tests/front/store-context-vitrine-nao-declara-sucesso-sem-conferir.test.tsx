@@ -697,10 +697,10 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
       storeName: "x",
       storeCity: "x",
       storeState: "MG",
-      // Campo futuro (peça 24): sem coluna no banco e sem `if` no
-      // updateConfig — presente aqui só para satisfazer o `Required<>`,
-      // e NUNCA produzido na lista de colunas enviadas.
-      storeDescription: null,
+      // 20261167000000: endereço e descrição da página Sobre a Loja — a
+      // coluna existe e o updateConfig tem o `if` de cada uma.
+      storeAddress: "Rua das Flores, 123",
+      storeDescription: "<p>sobre</p>",
       originCep: "38500-000",
       shippingProvider: "flat_fee",
       enabledShippingMethods: ["sedex"],

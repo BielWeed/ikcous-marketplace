@@ -286,11 +286,17 @@ export interface StoreConfig {
   /** UF de onde a loja opera. Ausente ou `null` = não configurado. */
   storeState?: string | null;
   /**
-   * Texto "Sobre a loja" exibido na página Sobre a Loja (peça 24). CAMPO
-   * FUTURO: a coluna `store_description` ainda não existe em
-   * `store_config`/`v_store_config` (migration é decisão do dono). Enquanto
-   * não existir, o campo NUNCA chega do banco e o bloco fica oculto — a
-   * tela omite, nunca inventa.
+   * Endereço de texto que alimenta o mapa da página Sobre a Loja (20261167).
+   * Ausente/`null` = a loja não disse — o mapa cai para o CEP de frete e
+   * depois para cidade/UF, como antes da coluna existir.
+   */
+  storeAddress?: string | null;
+  /**
+   * Texto "Sobre a loja" exibido na página Sobre a Loja (peça 24), gravado
+   * como HTML simples (parágrafos) pela tela do painel desde a migration
+   * 20261167000000. A página pública sanitiza com DOMPurify no render;
+   * ausente/`null` = o bloco não existe na tela — a tela omite, nunca
+   * inventa.
    */
   storeDescription?: string | null;
   originCep?: string;
@@ -359,6 +365,7 @@ export type View =
   | "admin-push"
   | "admin-notifications"
   | "admin-whatsapp-config"
+  | "admin-about-store"
   | "admin-sros"
   | "referral"
   | "account-settings"

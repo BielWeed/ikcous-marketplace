@@ -6,13 +6,13 @@ import { TELAS_DE_ENTRADA } from "../../src/config/rotas";
 const appTsx = path.resolve(import.meta.dirname, "../../src/App.tsx");
 
 describe("telas de entrada (declaração única)", () => {
-  it("são 38 nomes únicos, com home e 19 administrativas (C3.3: +admin-pdv)", () => {
-    expect(TELAS_DE_ENTRADA).toHaveLength(38);
-    expect(new Set(TELAS_DE_ENTRADA).size).toBe(38);
+  it("são 39 nomes únicos, com home e 20 administrativas (C3.3: +admin-pdv; 20/09: +admin-about-store)", () => {
+    expect(TELAS_DE_ENTRADA).toHaveLength(39);
+    expect(new Set(TELAS_DE_ENTRADA).size).toBe(39);
     expect(TELAS_DE_ENTRADA[0]).toBe("home");
     expect(TELAS_DE_ENTRADA).toContain("admin-pdv");
     expect(TELAS_DE_ENTRADA.filter((t) => t.startsWith("admin-"))).toHaveLength(
-      19,
+      20,
     );
     expect(TELAS_DE_ENTRADA).toContain("admin"); // nominal sem hífen, sem alias
   });

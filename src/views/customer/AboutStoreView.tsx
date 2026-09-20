@@ -37,11 +37,14 @@ export function AboutStoreView() {
     ? DOMPurify.sanitize(descricao, { USE_PROFILES: { html: true } })
     : "";
 
-  // Onde a loja está: o CEP de origem do frete é o dado mais "certinho" que a
-  // loja JÁ TEM no sistema (cai na rua do CEP); sem CEP, centra na cidade/UF;
-  // sem nenhum dos dois, o cartão de mapa nem existe. O Google geocodifica a
-  // query sozinho no embed — sem chave, sem serviço pago, sem geocoder nosso.
-  const onde = config.originCep?.trim() || local;
+  // Onde a loja está (20261167000000): o ENDEREÇO que a loja declarou na
+  // tela "Sobre a Loja" vence; sem endereço, o CEP de origem do frete é o
+  // dado mais "certinho" que a loja JÁ TEM (cai na rua do CEP); sem CEP,
+  // centra na cidade/UF; sem nenhum dos dois, o cartão de mapa nem existe.
+  // O Google geocodifica a query sozinho no embed — sem chave, sem serviço
+  // pago, sem geocoder nosso. Por isso o chip segue "Localização
+  // aproximada": query de texto, nunca coordenada cravada.
+  const onde = config.storeAddress?.trim() || config.originCep?.trim() || local;
   const queryMaps = onde ? encodeURIComponent(onde) : "";
 
   // Mesma cascata do Header: logo do banco → asset local do build → inicial.

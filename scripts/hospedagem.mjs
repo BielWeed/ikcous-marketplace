@@ -48,6 +48,7 @@ export const telasDeEntrada = Object.freeze([
   "admin-push",
   "admin-notifications",
   "admin-whatsapp-config",
+  "admin-about-store",
   "address-form",
   "admin-login",
   "user-profile",

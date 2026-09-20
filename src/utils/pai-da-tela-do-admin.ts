@@ -97,6 +97,7 @@ export function paiDaTelaDoAdmin(
     case "admin-push":
     case "admin-banners":
     case "admin-carousels":
+    case "admin-about-store":
       return "admin-settings";
     case "admin-whatsapp-config":
       return "admin-dashboard";

@@ -115,6 +115,11 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   ["store_name", "texto"],
   ["store_city", "texto"],
   ["store_state", "texto"],
+  // 20261167000000: endereço e descrição da página Sobre a Loja — sem
+  // entrada aqui o save "grava" mas o comparador acusa falha (coluna
+  // desconhecida nunca fica "confirmada").
+  ["store_address", "texto"],
+  ["store_description", "texto"],
   ["origin_cep", "texto"],
   ["shipping_provider", "texto"],
   ["enabled_shipping_methods", "texto_array"],
@@ -544,6 +549,13 @@ export function StoreProvider({
       storeName,
       storeCity: getVal("store_city", "storeCity", undefined),
       storeState: getVal("store_state", "storeState", undefined),
+      // 20261167000000: endereço e descrição da página Sobre a Loja.
+      storeAddress: getVal("store_address", "storeAddress", undefined),
+      storeDescription: getVal(
+        "store_description",
+        "storeDescription",
+        undefined,
+      ),
       originCep: getVal("origin_cep", "originCep", undefined),
       shippingProvider: getVal(
         "shipping_provider",
@@ -853,6 +865,13 @@ export function StoreProvider({
           identityUpdates.storeState = updates.storeState;
           dbUpdates.store_state = identityUpdates.storeState;
         }
+        // 20261167000000: endereço e descrição — campos da página Sobre a
+        // Loja, gravados pela RPC genérica (não entram no pacote de
+        // identidade; a save_store_identity rejeita chaves fora das 8).
+        if (updates.storeAddress !== undefined)
+          dbUpdates.store_address = updates.storeAddress;
+        if (updates.storeDescription !== undefined)
+          dbUpdates.store_description = updates.storeDescription;
         if (updates.originCep !== undefined)
           dbUpdates.origin_cep = updates.originCep;
         if (updates.shippingProvider !== undefined)

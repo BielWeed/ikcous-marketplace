@@ -467,12 +467,12 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
   });
 
-  it("atalhos de vitrine continuam portas role=button com onNavigate", async () => {
+  it("atalhos de vitrine continuam portas role=button com onNavigate (20/09: +Sobre a Loja)", async () => {
     const onNavigate = vi.fn();
     await renderizar(undefined, onNavigate);
 
     const portas = [...hospedeiro.querySelectorAll('[role="button"]')];
-    expect(portas.length).toBe(2);
+    expect(portas.length).toBe(3);
     await act(async () => {
       for (const porta of portas) {
         porta.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -481,5 +481,6 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     const destinos = onNavigate.mock.calls.map((chamada) => chamada[0]);
     expect(destinos).toContain("admin-banners");
     expect(destinos).toContain("admin-carousels");
+    expect(destinos).toContain("admin-about-store");
   });
 });
