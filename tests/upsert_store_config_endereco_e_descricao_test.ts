@@ -201,6 +201,26 @@ Deno.test("rollback devolve o estado da 20261166000000: sem as colunas em lugar 
   );
 });
 
+Deno.test("o rollback encolhe a view com DROP VIEW + CREATE VIEW + GRANT, nunca CREATE OR REPLACE (defeito apanhado em execução real 20/09: OR REPLACE que encolhe lista recusa com 'cannot drop columns from view')", () => {
+  assertStringIncludes(rollbackN, norm("DROP VIEW public.v_store_config;"));
+  assertStringIncludes(
+    rollbackN,
+    norm("CREATE VIEW public.v_store_config WITH (security_invoker=on) AS"),
+  );
+  assertStringIncludes(
+    rollbackN,
+    norm("GRANT ALL ON TABLE public.v_store_config TO anon, authenticated, service_role;"),
+  );
+  // O erro real: OR REPLACE com lista MENOR que a viva. No rollback a view
+  // viva tem 36 colunas e a restaurada 34 — encolher por REPLACE é recusa
+  // certa, em qualquer banco.
+  assertEquals(
+    rollbackN.includes("CREATE OR REPLACE VIEW public.v_store_config"),
+    false,
+    "o rollback não pode encolher a view por OR REPLACE",
+  );
+});
+
 Deno.test("nenhuma linha de seed: o INSERT em store_config e so o da propria RPC", () => {
   assertEquals(
     migration.split("INSERT INTO public.store_config").length - 1,

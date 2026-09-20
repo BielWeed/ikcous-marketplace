@@ -190,7 +190,17 @@ END;
 $function$;
 
 -- (2) View sem as duas colunas (as 34 da 20261150, mesma ordem).
-CREATE OR REPLACE VIEW public.v_store_config WITH (security_invoker=on) AS
+-- POR QUE `DROP VIEW` + `CREATE VIEW` (nunca `CREATE OR REPLACE VIEW`), no
+-- molde do rollback da própria 20261150: a view viva no momento deste
+-- rollback tem 36 colunas (as da 20261150 + as 2 desta migration) e o
+-- Postgres RECUSA `OR REPLACE` que encolha a lista ("cannot drop columns
+-- from view" — defeito da 1ª versão deste rollback, apanhado em execução
+-- real no mesmo dia). `DROP VIEW` apaga o ACL junto, por isso o GRANT
+-- explícito logo depois — sem ele a view voltaria a existir sem os grants
+-- que anon/authenticated/service_role tinham, e o rollback deixaria de ser
+-- fiel.
+DROP VIEW public.v_store_config;
+CREATE VIEW public.v_store_config WITH (security_invoker=on) AS
  SELECT id,
     free_shipping_min,
     shipping_fee,
@@ -227,6 +237,8 @@ CREATE OR REPLACE VIEW public.v_store_config WITH (security_invoker=on) AS
     manutencao
    FROM store_config
   WHERE id = 1;
+
+GRANT ALL ON TABLE public.v_store_config TO anon, authenticated, service_role;
 
 -- (3) As colunas por último. CONTEÚDO GRAVADO NESSAS COLUNAS É PERDIDO.
 ALTER TABLE public.store_config DROP COLUMN IF EXISTS store_description;
