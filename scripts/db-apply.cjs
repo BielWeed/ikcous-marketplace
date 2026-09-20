@@ -1629,6 +1629,78 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // Frente zxing-e-migrations (fila do bastão 19/09, B.3): as quatro
+  // migrations do lote do código de barras/PDV vieram de C1 sem entrada em
+  // VERIFICACOES (medido 20/09: 20261160..20261163 ausentes; só a 20261164
+  // tinha). Cada marcador abaixo foi escolhido para SABOTAR: se a mudança
+  // da migration sumir do corpo vivo, a entrada reprova — as provas moram
+  // em tests/db_apply_verificacoes_2026116x_test.ts.
+  "20261160000000_o_codigo_de_barras_e_o_canal_nascem_no_banco.sql": [
+    {
+      // A função foi RECREADA para expor a coluna nova na projeção — sem o
+      // `p.codigo_barras` no SELECT, o front bipa e a recomendação nasce
+      // sem o código (e o índice parcial das linhas 335-341 fica sem leitor).
+      funcao: "get_product_recommendations",
+      esperado: [{ texto: "p.codigo_barras", vezes: 1 }],
+    },
+  ],
+  "20261161000000_o_balcao_acha_o_produto_pelo_codigo.sql": [
+    {
+      // A resposta honesta da RPC: `origem` diz onde o código viveu
+      // (produto/variante) — sem ele o balcão não distingue bip de variante
+      // de bip de produto na tela de escolha.
+      funcao: "buscar_por_codigo_barras",
+      esperado: ["'origem', v_origem,"],
+    },
+  ],
+  "20261162000000_a_venda_no_balcao_nasce_inteira.sql": [
+    {
+      // A resposta idempotente da RPC: `ja_existia` é o que faz a
+      // retentativa pós-F5 devolver o MESMO pedido em vez de debitar
+      // estoque duas vezes (chave de idempotência, corpo :399-415).
+      funcao: "registrar_venda_presencial",
+      esperado: ["'ja_existia', v_ja_existia,"],
+    },
+  ],
+  "20261163000000_a_lista_de_pedidos_filtra_por_canal.sql": [
+    {
+      // O filtro de canal nas TRÊS janelas da lista (contagem, dados e a
+      // contagem total — medida no corpo vivo em 20/09) — cair abaixo é uma
+      // das consultas sem filtro, e a página do balcão conta pedido que a
+      // lista não mostra (ou o contrário).
+      funcao: "get_admin_orders_paged",
+      esperado: [
+        { texto: "AND (p_canal = 'all' OR o.canal = p_canal)", vezes: 3 },
+      ],
+    },
+  ],
+  // Frente zxing-e-migrations (fila do bastão 19/09, B.1): a loja nova nasce
+  // com frete grátis DESLIGADO no banco — o INSERT da RPC sem a chave no
+  // payload gravava 100 (promessa que ninguém escolheu) enquanto o front já
+  // nascia desligado (presetDoConfig(0)). O marcador é a linha do INSERT com
+  // o fallback 0 (única ocorrência: o galho do UPDATE não usa COALESCE);
+  // voltar para 100 reabre o furo no primeiro minuto da loja. Sabotagem
+  // provada em tests/upsert_store_config_frete_gratis_zero_test.ts.
+  "20261165000000_a_loja_nasce_com_frete_gratis_desligado.sql": [
+    {
+      funcao: "upsert_store_config",
+      esperado: ["COALESCE((config_json->>'free_shipping_min')::numeric, 0)"],
+    },
+  ],
+  // Frente zxing-e-migrations (fila do bastão 19/09, B.2): o gatilho de
+  // limpeza do cache de cotações — o MESMO TTL de 2h que a leitura do edge
+  // aceita (twoHoursAgo); um gatilho que não apaga é um gatilho que a
+  // tabela cresce sem dono. A UNIQUE e o dedup ficam presos no teste do par
+  // (tests/shipping_quotes_cache_unique_test.ts); a sabotagem da entrada
+  // também mora lá.
+  "20261166000000_o_cache_de_cotacao_nao_guarda_repeticao.sql": [
+    {
+      funcao: "limpar_cotacoes_fora_da_janela",
+      esperado: [
+        "DELETE FROM public.shipping_quotes_cache WHERE created_at < now() - interval '2 hours'",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
