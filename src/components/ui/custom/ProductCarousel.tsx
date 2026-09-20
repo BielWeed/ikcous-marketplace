@@ -1,5 +1,6 @@
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -44,6 +45,10 @@ export const ProductCarousel = React.memo(function ProductCarousel({
   selectedProductId,
 }: ProductCarouselProps) {
   const { config } = useStore();
+  // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
+  // preset da LOJA (ProductCard-520), derivado do MESMO config que já
+  // alimentava `showRating` — mesmo padrão do ProductView.
+  const presetDaLoja = presetDoConfig(config.freeShippingMin);
   const { prefetchView } = usePrefetchOnHover();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftVignette, setShowLeftVignette] = useState(false);
@@ -189,6 +194,7 @@ export const ProductCarousel = React.memo(function ProductCarousel({
                 priority={index < 3}
                 selectedProductId={selectedProductId}
                 showRating={config.enableReviews}
+                freeShippingPreset={presetDaLoja}
               />
             </div>
           ))}

@@ -4,6 +4,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import type { Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AnimatePresence, motion, usePresence } from "framer-motion";
@@ -31,6 +32,10 @@ export const FavoritesView = React.memo(function FavoritesView({
   isActive = true,
 }: FavoritesViewProps) {
   const { config, products } = useStore();
+  // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
+  // preset da LOJA (ProductCard-520), derivado do MESMO config que já
+  // alimentava `showRating` — mesmo padrão do ProductView.
+  const presetDaLoja = presetDoConfig(config.freeShippingMin);
   const { prefetchView } = usePrefetchOnHover();
   // A LISTA continua vindo por props (App.tsx é o dono do fluxo); o estado
   // de ERRO do fetch vem direto do contexto — falha de consulta não pode
@@ -244,6 +249,7 @@ export const FavoritesView = React.memo(function FavoritesView({
                   onToggleFavorite={handleToggleFavorite}
                   onClick={handleProductClick}
                   showRating={config.enableReviews}
+                  freeShippingPreset={presetDaLoja}
                   onMouseEnter={handlePrefetchProductDetail}
                   onTouchStart={handlePrefetchProductDetail}
                   selectedProductId={selectedProductId}
@@ -299,6 +305,7 @@ export const FavoritesView = React.memo(function FavoritesView({
                   onToggleFavorite={handleToggleFavorite}
                   onClick={handleProductClick}
                   showRating={config.enableReviews}
+                  freeShippingPreset={presetDaLoja}
                   onMouseEnter={handlePrefetchProductDetail}
                   onTouchStart={handlePrefetchProductDetail}
                   selectedProductId={selectedProductId}
