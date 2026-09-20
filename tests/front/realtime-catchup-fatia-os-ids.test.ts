@@ -81,6 +81,7 @@ function builderDeProduto(): any {
     return consulta;
   });
   consulta.select = vi.fn(() => consulta);
+  // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase
   consulta.then = (
     onOk: (v: unknown) => unknown,
     onErro: (e: unknown) => unknown,
@@ -101,6 +102,7 @@ function builderDeOutraTabela(): any {
   consulta.eq = vi.fn(() => consulta);
   consulta.limit = vi.fn(() => consulta);
   consulta.single = vi.fn(() => Promise.resolve({ data: null, error: null }));
+  // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase
   consulta.then = (
     onOk: (v: { data: null; error: null }) => unknown,
     onErro: (e: unknown) => unknown,

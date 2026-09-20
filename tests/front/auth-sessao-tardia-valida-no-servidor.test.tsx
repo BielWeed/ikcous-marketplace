@@ -1,3 +1,4 @@
+import { supabase } from "@/lib/supabase";
 // @vitest-environment jsdom
 //
 // R-1 do laudo de varredura profunda (01/09): o caminho da SESSÃO TARDIA
@@ -17,7 +18,6 @@
 // supabase dublê estático + `vi.resetModules()` (initPromise é variável de
 // módulo) + sonda que reporta o contexto por callback + timers falsos.
 import { AuthApiError, AuthRetryableFetchError } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
 import { act, useContext } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -193,9 +193,7 @@ describe("AuthContext — a sessão tardia valida no servidor em background", ()
 
   it("getUser responde 'Invalid token': a sessão tardia é DESLOGADA (signOut)", async () => {
     limparHistoricoDosDoubles();
-    (
-      supabase.auth.getUser as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({
+    (supabase.auth.getUser as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { user: null },
       error: {
         message: "Invalid token: JWT has expired",
@@ -217,11 +215,12 @@ describe("AuthContext — a sessão tardia valida no servidor em background", ()
 
   it("getUser responde 'not found' (403 do servidor): idem — desloga", async () => {
     limparHistoricoDosDoubles();
-    (
-      supabase.auth.getUser as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({
+    (supabase.auth.getUser as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { user: null },
-      error: { message: "User from sub claim in JWT does not exist", status: 403 },
+      error: {
+        message: "User from sub claim in JWT does not exist",
+        status: 403,
+      },
     });
 
     await montar();
@@ -237,9 +236,7 @@ describe("AuthContext — a sessão tardia valida no servidor em background", ()
 
   it("getUser FALHA POR REDE (AuthRetryableFetchError): continua logado — CONTA-02", async () => {
     limparHistoricoDosDoubles();
-    (
-      supabase.auth.getUser as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({
+    (supabase.auth.getUser as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { user: null },
       error: new AuthRetryableFetchError("Service Unavailable", 502),
     });
@@ -257,9 +254,7 @@ describe("AuthContext — a sessão tardia valida no servidor em background", ()
 
   it("getUser FALHA POR RATE LIMIT (AuthApiError 429): continua logado — CONTA-02b", async () => {
     limparHistoricoDosDoubles();
-    (
-      supabase.auth.getUser as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({
+    (supabase.auth.getUser as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { user: null },
       error: new AuthApiError(
         "Too many requests",
@@ -281,9 +276,7 @@ describe("AuthContext — a sessão tardia valida no servidor em background", ()
 
   it("getUser OK: continua logado (e a validação não derruba ninguém)", async () => {
     limparHistoricoDosDoubles();
-    (
-      supabase.auth.getUser as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({
+    (supabase.auth.getUser as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { user: { id: "user-tardio" } },
       error: null,
     });

@@ -1,3 +1,4 @@
+import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 // @ts-nocheck
 /**
  * O job "Varredura de segredo" do CI varre mesmo — .github/workflows/ci.yml
@@ -33,7 +34,6 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 
 // `fromFileUrl` e não `.pathname`: o caminho deste projeto tem espaços, e o
 // pathname devolve `%20` mais uma barra sobrando no Windows.
@@ -49,7 +49,9 @@ function blocoRunDoStep(yaml: string, nomeDoStep: string): string {
   const iNome = linhas.findIndex((l) => l.includes(`name: ${nomeDoStep}`));
   assert(iNome >= 0, `step "${nomeDoStep}" não achado no ci.yml`);
 
-  const iRun = linhas.findIndex((l, i) => i > iNome && /^\s*run:\s*\|\s*$/.test(l));
+  const iRun = linhas.findIndex(
+    (l, i) => i > iNome && /^\s*run:\s*\|\s*$/.test(l),
+  );
   assert(iRun > iNome, `o step "${nomeDoStep}" não tem um \`run: |\``);
 
   // `.at()` e `.slice()` em vez de `linhas[i]`: indexação por variável dispara
@@ -67,7 +69,9 @@ function blocoRunDoStep(yaml: string, nomeDoStep: string): string {
     corpo.push(l);
   }
   const menorRecuo = Math.min(
-    ...corpo.filter((l) => l.trim() !== "").map((l) => l.match(/^\s*/)[0].length),
+    ...corpo
+      .filter((l) => l.trim() !== "")
+      .map((l) => l.match(/^\s*/)[0].length),
   );
   return corpo.map((l) => l.slice(menorRecuo)).join("\n");
 }
@@ -98,7 +102,12 @@ async function rodarBloco(
   await Deno.mkdir(repo);
 
   const git = async (...args: string[]) => {
-    const c = new Deno.Command("git", { args, cwd: repo, stdout: "piped", stderr: "piped" });
+    const c = new Deno.Command("git", {
+      args,
+      cwd: repo,
+      stdout: "piped",
+      stderr: "piped",
+    });
     return await c.output();
   };
   await git("init", "-q");
@@ -108,14 +117,18 @@ async function rodarBloco(
   await Deno.writeTextFile(`${repo}/base.txt`, "base\n");
   await git("add", "base.txt");
   await git("commit", "-q", "-m", "base", "--", "base.txt");
-  const base = new TextDecoder().decode((await git("rev-parse", "HEAD")).stdout).trim();
+  const base = new TextDecoder()
+    .decode((await git("rev-parse", "HEAD")).stdout)
+    .trim();
 
   let head = base;
   if (arquivosNoCommit) {
     await Deno.writeTextFile(`${repo}/novo.txt`, "conteudo novo\n");
     await git("add", "novo.txt");
     await git("commit", "-q", "-m", "novo", "--", "novo.txt");
-    head = new TextDecoder().decode((await git("rev-parse", "HEAD")).stdout).trim();
+    head = new TextDecoder()
+      .decode((await git("rev-parse", "HEAD")).stdout)
+      .trim();
   }
 
   const chamadas = `${sandbox}/chamadas.txt`;
@@ -172,11 +185,14 @@ Deno.test("o passo de varredura de segredo nunca aprova sem varrer", async (t) =
     },
   );
 
-  await t.step("branch nova (BASE_SHA vazio) -> varre o repositório inteiro", async () => {
-    const r = await rodarBloco(BLOCO, { baseSha: "", headSha: "REAL" });
-    assertStringIncludes(r.chamadas, "secretlint");
-    assertEquals(r.code, 0);
-  });
+  await t.step(
+    "branch nova (BASE_SHA vazio) -> varre o repositório inteiro",
+    async () => {
+      const r = await rodarBloco(BLOCO, { baseSha: "", headSha: "REAL" });
+      assertStringIncludes(r.chamadas, "secretlint");
+      assertEquals(r.code, 0);
+    },
+  );
 
   await t.step("BASE_SHA de zeros -> varre o repositório inteiro", async () => {
     const r = await rodarBloco(BLOCO, {
@@ -187,12 +203,15 @@ Deno.test("o passo de varredura de segredo nunca aprova sem varrer", async (t) =
     assertEquals(r.code, 0);
   });
 
-  await t.step("diff normal -> varre os arquivos alterados, nominalmente", async () => {
-    const r = await rodarBloco(BLOCO, { baseSha: "REAL", headSha: "REAL" });
-    assertStringIncludes(r.chamadas, "secretlint");
-    assertStringIncludes(r.chamadas, "novo.txt");
-    assertEquals(r.code, 0);
-  });
+  await t.step(
+    "diff normal -> varre os arquivos alterados, nominalmente",
+    async () => {
+      const r = await rodarBloco(BLOCO, { baseSha: "REAL", headSha: "REAL" });
+      assertStringIncludes(r.chamadas, "secretlint");
+      assertStringIncludes(r.chamadas, "novo.txt");
+      assertEquals(r.code, 0);
+    },
+  );
 
   await t.step(
     "CONTROLE: diff que rodou e voltou vazio pode sair 0 sem varrer",

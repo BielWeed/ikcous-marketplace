@@ -62,6 +62,7 @@ vi.mock("@/lib/supabase", () => ({
         limit: vi.fn(() => consulta),
         single: vi.fn(() => Promise.resolve({ data: null, error: null })),
       };
+      // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase
       consulta.then = (
         onOk: (v: { data: unknown[]; error: null }) => unknown,
         onErro: (e: unknown) => unknown,
