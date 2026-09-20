@@ -16,19 +16,26 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  * `grep -rl LIMITE_MAX_ITENS_CARROSSEL tests/` devolvia vazio.
  *
  * POR QUE UM TESTE DE VARREDURA, E NÃO UM TESTE DA TELA: o defeito é de CLASSE.
- * Consertar o 6 não impede alguém de acrescentar `<option value={12}>` no
- * seletor na semana que vem — e nesse dia o cliente volta a ver 10 enquanto o
- * painel promete 12, com o comentário do `carrossel.ts` ainda jurando que isso
- * não acontece. Renderizar a tela também não serviria: `AdminCarouselsView`
- * depende do `StoreContext`, que puxa `@/lib/supabase` na carga do módulo.
+ * Consertar o 6 não impede alguém de acrescentar uma opção a mais no seletor na
+ * semana que vem — e nesse dia o cliente volta a ver menos enquanto o painel
+ * promete mais, com o comentário do `carrossel.ts` ainda jurando que isso não
+ * acontece. Renderizar a tela também não serviria: `AdminCarouselsView` depende
+ * do `StoreContext`, que puxa `@/lib/supabase` na carga do módulo.
  *
- * A ARMADILHA, e por isso a calibragem existe: um extrator que deixa de casar
- * devolve zero opção, `Math.max()` de lista vazia devolve `-Infinity`, e a
- * comparação `LIMITE >= -Infinity` passa. O teste ficaria VERDE justamente
- * quando parou de medir. Por isso a calibragem prova as duas coisas na MESMA
- * rodada: que o extrator REAGE (achou as opções, e uma por `<option>`) e que
- * ele DISCRIMINA (não conta o `value={sec.maxItems ?? 6}` do próprio `<select>`,
- * que tem a mesma cara e não é uma opção).
+ * MUDANÇA DE FORMA (peça-22, 14/09/2026): o seletor "Máx" deixou de ser um
+ * `<select>` nativo — cuja lista aberta é a branca/azul do navegador, "crua" no
+ * tema escuro, a ponto do DONO reprovar ao vivo — e passou a ser o Select Radix
+ * da casa (`src/components/ui/select.tsx`, popover temático). O próprio teste
+ * exige olhar humano quando "o seletor muda de forma", e foi isto que
+ * aconteceu: as opções hoje vivem como literais `value="N"` em `<SelectItem>`,
+ * e o valor corrente é ligado na RAIZ como `value={String(sec.maxItems ?? 6)}`
+ * — mesma cara de opção e NÃO é. Este extrator foi refeito para a nova forma;
+ * a ARMADILHA original continua valendo e segue calibrada: um extrator que
+ * deixa de casar devolve zero opção, `Math.max()` de lista vazia devolve
+ * `-Infinity`, e a comparação `LIMITE >= -Infinity` passa. Por isso a
+ * calibragem prova as duas coisas na MESMA rodada: que o extrator REAGE (achou
+ * as opções, e uma por `<SelectItem>`) e que ele DISCRIMINA (não conta o
+ * `value={String(...)}` da raiz do seletor).
  */
 import {
   assert,
@@ -44,15 +51,14 @@ const PAINEL = fromFileUrl(
 
 const fonte = Deno.readTextFileSync(PAINEL);
 
-/** Valores numéricos oferecidos pelo seletor de `maxItems`.
+/** Valores numéricos oferecidos pelas opções do seletor de `maxItems`.
  *
- * O JSX quebra `<option` e `value={N}` em linhas diferentes, então casar os
- * dois juntos exigiria varrer entre eles. Como o arquivo tem UM ÚNICO
- * `<select>` (asserido abaixo), todo `value={<dígitos>}` do arquivo é opção
- * dele — e `value={sec.maxItems ?? 6}`, que é do `<select>` e não de uma
- * opção, não casa por não ser só dígitos. */
+ * Cada opção é um `<SelectItem ... value="N">N</SelectItem>` — literal de
+ * string com só dígitos. O valor CORRENTE na raiz é
+ * `value={String(sec.maxItems ?? 6)}` (expressão JSX), que não casa com este
+ * regex por não ser literal entre aspas. */
 function opcoesDoSeletor(texto: string): number[] {
-  return [...texto.matchAll(/value=\{(\d+)\}/g)].map((m) => Number(m[1]));
+  return [...texto.matchAll(/value="(\d+)"/g)].map((m) => Number(m[1]));
 }
 
 Deno.test("calibragem: o extrator reage e discrimina", () => {
@@ -62,37 +68,40 @@ Deno.test("calibragem: o extrator reage e discrimina", () => {
   // varredura verde medindo o vazio.
   assert(
     opcoes.length >= 2,
-    `o extrator achou ${opcoes.length} opcao(oes) em AdminCarouselsView. Ou o seletor mudou de forma, ou o extrator quebrou — nos dois casos alguem tem de olhar, e nao seguir verde.`,
+    `o extrator achou ${opcoes.length} opcao(oes) em AdminCarouselsView. Ou o seletor mudou de forma (de novo), ou o extrator quebrou — nos dois casos alguem tem de olhar, e nao seguir verde.`,
   );
 
-  // Uma opção por `<option>`: se aparecer `value={N}` fora de uma opção, ou uma
-  // opção sem valor numérico, os números divergem e o teste chama um humano.
-  const quantosOption = [...fonte.matchAll(/<option\b/g)].length;
+  // Uma opção por `<SelectItem>`: as opções do "Máx" vivem todas como
+  // SelectItem com `value="N"`. Divergência = a premissa de que todo
+  // value="dígitos" do arquivo é uma opção deixou de valer.
+  const quantosItens = [...fonte.matchAll(/<SelectItem\b/g)].length;
   assertEquals(
     opcoes.length,
-    quantosOption,
-    `achei ${opcoes.length} valor(es) numerico(s) e ${quantosOption} <option>. Divergiram: a premissa de que todo value={N} do arquivo e uma opcao do seletor de maxItems deixou de valer.`,
+    quantosItens,
+    `achei ${opcoes.length} valor(es) numerico(s) e ${quantosItens} <SelectItem>. Divergiram: a premissa de que todo value="N" do arquivo e uma opcao do seletor de maxItems deixou de valer.`,
   );
 
-  // DISCRIMINA: o próprio `<select>` tem `value={sec.maxItems ?? 6}`, que se
-  // parece com uma opção e não é. Se um dia o extrator passar a contá-lo, este
-  // caso cai antes de a varredura mentir.
+  // DISCRIMINA: a raiz do seletor liga o valor corrente como
+  // `value={String(sec.maxItems ?? 6)}` — mesma cara de opção e não é. Se o
+  // extrator passar a contá-lo, este caso cai antes de a varredura mentir.
   assert(
-    fonte.includes("value={sec.maxItems ?? 6}"),
-    "o `<select>` deixou de ter `value={sec.maxItems ?? 6}` — o caso de " +
+    fonte.includes("value={String(sec.maxItems ?? 6)}"),
+    "a raiz do `<Select>` deixou de ter `value={String(sec.maxItems ?? 6)}` — o caso de " +
       "discriminacao desta calibragem sumiu do arquivo e precisa ser refeito.",
   );
   assertEquals(
-    opcoesDoSeletor("value={sec.maxItems ?? 6}").length,
+    opcoesDoSeletor("value={String(sec.maxItems ?? 6)}").length,
     0,
-    "o extrator passou a contar o value do proprio <select> como opcao",
+    "o extrator passou a contar o value da raiz do seletor como opcao",
   );
 
-  // A premissa de "um select só" é do extrator, então ela também se assere.
+  // A premissa de "um seletor só" é do extrator, então ela também se assere:
+  // exatamente UMA raiz `<Select>` (SelectTrigger/Content/Item não casam por
+  // causa do `\b`).
   assertEquals(
-    [...fonte.matchAll(/<select\b/g)].length,
+    [...fonte.matchAll(/<Select\b/g)].length,
     1,
-    "AdminCarouselsView passou a ter mais de um <select>: os value={N} do " +
+    'AdminCarouselsView passou a ter mais de uma raiz <Select>: os value="N" do ' +
       "arquivo nao pertencem mais todos ao seletor de maxItems.",
   );
 });
@@ -103,6 +112,6 @@ Deno.test("o limite de carga cobre a maior opcao que o painel oferece", () => {
 
   assert(
     LIMITE_MAX_ITENS_CARROSSEL >= maiorOferecida,
-    `LIMITE_MAX_ITENS_CARROSSEL vale ${LIMITE_MAX_ITENS_CARROSSEL}, mas o seletor de "Max" em AdminCarouselsView oferece ate ${maiorOferecida} (opcoes: ${opcoes.join(", ")}).\n\nEfeito para quem usa a loja: o lojista escolhe ${maiorOferecida}, a previa do painel mostra ${maiorOferecida}, e o cliente ve ${LIMITE_MAX_ITENS_CARROSSEL} — calado.\n\nConserto: suba LIMITE_MAX_ITENS_CARROSSEL em src/config/carrossel.ts para pelo menos ${maiorOferecida}, ou tire a opcao do seletor.`,
+    `LIMITE_MAX_ITENS_CARROSSEL vale ${LIMITE_MAX_ITENS_CARROSSEL}, mas o seletor de "Máx" em AdminCarouselsView oferece ate ${maiorOferecida} (opcoes: ${opcoes.join(", ")}).\n\nEfeito para quem usa a loja: o lojista escolhe ${maiorOferecida}, a previa do painel mostra ${maiorOferecida}, e o cliente ve ${LIMITE_MAX_ITENS_CARROSSEL} — calado.\n\nConserto: suba LIMITE_MAX_ITENS_CARROSSEL em src/config/carrossel.ts para pelo menos ${maiorOferecida}, ou tire a opcao do seletor.`,
   );
 });
