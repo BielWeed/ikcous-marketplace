@@ -297,15 +297,27 @@ async function montarSondaTresEstados(
 
 function mockRpcAdminOrdersEPagamento(idPedido: string) {
   rpc.mockReset();
+  // O builder que o supabase-js devolve aceita `.abortSignal(signal)` antes
+  // do await — pedidos-4 (`f4ca362`) estendeu a convenção para a RPC de
+  // cancelados, e o dublê precisa responder os DOIS nomes com o MESMO
+  // formato jsonb ({ data: [...], total_count, fora_da_janela }).
+  const respostaComUmaLinha = () => ({
+    abortSignal: () =>
+      Promise.resolve({
+        data: {
+          data: [linhaAdminFake(idPedido)],
+          total_count: 1,
+          fora_da_janela: 0,
+        },
+        error: null,
+      }),
+  });
   rpc.mockImplementation((nome: string, args: any) => {
-    if (nome === "get_admin_orders_paged") {
-      return {
-        abortSignal: () =>
-          Promise.resolve({
-            data: { data: [linhaAdminFake(idPedido)], total_count: 1 },
-            error: null,
-          }),
-      };
+    if (
+      nome === "get_admin_orders_paged" ||
+      nome === "get_admin_orders_cancelados_recentes"
+    ) {
+      return respostaComUmaLinha();
     }
     if (nome === "registrar_pagamento_recebido") {
       return Promise.resolve({
