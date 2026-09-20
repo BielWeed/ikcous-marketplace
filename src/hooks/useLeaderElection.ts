@@ -93,7 +93,6 @@ export function useLeaderElection() {
   const [isLeader, setIsLeader] = useState(false);
   const isLeaderRef = useRef(false);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const resignTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const claimTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateLeadership = useCallback((val: boolean) => {
@@ -246,38 +245,16 @@ export function useLeaderElection() {
     };
     window.addEventListener("beforeunload", onUnload);
 
-    let visibilityDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    const handleVisibility = () => {
-      if (visibilityDebounceTimeout) {
-        clearTimeout(visibilityDebounceTimeout);
-      }
-      visibilityDebounceTimeout = setTimeout(() => {
-        if (document.visibilityState === "hidden") {
-          if (resignTimeoutRef.current) clearTimeout(resignTimeoutRef.current);
-          resignTimeoutRef.current = setTimeout(() => {
-            if (isLeaderRef.current) {
-              bc.postMessage({ type: "LEADER_RESIGNED", tabId: TAB_ID });
-            }
-            resignLeadership();
-          }, 3000);
-        } else {
-          if (resignTimeoutRef.current) {
-            clearTimeout(resignTimeoutRef.current);
-            resignTimeoutRef.current = null;
-          }
-          bc.postMessage({ type: "LEADER_PING", tabId: TAB_ID });
-          leaderAliveReceived = false;
-          setTimeout(() => {
-            if (!leaderAliveReceived) {
-              claimLeadership();
-            }
-          }, 120);
-        }
-      }, 300);
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-
+    // realtimeSyncEngine-317: NÃO há mais renúncia/reivindicação por
+    // VISIBILIDADE. Antes, 3s de aba escondida renunciavam à liderança — e o
+    // efeito que sobe o RealtimeSyncEngine depende de `isLeader`, então cada
+    // ida ao WhatsApp derrubava e reabria o websocket do app; a volta
+    // reivindicava de novo (PING + 120ms + sorteio). Quem entrega a vaga de
+    // verdade é o beforeunload (aba fechada); quem reclama vaga expirada é o
+    // heartbeat (a instância escondida continua com o coração batendo), e a
+    // guarda de `claimLeadership` para aba escondida continua valendo para
+    // quem NÃO é líder — aba em segundo plano não começa a liderar, só deixa
+    // de abandonar o posto.
     return () => {
       bc.removeEventListener("message", handleMessage);
       clearTimeout(pingTimeout);
@@ -285,19 +262,11 @@ export function useLeaderElection() {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
       }
-      if (resignTimeoutRef.current) {
-        clearTimeout(resignTimeoutRef.current);
-        resignTimeoutRef.current = null;
-      }
       if (claimTimeoutRef.current) {
         clearTimeout(claimTimeoutRef.current);
         claimTimeoutRef.current = null;
       }
-      if (visibilityDebounceTimeout) {
-        clearTimeout(visibilityDebounceTimeout);
-      }
       window.removeEventListener("beforeunload", onUnload);
-      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [claimLeadership, refreshLeadership, resignLeadership, updateLeadership]);
 
