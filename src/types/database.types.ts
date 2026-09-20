@@ -1446,9 +1446,11 @@ export type Database = {
           shipping_coverage: string;
           shipping_fee: number | null;
           shipping_provider: string;
+          store_address: string | null;
           store_city: string | null;
           store_name: string | null;
           store_state: string | null;
+          store_description: string | null;
           theme_mode: string | null;
           updated_at: string | null;
           vapid_public_key: string | null;
@@ -1482,9 +1484,11 @@ export type Database = {
           shipping_coverage?: string;
           shipping_fee?: number | null;
           shipping_provider?: string;
+          store_address?: string | null;
           store_city?: string | null;
           store_name?: string | null;
           store_state?: string | null;
+          store_description?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -1518,9 +1522,11 @@ export type Database = {
           shipping_coverage?: string;
           shipping_fee?: number | null;
           shipping_provider?: string;
+          store_address?: string | null;
           store_city?: string | null;
           store_name?: string | null;
           store_state?: string | null;
+          store_description?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -1670,6 +1676,8 @@ export type Database = {
           branding_assets: Json | null;
           push_marketing_enabled: boolean | null;
           real_time_sales_alerts: boolean | null;
+          store_address: string | null;
+          store_description: string | null;
           share_text: string | null;
           shipping_coverage: string | null;
           shipping_fee: number | null;

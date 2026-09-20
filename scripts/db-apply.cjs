@@ -1701,6 +1701,21 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // Frente "Sobre a Loja" (pedido do dono 20/09): endereço e descrição da
+  // loja saem da página pública. O marcador é o par de CASEs do ON CONFLICT
+  // — o coração do aceite "salvar um campo não apaga os outros" (só
+  // sobrescreve a coluna que veio no payload). O INSERT sem COALESCE
+  // (ausência grava NULL) acompanha no teste do par
+  // (tests/upsert_store_config_endereco_e_descricao_test.ts).
+  "20261167000000_sobre_a_loja_ganha_endereco_e_descricao.sql": [
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        "store_address = CASE WHEN config_json ? 'store_address'",
+        "store_description = CASE WHEN config_json ? 'store_description'",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
