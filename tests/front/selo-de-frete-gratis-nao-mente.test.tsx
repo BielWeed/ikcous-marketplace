@@ -14,6 +14,12 @@
 // promessa POR VALOR de compra não sumiu da loja: ela mora no
 // `FreeShippingBlock` da Home, que compara contra o carrinho de verdade.
 //
+// B3 (fila do bastão 19/09): as grades (ProductList) e o herói da faixa de
+// ofertas passaram a obedecer ao PRESET da loja via `freeShippingPreset`
+// (ProductCard-520) -- a marcação `freeShipping` do produto só vale no
+// preset "por produto marcado" (ou no "sempre", que vale para qualquer
+// produto); nos demais, é resíduo de campanha antiga e o selo fica apagado.
+//
 // POR QUE RENDER DE VERDADE (react-dom/client + jsdom), NÃO DUBLÊ DE REACT:
 // mesmo raciocínio de product-card-gate-avaliacoes.test.tsx -- o que este
 // teste prova é a ÁRVORE renderizada (o selo aparece ou não), não uma
@@ -114,15 +120,33 @@ describe("ProductList — via a config real da loja, o selo do card afirma só o
     expect(hospedeiro.textContent).not.toContain("Frete Grátis");
   });
 
-  it("controle negativo: produto com freeShipping=true mostra o selo", async () => {
-    // Sem este caso, um conserto que simplesmente apagasse o selo inteiro
-    // (em vez de corrigir a condição) passaria no caso acima sem provar
-    // nada -- é o controle negativo da mesma rodada.
+  it("controle negativo: produto com freeShipping=true mostra o selo quando o preset da loja é 'por produto marcado'", async () => {
+    // B3 (fila do bastão 19/09): a grade passou a repassar o preset da loja
+    // ao card (ProductCard-520), e a marcação do produto só VALE no preset
+    // que a lê (`FRETE_GRATIS_POR_PRODUTO` = -1). Sem este caso, um conserto
+    // que simplesmente apagasse o selo inteiro passaria no caso acima sem
+    // provar nada -- é o controle negativo da mesma rodada, agora no preset
+    // em que a marcação é verdade.
+    mockConfig = { freeShippingMin: -1, enableReviews: false };
     const produto = criarProduto({ price: 29, freeShipping: true });
 
     await renderizarLista(produto);
 
     expect(hospedeiro.textContent).toContain("Frete Grátis");
+  });
+
+  it("B3: produto MARCADO não ganha o selo quando a loja trocou para o preset 'acima de valor' (resíduo de campanha antiga)", async () => {
+    // O `freeShippingMin: 350` é o default da loja: a marcação que sobrou
+    // de campanha antiga não pode anunciar grátis o que o carrinho vai
+    // cobrar -- o mesmo defeito que o ProductCard-520 consertou no card e a
+    // B3 trouxe para a grade (antes, o `product.freeShipping` cru acendia o
+    // selo em qualquer preset).
+    mockConfig = { freeShippingMin: 350, enableReviews: false };
+    const produto = criarProduto({ price: 29, freeShipping: true });
+
+    await renderizarLista(produto);
+
+    expect(hospedeiro.textContent).not.toContain("Frete Grátis");
   });
 });
 
@@ -199,7 +223,12 @@ describe("HeroOfferCard — a faixa de ofertas tem a propria copia da condicao",
     expect(hospedeiro.textContent).not.toContain("Frete Grátis");
   });
 
-  it("controle negativo: na mesma faixa, produto com frete gratis mostra o selo", async () => {
+  it("controle negativo: na mesma faixa, produto com frete gratis mostra o selo no preset 'por produto marcado'", async () => {
+    // B3 (fila do bastão 19/09): o herói passou a obedecer ao preset da
+    // loja (mesma regra do ProductCard-520) -- a marcação só vale no preset
+    // que a lê (`FRETE_GRATIS_POR_PRODUTO` = -1). Controle negativo da
+    // mesma rodada: sem ele, apagar o selo inteiro passaria no caso acima.
+    mockConfig = { freeShippingMin: -1, enableReviews: false };
     const produto = criarProduto({
       price: 29,
       originalPrice: 59,
@@ -209,6 +238,22 @@ describe("HeroOfferCard — a faixa de ofertas tem a propria copia da condicao",
     await renderizarOfertas(produto);
 
     expect(hospedeiro.textContent).toContain("Frete Grátis");
+  });
+
+  it("B3: na mesma faixa, produto MARCADO não ganha o selo no preset 'acima de valor' (resíduo de campanha antiga)", async () => {
+    // Antes da B3 o herói confiava no `product.freeShipping` cru: a marcação
+    // velha acendia o selo em qualquer preset, anunciando grátis o que o
+    // carrinho ia cobrar.
+    mockConfig = { freeShippingMin: 350, enableReviews: false };
+    const produto = criarProduto({
+      price: 29,
+      originalPrice: 59,
+      freeShipping: true,
+    });
+
+    await renderizarOfertas(produto);
+
+    expect(hospedeiro.textContent).not.toContain("Frete Grátis");
   });
 });
 
