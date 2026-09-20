@@ -1915,78 +1915,90 @@ const AppContent = () => {
 
     syncWithUrl("efeito");
     const handlePopState = (e: PopStateEvent) => {
-      if (isAdminDirtyRef.current) {
-        console.warn("[App] Popstate blocked by unsaved changes.");
-        const path =
-          currentViewRef.current === "home"
-            ? "/"
-            : [
-                  "product-detail",
-                  "user-profile",
-                  "order-details",
-                  "admin-product-form",
-                  "admin-coupon-form",
-                  "admin-user-detail",
-                  "admin-orders",
-                  "admin-push",
-                ].includes(currentViewRef.current) &&
-                selectedProductIdRef.current
-              ? `/${currentViewRef.current}?id=${selectedProductIdRef.current}`
-              : `/${currentViewRef.current}`;
-        globalThis.history.pushState(
-          globalThis.history.state || { view: currentViewRef.current },
-          "",
-          path,
-        );
-
-        const targetState = e.state;
-        let targetView: View = "home";
-        let targetId: string | undefined;
-        if (targetState?.view) {
-          targetView = targetState.view;
-          targetId = targetState.id;
-        }
-        setPendingNavigation({ view: targetView, id: targetId });
-        return;
-      }
-
-      if (isTransitioningRef.current) {
-        console.warn(
-          "[App] Popstate blocked by transition lock. Reverting history to maintain sync.",
-        );
-        // Re-push the state to prevent URL getting out of sync with current locked view
-        const path =
-          currentView === "home"
-            ? caminhoDaHomeRef.current()
-            : [
-                  "product-detail",
-                  "user-profile",
-                  "order-details",
-                  "admin-product-form",
-                  "admin-coupon-form",
-                  "admin-user-detail",
-                  "admin-orders",
-                  "admin-push",
-                ].includes(currentView) && selectedProductId
-              ? `/${currentView}?id=${selectedProductId}`
-              : `/${currentView}`;
-        globalThis.history.pushState(
-          globalThis.history.state || { view: currentView },
-          "",
-          path,
-        );
-        return;
-      }
-
-      isTransitioningRef.current = true;
-      lastTransitionStartTimeRef.current = Date.now();
-
-      // 1. PRIORITY: Execute any registered override (e.g., closing a modal)
-      // We use the Ref to ensure we always have the latest function without re-adding the listener
+      // 1. PRIORITY: a camada aberta consome o Voltar ANTES do gate de
+      //      dirty (mesmo tema do 94c2638, agora do lado do App). Com cupom
+      //      cheio no PDV e a camada de cliente/variação/fechamento aberta,
+      //      o Voltar do aparelho pertence à CAMADA: fechá-la não perde
+      //      nada (os itens continuam no cupom) e o popstate já consumiu a
+      //      entrada `{modal}` que ela empurrou — se o gate de dirty
+      //      corresse primeiro, re-empurraria o histórico SEM essa marca e
+      //      abriria o diálogo "alterações não salvas" por cima da camada
+      //      que continuaria aberta, sem ninguém ter saído de tela nenhuma.
+      //      O dirty segue valendo para o Voltar sem camada no meio.
+      //      Usamos o Ref para sempre ter a função mais recente sem
+      //      re-registrar o listener.
       if (backOverrideRef.current) {
         console.log("[App] Intercepting popstate via backOverrideRef");
+        isTransitioningRef.current = true;
+        lastTransitionStartTimeRef.current = Date.now();
         backOverrideRef.current();
         // Fall through to syncWithUrl to handle any potential URL changes
+      } else {
+        if (isAdminDirtyRef.current) {
+          console.warn("[App] Popstate blocked by unsaved changes.");
+          const path =
+            currentViewRef.current === "home"
+              ? "/"
+              : [
+                    "product-detail",
+                    "user-profile",
+                    "order-details",
+                    "admin-product-form",
+                    "admin-coupon-form",
+                    "admin-user-detail",
+                    "admin-orders",
+                    "admin-push",
+                  ].includes(currentViewRef.current) &&
+                  selectedProductIdRef.current
+                ? `/${currentViewRef.current}?id=${selectedProductIdRef.current}`
+                : `/${currentViewRef.current}`;
+          globalThis.history.pushState(
+            globalThis.history.state || { view: currentViewRef.current },
+            "",
+            path,
+          );
+
+          const targetState = e.state;
+          let targetView: View = "home";
+          let targetId: string | undefined;
+          if (targetState?.view) {
+            targetView = targetState.view;
+            targetId = targetState.id;
+          }
+          setPendingNavigation({ view: targetView, id: targetId });
+          return;
+        }
+
+        if (isTransitioningRef.current) {
+          console.warn(
+            "[App] Popstate blocked by transition lock. Reverting history to maintain sync.",
+          );
+          // Re-push the state to prevent URL getting out of sync with current locked view
+          const path =
+            currentView === "home"
+              ? caminhoDaHomeRef.current()
+              : [
+                    "product-detail",
+                    "user-profile",
+                    "order-details",
+                    "admin-product-form",
+                    "admin-coupon-form",
+                    "admin-user-detail",
+                    "admin-orders",
+                    "admin-push",
+                  ].includes(currentView) && selectedProductId
+                ? `/${currentView}?id=${selectedProductId}`
+                : `/${currentView}`;
+          globalThis.history.pushState(
+            globalThis.history.state || { view: currentView },
+            "",
+            path,
+          );
+          return;
+        }
+
+        isTransitioningRef.current = true;
+        lastTransitionStartTimeRef.current = Date.now();
       }
 
       // 2. Home Trap logic
