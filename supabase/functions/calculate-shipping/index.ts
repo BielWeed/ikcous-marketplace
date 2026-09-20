@@ -196,50 +196,30 @@ async function gravarCotacao(gravar: () => PromiseLike<unknown>): Promise<unknow
 }
 
 /**
- * "Upsert" de aplicação para `shipping_quotes_cache` (index-880).
+ * Gravação da cotação em `shipping_quotes_cache` — `.upsert` de verdade
+ * (index-880 fechado pela 20261166000000).
  *
- * A tabela não tem UNIQUE em (origin_cep, destination_cep, cart_hash) — só
- * PK em `id` — e criar esse índice é migration, que é outra frente. Sem ele,
- * `.upsert(...)` do supabase-js não serve: sem um alvo de conflito real, ele
- * teria de ser feito no `id` (que é sempre novo) e nunca "acharia" a linha
- * da chave. Por isso a gravação aqui faz o upsert NA MÃO: tenta ATUALIZAR a
- * linha já existente da chave e só INSERE quando não existe nenhuma.
- *
- * Isso não fecha 100% a corrida (dois misses VERDADEIRAMENTE simultâneos
- * ainda podem os dois não achar nada para atualizar e inserir um cada um),
- * mas para a reincidência que perpetuava o bug: hoje toda cotação seguinte
- * da MESMA chave — inclusive as que vêm de uma corrida anterior — atualiza a
- * linha em vez de empilhar outra. O resto da proteção é a leitura tolerante
- * em `buscarCotacaoEmCache`, que nunca estoura mesmo se sobrar duplicata.
+ * A migration `20261166000000_o_cache_de_cotacao_nao_guarda_repeticao.sql`
+ * criou a UNIQUE (origin_cep, destination_cep, cart_hash) que este
+ * `onConflict` mira: a gravação ficou ATÔMICA — dois misses simultâneos do
+ * MESMO carrinho agora disputam a mesma constraint e um dos dois vira
+ * UPDATE da linha do outro, nunca mais INSERT duplicado. Este código só
+ * pode ser PUBLICADO depois da migration aplicada no banco da loja:
+ * `.upsert` com `onConflict` numa tabela sem a constraint não conflita
+ * nada e reabre o insert duplicado (o aviso de ordem também mora no
+ * cabeçalho da migration).
  */
 async function salvarCotacaoNoCache(
     supabaseClient: any,
     chave: { originCep: string; destinationCep: string; cartHash: string; options: unknown },
 ): Promise<unknown | null> {
-    let linhasAtualizadas: unknown[] | null = null
-
-    const erroDeUpdate = await gravarCotacao(async () => {
-        const resultado = await supabaseClient
-            .from('shipping_quotes_cache')
-            .update({ options: chave.options, created_at: new Date().toISOString() })
-            .eq('origin_cep', chave.originCep)
-            .eq('destination_cep', chave.destinationCep)
-            .eq('cart_hash', chave.cartHash)
-            .select('id')
-        linhasAtualizadas = (resultado as { data?: unknown[] } | null)?.data ?? null
-        return resultado
-    })
-
-    if (erroDeUpdate) return erroDeUpdate
-    if (linhasAtualizadas && linhasAtualizadas.length > 0) return null
-
     return await gravarCotacao(() =>
-        supabaseClient.from('shipping_quotes_cache').insert({
+        supabaseClient.from('shipping_quotes_cache').upsert({
             origin_cep: chave.originCep,
             destination_cep: chave.destinationCep,
             cart_hash: chave.cartHash,
             options: chave.options,
-        }),
+        }, { onConflict: 'origin_cep,destination_cep,cart_hash' }),
     )
 }
 

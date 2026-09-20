@@ -340,6 +340,7 @@ Deno.test("filtro de métodos habilitados com CEP FORA: PAC devolvido x só sede
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -381,6 +382,7 @@ Deno.test("filtro de métodos habilitados: chave 'pac' NÃO liga a Jadlog '.Pack
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -416,6 +418,7 @@ Deno.test("filtro de métodos habilitados: chave 'jadlog' NÃO desliga tudo — 
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -454,6 +457,7 @@ Deno.test("CEP de fora recebe o nome JÁ traduzido na resposta da cotação (fim
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -531,18 +535,11 @@ function clienteFalso(opts: {
    * Linhas que a leitura de `shipping_quotes_cache` encontra para a chave
    * (origin_cep, destination_cep, cart_hash), NA ORDEM que `created_at desc`
    * devolveria — índice 0 é a mais recente. Default `[]` (miss, o caminho
-   * que cota na transportadora e grava). Existe para o index-880: a tabela
-   * não tem UNIQUE nessa chave, então mais de uma linha é o cenário real de
-   * corrida (duas cotações do mesmo carrinho ao mesmo tempo).
+   * que cota na transportadora e grava). A leitura tolerante segue valendo
+   * como defesa: a UNIQUE da 20261166000000 impede duplicata NOVA, mas a
+   * leitura não pode voltar a estourar se uma sobrar de antes do dedup.
    */
   cacheLookup?: Array<{ options: unknown }>;
-  /**
-   * Linhas que o `.update(...).eq(...).select('id')` do cache "acha" — não
-   * vazio simula a chave já ter linha (o upsert de aplicação deve ATUALIZAR
-   * e NUNCA inserir outra); default `[]` simula "sem linha ainda", que é o
-   * caminho que todo teste antigo deste arquivo já exercita via `insert`.
-   */
-  cacheUpdateMatches?: Array<{ id: unknown }>;
 }) {
   const { registro } = opts;
   const config = opts.config ?? CONFIG_DA_LOJA;
@@ -625,29 +622,36 @@ function clienteFalso(opts: {
   };
 
   /**
-   * `.update(...)` do cache — só usada pelo upsert de aplicação do
-   * index-880 (a tabela não tem UNIQUE para um `.upsert()` de verdade
-   * funcionar, então a gravação tenta ATUALIZAR a linha da chave antes de
-   * inserir outra). Registra em `registro.updates`, separado de
-   * `registro.inserts`, para os testes distinguirem os dois caminhos.
+   * `.upsert(...)` do cache — o caminho ÚNICO de gravação desde a
+   * 20261166000000 (a UNIQUE (origin_cep, destination_cep, cart_hash) é o
+   * alvo do `onConflict`). Registra em `registro.upserts` com o alvo
+   * declarado, para o teste afirmar EM QUE chave a gravação conflita.
    */
-  const atualizacao = (tabela: string, linha: any) => {
-    // Os filtros do UPDATE são a parte nova e perigosa do upsert de
-    // aplicação: ficam registrados para o teste afirmar EM QUE chave grava.
-    const filtros: Array<[string, unknown]> = [];
-    const construtor: any = {
-      eq: (coluna: string, valor: unknown) => {
-        filtros.push([coluna, valor]);
-        return construtor;
-      },
-      select: () => {
-        registro.updates = registro.updates ?? [];
-        registro.updates.push({ tabela, linha, filtros });
-        const linhasQueBatem = tabela === "shipping_quotes_cache" ? (opts.cacheUpdateMatches ?? []) : [];
-        return { then: (ok: any, falha: any) => Promise.resolve({ data: linhasQueBatem, error: null }).then(ok, falha) };
-      },
+  const upsert = (tabela: string, linha: any, opcoesUpsert?: { onConflict?: string }) => {
+    registro.upserts = registro.upserts ?? [];
+    registro.upserts.push({
+      tabela,
+      linha,
+      onConflict: opcoesUpsert?.onConflict ?? null,
+    });
+    // Mesma resolução do insert de antes: `cacheInsert` decide sucesso/erro
+    // e o marcador `cacheConcluido` só liga quando a promessa termina.
+    const resolver = () => {
+      if (tabela === "shipping_quotes_cache") {
+        return opts.cacheInsert().then(
+          (r: unknown) => {
+            registro.cacheConcluido = true;
+            return r;
+          },
+          (e: unknown) => {
+            registro.cacheConcluido = true;
+            throw e;
+          },
+        );
+      }
+      return Promise.resolve({ error: null });
     };
-    return construtor;
+    return { then: (ok: any, falha: any) => resolver().then(ok, falha) };
   };
 
   const escrita = (tabela: string, linha: any) => {
@@ -705,7 +709,8 @@ function clienteFalso(opts: {
     from: (tabela: string) => ({
       select: () => leitura(tabela),
       insert: (linha: any) => escrita(tabela, linha),
-      update: (linha: any) => atualizacao(tabela, linha),
+      upsert: (linha: any, opcoesUpsert?: { onConflict?: string }) =>
+        upsert(tabela, linha, opcoesUpsert),
     }),
   };
 }
@@ -729,6 +734,7 @@ async function cotar(
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -768,18 +774,17 @@ async function cotar(
 
 // --- index-880: corrida de dois misses simultâneos derrubando o cache -----
 //
-// `shipping_quotes_cache` não tem UNIQUE em (origin_cep, destination_cep,
-// cart_hash) — só PK em `id`. O INSERT só acontece no miss, então duas
-// cotações do MESMO carrinho ao mesmo tempo (duas abas, ou o debounce de
-// 700ms cruzando com o clique manual em "Calcular") erram o cache juntas e
-// inserem DUAS linhas. Os dois testes abaixo prendem as duas metades da
-// correção: a LEITURA tem que tolerar mais de uma linha (nunca estourar) e a
-// GRAVAÇÃO tem que preferir atualizar a linha já existente a empilhar outra.
+// Desde a 20261166000000 a tabela tem UNIQUE (origin_cep, destination_cep,
+// cart_hash) e a gravação é um `.upsert` de verdade: dois misses do MESMO
+// carrinho disputam a constraint e um vira UPDATE do outro — nunca mais
+// INSERT duplicado. A LEITURA tolerante abaixo segue valendo como defesa:
+// duplicata que nasceu antes do dedup não pode voltar a DERRUBAR o cache.
 
 Deno.test("cache com DUAS linhas da mesma chave (corrida de dois misses) não estoura — pega a mais recente", async () => {
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -824,10 +829,11 @@ Deno.test("cache com DUAS linhas da mesma chave (corrida de dois misses) não es
   }
 });
 
-Deno.test("gravação da cotação ATUALIZA a linha existente da chave — upsert sem depender de UNIQUE", async () => {
+Deno.test("gravação da cotação é UM .upsert com onConflict na chave tripla (20261166000000)", async () => {
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -845,32 +851,28 @@ Deno.test("gravação da cotação ATUALIZA a linha existente da chave — upser
       supabase: clienteFalso({
         registro,
         cacheInsert: () => Promise.resolve({ error: null }),
-        // A chave já tem linha: o `.update(...).select('id')` "acha" um
-        // registro. Sem UNIQUE para um `.upsert()` de verdade, é isso que
-        // tem que impedir o INSERT de empilhar outra linha em cima dela.
-        cacheUpdateMatches: [{ id: "linha-existente" }],
       }),
     });
     await resposta.text();
 
     assertEquals(resposta.status, 200);
+    // Um upsert, e NENHUM insert/update separado: o alvo do conflito é a
+    // UNIQUE da 20261166000000 — sem ela (edge publicado antes da
+    // migration), o onConflict não conflita nada e volta a ser insert
+    // duplicado, exatamente o bug index-880.
+    const upsertsDoCache = registro.upserts?.filter(
+      (u: { tabela: string }) => u.tabela === "shipping_quotes_cache",
+    ) ?? [];
+    assertEquals(upsertsDoCache.length, 1);
+    assertEquals(
+      upsertsDoCache[0].onConflict,
+      "origin_cep,destination_cep,cart_hash",
+      "o onConflict tem de mirar a chave tripla da UNIQUE",
+    );
     assertEquals(
       registro.inserts.some((i) => i.tabela === "shipping_quotes_cache"),
       false,
-    );
-    assertEquals(
-      registro.updates?.some((u: { tabela: string }) => u.tabela === "shipping_quotes_cache"),
-      true,
-    );
-    // A chave do UPDATE tem de ser exatamente (origin_cep, destination_cep,
-    // cart_hash): um filtro a menos sobrescreveria a cotação de OUTRO
-    // carrinho ou de OUTRO destino (ressalva da revisão de index-880).
-    const atualizacaoDoCache = registro.updates?.find(
-      (u: { tabela: string }) => u.tabela === "shipping_quotes_cache",
-    ) as { filtros: Array<[string, unknown]> };
-    assertEquals(
-      atualizacaoDoCache.filtros.map(([coluna]) => coluna).sort(),
-      ["cart_hash", "destination_cep", "origin_cep"],
+      "a gravação do cache não pode mais passar por .insert direto",
     );
   } finally {
     globalThis.fetch = fetchOriginal;
@@ -887,7 +889,9 @@ Deno.test("cotação gravada com sucesso devolve o preço normalmente", async ()
   assertEquals(corpo.options.length, 1);
   assertEquals(corpo.options[0].price, 25.5);
 
-  const gravacao = registro.inserts.find((i) => i.tabela === "shipping_quotes_cache");
+  const gravacao = registro.upserts?.find(
+    (u: { tabela: string }) => u.tabela === "shipping_quotes_cache",
+  );
   assertEquals(gravacao?.linha.destination_cep, "01001000");
   assertEquals(gravacao?.linha.origin_cep, "38500000");
   assertEquals(gravacao?.linha.options[0].price, 25.5);
@@ -963,6 +967,7 @@ for (const statusDaTransportadora of [422, 500]) {
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -1290,6 +1295,7 @@ Deno.test("provedor flat_fee remanescente (loja antiga) -> 200 SEM opções de f
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -1335,6 +1341,7 @@ Deno.test("provedor AUSENTE no config (default) -> mesmo tratamento do flat_fee 
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -1401,6 +1408,7 @@ Deno.test("carrinho vazio -> 200 sem opções, sem explodir e SEM log de erro (n
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -1528,6 +1536,7 @@ Deno.test("resposta sem cotação de fora (flat_fee remanescente) declara a list
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -1582,6 +1591,7 @@ async function cotarComTransportadoraFora(config?: typeof CONFIG_DA_LOJA) {
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -1671,6 +1681,7 @@ Deno.test("catch de topo: erro inesperado após ler a config, loja COM taxa fixa
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -1695,6 +1706,7 @@ Deno.test("catch de topo: erro inesperado após ler a config, loja SEM taxa fixa
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -1823,6 +1835,7 @@ Deno.test("index-736: carrinho MISTO no preset por_produto — um item marcado z
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
