@@ -126,14 +126,25 @@
     "tarefas da Onda A e do PDV entraram com 0 warning novo cada (medido",
     "arquivo a arquivo contra o HEAD) e algumas reescritas levaram warnings",
     "velhos junto. Biome ficou 19/1, sem mudança. Baixado SO' DEPOIS do CI,",
-    "como as quedas anteriores."
+    "como as quedas anteriores.",
+    "",
+    "20/09/2026 — biome de 19 para 15 erros (warning segue 1). A queda VEIO do",
+    "PR #624: a frente dividas-ci-followups pagou 11 erros herdadas (3",
+    "noThenProperty de dublês thenable com biome-ignore no padrão do 8f087c7 +",
+    "5 organizeImports/format), no commit 737465e, cuja rodada do CI (#1285,",
+    "workflow CI) está verde com a catraca aprovando. O número 15 é MEDIDO,",
+    "não estimado — mas em réplica exata do ambiente do CI (mesmos blobs LF",
+    "via git archive do 737465e + biome da versão do package-lock), porque o",
+    "log do job exige login nesta sessão e o GITHUB_STEP_SUMMARY não é servido",
+    "sem autenticação. Se a rodada do CI deste PR acusar 'biome errors' acima",
+    "de 15, o número real está no summary do run para conferir e corrigir."
   ],
   "eslint": {
     "errors": 0,
     "warnings": 467
   },
   "biome": {
-    "errors": 19,
+    "errors": 15,
     "warnings": 1
   }
 }
