@@ -6,13 +6,12 @@
 //
 // Decisão do dono D10: BarcodeDetector nativo quando existir (a maioria dos
 // Android já traz), fallback zxing-wasm só quando falta (iPhone), carregado
-// LAZY. O fallback NUNCA é citado por especificador de import aqui — nem
-// estático, nem dentro de `import(...)` — porque o pacote zxing-wasm só
-// entra no repositório em C2.5, depois que a frente `tooling` largar o
-// package.json (ver a divergência registrada no plano do lote C2). Em vez
-// disso o chamador injeta um `carregarFallback: () => Promise<ModuloZxingReader>`;
-// até C2.5 trocar o padrão para `() => import("./fallback-zxing")`, o padrão
-// é `null` — sem fallback — e nada quebra o build.
+// LAZY. Desde C2.5 o padrão de `carregarFallback` é o import DINÂMICO do
+// adaptador real (`./fallback-zxing`, único lugar que cita o pacote) — o
+// especificador mora DENTRO de `import(...)`, nunca em import estático, que
+// é o que mantém o WASM num chunk próprio fora do boot e do PDV. O chamador
+// continua podendo injetar outro carregador (teste) ou `null` para desligar
+// o fallback por completo.
 
 /**
  * Formatos de código de barras que o balcão realmente usa. Nomes iguais aos
@@ -91,7 +90,12 @@ export interface ConstrutorDeBarcodeDetector {
 export interface OpcoesDoDecodificador {
   /** Padrão: os sete formatos de balcão, na ordem de `FORMATOS_PADRAO`. */
   readonly formatos?: readonly FormatoDeLeitura[];
-  /** Padrão: `null` (sem fallback) até C2.5 injetar `() => import("./fallback-zxing")`. */
+  /**
+   * Padrão desde C2.5: `() => import("./fallback-zxing")` — o adaptador
+   * REAL da zxing-wasm, carregado só quando falta o nativo. `null`
+   * explícito desliga o fallback (é assim que o teste prende o caso
+   * `sem_suporte`); um carregador próprio substitui o real (dublê).
+   */
   readonly carregarFallback?: CarregadorDoFallback | null;
   /** Padrão: `globalThis`. Existe para o teste dublar `BarcodeDetector` sem `declare global`. */
   readonly escopo?: { readonly BarcodeDetector?: ConstrutorDeBarcodeDetector };
@@ -389,6 +393,15 @@ function criarDecodificadorZxing(
   };
 }
 
+// O carregador padrão de C2.5: o adaptador real, POR IMPORT DINÂMICO. O
+// especificador fica DENTRO de `import(...)` de propósito — um import
+// estático aqui arrastaria os ~931 kB de WASM para o chunk de quem importa
+// o decodificador (boot e PDV), que é exatamente o que a decisão D10 veta.
+// O `.then` desembrulha o namespace porque o `moduloZxing` é export nomeado
+// (o default existe para quem preferir; os dois são o mesmo objeto).
+const carregarFallbackPadrao: CarregadorDoFallback = () =>
+  import("./fallback-zxing").then((modulo) => modulo.moduloZxing);
+
 export async function criarDecodificador(
   opcoes: OpcoesDoDecodificador = {},
 ): Promise<Decodificador> {
@@ -408,6 +421,11 @@ export async function criarDecodificador(
 
   return criarDecodificadorZxing(
     formatosPedidos,
-    opcoes.carregarFallback ?? null,
+    // Distinguir por `undefined`, não por `??`: `null` explícito é o contrato
+    // de "sem fallback" (é assim que o teste prende o caso `sem_suporte`) e
+    // um `??` o engolia, ligando o padrão contra a vontade de quem chamou.
+    opcoes.carregarFallback === undefined
+      ? carregarFallbackPadrao
+      : opcoes.carregarFallback,
   );
 }
