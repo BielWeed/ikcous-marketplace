@@ -335,7 +335,8 @@ describe("AdminOrdersView / OrderDetail — a ficha reflete o status VERDADEIRO 
     expect(hospedeiro.textContent).toContain("Pago e cancelado");
 
     // O botão "Avançar" só aparece quando `orderStatus !== "cancelled"`
-    // (OrderDetail.tsx, OrderActionBar — a barra fixa de baixo, T3 lote B)
+    // (OrderDetail.tsx, OrderActionBar — a barra sticky do topo desde o
+    // pedido do dono em 20/09/2026, T3 lote B)
     // — sumir prova que a ficha não ficou travada no status velho.
     expect(botaoAvancar()).toBeFalsy();
     expect(botaoCancelar()).toBeFalsy();

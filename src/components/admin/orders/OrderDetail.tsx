@@ -268,8 +268,9 @@ function ItemSkuBadge({
 
 // T3 (lote B, 12/09) — "Mesa do lojista": o cabeçalho da ficha vira o topo
 // da comanda — título, pills de status do pedido e do pagamento, e a linha
-// meta com data e método. Os botões de ação MIGRARAM para a barra fixa
-// embaixo (`OrderActionBar`): o header fica só com o que se LÊ.
+// meta com data e método. Os botões de ação MIGRARAM para a barra sticky
+// no topo (`OrderActionBar`, pedido do dono 20/09): o header fica só com o
+// que se LÊ.
 interface OrderHeaderProps {
   order: Order;
 }
@@ -317,12 +318,14 @@ interface OrderActionBarProps {
   onCancel: (id: string) => void;
 }
 
-// T3 (lote B, 12/09) — a ação do momento fica PRESA embaixo, sempre visível
-// ao rolar (o header antigo era sticky e prendia a ação no TOPO, obrigando a
-// rolar de volta depois de ler a ficha). São os MESMOS botões e guardas do
-// header antigo, só o endereço mudou: 🖨️ imprime · ✕ Cancelar pedido
-// (vermelho suave, era "Abortar Operação") · Avançar → próxima etapa
-// (dourado, primária).
+// Pedido do dono (20/09/2026, com captura): a ação do momento volta para o
+// TOPO, PRESA logo abaixo da barra "ADMIN" do painel — onde o olho já está.
+// É sticky (não fixed): gruda no topo do painel de rolagem, que fica
+// exatamente sob a barra ADMIN (h-11, lg:hidden), e não depende de
+// containing block — a mesma lição do bug da barra que rolava junto. No
+// desktop a barra ADMIN não existe e ela gruda no topo do painel. São os
+// MESMOS botões e guardas de sempre: 🖨️ imprime · ✕ Cancelar pedido
+// (vermelho suave) · Avançar → próxima etapa (dourado, primária).
 function OrderActionBar({
   orderId,
   orderStatus,
@@ -336,14 +339,11 @@ function OrderActionBar({
     orderStatus !== "cancelled" && orderStatus !== "delivered";
   const podeAvancar = nextStatus !== null && orderStatus !== "cancelled";
 
-  // Sobe acima do menu inferior do admin no celular: a barra e o menu
-  // empatam em z-[60] e o menu vem DEPOIS no DOM (AdminLayout), então no
-  // <lg ele pintava por cima — Avançar/Cancelar/imprimir ficavam atrás das
-  // abas (achado 1 da revisão cruzada do PR 549, recado 20260912-2320).
-  // Mesmo padrão do FAB do AdminProductFormView: acima até lg, no pé a
-  // partir de lg (onde o menu some, lg:hidden). O pb da ficha acompanha.
+  // z-40 basta: dentro do painel é o elemento mais alto ao rolar; a barra
+  // ADMIN (z-50) e o menu inferior (z-[60]) vivem FORA do painel e não
+  // competem. Linha separadora embaixo (border-b): ela é o teto da ficha.
   return (
-    <div className="fixed inset-x-0 bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-[60] border-t border-white/5 bg-admin-bg/95 shadow-2xl backdrop-blur-xl lg:bottom-0">
+    <div className="sticky top-0 z-40 border-b border-white/5 bg-admin-bg/95 shadow-2xl backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[600px] items-center gap-2.5 px-4 py-3">
         <Button
           variant="ghost"
@@ -1477,20 +1477,32 @@ export const OrderDetail = memo(function OrderDetail({
     );
   };
 
-  // pb-[calc(11rem+safe-area)]: no celular a barra fixa mora ACIMA do menu
-  // inferior (6.5rem de offset + ~69px de barra ≈ 173px do fundo) — o pb-28
-  // antigo (112px) deixava o fim de "Anotações internas" atrás da barra
-  // levantada (mesmo achado 1 da revisão do PR 549) — e o iPhone com notch
-  // soma ~34px de inset que o pb-44 fixo (176px) não cobria: o calc com a
-  // var cobre os dois (padrão do AdminProductFormView). A partir de lg a
-  // barra volta ao pé e pb-28 chega.
+  // pb-[calc(7rem+safe-area)]: com a ação no topo (sticky, pedido do dono
+  // 20/09/2026), no celular o pé da folha cobre SÓ o menu inferior flutuante
+  // (~68px + margens + safe-area do iPhone com notch) — o 11rem antigo
+  // compensava a barra que morava no pé (achado 1 da revisão do PR 549) e
+  // virou espaço morto. lg:pb-28 é o respiro final padrão do painel (a
+  // mesma régua do dashboard).
   return (
-    <div className="min-h-screen bg-admin-bg pb-[calc(11rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] duration-500 animate-in fade-in lg:pb-28">
+    <div className="min-h-screen bg-admin-bg pb-[calc(7rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] duration-500 animate-in fade-in lg:pb-28">
+      {/* Pedido do dono (20/09/2026): a barra de ação nasce aqui, no topo da
+          ficha, e gruda sob a barra "ADMIN" ao rolar (sticky). O pb da folha
+          agora cobre só o menu inferior flutuante — a ação não mora mais no
+          pé. */}
+      <OrderActionBar
+        orderId={order.id}
+        orderStatus={order.status}
+        nextStatus={nextStatus}
+        isOffline={isOffline}
+        isUpdatingStatus={isUpdatingStatus}
+        onAdvance={requestStatusChange}
+        onCancel={handleCancelarComConfirmacao}
+      />
       {/* T3 (lote B, 12/09) — "Mesa do lojista": coluna ÚNICA tipo comanda
-          (~600px centrados), na ordem em que o lojista LÊ a ficha: header →
-          espera → trilha → cliente → itens → pagamento (+ devolução) →
-          entrega → anotações. O grid de 2 colunas saiu; a ação migrou para a
-          barra fixa embaixo (`OrderActionBar`). */}
+          (~600px centrados), na ordem em que o lojista LÊ a ficha: ação (fixa
+          no topo desde 20/09) → header → espera → trilha → cliente → itens →
+          pagamento (+ devolução) → entrega → anotações. O grid de 2 colunas
+          saiu. */}
       <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6">
         <OrderHeader order={order} />
 
@@ -1572,16 +1584,6 @@ export const OrderDetail = memo(function OrderDetail({
           onSaveNotes={handleSaveNotes}
         />
       </div>
-
-      <OrderActionBar
-        orderId={order.id}
-        orderStatus={order.status}
-        nextStatus={nextStatus}
-        isOffline={isOffline}
-        isUpdatingStatus={isUpdatingStatus}
-        onAdvance={requestStatusChange}
-        onCancel={handleCancelarComConfirmacao}
-      />
 
       <OrderReceipt order={order} storeName={storeName} />
 
