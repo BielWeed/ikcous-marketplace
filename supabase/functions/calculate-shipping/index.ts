@@ -204,10 +204,22 @@ async function gravarCotacao(gravar: () => PromiseLike<unknown>): Promise<unknow
  * `onConflict` mira: a gravação ficou ATÔMICA — dois misses simultâneos do
  * MESMO carrinho agora disputam a mesma constraint e um dos dois vira
  * UPDATE da linha do outro, nunca mais INSERT duplicado. Este código só
- * pode ser PUBLICADO depois da migration aplicada no banco da loja:
- * `.upsert` com `onConflict` numa tabela sem a constraint não conflita
- * nada e reabre o insert duplicado (o aviso de ordem também mora no
- * cabeçalho da migration).
+ * pode ser PUBLICADO depois da migration aplicada no banco da loja (o
+ * aviso de ordem também mora no cabeçalho da migration).
+ *
+ * E se rodar antes, num ambiente ainda SEM a UNIQUE: NÃO é insert
+ * silencioso nem duplicado. O Postgres recusa um ON CONFLICT sem
+ * constraint correspondente com o erro 42P10 ("no unique constraint
+ * matching the ON CONFLICT specification"), o PostgREST devolve isso como
+ * `{ error }` sem rejeitar a promessa, e `gravarCotacao` captura o erro e
+ * o devolve como valor. Daí em diante é o caminho de falha-de-gravação de
+ * sempre: o log sai com status 'error' ("Falha ao gravar a cotação: …"),
+ * as opções cujo preço o servidor resolve SEM cache seguem na resposta
+ * (`precoResolvidoSemCache` — hoje, a entrega local) e, se TODAS as opções
+ * dependiam da linha gravada, o edge recusa com 503 para a cliente
+ * reapertar "calcular". Quem perde é a gravação no cache (e com ela o
+ * frete de transportadora); a cotação que não depende do cache continua
+ * chegando ao usuário.
  */
 async function salvarCotacaoNoCache(
     supabaseClient: any,
