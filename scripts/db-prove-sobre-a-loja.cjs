@@ -20,6 +20,10 @@
  *   1. Aplica a 20261167000000, lida do disco.
  *   2. `anon` lê as duas colunas pela view: NULL/NULL antes do lojista
  *      preencher (ausência honesta).
+ *   2b. Localiza UM usuário com `profiles.role = 'admin'` — a personificação
+ *      das sondagens é por identidade REAL: o is_admin() da casa consulta
+ *      profiles por auth.uid(), não aceita id inventado. Sem admin no banco,
+ *      a prova para (INCONCLUSIVO).
  *   3. Semente do conteúdo prévio (o que "já existia" antes do salvar):
  *      UPDATE direto grava só a descrição (caminho da hub, como o
  *      semear-configuracao faz).
@@ -27,6 +31,11 @@
  *      só do ENDEREÇO — o RETURNING da própria RPC confirma: endereço
  *      gravado E descrição PRESERVADA (o coração do aceite "salvar um campo
  *      não apaga os outros"), medido DENTRO do savepoint antes de desfazer.
+ *      A RPC é chamada PERSONIFICANDO o admin real (SET LOCAL ROLE
+ *      authenticated + request.jwt.claims com o sub dele — mesmo molde de
+ *      db-prove-analitico-dinheiro-real.cjs). Conexão crua sem JWT é negada
+ *      pelo porteiro, como deve — primeiro relato real, 20/09/2026: a
+ *      execução parou exatamente aí e a prova inteira era inútil sem isto.
  *   5. SONDAGEM 2: payload VAZIO ({} de um form que só abriu e salvou) —
  *      RETURNING mantém endereço e descrição intactos.
  *   6. Aplica o rollback-manual, lido do disco — as colunas somem da tabela
@@ -141,13 +150,37 @@ async function main() {
     );
     await client.query("RESET ROLE");
 
+    // 2b. Admin REAL para personificar as sondagens (is_admin() consulta
+    // profiles por auth.uid() — id inventado não passa; conexão crua sem
+    // JWT tem auth.uid() NULL e é negada, como deve).
+    const admin = await client.query(
+      "SELECT p.id FROM public.profiles p WHERE p.role = 'admin' LIMIT 1",
+    );
+    if (admin.rowCount === 0) {
+      console.error(
+        "PROVA INCONCLUSIVA: nenhum profiles.role='admin' no banco — a personificação de admin não tem identidade real para usar.",
+      );
+      process.exitCode = 2;
+      return;
+    }
+    const adminId = admin.rows[0].id;
+    // SET LOCAL + set_config(is_local=true) dentro do SAVEPOINT: o
+    // ROLLBACK TO SAVEPOINT desfaz papel e claims junto com os dados.
+    async function personificarAdmin() {
+      await client.query("SAVEPOINT sondar");
+      await client.query("SET LOCAL ROLE authenticated");
+      await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: adminId, role: "authenticated" }),
+      ]);
+    }
+
     // 3. Semente do conteúdo prévio (caminho da hub, direto na tabela)
     await client.query(
       "UPDATE public.store_config SET store_description = 'descrição semente da prova' WHERE id = 1",
     );
 
     // 4. SONDAGEM 1: payload só do endereço — descrição PRESERVADA
-    await client.query("SAVEPOINT sondar");
+    await personificarAdmin();
     const sondagem1 = await client.query(
       "SELECT public.upsert_store_config($1::jsonb) AS retornado",
       [JSON.stringify({ store_address: "Rua da Prova, 123" })],
@@ -170,7 +203,7 @@ async function main() {
     await client.query("ROLLBACK TO SAVEPOINT sondar");
 
     // 5. SONDAGEM 2: payload vazio não toca em nada
-    await client.query("SAVEPOINT sondar2");
+    await personificarAdmin();
     const sondagem2 = await client.query(
       "SELECT public.upsert_store_config($1::jsonb) AS retornado",
       ["{}"],
@@ -185,7 +218,7 @@ async function main() {
         d: retorno2.store_description,
       })}`,
     );
-    await client.query("ROLLBACK TO SAVEPOINT sondar2");
+    await client.query("ROLLBACK TO SAVEPOINT sondar");
 
     // 6. Rollback lido do disco
     await client.query(rollback);
