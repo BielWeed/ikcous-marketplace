@@ -145,6 +145,16 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
   });
   const onSetDirty = vi.fn();
 
+  // B2 do item 2 da fila (19/09): o cliente que a RESPOSTA do banco devolve
+  // para o recibo — os campos que `to_jsonb(o.*)` carrega de verdade na
+  // linha de `marketplace_orders`. Default = venda sem cliente (o MESMO
+  // literal que a migration 20261162000000:366-371 grava).
+  let clienteNaResposta: {
+    user_id: string | null;
+    customer_name: string;
+    customer_data: { whatsapp: string | null; canal: string };
+  };
+
   beforeEach(() => {
     // Cupom novo a cada teste — sem isto o rascunho gravado por
     // `useVendaPresencial` (C3.1) no `localStorage` de um teste anterior
@@ -166,6 +176,11 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     overrideAtual = null;
     onSetBackOverride.mockClear();
     onSetDirty.mockClear();
+    clienteNaResposta = {
+      user_id: null,
+      customer_name: "Venda no balcão",
+      customer_data: { whatsapp: null, canal: "presencial" },
+    };
     rpcMock.mockReset();
     rpcMock.mockImplementation(async (nome: string, params: any) => {
       if (nome === "buscar_por_codigo_barras") {
@@ -203,6 +218,11 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
               subtotal: 39.9,
               discount: 0,
               payment_method: params.p_pagamento ?? "cash",
+              // B2: a linha que `to_jsonb(o.*)` devolve carrega os campos de
+              // cliente — o recibo monta o cliente DAQUI, não da tela.
+              user_id: clienteNaResposta.user_id,
+              customer_name: clienteNaResposta.customer_name,
+              customer_data: clienteNaResposta.customer_data,
             },
             items: [
               {
@@ -263,6 +283,25 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     await avancar();
     // Camada realmente aberta — "Cliente da venda" só existe dentro dela.
     expect(hospedeiro.textContent).toContain("Cliente da venda");
+  }
+
+  // Preenche um <input> controlado do React pelo setter nativo + evento
+  // `input`, e espera o flush do buffer do `LocalBufferedInput` (delay 200).
+  async function preencherInputPorId(
+    id: string,
+    valor: string,
+  ): Promise<void> {
+    const input = hospedeiro.querySelector<HTMLInputElement>(`#${id}`)!;
+    expect(input).toBeDefined();
+    const definidor = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    await act(async () => {
+      definidor.call(input, valor);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await avancar(250);
   }
 
   it("caso 1 — TELAS_DE_ENTRADA importado por esta suíte contém o nome (redundante com o describe acima, prova que a MESMA view enxerga a mesma lista)", () => {
@@ -416,6 +455,72 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     // "alterações não salvas" sobre o recibo de uma venda JÁ registrada.
     expect(backSpy).not.toHaveBeenCalled();
     expect(replaceSpy).toHaveBeenCalled();
+  });
+
+  it("B2 — o cliente do recibo vem da RESPOSTA do banco, não do que está na tela (recarregar a página não pode apagar o cliente do recibo)", async () => {
+    await montar();
+    await bipar(PRODUTO_SIMPLES.codigo);
+    await abrirCamadaDeCliente();
+
+    // A tela cadastra um cliente AVULSO (nome + whatsapp digitados na hora)…
+    const abaAvulso = localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!;
+    await act(async () => {
+      abaAvulso.click();
+    });
+    await avancar();
+    await preencherInputPorId("nome-do-cliente-avulso", "Maria digitada na tela");
+    await preencherInputPorId(
+      "whatsapp-do-cliente-avulso",
+      "11999999999",
+    );
+    const confirmarAvulso = localizarBotaoPorTexto(
+      hospedeiro,
+      "Confirmar cliente avulso",
+    ) as HTMLButtonElement;
+    expect(confirmarAvulso.disabled).toBe(false);
+    await act(async () => {
+      confirmarAvulso.click();
+    });
+    await avancar();
+
+    // …mas a RESPOSTA do banco conta outra história: é o que a RPC gravou
+    // de verdade (a camada de cliente é interativa por baixo do
+    // fechamento — e na retentativa pós-recarregamento, o que está na
+    // tela é o rascunho, não a venda que o banco já tem).
+    clienteNaResposta = {
+      user_id: null,
+      customer_name: "Maria gravada no banco",
+      customer_data: { whatsapp: "11777777777", canal: "presencial" },
+    };
+
+    const fecharVenda = localizarBotaoPorTexto(hospedeiro, "Fechar venda")!;
+    await act(async () => {
+      fecharVenda.click();
+    });
+    await avancar();
+
+    const dinheiro = localizarBotaoPorTexto(hospedeiro, "Dinheiro")!;
+    await act(async () => {
+      dinheiro.click();
+    });
+    await avancar();
+
+    const registrar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Registrar venda",
+    ) as HTMLButtonElement;
+    await act(async () => {
+      registrar.click();
+    });
+    await avancar(100);
+
+    // O recibo chegou…
+    expect(hospedeiro.textContent).toContain("Compra na loja");
+    // …com o cliente DA RESPOSTA do banco (nome E whatsapp)…
+    expect(hospedeiro.textContent).toContain("Maria gravada no banco");
+    expect(hospedeiro.textContent).toContain("11777777777");
+    // …e NADA do cliente que ficou na tela.
+    expect(hospedeiro.textContent).not.toContain("Maria digitada na tela");
   });
 
   it("caso 5c — desmontar com item ainda no cupom desliga o dirty (false) no unmount", async () => {

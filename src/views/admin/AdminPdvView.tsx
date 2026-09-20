@@ -37,6 +37,7 @@ import {
   useVendaPresencial,
 } from "@/hooks/useVendaPresencial";
 import type {
+  ClienteDaVenda as ClienteDaVendaTipo,
   FormaDePagamentoDoBalcao,
   ItemDoCupom,
   ReciboDaVendaRegistrada,
@@ -249,8 +250,9 @@ export function AdminPdvView({
 
   // A linha inteira de `marketplace_orders` que `to_jsonb(o.*)` devolve
   // dentro de `order` (migration 20261162000000:498-515) — só os campos que
-  // o recibo usa; o resto da linha (endereço, `customer_data`…) não importa
-  // aqui.
+  // o recibo usa; o resto da linha (endereço…) não importa aqui. Os campos
+  // de cliente (`user_id`, `customer_name`, `customer_data`) entram porque o
+  // recibo monta o cliente da RESPOSTA, não da tela (ver `clienteDoRecibo`).
   interface LinhaDoPedidoDoBalcao {
     readonly id: string;
     readonly created_at: string;
@@ -258,6 +260,47 @@ export function AdminPdvView({
     readonly subtotal: number;
     readonly discount: number;
     readonly payment_method: FormaDePagamentoDoBalcao;
+    readonly user_id: string | null;
+    readonly customer_name: string;
+    readonly customer_data: { readonly whatsapp?: string | null } | null;
+  }
+
+  // O literal que a migration grava em `customer_name` quando a venda nasce
+  // sem cliente (20261162000000:366-371, o COALESCE final) — o MESMO que
+  // `ReciboDaVenda.tsx` (`nomeDoCliente`) mostra para `sem_cliente`. Três
+  // lugares, um valor: a migration é a fonte; os outros dois copiam.
+  const NOME_DE_VENDA_SEM_CLIENTE = "Venda no balcão";
+
+  // B2 do item 2 da fila do bastão (19/09): o cliente do recibo sai da
+  // RESPOSTA do banco, não do que está na tela — `customer_name` /
+  // `customer_data.whatsapp` são o que a RPC gravou de verdade. A camada de
+  // cliente é interativa por baixo do fechamento (o mesmo achado BLOQUEIA
+  // dos itens): o cliente da TELA pode ter mudado entre o clique que gravou
+  // e a resposta que chega; e na retentativa pós-recarregamento
+  // (`ja_existia: true`) o que está na tela é o rascunho restaurado, não a
+  // venda que o banco já tem — recarregar a página não pode apagar o cliente
+  // do recibo. O banco manda a forma: `user_id` (cliente cadastrado),
+  // `customer_name` (nome do avulso, ou o literal de venda sem cliente) e
+  // `customer_data.whatsapp`.
+  function clienteDoRecibo(pedido: LinhaDoPedidoDoBalcao): ClienteDaVendaTipo {
+    const whatsappBruto = pedido.customer_data?.whatsapp;
+    const whatsapp =
+      typeof whatsappBruto === "string" && whatsappBruto.trim() !== ""
+        ? whatsappBruto
+        : null;
+    if (pedido.user_id) {
+      return {
+        tipo: "cadastrado",
+        userId: pedido.user_id,
+        nome: pedido.customer_name,
+        whatsapp,
+      };
+    }
+    const nome = (pedido.customer_name ?? "").trim();
+    if (nome === "" || nome === NOME_DE_VENDA_SEM_CLIENTE) {
+      return { tipo: "sem_cliente" };
+    }
+    return { tipo: "avulso", nome, whatsapp: whatsapp ?? "" };
   }
 
   // Um item de `data.items` (migration :498-515) — o que o BANCO gravou de
@@ -377,7 +420,11 @@ export function AdminPdvView({
       subtotal: pedido.subtotal,
       desconto: pedido.discount,
       pagamento: pedido.payment_method,
-      cliente: estado.cliente,
+      // B2 (fila do bastão 19/09): da RESPOSTA do banco, nunca da tela — ver
+      // `clienteDoRecibo` acima. O recibo mostra o cliente da venda que o
+      // banco gravou; um F5 ou uma troca de cliente por baixo do fechamento
+      // não reescreve a história.
+      cliente: clienteDoRecibo(pedido),
       // PASSO 3(a) da tarefa, ao pé da letra: os itens saem de
       // `resposta.items` (o BANCO), e só imagem/variação vêm do cupom da
       // tela, por `product_id`+`variant_id` (ver `montarItensDoRecibo`
@@ -430,7 +477,7 @@ export function AdminPdvView({
     // etapa) ficava por trás da barra de navegação fixa, e a rolagem termina
     // exatamente ali — relato do dono em teste real no aparelho (19/09):
     // "os botões não têm rolagem suficiente para eu poder clicar".
-    <div className="flex flex-col gap-4 pb-admin lg:pb-12">
+    <div className="pb-admin flex flex-col gap-4 lg:pb-12">
       <div className="flex items-center justify-between gap-3">
         <AdminPageHeader titulo="Vender" />
       </div>
