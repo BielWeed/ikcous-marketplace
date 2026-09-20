@@ -202,4 +202,5 @@ BEGIN
 
   RETURN result;
 END;
-$function$
+$function$;
+
