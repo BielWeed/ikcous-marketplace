@@ -115,16 +115,15 @@ describe("C2.5 — o carregador padrão só dispara quando falta o nativo", () =
     vi.clearAllMocks();
   });
 
-  const detectorNativo = {
-    detect: async () => [{ rawValue: "7891234567890", format: "ean_13" }],
-    getSupportedFormats: async () => ["ean_13", "code_128"],
-  };
+  // Campos de classe (não `return` no construtor — biome/noConstructorReturn):
+  // o `new Ctor()` do decodificador ganha a instância com `detect`, e o
+  // `Ctor.getSupportedFormats()` estático é o que decide se há nativo.
   const BarcodeDetectorNativo = class {
-    constructor() {
-      return detectorNativo;
-    }
+    readonly detect = async () => [
+      { rawValue: "7891234567890", format: "ean_13" },
+    ];
     static getSupportedFormats() {
-      return detectorNativo.getSupportedFormats();
+      return Promise.resolve(["ean_13", "code_128"]);
     }
   };
 
