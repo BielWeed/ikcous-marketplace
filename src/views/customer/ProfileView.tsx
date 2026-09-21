@@ -494,6 +494,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                 <AddressList
                   addresses={addresses}
                   compact={!isAddressesExpanded}
+                  showMaps
                   onEdit={(addr) => {
                     onNavigate("address-form", addr.id);
                   }}
