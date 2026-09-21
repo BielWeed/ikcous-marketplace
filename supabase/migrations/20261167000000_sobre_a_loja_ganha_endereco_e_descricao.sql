@@ -290,3 +290,11 @@ BEGIN
   RETURN result;
 END;
 $function$;
+
+-- Pós-DDL (defeito apanhado em execução real, 20/09/2026): DDL aplicado por
+-- conexão direta NÃO recarrega o schema cache do PostgREST — sem o NOTIFY
+-- abaixo, o `select=*` da REST continua devolvendo store_config e
+-- v_store_config SEM as colunas novas, e o front lê config velho para
+-- sempre (o save pela RPC funciona, a leitura não — meio caminho pior que
+-- os dois). Idempotente: NOTIFY de novo não faz mal.
+NOTIFY pgrst, 'reload schema';
