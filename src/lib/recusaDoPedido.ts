@@ -135,6 +135,17 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
     padrao: /^O cupom ([\s\S]+) expirou em \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}\.$/,
     acao: "remover_cupom",
   },
+  // PEÇA 12 (Fase 2, migration 20261151000000): a recusa por limite COM vaga
+  // presa em pedido cancelado. A frase é a MESMA nas três funções do banco
+  // (validate_coupon_secure_v2, v23, v24 — fonte única, lição #53) e a ação
+  // é a mesma das outras recusas de cupom: remover o cupom e refazer sem
+  // ele — a vaga volta sozinha, e a recompra com o cupom é tentativa nova.
+  // A regra do limite antigo (abaixo) continua para o caso SEM vaga presa.
+  {
+    padrao:
+      /^O cupom ([\s\S]+) está no limite de usos\. A vaga dele volta sozinha quando o pagamento de um pedido cancelado deixar de ser possível \(em até 24 horas\)\.$/,
+    acao: "remover_cupom",
+  },
   {
     padrao: /^O cupom ([\s\S]+) já atingiu o limite de usos\.$/,
     acao: "remover_cupom",
