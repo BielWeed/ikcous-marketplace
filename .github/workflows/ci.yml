@@ -31,9 +31,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
   push:
-    branches: [develop, main]
+    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
 
 # NOTA (14/09/2026): o raciocínio abaixo nasceu quando o repositório era
 # privado e a API de branch protection devolvia 403 no plano Free. Essa
