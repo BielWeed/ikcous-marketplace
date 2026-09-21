@@ -216,4 +216,17 @@ describe("descricaoDaLojaParaHtml — o helper da descrição", () => {
     expect(descricaoDaLojaParaHtml("   ")).toBe("");
     expect(descricaoDaLojaParaHtml("")).toBe("");
   });
+
+  it("ida e volta exata: texto → HTML (save) → texto (reabrir) reproduz o digitado — formDirty nunca nasce de diferença de reconstituição", async () => {
+    const { descricaoDaLojaParaHtml, textoDaLoja } = await import(
+      "@/lib/texto-da-loja"
+    );
+    const digitado =
+      "Importados escolhidos a dedo, direto de São Paulo para a sua casa.\n\nNovos lançamentos toda semana — fale com a gente pelo WhatsApp.";
+    const gravado = descricaoDaLojaParaHtml(digitado);
+    expect(textoDaLoja(gravado)).toBe(digitado);
+    // e o inverso do vazio é vazio (ausência honesta)
+    expect(textoDaLoja(null)).toBe("");
+    expect(textoDaLoja("")).toBe("");
+  });
 });

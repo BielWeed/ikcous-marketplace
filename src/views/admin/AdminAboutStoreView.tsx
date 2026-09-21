@@ -3,7 +3,7 @@ import { BusinessHoursSection } from "@/components/admin/settings/BusinessHoursS
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
-import { descricaoDaLojaParaHtml } from "@/lib/texto-da-loja";
+import { descricaoDaLojaParaHtml, textoDaLoja } from "@/lib/texto-da-loja";
 import { AlertTriangle, ExternalLink, RefreshCw, Save } from "lucide-react";
 import { Suspense, lazy, memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -87,18 +87,12 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   const isOffline = useOnlineStatus();
 
   // Endereço e descrição: baseline do config, dirty por diff (mesmo molde do
-  // editor de horário: dado que chega só atualiza editor puro).
+  // editor de horário: dado que chega só atualiza editor puro). A descrição
+  // gravada é HTML simples — o editor mostra o texto pelo INVERSO do mesmo
+  // módulo que converte no save (ida e volta exata; sem isto, micro-
+  // diferenças deixavam o botão Salvar eternamente habilitado).
   const baselineEndereco = config.storeAddress ?? "";
-  const baselineDescricao = (() => {
-    // O banco guarda HTML simples (parágrafos); o editor devolve TEXTO —
-    // quebras de parágrafo de volta para o lojista editar sem ver marcação.
-    return (config.storeDescription ?? "")
-      .replace(/<\/p>\s*<p>/g, "\n\n")
-      .replace(/<\/?p>/g, "")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">");
-  })();
+  const baselineDescricao = textoDaLoja(config.storeDescription);
   const [endereco, setEndereco] = useState(baselineEndereco);
   const [descricao, setDescricao] = useState(baselineDescricao);
   const [saving, setSaving] = useState(false);

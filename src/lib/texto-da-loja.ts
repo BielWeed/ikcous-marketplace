@@ -4,6 +4,13 @@
 // defesa independente que existe desde antes da coluna existir). Escapar
 // &< > antes de envolver em <p> garante que o texto do lojista nunca vira
 // marcação acidental: o que ele digita é CONTEÚDO, não HTML.
+//
+// `textoDaLoja` é o INVERSO: o que o editor mostra ao reabrir a tela. Ida e
+// volta pelo MESMO módulo = o formDirty da tela só acusa diferença quando o
+// lojista digita de verdade (sem isso, micro-diferenças de reconstituição
+// deixavam o botão Salvar eternamente habilitado — 1ª execução real,
+// 20/09/2026).
+
 export function descricaoDaLojaParaHtml(texto: string): string {
   const paragrafos = texto
     .split(/\n\s*\n/)
@@ -14,4 +21,16 @@ export function descricaoDaLojaParaHtml(texto: string): string {
         `<p>${bloco.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`,
     );
   return paragrafos.join("");
+}
+
+export function textoDaLoja(html: string | null | undefined): string {
+  if (!html) return "";
+  return html
+    .replace(/<\/p>\s*<p>/g, "\n\n")
+    .replace(/<p>/g, "")
+    .replace(/<\/p>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .trim();
 }
