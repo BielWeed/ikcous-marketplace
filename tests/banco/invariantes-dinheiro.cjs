@@ -80,8 +80,8 @@ async function criarPedido(cliente, { produtos, cupom, total }) {
       "5539000000000",
       null,
       JSON.stringify({ cep: "38500-000", rua: "Rua da Prova", numero: "1" }),
-      null,
-      null,
+      "38500-000",
+      "local-delivery",
       null,
     ],
   );
@@ -100,16 +100,22 @@ async function valorUnico(cliente, sql, params = []) {
   return resultado.rows[0][Object.keys(resultado.rows[0])[0]];
 }
 
-// Loja fixture: frete sempre grátis (sentinela 0.01 zera o frete sem cotação
-// nem opção de entrega) e cobertura nacional (nenhum portão de CEP). As
-// colunas vão no INSERT e no UPDATE: só no DO UPDATE, a linha NOVA nasceria
-// com o default (free_shipping_min=100) — medido no CI em 14/09.
+// Loja fixture: frete sempre grátis (sentinela 0.01) e cobertura nacional
+// (nenhum portão de CEP). A regra do frete × pagamento (migration
+// 20261168000000) exige OPÇÃO de entrega escolhida — criarPedido manda
+// 'local-delivery' com CEP de entrega local —, o que exige origem e faixa
+// local configuradas na loja. As colunas vão no INSERT e no UPDATE: só no
+// DO UPDATE, a linha NOVA nasceria com o default (free_shipping_min=100) —
+// medido no CI em 14/09.
 async function garantirLojaFixture(cliente) {
   await cliente.query(
-    `INSERT INTO public.store_config (id, free_shipping_min, shipping_coverage)
-     VALUES (1, 0.01, 'national')
+    `INSERT INTO public.store_config
+       (id, origin_cep, local_cep_range, free_shipping_min, shipping_coverage)
+     VALUES (1, '38500-000', '38500000-38505000', 0.01, 'national')
      ON CONFLICT (id) DO UPDATE
-       SET free_shipping_min = EXCLUDED.free_shipping_min,
+       SET origin_cep = EXCLUDED.origin_cep,
+           local_cep_range = EXCLUDED.local_cep_range,
+           free_shipping_min = EXCLUDED.free_shipping_min,
            shipping_coverage = EXCLUDED.shipping_coverage`,
   );
 }
