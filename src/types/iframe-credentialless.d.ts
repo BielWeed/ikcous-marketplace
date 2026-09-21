@@ -6,7 +6,7 @@
 import "react";
 
 declare module "react" {
-  interface IframeHTMLAttributes<T> {
+  interface IframeHTMLAttributes<_T> {
     credentialless?: string | undefined;
   }
 }
