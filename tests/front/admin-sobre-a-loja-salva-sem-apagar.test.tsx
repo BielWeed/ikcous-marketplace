@@ -43,6 +43,15 @@ vi.mock("@/hooks/useOnlineStatus", () => ({
   useOnlineStatus: () => false,
 }));
 
+// sonner é espiado (não mockado): o teste quer PROVAR que a tela avisa a
+// falha — e não depender da renderização real de toasts no jsdom.
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 // O editor de horário (BusinessHoursSection) tem guarda de admin via
 // useAuth — que importa o cliente real do Supabase, e o jsdom não tem Web
 // Worker para o realtime. Mocka-se o auth (molde dos testes da ficha: nunca
@@ -185,7 +194,7 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     expect(updates.storeDescription).toBeNull();
   });
 
-  it("o save falha fechado: updateConfig devolvendo false NÃO limpa o dirty", async () => {
+  it("o save falha fechado: updateConfig devolvendo false NÃO limpa o dirty, avisa o erro e preserva o texto", async () => {
     updateConfigMock = vi.fn(async () => false);
     await renderizarTela();
     // montagem relata dirty false antes de qualquer digitação
@@ -199,6 +208,24 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     expect(ultimas.lastIndexOf(true)).toBeGreaterThan(
       ultimas.lastIndexOf(false),
     );
+    // a falha é AVISADA (silent:true suprime os toasts de dentro do
+    // updateConfig — o aviso de falha é responsabilidade da tela)
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalled();
+  });
+
+  it("updateConfig lançando (rede fora): o erro é avisado e o rascunho não some", async () => {
+    updateConfigMock = vi.fn(async () => {
+      throw new Error("rede caiu");
+    });
+    await renderizarTela();
+    await preencherESalvar("Rua das Flores, 123", "texto");
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalled();
+    // o texto digitado permanece no campo (rascunho preservado)
+    expect(
+      (hospedeiro.querySelector("#store-address") as HTMLInputElement).value,
+    ).toBe("Rua das Flores, 123");
   });
   // A entrada das duas colunas no TIPO_DAS_COLUNAS_STORE_CONFIG (o contrato
   // "coluna desconhecida nunca fica confirmada") é provada contra o módulo

@@ -178,9 +178,20 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         setEndereco(chosenEndereco);
         setDescricao(descricao.trim());
         toast.success("Sobre a Loja salvo");
+      } else {
+        // silent:true suprime TODOS os toasts de dentro do updateConfig —
+        // inclusive o de falha. A falha tem de ser avisada AQUI, com o
+        // rascunho preservado (o lojista não perde o texto nem acha que
+        // salvou).
+        toast.error(
+          "Não foi possível confirmar que as alterações foram salvas. O texto foi preservado — tente novamente.",
+        );
       }
-    } catch {
-      // updateConfig silencioso já avisou; nada a somar.
+    } catch (e) {
+      if (isCurrent())
+        toast.error(
+          `Falha ao salvar: ${e instanceof Error ? e.message : "erro desconhecido"}. O texto foi preservado.`,
+        );
     } finally {
       if (isCurrent()) setSaving(false);
     }
