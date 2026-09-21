@@ -289,11 +289,16 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           {queryPrevia && (
             <div className="mt-4 overflow-hidden rounded-2xl border border-white/5">
               <div className="relative h-40 w-full">
+                {/* credentialless: o app envia COEP credentialless e o embed do
+                    Google não responde com COEP/CORP — sem o atributo o frame é
+                    barrado (ERR_BLOCKED_BY_RESPONSE). Ele carrega o mapa num
+                    contexto efêmero, sem cookies. */}
                 <iframe
                   title="Prévia do mapa da página Sobre a Loja"
                   src={`https://maps.google.com/maps?q=${encodeURIComponent(queryPrevia)}&z=15&output=embed`}
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
+                  credentialless=""
                   className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
                 />
                 <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">

@@ -184,11 +184,16 @@ export function AboutStoreView() {
                   localização exata no painel (peça futura), o dado é o CEP de
                   origem: aproximação, com aviso. */}
               <div className="relative h-48 w-full overflow-hidden">
+                {/* credentialless: o app envia COEP credentialless e o embed do
+                    Google não responde com COEP/CORP — sem o atributo o frame é
+                    barrado (ERR_BLOCKED_BY_RESPONSE). Ele carrega o mapa num
+                    contexto efêmero, sem cookies. */}
                 <iframe
                   title={`Mapa da loja ${storeName}`}
                   src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
+                  credentialless=""
                   className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
                 />
                 {/* Pin balão da casa em UM SVG: gota PRETA sólida (contorno
