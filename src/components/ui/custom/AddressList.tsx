@@ -20,6 +20,11 @@ interface AddressListProps {
 // saem para o Google. Sem rua e sem CEP não há como apontar o mapa: devolve
 // null para o cartão nem montar iframe vazio (a query é texto; o Google
 // geocodifica sozinho — nada de coordenada inventada nem precisão prometida).
+//
+// CEP sai da query quando rua, cidade e UF estão completos: em alguns
+// endereços, combinar bairro+CEP leva o embed clássico a uma busca ambígua
+// (POIs da região em vez do pin do endereço). O CEP segue como fallback
+// nos casos incompletos.
 export function queryMapsDoEndereco(address: Address): string | null {
   // Guarda DIRETA em street ou CEP: um número órfão (rua vazia) não monta
   // query — sem um dos dois não há como apontar o mapa.
@@ -29,12 +34,17 @@ export function queryMapsDoEndereco(address: Address): string | null {
     temRua && address.number?.trim()
       ? `${address.street!.trim()}, ${address.number.trim()}`
       : (address.street?.trim() ?? "");
+  // A omissão do CEP exige rua PRESENTE: sem rua, o CEP é o único
+  // localizador e não pode sair.
+  const omitirCep = Boolean(
+    temRua && address.city?.trim() && address.state?.trim(),
+  );
   const partes = [
     rua,
     address.neighborhood?.trim(),
     address.city?.trim(),
     address.state?.trim(),
-    address.cep?.trim(),
+    omitirCep ? null : address.cep?.trim(),
     "Brasil",
   ].filter(Boolean);
   return encodeURIComponent(partes.join(", "));

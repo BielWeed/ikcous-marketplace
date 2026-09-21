@@ -111,10 +111,13 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
     const mapas = iframes(hospedeiro);
     expect(mapas).toHaveLength(2);
 
+    // Rua+cidade+UF completos: o CEP SAI da query — bairro+CEP juntos
+    // podem virar busca ambígua no embed clássico (POIs da região, sem pin).
     const esperado = `https://maps.google.com/maps?q=${encodeURIComponent(
-      "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, 38600-123, Brasil",
+      "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, Brasil",
     )}&z=15&output=embed`;
     expect(mapas[0]!.getAttribute("src")).toBe(esperado);
+    expect(mapas[0]!.getAttribute("src")).not.toContain("38600");
 
     // Privacidade: destinatário, complemento, referência e apelido ficam fora.
     expect(mapas[0]!.getAttribute("src")).not.toContain("Maria");
@@ -144,7 +147,7 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
     expect(link!.getAttribute("rel")).toBe("noopener noreferrer");
     expect(link!.getAttribute("href")).toBe(
       `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, 38600-123, Brasil",
+        "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, Brasil",
       )}`,
     );
   });
@@ -180,10 +183,34 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
 });
 
 describe("queryMapsDoEndereco — a query nasce limpa ou não nasce", () => {
+  it("rua+cidade+UF completos: o CEP sai da query (bairro+CEP juntos podem virar busca ambígua)", () => {
+    expect(queryMapsDoEndereco(CASA)).toBe(
+      encodeURIComponent(
+        "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, Brasil",
+      ),
+    );
+  });
+
   it("número ausente não deixa vírgula órfã", () => {
     expect(queryMapsDoEndereco({ ...CASA, number: "" })).toBe(
       encodeURIComponent(
-        "Rua das Acácias, Jardim Primavera, Paracatu, MG, 38600-123, Brasil",
+        "Rua das Acácias, Jardim Primavera, Paracatu, MG, Brasil",
+      ),
+    );
+  });
+
+  it("sem UF (cidade incompleta sem estado), o CEP VOLTA como desambiguação", () => {
+    expect(queryMapsDoEndereco({ ...CASA, state: "" })).toBe(
+      encodeURIComponent(
+        "Rua das Acácias, 120, Jardim Primavera, Paracatu, 38600-123, Brasil",
+      ),
+    );
+  });
+
+  it("sem cidade, o CEP permanece como fallback", () => {
+    expect(queryMapsDoEndereco({ ...CASA, city: "", state: "" })).toBe(
+      encodeURIComponent(
+        "Rua das Acácias, 120, Jardim Primavera, 38600-123, Brasil",
       ),
     );
   });
