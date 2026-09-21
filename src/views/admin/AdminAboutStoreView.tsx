@@ -104,25 +104,31 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   useEffect(() => {
     if (!active) setSaving(false);
   }, [active]);
-  const lastIncoming = useRef(`${baselineEndereco}\n${baselineDescricao}`);
+  // O que o lojista tem NA TELA vs o que o banco mandou por último: a
+  // sincronização de incoming só sobrescreve se ele NÃO digitou desde a
+  // última sincronização. O guarda é um REF, não o formDirty derivado: na
+  // hidratação assíncrona (config vazio → fetch completa), o formDirty vira
+  // true no MESMO render em que o baseline novo chega — e um guarda por
+  // formDirty pulava a sincronização para sempre (campos presos vazios e
+  // botão Salvar habilitado sem edição — 1ª execução real, 20/09/2026).
+  const usuarioEditou = useRef(false);
+  const lastIncoming = useRef(
+    `${config.storeAddress ?? ""}\n${config.storeDescription ?? ""}`,
+  );
   const formDirty =
     endereco !== baselineEndereco || descricao !== baselineDescricao;
   useEffect(() => {
+    // A assinatura é do config BRUTO (snake que o banco entrega via
+    // mapConfig) — a MESMA forma do lastIncoming inicial, nunca texto
+    // decodificado comparado com bruto.
     const assinatura = `${config.storeAddress ?? ""}\n${config.storeDescription ?? ""}`;
     if (assinatura === lastIncoming.current) return;
     lastIncoming.current = assinatura;
-    if (!formDirty && !saving) {
+    if (!usuarioEditou.current && !saving) {
       setEndereco(baselineEndereco);
       setDescricao(baselineDescricao);
     }
-  }, [
-    baselineEndereco,
-    baselineDescricao,
-    config.storeAddress,
-    config.storeDescription,
-    formDirty,
-    saving,
-  ]);
+  }, [baselineEndereco, baselineDescricao, config.storeAddress, config.storeDescription, saving]);
   useEffect(() => {
     onSetDirty?.(formDirty || saving || identidadePendente || horarioPendente);
   }, [formDirty, saving, identidadePendente, horarioPendente, onSetDirty]);
@@ -168,6 +174,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         // Re-sincroniza o formulário com o que foi GRAVADO (o baseline vem
         // do config, que o updateConfig atualiza; sem isto, qualquer
         // diferença de normalização deixava o botão habilitado para sempre).
+        usuarioEditou.current = false;
         setEndereco(chosenEndereco);
         setDescricao(descricao.trim());
         toast.success("Sobre a Loja salvo");
@@ -255,7 +262,10 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             id="store-address"
             value={endereco}
             disabled={saving || !active}
-            onChange={(event) => setEndereco(event.target.value)}
+            onChange={(event) => {
+              usuarioEditou.current = true;
+              setEndereco(event.target.value);
+            }}
             placeholder="Ex.: Avenida Paulista, 1578 — Bela Vista"
             className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white"
           />
@@ -300,7 +310,10 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             id="store-description"
             value={descricao}
             disabled={saving || !active}
-            onChange={(event) => setDescricao(event.target.value)}
+            onChange={(event) => {
+              usuarioEditou.current = true;
+              setDescricao(event.target.value);
+            }}
             rows={5}
             maxLength={4000}
             placeholder="Conte a história da loja, o que vende e o que a diferencia…"

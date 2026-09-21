@@ -207,6 +207,106 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
   // o módulo é mockado, e um it sobre o mock se provaria sozinho.
 });
 
+describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → valores)", () => {
+  // O DEFETO que este describe prende (revisão do coordenador, 3ª rodada
+  // real): a tela monta com o config ainda vazio (cache) e o fetch completa
+  // DEPOIS. Nessa transição o baseline novo chegava e o formDirty derivado
+  // virava true no mesmo render — pulando a sincronização para sempre:
+  // campos presos vazios e botão Salvar habilitado sem edição nenhuma.
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+  let onSetDirty: Mock<(dirty: boolean) => void>;
+  let Componente: React.ComponentType<{
+    onNavigate: (view: string) => void;
+    active?: boolean;
+    onSetDirty?: (dirty: boolean) => void;
+  }>;
+
+  beforeEach(() => {
+    configAtual = { ...BASE_CONFIG, storeAddress: null, storeDescription: null };
+    updateConfigMock = vi.fn(async () => true);
+    onSetDirty = vi.fn((_dirty: boolean) => {});
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+  });
+
+  async function renderizarTela() {
+    const modulo = await import("@/views/admin/AdminAboutStoreView");
+    Componente = modulo.AdminAboutStoreView;
+    await act(async () => {
+      raiz.render(
+        <Componente onNavigate={() => {}} onSetDirty={onSetDirty} />,
+      );
+    });
+  }
+
+  it("config chega DEPOIS da montagem (hidratação): os campos sincronizam e o botão nasce desabilitado", async () => {
+    await renderizarTela();
+
+    // o fetch completa: o config ganha os valores do banco e o React
+    // re-renderiza (mesma árvore — os estados internos PRESERVAM)
+    await act(async () => {
+      configAtual = {
+        ...BASE_CONFIG,
+        storeAddress: "Rua do Banco, 9",
+        storeDescription: "<p>Descrição do banco</p>",
+      };
+      raiz.render(
+        <Componente onNavigate={() => {}} onSetDirty={onSetDirty} />,
+      );
+    });
+
+    const endereco = hospedeiro.querySelector("#store-address") as HTMLInputElement;
+    const descricao = hospedeiro.querySelector("#store-description") as HTMLTextAreaElement;
+    expect(endereco.value).toBe("Rua do Banco, 9");
+    expect(descricao.value).toBe("Descrição do banco");
+    // sem edição nenhuma do lojista, nada está pendente
+    expect(onSetDirty).toHaveBeenLastCalledWith(false);
+    const botao = hospedeiro.querySelector("button.bg-admin-gold") as HTMLButtonElement;
+    expect(botao.disabled).toBe(true);
+  });
+
+  it("a atualização do config NÃO apaga edição real em andamento do lojista", async () => {
+    await renderizarTela();
+
+    // o lojista digita antes do fetch completar
+    const endereco = hospedeiro.querySelector("#store-address") as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(endereco, "Digitando meu endereço real…");
+      endereco.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    // o config atualiza por fora (realtime/fetch) com valor do banco
+    await act(async () => {
+      configAtual = {
+        ...BASE_CONFIG,
+        storeAddress: "Valor do banco que chegou depois",
+      };
+      raiz.render(
+        <Componente onNavigate={() => {}} onSetDirty={onSetDirty} />,
+      );
+    });
+
+    // a edição do lojista é PRESERVADA (o sync não sobrescreve quem digitou)
+    expect(
+      (hospedeiro.querySelector("#store-address") as HTMLInputElement).value,
+    ).toBe("Digitando meu endereço real…");
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+  });
+});
+
 describe("descricaoDaLojaParaHtml — o helper da descrição", () => {
   it("linha em branco vira parágrafo; &<> são escapados; vazio vira vazio", async () => {
     const { descricaoDaLojaParaHtml } = await import("@/lib/texto-da-loja");
