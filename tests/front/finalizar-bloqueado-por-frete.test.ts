@@ -4,8 +4,16 @@ import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
 // cotação com taxa 0 deixava `shipping === 0`, a guarda velha não
 // disparava, e o pedido fechava com frete R$ 0 sem cotação nenhuma.
 //
+// 🔴 REGRA APERTADA em 21/09/2026: o servidor passou a recusar pedido com
+// id de entrega AUSENTE (FRETE V2 EMENDA 03/09, o ELSIF do bloco 4 da RPC
+// viva — e a migration 20261168000000 aperta de novo ANTES do ramo do
+// frete grátis), então o front exige a ESCOLHA, não o número: sem opção
+// selecionada o Finalizar fica travado MESMO com `shipping === 0` de frete
+// grátis legítimo. A calculadora segue no CartView também com frete grátis
+// — escolher a opção não custa a gratuidade.
+//
 // POR QUE UNIT E NÃO COMPONENTE: a guarda pura discrimina com o PAR exato
-// do defeito (indefinido+0 trava / definido+0 livra) sem precisar de um
+// do defeito (sem opção trava / com opção livra) sem precisar de um
 // formulário de convidado inteiro válido dentro do jsdom — no componente,
 // `isValid` do react-hook-form não sobe de forma confiável nesse harness e
 // o par testado ali passava pelo motivo errado (formulário invalido trava
@@ -30,9 +38,29 @@ describe("finalizarBloqueadoPorFrete — a guarda do dinheiro de frete", () => {
     );
   });
 
-  it("controle do B2: frete definido com shipping R$ 0 (taxa 0 de propósito) -> LIVRE", () => {
+  it("REGRA NOVA (21/09): frete grátis legítimo SEM opção escolhida -> TRAVADO — o servidor recusa o id ausente", () => {
+    // O caso que este arquivo chamava de "controle do B2" e dava LIVRE:
+    // `shipping === 0` com frete DEFINIDO (item com freeShipping, limite
+    // atingido) e nenhuma opção selecionada. A regra nova aperta: sem id de
+    // entrega escolhido o pedido não nasce no servidor (FRETE V2 EMENDA,
+    // ELSIF do bloco 4), e o Finalizar do front exige o mesmo. Quem tem
+    // frete grátis não perde nada: escolher a opção gratuita no carrinho
+    // mantém o preço zero.
     expect(
       finalizarBloqueadoPorFrete({ ...base, freteIndefinido: false }),
+    ).toBe(true);
+  });
+
+  it("o caso POSITIVO da regra nova: local-delivery GRÁTIS (opção selecionada, price 0) -> LIVRE", () => {
+    // A escolha existe e é o que o servidor grava — o preço zero da opção
+    // local não trava nada. É o caminho que a regra nova DEIXA aberto.
+    expect(
+      finalizarBloqueadoPorFrete({
+        ...base,
+        freteIndefinido: false,
+        shipping: 0,
+        temOpcaoSelecionada: true,
+      }),
     ).toBe(false);
   });
 

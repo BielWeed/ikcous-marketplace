@@ -231,6 +231,21 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
       /^O frete foi cotado para outro CEP\. Volte ao carrinho, calcule o frete para o CEP de entrega e finalize de novo\.$/,
     acao: "recotar_frete",
   },
+  // A MODALIDADE DO FRETE × MEIO DE PAGAMENTO (regra do dono, 21/09/2026 —
+  // migration 20261168000000): a mesma frase nas DUAS RPCs (v23 recusa
+  // transportadora sempre; v24 recusa pix/card/cash com transportadora).
+  // O texto NÃO manda cliente de outra cidade "escolher entrega local"
+  // (impossível para ele): manda pagar o PIX no app. Com o front desta
+  // frente, a recusa só chega por estado stale ou payload forjado; sem a
+  // regra, caía em `conferir_antes` cujo destino é "Ver meus pedidos" —
+  // mas NENHUM pedido nasceu (a RPC falha antes do INSERT). A ação
+  // `trocar_entrega` devolve ao carrinho, onde refazer a escolha de frete
+  // re-aciona a auto-seleção do PIX no app.
+  {
+    padrao:
+      /^Envio por transportadora exige pagamento antecipado\. Pague com PIX no app para finalizar este envio\.$/,
+    acao: "trocar_entrega",
+  },
   {
     padrao: /^Endereço inválido ou não pertence ao usuário\.$/,
     acao: "trocar_endereco",

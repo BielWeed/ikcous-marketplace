@@ -1,4 +1,4 @@
-import type { CartItem, Product } from "@/types";
+import type { CartItem, Product, ShippingOption } from "@/types";
 // @vitest-environment jsdom
 //
 // Peça 1 do pedido do Gabriel (12/09/2026): a barra de baixo do checkout
@@ -35,7 +35,19 @@ const { mockConfig } = vi.hoisted(() => ({
 const { mockUseCartOverrides } = vi.hoisted(() => ({
   mockUseCartOverrides: {
     freteGratis: true,
-    selectedShippingOption: null as { id: string; name: string } | null,
+    // ENTREGA LOCAL GRÁTIS selecionada por padrão (regra frete × pagamento
+    // do dono, 21/09/2026): `finalizarBloqueadoPorFrete` passou a exigir a
+    // ESCOLHA de entrega (o servidor recusa id ausente — FRETE V2 EMENDA,
+    // ELSIF do bloco 4), e sem ela a barra mostra "a calcular" em vez dos
+    // totais que ESTE arquivo audita. A opção de price 0 preserva o cenário
+    // de frete grátis que a pílula existe para explicar.
+    selectedShippingOption: {
+      id: "local-delivery",
+      name: "Entrega Local",
+      price: 0,
+      deliveryDays: 1,
+      provider: "local",
+    } as ShippingOption | null,
     freteIndefinido: false,
   },
 }));
@@ -206,7 +218,13 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     mockConfig.localDeliveryFee = 12.9;
     mockConfig.freeShippingMin = 0.01;
     mockUseCartOverrides.freteGratis = true;
-    mockUseCartOverrides.selectedShippingOption = null;
+    mockUseCartOverrides.selectedShippingOption = {
+      id: "local-delivery",
+      name: "Entrega Local",
+      price: 0,
+      deliveryDays: 1,
+      provider: "local",
+    };
     mockUseCartOverrides.freteIndefinido = false;
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -426,12 +444,14 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
 
     expect(createOrder).toHaveBeenCalledTimes(1);
     const [pedidoEnviado] = createOrder.mock.calls[0];
-    // Mesmo comportamento de ANTES desta peça: sem opção de frete real
-    // escolhida (frete grátis não passa pela ShippingCalculator), o pedido
-    // sai com `shippingOptionId: null` e `destinationCep` igual ao
-    // `shippingCep` do carrinho (aqui, `null`) — nunca o CEP da cotação de
-    // EXIBIÇÃO nem uma opção que a exibição "escolheu".
-    expect(pedidoEnviado.shippingOptionId).toBeNull();
+    // Comportamento pós-regra 21/09/2026: a ESCOLHA de entrega é exigida
+    // pelo Finalizar (o servidor recusa id ausente), então o pedido sai
+    // com a opção que o CLIENTE escolheu ("local-delivery" grátis) —
+    // NUNCA com a opção que a cotação de EXIBIÇÃO "achou" ("pac"/"sedex"
+    // não aparecem aqui) — e `destinationCep` continua o `shippingCep` do
+    // carrinho (aqui, `null`): a cotação de exibição não escreve em
+    // estado nenhum do frete REAL.
+    expect(pedidoEnviado.shippingOptionId).toBe("local-delivery");
     expect(pedidoEnviado.destinationCep).toBeNull();
     expect(setSelectedShippingOption).not.toHaveBeenCalled();
     expect(setShippingCep).not.toHaveBeenCalled();

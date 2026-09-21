@@ -67,6 +67,14 @@ const FRASES_DO_BANCO = [
   "Informe o CEP de entrega.",
   "Não foi possível criar o pedido. Atualize a página e tente de novo.",
   "O frete foi cotado para outro CEP. Volte ao carrinho, calcule o frete para o CEP de entrega e finalize de novo.",
+  // REGRA FRETE × PAGAMENTO (dono, 21/09/2026 — migration
+  // 20261168000000): a recusa da transportadora sem pagamento antecipado
+  // vem NAS DUAS RPCs (v23 sempre; v24 com pix/card/cash). Frase da
+  // revisão da supervisão: manda pagar o PIX no app, NÃO "escolher
+  // entrega local" (impossível para quem recebe em outra cidade). A regra
+  // irmã em recusaDoPedido.ts (trocar_entrega) morre calada se a frase
+  // sumir ou for reescrita no SQL.
+  "Envio por transportadora exige pagamento antecipado. Pague com PIX no app para finalizar este envio.",
 ];
 
 const sql = Object.values(MIGRATIONS).join("\n");

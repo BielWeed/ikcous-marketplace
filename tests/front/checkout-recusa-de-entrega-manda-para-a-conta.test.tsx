@@ -73,7 +73,18 @@ vi.mock("@/hooks/useCart", () => ({
     cartTotal: 100,
     shippingFee: 0,
     clearCart,
-    selectedShippingOption: null,
+    // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
+    // 21/09/2026): a guarda do Finalizar (`finalizarBloqueadoPorFrete`)
+    // passou a exigir a ESCOLHA de entrega — o servidor recusa id ausente
+    // (FRETE V2 EMENDA, ELSIF do bloco 4). O assunto deste arquivo é outro;
+    // sem a opção, o botão travaria por um motivo que ele não prova.
+    selectedShippingOption: {
+      id: "local-delivery",
+      name: "Entrega Local",
+      price: 0,
+      deliveryDays: 1,
+      provider: "local",
+    },
     shippingCep: "38500-000",
     setSelectedShippingOption: vi.fn(),
     setShippingCep: vi.fn(),

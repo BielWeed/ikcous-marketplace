@@ -276,6 +276,22 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.acao).toBe("recotar_frete");
   });
 
+  // REGRA FRETE × PAGAMENTO (dono, 21/09/2026 — migration 20261168000000):
+  // a MESMA frase sai da v23 (transportadora recusada sempre) e da v24
+  // (pix/card/cash com transportadora). Frase da revisão da supervisão —
+  // manda pagar o PIX no app, nunca "escolher entrega local" (impossível
+  // para quem recebe em outra cidade). Sem regra, caía em conferir_antes
+  // ("Ver meus pedidos") sem pedido nenhum ter nascido.
+  it("transportadora exige pagamento antecipado -> trocar a entrega", () => {
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "Envio por transportadora exige pagamento antecipado. Pague com PIX no app para finalizar este envio.",
+      ),
+    );
+    expect(r.acao).toBe("trocar_entrega");
+    expect(r.mensagem).toContain("transportadora exige pagamento antecipado");
+  });
+
   it("o nome guloso continua resolvendo parenteses dentro do nome", () => {
     // Provado pela revisao: o `.+` guloso ja acertava isto, e trocar para
     // `[\s\S]*` nao pode ter quebrado. Nome do produto contendo o proprio

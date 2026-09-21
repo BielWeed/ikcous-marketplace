@@ -8,16 +8,25 @@
 // em unit test que discrimina, não colada num componente que só renderiza
 // com um formulário inteiro válido.
 //
-// Semântica (espelha a ordem do memo `freteIndefinido` no CartContext):
+// 🔴 REGRA APERTADA em 21/09/2026 (alinhamento com o FRETE V2 EMENDA
+// 03/09, o ELSIF do bloco 4 da RPC viva): o servidor recusa pedido com id
+// de entrega AUSENTE — o front passa a exigir o mesmo, e a opção ausente
+// TRAVA o Finalizar MESMO com `shipping === 0` por frete grátis legítimo
+// (item com `freeShipping`, limite atingido): sem id, o carrinho pode até
+// exibir R$ 0, mas não existe ESCOLHA de entrega atrás dele, e é a escolha
+// que o servidor gravou no pedido. A calculadora continua no CartView
+// também com frete grátis — escolher a opção ali não custa a gratuidade.
+//
+// Semântica (a bandeira `freteIndefinido` e o `shipping` param de decidir
+// — mantidos na assinatura porque o chamador já os computa e a história do
+// B2 segue explicando por que eles JÁ NÃO bastam sozinhos):
 //   - carrinho vazio não tem o que finalizar — livre (a tela nem mostra
 //     o botão nesse caso);
-//   - opção selecionada define o frete — LIVRE, antes de qualquer outra
-//     checagem (mesma ordem do memo: `if (selectedShippingOption) return false`);
-//   - frete indefinido ("A calcular") — TRAVADO, mesmo com shipping === 0:
-//     é exatamente o caso que a guarda velha deixava passar;
-//   - frete positivo sem opção escolhida — TRAVADO (o defeito original de
-//     18/08: cotação falhou, tela sem opção, frete de fallback cobrado);
-//   - frete grátis (shipping 0 legítimo por item/limite) — livre.
+//   - opção selecionada — LIVRE, qualquer preço (local grátis com price 0
+//     inclusive: a escolha existe e é o que o servidor grava);
+//   - SEM opção selecionada — TRAVADO, sempre: frete indefinido ("A
+//     calcular") ou frete 0 legítimo, o servidor recusa o id ausente e o
+//     front espelha a mesma exigência.
 export function finalizarBloqueadoPorFrete(args: {
   carrinhoVazio: boolean;
   freteIndefinido: boolean;
@@ -26,6 +35,46 @@ export function finalizarBloqueadoPorFrete(args: {
 }): boolean {
   if (args.carrinhoVazio) return false;
   if (args.temOpcaoSelecionada) return false;
-  if (args.freteIndefinido) return true;
-  return args.shipping > 0;
+  return true;
+}
+
+// REGRA DO FRETE × PAGAMENTO (21/09/2026, autorizada pelo dono): o checkout
+// deixava escolher PIX/cartão/dinheiro NA ENTREGA mesmo com frete de
+// TRANSPORTADORA (Melhor Envio/Frenet) para outra cidade — a transportadora
+// não é a loja saindo com o troco: envio por transportadora EXIGE pagamento
+// antecipado (método "online", PIX pago no app). Entrega local
+// (id "local-delivery") preserva as modalidades que a loja permite.
+//
+// A MODALIDADE SE DECIDE PELO ID, nunca pelo preço nem pelo texto: frete
+// grátis de transportadora (price 0, id "melhor-envio-*"/"frenet-*")
+// CONTINUA transportadora; entrega local grátis (price 0, id
+// "local-delivery") continua local. Mesmo contrato da RPC viva
+// (create_marketplace_order_v23/v24): fora "local-delivery", a opção só
+// nasce de cotação resolvida no servidor — o front espelha a classificação.
+//
+// Semântica (mesmo espírito da `finalizarBloqueadoPorFrete` — condição de
+// dinheiro se prova em unit test que discrimina, não colada no componente):
+//   - método "online" com a flag DESLIGADA -> TRAVADO, qualquer modalidade:
+//     "online" não é selecionável com a flag desligada, então selecionado
+//     assim é estado STALE (ou forjado) — um antecipado que não pode ser
+//     pago;
+//   - sem opção selecionada -> esta guarda NÃO fala: modalidade
+//     DESCONHECIDA. As opções "na entrega" continuam visíveis (escondê-las
+//     permitiria submit com um meio oculto), a disponibilidade do Finalizar
+//     é da `finalizarBloqueadoPorFrete`, e pedido com opção ausente é
+//     recusado pela própria RPC;
+//   - entrega local -> LIVRE (modalidades da loja intactas);
+//   - transportadora + método != "online" -> TRAVADO.
+export function pagamentoIncompativelComFrete(args: {
+  temOpcaoSelecionada: boolean;
+  ehEntregaLocal: boolean;
+  paymentMethod: "pix" | "card" | "cash" | "online";
+  pagamentoOnlineLigado: boolean;
+}): boolean {
+  if (args.paymentMethod === "online" && !args.pagamentoOnlineLigado) {
+    return true;
+  }
+  if (!args.temOpcaoSelecionada) return false;
+  if (args.ehEntregaLocal) return false;
+  return args.paymentMethod !== "online";
 }

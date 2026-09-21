@@ -133,11 +133,18 @@ let mockSelectedShippingOption: {
   deliveryDays: number;
   provider: string;
 } | null = {
-  id: "opt-mock",
-  name: "Entrega Padrão",
+  // ENTREGA LOCAL por padrão (regra frete × pagamento do dono, 21/09/2026):
+  // o id "local-delivery" é o ÚNICO que preserva as modalidades "na
+  // entrega" na tela — com qualquer outro id (transportadora) o grupo "Na
+  // entrega" some e o efeito novo auto-seleciona "online" (flag ligada +
+  // logado), o que mudaria o que ESTES testes provam sem querer. Os
+  // cenários de transportadora têm provas próprias em
+  // checkout-transportadora-exige-antecipado.test.tsx.
+  id: "local-delivery",
+  name: "Entrega Local",
   price: 20,
-  deliveryDays: 3,
-  provider: "flat_fee",
+  deliveryDays: 1,
+  provider: "local",
 };
 // O dublê nasce SEM cotação (como o carrinho antes de cotar): o efeito da
 // reconciliação de CEP (onda 4 do laudo 3108) fica inerte — os cenários
@@ -281,11 +288,11 @@ describe("CheckoutView com pagamentoOnlineLigado() ligada", () => {
     mockCartTotal = 100;
     mockShippingFee = 20;
     mockSelectedShippingOption = {
-      id: "opt-mock",
-      name: "Entrega Padrão",
+      id: "local-delivery",
+      name: "Entrega Local",
       price: 20,
-      deliveryDays: 3,
-      provider: "flat_fee",
+      deliveryDays: 1,
+      provider: "local",
     };
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {

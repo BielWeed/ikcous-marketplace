@@ -24,7 +24,10 @@ import {
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
 import { pagamentoOnlineLigado } from "@/lib/flags";
-import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
+import {
+  finalizarBloqueadoPorFrete,
+  pagamentoIncompativelComFrete,
+} from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -442,6 +445,22 @@ export function CheckoutView({
   const total =
     propTotal ?? ctxSubtotal + (ctxFreteIndefinido ? 0 : ctxShipping);
   const onClearCart = propOnClearCart ?? ctxClearCart;
+
+  // A MODALIDADE DO FRETE (regra do dono, 21/09/2026): envio por
+  // TRANSPORTADORA (Melhor Envio/Frenet — qualquer id que não seja
+  // "local-delivery") exige pagamento ANTECIPADO; entrega local preserva as
+  // modalidades que a loja permite na entrega. O contrato é o ID, nunca o
+  // preço nem o texto: frete grátis de transportadora (price 0) continua
+  // transportadora, e entrega local grátis continua local — mesma
+  // classificação da RPC viva (create_marketplace_order_v23/v24, que só
+  // reconhece "local-delivery" e cotação resolvida no servidor).
+  // `selectedShippingOption` pode ser null (frete ainda não escolhido):
+  // modalidade DESCONHECIDA — `ehEntregaLocal` vira false e a regra nova não
+  // esconde o grupo "Na entrega" (escondê-lo com frete grátis legítimo
+  // permitiria submit com meio oculto); nesse estado quem decide a
+  // disponibilidade é a `finalizarBloqueadoPorFrete`, e a RPC recusa pedido
+  // com opção ausente.
+  const ehEntregaLocal = selectedShippingOption?.id === "local-delivery";
   // CHECKOUT-090: realtime ligado (antes `useOrders(false, true)` desligava
   // o efeito inteiro na primeira linha de useOrders.ts — nenhuma assinatura
   // era criada, e a tela do PIX nunca soube que o pedido tinha sido pago) e
@@ -1213,6 +1232,44 @@ export function CheckoutView({
     }
   }, [authLoading, user, paymentMethod]);
 
+  // TRANSPORTADORA EXIGE PAGAMENTO ANTECIPADO (regra do dono, 21/09/2026).
+  // O defeito: quem escolhia "Pix na Entrega" com entrega local, voltava ao
+  // carrinho e trocava o frete para uma transportadora, voltava para cá com
+  // o método de entrega AINDA selecionado — e o pedido nascia prometendo
+  // dinheiro na entrega para um correio de outra cidade. Este efeito cobre
+  // exatamente essa transição (o estado `paymentMethod` fica STALE depois
+  // de trocar a opção lá no carrinho — inclusive na ida e volta entre os
+  // passos de frete e pagamento):
+  //   - entrega local -> NÃO MEXE (modalidades da loja intactas);
+  //   - transportadora + pagamento online ligado + conta -> AUTO-SELECIONA
+  //     "online" com orientação visível (toast + nota no grupo de pagamento);
+  //   - transportadora SEM pagamento online (ou sem conta, que o online
+  //     exige — P6) -> NÃO cai em fallback "na entrega": o método fica como
+  //     está e quem bloqueia é a guarda `pagamentoIncompativelComFrete` no
+  //     botão e no submit, com a explicação na tela.
+  // O `!authLoading && user` evita o ping-pong com o efeito de cima: sem
+  // conta o efeito irmão rebaixa "online" para "pix", e este aqui não pode
+  // re-selecionar "online" de volta em loop — convidado com transportadora
+  // fica bloqueado (com a saída de entrar na conta ou escolher entrega
+  // local), que é o que a regra manda.
+  useEffect(() => {
+    if (!selectedShippingOption) return;
+    if (ehEntregaLocal) return;
+    if (paymentMethod === "online") return;
+    if (!pagamentoOnlineLigado()) return;
+    if (authLoading || !user) return;
+    setPaymentMethod("online");
+    toast.info(
+      "Envio por transportadora exige pagamento antecipado: selecionamos o PIX no app para você.",
+    );
+  }, [
+    selectedShippingOption,
+    ehEntregaLocal,
+    paymentMethod,
+    authLoading,
+    user,
+  ]);
+
   useEffect(() => {
     if (profile) {
       form.setValue("name", profile.full_name || "", { shouldValidate: true });
@@ -1483,6 +1540,19 @@ export function CheckoutView({
     temOpcaoSelecionada: !!selectedShippingOption,
   });
 
+  // A outra guarda de frete (regra do dono, 21/09/2026): a modalidade do
+  // frete tem de combinar com o meio de pagamento — transportadora exige
+  // "online". Função pura em `src/lib/guarda-de-frete.ts` pelo mesmo motivo
+  // da `finalizarBloqueadoPorFrete`: regra de dinheiro se discrimina em unit
+  // test. Vale no BOTÃO (abaixo) e no submit (`handleSubmitEvent`), porque o
+  // `disabled` do DOM não protege quem chama o handler por outro caminho.
+  const pagamentoIncompativel = pagamentoIncompativelComFrete({
+    temOpcaoSelecionada: !!selectedShippingOption,
+    ehEntregaLocal,
+    paymentMethod,
+    pagamentoOnlineLigado: pagamentoOnlineLigado(),
+  });
+
   // Achado 1 do BLOQUEANTE (12/09/2026): `finalTotal` sempre soma `shipping`
   // com fallback 0 quando `ctxFreteIndefinido` (linha ~350) — então SEM
   // cotação válida `finalTotal` já é "produtos, frete zero", nunca "produtos,
@@ -1521,7 +1591,8 @@ export function CheckoutView({
     semFreteSelecionado ||
     isOffline ||
     aguardandoConferenciaDaRecusa ||
-    convidadoForaDaCidade;
+    convidadoForaDaCidade ||
+    pagamentoIncompativel;
 
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
@@ -1702,6 +1773,32 @@ export function CheckoutView({
         ctxFreteIndefinido && !config.originCep?.trim()
           ? "A loja ainda está configurando o frete. Fale com a loja para combinar a entrega."
           : "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // Terceira trava, irmã da de frete: modalidade × pagamento (regra do
+    // dono, 21/09/2026). O `disabled` do botão e o efeito que auto-seleciona
+    // "online" cobrem o caminho feliz; esta guarda cobre o resto — estado
+    // stale (trocou o frete no carrinho e voltou por Enter), convidado (o
+    // efeito não auto-seleciona sem conta) e loja sem pagamento online
+    // (mesma frase do aviso que já está na tela). O estado stale de
+    // "online" (flag desligada no meio da sessão) tem frase PRÓPRIA: a
+    // orientação depende da modalidade, e nenhuma delas manda cliente de
+    // outra cidade "escolher entrega local" — impossível para ele.
+    if (pagamentoIncompativel) {
+      const onlineStale =
+        paymentMethod === "online" && !pagamentoOnlineLigado();
+      toast.error(
+        onlineStale
+          ? ehEntregaLocal
+            ? "O pagamento pelo app saiu do ar nesta loja. Escolha um meio de pagamento na entrega para finalizar."
+            : "O pagamento pelo app saiu do ar nesta loja, e o envio por transportadora exige pagamento antecipado. Fale com a loja para combinar a entrega."
+          : pagamentoOnlineLigado()
+            ? "Envio por transportadora exige pagamento antecipado. Escolha \u201cPagar agora com PIX\u201d para finalizar."
+            : "Esta loja não recebe pagamento pelo app, então o envio por transportadora não está disponível. Fale com a loja para combinar a entrega.",
       );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -2780,14 +2877,36 @@ export function CheckoutView({
                 </div>
               </div>
             )}
-            <div className="space-y-2.5">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                Na entrega
-              </span>
-              <div className="grid grid-cols-1 gap-2.5">
-                {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+            {/* REGRA DO FRETE × PAGAMENTO (dono, 21/09/2026): envio por
+                transportadora exige pagamento antecipado — o grupo "Na
+                entrega" só some quando o frete escolhido É transportadora
+                (qualquer id ≠ "local-delivery"). Sem opção NENHUMA
+                selecionada ele CONTINUA na tela: a regra do dono é sobre
+                transportadora ESCOLHIDA, não sobre a ausência de escolha
+                (o Finalizar nesse estado já está travado pela
+                `finalizarBloqueadoPorFrete`, e sumir com todos os meios
+                deixaria um radiogroup vazio sem explicação nenhuma). Com
+                transportadora, a orientação fica escrita aqui: com
+                pagamento online ligado é o PIX no app (auto-selecionado
+                pelo efeito da transição); sem ele, NÃO existe fallback "na
+                entrega" — o bloqueio é a regra e o texto diz por quê. */}
+            {selectedShippingOption && !ehEntregaLocal && (
+              <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
+                {pagamentoOnlineLigado()
+                  ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
+                  : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
+              </p>
+            )}
+            {(!selectedShippingOption || ehEntregaLocal) && (
+              <div className="space-y-2.5">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  Na entrega
+                </span>
+                <div className="grid grid-cols-1 gap-2.5">
+                  {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -3250,6 +3369,28 @@ export function CheckoutView({
                           : "Volte ao carrinho e calcule o frete para continuar"}
                       </p>
                     )}
+                    {!semFreteSelecionado &&
+                      pagamentoIncompativel &&
+                      paymentMethod === "online" &&
+                      ehEntregaLocal && (
+                        // O quarto motivo visível de botão apagado
+                        // (regra do dono, 21/09/2026): "online" ficou
+                        // selecionado e a loja derrubou a flag no meio da
+                        // sessão — estado STALE que a guarda
+                        // `pagamentoIncompativelComFrete` tranca. Sem esta
+                        // linha, entrega local + stale era botão cinza sem
+                        // explicação nenhuma (o aviso do grupo de pagamento
+                        // só existe para transportadora). Mesmo padrão dos
+                        // avisos acima: role="alert" fala na hora.
+                        <p
+                          role="alert"
+                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                        >
+                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                          Pagamento pelo app indisponível — escolha um meio de
+                          pagamento na entrega
+                        </p>
+                      )}
                     {!semFreteSelecionado && isOffline && (
                       // Mesmo padrão do aviso de frete acima: botão apagado
                       // sem explicação faz a pessoa achar que travou de
