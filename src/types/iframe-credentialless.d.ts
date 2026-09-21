@@ -6,7 +6,11 @@
 import "react";
 
 declare module "react" {
-  interface IframeHTMLAttributes<_T> {
+  // A fusão da interface (augmentation) exige o MESMO nome do parâmetro da
+  // declaração React — nome diferente quebra o casamento (TS2428/TS2314),
+  // por isso o parâmetro fica sem uso na assinatura.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- supressão localizada do parâmetro exigido pela assinatura do augmentation
+  interface IframeHTMLAttributes<T> {
     credentialless?: string | undefined;
   }
 }
