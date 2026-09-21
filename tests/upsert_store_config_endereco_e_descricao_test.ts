@@ -209,7 +209,9 @@ Deno.test("o rollback encolhe a view com DROP VIEW + CREATE VIEW + GRANT, nunca 
   );
   assertStringIncludes(
     rollbackN,
-    norm("GRANT ALL ON TABLE public.v_store_config TO anon, authenticated, service_role;"),
+    norm(
+      "GRANT ALL ON TABLE public.v_store_config TO anon, authenticated, service_role;",
+    ),
   );
   // O erro real: OR REPLACE com lista MENOR que a viva. No rollback a view
   // viva tem 36 colunas e a restaurada 34 — encolher por REPLACE é recusa

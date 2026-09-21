@@ -128,7 +128,13 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
       setEndereco(baselineEndereco);
       setDescricao(baselineDescricao);
     }
-  }, [baselineEndereco, baselineDescricao, config.storeAddress, config.storeDescription, saving]);
+  }, [
+    baselineEndereco,
+    baselineDescricao,
+    config.storeAddress,
+    config.storeDescription,
+    saving,
+  ]);
   useEffect(() => {
     onSetDirty?.(formDirty || saving || identidadePendente || horarioPendente);
   }, [formDirty, saving, identidadePendente, horarioPendente, onSetDirty]);

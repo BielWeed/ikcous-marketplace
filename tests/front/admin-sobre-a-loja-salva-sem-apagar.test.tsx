@@ -250,7 +250,11 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
   }>;
 
   beforeEach(() => {
-    configAtual = { ...BASE_CONFIG, storeAddress: null, storeDescription: null };
+    configAtual = {
+      ...BASE_CONFIG,
+      storeAddress: null,
+      storeDescription: null,
+    };
     updateConfigMock = vi.fn(async () => true);
     onSetDirty = vi.fn((_dirty: boolean) => {});
     hospedeiro = document.createElement("div");
@@ -269,9 +273,7 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
     const modulo = await import("@/views/admin/AdminAboutStoreView");
     Componente = modulo.AdminAboutStoreView;
     await act(async () => {
-      raiz.render(
-        <Componente onNavigate={() => {}} onSetDirty={onSetDirty} />,
-      );
+      raiz.render(<Componente onNavigate={() => {}} onSetDirty={onSetDirty} />);
     });
   }
 
@@ -286,18 +288,22 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
         storeAddress: "Rua do Banco, 9",
         storeDescription: "<p>Descrição do banco</p>",
       };
-      raiz.render(
-        <Componente onNavigate={() => {}} onSetDirty={onSetDirty} />,
-      );
+      raiz.render(<Componente onNavigate={() => {}} onSetDirty={onSetDirty} />);
     });
 
-    const endereco = hospedeiro.querySelector("#store-address") as HTMLInputElement;
-    const descricao = hospedeiro.querySelector("#store-description") as HTMLTextAreaElement;
+    const endereco = hospedeiro.querySelector(
+      "#store-address",
+    ) as HTMLInputElement;
+    const descricao = hospedeiro.querySelector(
+      "#store-description",
+    ) as HTMLTextAreaElement;
     expect(endereco.value).toBe("Rua do Banco, 9");
     expect(descricao.value).toBe("Descrição do banco");
     // sem edição nenhuma do lojista, nada está pendente
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
-    const botao = hospedeiro.querySelector("button.bg-admin-gold") as HTMLButtonElement;
+    const botao = hospedeiro.querySelector(
+      "button.bg-admin-gold",
+    ) as HTMLButtonElement;
     expect(botao.disabled).toBe(true);
   });
 
@@ -305,7 +311,9 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
     await renderizarTela();
 
     // o lojista digita antes do fetch completar
-    const endereco = hospedeiro.querySelector("#store-address") as HTMLInputElement;
+    const endereco = hospedeiro.querySelector(
+      "#store-address",
+    ) as HTMLInputElement;
     const setter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       "value",
@@ -321,9 +329,7 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
         ...BASE_CONFIG,
         storeAddress: "Valor do banco que chegou depois",
       };
-      raiz.render(
-        <Componente onNavigate={() => {}} onSetDirty={onSetDirty} />,
-      );
+      raiz.render(<Componente onNavigate={() => {}} onSetDirty={onSetDirty} />);
     });
 
     // a edição do lojista é PRESERVADA (o sync não sobrescreve quem digitou)

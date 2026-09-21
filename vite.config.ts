@@ -155,6 +155,11 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     },
     build: {
       outDir: identity.outDir,
+      // Terser em vez do esbuild default: a entrega brotli somada caiu de
+      // 803,52 kB para 780,72 kB no build fixture (20/09/2026, teto de 800
+      // do size-limit). Presets seguros — sem drop_console, sem pure_funcs,
+      // sem unsafe; target e divisão de chunks preservados.
+      minify: "terser",
       rollupOptions: {
         output: {
           chunkFileNames(chunk) {

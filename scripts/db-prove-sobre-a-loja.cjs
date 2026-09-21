@@ -95,6 +95,17 @@ function afirmar(condicao, descricao, detalhe) {
   }
 }
 
+/** Personifica o admin real no SAVEPOINT corrente: SET LOCAL + claims
+ * locais são desfeitos pelo ROLLBACK TO SAVEPOINT junto com os dados.
+ * (Fora de main(): lint/correctness/noInnerDeclarations.) */
+async function personificarAdmin(client, adminId) {
+  await client.query("SAVEPOINT sondar");
+  await client.query("SET LOCAL ROLE authenticated");
+  await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+    JSON.stringify({ sub: adminId, role: "authenticated" }),
+  ]);
+}
+
 async function main() {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- migrations da lista fixa NOSSA_MIGRATION/NOSSO_ROLLBACK, montadas no topo deste arquivo
   const migration = fs.readFileSync(NOSSA_MIGRATION, "utf8");
@@ -166,13 +177,6 @@ async function main() {
     const adminId = admin.rows[0].id;
     // SET LOCAL + set_config(is_local=true) dentro do SAVEPOINT: o
     // ROLLBACK TO SAVEPOINT desfaz papel e claims junto com os dados.
-    async function personificarAdmin() {
-      await client.query("SAVEPOINT sondar");
-      await client.query("SET LOCAL ROLE authenticated");
-      await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
-        JSON.stringify({ sub: adminId, role: "authenticated" }),
-      ]);
-    }
 
     // 3. Semente do conteúdo prévio (caminho da hub, direto na tabela)
     await client.query(
@@ -180,7 +184,7 @@ async function main() {
     );
 
     // 4. SONDAGEM 1: payload só do endereço — descrição PRESERVADA
-    await personificarAdmin();
+    await personificarAdmin(client, adminId);
     const sondagem1 = await client.query(
       "SELECT public.upsert_store_config($1::jsonb) AS retornado",
       [JSON.stringify({ store_address: "Rua da Prova, 123" })],
@@ -203,7 +207,7 @@ async function main() {
     await client.query("ROLLBACK TO SAVEPOINT sondar");
 
     // 5. SONDAGEM 2: payload vazio não toca em nada
-    await personificarAdmin();
+    await personificarAdmin(client, adminId);
     const sondagem2 = await client.query(
       "SELECT public.upsert_store_config($1::jsonb) AS retornado",
       ["{}"],
