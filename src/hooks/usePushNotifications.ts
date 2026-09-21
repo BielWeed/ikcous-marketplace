@@ -101,6 +101,27 @@ function mensagemPorOrigem(error: unknown): string {
   return "Não foi possível se inscrever para notificações. Tente novamente.";
 }
 
+// O guard de suporte precisa olhar as TRÊS peças que este hook toca — o
+// container (`navigator.serviceWorker.ready`), `Notification` (permissão) e
+// `PushManager` (inscrição). O teste ANTERIOR era `"serviceWorker" in
+// navigator && "PushManager" in globalThis`, e o operador `in` só prova que
+// a PROPRIEDADE existe, não que ela vale algo: `src/main.tsx` define
+// `navigator.serviceWorker = undefined` como proteção de sandbox em
+// headless/playwright/`disable_sw` (a propriedade continua existindo), o
+// hook acreditava no suporte e o `await navigator.serviceWorker.ready`
+// explodia como rejeição não tratada (pageerror no Chromium headless).
+// Existir = ser `undefined`/`null` NÃO conta como existir.
+function suporteRealDePush(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const container: ServiceWorkerContainer | undefined = navigator.serviceWorker;
+  return (
+    container !== undefined &&
+    container !== null &&
+    typeof Notification !== "undefined" &&
+    typeof globalThis.PushManager !== "undefined"
+  );
+}
+
 export function usePushNotifications() {
   const { user } = useAuth();
   const [subscription, setSubscription] = useState<PushSubscription | null>(
@@ -111,26 +132,76 @@ export function usePushNotifications() {
     useState<NotificationPermission>("default");
 
   useEffect(() => {
+    // Desmontou no meio da sonda (StrictMode remonta, rota troca): as
+    // promessas de `ready`/`getSubscription` continuam vivas e os
+    // `setState` delas cairiam num componente que já não existe.
+    let desmontado = false;
+
     const checkSupport = async () => {
-      const supported =
-        "serviceWorker" in navigator && "PushManager" in globalThis;
+      const supported = suporteRealDePush();
       setIsSupported(supported);
 
-      if (supported) {
-        setPermission(Notification.permission);
-        const registration = await navigator.serviceWorker.ready;
+      if (!supported) return;
+
+      setPermission(Notification.permission);
+
+      let registration: ServiceWorkerRegistration;
+      try {
+        registration = await navigator.serviceWorker.ready;
+      } catch {
+        // `ready` rejeita quando o contexto não consegue entregar um
+        // registro de Service Worker (headless com SW bloqueado, política
+        // do navegador). Sem inscrição alcançável, push NÃO funciona aqui:
+        // manter `isSupported === true` seria falso positivo — o banner
+        // ofereceria um botão que só saberia falhar. Desmarcar o suporte é
+        // o estado honesto, e a próxima montagem sonda de novo.
+        if (!desmontado) {
+          setIsSupported(false);
+          setSubscription(null);
+        }
+        return;
+      }
+
+      try {
         const sub = await registration.pushManager.getSubscription();
-        setSubscription(sub);
+        if (!desmontado) setSubscription(sub);
+      } catch {
+        // A SONDA falhou; o estado da inscrição é DESCONHECIDO, e
+        // desconhecido não é prova de falta de suporte — `subscribe()`
+        // re-sonda com a própria tolerância a falha antes de decidir
+        // qualquer coisa. Sem inscrição conhecida = `null`, sem rejeição
+        // não tratada.
+        if (!desmontado) setSubscription(null);
       }
     };
 
     checkSupport();
+    return () => {
+      desmontado = true;
+    };
   }, []);
 
   const subscribe = useCallback(async () => {
     if (!isSupported) return;
 
     try {
+      // `isSupported` é fotografia do INSTANTE da montagem; o toque pode
+      // chegar muito depois (banner à espera de permissão, aba aberta há
+      // dias) e o mundo muda: `src/main.tsx` desliga o serviceWorker em
+      // contexto headless, navegadores/extensões desativam SW em runtime.
+      // Sem esta revalidação, o `await navigator.serviceWorker.ready`
+      // mais abaixo lançaria TypeError cru — e o pedido de PERMISSÃO já
+      // teria sido consumido antes de descobrir que não há push nenhum.
+      // Mesma família "navegador": não é decisão da pessoa, nem do banco.
+      if (!suporteRealDePush()) {
+        throw new PushSubscribeError(
+          "navegador",
+          new Error(
+            "Suporte a Service Worker/Push ausente no ato da inscrição",
+          ),
+        );
+      }
+
       // Escala etapa 3 (11/09/2026): a chave VAPID deixou de ser assada no
       // build e passa a vir da ficha da loja (banco de cada loja).
       const vapidPublicKey = chavePublicaVapid();
