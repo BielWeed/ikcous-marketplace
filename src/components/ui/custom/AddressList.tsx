@@ -271,7 +271,7 @@ export const AddressList = memo(function AddressList({
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`Abrir no Google Maps — endereço ${address.name}`}
-                  className="flex min-h-9 items-center justify-center gap-1 bg-zinc-50 px-2 py-2 text-[10px] font-black uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-900"
+                  className="flex min-h-9 items-center justify-center gap-1 bg-zinc-50 p-2 text-[10px] font-black uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-900"
                 >
                   Abrir no Google Maps
                 </a>
