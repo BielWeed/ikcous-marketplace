@@ -1,4 +1,5 @@
 import { useStore } from "@/contexts/StoreContext";
+import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
@@ -123,18 +124,40 @@ export function CartView({
     selectedShippingOption,
     setSelectedShippingOption,
     setShippingCep,
+    enderecoSelecionadoId,
   } = useCart();
+
+  const { user } = useAuth();
 
   const cart = propCart ?? ctxCart;
   const onUpdateQuantity = propOnUpdateQuantity ?? updateQuantity;
   const onRemove = propOnRemove ?? removeFromCart;
+
+  // O DESTINO DA CALCULADORA É O ENDEREÇO DE ENTREGA: o escolhido no
+  // checkout (`enderecoSelecionadoId`) ou, na falta, o principal do
+  // cadastro — mesma regra do auto-select do CheckoutView. A lista vem do
+  // cache do `useAddresses` e o fetch abaixo a mantém fresca; sem endereço
+  // cadastrado (ou convidado), `null`: o campo manual segue como sempre.
+  const { addresses, fetchAddresses } = useAddresses();
+  const cepDoDestino = useMemo(() => {
+    const escolhido = enderecoSelecionadoId
+      ? addresses.find((a) => a.id === enderecoSelecionadoId)
+      : undefined;
+    const padrao = addresses.find((a) => a.is_default) || addresses[0];
+    return (escolhido ?? padrao)?.cep ?? null;
+  }, [addresses, enderecoSelecionadoId]);
+
+  useEffect(() => {
+    if (user) {
+      fetchAddresses();
+    }
+  }, [user, fetchAddresses]);
   // Onda 2, laudo 02/09 #3: a aba "Meus Pedidos" deriva da lista VIVA do
   // hook — o mesmo estado que o realtime alimenta (handleRealtimeUpdate/
   // Insert/Delete em useOrders.ts:1247-1279). Antes a view copiava a lista
   // para um estado local na entrada da aba e ficava congelada até sair e
   // voltar. Prendado por tests/front/cart-aba-pedidos-viva.test.tsx.
   const { fetchUserOrders, orders: pedidosVivos } = useOrders(true, false);
-  const { user } = useAuth();
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(80);
   const isSummaryReady = useDeferredRender(380);
@@ -538,10 +561,12 @@ export function CartView({
                     {cart.length > 0 && (
                       <div className="mt-3">
                         <ShippingCalculator
+                          key={user?.id ?? "convidado"}
                           cart={cart}
                           selectedOption={selectedShippingOption}
                           onSelectOption={setSelectedShippingOption}
                           onCepValidated={setShippingCep}
+                          cepDestino={user ? cepDoDestino : null}
                         />
                       </div>
                     )}

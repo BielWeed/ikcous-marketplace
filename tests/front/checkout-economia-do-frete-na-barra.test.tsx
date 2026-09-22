@@ -99,19 +99,22 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: mockUser, profile: null, loading: false }),
 }));
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: [],
-    cartTotal: 0,
-    shippingFee: 0,
-    clearCart: vi.fn(),
-    addToCart: vi.fn(),
-    shippingCep: null,
-    setSelectedShippingOption,
-    setShippingCep,
-    ...mockUseCartOverrides,
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: [],
+      cartTotal: 0,
+      shippingFee: 0,
+      clearCart: vi.fn(),
+      addToCart: vi.fn(),
+      shippingCep: null,
+      setSelectedShippingOption,
+      setShippingCep,
+      ...mockUseCartOverrides,
+    })),
+  };
+});
 
 const { mockValidateCoupon } = vi.hoisted(() => ({
   mockValidateCoupon: vi.fn(),

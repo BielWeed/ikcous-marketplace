@@ -103,39 +103,42 @@ let mockCart = [
 let mockCartTotal = 100;
 let mockShippingFee = 0;
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: mockCart,
-    cartTotal: mockCartTotal,
-    shippingFee: mockShippingFee,
-    clearCart: () => {
-      clearCart();
-      mockCart = [];
-      mockCartTotal = 0;
-      mockShippingFee = 0;
-    },
-    addToCart: (
-      product: unknown,
-      quantity: number,
-      variantId?: string,
-      variantNames?: string,
-    ) => addToCart(product, quantity, variantId, variantNames),
-    // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
-    // 21/09/2026): `finalizarBloqueadoPorFrete` passou a exigir a ESCOLHA
-    // de entrega (o servidor recusa id ausente — FRETE V2 EMENDA, ELSIF do
-    // bloco 4), e o frete daqui é R$ 0 legítimo. Sem a opção, o Finalizar
-    // ficaria travado por um motivo que ESTE arquivo não prova — o assunto
-    // dele é o polling do PIX, não a regra de frete.
-    selectedShippingOption: {
-      id: "local-delivery",
-      name: "Entrega Local",
-      price: 0,
-      deliveryDays: 1,
-      provider: "local",
-    },
-    shippingCep: "38500-000",
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: mockCart,
+      cartTotal: mockCartTotal,
+      shippingFee: mockShippingFee,
+      clearCart: () => {
+        clearCart();
+        mockCart = [];
+        mockCartTotal = 0;
+        mockShippingFee = 0;
+      },
+      addToCart: (
+        product: unknown,
+        quantity: number,
+        variantId?: string,
+        variantNames?: string,
+      ) => addToCart(product, quantity, variantId, variantNames),
+      // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
+      // 21/09/2026): `finalizarBloqueadoPorFrete` passou a exigir a ESCOLHA
+      // de entrega (o servidor recusa id ausente — FRETE V2 EMENDA, ELSIF do
+      // bloco 4), e o frete daqui é R$ 0 legítimo. Sem a opção, o Finalizar
+      // ficaria travado por um motivo que ESTE arquivo não prova — o assunto
+      // dele é o polling do PIX, não a regra de frete.
+      selectedShippingOption: {
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 0,
+        deliveryDays: 1,
+        provider: "local",
+      },
+      shippingCep: "38500-000",
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),

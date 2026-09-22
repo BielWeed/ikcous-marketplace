@@ -78,47 +78,50 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: null, profile: null, loading: false }),
 }));
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: [
-      {
-        product: {
-          id: "prod-1",
-          name: "Produto Teste",
-          description: "",
-          price: 100,
-          images: [],
-          category: "geral",
-          stock: 10,
-          sold: 0,
-          isActive: true,
-          isBestseller: false,
-          freeShipping: false,
-          createdAt: new Date().toISOString(),
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: [
+        {
+          product: {
+            id: "prod-1",
+            name: "Produto Teste",
+            description: "",
+            price: 100,
+            images: [],
+            category: "geral",
+            stock: 10,
+            sold: 0,
+            isActive: true,
+            isBestseller: false,
+            freeShipping: false,
+            createdAt: new Date().toISOString(),
+          },
+          quantity: 1,
         },
-        quantity: 1,
+      ],
+      cartTotal: 100,
+      shippingFee: 0,
+      clearCart,
+      // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
+      // 21/09/2026): a guarda do Finalizar (`finalizarBloqueadoPorFrete`)
+      // passou a exigir a ESCOLHA de entrega — o servidor recusa id ausente
+      // (FRETE V2 EMENDA, ELSIF do bloco 4). O assunto deste arquivo é outro;
+      // sem a opção, o botão travaria por um motivo que ele não prova.
+      selectedShippingOption: {
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 0,
+        deliveryDays: 1,
+        provider: "local",
       },
-    ],
-    cartTotal: 100,
-    shippingFee: 0,
-    clearCart,
-    // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
-    // 21/09/2026): a guarda do Finalizar (`finalizarBloqueadoPorFrete`)
-    // passou a exigir a ESCOLHA de entrega — o servidor recusa id ausente
-    // (FRETE V2 EMENDA, ELSIF do bloco 4). O assunto deste arquivo é outro;
-    // sem a opção, o botão travaria por um motivo que ele não prova.
-    selectedShippingOption: {
-      id: "local-delivery",
-      name: "Entrega Local",
-      price: 0,
-      deliveryDays: 1,
-      provider: "local",
-    },
-    shippingCep: "38500-000",
-    setSelectedShippingOption: vi.fn(),
-    setShippingCep: vi.fn(),
-  }),
-}));
+      shippingCep: "01310-100",
+      setSelectedShippingOption: vi.fn(),
+      setShippingCep: vi.fn(),
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),

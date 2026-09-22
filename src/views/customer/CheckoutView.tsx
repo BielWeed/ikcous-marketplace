@@ -431,6 +431,10 @@ export function CheckoutView({
     shippingCep,
     setSelectedShippingOption,
     setShippingCep,
+    // D1: o endereço ESCOLHIDO mora no CartContext — fonte compartilhada
+    // com o carrinho, cuja calculadora aponta para o CEP deste endereço.
+    enderecoSelecionadoId: selectedAddressId,
+    setEnderecoSelecionadoId: setSelectedAddressId,
     freteIndefinido: ctxFreteIndefinido,
     freteGratis,
   } = useCart();
@@ -819,9 +823,6 @@ export function CheckoutView({
     discount: number;
   } | null>(null);
   const [couponError, setCouponError] = useState<string>("");
-  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
-    null,
-  );
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const hasPushedAddressModalState = useRef(false);
@@ -842,8 +843,16 @@ export function CheckoutView({
   // certo. Cotação ausente não decide (frete grátis/taxa fixa sem
   // cotação): o portão do SERVIDOR é quem policia esses caminhos.
   const cepDigitadoNoFormulario = form.watch("cep");
+  // Destino efetivo derivado EM RENDER (não espera efeito): o endereço
+  // escolhido ou, na falta, o principal/primeiro do cadastro — o mesmo que
+  // o auto-select grava no CartContext para o carrinho seguir.
+  const enderecoEfetivo = user
+    ? (addresses.find((a) => a.id === selectedAddressId) ??
+      addresses.find((a) => a.is_default) ??
+      addresses[0])
+    : undefined;
   const cepDeEntrega = user
-    ? (addresses.find((a) => a.id === selectedAddressId)?.cep ?? null)
+    ? (enderecoEfetivo?.cep ?? null)
     : cepDigitadoNoFormulario || null;
   useEffect(() => {
     if (!shippingCep || !cepDeEntrega) return;
@@ -858,6 +867,18 @@ export function CheckoutView({
       setShippingCep(null);
     }
   }, [shippingCep, cepDeEntrega, setSelectedShippingOption, setShippingCep]);
+
+  // A invalidação acima é um EFEITO — roda DEPOIS do pintar. No intervalo
+  // entre o destino ficar conhecido e o efeito executar, o total do frete
+  // de OUTRO CEP ficava na tela, com o Finalizar livre. Esta guarda é de
+  // RENDER: preço cotado para CEP divergente do destino efetivo é "a
+  // calcular" no primeiro pintar e trava o Finalizar (abaixo, somada à
+  // `finalizarBloqueadoPorFrete`).
+  const freteIncoerenteComDestino =
+    !!shippingCep &&
+    !!cepDeEntrega &&
+    soDigitos(cepDeEntrega).length === 8 &&
+    !cotacaoValeParaDestino(shippingCep, cepDeEntrega);
 
   // ECONOMIA DO FRETE (pedido do Gabriel, 12/09/2026, tabela corrigida pelo
   // crítico de desenho): SÓ EXIBIÇÃO — nunca escreve `selectedShippingOption`
@@ -1290,9 +1311,12 @@ export function CheckoutView({
     }
   }, [user, fetchAddresses]);
 
-  const handleSelectAddress = useCallback((address: Address) => {
-    setSelectedAddressId(address.id);
-  }, []);
+  const handleSelectAddress = useCallback(
+    (address: Address) => {
+      setSelectedAddressId(address.id);
+    },
+    [setSelectedAddressId],
+  );
 
   useEffect(() => {
     if (addresses.length > 0 && !selectedAddressId) {
@@ -1533,12 +1557,14 @@ export function CheckoutView({
   // configurada deixava `shipping === 0`, a guarda antiga não disparava, e
   // o pedido fechava com frete R$ 0 sem cotação nenhuma, depois do
   // carrinho ter dito "A calcular".
-  const semFreteSelecionado = finalizarBloqueadoPorFrete({
-    carrinhoVazio: cart.length === 0,
-    freteIndefinido: ctxFreteIndefinido,
-    shipping,
-    temOpcaoSelecionada: !!selectedShippingOption,
-  });
+  const semFreteSelecionado =
+    freteIncoerenteComDestino ||
+    finalizarBloqueadoPorFrete({
+      carrinhoVazio: cart.length === 0,
+      freteIndefinido: ctxFreteIndefinido,
+      shipping,
+      temOpcaoSelecionada: !!selectedShippingOption,
+    });
 
   // A outra guarda de frete (regra do dono, 21/09/2026): a modalidade do
   // frete tem de combinar com o meio de pagamento — transportadora exige

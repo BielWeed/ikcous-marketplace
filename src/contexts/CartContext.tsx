@@ -55,6 +55,11 @@ export interface CartState {
   /** CEP para o qual a cotação de frete escolhida foi calculada. O banco precisa
    *  dele para localizar a cotação gravada e confirmar o valor do frete. */
   shippingCep: string | null;
+  /** Id do endereço de entrega ESCOLHIDO (o auto-select do principal do
+   *  checkout escreve nele também). Fonte compartilhada entre checkout e
+   *  carrinho: é por ele que a calculadora aponta para o CEP do endereço
+   *  que vai receber. Troca de conta/saída zera. */
+  enderecoSelecionadoId: string | null;
 }
 
 export interface CartActions {
@@ -75,6 +80,7 @@ export interface CartActions {
   getCartCount: () => number;
   setSelectedShippingOption: (option: ShippingOption | null) => void;
   setShippingCep: (cep: string | null) => void;
+  setEnderecoSelecionadoId: (id: string | null) => void;
 }
 
 export interface CartContextType extends CartState, CartActions {}
@@ -382,6 +388,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(CART_STORAGE_KEY);
         localStorage.removeItem(CART_TOMBSTONES_KEY);
       }
+      // Troca de conta/saída não herda nada da sessão anterior: itens,
+      // tombstones, cotação de frete e endereço escolhido.
+      setEnderecoSelecionadoId(null);
+      setSelectedShippingOption(null);
+      setShippingCep(null);
       isInitialLoad.current = true;
       syncLocked.current = true;
       lastSessionUserId.current = currentUserId;
@@ -723,6 +734,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [selectedShippingOption, setSelectedShippingOption] =
     React.useState<ShippingOption | null>(null);
   const [shippingCep, setShippingCep] = React.useState<string | null>(null);
+  const [enderecoSelecionadoId, setEnderecoSelecionadoId] = React.useState<
+    string | null
+  >(null);
 
   const clearCart = useCallback(() => {
     // Tombstone all current items before clearing
@@ -857,6 +871,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       freteIndefinido,
       selectedShippingOption,
       shippingCep,
+      enderecoSelecionadoId,
     }),
     [
       cart,
@@ -868,6 +883,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       freteIndefinido,
       selectedShippingOption,
       shippingCep,
+      enderecoSelecionadoId,
     ],
   );
 
@@ -881,6 +897,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       getCartCount,
       setSelectedShippingOption,
       setShippingCep,
+      setEnderecoSelecionadoId,
     }),
     [
       addToCart,
