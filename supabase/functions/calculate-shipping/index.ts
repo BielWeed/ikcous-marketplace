@@ -257,6 +257,16 @@ export function cotacaoDoCacheServeAoProvedor(options: unknown, provider: string
     if (!Array.isArray(options) || options.length === 0) return false
     return options.every((opcao) => {
         const dono = (opcao as { provider?: unknown } | null)?.provider
+        // Release 1.5.6: opção da SuperFrete só serve com a marca da versão
+        // ATUAL da cotação (ver `VERSAO_DA_COTACAO_SUPERFRETE`). A linha
+        // gravada pela 1.5.4/1.5.5 — com seguro no preço e sem o Mini — não
+        // tem a marca: vira FALTA, recota, e o upsert sobrescreve a MESMA
+        // chave (o `cart_hash` não muda). ME, Frenet e as opções da própria
+        // loja seguem a regra de antes.
+        if (dono === 'superfrete') {
+            return provider === 'superfrete' &&
+                (opcao as { cotacaoSf?: unknown }).cotacaoSf === VERSAO_DA_COTACAO_SUPERFRETE
+        }
         return dono === provider || dono === 'local' || dono === 'free' || dono === 'pickup'
     })
 }
@@ -297,8 +307,18 @@ export function textoSemSegredo(texto: unknown, segredos: unknown[] = [], limite
 const SUPERFRETE_BASE_PRODUCAO = 'https://api.superfrete.com'
 const SUPERFRETE_BASE_SANDBOX = 'https://sandbox.superfrete.com'
 
-/** Chave da tela (`enabled_shipping_methods`) -> id do serviço na SuperFrete. */
-export const SUPERFRETE_SERVICO_POR_CHAVE: Readonly<Record<string, number>> = { pac: 1, sedex: 2, jadlog: 3 }
+/**
+ * Chave da tela (`enabled_shipping_methods`) -> ids dos serviços na
+ * SuperFrete. Release 1.5.6: a chave `pac` pede o PAC (1) E o Mini Envios
+ * (17) — os dois são a "Entrega econômica" dos Correios, e a cliente vê só
+ * o mais barato (ver `agruparEntregaEconomicaSuperFrete`). Sem chave nova na
+ * tela: o dono escolheu "PAC e Mini Envios (o mais barato)" no chip `pac`.
+ */
+export const SUPERFRETE_SERVICOS_POR_CHAVE: ReadonlyMap<string, readonly number[]> = new Map([
+    ['pac', [1, 17]],
+    ['sedex', [2]],
+    ['jadlog', [3]],
+])
 
 /** "Lista vazia = todas" (mesma regra do ME): os ids que a doc lista (1 PAC, 2 SEDEX, 3 Jadlog, 17 Mini Envios, 31 Loggi, 33 J&T). */
 export const SUPERFRETE_TODOS_OS_SERVICOS: readonly number[] = [1, 2, 3, 17, 31, 33]
@@ -308,7 +328,26 @@ export const SUPERFRETE_TODOS_OS_SERVICOS: readonly number[] = [1, 2, 3, 17, 31,
  * "Nome da sua aplicação e versão (<e-mail>)"; o nome é o do app, a versão é
  * a da release que publicou esta edge.
  */
-export const VERSAO_DA_INTEGRACAO_SUPERFRETE = '1.5.5'
+export const VERSAO_DA_INTEGRACAO_SUPERFRETE = '1.5.6'
+
+/**
+ * Marca de versão da COTAÇÃO da SuperFrete (release 1.5.6), gravada em cada
+ * opção como `cotacaoSf` — na resposta e no `shipping_quotes_cache`.
+ *
+ * A 1.5.6 mudou o que a cotação significa (sem seguro, Mini junto do PAC,
+ * medidas campo a campo). As linhas que a 1.5.4/1.5.5 gravaram não têm a
+ * marca (equivalem à versão 1) e `cotacaoDoCacheServeAoProvedor` as recusa.
+ * Mudou de novo o significado da cotação? Sobe este número.
+ *
+ * A RPC do pedido lê só `opt->>'id'` e `opt->>'price'` — campo extra não a
+ * afeta — e o `cart_hash` NÃO muda (a RPC o desmonta em
+ * produto:variante:quantidade).
+ */
+export const VERSAO_DA_COTACAO_SUPERFRETE = 2
+
+/** Os serviços que viram UMA "Entrega econômica": PAC (1) e Mini Envios (17). */
+const SUPERFRETE_ID_DO_PAC = 1
+const SUPERFRETE_IDS_DA_ECONOMICA: readonly number[] = [SUPERFRETE_ID_DO_PAC, 17]
 
 /**
  * Motivo de a SuperFrete não ser consultada por falta do e-mail — vai para o
@@ -332,8 +371,11 @@ export function servicosSuperFrete(chaves: string[]): string {
     if (chaves.length === 0) return SUPERFRETE_TODOS_OS_SERVICOS.join(',')
     const ids = new Set<number>()
     for (const chave of chaves) {
-        const id = SUPERFRETE_SERVICO_POR_CHAVE[String(chave || '').toLowerCase().trim()]
-        if (id) ids.add(id)
+        // `Map` (e não objeto): chave "constructor" não acha o que mora no
+        // protótipo e não vira "serviço".
+        for (const id of SUPERFRETE_SERVICOS_POR_CHAVE.get(String(chave || '').toLowerCase().trim()) ?? []) {
+            ids.add(id)
+        }
     }
     return [...ids].sort((a, b) => a - b).join(',')
 }
@@ -398,46 +440,100 @@ function cabecalhosDaSuperFrete(token: string, userAgent: string): Record<string
     }
 }
 
+/** Padrões de peso (kg) e medida (cm) — os mesmos do Melhor Envio/Frenet. */
+const PESO_PADRAO_KG = 0.3
+const MEDIDA_PADRAO_CM = 15
+
 /**
- * Corpo da cotação: produtos e preço (seguro) SÓ do banco — o navegador não
- * decide peso nem valor declarado. Padrões de peso/medida iguais aos do
- * Melhor Envio para produto sem cadastro; produto que o banco não conhece
- * entra com preço 0 no seguro (nunca o preço que o navegador mandou).
+ * Medida do BANCO que vale como está: número finito e > 0 (ou texto
+ * numérico, como `numeroDaApi`). Ausente, null, 0, negativo, NaN, infinito,
+ * texto não numérico e booleano = `null` (quem chama usa o padrão).
  */
-export function pedidoDeCotacaoSuperFrete(entrada: {
+function medidaPositivaDoBanco(valor: unknown): number | null {
+    const numero = typeof valor === 'number'
+        ? valor
+        : typeof valor === 'string' && valor.trim().length > 0 ? Number(valor) : Number.NaN
+    return Number.isFinite(numero) && numero > 0 ? numero : null
+}
+
+/**
+ * Corpo da cotação da SuperFrete + o que o log estruturado conta dele.
+ * Produtos SÓ do banco — o navegador não decide peso nem medida.
+ *
+ * MEDIDAS (release 1.5.6) — o app NÃO normaliza medida mínima, e é de
+ * propósito. A prova é a cotação real de 22/09/2026 (auditoria, chamadas C
+ * e D, modo `products`): o controle CRU 10×10×3 (C) e o mesmo controle já
+ * "normalizado" 15×10×3 (D) deram EXATAMENTE a mesma resposta — a própria
+ * API sobe a caixa para 15×10×3 e oferece o Mini a R$ 19,01; e o tênis
+ * 10×10×6 de 0,1 kg volta cobrado como 24×16×6 e 0,3 kg no PAC/SEDEX.
+ * Normalizar aqui seria redundante e ainda inflaria o empacotamento de
+ * vários itens pequenos (cada item ganharia o mínimo). Por isso cada campo é
+ * validado SOZINHO: número finito > 0 fica como está (0,1 kg continua 0,1;
+ * 6 cm continua 6) e só o campo ruim vai para o padrão (0,3 kg / 15 cm) — um
+ * campo ruim nunca troca o conjunto inteiro. Sem máximo no código: quem
+ * decide é a API (Mini ausente ou com erro é só um serviço a menos).
+ * Produto que o banco não conhece continua com TODOS os padrões.
+ *
+ * OPÇÕES (release 1.5.6, escolha do dono): sem seguro, sem mão própria, sem
+ * aviso de recebimento — explícitos. Até a 1.5.5 o valor dos produtos ia
+ * como seguro: a mesma cotação real (A x B) mostrou R$ 0,39 a mais por
+ * serviço (PAC 25,70 x 25,31; SEDEX 52,98 x 52,59). O preço do produto e o
+ * valor do pedido não mudam.
+ */
+export function montarCotacaoSuperFrete(entrada: {
     originCep: string
     destinationCep: string
     services: string
     cart: any[]
     dbProductsMap: Map<unknown, any>
 }) {
-    let valorSegurado = 0
+    let produtosSemCadastro = 0
+    let camposPadrao = 0
     const products = entrada.cart.map((item: any) => {
         const prodId = item.product?.id || item.productId
         const dbProd = entrada.dbProductsMap.get(prodId)
         const quantity = Number(item.quantity || 1)
-        valorSegurado += Number(dbProd?.preco_venda ?? 0) * quantity
+        if (!dbProd) {
+            produtosSemCadastro += 1
+            return { quantity, weight: PESO_PADRAO_KG, height: MEDIDA_PADRAO_CM, width: MEDIDA_PADRAO_CM, length: MEDIDA_PADRAO_CM }
+        }
+        const campo = (valor: unknown, padrao: number): number => {
+            const medida = medidaPositivaDoBanco(valor)
+            if (medida === null) {
+                camposPadrao += 1
+                return padrao
+            }
+            return medida
+        }
         return {
             quantity,
-            weight: Number(dbProd?.peso_kg ?? 0.3),
-            height: Number(dbProd?.altura_cm ?? 15),
-            width: Number(dbProd?.largura_cm ?? 15),
-            length: Number(dbProd?.comprimento_cm ?? 15),
+            weight: campo(dbProd.peso_kg, PESO_PADRAO_KG),
+            height: campo(dbProd.altura_cm, MEDIDA_PADRAO_CM),
+            width: campo(dbProd.largura_cm, MEDIDA_PADRAO_CM),
+            length: campo(dbProd.comprimento_cm, MEDIDA_PADRAO_CM),
         }
     })
-    const insuranceValue = Number.isFinite(valorSegurado) ? Math.round(valorSegurado * 100) / 100 : 0
     return {
-        from: { postal_code: entrada.originCep },
-        to: { postal_code: entrada.destinationCep },
-        services: entrada.services,
-        options: {
-            own_hand: false,
-            receipt: false,
-            insurance_value: insuranceValue,
-            use_insurance_value: insuranceValue > 0,
+        corpo: {
+            from: { postal_code: entrada.originCep },
+            to: { postal_code: entrada.destinationCep },
+            services: entrada.services,
+            options: {
+                own_hand: false,
+                receipt: false,
+                insurance_value: 0,
+                use_insurance_value: false,
+            },
+            products,
         },
-        products,
+        produtosSemCadastro,
+        camposPadrao,
     }
+}
+
+/** Só o corpo que vai à API (ver `montarCotacaoSuperFrete`). */
+export function pedidoDeCotacaoSuperFrete(entrada: Parameters<typeof montarCotacaoSuperFrete>[0]) {
+    return montarCotacaoSuperFrete(entrada).corpo
 }
 
 /** Número vindo da API: número de verdade, ou texto numérico. Booleano, null, objeto = NaN. */
@@ -449,25 +545,29 @@ function numeroDaApi(valor: unknown): number {
 
 /**
  * Resposta da SuperFrete -> opções no formato de sempre
- * `{ id, name, price, deliveryDays, provider }`. Não-lista = falha (lança).
- * Descarta o serviço com `has_error`/`error`, id não inteiro, preço não
- * finito ou <= 0, prazo que não é inteiro >= 1, serviço não pedido pelas
- * chaves e — 2ª guarda, a mesma régua do ME/Frenet — nome que não casa com
- * nenhuma chave. O preço é arredondado ao centavo: o MESMO número vai para a
- * tela e para o cache que a RPC do pedido lê.
+ * `{ id, name, price, deliveryDays, provider }` + a marca `cotacaoSf` (ver
+ * `VERSAO_DA_COTACAO_SUPERFRETE`). Não-lista = falha (lança). Descarta o
+ * serviço com `has_error`/`error`, id não inteiro, preço não finito ou <= 0,
+ * prazo que não é inteiro >= 1 e serviço não pedido pelas chaves. O preço é
+ * arredondado ao centavo: o MESMO número vai para a tela e para o cache que
+ * a RPC do pedido lê. No fim, PAC e Mini viram UMA "Entrega econômica"
+ * (`agruparEntregaEconomicaSuperFrete`).
+ *
+ * Release 1.5.6: a guarda de NOME (`servicoCasaChave`, a régua do ME/Frenet)
+ * SAIU daqui — na SuperFrete o id é exato e é ele que diz o serviço; o nome
+ * "Mini Envios" nunca casaria a chave `pac`. A guarda de ID PEDIDO continua.
  */
 export function mapearRespostaSuperFrete(data: unknown, chaves: string[]): any[] {
     if (!Array.isArray(data)) {
         throw new Error('SuperFrete: resposta inesperada (não é uma lista de serviços).')
     }
     const pedidos = chaves.length > 0 ? new Set(servicosSuperFrete(chaves).split(',').filter(Boolean)) : null
-    return data.flatMap((servico: any) => {
+    const opcoes = data.flatMap((servico: any) => {
         if (!servico || typeof servico !== 'object') return []
         if (servico.has_error === true || servico.error) return []
         const id = numeroDaApi(servico.id)
         if (!Number.isInteger(id) || id <= 0) return []
         if (pedidos && !pedidos.has(String(id))) return []
-        if (chaves.length > 0 && !chaves.some((chave) => servicoCasaChave(servico.name, chave))) return []
         const preco = numeroDaApi(servico.price)
         if (!Number.isFinite(preco) || preco <= 0) return []
         const prazo = numeroDaApi(servico.delivery_time)
@@ -478,8 +578,105 @@ export function mapearRespostaSuperFrete(data: unknown, chaves: string[]): any[]
             price: Math.round(preco * 100) / 100,
             deliveryDays: prazo,
             provider: 'superfrete',
+            cotacaoSf: VERSAO_DA_COTACAO_SUPERFRETE,
         }]
     })
+    return agruparEntregaEconomicaSuperFrete(opcoes)
+}
+
+const ehEconomicaDaSuperFrete = (opcao: any): boolean =>
+    SUPERFRETE_IDS_DA_ECONOMICA.some((id) => opcao?.id === `superfrete-${id}`)
+
+/** `a` ganha de `b` na econômica: menor preço; empate, menor prazo; empate de novo, o PAC. */
+function economicaGanha(a: any, b: any): boolean {
+    if (a.price !== b.price) return a.price < b.price
+    if (a.deliveryDays !== b.deliveryDays) return a.deliveryDays < b.deliveryDays
+    return a.id === `superfrete-${SUPERFRETE_ID_DO_PAC}` && b.id !== a.id
+}
+
+/**
+ * Release 1.5.6 — das opções VÁLIDAS de PAC (1) e Mini Envios (17) sai UMA
+ * "Entrega econômica": a de menor preço (já arredondado ao centavo, o mesmo
+ * que a RPC compara); no empate, a de menor prazo; se empatar de novo, o
+ * PAC. Ela mantém o id, o prazo e o provider do VENCEDOR — a RPC do pedido
+ * valida o preço por `opt->>'id'` no cache, e é esta lista que vai para o
+ * cache, então o id escolhido pela cliente é sempre o de um preço gravado.
+ * A opção entra no lugar da PRIMEIRA econômica da resposta; o resto (SEDEX
+ * "Entrega expressa", Jadlog, Loggi…) não muda. Só uma veio (a outra deu
+ * erro, sem preço ou ausente)? Vale a que veio. Nenhuma? Nada muda.
+ */
+export function agruparEntregaEconomicaSuperFrete(opcoes: any[]): any[] {
+    const posicao = opcoes.findIndex(ehEconomicaDaSuperFrete)
+    if (posicao < 0) return opcoes
+    const vencedora = opcoes
+        .filter(ehEconomicaDaSuperFrete)
+        .reduce((melhor, atual) => (economicaGanha(atual, melhor) ? atual : melhor))
+    return opcoes.flatMap((opcao, indice) => {
+        if (indice === posicao) return [{ ...vencedora, name: 'Entrega econômica' }]
+        return ehEconomicaDaSuperFrete(opcao) ? [] : [opcao]
+    })
+}
+
+/**
+ * O que a SuperFrete devolveu, serviço a serviço, para o log estruturado:
+ * `{ id, preco, prazo, erro }`. O texto de erro da API NÃO entra (pode
+ * repetir CEP ou outro dado do pedido) — só o booleano.
+ */
+export function servicosRetornadosSuperFrete(data: unknown): Array<{ id: number | null; preco: number | null; prazo: number | null; erro: boolean }> {
+    if (!Array.isArray(data)) return []
+    return data.flatMap((servico: any) => {
+        if (!servico || typeof servico !== 'object') return []
+        const numeroOuNulo = (valor: unknown) => {
+            const numero = numeroDaApi(valor)
+            return Number.isFinite(numero) ? numero : null
+        }
+        return [{
+            id: numeroOuNulo(servico.id),
+            preco: numeroOuNulo(servico.price),
+            prazo: numeroOuNulo(servico.delivery_time),
+            erro: servico.has_error === true || !!servico.error,
+        }]
+    })
+}
+
+/**
+ * LOG ESTRUTURADO da cotação da SuperFrete (release 1.5.6): UMA linha
+ * `console.log(JSON.stringify(...))` por cotação — na falta (cotou na API,
+ * deu certo ou não) e no acerto do cache. Serve para responder "por que o
+ * Mini não apareceu?" sem expor ninguém: NUNCA token, e-mail, nome de
+ * produto, endereço nem CEP — só ids, preços, prazos e contagens. O log em
+ * `shipping_calculation_logs` (banco) continua como estava.
+ *
+ * `ambiente` é `null` no acerto do cache: ali a credencial não é lida (o
+ * acerto não depende dela) e ler só para o log custaria uma consulta a mais
+ * por cotação. `campos_padrao` conta os campos de produtos CADASTRADOS que
+ * caíram no padrão; produto sem cadastro conta em `produtos_sem_cadastro`.
+ */
+export function linhaDoLogDaCotacaoSuperFrete(entrada: {
+    ambiente: 'producao' | 'sandbox' | null
+    servicosPedidos: string
+    retornados: ReturnType<typeof servicosRetornadosSuperFrete>
+    opcoesFinais: unknown
+    cache: 'hit' | 'miss'
+    produtosSemCadastro: number
+    camposPadrao: number
+}) {
+    const finais = Array.isArray(entrada.opcoesFinais) ? entrada.opcoesFinais : []
+    return {
+        evento: 'cotacao_superfrete',
+        ambiente: entrada.ambiente,
+        servicos_pedidos: entrada.servicosPedidos,
+        retornados: entrada.retornados,
+        opcoes_finais: finais.map((opcao: any) => ({
+            id: typeof opcao?.id === 'string' ? opcao.id : null,
+            preco: typeof opcao?.price === 'number' ? opcao.price : null,
+            prazo: typeof opcao?.deliveryDays === 'number' ? opcao.deliveryDays : null,
+        })),
+        cache: entrada.cache,
+        versao_cache: VERSAO_DA_COTACAO_SUPERFRETE,
+        produtos_sem_cadastro: entrada.produtosSemCadastro,
+        campos_padrao: entrada.camposPadrao,
+    }
 }
 
 /**
@@ -1568,7 +1765,28 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // recota e o upsert abaixo sobrescreve a mesma chave.
         if (cachedQuote && !cacheQueryError && cotacaoDoCacheServeAoProvedor(cachedQuote.options, provider)) {
             console.log(`[calculate-shipping] Caching hit for CEP: ${cleanCep}`)
-            
+
+            // Release 1.5.6: a linha do log estruturado também no acerto.
+            if (provider === 'superfrete') {
+                const servicosPedidos = servicosSuperFrete(chavesDeServico)
+                const medidas = montarCotacaoSuperFrete({
+                    originCep,
+                    destinationCep: cleanCep,
+                    services: servicosPedidos,
+                    cart,
+                    dbProductsMap,
+                })
+                console.log(JSON.stringify(linhaDoLogDaCotacaoSuperFrete({
+                    ambiente: null,
+                    servicosPedidos,
+                    retornados: [],
+                    opcoesFinais: cachedQuote.options,
+                    cache: 'hit',
+                    produtosSemCadastro: medidas.produtosSemCadastro,
+                    camposPadrao: medidas.camposPadrao,
+                })))
+            }
+
             // Log cache hit asynchronously (fire and forget)
             fireAndForget(
                 supabaseClient.from('shipping_calculation_logs').insert({
@@ -1632,6 +1850,15 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         const apiStartTime = performance.now()
         let apiError: string | null = null
         let cepInvalidoNaTransportadora = false
+        // Release 1.5.6: o que a linha do log estruturado da SuperFrete
+        // precisa saber da cotação (preenchido no ramo da SuperFrete).
+        let diagnosticoSuperFrete: {
+            ambiente: 'producao' | 'sandbox'
+            servicosPedidos: string
+            retornados: ReturnType<typeof servicosRetornadosSuperFrete>
+            produtosSemCadastro: number
+            camposPadrao: number
+        } | null = null
 
         try {
             if (provider === 'melhor_envio') {
@@ -1773,6 +2000,22 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     .filter(Boolean)
             }
             else if (provider === 'superfrete') {
+                const services = servicosSuperFrete(chavesDeServico)
+                const cotacao = montarCotacaoSuperFrete({
+                    originCep,
+                    destinationCep: cleanCep,
+                    services,
+                    cart,
+                    dbProductsMap,
+                })
+                diagnosticoSuperFrete = {
+                    ambiente: credentials.sandbox === true ? 'sandbox' : 'producao',
+                    servicosPedidos: services,
+                    retornados: [],
+                    produtosSemCadastro: cotacao.produtosSemCadastro,
+                    camposPadrao: cotacao.camposPadrao,
+                }
+
                 const token = credentials.token
                 if (!token) throw new Error('Token da SuperFrete ausente')
 
@@ -1784,7 +2027,6 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 const userAgent = userAgentDaSuperFrete(credentials.contact_email)
                 if (!userAgent) throw new Error(MOTIVO_SEM_EMAIL_SUPERFRETE)
 
-                const services = servicosSuperFrete(chavesDeServico)
                 if (!services) {
                     throw new Error('SuperFrete não consultada: nenhum serviço habilitado (sedex, pac ou jadlog) corresponde a um serviço da SuperFrete.')
                 }
@@ -1792,13 +2034,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 const response = await buscarComTempo(fetch, urlDaCotacaoSuperFrete(credentials.sandbox), {
                     method: 'POST',
                     headers: cabecalhosDaSuperFrete(token, userAgent),
-                    body: JSON.stringify(pedidoDeCotacaoSuperFrete({
-                        originCep,
-                        destinationCep: cleanCep,
-                        services,
-                        cart,
-                        dbProductsMap,
-                    })),
+                    body: JSON.stringify(cotacao.corpo),
                 })
 
                 const texto = await response.text()
@@ -1814,6 +2050,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 } catch {
                     throw new Error('SuperFrete: resposta não é JSON válido.')
                 }
+                diagnosticoSuperFrete.retornados = servicosRetornadosSuperFrete(data)
                 shippingOptions = mapearRespostaSuperFrete(data, chavesDeServico)
             }
         } catch (apiErr) {
@@ -1825,6 +2062,16 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
             // A classificação de CEP inválido (mais abaixo) lê a mensagem
             // INTEIRA — o corte de 300 não pode esconder o `cep_destino`.
             cepInvalidoNaTransportadora = erroDeTransportadoraEhCepInvalido(mensagemCrua)
+        }
+
+        // Release 1.5.6: UMA linha do log estruturado por cotação da
+        // SuperFrete (falta do cache), tenha a API respondido ou não.
+        if (diagnosticoSuperFrete) {
+            console.log(JSON.stringify(linhaDoLogDaCotacaoSuperFrete({
+                ...diagnosticoSuperFrete,
+                opcoesFinais: shippingOptions,
+                cache: 'miss',
+            })))
         }
 
         const apiEndTime = performance.now()

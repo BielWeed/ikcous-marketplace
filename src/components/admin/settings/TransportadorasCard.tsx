@@ -184,6 +184,18 @@ const OPCOES: ReadonlyArray<{
 
 const SERVICOS = ["sedex", "pac", "jadlog"] as const;
 
+/**
+ * Texto do chip de um serviço (release 1.5.6). Na SuperFrete a chave `pac`
+ * pede o PAC E o Mini Envios, e a cliente vê só o mais barato como "Entrega
+ * econômica" — o chip diz isso. Só o texto: o valor gravado continua a chave.
+ */
+function rotuloDoServico(servico: string, provider: string): string {
+  if (provider === "superfrete" && servico === "pac") {
+    return "PAC e Mini Envios (o mais barato)";
+  }
+  return servico;
+}
+
 export const TransportadorasSection = memo(function TransportadorasSection({
   onDirtyMudou,
 }: TransportadorasSectionProps) {
@@ -1031,13 +1043,17 @@ export const TransportadorasSection = memo(function TransportadorasSection({
                       });
                       haptic.light();
                     }}
-                    className={`rounded-lg border px-2.5 py-1 text-xs font-bold capitalize transition-all ${
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-bold transition-all ${
+                      rotuloDoServico(method, escolha.provider) === method
+                        ? "capitalize"
+                        : ""
+                    } ${
                       selecionado
                         ? "border-admin-gold/50 bg-admin-gold/15 text-admin-gold"
                         : "border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"
                     }`}
                   >
-                    {method}
+                    {rotuloDoServico(method, escolha.provider)}
                   </button>
                 );
               })}

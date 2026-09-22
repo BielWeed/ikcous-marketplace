@@ -127,8 +127,10 @@ describe("EtiquetasEnvioCard — pedido cotado pela SuperFrete não oferece etiq
 
   it("a lista diz 'cotado pela SuperFrete — etiqueta fora do app' (e não 'sem serviço do ME')", async () => {
     await abrirCard();
+    // 1.5.6: o rótulo também diz o serviço pago (superfrete-1 = PAC) — ver
+    // etiquetas-superfrete-diz-o-servico.test.tsx.
     expect(opcao("Dora SuperFrete")).toContain(
-      "cotado pela SuperFrete — etiqueta fora do app",
+      "cotado pela SuperFrete · PAC — etiqueta fora do app",
     );
     expect(opcao("Dora SuperFrete")).not.toMatch(/sem serviço do ME/);
     expect(opcao("Eva MelhorEnvio")).not.toMatch(/SuperFrete/);

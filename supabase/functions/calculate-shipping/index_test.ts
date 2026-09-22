@@ -4,6 +4,7 @@ import {
   buscarComTempo,
   calculateSmartFallback,
   chavesDeTransportadora,
+  cotacaoDoCacheServeAoProvedor,
   emailDeContatoValido,
   erroDeTransportadoraEhCepInvalido,
   getCartHash,
@@ -16,6 +17,7 @@ import {
   servicoCasaChave,
   validarOrigemEFrete,
 } from "./index.ts";
+import * as edge from "./index.ts";
 
 Deno.test("calculateSmartFallback - same region", () => {
   // Test same region: starts with same character
@@ -2252,7 +2254,7 @@ const TOKEN_ME = "tok-me-FICTICIO-1a2b3c4d5e6f";
 // e o User-Agent é montado no servidor. Até a 1.5.4 ele vinha inteiro de uma
 // variável de projeto — que SAIU, sem fallback.
 const EMAIL_SF = "loja@ex.com";
-const UA_SF = "IKCOUS Marketplace 1.5.5 (loja@ex.com)";
+const UA_SF = "IKCOUS Marketplace 1.5.6 (loja@ex.com)";
 const CONFIG_SF = { ...CONFIG_DA_LOJA, shipping_provider: "superfrete", enabled_shipping_methods: [] as string[] };
 const SEM_UA = Symbol("variável de projeto ausente");
 // O nome da variável antiga, só para PROVAR que ela não é mais lida: os
@@ -2370,7 +2372,7 @@ async function cotarSuperFrete(opts: {
 
 const cabecalho = (chamada: ChamadaDeFetch, nome: string) => new Headers(chamada.init.headers as HeadersInit).get(nome);
 
-Deno.test("superfrete: corpo enviado segue a doc (from/to objetos, services pelas chaves, products do BANCO, seguro pela soma do banco)", async () => {
+Deno.test("superfrete: corpo enviado segue a doc (from/to objetos, services pelas chaves com o Mini junto do PAC, products do BANCO, SEM seguro — 1.5.6)", async () => {
   const { resposta, chamadas } = await cotarSuperFrete({
     config: { ...CONFIG_SF, enabled_shipping_methods: ["sedex", "pac", "store-pickup"] },
     produtos: [
@@ -2394,12 +2396,14 @@ Deno.test("superfrete: corpo enviado segue a doc (from/to objetos, services pela
   assertEquals(JSON.parse(String(chamada.init.body)), {
     from: { postal_code: "38500000" },
     to: { postal_code: "01001000" },
-    // store-pickup NÃO conta; pac=1, sedex=2, em ordem crescente.
-    services: "1,2",
-    options: { own_hand: false, receipt: false, insurance_value: 99.8, use_insurance_value: true },
+    // store-pickup NÃO conta; pac=1 e 17 (Mini Envios, 1.5.6), sedex=2, em ordem crescente.
+    services: "1,2,17",
+    // 1.5.6 (escolha do dono): sem seguro, sem mão própria, sem aviso de
+    // recebimento — explícitos, mesmo com o carrinho valendo R$ 99,80.
+    options: { own_hand: false, receipt: false, insurance_value: 0, use_insurance_value: false },
     products: [
       { quantity: 2, weight: 0.45, height: 10, width: 12, length: 20 },
-      // Produto que o banco não conhece: padrões do Melhor Envio, e preço 0 no seguro.
+      // Produto que o banco não conhece: padrões do Melhor Envio.
       { quantity: 1, weight: 0.3, height: 15, width: 15, length: 15 },
     ],
   });
@@ -2431,21 +2435,24 @@ Deno.test("superfrete: a resposta 200 OFICIAL vira opções superfrete-<id> com 
   const { resposta, corpo, registro } = await cotarSuperFrete({});
   assertEquals(resposta.status, 200);
   assertEquals(corpo.cotacaoIncompleta, false);
+  // 1.5.6: PAC (18,61) e Mini (13) viram UMA "Entrega econômica" — o Mini,
+  // mais barato, com o id e o prazo DELE, no lugar onde o PAC estava. Toda
+  // opção da SuperFrete leva a marca da versão da cotação (cache).
   assertEquals(corpo.options, [
-    { id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete" },
-    { id: "superfrete-2", name: "Entrega expressa", price: 10.77, deliveryDays: 1, provider: "superfrete" },
-    { id: "superfrete-17", name: "Mini Envios", price: 13, deliveryDays: 8, provider: "superfrete" },
-    { id: "superfrete-3", name: "Entrega econômica", price: 14.4, deliveryDays: 2, provider: "superfrete" },
-    { id: "superfrete-31", name: "LOGGI Econômico", price: 9.76, deliveryDays: 3, provider: "superfrete" },
+    { id: "superfrete-17", name: "Entrega econômica", price: 13, deliveryDays: 8, provider: "superfrete", cotacaoSf: 2 },
+    { id: "superfrete-2", name: "Entrega expressa", price: 10.77, deliveryDays: 1, provider: "superfrete", cotacaoSf: 2 },
+    { id: "superfrete-3", name: "Entrega econômica", price: 14.4, deliveryDays: 2, provider: "superfrete", cotacaoSf: 2 },
+    { id: "superfrete-31", name: "LOGGI Econômico", price: 9.76, deliveryDays: 3, provider: "superfrete", cotacaoSf: 2 },
   ]);
   // O MESMO objeto vai ao cache (é dele que a RPC do pedido lê o preço por id exato).
   const gravado = registro.upserts.find((u: any) => u.tabela === "shipping_quotes_cache");
   assertEquals(gravado.linha.options, corpo.options);
 });
 
-Deno.test("superfrete: chaves ['sedex','pac'] -> só PAC e SEDEX, mesmo que a API devolva Loggi/Mini Envios/Jadlog (servicoCasaChave é a 2ª guarda)", async () => {
+Deno.test("superfrete: chaves ['sedex','pac'] -> só a econômica (PAC ou Mini) e o SEDEX, mesmo que a API devolva Loggi/Jadlog (a guarda é o ID pedido)", async () => {
   const { corpo } = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["sedex", "pac"] } });
-  assertEquals(corpo.options.map((o: any) => o.id), ["superfrete-1", "superfrete-2"]);
+  // 1.5.6: o Mini (13) é mais barato que o PAC (18,61) na fixture oficial.
+  assertEquals(corpo.options.map((o: any) => o.id), ["superfrete-17", "superfrete-2"]);
   const jad = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["jadlog"] } });
   assertEquals(jad.corpo.options.map((o: any) => o.id), ["superfrete-3"]);
 });
@@ -2478,7 +2485,7 @@ Deno.test("superfrete: descarta has_error, error, preço não finito/<=0/boolean
   });
   assertEquals(resposta.status, 200);
   assertEquals(corpo.options, [
-    { id: "superfrete-2", name: "Entrega expressa", price: 21.46, deliveryDays: 3, provider: "superfrete" },
+    { id: "superfrete-2", name: "Entrega expressa", price: 21.46, deliveryDays: 3, provider: "superfrete", cotacaoSf: 2 },
   ]);
 });
 
@@ -2544,11 +2551,11 @@ Deno.test("superfrete: falha da API NÃO afeta o cliente local — entrega local
 // motivo citando o nome dela): a variável saiu, e o motivo agora manda a
 // lojista preencher o campo na tela — nunca cita variável de ambiente.
 
-Deno.test("superfrete 1.5.5: o User-Agent EXATO é 'IKCOUS Marketplace 1.5.5 (<e-mail salvo da loja>)'", async () => {
+Deno.test("superfrete: o User-Agent EXATO é 'IKCOUS Marketplace 1.5.6 (<e-mail salvo da loja>)' (versão da release 1.5.6)", async () => {
   const { resposta, chamadas } = await cotarSuperFrete({});
   assertEquals(resposta.status, 200);
   assertEquals(chamadas.length, 1);
-  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.5 (loja@ex.com)");
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.6 (loja@ex.com)");
 });
 
 Deno.test("superfrete 1.5.5: SEM contact_email salvo -> NÃO chama a API, 503, e o motivo manda preencher na tela (sem citar variável)", async () => {
@@ -2621,7 +2628,8 @@ Deno.test("superfrete 1.5.5: o e-mail salvo com espaços nas pontas vai APARADO 
 
 Deno.test("superfrete 1.5.5: o cache NÃO depende do e-mail — linha da SuperFrete em cache serve mesmo sem e-mail salvo", async () => {
   const { corpo, chamadas } = await cotarSuperFrete({
-    cacheLookup: [{ options: [{ id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete" }] }],
+    // 1.5.6: linha da versão ATUAL da cotação (`cotacaoSf: 2`).
+    cacheLookup: [{ options: [{ id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete", cotacaoSf: 2 }] }],
     credenciais: { superfrete: { token: TOKEN_SF, sandbox: false } },
   });
   assertEquals(chamadas.length, 0);
@@ -2696,7 +2704,9 @@ Deno.test("REDACTION na Frenet: 500 ecoando o token não vaza no log", async () 
 // --- Cache do servidor separado por provedor -------------------------------
 
 const OPCOES_ME_EM_CACHE = [{ id: "melhor-envio-1", name: "Entrega econômica", price: 40, deliveryDays: 5, provider: "melhor_envio" }];
-const OPCOES_SF_EM_CACHE = [{ id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete" }];
+// 1.5.6: linha da versão ATUAL da cotação da SuperFrete (`cotacaoSf: 2`). A
+// linha antiga, sem a marca, tem os testes próprios na seção da 1.5.6.
+const OPCOES_SF_EM_CACHE = [{ id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete", cotacaoSf: 2 }];
 
 Deno.test("cache: linha do Melhor Envio NÃO serve à loja que agora é SuperFrete — recota e SOBRESCREVE a mesma chave", async () => {
   const { resposta, corpo, chamadas, registro } = await cotarSuperFrete({ cacheLookup: [{ options: OPCOES_ME_EM_CACHE }] });
@@ -2858,7 +2868,7 @@ Deno.test("teste de conexão SuperFrete: e-mail DIGITADO + token DIGITADO -> UA 
   });
   assertEquals(corpo.success, true);
   assertEquals(chamadas.length, 1);
-  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.5 (digitado@ex.com)");
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.6 (digitado@ex.com)");
   assertEquals(cabecalho(chamadas[0], "Authorization"), "Bearer tok-sf-digitado-FICTICIO");
 });
 
@@ -2871,7 +2881,7 @@ Deno.test("teste de conexão SuperFrete: usarCredencialSalva + e-mail DIGITADO -
     assertEquals(corpo.success, true);
     assertEquals(chamadas.length, 1);
     assertEquals(cabecalho(chamadas[0], "Authorization"), `Bearer ${TOKEN_SF}`);
-    assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.5 (novo@ex.com)");
+    assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.6 (novo@ex.com)");
     assertEquals(texto.includes(TOKEN_SF), false);
   }
 });
@@ -3229,4 +3239,529 @@ Deno.test("save_credentials: falha do banco ao gravar -> erro em português, SEM
   assertEquals(typeof corpo.error, "string");
   assertEquals(texto.includes(TOKEN_SF_NOVO), false);
   assertEquals(saida.includes(TOKEN_SF_NOVO), false);
+});
+
+// ============================================================================
+// RELEASE 1.5.6 — SuperFrete: "Entrega econômica" = PAC ou Mini Envios (o
+// mais barato), sem seguro, medidas fiéis campo a campo, cache versionado e
+// log estruturado.
+//
+// As fixtures abaixo são as respostas BRUTAS da API de produção gravadas na
+// auditoria de 22/09/2026 (Temp/ikcous-superfrete-auditoria/
+// cotacoes-reais-2-corpo-e-normalizacao.json), só com o espaçamento mudado:
+//   B) tênis 10×10×6, 0,1 kg, sem seguro, services 1,2,17: PAC 25,31 (8 d) e
+//      SEDEX 52,59 (4 d) — SEM o Mini (6 cm passa da altura máxima dele, 4).
+//   D) controle 15×10×3, 0,1 kg: PAC 25,31, SEDEX 52,59 e Mini 19,01 (11 d).
+//   C) o MESMO controle CRU 10×10×3 devolveu exatamente D: a própria API sobe
+//      a caixa para 15×10×3 — por isso o app não normaliza medida.
+// ============================================================================
+
+const pacReal = (pkg: [string, string, string, string]) => ({
+  id: 1, name: "PAC", price: 25.31, discount: "7.09", currency: "R$", delivery_time: 8,
+  delivery_range: { min: 8, max: 8 },
+  packages: [pacoteSF(25.31, "7.09", "box", ...pkg, 0)],
+  additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+});
+const sedexReal = (pkg: [string, string, string, string]) => ({
+  id: 2, name: "SEDEX", price: 52.59, discount: "15.41", currency: "R$", delivery_time: 4,
+  delivery_range: { min: 4, max: 4 },
+  packages: [pacoteSF(52.59, "15.41", "box", ...pkg, 0)],
+  additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+});
+const miniReal = (pkg: [string, string, string, string]) => ({
+  id: 17, name: "Mini Envios", price: 19.01, discount: "13.39", currency: "R$", delivery_time: 11,
+  delivery_range: { min: 11, max: 11 },
+  packages: [pacoteSF(19.01, "13.39", "box", ...pkg, 0)],
+  additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+});
+/** Cotação B (real): tênis de 6 cm — a API não devolve o Mini. */
+const RESPOSTA_REAL_B_TENIS_6CM = [pacReal(["6", "16", "24", "0.3"]), sedexReal(["6", "16", "24", "0.3"])];
+/** Cotação D (real): controle 15×10×3 — Mini a 19,01 em 11 dias. */
+const RESPOSTA_REAL_D_CONTROLE = [
+  pacReal(["3", "10", "15", "0.1"]),
+  sedexReal(["3", "10", "15", "0.1"]),
+  miniReal(["3", "10", "15", "0.1"]),
+];
+
+const CONFIG_SF_PAC_SEDEX = { ...CONFIG_SF, enabled_shipping_methods: ["sedex", "pac"] };
+const responderCom = (dados: unknown) => () =>
+  new Response(JSON.stringify(dados), { status: 200, headers: { "Content-Type": "application/json" } });
+
+/** A "Entrega econômica" esperada, com a marca da versão da cotação. */
+const economica = (id: number, price: number, deliveryDays: number) => ({
+  id: `superfrete-${id}`, name: "Entrega econômica", price, deliveryDays, provider: "superfrete", cotacaoSf: 2,
+});
+const EXPRESSA_REAL = { id: "superfrete-2", name: "Entrega expressa", price: 52.59, deliveryDays: 4, provider: "superfrete", cotacaoSf: 2 };
+
+// --- Econômica e expressa ----------------------------------------------------
+
+Deno.test("1.5.6 econômica: Mini mais barato que o PAC (cotação real D) -> superfrete-17 a 19,01 em 11 dias; SEDEX segue expressa", async () => {
+  const { resposta, corpo } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom(RESPOSTA_REAL_D_CONTROLE),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options, [economica(17, 19.01, 11), EXPRESSA_REAL]);
+});
+
+Deno.test("1.5.6 econômica: preços invertidos (PAC mais barato) -> superfrete-1 com o prazo do PAC", async () => {
+  const invertida = [pacReal(["3", "10", "15", "0.1"]), sedexReal(["3", "10", "15", "0.1"]), { ...miniReal(["3", "10", "15", "0.1"]), price: 30.5 }];
+  const { corpo } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, responder: responderCom(invertida) });
+  assertEquals(corpo.options, [economica(1, 25.31, 8), EXPRESSA_REAL]);
+});
+
+Deno.test("1.5.6 econômica: ordem da resposta não decide — Mini ANTES do PAC na lista dá o mesmo vencedor", async () => {
+  const [pac, sedex, mini] = RESPOSTA_REAL_D_CONTROLE;
+  const { corpo } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, responder: responderCom([mini, sedex, pac]) });
+  assertEquals(corpo.options, [economica(17, 19.01, 11), EXPRESSA_REAL]);
+});
+
+Deno.test("1.5.6 econômica: empate de preço -> menor prazo; empate total -> o PAC", async () => {
+  const pac = pacReal(["3", "10", "15", "0.1"]);
+  const sedex = sedexReal(["3", "10", "15", "0.1"]);
+  const mini = miniReal(["3", "10", "15", "0.1"]);
+  // Mesmo preço, Mini mais demorado (11 > 8): PAC.
+  const pacMaisRapido = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, responder: responderCom([pac, sedex, { ...mini, price: 25.31 }]) });
+  assertEquals(pacMaisRapido.corpo.options[0], economica(1, 25.31, 8));
+  // Mesmo preço, Mini mais rápido (6 < 8): Mini.
+  const miniMaisRapido = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([pac, sedex, { ...mini, price: 25.31, delivery_time: 6 }]),
+  });
+  assertEquals(miniMaisRapido.corpo.options[0], economica(17, 25.31, 6));
+  // Mesmo preço e mesmo prazo, com o Mini vindo PRIMEIRO: o PAC.
+  const empateTotal = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([{ ...mini, price: 25.31, delivery_time: 8 }, sedex, pac]),
+  });
+  assertEquals(empateTotal.corpo.options[0], economica(1, 25.31, 8));
+  assertEquals(empateTotal.corpo.options.length, 2);
+});
+
+Deno.test("1.5.6 econômica: preço que só empata DEPOIS do arredondamento ao centavo conta como empate", async () => {
+  const pac = { ...pacReal(["3", "10", "15", "0.1"]), price: 20.004 };
+  const mini = { ...miniReal(["3", "10", "15", "0.1"]), price: 19.996, delivery_time: 11 };
+  const { corpo } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, responder: responderCom([pac, mini]) });
+  // 20,00 x 20,00 -> empate -> menor prazo (PAC 8 d). O preço que vai à tela é o do cache.
+  assertEquals(corpo.options, [economica(1, 20, 8)]);
+});
+
+Deno.test("1.5.6 econômica: serviço 1 DUPLICADO na resposta não gera duas econômicas — vale a mais barata", async () => {
+  const pac = pacReal(["3", "10", "15", "0.1"]);
+  const { corpo } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([{ ...pac, price: 27 }, sedexReal(["3", "10", "15", "0.1"]), pac]),
+  });
+  assertEquals(corpo.options, [economica(1, 25.31, 8), EXPRESSA_REAL]);
+});
+
+// --- Serviço faltando ou com problema ---------------------------------------
+
+Deno.test("1.5.6 econômica: tênis 6 cm (cotação real B, Mini AUSENTE) -> PAC 25,31 + SEDEX 52,59", async () => {
+  const { corpo } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, responder: responderCom(RESPOSTA_REAL_B_TENIS_6CM) });
+  assertEquals(corpo.options, [economica(1, 25.31, 8), EXPRESSA_REAL]);
+});
+
+Deno.test("1.5.6 econômica: Mini com has_error, com error, sem preço ou com preço 0 -> vale o PAC", async () => {
+  const mini = miniReal(["3", "10", "15", "0.1"]);
+  for (const miniRuim of [
+    { ...mini, has_error: true, error: "Dimensões acima do permitido" },
+    { ...mini, error: "Serviço indisponível" },
+    { ...mini, price: undefined },
+    { ...mini, price: null },
+    { ...mini, price: 0 },
+  ]) {
+    const { corpo } = await cotarSuperFrete({
+      config: CONFIG_SF_PAC_SEDEX,
+      responder: responderCom([pacReal(["3", "10", "15", "0.1"]), sedexReal(["3", "10", "15", "0.1"]), miniRuim]),
+    });
+    assertEquals(corpo.options, [economica(1, 25.31, 8), EXPRESSA_REAL]);
+  }
+});
+
+Deno.test("1.5.6 econômica: PAC com erro e Mini válido -> a econômica é o Mini sozinho", async () => {
+  const { corpo } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([
+      { ...pacReal(["3", "10", "15", "0.1"]), has_error: true },
+      sedexReal(["3", "10", "15", "0.1"]),
+      miniReal(["3", "10", "15", "0.1"]),
+    ]),
+  });
+  assertEquals(corpo.options, [EXPRESSA_REAL, economica(17, 19.01, 11)]);
+});
+
+Deno.test("1.5.6 econômica: PAC e Mini ausentes -> sem econômica, o SEDEX sozinho", async () => {
+  const { resposta, corpo } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([sedexReal(["6", "16", "24", "0.3"])]),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options, [EXPRESSA_REAL]);
+});
+
+Deno.test("1.5.6 econômica: com SÓ a chave sedex, o 17 que a API devolva não entra (a guarda de ID pedido continua)", async () => {
+  const { corpo } = await cotarSuperFrete({
+    config: { ...CONFIG_SF, enabled_shipping_methods: ["sedex"] },
+    responder: responderCom(RESPOSTA_REAL_D_CONTROLE),
+  });
+  assertEquals(corpo.options, [EXPRESSA_REAL]);
+});
+
+Deno.test("1.5.6 econômica: para a SuperFrete a guarda é o ID, não o nome — PAC com nome inesperado continua sendo o serviço 1", async () => {
+  const { corpo } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([{ ...pacReal(["3", "10", "15", "0.1"]), name: "Correios Econômico" }, sedexReal(["3", "10", "15", "0.1"])]),
+  });
+  assertEquals(corpo.options, [economica(1, 25.31, 8), EXPRESSA_REAL]);
+});
+
+// --- Corpo enviado à API ------------------------------------------------------
+
+Deno.test("1.5.6 corpo: services '1,2,17' para [sedex,pac]; '1,17' só com pac; jadlog continua '3'; vazio continua todas", async () => {
+  const casos: Array<[string[], string]> = [
+    [["sedex", "pac"], "1,2,17"],
+    [["pac"], "1,17"],
+    [["PAC", "store-pickup"], "1,17"],
+    // Nome que existe no PROTÓTIPO de um objeto não vira serviço.
+    [["constructor", "pac"], "1,17"],
+    [["jadlog"], "3"],
+    [["sedex"], "2"],
+    [[], "1,2,3,17,31,33"],
+  ];
+  for (const [chaves, esperado] of casos) {
+    const { chamadas } = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: chaves } });
+    assertEquals(JSON.parse(String(chamadas[0].init.body)).services, esperado);
+  }
+});
+
+Deno.test("1.5.6 seguro: options SEM seguro (0/false), sem mão própria e sem AR — mesmo com o carrinho de R$ 59,90", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [{ id: "p1", nome: "Tênis Fictício de Teste", preco_venda: 59.9, peso_kg: 0.1, largura_cm: 10, altura_cm: 6, comprimento_cm: 10, frete_gratis: false }],
+    cart: [{ product: { id: "p1", price: 59.9 }, quantity: 1 }],
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)).options, {
+    own_hand: false,
+    receipt: false,
+    insurance_value: 0,
+    use_insurance_value: false,
+  });
+});
+
+Deno.test("1.5.6 ME sem mudança: corpo com name/price/unitary_weight de sempre e a guarda de NOME ('Mini Envios' não passa pela chave pac)", async () => {
+  const { chamadas, corpo } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["sedex", "pac"] },
+    produtos: [{ id: "p1", nome: "Caneca", preco_venda: 49.9, peso_kg: 0.45, largura_cm: 12, altura_cm: 10, comprimento_cm: 20, frete_gratis: false }],
+    cart: [{ product: { id: "p1", price: 1 }, quantity: 2 }],
+    responder: responderCom([
+      { id: 1, name: "PAC", price: "26.41", delivery_time: 8 },
+      { id: 2, name: "SEDEX", price: "54.88", delivery_time: 4 },
+      { id: 17, name: "Mini Envios", price: "19.01", delivery_time: 11 },
+    ]),
+  });
+  assertEquals(chamadas[0].url, "https://melhorenvio.com.br/api/v2/me/shipment/calculate");
+  assertEquals(JSON.parse(String(chamadas[0].init.body)), {
+    from: { postal_code: "38500000" },
+    to: { postal_code: "01001000" },
+    products: [{ name: "Caneca", quantity: 2, unitary_weight: 0.45, price: 49.9, width: 12, height: 10, length: 20 }],
+  });
+  // Sem agrupamento e sem marca de versão: exatamente o que a 1.5.5 devolvia.
+  assertEquals(corpo.options, [
+    { id: "melhor-envio-1", name: "Entrega econômica", price: 26.41, deliveryDays: 8, provider: "melhor_envio" },
+    { id: "melhor-envio-2", name: "Entrega expressa", price: 54.88, deliveryDays: 4, provider: "melhor_envio" },
+  ]);
+});
+
+Deno.test("1.5.6 Frenet sem mudança: corpo de sempre (valor da nota) e a guarda de NOME", async () => {
+  const { chamadas, corpo } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA, shipping_provider: "frenet", enabled_shipping_methods: ["sedex", "pac"] },
+    credenciais: { frenet: { token: "tok-frenet-FICTICIO-777" } },
+    produtos: [{ id: "p1", nome: "Caneca", preco_venda: 49.9, peso_kg: 0.45, largura_cm: 12, altura_cm: 10, comprimento_cm: 20, frete_gratis: false }],
+    cart: [{ product: { id: "p1", price: 1 }, quantity: 2 }],
+    responder: responderCom({
+      ShippingSevicesArray: [
+        { ServiceCode: "04510", ServiceDescription: "PAC", ShippingPrice: "26.41", DeliveryTime: "8", Error: false },
+        { ServiceCode: "04014", ServiceDescription: "SEDEX", ShippingPrice: "54.88", DeliveryTime: "4", Error: false },
+        { ServiceCode: "04227", ServiceDescription: "Mini Envios", ShippingPrice: "19.01", DeliveryTime: "11", Error: false },
+      ],
+    }),
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)), {
+    SellerCEP: "38500000",
+    RecipientCEP: "01001000",
+    ShipmentInvoiceValue: 99.8,
+    ShippingItemArray: [{ Weight: 0.45, Length: 20, Height: 10, Width: 12, Quantity: 2 }],
+  });
+  assertEquals(corpo.options, [
+    { id: "frenet-04510", name: "Entrega econômica", price: 26.41, deliveryDays: 8, provider: "frenet" },
+    { id: "frenet-04014", name: "Entrega expressa", price: 54.88, deliveryDays: 4, provider: "frenet" },
+  ]);
+});
+
+// --- Medidas -----------------------------------------------------------------
+
+const TENIS_FICTICIO = { id: "p-tenis", nome: "Tênis Fictício de Teste", preco_venda: 59.9, peso_kg: 0.1, largura_cm: 10, altura_cm: 6, comprimento_cm: 10, frete_gratis: false };
+
+Deno.test("1.5.6 medidas: tênis 0,1 kg e 10×10×6 sai EXATAMENTE assim (nunca 0,3 kg nem 15×15×15)", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [TENIS_FICTICIO],
+    cart: [{ product: { id: "p-tenis", price: 59.9 }, quantity: 1 }],
+    responder: responderCom(RESPOSTA_REAL_B_TENIS_6CM),
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)).products, [
+    { quantity: 1, weight: 0.1, height: 6, width: 10, length: 10 },
+  ]);
+});
+
+Deno.test("1.5.6 medidas: UM campo ruim (ausente, null, 0, negativo, NaN, texto, booleano) só troca AQUELE campo pelo padrão", async () => {
+  // [coluna do banco, campo no corpo da API, padrão daquele campo]
+  const CAMPOS: Array<[string, string, number]> = [
+    ["peso_kg", "weight", 0.3],
+    ["altura_cm", "height", 15],
+    ["largura_cm", "width", 15],
+    ["comprimento_cm", "length", 15],
+  ];
+  const ruins: Array<[string, unknown]> = [
+    ["ausente", undefined], ["null", null], ["zero", 0], ["negativo", -2], ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY], ["texto", "abc"], ["vazio", ""], ["booleano", true],
+  ];
+  for (const [coluna, noCorpo, padrao] of CAMPOS) {
+    for (const [rotulo, valor] of ruins) {
+      const { [coluna]: _original, ...semOCampo } = TENIS_FICTICIO as Record<string, unknown>;
+      const produto = rotulo === "ausente" ? semOCampo : { ...semOCampo, [coluna]: valor };
+      const { chamadas } = await cotarSuperFrete({
+        config: CONFIG_SF_PAC_SEDEX,
+        produtos: [produto],
+        cart: [{ product: { id: "p-tenis" }, quantity: 1 }],
+        responder: responderCom(RESPOSTA_REAL_B_TENIS_6CM),
+      });
+      const esperado = { quantity: 1, weight: 0.1, height: 6, width: 10, length: 10, [noCorpo]: padrao };
+      assertEquals(JSON.parse(String(chamadas[0].init.body)).products, [esperado], `${coluna} ${rotulo}`);
+    }
+  }
+});
+
+Deno.test("1.5.6 medidas: número em TEXTO vindo do banco ('6.5') vale como número; valor positivo pequeno não sobe", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [{ ...TENIS_FICTICIO, altura_cm: "6.5", peso_kg: 0.001, largura_cm: 1 }],
+    cart: [{ product: { id: "p-tenis" }, quantity: 1 }],
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)).products, [
+    { quantity: 1, weight: 0.001, height: 6.5, width: 1, length: 10 },
+  ]);
+});
+
+Deno.test("1.5.6 medidas: produto que o banco NÃO conhece -> todos os padrões (0,3 kg e 15 cm), como antes", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [],
+    cart: [{ product: { id: "p-sumiu", price: 10 }, quantity: 3 }],
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)).products, [
+    { quantity: 3, weight: 0.3, height: 15, width: 15, length: 15 },
+  ]);
+});
+
+// --- Cache do servidor -------------------------------------------------------
+
+/** A linha que a 1.5.4/1.5.5 gravou: sem a marca, preço COM seguro, sem o Mini. */
+const LINHA_SF_ANTIGA = [
+  { id: "superfrete-1", name: "Entrega econômica", price: 25.7, deliveryDays: 8, provider: "superfrete" },
+  { id: "superfrete-2", name: "Entrega expressa", price: 52.98, deliveryDays: 4, provider: "superfrete" },
+];
+
+Deno.test("1.5.6 cache: linha antiga da SuperFrete (sem a marca) NÃO é servida — recota e o upsert SOBRESCREVE a mesma chave com a opção agrupada", async () => {
+  const { corpo, chamadas, registro } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    cacheLookup: [{ options: LINHA_SF_ANTIGA }],
+    responder: responderCom(RESPOSTA_REAL_D_CONTROLE),
+  });
+  assertEquals(chamadas.length, 1);
+  assertEquals(corpo.options, [economica(17, 19.01, 11), EXPRESSA_REAL]);
+  const gravacoes = registro.upserts.filter((u: any) => u.tabela === "shipping_quotes_cache");
+  assertEquals(gravacoes.length, 1);
+  assertEquals(gravacoes[0].onConflict, "origin_cep,destination_cep,cart_hash");
+  // O cart_hash NÃO muda (a RPC o desmonta em produto:variante:qtd).
+  assertEquals(gravacoes[0].linha.cart_hash, getCartHash(CARRINHO_DE_TESTE));
+  // É ESTA lista que a RPC lê por `opt->>'id'`: o vencedor com o preço dele,
+  // e nenhum superfrete-1 sobrando com outro preço.
+  assertEquals(gravacoes[0].linha.options, corpo.options);
+  const doMini = gravacoes[0].linha.options.find((o: any) => o.id === "superfrete-17");
+  assertEquals(doMini.price, 19.01);
+  assertEquals(gravacoes[0].linha.options.some((o: any) => o.id === "superfrete-1"), false);
+});
+
+Deno.test("1.5.6 cache: marca de versão ERRADA (1, '2', ausente numa das opções) também não serve", async () => {
+  for (const linha of [
+    [{ ...OPCOES_SF_EM_CACHE[0], cotacaoSf: 1 }],
+    [{ ...OPCOES_SF_EM_CACHE[0], cotacaoSf: "2" }],
+    [OPCOES_SF_EM_CACHE[0], { ...LINHA_SF_ANTIGA[1] }],
+  ]) {
+    const { chamadas } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, cacheLookup: [{ options: linha }] });
+    assertEquals(chamadas.length, 1);
+  }
+});
+
+Deno.test("1.5.6 cache: linha da SuperFrete COM a marca atual é servida sem chamar a API", async () => {
+  const linha = [economica(17, 19.01, 11), EXPRESSA_REAL];
+  const { corpo, chamadas } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, cacheLookup: [{ options: linha }] });
+  assertEquals(chamadas.length, 0);
+  assertEquals(corpo.options, linha);
+});
+
+Deno.test("1.5.6 cache: ME continua servido sem marca; local/grátis/retirada continuam valendo para qualquer provedor", async () => {
+  const me = await cotarSuperFrete({ config: { ...CONFIG_DA_LOJA }, cacheLookup: [{ options: OPCOES_ME_EM_CACHE }] });
+  assertEquals(me.chamadas.length, 0);
+  assertEquals(me.corpo.options, OPCOES_ME_EM_CACHE);
+  const frenet = [{ id: "frenet-04510", name: "Entrega econômica", price: 26.41, deliveryDays: 8, provider: "frenet" }];
+  assertEquals(cotacaoDoCacheServeAoProvedor(frenet, "frenet"), true);
+  for (const dono of ["local", "free", "pickup"]) {
+    const propria = [{ id: "x", name: "x", price: 0, deliveryDays: 0, provider: dono }];
+    assertEquals(cotacaoDoCacheServeAoProvedor(propria, "superfrete"), true, dono);
+    assertEquals(cotacaoDoCacheServeAoProvedor(propria, "melhor_envio"), true, dono);
+    // Opção da loja ao lado de uma SuperFrete marcada serve; ao lado de uma sem marca, não.
+    assertEquals(cotacaoDoCacheServeAoProvedor([...propria, EXPRESSA_REAL], "superfrete"), true, dono);
+    assertEquals(cotacaoDoCacheServeAoProvedor([...propria, LINHA_SF_ANTIGA[1]], "superfrete"), false, dono);
+  }
+});
+
+// --- Log estruturado ---------------------------------------------------------
+
+/** As linhas JSON do log estruturado da cotação da SuperFrete. */
+function linhasDoLogEstruturado(saida: string): any[] {
+  return saida.split("\n").flatMap((linha) => {
+    if (!linha.startsWith("{")) return [];
+    try {
+      const obj = JSON.parse(linha);
+      return obj?.evento === "cotacao_superfrete" ? [obj] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+const CEP_EM_QUALQUER_FORMATO = /\b\d{5}-?\d{3}\b/;
+
+Deno.test("1.5.6 log: UMA linha JSON por cotação (miss) com serviços pedidos, retornados e opções finais", async () => {
+  const { saida } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [TENIS_FICTICIO, { ...TENIS_FICTICIO, id: "p-sem-altura", altura_cm: null }],
+    cart: [
+      { product: { id: "p-tenis" }, quantity: 1 },
+      { product: { id: "p-sem-altura" }, quantity: 1 },
+      { product: { id: "p-fora-do-banco" }, quantity: 1 },
+    ],
+    responder: responderCom(RESPOSTA_REAL_D_CONTROLE),
+  });
+  const linhas = linhasDoLogEstruturado(saida);
+  assertEquals(linhas.length, 1);
+  assertEquals(linhas[0], {
+    evento: "cotacao_superfrete",
+    ambiente: "producao",
+    servicos_pedidos: "1,2,17",
+    retornados: [
+      { id: 1, preco: 25.31, prazo: 8, erro: false },
+      { id: 2, preco: 52.59, prazo: 4, erro: false },
+      { id: 17, preco: 19.01, prazo: 11, erro: false },
+    ],
+    opcoes_finais: [
+      { id: "superfrete-17", preco: 19.01, prazo: 11 },
+      { id: "superfrete-2", preco: 52.59, prazo: 4 },
+    ],
+    cache: "miss",
+    versao_cache: 2,
+    produtos_sem_cadastro: 1,
+    campos_padrao: 1,
+  });
+});
+
+Deno.test("1.5.6 log: serviço com erro aparece como erro:true; sandbox vira ambiente 'sandbox'", async () => {
+  const { saida } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: true, contact_email: EMAIL_SF } },
+    responder: responderCom([...RESPOSTA_REAL_B_TENIS_6CM, { id: 17, name: "Mini Envios", has_error: true, error: "Altura acima do permitido" }]),
+  });
+  const [linha] = linhasDoLogEstruturado(saida);
+  assertEquals(linha.ambiente, "sandbox");
+  assertEquals(linha.retornados.at(-1), { id: 17, preco: null, prazo: null, erro: true });
+  assertEquals(linha.opcoes_finais, [{ id: "superfrete-1", preco: 25.31, prazo: 8 }, { id: "superfrete-2", preco: 52.59, prazo: 4 }]);
+});
+
+Deno.test("1.5.6 log: falha da API também deixa a linha (sem opções), e o 503 continua", async () => {
+  const { resposta, saida } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: () => new Response(JSON.stringify({ message: "falhou" }), { status: 500 }),
+  });
+  assertEquals(resposta.status, 503);
+  const linhas = linhasDoLogEstruturado(saida);
+  assertEquals(linhas.length, 1);
+  assertEquals(linhas[0].retornados, []);
+  assertEquals(linhas[0].opcoes_finais, []);
+  assertEquals(linhas[0].cache, "miss");
+});
+
+Deno.test("1.5.6 log: cache HIT da SuperFrete também deixa a linha (cache 'hit', sem chamar a API)", async () => {
+  const linha = [economica(17, 19.01, 11), EXPRESSA_REAL];
+  const { saida, chamadas } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, cacheLookup: [{ options: linha }] });
+  assertEquals(chamadas.length, 0);
+  const linhas = linhasDoLogEstruturado(saida);
+  assertEquals(linhas.length, 1);
+  assertEquals(linhas[0].cache, "hit");
+  assertEquals(linhas[0].versao_cache, 2);
+  assertEquals(linhas[0].servicos_pedidos, "1,2,17");
+  assertEquals(linhas[0].retornados, []);
+  assertEquals(linhas[0].opcoes_finais, [{ id: "superfrete-17", preco: 19.01, prazo: 11 }, { id: "superfrete-2", preco: 52.59, prazo: 4 }]);
+});
+
+Deno.test("1.5.6 log: NUNCA token, e-mail, CEP, nome de produto nem endereço — nem no miss, nem no hit, nem na falha", async () => {
+  const produto = { ...TENIS_FICTICIO, nome: "Tênis Fictício Nome-Secreto-XYZ" };
+  const cenarios = [
+    { responder: responderCom(RESPOSTA_REAL_D_CONTROLE) },
+    // A API ECOA o token e o e-mail: a linha estruturada não leva nada disso
+    // (o texto de erro da API nunca entra nela, só o booleano).
+    { responder: () => new Response(`erro ${TOKEN_SF} ${EMAIL_SF} 01001-000`, { status: 500 }), ecoa: true },
+    { cacheLookup: [{ options: [economica(17, 19.01, 11), EXPRESSA_REAL] }] },
+  ];
+  for (const { ecoa, ...cenario } of cenarios as any[]) {
+    const { saida } = await cotarSuperFrete({
+      config: CONFIG_SF_PAC_SEDEX,
+      produtos: [produto],
+      cart: [{ product: { id: "p-tenis", nome: produto.nome }, quantity: 1 }],
+      cep: "01001-000",
+      ...cenario,
+    });
+    const linhas = linhasDoLogEstruturado(saida);
+    assertEquals(linhas.length, 1);
+    const texto = JSON.stringify(linhas[0]);
+    for (const proibido of [TOKEN_SF, EMAIL_SF, "Nome-Secreto-XYZ", "Rua", "loja@"]) {
+      assertEquals(texto.includes(proibido), false, proibido);
+    }
+    assertEquals(CEP_EM_QUALQUER_FORMATO.test(texto), false, texto);
+    assertEquals(/token|email|e-mail|cep|endereco|nome/i.test(Object.keys(linhas[0]).join(",")), false);
+    // O console INTEIRO também não leva token nem o nome do produto. O
+    // e-mail só é conferido no console inteiro quando a API NÃO o ecoa: o
+    // `console.error` ANTIGO da falha da API (fora do escopo da 1.5.6) redige
+    // só o token do texto que a API devolveu.
+    assertEquals(saida.includes(TOKEN_SF), false);
+    if (!ecoa) assertEquals(saida.includes(EMAIL_SF), false);
+    assertEquals(saida.includes("Nome-Secreto-XYZ"), false);
+  }
+});
+
+Deno.test("1.5.6 log: ME e Frenet NÃO ganham a linha da SuperFrete", async () => {
+  const me = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA },
+    responder: responderCom([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5 }]),
+  });
+  assertEquals(linhasDoLogEstruturado(me.saida).length, 0);
+});
+
+// --- Versão ------------------------------------------------------------------
+
+Deno.test("1.5.6 versão: VERSAO_DA_INTEGRACAO_SUPERFRETE é 1.5.6 e a marca do cache é 2", () => {
+  assertEquals(edge.VERSAO_DA_INTEGRACAO_SUPERFRETE, "1.5.6");
+  assertEquals(edge.VERSAO_DA_COTACAO_SUPERFRETE, 2);
 });

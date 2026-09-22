@@ -101,6 +101,24 @@ function ehCotacaoDaSuperFrete(opcao: unknown): boolean {
   return typeof opcao === "string" && COTADO_PELA_SUPERFRETE.test(opcao);
 }
 
+// Release 1.5.6: a "Entrega econômica" da SuperFrete é o PAC OU o Mini
+// Envios (o mais barato), e a cliente só vê "Entrega econômica". A lojista
+// compra a etiqueta no site da SuperFrete — o rótulo diz QUAL serviço a
+// cliente pagou, pelo id que a RPC do pedido validou, para ela não comprar
+// PAC num pedido pago como Mini. Id sem nome aqui: rótulo de antes.
+const SERVICO_DA_SUPERFRETE: ReadonlyMap<string, string> = new Map([
+  ["superfrete-1", "PAC"],
+  ["superfrete-2", "SEDEX"],
+  ["superfrete-3", "Jadlog"],
+  ["superfrete-17", "Mini Envios"],
+]);
+function rotuloDaSuperFrete(opcao: string): string {
+  const servico = SERVICO_DA_SUPERFRETE.get(opcao);
+  return servico
+    ? `cotado pela SuperFrete · ${servico} — etiqueta fora do app`
+    : "cotado pela SuperFrete — etiqueta fora do app";
+}
+
 /**
  * O selo que a lista mostra para cada pedido — ANTES de qualquer clique.
  *
@@ -118,7 +136,7 @@ function rotuloEtiquetaPedido(p: any): string {
     return "retirada na loja — sem etiqueta";
   }
   if (ehCotacaoDaSuperFrete(p?.shipping_option_id)) {
-    return "cotado pela SuperFrete — etiqueta fora do app";
+    return rotuloDaSuperFrete(p.shipping_option_id);
   }
   // Campo solto na linha (não `p.customer_data.shipping_option_id`): o
   // `select` pede o caminho JSON direto (`customer_data->>shipping_option_id`),
