@@ -1716,6 +1716,96 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // Retirada na loja (release 1.5.3, 22/09/2026): as DUAS RPCs do pedido
+  // passam a reconhecer o id 'store-pickup'. Cada marcador é um dos
+  // requisitos que o servidor revalida (id canônico, chave habilitada com
+  // COALESCE fail-closed, endereço físico, frete ZERO amarrado ao ramo do
+  // bloco 4, retrato do endereço no INSERT) — contagens EXATAS medidas no
+  // .sql da própria migration. "Opção de entrega inválida…" 5x (2 da 20261168
+  // + 3 recusas da retirada) e "Entrega local não disponível…" 3x (2 da
+  // 20261168 + a da retirada): voltar ao corpo da 20261168 derruba as duas
+  // contagens. Sabotagem provada em tests/migration_retirada_na_loja_test.ts.
+  "20261169000000_a_retirada_na_loja_nasce_no_servidor.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto: "IF p_shipping_option_id IS DISTINCT FROM 'store-pickup' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF COALESCE('store-pickup' = ANY(COALESCE(v_store_config.enabled_shipping_methods, '{}'::text[])), false) = false THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF NULLIF(btrim(COALESCE(v_store_config.store_address, '')), '') IS NULL THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "ELSIF p_shipping_option_id = 'store-pickup' THEN\n        v_dest_cep := regexp_replace(COALESCE(p_destination_cep, ''), '\\D', '', 'g');\n        v_shipping_validated := 0;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "THEN jsonb_build_object('pickup_address', btrim(v_store_config.store_address))",
+          vezes: 1,
+        },
+        {
+          texto:
+            "Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.",
+          vezes: 5,
+        },
+        {
+          texto: "Entrega local não disponível para o CEP informado.",
+          vezes: 3,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto: "IF p_shipping_option_id IS DISTINCT FROM 'store-pickup' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF COALESCE('store-pickup' = ANY(COALESCE(v_store_config.enabled_shipping_methods, '{}'::text[])), false) = false THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF NULLIF(btrim(COALESCE(v_store_config.store_address, '')), '') IS NULL THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "ELSIF p_shipping_option_id = 'store-pickup' THEN\n        v_dest_cep := regexp_replace(COALESCE(p_destination_cep, ''), '\\D', '', 'g');\n        v_shipping_validated := 0;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "THEN jsonb_build_object('pickup_address', btrim(v_store_config.store_address))",
+          vezes: 1,
+        },
+        {
+          texto:
+            "Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.",
+          vezes: 5,
+        },
+        {
+          texto: "Entrega local não disponível para o CEP informado.",
+          vezes: 3,
+        },
+        // A reserva de 30 min do pagamento online (a única diferença da v24
+        // para a v23) tem de sobreviver ao REPLACE.
+        { texto: "'aguardando', now() + interval '30 minutes'", vezes: 1 },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

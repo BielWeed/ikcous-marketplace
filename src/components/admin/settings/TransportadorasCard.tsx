@@ -1,6 +1,11 @@
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import {
+  chavesDeTransportadoraDaLista,
+  listaComRetirada,
+  retiradaLigadaNaLista,
+} from "@/lib/guarda-de-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { haptic } from "@/utils/haptic";
@@ -186,8 +191,12 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       return true;
     }
 
-    const methodsA = escolha.methods || [];
-    const methodsB = config.enabledShippingMethods || [];
+    // Só os SERVIÇOS de transportadora contam: a chave `store-pickup` é da
+    // tela de Frete (retirada na loja) e ligá-la lá não pode sujar esta seção.
+    const methodsA = chavesDeTransportadoraDaLista(escolha.methods);
+    const methodsB = chavesDeTransportadoraDaLista(
+      config.enabledShippingMethods,
+    );
     if (methodsA.length !== methodsB.length) return true;
     const sortedA = [...methodsA].sort();
     const sortedB = [...methodsB].sort();
@@ -290,9 +299,15 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     try {
       // 1. A escolha (transportadora + serviços) grava no store_config.
       // Falhou? PARA AQUI — antes de tocar em credencial (ADMIN-010).
+      // A retirada na loja (`store-pickup`) vem do config ATUAL, nunca da
+      // escolha local: a tela de Frete pode tê-la ligado/desligado depois que
+      // esta seção sincronizou — gravar a lista local a desfaria em silêncio.
       const salvou = await updateConfig({
         shippingProvider: escolha.provider,
-        enabledShippingMethods: escolha.methods,
+        enabledShippingMethods: listaComRetirada(
+          escolha.methods,
+          retiradaLigadaNaLista(config?.enabledShippingMethods),
+        ),
       });
       if (!salvou) {
         haptic.error();

@@ -209,6 +209,16 @@ export function mapOrderFromDB(
   // perdiam a verdade. Sem snapshot, o JOIN continua sendo usado
   // (comportamento de hoje preservado). Prendado por
   // tests/front/mappers-endereco-snapshot-vence.test.ts.
+  // RETIRADA NA LOJA (migration 20261169000000): a RPC grava o retrato do
+  // endereço da loja em `customer_data.pickup_address` SÓ quando o pedido é
+  // `store-pickup` (e só aceita a retirada com endereço preenchido). É o
+  // único marcador persistido — vale o retrato, nunca o endereço atual da
+  // loja (a loja pode mudar de endereço depois).
+  const enderecoDeRetirada =
+    typeof customerData.pickup_address === "string"
+      ? customerData.pickup_address.trim()
+      : "";
+
   const addressSource =
     customerData.addressData ||
     (typeof customerData.address === "object" ? customerData.address : null) ||
@@ -282,6 +292,8 @@ export function mapOrderFromDB(
     // Qualquer valor fora de "presencial" (inclusive ausência) vira "online".
     canal: row.canal === "presencial" ? "presencial" : "online",
     vendedorId: row.vendedor_id ?? null,
+    retiradaNaLoja: enderecoDeRetirada !== "",
+    enderecoDeRetirada: enderecoDeRetirada || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

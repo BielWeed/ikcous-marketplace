@@ -6,9 +6,15 @@
 // vitrine como se fosse expediente real (causa raiz: ramo INSERT da
 // upsert_store_config, migration 20261033000000).
 //
-// O que este teste fixa: Ajustes tem o campo "Horário de atendimento",
+// O que este teste fixa: a tela tem o campo "Horário de atendimento",
 // carrega o que já está salvo, grava o que a lojista digitar e grava `null`
 // quando ela apaga (ausência honesta — a vitrine omite, nunca inventa).
+//
+// O campo morava atrás do acordeão "Atendimento" em AdminSettingsView e
+// SAIU de lá em 22/09/2026 (pedido do dono): era duplicado de
+// AdminAboutStoreView, que monta o MESMO BusinessHoursSection sempre
+// visível (bloco 3). Este arquivo passou a renderizar a tela que continua
+// editando de verdade.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,8 +27,13 @@ vi.mock("@/hooks/useAuth", () => ({
     adminStatus: "admin",
   }),
 }));
+// AdminAboutStoreView monta também IdentitySettingsSection (bloco 1, sempre
+// visível), que chama lerChaveSupabase() — fora do escopo deste arquivo
+// (só horário), mas precisa existir no mock para não sobrar rejeição não
+// tratada quando o efeito de leitura da identidade dispara.
 vi.mock("@/lib/env-valores", () => ({
   lerSupabaseUrl: () => "https://abcdefghijklmnopqrst.supabase.co",
+  lerChaveSupabase: () => "sb_publishable_synthetic",
 }));
 const updateConfig = vi.fn();
 
@@ -58,7 +69,7 @@ function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe("AdminSettingsView — Horário de atendimento", () => {
+describe("Sobre a Loja — Horário de atendimento", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -78,26 +89,11 @@ describe("AdminSettingsView — Horário de atendimento", () => {
   });
 
   async function abrirTela() {
-    const { AdminSettingsView } = await import(
-      "@/views/admin/AdminSettingsView"
+    const { AdminAboutStoreView } = await import(
+      "@/views/admin/AdminAboutStoreView"
     );
     await act(async () => {
-      raiz.render(<AdminSettingsView onNavigate={vi.fn()} active={true} />);
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-    // Seções colapsáveis (pedido do Gabriel, 02/09): os campos da loja
-    // nascem OCULTOS — o teste expande a seção antes de exercitá-los.
-    // Vocabulário do desenho SALÃO+PORÃO (13/09): a seção se chama
-    // "Atendimento" (com linha de estado no cabeçalho); o rótulo do campo
-    // interno continua "Horário de atendimento".
-    const cabecalhoLoja = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Atendimento"),
-    ) as HTMLButtonElement;
-    expect(cabecalhoLoja).toBeDefined();
-    await act(async () => {
-      cabecalhoLoja.click();
+      raiz.render(<AdminAboutStoreView onNavigate={vi.fn()} active={true} />);
     });
     await act(async () => {
       await esperarMicrotarefas();
@@ -112,7 +108,7 @@ describe("AdminSettingsView — Horário de atendimento", () => {
 
   function pegarBotaoSalvar(): HTMLButtonElement {
     const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
+      b.textContent?.includes("Salvar horário"),
     ) as HTMLButtonElement;
     expect(botao).toBeDefined();
     return botao;

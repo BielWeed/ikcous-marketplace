@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { haptic } from "@/utils/haptic";
@@ -101,6 +102,11 @@ const SERVICO_MELHOR_ENVIO = /^melhor-envio-\d+$/;
  */
 function rotuloEtiquetaPedido(p: any): string {
   if (p.shipping_label_id) return "já etiquetado";
+  // Retirada na loja (release 1.5.3): a cliente busca — não há envio, e a
+  // edge melhor-envio-etiqueta recusa. O rótulo diz por quê antes do clique.
+  if (ehRetiradaNaLoja(p?.shipping_option_id)) {
+    return "retirada na loja — sem etiqueta";
+  }
   // Campo solto na linha (não `p.customer_data.shipping_option_id`): o
   // `select` pede o caminho JSON direto (`customer_data->>shipping_option_id`),
   // e o PostgREST devolve esse valor com o nome do próprio caminho — ver
@@ -737,7 +743,12 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
                     setErroMsg(null);
                     setFase("confirmar");
                   }}
-                  disabled={!pedido || isOffline || loadingPedidos}
+                  disabled={
+                    !pedido ||
+                    isOffline ||
+                    loadingPedidos ||
+                    ehRetiradaNaLoja(pedido?.shipping_option_id)
+                  }
                   className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 py-2.5 text-xs font-bold text-black shadow-lg shadow-amber-500/20 transition-all hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 sm:w-auto"
                 >
                   <PackageCheck className="size-3.5" />

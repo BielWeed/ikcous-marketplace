@@ -348,19 +348,6 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     });
   }
 
-  async function digitarNoCampo(id: string, valor: string) {
-    const campo = hospedeiro.querySelector<HTMLInputElement>(`#${id}`);
-    expect(campo, `campo ausente: #${id}`).not.toBeNull();
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, valor);
-      campo!.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  }
-
   it("os grupos aparecem na ordem do desenho: Como está sua loja, Sua loja, Entrega, Ferramentas", async () => {
     await renderizar();
     const titulos = [...hospedeiro.querySelectorAll("h2")].map(
@@ -380,9 +367,13 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
   it("os acordeões usam o vocabulário novo — e o velho saiu", async () => {
     await renderizar();
     const texto = hospedeiro.textContent ?? "";
+    // "Nome, logo e cores" e "Atendimento" (o acordeão, não o rótulo do
+    // indicador-espelho) SAÍRAM em 22/09/2026: eram duplicados de
+    // AdminAboutStoreView, que monta a edição de verdade. "Atendimento"
+    // continua aparecendo — é o rótulo do indicador em "Como está sua
+    // loja" — mas não é mais cabeçalho de acordeão (provado no teste de
+    // contagem abaixo).
     for (const novo of [
-      "Nome, logo e cores",
-      "Atendimento",
       "Entrega e frete",
       "Mercado Pago",
       "Minha loja está no ar?",
@@ -392,6 +383,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     }
     for (const velho of [
       "Identidade da loja",
+      "Nome, logo e cores",
       "Status de funcionamento do sistema",
       "Transportadoras e cotação de frete",
       "Histórico de cotações de frete",
@@ -406,13 +398,15 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     const cabecalhos = [
       ...hospedeiro.querySelectorAll("button[aria-expanded]"),
     ];
-    // Peça 20: o Mercado Pago entra como sexto acordeão, nascido fechado
-    // como os demais (mesma decisão do dono de 02/09).
-    expect(cabecalhos.length).toBe(6);
+    // "Nome, logo e cores" e "Atendimento" SAÍRAM em 22/09/2026 (duplicados
+    // de AdminAboutStoreView): sobram Entrega e frete, Mercado Pago, Minha
+    // loja está no ar? e Consultas de frete.
+    expect(cabecalhos.length).toBe(4);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }
-    // Fechado = conteúdo fora do DOM.
+    // Os campos de identidade/horário nem existem mais nesta tela (não é
+    // "fechado", é ausente).
     expect(hospedeiro.querySelector("#store-business-hours")).toBeNull();
     expect(hospedeiro.querySelector("#store-name")).toBeNull();
     expect(hospedeiro.textContent).not.toContain("Pagamento online (PIX)");
@@ -427,45 +421,13 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     expect(cabecalho.textContent).toContain("Ativo: Melhor Envio");
   });
 
-  it("onSetDirty soma as pendências: mexer no horário liga a guarda, salvar desliga", async () => {
-    const onSetDirty = vi.fn();
-    await renderizar(onSetDirty);
-    expect(onSetDirty).toHaveBeenLastCalledWith(false);
-
-    await act(async () => {
-      cabecalhoDaSecao("Atendimento")!.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    await digitarNoCampo("store-business-hours", "Ter-Sáb: 8h às 17h");
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
-
-    const salvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar horário"),
-    ) as HTMLButtonElement;
-    await act(async () => {
-      salvar.click();
-      await esperarMicrotarefas();
-    });
-    expect(onSetDirty).toHaveBeenLastCalledWith(false);
-  });
-
-  it("onSetDirty soma as pendências: a identidade também conta", async () => {
-    const onSetDirty = vi.fn();
-    await renderizar(onSetDirty);
-
-    await act(async () => {
-      cabecalhoDaSecao("Nome, logo e cores")!.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    await digitarNoCampo("store-name", "Loja com outro nome");
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
-  });
+  // As pendências de horário e identidade SAÍRAM da soma de onSetDirty
+  // desta tela em 22/09/2026, junto com os acordeões: os dois editores
+  // moram só em AdminAboutStoreView agora, e a pendência deles é somada
+  // por ELA (provado em admin-sobre-a-loja-salva-sem-apagar.test.tsx e em
+  // admin-settings-identidade-da-loja.test.tsx). onSetDirty desta tela
+  // continua somando transportadoras + pagamentos (inalterado, sem teste
+  // dedicado aqui: cobertos pelos vizinhos de cada seção).
 
   it("atalhos de vitrine continuam portas role=button com onNavigate (20/09: +Sobre a Loja)", async () => {
     const onNavigate = vi.fn();

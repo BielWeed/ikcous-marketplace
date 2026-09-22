@@ -1,5 +1,5 @@
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
-import { AdminSettingsView } from "@/views/admin/AdminSettingsView";
+import { AdminAboutStoreView } from "@/views/admin/AdminAboutStoreView";
 // @vitest-environment jsdom
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -37,6 +37,17 @@ vi.mock("sonner", () => ({
 vi.mock("@/lib/env-valores", () => ({
   lerSupabaseUrl: () => "https://abcdefghijklmnopqrst.supabase.co",
   lerChaveSupabase: () => "sb_publishable_synthetic",
+}));
+// O horário morava atrás do acordeão "Atendimento" em AdminSettingsView e
+// SAIU de lá em 22/09/2026 (pedido do dono): era duplicado de
+// AdminAboutStoreView, que monta o MESMO BusinessHoursSection — este
+// arquivo passou a renderizar a tela que continua editando de verdade.
+// AdminAboutStoreView TAMBÉM monta IdentitySettingsSection (bloco 1,
+// sempre visível): fora do escopo deste arquivo (que prova só o horário) e
+// chamaria o MESMO `h.rpc` usado abaixo para `upsert_store_config`,
+// confundindo as asserções de "uma RPC só". Silenciada com um coto vazio.
+vi.mock("@/components/admin/settings/IdentitySettingsSection", () => ({
+  IdentitySettingsSection: () => null,
 }));
 function query(result: { data: unknown; error: null }): unknown {
   return new Proxy(() => {}, {
@@ -93,7 +104,7 @@ async function render(active = true, editor = true) {
       <StoreProvider>
         <Observe />
         {editor && (
-          <AdminSettingsView
+          <AdminAboutStoreView
             active={active}
             onNavigate={vi.fn()}
             onSetDirty={h.dirty}
@@ -110,23 +121,8 @@ function button(label: string) {
   expect(result).toBeDefined();
   return result!;
 }
-// Vocabulário SALÃO+PORÃO (13/09): a seção do horário se chama "Atendimento"
-// e o cabeçalho carrega a linha de estado no textContent — a abertura não é
-// por texto exato, é por cabeçalho de acordeão (aria-expanded) + título.
-function secao(titulo: string) {
-  const result = [...host.querySelectorAll("button")].find(
-    (el) =>
-      el.getAttribute("aria-expanded") !== null &&
-      el.textContent?.includes(titulo),
-  );
-  expect(result, `seção ausente: ${titulo}`).toBeDefined();
-  return result!;
-}
 async function click(label: string) {
   await act(async () => button(label).click());
-}
-async function abrirSecao(titulo: string) {
-  await act(async () => secao(titulo).click());
 }
 function field() {
   return host.querySelector<HTMLInputElement>("#store-business-hours")!;
@@ -141,7 +137,6 @@ async function type(value: string) {
   });
 }
 async function start() {
-  await abrirSecao("Atendimento");
   await type("Escolha de A");
   await click("Salvar horário");
 }
@@ -259,7 +254,6 @@ describe("horário com editor e StoreProvider reais", () => {
     expect(h.dirty).toHaveBeenLastCalledWith(false);
   });
   it("horário vazio envia null e confirma ausência sem perder o contrato", async () => {
-    await abrirSecao("Atendimento");
     await type("   ");
     await click("Salvar horário");
     await act(async () =>

@@ -33,6 +33,8 @@ import {
 } from "@/lib/endereco-de-entrega";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import {
+  ehModalidadeDaLoja,
+  ehRetiradaNaLoja,
   finalizarBloqueadoPorFrete,
   pagamentoIncompativelComFrete,
 } from "@/lib/guarda-de-frete";
@@ -472,7 +474,11 @@ export function CheckoutView({
   // permitiria submit com meio oculto); nesse estado quem decide a
   // disponibilidade é a `finalizarBloqueadoPorFrete`, e a RPC recusa pedido
   // com opção ausente.
-  const ehEntregaLocal = selectedShippingOption?.id === "local-delivery";
+  // RETIRADA NA LOJA (release 1.5.3): "store-pickup" também é modalidade da
+  // LOJA (a cliente busca no endereço dela) — pagamento segue as regras da
+  // entrega local, igual à RPC v23/v24 (ramo 2-ter, sem restrição de meio).
+  const ehEntregaLocal = ehModalidadeDaLoja(selectedShippingOption?.id);
+  const ehRetirada = ehRetiradaNaLoja(selectedShippingOption?.id);
   // CHECKOUT-090: realtime ligado (antes `useOrders(false, true)` desligava
   // o efeito inteiro na primeira linha de useOrders.ts — nenhuma assinatura
   // era criada, e a tela do PIX nunca soube que o pedido tinha sido pago) e
@@ -921,7 +927,7 @@ export function CheckoutView({
   // cotar mora em `modoDeEconomiaDoFrete` (src/lib/economia-do-frete.ts); o
   // hook cuida do efeito (debounce, cache por CEP, guarda de sequência) —
   // ver src/hooks/useEconomiaDoFreteExibida.ts.
-  const economiaDoFrete = useEconomiaDoFreteExibida({
+  const economiaDoFreteDaEntrega = useEconomiaDoFreteExibida({
     freteGratis,
     cepDeEntrega,
     temUsuario: !!user,
@@ -932,6 +938,9 @@ export function CheckoutView({
     cart,
     isOffline,
   });
+  // Retirada na loja é grátis por natureza: não existe frete "economizado"
+  // para mostrar (a economia que o hook conhece é a da ENTREGA local).
+  const economiaDoFrete = ehRetirada ? 0 : economiaDoFreteDaEntrega;
 
   // O CUPOM VALE PARA O CARRINHO DE AGORA (laudo 31/08, menor E): o cupom
   // era conferido SÓ no momento de aplicar. O carrinho encolhia depois —
@@ -1876,8 +1885,13 @@ export function CheckoutView({
       .filter((item) => item.variantNames)
       .map((item) => `${item.product.name}: ${item.variantNames}`)
       .join("\n");
+    // Retirada: a nota diz ONDE buscar (endereço real da loja, vindo da
+    // cotação) e nunca um prazo — prazo de retirada não existe; a loja
+    // confirma quando o pedido está separado.
     const shippingNotes = selectedShippingOption
-      ? `Frete Escolhido: ${selectedShippingOption.name} (Prazo: ${selectedShippingOption.deliveryDays} dias)`
+      ? ehRetiradaNaLoja(selectedShippingOption.id)
+        ? `Retirada na loja${selectedShippingOption.pickupAddress ? `: ${selectedShippingOption.pickupAddress}` : ""}`
+        : `Frete Escolhido: ${selectedShippingOption.name} (Prazo: ${selectedShippingOption.deliveryDays} dias)`
       : undefined;
     const noteParts = [observations, variantNotes, shippingNotes].filter(
       Boolean,
@@ -2303,24 +2317,28 @@ export function CheckoutView({
       ]
     : [];
 
+  // Retirada na loja: o pagamento acontece NA RETIRADA — só o TEXTO muda;
+  // `value` (pix/card/cash) e as regras de cobrança são os mesmos da entrega
+  // local (a RPC não distingue as duas modalidades no meio de pagamento).
+  const quandoPaga = ehRetirada ? "na Retirada" : "na Entrega";
   const opcoesNaEntrega: OpcaoDePagamento[] = [
     {
       value: "pix",
-      label: "Pix na Entrega",
+      label: `Pix ${quandoPaga}`,
       icon: Smartphone,
       color: "text-emerald-500 bg-emerald-50",
       requerConta: false,
     },
     {
       value: "card",
-      label: "Cartão na Entrega",
+      label: `Cartão ${quandoPaga}`,
       icon: CreditCard,
       color: "text-blue-500 bg-blue-50",
       requerConta: false,
     },
     {
       value: "cash",
-      label: "Dinheiro na Entrega",
+      label: `Dinheiro ${quandoPaga}`,
       icon: Banknote,
       color: "text-amber-500 bg-amber-50",
       requerConta: false,
@@ -2995,7 +3013,7 @@ export function CheckoutView({
             {(!selectedShippingOption || ehEntregaLocal) && (
               <div className="space-y-2.5">
                 <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                  Na entrega
+                  {ehRetirada ? "Na retirada" : "Na entrega"}
                 </span>
                 <div className="grid grid-cols-1 gap-2.5">
                   {opcoesNaEntrega.map(renderOpcaoDePagamento)}

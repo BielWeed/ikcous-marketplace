@@ -5,6 +5,8 @@
 // barata. Regra explícita: MENOR preço; empate, MENOR prazo; sem lista,
 // nada (a tela segue sem opção, como antes).
 
+import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+
 export interface OpcaoDeFrete {
   price: number;
   deliveryDays: number;
@@ -34,5 +36,11 @@ export function opcaoFrescaOuMaisBarata<
   const mesmaEscolha = selecionada
     ? opcoes.find((opt) => opt.id === selecionada.id)
     : undefined;
-  return mesmaEscolha ?? opcaoMaisBarata(opcoes);
+  if (mesmaEscolha) return mesmaEscolha;
+  // RETIRADA NA LOJA (release 1.5.3): a retirada custa R$ 0 e seria SEMPRE
+  // a "mais barata" — mas buscar na loja é decisão da cliente, nunca do app.
+  // Ela fica FORA do fallback: só é mantida quando a própria cliente a
+  // escolheu (mesmo id, acima). Se sobrar só ela, `null`: a tela mostra a
+  // opção e espera o clique.
+  return opcaoMaisBarata(opcoes.filter((opt) => !ehRetiradaNaLoja(opt.id)));
 }

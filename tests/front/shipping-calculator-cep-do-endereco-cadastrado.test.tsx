@@ -350,6 +350,7 @@ describe("ShippingCalculator — o destino da cotação é o endereço de entreg
     // cache do destino — a resposta morreu com o componente.
     expect(armazem.get("ikcous_last_shipping_cep")).toBe("07095-005");
     expect(armazem.has("ikcous_shipping_cache_38500000")).toBe(false);
+    expect(armazem.has("ikcous_shipping_cache_v2_38500000")).toBe(false);
 
     // Recria a raiz para o afterEach não desmontar duas vezes.
     hospedeiro = document.createElement("div");

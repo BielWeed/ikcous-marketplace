@@ -2,10 +2,11 @@
 //
 // Pedido do Gabriel (02/09, segunda foto dos Ajustes): a tela precisa estar
 // SEPARADA por partes e as seções técnicas nascerem OCULTAS — "Minha loja
-// está no ar?" (termômetro do PIX + diagnóstico de conexão), "Nome, logo e
-// cores" e as demais só exibem o conteúdo quando o lojista clica no
+// está no ar?" (termômetro do PIX + diagnóstico de conexão), "Entrega e
+// frete" e as demais só exibem o conteúdo quando o lojista clica no
 // cabeçalho da seção. Títulos no vocabulário do desenho SALÃO+PORÃO
-// (13/09/2026).
+// (13/09/2026). O acordeão "Nome, logo e cores" morou aqui e SAIU em
+// 22/09/2026 (duplicado de AdminAboutStoreView).
 //
 // O CONTRATO:
 //   1. A tela abre com as seções FECHADAS: os campos da loja e o termômetro
@@ -18,27 +19,6 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/components/admin/settings/IdentitySettingsSection", async () => {
-  const { useState, useEffect } = await import("react");
-  return {
-    IdentitySettingsSection: ({
-      onDirtyChange,
-    }: { onDirtyChange: (value: boolean) => void }) => {
-      const [value, setValue] = useState("Loja Teste");
-      useEffect(
-        () => onDirtyChange(value !== "Loja Teste"),
-        [value, onDirtyChange],
-      );
-      return (
-        <input
-          id="store-name"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-        />
-      );
-    },
-  };
-});
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "admin-a" },
@@ -177,17 +157,17 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     expect(hospedeiro.textContent).toContain("Vitrines (Carrosséis)");
 
     // Conteúdo das seções técnicas NÃO está no DOM (recolhidas).
-    expect(hospedeiro.querySelector("#store-name")).toBeNull();
+    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
     expect(hospedeiro.textContent).not.toContain("VITE_MP_PUBLIC_KEY");
     expect(hospedeiro.textContent).not.toContain("Latência média");
 
     // Os cabeçalhos existem e estão marcados como recolhidos.
     const status = cabecalhoDaSecao("Minha loja está no ar?")!;
-    const loja = cabecalhoDaSecao("Nome, logo e cores")!;
+    const entrega = cabecalhoDaSecao("Entrega e frete")!;
     expect(status).toBeTruthy();
-    expect(loja).toBeTruthy();
+    expect(entrega).toBeTruthy();
     expect(status.getAttribute("aria-expanded")).toBe("false");
-    expect(loja.getAttribute("aria-expanded")).toBe("false");
+    expect(entrega.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("clicar no cabeçalho de Status expande o termômetro do PIX e o diagnóstico; segundo clique recolhe", async () => {
@@ -213,22 +193,13 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     expect(hospedeiro.textContent).not.toContain("Pagamento online (PIX)");
   });
 
-  it("clicar no cabeçalho de Identidade expande os campos da loja", async () => {
-    await renderizar();
+  // "clicar no cabeçalho de Identidade expande os campos da loja" morava
+  // aqui e SAIU em 22/09/2026 junto com o acordeão "Nome, logo e cores"
+  // (duplicado de AdminAboutStoreView, removido de AdminSettingsView). O
+  // mecanismo genérico de abrir/expandir continua provado acima (Status) e
+  // abaixo (independência entre seções, usando Entrega e frete).
 
-    expect(hospedeiro.querySelector("#store-name")).toBeNull();
-
-    const loja = cabecalhoDaSecao("Nome, logo e cores")!;
-    await act(async () => {
-      loja.click();
-    });
-
-    const campoNome = hospedeiro.querySelector<HTMLInputElement>("#store-name");
-    expect(campoNome).not.toBeNull();
-    expect(campoNome!.value).toBe("Loja Teste");
-  });
-
-  it("as seções são independentes: abrir Status não abre a Identidade", async () => {
+  it("as seções são independentes: abrir Status não abre Entrega e frete", async () => {
     await renderizar();
 
     await act(async () => {
@@ -236,7 +207,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     });
 
     expect(hospedeiro.textContent).toContain("Pagamento online (PIX)");
-    expect(hospedeiro.querySelector("#store-name")).toBeNull();
+    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
   });
 
   // ── Seções novas da frente glm-visual-admin-0209 (transportadoras e

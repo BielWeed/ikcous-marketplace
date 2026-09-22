@@ -774,6 +774,257 @@ PROVAS.push({
   },
 });
 
+// (e) RETIRADA NA LOJA (migration 20261169000000, release 1.5.3): o id
+// 'store-pickup' nasce com frete ZERO e o retrato do endereço da loja SÓ
+// quando os três requisitos valem (chave habilitada em
+// enabled_shipping_methods + store_address não vazio + CEP de entrega
+// local). Faltando qualquer um — ou com o id fora da forma canônica — a RPC
+// recusa com a frase já classificada pelo front. A entrega local continua
+// cobrando a taxa da loja. Endereço da loja é FICTÍCIO (fixture).
+const P_RETIRADA = "aaaaaaaa-0000-0000-0000-000000000005";
+const ENDERECO_FICTICIO_DA_LOJA = "Rua Fictícia da Prova, 100 — Centro";
+
+async function criarPedidoComFrete(
+  cliente,
+  { rpc, opcao, total, metodo, cep, frete = 0 },
+) {
+  const itens = [{ product_id: P_RETIRADA, variant_id: null, quantity: 1 }];
+  const resultado = await cliente.query(
+    `SELECT public.${rpc}(
+        $1::jsonb, $2::numeric, $3::numeric, $4::text, $5::uuid,
+        $6::text, $7::text, $8::text, $9::text, $10::jsonb,
+        $11::text, $12::text, $13::uuid
+      ) AS id`,
+    [
+      JSON.stringify(itens),
+      total,
+      frete,
+      metodo,
+      null,
+      null,
+      "Cliente de Prova Retirada",
+      "5539000000000",
+      null,
+      JSON.stringify({ cep, rua: "Rua da Prova", numero: "1" }),
+      cep,
+      opcao,
+      null,
+    ],
+  );
+  return resultado.rows[0].id;
+}
+
+async function configurarRetirada(cliente, { metodos, endereco, gratis }) {
+  await cliente.query(
+    `UPDATE public.store_config
+        SET enabled_shipping_methods = $1::text[],
+            store_address = $2,
+            free_shipping_min = $3,
+            local_delivery_fee = 10
+      WHERE id = 1`,
+    [metodos, endereco, gratis],
+  );
+}
+
+PROVAS.push({
+  nome: "(e) retirada na loja: frete zero só com os três requisitos; recusa sem eles; entrega local intacta",
+  corpo: async (cliente) => {
+    await garantirLojaFixture(cliente);
+    await cliente.query(
+      `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
+       VALUES ($1, 'Produto Prova Retirada', 20.00, 50.00, 100, true, false)`,
+      [P_RETIRADA],
+    );
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data)
+       VALUES ($1, 'cliente@prova.teste', '{}'::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [U_CLIENTE],
+    );
+    await logar(cliente, U_CLIENTE);
+
+    // Grátis DESLIGADO (0) e taxa local 10: a retirada tem de sair 0 por
+    // ELA, não pelo preset.
+    await configurarRetirada(cliente, {
+      metodos: ["sedex", "pac", "store-pickup"],
+      endereco: ENDERECO_FICTICIO_DA_LOJA,
+      gratis: 0,
+    });
+
+    const pedidoV24 = await criarPedidoComFrete(cliente, {
+      rpc: "create_marketplace_order_v24",
+      opcao: "store-pickup",
+      total: "50.00",
+      metodo: "pix",
+      cep: "38500-000",
+    });
+    const linhaV24 = (
+      await cliente.query(
+        `SELECT total, subtotal, shipping,
+                customer_data->>'shipping_option_id' AS opcao,
+                customer_data->>'pickup_address' AS retirada
+           FROM public.marketplace_orders WHERE id = $1`,
+        [pedidoV24],
+      )
+    ).rows[0];
+    assert.equal(Number(linhaV24.shipping), 0, "retirada nasce com frete 0");
+    assert.equal(
+      Number(linhaV24.total),
+      Number(linhaV24.subtotal),
+      "total = subtotal na retirada",
+    );
+    assert.equal(linhaV24.opcao, "store-pickup");
+    assert.equal(
+      linhaV24.retirada,
+      ENDERECO_FICTICIO_DA_LOJA,
+      "o pedido guarda o retrato do endereço da loja",
+    );
+
+    // v23 (pagamento na entrega) aceita a retirada com dinheiro — mesmas
+    // regras da entrega local.
+    const pedidoV23 = await criarPedidoComFrete(cliente, {
+      rpc: "create_marketplace_order_v23",
+      opcao: "store-pickup",
+      total: "50.00",
+      metodo: "cash",
+      cep: "38500-000",
+    });
+    assert.equal(
+      Number(
+        await valorUnico(
+          cliente,
+          "SELECT shipping FROM public.marketplace_orders WHERE id = $1",
+          [pedidoV23],
+        ),
+      ),
+      0,
+      "v23 + dinheiro + retirada: frete 0",
+    );
+
+    // Entrega local intacta: cobra a taxa, sem pickup_address.
+    const pedidoLocal = await criarPedidoComFrete(cliente, {
+      rpc: "create_marketplace_order_v24",
+      opcao: "local-delivery",
+      total: "60.00",
+      metodo: "pix",
+      cep: "38500-000",
+      frete: 10,
+    });
+    const linhaLocal = (
+      await cliente.query(
+        `SELECT shipping, customer_data ? 'pickup_address' AS tem_retirada
+           FROM public.marketplace_orders WHERE id = $1`,
+        [pedidoLocal],
+      )
+    ).rows[0];
+    assert.equal(Number(linhaLocal.shipping), 10, "entrega local cobra 10");
+    assert.equal(linhaLocal.tem_retirada, false);
+
+    const recusa = async (rotulo, pedido, padrao) => {
+      await assert.rejects(
+        () => criarPedidoComFrete(cliente, pedido),
+        padrao,
+        rotulo,
+      );
+    };
+    const base = {
+      rpc: "create_marketplace_order_v24",
+      opcao: "store-pickup",
+      total: "50.00",
+      metodo: "pix",
+      cep: "38500-000",
+    };
+
+    await recusa(
+      "fora da área local",
+      { ...base, cep: "01000-000" },
+      /Entrega local não disponível para o CEP informado/,
+    );
+    await recusa(
+      "id com espaço de sobra",
+      { ...base, opcao: " store-pickup" },
+      /Opção de entrega inválida/,
+    );
+
+    await configurarRetirada(cliente, {
+      metodos: ["sedex", "pac"],
+      endereco: ENDERECO_FICTICIO_DA_LOJA,
+      gratis: 0,
+    });
+    await recusa("método desligado", base, /Opção de entrega inválida/);
+
+    await configurarRetirada(cliente, {
+      metodos: ["sedex", null],
+      endereco: ENDERECO_FICTICIO_DA_LOJA,
+      gratis: 0,
+    });
+    await recusa(
+      "array com NULL não habilita (fail-closed)",
+      base,
+      /Opção de entrega inválida/,
+    );
+
+    await configurarRetirada(cliente, {
+      metodos: null,
+      endereco: ENDERECO_FICTICIO_DA_LOJA,
+      gratis: 0,
+    });
+    await recusa("métodos NULL", base, /Opção de entrega inválida/);
+
+    await configurarRetirada(cliente, {
+      metodos: ["store-pickup"],
+      endereco: null,
+      gratis: 0,
+    });
+    await recusa("sem endereço da loja", base, /Opção de entrega inválida/);
+
+    await configurarRetirada(cliente, {
+      metodos: ["store-pickup"],
+      endereco: "   ",
+      gratis: 0,
+    });
+    await recusa("endereço só com espaços", base, /Opção de entrega inválida/);
+
+    // Grátis LIGADO não fura os requisitos: sem a chave, a retirada continua
+    // recusada ANTES do ramo do frete grátis.
+    await configurarRetirada(cliente, {
+      metodos: ["sedex"],
+      endereco: ENDERECO_FICTICIO_DA_LOJA,
+      gratis: 0.01,
+    });
+    await recusa(
+      "grátis ligado não substitui a habilitação",
+      base,
+      /Opção de entrega inválida/,
+    );
+
+    // E com a chave, grátis ligado: nasce com frete 0 e o retrato sem os
+    // espaços das pontas.
+    await configurarRetirada(cliente, {
+      metodos: ["store-pickup"],
+      endereco: `  ${ENDERECO_FICTICIO_DA_LOJA}  `,
+      gratis: 0.01,
+    });
+    const pedidoGratis = await criarPedidoComFrete(cliente, base);
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT customer_data->>'pickup_address' FROM public.marketplace_orders WHERE id = $1",
+        [pedidoGratis],
+      ),
+      ENDERECO_FICTICIO_DA_LOJA,
+      "o retrato vai sem os espaços das pontas",
+    );
+
+    // Devolve a loja ao estado das outras provas.
+    await configurarRetirada(cliente, {
+      metodos: ["sedex", "pac"],
+      endereco: null,
+      gratis: 0.01,
+    });
+  },
+});
+
 // ---- Orquestração ------------------------------------------------------------
 async function main() {
   const url = lerDatabaseUrlEfemera();

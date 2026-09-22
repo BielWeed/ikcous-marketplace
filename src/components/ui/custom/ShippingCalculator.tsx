@@ -1,6 +1,8 @@
 import { useCartState } from "@/contexts/CartContext";
+import { useContextoDoFreteDaLoja } from "@/contexts/ContextoDoFreteDaLoja";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { opcaoFrescaOuMaisBarata } from "@/lib/auto-selecao-de-frete";
+import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import {
   codigoDoErroDeEdgeFunction,
   mensagemAmigavelErroEdgeFunction,
@@ -16,6 +18,7 @@ import {
   MapPin,
   RefreshCw,
   Sparkles,
+  Store,
   Truck,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -66,7 +69,26 @@ const MENSAGEM_FALHA_AO_COTAR = "Falha ao cotar frete.";
 const MENSAGEM_CEP_NAO_ENCONTRADO =
   "CEP não encontrado. Confira o CEP do endereço de entrega.";
 
+/**
+ * CACHE V2 (release 1.5.3 — retirada na loja). O PWA atualiza por "prompt":
+ * a 1.5.2 segue aberta ao lado da 1.5.3, no MESMO localStorage. A 1.5.2 lê
+ * `ikcous_shipping_cache_<CEP>` e auto-seleciona a opção mais barata — se a
+ * 1.5.3 gravasse ali uma lista com a retirada (R$ 0), a 1.5.2 escolheria a
+ * retirada sem chamar a edge. Por isso a 1.5.3 lê e grava SÓ nesta chave
+ * (que a 1.5.2 nunca lê) e nunca toca a antiga. O prefixo é o mesmo de
+ * sempre: o logout (`AuthContext.tsx`) limpa as duas pela varredura por
+ * `ikcous_shipping_cache_`.
+ */
+export function chaveDoCacheDeFrete(cepSoDigitos: string): string {
+  return `ikcous_shipping_cache_v2_${cepSoDigitos}`;
+}
+
 interface EnvelopeDeCacheDeFrete {
+  /**
+   * `contextoDaLojaParaFrete` (src/contexts/ContextoDoFreteDaLoja.ts) da loja
+   * quando a cotação saiu.
+   */
+  contexto: string;
   /** Assinatura do carrinho que gerou esta cotação (mesmo formato de `cartSignature`). */
   assinatura: string;
   /** `Date.now()` de quando a cotação foi gravada. */
@@ -77,7 +99,7 @@ interface EnvelopeDeCacheDeFrete {
 /**
  * Decide se uma entrada do cache local pode virar preço na tela.
  *
- * A chave (`ikcous_shipping_cache_<CEP>`) diz só o CEP. Quem responde "de qual
+ * A chave (`chaveDoCacheDeFrete`) diz só o CEP. Quem responde "de qual
  * carrinho isto veio?" e "quando foi cotado?" é o próprio conteúdo — por isso a
  * validação mora aqui e não na chave: manter UMA entrada por CEP preserva os
  * dois consumidores que já dependem do formato exato da chave (o `removeItem`
@@ -98,10 +120,20 @@ export function cotacaoCacheadaQueAindaServe(
   bruto: unknown,
   assinaturaAtual: string,
   agora: number,
+  contextoAtual: string,
 ): ShippingOption[] | null {
   if (!bruto || typeof bruto !== "object") return null;
 
   const envelope = bruto as Partial<EnvelopeDeCacheDeFrete>;
+
+  // Envelope sem contexto (formato anterior à 1.5.3) ou de outra config da
+  // loja: não se sabe se a lista ainda é a que a edge daria agora — recota.
+  if (
+    typeof envelope.contexto !== "string" ||
+    envelope.contexto !== contextoAtual
+  ) {
+    return null;
+  }
 
   if (
     typeof envelope.assinatura !== "string" ||
@@ -227,6 +259,12 @@ function CalculadoraDeFrete({
   freteGratis: isFree,
 }: PropsComFreteGratis) {
   const isOffline = useOnlineStatus();
+  // Contexto da loja da cotação (cache v2). Fora do StoreProvider (peça
+  // montada sozinha) vale o contexto "sem config" — estável, o cache segue
+  // servindo.
+  const contextoDaLoja = useContextoDoFreteDaLoja();
+  const contextoDaLojaRef = useRef(contextoDaLoja);
+  contextoDaLojaRef.current = contextoDaLoja;
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -308,7 +346,11 @@ function CalculadoraDeFrete({
     // número, esta aqui é obsoleta e não escreve nada, nem `loading`.
     const meuId = ++reqRef.current;
 
-    const cacheKey = `ikcous_shipping_cache_${cleanCep}`;
+    const cacheKey = chaveDoCacheDeFrete(cleanCep);
+    // O contexto de QUANDO esta cotação saiu: é ele que vai no envelope. Se
+    // o contexto mudar no meio, o efeito de contexto dispara outra cotação,
+    // o lacre (`reqRef`) aposenta esta, e ela não grava nada.
+    const contextoDaCotacao = contextoDaLojaRef.current;
 
     try {
       // 1. Cache local primeiro. Este acerto não só mostra o preço: ele já
@@ -323,6 +365,7 @@ function CalculadoraDeFrete({
             JSON.parse(cached),
             cartSignature,
             Date.now(),
+            contextoDaCotacao,
           );
           if (opcoesEmCache) {
             // Sem lacre aqui de propósito: até este ponto só rodou código
@@ -337,6 +380,11 @@ function CalculadoraDeFrete({
             );
             if (selecionadaAtualizada) {
               onSelectOption(selecionadaAtualizada);
+            } else if (selecaoVivaRef.current) {
+              // Lista sem nada auto-selecionável (só a retirada, que é
+              // escolha da cliente): a escolha anterior é preço de outra
+              // cotação e cai.
+              onSelectOption(null);
             }
             onCepValidated?.(cepFormatado);
             setLoading(false);
@@ -356,7 +404,10 @@ function CalculadoraDeFrete({
       const { data, error: funcError } = await supabase.functions.invoke(
         "calculate-shipping",
         {
-          body: { cep: cleanCep, cart: cart },
+          // `aceitaRetirada`: o sinal de que ESTE app entende a retirada na
+          // loja (nunca a auto-seleciona). Sem ele, a edge não a oferece — é
+          // o que protege o app 1.5.2 ainda no ar.
+          body: { cep: cleanCep, cart: cart, aceitaRetirada: true },
         },
       );
 
@@ -385,6 +436,7 @@ function CalculadoraDeFrete({
       // foi feita. Sem esses dois campos a leitura acima não tem como recusar
       // uma lista de outro carrinho ou de outro dia.
       const envelope: EnvelopeDeCacheDeFrete = {
+        contexto: contextoDaCotacao,
         assinatura: cartSignature,
         gravadoEm: Date.now(),
         opcoes: calculatedOptions,
@@ -403,6 +455,12 @@ function CalculadoraDeFrete({
         );
         if (selecionadaAtualizada) {
           onSelectOption(selecionadaAtualizada);
+        } else if (selecaoVivaRef.current) {
+          // RETIRADA NA LOJA (release 1.5.3): a lista pode não ter nada
+          // auto-selecionável (só a retirada, que nunca é escolhida pelo
+          // app). A escolha anterior é preço de OUTRA cotação e cai — a
+          // cliente escolhe na lista nova.
+          onSelectOption(null);
         }
       }
       onCepValidated?.(cepFormatado);
@@ -479,7 +537,7 @@ function CalculadoraDeFrete({
     // Invalida CEDO (síncrono), não dentro do timer: o cache é indexado pelo
     // CEP e uma cotação que começasse na janela do debounce não pode achar o
     // preço da quantidade anterior.
-    localStorage.removeItem(`ikcous_shipping_cache_${alvo}`);
+    localStorage.removeItem(chaveDoCacheDeFrete(alvo));
     setLoading(true);
     setError(null);
 
@@ -495,6 +553,22 @@ function CalculadoraDeFrete({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartSignature]);
+
+  // O CONTEXTO DA LOJA mudou (provedor, transportadoras, retirada, endereço —
+  // chegou o config real, ou a lojista salvou em outra aba): a lista na tela
+  // pode não ser mais a que a edge daria. Recota o destino adotado — o cache
+  // v2 recusa o envelope do contexto velho, e a resposta em voo do contexto
+  // velho morre no lacre. A montagem não conta (quem cota nela é a adoção
+  // do destino).
+  const contextoVistoRef = useRef(contextoDaLoja);
+  useEffect(() => {
+    if (contextoVistoRef.current === contextoDaLoja) return;
+    contextoVistoRef.current = contextoDaLoja;
+    const alvo = cepAdotadoRef.current;
+    if (!alvo || cart.length === 0) return;
+    calculateShipping(alvo, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextoDaLoja]);
 
   // Resposta atrasada não sobrevive ao desmonte: sem o lacre, a cotação em
   // voo gravava `ikcous_last_shipping_cep` e o cache DEPOIS que o destino
@@ -660,6 +734,10 @@ function CalculadoraDeFrete({
           {options.map((option) => {
             const isSelected = selectedOption?.id === option.id;
             const priceToDisplay = isFree ? 0 : option.price;
+            // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
+            // há entrega) e sem "pronto agora" — o endereço REAL da loja
+            // que a edge mandou e o aviso neutro de esperar a loja.
+            const retirada = ehRetiradaNaLoja(option.id);
 
             return (
               <button
@@ -688,6 +766,8 @@ function CalculadoraDeFrete({
                   >
                     {isSelected ? (
                       <Check className="size-4" />
+                    ) : retirada ? (
+                      <Store className="size-4" />
                     ) : (
                       <Truck className="size-4" />
                     )}
@@ -696,19 +776,44 @@ function CalculadoraDeFrete({
                     <span className="block text-[11px] font-bold leading-snug">
                       {option.name}
                     </span>
-                    <span
-                      className={`mt-0.5 block text-[9px] leading-none ${
-                        isSelected ? "text-zinc-300" : "text-zinc-400"
-                      }`}
-                    >
-                      Entrega em até {option.deliveryDays}{" "}
-                      {option.deliveryDays > 1 ? "dias úteis" : "dia útil"}
-                    </span>
+                    {retirada ? (
+                      <>
+                        {option.pickupAddress && (
+                          <span
+                            className={`mt-0.5 block text-[10px] leading-snug ${
+                              isSelected ? "text-zinc-200" : "text-zinc-500"
+                            }`}
+                          >
+                            Retire em: {option.pickupAddress}
+                          </span>
+                        )}
+                        <span
+                          className={`mt-0.5 block text-[9px] leading-snug ${
+                            isSelected ? "text-zinc-300" : "text-zinc-400"
+                          }`}
+                        >
+                          Aguarde a confirmação da loja para retirar
+                        </span>
+                      </>
+                    ) : (
+                      <span
+                        className={`mt-0.5 block text-[9px] leading-none ${
+                          isSelected ? "text-zinc-300" : "text-zinc-400"
+                        }`}
+                      >
+                        Entrega em até {option.deliveryDays}{" "}
+                        {option.deliveryDays > 1 ? "dias úteis" : "dia útil"}
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex flex-col justify-center text-right">
-                  {isFree ? (
+                  {retirada ? (
+                    <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
+                      Grátis
+                    </span>
+                  ) : isFree ? (
                     <div className="flex items-center gap-1">
                       <Sparkles className="size-3 fill-emerald-500/20 text-emerald-500" />
                       <span className="text-xs font-black uppercase tracking-wider text-emerald-500">

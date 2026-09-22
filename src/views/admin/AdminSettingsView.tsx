@@ -20,7 +20,6 @@ import { Suspense, lazy, memo, useEffect, useState } from "react";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { BusinessHoursSection } from "@/components/admin/settings/BusinessHoursSection";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import { TransportadorasSection } from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,12 +47,6 @@ interface AdminSettingsViewProps {
   onSetDirty?: (dirty: boolean) => void;
 }
 
-const IdentitySettingsSection = lazy(() =>
-  import("@/components/admin/settings/IdentitySettingsSection").then(
-    (module) => ({ default: module.IdentitySettingsSection }),
-  ),
-);
-
 // Peça 20 (14/09/2026): chaves do Mercado Pago do lojista + guia com prompt
 // pronto + teste de conexão — conteúdo inteiro mora no próprio componente
 // (junto do arquivo de conteúdo do guia); aqui só a porta.
@@ -62,11 +55,6 @@ const MercadoPagoSection = lazy(() =>
     default: module.MercadoPagoSection,
   })),
 );
-
-// O editor do horário de atendimento mora em
-// @/components/admin/settings/BusinessHoursSection desde 20/09/2026 — a tela
-// "Sobre a Loja" (AdminAboutStoreView) edita o MESMO campo com o MESMO
-// componente; não nasceram duas lógicas de salvamento.
 
 // ==========================================
 // Connection Diagnostics Section (Glassmorphism)
@@ -589,31 +577,20 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const [transportadorasPendentes, setTransportadorasPendentes] =
     useState(false);
 
-  const [identidadePendente, setIdentidadePendente] = useState(false);
-  const [horarioPendente, setHorarioPendente] = useState(false);
   // Peça 20: mesma trava das demais — chave digitada e não salva não pode
   // sumir num clique no cabeçalho da seção.
   const [pagamentosPendente, setPagamentosPendente] = useState(false);
 
   // Espelha a soma das pendências para o App (onSetDirty = setIsAdminDirty):
   // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
-  // — mesmo contrato da tela de Frete (AdminShippingView).
+  // — mesmo contrato da tela de Frete (AdminShippingView). Identidade e
+  // horário saíram desta soma em 22/09/2026: os acordeões duplicados desta
+  // tela foram removidos — a edição (e a pendência dela) mora só em
+  // AdminAboutStoreView agora.
   useEffect(() => {
     if (active !== false)
-      onSetDirty?.(
-        transportadorasPendentes ||
-          identidadePendente ||
-          horarioPendente ||
-          pagamentosPendente,
-      );
-  }, [
-    active,
-    transportadorasPendentes,
-    identidadePendente,
-    horarioPendente,
-    pagamentosPendente,
-    onSetDirty,
-  ]);
+      onSetDirty?.(transportadorasPendentes || pagamentosPendente);
+  }, [active, transportadorasPendentes, pagamentosPendente, onSetDirty]);
 
   // Reset helper modals when tab becomes inactive
   useEffect(() => {
@@ -659,7 +636,6 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const horarioSalvo = (config.businessHours ?? "").trim();
   const atendimentoDeRelacao =
     horarioSalvo === "" ? "não informado" : horarioSalvo;
-  const nomeDaLoja = (config.storeName ?? "").trim() || "não informado";
 
   return (
     <div className="pb-admin h-auto bg-admin-bg duration-200 animate-in fade-in lg:pb-12">
@@ -859,41 +835,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-amber-500" />
                 </div>
               </div>
-
-              <SecaoColapsavel
-                titulo="Nome, logo e cores"
-                subtitulo={nomeDaLoja}
-                icone={Palette}
-                comPendencia={identidadePendente}
-              >
-                {/* O endereço físico da loja mora na tela "Sobre a Loja"
-                    (admin-about-store, 20/09/2026) — junto do mapa que ele
-                    alimenta, não aqui. */}
-                <Suspense
-                  fallback={
-                    <p className="text-sm text-zinc-400">
-                      Carregando identidade…
-                    </p>
-                  }
-                >
-                  <IdentitySettingsSection
-                    active={active}
-                    onDirtyChange={setIdentidadePendente}
-                  />
-                </Suspense>
-              </SecaoColapsavel>
-
-              <SecaoColapsavel
-                titulo="Atendimento"
-                subtitulo={atendimentoDeRelacao}
-                icone={Clock}
-                comPendencia={horarioPendente}
-              >
-                <BusinessHoursSection
-                  active={active}
-                  onDirtyChange={setHorarioPendente}
-                />
-              </SecaoColapsavel>
+              {/* "Nome, logo e cores" e "Atendimento" — os dois acordeões que
+                  moravam aqui — SAÍRAM em 22/09/2026 (pedido do dono): eram
+                  duplicados de AdminAboutStoreView, que já monta os MESMOS
+                  componentes (IdentitySettingsSection, BusinessHoursSection)
+                  com o mesmo contrato de salvamento. A edição passou a
+                  existir só na tela "Sobre a Loja"; o atalho para lá é o
+                  cartão logo acima. */}
             </GrupoDeAjustes>
 
             <GrupoDeAjustes titulo="Entrega">
@@ -1066,13 +1014,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
-                    <Clock className="size-3.5" strokeWidth={2.25} />
+                    <Store className="size-3.5" strokeWidth={2.25} />
                   </span>
-                  Nome, logo e cores · Atendimento
+                  Sobre a Loja
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Identidade da loja (nome, cidade/UF, logo, cores) e o horário
-                  de atendimento que a vitrine mostra.
+                  Nome, logo, cores, endereço, horário de atendimento e a
+                  descrição da loja — tudo editado numa única tela.
                 </p>
               </div>
             </div>

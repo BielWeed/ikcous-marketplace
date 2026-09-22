@@ -203,6 +203,7 @@
         "npm:tailwind-merge@^3.4.0",
         "npm:tailwindcss-animate@^1.0.7",
         "npm:tailwindcss@^3.4.19",
+        "npm:terser@^5.49.0",
         "npm:tus-js-client@4.3.1",
         "npm:typescript-eslint@^8.46.4",
         "npm:typescript@~5.9.3",
@@ -211,7 +212,18 @@
         "npm:vitest@^4.1.10",
         "npm:zod@^4.3.5",
         "npm:zxing-wasm@^3.1.4"
-      ]
+      ],
+      "overrides": {
+        "eslint": {
+          "brace-expansion": "^1.1.13",
+          "ajv": "^6.15.0"
+        },
+        "@eslint/eslintrc": {
+          "ajv": "^6.15.0"
+        },
+        "ajv": "^8.20.0",
+        "qs": "^6.15.2"
+      }
     }
   }
 }

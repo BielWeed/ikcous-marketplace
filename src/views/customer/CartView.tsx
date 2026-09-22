@@ -33,6 +33,14 @@ import { OrderList } from "@/components/ui/custom/OrderList";
 import { OrderSearch } from "@/components/ui/custom/OrderSearch";
 import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
 import { ShippingProgress } from "@/components/ui/custom/ShippingProgress";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 
 interface CartViewProps {
@@ -182,10 +190,23 @@ export function CartView({
   useEffect(() => {
     if (isActive) idsAntesDoCadastroRef.current = null;
   }, [isActive]);
+  // Foco de quem fecha a folha pelo teclado (Esc/X/escolha): volta ao
+  // "Trocar". Desligado quando a saída é o formulário ou a aba sai de foco.
+  const botaoTrocarRef = useRef<HTMLButtonElement>(null);
+  const devolverFocoAoTrocarRef = useRef(true);
+  // Aba fora de foco (checkout ou formulário por cima): o seletor de
+  // endereço não fica aberto por trás nem reabre sozinho na volta.
+  useEffect(() => {
+    if (!isActive) {
+      devolverFocoAoTrocarRef.current = false;
+      setEscolhendoEndereco(false);
+    }
+  }, [isActive]);
 
   const cadastrarEndereco = () => {
     haptic.light();
     idsAntesDoCadastroRef.current = new Set(addresses.map((a) => a.id));
+    devolverFocoAoTrocarRef.current = false;
     setEscolhendoEndereco(false);
     onNavigate("address-form");
   };
@@ -625,15 +646,18 @@ export function CartView({
                           acaoDoEndereco={
                             !user ? null : addresses.length > 0 ? (
                               <button
+                                ref={botaoTrocarRef}
                                 type="button"
+                                aria-haspopup="dialog"
                                 aria-expanded={escolhendoEndereco}
                                 onClick={() => {
                                   haptic.light();
-                                  setEscolhendoEndereco((v) => !v);
+                                  devolverFocoAoTrocarRef.current = true;
+                                  setEscolhendoEndereco(true);
                                 }}
                                 className="select-none rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-700 hover:border-zinc-300"
                               >
-                                {escolhendoEndereco ? "Fechar" : "Trocar"}
+                                Trocar
                               </button>
                             ) : (
                               <button
@@ -646,31 +670,96 @@ export function CartView({
                             )
                           }
                         />
-                        {user && escolhendoEndereco && addresses.length > 0 && (
-                          <div className="space-y-2 rounded-3xl border border-zinc-100 bg-white p-3">
-                            <span className="block text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                              Entregar em
-                            </span>
-                            <AddressList
-                              addresses={addresses}
-                              selectable
-                              compact
-                              selectedId={enderecoDestino?.id}
-                              onSelect={(endereco) => {
-                                haptic.light();
-                                setEnderecoSelecionadoId(endereco.id);
-                                setEscolhendoEndereco(false);
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={cadastrarEndereco}
-                              className="w-full select-none rounded-2xl border border-dashed border-zinc-200 py-2.5 text-[10px] font-black uppercase tracking-wider text-zinc-600 hover:border-zinc-300"
+                        {/* SELETOR DE ENDEREÇO EM FOLHA (22/09, relato da
+                            cliente no celular): o painel antigo nascia NO
+                            FLUXO, logo abaixo do card de frete — com o
+                            carrinho rolado até o fim, ele caía atrás do
+                            rodapé fixo Total/Finalizar e da navegação, e
+                            nada rolava até ele (medido: só o endereço já
+                            escolhido ficava à vista; os outros e o "Novo
+                            endereço" ficavam cobertos). A folha modal é
+                            portalada no body em z-[130], ACIMA dos dois
+                            rodapés; a lista rola DENTRO dela e o
+                            "Cadastrar novo endereço" fica no rodapé da
+                            folha, sempre à vista. Prova geométrica em
+                            tests/e2e/jornada-trocar-endereco-carrinho.spec.ts. */}
+                        <Sheet
+                          open={
+                            Boolean(user) &&
+                            escolhendoEndereco &&
+                            addresses.length > 0
+                          }
+                          onOpenChange={setEscolhendoEndereco}
+                        >
+                          <SheetContent
+                            side="bottom"
+                            data-testid="seletor-endereco-entrega"
+                            className="mx-auto max-h-[85dvh] gap-0 rounded-t-3xl sm:max-w-md"
+                            // A folha abre por ESTADO (sem SheetTrigger): o
+                            // Radix não tem gatilho para devolver o foco e
+                            // ele cairia no body. Volta ao "Trocar" — exceto
+                            // quando a saída é o formulário de endereço ou
+                            // a aba saiu de foco (botão desmontado).
+                            onCloseAutoFocus={(evento) => {
+                              evento.preventDefault();
+                              const botao = botaoTrocarRef.current;
+                              if (
+                                devolverFocoAoTrocarRef.current &&
+                                botao?.isConnected
+                              ) {
+                                botao.focus();
+                              }
+                            }}
+                          >
+                            <SheetHeader className="shrink-0 px-5 pb-3 pr-12 pt-5">
+                              <SheetTitle className="text-base font-black tracking-tight text-zinc-950">
+                                Entregar em
+                              </SheetTitle>
+                              <SheetDescription className="text-xs text-zinc-500">
+                                Escolha onde receber o pedido. O frete é
+                                recalculado para o endereço escolhido.
+                              </SheetDescription>
+                            </SheetHeader>
+                            <div
+                              data-testid="seletor-endereco-lista"
+                              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-3"
                             >
-                              + Novo endereço
-                            </button>
-                          </div>
-                        )}
+                              <AddressList
+                                addresses={addresses}
+                                selectable
+                                compact
+                                selectedId={enderecoDestino?.id}
+                                onSelect={(endereco) => {
+                                  haptic.light();
+                                  // Compara com o id GUARDADO, não com o
+                                  // efetivo: se o guardado aponta para um
+                                  // endereço que sumiu da lista, o carrinho
+                                  // mostra o principal como "Selecionado" —
+                                  // tocá-lo tem de trocar o id morto pelo
+                                  // dele, ou o checkout envia um addressId
+                                  // que não existe. Mesmo id guardado: só
+                                  // fecha.
+                                  if (endereco.id !== enderecoSelecionadoId) {
+                                    setEnderecoSelecionadoId(endereco.id);
+                                  }
+                                  setEscolhendoEndereco(false);
+                                }}
+                              />
+                            </div>
+                            {/* Rodapé FIXO da folha: fora da área que rola,
+                                com a área segura do aparelho (mesma
+                                variável dos rodapés da casa). */}
+                            <SheetFooter className="mt-0 shrink-0 border-t border-zinc-100 bg-background px-5 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-3">
+                              <button
+                                type="button"
+                                onClick={cadastrarEndereco}
+                                className="flex h-12 w-full select-none items-center justify-center rounded-2xl border border-dashed border-zinc-300 text-[11px] font-black uppercase tracking-wider text-zinc-700 hover:border-zinc-400"
+                              >
+                                + Cadastrar novo endereço
+                              </button>
+                            </SheetFooter>
+                          </SheetContent>
+                        </Sheet>
                       </div>
                     )}
 
