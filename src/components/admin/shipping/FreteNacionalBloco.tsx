@@ -28,14 +28,18 @@ import { memo } from "react";
  *   remanescente de loja antiga — em ambos, a loja de fora NÃO é atendida;
  * - "indeterminado": a leitura das credenciais falhou — a tela não sabe, e
  *   não finge saber (estados honestos são a lei deste repo);
- * - "chave_salva" (release 1.5.4, só SuperFrete): há chave salva, mas isso
- *   NÃO prova conexão — sem a variável de projeto SUPERFRETE_USER_AGENT a
- *   edge nem chama a API. Quem prova é o "Testar" em Ajustes; aqui a tela
- *   diz só o que sabe ("chave salva"), nunca "conectado"/"preço real".
+ * - "chave_salva" (release 1.5.4, só SuperFrete): há chave e e-mail de
+ *   contato salvos, mas isso NÃO prova conexão. Quem prova é o "Testar" em
+ *   Ajustes; aqui a tela diz só o que sabe ("chave salva"), nunca
+ *   "conectado"/"preço real";
+ * - "incompleta" (release 1.5.5, só SuperFrete): há chave salva, mas falta o
+ *   e-mail de contato técnico — sem ele a edge não chama a SuperFrete, e a
+ *   loja de fora NÃO é atendida até a lojista preencher em Ajustes.
  */
 export type EstadoConexaoNacional =
   | "conectado"
   | "chave_salva"
+  | "incompleta"
   | "desconectado"
   | "indeterminado";
 
@@ -98,6 +102,13 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
                 {provedorNome}
               </span>
             </>
+          ) : estado === "incompleta" ? (
+            <>
+              <PontoEstado tom="atencao" />
+              <span className="text-amber-300">
+                incompleta · {provedorNome}
+              </span>
+            </>
           ) : estado === "indeterminado" ? (
             <>
               <PontoEstado tom="neutro" />
@@ -125,6 +136,12 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
                 "Chave da SuperFrete salva — confirme a conexão com 'Testar' em Ajustes > Transportadoras."
               }
             </>
+          ) : estado === "incompleta" ? (
+            <>
+              {
+                "Falta o e-mail de contato técnico da SuperFrete — preencha em Ajustes > Transportadoras. Sem ele, nenhuma cotação de fora da cidade sai."
+              }
+            </>
           ) : estado === "indeterminado" ? (
             <>
               Não foi possível confirmar a conexão com a transportadora. Sem
@@ -148,6 +165,15 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
             className="flex shrink-0 items-center rounded-lg bg-admin-accent px-4 py-2 text-[12px] font-extrabold text-zinc-950 transition-all hover:opacity-90 active:scale-95"
           >
             Conectar transportadora
+          </button>
+        )}
+        {estado === "incompleta" && onAbrirAjustes && (
+          <button
+            type="button"
+            onClick={onAbrirAjustes}
+            className="flex shrink-0 items-center rounded-lg bg-admin-accent px-4 py-2 text-[12px] font-extrabold text-zinc-950 transition-all hover:opacity-90 active:scale-95"
+          >
+            Preencher em Ajustes
           </button>
         )}
         {estado === "indeterminado" && onTentarDeNovo && (

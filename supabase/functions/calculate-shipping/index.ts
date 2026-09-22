@@ -303,8 +303,24 @@ export const SUPERFRETE_SERVICO_POR_CHAVE: Readonly<Record<string, number>> = { 
 /** "Lista vazia = todas" (mesma regra do ME): os ids que a doc lista (1 PAC, 2 SEDEX, 3 Jadlog, 17 Mini Envios, 31 Loggi, 33 J&T). */
 export const SUPERFRETE_TODOS_OS_SERVICOS: readonly number[] = [1, 2, 3, 17, 31, 33]
 
-export const MOTIVO_SEM_USER_AGENT_SUPERFRETE =
-    'SuperFrete não consultada: configure SUPERFRETE_USER_AGENT nas variáveis do projeto (formato "NomeDoApp versão (e-mail de contato técnico)", exigido pela SuperFrete).'
+/**
+ * Versão que vai no User-Agent da SuperFrete (release 1.5.5). A doc manda
+ * "Nome da sua aplicação e versão (<e-mail>)"; o nome é o do app, a versão é
+ * a da release que publicou esta edge.
+ */
+export const VERSAO_DA_INTEGRACAO_SUPERFRETE = '1.5.5'
+
+/**
+ * Motivo de a SuperFrete não ser consultada por falta do e-mail — vai para o
+ * histórico de cotações e para o teste de conexão, em linguagem de lojista e
+ * apontando o CAMPO da tela (nunca variável de ambiente).
+ */
+export const MOTIVO_SEM_EMAIL_SUPERFRETE =
+    'Falta o e-mail de contato técnico da SuperFrete — preencha em Ajustes > Transportadoras.'
+
+/** O e-mail que a lojista DIGITOU não passa na régua (salvar e testar). */
+export const MOTIVO_EMAIL_DE_CONTATO_INVALIDO =
+    'Confira o e-mail de contato técnico: use um endereço completo, sem espaços nem acentos (exemplo: voce@sualoja.com.br).'
 
 /**
  * O `services` do pedido, derivado das chaves de TRANSPORTADORA (a de
@@ -328,13 +344,49 @@ export function urlDaCotacaoSuperFrete(sandbox: unknown): string {
 }
 
 /**
- * User-Agent da SuperFrete: variável de PROJETO, nunca inventada aqui (a doc
- * exige um e-mail de contato técnico real, e cada loja tem o seu). Ausente
- * ou só espaço = `null`, e quem chama falha FECHADO sem consultar a API.
+ * E-mail de contato técnico (release 1.5.5) — a ÚNICA régua, usada ao salvar
+ * (`save_credentials`), no teste de conexão e na cotação pública (que
+ * REVALIDA o salvo: a RLS deixa o admin gravar a linha direto, sem passar por
+ * aqui). Devolve o e-mail APARADO, ou `null` quando não serve.
+ *
+ * Estrita de propósito, porque o valor vai DENTRO de um header HTTP:
+ * - só ASCII: nada de `\S` nem de classe que aceite Unicode — no Deno 2.9.2
+ *   "ő@x.com" estoura "not a valid ByteString" no `new Headers` (e a cotação
+ *   virava 503 com motivo técnico em inglês) e "joão@x.com" sai como Latin-1;
+ * - sem espaço, CR, LF, `<`, `>`, `(`, `)`, vírgula nem `;`: nenhum desses
+ *   cabe na classe abaixo, então nenhum quebra o comentário "(e-mail)" do
+ *   User-Agent nem injeta outro header;
+ * - no máximo 254 caracteres depois do trim (limite prático de endereço).
+ *
+ * É a regex `^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$`
+ * escrita em partes: um `@` só; local em `[A-Za-z0-9._%+-]+`; domínio com
+ * 2+ rótulos `[A-Za-z0-9-]+` separados por ponto, o último só letras (2+).
+ * Em partes para não ter quantificador aninhado (backtracking).
  */
-export function userAgentDaSuperFrete(): string | null {
-    const valor = (Deno.env.get('SUPERFRETE_USER_AGENT') ?? '').trim()
-    return valor.length > 0 ? valor : null
+export function emailDeContatoValido(valor: unknown): string | null {
+    if (typeof valor !== 'string') return null
+    const email = valor.trim()
+    if (email.length === 0 || email.length > 254) return null
+    const arroba = email.indexOf('@')
+    if (arroba <= 0 || arroba !== email.lastIndexOf('@')) return null
+    if (!/^[A-Za-z0-9._%+-]+$/.test(email.slice(0, arroba))) return null
+    const rotulos = email.slice(arroba + 1).split('.')
+    if (rotulos.length < 2) return null
+    if (!/^[A-Za-z]{2,}$/.test(rotulos.at(-1) ?? '')) return null
+    return rotulos.every((rotulo) => /^[A-Za-z0-9-]+$/.test(rotulo)) ? email : null
+}
+
+/**
+ * User-Agent da SuperFrete montado NO SERVIDOR (release 1.5.5):
+ * `IKCOUS Marketplace <versão> (<e-mail de contato técnico da loja>)`. O
+ * e-mail é o que a LOJA salvou (ou, no teste de conexão, o que a lojista
+ * digitou) — até a 1.5.4 o UA inteiro vinha de uma variável de projeto, que
+ * saiu SEM fallback. E-mail que não passa na régua = `null`, e quem chama
+ * falha FECHADO sem consultar a API.
+ */
+export function userAgentDaSuperFrete(email: unknown): string | null {
+    const valido = emailDeContatoValido(email)
+    return valido ? `IKCOUS Marketplace ${VERSAO_DA_INTEGRACAO_SUPERFRETE} (${valido})` : null
 }
 
 function cabecalhosDaSuperFrete(token: string, userAgent: string): Record<string, string> {
@@ -888,6 +940,132 @@ export type CalculateShippingDeps = {
     verificarAdmin?: (authHeader: string | null) => Promise<boolean>
 }
 
+/**
+ * Ação `save_credentials` (release 1.5.5) — a chave, o modo de testes e o
+ * e-mail de contato técnico da SuperFrete são gravados PELO SERVIDOR.
+ *
+ * Por que pela edge, e só para a SuperFrete: o e-mail entra num header HTTP
+ * (User-Agent), então a régua precisa valer no servidor; e "campo vazio =
+ * mantém a chave salva" exige ler o token salvo, que o navegador não tem
+ * (1.5.4: a chave é só-escrita). Melhor Envio e Frenet continuam salvando
+ * pelo caminho de sempre — aqui recebem recusa.
+ *
+ * Contrato:
+ * - não-admin: 403, o mesmo do `test_credentials` (mesma costura
+ *   `deps.verificarAdmin`);
+ * - recusa de VALIDAÇÃO (provedor errado, e-mail, "cole a chave", modo de
+ *   testes sem chave nova): 200 `{ success: false, error }` — com 4xx o
+ *   `supabase.functions.invoke` entrega `data: null` e a frase em português
+ *   não chegaria à tela;
+ * - falha de banco: 5xx `{ success: false, error }`, sem texto cru;
+ * - sucesso: `{ success: true, tem_chave: true, sandbox, contact_email }`.
+ *   O token NUNCA volta.
+ *
+ * Grava por LISTA BRANCA, campo a campo: `{ token, sandbox, contact_email }`
+ * — nada do corpo nem da linha antiga é copiado inteiro.
+ *
+ * Concorrência: "token vazio = mantém o salvo" é ler-e-regravar. Dois
+ * salvamentos simultâneos (dois aparelhos da mesma lojista) terminam com o
+ * último que gravou — o mesmo "último vence" do upsert que o painel já fazia.
+ */
+async function salvarCredenciaisDaSuperFrete(
+    req: Request,
+    body: any,
+    supabaseClient: any,
+    deps: CalculateShippingDeps,
+    supabaseUrl: string,
+    supabaseServiceRole: string,
+): Promise<Response> {
+    const responder = (conteudo: Record<string, unknown>, status = 200) =>
+        new Response(JSON.stringify(conteudo), {
+            status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+
+    const authHeader = req.headers.get('Authorization')
+    const isAdmin = deps.verificarAdmin
+        ? await deps.verificarAdmin(authHeader)
+        : await verifyIsAdmin(authHeader, supabaseUrl, supabaseServiceRole)
+    if (!isAdmin) {
+        return responder({ error: 'Não autorizado: Apenas administradores podem salvar credenciais.' }, 403)
+    }
+
+    if (body?.provider !== 'superfrete') {
+        return responder({
+            success: false,
+            error: 'Por aqui só se salva a chave da SuperFrete. As outras transportadoras salvam pela própria tela.',
+        })
+    }
+
+    const recebidas = body.credentials && typeof body.credentials === 'object' ? body.credentials : {}
+    const contactEmail = emailDeContatoValido(recebidas.contact_email)
+    if (!contactEmail) {
+        return responder({ success: false, error: MOTIVO_EMAIL_DE_CONTATO_INVALIDO })
+    }
+
+    const tokenNovo = typeof recebidas.token === 'string' ? recebidas.token.trim() : ''
+    let token = tokenNovo
+    let sandbox = recebidas.sandbox === true
+
+    try {
+        if (!tokenNovo) {
+            // Campo da chave vazio = mantém a SALVA, lida aqui com a service
+            // role (depois da checagem de admin). O navegador nunca a teve.
+            const { data: linhaSalva, error: erroDaLinha } = await supabaseClient
+                .from('store_shipping_credentials')
+                .select('credentials')
+                .eq('provider', 'superfrete')
+                .maybeSingle()
+            if (erroDaLinha) {
+                console.error('[calculate-shipping] save_credentials: leitura da chave salva falhou:', erroDaLinha?.code ?? 'sem código')
+                return responder({ success: false, error: 'Não foi possível conferir a chave salva agora. Tente de novo em instantes.' }, 503)
+            }
+            const salvas = linhaSalva?.credentials
+            if (!salvas || typeof salvas.token !== 'string' || salvas.token.length === 0) {
+                return responder({ success: false, error: 'Cole a chave de acesso da SuperFrete.' })
+            }
+            const sandboxSalvo = salvas.sandbox === true
+            // A chave é POR AMBIENTE: trocar o modo de testes sem a chave do
+            // ambiente novo deixaria a chave velha apontada para o errado
+            // (mesma regra que a tela já aplica).
+            if (recebidas.sandbox !== undefined && (recebidas.sandbox === true) !== sandboxSalvo) {
+                return responder({
+                    success: false,
+                    error: 'Para trocar o modo de testes (Sandbox), cole a chave de acesso do ambiente escolhido — Sandbox e produção usam chaves diferentes.',
+                })
+            }
+            token = salvas.token
+            sandbox = sandboxSalvo
+        }
+
+        const { error: erroAoGravar } = await supabaseClient
+            .from('store_shipping_credentials')
+            .upsert(
+                {
+                    provider: 'superfrete',
+                    credentials: { token, sandbox, contact_email: contactEmail },
+                    updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'provider' },
+            )
+        if (erroAoGravar) {
+            console.error(
+                '[calculate-shipping] save_credentials: gravação falhou:',
+                textoSemSegredo(erroAoGravar?.message ?? erroAoGravar, [token, tokenNovo]),
+            )
+            return responder({ success: false, error: 'Não foi possível salvar a chave da SuperFrete. Tente de novo.' }, 500)
+        }
+    } catch (err) {
+        console.error(
+            '[calculate-shipping] save_credentials: exceção:',
+            textoSemSegredo(err?.message ?? err, [token, tokenNovo]),
+        )
+        return responder({ success: false, error: 'Não foi possível salvar a chave da SuperFrete. Tente de novo.' }, 500)
+    }
+
+    return responder({ success: true, tem_chave: true, sandbox, contact_email: contactEmail })
+}
+
 export async function handler(req: Request, deps: CalculateShippingDeps = {}): Promise<Response> {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
@@ -928,6 +1106,14 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
             const { provider } = body
             let credentials = body.credentials
+            // Release 1.5.5: o e-mail de contato técnico DIGITADO na tela
+            // (ainda não salvo) viaja em `credentials.contact_email` — é
+            // guardado ANTES de `credentials` ser trocado pela linha salva.
+            const emailDigitado = body.credentials && typeof body.credentials === 'object'
+                ? body.credentials.contact_email
+                : undefined
+            let linhaSalvaLida = false
+            let salvas: any = null
 
             // Release 1.5.4: o painel NÃO baixa mais o token (só sabe SE ele
             // existe). Para testar a chave JÁ salva, ele pede
@@ -940,7 +1126,8 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     .select('credentials')
                     .eq('provider', provider)
                     .maybeSingle()
-                const salvas = erroDaLinha ? null : linhaSalva?.credentials
+                linhaSalvaLida = true
+                salvas = erroDaLinha ? null : linhaSalva?.credentials
                 if (!salvas || typeof salvas.token !== 'string' || salvas.token.length === 0) {
                     return new Response(
                         JSON.stringify({ error: 'Nenhuma chave de acesso salva para esta transportadora. Cole a chave e salve antes de testar.' }),
@@ -1041,10 +1228,32 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                         )
                     }
                 } else if (provider === 'superfrete') {
-                    const userAgent = userAgentDaSuperFrete()
+                    // Release 1.5.5 — de onde vem o e-mail do User-Agent:
+                    // - DIGITADO (não vazio): vale ele, validado pela mesma
+                    //   régua do salvar; inválido = recusa, sem cair no salvo;
+                    // - sem e-mail digitado: o SALVO da loja (lido aqui com a
+                    //   service role, se ainda não foi) — cobre o painel 1.5.4
+                    //   em cache, que não manda e-mail nenhum.
+                    const temEmailDigitado = typeof emailDigitado === 'string' && emailDigitado.trim().length > 0
+                    let emailDoTeste: unknown = emailDigitado
+                    if (!temEmailDigitado) {
+                        if (!linhaSalvaLida) {
+                            const { data: linhaDoEmail, error: erroDoEmail } = await supabaseClient
+                                .from('store_shipping_credentials')
+                                .select('credentials')
+                                .eq('provider', 'superfrete')
+                                .maybeSingle()
+                            salvas = erroDoEmail ? null : linhaDoEmail?.credentials
+                        }
+                        emailDoTeste = salvas?.contact_email
+                    }
+                    const userAgent = userAgentDaSuperFrete(emailDoTeste)
                     if (!userAgent) {
                         return new Response(
-                            JSON.stringify({ success: false, error: MOTIVO_SEM_USER_AGENT_SUPERFRETE }),
+                            JSON.stringify({
+                                success: false,
+                                error: temEmailDigitado ? MOTIVO_EMAIL_DE_CONTATO_INVALIDO : MOTIVO_SEM_EMAIL_SUPERFRETE,
+                            }),
                             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                         )
                     }
@@ -1096,6 +1305,11 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 )
             }
+        }
+
+        // ROUTE: save_credentials (release 1.5.5 — SÓ SuperFrete)
+        if (action === 'save_credentials') {
+            return await salvarCredenciaisDaSuperFrete(req, body, supabaseClient, deps, supabaseUrl, supabaseServiceRole)
         }
 
         // ROUTE: calculate (default flow)
@@ -1564,9 +1778,11 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
                 // Falha FECHADA antes de qualquer rede: sem o User-Agent que
                 // a SuperFrete exige, a chamada não sai (nunca um UA
-                // inventado nem o fixo do ME).
-                const userAgent = userAgentDaSuperFrete()
-                if (!userAgent) throw new Error(MOTIVO_SEM_USER_AGENT_SUPERFRETE)
+                // inventado nem o fixo do ME). Release 1.5.5: o UA sai SÓ do
+                // e-mail salvo DESTA loja, revalidado aqui (a linha pode ter
+                // sido gravada sem passar pelo `save_credentials`).
+                const userAgent = userAgentDaSuperFrete(credentials.contact_email)
+                if (!userAgent) throw new Error(MOTIVO_SEM_EMAIL_SUPERFRETE)
 
                 const services = servicosSuperFrete(chavesDeServico)
                 if (!services) {

@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   KeyRound,
   Lock,
+  Mail,
   Package,
   RefreshCw,
   Save,
@@ -42,6 +43,37 @@ const NOME_DA_CHAVE: Readonly<Record<string, string>> = {
   frenet: "Frenet",
   superfrete: "SuperFrete",
 };
+
+/**
+ * E-mail de contato técnico da SuperFrete (release 1.5.5) — CÓPIA da régua
+ * da edge (`emailDeContatoValido` em calculate-shipping/index.ts), só para a
+ * experiência de uso: avisar no campo antes de ir ao servidor. Quem decide é
+ * a edge; se ela recusar, a tela mostra a frase dela. Só ASCII, sem espaço
+ * nem nada que quebre o header onde o e-mail vai, no máximo 254 caracteres.
+ * Em partes (um `@`; local; 2+ rótulos, o último só letras) para não ter
+ * quantificador aninhado.
+ */
+function emailDeContatoValido(valor: unknown): string | null {
+  if (typeof valor !== "string") return null;
+  const email = valor.trim();
+  if (email.length === 0 || email.length > 254) return null;
+  const arroba = email.indexOf("@");
+  if (arroba <= 0 || arroba !== email.lastIndexOf("@")) return null;
+  if (!/^[A-Za-z0-9._%+-]+$/.test(email.slice(0, arroba))) return null;
+  const rotulos = email.slice(arroba + 1).split(".");
+  if (rotulos.length < 2) return null;
+  if (!/^[A-Za-z]{2,}$/.test(rotulos.at(-1) ?? "")) return null;
+  return rotulos.every((rotulo) => /^[A-Za-z0-9-]+$/.test(rotulo))
+    ? email
+    : null;
+}
+
+const MENSAGEM_PARA_ATIVAR_SUPERFRETE =
+  "Para ativar a SuperFrete, cole a chave de acesso e preencha o e-mail de contato.";
+const MENSAGEM_EMAIL_INVALIDO =
+  "Confira o e-mail de contato técnico: use um endereço completo, sem espaços nem acentos (exemplo: voce@sualoja.com.br).";
+const MENSAGEM_EMAIL_VAZIO =
+  "Preencha o e-mail de contato técnico para testar e salvar a SuperFrete.";
 
 interface TransportadorasSectionProps {
   /**
@@ -94,6 +126,20 @@ interface TransportadorasSectionProps {
  * (`{ token, sandbox }`); "Testar" sem chave digitada pede à edge que use a
  * SALVA (`usarCredencialSalva`), que ela lê com a service role depois de
  * conferir que quem pede é admin.
+ *
+ * RELEASE 1.5.5 — O E-MAIL DE CONTATO DA SUPERFRETE É DA LOJISTA. Pedido do
+ * dono: "se precisa de email deve ter no app para eu colocar". A SuperFrete
+ * exige um e-mail de contato técnico no User-Agent; a edge monta o UA com o
+ * e-mail que ESTA tela salva (`credentials.contact_email`). A tela lê só o
+ * e-mail, por alias (`contato:credentials->>contact_email`) — nunca o token.
+ * Salvar a SuperFrete vai SEMPRE pela edge (`save_credentials`: valida o
+ * e-mail no servidor e mantém a chave salva quando o campo está vazio); o
+ * provedor vivo só muda DEPOIS, e só se a resposta da edge disser que ficou
+ * completo (chave + e-mail) — nunca pelo estado local, que pode estar velho
+ * (outro aparelho com o painel 1.5.4 grava `{token, sandbox}` e apaga o
+ * e-mail). Melhor Envio e Frenet seguem a ordem ADMIN-010 de sempre.
+ * O rodapé "Ativo agora" passou a mostrar o provedor SALVO: antes mostrava
+ * a escolha não salva, e dizia "SuperFrete" com a SuperFrete bloqueada.
  */
 
 const OPCOES: ReadonlyArray<{
@@ -168,6 +214,13 @@ export const TransportadorasSection = memo(function TransportadorasSection({
   const [sandboxEscolhido, setSandboxEscolhido] = useState<
     Record<string, boolean>
   >({});
+  // E-mail de contato técnico da SuperFrete (1.5.5): o SALVO (lido sozinho,
+  // por alias) e o do campo. Diferentes = há o que salvar.
+  const [emailSalvo, setEmailSalvo] = useState("");
+  const [emailDigitado, setEmailDigitado] = useState("");
+  // Liga quando Testar/Salvar foram barrados pelo e-mail — o aviso aparece
+  // no campo até a lojista mexer nele.
+  const [avisoEmail, setAvisoEmail] = useState(false);
   // PAINEL-01: `credsLoaded` só vira true quando a leitura devolveu dados de
   // verdade — sem ela o campo da chave fica travado.
   const [credsLoaded, setCredsLoaded] = useState(false);
@@ -188,8 +241,10 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     try {
       // Duas perguntas, as duas respondidas pelo Postgres por FILTRO: a
       // coluna `credentials` nunca entra no `select` (o token não sai do
-      // banco). RLS já restringe as linhas ao admin da loja.
-      const [comToken, emSandbox] = await Promise.all([
+      // banco). RLS já restringe as linhas ao admin da loja. A terceira
+      // (1.5.5) pede SÓ o e-mail de contato da SuperFrete, por alias — o
+      // PostgREST devolve o texto daquele campo e nada mais do JSON.
+      const [comToken, emSandbox, emailDaSuperFrete] = await Promise.all([
         supabase
           .from("store_shipping_credentials")
           .select("provider")
@@ -199,9 +254,26 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           .from("store_shipping_credentials")
           .select("provider")
           .eq("credentials->>sandbox", "true"),
+        supabase
+          .from("store_shipping_credentials")
+          .select("provider, contato:credentials->>contact_email")
+          .eq("provider", "superfrete"),
       ]);
-      const erro = comToken.error ?? emSandbox.error;
-      if (!erro && comToken.data && emSandbox.data) {
+      const erro = comToken.error ?? emSandbox.error ?? emailDaSuperFrete.error;
+      if (!erro && comToken.data && emSandbox.data && emailDaSuperFrete.data) {
+        const linhaDaSuperFrete = (
+          emailDaSuperFrete.data as ReadonlyArray<{
+            provider: string;
+            contato: unknown;
+          }>
+        ).find((row) => row.provider === "superfrete");
+        const email =
+          typeof linhaDaSuperFrete?.contato === "string"
+            ? linhaDaSuperFrete.contato
+            : "";
+        setEmailSalvo(email);
+        setEmailDigitado(email);
+        setAvisoEmail(false);
         setComChaveSalva(
           new Set(
             comToken.data.map((row: { provider: string }) => row.provider),
@@ -283,10 +355,22 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       ) {
         return true;
       }
+      // E-mail de contato diferente do salvo (1.5.5, só SuperFrete).
+      if (provider === "superfrete" && emailDigitado.trim() !== emailSalvo) {
+        return true;
+      }
     }
 
     return false;
-  }, [escolha, config, chaveDigitada, sandboxEscolhido, sandboxSalvo]);
+  }, [
+    escolha,
+    config,
+    chaveDigitada,
+    sandboxEscolhido,
+    sandboxSalvo,
+    emailDigitado,
+    emailSalvo,
+  ]);
 
   // O modo de testes que a tela mostra: a escolha pendente, ou o salvo.
   const sandboxDe = useCallback(
@@ -315,6 +399,19 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       return;
     }
 
+    // SuperFrete (1.5.5): o teste usa o e-mail DO CAMPO (a edge monta o
+    // User-Agent com ele) — inválido ou vazio, nem sai daqui.
+    const emailDoTeste =
+      provider === "superfrete" ? emailDeContatoValido(emailDigitado) : null;
+    if (provider === "superfrete" && !emailDoTeste) {
+      setAvisoEmail(true);
+      toast.error(
+        emailDigitado.trim() ? MENSAGEM_EMAIL_INVALIDO : MENSAGEM_EMAIL_VAZIO,
+      );
+      return;
+    }
+    const comEmail = emailDoTeste ? { contact_email: emailDoTeste } : {};
+
     setIsTestingCreds(true);
     setTestResult(null);
     haptic.light();
@@ -329,9 +426,14 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           credentials:
             provider === "frenet"
               ? { token: digitada }
-              : { token: digitada, sandbox: sandboxDe(provider) },
+              : { token: digitada, sandbox: sandboxDe(provider), ...comEmail },
         }
-      : { action: "test_credentials", provider, usarCredencialSalva: true };
+      : {
+          action: "test_credentials",
+          provider,
+          usarCredencialSalva: true,
+          ...(emailDoTeste ? { credentials: comEmail } : {}),
+        };
 
     try {
       const { data, error } = await supabase.functions.invoke(
@@ -367,7 +469,130 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     } finally {
       setIsTestingCreds(false);
     }
-  }, [isOffline, escolha.provider, chaveDigitada, comChaveSalva, sandboxDe]);
+  }, [
+    isOffline,
+    escolha.provider,
+    chaveDigitada,
+    comChaveSalva,
+    sandboxDe,
+    emailDigitado,
+  ]);
+
+  /**
+   * Salvar com a SuperFrete escolhida (1.5.5), nesta ORDEM:
+   * (a) grava chave + modo de testes + e-mail PELA EDGE (`save_credentials`)
+   *     — sempre, mesmo sem nada mudado (é idempotente); falhou ou recusou,
+   *     PARA e o provedor vivo não muda;
+   * (b) ativa só se a RESPOSTA da edge disser que ficou completo (chave +
+   *     e-mail) — nunca pelo estado local;
+   * (c) `updateConfig` (provedor + serviços, retirada preservada).
+   */
+  const salvarSuperFrete = async (chaveNova: string, sandboxNovo: boolean) => {
+    const email = emailDeContatoValido(emailDigitado);
+    if (!email) {
+      setAvisoEmail(true);
+      haptic.error();
+      toast.error(
+        emailDigitado.trim()
+          ? MENSAGEM_EMAIL_INVALIDO
+          : MENSAGEM_PARA_ATIVAR_SUPERFRETE,
+      );
+      return;
+    }
+
+    setIsSaving(true);
+    haptic.medium();
+
+    try {
+      // Campo da chave vazio = a edge mantém a SALVA (o navegador não a tem).
+      const credentials = chaveNova
+        ? { token: chaveNova, sandbox: sandboxNovo, contact_email: email }
+        : { contact_email: email };
+      const { data, error } = await supabase.functions.invoke(
+        "calculate-shipping",
+        {
+          body: {
+            action: "save_credentials",
+            provider: "superfrete",
+            credentials,
+          },
+        },
+      );
+      if (error) throw error;
+      if (!data?.success) {
+        haptic.error();
+        toast.error(
+          typeof data?.error === "string" && data.error
+            ? data.error
+            : "Não foi possível salvar a chave da SuperFrete. Tente de novo.",
+        );
+        return;
+      }
+
+      // O estado local acompanha o que a EDGE gravou — mesmo que o passo (c)
+      // falhe depois. A chave digitada sai do estado.
+      const temChave = data.tem_chave === true;
+      const emailGravado = emailDeContatoValido(data.contact_email);
+      setComChaveSalva((prev) => {
+        const proximo = new Set(prev);
+        if (temChave) proximo.add("superfrete");
+        else proximo.delete("superfrete");
+        return proximo;
+      });
+      setSandboxSalvo((prev) => {
+        const proximo = new Set(prev);
+        if (data.sandbox === true) proximo.add("superfrete");
+        else proximo.delete("superfrete");
+        return proximo;
+      });
+      setEmailSalvo(emailGravado ?? "");
+      if (emailGravado) setEmailDigitado(emailGravado);
+      setChaveDigitada((prev) => ({ ...prev, superfrete: "" }));
+      setSandboxEscolhido((prev) => {
+        const { superfrete: _descartado, ...resto } = prev;
+        return resto;
+      });
+
+      if (!temChave || !emailGravado) {
+        haptic.error();
+        toast.error(MENSAGEM_PARA_ATIVAR_SUPERFRETE);
+        return;
+      }
+
+      const salvou = await updateConfig({
+        shippingProvider: "superfrete",
+        enabledShippingMethods: listaComRetirada(
+          escolha.methods,
+          retiradaLigadaNaLista(config?.enabledShippingMethods),
+        ),
+      });
+      if (!salvou) {
+        haptic.error();
+        toast.error(
+          "A chave e o e-mail da SuperFrete foram salvos, mas a transportadora ativa não mudou.",
+          { description: "Toque em Salvar de novo para ativar a SuperFrete." },
+        );
+        return;
+      }
+
+      haptic.success();
+      toast.success("Transportadora salva!", {
+        description:
+          "A SuperFrete está ativa, com a chave de acesso e o e-mail de contato salvos.",
+      });
+    } catch (err) {
+      console.error("[TransportadorasCard] Error saving SuperFrete:", err);
+      haptic.error();
+      toast.error("Erro ao salvar a SuperFrete.", {
+        description: mensagemAmigavelErroEdgeFunction(err, {
+          mensagemGenerica:
+            "Não foi possível falar com o servidor. A transportadora ativa não mudou; tente de novo em instantes.",
+        }),
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleSave = async () => {
     if (isOffline) {
@@ -395,6 +620,12 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         description:
           "Sandbox e produção usam chaves diferentes: para trocar o modo de testes, cole a chave de acesso do ambiente novo e salve.",
       });
+      return;
+    }
+
+    // SuperFrete (1.5.5): credencial pela edge ANTES de trocar o provedor.
+    if (provider === "superfrete") {
+      await salvarSuperFrete(chaveNova, sandboxNovo);
       return;
     }
 
@@ -474,7 +705,25 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     }
   };
 
-  const opcaoAtiva = OPCOES.find((o) => o.id === escolha.provider);
+  // Rodapé (1.5.5): "Ativo agora" é o SALVO no config — a escolha não salva
+  // aparece à parte. Antes a frase mostrava o rascunho.
+  const provedorSalvo = (config?.shippingProvider ||
+    "flat_fee") as ProvedorDeFrete;
+  const nomeDoSalvo =
+    OPCOES.find((o) => o.id === provedorSalvo)?.nome ?? provedorSalvo;
+  const nomeDaEscolha = OPCOES.find((o) => o.id === escolha.provider)?.nome;
+  // SuperFrete ativa mas sem o que a edge exige para cotar: só se afirma com
+  // a leitura carregada (sem ela a tela não sabe, e não finge saber).
+  const faltaNaSuperFreteSalva =
+    provedorSalvo === "superfrete" && credsLoaded
+      ? [
+          comChaveSalva.has("superfrete") ? null : "a chave de acesso",
+          emailDeContatoValido(emailSalvo) ? null : "o e-mail de contato",
+        ].filter(Boolean)
+      : [];
+  const emailComAviso =
+    avisoEmail ||
+    (emailDigitado.trim() !== "" && !emailDeContatoValido(emailDigitado));
 
   return (
     <div className="flex flex-col gap-3 text-zinc-200">
@@ -669,6 +918,62 @@ export const TransportadorasSection = memo(function TransportadorasSection({
             </button>
           </div>
 
+          {/* E-mail de contato técnico (1.5.5) — só a SuperFrete pede. */}
+          {escolha.provider === "superfrete" && (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="superfrete-email-contato"
+                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+              >
+                <Mail className="size-3.5 text-admin-gold" />
+                <span>E-mail de contato técnico</span>
+              </label>
+              <p className="text-[11px] leading-snug text-zinc-400">
+                A SuperFrete exige um e-mail para falar com quem cuida desta
+                integração se algo der errado nas cotações. Use um e-mail seu
+                que você lê. Ele não aparece para as clientes.
+              </p>
+              <input
+                id="superfrete-email-contato"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                maxLength={254}
+                disabled={!credsLoaded}
+                value={emailDigitado}
+                aria-invalid={emailComAviso}
+                aria-describedby={
+                  emailComAviso ? "superfrete-email-contato-aviso" : undefined
+                }
+                onChange={(e) => {
+                  setEmailDigitado(e.target.value);
+                  setAvisoEmail(false);
+                  // O teste anterior era com o e-mail de antes.
+                  setTestResult(null);
+                }}
+                placeholder="voce@sualoja.com.br"
+                className={`h-9 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
+                  emailComAviso
+                    ? "border-red-500/50 focus:border-red-400"
+                    : "border-white/5 focus:border-admin-gold"
+                }`}
+              />
+              {emailComAviso && (
+                <p
+                  id="superfrete-email-contato-aviso"
+                  className="flex items-start gap-1.5 text-[11px] font-semibold leading-snug text-red-300"
+                >
+                  <AlertCircle className="mt-px size-3.5 shrink-0" />
+                  <span>
+                    {emailDigitado.trim()
+                      ? MENSAGEM_EMAIL_INVALIDO
+                      : MENSAGEM_EMAIL_VAZIO}
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+
           {escolha.provider === "superfrete" && (
             <p className="text-[11px] leading-snug text-zinc-400">
               O teste faz uma cotação de verdade na SuperFrete (nada é comprado)
@@ -745,7 +1050,19 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-3">
         <span className="min-w-0 text-[10px] leading-snug text-zinc-500">
           Ativo agora:{" "}
-          <span className="font-bold text-zinc-300">{opcaoAtiva?.nome}</span>
+          <span className="font-bold text-zinc-300">{nomeDoSalvo}</span>
+          {escolha.provider !== provedorSalvo && (
+            <>
+              {" · "}Selecionado (falta salvar):{" "}
+              <span className="font-bold text-admin-gold">{nomeDaEscolha}</span>
+            </>
+          )}
+          {faltaNaSuperFreteSalva.length > 0 && (
+            <span className="mt-0.5 block font-semibold text-amber-300">
+              As cotações de fora da cidade não saem até você preencher{" "}
+              {faltaNaSuperFreteSalva.join(" e ")} da SuperFrete.
+            </span>
+          )}
         </span>
         <button
           type="button"

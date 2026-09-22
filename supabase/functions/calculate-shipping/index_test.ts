@@ -4,6 +4,7 @@ import {
   buscarComTempo,
   calculateSmartFallback,
   chavesDeTransportadora,
+  emailDeContatoValido,
   erroDeTransportadoraEhCepInvalido,
   getCartHash,
   handler,
@@ -560,6 +561,12 @@ function clienteFalso(opts: {
    * sempre (`token-de-teste` para qualquer provedor).
    */
   credenciaisPorProvedor?: Record<string, unknown>;
+  /**
+   * SUPERFRETE (1.5.5, `save_credentials`): o upsert em
+   * `store_shipping_credentials` devolve este `{ error }` (o jeito do
+   * PostgREST) — usado para provar que a falha de gravação não vaza o token.
+   */
+  erroAoGravarCredencial?: { message: string };
 }) {
   const { registro } = opts;
   const config = opts.config ?? CONFIG_DA_LOJA;
@@ -700,6 +707,9 @@ function clienteFalso(opts: {
             throw e;
           },
         );
+      }
+      if (tabela === "store_shipping_credentials" && opts.erroAoGravarCredencial) {
+        return Promise.resolve({ error: opts.erroAoGravarCredencial });
       }
       return Promise.resolve({ error: null });
     };
@@ -2237,20 +2247,28 @@ const RESPOSTA_200_OFICIAL_SF = [
 
 const TOKEN_SF = "tok-sf-FICTICIO-9f8e7d6c5b4a";
 const TOKEN_ME = "tok-me-FICTICIO-1a2b3c4d5e6f";
-const UA_SF = "IKCOUS Teste 1.5.4 (tecnico@exemplo.invalid)";
+// Release 1.5.5: o e-mail de contato técnico é da LOJA (preenchido pela
+// lojista em Ajustes > Transportadoras, salvo em `credentials.contact_email`)
+// e o User-Agent é montado no servidor. Até a 1.5.4 ele vinha inteiro de uma
+// variável de projeto — que SAIU, sem fallback.
+const EMAIL_SF = "loja@ex.com";
+const UA_SF = "IKCOUS Marketplace 1.5.5 (loja@ex.com)";
 const CONFIG_SF = { ...CONFIG_DA_LOJA, shipping_provider: "superfrete", enabled_shipping_methods: [] as string[] };
-const SEM_UA = Symbol("SUPERFRETE_USER_AGENT ausente");
+const SEM_UA = Symbol("variável de projeto ausente");
+// O nome da variável antiga, só para PROVAR que ela não é mais lida: os
+// testes rodam com ela apagada por padrão e, nos casos marcados, DEFINIDA.
+const VARIAVEL_ANTIGA = "SUPERFRETE_USER_AGENT";
 
-/** Liga/desliga a variável de projeto só durante `fn` e devolve a original. */
+/** Liga/desliga a variável ANTIGA só durante `fn` e devolve a original. */
 async function comUserAgent<T>(valor: string | typeof SEM_UA, fn: () => Promise<T>): Promise<T> {
-  const anterior = Deno.env.get("SUPERFRETE_USER_AGENT");
-  if (valor === SEM_UA) Deno.env.delete("SUPERFRETE_USER_AGENT");
-  else Deno.env.set("SUPERFRETE_USER_AGENT", valor);
+  const anterior = Deno.env.get(VARIAVEL_ANTIGA);
+  if (valor === SEM_UA) Deno.env.delete(VARIAVEL_ANTIGA);
+  else Deno.env.set(VARIAVEL_ANTIGA, valor);
   try {
     return await fn();
   } finally {
-    if (anterior === undefined) Deno.env.delete("SUPERFRETE_USER_AGENT");
-    else Deno.env.set("SUPERFRETE_USER_AGENT", anterior);
+    if (anterior === undefined) Deno.env.delete(VARIAVEL_ANTIGA);
+    else Deno.env.set(VARIAVEL_ANTIGA, anterior);
   }
 }
 
@@ -2305,7 +2323,10 @@ async function cotarSuperFrete(opts: {
   }) as any;
   try {
     const { resultado, saida } = await capturarConsole(() =>
-      comUserAgent(opts.userAgent ?? UA_SF, async () => {
+      // 1.5.5: por padrão a variável ANTIGA fica APAGADA — o caminho feliz
+      // não pode depender dela. `userAgent` só a DEFINE nos testes que
+      // provam que ela deixou de ser lida.
+      comUserAgent(opts.userAgent ?? SEM_UA, async () => {
         const resposta = await handler(
           new Request("http://localhost/calculate-shipping", {
             method: "POST",
@@ -2320,7 +2341,10 @@ async function cotarSuperFrete(opts: {
               produtos: opts.produtos,
               cacheLookup: opts.cacheLookup,
               credenciaisPorProvedor: opts.credenciais ??
-                { superfrete: { token: TOKEN_SF, sandbox: false }, melhor_envio: { token: TOKEN_ME } },
+                {
+                  superfrete: { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF },
+                  melhor_envio: { token: TOKEN_ME },
+                },
             }),
           },
         );
@@ -2396,9 +2420,10 @@ Deno.test("superfrete: services por chave — jadlog=3; lista vazia = todos os s
 });
 
 Deno.test("superfrete: sandbox SÓ com credentials.sandbox === true (\"true\" em texto vai para produção)", async () => {
-  const sandbox = await cotarSuperFrete({ credenciais: { superfrete: { token: TOKEN_SF, sandbox: true } } });
+  // 1.5.5: `contact_email` entra na linha salva — sem ele a API nem é chamada.
+  const sandbox = await cotarSuperFrete({ credenciais: { superfrete: { token: TOKEN_SF, sandbox: true, contact_email: EMAIL_SF } } });
   assertEquals(sandbox.chamadas[0].url, "https://sandbox.superfrete.com/api/v0/calculator");
-  const texto = await cotarSuperFrete({ credenciais: { superfrete: { token: TOKEN_SF, sandbox: "true" } } });
+  const texto = await cotarSuperFrete({ credenciais: { superfrete: { token: TOKEN_SF, sandbox: "true", contact_email: EMAIL_SF } } });
   assertEquals(texto.chamadas[0].url, "https://api.superfrete.com/api/v0/calculator");
 });
 
@@ -2514,16 +2539,94 @@ Deno.test("superfrete: falha da API NÃO afeta o cliente local — entrega local
   assertEquals(chamadas.length, 0);
 });
 
-for (const [nome, ua] of [["ausente", SEM_UA], ["vazio", ""], ["só espaços", "   "]] as const) {
-  Deno.test(`superfrete: SUPERFRETE_USER_AGENT ${nome} -> NÃO chama a API, 503, motivo claro no log`, async () => {
-    const { resposta, chamadas, logs, corpo } = await cotarSuperFrete({ userAgent: ua });
+// 1.5.5 — o User-Agent vem do e-mail DA LOJA. Estes três substituem os
+// testes da 1.5.4 que exigiam a variável de projeto (ausente/vazia/espaços ->
+// motivo citando o nome dela): a variável saiu, e o motivo agora manda a
+// lojista preencher o campo na tela — nunca cita variável de ambiente.
+
+Deno.test("superfrete 1.5.5: o User-Agent EXATO é 'IKCOUS Marketplace 1.5.5 (<e-mail salvo da loja>)'", async () => {
+  const { resposta, chamadas } = await cotarSuperFrete({});
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 1);
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.5 (loja@ex.com)");
+});
+
+Deno.test("superfrete 1.5.5: SEM contact_email salvo -> NÃO chama a API, 503, e o motivo manda preencher na tela (sem citar variável)", async () => {
+  const { resposta, chamadas, logs, corpo, texto } = await cotarSuperFrete({
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false } },
+  });
+  assertEquals(chamadas.length, 0);
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo.options, undefined);
+  assertEquals(logs.at(-1)?.status, "error");
+  assertEquals(logs.at(-1)?.error_message.includes("preencha em Ajustes > Transportadoras"), true);
+  assertEquals(logs.at(-1)?.error_message.includes("e-mail de contato técnico"), true);
+  assertEquals(logs.at(-1)?.error_message.includes("SUPERFRETE_USER_AGENT"), false);
+  assertEquals(texto.includes("SUPERFRETE_USER_AGENT"), false);
+  assertEquals(JSON.stringify(logs).includes(TOKEN_SF), false);
+});
+
+for (
+  const invalido of [
+    "",
+    "   ",
+    "sem-arroba",
+    "a@b",
+    "a@b.com\r\nX: y",
+    "a@b.com)",
+    "a b@c.com",
+    `${"x".repeat(250)}@b.com`,
+    // D2 (crítico, medido no Deno 2.9.2): não-ASCII no header estoura
+    // ("not a valid ByteString") ou sai como Latin-1 — a RLS deixa o admin
+    // gravar isso direto, então a cotação REVALIDA o salvo.
+    "ő@x.com",
+    "joão@x.com",
+    123,
+    null,
+    { email: EMAIL_SF },
+  ]
+) {
+  Deno.test(`superfrete 1.5.5: contact_email salvo INVÁLIDO (${JSON.stringify(invalido).slice(0, 30)}) -> nenhum fetch`, async () => {
+    const { resposta, chamadas, logs } = await cotarSuperFrete({
+      credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: invalido } },
+    });
     assertEquals(chamadas.length, 0);
     assertEquals(resposta.status, 503);
-    assertEquals(corpo.options, undefined);
-    assertEquals(logs.at(-1)?.status, "error");
-    assertEquals(logs.at(-1)?.error_message.includes("SUPERFRETE_USER_AGENT"), true);
+    assertEquals(logs.at(-1)?.error_message.includes("preencha em Ajustes > Transportadoras"), true);
   });
 }
+
+Deno.test("superfrete 1.5.5: a variável ANTIGA DEFINIDA e sem e-mail salvo -> ainda nenhum fetch (o fallback saiu)", async () => {
+  const { resposta, chamadas, logs } = await cotarSuperFrete({
+    userAgent: "App Antigo 1.0 (antigo@exemplo.invalid)",
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false } },
+  });
+  assertEquals(chamadas.length, 0);
+  assertEquals(resposta.status, 503);
+  assertEquals(logs.at(-1)?.error_message.includes("SUPERFRETE_USER_AGENT"), false);
+});
+
+Deno.test("superfrete 1.5.5: a variável ANTIGA DEFINIDA NÃO troca o UA quando há e-mail salvo (o e-mail da loja manda)", async () => {
+  const { chamadas } = await cotarSuperFrete({ userAgent: "App Antigo 1.0 (antigo@exemplo.invalid)" });
+  assertEquals(chamadas.length, 1);
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), UA_SF);
+});
+
+Deno.test("superfrete 1.5.5: o e-mail salvo com espaços nas pontas vai APARADO no UA", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: "  loja@ex.com  " } },
+  });
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), UA_SF);
+});
+
+Deno.test("superfrete 1.5.5: o cache NÃO depende do e-mail — linha da SuperFrete em cache serve mesmo sem e-mail salvo", async () => {
+  const { corpo, chamadas } = await cotarSuperFrete({
+    cacheLookup: [{ options: [{ id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete" }] }],
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false } },
+  });
+  assertEquals(chamadas.length, 0);
+  assertEquals(corpo.options.map((o: any) => o.id), ["superfrete-1"]);
+});
 
 Deno.test("superfrete: SEM linha de credencial -> 200 sem opções + motivo (mesmo tratamento do ME/Frenet)", async () => {
   const { resposta, corpo, chamadas, logs } = await cotarSuperFrete({ credenciais: { melhor_envio: { token: TOKEN_ME } } });
@@ -2662,7 +2765,8 @@ async function testarConexao(opts: {
   }) as any;
   try {
     const { resultado, saida } = await capturarConsole(() =>
-      comUserAgent(opts.userAgent ?? UA_SF, async () => {
+      // 1.5.5: variável ANTIGA apagada por padrão (ver `cotarSuperFrete`).
+      comUserAgent(opts.userAgent ?? SEM_UA, async () => {
         const resposta = await handler(
           new Request("http://localhost/calculate-shipping", {
             method: "POST",
@@ -2698,9 +2802,10 @@ Deno.test("teste de conexão SuperFrete: quem não é admin recebe 403 e a API n
 });
 
 Deno.test("teste de conexão SuperFrete com usarCredencialSalva: a edge lê o token SALVO e faz uma cotação mínima (sem compra)", async () => {
+  // 1.5.5: "os dois salvos" — token e e-mail vêm da linha da loja.
   const { corpo, chamadas, registro, texto } = await testarConexao({
     corpo: { provider: "superfrete", usarCredencialSalva: true },
-    credenciais: { superfrete: { token: TOKEN_SF, sandbox: true } },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: true, contact_email: EMAIL_SF } },
   });
   assertEquals(corpo.success, true);
   assertEquals(chamadas.length, 1);
@@ -2728,21 +2833,112 @@ Deno.test("teste de conexão com usarCredencialSalva SEM chave salva -> erro cla
   }
 });
 
-Deno.test("teste de conexão SuperFrete sem SUPERFRETE_USER_AGENT -> falha clara, sem chamar a API", async () => {
-  const { corpo, chamadas } = await testarConexao({
-    userAgent: SEM_UA,
+// 1.5.5: substitui "sem SUPERFRETE_USER_AGENT -> erro citando a variável".
+// Sem e-mail nenhum (nem digitado, nem salvo) o teste não sai — e a
+// orientação manda preencher o campo, mesmo com a variável ANTIGA definida.
+Deno.test("teste de conexão SuperFrete com usarCredencialSalva SEM e-mail nenhum -> sem fetch, com orientação de preencher o campo", async () => {
+  const { corpo, chamadas, texto } = await testarConexao({
+    userAgent: "App Antigo 1.0 (antigo@exemplo.invalid)",
     corpo: { provider: "superfrete", usarCredencialSalva: true },
     credenciais: { superfrete: { token: TOKEN_SF } },
   });
   assertEquals(corpo.success, false);
   assertEquals(chamadas.length, 0);
-  assertEquals(corpo.error.includes("SUPERFRETE_USER_AGENT"), true);
+  assertEquals(corpo.error.includes("e-mail de contato técnico"), true);
+  assertEquals(corpo.error.includes("SUPERFRETE_USER_AGENT"), false);
+  assertEquals(texto.includes(TOKEN_SF), false);
+});
+
+Deno.test("teste de conexão SuperFrete: e-mail DIGITADO + token DIGITADO -> UA com o e-mail digitado", async () => {
+  const { corpo, chamadas } = await testarConexao({
+    corpo: {
+      provider: "superfrete",
+      credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false, contact_email: "digitado@ex.com" },
+    },
+  });
+  assertEquals(corpo.success, true);
+  assertEquals(chamadas.length, 1);
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.5 (digitado@ex.com)");
+  assertEquals(cabecalho(chamadas[0], "Authorization"), "Bearer tok-sf-digitado-FICTICIO");
+});
+
+Deno.test("teste de conexão SuperFrete: usarCredencialSalva + e-mail DIGITADO -> token SALVO com o UA do digitado (vence o salvo)", async () => {
+  for (const salvas of [{ token: TOKEN_SF }, { token: TOKEN_SF, contact_email: "velho@ex.com" }]) {
+    const { corpo, chamadas, texto } = await testarConexao({
+      corpo: { provider: "superfrete", usarCredencialSalva: true, credentials: { contact_email: "novo@ex.com" } },
+      credenciais: { superfrete: salvas },
+    });
+    assertEquals(corpo.success, true);
+    assertEquals(chamadas.length, 1);
+    assertEquals(cabecalho(chamadas[0], "Authorization"), `Bearer ${TOKEN_SF}`);
+    assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.5 (novo@ex.com)");
+    assertEquals(texto.includes(TOKEN_SF), false);
+  }
+});
+
+Deno.test("teste de conexão SuperFrete: e-mail digitado INVÁLIDO (injeção de header) -> sem fetch, mesmo com um e-mail salvo válido", async () => {
+  for (const invalido of ["a@b.com\r\nX: y", "a@b.com)", "sem-arroba"]) {
+    const { corpo, chamadas } = await testarConexao({
+      corpo: { provider: "superfrete", usarCredencialSalva: true, credentials: { contact_email: invalido } },
+      credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
+    });
+    assertEquals(corpo.success, false);
+    assertEquals(chamadas.length, 0);
+    assertEquals(corpo.error.includes("e-mail de contato técnico"), true);
+  }
+});
+
+// Painel 1.5.4 ainda em cache contra a edge 1.5.5: ele não manda e-mail
+// nenhum. Sem e-mail digitado, a edge usa o SALVO da loja (lido com a service
+// role depois da checagem de admin) — nos dois jeitos de testar.
+Deno.test("teste de conexão SuperFrete SEM e-mail digitado cai no e-mail SALVO (token salvo e token digitado)", async () => {
+  const salvo = await testarConexao({
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
+  });
+  assertEquals(salvo.corpo.success, true);
+  assertEquals(cabecalho(salvo.chamadas[0], "User-Agent"), UA_SF);
+
+  for (const emailDigitado of [undefined, "", "   "]) {
+    const digitado = await testarConexao({
+      corpo: {
+        provider: "superfrete",
+        credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false, contact_email: emailDigitado },
+      },
+      credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
+    });
+    assertEquals(digitado.corpo.success, true);
+    assertEquals(cabecalho(digitado.chamadas[0], "Authorization"), "Bearer tok-sf-digitado-FICTICIO");
+    assertEquals(cabecalho(digitado.chamadas[0], "User-Agent"), UA_SF);
+    assertEquals(digitado.texto.includes(TOKEN_SF), false);
+  }
+});
+
+Deno.test("teste de conexão SuperFrete: e-mail SALVO não-ASCII -> sem fetch, orientação em português", async () => {
+  for (const salvoRuim of ["ő@x.com", "joão@x.com"]) {
+    const { corpo, chamadas } = await testarConexao({
+      corpo: { provider: "superfrete", usarCredencialSalva: true },
+      credenciais: { superfrete: { token: TOKEN_SF, contact_email: salvoRuim } },
+    });
+    assertEquals(corpo.success, false);
+    assertEquals(chamadas.length, 0);
+    assertEquals(corpo.error.includes("e-mail de contato técnico"), true);
+  }
+});
+
+Deno.test("teste de conexão SuperFrete: token DIGITADO sem e-mail -> sem fetch (a variável antiga não socorre)", async () => {
+  const { corpo, chamadas } = await testarConexao({
+    userAgent: "App Antigo 1.0 (antigo@exemplo.invalid)",
+    corpo: { provider: "superfrete", credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false } },
+  });
+  assertEquals(corpo.success, false);
+  assertEquals(chamadas.length, 0);
 });
 
 Deno.test("teste de conexão SuperFrete: 401 ecoando o token -> falha SEM o token na resposta nem no console", async () => {
   const { corpo, texto, saida } = await testarConexao({
     corpo: { provider: "superfrete", usarCredencialSalva: true },
-    credenciais: { superfrete: { token: TOKEN_SF } },
+    credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
     responder: () => new Response(`{"message":"bad token ${TOKEN_SF}"}`, { status: 401 }),
   });
   assertEquals(corpo.success, false);
@@ -2752,12 +2948,14 @@ Deno.test("teste de conexão SuperFrete: 401 ecoando o token -> falha SEM o toke
 });
 
 Deno.test("teste de conexão SuperFrete: resposta 200 que não é lista -> falha (não declara conectado)", async () => {
-  const { corpo } = await testarConexao({
+  const { corpo, chamadas } = await testarConexao({
     corpo: { provider: "superfrete", usarCredencialSalva: true },
-    credenciais: { superfrete: { token: TOKEN_SF } },
+    credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
     responder: () => new Response("{}", { status: 200 }),
   });
   assertEquals(corpo.success, false);
+  // A falha é da RESPOSTA (a API foi chamada), não da falta de e-mail.
+  assertEquals(chamadas.length, 1);
 });
 
 Deno.test("teste de conexão Melhor Envio com usarCredencialSalva: usa o token salvo (o painel não baixa mais o token)", async () => {
@@ -2789,9 +2987,246 @@ Deno.test("teste de conexão Melhor Envio com token DIGITADO (antes de salvar) c
 
 Deno.test("teste de conexão SuperFrete com token DIGITADO usa o token do corpo", async () => {
   const { corpo, chamadas } = await testarConexao({
-    corpo: { provider: "superfrete", credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false } },
+    corpo: {
+      provider: "superfrete",
+      credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false, contact_email: EMAIL_SF },
+    },
   });
   assertEquals(corpo.success, true);
   assertEquals(chamadas[0].url, "https://api.superfrete.com/api/v0/calculator");
   assertEquals(cabecalho(chamadas[0], "Authorization"), "Bearer tok-sf-digitado-FICTICIO");
+});
+
+// --- Salvar a SuperFrete pelo servidor (action save_credentials, 1.5.5) -----
+//
+// Pedido do dono: "Se precisa de email deve ter no app para eu colocar". O
+// e-mail de contato técnico vira campo da tela; a chave + o e-mail + o modo de
+// testes da SuperFrete são gravados PELA EDGE (service role, depois de
+// conferir admin), por lista branca. Contrato de resposta (ajuste D4 do
+// crítico): recusa de VALIDAÇÃO = 200 `{ success: false, error }` (o
+// `functions.invoke` perde o corpo de um 400 e a frase não chegaria à tela);
+// não-admin = 403. O token NUNCA volta na resposta.
+
+async function salvarCredenciais(opts: {
+  corpo: Record<string, unknown>;
+  admin?: boolean;
+  credenciais?: Record<string, unknown>;
+  erroAoGravarCredencial?: { message: string };
+}) {
+  const registro: any = { inserts: [], execucoes: [], upserts: [], cacheConcluido: false, logConcluido: false };
+  const chamadas: ChamadaDeFetch[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = ((url: string, init: RequestInit = {}) => {
+    chamadas.push({ url: String(url), init });
+    return Promise.resolve(new Response("[]", { status: 200 }));
+  }) as any;
+  try {
+    const { resultado, saida } = await capturarConsole(() =>
+      comUserAgent(SEM_UA, async () => {
+        const resposta = await handler(
+          new Request("http://localhost/calculate-shipping", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-de-admin-ficticio" },
+            body: JSON.stringify({ action: "save_credentials", ...opts.corpo }),
+          }),
+          {
+            supabase: clienteFalso({
+              registro,
+              cacheInsert: () => Promise.resolve({ error: null }),
+              credenciaisPorProvedor: opts.credenciais ?? {},
+              erroAoGravarCredencial: opts.erroAoGravarCredencial,
+            }),
+            verificarAdmin: () => Promise.resolve(opts.admin ?? true),
+          },
+        );
+        return { resposta, texto: await resposta.text() };
+      })
+    );
+    const gravacoes = registro.upserts.filter((u: any) => u.tabela === "store_shipping_credentials");
+    return { ...resultado, corpo: JSON.parse(resultado.texto), chamadas, saida, registro, gravacoes };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+}
+
+const TOKEN_SF_NOVO = "tok-sf-NOVO-FICTICIO-0a1b2c3d";
+
+Deno.test("emailDeContatoValido: ASCII estrito, aparado, <= 254, sem nada que quebre um header", () => {
+  assertEquals(emailDeContatoValido("loja@ex.com"), "loja@ex.com");
+  assertEquals(emailDeContatoValido("  Loja.Tec+sf@sub.exemplo.com.br "), "Loja.Tec+sf@sub.exemplo.com.br");
+  const limite = `${"a".repeat(64)}@${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(57)}.com`;
+  assertEquals(limite.length, 254);
+  assertEquals(emailDeContatoValido(limite), limite);
+  for (
+    const ruim of [
+      "",
+      "   ",
+      "sem-arroba",
+      "a@b",
+      "@b.com",
+      "a@.com",
+      "a@b.c",
+      "a b@c.com",
+      "a@b.com\r\nX: y",
+      "a@b.com\nX: y",
+      "a@b.com)",
+      "a(b)@c.com",
+      "<a@b.com>",
+      "a@b.com,c@d.com",
+      "a@b.com;",
+      "joão@x.com",
+      "ő@x.com",
+      "a@exemplo.cöm",
+      `${limite}m`,
+      undefined,
+      null,
+      123,
+      {},
+    ]
+  ) {
+    assertEquals(emailDeContatoValido(ruim), null, `deveria recusar ${JSON.stringify(ruim)}`);
+  }
+});
+
+Deno.test("save_credentials: quem não é admin recebe 403 e NADA é gravado", async () => {
+  const { resposta, gravacoes, texto } = await salvarCredenciais({
+    admin: false,
+    corpo: { provider: "superfrete", credentials: { token: TOKEN_SF_NOVO, sandbox: false, contact_email: EMAIL_SF } },
+  });
+  assertEquals(resposta.status, 403);
+  assertEquals(gravacoes.length, 0);
+  assertEquals(texto.includes(TOKEN_SF_NOVO), false);
+});
+
+Deno.test("save_credentials: provedor que não é a SuperFrete é recusado (ME/Frenet seguem pelo caminho de sempre)", async () => {
+  for (const provider of ["melhor_envio", "frenet", "flat_fee", undefined, "SUPERFRETE"]) {
+    const { resposta, corpo, gravacoes } = await salvarCredenciais({
+      corpo: { provider, credentials: { token: TOKEN_SF_NOVO, contact_email: EMAIL_SF } },
+    });
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.success, false);
+    assertEquals(typeof corpo.error, "string");
+    assertEquals(gravacoes.length, 0);
+  }
+});
+
+Deno.test("save_credentials: e-mail vazio, inválido, não-ASCII ou com injeção de header -> recusa em português, sem gravar", async () => {
+  for (
+    const email of [
+      undefined,
+      "",
+      "   ",
+      "sem-arroba",
+      "a@b.com\r\nX: y",
+      "a@b.com)",
+      "a@b.com;",
+      "a@b.com,c@d.com",
+      "<a@b.com>",
+      "joão@x.com",
+      "ő@x.com",
+      `${"x".repeat(250)}@b.com`,
+    ]
+  ) {
+    const { resposta, corpo, gravacoes, texto } = await salvarCredenciais({
+      corpo: { provider: "superfrete", credentials: { token: TOKEN_SF_NOVO, sandbox: false, contact_email: email } },
+      credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF } },
+    });
+    assertEquals(resposta.status, 200, `e-mail ${JSON.stringify(email)}`);
+    assertEquals(corpo.success, false);
+    assertEquals(corpo.error.includes("e-mail"), true);
+    assertEquals(gravacoes.length, 0);
+    assertEquals(texto.includes(TOKEN_SF_NOVO), false);
+    assertEquals(texto.includes(TOKEN_SF), false);
+  }
+});
+
+Deno.test("save_credentials: token NOVO + e-mail -> upsert com os 3 campos na linha 'superfrete', e a resposta SEM token", async () => {
+  const { resposta, corpo, gravacoes, texto, saida, chamadas } = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { token: `  ${TOKEN_SF_NOVO} `, sandbox: true, contact_email: " loja@ex.com " } },
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(gravacoes.length, 1);
+  assertEquals(gravacoes[0].onConflict, "provider");
+  assertEquals(gravacoes[0].linha.provider, "superfrete");
+  assertEquals(gravacoes[0].linha.credentials, { token: TOKEN_SF_NOVO, sandbox: true, contact_email: EMAIL_SF });
+  assertEquals(typeof gravacoes[0].linha.updated_at, "string");
+  assertEquals(corpo, { success: true, tem_chave: true, sandbox: true, contact_email: EMAIL_SF });
+  assertEquals(texto.includes(TOKEN_SF_NOVO), false);
+  assertEquals(saida.includes(TOKEN_SF_NOVO), false);
+  // Salvar não chama a SuperFrete (quem prova a chave é o "Testar").
+  assertEquals(chamadas.length, 0);
+});
+
+Deno.test("save_credentials: LISTA BRANCA — campo extra do corpo e campo velho da linha não entram no upsert (D3)", async () => {
+  const { gravacoes } = await salvarCredenciais({
+    corpo: {
+      provider: "superfrete",
+      credentials: { token: TOKEN_SF_NOVO, sandbox: false, contact_email: EMAIL_SF, hack: 1, token_de_outro: "x" },
+    },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: "velho@ex.com", lixo: "y" } },
+  });
+  assertEquals(gravacoes.length, 1);
+  assertEquals(Object.keys(gravacoes[0].linha.credentials).sort(), ["contact_email", "sandbox", "token"]);
+  // E com token vazio (mantém o salvo) a lista branca vale igual.
+  const mantido = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { token: "", contact_email: EMAIL_SF, hack: 1 } },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: "velho@ex.com", lixo: "y" } },
+  });
+  assertEquals(mantido.gravacoes[0].linha.credentials, { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF });
+});
+
+Deno.test("save_credentials: token VAZIO com token salvo -> mantém o token salvo (lido com a service role) e troca o e-mail", async () => {
+  for (const token of [undefined, "", "   "]) {
+    const { corpo, gravacoes, registro, texto } = await salvarCredenciais({
+      corpo: { provider: "superfrete", credentials: { token, contact_email: "novo@ex.com" } },
+      credenciais: { superfrete: { token: TOKEN_SF, sandbox: true, contact_email: "velho@ex.com" } },
+    });
+    assertEquals(corpo, { success: true, tem_chave: true, sandbox: true, contact_email: "novo@ex.com" });
+    assertEquals(gravacoes.length, 1);
+    assertEquals(gravacoes[0].linha.credentials, { token: TOKEN_SF, sandbox: true, contact_email: "novo@ex.com" });
+    assertEquals(registro.leiturasDeCredencial[0].filtros, [["provider", "superfrete"]]);
+    assertEquals(texto.includes(TOKEN_SF), false);
+  }
+});
+
+Deno.test("save_credentials: token vazio SEM token salvo -> 'Cole a chave de acesso da SuperFrete.', sem gravar", async () => {
+  for (const credenciais of [{}, { superfrete: { sandbox: false } }, { superfrete: { token: "" } }, { superfrete: { token: 42 } }]) {
+    const { resposta, corpo, gravacoes } = await salvarCredenciais({
+      corpo: { provider: "superfrete", credentials: { contact_email: EMAIL_SF } },
+      credenciais,
+    });
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo, { success: false, error: "Cole a chave de acesso da SuperFrete." });
+    assertEquals(gravacoes.length, 0);
+  }
+});
+
+Deno.test("save_credentials: trocar o modo de testes SEM token novo é recusado; o mesmo modo passa", async () => {
+  const trocou = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { sandbox: true, contact_email: EMAIL_SF } },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF } },
+  });
+  assertEquals(trocou.resposta.status, 200);
+  assertEquals(trocou.corpo.success, false);
+  assertEquals(/sandbox|modo de testes/i.test(trocou.corpo.error), true);
+  assertEquals(trocou.gravacoes.length, 0);
+
+  const mesmo = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { sandbox: false, contact_email: EMAIL_SF } },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: "velho@ex.com" } },
+  });
+  assertEquals(mesmo.corpo.success, true);
+  assertEquals(mesmo.gravacoes[0].linha.credentials.sandbox, false);
+});
+
+Deno.test("save_credentials: falha do banco ao gravar -> erro em português, SEM o token (nem no console)", async () => {
+  const { resposta, corpo, texto, saida } = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { token: TOKEN_SF_NOVO, contact_email: EMAIL_SF } },
+    erroAoGravarCredencial: { message: `violação ao gravar ${TOKEN_SF_NOVO}` },
+  });
+  assertEquals(corpo.success, false);
+  assertEquals(resposta.status >= 500, true);
+  assertEquals(typeof corpo.error, "string");
+  assertEquals(texto.includes(TOKEN_SF_NOVO), false);
+  assertEquals(saida.includes(TOKEN_SF_NOVO), false);
 });

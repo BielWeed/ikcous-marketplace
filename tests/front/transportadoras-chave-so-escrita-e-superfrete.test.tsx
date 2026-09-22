@@ -20,6 +20,20 @@
 //   5. o Melhor Envio continua salvando e testando igual (sem regressão);
 //   6. a SuperFrete existe como opção, com rótulo e aviso honestos.
 //
+// AJUSTES DA 1.5.5 (e-mail de contato técnico da SuperFrete, preenchido na
+// tela — ver transportadoras-superfrete-email-contato.test.tsx):
+//   - a seção faz uma TERCEIRA leitura, que pede só o e-mail por alias
+//     (`contato:credentials->>contact_email`, com `.eq("provider", …)`); o
+//     item 1 passou a aceitar esse caminho e continua recusando a coluna
+//     inteira, "*" e qualquer menção a token. O mini-PostgREST abaixo ganhou
+//     o filtro por `provider` e a projeção por alias para isso;
+//   - salvar a SUPERFRETE não segue mais a ordem ADMIN-010 (updateConfig ->
+//     upsert pelo navegador): a credencial vai PRIMEIRO pela edge
+//     (`save_credentials`) e o provedor só muda se ela disser que ficou
+//     completo — ativar a SuperFrete antes de saber se há chave + e-mail
+//     deixava a loja "ativa" sem cotação. ME/Frenet continuam ADMIN-010;
+//   - "Testar" da SuperFrete leva o e-mail do campo junto.
+//
 // Tokens abaixo são FICTÍCIOS.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -77,6 +91,8 @@ vi.mock("@/lib/supabase", () => ({
       }
       type Linha = (typeof banco.linhas)[number];
       const campo = (l: Linha, coluna: string) => {
+        // 1.5.5: filtro pela coluna `provider` (a leitura do e-mail).
+        if (coluna === "provider") return l.provider;
         const m = /^credentials->>(\w+)$/.exec(coluna);
         if (!m) return undefined;
         const v = l.credentials?.[m[1]];
@@ -89,7 +105,12 @@ vi.mock("@/lib/supabase", () => ({
               const saida: Record<string, unknown> = {};
               for (const c of colunas.split(",").map((x) => x.trim())) {
                 if (c === "provider") saida.provider = l.provider;
-                if (c === "*" || c.includes("credentials")) {
+                // 1.5.5: alias `nome:credentials->>campo` devolve SÓ o campo.
+                const alias = /^(\w+):credentials->>(\w+)$/.exec(c);
+                if (alias) {
+                  const v = l.credentials?.[alias[2]];
+                  saida[alias[1]] = v == null ? null : String(v);
+                } else if (c === "*" || c.includes("credentials")) {
                   saida.credentials = l.credentials;
                 }
               }
@@ -224,7 +245,12 @@ describe("TransportadorasSection — chave só-escrita e SuperFrete (1.5.4)", ()
     await abrir();
     expect(banco.colunasPedidas.length).toBeGreaterThan(0);
     for (const colunas of banco.colunasPedidas) {
-      expect(colunas).not.toMatch(/credentials/);
+      // 1.5.5: a ÚNICA menção a `credentials` aceita é o caminho do e-mail
+      // de contato por alias — o PostgREST devolve só aquele texto.
+      expect(
+        colunas.replace(/\w+:credentials->>contact_email/g, ""),
+      ).not.toMatch(/credentials/);
+      expect(colunas).not.toMatch(/token/);
       expect(colunas).not.toMatch(/\*/);
     }
   });
@@ -310,23 +336,64 @@ describe("TransportadorasSection — chave só-escrita e SuperFrete (1.5.4)", ()
     expect(hospedeiro.textContent).toMatch(/cota(ção|r) de verdade/i);
   });
 
-  it("SuperFrete: salvar com chave digitada troca o provedor (updateConfig, ordem ADMIN-010) e depois grava {token, sandbox} na linha 'superfrete'", async () => {
+  // 1.5.5 — ORDEM NOVA para a SuperFrete (era: updateConfig -> upsert pelo
+  // navegador, a ordem ADMIN-010). Motivo: a SuperFrete só cota com chave E
+  // e-mail de contato, e o e-mail é validado no SERVIDOR; trocar o provedor
+  // primeiro deixava a loja "ativa" na SuperFrete sem ter como cotar. Agora a
+  // credencial vai pela edge (`save_credentials`) e o provedor só muda depois,
+  // se a edge confirmar chave + e-mail. O navegador não grava mais a linha
+  // 'superfrete' direto. (ME/Frenet: ADMIN-010 intacta, teste acima.)
+  it("SuperFrete: salvar com chave digitada grava a credencial PELA EDGE primeiro e só depois troca o provedor (updateConfig)", async () => {
+    const ordem: string[] = [];
+    invoke.mockImplementation((_nome: string, opcoes: any) => {
+      ordem.push("edge");
+      return Promise.resolve({
+        data: {
+          success: true,
+          tem_chave: true,
+          sandbox: false,
+          contact_email: opcoes.body.credentials.contact_email,
+        },
+        error: null,
+      });
+    });
+    updateConfig.mockImplementation(() => {
+      ordem.push("updateConfig");
+      return Promise.resolve(true);
+    });
     await abrir();
     const opcao = [...hospedeiro.querySelectorAll('[role="radio"]')].find(
       (el) => /SuperFrete/.test(el.textContent ?? ""),
     ) as HTMLElement;
     await clicar(opcao);
     await digitarToken("tok-sf-NOVO-ficticio");
+    const campoEmail = hospedeiro.querySelector(
+      'input[type="email"]',
+    ) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campoEmail, "tecnico@loja.com");
+      campoEmail.dispatchEvent(new Event("input", { bubbles: true }));
+    });
     await clicar(botao(/Salvar/));
+    expect(ordem).toEqual(["edge", "updateConfig"]);
+    expect(invoke.mock.calls[0][1].body).toEqual({
+      action: "save_credentials",
+      provider: "superfrete",
+      credentials: {
+        token: "tok-sf-NOVO-ficticio",
+        sandbox: false,
+        contact_email: "tecnico@loja.com",
+      },
+    });
     expect(updateConfig).toHaveBeenCalledWith({
       shippingProvider: "superfrete",
       enabledShippingMethods: ["sedex", "pac"],
     });
-    expect(banco.upserts).toHaveLength(1);
-    expect(banco.upserts[0].linha).toMatchObject({
-      provider: "superfrete",
-      credentials: { token: "tok-sf-NOVO-ficticio", sandbox: false },
-    });
+    expect(banco.upserts).toHaveLength(0);
   });
 
   it("SuperFrete já salva: selo 'chave salva' e o teste usa a chave salva", async () => {
@@ -338,7 +405,12 @@ describe("TransportadorasSection — chave só-escrita e SuperFrete (1.5.4)", ()
       ...banco.linhas,
       {
         provider: "superfrete",
-        credentials: { token: "tok-sf-x", sandbox: true },
+        // 1.5.5: a linha salva tem o e-mail de contato técnico.
+        credentials: {
+          token: "tok-sf-x",
+          sandbox: true,
+          contact_email: "salvo@loja.com",
+        },
       },
     ];
     await abrir();
@@ -348,10 +420,13 @@ describe("TransportadorasSection — chave só-escrita e SuperFrete (1.5.4)", ()
     const interruptor = hospedeiro.querySelector('[role="switch"]');
     expect(interruptor?.getAttribute("aria-checked")).toBe("true");
     await clicar(botao(/^Testar$/));
+    // 1.5.5: o teste da SuperFrete leva o e-mail do campo (a edge monta o
+    // User-Agent com ele); o token continua NÃO indo.
     expect(invoke.mock.calls[0][1].body).toEqual({
       action: "test_credentials",
       provider: "superfrete",
       usarCredencialSalva: true,
+      credentials: { contact_email: "salvo@loja.com" },
     });
   });
 

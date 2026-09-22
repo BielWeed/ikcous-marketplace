@@ -26,6 +26,28 @@ import { AlertCircle, HelpCircle, RefreshCw, Save } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+/**
+ * E-mail de contato técnico da SuperFrete (release 1.5.5) — CÓPIA da régua
+ * da edge (`emailDeContatoValido` em calculate-shipping/index.ts; a seção de
+ * Transportadoras tem outra cópia). A edge revalida o e-mail salvo antes de
+ * cada cotação e, se ele não passa, não cota — esta tela usa a mesma régua
+ * para não dizer "chave salva" numa SuperFrete que a edge vai recusar.
+ * Em partes (um `@`; local; 2+ rótulos, o último só letras) para não ter
+ * quantificador aninhado.
+ */
+function emailDeContatoValido(valor: unknown): boolean {
+  if (typeof valor !== "string") return false;
+  const email = valor.trim();
+  if (email.length === 0 || email.length > 254) return false;
+  const arroba = email.indexOf("@");
+  if (arroba <= 0 || arroba !== email.lastIndexOf("@")) return false;
+  if (!/^[A-Za-z0-9._%+-]+$/.test(email.slice(0, arroba))) return false;
+  const rotulos = email.slice(arroba + 1).split(".");
+  if (rotulos.length < 2) return false;
+  if (!/^[A-Za-z]{2,}$/.test(rotulos.at(-1) ?? "")) return false;
+  return rotulos.every((rotulo) => /^[A-Za-z0-9-]+$/.test(rotulo));
+}
+
 interface AdminShippingViewProps {
   onNavigate?: (view: View) => void;
   active?: boolean;
@@ -136,18 +158,49 @@ export const AdminShippingView = memo(function AdminShippingView({
     () => new Set(),
   );
   const [credsErro, setCredsErro] = useState(false);
+  // Release 1.5.5: com a SuperFrete SALVA como provedor, a tela também
+  // precisa saber se o e-mail de contato técnico está lá (sem ele a edge não
+  // cota). Lê SÓ o e-mail, por alias — nunca o token, nunca `credentials`.
+  const [emailDaSuperFreteOk, setEmailDaSuperFreteOk] = useState(false);
+  const provedorSalvo = config?.shippingProvider || "flat_fee";
 
   const fetchCreds = useCallback(async () => {
     setCredsErro(false);
     try {
-      const { data, error } = await supabase
-        .from("store_shipping_credentials")
-        .select("provider")
-        .not("credentials->>token", "is", null)
-        .neq("credentials->>token", "");
-      if (!error && data) {
+      const [comToken, emailDaSuperFrete] = await Promise.all([
+        supabase
+          .from("store_shipping_credentials")
+          .select("provider")
+          .not("credentials->>token", "is", null)
+          .neq("credentials->>token", ""),
+        // Só a SuperFrete pergunta pelo e-mail — ME/Frenet seguem com a
+        // mesma consulta única de sempre.
+        provedorSalvo === "superfrete"
+          ? supabase
+              .from("store_shipping_credentials")
+              .select("provider, contato:credentials->>contact_email")
+              .eq("provider", "superfrete")
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (
+        !comToken.error &&
+        comToken.data &&
+        !emailDaSuperFrete.error &&
+        emailDaSuperFrete.data
+      ) {
         setCredsConectados(
-          new Set(data.map((row: { provider: string }) => row.provider)),
+          new Set(
+            comToken.data.map((row: { provider: string }) => row.provider),
+          ),
+        );
+        const linhaDaSuperFrete = (
+          emailDaSuperFrete.data as ReadonlyArray<{
+            provider: string;
+            contato: unknown;
+          }>
+        ).find((row) => row.provider === "superfrete");
+        setEmailDaSuperFreteOk(
+          emailDeContatoValido(linhaDaSuperFrete?.contato),
         );
       } else {
         setCredsErro(true);
@@ -155,7 +208,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     } catch {
       setCredsErro(true);
     }
-  }, []);
+  }, [provedorSalvo]);
 
   // ── Achado 3 da auditoria rodada 2 (26/08/2026), intacto ─────────────────
   // O efeito abaixo redispara quando `active` volta a `true` (a view do painel
@@ -206,7 +259,6 @@ export const AdminShippingView = memo(function AdminShippingView({
   // estado `conectado` só ocorre com provedor nomeado + credencial, então o
   // nome lá nunca é nulo.
   const conexao = useMemo(() => {
-    const provedorSalvo = config?.shippingProvider || "flat_fee";
     const nome =
       provedorSalvo === "melhor_envio"
         ? "Melhor Envio"
@@ -217,9 +269,11 @@ export const AdminShippingView = memo(function AdminShippingView({
             : null;
     // Taxa fixa remanescente de loja antiga = sem cotação de fora, igual a
     // não conectado (a edge deixou de cotar por ela).
-    // SuperFrete (1.5.4): chave salva NÃO prova conexão (sem a variável
-    // SUPERFRETE_USER_AGENT no projeto a edge nem chama a API) — o estado é
-    // "chave_salva", nunca "conectado". ME/Frenet seguem como sempre.
+    // SuperFrete (1.5.4): chave salva NÃO prova conexão (quem prova é o
+    // "Testar" em Ajustes) — o estado é "chave_salva", nunca "conectado".
+    // 1.5.5: chave salva SEM e-mail de contato válido é "incompleta" — a
+    // edge nem chama a API sem ele. Sem chave continua "desconectado".
+    // ME/Frenet seguem como sempre.
     const estado: EstadoConexaoNacional =
       provedorSalvo === "flat_fee"
         ? "desconectado"
@@ -227,11 +281,13 @@ export const AdminShippingView = memo(function AdminShippingView({
           ? "indeterminado"
           : credsConectados.has(provedorSalvo)
             ? provedorSalvo === "superfrete"
-              ? "chave_salva"
+              ? emailDaSuperFreteOk
+                ? "chave_salva"
+                : "incompleta"
               : "conectado"
             : "desconectado";
     return { estado, provedorNome: nome };
-  }, [config?.shippingProvider, credsConectados, credsErro]);
+  }, [provedorSalvo, credsConectados, credsErro, emailDaSuperFreteOk]);
 
   // ── A faixa-resumo descreve o que está SALVO (a realidade da loja hoje) ──
   // Frases derivadas do config, nunca do formulário pendente: quem abriu a
@@ -285,19 +341,26 @@ export const AdminShippingView = memo(function AdminShippingView({
                 detalhe: "confirme com 'Testar' em Ajustes",
                 tom: "neutro",
               }
-            : conexao.estado === "indeterminado"
+            : conexao.estado === "incompleta"
               ? {
                   rotulo: "Fora da cidade",
-                  valor: "Conexão a confirmar",
-                  detalhe: "confira a transportadora em Ajustes",
-                  tom: "neutro",
-                }
-              : {
-                  rotulo: "Fora da cidade",
-                  valor: "Sem transportadora",
-                  detalhe: "por enquanto, só entrega na cidade",
+                  valor: `${conexao.provedorNome} incompleta`,
+                  detalhe: "falta o e-mail de contato em Ajustes",
                   tom: "atencao",
-                };
+                }
+              : conexao.estado === "indeterminado"
+                ? {
+                    rotulo: "Fora da cidade",
+                    valor: "Conexão a confirmar",
+                    detalhe: "confira a transportadora em Ajustes",
+                    tom: "neutro",
+                  }
+                : {
+                    rotulo: "Fora da cidade",
+                    valor: "Sem transportadora",
+                    detalhe: "por enquanto, só entrega na cidade",
+                    tom: "atencao",
+                  };
 
     const gratis: StatusDaFaixaFrete =
       presetSalvo === "acima_de_valor"
