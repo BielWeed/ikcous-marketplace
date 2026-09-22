@@ -225,6 +225,13 @@ duplicado, erro de geração de página; em falha de usuário, os logs de Edge F
 `version.json` e o service worker são regenerados no build — a atualização do PWA é com
 consentimento do usuário (`registerType: "prompt"`).
 
+**Versão por release (22/09/2026).** Cada release pública nova recebe incremento de
+patch no `package.json` e nas duas raízes do `package-lock.json` (`1.5.1`, depois
+`1.5.2`, `1.5.3`…), com conferência de que o `codeVersion`/`version.json` do build
+carrega o número novo. NÃO incrementar por build/preview: o `deliveryVersion` completo
+(sha + identity) continua distinguindo builds; o núcleo semver só avança em release —
+é ele que o aviso de atualização mostra.
+
 `robots.txt` e `sitemap.xml` (SEO, issue #117) também nascem no build, por loja: o
 `scripts/sitemap.mjs` consulta a `vw_produtos_public` e sobrescreve as sementes versionadas
 em `public/` (que servem o `vite dev` e envelhecem — o build é a fonte fresca; regenerá-las

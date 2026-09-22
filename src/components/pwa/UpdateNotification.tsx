@@ -38,19 +38,25 @@ export function UpdateNotification({
   // sairia com buraco (" Novidades..."). `?.trim() ||` cai no fallback.
   const appName = nomeDaLoja(config);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [progress, setProgress] = useState(0);
 
   // O selo de→para mostra o NÚCLEO semver limpo ("1.31.0 → 1.32.0"). Era
   // `v.slice(-6)`: como a versão de build é "1.32.0-sha.2526bdd", o lojista
   // via o fragmento do hash ("526bdd") — o "código estranho" da peça de
-  // 14/09. Sem núcleo legível de algum lado, o selo NÃO nasce (nada de
-  // inventar código na tela).
+  // 14/09. Sem núcleo legível de algum lado — ou com os DOIS núcleos IGUAIS
+  // (build novo da mesma semver, peça 22/09), que viraria a seta mentirosa
+  // "1.5.1 → 1.5.1" — o selo NÃO nasce (nada de inventar código na tela).
   const fromVer = nucleoSemver(currentVersion || VERSAO_DO_APP);
   const toVer = nucleoSemver(newVersion);
 
+  // Peça 22/09: acionamento ÚNICO e IMEDIATO — fora o atraso artificial de
+  // 1200ms e a barra de progresso simulada (0→100% inventados; o número
+  // chegava a 100% antes de qualquer evidência de instalação). O apply real
+  // (aplicarAtualizacaoPendenteERecarregar) tem o próprio prazo de
+  // segurança e recarrega UMA vez; enquanto isso, este estado de espera é
+  // honesto — sem porcentagem e sem afirmar sucesso.
   const handleUpdate = useCallback(() => {
     setIsUpdating(true);
-    setTimeout(() => onUpdate(), 1200);
+    onUpdate();
   }, [onUpdate]);
 
   // Diálogo de verdade (UpdateNotification-138): foco preso nos dois botões
@@ -97,18 +103,6 @@ export function UpdateNotification({
     document.addEventListener("keydown", aoTeclar);
     return () => document.removeEventListener("keydown", aoTeclar);
   }, [show, isUpdating, onSnooze]);
-
-  // Animated progress bar during update
-  useEffect(() => {
-    if (!isUpdating) return;
-    setTimeout(() => setProgress(0), 0);
-    const steps = [15, 35, 55, 75, 90, 100];
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    steps.forEach((p, i) => {
-      timers.push(setTimeout(() => setProgress(p), i * 250));
-    });
-    return () => timers.forEach(clearTimeout);
-  }, [isUpdating]);
 
   return (
     <AnimatePresence>
@@ -161,8 +155,8 @@ export function UpdateNotification({
                 </p>
               </div>
 
-              {/* Version De→Para: só com AMBOS os núcleos legíveis */}
-              {toVer && fromVer && (
+              {/* Version De→Para: só com AMBOS os núcleos legíveis e DIFERENTES */}
+              {toVer && fromVer && toVer !== fromVer && (
                 <div className="flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-1.5 font-mono text-xs">
                   <span className="text-zinc-400">{fromVer}</span>
                   <ArrowRight className="size-3 text-amber-400" />
@@ -174,20 +168,19 @@ export function UpdateNotification({
               <div className="w-full space-y-3 pt-2">
                 {isUpdating ? (
                   <>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-900 border border-amber-500/20">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 shadow-[0_0_12px_rgba(245,158,11,0.5)]"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${progress}%` }}
-                        transition={{ duration: 0.3, ease: "easeOut" }}
-                      />
+                    {/* Espera HONESTA (peça 22/09): barra indeterminada —
+                        nenhuma porcentagem inventada, nenhum "100%" antes da
+                        evidência. O anúncio vive em região aria-live para o
+                        leitor de tela saber que a instalação começou. */}
+                    <div className="h-2 w-full overflow-hidden rounded-full border border-amber-500/20 bg-zinc-900">
+                      <div className="h-full w-1/3 animate-pulse rounded-full bg-gradient-to-r from-amber-500 to-yellow-400" />
                     </div>
-                    <div className="flex items-center justify-between px-1">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400/80">
+                    <div className="flex items-center justify-center px-1">
+                      <p
+                        aria-live="polite"
+                        className="text-[10px] font-bold uppercase tracking-widest text-amber-400/80"
+                      >
                         Instalando atualização...
-                      </p>
-                      <p className="font-mono text-[11px] font-black text-amber-400">
-                        {progress}%
                       </p>
                     </div>
                   </>

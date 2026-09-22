@@ -1,29 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHAVE_MOTIVO_DE_RECARGA,
+  atualizacaoTrocouDeBuild,
   descreveMotivoDeRecarga,
   gravaMotivoDeRecarga,
+  gravaOrigemDeAtualizacao,
   limpaMotivoDeRecarga,
 } from "../../src/lib/motivo-de-recarga";
 
-// jsdom desta árvore não traz localStorage (ver _REGRAS): stub mínimo honesto.
+// jsdom desta árvore não traz localStorage nem sessionStorage (ver _REGRAS):
+// stubs mínimos honestos. A evidência de build mora em sessionStorage (achado
+// 1 da revisão: por aba, invisível às irmãs) — o motivo nominal segue no
+// localStorage, compartilhado.
 const memoria = new Map<string, string>();
+const memoriaDeSessao = new Map<string, string>();
+
+const stubDeStorage = (mapa: Map<string, string>) => ({
+  getItem: (k: string) => mapa.get(k) ?? null,
+  setItem: (k: string, v: string) => {
+    mapa.set(k, String(v));
+  },
+  removeItem: (k: string) => {
+    mapa.delete(k);
+  },
+  clear: () => {
+    mapa.clear();
+  },
+});
 
 describe("motivo-de-recarga — o toast do boot diz a verdade (laudo #2, P-1)", () => {
   beforeEach(() => {
     memoria.clear();
-    vi.stubGlobal("localStorage", {
-      getItem: (k: string) => memoria.get(k) ?? null,
-      setItem: (k: string, v: string) => {
-        memoria.set(k, String(v));
-      },
-      removeItem: (k: string) => {
-        memoria.delete(k);
-      },
-      clear: () => {
-        memoria.clear();
-      },
-    });
+    memoriaDeSessao.clear();
+    vi.stubGlobal("localStorage", stubDeStorage(memoria));
+    vi.stubGlobal("sessionStorage", stubDeStorage(memoriaDeSessao));
   });
 
   afterEach(() => {
@@ -112,5 +122,60 @@ describe("motivo-de-recarga — o toast do boot diz a verdade (laudo #2, P-1)", 
     );
     limpaMotivoDeRecarga();
     expect(localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA)).toBeNull();
+  });
+
+  // ── Peça 22/09: apply sem evidência não pode virar "Sistema Atualizado" ──
+
+  it("atualizacao NÃO confirmada (apply pendurado/sem prova): neutro, sem inventar sucesso", () => {
+    const d = descreveMotivoDeRecarga("atualizacao-nao-confirmada");
+    expect(d?.titulo).not.toBe("Sistema Atualizado");
+    expect(d?.tom).toBe("info");
+    expect(d?.descricao).toContain("não houve confirmação");
+  });
+
+  it("evidência de build: origem DIFERENTE do build atual é a prova da troca — e a leitura consome", () => {
+    gravaOrigemDeAtualizacao("1.5.0-sha.aaa1111");
+    expect(atualizacaoTrocouDeBuild("1.5.1-sha.bbb2222")).toBe(true);
+    // Consumida na leitura: sem origem nova, a próxima é false.
+    expect(atualizacaoTrocouDeBuild("1.5.1-sha.bbb2222")).toBe(false);
+  });
+
+  it("evidência de build: MESMO build (purge que não curou, recarga de segurança) NÃO é atualização", () => {
+    gravaOrigemDeAtualizacao("1.5.1-sha.aaa1111");
+    expect(atualizacaoTrocouDeBuild("1.5.1-sha.aaa1111")).toBe(false);
+  });
+
+  it("evidência de build: sem origem gravada, sem evidência — false", () => {
+    expect(atualizacaoTrocouDeBuild("1.5.1-sha.bbb2222")).toBe(false);
+  });
+
+  it("duas abas: localStorage é compartilhado, sessionStorage é POR ABA — o boot de B não consome a evidência de A", () => {
+    // Achado 1 da revisão: em localStorage, qualquer aba que boota na janela
+    // do apply consumia (e destruía) a evidência de quem aplicava — A
+    // atualizava de verdade e recebia o neutro. Em sessionStorage isso não
+    // existe: a evidência é da aba que aplicou.
+    const sessaoA = stubDeStorage(new Map());
+    const sessaoB = stubDeStorage(new Map());
+
+    // Aba A começa o apply: origem na SESSÃO dela; o motivo nominal segue no
+    // localStorage, que é o mesmo para as duas abas.
+    vi.stubGlobal("sessionStorage", sessaoA);
+    gravaOrigemDeAtualizacao("1.5.0-sha.aaa1111");
+    gravaMotivoDeRecarga("atualizacao-aplicada");
+
+    // Aba B boota no meio da janela: vê o localStorage de A...
+    vi.stubGlobal("sessionStorage", sessaoB);
+    expect(localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA)).toBe(
+      "atualizacao-aplicada",
+    );
+    // ...mas NÃO vê evidência nenhuma — e a leitura de B não pode remover a
+    // de A (storages de sessão são independentes por aba).
+    expect(atualizacaoTrocouDeBuild("1.5.1-sha.bbb2222")).toBe(false);
+
+    // Aba A conclui o apply e recarrega: a sessão DELA sobreviveu ao boot de
+    // B e ao reload — evidência intacta, consumida UMA vez.
+    vi.stubGlobal("sessionStorage", sessaoA);
+    expect(atualizacaoTrocouDeBuild("1.5.1-sha.bbb2222")).toBe(true);
+    expect(atualizacaoTrocouDeBuild("1.5.1-sha.bbb2222")).toBe(false);
   });
 });
