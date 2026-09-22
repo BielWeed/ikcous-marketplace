@@ -877,3 +877,46 @@ Deno.test("handler - opção do checkout (quando existe) SEMPRE vence o serviço
         assertEquals(me.registro.ultimoServico, '1')
     })
 })
+
+// --- SUPERFRETE (release 1.5.4) ---------------------------------------------
+// Pedido cotado e cobrado pela SuperFrete (`superfrete-<id>`) não tem etiqueta
+// pelo Melhor Envio: a etiqueta é feita no site da SuperFrete. Sem o ramo
+// próprio, `superfrete-1` com frete > 0 caía na recusa genérica com
+// podeEscolherServico: true — e um `serviceId` no corpo COMPRAVA a etiqueta no
+// ME com o saldo da lojista, para um frete de outra transportadora.
+Deno.test("erro de serviço - pedido cotado pela SuperFrete recusa etiqueta e NÃO oferece escolher serviço", () => {
+    for (const frete of [25, 0]) {
+        const { mensagem, podeEscolherServico } = erroDeServicoParaEtiqueta('superfrete-1', frete)
+        assertEquals(podeEscolherServico, false)
+        assertEquals(mensagem.includes('SuperFrete'), true)
+    }
+})
+
+Deno.test("handler - pedido superfrete-* com serviceId no corpo recusa 400: nenhum carrinho, checkout ou geração no ME", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoSuperFrete = {
+            ...PEDIDO_FELIZ,
+            shipping: 18.61,
+            customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: 'superfrete-1' },
+        }
+        for (const corpoExtra of [{ serviceId: '1' }, {}]) {
+            const supa = clienteFalso({ pedido: pedidoSuperFrete })
+            const me = buscarMeFalso()
+            const urls: string[] = []
+            const buscarQueAnota = ((input: any, init?: any) => {
+                urls.push(`${String(init?.method || 'GET')} ${String(input instanceof Request ? input.url : input)}`)
+                return me.buscar(input, init)
+            }) as any
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar('gerar_etiqueta', corpoExtra), { supabase: supa.cliente, buscar: buscarQueAnota }))
+            assertEquals(res.status, 400)
+            const corpo = await res.json()
+            assertEquals(corpo.precisa_escolher_servico, false)
+            assertEquals(String(corpo.error).includes('SuperFrete'), true)
+            assertEquals(me.registro.carrinho, 0)
+            assertEquals(me.registro.checkouts, 0)
+            assertEquals(me.registro.geracoes, 0)
+            assertEquals(urls.filter((u) => /\/cart|\/checkout|\/generate|\/print/.test(u)), [])
+        }
+    })
+})

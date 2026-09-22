@@ -27,10 +27,15 @@ import { memo } from "react";
  * - "desconectado": provedor de cotação salvo sem credencial, ou taxa fixa
  *   remanescente de loja antiga — em ambos, a loja de fora NÃO é atendida;
  * - "indeterminado": a leitura das credenciais falhou — a tela não sabe, e
- *   não finge saber (estados honestos são a lei deste repo).
+ *   não finge saber (estados honestos são a lei deste repo);
+ * - "chave_salva" (release 1.5.4, só SuperFrete): há chave salva, mas isso
+ *   NÃO prova conexão — sem a variável de projeto SUPERFRETE_USER_AGENT a
+ *   edge nem chama a API. Quem prova é o "Testar" em Ajustes; aqui a tela
+ *   diz só o que sabe ("chave salva"), nunca "conectado"/"preço real".
  */
 export type EstadoConexaoNacional =
   | "conectado"
+  | "chave_salva"
   | "desconectado"
   | "indeterminado";
 
@@ -85,6 +90,14 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
                 {provedorNome}
               </span>
             </>
+          ) : estado === "chave_salva" ? (
+            <>
+              <PontoEstado tom="neutro" />
+              <span>
+                <b className="font-semibold text-zinc-200">chave salva</b> ·{" "}
+                {provedorNome}
+              </span>
+            </>
           ) : estado === "indeterminado" ? (
             <>
               <PontoEstado tom="neutro" />
@@ -105,6 +118,12 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           estado === "conectado" ? (
             <>
               Conectado ao {provedorNome} — PAC e SEDEX com preço real, na hora.
+            </>
+          ) : estado === "chave_salva" ? (
+            <>
+              {
+                "Chave da SuperFrete salva — confirme a conexão com 'Testar' em Ajustes > Transportadoras."
+              }
             </>
           ) : estado === "indeterminado" ? (
             <>

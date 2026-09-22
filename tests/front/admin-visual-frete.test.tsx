@@ -62,12 +62,9 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "store_shipping_credentials") {
         // AdminShippingView-126: a tela de Frete não lê mais `credentials`
         // (o token) — ela pede só `provider` e filtra no "banco" com
-        // `.not()/.neq()` em `credentials->>token`. TransportadorasSection
-        // continua pedindo a linha inteira (`select("*")`, sem chamar
-        // `.not`/`.neq`) porque ela EDITA a credencial. O builder abaixo
-        // serve os dois formatos: é "thenable" direto (o `await` de
-        // TransportadorasSection resolve sem passar por `.not`/`.neq`) e
-        // também aceita a cadeia de filtro da tela de Frete.
+        // `.not()/.neq()` em `credentials->>token`. Desde a 1.5.4 a seção
+        // TransportadorasSection faz o MESMO (chave só-escrita), com um
+        // `.eq()` a mais em `credentials->>sandbox` para o modo de testes.
         // `Object.assign` sobre um Promise DE VERDADE, não um objeto com
         // `then` próprio (o Biome recusa thenable disfarçado): os métodos
         // extras ficam pendurados no Promise real, que continua
@@ -94,6 +91,17 @@ vi.mock("@/lib/supabase", () => ({
                   colunas,
                   coluna === "credentials->>token"
                     ? linhas.filter((l) => l.credentials?.token !== valor)
+                    : linhas,
+                ),
+              // 1.5.4: a seção de Transportadoras pergunta o modo de testes
+              // por filtro (`credentials->>sandbox`), sem baixar a chave.
+              eq: (coluna: string, valor: unknown) =>
+                construirConsulta(
+                  colunas,
+                  coluna === "credentials->>sandbox"
+                    ? linhas.filter(
+                        (l) => String(l.credentials?.sandbox) === valor,
+                      )
                     : linhas,
                 ),
             },
@@ -242,7 +250,7 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
   });
 
-  it("Salvar a seção Transportadoras grava a escolha no config E a credencial no banco", async () => {
+  it("Salvar a seção Transportadoras grava a escolha no config; a credencial SÓ com chave nova digitada (1.5.4)", async () => {
     updateConfig.mockResolvedValue(true);
     const { TransportadorasSection } = await import(
       "@/components/admin/settings/TransportadorasCard"
@@ -281,13 +289,36 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
       enabledShippingMethods: ["sedex", "pac", "jadlog"],
     });
 
-    // A credencial vai para a tabela própria, com o provedor certo.
+    // Só serviços mudaram: a credencial NÃO é regravada (1.5.4 — o
+    // navegador nem tem mais a chave salva para reenviar).
+    expect(estadoDoBanco.credenciaisSalvas).toHaveLength(0);
+
+    // Chave NOVA digitada: vai para a tabela própria, com o provedor certo.
+    const campoToken = hospedeiro.querySelector(
+      'input[type="password"]',
+    ) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campoToken, "tok-novo-ficticio");
+      campoToken.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const salvarDeNovo = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Salvar"),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      salvarDeNovo.click();
+      await esperarMicrotarefas();
+    });
     expect(estadoDoBanco.credenciaisSalvas).toHaveLength(1);
     expect(estadoDoBanco.credenciaisSalvas[0]).toMatchObject({
       provider: "melhor_envio",
     });
-    expect(estadoDoBanco.credenciaisSalvas[0].credentials).toMatchObject({
-      token: "tok-salvo",
+    expect(estadoDoBanco.credenciaisSalvas[0].credentials).toEqual({
+      token: "tok-novo-ficticio",
+      sandbox: false,
     });
   });
 

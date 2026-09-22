@@ -53,21 +53,24 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "store_shipping_credentials") {
         estadoDoBanco.chamadasDeCredenciais++;
         const falha = estadoDoBanco.credenciaisFalham;
-        return {
-          select: () =>
+        // 1.5.4: a seção pergunta só `provider`, filtrando no banco por
+        // `credentials->>token` (tem chave) e `credentials->>sandbox`
+        // (modo de testes) — o token não desce ao navegador.
+        const consulta = (linhas: Array<{ provider: string }>): any =>
+          Object.assign(
             Promise.resolve(
               falha
                 ? { data: null, error: { message: "network error" } }
-                : {
-                    data: [
-                      {
-                        provider: "melhor_envio",
-                        credentials: { token: "tok-salvo", sandbox: false },
-                      },
-                    ],
-                    error: null,
-                  },
+                : { data: linhas, error: null },
             ),
+            {
+              not: () => consulta(linhas),
+              neq: () => consulta(linhas),
+              eq: () => consulta([]),
+            },
+          );
+        return {
+          select: () => consulta([{ provider: "melhor_envio" }]),
         };
       }
       // shipping_calculation_logs e o resto
@@ -178,14 +181,16 @@ describe("TransportadorasSection — chaves que não carregam dizem, e deixam te
       /não foi possível carregar as chaves/i,
     );
 
-    // E a seção volta a funcionar de verdade: o campo do token destrava e traz
-    // o valor salvo. Sem esta asserção, o teste aceitaria uma tela que só
+    // E a seção volta a funcionar de verdade: o campo do token destrava e a
+    // tela diz que há chave salva (1.5.4: a chave em si não volta ao campo —
+    // só-escrita). Sem esta asserção, o teste aceitaria uma tela que só
     // esconde a mensagem de erro e continua morta.
     const campoToken = [...hospedeiro.querySelectorAll("input")].find(
       (i) => i.type === "password",
     ) as HTMLInputElement | undefined;
     expect(campoToken).toBeDefined();
     expect(campoToken?.disabled).toBe(false);
-    expect(campoToken?.value).toBe("tok-salvo");
+    expect(campoToken?.value).toBe("");
+    expect(hospedeiro.textContent).toMatch(/chave salva/i);
   });
 });

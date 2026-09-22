@@ -41,7 +41,11 @@ export interface EstadoDaRegraDeFrete {
   /** `store_config.shipping_fee`. Zero é valor válido, não ausência. */
   readonly shippingFee: number;
   readonly shippingCoverage: "local" | "national";
-  readonly shippingProvider: "flat_fee" | "melhor_envio" | "frenet";
+  readonly shippingProvider:
+    | "flat_fee"
+    | "melhor_envio"
+    | "frenet"
+    | "superfrete";
 }
 
 export interface FrasesDaRegraDeFrete {

@@ -169,7 +169,8 @@ export const HistoricoCotacoesSection = memo(
             Sem transportadora conectada (a Taxa Única Fixa foi descontinuada):
             este histórico registra um erro a cada tentativa de entrega fora da
             cidade. Se está vazio, ainda não houve tentativa de fora — mas
-            nenhuma vai funcionar até você conectar Melhor Envio ou Frenet.
+            nenhuma vai funcionar até você conectar Melhor Envio, Frenet ou
+            SuperFrete.
           </p>
         ) : logs.length === 0 ? (
           <p className="py-4 text-center text-xs italic text-zinc-500">

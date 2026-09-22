@@ -40,7 +40,8 @@ const { TOKEN_REAL, mockConfig, estadoDoBanco } = vi.hoisted(() => {
       shippingProvider: "melhor_envio" as
         | "flat_fee"
         | "melhor_envio"
-        | "frenet",
+        | "frenet"
+        | "superfrete",
       shippingCoverage: "national" as "local" | "national",
     },
     // `linhas` é o que a tabela "teria" — o mock aplica o mesmo filtro que
@@ -214,6 +215,51 @@ describe("AdminShippingView — não baixa o token da transportadora para o nave
     await abrirTela();
 
     expect(hospedeiro.textContent).toMatch(/Melhor Envio conectado/i);
+  });
+
+  it("SuperFrete (1.5.4): com token salvo a tela diz 'chave salva' — NUNCA 'conectado' nem 'preço real' (chave salva não prova conexão)", async () => {
+    // Revisão da 1.5.4: a chave salva não prova que a SuperFrete responde —
+    // sem a variável SUPERFRETE_USER_AGENT no projeto, a edge nem chama a
+    // API. Quem prova é o "Testar" em Ajustes; esta tela só diz o que sabe.
+    mockConfig.shippingProvider = "superfrete";
+    estadoDoBanco.linhas = [
+      { provider: "superfrete", credentials: { token: TOKEN_REAL } },
+    ];
+    await abrirTela();
+
+    expect(estadoDoBanco.colunasPedidas).not.toMatch(/credentials/);
+    expect(hospedeiro.innerHTML).not.toContain(TOKEN_REAL);
+    const texto = hospedeiro.textContent ?? "";
+    // Sem fronteira de palavra: o textContent cola os blocos
+    // ("…cidadeconectado"). Neste estado nem "desconectado" aparece.
+    expect(texto).not.toMatch(/conectado/i);
+    expect(texto).not.toMatch(/preço real/i);
+    expect(texto).toMatch(/chave salva/i);
+    expect(texto).toContain(
+      "Chave da SuperFrete salva — confirme a conexão com 'Testar' em Ajustes > Transportadoras.",
+    );
+  });
+
+  it("controle: Melhor Envio com token salvo continua EXATAMENTE como antes (conectado + preço real)", async () => {
+    await abrirTela();
+
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toMatch(/Melhor Envio conectado/);
+    expect(texto).toContain(
+      "Conectado ao Melhor Envio — PAC e SEDEX com preço real, na hora.",
+    );
+    expect(texto).not.toMatch(/chave salva/i);
+  });
+
+  it("SuperFrete sem token salvo NUNCA diz 'conectado'", async () => {
+    mockConfig.shippingProvider = "superfrete";
+    estadoDoBanco.linhas = [{ provider: "superfrete", credentials: {} }];
+    await abrirTela();
+
+    expect(hospedeiro.textContent).not.toMatch(/SuperFrete conectado/i);
+    expect(hospedeiro.textContent).not.toMatch(/Conectado ao SuperFrete/i);
+    // E o nome aparece (a frase é "conecte o SuperFrete", não a genérica).
+    expect(hospedeiro.textContent).toMatch(/conecte o SuperFrete/);
   });
 
   it("com linha sem token (credentials: {}), a tela diz 'desconectado' — presença de linha não basta", async () => {

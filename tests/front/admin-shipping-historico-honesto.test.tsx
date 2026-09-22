@@ -162,7 +162,8 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     // cada tentativa de fora da cidade — e o caminho para sair disso.
     expect(textoDoHistorico()).toMatch(/erro/i);
     expect(textoDoHistorico()).toMatch(/fora da cidade/i);
-    expect(textoDoHistorico()).toMatch(/Melhor Envio ou Frenet/i);
+    // 1.5.4: a SuperFrete entrou na lista de transportadoras conectáveis.
+    expect(textoDoHistorico()).toMatch(/Melhor Envio, Frenet ou SuperFrete/i);
   });
 
   it("provedor salvo melhor_envio + 0 linhas: diz 'nenhuma cotação registrada', e NÃO mostra a explicação do flat_fee", async () => {

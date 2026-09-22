@@ -257,6 +257,9 @@ describe("ShippingCalculator — sinal aceitaRetirada e cache v2 com o contexto 
 
   it.each<[string, Partial<StoreConfig>]>([
     ["provedor", { shippingProvider: "frenet" }],
+    // Release 1.5.4: loja que troca Melhor Envio -> SuperFrete não pode
+    // servir a cotação velha do navegador (os ids nem existem no novo).
+    ["provedor ME -> SuperFrete", { shippingProvider: "superfrete" }],
     ["retirada desligada", { enabledShippingMethods: ["sedex", "pac"] }],
     ["endereço da loja", { storeAddress: OUTRO_ENDERECO_FICTICIO }],
   ])(

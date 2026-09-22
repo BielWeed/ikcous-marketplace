@@ -38,9 +38,17 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: () => ({
-      select: () => Promise.resolve({ data: [], error: null }),
-    }),
+    // 1.5.4: a seção só pergunta `provider` com filtros encadeados (o token
+    // não desce ao navegador); banco sem chave salva.
+    from: () => {
+      const consulta = (): any =>
+        Object.assign(Promise.resolve({ data: [], error: null }), {
+          not: () => consulta(),
+          neq: () => consulta(),
+          eq: () => consulta(),
+        });
+      return { select: () => consulta() };
+    },
     functions: { invoke: (...args: unknown[]) => invoke(...args) },
   },
 }));
