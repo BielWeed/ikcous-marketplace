@@ -32,6 +32,7 @@ import { useProducts } from "@/hooks/useProducts";
 // Só o TIPO da resposta da RPC do PDV — import "type" some da build, então
 // não puxa `useVendaPresencial.ts` (nem o cliente Supabase) para este chunk.
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
+import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
@@ -75,40 +76,6 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-// achado AdminProductFormView-499: o ImageAdjuster SEMPRE exporta
-// `image/webp` (ImageAdjuster.tsx, `canvas.toBlob(cb, "image/webp", ...)`),
-// mas o recorte confirmado subia com nome/tipo FIXOS em `.jpg`/`image/jpeg`
-// — mentindo sobre o conteúdo real. `uploadProductImages` (useProducts.ts)
-// deriva a extensão do bucket a partir do NOME, e o Storage serve o
-// Content-Type do `File.type`: um ".jpg" que é webp por dentro falha na
-// transformação de imagem do Storage, e o LazyImage cai no fallback da
-// imagem ORIGINAL (sem redimensionar) em toda a vitrine.
-//
-// Exportada só para o teste chamar direto, mesmo motivo de
-// `compressProductImage` logo abaixo.
-function extensaoDoContentType(tipo: string): string {
-  switch (tipo) {
-    case "image/webp":
-      return "webp";
-    case "image/png":
-      return "png";
-    case "image/jpeg":
-      return "jpg";
-    default:
-      // Sem tipo reconhecido (ex.: `Blob.type` vazio em algum ambiente),
-      // cai no formato que o ImageAdjuster de fato produz hoje — nunca no
-      // jpeg mentiroso que este achado corrige.
-      return "webp";
-  }
-}
-
-export function arquivoDaImagemRecortada(croppedBlob: Blob): File {
-  const tipo = croppedBlob.type || "image/webp";
-  const extensao = extensaoDoContentType(tipo);
-  return new File([croppedBlob], `product-image-${Date.now()}.${extensao}`, {
-    type: tipo,
-  });
-}
 
 // C5.2 — formato aceito para o código de barras (decisão do lote pdv-c5,
 // §5.6): depois de aparar e remover espaços INTERNOS, só letras, números e
@@ -613,7 +580,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (adjustingImgIndex === null) return;
     setIsUploadingAdjusted(true);
 
-    const file = arquivoDaImagemRecortada(croppedBlob);
+    const file = arquivoDaImagemRecortada(croppedBlob, "product-image-");
     const loadingToast = toast.loading("Enviando imagem recortada...");
 
     try {

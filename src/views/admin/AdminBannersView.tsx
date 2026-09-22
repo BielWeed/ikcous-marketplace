@@ -39,6 +39,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { cn, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
@@ -962,9 +963,11 @@ export const AdminBannersView = memo(function AdminBannersView({
       return;
     }
     setIsUploadingAdjusted(true);
-    const file = new File([croppedBlob], `banner-image-${Date.now()}.jpg`, {
-      type: "image/jpeg",
-    });
+    // Mesmo achado do produto (AdminProductFormView-499): o ImageAdjuster
+    // exporta webp — nome/tipo fixos ".jpg"/"image/jpeg" mentiam sobre o
+    // conteúdo e quebravam a transformação de imagem do Storage. O helper
+    // derivado do tipo REAL do blob é compartilhado com a tela de produtos.
+    const file = arquivoDaImagemRecortada(croppedBlob, "banner-image-");
     const loadingToast = toast.loading("Enviando imagem recortada...");
     try {
       const url = await uploadBannerImage(file);
