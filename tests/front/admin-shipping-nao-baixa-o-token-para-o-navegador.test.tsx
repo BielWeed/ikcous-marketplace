@@ -25,6 +25,15 @@
 //
 // Contra o HEAD antes da correção, o teste 1 reprova: `colunasPedidas`
 // chega como "*", que inclui `credentials`.
+//
+// AJUSTE DA 1.5.5: com a SuperFrete salva, a tela faz uma segunda leitura que
+// pede SÓ o e-mail de contato técnico por alias
+// (`contato:credentials->>contact_email`, com `.eq("provider", …)`) — sem
+// ele a edge não cota, e a tela passa a dizer "incompleta" (teste próprio em
+// admin-frete-superfrete-email-incompleta.test.tsx). Aqui o mini-PostgREST
+// ganhou `.eq` e a projeção por alias, a asserção de colunas passou a aceitar
+// só esse caminho (e continua recusando a coluna inteira, "*" e token), e o
+// caso "chave salva" da SuperFrete ganhou o e-mail na linha salva.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,6 +61,9 @@ const { TOKEN_REAL, mockConfig, estadoDoBanco } = vi.hoisted(() => {
         { provider: "melhor_envio", credentials: { token: TOKEN_REAL } },
       ] as Array<{ provider: string; credentials: Record<string, unknown> }>,
       colunasPedidas: "",
+      // 1.5.5: TODAS as projeções pedidas, na ordem (a tela pode fazer mais
+      // de uma leitura; `colunasPedidas` guarda só a última).
+      todasAsColunas: [] as string[],
     },
   };
 });
@@ -97,17 +109,23 @@ vi.mock("@/lib/supabase", () => ({
       type Consulta = Promise<{ data: unknown; error: null }> & {
         not: (coluna: string, op: string, valor: unknown) => Consulta;
         neq: (coluna: string, valor: unknown) => Consulta;
+        eq: (coluna: string, valor: unknown) => Consulta;
       };
       const aplicarFiltros = (
         linhas: typeof estadoDoBanco.linhas,
+        pedidas: string,
       ): Consulta => {
         const projetadas = linhas.map((l) => {
-          const colunas = estadoDoBanco.colunasPedidas
-            .split(",")
-            .map((c) => c.trim());
+          const colunas = pedidas.split(",").map((c) => c.trim());
           const linhaProjetada: Record<string, unknown> = {};
           for (const c of colunas) {
             if (c === "provider") linhaProjetada.provider = l.provider;
+            // 1.5.5: alias `nome:credentials->>campo` devolve SÓ o campo.
+            const alias = /^(\w+):credentials->>(\w+)$/.exec(c);
+            if (alias) {
+              const v = l.credentials?.[alias[2]];
+              linhaProjetada[alias[1]] = v == null ? null : String(v);
+            }
             // Qualquer outra coluna pedida (ex.: "credentials", "*") "vaza"
             // a credencial de propósito — é isto que o teste 1 teria de
             // pegar via `colunasPedidas`.
@@ -125,6 +143,7 @@ vi.mock("@/lib/supabase", () => ({
                 coluna === "credentials->>token"
                   ? linhas.filter((l) => l.credentials?.token != null)
                   : linhas,
+                pedidas,
               );
             },
             neq(coluna: string, valor: unknown) {
@@ -132,6 +151,16 @@ vi.mock("@/lib/supabase", () => ({
                 coluna === "credentials->>token"
                   ? linhas.filter((l) => l.credentials?.token !== valor)
                   : linhas,
+                pedidas,
+              );
+            },
+            // 1.5.5: a leitura do e-mail filtra por `provider`.
+            eq(coluna: string, valor: unknown) {
+              return aplicarFiltros(
+                coluna === "provider"
+                  ? linhas.filter((l) => l.provider === valor)
+                  : linhas,
+                pedidas,
               );
             },
           },
@@ -141,7 +170,8 @@ vi.mock("@/lib/supabase", () => ({
       return {
         select: (colunas: string) => {
           estadoDoBanco.colunasPedidas = colunas;
-          return aplicarFiltros(estadoDoBanco.linhas);
+          estadoDoBanco.todasAsColunas.push(colunas);
+          return aplicarFiltros(estadoDoBanco.linhas, colunas);
         },
       };
     },
@@ -170,6 +200,7 @@ describe("AdminShippingView — não baixa o token da transportadora para o nave
       { provider: "melhor_envio", credentials: { token: TOKEN_REAL } },
     ];
     estadoDoBanco.colunasPedidas = "";
+    estadoDoBanco.todasAsColunas = [];
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -218,16 +249,25 @@ describe("AdminShippingView — não baixa o token da transportadora para o nave
   });
 
   it("SuperFrete (1.5.4): com token salvo a tela diz 'chave salva' — NUNCA 'conectado' nem 'preço real' (chave salva não prova conexão)", async () => {
-    // Revisão da 1.5.4: a chave salva não prova que a SuperFrete responde —
-    // sem a variável SUPERFRETE_USER_AGENT no projeto, a edge nem chama a
-    // API. Quem prova é o "Testar" em Ajustes; esta tela só diz o que sabe.
+    // Revisão da 1.5.4: a chave salva não prova que a SuperFrete responde.
+    // Quem prova é o "Testar" em Ajustes; esta tela só diz o que sabe.
+    // 1.5.5: "chave salva" exige também o e-mail de contato técnico salvo
+    // (sem ele o estado é "incompleta" — teste próprio).
     mockConfig.shippingProvider = "superfrete";
     estadoDoBanco.linhas = [
-      { provider: "superfrete", credentials: { token: TOKEN_REAL } },
+      {
+        provider: "superfrete",
+        credentials: { token: TOKEN_REAL, contact_email: "loja@ex.com" },
+      },
     ];
     await abrirTela();
 
-    expect(estadoDoBanco.colunasPedidas).not.toMatch(/credentials/);
+    for (const colunas of estadoDoBanco.todasAsColunas) {
+      expect(
+        colunas.replace(/\w+:credentials->>contact_email/g, ""),
+      ).not.toMatch(/credentials/);
+      expect(colunas).not.toMatch(/token|\*/);
+    }
     expect(hospedeiro.innerHTML).not.toContain(TOKEN_REAL);
     const texto = hospedeiro.textContent ?? "";
     // Sem fronteira de palavra: o textContent cola os blocos
