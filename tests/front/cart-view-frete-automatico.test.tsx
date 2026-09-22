@@ -287,8 +287,12 @@ describe("CartView — frete automático pelo endereço de entrega", () => {
     expect(espelho.selecionada?.id).toBe("local-delivery");
 
     await clicar(botao("Trocar"));
+    // A lista abre numa folha modal portalada no body (seletor de endereço,
+    // 22/09) — fora do hospedeiro, por isso a busca é no documento.
+    const folha = document.querySelector<HTMLElement>('[role="dialog"]');
+    expect(folha).not.toBeNull();
     const cartaoTrabalho = Array.from(
-      hospedeiro.querySelectorAll<HTMLElement>('[role="button"]'),
+      folha?.querySelectorAll<HTMLElement>('[role="button"]') ?? [],
     ).find((el) => el.textContent?.includes("Trabalho"));
     await clicar(cartaoTrabalho);
 

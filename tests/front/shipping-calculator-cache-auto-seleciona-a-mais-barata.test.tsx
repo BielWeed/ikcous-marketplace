@@ -12,6 +12,7 @@
 // gravado (ver `cotacaoCacheadaQueAindaServe` em ShippingCalculator.tsx) e
 // seleciona o índice 0, que é a opção CARA. O cliente que não reparar paga
 // R$ 23 a mais.
+import { contextoDaLojaParaFrete } from "@/contexts/ContextoDoFreteDaLoja";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -136,9 +137,12 @@ describe("ShippingCalculator — o acerto de cache do navegador auto-seleciona a
     // Envelope já gravado por uma consulta anterior: a transportadora
     // devolveu a Expressa (cara) em primeiro e a Econômica (barata) em
     // segundo — ordem do provedor, não de preço.
+    // Chave v2 + contexto (release 1.5.3): sem StoreProvider na montagem, o
+    // contexto do frete é o padrão "sem config".
     armazem.set(
-      "ikcous_shipping_cache_69000000",
+      "ikcous_shipping_cache_v2_69000000",
       JSON.stringify({
+        contexto: contextoDaLojaParaFrete(undefined),
         assinatura: "prod-1::1",
         gravadoEm: Date.now(),
         opcoes: [

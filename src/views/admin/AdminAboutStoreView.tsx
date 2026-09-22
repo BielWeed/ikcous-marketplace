@@ -19,10 +19,12 @@ import type { View } from "@/types";
 // abertos, nada desmonta ao digitar.
 //
 // DOIS CONTRATOS DE SALVAMENTO, por desenho: identidade e horário têm
-// editores próprios que salvam sozinhos (os MESMOS componentes dos Ajustes —
-// campo é um só no banco, lógica é uma só); endereço e descrição são os
-// campos novos da 20261167000000, gravados pelo botão "Salvar" desta tela
-// num único updateConfig. O dirty da tela é o OU de todos.
+// editores próprios que salvam sozinhos (IdentitySettingsSection e
+// BusinessHoursSection — desde 22/09/2026 a edição mora só aqui; os
+// acordeões duplicados em Ajustes ("Nome, logo e cores" e "Atendimento")
+// saíram); endereço e descrição são os campos novos da 20261167000000,
+// gravados pelo botão "Salvar" desta tela num único updateConfig. O dirty
+// da tela é o OU de todos.
 interface AdminAboutStoreViewProps {
   onNavigate: (view: View) => void;
   active?: boolean;
@@ -312,7 +314,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         <BlocoNumerado
           numero="3"
           titulo="Horário de atendimento"
-          descricao="Expediente publicado na página Sobre a Loja e no rodapé da home. O MESMO campo dos Ajustes — salvar aqui, atualiza lá."
+          descricao="Expediente publicado na página Sobre a Loja e no rodapé da home."
         >
           <BusinessHoursSection
             active={active}

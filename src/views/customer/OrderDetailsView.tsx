@@ -935,9 +935,27 @@ export function OrderDetailsView({
               <div className="flex items-center gap-2">
                 <MapPin className="size-4 text-zinc-400" />
                 <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-900">
-                  Endereço de Entrega
+                  {order.retiradaNaLoja
+                    ? "Retirada na loja"
+                    : "Endereço de Entrega"}
                 </h4>
               </div>
+              {order.retiradaNaLoja && (
+                // O endereço REAL da loja no momento da compra, e o aviso
+                // neutro — nenhum prazo inventado: a loja confirma quando
+                // o pedido está separado.
+                <div className="space-y-1">
+                  <p className="text-xs font-black tracking-tight text-zinc-900">
+                    Retire em: {order.enderecoDeRetirada}
+                  </p>
+                  <p className="text-[10px] font-bold leading-relaxed text-zinc-500">
+                    Aguarde a confirmação da loja para retirar.
+                  </p>
+                  <p className="pt-2 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    Seu endereço
+                  </p>
+                </div>
+              )}
               <div className="space-y-1">
                 <p className="text-xs font-black uppercase tracking-tight text-zinc-900">
                   {order.customer.name}

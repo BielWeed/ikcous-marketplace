@@ -518,9 +518,24 @@ function OrderCustomerCard({
           </div>
         </div>
       </div>
+      {order.retiradaNaLoja && (
+        // Retirada na loja: a cliente BUSCA — nada a enviar nem etiqueta a
+        // gerar. O endereço é o retrato da compra (customer_data).
+        <div
+          className="space-y-1 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3"
+          aria-label="Retirada na loja"
+        >
+          <p className="text-[9px] font-black uppercase tracking-widest text-emerald-300">
+            Retirada na loja
+          </p>
+          <p className="text-xs leading-relaxed text-zinc-200">
+            A cliente busca o pedido em: {order.enderecoDeRetirada}
+          </p>
+        </div>
+      )}
       <div className="space-y-2 border-t border-white/5 pt-2">
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-          Endereço de Entrega
+          {order.retiradaNaLoja ? "Endereço do cliente" : "Endereço de Entrega"}
         </p>
         <div className="flex flex-col justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-3 md:flex-row md:items-start">
           <p className="flex-1 text-xs uppercase leading-relaxed text-zinc-300">

@@ -202,6 +202,15 @@ export interface Order {
   canal?: CanalDaVenda;
   /** Qual admin registrou a venda no balcão. NULL em venda online. */
   vendedorId?: string | null;
+  /**
+   * Retirada na loja (release 1.5.3): a cliente busca o pedido no endereço
+   * físico da loja. Derivado do retrato `customer_data.pickup_address` que a
+   * RPC v23/v24 grava SÓ para `store-pickup` — opcional pelo mesmo motivo do
+   * `canal` (cache antigo hidratado sem o mapper): ausente = entrega.
+   */
+  retiradaNaLoja?: boolean;
+  /** O endereço da loja no momento da compra (retrato, aparado). */
+  enderecoDeRetirada?: string | null;
 }
 
 export interface Review {
@@ -322,6 +331,12 @@ export interface ShippingOption {
   price: number;
   deliveryDays: number;
   provider: string;
+  /**
+   * Só na retirada na loja (id `store-pickup`, release 1.5.3): o endereço
+   * físico REAL da loja (`store_config.store_address`, aparado) que a edge
+   * calculate-shipping manda junto. A tela mostra "Retire em: …" com ele.
+   */
+  pickupAddress?: string;
 }
 
 export interface WaitlistItem {

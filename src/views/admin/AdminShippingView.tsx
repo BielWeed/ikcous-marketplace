@@ -13,6 +13,7 @@ import {
 } from "@/components/admin/shipping/FreteResumoFaixa";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { listaComRetirada, retiradaLigadaNaLista } from "@/lib/guarda-de-frete";
 import {
   type PresetFreteGratis,
   presetDoConfig,
@@ -65,6 +66,12 @@ interface AdminShippingViewProps {
  * tabela que Ajustes grava). Salvar aqui NÃO envia
  * `shippingProvider`/`enabledShippingMethods` — enviar de novo daqui
  * revertia a escolha salva por um valor velho de formulário.
+ * EXCEÇÃO ÚNICA (retirada na loja, release 1.5.3): a chave `store-pickup`
+ * mora em `enabledShippingMethods` (contrato da RPC v23/v24 e da edge), e
+ * a chave "Permitir retirada na loja" é desta tela. O save só envia a
+ * lista quando a RETIRADA mudou, e a monta a partir do config ATUAL
+ * (`listaComRetirada`): os serviços de transportadora que Ajustes gravou
+ * saem intactos — nunca de um valor velho de formulário.
  *
  * FRETE GRÁTIS POR PRESETS (contrato único em
  * `src/lib/presets-de-frete-gratis.ts`): a estratégia escolhida é a ÚNICA
@@ -108,6 +115,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     shippingCoverage: "national" as "local" | "national",
     localDeliveryFee: 10,
     localCepRange: "",
+    retiradaNaLoja: false,
   });
 
   // Leitura da credencial de transportadora (mesma tabela que Ajustes
@@ -181,6 +189,7 @@ export const AdminShippingView = memo(function AdminShippingView({
           | "national",
         localDeliveryFee: Number(config.localDeliveryFee ?? 10),
         localCepRange: config.localCepRange || "",
+        retiradaNaLoja: retiradaLigadaNaLista(config.enabledShippingMethods),
       });
       fetchCreds();
     }
@@ -328,6 +337,11 @@ export const AdminShippingView = memo(function AdminShippingView({
     if (formData.localDeliveryFee !== Number(config.localDeliveryFee ?? 10))
       return true;
     if (formData.localCepRange !== (config.localCepRange || "")) return true;
+    if (
+      formData.retiradaNaLoja !==
+      retiradaLigadaNaLista(config.enabledShippingMethods)
+    )
+      return true;
     return false;
   }, [formData, config]);
 
@@ -361,12 +375,25 @@ export const AdminShippingView = memo(function AdminShippingView({
     try {
       // Se esta gravação falhar, PARA AQUI (ADMIN-010, #94). O toast de
       // erro sai de dentro do `updateConfig`.
+      // Retirada: a lista só vai quando a retirada MUDOU, e sai do config
+      // atual — só a chave `store-pickup` entra ou sai.
+      const retiradaMudou =
+        formData.retiradaNaLoja !==
+        retiradaLigadaNaLista(config?.enabledShippingMethods);
       const salvou = await updateConfig({
         freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
         originCep: formData.originCep,
         shippingCoverage: formData.shippingCoverage,
         localDeliveryFee: Math.max(0, formData.localDeliveryFee),
         localCepRange: formData.localCepRange,
+        ...(retiradaMudou
+          ? {
+              enabledShippingMethods: listaComRetirada(
+                config?.enabledShippingMethods,
+                formData.retiradaNaLoja,
+              ),
+            }
+          : {}),
       });
       if (!salvou) {
         haptic.error();
@@ -454,6 +481,11 @@ export const AdminShippingView = memo(function AdminShippingView({
                 uf={config?.storeState}
                 semOrigem={!config?.originCep}
                 desabilitado={isOffline}
+                retirada={formData.retiradaNaLoja}
+                onRetirada={(retiradaNaLoja) =>
+                  setFormData((prev) => ({ ...prev, retiradaNaLoja }))
+                }
+                enderecoDaLoja={config?.storeAddress}
               />
 
               <FreteNacionalBloco

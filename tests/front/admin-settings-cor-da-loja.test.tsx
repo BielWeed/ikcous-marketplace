@@ -117,37 +117,24 @@ async function flush() {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
-// O título do acordeão mora no hub (AdminSettingsView) e muda com o desenho
-// novo do lote E ("Identidade da loja" → "Nome, logo e cores", tabela de
-// vocabulário em equipe/entregas/20260913-lote-e-desenho-salao-e-porao.md).
-// O locator aceita os DOIS títulos oficiais — o atual e o do desenho — para o
-// teste sobreviver às duas ordens de pouso (hub antes ou depois desta peça)
-// SEM afrouxar o alvo: continua exigindo o botão de seção colapsável
-// (aria-expanded) cujo texto carrega um dos dois títulos.
-function secaoColapsavel(tituloAtual: string, tituloNovo: string) {
-  const el = [...host.querySelectorAll("button")].find(
-    (node) =>
-      node.getAttribute("aria-expanded") !== null &&
-      (node.textContent?.includes(tituloAtual) ||
-        node.textContent?.includes(tituloNovo)),
-  );
-  expect(el).toBeDefined();
-  return el!;
-}
+// A edição de identidade (IdentitySettingsSection) morava atrás de um
+// acordeão em AdminSettingsView ("Nome, logo e cores") e SAIU de lá em
+// 22/09/2026 — era duplicada de AdminAboutStoreView, que monta o MESMO
+// componente sempre visível (bloco 1, "Marca da loja"). Este arquivo passou
+// a renderizar a tela que continua editando de verdade.
 async function render(active = true) {
-  const { AdminSettingsView } = await import("@/views/admin/AdminSettingsView");
+  const { AdminAboutStoreView } = await import(
+    "@/views/admin/AdminAboutStoreView"
+  );
   await act(async () => {
     root.render(
-      <AdminSettingsView
+      <AdminAboutStoreView
         active={active}
         onNavigate={vi.fn()}
         onSetDirty={h.dirty}
       />,
     );
   });
-  const section = secaoColapsavel("Identidade da loja", "Nome, logo e cores");
-  if (section.getAttribute("aria-expanded") === "false")
-    await act(async () => section.click());
   await act(async () => {
     await import("@/components/admin/settings/IdentitySettingsSection");
   });
@@ -223,7 +210,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Ajustes — cor principal na identidade", () => {
+describe("Sobre a Loja — cor principal na identidade", () => {
   it("exibe a fotografia do banco, sem usar a semente do build para gravar", async () => {
     await render();
     expect(input("store-color-hex").value).toBe("#ABCDEF");

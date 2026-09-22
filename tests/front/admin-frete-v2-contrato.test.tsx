@@ -265,7 +265,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     expect(hospedeiro.querySelector("#shipping-flat-fee")).toBeNull();
   });
 
-  it("a chave 'Só entregar na cidade' é o ÚNICO interruptor da tela e grava a cobertura de verdade", async () => {
+  it("só há chave onde há campo gravável: 'Só entregar na cidade' grava a cobertura de verdade", async () => {
     estadoDaLoja.atual = {
       ...estadoDaLoja.atual,
       shippingCoverage: "national",
@@ -273,19 +273,25 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     // A credencial da transportadora NÃO tem chave clicável (é de Ajustes —
-    // aqui é exibição). A única chave interativa é a da cobertura, com
-    // campo gravável real por trás.
-    const chaves = hospedeiro.querySelectorAll('[role="switch"]');
-    expect(chaves).toHaveLength(1);
-    expect(chaves[0].getAttribute("aria-checked")).toBe("false");
+    // aqui é exibição). As chaves interativas são SÓ as que têm campo
+    // gravável real por trás: a cobertura e, desde a release 1.5.3, a
+    // retirada na loja (chave `store-pickup` em enabledShippingMethods —
+    // provada em admin-frete-retirada-na-loja.test.tsx).
+    const chaves = [...hospedeiro.querySelectorAll('[role="switch"]')];
+    expect(chaves.map((c) => c.getAttribute("aria-label"))).toEqual([
+      "Só entregar na cidade",
+      "Permitir retirada na loja",
+    ]);
+    const cobertura = chaves[0] as HTMLElement;
+    expect(cobertura.getAttribute("aria-checked")).toBe("false");
 
     await act(async () => {
-      (chaves[0] as HTMLElement).click();
+      cobertura.click();
     });
     await act(async () => {
       await esperarMicrotarefas();
     });
-    expect(chaves[0].getAttribute("aria-checked")).toBe("true");
+    expect(cobertura.getAttribute("aria-checked")).toBe("true");
 
     await salvar();
     expect(updateConfig.mock.calls[0][0]).toHaveProperty(

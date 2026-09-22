@@ -3,11 +3,13 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   buscarComTempo,
   calculateSmartFallback,
+  chavesDeTransportadora,
   erroDeTransportadoraEhCepInvalido,
   getCartHash,
   handler,
   isLocalCep,
   nomeAmigavelDoServico,
+  opcaoDeRetirada,
   precoDeContingenciaDoTopo,
   precoResolvidoSemCache,
   servicoCasaChave,
@@ -540,16 +542,42 @@ function clienteFalso(opts: {
    * leitura não pode voltar a estourar se uma sobrar de antes do dedup.
    */
   cacheLookup?: Array<{ options: unknown }>;
+  /**
+   * RETIRADA NA LOJA (20261169000000): o endereço físico (`store_address`)
+   * é lido numa consulta SEPARADA e tolerante de `store_config` — é pelas
+   * colunas pedidas no `select` que o dublê distingue essa leitura da
+   * leitura principal. `falhaAoLerEndereco`: "erro" = `{ error }` do
+   * PostgREST (banco sem a coluna da 20261167), "excecao" = a promessa
+   * rejeita.
+   */
+  enderecoDaLoja?: string | null;
+  falhaAoLerEndereco?: "erro" | "excecao";
 }) {
   const { registro } = opts;
   const config = opts.config ?? CONFIG_DA_LOJA;
 
-  const leitura = (tabela: string) => {
+  const leitura = (tabela: string, colunas = "") => {
     let usouSingleOuMaybeSingle = false;
     let limiteRequisitado: number | null = null;
     const resolver = () => {
       switch (tabela) {
         case "store_config":
+          if (String(colunas).includes("store_address")) {
+            registro.leiturasDeEndereco = (registro.leiturasDeEndereco ?? 0) + 1;
+            if (opts.falhaAoLerEndereco === "excecao") {
+              return Promise.reject(new Error("conexão perdida ao ler o endereço"));
+            }
+            if (opts.falhaAoLerEndereco === "erro") {
+              return Promise.resolve({
+                data: null,
+                error: { message: "column store_config.store_address does not exist", code: "42703" },
+              });
+            }
+            return Promise.resolve({
+              data: { store_address: opts.enderecoDaLoja ?? null },
+              error: null,
+            });
+          }
           return Promise.resolve({ data: config, error: null });
         case "produtos":
           return Promise.resolve({ data: opts.produtos ?? [], error: null });
@@ -707,7 +735,7 @@ function clienteFalso(opts: {
 
   return {
     from: (tabela: string) => ({
-      select: () => leitura(tabela),
+      select: (colunas?: string) => leitura(tabela, colunas),
       insert: (linha: any) => escrita(tabela, linha),
       upsert: (linha: any, opcoesUpsert?: { onConflict?: string }) =>
         upsert(tabela, linha, opcoesUpsert),
@@ -715,11 +743,11 @@ function clienteFalso(opts: {
   };
 }
 
-function requisicaoDeCotacao(): Request {
+function requisicaoDeCotacao(extra: Record<string, unknown> = {}): Request {
   return new Request("http://localhost/calculate-shipping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cep: "01001-000", cart: CARRINHO_DE_TESTE }),
+    body: JSON.stringify({ cep: "01001-000", cart: CARRINHO_DE_TESTE, ...extra }),
   });
 }
 
@@ -1875,4 +1903,254 @@ Deno.test("index-736: carrinho MISTO no preset por_produto — um item marcado z
     globalThis.fetch = fetchOriginal;
     await new Promise((r) => setTimeout(r, 30));
   }
+});
+
+// --- RETIRADA NA LOJA (release 1.5.3, 22/09/2026) ---------------------------
+//
+// A opção "Retirar na loja" (id `store-pickup`, preço 0) só sai quando os
+// TRÊS requisitos valem: a loja habilitou a chave `store-pickup` em
+// `enabled_shipping_methods`, tem endereço físico (`store_address` não vazio)
+// e o destino é LOCAL. A RPC do pedido (migration 20261169000000) revalida
+// os três. O endereço é lido numa consulta SEPARADA e tolerante: banco sem a
+// coluna (loja que ainda não recebeu a 20261167) ou leitura que falha NÃO
+// derrubam a cotação — só não há retirada. Endereço de fixture é FICTÍCIO.
+
+const ENDERECO_FICTICIO = "Rua Fictícia de Teste, 100 — Centro";
+const OMITIR_SINAL = Symbol("sem aceitaRetirada no corpo");
+
+async function cotarRetirada(opts: {
+  config: any;
+  /**
+   * O sinal do app 1.5.3 (`aceitaRetirada: true`). Padrão: presente — os
+   * testes da retirada falam do app NOVO; os do app 1.5.2 passam `omitir`.
+   */
+  aceitaRetirada?: unknown;
+  enderecoDaLoja?: string | null;
+  falhaAoLerEndereco?: "erro" | "excecao";
+  servicos?: Array<{ id: number; name: string; price: string; delivery_time: number }>;
+}) {
+  const registro: any = {
+    inserts: [],
+    execucoes: [],
+    upserts: [],
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify(
+          opts.servicos ?? [
+            { id: 1, name: "PAC", price: "26.41", delivery_time: 8 },
+            { id: 2, name: "SEDEX", price: "54.88", delivery_time: 4 },
+          ],
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+  try {
+    const sinal = "aceitaRetirada" in opts ? opts.aceitaRetirada : true;
+    const resposta = await handler(
+      requisicaoDeCotacao(sinal === OMITIR_SINAL ? {} : { aceitaRetirada: sinal }),
+      {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: opts.config,
+        enderecoDaLoja: opts.enderecoDaLoja,
+        falhaAoLerEndereco: opts.falhaAoLerEndereco,
+      }),
+      },
+    );
+    const corpo = await resposta.json();
+    return { resposta, corpo, registro };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+}
+
+const LOJA_COM_RETIRADA = {
+  ...CONFIG_COM_ENTREGA_LOCAL,
+  enabled_shipping_methods: ["sedex", "pac", "store-pickup"],
+};
+
+Deno.test("retirada: contrato da opção — id store-pickup, grátis, sem prazo inventado, endereço aparado", () => {
+  assertEquals(opcaoDeRetirada(`  ${ENDERECO_FICTICIO}  `), {
+    id: "store-pickup",
+    name: "Retirar na loja",
+    price: 0,
+    deliveryDays: 0,
+    provider: "pickup",
+    pickupAddress: ENDERECO_FICTICIO,
+  });
+  // Sem endereço físico, não existe retirada — nunca endereço inventado.
+  assertEquals(opcaoDeRetirada(null), null);
+  assertEquals(opcaoDeRetirada(undefined), null);
+  assertEquals(opcaoDeRetirada(""), null);
+  assertEquals(opcaoDeRetirada("   \n\t "), null);
+  assertEquals(opcaoDeRetirada(42), null);
+});
+
+Deno.test("retirada: cliente local + chave + endereço -> [local-delivery, store-pickup], sem transportadora nem cache", async () => {
+  const { resposta, corpo, registro } = await cotarRetirada({
+    config: LOJA_COM_RETIRADA,
+    enderecoDaLoja: `  ${ENDERECO_FICTICIO} `,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery", "store-pickup"]);
+  // A entrega local fica exatamente como era.
+  assertEquals(corpo.options[0].price, 10);
+  assertEquals(corpo.options[0].provider, "local");
+  const retirada = corpo.options[1];
+  assertEquals(retirada.price, 0);
+  assertEquals(retirada.pickupAddress, ENDERECO_FICTICIO);
+  assertEquals(retirada.provider, "pickup");
+  assertEquals(corpo.cotacaoIncompleta, false);
+  assertEquals(registro.upserts.length, 0);
+  assertEquals(registro.leiturasDeEndereco, 1);
+});
+
+Deno.test("retirada: cobertura só-local também oferece as duas", async () => {
+  const { resposta, corpo } = await cotarRetirada({
+    config: { ...LOJA_COM_RETIRADA, shipping_coverage: "local" },
+    enderecoDaLoja: ENDERECO_FICTICIO,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery", "store-pickup"]);
+});
+
+Deno.test("retirada: SEM a chave store-pickup -> só a entrega local, e o endereço nem é lido", async () => {
+  for (const metodos of [["sedex", "pac"], [], null]) {
+    const { corpo, registro } = await cotarRetirada({
+      config: { ...CONFIG_COM_ENTREGA_LOCAL, enabled_shipping_methods: metodos },
+      enderecoDaLoja: ENDERECO_FICTICIO,
+    });
+    assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"], `métodos ${JSON.stringify(metodos)}`);
+    assertEquals(registro.leiturasDeEndereco ?? 0, 0);
+  }
+});
+
+Deno.test("retirada: chave ligada mas SEM endereço físico (null, vazio, só espaços) -> só a entrega local", async () => {
+  for (const endereco of [null, "", "    "]) {
+    const { corpo } = await cotarRetirada({
+      config: LOJA_COM_RETIRADA,
+      enderecoDaLoja: endereco,
+    });
+    assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"], `endereço ${JSON.stringify(endereco)}`);
+  }
+});
+
+Deno.test("retirada: leitura do endereço FALHA (coluna ausente ou exceção) -> 200 só com a entrega local", async () => {
+  for (const falha of ["erro", "excecao"] as const) {
+    const { resposta, corpo } = await cotarRetirada({
+      config: LOJA_COM_RETIRADA,
+      falhaAoLerEndereco: falha,
+    });
+    assertEquals(resposta.status, 200, falha);
+    assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"], falha);
+  }
+});
+
+Deno.test("retirada: CEP FORA da área -> nenhuma retirada, só transportadora", async () => {
+  const { resposta, corpo, registro } = await cotarRetirada({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["sedex", "pac", "store-pickup"] },
+    enderecoDaLoja: ENDERECO_FICTICIO,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.some((o: any) => o.id === "store-pickup"), false);
+  assertEquals(corpo.options.map((o: any) => o.id), ["melhor-envio-1", "melhor-envio-2"]);
+  // A retirada nunca entra no cache de cotação (a RPC não a procura lá).
+  assertEquals(JSON.stringify(registro.upserts).includes("store-pickup"), false);
+});
+
+Deno.test("chavesDeTransportadora: a chave da retirada NÃO conta como transportadora", () => {
+  assertEquals(chavesDeTransportadora(["store-pickup"]), []);
+  assertEquals(chavesDeTransportadora(["sedex", "store-pickup", "pac"]), ["sedex", "pac"]);
+  assertEquals(chavesDeTransportadora([]), []);
+  assertEquals(chavesDeTransportadora(null), []);
+});
+
+Deno.test("filtro: ['store-pickup'] SOZINHO mantém TODAS as transportadoras, como a lista vazia (fim a fim, CEP fora)", async () => {
+  const soRetirada = await cotarRetirada({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["store-pickup"] },
+  });
+  const vazia = await cotarRetirada({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: [] },
+  });
+  assertEquals(soRetirada.resposta.status, 200);
+  assertEquals(
+    soRetirada.corpo.options.map((o: any) => o.id),
+    vazia.corpo.options.map((o: any) => o.id),
+  );
+  assertEquals(soRetirada.corpo.options.map((o: any) => o.id), ["melhor-envio-1", "melhor-envio-2"]);
+});
+
+Deno.test("filtro: ['sedex','store-pickup'] -> SÓ a sedex (a chave da retirada não liga nem desliga serviço)", async () => {
+  const { resposta, corpo } = await cotarRetirada({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["sedex", "store-pickup"] },
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["melhor-envio-2"]);
+});
+
+Deno.test("precoResolvidoSemCache: a retirada é resolvida pela RPC sem cache (id exato, sem parecença)", () => {
+  assertEquals(precoResolvidoSemCache("store-pickup"), true);
+  assertEquals(precoResolvidoSemCache(" store-pickup"), false);
+  assertEquals(precoResolvidoSemCache("store-pickup-expressa"), false);
+  assertEquals(precoResolvidoSemCache("STORE-PICKUP"), false);
+});
+
+// --- O SINAL DO APP NOVO (bloqueio da revisão, 22/09/2026) -----------------
+//
+// O PWA atualiza por "prompt": o app 1.5.2 continua no ar depois da edge
+// nova. A auto-seleção do 1.5.2 escolhe a opção MAIS BARATA (empate: menor
+// prazo) — com [local-delivery, store-pickup] na resposta, ele escolheria a
+// retirada sozinho e fecharia pedido de retirada que a cliente não pediu.
+// Por isso a retirada só sai para quem DIZ que a entende: corpo com
+// `aceitaRetirada: true` EXATO. Qualquer outro valor = app antigo.
+
+Deno.test("retirada: app ANTIGO (sem aceitaRetirada) -> só a entrega local, e o endereço nem é lido", async () => {
+  const { resposta, corpo, registro } = await cotarRetirada({
+    config: LOJA_COM_RETIRADA,
+    enderecoDaLoja: ENDERECO_FICTICIO,
+    aceitaRetirada: OMITIR_SINAL,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  assertEquals(registro.leiturasDeEndereco ?? 0, 0);
+});
+
+Deno.test("retirada: sinal que NÃO é o booleano true não conta (\"true\", 1, false, null, {}, [])", async () => {
+  for (const valor of ["true", 1, false, null, {}, [true]]) {
+    const { corpo } = await cotarRetirada({
+      config: LOJA_COM_RETIRADA,
+      enderecoDaLoja: ENDERECO_FICTICIO,
+      aceitaRetirada: valor,
+    });
+    assertEquals(
+      corpo.options.map((o: any) => o.id),
+      ["local-delivery"],
+      `aceitaRetirada=${JSON.stringify(valor)} não pode oferecer retirada`,
+    );
+  }
+});
+
+Deno.test("retirada: COM o sinal os três requisitos continuam valendo (sem chave / sem endereço -> nada)", async () => {
+  const semChave = await cotarRetirada({
+    config: CONFIG_COM_ENTREGA_LOCAL,
+    enderecoDaLoja: ENDERECO_FICTICIO,
+  });
+  assertEquals(semChave.corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  const semEndereco = await cotarRetirada({
+    config: LOJA_COM_RETIRADA,
+    enderecoDaLoja: "   ",
+  });
+  assertEquals(semEndereco.corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  const comTudo = await cotarRetirada({
+    config: LOJA_COM_RETIRADA,
+    enderecoDaLoja: ENDERECO_FICTICIO,
+  });
+  assertEquals(comTudo.corpo.options.map((o: any) => o.id), ["local-delivery", "store-pickup"]);
 });

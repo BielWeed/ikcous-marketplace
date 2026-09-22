@@ -238,7 +238,7 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     // — não há como saber de qual carrinho veio nem quando foi gravada — e
     // também não pode quebrar a tela.
     armazem.set(
-      "ikcous_shipping_cache_69000000",
+      "ikcous_shipping_cache_v2_69000000",
       JSON.stringify([
         { id: "melhorenvio-pac", name: "PAC", price: 999, deliveryDays: 7 },
       ]),

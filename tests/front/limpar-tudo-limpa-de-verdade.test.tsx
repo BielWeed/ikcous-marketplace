@@ -221,6 +221,12 @@ vi.mock("@/components/ui/sheet", () => ({
   },
   SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  // O CartView também usa a folha (seletor de endereço, 22/09): as peças
+  // dele precisam existir no dublê, mesmo fechadas.
+  SheetDescription: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  SheetFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão de

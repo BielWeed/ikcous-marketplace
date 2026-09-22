@@ -765,6 +765,44 @@ Deno.test("handler - entrega local de verdade continua recusando (aqui o motivo 
     })
 })
 
+// RETIRADA NA LOJA (release 1.5.3): a cliente busca o pedido no balcão —
+// não existe envio, e a etiqueta seria dinheiro gasto do saldo do Melhor
+// Envio à toa. Sem o ramo próprio, `store-pickup` com frete 0 caía em "saiu
+// com frete grátis… escolha o serviço" (podeEscolherServico: true) e o
+// lojista conseguia COMPRAR a etiqueta escolhendo um serviço no card.
+Deno.test("erro de serviço - retirada na loja recusa etiqueta e NÃO oferece escolher serviço", () => {
+  const { mensagem, podeEscolherServico } = erroDeServicoParaEtiqueta("store-pickup", 0)
+  const msg = mensagem.toLowerCase()
+  assertEquals(msg.includes("retira"), true)
+  assertEquals(msg.includes("grátis") || msg.includes("gratis"), false)
+  assertEquals(podeEscolherServico, false)
+})
+
+Deno.test("handler - retirada na loja com serviceId no corpo recusa: nenhuma etiqueta, nenhum carrinho no ME", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoRetirada = {
+            ...PEDIDO_FELIZ,
+            shipping: 0,
+            customer_data: {
+                ...PEDIDO_FELIZ.customer_data,
+                shipping_option_id: 'store-pickup',
+                pickup_address: 'Rua Fictícia de Teste, 100 — Centro',
+            },
+        }
+        for (const corpoExtra of [{}, { serviceId: '77' }]) {
+            const supa = clienteFalso({ pedido: pedidoRetirada })
+            const me = buscarMeFalso()
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar('gerar_etiqueta', corpoExtra), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 400)
+            const corpo = await res.json()
+            assertEquals(String(corpo.error).toLowerCase().includes('retira'), true)
+            assertEquals(corpo.precisa_escolher_servico, false)
+            assertEquals(me.registro.carrinho, 0)
+        }
+    })
+})
+
 Deno.test("handler - entrega local com serviceId no corpo continua recusando: o override só vale quando a recusa autoriza", async () => {
     await comEnvAdmin(async () => {
         // Ressalva da revisão de index-691: a mensagem dizia

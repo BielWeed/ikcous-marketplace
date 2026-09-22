@@ -61,6 +61,11 @@ import {
   numeroDoPedido,
   rotuloDoPagamento,
 } from "./pedido.ts";
+import { ehRetiradaNaLoja } from "./retirada-na-loja.ts";
+
+// RETIRADA NA LOJA (release 1.5.3): texto NEUTRO — a loja nao promete prazo
+// nem "pronto agora"; quem avisa quando buscar e a propria loja.
+const AVISO_DA_RETIRADA = "Aguarde a confirmacao da loja para retirar.";
 
 /** Mascara para log. O endereco de quem compra nunca vai inteiro para o log. */
 export function mascarar(email: string): string {
@@ -164,9 +169,22 @@ export function htmlDoPedido(dados: {
   // valor "presencial" — qualquer outra coisa (undefined incluido) e' o
   // caminho online de sempre.
   canal?: string;
+  // RETIRADA NA LOJA (release 1.5.3): presente quando o pedido e de
+  // retirada (`store-pickup`). `endereco` e o RETRATO do endereco da loja
+  // gravado no pedido (customer_data.pickup_address) — vazio quando o
+  // pedido nao o trouxe: o e-mail nao inventa endereco, so manda esperar a
+  // loja. Ausente = entrega de sempre.
+  retirada?: { endereco: string } | null;
 }): string {
-  const { pedido, itens, endereco, nomeDaLoja, aguardandoPagamento, canal } =
-    dados;
+  const {
+    pedido,
+    itens,
+    endereco,
+    nomeDaLoja,
+    aguardandoPagamento,
+    canal,
+    retirada,
+  } = dados;
   const total = pedido?.total ?? pedido?.total_amount;
   const frete = pedido?.shipping ?? pedido?.shipping_cost;
   const pagamento = rotuloDoPagamento(pedido?.payment_method);
@@ -212,13 +230,37 @@ export function htmlDoPedido(dados: {
       </table>
 
       ${bloco("Forma de pagamento", pagamento)}
-      ${bloco("Entrega em", endereco)}
+      ${
+        retirada
+          ? bloco(
+              "Retirada na loja",
+              retirada.endereco
+                ? `${retirada.endereco}. ${AVISO_DA_RETIRADA}`
+                : AVISO_DA_RETIRADA,
+            ) + bloco("Endereco do cliente", endereco)
+          : bloco("Entrega em", endereco)
+      }
 
       <p style="margin: 24px 0 0; font-size: 11px; line-height: 16px; color: #a1a1aa;">
         Duvida sobre este pedido? Responda este e-mail.
       </p>
     </div>
   `;
+}
+
+/**
+ * O pedido e de retirada na loja? O id gravado pela RPC decide (contrato da
+ * 20261169000000, comparacao exata); o endereco e o retrato que a RPC gravou
+ * junto — nunca o endereco ATUAL da loja, que pode ter mudado depois.
+ */
+function retiradaDoPedido(
+  customerData: unknown,
+): { endereco: string } | null {
+  const dados = (customerData ?? {}) as Record<string, unknown>;
+  if (!ehRetiradaNaLoja(dados.shipping_option_id)) return null;
+  const endereco =
+    typeof dados.pickup_address === "string" ? dados.pickup_address.trim() : "";
+  return { endereco };
 }
 
 export type DesfechoComprovante =
@@ -356,6 +398,7 @@ export async function enviarComprovantePedido(args: {
         nomeDaLoja: config?.store_name ?? "",
         aguardandoPagamento,
         canal: String(pedido.canal ?? "online"),
+        retirada: retiradaDoPedido(pedido.customer_data),
       }),
     });
   } catch (e) {

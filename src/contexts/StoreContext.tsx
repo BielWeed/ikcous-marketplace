@@ -1,4 +1,8 @@
 import { hexToTailwindHsl } from "@/config/branding";
+import {
+  ContextoDoFreteDaLoja,
+  contextoDaLojaParaFrete,
+} from "@/contexts/ContextoDoFreteDaLoja";
 import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
@@ -1198,9 +1202,16 @@ export function StoreProvider({
     ],
   );
 
+  // Contexto do frete (release 1.5.3): um TEXTO derivado de três campos do
+  // config — muda só quando provedor, transportadoras/retirada ou endereço
+  // mudam, e é isso que a ShippingCalculator observa para recotar.
+  const contextoDoFrete = contextoDaLojaParaFrete(config);
+
   return (
     <StoreContext.Provider value={contextValue}>
-      {children}
+      <ContextoDoFreteDaLoja.Provider value={contextoDoFrete}>
+        {children}
+      </ContextoDoFreteDaLoja.Provider>
     </StoreContext.Provider>
   );
 }

@@ -258,6 +258,87 @@ Deno.test("reserva concedida + SMTP configurado -> envia com o texto certo e dev
   assertStringIncludes(chamadasEnvio[0].html, "Blusa");
 });
 
+// --- RETIRADA NA LOJA (release 1.5.3): o e-mail diz ONDE retirar ------------
+//
+// O pedido de retirada nasce (migration 20261169000000) com
+// customer_data.shipping_option_id = 'store-pickup' e o RETRATO do endereço
+// da loja em customer_data.pickup_address. O comprovante tem de mostrar
+// "Retirada na loja" + esse endereço + o aviso neutro de esperar a loja (sem
+// prazo inventado), e o endereço da CLIENTE continua lá, rotulado como dela
+// — nunca "Entrega em", que prometeria uma entrega que não existe.
+
+async function htmlDoPedidoEnviado(
+  customerData: Record<string, unknown>,
+): Promise<string> {
+  const chamadasEnvio: Array<{ para: string; assunto: string; html: string }> = [];
+  const supabase = clienteFalso({
+    pedido: {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com", ...customerData },
+      subtotal: 100,
+      shipping: 0,
+      total: 100,
+      payment_method: "cash",
+      payment_status: null,
+    },
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    storeConfig: { store_name: "Loja Teste" },
+    reservou: true,
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      remetenteConfigurado: () => true,
+      enviarEmail: async (args) => {
+        chamadasEnvio.push(args);
+      },
+    },
+  });
+  assertEquals(desfecho, { ok: true });
+  return chamadasEnvio[0].html;
+}
+
+Deno.test("retirada na loja -> e-mail mostra 'Retirada na loja' + endereço da loja + aviso neutro; o da cliente fica rotulado como dela", async () => {
+  const html = await htmlDoPedidoEnviado({
+    shipping_option_id: "store-pickup",
+    pickup_address: "Rua Ficticia da Loja, 100 - Centro",
+    street: "Rua da Cliente",
+    number: "7",
+    city: "Cidade Teste",
+    state: "MG",
+    cep: "38500-000",
+  });
+  assertStringIncludes(html, "Retirada na loja");
+  assertStringIncludes(html, "Rua Ficticia da Loja, 100 - Centro");
+  assertStringIncludes(html, "Aguarde a confirmacao da loja para retirar");
+  assertStringIncludes(html, "Endereco do cliente");
+  assertStringIncludes(html, "Rua da Cliente");
+  assertEquals(html.includes("Entrega em"), false);
+});
+
+Deno.test("entrega local (controle) -> e-mail segue com 'Entrega em' e SEM bloco de retirada", async () => {
+  const html = await htmlDoPedidoEnviado({
+    shipping_option_id: "local-delivery",
+    street: "Rua da Cliente",
+    number: "7",
+  });
+  assertStringIncludes(html, "Entrega em");
+  assertEquals(html.includes("Retirada na loja"), false);
+  assertEquals(html.includes("Aguarde a confirmacao da loja"), false);
+});
+
+Deno.test("id de retirada SEM o retrato do endereço (pedido forjado/antigo) -> não inventa endereço de retirada", async () => {
+  const html = await htmlDoPedidoEnviado({
+    shipping_option_id: "store-pickup",
+    street: "Rua da Cliente",
+    number: "7",
+  });
+  assertStringIncludes(html, "Retirada na loja");
+  assertStringIncludes(html, "Aguarde a confirmacao da loja para retirar");
+  assertStringIncludes(html, "Endereco do cliente");
+});
+
 // --- canal presencial: o canal sai do BANCO e chega ao e-mail ----------------
 //
 // Os testes de htmlDoPedido passam o canal na mão; este prova a única linha

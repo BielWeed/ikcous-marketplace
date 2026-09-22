@@ -432,6 +432,246 @@ export async function abrirLoja(
   return () => ({ erros: [...errosSemCaptura] });
 }
 
+// ---------------------------------------------------------------------------
+// CLIENTE LOGADO FALSO (frente trocar-endereço-carrinho, 22/09/2026).
+//
+// As jornadas acima são de CONVIDADO. Algumas telas só existem para quem tem
+// conta (ex.: o seletor de endereço do carrinho). Esta parte do kit monta uma
+// sessão FICTÍCIA — nenhum projeto real, nenhum token real, nenhum dado de
+// cliente: a conta, os endereços e as cotações são inventados aqui e todas as
+// chamadas ao "banco" continuam interceptadas por `page.route`.
+// ---------------------------------------------------------------------------
+
+// Chave onde o supabase-js guarda a sessão: `sb-<primeiro rótulo do host>-
+// auth-token` (defaultStorageKey do @supabase/supabase-js 2.x) — o app não
+// passa `storageKey` próprio (src/lib/supabase.ts).
+const CHAVE_DA_SESSAO_FIXTURA = `sb-${REF_FIXTURA}-auth-token`;
+
+const ID_CLIENTE_FIXTURA = "00000000-0000-4000-8000-00000000c11e";
+
+function base64Url(texto: string): string {
+  return Buffer.from(texto, "utf8").toString("base64url");
+}
+
+/** Usuário do Auth, no formato de `GET /auth/v1/user`. Nada real. */
+function usuarioFixtura() {
+  return {
+    id: ID_CLIENTE_FIXTURA,
+    aud: "authenticated",
+    role: "authenticated",
+    email: "cliente.jornada@exemplo.invalid",
+    email_confirmed_at: "2026-09-01T00:00:00.000Z",
+    phone: "",
+    app_metadata: { provider: "email", providers: ["email"] },
+    user_metadata: { name: "Cliente das Jornadas" },
+    identities: [],
+    created_at: "2026-09-01T00:00:00.000Z",
+    updated_at: "2026-09-01T00:00:00.000Z",
+  };
+}
+
+/**
+ * Sessão no formato que o supabase-js persiste. O access token tem a FORMA de
+ * um JWT (cabeçalho.corpo.assinatura) só para quem decodifica o corpo; a
+ * assinatura é texto fixo — nunca foi emitido por servidor nenhum. Expira
+ * daqui a 1 dia para o SDK não tentar renovar no meio da jornada.
+ */
+function sessaoFixtura() {
+  const expiraEm = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+  const accessToken = [
+    base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" })),
+    base64Url(
+      JSON.stringify({
+        sub: ID_CLIENTE_FIXTURA,
+        aud: "authenticated",
+        role: "authenticated",
+        email: "cliente.jornada@exemplo.invalid",
+        exp: expiraEm,
+        iat: expiraEm - 24 * 60 * 60,
+        session_id: "00000000-0000-4000-8000-0000000005e5",
+      }),
+    ),
+    "assinatura-ficticia-das-jornadas",
+  ].join(".");
+  return {
+    access_token: accessToken,
+    refresh_token: "refresh-ficticio-das-jornadas",
+    token_type: "bearer",
+    expires_in: 24 * 60 * 60,
+    expires_at: expiraEm,
+    user: usuarioFixtura(),
+  };
+}
+
+/** Linha de `user_addresses` inventada (a tabela que o useAddresses lê). */
+export interface EnderecoFixtura {
+  id: string;
+  name: string;
+  cep: string;
+  street: string;
+  number: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  is_default: boolean;
+}
+
+const APELIDOS_FIXTURA = [
+  "Casa",
+  "Trabalho",
+  "Casa da Vó",
+  "Academia",
+  "Escritório Centro",
+  "Sítio",
+  "Casa da Praia",
+  "Loja da Tia",
+  "Faculdade",
+  "Consultório",
+  "Apartamento Novo",
+  "Depósito",
+];
+
+/**
+ * `quantidade` endereços fictícios; o primeiro é o principal. CEPs
+ * distintos por endereço (a cotação fake varia por CEP), todos em ruas
+ * inventadas.
+ */
+export function enderecosFixtura(quantidade: number): EnderecoFixtura[] {
+  return Array.from({ length: quantidade }, (_, i) => ({
+    id: `00000000-0000-4000-8000-0000000ad${String(i).padStart(3, "0")}`,
+    name: APELIDOS_FIXTURA.at(i) ?? `Endereço ${i + 1}`,
+    cep: i === 0 ? "38500-000" : `01${String(100 + i).padStart(3, "0")}-000`,
+    street: `Rua Fictícia ${i + 1}`,
+    number: String(10 + i),
+    neighborhood: "Bairro Inventado",
+    city: i === 0 ? "Monte Carmelo" : "São Paulo",
+    state: i === 0 ? "MG" : "SP",
+    is_default: i === 0,
+  }));
+}
+
+/**
+ * Cotação fake de `calculate-shipping`, determinística por CEP: o CEP do
+ * endereço principal (38500-000) tem entrega local de R$ 10; qualquer outro
+ * recebe um PAC cujo preço depende do CEP — trocar de endereço MUDA o frete
+ * que aparece no card, e o teste consegue provar que recotou.
+ */
+export function cotacaoFixtura(cepSoDigitos: string) {
+  if (cepSoDigitos === "38500000") {
+    return [
+      {
+        id: "local-delivery",
+        name: "Entrega local",
+        price: 10,
+        deliveryDays: 1,
+        provider: "local",
+      },
+    ];
+  }
+  const variacao = Number(cepSoDigitos.slice(2, 5)) % 50;
+  return [
+    {
+      id: "melhorenvio-pac",
+      name: "PAC",
+      price: 20 + variacao,
+      deliveryDays: 6,
+      provider: "melhor_envio",
+    },
+  ];
+}
+
+/**
+ * Instala o cliente logado FALSO. Chamar DEPOIS de `instalarLojaFixtura` e
+ * ANTES de `abrirLoja`: as rotas daqui têm precedência (Playwright roda a
+ * rota registrada por último primeiro) e devolvem o controle ao kit da loja
+ * com `fallback()` para tudo que não é delas.
+ */
+export async function instalarSessaoClienteFixtura(
+  page: Page,
+  opcoes: { enderecos: EnderecoFixtura[] },
+): Promise<void> {
+  const sessao = sessaoFixtura();
+  await page.addInitScript(
+    ([chave, valor]) => {
+      window.localStorage.setItem(chave, valor);
+    },
+    [CHAVE_DA_SESSAO_FIXTURA, JSON.stringify(sessao)] as const,
+  );
+
+  await page.route(`${ORIGEM_BANCO_FIXTURA}/**`, async (rota) => {
+    const pedido = rota.request();
+    const url = new URL(pedido.url());
+    const responderJson = (corpo: unknown, status = 200) =>
+      rota.fulfill({
+        status,
+        headers: JSON_HEADERS,
+        body: JSON.stringify(corpo),
+      });
+
+    if (url.pathname === "/auth/v1/user") {
+      await responderJson(usuarioFixtura());
+      return;
+    }
+    if (url.pathname === "/auth/v1/token") {
+      await responderJson(sessaoFixtura());
+      return;
+    }
+    if (url.pathname === "/auth/v1/logout") {
+      await rota.fulfill({ status: 204, body: "" });
+      return;
+    }
+    if (url.pathname === "/rest/v1/rpc/get_my_complete_profile") {
+      await responderJson([
+        {
+          id: ID_CLIENTE_FIXTURA,
+          full_name: "Cliente das Jornadas",
+          avatar_url: "",
+          cover_url: "",
+          role: "customer",
+          whatsapp: "",
+          created_at: "2026-09-01T00:00:00.000Z",
+        },
+      ]);
+      return;
+    }
+    if (url.pathname === "/rest/v1/rpc/is_admin") {
+      await responderJson(false);
+      return;
+    }
+    if (url.pathname === "/rest/v1/user_addresses") {
+      if (pedido.method() !== "GET") {
+        await responderJson([]);
+        return;
+      }
+      await responderJson(
+        opcoes.enderecos.map((e) => ({
+          ...e,
+          user_id: ID_CLIENTE_FIXTURA,
+          recipient_name: "Cliente das Jornadas",
+          complement: null,
+          reference: null,
+          created_at: "2026-09-01T00:00:00.000Z",
+          updated_at: "2026-09-01T00:00:00.000Z",
+        })),
+      );
+      return;
+    }
+    if (url.pathname === "/functions/v1/calculate-shipping") {
+      let cep = "";
+      try {
+        cep = String(
+          (pedido.postDataJSON() as { cep?: string } | null)?.cep ?? "",
+        ).replace(/\D/g, "");
+      } catch {
+        cep = "";
+      }
+      await responderJson({ options: cotacaoFixtura(cep) });
+      return;
+    }
+    await rota.fallback();
+  });
+}
+
 export const PRODUTO_ROUPAS = "Camiseta das Jornadas";
 export const PRODUTO_ACESSORIOS = "Boné das Jornadas";
 export const CATEGORIA_ROUPAS = "Roupas";

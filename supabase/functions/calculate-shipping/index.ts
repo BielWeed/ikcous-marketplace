@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { ID_RETIRADA_NA_LOJA } from "../_shared/retirada-na-loja.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -294,10 +295,113 @@ function mensagemDoErro(erro: unknown): string {
  * de taxa fixa saiu) e, com a emenda, a RPC os RECUSA em vez de cobrar a
  * taxa da loja — mantê-los neste classificador seria deixá-los vivos numa
  * resposta de falha de cache para o pedido morrer no último clique.
+ *
+ * RETIRADA NA LOJA (20261169000000): a RPC ganhou o ramo
+ *   ELSIF p_shipping_option_id = 'store-pickup'   -> frete 0
+ * ANTES do SELECT no cache — a retirada também é resolvida sem cache (e só
+ * pelo id EXATO: ' store-pickup' é recusado pela RPC).
  */
 export function precoResolvidoSemCache(id: unknown): boolean {
     if (typeof id !== 'string') return false
-    return id === 'local-delivery'
+    return id === 'local-delivery' || id === ID_RETIRADA_NA_LOJA
+}
+
+/**
+ * RETIRADA NA LOJA (release 1.5.3): a opção que a cliente da área local vê
+ * ao lado da entrega local. Contrato: id `store-pickup` (o mesmo token da
+ * chave que a loja liga em `enabled_shipping_methods`), preço 0, SEM prazo
+ * inventado (`deliveryDays: 0` — a tela troca o prazo por "Aguarde a
+ * confirmação da loja para retirar") e o endereço físico REAL da loja
+ * (`store_address`, aparado). Sem endereço, não existe retirada: `null`,
+ * nunca endereço inventado — a RPC recusa o mesmo caso.
+ */
+export function opcaoDeRetirada(enderecoDaLoja: unknown) {
+    if (typeof enderecoDaLoja !== 'string') return null
+    const endereco = enderecoDaLoja.trim()
+    if (endereco.length === 0) return null
+    return {
+        id: ID_RETIRADA_NA_LOJA,
+        name: 'Retirar na loja',
+        price: 0,
+        deliveryDays: 0,
+        provider: 'pickup',
+        pickupAddress: endereco,
+    }
+}
+
+/**
+ * As chaves de `enabled_shipping_methods` que falam de TRANSPORTADORA. A
+ * chave da retirada (`store-pickup`) mora no MESMO array mas não é serviço
+ * de transportadora: se contasse, uma loja com `['store-pickup']` (lista de
+ * transportadoras "vazia = todas" + retirada ligada) desligaria TODAS as
+ * transportadoras, e `['sedex','store-pickup']` casaria a chave da retirada
+ * contra o nome de cada serviço. Lista vazia continua valendo "todas".
+ */
+export function chavesDeTransportadora(enabledMethods: unknown): string[] {
+    if (!Array.isArray(enabledMethods)) return []
+    return enabledMethods.filter((m) => m !== ID_RETIRADA_NA_LOJA)
+}
+
+/**
+ * O endereço físico da loja, lido numa consulta SEPARADA e TOLERANTE. Não
+ * entra no select principal de `store_config` de propósito: a coluna nasce
+ * na migration 20261167000000 e loja sem ela receberia erro no select
+ * INTEIRO — a cotação de todo mundo cairia por causa de uma opção nova.
+ * Aqui, erro do PostgREST ou exceção = "sem endereço" = sem retirada (a
+ * entrega local e as transportadoras seguem iguais). Só é chamada quando a
+ * loja habilitou a retirada e o destino é local.
+ */
+async function lerEnderecoDaLoja(supabaseClient: any): Promise<string | null> {
+    try {
+        const { data, error } = await supabaseClient
+            .from('store_config')
+            .select('store_address')
+            .eq('id', 1)
+            .maybeSingle()
+        if (error) {
+            console.error('[calculate-shipping] Endereço da loja indisponível; retirada não oferecida:', error.message ?? error)
+            return null
+        }
+        return typeof data?.store_address === 'string' ? data.store_address : null
+    } catch (erro) {
+        console.error('[calculate-shipping] Falha ao ler o endereço da loja; retirada não oferecida:', mensagemDoErro(erro))
+        return null
+    }
+}
+
+/**
+ * As opções da cliente LOCAL: a entrega local de sempre e, DEPOIS dela, a
+ * retirada na loja quando os três requisitos valem (chave habilitada +
+ * endereço físico + destino local — este último garantido por quem chama).
+ * A ordem importa pouco para a tela (a escolha da retirada é sempre da
+ * cliente, nunca automática), mas a entrega local na frente mantém a
+ * resposta de hoje como prefixo exato da nova.
+ *
+ * `aceitaRetirada` é o SINAL do app que entende a retirada (1.5.3+): o PWA
+ * atualiza por "prompt", então o app 1.5.2 segue no ar — e a auto-seleção
+ * dele (mais barata; empate, menor prazo) escolheria a retirada R$ 0 sozinha.
+ * Sem o sinal, a resposta é exatamente a de antes (e o endereço nem é lido).
+ */
+async function opcoesDaClienteLocal(
+    supabaseClient: any,
+    enabledMethods: unknown,
+    precoDaEntregaLocal: number,
+    aceitaRetirada: boolean,
+) {
+    const opcoes: any[] = [
+        {
+            id: 'local-delivery',
+            name: 'Entrega Local',
+            price: precoDaEntregaLocal,
+            deliveryDays: 1,
+            provider: 'local'
+        }
+    ]
+    if (aceitaRetirada && Array.isArray(enabledMethods) && enabledMethods.includes(ID_RETIRADA_NA_LOJA)) {
+        const retirada = opcaoDeRetirada(await lerEnderecoDaLoja(supabaseClient))
+        if (retirada) opcoes.push(retirada)
+    }
+    return opcoes
 }
 
 /**
@@ -588,6 +692,8 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
     try {
         const body = await req.json()
         const { cep, cart, action } = body
+        // Só o booleano `true` EXATO: "true", 1, objeto… = app que não pediu.
+        const aceitaRetirada = body?.aceitaRetirada === true
 
         // Initialize Supabase clients
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
@@ -752,6 +858,10 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
         const originCep = storeConfig.origin_cep.replace(/\D/g, '')
         const enabledMethods = storeConfig.enabled_shipping_methods || ['sedex', 'pac']
+        // Só as chaves de TRANSPORTADORA filtram serviço — a da retirada na
+        // loja (`store-pickup`) mora no mesmo array e não conta aqui (ver
+        // `chavesDeTransportadora`). Lista vazia continua = todas.
+        const chavesDeServico = chavesDeTransportadora(enabledMethods)
         
         const shippingCoverage = storeConfig.shipping_coverage || 'national'
         const localDeliveryFee = Number(storeConfig.local_delivery_fee ?? 10)
@@ -828,15 +938,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
             }
             return new Response(
                 JSON.stringify({
-                    options: [
-                        {
-                            id: 'local-delivery',
-                            name: 'Entrega Local',
-                            price: allFree ? 0 : localDeliveryFee,
-                            deliveryDays: 1,
-                            provider: 'local'
-                        }
-                    ],
+                    options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada),
                     cotacaoIncompleta: false
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -870,17 +972,12 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 }),
                 'Failed to log local quote:',
             )
+            // RETIRADA NA LOJA (release 1.5.3): a única companhia que a
+            // Entrega Local ganha aqui é a retirada — opção da PRÓPRIA loja,
+            // não transportadora nacional (a decisão de 02/09 continua).
             return new Response(
                 JSON.stringify({
-                    options: [
-                        {
-                            id: 'local-delivery',
-                            name: 'Entrega Local',
-                            price: allFree ? 0 : localDeliveryFee,
-                            deliveryDays: 1,
-                            provider: 'local'
-                        }
-                    ],
+                    options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada),
                     cotacaoIncompleta: false
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -1093,7 +1190,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     shippingOptions = data
                         .filter(service => !service.error && service.price)
                         .map(service => {
-                            const isEnabled = enabledMethods.length === 0 || enabledMethods.some((m: string) => servicoCasaChave(service.name, m))
+                            const isEnabled = chavesDeServico.length === 0 || chavesDeServico.some((m: string) => servicoCasaChave(service.name, m))
                             if (!isEnabled) return null
 
                             return {
@@ -1161,7 +1258,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 shippingOptions = services
                     .filter((s: any) => !s.Error && s.ShippingPrice)
                     .map((s: any) => {
-                        const isEnabled = enabledMethods.length === 0 || enabledMethods.some((m: string) => servicoCasaChave(s.ServiceDescription, m))
+                        const isEnabled = chavesDeServico.length === 0 || chavesDeServico.some((m: string) => servicoCasaChave(s.ServiceDescription, m))
                         if (!isEnabled) return null
 
                         return {

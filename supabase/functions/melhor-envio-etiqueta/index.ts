@@ -58,6 +58,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -243,11 +244,23 @@ export function erroDePagamentoParaEtiqueta(paymentStatus: unknown): string | nu
  * `normalizarServicoEscolhidoPeloLojista`); false quando o pedido de fato foi
  * por ENTREGA LOCAL — aí quem despacha é a própria loja, não existe serviço
  * de transportadora para escolher.
+ *
+ * RETIRADA NA LOJA (release 1.5.3): false também — a cliente busca o pedido
+ * no balcão, não existe envio. Sem este ramo, `store-pickup` (frete 0) caía
+ * em "saiu com frete grátis… escolha o serviço" e o lojista conseguia
+ * comprar etiqueta com o saldo do Melhor Envio para um pedido que ninguém
+ * vai despachar.
  */
 export function erroDeServicoParaEtiqueta(
     shippingOptionId: unknown,
     shippingFee: unknown,
 ): { mensagem: string; podeEscolherServico: boolean } {
+    if (ehRetiradaNaLoja(shippingOptionId)) {
+        return {
+            mensagem: 'Este pedido é de retirada na loja — a cliente busca no seu endereço. Não existe etiqueta de envio para este caso.',
+            podeEscolherServico: false,
+        }
+    }
     if (shippingOptionId === 'local-delivery') {
         return {
             mensagem: 'Este pedido foi por entrega local — quem despacha é a própria loja. Não existe etiqueta pela API do Melhor Envio para este caso.',
