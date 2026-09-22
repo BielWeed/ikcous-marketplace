@@ -107,25 +107,28 @@ let mockSelectedShippingOption: {
   provider: "local",
 };
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: mockCart,
-    cartTotal: mockCartTotal,
-    shippingFee: mockShippingFee,
-    clearCart: () => {
-      mockCart = [];
-      mockCartTotal = 0;
-      mockShippingFee = 0;
-      mockSelectedShippingOption = null;
-    },
-    selectedShippingOption: mockSelectedShippingOption,
-    shippingCep: null,
-    setSelectedShippingOption: (opt: typeof mockSelectedShippingOption) => {
-      mockSelectedShippingOption = opt;
-    },
-    setShippingCep: vi.fn(),
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: mockCart,
+      cartTotal: mockCartTotal,
+      shippingFee: mockShippingFee,
+      clearCart: () => {
+        mockCart = [];
+        mockCartTotal = 0;
+        mockShippingFee = 0;
+        mockSelectedShippingOption = null;
+      },
+      selectedShippingOption: mockSelectedShippingOption,
+      shippingCep: null,
+      setSelectedShippingOption: (opt: typeof mockSelectedShippingOption) => {
+        mockSelectedShippingOption = opt;
+      },
+      setShippingCep: vi.fn(),
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),

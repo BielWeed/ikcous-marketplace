@@ -153,34 +153,37 @@ let mockSelectedShippingOption: {
 // cotacao-vale-so-para-o-destino.test.ts e na migration 20261039000000.
 let mockShippingCep: string | null = null;
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: mockCart,
-    cartTotal: mockCartTotal,
-    shippingFee: mockShippingFee,
-    clearCart: () => {
-      clearCart();
-      // Espelha CartContext.tsx:690-706/726/741: setCart([]) e frete/CEP
-      // zerados, cartTotal reduzindo sobre [] e shippingFee com o guard
-      // `cart.length === 0`. `setSelectedShippingOption(null)` também roda
-      // nesse ponto (CartContext.tsx:707), daí zerar aqui junto.
-      mockCart = [];
-      mockCartTotal = 0;
-      mockShippingFee = 0;
-      mockSelectedShippingOption = null;
-    },
-    selectedShippingOption: mockSelectedShippingOption,
-    shippingCep: mockShippingCep,
-    // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
-    // laudo 3108), espelhando o estado do dublê como o contexto real faz.
-    setSelectedShippingOption: (optao: typeof mockSelectedShippingOption) => {
-      mockSelectedShippingOption = optao;
-    },
-    setShippingCep: (cep: string | null) => {
-      mockShippingCep = cep;
-    },
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: mockCart,
+      cartTotal: mockCartTotal,
+      shippingFee: mockShippingFee,
+      clearCart: () => {
+        clearCart();
+        // Espelha CartContext.tsx:690-706/726/741: setCart([]) e frete/CEP
+        // zerados, cartTotal reduzindo sobre [] e shippingFee com o guard
+        // `cart.length === 0`. `setSelectedShippingOption(null)` também roda
+        // nesse ponto (CartContext.tsx:707), daí zerar aqui junto.
+        mockCart = [];
+        mockCartTotal = 0;
+        mockShippingFee = 0;
+        mockSelectedShippingOption = null;
+      },
+      selectedShippingOption: mockSelectedShippingOption,
+      shippingCep: mockShippingCep,
+      // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
+      // laudo 3108), espelhando o estado do dublê como o contexto real faz.
+      setSelectedShippingOption: (optao: typeof mockSelectedShippingOption) => {
+        mockSelectedShippingOption = optao;
+      },
+      setShippingCep: (cep: string | null) => {
+        mockShippingCep = cep;
+      },
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),

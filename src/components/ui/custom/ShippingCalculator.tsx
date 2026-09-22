@@ -1,6 +1,6 @@
 import { useCartState } from "@/contexts/CartContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { opcaoMaisBarata } from "@/lib/auto-selecao-de-frete";
+import { opcaoFrescaOuMaisBarata } from "@/lib/auto-selecao-de-frete";
 import {
   codigoDoErroDeEdgeFunction,
   mensagemAmigavelErroEdgeFunction,
@@ -125,6 +125,12 @@ interface ShippingCalculatorProps {
   selectedOption: ShippingOption | null;
   onSelectOption: (option: ShippingOption | null) => void;
   onCepValidated?: (cep: string) => void;
+  /**
+   * CEP do destino efetivo de entrega (endereço cadastrado, escolhido ou
+   * principal), derivado pelo pai. Sem destino, o campo vive da semente
+   * própria e de `ikcous_last_shipping_cep`.
+   */
+  cepDestino?: string | null;
 }
 
 export function ShippingCalculator({
@@ -132,9 +138,16 @@ export function ShippingCalculator({
   selectedOption,
   onSelectOption,
   onCepValidated,
+  cepDestino,
 }: ShippingCalculatorProps) {
   const isOffline = useOnlineStatus();
   const [cep, setCep] = useState(() => {
+    // Havendo destino de endereço cadastrado, o campo nasce com ELE — não
+    // com a sobra de simulação anterior em `ikcous_last_shipping_cep`.
+    const destino = (cepDestino ?? "").replace(/\D/g, "");
+    if (destino.length === 8) {
+      return `${destino.slice(0, 5)}-${destino.slice(5, 8)}`;
+    }
     return localStorage.getItem("ikcous_last_shipping_cep") || "";
   });
   const [loading, setLoading] = useState(false);
@@ -155,6 +168,14 @@ export function ShippingCalculator({
   // tests/front/shipping-calculator-nao-sobrescreve-com-cotacao-antiga.test.tsx.
   const reqRef = useRef(0);
 
+  // A digitação é simulação explícita: a CHEGADA do endereço cadastrado não
+  // a sobrescreve. Já a TROCA do destino adota o CEP novo de qualquer forma
+  // — campo que não segue o destino escolhido vira loop carrinho↔checkout.
+  const usuarioDigitouCepRef = useRef(false);
+  // Último destino adotado. `null` = nenhum ainda — a primeira chegada
+  // respeita a simulação manual; as trocas seguintes, não.
+  const ultimoDestinoAdotadoRef = useRef<string | null>(null);
+
   // Timer do debounce de recotação por mudança de carrinho (efeito abaixo,
   // `SHIPPING_RECALC_DEBOUNCE_MS`). Guardado em ref para que
   // `calculateShipping` possa CANCELAR um debounce ainda pendente assim que
@@ -166,9 +187,44 @@ export function ShippingCalculator({
   // tests/front/shipping-calculator-cotacao-manual-cancela-debounce-pendente.test.tsx.
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // A seleção VIVA: a prop muda a cada clique numa opção, mas o
+  // `calculateShipping` em execução fecha sobre a seleção do render em que
+  // a COTAÇÃO saiu. Com cotação em voo (recotação debounced por quantidade,
+  // "Calcular" de novo), um clique novo era REVERTIDO pela resposta: a
+  // resolução usava o closure do início e devolvia a escolha anterior. Este
+  // ref espelha a prop POR RENDER e é a ENTRADA de `opcaoFrescaOuMaisBarata`
+  // — mesma modalidade na lista nova ⇒ objeto NOVO (preço fresco; pular a
+  // escrita por divergência de id deixaria o objeto clicado na tela, que
+  // carrega o PREÇO da cotação anterior); modalidade sumida ⇒ a mais barata;
+  // seleção nula ⇒ a mais barata. A escrita sempre acontece, com objeto
+  // fresco. Ref sem re-render decai ao closure de antes — sem clique novo,
+  // comportamento idêntico.
+  const selecaoVivaRef = useRef(selectedOption);
+  selecaoVivaRef.current = selectedOption;
+
   // Auto-format CEP: 99999-999
   const handleCepChange = (val: string) => {
+    usuarioDigitouCepRef.current = true;
     const clean = val.replace(/\D/g, "");
+    if (clean !== cep.replace(/\D/g, "")) {
+      // O destino está mudando sob o dedo: a resposta em voo e a escolha
+      // atual valem para OUTRO CEP — nenhuma das duas vira preço daqui em
+      // diante. Resposta obsoleta não roda o `finally` (guarda do lacre),
+      // então o estado de cotação é limpo AQUI: sem isto ficavam opções
+      // antigas clicáveis e loading eterno.
+      reqRef.current += 1;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      setLoading(false);
+      setError(null);
+      setOptions([]);
+      setCotouSemOpcoes(false);
+      if (selectedOption) {
+        onSelectOption(null);
+      }
+    }
     if (clean.length <= 5) {
       setCep(clean);
     } else {
@@ -176,10 +232,22 @@ export function ShippingCalculator({
     }
   };
 
-  const calculateShipping = async (e?: React.FormEvent, skipHaptic = false) => {
+  const calculateShipping = async (
+    e?: React.FormEvent,
+    skipHaptic = false,
+    cepOverride?: string,
+  ) => {
     if (e) e.preventDefault();
 
-    const cleanCep = cep.replace(/\D/g, "");
+    // D1: a adoção do destino recota DIRETO para o CEP novo — o `cep` do
+    // closure ainda seria o antigo (o `setCep` da adoção não vale dentro do
+    // mesmo tick). O override entrega à cotação o CEP já adotado.
+    const cepFonte = cepOverride ?? cep;
+    const cleanCep = cepFonte.replace(/\D/g, "");
+    const cepFormatado =
+      cepOverride !== undefined
+        ? `${cleanCep.slice(0, 5)}-${cleanCep.slice(5, 8)}`
+        : cep;
     if (cleanCep.length !== 8) {
       setError("CEP deve conter 8 dígitos.");
       return;
@@ -234,21 +302,19 @@ export function ShippingCalculator({
             setOptions(opcoesEmCache);
 
             // Auto-select: MENOR PREÇO, não a primeira do envelope (mesma
-            // correção do laudo 31/08 que já vale para a resposta fresca,
-            // logo abaixo). O envelope preserva a ordem em que a
-            // transportadora respondeu — não é ordem de preço — então
-            // `opcoesEmCache[0]` podia reintroduzir, na SEGUNDA visita dentro
-            // da validade do cache, o mesmo travamento na opção cara que
-            // `opcaoMaisBarata` já eliminou na primeira.
-            const hasMatch = opcoesEmCache.some(
-              (opt) => opt.id === selectedOption?.id,
+            // correção do laudo 31/08 da resposta fresca). Mesmo id = mesma
+            // escolha de serviço com o objeto FRESCO do cache. A entrada é a
+            // seleção VIVA (`selecaoVivaRef`), não o closure da cotação.
+            const selecionadaAtualizada = opcaoFrescaOuMaisBarata(
+              selecaoVivaRef.current,
+              opcoesEmCache,
             );
-            if (!hasMatch) {
-              onSelectOption(opcaoMaisBarata(opcoesEmCache)!);
+            if (selecionadaAtualizada) {
+              onSelectOption(selecionadaAtualizada);
             }
-            onCepValidated?.(cep);
+            onCepValidated?.(cepFormatado);
             setLoading(false);
-            localStorage.setItem("ikcous_last_shipping_cep", cep);
+            localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
             return;
           }
         } catch (e) {
@@ -284,9 +350,12 @@ export function ShippingCalculator({
       const calculatedOptions: ShippingOption[] = data.options;
       if (meuId !== reqRef.current) return;
       setOptions(calculatedOptions);
-      // HONESTIDADE (onda D-1): cotação concluída VAZIA (loja sem credencial/
-      // origem — frente C) não pode ficar em silêncio; ver `cotouSemOpcoes`.
       setCotouSemOpcoes(calculatedOptions.length === 0);
+      // Resposta vazia não preserva a escolha anterior: ela é preço de
+      // outra cotação.
+      if (calculatedOptions.length === 0 && selectedOption) {
+        onSelectOption(null);
+      }
 
       // Save to cache — junto com de QUAL carrinho esta cotação é e QUANDO ela
       // foi feita. Sem esses dois campos a leitura acima não tem como recusar
@@ -297,21 +366,25 @@ export function ShippingCalculator({
         opcoes: calculatedOptions,
       };
       localStorage.setItem(cacheKey, JSON.stringify(envelope));
-      localStorage.setItem("ikcous_last_shipping_cep", cep);
+      localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
 
       // Auto-select: MENOR PREÇO, não o primeiro da lista (laudo 31/08,
-      // menor E — o comentário antigo dizia "cheapest" e o código pegava
-      // options[0]: o cliente nascia travado na opção cara). Empate, menor
-      // prazo. Regra pura em auto-selecao-de-frete.ts, provada por teste.
+      // menor E). Empate, menor prazo. Regra pura em auto-selecao-de-frete.ts.
+      // Mesmo id na resposta nova = mesma escolha de serviço, com o objeto
+      // FRESCO (o velho era preço de outra cotação); id sumido = a mais
+      // barata. A entrada é a seleção VIVA (`selecaoVivaRef`) — o clique que
+      // a cliente deu com a cotação em voo é resolvido contra ESTA lista,
+      // e o closure do início da cotação não o desfaz.
       if (calculatedOptions.length > 0) {
-        const hasMatch = calculatedOptions.some(
-          (opt) => opt.id === selectedOption?.id,
+        const selecionadaAtualizada = opcaoFrescaOuMaisBarata(
+          selecaoVivaRef.current,
+          calculatedOptions,
         );
-        if (!hasMatch) {
-          onSelectOption(opcaoMaisBarata(calculatedOptions)!);
+        if (selecionadaAtualizada) {
+          onSelectOption(selecionadaAtualizada);
         }
       }
-      onCepValidated?.(cep);
+      onCepValidated?.(cepFormatado);
     } catch (err: any) {
       if (meuId !== reqRef.current) return;
       const codigo = await codigoDoErroDeEdgeFunction(err);
@@ -431,6 +504,46 @@ export function ShippingCalculator({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartSignature]);
+
+  // Resposta atrasada não sobrevive ao desmonte: sem o lacre, a cotação em
+  // voo gravava `ikcous_last_shipping_cep` e o cache DEPOIS que o destino
+  // já era outro. O guarda `meuId !== reqRef.current` faz o resto.
+  useEffect(() => {
+    return () => {
+      reqRef.current += 1;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // A FONTE DO DESTINO É O ENDEREÇO DE ENTREGA: quando o destino aparece —
+  // ou troca — o campo adota o CEP, a escolha anterior cai (é preço de
+  // outra cotação) e a recotação sai sozinha. A primeira chegada não
+  // atropela simulação manual; troca de destino adota de qualquer forma.
+  // Depois de `setCep` no mesmo tick, `calculateShipping` precisa do
+  // OVERRIDE (o closure ainda veria o CEP antigo).
+  useEffect(() => {
+    const limpo = (cepDestino ?? "").replace(/\D/g, "");
+    if (limpo.length !== 8) return;
+
+    if (ultimoDestinoAdotadoRef.current === null) {
+      ultimoDestinoAdotadoRef.current = limpo;
+      if (usuarioDigitouCepRef.current) return;
+    } else {
+      if (ultimoDestinoAdotadoRef.current === limpo) return;
+      ultimoDestinoAdotadoRef.current = limpo;
+    }
+
+    setCep(`${limpo.slice(0, 5)}-${limpo.slice(5, 8)}`);
+    if (selectedOption) {
+      onSelectOption(null);
+    }
+    if (cart.length === 0) return;
+    calculateShipping(undefined, true, limpo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cepDestino]);
 
   // FRETE V2 (onda D-1, 03/09 — dossiê frete-v2-0309): a regra de grátis tem
   // FONTE ÚNICA — o memo `freteGratis` do CartContext, que lê o preset do

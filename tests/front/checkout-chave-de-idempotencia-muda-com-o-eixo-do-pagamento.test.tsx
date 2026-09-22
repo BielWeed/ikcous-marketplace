@@ -103,28 +103,31 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: usuarioLogado, profile: null, loading: false }),
 }));
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: carrinho,
-    cartTotal: 100,
-    shippingFee: 0,
-    clearCart,
-    addToCart: vi.fn(),
-    // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
-    // 21/09/2026): a guarda do Finalizar (`finalizarBloqueadoPorFrete`)
-    // passou a exigir a ESCOLHA de entrega — o servidor recusa id ausente
-    // (FRETE V2 EMENDA, ELSIF do bloco 4). O assunto deste arquivo é outro;
-    // sem a opção, o botão travaria por um motivo que ele não prova.
-    selectedShippingOption: {
-      id: "local-delivery",
-      name: "Entrega Local",
-      price: 0,
-      deliveryDays: 1,
-      provider: "local",
-    },
-    shippingCep: "38500-000",
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: carrinho,
+      cartTotal: 100,
+      shippingFee: 0,
+      clearCart,
+      addToCart: vi.fn(),
+      // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
+      // 21/09/2026): a guarda do Finalizar (`finalizarBloqueadoPorFrete`)
+      // passou a exigir a ESCOLHA de entrega — o servidor recusa id ausente
+      // (FRETE V2 EMENDA, ELSIF do bloco 4). O assunto deste arquivo é outro;
+      // sem a opção, o botão travaria por um motivo que ele não prova.
+      selectedShippingOption: {
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 0,
+        deliveryDays: 1,
+        provider: "local",
+      },
+      shippingCep: "38500-000",
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
