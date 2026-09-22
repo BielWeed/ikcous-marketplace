@@ -115,6 +115,7 @@ describe("ShippingCalculator — a cotação mais NOVA vence, mesmo se a mais VE
           cart={cart}
           selectedOption={null}
           onSelectOption={(opt) => selecionadas.push(opt)}
+          cepDestino="69000000"
         />,
       );
     });
@@ -130,6 +131,7 @@ describe("ShippingCalculator — a cotação mais NOVA vence, mesmo se a mais VE
           cart={cart}
           selectedOption={null}
           onSelectOption={(opt) => selecionadas.push(opt)}
+          cepDestino="69000000"
         />,
       );
     });
@@ -171,22 +173,10 @@ describe("ShippingCalculator — a cotação mais NOVA vence, mesmo se a mais VE
       },
       error: null,
     });
+    // Frete automático (22/09/2026): o endereço de entrega (69000-000) já
+    // está definido; a montagem cota sozinha, sem campo nem botão.
     await montar(carrinhoComQuantidade(1));
-
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
     await act(async () => {
-      setter?.call(campo, "69000000");
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
-    await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
       await Promise.resolve();
       await Promise.resolve();
     });

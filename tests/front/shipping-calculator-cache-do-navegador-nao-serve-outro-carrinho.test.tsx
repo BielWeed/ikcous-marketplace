@@ -74,7 +74,12 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
   let hospedeiro: HTMLDivElement;
   let armazem: Map<string, string>;
 
+  let cepDestinoAtual: string | null = null;
+  let ultimoCarrinho: CartItem[] = [];
+
   beforeEach(() => {
+    cepDestinoAtual = null;
+    ultimoCarrinho = [];
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-22T12:00:00Z"));
     armazem = new Map<string, string>();
@@ -120,6 +125,7 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
   });
 
   async function pintar(cart: CartItem[]) {
+    ultimoCarrinho = cart;
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
@@ -129,29 +135,39 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
           cart={cart}
           selectedOption={null}
           onSelectOption={() => {}}
+          cepDestino={cepDestinoAtual}
         />,
       );
     });
   }
 
+  // Frete automático (22/09/2026): não há mais campo de CEP nem botão
+  // "Calcular". O destino chega como `cepDestino` (o endereço de entrega
+  // escolhido) e a TROCA de destino cota na hora — é o equivalente exato do
+  // antigo "digitar o CEP e enviar".
   async function digitarCep(valor: string) {
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
+    cepDestinoAtual = valor;
+    await pintar(ultimoCarrinho);
+  }
+
+  // Voltar ao carrinho / abrir o checkout: a calculadora desmonta e monta de
+  // novo no MESMO destino — é o único caminho para "cotar de novo" o mesmo
+  // CEP sem mudar o carrinho.
+  async function remontar() {
+    act(() => {
+      raiz.unmount();
+    });
+    raiz = createRoot(hospedeiro);
+    await pintar(ultimoCarrinho);
     await act(async () => {
-      setter?.call(campo, valor);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
     });
   }
 
   async function enviar() {
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
+    // Sem botão: só escoa as respostas já resolvidas da cotação automática.
     await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -197,7 +213,7 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     // relógio: nenhum timer pendente dispara, então a única coisa que pode
     // mudar o número de chamadas é a validade do cache.
     vi.setSystemTime(new Date("2026-08-23T12:00:00Z"));
-    await enviar();
+    await remontar();
 
     expect(invoke).toHaveBeenCalledTimes(2);
   });
@@ -211,7 +227,7 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     // Um minuto antes de vencer: ainda é acerto. Sem esta asserção, apagar o
     // cache inteiro passaria pelos dois testes acima.
     vi.setSystemTime(new Date(Date.now() + DUAS_HORAS_MS - 60_000));
-    await enviar();
+    await remontar();
 
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(hospedeiro.textContent).toContain("10,00");

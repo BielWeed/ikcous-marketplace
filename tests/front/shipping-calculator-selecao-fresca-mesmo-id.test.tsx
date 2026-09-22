@@ -101,7 +101,12 @@ describe("ShippingCalculator — cotação nova com o MESMO id substitui o objet
   // guarda o objeto que `onSelectOption` entrega e o devolve na prop.
   let selecionada: { current: ShippingOption | null };
 
+  let cepDestinoAtual: string | null = null;
+  let paiMontado = false;
+
   beforeEach(() => {
+    cepDestinoAtual = null;
+    paiMontado = false;
     vi.useFakeTimers();
     armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -145,6 +150,7 @@ describe("ShippingCalculator — cotação nova com o MESMO id substitui o objet
           onSelectOption={(opt) => {
             selecionada.current = opt;
           }}
+          cepDestino={cepDestinoAtual}
         />,
       );
     });
@@ -166,6 +172,7 @@ describe("ShippingCalculator — cotação nova com o MESMO id substitui o objet
   const pai = {
     selecionada: null as ShippingOption | null,
     alterarCarrinho: (_itens: CartItem[]) => {},
+    alterarDestino: (_cep: string | null) => {},
   };
 
   async function renderizarPaiComEstadoReal() {
@@ -177,22 +184,26 @@ describe("ShippingCalculator — cotação nova com o MESMO id substitui o objet
       const [selecionada, setSelecionada] = useState<ShippingOption | null>(
         null,
       );
+      const [destino, setDestino] = useState<string | null>(null);
       // Espelho em efeito — o render é imutável (react-hooks/immutability).
       useEffect(() => {
         pai.selecionada = selecionada;
         pai.alterarCarrinho = setItens;
+        pai.alterarDestino = setDestino;
       }, [selecionada]);
       return (
         <ShippingCalculator
           cart={itens}
           selectedOption={selecionada}
           onSelectOption={setSelecionada}
+          cepDestino={destino}
         />
       );
     }
     await act(async () => {
       raiz.render(<PaiDeEstadoReal />);
     });
+    paiMontado = true;
   }
 
   async function clicarOpcao(nome: string) {
@@ -205,22 +216,20 @@ describe("ShippingCalculator — cotação nova com o MESMO id substitui o objet
     });
   }
 
-  /** Digita um CEP no campo e envia o formulário (cotação imediata). */
+  /**
+   * O endereço de entrega passa a ser `cep` (cotação imediata). Frete
+   * automático (22/09/2026): substitui o antigo "digitar o CEP e enviar".
+   */
   async function cotar(cep: string) {
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
+    cepDestinoAtual = cep;
+    if (paiMontado) {
+      await act(async () => {
+        pai.alterarDestino(cep);
+      });
+    } else {
+      await renderizar(carrinho());
+    }
     await act(async () => {
-      setter?.call(campo, cep);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
-    await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
       // A cadeia do calculateShipping (invoke → setState) precisa de mais
       // microtasks do que duas para o resultado pousar no estado.
       for (let i = 0; i < 10; i++) await Promise.resolve();

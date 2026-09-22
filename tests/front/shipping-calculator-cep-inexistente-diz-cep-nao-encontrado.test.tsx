@@ -85,7 +85,7 @@ describe("ShippingCalculator — CEP inexistente tem aviso específico", () => {
     vi.useRealTimers();
   });
 
-  async function montar(cart = carrinho) {
+  async function montar(cart = carrinho, cepDestino: string | null = null) {
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
@@ -95,27 +95,16 @@ describe("ShippingCalculator — CEP inexistente tem aviso específico", () => {
           cart={cart}
           selectedOption={null}
           onSelectOption={onSelectOption}
+          cepDestino={cepDestino}
         />,
       );
     });
   }
 
-  async function cotar() {
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, "19999999");
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
-    await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
-    });
+  async function cotar(cart = carrinho) {
+    // Frete automático (22/09/2026): não há mais campo de CEP — o destino
+    // chega como `cepDestino` (endereço de entrega) e a cotação sai sozinha.
+    await montar(cart, "19999999");
     await act(async () => {
       await Promise.resolve();
     });
@@ -137,7 +126,7 @@ describe("ShippingCalculator — CEP inexistente tem aviso específico", () => {
     await cotar();
 
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
-      "CEP não encontrado. Confira o número e tente de novo.",
+      "CEP não encontrado. Confira o CEP do endereço de entrega.",
     );
     expect(hospedeiro.textContent).not.toContain("texto técnico proibido");
     expect(onSelectOption).toHaveBeenCalledWith(null);
@@ -190,7 +179,7 @@ describe("ShippingCalculator — CEP inexistente tem aviso específico", () => {
       data: { options: [opcaoAtual] },
       error: null,
     });
-    await montar([{ ...carrinho[0], quantity: 2 }]);
+    await montar([{ ...carrinho[0], quantity: 2 }], "19999999");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(700);
     });

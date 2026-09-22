@@ -102,42 +102,25 @@ describe("ShippingCalculator — falha obsoleta não apaga uma cotação boa mai
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
-    await act(async () => {
-      raiz.render(
-        <ShippingCalculator
-          cart={carrinho}
-          selectedOption={null}
-          onSelectOption={(opt) => selecionadas.push(opt)}
-        />,
-      );
-    });
-
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, "69000000");
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
-    async function enviar() {
+    // Frete automático (22/09/2026): sem campo de CEP, o que dispara uma
+    // cotação imediata é a TROCA do endereço de entrega (`cepDestino`). As
+    // duas cotações concorrentes daqui são duas trocas seguidas de endereço.
+    async function entregarEm(cep: string) {
       await act(async () => {
-        formulario.dispatchEvent(
-          new Event("submit", { bubbles: true, cancelable: true }),
+        raiz.render(
+          <ShippingCalculator
+            cart={carrinho}
+            selectedOption={null}
+            onSelectOption={(opt) => selecionadas.push(opt)}
+            cepDestino={cep}
+          />,
         );
         await Promise.resolve();
         await Promise.resolve();
       });
     }
-    await enviar();
+    await entregarEm("69000000");
     expect(invoke).toHaveBeenCalledTimes(1);
-
-    // O envio âncora acabou de gravar o cache local do CEP — sem invalidá-lo,
-    // os dois envios seguintes (mesmo CEP) seriam cache HIT e nem chegariam a
-    // chamar a transportadora.
-    localStorage.removeItem("ikcous_shipping_cache_69000000");
 
     // A partir daqui: a 1ª chamada ("A", obsoleta) FALHA depois de 3000ms; a
     // 2ª chamada ("B", a mais nova) TEM SUCESSO em 500ms — B responde bem
@@ -174,8 +157,8 @@ describe("ShippingCalculator — falha obsoleta não apaga uma cotação boa mai
       );
     });
 
-    await enviar(); // A: meuId=2, falha em +3000ms.
-    await enviar(); // B: meuId=3, sucesso em +500ms — é a MAIS NOVA.
+    await entregarEm("70000000"); // A: meuId=2, falha em +3000ms.
+    await entregarEm("71000000"); // B: meuId=3, sucesso em +500ms — é a MAIS NOVA.
     expect(invoke).toHaveBeenCalledTimes(3);
 
     // t=500: B (a mais nova) tem sucesso.

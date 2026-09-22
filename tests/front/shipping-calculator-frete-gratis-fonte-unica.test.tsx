@@ -227,6 +227,8 @@ describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do
 
   /** Monta provider + calculadora com o carrinho dado e submete um CEP. */
   async function montarECotar(itens: CartItem[]) {
+    // Frete automático (22/09/2026): não há mais campo de CEP — o destino
+    // chega como `cepDestino` (endereço de entrega) e a cotação sai sozinha.
     localStorage.setItem("marketplace_cart_v1", JSON.stringify(itens));
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
@@ -239,28 +241,12 @@ describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do
             cart={itens}
             selectedOption={null}
             onSelectOption={(opt) => selecionadas.push(opt)}
+            cepDestino="69000000"
           />
         </CartProvider>,
       );
     });
 
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, "69000000");
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
-    await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
-      await Promise.resolve();
-    });
     await act(async () => {
       await Promise.resolve();
     });

@@ -4,6 +4,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
+import {
+  enderecoDeEntregaEfetivo,
+  resumoDoEndereco,
+} from "@/lib/endereco-de-entrega";
 import { precoVendido } from "@/lib/preco-vendido";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -18,10 +22,11 @@ import {
   Sparkles,
   Truck,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 // Sub-components
+import { AddressList } from "@/components/ui/custom/AddressList";
+import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 import { CartItemsList } from "@/components/ui/custom/CartItemsList";
 import { EmptyCart } from "@/components/ui/custom/EmptyCart";
 import { OrderList } from "@/components/ui/custom/OrderList";
@@ -123,8 +128,10 @@ export function CartView({
     clearCart,
     selectedShippingOption,
     setSelectedShippingOption,
+    shippingCep,
     setShippingCep,
     enderecoSelecionadoId,
+    setEnderecoSelecionadoId,
   } = useCart();
 
   const { user } = useAuth();
@@ -133,25 +140,55 @@ export function CartView({
   const onUpdateQuantity = propOnUpdateQuantity ?? updateQuantity;
   const onRemove = propOnRemove ?? removeFromCart;
 
-  // O DESTINO DA CALCULADORA É O ENDEREÇO DE ENTREGA: o escolhido no
-  // checkout (`enderecoSelecionadoId`) ou, na falta, o principal do
-  // cadastro — mesma regra do auto-select do CheckoutView. A lista vem do
-  // cache do `useAddresses` e o fetch abaixo a mantém fresca; sem endereço
-  // cadastrado (ou convidado), `null`: o campo manual segue como sempre.
+  // O DESTINO DO FRETE É O ENDEREÇO DE ENTREGA: o escolhido
+  // (`enderecoSelecionadoId`, compartilhado com o checkout) ou, na falta, o
+  // principal do cadastro — a MESMA função que o CheckoutView usa. Não há
+  // campo de CEP no carrinho: sem endereço, a calculadora pede o cadastro e
+  // o "Finalizar Compra" continua livre (o endereço também pode ser
+  // informado na finalização). O convidado não tem cadastro: o destino dele
+  // é o CEP da última cotação feita no checkout, se houver.
   const { addresses, fetchAddresses } = useAddresses();
-  const cepDoDestino = useMemo(() => {
-    const escolhido = enderecoSelecionadoId
-      ? addresses.find((a) => a.id === enderecoSelecionadoId)
-      : undefined;
-    const padrao = addresses.find((a) => a.is_default) || addresses[0];
-    return (escolhido ?? padrao)?.cep ?? null;
-  }, [addresses, enderecoSelecionadoId]);
+  const enderecoDestino = user
+    ? enderecoDeEntregaEfetivo(addresses, enderecoSelecionadoId)
+    : undefined;
+  const cepDoDestino = user
+    ? (enderecoDestino?.cep ?? null)
+    : (shippingCep ?? null);
+  const [escolhendoEndereco, setEscolhendoEndereco] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchAddresses();
     }
   }, [user, fetchAddresses]);
+
+  // "Cadastrar endereço" leva à tela de endereço; o que for criado lá chega
+  // aqui pela lista compartilhada do `useAddresses`. O endereço NOVO passa a
+  // ser o de entrega — foi para entregar nele que a pessoa o cadastrou a
+  // partir do carrinho. `null` = não há cadastro iniciado daqui.
+  const idsAntesDoCadastroRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const antes = idsAntesDoCadastroRef.current;
+    if (!antes) return;
+    const novo = addresses.find((a) => !antes.has(a.id));
+    if (!novo) return;
+    idsAntesDoCadastroRef.current = null;
+    setEnderecoSelecionadoId(novo.id);
+  }, [addresses, setEnderecoSelecionadoId]);
+  // Voltou ao carrinho: o cadastro iniciado daqui já terminou (salvo — e aí
+  // o efeito acima, que roda antes, já escolheu o novo) ou foi abandonado.
+  // Sem apagar a marca, um endereço cadastrado DEPOIS pelo Perfil viraria o
+  // de entrega sem a cliente escolher.
+  useEffect(() => {
+    if (isActive) idsAntesDoCadastroRef.current = null;
+  }, [isActive]);
+
+  const cadastrarEndereco = () => {
+    haptic.light();
+    idsAntesDoCadastroRef.current = new Set(addresses.map((a) => a.id));
+    setEscolhendoEndereco(false);
+    onNavigate("address-form");
+  };
   // Onda 2, laudo 02/09 #3: a aba "Meus Pedidos" deriva da lista VIVA do
   // hook — o mesmo estado que o realtime alimenta (handleRealtimeUpdate/
   // Insert/Delete em useOrders.ts:1247-1279). Antes a view copiava a lista
@@ -558,16 +595,82 @@ export function CartView({
                         então nada muda visualmente quando os dois lados
                         concordam; só passa a existir uma saída quando
                         discordam. */}
-                    {cart.length > 0 && (
-                      <div className="mt-3">
+                    {/* Uma calculadora cotando por vez: o carrinho continua
+                        montado atrás do checkout (aba mantida viva), e o
+                        checkout tem a própria. Fora da aba, esta desmonta —
+                        o lacre do desmonte descarta a resposta em voo. */}
+                    {cart.length > 0 && isActive && (
+                      <div className="mt-3 space-y-3">
                         <ShippingCalculator
                           key={user?.id ?? "convidado"}
                           cart={cart}
                           selectedOption={selectedShippingOption}
                           onSelectOption={setSelectedShippingOption}
                           onCepValidated={setShippingCep}
-                          cepDestino={user ? cepDoDestino : null}
+                          cepDestino={cepDoDestino}
+                          cepDaSelecao={shippingCep}
+                          destino={
+                            enderecoDestino
+                              ? {
+                                  apelido: enderecoDestino.name,
+                                  resumo: resumoDoEndereco(enderecoDestino),
+                                }
+                              : null
+                          }
+                          mensagemSemDestino={
+                            user
+                              ? "Cadastre um endereço para ver o frete e o prazo — ou continue e informe o endereço na finalização."
+                              : "O frete é calculado pelo endereço de entrega, que você informa na finalização da compra."
+                          }
+                          acaoDoEndereco={
+                            !user ? null : addresses.length > 0 ? (
+                              <button
+                                type="button"
+                                aria-expanded={escolhendoEndereco}
+                                onClick={() => {
+                                  haptic.light();
+                                  setEscolhendoEndereco((v) => !v);
+                                }}
+                                className="select-none rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-700 hover:border-zinc-300"
+                              >
+                                {escolhendoEndereco ? "Fechar" : "Trocar"}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={cadastrarEndereco}
+                                className="select-none rounded-xl bg-primary px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white hover:bg-primary/90"
+                              >
+                                Cadastrar endereço
+                              </button>
+                            )
+                          }
                         />
+                        {user && escolhendoEndereco && addresses.length > 0 && (
+                          <div className="space-y-2 rounded-3xl border border-zinc-100 bg-white p-3">
+                            <span className="block text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                              Entregar em
+                            </span>
+                            <AddressList
+                              addresses={addresses}
+                              selectable
+                              compact
+                              selectedId={enderecoDestino?.id}
+                              onSelect={(endereco) => {
+                                haptic.light();
+                                setEnderecoSelecionadoId(endereco.id);
+                                setEscolhendoEndereco(false);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={cadastrarEndereco}
+                              className="w-full select-none rounded-2xl border border-dashed border-zinc-200 py-2.5 text-[10px] font-black uppercase tracking-wider text-zinc-600 hover:border-zinc-300"
+                            >
+                              + Novo endereço
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -8,6 +8,10 @@ import { AddressList } from "@/components/ui/custom/AddressList";
 import { CouponInput } from "@/components/ui/custom/CouponInput";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
+import {
+  ShippingCalculator,
+  type StatusDaCotacao,
+} from "@/components/ui/custom/ShippingCalculator";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
@@ -23,6 +27,10 @@ import {
   criarGerenciadorDeChave,
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
+import {
+  enderecoDeEntregaEfetivo,
+  resumoDoEndereco,
+} from "@/lib/endereco-de-entrega";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import {
   finalizarBloqueadoPorFrete,
@@ -847,13 +855,24 @@ export function CheckoutView({
   // escolhido ou, na falta, o principal/primeiro do cadastro — o mesmo que
   // o auto-select grava no CartContext para o carrinho seguir.
   const enderecoEfetivo = user
-    ? (addresses.find((a) => a.id === selectedAddressId) ??
-      addresses.find((a) => a.is_default) ??
-      addresses[0])
+    ? enderecoDeEntregaEfetivo(addresses, selectedAddressId)
     : undefined;
   const cepDeEntrega = user
     ? (enderecoEfetivo?.cep ?? null)
     : cepDigitadoNoFormulario || null;
+  // Último CEP que a calculadora DESTA tela gravou como cotado. Ao voltar
+  // para um endereço já cotado, a calculadora serve do cache NO MESMO commit
+  // da troca (síncrono) — e este efeito, que roda depois do dela, ainda vê o
+  // `shippingCep` do render anterior (o do outro endereço). Sem o ref, ele
+  // apagava a opção fresca que acabou de ser gravada para o destino certo.
+  const cepCotadoAgoraRef = useRef<string | null>(null);
+  const registrarCepCotado = useCallback(
+    (cep: string) => {
+      cepCotadoAgoraRef.current = cep;
+      setShippingCep(cep);
+    },
+    [setShippingCep],
+  );
   useEffect(() => {
     if (!shippingCep || !cepDeEntrega) return;
     // Ressalva R4 da revisão: CEP parcial é digitação em curso — decidir
@@ -862,10 +881,13 @@ export function CheckoutView({
     // a recusa fail-closed de um CEP incompleto é do SERVIDOR
     // (20261039000000), que chega no clique.
     if (soDigitos(cepDeEntrega).length < 8) return;
-    if (!cotacaoValeParaDestino(shippingCep, cepDeEntrega)) {
-      setSelectedShippingOption(null);
-      setShippingCep(null);
+    if (cotacaoValeParaDestino(shippingCep, cepDeEntrega)) return;
+    const cotadoAgora = cepCotadoAgoraRef.current;
+    if (cotadoAgora && soDigitos(cotadoAgora) === soDigitos(cepDeEntrega)) {
+      return;
     }
+    setSelectedShippingOption(null);
+    setShippingCep(null);
   }, [shippingCep, cepDeEntrega, setSelectedShippingOption, setShippingCep]);
 
   // A invalidação acima é um EFEITO — roda DEPOIS do pintar. No intervalo
@@ -879,6 +901,19 @@ export function CheckoutView({
     !!cepDeEntrega &&
     soDigitos(cepDeEntrega).length === 8 &&
     !cotacaoValeParaDestino(shippingCep, cepDeEntrega);
+
+  // FRETE AUTOMÁTICO (22/09/2026): o checkout cota sozinho pelo destino de
+  // entrega (a calculadora é montada logo abaixo dos endereços). Enquanto a
+  // cotação do destino/carrinho de AGORA não voltou — trocou de endereço,
+  // editou o CEP, carrinho mudou —, o preço na mesa é de outra rodada: o
+  // Finalizar trava e o total fica "a calcular". Nasce neutro: no primeiro
+  // pintar, a escolha de OUTRO destino já é barrada pela guarda síncrona
+  // acima (`freteIncoerenteComDestino`); a do mesmo destino é a do carrinho,
+  // e a recotação que a calculadora dispara na montagem reporta "cotando".
+  const [statusDoFrete, setStatusDoFrete] = useState<StatusDaCotacao>("ocioso");
+  const freteEmCotacao = cart.length > 0 && statusDoFrete === "cotando";
+  const cepDoDestinoDaCotacao =
+    cepDeEntrega && soDigitos(cepDeEntrega).length === 8 ? cepDeEntrega : null;
 
   // ECONOMIA DO FRETE (pedido do Gabriel, 12/09/2026, tabela corrigida pelo
   // crítico de desenho): SÓ EXIBIÇÃO — nunca escreve `selectedShippingOption`
@@ -1559,6 +1594,7 @@ export function CheckoutView({
   // carrinho ter dito "A calcular".
   const semFreteSelecionado =
     freteIncoerenteComDestino ||
+    freteEmCotacao ||
     finalizarBloqueadoPorFrete({
       carrinhoVazio: cart.length === 0,
       freteIndefinido: ctxFreteIndefinido,
@@ -1798,7 +1834,9 @@ export function CheckoutView({
       toast.error(
         ctxFreteIndefinido && !config.originCep?.trim()
           ? "A loja ainda está configurando o frete. Fale com a loja para combinar a entrega."
-          : "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
+          : freteEmCotacao
+            ? "Aguarde: o frete do endereço de entrega ainda está sendo calculado."
+            : "Escolha uma opção de frete antes de finalizar o pedido.",
       );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -2848,6 +2886,37 @@ export function CheckoutView({
           </div>
         )}
 
+        {/* Frete do destino de entrega: cota sozinho pelo endereço
+            escolhido (logado) ou pelo CEP completo do formulário
+            (convidado). Trocar/adicionar/editar endereço acima troca o
+            destino — a cotação anterior cai na hora e a nova sai sozinha. */}
+        {cart.length > 0 && (
+          <ShippingCalculator
+            key={user?.id ?? "convidado"}
+            cart={cart}
+            selectedOption={selectedShippingOption}
+            onSelectOption={setSelectedShippingOption}
+            onCepValidated={registrarCepCotado}
+            cepDestino={cepDoDestinoDaCotacao}
+            cepDaSelecao={shippingCep}
+            destino={
+              enderecoEfetivo
+                ? {
+                    apelido: enderecoEfetivo.name,
+                    resumo: resumoDoEndereco(enderecoEfetivo),
+                  }
+                : null
+            }
+            mensagemSemDestino={
+              user
+                ? "Cadastre ou escolha um endereço de entrega acima para calcular o frete."
+                : "Preencha o CEP de entrega acima para calcular o frete."
+            }
+            onStatusChange={setStatusDoFrete}
+            freteGratis={Boolean(freteGratis)}
+          />
+        )}
+
         {/* Coupon */}
         {config.enableCoupons && (
           <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
@@ -3392,7 +3461,11 @@ export function CheckoutView({
                         ctxFreteIndefinido &&
                         !config.originCep?.trim()
                           ? "A loja ainda está configurando o frete — fale com a loja para combinar a entrega"
-                          : "Volte ao carrinho e calcule o frete para continuar"}
+                          : freteEmCotacao
+                            ? "Calculando o frete do endereço de entrega..."
+                            : cepDoDestinoDaCotacao
+                              ? "Escolha uma opção de frete para continuar"
+                              : "Informe o endereço de entrega para calcular o frete"}
                       </p>
                     )}
                     {!semFreteSelecionado &&

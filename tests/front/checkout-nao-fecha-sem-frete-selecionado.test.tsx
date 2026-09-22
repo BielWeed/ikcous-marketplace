@@ -40,6 +40,14 @@ const { mockConfig } = vi.hoisted(() => ({
   },
 }));
 
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: mockConfig,
@@ -259,7 +267,7 @@ describe("CheckoutView — não fecha pedido sem opção de frete selecionada", 
     // Motivo visível — botão apagado sem explicação faz a pessoa desistir
     // sem saber por quê.
     expect(document.body.textContent).toContain(
-      "Volte ao carrinho e calcule o frete para continuar",
+      "Escolha uma opção de frete para continuar",
     );
 
     // Clique no botão desabilitado não deve criar pedido nenhum — nem pelo
@@ -299,7 +307,7 @@ describe("CheckoutView — não fecha pedido sem opção de frete selecionada", 
     // mesmo: escolher a opção gratuita no carrinho não custa a gratuidade.
     expect(botaoFinalizar.disabled).toBe(true);
     expect(document.body.textContent).toContain(
-      "Volte ao carrinho e calcule o frete para continuar",
+      "Escolha uma opção de frete para continuar",
     );
 
     await act(async () => {
@@ -339,7 +347,7 @@ describe("CheckoutView — não fecha pedido sem opção de frete selecionada", 
     expect(botaoFinalizar).toBeDefined();
     expect(botaoFinalizar.disabled).toBe(false);
     expect(document.body.textContent).not.toContain(
-      "Volte ao carrinho e calcule o frete para continuar",
+      "Escolha uma opção de frete para continuar",
     );
 
     await act(async () => {

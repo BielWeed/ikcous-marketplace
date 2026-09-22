@@ -6,6 +6,19 @@ import { toast } from "sonner";
 
 const LISTA_VAZIA: Address[] = [];
 
+// UMA LISTA POR CONTA, VÁRIAS TELAS: cada tela que usa este hook tem o
+// próprio estado — e o carrinho continua montado atrás do checkout. Sem
+// aviso entre elas, o endereço criado ou editado no checkout (ou na tela de
+// endereço) não existia para o carrinho, que seguia cotando o frete do
+// principal. Toda lista gravada (busca, inclusão, edição, remoção) é
+// publicada aqui; as outras instâncias DA MESMA CONTA adotam.
+type OuvinteDaLista = (dono: string, itens: Address[], origem: symbol) => void;
+const ouvintesDaLista = new Set<OuvinteDaLista>();
+
+function publicarLista(dono: string, itens: Address[], origem: symbol) {
+  for (const ouvir of ouvintesDaLista) ouvir(dono, itens, origem);
+}
+
 interface EstadoDaLista {
   /** Conta dueña de `itens`. A lista só é exposta para ELA. */
   dono: string | null;
@@ -40,6 +53,44 @@ export function useAddresses() {
     itens: carregarCacheDoDisco(user?.id),
   }));
   const [loading, setLoading] = useState(false);
+  // Espelho síncrono do estado: as mutações calculam a lista nova a partir
+  // DELE (e não num updater funcional), para gravar disco, estado e aviso às
+  // outras telas com o MESMO valor.
+  const estadoRef = useRef(estado);
+  const [identidade] = useState(() => Symbol("useAddresses"));
+
+  const gravarLista = useCallback(
+    (dono: string, itens: Address[]) => {
+      const novo = { dono, itens };
+      estadoRef.current = novo;
+      setEstado(novo);
+      try {
+        localStorage.setItem(
+          `ikcous_addresses_cache_${dono}`,
+          JSON.stringify(itens),
+        );
+      } catch {
+        // cota/modo privado: a lista em memória continua valendo
+      }
+      publicarLista(dono, itens, identidade);
+    },
+    [identidade],
+  );
+
+  useEffect(() => {
+    const ouvir: OuvinteDaLista = (dono, itens, origem) => {
+      if (origem === identidade) return;
+      // Lista de OUTRA conta nunca entra (troca de conta em voo).
+      if (dono !== usuarioAtualRef.current) return;
+      const novo = { dono, itens };
+      estadoRef.current = novo;
+      setEstado(novo);
+    };
+    ouvintesDaLista.add(ouvir);
+    return () => {
+      ouvintesDaLista.delete(ouvir);
+    };
+  }, [identidade]);
 
   const addresses =
     estado.dono === (user?.id ?? null) ? estado.itens : LISTA_VAZIA;
@@ -51,7 +102,9 @@ export function useAddresses() {
   // Troca de conta: recarrega o cache DA CONTA CORRENTE.
   useEffect(() => {
     const id = user?.id ?? null;
-    setEstado({ dono: id, itens: carregarCacheDoDisco(id) });
+    const novo = { dono: id, itens: carregarCacheDoDisco(id) };
+    estadoRef.current = novo;
+    setEstado(novo);
   }, [user?.id]);
 
   const fetchAddresses = useCallback(async () => {
@@ -97,8 +150,7 @@ export function useAddresses() {
         reference: a.reference,
         is_default: a.is_default || false,
       }));
-      setEstado({ dono: idDaBusca, itens: mapped });
-      localStorage.setItem(cacheKey, JSON.stringify(mapped));
+      gravarLista(idDaBusca, mapped);
     } catch (error) {
       if (usuarioAtualRef.current !== idDaBusca) return;
       console.error("Error fetching addresses:", error);
@@ -108,7 +160,7 @@ export function useAddresses() {
         setLoading(false);
       }
     }
-  }, [user]);
+  }, [user, gravarLista]);
 
   const addAddress = async (address: Omit<Address, "id" | "user_id">) => {
     if (!user) return null;
@@ -148,25 +200,18 @@ export function useAddresses() {
         is_default: data.is_default || false,
       };
 
-      setEstado((prev) => {
-        // Estado trocou de dono em voo: não escreve.
-        if (prev.dono !== idDaConta) return prev;
-        let updated: Address[];
+      const prev = estadoRef.current;
+      // Estado trocou de dono em voo: não escreve.
+      if (prev.dono === idDaConta) {
         // If new address is default, update others
-        if (formattedAddress.is_default) {
-          updated = [
-            formattedAddress,
-            ...prev.itens.map((a) => ({ ...a, is_default: false })),
-          ];
-        } else {
-          updated = [...prev.itens, formattedAddress];
-        }
-        localStorage.setItem(
-          `ikcous_addresses_cache_${idDaConta}`,
-          JSON.stringify(updated),
-        );
-        return { dono: idDaConta, itens: updated };
-      });
+        const updated: Address[] = formattedAddress.is_default
+          ? [
+              formattedAddress,
+              ...prev.itens.map((a) => ({ ...a, is_default: false })),
+            ]
+          : [...prev.itens, formattedAddress];
+        gravarLista(idDaConta, updated);
+      }
 
       toast.success("Endereço adicionado com sucesso");
       return formattedAddress;
@@ -210,27 +255,20 @@ export function useAddresses() {
         is_default: data.is_default || false,
       };
 
-      setEstado((prev) => {
-        // Estado trocou de dono em voo: não escreve.
-        if (prev.dono !== idDaConta) return prev;
-        let updated: Address[];
-        if (updates.is_default) {
-          updated = prev.itens
-            .map((a) =>
-              a.id === id ? formattedAddress : { ...a, is_default: false },
-            )
-            .sort((a, b) =>
-              a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1,
-            );
-        } else {
-          updated = prev.itens.map((a) => (a.id === id ? formattedAddress : a));
-        }
-        localStorage.setItem(
-          `ikcous_addresses_cache_${idDaConta}`,
-          JSON.stringify(updated),
-        );
-        return { dono: idDaConta, itens: updated };
-      });
+      const prev = estadoRef.current;
+      // Estado trocou de dono em voo: não escreve.
+      if (prev.dono === idDaConta) {
+        const updated: Address[] = updates.is_default
+          ? prev.itens
+              .map((a) =>
+                a.id === id ? formattedAddress : { ...a, is_default: false },
+              )
+              .sort((a, b) =>
+                a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1,
+              )
+          : prev.itens.map((a) => (a.id === id ? formattedAddress : a));
+        gravarLista(idDaConta, updated);
+      }
 
       toast.success("Endereço atualizado");
       return true;
@@ -256,16 +294,14 @@ export function useAddresses() {
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
       if (usuarioAtualRef.current !== idDaConta) return false;
 
-      setEstado((prev) => {
-        // Estado trocou de dono em voo: não escreve.
-        if (prev.dono !== idDaConta) return prev;
-        const updated = prev.itens.filter((a) => a.id !== id);
-        localStorage.setItem(
-          `ikcous_addresses_cache_${idDaConta}`,
-          JSON.stringify(updated),
+      const prev = estadoRef.current;
+      // Estado trocou de dono em voo: não escreve.
+      if (prev.dono === idDaConta) {
+        gravarLista(
+          idDaConta,
+          prev.itens.filter((a) => a.id !== id),
         );
-        return { dono: idDaConta, itens: updated };
-      });
+      }
       toast.success("Endereço removido");
       return true;
     } catch (error) {
