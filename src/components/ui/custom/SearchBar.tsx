@@ -1,6 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { useProducts } from "@/hooks/useProducts";
-import { cn, normalizeText } from "@/lib/utils";
+import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { ArrowRight, Search, Sparkles, Tag, X } from "lucide-react";
@@ -394,7 +394,7 @@ export function SearchBar({
                             {item.name}
                           </span>
                           <span className="text-xs font-black text-zinc-800">
-                            R$ {item.price.toFixed(2)}
+                            {formatCurrency(item.price)}
                           </span>
                         </div>
                       </div>
