@@ -91,6 +91,16 @@ const TETO_BUSCA = 500;
 // escopo desta tarefa, que é só a lista).
 const SERVICO_MELHOR_ENVIO = /^melhor-envio-\d+$/;
 
+// SUPERFRETE (release 1.5.4): provedor SÓ de cotação. A etiqueta do pedido
+// cotado por ela é feita no site da SuperFrete — esta tela compra no Melhor
+// Envio, e oferecer isso para um frete cotado e cobrado em OUTRA
+// transportadora seria gastar o saldo da lojista numa etiqueta que não é a
+// do pedido. O rótulo diz de onde veio e o botão de compra fica apagado.
+const COTADO_PELA_SUPERFRETE = /^superfrete-/;
+function ehCotacaoDaSuperFrete(opcao: unknown): boolean {
+  return typeof opcao === "string" && COTADO_PELA_SUPERFRETE.test(opcao);
+}
+
 /**
  * O selo que a lista mostra para cada pedido — ANTES de qualquer clique.
  *
@@ -106,6 +116,9 @@ function rotuloEtiquetaPedido(p: any): string {
   // edge melhor-envio-etiqueta recusa. O rótulo diz por quê antes do clique.
   if (ehRetiradaNaLoja(p?.shipping_option_id)) {
     return "retirada na loja — sem etiqueta";
+  }
+  if (ehCotacaoDaSuperFrete(p?.shipping_option_id)) {
+    return "cotado pela SuperFrete — etiqueta fora do app";
   }
   // Campo solto na linha (não `p.customer_data.shipping_option_id`): o
   // `select` pede o caminho JSON direto (`customer_data->>shipping_option_id`),
@@ -747,7 +760,8 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
                     !pedido ||
                     isOffline ||
                     loadingPedidos ||
-                    ehRetiradaNaLoja(pedido?.shipping_option_id)
+                    ehRetiradaNaLoja(pedido?.shipping_option_id) ||
+                    ehCotacaoDaSuperFrete(pedido?.shipping_option_id)
                   }
                   className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 py-2.5 text-xs font-bold text-black shadow-lg shadow-amber-500/20 transition-all hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 sm:w-auto"
                 >

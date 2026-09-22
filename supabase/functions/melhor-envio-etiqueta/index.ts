@@ -267,6 +267,17 @@ export function erroDeServicoParaEtiqueta(
             podeEscolherServico: false,
         }
     }
+    // SUPERFRETE (release 1.5.4): frete cotado e cobrado em OUTRA
+    // transportadora. No ramo genérico lá embaixo (`podeEscolherServico:
+    // true`) o `serviceId` do corpo era aceito e a etiqueta saía COMPRADA no
+    // Melhor Envio, com o saldo da lojista. A etiqueta é feita no site da
+    // SuperFrete.
+    if (typeof shippingOptionId === 'string' && shippingOptionId.startsWith('superfrete-')) {
+        return {
+            mensagem: 'Este pedido foi cotado e cobrado pela SuperFrete — a etiqueta é feita no site da SuperFrete, não pelo Melhor Envio.',
+            podeEscolherServico: false,
+        }
+    }
     if (typeof shippingOptionId === 'string' && shippingOptionId.startsWith('flat-fee-')) {
         return {
             mensagem: 'Este pedido usou uma taxa de frete fixa (recurso desativado) e não tem serviço do Melhor Envio associado. Escolha o serviço abaixo para gerar a etiqueta.',

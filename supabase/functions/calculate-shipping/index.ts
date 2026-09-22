@@ -226,14 +226,220 @@ async function salvarCotacaoNoCache(
     supabaseClient: any,
     chave: { originCep: string; destinationCep: string; cartHash: string; options: unknown },
 ): Promise<unknown | null> {
+    // `created_at` VAI no corpo (release 1.5.4): no conflito o upsert vira
+    // UPDATE só das colunas enviadas. Sem ele, a linha recotada guardava o
+    // `created_at` VELHO — e o gatilho `limpar_cotacoes_fora_da_janela`
+    // (AFTER INSERT/UPDATE, apaga > 2 h) apagava a linha que acabara de ser
+    // atualizada; a RPC do pedido não achava a cotação ("expirou") depois de
+    // a cliente já ter visto o preço.
     return await gravarCotacao(() =>
         supabaseClient.from('shipping_quotes_cache').upsert({
             origin_cep: chave.originCep,
             destination_cep: chave.destinationCep,
             cart_hash: chave.cartHash,
             options: chave.options,
+            created_at: new Date().toISOString(),
         }, { onConflict: 'origin_cep,destination_cep,cart_hash' }),
     )
+}
+
+/**
+ * O cache só serve se a cotação gravada for do PROVEDOR QUE A LOJA USA AGORA
+ * (release 1.5.4). A UNIQUE de `shipping_quotes_cache` é
+ * (origin_cep, destination_cep, cart_hash) — sem provedor. Loja que troca
+ * Melhor Envio -> SuperFrete (ou volta) acharia por até 2 h o preço do
+ * provedor anterior, com ids que o provedor atual nem conhece. Linha de
+ * outro provedor (ou mista, ou sem `provider`) = FALTA: recota e o upsert
+ * sobrescreve a mesma chave. `local`/`free`/`pickup` são da própria loja e
+ * valem para qualquer provedor.
+ */
+export function cotacaoDoCacheServeAoProvedor(options: unknown, provider: string): boolean {
+    if (!Array.isArray(options) || options.length === 0) return false
+    return options.every((opcao) => {
+        const dono = (opcao as { provider?: unknown } | null)?.provider
+        return dono === provider || dono === 'local' || dono === 'free' || dono === 'pickup'
+    })
+}
+
+/**
+ * Texto de erro de terceiro pronto para log/resposta (release 1.5.4): troca
+ * cada segredo conhecido (o token da transportadora) e qualquer
+ * `Bearer <algo>` por `[redacted]`, e corta no `limite`. A API da
+ * transportadora pode ECOAR o que recebeu (o próprio token, o cabeçalho
+ * Authorization) — e esse texto ia cru para `shipping_calculation_logs`, para
+ * o `console.error` dos logs da função e, no teste de conexão, para a tela.
+ * Redige ANTES de cortar: o corte nunca deixa meio token para trás de um
+ * segredo que já foi trocado.
+ */
+export function textoSemSegredo(texto: unknown, segredos: unknown[] = [], limite = 300): string {
+    let saida = String(texto ?? '')
+    for (const segredo of segredos) {
+        if (typeof segredo === 'string' && segredo.length > 0) {
+            saida = saida.split(segredo).join('[redacted]')
+        }
+    }
+    saida = saida.replace(/(Bearer\s+)[^\s"',;}]+/gi, '$1[redacted]')
+    if (saida.length > limite) saida = `${saida.slice(0, limite)}…`
+    return saida
+}
+
+// ── SUPERFRETE (release 1.5.4) ───────────────────────────────────────────────
+// Contrato lido na doc oficial (superfrete.readme.io, 22/09/2026): POST
+// {base}/api/v0/calculator; produção https://api.superfrete.com, sandbox
+// https://sandbox.superfrete.com (token é POR ambiente); Authorization Bearer;
+// User-Agent OBRIGATÓRIO "<App> <versão> (<e-mail de contato técnico>)";
+// corpo com from/to OBJETOS {postal_code}, `services` em texto "1,2,17",
+// `options` e `products` (peso kg, medidas cm). Resposta 200 = ARRAY por
+// serviço, `price` número, `has_error` booleano. Só o 400 é documentado:
+// qualquer outro status é falha genérica. Limites de peso/medida NÃO ficam
+// aqui (a doc se contradiz) — a API decide e devolve o serviço com erro.
+
+const SUPERFRETE_BASE_PRODUCAO = 'https://api.superfrete.com'
+const SUPERFRETE_BASE_SANDBOX = 'https://sandbox.superfrete.com'
+
+/** Chave da tela (`enabled_shipping_methods`) -> id do serviço na SuperFrete. */
+export const SUPERFRETE_SERVICO_POR_CHAVE: Readonly<Record<string, number>> = { pac: 1, sedex: 2, jadlog: 3 }
+
+/** "Lista vazia = todas" (mesma regra do ME): os ids que a doc lista (1 PAC, 2 SEDEX, 3 Jadlog, 17 Mini Envios, 31 Loggi, 33 J&T). */
+export const SUPERFRETE_TODOS_OS_SERVICOS: readonly number[] = [1, 2, 3, 17, 31, 33]
+
+export const MOTIVO_SEM_USER_AGENT_SUPERFRETE =
+    'SuperFrete não consultada: configure SUPERFRETE_USER_AGENT nas variáveis do projeto (formato "NomeDoApp versão (e-mail de contato técnico)", exigido pela SuperFrete).'
+
+/**
+ * O `services` do pedido, derivado das chaves de TRANSPORTADORA (a de
+ * retirada já saiu em `chavesDeTransportadora`). Vazio = todas. Chave sem
+ * serviço correspondente não vira serviço inventado: com nenhuma chave
+ * válida o texto sai vazio e quem chama não consulta a API.
+ */
+export function servicosSuperFrete(chaves: string[]): string {
+    if (chaves.length === 0) return SUPERFRETE_TODOS_OS_SERVICOS.join(',')
+    const ids = new Set<number>()
+    for (const chave of chaves) {
+        const id = SUPERFRETE_SERVICO_POR_CHAVE[String(chave || '').toLowerCase().trim()]
+        if (id) ids.add(id)
+    }
+    return [...ids].sort((a, b) => a - b).join(',')
+}
+
+/** Só `sandbox === true` EXATO vai para o sandbox (mesma regra do ME). */
+export function urlDaCotacaoSuperFrete(sandbox: unknown): string {
+    return `${sandbox === true ? SUPERFRETE_BASE_SANDBOX : SUPERFRETE_BASE_PRODUCAO}/api/v0/calculator`
+}
+
+/**
+ * User-Agent da SuperFrete: variável de PROJETO, nunca inventada aqui (a doc
+ * exige um e-mail de contato técnico real, e cada loja tem o seu). Ausente
+ * ou só espaço = `null`, e quem chama falha FECHADO sem consultar a API.
+ */
+export function userAgentDaSuperFrete(): string | null {
+    const valor = (Deno.env.get('SUPERFRETE_USER_AGENT') ?? '').trim()
+    return valor.length > 0 ? valor : null
+}
+
+function cabecalhosDaSuperFrete(token: string, userAgent: string): Record<string, string> {
+    return {
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': userAgent,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+    }
+}
+
+/**
+ * Corpo da cotação: produtos e preço (seguro) SÓ do banco — o navegador não
+ * decide peso nem valor declarado. Padrões de peso/medida iguais aos do
+ * Melhor Envio para produto sem cadastro; produto que o banco não conhece
+ * entra com preço 0 no seguro (nunca o preço que o navegador mandou).
+ */
+export function pedidoDeCotacaoSuperFrete(entrada: {
+    originCep: string
+    destinationCep: string
+    services: string
+    cart: any[]
+    dbProductsMap: Map<unknown, any>
+}) {
+    let valorSegurado = 0
+    const products = entrada.cart.map((item: any) => {
+        const prodId = item.product?.id || item.productId
+        const dbProd = entrada.dbProductsMap.get(prodId)
+        const quantity = Number(item.quantity || 1)
+        valorSegurado += Number(dbProd?.preco_venda ?? 0) * quantity
+        return {
+            quantity,
+            weight: Number(dbProd?.peso_kg ?? 0.3),
+            height: Number(dbProd?.altura_cm ?? 15),
+            width: Number(dbProd?.largura_cm ?? 15),
+            length: Number(dbProd?.comprimento_cm ?? 15),
+        }
+    })
+    const insuranceValue = Number.isFinite(valorSegurado) ? Math.round(valorSegurado * 100) / 100 : 0
+    return {
+        from: { postal_code: entrada.originCep },
+        to: { postal_code: entrada.destinationCep },
+        services: entrada.services,
+        options: {
+            own_hand: false,
+            receipt: false,
+            insurance_value: insuranceValue,
+            use_insurance_value: insuranceValue > 0,
+        },
+        products,
+    }
+}
+
+/** Número vindo da API: número de verdade, ou texto numérico. Booleano, null, objeto = NaN. */
+function numeroDaApi(valor: unknown): number {
+    if (typeof valor === 'number') return valor
+    if (typeof valor === 'string' && valor.trim().length > 0) return Number(valor)
+    return Number.NaN
+}
+
+/**
+ * Resposta da SuperFrete -> opções no formato de sempre
+ * `{ id, name, price, deliveryDays, provider }`. Não-lista = falha (lança).
+ * Descarta o serviço com `has_error`/`error`, id não inteiro, preço não
+ * finito ou <= 0, prazo que não é inteiro >= 1, serviço não pedido pelas
+ * chaves e — 2ª guarda, a mesma régua do ME/Frenet — nome que não casa com
+ * nenhuma chave. O preço é arredondado ao centavo: o MESMO número vai para a
+ * tela e para o cache que a RPC do pedido lê.
+ */
+export function mapearRespostaSuperFrete(data: unknown, chaves: string[]): any[] {
+    if (!Array.isArray(data)) {
+        throw new Error('SuperFrete: resposta inesperada (não é uma lista de serviços).')
+    }
+    const pedidos = chaves.length > 0 ? new Set(servicosSuperFrete(chaves).split(',').filter(Boolean)) : null
+    return data.flatMap((servico: any) => {
+        if (!servico || typeof servico !== 'object') return []
+        if (servico.has_error === true || servico.error) return []
+        const id = numeroDaApi(servico.id)
+        if (!Number.isInteger(id) || id <= 0) return []
+        if (pedidos && !pedidos.has(String(id))) return []
+        if (chaves.length > 0 && !chaves.some((chave) => servicoCasaChave(servico.name, chave))) return []
+        const preco = numeroDaApi(servico.price)
+        if (!Number.isFinite(preco) || preco <= 0) return []
+        const prazo = numeroDaApi(servico.delivery_time)
+        if (!Number.isInteger(prazo) || prazo < 1) return []
+        return [{
+            id: `superfrete-${id}`,
+            name: nomeAmigavelDoServico(servico),
+            price: Math.round(preco * 100) / 100,
+            deliveryDays: prazo,
+            provider: 'superfrete',
+        }]
+    })
+}
+
+/**
+ * Cotação MÍNIMA do teste de conexão: o exemplo oficial da doc (CEPs e o
+ * pacote padrão do OpenAPI), PAC e SEDEX. Só cota — nada é comprado.
+ */
+const PEDIDO_DE_TESTE_SUPERFRETE = {
+    from: { postal_code: '01153000' },
+    to: { postal_code: '20020050' },
+    services: '1,2',
+    options: { own_hand: false, receipt: false, insurance_value: 0, use_insurance_value: false },
+    package: { height: 2, width: 11, length: 16, weight: 0.3 },
 }
 
 /**
@@ -674,6 +880,12 @@ const isTesting = Deno.mainModule.endsWith("_test.ts") || Deno.mainModule.endsWi
  */
 export type CalculateShippingDeps = {
     supabase?: any
+    /**
+     * Costura da checagem de admin do `test_credentials` (release 1.5.4) —
+     * em produção é `verifyIsAdmin` de sempre; o teste injeta o veredito
+     * sem sair para a rede.
+     */
+    verificarAdmin?: (authHeader: string | null) => Promise<boolean>
 }
 
 export async function handler(req: Request, deps: CalculateShippingDeps = {}): Promise<Response> {
@@ -703,16 +915,41 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // ROUTE: test_credentials
         if (action === 'test_credentials') {
             const authHeader = req.headers.get('Authorization')
-            const isAdmin = await verifyIsAdmin(authHeader, supabaseUrl, supabaseServiceRole)
-            
+            const isAdmin = deps.verificarAdmin
+                ? await deps.verificarAdmin(authHeader)
+                : await verifyIsAdmin(authHeader, supabaseUrl, supabaseServiceRole)
+
             if (!isAdmin) {
                 return new Response(
                     JSON.stringify({ error: 'Não autorizado: Apenas administradores podem testar credenciais.' }),
                     { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 )
             }
-            
-            const { provider, credentials } = body
+
+            const { provider } = body
+            let credentials = body.credentials
+
+            // Release 1.5.4: o painel NÃO baixa mais o token (só sabe SE ele
+            // existe). Para testar a chave JÁ salva, ele pede
+            // `usarCredencialSalva: true` e a edge lê a linha do provedor com
+            // a service role — depois da checagem de admin acima. O token
+            // nunca volta ao navegador.
+            if (provider && body.usarCredencialSalva === true) {
+                const { data: linhaSalva, error: erroDaLinha } = await supabaseClient
+                    .from('store_shipping_credentials')
+                    .select('credentials')
+                    .eq('provider', provider)
+                    .maybeSingle()
+                const salvas = erroDaLinha ? null : linhaSalva?.credentials
+                if (!salvas || typeof salvas.token !== 'string' || salvas.token.length === 0) {
+                    return new Response(
+                        JSON.stringify({ error: 'Nenhuma chave de acesso salva para esta transportadora. Cole a chave e salve antes de testar.' }),
+                        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    )
+                }
+                credentials = salvas
+            }
+
             if (!provider || !credentials) {
                 return new Response(
                     JSON.stringify({ error: 'Provedor e credenciais são obrigatórios' }),
@@ -750,7 +987,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                         )
                     } else {
-                        const errText = await response.text()
+                        const errText = textoSemSegredo(await response.text(), [token])
                         return new Response(
                             JSON.stringify({ success: false, error: `Melhor Envio (Status ${response.status}): ${errText}` }),
                             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -797,12 +1034,56 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                         )
                     } else {
-                        const errText = await response.text()
+                        const errText = textoSemSegredo(await response.text(), [token])
                         return new Response(
                             JSON.stringify({ success: false, error: `Frenet (Status ${response.status}): ${errText}` }),
                             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                         )
                     }
+                } else if (provider === 'superfrete') {
+                    const userAgent = userAgentDaSuperFrete()
+                    if (!userAgent) {
+                        return new Response(
+                            JSON.stringify({ success: false, error: MOTIVO_SEM_USER_AGENT_SUPERFRETE }),
+                            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        )
+                    }
+                    const response = await buscarComTempo(fetch, urlDaCotacaoSuperFrete(credentials.sandbox), {
+                        method: 'POST',
+                        headers: cabecalhosDaSuperFrete(token, userAgent),
+                        body: JSON.stringify(PEDIDO_DE_TESTE_SUPERFRETE),
+                    })
+                    const texto = await response.text()
+                    const ambiente = credentials.sandbox === true ? 'Sandbox (testes)' : 'produção'
+
+                    if (response.ok) {
+                        let data: unknown = null
+                        try {
+                            data = JSON.parse(texto)
+                        } catch {
+                            data = null
+                        }
+                        // Só "funcionou" com a forma documentada (lista por
+                        // serviço) — 200 com qualquer outra coisa não prova
+                        // que a cotação do checkout vai funcionar.
+                        if (Array.isArray(data)) {
+                            return new Response(
+                                JSON.stringify({ success: true, message: `SuperFrete respondeu uma cotação de teste com esta chave (ambiente: ${ambiente}).` }),
+                                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                            )
+                        }
+                        return new Response(
+                            JSON.stringify({ success: false, error: 'SuperFrete respondeu, mas não com uma cotação válida. Tente de novo em instantes.' }),
+                            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        )
+                    }
+                    const dica = response.status === 401 || response.status === 403
+                        ? ` A chave foi recusada: confira se ela é do ambiente escolhido (${ambiente}) — Sandbox e produção têm chaves diferentes.`
+                        : ''
+                    return new Response(
+                        JSON.stringify({ success: false, error: `SuperFrete (Status ${response.status}): ${textoSemSegredo(texto, [token])}${dica}` }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    )
                 } else {
                     return new Response(
                         JSON.stringify({ error: `Provedor de frete desconhecido: ${provider}` }),
@@ -811,7 +1092,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 }
             } catch (err) {
                 return new Response(
-                    JSON.stringify({ success: false, error: `Falha de rede: ${err.message}` }),
+                    JSON.stringify({ success: false, error: `Falha de rede: ${textoSemSegredo(err?.message, [token])}` }),
                     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 )
             }
@@ -1033,7 +1314,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 destinationCep: cleanCep,
                 provider,
                 cart,
-                motivo: 'Loja sem transportadora conectada para entregas fora da cidade (o frete de taxa fixa foi descontinuado). Conecte Melhor Envio ou Frenet para cotar o frete nacional.',
+                motivo: 'Loja sem transportadora conectada para entregas fora da cidade (o frete de taxa fixa foi descontinuado). Conecte Melhor Envio, Frenet ou SuperFrete para cotar o frete nacional.',
             })
         }
 
@@ -1068,7 +1349,10 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
         const cachedQuote = linhasDoCache?.[0] ?? null
 
-        if (cachedQuote && !cacheQueryError && cachedQuote.options) {
+        // Release 1.5.4: acerto só vale se a cotação for do provedor ATUAL
+        // (ver `cotacaoDoCacheServeAoProvedor`); senão segue como falta,
+        // recota e o upsert abaixo sobrescreve a mesma chave.
+        if (cachedQuote && !cacheQueryError && cotacaoDoCacheServeAoProvedor(cachedQuote.options, provider)) {
             console.log(`[calculate-shipping] Caching hit for CEP: ${cleanCep}`)
             
             // Log cache hit asynchronously (fire and forget)
@@ -1133,6 +1417,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // fingia cobrar só parte do carrinho.
         const apiStartTime = performance.now()
         let apiError: string | null = null
+        let cepInvalidoNaTransportadora = false
 
         try {
             if (provider === 'melhor_envio') {
@@ -1181,7 +1466,9 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 })
 
                 if (!response.ok) {
-                    const errText = await response.text()
+                    // Redigido aqui; cortado no `catch` abaixo (a classificação
+                    // de CEP inválido lê a mensagem inteira antes do corte).
+                    const errText = textoSemSegredo(await response.text(), [token], Number.POSITIVE_INFINITY)
                     throw new Error(`Melhor Envio API retornou ${response.status}: ${errText}`)
                 }
 
@@ -1249,7 +1536,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 })
 
                 if (!response.ok) {
-                    const errText = await response.text()
+                    const errText = textoSemSegredo(await response.text(), [token], Number.POSITIVE_INFINITY)
                     throw new Error(`Frenet API retornou ${response.status}: ${errText}`)
                 }
 
@@ -1271,9 +1558,57 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     })
                     .filter(Boolean)
             }
+            else if (provider === 'superfrete') {
+                const token = credentials.token
+                if (!token) throw new Error('Token da SuperFrete ausente')
+
+                // Falha FECHADA antes de qualquer rede: sem o User-Agent que
+                // a SuperFrete exige, a chamada não sai (nunca um UA
+                // inventado nem o fixo do ME).
+                const userAgent = userAgentDaSuperFrete()
+                if (!userAgent) throw new Error(MOTIVO_SEM_USER_AGENT_SUPERFRETE)
+
+                const services = servicosSuperFrete(chavesDeServico)
+                if (!services) {
+                    throw new Error('SuperFrete não consultada: nenhum serviço habilitado (sedex, pac ou jadlog) corresponde a um serviço da SuperFrete.')
+                }
+
+                const response = await buscarComTempo(fetch, urlDaCotacaoSuperFrete(credentials.sandbox), {
+                    method: 'POST',
+                    headers: cabecalhosDaSuperFrete(token, userAgent),
+                    body: JSON.stringify(pedidoDeCotacaoSuperFrete({
+                        originCep,
+                        destinationCep: cleanCep,
+                        services,
+                        cart,
+                        dbProductsMap,
+                    })),
+                })
+
+                const texto = await response.text()
+                if (!response.ok) {
+                    throw new Error(`SuperFrete API retornou ${response.status}: ${textoSemSegredo(texto, [token], Number.POSITIVE_INFINITY)}`)
+                }
+
+                // JSON lido à mão: o SyntaxError do `response.json()` cita um
+                // trecho do corpo cru — a mensagem própria não cita nada.
+                let data: unknown
+                try {
+                    data = JSON.parse(texto)
+                } catch {
+                    throw new Error('SuperFrete: resposta não é JSON válido.')
+                }
+                shippingOptions = mapearRespostaSuperFrete(data, chavesDeServico)
+            }
         } catch (apiErr) {
-            console.error("[calculate-shipping] API quotation failed for %s:", provider, apiErr)
-            apiError = apiErr.message
+            // Release 1.5.4: nada de token nem corpo cru inteiro no console
+            // nem no histórico — redigido e cortado (~300) num lugar só.
+            const mensagemCrua = textoSemSegredo(apiErr?.message ?? apiErr, [credentials.token], Number.POSITIVE_INFINITY)
+            apiError = textoSemSegredo(mensagemCrua)
+            console.error("[calculate-shipping] API quotation failed for %s:", provider, apiError)
+            // A classificação de CEP inválido (mais abaixo) lê a mensagem
+            // INTEIRA — o corte de 300 não pode esconder o `cep_destino`.
+            cepInvalidoNaTransportadora = erroDeTransportadoraEhCepInvalido(mensagemCrua)
         }
 
         const apiEndTime = performance.now()
@@ -1340,7 +1675,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
             fireAndForget(logEmVoo, 'Failed to log contingency:')
             await logEmVoo.catch(() => {})
 
-            if (erroDeTransportadoraEhCepInvalido(apiError)) {
+            if (cepInvalidoNaTransportadora) {
                 return new Response(
                     JSON.stringify({ error: 'CEP não encontrado. Confira o número e tente de novo.', codigo: 'cep_invalido' }),
                     { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

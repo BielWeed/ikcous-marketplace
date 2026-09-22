@@ -8,11 +8,14 @@ import {
 } from "@/lib/guarda-de-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
+import type { StoreConfig } from "@/types";
 import { haptic } from "@/utils/haptic";
 import {
   AlertCircle,
   CheckCircle2,
+  KeyRound,
   Lock,
+  Package,
   RefreshCw,
   Save,
   Sparkles,
@@ -22,7 +25,23 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-type ProvedorDeFrete = "flat_fee" | "melhor_envio" | "frenet";
+type ProvedorDeFrete = NonNullable<StoreConfig["shippingProvider"]>;
+
+/**
+ * Provedores cuja chave tem AMBIENTE (Sandbox x produção). As duas
+ * documentações dizem o mesmo: a chave de um ambiente não vale no outro —
+ * por isso trocar o modo de testes exige colar a chave do ambiente novo.
+ */
+const PROVEDORES_COM_SANDBOX: ReadonlySet<ProvedorDeFrete> = new Set([
+  "melhor_envio",
+  "superfrete",
+]);
+
+const NOME_DA_CHAVE: Readonly<Record<string, string>> = {
+  melhor_envio: "Melhor Envio",
+  frenet: "Frenet",
+  superfrete: "SuperFrete",
+};
 
 interface TransportadorasSectionProps {
   /**
@@ -48,8 +67,8 @@ interface TransportadorasSectionProps {
  * — salvar Frete não toca nelas, e salvar aqui não toca nas regras.
  *
  * Todas as travas auditadas vieram junto, sem reescrita do comportamento:
- * - PAINEL-01: sem `credsLoaded`, o save NÃO grava credencial (não apaga o
- *   token real com `{}`), avisa no toast o que ficou de fora;
+ * - PAINEL-01: sem `credsLoaded`, o campo da chave fica travado — nada é
+ *   gravado por cima do que já está salvo;
  * - erro de leitura vira mensagem na tela com "Tentar de novo" — nunca
  *   "Recarregando…" nem estado morto sem saída;
  * - falha do `updateConfig` para o fluxo ANTES do upsert (ADMIN-010);
@@ -62,6 +81,19 @@ interface TransportadorasSectionProps {
  * sempre foi conteúdo puro), então aqui sobra conteúdo: rótulos font-black
  * uppercase tracking-[0.2em], blocos internos em zinc-950/900, admin-gold
  * como único acento.
+ *
+ * RELEASE 1.5.4 — A CHAVE VIRA SÓ-ESCRITA (e chega a SuperFrete). Esta seção
+ * era a última porta por onde o token da conta real da transportadora
+ * descia ao navegador (`select("*")` + campo de senha preenchido com o
+ * salvo). Agora ela sabe só SE há chave e SE o modo de testes está ligado —
+ * os dois perguntados ao Postgres por FILTRO (`credentials->>token`,
+ * `credentials->>sandbox`), com `select("provider")`: a coluna
+ * `credentials` nunca é pedida (mesmo molde da tela de Frete,
+ * AdminShippingView-126). O campo nasce vazio com o selo "chave salva";
+ * Salvar só grava credencial quando uma chave NOVA foi digitada
+ * (`{ token, sandbox }`); "Testar" sem chave digitada pede à edge que use a
+ * SALVA (`usarCredencialSalva`), que ela lê com a service role depois de
+ * conferir que quem pede é admin.
  */
 
 const OPCOES: ReadonlyArray<{
@@ -95,6 +127,13 @@ const OPCOES: ReadonlyArray<{
       "O frete é cotado na hora com as transportadoras conectadas à sua conta Frenet. Precisa da chave de acesso dela.",
     detalhe: "Cotação automática",
   },
+  {
+    id: "superfrete",
+    nome: "SuperFrete",
+    descricao:
+      "O frete é cotado na hora com Correios (PAC e SEDEX) e, onde houver ponto de postagem perto da loja, Jadlog. Precisa de uma conta na SuperFrete e da chave de acesso dela. A etiqueta é feita no site da SuperFrete.",
+    detalhe: "Cotação automática",
+  },
 ];
 
 const SERVICOS = ["sedex", "pac", "jadlog"] as const;
@@ -111,15 +150,26 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     methods: string[];
   }>({ provider: "flat_fee", methods: ["sedex", "pac"] });
 
-  // Credenciais (mesmos estados da tela de Frete de onde vieram).
-  const [shippingCreds, setShippingCreds] = useState<{ [key: string]: any }>(
+  // Credenciais — SÓ-ESCRITA (1.5.4). O que o banco conta ao navegador:
+  // quais provedores TÊM chave e quais estão no modo de testes. A chave em si
+  // só existe aqui enquanto a lojista digita uma NOVA (`chaveDigitada`), e
+  // some do estado assim que é salva.
+  const [comChaveSalva, setComChaveSalva] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [sandboxSalvo, setSandboxSalvo] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [chaveDigitada, setChaveDigitada] = useState<Record<string, string>>(
     {},
   );
-  const [originalShippingCreds, setOriginalShippingCreds] = useState<{
-    [key: string]: any;
-  }>({});
-  // PAINEL-01: `credsLoaded` só vira true quando o fetch devolveu dados de
-  // verdade — é a guarda que impede o save de apagar o token real.
+  // Escolha do modo de testes ainda não salva, por provedor (ausente = o
+  // salvo vale).
+  const [sandboxEscolhido, setSandboxEscolhido] = useState<
+    Record<string, boolean>
+  >({});
+  // PAINEL-01: `credsLoaded` só vira true quando a leitura devolveu dados de
+  // verdade — sem ela o campo da chave fica travado.
   const [credsLoaded, setCredsLoaded] = useState(false);
   const [credsError, setCredsError] = useState(false);
 
@@ -136,21 +186,38 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     // de novo" que deu certo precisa tirar o aviso vermelho da tela.
     setCredsError(false);
     try {
-      const { data, error } = await supabase
-        .from("store_shipping_credentials")
-        .select("*");
-      if (!error && data) {
-        const credsMap: { [key: string]: any } = {};
-        data.forEach((row: { provider: string; credentials: any }) => {
-          credsMap[row.provider] = row.credentials;
-        });
-        setShippingCreds(credsMap);
-        setOriginalShippingCreds(JSON.parse(JSON.stringify(credsMap)));
+      // Duas perguntas, as duas respondidas pelo Postgres por FILTRO: a
+      // coluna `credentials` nunca entra no `select` (o token não sai do
+      // banco). RLS já restringe as linhas ao admin da loja.
+      const [comToken, emSandbox] = await Promise.all([
+        supabase
+          .from("store_shipping_credentials")
+          .select("provider")
+          .not("credentials->>token", "is", null)
+          .neq("credentials->>token", ""),
+        supabase
+          .from("store_shipping_credentials")
+          .select("provider")
+          .eq("credentials->>sandbox", "true"),
+      ]);
+      const erro = comToken.error ?? emSandbox.error;
+      if (!erro && comToken.data && emSandbox.data) {
+        setComChaveSalva(
+          new Set(
+            comToken.data.map((row: { provider: string }) => row.provider),
+          ),
+        );
+        setSandboxSalvo(
+          new Set(
+            emSandbox.data.map((row: { provider: string }) => row.provider),
+          ),
+        );
+        setSandboxEscolhido({});
         setCredsLoaded(true);
-      } else if (error) {
+      } else {
         console.error(
           "[TransportadorasCard] Credenciais não carregaram:",
-          error,
+          erro,
         );
         setCredsError(true);
       }
@@ -206,19 +273,29 @@ export const TransportadorasSection = memo(function TransportadorasSection({
 
     const provider = escolha.provider;
     if (provider !== "flat_fee") {
-      const tokenA = shippingCreds[provider]?.token || "";
-      const tokenB = originalShippingCreds[provider]?.token || "";
-      if (tokenA !== tokenB) return true;
-
-      if (provider === "melhor_envio") {
-        const sandboxA = !!shippingCreds[provider]?.sandbox;
-        const sandboxB = !!originalShippingCreds[provider]?.sandbox;
-        if (sandboxA !== sandboxB) return true;
+      // Chave NOVA digitada = há o que salvar. (A salva não está aqui para
+      // comparar — e não precisa: campo vazio = "mantém a salva".)
+      if ((chaveDigitada[provider] ?? "").trim() !== "") return true;
+      if (
+        PROVEDORES_COM_SANDBOX.has(provider) &&
+        provider in sandboxEscolhido &&
+        sandboxEscolhido[provider] !== sandboxSalvo.has(provider)
+      ) {
+        return true;
       }
     }
 
     return false;
-  }, [escolha, config, shippingCreds, originalShippingCreds]);
+  }, [escolha, config, chaveDigitada, sandboxEscolhido, sandboxSalvo]);
+
+  // O modo de testes que a tela mostra: a escolha pendente, ou o salvo.
+  const sandboxDe = useCallback(
+    (provider: string) =>
+      provider in sandboxEscolhido
+        ? sandboxEscolhido[provider]
+        : sandboxSalvo.has(provider),
+    [sandboxEscolhido, sandboxSalvo],
+  );
 
   useEffect(() => {
     isDirtyRef.current = isDirty;
@@ -232,9 +309,9 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     }
 
     const provider = escolha.provider;
-    const creds = shippingCreds[provider];
-    if (!creds || !creds.token) {
-      toast.error("Informe o token de acesso para testar.");
+    const digitada = (chaveDigitada[provider] ?? "").trim();
+    if (!digitada && !comChaveSalva.has(provider)) {
+      toast.error("Informe a chave de acesso para testar.");
       return;
     }
 
@@ -242,16 +319,24 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     setTestResult(null);
     haptic.light();
 
+    // Chave digitada (ainda não salva) vai no corpo — é a lojista testando o
+    // que acabou de colar. Sem ela, a edge usa a SALVA: o navegador não tem
+    // (nem precisa ter) o token.
+    const corpo = digitada
+      ? {
+          action: "test_credentials",
+          provider,
+          credentials:
+            provider === "frenet"
+              ? { token: digitada }
+              : { token: digitada, sandbox: sandboxDe(provider) },
+        }
+      : { action: "test_credentials", provider, usarCredencialSalva: true };
+
     try {
       const { data, error } = await supabase.functions.invoke(
         "calculate-shipping",
-        {
-          body: {
-            action: "test_credentials",
-            provider,
-            credentials: creds,
-          },
-        },
+        { body: corpo },
       );
 
       if (error) throw error;
@@ -282,7 +367,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     } finally {
       setIsTestingCreds(false);
     }
-  }, [isOffline, escolha.provider, shippingCreds]);
+  }, [isOffline, escolha.provider, chaveDigitada, comChaveSalva, sandboxDe]);
 
   const handleSave = async () => {
     if (isOffline) {
@@ -292,6 +377,26 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       return;
     }
     if (isSaving || !isDirty) return;
+
+    const provider = escolha.provider;
+    const chaveNova = (chaveDigitada[provider] ?? "").trim();
+    const sandboxNovo = sandboxDe(provider);
+    const temAmbiente =
+      provider !== "flat_fee" && PROVEDORES_COM_SANDBOX.has(provider);
+    // A chave é POR AMBIENTE (Sandbox x produção): mudar só o interruptor,
+    // sem colar a chave do ambiente novo, deixaria a chave velha apontada
+    // para o ambiente errado. Recusa ANTES de gravar qualquer coisa.
+    if (
+      temAmbiente &&
+      !chaveNova &&
+      sandboxNovo !== sandboxSalvo.has(provider)
+    ) {
+      toast.error("Cole a chave do ambiente escolhido", {
+        description:
+          "Sandbox e produção usam chaves diferentes: para trocar o modo de testes, cole a chave de acesso do ambiente novo e salve.",
+      });
+      return;
+    }
 
     setIsSaving(true);
     haptic.medium();
@@ -314,33 +419,51 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         return;
       }
 
-      // 2. Credenciais só com carga bem-sucedida (PAINEL-01).
-      const provider = escolha.provider;
-      if (provider !== "flat_fee" && credsLoaded) {
-        const creds = shippingCreds[provider] || {};
+      // 2. Credencial SÓ quando há chave NOVA (1.5.4). Campo vazio = a salva
+      // continua valendo; nada é regravado a partir do navegador.
+      if (provider !== "flat_fee" && chaveNova) {
+        const credentials =
+          provider === "frenet"
+            ? { token: chaveNova }
+            : { token: chaveNova, sandbox: sandboxNovo };
         const { error: erroCreds } = await supabase
           .from("store_shipping_credentials")
           .upsert(
             {
               provider,
-              credentials: creds,
+              credentials,
               updated_at: new Date().toISOString(),
             },
             { onConflict: "provider" },
           );
 
         if (erroCreds) throw erroCreds;
+
+        // A chave sai do estado: daqui em diante a tela só sabe que ela existe.
+        setComChaveSalva((prev) => new Set(prev).add(provider));
+        setSandboxSalvo((prev) => {
+          const proximo = new Set(prev);
+          if (credentials.sandbox === true) proximo.add(provider);
+          else proximo.delete(provider);
+          return proximo;
+        });
+        setChaveDigitada((prev) => ({ ...prev, [provider]: "" }));
+        setSandboxEscolhido((prev) => {
+          const { [provider]: _descartado, ...resto } = prev;
+          return resto;
+        });
       }
 
-      setOriginalShippingCreds(JSON.parse(JSON.stringify(shippingCreds)));
       haptic.success();
-      const credsPuladas = provider !== "flat_fee" && !credsLoaded;
       toast.success("Transportadora salva!", {
-        description: credsPuladas
-          ? "A escolha foi salva. As chaves de acesso NÃO foram salvas (falha na leitura)."
-          : provider === "flat_fee"
+        description:
+          provider === "flat_fee"
             ? "Preferência salva: sem cotação automática."
-            : "A escolha e as chaves de acesso foram salvas.",
+            : chaveNova
+              ? "A escolha e a chave de acesso foram salvas."
+              : comChaveSalva.has(provider)
+                ? "A escolha foi salva. A chave de acesso já salva continua valendo."
+                : "A escolha foi salva, mas ainda falta a chave de acesso: sem ela o frete de fora da cidade não é cotado.",
       });
     } catch (err) {
       console.error("[TransportadorasCard] Error saving:", err);
@@ -407,6 +530,8 @@ export const TransportadorasSection = memo(function TransportadorasSection({
                   <Tag className="size-4" strokeWidth={2.2} />
                 ) : opcao.id === "melhor_envio" ? (
                   <Truck className="size-4" strokeWidth={2.2} />
+                ) : opcao.id === "superfrete" ? (
+                  <Package className="size-4" strokeWidth={2.2} />
                 ) : (
                   <Sparkles className="size-4" strokeWidth={2.2} />
                 )}
@@ -461,14 +586,11 @@ export const TransportadorasSection = memo(function TransportadorasSection({
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
               <Lock className="size-3.5 text-admin-gold" />
               <span>
-                Chave de acesso —{" "}
-                {escolha.provider === "melhor_envio"
-                  ? "Melhor Envio"
-                  : "Frenet"}
+                Chave de acesso — {NOME_DA_CHAVE[escolha.provider] ?? ""}
               </span>
             </div>
 
-            {escolha.provider === "melhor_envio" && (
+            {PROVEDORES_COM_SANDBOX.has(escolha.provider) && (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-zinc-400">
                   Modo de testes (Sandbox)
@@ -479,16 +601,15 @@ export const TransportadorasSection = memo(function TransportadorasSection({
                   </span>
                 ) : (
                   <Switch
-                    checked={!!shippingCreds.melhor_envio?.sandbox}
+                    checked={sandboxDe(escolha.provider)}
                     disabled={!credsLoaded}
                     onCheckedChange={(checked) => {
-                      setShippingCreds((prev) => ({
+                      setSandboxEscolhido((prev) => ({
                         ...prev,
-                        melhor_envio: {
-                          ...prev.melhor_envio,
-                          sandbox: checked,
-                        },
+                        [escolha.provider]: checked,
                       }));
+                      // O teste anterior era do outro ambiente.
+                      setTestResult(null);
                     }}
                     className="scale-75 data-[state=checked]:bg-admin-gold"
                   />
@@ -497,28 +618,44 @@ export const TransportadorasSection = memo(function TransportadorasSection({
             )}
           </div>
 
+          {/* Selo "chave salva": só com token de verdade no banco (o filtro
+              `credentials->>token` não vazio) — linha sem token não conta. */}
+          {credsLoaded && comChaveSalva.has(escolha.provider) && (
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
+              <KeyRound className="size-3.5 shrink-0" />
+              <span>
+                Chave salva. Por segurança ela não aparece aqui — para trocar,
+                cole a nova e salve.
+              </span>
+            </p>
+          )}
+
           <div className="flex gap-2">
             <input
               type="password"
+              autoComplete="off"
               disabled={!credsLoaded}
-              value={shippingCreds[escolha.provider]?.token || ""}
+              value={chaveDigitada[escolha.provider] ?? ""}
               onChange={(e) => {
                 const val = e.target.value;
-                setShippingCreds((prev) => ({
+                setChaveDigitada((prev) => ({
                   ...prev,
-                  [escolha.provider]: {
-                    ...prev[escolha.provider],
-                    token: val,
-                  },
+                  [escolha.provider]: val,
                 }));
               }}
-              placeholder="Cole aqui a chave de acesso da sua conta..."
+              placeholder={
+                comChaveSalva.has(escolha.provider)
+                  ? "Cole uma chave nova só se quiser trocar a salva..."
+                  : "Cole aqui a chave de acesso da sua conta..."
+              }
               className="h-9 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
             />
             <button
               type="button"
               disabled={
-                isTestingCreds || !shippingCreds[escolha.provider]?.token
+                isTestingCreds ||
+                (!(chaveDigitada[escolha.provider] ?? "").trim() &&
+                  !comChaveSalva.has(escolha.provider))
               }
               onClick={handleTestCredentials}
               className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
@@ -531,6 +668,14 @@ export const TransportadorasSection = memo(function TransportadorasSection({
               <span>Testar</span>
             </button>
           </div>
+
+          {escolha.provider === "superfrete" && (
+            <p className="text-[11px] leading-snug text-zinc-400">
+              O teste faz uma cotação de verdade na SuperFrete (nada é comprado)
+              e só passa com uma chave válida do ambiente escolhido — Sandbox e
+              produção têm chaves diferentes.
+            </p>
+          )}
 
           {testResult && (
             <div

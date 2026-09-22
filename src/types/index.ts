@@ -309,7 +309,7 @@ export interface StoreConfig {
    */
   storeDescription?: string | null;
   originCep?: string;
-  shippingProvider?: "flat_fee" | "melhor_envio" | "frenet";
+  shippingProvider?: "flat_fee" | "melhor_envio" | "frenet" | "superfrete";
   enabledShippingMethods?: string[];
   shippingCoverage?: "local" | "national";
   localDeliveryFee?: number;

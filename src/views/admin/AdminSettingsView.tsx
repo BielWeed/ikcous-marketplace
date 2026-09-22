@@ -555,12 +555,13 @@ const ESTADO_DO_PIX = new Map<NivelDoPix, EstadoDoIndicador>([
 
 // Nome amigável do provedor de frete. O fallback de LEITURA é o mesmo do
 // resto da tela (`config.shippingProvider || "flat_fee"`, como em
-// TransportadorasCard e HistoricoCotacoesCard); valor fora dos 3 conhecidos
+// TransportadorasCard e HistoricoCotacoesCard); valor fora dos 4 conhecidos
 // (drift de banco) cai no ramo seguro em vez de imprimir lixo cru.
 const NOME_DO_PROVEDOR_DE_FRETE = new Map<string, string>([
   ["flat_fee", "Sem cotação automática"],
   ["melhor_envio", "Melhor Envio"],
   ["frenet", "Frenet"],
+  ["superfrete", "SuperFrete"],
 ]);
 
 export const AdminSettingsView = memo(function AdminSettingsView({

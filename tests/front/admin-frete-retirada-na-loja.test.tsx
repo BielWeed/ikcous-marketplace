@@ -69,6 +69,8 @@ vi.mock("@/lib/supabase", () => ({
           Object.assign(Promise.resolve(resposta), {
             not: () => consulta(),
             neq: () => consulta(),
+            // 1.5.4: modo de testes lido por filtro em `credentials->>sandbox`.
+            eq: () => consulta(),
           });
         return {
           select: () => consulta(),

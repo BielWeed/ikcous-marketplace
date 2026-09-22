@@ -552,6 +552,14 @@ function clienteFalso(opts: {
    */
   enderecoDaLoja?: string | null;
   falhaAoLerEndereco?: "erro" | "excecao";
+  /**
+   * SUPERFRETE (1.5.4): credenciais POR PROVEDOR, resolvidas pelo filtro
+   * `.eq('provider', x)` que o handler aplicar — é assim que o teste prova
+   * que a edge lê SÓ a linha do provedor ativo (e o token certo). Provedor
+   * sem entrada = sem linha (`data: null`). Ausente = o comportamento de
+   * sempre (`token-de-teste` para qualquer provedor).
+   */
+  credenciaisPorProvedor?: Record<string, unknown>;
 }) {
   const { registro } = opts;
   const config = opts.config ?? CONFIG_DA_LOJA;
@@ -559,6 +567,7 @@ function clienteFalso(opts: {
   const leitura = (tabela: string, colunas = "") => {
     let usouSingleOuMaybeSingle = false;
     let limiteRequisitado: number | null = null;
+    const filtros: Array<[string, unknown]> = [];
     const resolver = () => {
       switch (tabela) {
         case "store_config":
@@ -615,6 +624,18 @@ function clienteFalso(opts: {
             // sem erro — é o `!credsData` do handler.
             return Promise.resolve({ data: null, error: null });
           }
+          if (opts.credenciaisPorProvedor) {
+            registro.leiturasDeCredencial = registro.leiturasDeCredencial ?? [];
+            registro.leiturasDeCredencial.push({ colunas, filtros: [...filtros] });
+            const filtroDoProvedor = filtros.find(([coluna]) => coluna === "provider");
+            const credenciais = filtroDoProvedor
+              ? opts.credenciaisPorProvedor[String(filtroDoProvedor[1])]
+              : undefined;
+            return Promise.resolve({
+              data: credenciais === undefined ? null : { credentials: credenciais },
+              error: null,
+            });
+          }
           return Promise.resolve({
             data: { credentials: { token: "token-de-teste" } },
             error: null,
@@ -627,7 +648,10 @@ function clienteFalso(opts: {
     // construtor; `single`/`maybeSingle`/`then` resolvem a consulta.
     const construtor: any = {
       select: () => construtor,
-      eq: () => construtor,
+      eq: (coluna: string, valor: unknown) => {
+        filtros.push([coluna, valor]);
+        return construtor;
+      },
       gt: () => construtor,
       lt: () => construtor,
       in: () => construtor,
@@ -2153,4 +2177,621 @@ Deno.test("retirada: COM o sinal os três requisitos continuam valendo (sem chav
     enderecoDaLoja: ENDERECO_FICTICIO,
   });
   assertEquals(comTudo.corpo.options.map((o: any) => o.id), ["local-delivery", "store-pickup"]);
+});
+
+// ============================================================================
+// SUPERFRETE (release 1.5.4) — provedor de COTAÇÃO.
+//
+// Contrato da doc oficial (superfrete.readme.io, lida em 22/09/2026; nenhuma
+// chamada à API foi feita): POST {base}/api/v0/calculator; base de produção
+// https://api.superfrete.com, sandbox https://sandbox.superfrete.com; headers
+// Authorization Bearer, User-Agent "<App> <versão> (<email>)", accept e
+// content-type JSON; corpo com from/to OBJETOS, services string, options e
+// products. Resposta: ARRAY por serviço. Fixture abaixo = o exemplo 200
+// OFICIAL da página de cotação, literal (só o espaçamento mudou).
+// Tokens e e-mail das fixtures são FICTÍCIOS.
+// ============================================================================
+
+const pacoteSF = (price: number, discount: string, format: string, h: string, w: string, l: string, weight: string, insurance: number) => ({
+  price, discount, format, dimensions: { height: h, width: w, length: l }, weight, insurance_value: insurance,
+});
+const CORREIOS_SF = {
+  id: 1,
+  name: "Correios",
+  picture: "https://storage.googleapis.com/sandbox-api-superfrete.appspot.com/logos/correios.png",
+};
+const RESPOSTA_200_OFICIAL_SF = [
+  {
+    id: 1, name: "PAC", price: 18.61, discount: "5.59", currency: "R$", delivery_time: 5,
+    delivery_range: { min: 5, max: 5 },
+    packages: [pacoteSF(18.61, "5.59", "box", "1", "10", "15", "0.003", 0)],
+    additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+  },
+  {
+    id: 2, name: "SEDEX", price: 10.77, discount: "13.43", currency: "R$", delivery_time: 1,
+    delivery_range: { min: 1, max: 1 },
+    packages: [pacoteSF(10.77, "13.43", "box", "1", "10", "15", "0.003", 0)],
+    additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+  },
+  {
+    id: 17, name: "Mini Envios", price: 13, discount: "11.21", currency: "R$", delivery_time: 8,
+    delivery_range: { min: 8, max: 8 },
+    packages: [pacoteSF(13, "11.21", "box", "1", "10", "15", "0.003", 0)],
+    additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+  },
+  {
+    id: 3, name: "JADLOG.PACKAGE", price: 14.4, discount: "7.2", currency: "R$", delivery_time: 2,
+    delivery_range: { min: 2, max: 2 },
+    packages: [pacoteSF(14.4, "7.2", "package", "1", "8", "14", "0.1", 100)],
+    additional_services: { receipt: false, own_hand: false },
+    company: { id: 2, name: "jadlog", picture: "" }, has_error: false,
+  },
+  {
+    id: 31, name: "LOGGI Econômico", price: 9.76, discount: "4.88", currency: "R$", delivery_time: 3,
+    delivery_range: { min: 3, max: 3 },
+    packages: [pacoteSF(9.76, "4.88", "package", "1", "8", "14", "0.1", 100)],
+    additional_services: { receipt: false, own_hand: false },
+    company: { id: 14, name: "loggi", picture: "" }, has_error: false,
+  },
+];
+
+const TOKEN_SF = "tok-sf-FICTICIO-9f8e7d6c5b4a";
+const TOKEN_ME = "tok-me-FICTICIO-1a2b3c4d5e6f";
+const UA_SF = "IKCOUS Teste 1.5.4 (tecnico@exemplo.invalid)";
+const CONFIG_SF = { ...CONFIG_DA_LOJA, shipping_provider: "superfrete", enabled_shipping_methods: [] as string[] };
+const SEM_UA = Symbol("SUPERFRETE_USER_AGENT ausente");
+
+/** Liga/desliga a variável de projeto só durante `fn` e devolve a original. */
+async function comUserAgent<T>(valor: string | typeof SEM_UA, fn: () => Promise<T>): Promise<T> {
+  const anterior = Deno.env.get("SUPERFRETE_USER_AGENT");
+  if (valor === SEM_UA) Deno.env.delete("SUPERFRETE_USER_AGENT");
+  else Deno.env.set("SUPERFRETE_USER_AGENT", valor);
+  try {
+    return await fn();
+  } finally {
+    if (anterior === undefined) Deno.env.delete("SUPERFRETE_USER_AGENT");
+    else Deno.env.set("SUPERFRETE_USER_AGENT", anterior);
+  }
+}
+
+/** Tudo que passou por console.* enquanto `fn` rodava, como texto. */
+async function capturarConsole<T>(fn: () => Promise<T>): Promise<{ resultado: T; saida: string }> {
+  const linhas: string[] = [];
+  const originais = { error: console.error, warn: console.warn, log: console.log, info: console.info };
+  const guardar = (...args: unknown[]) => {
+    linhas.push(args.map((a) => {
+      if (a instanceof Error) return `${a.name}: ${a.message}\n${a.stack ?? ""}`;
+      if (typeof a === "string") return a;
+      try {
+        return JSON.stringify(a);
+      } catch {
+        return String(a);
+      }
+    }).join(" "));
+  };
+  console.error = guardar;
+  console.warn = guardar;
+  console.log = guardar;
+  console.info = guardar;
+  try {
+    const resultado = await fn();
+    return { resultado, saida: linhas.join("\n") };
+  } finally {
+    Object.assign(console, originais);
+  }
+}
+
+type ChamadaDeFetch = { url: string; init: RequestInit };
+
+async function cotarSuperFrete(opts: {
+  config?: any;
+  userAgent?: string | typeof SEM_UA;
+  credenciais?: Record<string, unknown>;
+  responder?: (chamada: ChamadaDeFetch) => Promise<Response> | Response;
+  produtos?: any[];
+  cart?: any[];
+  cep?: string;
+  cacheLookup?: Array<{ options: unknown }>;
+}) {
+  const registro: any = { inserts: [], execucoes: [], upserts: [], cacheConcluido: false, logConcluido: false };
+  const chamadas: ChamadaDeFetch[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = ((url: string, init: RequestInit = {}) => {
+    const chamada = { url: String(url), init };
+    chamadas.push(chamada);
+    const responder = opts.responder ??
+      (() => new Response(JSON.stringify(RESPOSTA_200_OFICIAL_SF), { status: 200, headers: { "Content-Type": "application/json" } }));
+    return Promise.resolve(responder(chamada));
+  }) as any;
+  try {
+    const { resultado, saida } = await capturarConsole(() =>
+      comUserAgent(opts.userAgent ?? UA_SF, async () => {
+        const resposta = await handler(
+          new Request("http://localhost/calculate-shipping", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cep: opts.cep ?? "01001-000", cart: opts.cart ?? CARRINHO_DE_TESTE }),
+          }),
+          {
+            supabase: clienteFalso({
+              registro,
+              cacheInsert: () => Promise.resolve({ error: null }),
+              config: opts.config ?? CONFIG_SF,
+              produtos: opts.produtos,
+              cacheLookup: opts.cacheLookup,
+              credenciaisPorProvedor: opts.credenciais ??
+                { superfrete: { token: TOKEN_SF, sandbox: false }, melhor_envio: { token: TOKEN_ME } },
+            }),
+          },
+        );
+        const texto = await resposta.text();
+        // Drena o log disparado sem await (a resposta 200 não o segura).
+        await new Promise((r) => setTimeout(r, 30));
+        return { resposta, texto };
+      })
+    );
+    const { resposta, texto } = resultado;
+    let corpo: any = null;
+    try {
+      corpo = JSON.parse(texto);
+    } catch {
+      corpo = null;
+    }
+    const logs = registro.inserts.filter((i: any) => i.tabela === "shipping_calculation_logs").map((i: any) => i.linha);
+    return { resposta, texto, corpo, registro, chamadas, saida, logs };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+}
+
+const cabecalho = (chamada: ChamadaDeFetch, nome: string) => new Headers(chamada.init.headers as HeadersInit).get(nome);
+
+Deno.test("superfrete: corpo enviado segue a doc (from/to objetos, services pelas chaves, products do BANCO, seguro pela soma do banco)", async () => {
+  const { resposta, chamadas } = await cotarSuperFrete({
+    config: { ...CONFIG_SF, enabled_shipping_methods: ["sedex", "pac", "store-pickup"] },
+    produtos: [
+      { id: "p1", nome: "Caneca", preco_venda: 49.9, peso_kg: 0.45, largura_cm: 12, altura_cm: 10, comprimento_cm: 20, frete_gratis: false },
+    ],
+    // O navegador manda preço/peso diferentes de propósito: quem vale é o BANCO.
+    cart: [
+      { product: { id: "p1", price: 1 }, quantity: 2 },
+      { product: { id: "p-fora-do-banco", price: 999 }, quantity: 1 },
+    ],
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 1);
+  const [chamada] = chamadas;
+  assertEquals(chamada.url, "https://api.superfrete.com/api/v0/calculator");
+  assertEquals(chamada.init.method, "POST");
+  assertEquals(cabecalho(chamada, "Authorization"), `Bearer ${TOKEN_SF}`);
+  assertEquals(cabecalho(chamada, "User-Agent"), UA_SF);
+  assertEquals(cabecalho(chamada, "Accept"), "application/json");
+  assertEquals(cabecalho(chamada, "Content-Type"), "application/json");
+  assertEquals(JSON.parse(String(chamada.init.body)), {
+    from: { postal_code: "38500000" },
+    to: { postal_code: "01001000" },
+    // store-pickup NÃO conta; pac=1, sedex=2, em ordem crescente.
+    services: "1,2",
+    options: { own_hand: false, receipt: false, insurance_value: 99.8, use_insurance_value: true },
+    products: [
+      { quantity: 2, weight: 0.45, height: 10, width: 12, length: 20 },
+      // Produto que o banco não conhece: padrões do Melhor Envio, e preço 0 no seguro.
+      { quantity: 1, weight: 0.3, height: 15, width: 15, length: 15 },
+    ],
+  });
+});
+
+Deno.test("superfrete: services por chave — jadlog=3; lista vazia = todos os serviços da doc; chave sem serviço não inventa", async () => {
+  const soJadlog = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["jadlog"] } });
+  assertEquals(JSON.parse(String(soJadlog.chamadas[0].init.body)).services, "3");
+  const todas = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: [] } });
+  assertEquals(JSON.parse(String(todas.chamadas[0].init.body)).services, "1,2,3,17,31,33");
+  const soRetirada = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["store-pickup"] } });
+  assertEquals(JSON.parse(String(soRetirada.chamadas[0].init.body)).services, "1,2,3,17,31,33");
+  // Chave que não é serviço da SuperFrete: nada a pedir -> não chama, 503, motivo no log.
+  const semServico = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["transportadora-inexistente"] } });
+  assertEquals(semServico.chamadas.length, 0);
+  assertEquals(semServico.resposta.status, 503);
+  assertEquals(semServico.logs.at(-1)?.status, "error");
+});
+
+Deno.test("superfrete: sandbox SÓ com credentials.sandbox === true (\"true\" em texto vai para produção)", async () => {
+  const sandbox = await cotarSuperFrete({ credenciais: { superfrete: { token: TOKEN_SF, sandbox: true } } });
+  assertEquals(sandbox.chamadas[0].url, "https://sandbox.superfrete.com/api/v0/calculator");
+  const texto = await cotarSuperFrete({ credenciais: { superfrete: { token: TOKEN_SF, sandbox: "true" } } });
+  assertEquals(texto.chamadas[0].url, "https://api.superfrete.com/api/v0/calculator");
+});
+
+Deno.test("superfrete: a resposta 200 OFICIAL vira opções superfrete-<id> com preço numérico, prazo e provider — e é o que vai ao cache", async () => {
+  const { resposta, corpo, registro } = await cotarSuperFrete({});
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.cotacaoIncompleta, false);
+  assertEquals(corpo.options, [
+    { id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete" },
+    { id: "superfrete-2", name: "Entrega expressa", price: 10.77, deliveryDays: 1, provider: "superfrete" },
+    { id: "superfrete-17", name: "Mini Envios", price: 13, deliveryDays: 8, provider: "superfrete" },
+    { id: "superfrete-3", name: "Entrega econômica", price: 14.4, deliveryDays: 2, provider: "superfrete" },
+    { id: "superfrete-31", name: "LOGGI Econômico", price: 9.76, deliveryDays: 3, provider: "superfrete" },
+  ]);
+  // O MESMO objeto vai ao cache (é dele que a RPC do pedido lê o preço por id exato).
+  const gravado = registro.upserts.find((u: any) => u.tabela === "shipping_quotes_cache");
+  assertEquals(gravado.linha.options, corpo.options);
+});
+
+Deno.test("superfrete: chaves ['sedex','pac'] -> só PAC e SEDEX, mesmo que a API devolva Loggi/Mini Envios/Jadlog (servicoCasaChave é a 2ª guarda)", async () => {
+  const { corpo } = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["sedex", "pac"] } });
+  assertEquals(corpo.options.map((o: any) => o.id), ["superfrete-1", "superfrete-2"]);
+  const jad = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["jadlog"] } });
+  assertEquals(jad.corpo.options.map((o: any) => o.id), ["superfrete-3"]);
+});
+
+Deno.test("superfrete: descarta has_error, error, preço não finito/<=0/booleano, prazo inválido e item sem id", async () => {
+  const base = RESPOSTA_200_OFICIAL_SF[0];
+  const itens = [
+    { ...base, id: 1, has_error: true },
+    { ...base, id: 1, error: "Serviço indisponível" },
+    { ...base, id: 1, price: "abc" },
+    { ...base, id: 1, price: 0 },
+    { ...base, id: 1, price: -3 },
+    { ...base, id: 1, price: null },
+    { ...base, id: 1, price: true },
+    { ...base, id: 1, price: "Infinity" },
+    { ...base, id: 1, delivery_time: 0 },
+    { ...base, id: 1, delivery_time: -2 },
+    { ...base, id: 1, delivery_time: "x" },
+    { ...base, id: 1, delivery_time: 2.5 },
+    { ...base, id: 1, delivery_time: null },
+    { ...base, id: undefined },
+    { ...base, id: "abc" },
+    null,
+    "PAC",
+    // O único válido: preço em texto numérico é aceito e arredondado ao centavo.
+    { ...base, id: 2, name: "SEDEX", price: "21.456", delivery_time: 3 },
+  ];
+  const { resposta, corpo } = await cotarSuperFrete({
+    responder: () => new Response(JSON.stringify(itens), { status: 200 }),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options, [
+    { id: "superfrete-2", name: "Entrega expressa", price: 21.46, deliveryDays: 3, provider: "superfrete" },
+  ]);
+});
+
+Deno.test("superfrete: todos os itens inválidos -> 503 sem preço (nada de fictício)", async () => {
+  const { resposta, corpo, texto } = await cotarSuperFrete({
+    responder: () => new Response(JSON.stringify([{ ...RESPOSTA_200_OFICIAL_SF[0], has_error: true }]), { status: 200 }),
+  });
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo.options, undefined);
+  assertEquals(texto.includes("18.61"), false);
+});
+
+for (const [nome, corpoDaResposta] of [
+  ["objeto em vez de lista", JSON.stringify({ id: 1, price: 18.61 })],
+  ["JSON inválido", "<html>erro</html>"],
+  ["null", "null"],
+  ["vazio", ""],
+] as const) {
+  Deno.test(`superfrete: resposta malformada (${nome}) -> 503, sem preço, motivo no log`, async () => {
+    const { resposta, corpo, logs } = await cotarSuperFrete({
+      responder: () => new Response(corpoDaResposta, { status: 200 }),
+    });
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.options, undefined);
+    assertEquals(logs.at(-1)?.status, "error");
+    assertEquals(typeof logs.at(-1)?.error_message, "string");
+    assertEquals(logs.at(-1)?.error_message.includes("SuperFrete"), true);
+  });
+}
+
+for (const status of [400, 401, 403, 429, 500, 502]) {
+  Deno.test(`superfrete: HTTP ${status} -> 503 sem preço fictício, e o log diz o status`, async () => {
+    const { resposta, corpo, logs, registro } = await cotarSuperFrete({
+      responder: () => new Response(JSON.stringify({ message: "falhou" }), { status }),
+    });
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.options, undefined);
+    assertEquals(logs.at(-1)?.error_message.includes(String(status)), true);
+    assertEquals(registro.upserts.filter((u: any) => u.tabela === "shipping_quotes_cache").length, 0);
+  });
+}
+
+Deno.test("superfrete: timeout (AbortError) e falha de rede -> 503 sem preço", async () => {
+  for (const erro of [new DOMException("The signal has been aborted", "AbortError"), new TypeError("error sending request")]) {
+    const { resposta, corpo } = await cotarSuperFrete({ responder: () => Promise.reject(erro) });
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.options, undefined);
+  }
+});
+
+Deno.test("superfrete: falha da API NÃO afeta o cliente local — entrega local sai sem chamar a SuperFrete", async () => {
+  const { resposta, corpo, chamadas } = await cotarSuperFrete({
+    config: { ...CONFIG_SF, local_cep_range: "01001" },
+    responder: () => new Response("", { status: 500 }),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  assertEquals(chamadas.length, 0);
+});
+
+for (const [nome, ua] of [["ausente", SEM_UA], ["vazio", ""], ["só espaços", "   "]] as const) {
+  Deno.test(`superfrete: SUPERFRETE_USER_AGENT ${nome} -> NÃO chama a API, 503, motivo claro no log`, async () => {
+    const { resposta, chamadas, logs, corpo } = await cotarSuperFrete({ userAgent: ua });
+    assertEquals(chamadas.length, 0);
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.options, undefined);
+    assertEquals(logs.at(-1)?.status, "error");
+    assertEquals(logs.at(-1)?.error_message.includes("SUPERFRETE_USER_AGENT"), true);
+  });
+}
+
+Deno.test("superfrete: SEM linha de credencial -> 200 sem opções + motivo (mesmo tratamento do ME/Frenet)", async () => {
+  const { resposta, corpo, chamadas, logs } = await cotarSuperFrete({ credenciais: { melhor_envio: { token: TOKEN_ME } } });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options, []);
+  assertEquals(chamadas.length, 0);
+  assertEquals(logs.at(-1)?.error_message.includes("credencial"), true);
+});
+
+Deno.test("superfrete: linha SEM token -> não chama a API, 503", async () => {
+  const { resposta, chamadas } = await cotarSuperFrete({ credenciais: { superfrete: { sandbox: false } } });
+  assertEquals(resposta.status, 503);
+  assertEquals(chamadas.length, 0);
+});
+
+Deno.test("superfrete: a credencial é lida SÓ da linha provider='superfrete' do banco desta loja (nunca o token de outro provedor)", async () => {
+  const { chamadas, registro } = await cotarSuperFrete({});
+  assertEquals(cabecalho(chamadas[0], "Authorization"), `Bearer ${TOKEN_SF}`);
+  assertEquals(registro.leiturasDeCredencial.length, 1);
+  assertEquals(registro.leiturasDeCredencial[0].filtros, [["provider", "superfrete"]]);
+});
+
+Deno.test("superfrete: REDACTION — API devolve 401 ecoando o token: nada vaza em log, resposta ou console", async () => {
+  const { resposta, texto, logs, saida } = await cotarSuperFrete({
+    responder: (chamada) =>
+      new Response(
+        JSON.stringify({ error: "unauthenticated", message: `token inválido: ${TOKEN_SF}`, echo: cabecalho(chamada, "Authorization") }),
+        { status: 401 },
+      ),
+  });
+  assertEquals(resposta.status, 503);
+  assertEquals(texto.includes(TOKEN_SF), false);
+  const log = logs.at(-1);
+  assertEquals(JSON.stringify(log).includes(TOKEN_SF), false);
+  assertEquals(log.error_message.includes("[redacted]"), true);
+  assertEquals(log.error_message.includes("401"), true);
+  assertEquals(saida.includes(TOKEN_SF), false);
+});
+
+Deno.test("superfrete: REDACTION também corta o corpo cru em ~300 caracteres", async () => {
+  const { logs } = await cotarSuperFrete({
+    responder: () => new Response("x".repeat(5000), { status: 500 }),
+  });
+  assertEquals(logs.at(-1).error_message.length <= 400, true);
+});
+
+Deno.test("REDACTION no Melhor Envio: 500 ecoando o token não vaza no log nem no console", async () => {
+  const { logs, saida, texto } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA },
+    responder: () => new Response(`erro interno; Authorization: Bearer ${TOKEN_ME}`, { status: 500 }),
+  });
+  assertEquals(JSON.stringify(logs).includes(TOKEN_ME), false);
+  assertEquals(saida.includes(TOKEN_ME), false);
+  assertEquals(texto.includes(TOKEN_ME), false);
+});
+
+Deno.test("REDACTION na Frenet: 500 ecoando o token não vaza no log", async () => {
+  const { logs, saida } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA, shipping_provider: "frenet" },
+    credenciais: { frenet: { token: "tok-frenet-FICTICIO-777" } },
+    responder: () => new Response("token tok-frenet-FICTICIO-777 recusado", { status: 500 }),
+  });
+  assertEquals(JSON.stringify(logs).includes("tok-frenet-FICTICIO-777"), false);
+  assertEquals(saida.includes("tok-frenet-FICTICIO-777"), false);
+});
+
+// --- Cache do servidor separado por provedor -------------------------------
+
+const OPCOES_ME_EM_CACHE = [{ id: "melhor-envio-1", name: "Entrega econômica", price: 40, deliveryDays: 5, provider: "melhor_envio" }];
+const OPCOES_SF_EM_CACHE = [{ id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete" }];
+
+Deno.test("cache: linha do Melhor Envio NÃO serve à loja que agora é SuperFrete — recota e SOBRESCREVE a mesma chave", async () => {
+  const { resposta, corpo, chamadas, registro } = await cotarSuperFrete({ cacheLookup: [{ options: OPCOES_ME_EM_CACHE }] });
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 1);
+  assertEquals(corpo.options.every((o: any) => o.provider === "superfrete"), true);
+  const gravacoes = registro.upserts.filter((u: any) => u.tabela === "shipping_quotes_cache");
+  assertEquals(gravacoes.length, 1);
+  assertEquals(gravacoes[0].onConflict, "origin_cep,destination_cep,cart_hash");
+});
+
+Deno.test("cache: linha da SuperFrete NÃO serve à loja que voltou ao Melhor Envio (o outro sentido)", async () => {
+  const { corpo, chamadas } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA },
+    cacheLookup: [{ options: OPCOES_SF_EM_CACHE }],
+    responder: () => new Response(JSON.stringify([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5 }]), { status: 200 }),
+  });
+  assertEquals(chamadas.length, 1);
+  assertEquals(corpo.options.map((o: any) => o.id), ["melhor-envio-1"]);
+});
+
+Deno.test("cache: linha MISTA (uma opção de outro provedor) também não serve", async () => {
+  const { chamadas } = await cotarSuperFrete({ cacheLookup: [{ options: [...OPCOES_SF_EM_CACHE, ...OPCOES_ME_EM_CACHE] }] });
+  assertEquals(chamadas.length, 1);
+});
+
+Deno.test("cache: linha do MESMO provedor serve sem chamar a API (controle)", async () => {
+  const { corpo, chamadas } = await cotarSuperFrete({ cacheLookup: [{ options: OPCOES_SF_EM_CACHE }] });
+  assertEquals(chamadas.length, 0);
+  assertEquals(corpo.options, OPCOES_SF_EM_CACHE);
+});
+
+Deno.test("cache: a gravação renova created_at (senão o gatilho de 2 h apaga a linha recém-atualizada e a RPC diz 'expirou')", async () => {
+  // Vale para TODO provedor (o gravador é um só) — o ME entra como controle
+  // de que o defeito não era da SuperFrete.
+  const meResponde = () => new Response(JSON.stringify([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5 }]), { status: 200 });
+  for (const caso of [{ config: { ...CONFIG_DA_LOJA }, responder: meResponde }, {}]) {
+    const antes = Date.now();
+    const { registro } = await cotarSuperFrete(caso);
+    const depois = Date.now();
+    const gravacao = registro.upserts.find((u: any) => u.tabela === "shipping_quotes_cache");
+    assertEquals(typeof gravacao?.linha.created_at, "string");
+    const instante = Date.parse(gravacao.linha.created_at);
+    assertEquals(instante >= antes - 1000 && instante <= depois + 1000, true);
+  }
+});
+
+// --- Teste de conexão (action test_credentials) ----------------------------
+
+async function testarConexao(opts: {
+  corpo: Record<string, unknown>;
+  admin?: boolean;
+  userAgent?: string | typeof SEM_UA;
+  credenciais?: Record<string, unknown>;
+  responder?: (chamada: ChamadaDeFetch) => Promise<Response> | Response;
+}) {
+  const registro: any = { inserts: [], execucoes: [], upserts: [], cacheConcluido: false, logConcluido: false };
+  const chamadas: ChamadaDeFetch[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = ((url: string, init: RequestInit = {}) => {
+    const chamada = { url: String(url), init };
+    chamadas.push(chamada);
+    const responder = opts.responder ??
+      (() => new Response(JSON.stringify(RESPOSTA_200_OFICIAL_SF), { status: 200 }));
+    return Promise.resolve(responder(chamada));
+  }) as any;
+  try {
+    const { resultado, saida } = await capturarConsole(() =>
+      comUserAgent(opts.userAgent ?? UA_SF, async () => {
+        const resposta = await handler(
+          new Request("http://localhost/calculate-shipping", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-de-admin-ficticio" },
+            body: JSON.stringify({ action: "test_credentials", ...opts.corpo }),
+          }),
+          {
+            supabase: clienteFalso({
+              registro,
+              cacheInsert: () => Promise.resolve({ error: null }),
+              credenciaisPorProvedor: opts.credenciais ?? {},
+            }),
+            verificarAdmin: () => Promise.resolve(opts.admin ?? true),
+          },
+        );
+        return { resposta, texto: await resposta.text() };
+      })
+    );
+    return { ...resultado, corpo: JSON.parse(resultado.texto), chamadas, saida, registro };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+}
+
+Deno.test("teste de conexão SuperFrete: quem não é admin recebe 403 e a API nem é chamada", async () => {
+  const { resposta, chamadas } = await testarConexao({
+    admin: false,
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF } },
+  });
+  assertEquals(resposta.status, 403);
+  assertEquals(chamadas.length, 0);
+});
+
+Deno.test("teste de conexão SuperFrete com usarCredencialSalva: a edge lê o token SALVO e faz uma cotação mínima (sem compra)", async () => {
+  const { corpo, chamadas, registro, texto } = await testarConexao({
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: true } },
+  });
+  assertEquals(corpo.success, true);
+  assertEquals(chamadas.length, 1);
+  assertEquals(chamadas[0].url, "https://sandbox.superfrete.com/api/v0/calculator");
+  assertEquals(chamadas[0].init.method, "POST");
+  assertEquals(cabecalho(chamadas[0], "Authorization"), `Bearer ${TOKEN_SF}`);
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), UA_SF);
+  const pedido = JSON.parse(String(chamadas[0].init.body));
+  assertEquals(typeof pedido.from.postal_code, "string");
+  assertEquals(typeof pedido.to.postal_code, "string");
+  assertEquals(Array.isArray(pedido.products) || typeof pedido.package === "object", true);
+  assertEquals(registro.leiturasDeCredencial[0].filtros, [["provider", "superfrete"]]);
+  assertEquals(texto.includes(TOKEN_SF), false);
+});
+
+Deno.test("teste de conexão com usarCredencialSalva SEM chave salva -> erro claro, sem chamar a API", async () => {
+  for (const credenciais of [{}, { superfrete: { sandbox: false } }, { superfrete: { token: "" } }]) {
+    const { resposta, corpo, chamadas } = await testarConexao({
+      corpo: { provider: "superfrete", usarCredencialSalva: true },
+      credenciais,
+    });
+    assertEquals(resposta.status, 400);
+    assertEquals(chamadas.length, 0);
+    assertEquals(/chave/i.test(corpo.error), true);
+  }
+});
+
+Deno.test("teste de conexão SuperFrete sem SUPERFRETE_USER_AGENT -> falha clara, sem chamar a API", async () => {
+  const { corpo, chamadas } = await testarConexao({
+    userAgent: SEM_UA,
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF } },
+  });
+  assertEquals(corpo.success, false);
+  assertEquals(chamadas.length, 0);
+  assertEquals(corpo.error.includes("SUPERFRETE_USER_AGENT"), true);
+});
+
+Deno.test("teste de conexão SuperFrete: 401 ecoando o token -> falha SEM o token na resposta nem no console", async () => {
+  const { corpo, texto, saida } = await testarConexao({
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF } },
+    responder: () => new Response(`{"message":"bad token ${TOKEN_SF}"}`, { status: 401 }),
+  });
+  assertEquals(corpo.success, false);
+  assertEquals(texto.includes(TOKEN_SF), false);
+  assertEquals(saida.includes(TOKEN_SF), false);
+  assertEquals(corpo.error.includes("401"), true);
+});
+
+Deno.test("teste de conexão SuperFrete: resposta 200 que não é lista -> falha (não declara conectado)", async () => {
+  const { corpo } = await testarConexao({
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF } },
+    responder: () => new Response("{}", { status: 200 }),
+  });
+  assertEquals(corpo.success, false);
+});
+
+Deno.test("teste de conexão Melhor Envio com usarCredencialSalva: usa o token salvo (o painel não baixa mais o token)", async () => {
+  const { corpo, chamadas, texto } = await testarConexao({
+    corpo: { provider: "melhor_envio", usarCredencialSalva: true },
+    credenciais: { melhor_envio: { token: TOKEN_ME, sandbox: false } },
+    responder: () => new Response(JSON.stringify({ name: "Loja Fictícia" }), { status: 200 }),
+  });
+  assertEquals(corpo.success, true);
+  assertEquals(chamadas[0].url, "https://melhorenvio.com.br/api/v2/me");
+  assertEquals(cabecalho(chamadas[0], "Authorization"), `Bearer ${TOKEN_ME}`);
+  assertEquals(texto.includes(TOKEN_ME), false);
+});
+
+Deno.test("teste de conexão Melhor Envio com token DIGITADO (antes de salvar) continua funcionando, e o erro sai sem o token", async () => {
+  const ok = await testarConexao({
+    corpo: { provider: "melhor_envio", credentials: { token: "tok-digitado-FICTICIO", sandbox: true } },
+    responder: () => new Response(JSON.stringify({ name: "Loja Fictícia" }), { status: 200 }),
+  });
+  assertEquals(ok.corpo.success, true);
+  assertEquals(ok.chamadas[0].url, "https://sandbox.melhorenvio.com.br/api/v2/me");
+  const falha = await testarConexao({
+    corpo: { provider: "melhor_envio", credentials: { token: "tok-digitado-FICTICIO" } },
+    responder: () => new Response("Unauthenticated tok-digitado-FICTICIO", { status: 401 }),
+  });
+  assertEquals(falha.corpo.success, false);
+  assertEquals(falha.texto.includes("tok-digitado-FICTICIO"), false);
+});
+
+Deno.test("teste de conexão SuperFrete com token DIGITADO usa o token do corpo", async () => {
+  const { corpo, chamadas } = await testarConexao({
+    corpo: { provider: "superfrete", credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false } },
+  });
+  assertEquals(corpo.success, true);
+  assertEquals(chamadas[0].url, "https://api.superfrete.com/api/v0/calculator");
+  assertEquals(cabecalho(chamadas[0], "Authorization"), "Bearer tok-sf-digitado-FICTICIO");
 });

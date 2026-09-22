@@ -249,6 +249,13 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
     expect(hospedeiro.textContent).toContain("Sem cotação automática");
   });
 
+  it("SuperFrete (1.5.4) é provedor conhecido: o indicador diz o nome, não o ramo seguro", async () => {
+    mockConfig.shippingProvider = "superfrete";
+    await renderizar();
+    expect(hospedeiro.textContent).toContain("SuperFrete");
+    expect(hospedeiro.textContent).not.toContain("Sem cotação automática");
+  });
+
   it.each([null, "   "])(
     "horário %p = 'não informado' (vazio após trim não é informado)",
     async (horario) => {

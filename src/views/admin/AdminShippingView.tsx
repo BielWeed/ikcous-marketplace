@@ -212,16 +212,23 @@ export const AdminShippingView = memo(function AdminShippingView({
         ? "Melhor Envio"
         : provedorSalvo === "frenet"
           ? "Frenet"
-          : null;
+          : provedorSalvo === "superfrete"
+            ? "SuperFrete"
+            : null;
     // Taxa fixa remanescente de loja antiga = sem cotação de fora, igual a
     // não conectado (a edge deixou de cotar por ela).
+    // SuperFrete (1.5.4): chave salva NÃO prova conexão (sem a variável
+    // SUPERFRETE_USER_AGENT no projeto a edge nem chama a API) — o estado é
+    // "chave_salva", nunca "conectado". ME/Frenet seguem como sempre.
     const estado: EstadoConexaoNacional =
       provedorSalvo === "flat_fee"
         ? "desconectado"
         : credsErro
           ? "indeterminado"
           : credsConectados.has(provedorSalvo)
-            ? "conectado"
+            ? provedorSalvo === "superfrete"
+              ? "chave_salva"
+              : "conectado"
             : "desconectado";
     return { estado, provedorNome: nome };
   }, [config?.shippingProvider, credsConectados, credsErro]);
@@ -271,19 +278,26 @@ export const AdminShippingView = memo(function AdminShippingView({
               detalhe: "cotação real na hora",
               tom: "positivo",
             }
-          : conexao.estado === "indeterminado"
+          : conexao.estado === "chave_salva"
             ? {
                 rotulo: "Fora da cidade",
-                valor: "Conexão a confirmar",
-                detalhe: "confira a transportadora em Ajustes",
+                valor: `${conexao.provedorNome}: chave salva`,
+                detalhe: "confirme com 'Testar' em Ajustes",
                 tom: "neutro",
               }
-            : {
-                rotulo: "Fora da cidade",
-                valor: "Sem transportadora",
-                detalhe: "por enquanto, só entrega na cidade",
-                tom: "atencao",
-              };
+            : conexao.estado === "indeterminado"
+              ? {
+                  rotulo: "Fora da cidade",
+                  valor: "Conexão a confirmar",
+                  detalhe: "confira a transportadora em Ajustes",
+                  tom: "neutro",
+                }
+              : {
+                  rotulo: "Fora da cidade",
+                  valor: "Sem transportadora",
+                  detalhe: "por enquanto, só entrega na cidade",
+                  tom: "atencao",
+                };
 
     const gratis: StatusDaFaixaFrete =
       presetSalvo === "acima_de_valor"
@@ -614,9 +628,9 @@ export const AdminShippingView = memo(function AdminShippingView({
               Onde estão as transportadoras
             </div>
             <p className="text-xs leading-relaxed text-zinc-400">
-              A chave de acesso das transportadoras (Melhor Envio, Frenet), o
-              teste de conexão, os serviços habilitados e o histórico de
-              cotações ficam em{" "}
+              A chave de acesso das transportadoras (Melhor Envio, Frenet,
+              SuperFrete), o teste de conexão, os serviços habilitados e o
+              histórico de cotações ficam em{" "}
               <span className="font-bold text-zinc-200">
                 Ajustes &gt; Transportadoras
               </span>

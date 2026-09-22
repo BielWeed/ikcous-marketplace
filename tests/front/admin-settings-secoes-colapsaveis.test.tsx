@@ -56,17 +56,17 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
       if (tabela === "store_shipping_credentials") {
+        // 1.5.4: a seção só pergunta `provider` com filtro em
+        // `credentials->>token`/`->>sandbox` (a chave não desce ao
+        // navegador). Linha com token, sandbox desligado.
+        const consulta = (linhas: Array<{ provider: string }>): any =>
+          Object.assign(Promise.resolve({ data: linhas, error: null }), {
+            not: () => consulta(linhas),
+            neq: () => consulta(linhas),
+            eq: () => consulta([]),
+          });
         return {
-          select: () =>
-            Promise.resolve({
-              data: [
-                {
-                  provider: "melhor_envio",
-                  credentials: { token: "tok-da-loja", sandbox: false },
-                },
-              ],
-              error: null,
-            }),
+          select: () => consulta([{ provider: "melhor_envio" }]),
           upsert: () => Promise.resolve({ error: null }),
         };
       }
@@ -252,7 +252,8 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
       'input[type="password"]',
     ) as HTMLInputElement;
     expect(campoToken).not.toBeNull();
-    expect(campoToken.value).toBe("tok-da-loja");
+    // 1.5.4: a chave salva não volta ao campo (só-escrita) — nasce vazio.
+    expect(campoToken.value).toBe("");
 
     // Mexe no token: pendência criada.
     const setter = Object.getOwnPropertyDescriptor(
