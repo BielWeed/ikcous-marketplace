@@ -11,9 +11,16 @@ import { applyThemeColor, branding } from "@/config/branding";
 import { destinoPosLogin } from "@/lib/destinoPosLogin";
 import {
   CHAVE_MOTIVO_DE_RECARGA,
+  atualizacaoTrocouDeBuild,
   descreveMotivoDeRecarga,
   limpaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
+
+// Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
+// fora dele (runner de teste), o app segue de pé.
+declare const __APP_VERSION__: string;
+const VERSAO_DO_APP =
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { PreloadedOrLazy, lazyWithPreload } from "@/utils/lazyWithPreload";
@@ -1362,11 +1369,19 @@ const AppContent = () => {
   // PWA Reload Reason Consumption — laudo #2 (P-1): o motivo descreve o que
   // REALMENTE aconteceu (update, recuperação de erro, crash, sentinela);
   // "Sistema Atualizado" só aparece quando houve atualização de verdade.
+  // Peça 22/09: e "de verdade" é PROVADO — a origem gravada na partida do
+  // apply tem de diferir do build deste boot. Apply pendurado, recarga de
+  // segurança ou purge que não curou: toast neutro, nunca sucesso inventado.
   // ==============================
   useEffect(() => {
-    const motivo = descreveMotivoDeRecarga(
-      localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA),
-    );
+    const bruto = localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA);
+    // Lê e limpa a evidência em TODO boot (com motivo de atualização ou sem)
+    // para a chave não órfã; a decisão de sucesso usa o resultado abaixo.
+    const trocouDeBuild = atualizacaoTrocouDeBuild(VERSAO_DO_APP);
+    const motivo =
+      bruto === "atualizacao-aplicada" && !trocouDeBuild
+        ? descreveMotivoDeRecarga("atualizacao-nao-confirmada")
+        : descreveMotivoDeRecarga(bruto);
     if (motivo) {
       console.log(`[PWA] Consuming reload reason: ${motivo.titulo}`);
       import("sonner").then(({ toast }) => {

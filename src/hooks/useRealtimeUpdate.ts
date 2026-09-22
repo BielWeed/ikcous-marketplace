@@ -1,7 +1,6 @@
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useRef } from "react";
-import { toast } from "sonner";
 
 /**
  * useRealtimeUpdate
@@ -9,6 +8,12 @@ import { toast } from "sonner";
  * Assina um canal de Broadcast do Supabase para receber notificações de deploy em tempo real.
  * Otimizado via useLeaderElection para abrir conexão com Supabase apenas na aba líder.
  * Abas secundárias recebem os pings via BroadcastChannel local.
+ *
+ * Peça 22/09: este hook NÃO avisa por conta própria — nenhum toast aqui.
+ * O ÚNICO avisador de atualização é o gate (UpdateNotification via
+ * useUpdateCheck), que respeita "Depois"/soneca, telas de compra e admin
+ * dirty. O papel do ping é só acionar o deep checkUpdate (e propagar o ping
+ * às abas secundárias).
  */
 export function useRealtimeUpdate(
   onUpdateDetected: (version?: string) => void,
@@ -64,10 +69,7 @@ export function useRealtimeUpdate(
             );
 
             const newVersion = data?.version;
-            toast.info("Nova atualização disponível (Realtime)", {
-              description: `Versão ${newVersion || "detectada"} está pronta.`,
-            });
-
+            // Sem toast paralelo (peça 22/09): quem avisa é o gate único.
             // Trigger callback for self
             callbackRef.current(newVersion);
 
@@ -147,13 +149,8 @@ export function useRealtimeUpdate(
           );
 
           const newVersion = data?.version;
-          toast.info(
-            "Nova atualização disponível (Realtime - Aba secundária)",
-            {
-              description: `Versão ${newVersion || "detectada"} está pronta.`,
-            },
-          );
-
+          // Sem toast paralelo (peça 22/09): o gate único avisa — aqui é
+          // só acionar o checkUpdate nesta aba também.
           // Trigger callback for self
           callbackRef.current(newVersion);
         }

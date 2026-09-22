@@ -16,6 +16,7 @@
  */
 export type MotivoDeRecarga =
   | "atualizacao-aplicada"
+  | "atualizacao-nao-confirmada"
   | "recuperacao-erro-modulo"
   | "recuperacao-crash"
   | "recuperacao-sentinela";
@@ -45,11 +46,58 @@ export function limpaMotivoDeRecarga(): void {
   }
 }
 
+// ─── Evidência de build (peça 22/09/2026) ────────────────────────────────────
+//
+// "Sistema Atualizado" só é verdade quando o build TROCOU de verdade entre a
+// partida da atualização e o boot seguinte. Quem dispara o apply sabe apenas
+// o build de ORIGEM; a comparação com o build de CHEGADA só pode ser feita
+// pelo boot (App.tsx), depois da recarga. A origem viaja por esta chave, em
+// SESSIONSTORAGE de propósito (fechamento do achado 1 da revisão):
+//   · sobrevive ao reload/replace do próprio apply — é da MESMA aba;
+//   · é INVISÍVEL às abas irmãs: o boot de outra aba não pode consumir (e
+//     destruir) a evidência de quem está aplicando a atualização;
+//   · morre com a aba: fechou antes de recarregar, o boot mostra o neutro —
+//     sempre na direção honesta, nunca sucesso inventado.
+
+export const CHAVE_ORIGEM_DE_ATUALIZACAO = "pwa_update_from_build";
+
+/** Grava o build que estava no ar quando a tentativa de atualização começou.
+ * Gravar NÃO é afirmar sucesso — o motivo nominal de sucesso é escrito
+ * separadamente, só com evidência (controllerchange), e ainda assim o boot
+ * reconfere contra o build que chegou. */
+export function gravaOrigemDeAtualizacao(versao: string): void {
+  try {
+    sessionStorage.setItem(CHAVE_ORIGEM_DE_ATUALIZACAO, versao);
+  } catch {
+    // storage indisponível: sem evidência, o boot mostrará o neutro.
+  }
+}
+
+/** Lê e LIMPA a origem gravada. `true` só quando existe origem E ela difere
+ * do build atual — a prova de que a recarga trouxe outro build. Sem a chave
+ * (nada gravado nesta aba, storage limpo no meio do caminho) devolve
+ * `false`: sem evidência, ninguém anuncia atualização. */
+export function atualizacaoTrocouDeBuild(versaoAtual: string): boolean {
+  try {
+    const origem = sessionStorage.getItem(CHAVE_ORIGEM_DE_ATUALIZACAO);
+    sessionStorage.removeItem(CHAVE_ORIGEM_DE_ATUALIZACAO);
+    return !!origem && origem !== versaoAtual;
+  } catch {
+    return false;
+  }
+}
+
 const DESCRICOES: Record<MotivoDeRecarga, RecargaDescrita> = {
   "atualizacao-aplicada": {
     titulo: "Sistema Atualizado",
     descricao: "A loja foi atualizada para a versão mais recente.",
     tom: "success",
+  },
+  "atualizacao-nao-confirmada": {
+    titulo: "Aplicativo recarregado",
+    descricao:
+      "O aplicativo recarregou para concluir a atualização, mas não houve confirmação de que a versão nova foi instalada. Se algo parecer estranho, feche e abra de novo.",
+    tom: "info",
   },
   "recuperacao-erro-modulo": {
     titulo: "Aplicativo recarregado",

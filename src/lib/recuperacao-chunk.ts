@@ -41,6 +41,7 @@
 import {
   type MotivoDeRecarga,
   gravaMotivoDeRecarga,
+  gravaOrigemDeAtualizacao,
 } from "@/lib/motivo-de-recarga";
 import { versaoLegivelDeResposta } from "@/lib/versao-do-servidor";
 
@@ -354,51 +355,83 @@ export async function recuperarPorCicloDoSW(): Promise<boolean> {
  * A peça de 14/09 mediu o pendurar: se o controllerchange nunca chega (SW
  * preso em install falhando, client não controlado, múltiplas abas), nada
  * recarregava. O prazo de segurança garante o pior caso — recarrega do
- * mesmo jeito — e um `acionar` que REJEITA não pula mais o prazo (o timer
- * é agendado depois do resultado, dado ou erro). Sem desregistrar NUNCA. */
+ * mesmo jeito — e nasce ANTES do `acionar`, independente de ele resolver,
+ * rejeitar, pendurar para sempre ou lançar no sincronismo: o instalador não
+ * pode depender do comportamento de quem acionou.
+ *
+ * A HONESTIDADE DO TOAST (peça 22/09): este ponto NÃO sabe se uma versão
+ * nova foi instalada — e o motivo era gravado ANTES de acionar, então até
+ * rejeição/pendurado viravam "Sistema Atualizado" no boot seguinte. Agora:
+ * grava a origem do build e só escreve o motivo nominal com EVIDÊNCIA (o
+ * waiting assumiu o controle, no controllerchange); sem evidência até o
+ * prazo, a recarga de segurança leva o motivo NEUTRO — e o boot ainda
+ * reconfere a evidência comparando o build de chegada
+ * (`atualizacaoTrocouDeBuild`). Sem desregistrar NUNCA. */
 export function aplicarAtualizacaoPendenteERecarregar(opcoes: {
   acionar: (forcar: boolean) => Promise<void> | void;
   motivo: MotivoDeRecarga;
   prazoMs: number;
 }): void {
-  gravaMotivoDeRecarga(opcoes.motivo);
+  gravaOrigemDeAtualizacao(VERSAO_DO_APP);
 
   let recarregou = false;
-  const recarregarUmaVez = () => {
+  let prazo: ReturnType<typeof setTimeout> | null = null;
+
+  const aoAssumir = () => {
+    // EVIDÊNCIA de atualização aplicada: o SW waiting assumiu o controle.
+    // Só aqui o motivo pedido pelo chamador vale escrever.
+    recarregarUmaVez(opcoes.motivo);
+  };
+
+  const limparOuvinte = () => {
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      try {
+        navigator.serviceWorker.removeEventListener(
+          "controllerchange",
+          aoAssumir,
+        );
+      } catch {
+        // sem removeEventListener: a recarga é o fim do caminho mesmo assim
+      }
+    }
+  };
+
+  const recarregarUmaVez = (motivo: MotivoDeRecarga) => {
     if (recarregou) return;
     recarregou = true;
+    if (prazo !== null) clearTimeout(prazo);
+    limparOuvinte();
+    gravaMotivoDeRecarga(motivo);
     window.location.reload();
   };
-  const aoAssumir = () => recarregarUmaVez();
+
+  // O prazo armado ANTES de qualquer await/then: nenhuma forma de `acionar`
+  // (resolvida, rejeitada, pendente para sempre, throw síncrono) impede a
+  // recarga de segurança.
+  prazo = setTimeout(() => {
+    // Sem controllerchange até aqui: SEM evidência de atualização. Motivo
+    // neutro — o boot nunca anuncia "Sistema Atualizado" por um apply que
+    // não confirmou. Se o build mesmo assim trocou, é o boot quem provê a
+    // evidência, não este caminho.
+    recarregarUmaVez("atualizacao-nao-confirmada");
+  }, opcoes.prazoMs);
 
   if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-    navigator.serviceWorker.addEventListener("controllerchange", aoAssumir);
+    try {
+      navigator.serviceWorker.addEventListener("controllerchange", aoAssumir);
+    } catch {
+      // Sem o ouvinte, o prazo de segurança é o único caminho de recarga.
+    }
   }
 
-  void Promise.resolve(opcoes.acionar(true))
-    .catch(() => {
-      // O resultado (dado ou erro) do acionar NÃO é o fim do caminho: o
-      // prazo de segurança abaixo recarrega do mesmo jeito. Engolir aqui
-      // evita rejeição não-tratada num caminho que já tem dono.
-    })
-    .finally(() => {
-      setTimeout(() => {
-        try {
-          if (
-            typeof navigator !== "undefined" &&
-            "serviceWorker" in navigator
-          ) {
-            navigator.serviceWorker.removeEventListener(
-              "controllerchange",
-              aoAssumir,
-            );
-          }
-        } catch {
-          // sem removeEventListener: a recarga é o fim do caminho mesmo assim
-        }
-        if (!recarregou) recarregarUmaVez();
-      }, opcoes.prazoMs);
+  try {
+    void Promise.resolve(opcoes.acionar(true)).catch(() => {
+      // Rejeição não é o fim do caminho: o prazo já está armado e recarrega.
+      // Engolir aqui evita rejeição não-tratada num caminho que tem dono.
     });
+  } catch {
+    // Throw SÍNCRONO do acionar: não derruba o instalador — o prazo cuida.
+  }
 }
 
 async function derrubarServiceWorkers(): Promise<void> {

@@ -155,6 +155,51 @@ describe("UpdateNotification — o cartão tem saída e é diálogo de verdade",
     });
     expect(document.activeElement).toBe(botaoDepois());
   });
+
+  it("ACIONAMENTO ÚNICO e imediato: 'Atualizar Agora' chama onUpdate UMA vez, sem atraso artificial", async () => {
+    // RELÓGIO REAL de propósito (peça 22/09): fake timers falsificam também
+    // o relógio que alimenta requestAnimationFrame/performance do driver de
+    // animação (framer-motion) e contaminam os testes de soneca deste
+    // arquivo. A prova de "sem atraso tardio" é uma espera delimitada MAIOR
+    // que o antigo atraso artificial (1200ms) — as asserções não mudam.
+    const onUpdate = vi.fn();
+    await montarCartao({ onUpdate });
+
+    await act(async () => {
+      botaoAtualizar()!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    // O apply é acionado NO clique (o prazo de segurança mora no
+    // aplicarAtualizacaoPendenteERecarregar, não aqui).
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+
+    // Passado o instante em que o antigo `setTimeout(onUpdate, 1200)`
+    // dispararia: nada de segunda chamada.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1400));
+    });
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("espera HONESTA: anuncia 'Instalando atualização...' sem porcentagem e sem sucesso antecipado", async () => {
+    await montarCartao();
+    await act(async () => {
+      botaoAtualizar()!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+
+    const tela = host.textContent ?? "";
+    expect(tela).toContain("Instalando atualização");
+    // A barra de progresso simulada (0→100% inventados, com o número na
+    // tela) morreu: nenhuma porcentagem, nenhum "Atualizado" antecipado.
+    expect(/\d+%/.test(tela)).toBe(false);
+    expect(tela).not.toContain("Atualizado");
+    // O anúncio é acessível: região viva para o leitor de tela.
+    const anuncio = host.querySelector('[aria-live="polite"]');
+    expect(anuncio?.textContent).toContain("Instalando atualização");
+  });
 });
 
 // O gate é quem decide QUANDO o cartão mostra — a soneca mora aqui (storage
