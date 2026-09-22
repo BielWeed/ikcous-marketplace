@@ -27,6 +27,14 @@ type TelaCheckout = typeof import("@/views/customer/CheckoutView").CheckoutView;
 // recusa chamador sem auth.uid() desde o PEDIDO-010, #115).
 let mockUser: { id: string } | null = { id: "user-1" };
 
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {

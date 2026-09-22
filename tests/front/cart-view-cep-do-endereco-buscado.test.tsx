@@ -187,10 +187,13 @@ describe("CartView — o destino da calculadora é o endereço cadastrado (useAd
     vi.unstubAllGlobals();
   });
 
-  function campoCep(): HTMLInputElement {
-    return document.getElementById(
-      "shipping-calculator-cep",
-    ) as HTMLInputElement;
+  // Frete automático (22/09/2026): não há campo de CEP — o destino aparece
+  // escrito na região "Entrega e frete" (apelido + resumo com o CEP).
+  function destinoNaTela(): string {
+    return (
+      hospedeiro.querySelector('section[aria-label="Entrega e frete"]')
+        ?.textContent ?? ""
+    );
   }
 
   async function montarCarrinho() {
@@ -210,13 +213,13 @@ describe("CartView — o destino da calculadora é o endereço cadastrado (useAd
     });
   }
 
-  it("sem cache no navegador: o fetch do próprio carrinho traz o endereço e o campo/recotação seguem o CEP dele", async () => {
+  it("sem cache no navegador: o fetch do próprio carrinho traz o endereço e o destino/recotação seguem o CEP dele", async () => {
     // Nada no localStorage: nem CEP antigo, nem cache de endereços.
     filaDeBusca.push({ data: [ENDERECO_B_NO_BANCO], error: null });
 
     await montarCarrinho();
 
-    expect(campoCep().value).toBe("38500-000");
+    expect(destinoNaTela()).toContain("38500-000");
     expect(invokeCalc).toHaveBeenCalledTimes(1);
     const corpo = invokeCalc.mock.calls[0][1] as { body: { cep: string } };
     expect(corpo.body.cep).toBe("38500000");
@@ -238,7 +241,9 @@ describe("CartView — o destino da calculadora é o endereço cadastrado (useAd
     filaDeBusca.push({ data: [], error: null });
 
     await montarCarrinho();
-    expect(campoCep().value).toBe("07095-005");
+    // O cache de A cotou na montagem; a busca no banco devolveu A SEM
+    // endereço — o destino do cache cai com ela (a lista do banco vence).
+    expect(destinoNaTela()).not.toContain("07095-005");
     const cotacoesDaContaA = invokeCalc.mock.calls.length;
     expect(cotacoesDaContaA).toBeGreaterThan(0);
 
@@ -247,7 +252,8 @@ describe("CartView — o destino da calculadora é o endereço cadastrado (useAd
     filaDeBusca.push({ data: [ENDERECO_B_NO_BANCO], error: null });
     await trocarConta("conta-b");
 
-    expect(campoCep().value).toBe("38500-000");
+    expect(destinoNaTela()).toContain("38500-000");
+    expect(destinoNaTela()).not.toContain("07095-005");
     const cotacoesAposTroca = invokeCalc.mock.calls.slice(cotacoesDaContaA);
     expect(cotacoesAposTroca).toHaveLength(1);
     const corpo = cotacoesAposTroca[0]?.[1] as { body: { cep: string } };

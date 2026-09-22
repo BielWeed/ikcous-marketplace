@@ -64,7 +64,12 @@ describe("ShippingCalculator — o acerto de cache do navegador auto-seleciona a
   let armazem: Map<string, string>;
   const onSelectOption = vi.fn();
 
+  let cepDestinoAtual: string | null = null;
+  let ultimoCarrinho: CartItem[] = [];
+
   beforeEach(() => {
+    cepDestinoAtual = null;
+    ultimoCarrinho = [];
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-22T12:00:00Z"));
     armazem = new Map<string, string>();
@@ -94,6 +99,7 @@ describe("ShippingCalculator — o acerto de cache do navegador auto-seleciona a
   });
 
   async function pintar(cart: CartItem[]) {
+    ultimoCarrinho = cart;
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
@@ -103,29 +109,24 @@ describe("ShippingCalculator — o acerto de cache do navegador auto-seleciona a
           cart={cart}
           selectedOption={null}
           onSelectOption={onSelectOption}
+          cepDestino={cepDestinoAtual}
         />,
       );
     });
   }
 
+  // Frete automático (22/09/2026): não há mais campo de CEP nem botão
+  // "Calcular". O destino chega como `cepDestino` (o endereço de entrega
+  // escolhido) e a TROCA de destino cota na hora — é o equivalente exato do
+  // antigo "digitar o CEP e enviar".
   async function digitarCep(valor: string) {
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, valor);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    cepDestinoAtual = valor;
+    await pintar(ultimoCarrinho);
   }
 
   async function enviar() {
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
+    // Sem botão: só escoa as respostas já resolvidas da cotação automática.
     await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
       await Promise.resolve();
       await Promise.resolve();
     });

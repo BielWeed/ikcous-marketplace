@@ -37,6 +37,14 @@ const pagamentoOnlineOnErro: Array<
 // a sintaxe se ficasse inline no parâmetro da função abaixo.
 type TelaCheckout = typeof import("@/views/customer/CheckoutView").CheckoutView;
 
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
