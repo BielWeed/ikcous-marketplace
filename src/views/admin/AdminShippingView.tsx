@@ -8,7 +8,6 @@ import {
   buscarConfiguracaoDeFrete,
   emailDeContatoValido,
 } from "@/components/admin/settings/TransportadorasCard";
-import { EtiquetasEnvioCard } from "@/components/admin/shipping/EtiquetasEnvioCard";
 import { FreteGratisBloco } from "@/components/admin/shipping/FreteGratisBloco";
 import { FreteLocalBloco } from "@/components/admin/shipping/FreteLocalBloco";
 import {
@@ -560,13 +559,28 @@ export const AdminShippingView = memo(function AdminShippingView({
                 desabilitado={isOffline}
               />
 
-              {/* ── Seção 4: etiquetas de envio (Onda 3, rastreio automático)
-                  A etiqueta nasce da API do Melhor Envio — a confirmação de
-                  saldo e a gravação do rastreio no pedido moram no card (e na
-                  edge function melhor-envio-etiqueta). Sempre visível: é
-                  operação de envio, não regra de cobrança — não depende do
-                  interruptor de cobertura acima. */}
-              <EtiquetasEnvioCard />
+              {/* ── Etiquetas de envio MIGRARAM para a ficha do pedido
+                  (EtiquetaDoPedidoCard, dentro de OrderDetail.tsx): a busca
+                  global de pedido nesta tela obrigava o lojista a achar o
+                  pedido de novo, quando ele normalmente já está com a ficha
+                  aberta. Esta linha só aponta o caminho novo — com link
+                  direto para Pedidos quando a navegação do painel está
+                  disponível. */}
+              <p className="text-[11px] leading-snug text-zinc-500">
+                Etiquetas de envio agora ficam no próprio pedido: abra{" "}
+                {onNavigate ? (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin-orders")}
+                    className="font-semibold text-admin-gold underline decoration-admin-gold/40 underline-offset-2 transition-colors hover:text-admin-gold/80"
+                  >
+                    Pedidos
+                  </button>
+                ) : (
+                  "Pedidos"
+                )}
+                , toque no pedido e use "Etiqueta de envio".
+              </p>
             </div>
 
             <p className="mt-10 flex items-start gap-2 text-[11px] leading-snug text-zinc-600">

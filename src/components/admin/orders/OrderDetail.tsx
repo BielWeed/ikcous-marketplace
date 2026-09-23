@@ -44,6 +44,7 @@ import {
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { EstornoCard } from "./EstornoCard";
+import { EtiquetaDoPedidoCard } from "./EtiquetaDoPedidoCard";
 import { OrderReceipt } from "./OrderReceipt";
 import {
   OrderStatusBadge,
@@ -1576,6 +1577,20 @@ export const OrderDetail = memo(function OrderDetail({
             order.paymentStatus === "estornado") && (
             <EstornoCard order={order} />
           )}
+        {/* Emissão da etiqueta de envio dentro da ficha do pedido — migrou de
+            Admin > Frete (busca/seleção global) para o pedido já aberto.
+            Venda de balcão (`canal === "presencial"`) não tem envio: a
+            cliente leva o produto na hora, não existe etiqueta para gerar. */}
+        {order.canal !== "presencial" && (
+          <EtiquetaDoPedidoCard
+            orderId={order.id}
+            isOffline={isOffline}
+            onTrackingAtualizado={(codigo) => {
+              setLocalTrackingCode(codigo);
+              setTrackingValue(codigo);
+            }}
+          />
+        )}
         <OrderLogisticsCard
           localTrackingCode={localTrackingCode}
           isEditingTracking={isEditingTracking}
