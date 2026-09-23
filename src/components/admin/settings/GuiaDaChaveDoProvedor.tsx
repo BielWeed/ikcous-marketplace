@@ -66,14 +66,14 @@ const GUIA_POR_PROVEDOR: ReadonlyMap<ProvedorFrete, GuiaDoProvedor> = new Map([
       urlOficial:
         "https://centraldeajuda.melhorenvio.com.br/hc/pt-br/articles/31220417726228-Integra%C3%A7%C3%A3o-Magento-1-Inser%C3%A7%C3%A3o-do-Token",
       rotuloLink: "Ver a instrução oficial do Melhor Envio",
+      nota: 'Com o "Modo de testes" ligado aqui, gere o token no Melhor Envio de testes ("sandbox.melhorenvio.com.br"). Um token do ambiente errado não funciona.',
     },
   ],
   [
     "superfrete",
     {
       passos: [
-        'Acesse o painel da SuperFrete e faça login (produção: "web.superfrete.com"; testes: "sandbox.superfrete.com" — use o mesmo ambiente marcado no Modo de testes desta tela).',
-        'No menu, vá em "Integrações".',
+        'Faça login na SuperFrete e abra a página de integrações: "web.superfrete.com/#/integrations" (com o Modo de testes ligado: "sandbox.superfrete.com/#/integrations").',
         'Clique em "Integrar em Desenvolvedores".',
         "Confirme a ação quando a tela pedir.",
         "Copie o token mostrado e cole aqui embaixo.",

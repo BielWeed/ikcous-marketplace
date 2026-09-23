@@ -286,9 +286,11 @@ describe("TransportadorasSection — cartão de provedor expansível (23/09/2026
     expect(botoesGuia[2].getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("a chave salva NUNCA aparece em texto, mesmo com os TRÊS cartões abertos", async () => {
+  it("a chave salva NUNCA aparece em texto, com os cartões abertos ou fechados", async () => {
     await abrir();
-    // Abre os três — a fixture marca `tem_chave: true` para Melhor Envio E
+    // Alterna os três (ME abre; SuperFrete e Frenet, que nascem abertas,
+    // fecham) — o corpo escondido segue no DOM, então a asserção vale para
+    // os dois estados. A fixture marca `tem_chave: true` para Melhor Envio E
     // SuperFrete, mas a edge NUNCA devolve o valor do segredo (só o
     // booleano). Os três campos de senha nascem vazios independente do
     // cartão estar aberto ou fechado — é essa vacuidade que garante que
