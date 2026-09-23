@@ -161,6 +161,13 @@ export function bancoFalso(opts: {
         apagarCache?: boolean
         gravarCredencial?: boolean
         gravarCache?: boolean
+        /**
+         * Simula a leitura tolerante das 5 colunas nacionais estourando
+         * (`{error}` do PostgREST, ex.: `42703`) mesmo quando `opts.config`
+         * TEM os campos — para provar que erro explícito se comporta igual a
+         * coluna ausente (os dois viram `{ok:false}`, espelho legado).
+         */
+        colunasNacionais?: boolean
     }
 } = {}) {
     const config = { ...CONFIG_BASE, ...(opts.config ?? {}) }
@@ -193,6 +200,21 @@ export function bancoFalso(opts: {
                 }
                 if (colunas.includes("store_address")) {
                     return { data: { store_address: opts.enderecoDaLoja ?? null }, error: null }
+                }
+                // Estratégia NACIONAL (23/09): leitura SEPARADA e tolerante
+                // das 5 colunas. `falhas.colunasNacionais` simula o erro real
+                // do PostgREST (42703); sem `national_shipping_strategy` em
+                // `opts.config` a leitura devolve o config INTEIRO como
+                // sempre — a coluna pedida simplesmente não está lá, o mesmo
+                // "ausente" que o validador da estratégia trata como null.
+                if (colunas.includes("national_shipping_strategy")) {
+                    if (falhas.colunasNacionais) {
+                        return {
+                            data: null,
+                            error: { message: "column store_config.national_shipping_strategy does not exist", code: "42703" },
+                        }
+                    }
+                    return { data: { ...config }, error: null }
                 }
                 return { data: unico ? { ...config } : [{ ...config }], error: null }
             }

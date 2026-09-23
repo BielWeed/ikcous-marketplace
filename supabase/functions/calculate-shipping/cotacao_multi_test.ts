@@ -647,3 +647,136 @@ Deno.test("modo LEGADO com Sandbox: comportamento da 1.5.6 (cota no sandbox) —
     assertEquals(resposta.status, 200)
     assertEquals(chamadas.map((c) => c.url), ["https://sandbox.superfrete.com/api/v0/calculator"])
 })
+
+// ── Estratégia do frete NACIONAL (23/09/2026, T2) ───────────────────────────
+//
+// `cotacao()` cota para "01001-000" (fora de "38500-000" — sempre NACIONAL);
+// chaves padrão [sedex,pac] dão à SuperFrete PAC 18,61 + SEDEX 10,77 + Mini
+// 13,00 (id superfrete-1/2/17, a mesma tabela usada nos testes de cima). O
+// subtotal do carrinho padrão (`PRODUTO_P1.preco_venda` 59,90 × 1) é o que
+// decide `acima_de_valor`/`desconto_na_mais_barata` — NUNCA o `price` que o
+// carrinho manda (`CARRINHO_P1` manda `price: 1`, a mentira do navegador).
+const nacional = (colunas: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    multi(["superfrete"], [], { config: { ...colunas }, ...extra })
+const colunasNacionais = (parcial: Record<string, unknown>) => ({
+    national_shipping_strategy: "desligado",
+    national_shipping_min: 0,
+    national_discount_type: null,
+    national_discount_value: 0,
+    national_benefit_scope: "todas",
+    ...parcial,
+})
+const PRODUTO_P1_MARCADO = { ...PRODUTO_P1, frete_gratis: true }
+
+Deno.test("nacional: 'sempre' + alcance 'todas' zera TODAS as opções e o cache grava price/precoCheio/carimbo", async () => {
+    const banco = nacional(colunasNacionais({ national_shipping_strategy: "sempre" }))
+    const { resposta, corpo, registro } = await rodar(cotacao(), { banco })
+    assertEquals(resposta.status, 200)
+    assertEquals(ids(corpo).sort(), ["superfrete-1", "superfrete-17", "superfrete-2"])
+    assert(corpo.options.every((o: any) => o.price === 0))
+    assert(corpo.options.every((o: any) => o.precoCheio > 0))
+    assert(corpo.options.every((o: any) => o.estrategiaNacional?.estrategia === "sempre"))
+    const gravada = registro.upsertsCache.at(-1).linha.options
+    assertEquals(gravada.map((o: any) => o.price), corpo.options.map((o: any) => o.price))
+    assertEquals(gravada.map((o: any) => o.precoCheio), corpo.options.map((o: any) => o.precoCheio))
+    assert(gravada.every((o: any) => o.estrategiaNacional?.estrategia === "sempre"))
+})
+
+Deno.test("nacional: banco SEM as 5 colunas — preço CHEIO, SEM carimbo, resposta idêntica à de antes desta mudança", async () => {
+    const banco = multi(["superfrete"]) // CONFIG_BASE puro — nenhuma coluna nacional
+    const { resposta, corpo } = await rodar(cotacao(), { banco })
+    assertEquals(resposta.status, 200)
+    assertEquals(
+        corpo.options.map((o: any) => [o.id, o.price]).sort(),
+        [["superfrete-1", 18.61], ["superfrete-17", 13], ["superfrete-2", 10.77]],
+    )
+    assert(corpo.options.every((o: any) => !("estrategiaNacional" in o)))
+    assert(corpo.options.every((o: any) => !("precoCheio" in o)))
+})
+
+Deno.test("nacional: erro REAL do PostgREST (42703) na leitura das 5 colunas — mesmo tratamento de coluna ausente: cheio, sem carimbo, revisão igual", async () => {
+    const bancoComErro = nacional(colunasNacionais({ national_shipping_strategy: "sempre" }), { falhas: { colunasNacionais: true } })
+    const { resposta, corpo } = await rodar(cotacao(), { banco: bancoComErro })
+    assertEquals(resposta.status, 200)
+    assert(corpo.options.every((o: any) => o.price > 0)) // NÃO zerou — a estratégia 'sempre' não foi aplicada
+    assert(corpo.options.every((o: any) => !("estrategiaNacional" in o)))
+    assert(corpo.options.every((o: any) => !("precoCheio" in o)))
+
+    const bancoSemColunas = multi(["superfrete"]) // CONFIG_BASE puro
+    const semColunas = await rodar(cotacao(), { banco: bancoSemColunas })
+    assertEquals(corpo.revisaoConfig, semColunas.corpo.revisaoConfig)
+})
+
+Deno.test("nacional: item SEM cadastro no carrinho (produtosSemCadastro > 0) — subtotal não confiável: NÃO aplica a estratégia, NÃO carimba", async () => {
+    // `cotacao()` manda o carrinho padrão (produto 'p1'); sem NENHUM produto
+    // cadastrado no banco falso, todo item vira "sem cadastro".
+    const banco = nacional(colunasNacionais({ national_shipping_strategy: "sempre" }), { produtos: [] })
+    const { resposta, corpo } = await rodar(cotacao(), { banco })
+    assertEquals(resposta.status, 200)
+    assert(corpo.options.length > 0, JSON.stringify(corpo))
+    assert(corpo.options.every((o: any) => o.price > 0), JSON.stringify(corpo.options))
+    assert(corpo.options.every((o: any) => !("estrategiaNacional" in o)))
+    assert(corpo.options.every((o: any) => !("precoCheio" in o)))
+})
+
+Deno.test("nacional: mudar a estratégia muda o revisaoConfig (mesma loja, mesmo carrinho)", async () => {
+    const bancoDesligado = nacional(colunasNacionais({}))
+    const bancoSempre = nacional(colunasNacionais({ national_shipping_strategy: "sempre" }))
+    const desligado = await rodar(cotacao(), { banco: bancoDesligado })
+    const sempre = await rodar(cotacao(), { banco: bancoSempre })
+    assertNotEquals(desligado.corpo.revisaoConfig, sempre.corpo.revisaoConfig)
+})
+
+Deno.test("nacional: acima_de_valor usa o SUBTOTAL DO BANCO (59,90), nunca o price que o carrinho manda (1)", async () => {
+    const bacima = nacional(colunasNacionais({ national_shipping_strategy: "acima_de_valor", national_shipping_min: 50 }))
+    const abaixo = nacional(colunasNacionais({ national_shipping_strategy: "acima_de_valor", national_shipping_min: 100 }))
+    const { corpo: corpoAcima } = await rodar(cotacao(), { banco: bacima })
+    const { corpo: corpoAbaixo } = await rodar(cotacao(), { banco: abaixo })
+    assert(corpoAcima.options.every((o: any) => o.price === 0), JSON.stringify(corpoAcima.options))
+    assert(corpoAbaixo.options.every((o: any) => o.price === o.precoCheio), JSON.stringify(corpoAbaixo.options))
+})
+
+Deno.test("nacional: por_produto INDEPENDENTE do local — local desligado (free_shipping_min=0) + nacional por_produto: CEP fora vira free-shipping-promo, CEP local paga a taxa cheia", async () => {
+    const banco = nacional(colunasNacionais({ national_shipping_strategy: "por_produto" }), { produtos: [PRODUTO_P1_MARCADO] })
+    const fora = await rodar(cotacao(), { banco })
+    assertEquals(ids(fora.corpo), ["free-shipping-promo"])
+    assertEquals(fora.corpo.options[0].price, 0)
+
+    const localBanco = nacional(colunasNacionais({ national_shipping_strategy: "por_produto" }), { produtos: [PRODUTO_P1_MARCADO] })
+    const local = await rodar(cotacao({ cep: "38500-120" }), { banco: localBanco })
+    assertEquals(ids(local.corpo), ["local-delivery"])
+    assertEquals(local.corpo.options[0].price, 10)
+})
+
+Deno.test("nacional: por_produto INDEPENDENTE do local — local por_produto (free_shipping_min=-1) + nacional desligado: CEP local grátis, CEP fora cota de verdade (sem free-shipping-promo)", async () => {
+    const colunas = colunasNacionais({}) // desligado
+    const localBanco = nacional({ ...colunas, free_shipping_min: -1 }, { produtos: [PRODUTO_P1_MARCADO] })
+    const local = await rodar(cotacao({ cep: "38500-120" }), { banco: localBanco })
+    assertEquals(ids(local.corpo), ["local-delivery"])
+    assertEquals(local.corpo.options[0].price, 0)
+
+    const foraBanco = nacional({ ...colunas, free_shipping_min: -1 }, { produtos: [PRODUTO_P1_MARCADO] })
+    const fora = await rodar(cotacao(), { banco: foraBanco })
+    assertEquals(ids(fora.corpo).sort(), ["superfrete-1", "superfrete-17", "superfrete-2"])
+    assert(fora.corpo.options.every((o: any) => o.price === o.precoCheio && o.precoCheio > 0))
+    assert(fora.corpo.options.every((o: any) => o.estrategiaNacional?.estrategia === "desligado"))
+})
+
+Deno.test("nacional: cotação PARCIAL preserva o desconto (só na mais barata das que sobreviveram)", async () => {
+    const banco = multi(["melhor_envio", "superfrete"], [], {
+        config: colunasNacionais({ national_shipping_strategy: "desconto_na_mais_barata", national_discount_type: "fixo", national_discount_value: 5 }),
+    })
+    const { resposta, corpo } = await rodar(cotacao(), {
+        banco,
+        rotas: { me: () => Promise.reject(new DOMException("The signal has been aborted", "AbortError")) },
+    })
+    assertEquals(resposta.status, 200)
+    assertEquals(corpo.cotacaoParcial, true)
+    assert(corpo.options.every((o: any) => o.provider !== "melhor_envio"))
+    assert(corpo.options.every((o: any) => o.estrategiaNacional?.estrategia === "desconto_na_mais_barata"))
+    // SF sozinha: SEDEX (10,77) é a mais barata — só ela desconta 5.
+    const sedex = corpo.options.find((o: any) => o.id === "superfrete-2")
+    const pac = corpo.options.find((o: any) => o.id === "superfrete-1")
+    assertEquals(sedex.price, 5.77)
+    assertEquals(pac.price, pac.precoCheio)
+})
