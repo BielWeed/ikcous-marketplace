@@ -59,6 +59,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
+import { cpfDoDestinatario, cpfValido, sanitizarCpfDoTexto } from "./cpf.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -561,7 +562,10 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         // `serviceId` (índice-691): o serviço que o LOJISTA escolhe no card
         // quando o pedido não tem opção do Melhor Envio salva no checkout —
         // ver `erroDeServicoParaEtiqueta` / `normalizarServicoEscolhidoPeloLojista`.
-        const { action, orderId, serviceId: serviceIdEscolhidoNoCard } = body
+        // `cpf` (só usado pela action `definir_cpf_destinatario` abaixo): o
+        // `gerar_etiqueta` NUNCA lê este campo — o CPF daquele fluxo vem
+        // SOMENTE do banco (`customerData.cpf`, mais abaixo).
+        const { action, orderId, serviceId: serviceIdEscolhidoNoCard, cpf: cpfDoCorpo } = body
 
         if (!orderId || typeof orderId !== 'string') {
             return new Response(
@@ -588,6 +592,99 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         }
 
         const supabaseClient = deps.supabase ?? createClient(supabaseUrl, supabaseServiceRole)
+
+        // ── ACTION: definir_cpf_destinatario ────────────────────────────────
+        // Caminho seguro para pedido ANTIGO (nasceu antes do checkout gravar
+        // CPF) completar o dado direto na ficha, sem depender de migration.
+        // Fica ANTES da leitura de credencial/token do Melhor Envio de
+        // propósito: esta action nunca fala com o ME, então não deve falhar
+        // por causa de um token que ainda nem foi configurado — só passa
+        // pelo MESMO portão de admin que as outras (já checado acima).
+        if (action === 'definir_cpf_destinatario') {
+            const cpfLimpo = typeof cpfDoCorpo === 'string' || typeof cpfDoCorpo === 'number'
+                ? String(cpfDoCorpo).replace(/\D/g, '')
+                : ''
+            if (!cpfValido(cpfLimpo)) {
+                return new Response(
+                    JSON.stringify({ error: 'CPF inválido — confira os números e tente de novo.' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            const { data: pedidoAtual, error: pedidoAtualError } = await supabaseClient
+                .from('marketplace_orders')
+                .select('id, status, shipping_label_id, customer_data')
+                .eq('id', orderId)
+                .maybeSingle()
+
+            if (pedidoAtualError || !pedidoAtual) {
+                return new Response(
+                    JSON.stringify({ error: 'Pedido não encontrado.' }),
+                    { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            // Etiqueta já emitida: o CPF que foi para o Melhor Envio na compra
+            // não muda mais retroativamente — não faz sentido reescrever o
+            // banco depois do fato.
+            if (pedidoAtual.shipping_label_id) {
+                return new Response(
+                    JSON.stringify({ error: 'Este pedido já tem etiqueta emitida — o CPF não pode mais ser alterado.' }),
+                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            const statusAtual = String(pedidoAtual.status || '').toLowerCase()
+            if (['cancelled', 'delivered', 'returned'].includes(statusAtual)) {
+                return new Response(
+                    JSON.stringify({ error: `Pedido com status "${statusAtual}" não recebe alteração de CPF.` }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            const customerDataAtual = pedidoAtual.customer_data || {}
+            const cpfAnterior = typeof customerDataAtual.cpf === 'string' ? customerDataAtual.cpf : null
+
+            // UPDATE CONDICIONAL contra corrida: só grava se o pedido AINDA
+            // não tem etiqueta E o CPF anterior é exatamente o que este
+            // pedido de escrita leu — outra aba/clique que gravou no meio
+            // tempo faz esta linha não bater e devolve 0 linhas (o front
+            // manda recarregar). O front NUNCA reescreve `customer_data`
+            // inteiro por conta própria (PII + corrida); só esta action, no
+            // servidor, com validação e filtro condicional.
+            let atualizacao = supabaseClient
+                .from('marketplace_orders')
+                .update({ customer_data: { ...customerDataAtual, cpf: cpfLimpo } })
+                .eq('id', orderId)
+                .is('shipping_label_id', null)
+            atualizacao = cpfAnterior === null
+                ? atualizacao.is('customer_data->>cpf', null)
+                : atualizacao.eq('customer_data->>cpf', cpfAnterior)
+
+            const { data: linhasAtualizadas, error: updateError } = await atualizacao.select('id')
+
+            if (updateError) {
+                console.error('[melhor-envio-etiqueta] Falha ao gravar CPF do destinatário:', updateError)
+                return new Response(
+                    JSON.stringify({ error: 'Não foi possível salvar o CPF agora. Tente novamente em instantes.' }),
+                    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            if (!Array.isArray(linhasAtualizadas) || linhasAtualizadas.length !== 1) {
+                return new Response(
+                    JSON.stringify({ error: 'O pedido mudou enquanto você salvava — recarregue e tente de novo.' }),
+                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            // NUNCA devolve o CPF inteiro — só os 2 últimos dígitos, para a
+            // tela confirmar sem reexibir o número completo depois de salvo.
+            return new Response(
+                JSON.stringify({ success: true, cpf_final: cpfLimpo.slice(-2) }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        }
 
         // ── Credencial do provedor (padrão da casa: nada de env var) ──
         const { data: credRow, error: credError } = await supabaseClient
@@ -683,7 +780,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
             if (!response.ok) {
                 const detalhe = await response.text()
-                console.error('[melhor-envio-etiqueta] tracking HTTP', response.status, detalhe)
+                console.error('[melhor-envio-etiqueta] tracking HTTP', response.status, sanitizarCpfDoTexto(detalhe))
                 await gravarEvento(supabaseClient, {
                     order_id: orderId,
                     event_type: 'erro',
@@ -839,6 +936,29 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             )
         }
 
+        // 3.7 CPF do destinatário pessoa física (doc oficial do Melhor Envio,
+        //     "Documentos from/to": inserir-fretes-no-carrinho) — ANTES de
+        //     ler itens/produtos e de qualquer chamada ao ME (INCLUSIVE o
+        //     GET /me): sem CPF válido não vale gastar rede nem ler o
+        //     catálogo. O CPF vem SOMENTE do banco (`customerData.cpf`,
+        //     contrato com a frente de checkout) — `cpfDoCorpo` do body
+        //     NUNCA é lido aqui, mesmo que venha preenchido.
+        const cpfBrutoDoPedido = customerData.cpf
+        const cpfAusenteNoPedido =
+            cpfBrutoDoPedido === undefined || cpfBrutoDoPedido === null || String(cpfBrutoDoPedido).trim() === ''
+        const cpfDestinatario = cpfDoDestinatario(customerData)
+        if (!cpfDestinatario) {
+            return new Response(
+                JSON.stringify({
+                    error: cpfAusenteNoPedido
+                        ? 'Este pedido não tem o CPF do destinatário. O Melhor Envio exige o CPF para emitir a etiqueta — complete o CPF na ficha do pedido e tente de novo.'
+                        : 'O CPF do destinatário salvo neste pedido é inválido — corrija na ficha do pedido.',
+                    precisa_cpf: true,
+                }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        }
+
         // 4. Itens do pedido + medições do banco (mesma leitura da cotação).
         //    A coluna de preço no schema vivo é `price` (baseline
         //    20260806000000 / src/types/supabase.ts) — `unit_price` não existe.
@@ -881,7 +1001,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         })
         if (!meResponse.ok) {
             const detalhe = await meResponse.text()
-            console.error('[melhor-envio-etiqueta] /me HTTP', meResponse.status, detalhe)
+            console.error('[melhor-envio-etiqueta] /me HTTP', meResponse.status, sanitizarCpfDoTexto(detalhe))
             return new Response(
                 JSON.stringify({ error: mensagemDoErroHttp(meResponse.status, 'leitura do remetente') }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -902,7 +1022,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             name: pedido.customer_name || 'Cliente',
             phone: String(customerData.whatsapp || customerData.phone || '0000000000').replace(/\D/g, '') || '0000000000',
             email: customerData.email || null,
-            document: null,
+            document: cpfDestinatario,
             address: endereco.street,
             complement: endereco.complement || null,
             number: endereco.number,
@@ -934,7 +1054,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         })
         if (!cartResponse.ok) {
             const detalhe = await cartResponse.text()
-            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, detalhe)
+            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, sanitizarCpfDoTexto(detalhe))
             return new Response(
                 JSON.stringify({ error: mensagemDoErroHttp(cartResponse.status, 'criação da etiqueta') }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -1106,7 +1226,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             })
             if (!checkoutResponse.ok) {
                 const detalhe = await checkoutResponse.text()
-                console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, detalhe)
+                console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, sanitizarCpfDoTexto(detalhe))
                 if (checkoutResponse.status >= 500) {
                     // 5xx de gateway: a compra PODE ter fechado com a resposta
                     // perdida — indeterminado, NÃO "não pagou" (A′).
@@ -1135,7 +1255,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             })
             if (!generateResponse.ok) {
                 const detalhe = await generateResponse.text()
-                console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, detalhe)
+                console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, sanitizarCpfDoTexto(detalhe))
                 return await finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
             }
 
@@ -1152,7 +1272,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                     const printData = await printResponse.json()
                     labelUrl = printData?.url || null
                 } else {
-                    console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, await printResponse.text())
+                    console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, sanitizarCpfDoTexto(await printResponse.text()))
                 }
             } catch (printErr) {
                 console.error('[melhor-envio-etiqueta] print falhou (suave):', printErr)

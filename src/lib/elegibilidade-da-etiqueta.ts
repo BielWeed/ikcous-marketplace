@@ -1,3 +1,4 @@
+import { cpfValido } from "@/lib/cpf-do-destinatario";
 import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 
 // ============================================================================
@@ -17,7 +18,10 @@ import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 //   7. cotado pela Frenet     → indisponível
 //   8. sem serviço do ME      → indisponível
 //   9. exige agência de coleta → indisponível
-//  10. nenhum dos anteriores  → disponível
+//  10. sem CPF válido do destinatário → precisa_cpf (só chega aqui quando a
+//      etiqueta pelo app SERIA possível — indisponível continua vencendo
+//      CPF, ver comentário no bloco 9.5)
+//  11. nenhum dos anteriores  → disponível
 //
 // MESMA fonte de verdade que a edge `melhor-envio-etiqueta`
 // (supabase/functions/melhor-envio-etiqueta/index.ts): regex do id do ME,
@@ -37,11 +41,18 @@ export interface PedidoParaEtiqueta {
   shipping_label_url: string | null;
   notes: string | null;
   shipping_option_id: string | null;
+  /**
+   * CPF do destinatário (`customer_data.cpf`, contrato com o checkout) —
+   * `null` em pedido antigo, sem a chave. O Melhor Envio exige o CPF em
+   * `to.document` para inserir o frete no carrinho.
+   */
+  cpf: string | null;
 }
 
 export type ElegibilidadeDaEtiqueta =
   | { estado: "emitida" }
   | { estado: "indisponivel"; motivo: string }
+  | { estado: "precisa_cpf"; servico: string; cpfInvalido: boolean }
   | { estado: "disponivel"; servico: string };
 
 function indisponivel(motivo: string): ElegibilidadeDaEtiqueta {
@@ -225,9 +236,24 @@ export function elegibilidadeDaEtiqueta(
     return indisponivel(AVISO_EXIGE_AGENCIA);
   }
 
-  // 10. disponível — nome legível do serviço: a nota do checkout ("Frete
-  //     Escolhido") vence; sem nota, o fallback nomeia o id do serviço.
+  // Nome legível do serviço (usado pelos dois desfechos daqui pra baixo): a
+  // nota do checkout ("Frete Escolhido") vence; sem nota, o fallback nomeia
+  // o id do serviço.
   const servico =
     nomeDoFreteNaNota(p.notes) ?? `Melhor Envio (serviço ${idME})`;
+
+  // 10. CPF do destinatário — SÓ chega aqui quando nenhum motivo de
+  //     indisponibilidade valeu (a etiqueta pelo app SERIA possível). Sem
+  //     isso, um pedido de SuperFrete/Frenet/entrega local sem CPF pediria
+  //     CPF à toa para um caso que já é indisponível por outro motivo —
+  //     "emitida vence tudo" e "indisponível vence CPF" são as duas regras
+  //     da ordem descrita no topo do arquivo.
+  const cpfPresente =
+    p.cpf !== null && p.cpf !== undefined && String(p.cpf).trim() !== "";
+  if (!cpfPresente || !cpfValido(p.cpf)) {
+    return { estado: "precisa_cpf", servico, cpfInvalido: cpfPresente };
+  }
+
+  // 11. disponível.
   return { estado: "disponivel", servico };
 }

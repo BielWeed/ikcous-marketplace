@@ -1,5 +1,11 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  cpfValido,
+  formatarCpfEnquantoDigita,
+  mascararCpf,
+  somenteDigitos,
+} from "@/lib/cpf-do-destinatario";
+import {
   type ElegibilidadeDaEtiqueta,
   type PedidoParaEtiqueta,
   elegibilidadeDaEtiqueta,
@@ -63,7 +69,7 @@ interface EtiquetaDoPedidoCardProps {
 async function mensagemDeErroInvocacao(
   err: unknown,
   opcoes: { mensagemGenerica: string },
-): Promise<{ mensagem: string; resgate: boolean }> {
+): Promise<{ mensagem: string; resgate: boolean; precisaCpf: boolean }> {
   try {
     const corpo = await (
       err as { context?: { json?: () => unknown } }
@@ -77,6 +83,10 @@ async function mensagemDeErroInvocacao(
       return {
         mensagem: String((corpo as { error: unknown }).error),
         resgate: (corpo as { resgate?: unknown }).resgate === true,
+        // A edge respondeu 400 com `precisa_cpf: true` (tela desatualizada —
+        // o pedido perdeu o CPF entre a leitura e o clique, ou é uma aba
+        // velha): recarregar o pedido cai sozinho no estado `precisa_cpf`.
+        precisaCpf: (corpo as { precisa_cpf?: unknown }).precisa_cpf === true,
       };
     }
   } catch {
@@ -85,6 +95,7 @@ async function mensagemDeErroInvocacao(
   return {
     mensagem: mensagemAmigavelErroEdgeFunction(err as Error, opcoes),
     resgate: false,
+    precisaCpf: false,
   };
 }
 
@@ -99,6 +110,12 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   const [mensagemResultado, setMensagemResultado] =
     useState<MensagemResultado | null>(null);
   const [consultandoRastreio, setConsultandoRastreio] = useState(false);
+  // Campo de CPF do destinatário (estado "precisa_cpf") — texto DIGITADO
+  // (com máscara), erro persistente da validação/salvamento, e trava de
+  // clique duplo separada da de "Confirmar e gerar".
+  const [cpfInput, setCpfInput] = useState("");
+  const [cpfErro, setCpfErro] = useState<string | null>(null);
+  const [cpfSalvando, setCpfSalvando] = useState(false);
 
   // Guarda de geração (mesmo padrão do card antigo, src/hooks/useOnlineStatus.ts):
   // descarta a resposta de uma consulta em voo se o `orderId` mudou antes
@@ -116,7 +133,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       const { data, error } = await supabase
         .from("marketplace_orders")
         .select(
-          "id, status, payment_status, shipping, shipping_cost, tracking_code, shipping_label_id, shipping_label_url, notes, customer_data->>shipping_option_id",
+          "id, status, payment_status, shipping, shipping_cost, tracking_code, shipping_label_id, shipping_label_url, notes, customer_data->>shipping_option_id, customer_data->>cpf",
         )
         .eq("id", orderId)
         .maybeSingle();
@@ -146,6 +163,8 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     setCompraFase("ocioso");
     setMensagemResultado(null);
     setPedido(null);
+    setCpfInput("");
+    setCpfErro(null);
     fetchPedido();
   }, [fetchPedido]);
 
@@ -196,18 +215,21 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       }
     } catch (err) {
       console.error("[EtiquetaDoPedido] Erro na geração:", err);
-      const { mensagem: detalhe, resgate } = await mensagemDeErroInvocacao(
-        err,
-        {
-          mensagemGenerica:
-            "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
-        },
-      );
+      const {
+        mensagem: detalhe,
+        resgate,
+        precisaCpf,
+      } = await mensagemDeErroInvocacao(err, {
+        mensagemGenerica:
+          "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+      });
       setMensagemResultado({ tipo: "erro", texto: detalhe });
-      if (resgate) {
+      if (resgate || precisaCpf) {
         // A etiqueta já existe/está paga (ou o estado é indeterminado): a
         // releitura do pedido traz o `shipping_label_id` de verdade e a UI
         // cai em "emitida" sozinha — nunca reapresenta o botão de compra.
+        // `precisaCpf`: a edge recusou por falta/invalidez de CPF (tela
+        // desatualizada) — a releitura cai sozinha no estado `precisa_cpf`.
         await fetchPedido();
         setCompraFase("ocioso");
       } else {
@@ -219,6 +241,43 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       cliqueEmVooRef.current = false;
     }
   }, [isOffline, pedido, orderId, onTrackingAtualizado, fetchPedido]);
+
+  const handleSalvarCpf = useCallback(async () => {
+    if (isOffline || !pedido || cpfSalvando) return;
+    const digitos = somenteDigitos(cpfInput);
+    if (!cpfValido(digitos)) {
+      setCpfErro("CPF inválido — confira os números e tente de novo.");
+      return;
+    }
+    setCpfSalvando(true);
+    setCpfErro(null);
+    haptic.medium();
+    try {
+      const { error } = await supabase.functions.invoke(
+        "melhor-envio-etiqueta",
+        { body: { action: "definir_cpf_destinatario", orderId, cpf: digitos } },
+      );
+      if (error) throw error;
+      setCpfInput("");
+      haptic.success();
+      toast.success("CPF salvo!");
+      // Relê o pedido: com o CPF gravado, a elegibilidade sai sozinha de
+      // "precisa_cpf" e vira "disponivel" (ou o que já era antes, se algo
+      // mudou no meio tempo) — sem gambiarra de estado local otimista.
+      await fetchPedido();
+    } catch (err) {
+      console.error("[EtiquetaDoPedido] Erro ao salvar CPF:", err);
+      const { mensagem } = await mensagemDeErroInvocacao(err, {
+        mensagemGenerica:
+          "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+      });
+      setCpfErro(mensagem);
+      haptic.error();
+      toast.error(mensagem);
+    } finally {
+      setCpfSalvando(false);
+    }
+  }, [isOffline, pedido, cpfSalvando, cpfInput, orderId, fetchPedido]);
 
   const handleConsultarRastreio = useCallback(async () => {
     if (isOffline) return;
@@ -375,6 +434,69 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
             </div>
           )}
 
+          {elegibilidade.estado === "precisa_cpf" && (
+            <div
+              data-testid="precisa-cpf"
+              className="space-y-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 duration-200 animate-in fade-in"
+            >
+              <p className="flex items-start gap-1.5 text-[10.5px] font-bold leading-snug text-amber-200">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-400" />
+                <span>
+                  O Melhor Envio exige o CPF do destinatário para emitir a
+                  etiqueta.
+                  {elegibilidade.cpfInvalido && (
+                    <span className="mt-1 block font-semibold text-amber-100/90">
+                      O CPF salvo neste pedido é inválido — corrija abaixo.
+                    </span>
+                  )}
+                </span>
+              </p>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="cpf-destinatario"
+                  className="block text-[9px] font-bold uppercase tracking-widest text-zinc-500"
+                >
+                  CPF do destinatário
+                </label>
+                <input
+                  id="cpf-destinatario"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="000.000.000-00"
+                  value={cpfInput}
+                  disabled={cpfSalvando || isOffline}
+                  onChange={(e) => {
+                    setCpfInput(formatarCpfEnquantoDigita(e.target.value));
+                    setCpfErro(null);
+                  }}
+                  className="w-full rounded-lg border border-white/10 bg-black/60 px-2.5 py-2 font-mono text-xs font-bold text-white outline-none focus:border-admin-gold/50 disabled:opacity-40"
+                />
+                {cpfErro && (
+                  <p
+                    data-testid="erro-cpf"
+                    className="text-[10.5px] font-semibold leading-snug text-red-300"
+                  >
+                    {cpfErro}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSalvarCpf}
+                  disabled={cpfSalvando || isOffline}
+                  className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold px-3.5 py-2 text-[10px] font-black uppercase tracking-widest text-black transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                >
+                  {cpfSalvando ? (
+                    <RefreshCw className="size-3 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="size-3" />
+                  )}
+                  <span>{cpfSalvando ? "Salvando…" : "Salvar CPF"}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {elegibilidade.estado === "disponivel" && compraFase === "ocioso" && (
             <button
               type="button"
@@ -400,6 +522,12 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   <span className="mt-1 block font-semibold text-amber-100/90">
                     Frete pago pelo cliente: R${" "}
                     {freteEfetivoDoPedido(pedido).toFixed(2).replace(".", ",")}
+                  </span>
+                  <span
+                    data-testid="cpf-mascarado"
+                    className="mt-1 block font-semibold text-amber-100/90"
+                  >
+                    CPF do destinatário: {mascararCpf(pedido.cpf)}
                   </span>
                 </span>
               </p>

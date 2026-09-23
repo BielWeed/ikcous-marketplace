@@ -23,6 +23,10 @@ function pedido(over: Partial<PedidoParaEtiqueta> = {}): PedidoParaEtiqueta {
     shipping_label_url: null,
     notes: null,
     shipping_option_id: "melhor-envio-3",
+    // CPF válido de teste (exigido pelo Melhor Envio em `to.document`) — os
+    // testes que querem "disponivel" de verdade herdam este valor; quem
+    // quer testar o portão de CPF sobrescreve com `null`/inválido.
+    cpf: "52998224725",
     ...over,
   };
 }
@@ -235,6 +239,79 @@ describe("elegibilidadeDaEtiqueta", () => {
       estado: "disponivel",
       servico: "Melhor Envio (serviço 3)",
     });
+  });
+});
+
+describe("elegibilidadeDaEtiqueta — CPF do destinatário (ordem: emitida e indisponível vencem CPF; CPF só entra quando seria disponível)", () => {
+  it("CPF ausente (null): precisa_cpf, cpfInvalido false, com o nome do serviço", () => {
+    const r = elegibilidadeDaEtiqueta(pedido({ cpf: null }));
+    expect(r).toEqual({
+      estado: "precisa_cpf",
+      servico: "Melhor Envio (serviço 3)",
+      cpfInvalido: false,
+    });
+  });
+
+  it("CPF ausente (string vazia): precisa_cpf, cpfInvalido false — trata como ausente, não como inválido", () => {
+    const r = elegibilidadeDaEtiqueta(pedido({ cpf: "" }));
+    expect(r).toMatchObject({ estado: "precisa_cpf", cpfInvalido: false });
+  });
+
+  it("CPF inválido (checksum errado): precisa_cpf, cpfInvalido TRUE", () => {
+    const r = elegibilidadeDaEtiqueta(pedido({ cpf: "52998224700" }));
+    expect(r).toEqual({
+      estado: "precisa_cpf",
+      servico: "Melhor Envio (serviço 3)",
+      cpfInvalido: true,
+    });
+  });
+
+  it("CPF inválido (dígitos repetidos): precisa_cpf, cpfInvalido true", () => {
+    const r = elegibilidadeDaEtiqueta(pedido({ cpf: "11111111111" }));
+    expect(r).toMatchObject({ estado: "precisa_cpf", cpfInvalido: true });
+  });
+
+  it("CPF válido COM máscara: disponível (a validação limpa antes de checar)", () => {
+    const r = elegibilidadeDaEtiqueta(pedido({ cpf: "529.982.247-25" }));
+    expect(r.estado).toBe("disponivel");
+  });
+
+  it("CPF válido: disponível, com o mesmo nome de serviço que o estado disponivel usaria", () => {
+    const r = elegibilidadeDaEtiqueta(
+      pedido({
+        cpf: "52998224725",
+        notes: "Frete Escolhido: Correios — SEDEX (Prazo: 2 dias)",
+      }),
+    );
+    expect(r).toEqual({ estado: "disponivel", servico: "Correios — SEDEX" });
+  });
+
+  it("já etiquetado vence CPF ausente — emitida, não precisa_cpf", () => {
+    const r = elegibilidadeDaEtiqueta(
+      pedido({ cpf: null, shipping_label_id: "abc123" }),
+    );
+    expect(r).toEqual({ estado: "emitida" });
+  });
+
+  it("indisponível (SuperFrete) vence CPF ausente — nunca pede CPF para um pedido que já é indisponível por outro motivo", () => {
+    const r = elegibilidadeDaEtiqueta(
+      pedido({ cpf: null, shipping_option_id: "superfrete-1" }),
+    );
+    expect(r.estado).toBe("indisponivel");
+  });
+
+  it("indisponível (pagamento não confirmado) vence CPF ausente", () => {
+    const r = elegibilidadeDaEtiqueta(
+      pedido({ cpf: null, payment_status: "aguardando" }),
+    );
+    expect(r.estado).toBe("indisponivel");
+  });
+
+  it("indisponível (cancelado) vence CPF ausente", () => {
+    const r = elegibilidadeDaEtiqueta(
+      pedido({ cpf: null, status: "cancelled" }),
+    );
+    expect(r.estado).toBe("indisponivel");
   });
 });
 

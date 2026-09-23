@@ -77,6 +77,24 @@ function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/**
+ * Digita num `<input>` controlado pelo React: setar `.value` direto não
+ * dispara o `onChange` porque o React intercepta o setter nativo para
+ * detectar mudança real — passar pelo setter do PROTÓTIPO (truque padrão de
+ * teste em jsdom) é o que faz o evento `input` disparar o handler de verdade.
+ */
+function digitarNoInput(el: HTMLInputElement, valor: string): void {
+  // Pega o descritor do PRÓPRIO protótipo do elemento (não de `window.
+  // HTMLInputElement`) — em ambiente de teste pode haver mais de um realm
+  // jsdom, e o setter do realm errado lança "not a valid instance".
+  const setter = Object.getOwnPropertyDescriptor(
+    Object.getPrototypeOf(el),
+    "value",
+  )!.set!;
+  setter.call(el, valor);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function pedido(over: Record<string, unknown> = {}) {
   return {
     id: "11111111-1111-1111-1111-111111111111",
@@ -89,6 +107,9 @@ function pedido(over: Record<string, unknown> = {}) {
     shipping_label_url: null,
     notes: null,
     shipping_option_id: "melhor-envio-3",
+    // CPF válido de teste (exigido pelo Melhor Envio) — quem quer testar o
+    // portão de CPF sobrescreve com `null`/inválido.
+    cpf: "52998224725",
     ...over,
   };
 }
@@ -153,6 +174,11 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(colunasPedidas[0]).toMatch(/payment_status/);
     expect(colunasPedidas[0]).toMatch(/status/);
     expect(colunasPedidas[0]).toMatch(/shipping_option_id/);
+    // O CPF (exigido pelo Melhor Envio em `to.document`) entra pela mesma
+    // costura JSON do serviço do checkout — sem checar, um refator que
+    // apagasse `customer_data->>cpf` continuaria verde aqui e todo pedido
+    // pareceria "precisa_cpf" para sempre em produção.
+    expect(colunasPedidas[0]).toMatch(/customer_data->>cpf/);
   });
 
   it("1º clique em 'Gerar etiqueta' NÃO invoca — abre a confirmação", async () => {
@@ -613,5 +639,168 @@ describe("EtiquetaDoPedidoCard", () => {
 
     expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
     expect(botao("Gerar etiqueta")).toBeUndefined();
+
+    // Restaura o mock original — sem isso, o monkey-patch de `supabase.from`
+    // vaza para TODOS os testes seguintes deste arquivo (achado ao acrescentar
+    // os testes de CPF abaixo: eles quebravam só quando a suíte inteira
+    // rodava, nunca isolados — clássico sintoma de vazamento entre testes).
+    (supabaseMod.supabase.from as unknown) = fromOriginal;
+  });
+
+  // ── CPF do destinatário (requisito novo: Melhor Envio exige `to.document`) ──
+
+  it("precisa_cpf (CPF ausente): mostra o campo de CPF e NÃO oferece 'Gerar etiqueta'", async () => {
+    pedidoState.data = pedido({ cpf: null });
+    await abrirCard();
+    expect(botao("Gerar etiqueta")).toBeUndefined();
+    expect(hospedeiro.querySelector("#cpf-destinatario")).toBeTruthy();
+    expect(botao("Salvar CPF")).toBeTruthy();
+    expect(hospedeiro.textContent).toMatch(/exige o CPF do destinatário/i);
+  });
+
+  it("precisa_cpf (CPF inválido salvo): mostra o motivo de inválido, não de ausente", async () => {
+    pedidoState.data = pedido({ cpf: "11111111111" });
+    await abrirCard();
+    expect(hospedeiro.textContent).toMatch(
+      /CPF salvo neste pedido é inválido/i,
+    );
+  });
+
+  it("precisa_cpf: CPF inválido digitado NÃO invoca a edge — mostra erro local persistente", async () => {
+    pedidoState.data = pedido({ cpf: null });
+    await abrirCard();
+    const campo =
+      hospedeiro.querySelector<HTMLInputElement>("#cpf-destinatario")!;
+    await act(async () => {
+      digitarNoInput(campo, "111.111.111-11");
+    });
+    await act(async () => {
+      botao("Salvar CPF")?.click();
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(
+      hospedeiro.querySelector('[data-testid="erro-cpf"]')?.textContent,
+    ).toMatch(/inválido/i);
+  });
+
+  it("precisa_cpf: salvar invoca a edge com body EXATO { action: 'definir_cpf_destinatario', orderId, cpf: <11 dígitos SEM máscara> }", async () => {
+    pedidoState.data = pedido({ cpf: null });
+    invokeMock.mockResolvedValue({ data: { success: true, cpf_final: "25" } });
+    await abrirCard();
+    const campo =
+      hospedeiro.querySelector<HTMLInputElement>("#cpf-destinatario")!;
+    await act(async () => {
+      digitarNoInput(campo, "529.982.247-25");
+    });
+    await act(async () => {
+      botao("Salvar CPF")?.click();
+      await esperarMicrotarefas();
+    });
+    expect(invokeMock).toHaveBeenCalledWith("melhor-envio-etiqueta", {
+      body: {
+        action: "definir_cpf_destinatario",
+        orderId: "11111111-1111-1111-1111-111111111111",
+        cpf: "52998224725",
+      },
+    });
+  });
+
+  it("precisa_cpf: depois de salvar com sucesso, relê o pedido e mostra 'Gerar etiqueta' (sai de precisa_cpf sozinho, sem estado local otimista)", async () => {
+    pedidoState.data = pedido({ cpf: null });
+    invokeMock.mockResolvedValueOnce({
+      data: { success: true, cpf_final: "25" },
+    });
+    await abrirCard();
+
+    // Depois do salvamento, o BANCO já tem o CPF — é a releitura que traz.
+    pedidoState.data = pedido({ cpf: "52998224725" });
+
+    const campo =
+      hospedeiro.querySelector<HTMLInputElement>("#cpf-destinatario")!;
+    await act(async () => {
+      digitarNoInput(campo, "52998224725");
+    });
+    await act(async () => {
+      botao("Salvar CPF")?.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(botao("Gerar etiqueta")).toBeTruthy();
+    expect(hospedeiro.querySelector("#cpf-destinatario")).toBeNull();
+  });
+
+  it("gerar_etiqueta NUNCA leva o cpf no body — o cpf só viaja pela action definir_cpf_destinatario", async () => {
+    invokeMock.mockResolvedValue({
+      data: {
+        success: true,
+        already: false,
+        tracking_code: null,
+        label_url: null,
+        label_id: "lbl-1",
+      },
+    });
+    await abrirCard(); // pedido() já tem cpf válido -> disponivel
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+      await esperarMicrotarefas();
+    });
+    const chamada = invokeMock.mock.calls.find(
+      (c) => c[0] === "melhor-envio-etiqueta",
+    );
+    expect(chamada?.[1]?.body).not.toHaveProperty("cpf");
+  });
+
+  it("gerar_etiqueta responde 400 precisa_cpf (tela desatualizada): relê o pedido e cai no estado de CPF, com a mensagem visível", async () => {
+    invokeMock.mockResolvedValueOnce({
+      data: null,
+      error: {
+        name: "FunctionsHttpError",
+        context: new Response(
+          JSON.stringify({
+            error: "Este pedido não tem o CPF do destinatário.",
+            precisa_cpf: true,
+          }),
+          { status: 400 },
+        ),
+      },
+    });
+    await abrirCard();
+
+    // A releitura traz o que a edge de fato viu: pedido sem CPF.
+    pedidoState.data = pedido({ cpf: null });
+
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.querySelector("#cpf-destinatario")).toBeTruthy();
+    expect(
+      hospedeiro.querySelector('[data-testid="erro-etiqueta"]')?.textContent,
+    ).toBe("Este pedido não tem o CPF do destinatário.");
+  });
+
+  it("CPF inteiro nunca aparece no DOM — a confirmação de compra mostra só a máscara", async () => {
+    await abrirCard(); // pedido() já tem cpf válido -> disponivel
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    const textoCpf =
+      hospedeiro.querySelector('[data-testid="cpf-mascarado"]')?.textContent ??
+      "";
+    expect(textoCpf).toContain("25");
+    expect(hospedeiro.textContent).not.toContain("52998224725");
   });
 });
