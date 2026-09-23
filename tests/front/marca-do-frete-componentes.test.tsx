@@ -35,6 +35,25 @@ afterEach(() => {
 });
 
 describe("LogoDaTransportadora", () => {
+  it("logo de texto BRANCO (Azul Cargo) ganha selo escuro; os demais seguem no selo branco", async () => {
+    const { LogoDaTransportadora } = await import(
+      "@/components/shipping/MarcaDoFrete"
+    );
+    await montar(
+      <>
+        <LogoDaTransportadora slug="azul-cargo" nome="Azul Cargo Express" />
+        <LogoDaTransportadora slug="correios" nome="Correios" />
+      </>,
+    );
+    const [azul, correios] = [...hospedeiro.querySelectorAll("img")].map(
+      (img) => img.parentElement as HTMLElement,
+    );
+    expect(azul.className).toContain("bg-zinc-900");
+    expect(azul.className).not.toMatch(/(^|\s)bg-white(\s|$)/);
+    expect(correios.className).toContain("bg-white");
+    expect(correios.className).not.toContain("bg-zinc-900");
+  });
+
   it("com transportadora reconhecida, o img tem alt igual ao nome da marca", async () => {
     const { LogoDaTransportadora } = await import(
       "@/components/shipping/MarcaDoFrete"

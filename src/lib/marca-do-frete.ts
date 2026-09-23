@@ -76,6 +76,15 @@ export const LOGO_TRANSPORTADORA: Readonly<Record<string, string>> = {
   buslog: "/logos/transportadoras/buslog.png",
 };
 
+/**
+ * Logos oficiais cujo texto é BRANCO (feitos para o cabeçalho escuro do
+ * site da marca): no selo de fundo branco a palavra sumiria — a Azul Cargo
+ * ficava só com o ícone. Esses ganham selo de fundo escuro.
+ */
+export const LOGO_SOBRE_FUNDO_ESCURO: ReadonlySet<string> = new Set([
+  "azul-cargo",
+]);
+
 /** Mapa slug → arquivo do logo do agregador, servido de `public/logos/`. */
 export const LOGO_AGREGADOR: Readonly<Record<string, string>> = {
   "melhor-envio": "/logos/provedores/melhor-envio.png",

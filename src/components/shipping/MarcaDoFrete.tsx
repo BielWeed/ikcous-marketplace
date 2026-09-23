@@ -1,4 +1,8 @@
-import { LOGO_AGREGADOR, LOGO_TRANSPORTADORA } from "@/lib/marca-do-frete";
+import {
+  LOGO_AGREGADOR,
+  LOGO_SOBRE_FUNDO_ESCURO,
+  LOGO_TRANSPORTADORA,
+} from "@/lib/marca-do-frete";
 import { cn } from "@/lib/utils";
 // MARCA DO FRETE (peça 3, tarefa "cart-frete-logos", 23/09/2026) — os dois
 // componentes reutilizáveis que desenham o logo oficial da transportadora e
@@ -41,6 +45,12 @@ export function LogoDaTransportadora({
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-md bg-white px-1.5",
         className,
+        // Depois do className: o fundo escuro do logo de texto branco vence
+        // qualquer borda/fundo que a tela passe.
+        !mostrarFallback &&
+          slug &&
+          LOGO_SOBRE_FUNDO_ESCURO.has(slug) &&
+          "bg-zinc-900",
       )}
       style={{ height: tamanho, minWidth: Math.round(tamanho * 1.3) }}
     >
