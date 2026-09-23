@@ -1,6 +1,7 @@
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import type { OrigemDaEscolhaDoFrete } from "@/lib/auto-selecao-de-frete";
 import { mapProductFromDB } from "@/lib/mappers";
 import { precoVendido } from "@/lib/preco-vendido";
 // FRETE V2 (frente B, 03/09): a estratégia de frete grátis passa a ser a
@@ -52,6 +53,11 @@ export interface CartState {
    *  Mudança ADITIVA: nenhum consumidor atual quebra. */
   freteGratis: boolean;
   selectedShippingOption: ShippingOption | null;
+  /** A opção de frete marcada foi um TOQUE da cliente (`true`) ou a regra
+   *  da casa — a mais barata — que escolheu sozinha (`false`)? Só a escolha
+   *  da cliente sobrevive a uma cotação nova (captura do dono, 23/09/2026:
+   *  o PAC automático sobrevivia à Loggi mais barata). */
+  freteEscolhidoPelaCliente: boolean;
   /** CEP para o qual a cotação de frete escolhida foi calculada. O banco precisa
    *  dele para localizar a cotação gravada e confirmar o valor do frete. */
   shippingCep: string | null;
@@ -78,7 +84,11 @@ export interface CartActions {
   clearCart: () => void;
   getCartTotal: () => number;
   getCartCount: () => number;
-  setSelectedShippingOption: (option: ShippingOption | null) => void;
+  /** `origem` padrão `automatica`: só o toque da cliente passa `cliente`. */
+  setSelectedShippingOption: (
+    option: ShippingOption | null,
+    origem?: OrigemDaEscolhaDoFrete,
+  ) => void;
   setShippingCep: (cep: string | null) => void;
   setEnderecoSelecionadoId: (id: string | null) => void;
 }
@@ -731,8 +741,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [removeFromCart],
   );
 
-  const [selectedShippingOption, setSelectedShippingOption] =
-    React.useState<ShippingOption | null>(null);
+  // A opção e QUEM a escolheu mudam juntas, num estado só — nunca um sem o
+  // outro (uma escolha nula nunca é "da cliente").
+  const [escolhaDoFrete, setEscolhaDoFrete] = React.useState<{
+    opcao: ShippingOption | null;
+    daCliente: boolean;
+  }>({ opcao: null, daCliente: false });
+  const selectedShippingOption = escolhaDoFrete.opcao;
+  const freteEscolhidoPelaCliente = escolhaDoFrete.daCliente;
+  const setSelectedShippingOption = useCallback(
+    (
+      option: ShippingOption | null,
+      origem: OrigemDaEscolhaDoFrete = "automatica",
+    ) => {
+      setEscolhaDoFrete({
+        opcao: option,
+        daCliente: option !== null && origem === "cliente",
+      });
+    },
+    [],
+  );
   const [shippingCep, setShippingCep] = React.useState<string | null>(null);
   const [enderecoSelecionadoId, setEnderecoSelecionadoId] = React.useState<
     string | null
@@ -877,6 +905,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       freteGratis,
       freteIndefinido,
       selectedShippingOption,
+      freteEscolhidoPelaCliente,
       shippingCep,
       enderecoSelecionadoId,
     }),
@@ -889,6 +918,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       freteGratis,
       freteIndefinido,
       selectedShippingOption,
+      freteEscolhidoPelaCliente,
       shippingCep,
       enderecoSelecionadoId,
     ],

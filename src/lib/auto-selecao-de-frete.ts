@@ -26,24 +26,60 @@ export function opcaoMaisBarata<T extends OpcaoDeFrete>(
   return destaquesDoFrete(opcoes).maisBarata;
 }
 
+/**
+ * QUEM ESCOLHEU a opção que está marcada (captura do dono, 23/09/2026):
+ * `cliente` = um toque no cartão; `automatica` = a regra da casa (a mais
+ * barata) escolheu sozinha. Só a escolha da CLIENTE sobrevive a uma
+ * cotação nova — a automática é sempre refeita contra a lista de agora.
+ */
+export type OrigemDaEscolhaDoFrete = "cliente" | "automatica";
+
 // A MESMA ESCOLHA, COM O PREÇO DE AGORA: casar a escolha anterior só POR ID
 // mantinha o objeto VELHO — preço de outra cotação — como preço do pedido.
 // O id diz QUAL serviço foi escolhido; o objeto da lista nova carrega o
-// preço válido. Sem escolha anterior, ou com o id sumido da lista, vale a
-// regra da casa: a mais barata (que já exclui a retirada).
+// preço válido.
+//
+// SÓ A ESCOLHA DA CLIENTE É PRESERVADA (captura do dono, 23/09/2026): a
+// versão anterior preservava por id QUALQUER seleção — inclusive a que o
+// próprio app tinha feito numa cotação anterior. Com vários provedores, a
+// primeira cotação podia chegar sem o Melhor Envio (PAC da SuperFrete,
+// R$ 25,31, auto-selecionado) e a seguinte trazer a Loggi a R$ 10,49 com o
+// selo "Mais barata" — e o PAC "sobrevivia" como se a cliente o tivesse
+// escolhido, e o total cobrava R$ 25,31. Agora:
+//   - escolha da CLIENTE ainda na lista → o objeto fresco dela;
+//   - qualquer outro caso (sem escolha, escolha automática, escolha que
+//     sumiu) → a regra da casa: a mais barata (que já exclui a retirada).
 export function opcaoFrescaOuMaisBarata<T extends OpcaoDeFrete>(
   selecionada: T | null | undefined,
   opcoes: readonly T[] | null | undefined,
+  escolhidaPelaCliente: boolean,
 ): T | null {
-  if (!opcoes || opcoes.length === 0) return null;
-  const mesmaEscolha = selecionada
-    ? opcoes.find((opt) => opt.id === selecionada.id)
-    : undefined;
-  if (mesmaEscolha) return mesmaEscolha;
+  return resolverEscolhaDoFrete(selecionada, opcoes, escolhidaPelaCliente)
+    .opcao;
+}
+
+/**
+ * O mesmo que `opcaoFrescaOuMaisBarata`, dizendo também a ORIGEM do
+ * resultado — é ela que o carrinho guarda ao lado da opção, para a próxima
+ * cotação saber se deve preservar ou refazer a escolha.
+ */
+export function resolverEscolhaDoFrete<T extends OpcaoDeFrete>(
+  selecionada: T | null | undefined,
+  opcoes: readonly T[] | null | undefined,
+  escolhidaPelaCliente: boolean,
+): { opcao: T | null; origem: OrigemDaEscolhaDoFrete } {
+  if (!opcoes || opcoes.length === 0) {
+    return { opcao: null, origem: "automatica" };
+  }
+  const mesmaEscolha =
+    selecionada && escolhidaPelaCliente
+      ? opcoes.find((opt) => opt.id === selecionada.id)
+      : undefined;
+  if (mesmaEscolha) return { opcao: mesmaEscolha, origem: "cliente" };
   // RETIRADA NA LOJA (release 1.5.3): a retirada custa R$ 0 e seria SEMPRE
   // a "mais barata" — mas buscar na loja é decisão da cliente, nunca do app.
   // Ela fica FORA do fallback: só é mantida quando a própria cliente a
   // escolheu (mesmo id, acima). Se sobrar só ela, `null`: a tela mostra a
   // opção e espera o clique.
-  return opcaoMaisBarata(opcoes);
+  return { opcao: opcaoMaisBarata(opcoes), origem: "automatica" };
 }

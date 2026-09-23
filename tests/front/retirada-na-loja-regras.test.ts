@@ -52,31 +52,32 @@ describe("o contrato do id", () => {
 
 describe("auto-seleção NUNCA escolhe a retirada sozinha", () => {
   it("sem escolha anterior, com local + retirada: vai a local, mesmo a retirada sendo R$ 0", () => {
-    expect(opcaoFrescaOuMaisBarata(null, [LOCAL, RETIRADA])?.id).toBe(
+    expect(opcaoFrescaOuMaisBarata(null, [LOCAL, RETIRADA], false)?.id).toBe(
       "local-delivery",
     );
     // A ordem da lista não muda nada.
-    expect(opcaoFrescaOuMaisBarata(null, [RETIRADA, LOCAL])?.id).toBe(
+    expect(opcaoFrescaOuMaisBarata(null, [RETIRADA, LOCAL], false)?.id).toBe(
       "local-delivery",
     );
   });
 
   it("a retirada é a ÚNICA opção: nada é escolhido (null) — a cliente decide", () => {
-    expect(opcaoFrescaOuMaisBarata(null, [RETIRADA])).toBeNull();
-    expect(opcaoFrescaOuMaisBarata(LOCAL, [RETIRADA])).toBeNull();
+    expect(opcaoFrescaOuMaisBarata(null, [RETIRADA], false)).toBeNull();
+    expect(opcaoFrescaOuMaisBarata(LOCAL, [RETIRADA], true)).toBeNull();
+    expect(opcaoFrescaOuMaisBarata(LOCAL, [RETIRADA], false)).toBeNull();
   });
 
   it("a cliente ESCOLHEU a retirada: é mantida (objeto fresco) enquanto voltar na cotação", () => {
     const escolhida = { ...RETIRADA };
     const fresca = { ...RETIRADA };
-    const resultado = opcaoFrescaOuMaisBarata(escolhida, [LOCAL, fresca]);
+    const resultado = opcaoFrescaOuMaisBarata(escolhida, [LOCAL, fresca], true);
     expect(resultado).toBe(fresca);
   });
 
   it("escolheu a retirada e ela SUMIU (destino fora da área): cai para a mais barata que não é retirada", () => {
     const sedex = opcao("melhor-envio-1", 30, 3);
     const pac = opcao("melhor-envio-2", 20, 8);
-    expect(opcaoFrescaOuMaisBarata(RETIRADA, [sedex, pac])?.id).toBe(
+    expect(opcaoFrescaOuMaisBarata(RETIRADA, [sedex, pac], true)?.id).toBe(
       "melhor-envio-2",
     );
   });
@@ -84,13 +85,18 @@ describe("auto-seleção NUNCA escolhe a retirada sozinha", () => {
   it("controle: sem retirada na lista, a regra da mais barata segue igual", () => {
     const sedex = opcao("melhor-envio-1", 30, 3);
     const pac = opcao("melhor-envio-2", 20, 8);
-    expect(opcaoFrescaOuMaisBarata(null, [sedex, pac])?.id).toBe(
+    expect(opcaoFrescaOuMaisBarata(null, [sedex, pac], false)?.id).toBe(
       "melhor-envio-2",
     );
-    expect(opcaoFrescaOuMaisBarata(sedex, [sedex, pac])?.id).toBe(
+    // Escolha da CLIENTE é preservada; a mesma seleção feita pelo app
+    // (automática) é refeita contra a lista — a mais barata.
+    expect(opcaoFrescaOuMaisBarata(sedex, [sedex, pac], true)?.id).toBe(
       "melhor-envio-1",
     );
-    expect(opcaoFrescaOuMaisBarata(null, [])).toBeNull();
+    expect(opcaoFrescaOuMaisBarata(sedex, [sedex, pac], false)?.id).toBe(
+      "melhor-envio-2",
+    );
+    expect(opcaoFrescaOuMaisBarata(null, [], false)).toBeNull();
   });
 });
 

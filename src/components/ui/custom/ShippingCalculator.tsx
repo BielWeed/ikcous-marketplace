@@ -1,7 +1,10 @@
 import { useCartState } from "@/contexts/CartContext";
 import { useContextoDoFreteDaLoja } from "@/contexts/ContextoDoFreteDaLoja";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { opcaoFrescaOuMaisBarata } from "@/lib/auto-selecao-de-frete";
+import {
+  type OrigemDaEscolhaDoFrete,
+  resolverEscolhaDoFrete,
+} from "@/lib/auto-selecao-de-frete";
 import { destaquesDoFrete } from "@/lib/destaques-do-frete";
 import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import {
@@ -227,7 +230,20 @@ export interface DestinoExibido {
 interface ShippingCalculatorProps {
   cart: CartItem[];
   selectedOption: ShippingOption | null;
-  onSelectOption: (option: ShippingOption | null) => void;
+  /**
+   * `selectedOption` foi um TOQUE da cliente (`true`) ou a regra da casa
+   * que escolheu sozinha (`false`)? Vive no CartContext ao lado da opção —
+   * sobrevive à remontagem (carrinho → checkout → volta). Só a escolha da
+   * cliente é preservada numa cotação nova; a automática é refeita contra
+   * a lista de agora (a mais barata). Sem a prop, vale só o que foi tocado
+   * NESTA montagem.
+   */
+  selecaoEscolhidaPelaCliente?: boolean;
+  /** `origem` diz quem escolheu — o pai guarda junto com a opção. */
+  onSelectOption: (
+    option: ShippingOption | null,
+    origem?: OrigemDaEscolhaDoFrete,
+  ) => void;
   onCepValidated?: (cep: string) => void;
   /**
    * CEP do destino efetivo de entrega (endereço escolhido ou principal; para
@@ -292,6 +308,7 @@ function soDigitosDoCep(valor: string | null | undefined): string {
 function CalculadoraDeFrete({
   cart,
   selectedOption,
+  selecaoEscolhidaPelaCliente,
   onSelectOption,
   onCepValidated,
   cepDestino,
@@ -351,11 +368,46 @@ function CalculadoraDeFrete({
   // `calculateShipping` em execução fecha sobre a seleção do render em que
   // a COTAÇÃO saiu. Com cotação em voo, um clique novo era REVERTIDO pela
   // resposta. Este ref espelha a prop POR RENDER e é a ENTRADA de
-  // `opcaoFrescaOuMaisBarata` — mesma modalidade na lista nova ⇒ objeto NOVO
+  // `resolverEscolhaDoFrete` — mesma modalidade na lista nova ⇒ objeto NOVO
   // (preço fresco); modalidade sumida ⇒ a mais barata; seleção nula ⇒ a mais
   // barata.
   const selecaoVivaRef = useRef(selectedOption);
   selecaoVivaRef.current = selectedOption;
+
+  // QUEM ESCOLHEU a seleção viva (captura do dono, 23/09/2026). Com a prop
+  // (CartContext), ela é a fonte — espelhada por render como a seleção. Sem
+  // a prop, a memória é o id tocado NESTA montagem. Os dois refs são
+  // gravados também no clique, síncronos: uma resposta que pousa antes do
+  // re-render do pai já enxerga a escolha da cliente.
+  const idTocadoNestaMontagemRef = useRef<string | null>(null);
+  const escolhaDaClienteViaPropRef = useRef(selecaoEscolhidaPelaCliente);
+  escolhaDaClienteViaPropRef.current = selecaoEscolhidaPelaCliente;
+  const selecaoVivaEhDaCliente = (): boolean => {
+    const viva = selecaoVivaRef.current;
+    if (!viva) return false;
+    return (
+      escolhaDaClienteViaPropRef.current ??
+      idTocadoNestaMontagemRef.current === viva.id
+    );
+  };
+
+  // Aplica a escolha resolvida contra uma lista NOVA: a da cliente, se ela
+  // ainda está na lista (objeto fresco); senão a mais barata, como escolha
+  // automática. Lista sem nada auto-selecionável (só a retirada) derruba a
+  // escolha anterior, que é preço de OUTRA cotação.
+  const aplicarEscolhaContra = (lista: ShippingOption[]) => {
+    const { opcao, origem } = resolverEscolhaDoFrete(
+      selecaoVivaRef.current,
+      lista,
+      selecaoVivaEhDaCliente(),
+    );
+    if (origem === "automatica") idTocadoNestaMontagemRef.current = null;
+    if (opcao) {
+      onSelectOption(opcao, origem);
+    } else if (selecaoVivaRef.current) {
+      onSelectOption(null);
+    }
+  };
 
   // Tira a tela da cotação anterior: resposta em voo vira obsoleta (lacre),
   // debounce pendente morre e nada do destino antigo continua clicável.
@@ -441,18 +493,7 @@ function CalculadoraDeFrete({
               setOptions(opcoesEmCache);
               setCotouSemOpcoes(false);
               assinaturaCotadaRef.current = cartSignature;
-              const selecionadaAtualizada = opcaoFrescaOuMaisBarata(
-                selecaoVivaRef.current,
-                opcoesEmCache,
-              );
-              if (selecionadaAtualizada) {
-                onSelectOption(selecionadaAtualizada);
-              } else if (selecaoVivaRef.current) {
-                // Lista sem nada auto-selecionável (só a retirada, que é
-                // escolha da cliente): a escolha anterior é preço de outra
-                // cotação e cai.
-                onSelectOption(null);
-              }
+              aplicarEscolhaContra(opcoesEmCache);
               onCepValidated?.(cepFormatado);
               setLoading(false);
               localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
@@ -529,23 +570,14 @@ function CalculadoraDeFrete({
       localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
 
       // Auto-select: MENOR PREÇO, não o primeiro da lista (laudo 31/08,
-      // menor E). Mesmo id na resposta nova = mesma escolha de serviço, com
-      // o objeto FRESCO; id sumido = a mais barata. A entrada é a seleção
-      // VIVA — o clique dado com a cotação em voo não é desfeito.
+      // menor E). Escolha da CLIENTE com o mesmo id na resposta nova = a
+      // mesma escolha, com o objeto FRESCO; escolha automática ou id sumido
+      // = a mais barata DESTA lista. A entrada é a seleção VIVA — o clique
+      // dado com a cotação em voo não é desfeito. RETIRADA NA LOJA (1.5.3):
+      // lista só com a retirada derruba a escolha anterior (nunca é o app
+      // quem escolhe a retirada).
       if (calculatedOptions.length > 0) {
-        const selecionadaAtualizada = opcaoFrescaOuMaisBarata(
-          selecaoVivaRef.current,
-          calculatedOptions,
-        );
-        if (selecionadaAtualizada) {
-          onSelectOption(selecionadaAtualizada);
-        } else if (selecaoVivaRef.current) {
-          // RETIRADA NA LOJA (release 1.5.3): a lista pode não ter nada
-          // auto-selecionável (só a retirada, que nunca é escolhida pelo
-          // app). A escolha anterior é preço de OUTRA cotação e cai — a
-          // cliente escolhe na lista nova.
-          onSelectOption(null);
-        }
+        aplicarEscolhaContra(calculatedOptions);
       }
       onCepValidated?.(cepFormatado);
     } catch (err: any) {
@@ -659,7 +691,7 @@ function CalculadoraDeFrete({
   // diferente da atual e incrementa esta prop. Remove o cache do destino
   // adotado (senão a leitura de cache do PRÓXIMO `calculateShipping`
   // acharia a MESMA entrada desatualizada) e recota de rede — se o id
-  // escolhido sumiu da lista nova, `opcaoFrescaOuMaisBarata` já escolhe a
+  // escolhido sumiu da lista nova, `resolverEscolhaDoFrete` já escolhe a
   // mais barata dela sozinho (só limpa de vez se a lista nova vier vazia).
   const forcarNovaCotacaoVistoRef = useRef(forcarNovaCotacaoEm);
   useEffect(() => {
@@ -805,7 +837,13 @@ function CalculadoraDeFrete({
         aria-pressed={isSelected}
         onClick={() => {
           haptic.light();
-          onSelectOption(option);
+          selecaoVivaRef.current = option;
+          idTocadoNestaMontagemRef.current = option.id;
+          escolhaDaClienteViaPropRef.current =
+            escolhaDaClienteViaPropRef.current === undefined
+              ? undefined
+              : true;
+          onSelectOption(option, "cliente");
         }}
         className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
           isSelected

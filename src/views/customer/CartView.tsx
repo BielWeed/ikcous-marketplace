@@ -135,6 +135,7 @@ export function CartView({
     removeFromCart,
     clearCart,
     selectedShippingOption,
+    freteEscolhidoPelaCliente,
     setSelectedShippingOption,
     shippingCep,
     setShippingCep,
@@ -626,6 +627,7 @@ export function CartView({
                           key={user?.id ?? "convidado"}
                           cart={cart}
                           selectedOption={selectedShippingOption}
+                          selecaoEscolhidaPelaCliente={freteEscolhidoPelaCliente}
                           onSelectOption={setSelectedShippingOption}
                           onCepValidated={setShippingCep}
                           cepDestino={cepDoDestino}

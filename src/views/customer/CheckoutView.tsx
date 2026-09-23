@@ -34,6 +34,7 @@ import {
 } from "@/lib/endereco-de-entrega";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import {
+  conferirFreteEscolhidoComACotacao,
   ehModalidadeDaLoja,
   ehRetiradaNaLoja,
   finalizarBloqueadoPorFrete,
@@ -486,6 +487,7 @@ export function CheckoutView({
     clearCart: ctxClearCart,
     addToCart,
     selectedShippingOption,
+    freteEscolhidoPelaCliente,
     shippingCep,
     setSelectedShippingOption,
     setShippingCep,
@@ -1957,19 +1959,48 @@ export function CheckoutView({
       shippingCep
     ) {
       let revisaoDaCotacaoEscolhida: string | null = null;
+      let opcoesDaCotacaoNaTela: unknown = null;
       try {
         const bruto = localStorage.getItem(
           chaveDoCacheDeFrete(soDigitos(shippingCep)),
         );
         if (bruto) {
-          const envelope = JSON.parse(bruto) as { revisaoConfig?: unknown };
+          const envelope = JSON.parse(bruto) as {
+            revisaoConfig?: unknown;
+            opcoes?: unknown;
+          };
           revisaoDaCotacaoEscolhida =
             typeof envelope.revisaoConfig === "string"
               ? envelope.revisaoConfig
               : null;
+          opcoesDaCotacaoNaTela = envelope.opcoes;
         }
       } catch {
         // Envelope ilegível: sem evidência — segue sem bloquear.
+      }
+      // A OPÇÃO MARCADA × A COTAÇÃO NA TELA (captura do dono, 23/09/2026):
+      // o pedido só nasce com a opção marcada sendo, com o MESMO preço, uma
+      // opção da cotação que a calculadora mostrou. Preço mudou: marca o
+      // objeto fresco (mesma origem da escolha) e para — a cliente vê o
+      // total novo antes de finalizar. Sumiu: limpa e recota.
+      const conferencia = conferirFreteEscolhidoComACotacao(
+        selectedShippingOption,
+        opcoesDaCotacaoNaTela,
+      );
+      if (conferencia.tipo === "preco-mudou" || conferencia.tipo === "sumiu") {
+        toast.error("O frete foi atualizado. Confira o total e finalize.");
+        if (conferencia.tipo === "preco-mudou") {
+          setSelectedShippingOption(
+            conferencia.fresca,
+            freteEscolhidoPelaCliente ? "cliente" : "automatica",
+          );
+        } else {
+          setSelectedShippingOption(null);
+          setForcarNovaCotacaoEm((n) => n + 1);
+        }
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
       }
       if (revisaoDaCotacaoEscolhida) {
         const revisaoAtual = await buscarRevisaoConfigFrete();
@@ -3030,6 +3061,7 @@ export function CheckoutView({
             key={user?.id ?? "convidado"}
             cart={cart}
             selectedOption={selectedShippingOption}
+            selecaoEscolhidaPelaCliente={freteEscolhidoPelaCliente}
             onSelectOption={setSelectedShippingOption}
             onCepValidated={registrarCepCotado}
             cepDestino={cepDoDestinoDaCotacao}

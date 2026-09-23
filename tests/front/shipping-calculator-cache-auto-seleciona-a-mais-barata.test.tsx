@@ -193,8 +193,11 @@ describe("ShippingCalculator — o acerto de cache do navegador auto-seleciona a
     // lista (R$ 45) — mesma regra que o ramo da resposta fresca já aplica
     // via `opcaoMaisBarata`.
     expect(onSelectOption).toHaveBeenCalledTimes(1);
+    // Escolha feita pela regra da casa: origem `automatica` (nunca
+    // `cliente`) — é o que deixa a próxima cotação refazê-la.
     expect(onSelectOption).toHaveBeenCalledWith(
       expect.objectContaining({ id: "economica", price: 22 }),
+      "automatica",
     );
   });
 });
