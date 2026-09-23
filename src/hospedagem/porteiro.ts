@@ -25,7 +25,11 @@ import { montarDataBlock } from "./ficha";
 //
 // Prefixo reservado NUNCA casa o primeiro padrão — é o que barra os
 // caminhos do build (assets/, store-identity/, icons/, images/, fonts/).
-const PREFIXOS_RESERVADOS = "assets/|store-identity/|icons/|images/|fonts/";
+// 23/09/2026: `logos/` e `branding/` (pastas de `public/`) entraram depois
+// que os logos do frete saíram como app shell em produção — toda pasta de
+// `public/` tem de estar aqui (`tests/front/porteiro-pastas-publicas.test.ts`).
+const PREFIXOS_RESERVADOS =
+  "assets/|store-identity/|icons/|images/|fonts/|logos/|branding/";
 
 // Rodada B (11/09/2026, achado do crítico e do revisor): a rodada A excluía
 // por EXTENSÃO (`.*\.[A-Za-z0-9]+$`) — mas isso também excluiria qualquer
