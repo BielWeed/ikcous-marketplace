@@ -266,6 +266,8 @@ describe("CheckoutView — a opção marcada confere com a cotação na tela ant
       botaoOnline.click();
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
+      // TRANSPORTADORA EXIGE CPF (checkout compacto + CPF, 23/09/2026).
+      digitar("checkout-cpf", "11144477735");
       await esperarMicrotarefas();
       await esperarMicrotarefas();
     });

@@ -43,6 +43,17 @@ export interface RascunhoDoCheckout {
   cupom: string | null;
 }
 
+// 🔴 CPF NUNCA ENTRA AQUI (checkout compacto + CPF, 23/09/2026). Regra da
+// casa: CPF não vai para notas do pedido, URL, console.log, analytics,
+// toast NEM storage do navegador — e este módulo é storage do navegador
+// (`sessionStorage`, ver o comentário do topo do arquivo). Diferente do
+// nome/WhatsApp/endereço, que sobrevivem ao vai-e-volta carrinho ⇄
+// checkout de propósito, o CPF vive SÓ no estado do react-hook-form do
+// CheckoutView: se a aba recarrega ou o componente desmonta no meio do
+// preenchimento, o campo volta vazio e a pessoa digita de novo — o custo
+// aceito pela regra de dado sensível. `tests/front/cpf-nunca-vai-para-o-
+// rascunho.test.ts` tranca isto: nenhum CPF digitado aparece no
+// `sessionStorage` depois de salvar o rascunho.
 export function rascunhoVazio(): RascunhoDoCheckout {
   return {
     nome: "",

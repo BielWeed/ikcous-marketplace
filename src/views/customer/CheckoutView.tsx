@@ -29,6 +29,12 @@ import {
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
 import {
+  cpfValido,
+  formatarCpf,
+  mascararCpfParaExibicao,
+  somenteDigitosDoCpf,
+} from "@/lib/cpf";
+import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
 } from "@/lib/endereco-de-entrega";
@@ -90,7 +96,7 @@ import {
   User,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -140,6 +146,14 @@ interface CheckoutFormValues {
   city?: string;
   state?: string;
   complement?: string;
+  /**
+   * CPF do destinatário (checkout compacto + CPF, 23/09/2026) — só exigido
+   * quando a entrega escolhida é por TRANSPORTADORA (o Melhor Envio exige
+   * `to.document` para emitir a etiqueta). NUNCA persistido no rascunho da
+   * sessão (ver o comentário grande em rascunho-do-checkout.ts) — vive só
+   * aqui, no estado do próprio formulário.
+   */
+  cpf?: string;
 }
 
 // Ordem de tabulação do formulário. Usada para levar o foco ao PRIMEIRO campo
@@ -150,6 +164,7 @@ interface CheckoutFormValues {
 const ORDEM_CAMPOS_FOCO = [
   "name",
   "whatsapp",
+  "cpf",
   "cep",
   "number",
   "street",
@@ -529,6 +544,16 @@ export function CheckoutView({
   // entrega local, igual à RPC v23/v24 (ramo 2-ter, sem restrição de meio).
   const ehEntregaLocal = ehModalidadeDaLoja(selectedShippingOption?.id);
   const ehRetirada = ehRetiradaNaLoja(selectedShippingOption?.id);
+  // CPF DO DESTINATÁRIO (checkout compacto + CPF, 23/09/2026): o Melhor
+  // Envio exige `to.document` (CPF, pessoa física) para inserir o frete no
+  // carrinho e emitir a etiqueta de envio nacional
+  // (docs.melhorenvio.com.br/reference/inserir-fretes-no-carrinho) — só
+  // entra na conta quando a modalidade é TRANSPORTADORA. Sem opção
+  // escolhida ainda, a modalidade é DESCONHECIDA — mesma régua de
+  // `ehEntregaLocal`/`ehRetirada` acima — e o campo não é exigido: quem
+  // trava o Finalizar nesse estado é `semFreteSelecionado`, mais abaixo.
+  const exigeCpfDoDestinatario =
+    !!selectedShippingOption && !ehEntregaLocal && !ehRetirada;
   // CHECKOUT-090: realtime ligado (antes `useOrders(false, true)` desligava
   // o efeito inteiro na primeira linha de useOrders.ts — nenhuma assinatura
   // era criada, e a tela do PIX nunca soube que o pedido tinha sido pago) e
@@ -590,6 +615,17 @@ export function CheckoutView({
     return whatsapp ? formatWhatsApp(whatsapp) : "";
   };
 
+  // CHECKOUT COMPACTO (23/09/2026): resumo do WhatsApp para o cartão
+  // recolhido — mantém DDD e os 4 últimos dígitos (o que a pessoa
+  // reconhece de relance), esconde o miolo.
+  const abreviarWhatsapp = (formatado: string) => {
+    const numbers = formatado.replaceAll(/\D/g, "");
+    if (numbers.length < 10) return formatado || "—";
+    const ddd = numbers.slice(0, 2);
+    const ultimos4 = numbers.slice(-4);
+    return `(${ddd}) *****-${ultimos4}`;
+  };
+
   const dynamicSchema = useMemo(() => {
     return z
       .object({
@@ -602,8 +638,21 @@ export function CheckoutView({
         city: z.string().optional(),
         state: z.string().optional(),
         complement: z.string().optional(),
+        cpf: z.string().optional(),
       })
       .superRefine((data, ctx) => {
+        // CPF só é exigido com transportadora (ver o comentário grande de
+        // `exigeCpfDoDestinatario`, acima) — `cpfValido` já cobre "vazio",
+        // "menos de 11 dígitos" e "dígito verificador errado" na MESMA
+        // função que o campo usa para colorir a borda e que o submit usa
+        // para travar: nunca duas réguas para o mesmo campo.
+        if (exigeCpfDoDestinatario && !cpfValido(data.cpf ?? "")) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Informe um CPF válido para a entrega por transportadora",
+            path: ["cpf"],
+          });
+        }
         if (!user) {
           // 8 DÍGITOS, não 8 caracteres: "1234-678" tem 8 caracteres e 7
           // dígitos — passava na régua antiga e virava endereço não
@@ -652,11 +701,12 @@ export function CheckoutView({
           }
         }
       });
-  }, [user]);
+  }, [user, exigeCpfDoDestinatario]);
 
   const form = useForm<CheckoutFormValues>({
     resolver: zodResolver(dynamicSchema),
     defaultValues: {
+      cpf: "",
       name: profile?.full_name || user?.user_metadata?.name || "",
       whatsapp: getDefaultWhatsApp(),
       cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
@@ -665,6 +715,32 @@ export function CheckoutView({
     },
     mode: "onChange",
   });
+
+  // CHECKOUT COMPACTO + CPF (23/09/2026): `exigeCpfDoDestinatario` entra na
+  // conta do `dynamicSchema` (superRefine), mas react-hook-form só REVALIDA
+  // um campo quando ELE muda (digitação, blur, submit) — trocar a opção de
+  // frete (transportadora ⇄ local/retirada) não toca o campo `cpf` nem
+  // nenhum outro, então `formState.isValid` ficava PARADO no valor de antes
+  // da troca. Sentido que mais dói: sair de transportadora sem CPF de volta
+  // para entrega local prendia o Finalizar desabilitado por uma exigência
+  // que TINHA acabado de deixar de existir — provado por
+  // `checkout-frete-automatico-troca-de-endereco.test.tsx`. `form.trigger`
+  // sem argumento revalida o formulário INTEIRO contra o schema atual, sem
+  // marcar nada como "tocado" (não acende erro em campo que a pessoa nunca
+  // chegou a ver).
+  const exigeCpfMontadoRef = useRef(false);
+  useEffect(() => {
+    // SÓ depois do primeiro paint: no MOUNT, `form.trigger()` validaria o
+    // formulário inteiro contra um schema que ele ainda não tocou —
+    // acenderia erro vermelho (nome/WhatsApp/endereço vazios) numa tela que
+    // a pessoa acabou de abrir, sem digitar nada. O gatilho real é só a
+    // MUDANÇA de exigência depois de montado (troca de opção de frete).
+    if (!exigeCpfMontadoRef.current) {
+      exigeCpfMontadoRef.current = true;
+      return;
+    }
+    form.trigger();
+  }, [exigeCpfDoDestinatario]);
 
   const hasInitializedRef = useRef(false);
   useEffect(() => {
@@ -686,6 +762,7 @@ export function CheckoutView({
         // mora. O ternário de `isNational` que existia aqui preenchia os
         // dois com "Monte Carmelo"/"MG" na cobertura local.
         form.reset({
+          cpf: "",
           name: profile?.full_name || user?.user_metadata?.name || "",
           whatsapp: getDefaultWhatsApp(),
           cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
@@ -701,6 +778,11 @@ export function CheckoutView({
         // deixou de valer não volta mentindo.
         if (rascunho && rascunhoTemConteudo(rascunho)) {
           form.reset({
+            // CPF NUNCA vem do rascunho (ver o comentário grande em
+            // rascunho-do-checkout.ts) — este reset restaura endereço/nome/
+            // WhatsApp/cupom da sessão anterior, mas o CPF sempre recomeça
+            // vazio, mesmo quando o resto do formulário é restaurado.
+            cpf: "",
             name:
               rascunho.nome ||
               profile?.full_name ||
@@ -916,6 +998,48 @@ export function CheckoutView({
   const cepDeEntrega = user
     ? (enderecoEfetivo?.cep ?? null)
     : cepDigitadoNoFormulario || null;
+
+  // CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
+  // Endereços" viraram UMA seção só ("Seus dados e entrega"), com resumo
+  // compacto quando preenchidos — pedido do dono, tela de "Finalizar" longa
+  // demais no celular. `dadosDeEntregaCompletos` é heurística de EXIBIÇÃO
+  // (decide resumo vs. formulário aberto); NUNCA decide o que pode ser
+  // enviado — quem trava o Finalizar continua sendo `dynamicSchema` +
+  // `handleSubmitEvent`, sem relação nenhuma com este cálculo.
+  const nomeAtual = form.watch("name");
+  const whatsappAtual = form.watch("whatsapp");
+  const cpfAtual = form.watch("cpf");
+  const ruaAtual = form.watch("street");
+  const numeroAtual = form.watch("number");
+  const bairroAtual = form.watch("neighborhood");
+  const cidadeAtual = form.watch("city");
+  const estadoAtual = form.watch("state");
+  const identificacaoBasicaCompleta =
+    !!nomeAtual?.trim() && (whatsappAtual?.length ?? 0) >= 14;
+  const enderecoConvidadoCompleto =
+    soDigitos(cepDigitadoNoFormulario ?? "").length === 8 &&
+    !!ruaAtual?.trim() &&
+    !!numeroAtual?.trim() &&
+    !!bairroAtual?.trim() &&
+    !!cidadeAtual?.trim() &&
+    !!estadoAtual?.trim();
+  const cpfCompletoSeExigido =
+    !exigeCpfDoDestinatario || cpfValido(cpfAtual ?? "");
+  const dadosDeEntregaCompletos =
+    identificacaoBasicaCompleta &&
+    (user ? !!selectedAddressId : enderecoConvidadoCompleto) &&
+    cpfCompletoSeExigido;
+  // `null` = "sem escolha manual ainda": segue a heurística acima (fechado
+  // quando completo, aberto quando não). Um clique explícito (editar/
+  // trocar/recolher) grava `true`/`false` e essa escolha PASSA A MANDAR —
+  // de propósito não existe efeito reabrindo/fechando sozinho a cada tecla:
+  // fechar embaixo do dedo de quem está no meio de uma correção é o defeito
+  // que a versão anterior deste código tinha (ver o `git log` da tarefa).
+  const [identificacaoAbertaManual, setIdentificacaoAbertaManual] = useState<
+    boolean | null
+  >(null);
+  const identificacaoExpandida =
+    identificacaoAbertaManual ?? !dadosDeEntregaCompletos;
   // Último CEP que a calculadora DESTA tela gravou como cotado. Ao voltar
   // para um endereço já cotado, a calculadora serve do cache NO MESMO commit
   // da troca (síncrono) — e este efeito, que roda depois do dela, ainda vê o
@@ -1849,6 +1973,14 @@ export function CheckoutView({
         (campo) => form.getFieldState(campo).invalid,
       );
       if (primeiroErro) {
+        // CHECKOUT COMPACTO (23/09/2026): TODOS os campos de
+        // `ORDEM_CAMPOS_FOCO` moram dentro da seção "Seus dados e
+        // entrega", que agora pode estar RECOLHIDA (resumo). Focar um
+        // campo escondido (`hidden`) falha em silêncio — o `flushSync`
+        // força a seção a abrir NO MESMO tique, antes do `setFocus`, que
+        // senão rodaria contra o DOM ainda oculto do render anterior
+        // (mesmo padrão de `useViewTransition.ts`/`AdminOrdersView.tsx`).
+        flushSync(() => setIdentificacaoAbertaManual(true));
         form.setFocus(primeiroErro);
       }
       toast.error(
@@ -2019,7 +2151,15 @@ export function CheckoutView({
       }
     }
 
-    const customerInfo = data as unknown as Customer;
+    const customerInfo = {
+      ...(data as unknown as Customer),
+      // CPF sai do CheckoutView JÁ só em dígitos — o formulário guarda a
+      // máscara (para a pessoa ler enquanto digita), mas o que atravessa
+      // para `createOrder`/a RPC é o dado cru; `useOrders.ts` também
+      // higieniza antes de montar o payload da RPC (defesa em duas
+      // camadas, não duas réguas de VALIDAÇÃO — aqui é só formatação).
+      cpf: data.cpf ? somenteDigitosDoCpf(data.cpf) : undefined,
+    };
     const observations = notes || undefined;
 
     const variantNotes = cart
@@ -2646,17 +2786,119 @@ export function CheckoutView({
           }
         }}
       >
-        {/* Customer Info */}
+        {/* CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
+            Endereços" viraram UMA seção — "Seus dados e entrega" — com
+            cabeçalho clicável (`aria-expanded`/`aria-controls`) e resumo
+            compacto quando os dados estão completos. Nunca dois cartões
+            altos independentes (pedido do dono: tela de Finalizar comprida
+            demais no celular). */}
         <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-              <User className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-              Dados de Identificação
+          <button
+            type="button"
+            id="cabecalho-dados-e-entrega"
+            aria-expanded={identificacaoExpandida}
+            aria-controls="secao-dados-e-entrega"
+            onClick={() =>
+              setIdentificacaoAbertaManual(!identificacaoExpandida)
+            }
+            // `min-h-11` = 44px, o piso de alvo de toque do laudo de
+            // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não só
+            // o texto.
+            className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+          >
+            <span className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+                <User className="size-4" />
+              </span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                Seus dados e entrega
+              </span>
             </span>
-          </div>
-          <div className="space-y-4 p-4">
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "size-4 shrink-0 text-zinc-400 transition-transform",
+                identificacaoExpandida && "rotate-180",
+              )}
+            />
+          </button>
+
+          {/* RESUMO COMPACTO: só aparece com a seção recolhida — nunca ao
+              mesmo tempo que o formulário aberto, que traz os mesmos dados
+              editáveis logo abaixo. */}
+          {!identificacaoExpandida && (
+            <div className="space-y-3 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="truncate text-sm font-bold text-zinc-800">
+                    {nomeAtual || "—"}
+                  </p>
+                  <p className="text-xs font-medium text-zinc-500">
+                    {abreviarWhatsapp(whatsappAtual ?? "")}
+                  </p>
+                  {exigeCpfDoDestinatario && (
+                    <p className="text-xs font-medium text-zinc-500">
+                      CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIdentificacaoAbertaManual(true)}
+                  className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
+                >
+                  Editar
+                </button>
+              </div>
+              <div className="border-t border-zinc-100/70 pt-3">
+                {user && enderecoEfetivo ? (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="truncate text-xs font-bold uppercase tracking-wide text-zinc-500">
+                        {enderecoEfetivo.name}
+                      </p>
+                      <p className="text-xs font-medium text-zinc-500">
+                        {resumoDoEndereco(enderecoEfetivo)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIdentificacaoAbertaManual(true)}
+                      className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
+                    >
+                      Trocar
+                    </button>
+                  </div>
+                ) : user ? (
+                  <button
+                    type="button"
+                    onClick={() => setIdentificacaoAbertaManual(true)}
+                    className="text-xs font-bold uppercase tracking-wide text-zinc-500 underline"
+                  >
+                    Cadastre um endereço de entrega
+                  </button>
+                ) : (
+                  <p className="text-xs font-medium text-zinc-500">
+                    {resumoDoEndereco({
+                      street: ruaAtual ?? "",
+                      number: numeroAtual ?? "",
+                      neighborhood: bairroAtual ?? "",
+                      city: cidadeAtual ?? "",
+                      state: estadoAtual ?? "",
+                      cep: cepDigitadoNoFormulario ?? "",
+                    })}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div
+            id="secao-dados-e-entrega"
+            aria-labelledby="cabecalho-dados-e-entrega"
+            hidden={!identificacaoExpandida}
+            className="space-y-4 p-4"
+          >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label
@@ -2743,6 +2985,69 @@ export function CheckoutView({
                 )}
               </div>
             </div>
+
+            {/* CPF DO DESTINATÁRIO (checkout compacto + CPF, 23/09/2026):
+                só aparece quando a modalidade escolhida É transportadora —
+                o Melhor Envio exige `to.document` para emitir a etiqueta
+                nacional; retirada/entrega local nunca pedem CPF. Sem HTML
+                token dedicado para CPF (não existe no padrão WHATWG de
+                `autocomplete`); `autoComplete="off"` evita o navegador
+                sugerir um valor de outro campo numérico (telefone, CEP) por
+                heurística errada — pior que não sugerir nada num campo de
+                documento. */}
+            {exigeCpfDoDestinatario && (
+              <div className="border-t border-zinc-100/50 pt-4">
+                <label
+                  htmlFor="checkout-cpf"
+                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                >
+                  CPF do Destinatário
+                </label>
+                <Controller
+                  control={form.control}
+                  name="cpf"
+                  render={({ field }) => (
+                    <input
+                      id="checkout-cpf"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(formatarCpf(e.target.value).formatado)
+                      }
+                      ref={field.ref}
+                      placeholder="000.000.000-00"
+                      maxLength={14}
+                      aria-invalid={
+                        form.formState.errors.cpf ? true : undefined
+                      }
+                      aria-describedby={
+                        form.formState.errors.cpf
+                          ? "erro-checkout-cpf"
+                          : "ajuda-checkout-cpf"
+                      }
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                    />
+                  )}
+                />
+                {form.formState.errors.cpf ? (
+                  <p
+                    id="erro-checkout-cpf"
+                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                  >
+                    {form.formState.errors.cpf.message}
+                  </p>
+                ) : (
+                  <p
+                    id="ajuda-checkout-cpf"
+                    className="ml-1 mt-1.5 text-[10px] font-medium text-zinc-400"
+                  >
+                    Exigido pela transportadora para emitir a etiqueta de envio.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Guest Address Fields */}
             {!user && (
@@ -2997,60 +3302,67 @@ export function CheckoutView({
                 </div>
               </div>
             )}
+
+            {/* Saved Addresses (Logged In Only) — mesma seção "Seus dados e
+                entrega" (23/09/2026): era um segundo cartão alto e
+                independente; agora vive dentro do MESMO corpo, atrás do
+                mesmo resumo/cabeçalho. */}
+            {user && (
+              <div className="space-y-3 border-t border-zinc-100/50 pt-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="size-4 text-zinc-400" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                      Endereço de Entrega
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingAddressId(null);
+                      setIsAddressModalOpen(true);
+                    }}
+                    className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
+                  >
+                    <Plus className="size-3" /> Novo
+                  </Button>
+                </div>
+                {addressesLoading ? (
+                  // Laudo de acessibilidade 03/09, achado 12: o carregamento
+                  // dos endereços era silêncio para leitor de tela —
+                  // role="status" + sr-only anunciam sem mudar o visual.
+                  <div
+                    role="status"
+                    className="flex min-h-[112px] flex-col items-center justify-center py-8"
+                  >
+                    <span className="sr-only">Carregando endereços</span>
+                    <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                      Sincronizando endereços...
+                    </p>
+                  </div>
+                ) : (
+                  <AddressList
+                    addresses={addresses}
+                    selectable
+                    selectedId={selectedAddressId || undefined}
+                    onSelect={(endereco) => {
+                      handleSelectAddress(endereco);
+                      // Escolheu um endereço da lista: recolhe de volta ao
+                      // resumo, já com o novo endereço — mesmo gesto de
+                      // "Trocar" da ShippingCalculator em `modoResumo`, logo
+                      // abaixo (consistência entre as duas seções que
+                      // aprenderam a resumir).
+                      setIdentificacaoAbertaManual(false);
+                    }}
+                    onEdit={handleEditAddress}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Saved Addresses (Logged In Only) */}
-        {user && (
-          <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-                  <MapPin className="size-4" />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                  Seus Endereços
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setEditingAddressId(null);
-                  setIsAddressModalOpen(true);
-                }}
-                className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
-              >
-                <Plus className="size-3" /> Novo
-              </Button>
-            </div>
-            <div className="p-4">
-              {addressesLoading ? (
-                // Laudo de acessibilidade 03/09, achado 12: o carregamento
-                // dos endereços era silêncio para leitor de tela —
-                // role="status" + sr-only anunciam sem mudar o visual.
-                <div
-                  role="status"
-                  className="flex min-h-[112px] flex-col items-center justify-center py-8"
-                >
-                  <span className="sr-only">Carregando endereços</span>
-                  <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                    Sincronizando endereços...
-                  </p>
-                </div>
-              ) : (
-                <AddressList
-                  addresses={addresses}
-                  selectable
-                  selectedId={selectedAddressId || undefined}
-                  onSelect={handleSelectAddress}
-                  onEdit={handleEditAddress}
-                />
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Frete do destino de entrega: cota sozinho pelo endereço
             escolhido (logado) ou pelo CEP completo do formulário
@@ -3082,6 +3394,11 @@ export function CheckoutView({
             onStatusChange={setStatusDoFrete}
             freteGratis={Boolean(freteGratis)}
             forcarNovaCotacaoEm={forcarNovaCotacaoEm}
+            // CHECKOUT COMPACTO (23/09/2026): só o CHECKOUT resume a opção
+            // escolhida atrás de "Trocar" — o carrinho (outro consumidor
+            // deste MESMO componente) não passa a prop e continua mostrando
+            // a lista inteira, sem nenhuma mudança de comportamento.
+            modoResumo
           />
         )}
 

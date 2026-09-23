@@ -3152,6 +3152,16 @@ export function useOrders(
           p_destination_cep: orderData.destinationCep || null,
           p_shipping_option_id: orderData.shippingOptionId || null,
           p_idempotency_key: orderData.idempotencyKey || null,
+          // CPF DO DESTINATÁRIO (23/09/2026): NÃO vai para a RPC ainda. A
+          // assinatura viva (13 args) não tem parâmetro de CPF — mandar um
+          // parâmetro novo derruba TODO pedido ("function not found"), e o
+          // único jsonb que ela já recebe (`p_address_data`) é gravado
+          // inteiro em `customer_data.address`: para o logado ele chega
+          // NULL e o mapper cai no endereço salvo; um `{cpf}` sozinho ali
+          // apagaria o endereço de entrega da ficha do pedido. A gravação
+          // entra com a migration 20261172 (rebaseada na 20261171 do frete
+          // nacional), que tira o CPF do endereço e o grava em
+          // `customer_data.cpf`. Até lá o checkout só COLETA e VALIDA.
         });
 
         if (error) throw error;
