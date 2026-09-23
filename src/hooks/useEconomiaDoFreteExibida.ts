@@ -3,6 +3,7 @@ import { modoDeEconomiaDoFrete } from "@/lib/economia-do-frete";
 import { soDigitos } from "@/lib/reconciliacao-de-cep";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, ShippingOption } from "@/types";
+type OpcaoParaEconomia = Pick<ShippingOption, "id" | "price" | "precoCheio">;
 // COTAÇÃO DE EXIBIÇÃO da economia do frete (peça 1, checkout, 12/09/2026).
 //
 // 🔴 ISTO É SÓ EXIBIÇÃO. Nada aqui escreve no pedido: nunca chama
@@ -151,6 +152,10 @@ export function useEconomiaDoFreteExibida(params: {
   freeShippingMin: number;
   cart: readonly CartItem[];
   isOffline: boolean;
+  /** T3 (23/09): a opção JÁ escolhida no ShippingCalculator — repassada
+   * direto para `modoDeEconomiaDoFrete` (linha 0: nacional com `precoCheio`
+   * responde por si mesma, sem cotar de novo). */
+  opcaoSelecionada?: OpcaoParaEconomia | null;
 }): number {
   const {
     freteGratis,
@@ -162,6 +167,7 @@ export function useEconomiaDoFreteExibida(params: {
     freeShippingMin,
     cart,
     isOffline,
+    opcaoSelecionada,
   } = params;
 
   const modo = modoDeEconomiaDoFrete({
@@ -172,6 +178,7 @@ export function useEconomiaDoFreteExibida(params: {
     localCepRange,
     localDeliveryFee,
     freeShippingMin,
+    opcaoSelecionada,
   });
 
   const cepLimpo = cepDeEntrega ? soDigitos(cepDeEntrega) : "";
@@ -248,5 +255,6 @@ export function useEconomiaDoFreteExibida(params: {
 
   if (modo.tipo === "zero") return 0;
   if (modo.tipo === "local") return modo.valor;
+  if (modo.tipo === "opcao") return modo.valor;
   return economiaCotada;
 }

@@ -58,6 +58,11 @@ const AdminShipping = lazyWithPreload(() =>
     default: m.AdminShippingView,
   })),
 );
+const AdminShippingNational = lazyWithPreload(() =>
+  import("@/views/admin/AdminShippingNationalView").then((m) => ({
+    default: m.AdminShippingNationalView,
+  })),
+);
 const AdminSettings = lazyWithPreload(() =>
   import("@/views/admin/AdminSettingsView").then((m) => ({
     default: m.AdminSettingsView,
@@ -180,6 +185,7 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   else if (view === "admin-banners") title = "Banners";
   else if (view === "admin-carousels") title = "Vitrines";
   else if (view === "admin-shipping") title = "Frete";
+  else if (view === "admin-shipping-national") title = "Frete nacional";
   else if (view === "admin-reviews") title = "Avaliações";
   else if (view === "admin-qa") title = "Suporte Q&A";
   else if (view === "admin-push") title = "Avisar clientes";
@@ -633,6 +639,19 @@ export function AdminArea({
                           props={{
                             onNavigate: onNavigate,
                             active: currentView === "admin-shipping",
+                            onSetDirty: setIsAdminDirty,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-shipping-national":
+                    return (
+                      <LocalErrorBoundary key="admin-shipping-national">
+                        <PreloadedOrLazy
+                          component={AdminShippingNational}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-shipping-national",
                             onSetDirty: setIsAdminDirty,
                           }}
                         />

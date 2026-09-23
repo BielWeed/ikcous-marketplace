@@ -1118,6 +1118,10 @@ export function CheckoutView({
     freeShippingMin: config.freeShippingMin,
     cart,
     isOffline,
+    // T3 (23/09): opção NACIONAL já escolhida responde pela própria
+    // economia (precoCheio − price) sem cotar de novo — ver linha 0 de
+    // `modoDeEconomiaDoFrete`.
+    opcaoSelecionada: selectedShippingOption,
   });
   // Retirada na loja é grátis por natureza: não existe frete "economizado"
   // para mostrar (a economia que o hook conhece é a da ENTREGA local).
@@ -3425,7 +3429,6 @@ export function CheckoutView({
                 : "Preencha o CEP de entrega acima para calcular o frete."
             }
             onStatusChange={setStatusDoFrete}
-            freteGratis={Boolean(freteGratis)}
             forcarNovaCotacaoEm={forcarNovaCotacaoEm}
             // CHECKOUT COMPACTO (23/09/2026): só o CHECKOUT resume a opção
             // escolhida atrás de "Trocar" — o carrinho (outro consumidor
@@ -3787,6 +3790,22 @@ export function CheckoutView({
                               cotação/recotação em si não muda aqui. */}
                           {semFreteSelecionado ? (
                             "a calcular"
+                          ) : shipping > 0 && economiaDoFrete > 0 ? (
+                            // T3 (23/09): opção NACIONAL com desconto da loja
+                            // mas NÃO grátis (`precoCheio > price`, e o preço
+                            // final continua positivo) — mesmo padrão visual
+                            // do card do ShippingCalculator: cheio riscado
+                            // (= shipping + economiaDoFrete, a fonte é a
+                            // PRÓPRIA opção, nunca recalculada aqui) + final.
+                            <>
+                              <span className="mr-1 text-zinc-300 line-through">
+                                R${" "}
+                                {(shipping + economiaDoFrete)
+                                  .toFixed(2)
+                                  .replace(".", ",")}
+                              </span>
+                              R$ {shipping.toFixed(2).replace(".", ",")}
+                            </>
                           ) : shipping > 0 ? (
                             `R$ ${shipping.toFixed(2).replace(".", ",")}`
                           ) : economiaDoFrete > 0 ? (

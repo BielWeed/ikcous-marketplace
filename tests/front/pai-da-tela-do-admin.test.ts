@@ -140,6 +140,15 @@ describe("paiDaTelaDoAdmin", () => {
     );
   });
 
+  it("admin-shipping-national sempre volta para admin-shipping — tela filha do botão 'Estratégias do frete nacional'", () => {
+    expect(paiDaTelaDoAdmin("admin-shipping-national", null, false)).toBe(
+      "admin-shipping",
+    );
+    expect(
+      paiDaTelaDoAdmin("admin-shipping-national", "admin-dashboard", false),
+    ).toBe("admin-shipping");
+  });
+
   it("admin-notifications com origem admin-orders volta para admin-orders (a tela anterior real)", () => {
     // Decisão do Gabriel (30/08/2026), na prévia da cliente-01: o botão que
     // dizia "Perfil" na tela de notificações do painel estava errado — o

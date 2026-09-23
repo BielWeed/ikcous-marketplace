@@ -2,12 +2,13 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import type { OrigemDaEscolhaDoFrete } from "@/lib/auto-selecao-de-frete";
+// FRETE V2/V3 (frentes B 03/09 e T3 23/09): o preço FINAL de cada opção
+// (grátis/desconto já aplicados) é a fonte única em estrategias-de-frete.ts
+// -- local calcula aqui (mesmo preset de sempre); nacional só EXIBE o que a
+// edge já mandou pronto (a opção escolhida É a fonte, contrato §3).
+import { economiaDaOpcao, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { mapProductFromDB } from "@/lib/mappers";
 import { precoVendido } from "@/lib/preco-vendido";
-// FRETE V2 (frente B, 03/09): a estratégia de frete grátis passa a ser a
-// ÚNICA que o lojista selecionou na tela de Frete — fonte única da regra em
-// presets-de-frete-gratis.ts (a tela admin escreve, o carrinho/checkout lê).
-import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, Product, ShippingOption } from "@/types";
 import React, {
@@ -50,8 +51,15 @@ export interface CartState {
    *  consumir SEM recopiar a regra (lição #53: regra de negócio escrita em
    *  dois lugares diverge; a cópia antiga no ShippingCalculator mostrava
    *  preço cheio ao convidado no limite enquanto o total saia grátis).
-   *  Mudança ADITIVA: nenhum consumidor atual quebra. */
+   *  Mudança ADITIVA: nenhum consumidor atual quebra.
+   *  FRETE V3 (T3, 23/09): passou a ser o veredito da OPÇÃO ESCOLHIDA
+   *  (`precoFinalDaOpcao` == 0), nunca mais um booleano global que a regra
+   *  local aplicava a qualquer modalidade. */
   freteGratis: boolean;
+  /** FRETE V3 (T3, 23/09): quanto a opção escolhida economizou do preço
+   *  cheio — a taxa local que deixou de ser cobrada, ou o desconto nacional
+   *  (`precoCheio − price`). Zero sem opção escolhida ou sem desconto. */
+  descontoDoFrete: number;
   selectedShippingOption: ShippingOption | null;
   /** A opção de frete marcada foi um TOQUE da cliente (`true`) ou a regra
    *  da casa — a mais barata — que escolheu sozinha (`false`)? Só a escolha
@@ -835,58 +843,66 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return cart.reduce((count, item) => count + item.quantity, 0);
   }, [cart]);
 
-  // FRETE V2 (frente B, 03/09 — dossiê frete-v2-0309): o grátis do carrinho
-  // é ditado pelo PRESET escolhido pelo lojista na tela de Frete, lido via
-  // `presetDoConfig` — modelo EXCLUSIVO de presets, a estratégia escolhida é
-  // a única que vale. Duas mortes aqui:
-  //  1. A leitura INCONDICIONAL de `product.freeShipping` (zerava o frete com
-  //     qualquer item marcado, qualquer config): a marcação agora só zera
-  //     dentro do preset "por_produto" (sentinela -1 em freeShippingMin,
-  //     decisão da orquestração 03/09 — a tela grava -1 via valorDoPreset e o
-  //     banco aceita: upsert_store_config grava numeric sem CHECK de faixa).
-  //  2. A trava `&& user`: convidado também tem direito ao grátis da loja —
-  //     a entrega dele é local de qualquer forma, e o frete local entra na
-  //     MESMA regra de grátis.
-  const freteGratis = React.useMemo(() => {
-    if (cart.length === 0) return false;
-    const preset = presetDoConfig(config.freeShippingMin);
-    if (preset === "sempre") return true;
-    if (preset === "acima_de_valor") return cartTotal >= config.freeShippingMin;
-    if (preset === "por_produto")
-      return cart.some((item) => item.product.freeShipping);
-    // "desligado": nada é grátis pela loja.
-    return false;
-  }, [cart, cartTotal, config.freeShippingMin]);
+  // O item marcado `product.freeShipping` só vale DENTRO do preset local
+  // "por_produto" (ou do equivalente nacional) — `precoFinalDaOpcao` já
+  // aplica essa regra; aqui só extraímos o fato do carrinho.
+  const temItemMarcado = React.useMemo(
+    () => cart.some((item) => item.product.freeShipping),
+    [cart],
+  );
 
+  // FRETE V3 (T3, 23/09/2026 — plano estrategias-de-frete-local-e-nacional):
+  // `shippingFee`/`freteGratis` deixam de ser um veredito GLOBAL do
+  // carrinho (a cópia antiga aplicava a regra local a QUALQUER modalidade,
+  // inclusive transportadora — o bug que esta frente corrige) e passam a
+  // ser o preço FINAL da OPÇÃO ESCOLHIDA: local recalcula aqui (mesma regra
+  // de sempre, via `precoFinalDaOpcao`); nacional só repassa o que a edge já
+  // mandou pronto (contrato §3, front nunca recalcula preço de
+  // transportadora). Sem opção escolhida, não há preço na mesa — mesmo
+  // espírito de "frete indefinido" que já existia (FRETE CHUTADO, laudo
+  // caça-bugs 30/08).
   const shippingFee = React.useMemo(() => {
     if (cart.length === 0) return 0;
+    if (!selectedShippingOption) return config.shippingFee;
+    return precoFinalDaOpcao(selectedShippingOption, {
+      config,
+      subtotal: cartTotal,
+      temItemMarcado,
+    });
+  }, [cart.length, selectedShippingOption, config, cartTotal, temItemMarcado]);
 
-    if (freteGratis) return 0;
+  // O VEREDITO ÚNICO "este carrinho sai grátis?" agora É o preço final da
+  // opção escolhida ser zero — nunca mais um booleano solto que ignora QUAL
+  // modalidade está na mesa (lição #53: a cópia antiga fazia o
+  // ShippingCalculator carimbar GRÁTIS em toda cotação de transportadora
+  // sempre que a regra LOCAL batia, mesmo a cliente estando fora da
+  // cidade). Sem opção escolhida, ainda não há veredito — `false` (nunca
+  // "grátis" antes de existir uma escolha).
+  const freteGratis = React.useMemo(() => {
+    if (cart.length === 0) return false;
+    return shippingFee === 0 && !!selectedShippingOption;
+  }, [cart.length, shippingFee, selectedShippingOption]);
 
-    if (selectedShippingOption) {
-      return selectedShippingOption.price;
-    }
+  // Quanto a opção escolhida ECONOMIZOU do preço cheio — grátis local (o
+  // que a taxa cobraria) ou desconto nacional (`precoCheio − price`). Zero
+  // sem escolha ou sem desconto algum.
+  const descontoDoFrete = React.useMemo(() => {
+    if (!selectedShippingOption) return 0;
+    return economiaDaOpcao(selectedShippingOption, {
+      config,
+      subtotal: cartTotal,
+      temItemMarcado,
+    });
+  }, [selectedShippingOption, config, cartTotal, temItemMarcado]);
 
-    return config.shippingFee;
-  }, [cart.length, freteGratis, selectedShippingOption, config.shippingFee]);
-
-  // FRETE CHUTADO (laudo caça-bugs 30/08, achado 7): com provedor de cotação
-  // real e nenhuma cotação escolhida, o número em `shippingFee` é o fallback
-  // de fábrica — não é preço. A tela usa esta bandeira para dizer "a
-  // calcular" em vez de apresentar um total que vai mudar depois.
-  //
-  // FRETE V2 (frente B, 03/09): com o fim do flat_fee (a edge calculate-
-  // shipping deixa de cotar taxa fixa), SEM cotação escolhida e SEM grátis
-  // não existe preço na mesa — o fallback `config.shippingFee` deixou de ser
-  // cobrável também, então o estado é "a calcular" sempre. A guarda de
-  // `originCep` continua viva no CheckoutView (ela decide a MENSAGEM do
-  // bloqueio: "loja ainda configurando" vs "volte ao carrinho e calcule").
+  // FRETE INDEFINIDO: sem opção escolhida, não existe preço — a guarda de
+  // Finalizar (`finalizarBloqueadoPorFrete`) já exige a escolha antes de
+  // fechar o pedido, então "indefinido" é exatamente "não escolheu ainda"
+  // (nunca mais uma leitura à parte da regra de grátis).
   const freteIndefinido = React.useMemo(() => {
     if (cart.length === 0) return false;
-    if (freteGratis) return false;
-    if (selectedShippingOption) return false;
-    return true;
-  }, [cart.length, freteGratis, selectedShippingOption]);
+    return !selectedShippingOption;
+  }, [cart.length, selectedShippingOption]);
 
   const cartTotalRef = useRef(cartTotal);
   const cartCountRef = useRef(cartCount);
@@ -907,6 +923,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartCount,
       shippingFee,
       freteGratis,
+      descontoDoFrete,
       freteIndefinido,
       selectedShippingOption,
       freteEscolhidoPelaCliente,
@@ -920,6 +937,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartCount,
       shippingFee,
       freteGratis,
+      descontoDoFrete,
       freteIndefinido,
       selectedShippingOption,
       freteEscolhidoPelaCliente,

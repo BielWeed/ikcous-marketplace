@@ -22,6 +22,7 @@ import {
     tokenDe,
     VERSAO_DA_COTACAO_SUPERFRETE,
 } from './provedores.ts'
+import { type EstrategiaNacional, estrategiaNacionalDaLinha } from './estrategia-nacional.ts'
 
 /** As linhas especiais de `store_shipping_credentials` que NÃO são provedor. */
 export const LINHA_DOS_LIGADOS = '_ligados'
@@ -30,6 +31,38 @@ export const LINHA_DA_REVISAO = '_revisao'
 /** O que a cotação e a revisão leem de `store_config` (a mesma lista nos dois). */
 export const COLUNAS_DA_LOJA =
     'origin_cep, shipping_provider, shipping_fee, free_shipping_min, enabled_shipping_methods, shipping_coverage, local_delivery_fee, local_cep_range'
+
+/**
+ * As 5 colunas da estratégia NACIONAL (migration `20261171000000`) — lidas
+ * numa consulta SEPARADA e tolerante (molde `lerEnderecoDaLoja`, index.ts),
+ * NUNCA somadas a `COLUNAS_DA_LOJA`: em banco sem elas, o select principal
+ * (que a cotação inteira depende) continuaria funcionando; misturado ali,
+ * quebraria.
+ */
+export const COLUNAS_NACIONAIS =
+    'national_shipping_strategy, national_shipping_min, national_discount_type, national_discount_value, national_benefit_scope'
+
+/**
+ * Leitura tolerante das 5 colunas nacionais: `{ok:true, estrategia}` quando a
+ * linha bate com o formato esperado; `{ok:false}` em erro do PostgREST
+ * (banco sem as colunas — `42703`), exceção, ou linha com forma inesperada.
+ * Quem chama cai no espelho legado de `free_shipping_min` (comportamento de
+ * hoje) quando a leitura falha.
+ */
+export async function lerEstrategiaNacionalDaLoja(supabase: any): Promise<{ ok: true; estrategia: EstrategiaNacional } | { ok: false }> {
+    try {
+        const { data, error } = await supabase
+            .from('store_config')
+            .select(COLUNAS_NACIONAIS)
+            .eq('id', 1)
+            .maybeSingle()
+        if (error || !data) return { ok: false }
+        const estrategia = estrategiaNacionalDaLinha(data)
+        return estrategia ? { ok: true, estrategia } : { ok: false }
+    } catch {
+        return { ok: false }
+    }
+}
 
 /**
  * As chaves de `enabled_shipping_methods` que falam de TRANSPORTADORA (a da
@@ -117,8 +150,18 @@ export function conjuntoLigado(config: any, linhas: Map<string, any>): ConjuntoL
  * - a linha `_ligados` (updated_at e a lista) e o uuid de `_revisao`.
  * O token NUNCA entra — trocar a chave muda o `updated_at`, e é isso que muda
  * a revisão.
+ *
+ * `estrategiaNacional` (23/09/2026, T2): as 5 colunas nacionais entram no
+ * hash SÓ quando a leitura tolerante teve sucesso (`estrategiaNacional`
+ * não-nulo) — banco antigo (sem as colunas, `null` aqui) mantém EXATAMENTE o
+ * hash de hoje, byte a byte.
  */
-export async function calcularRevisaoConfig(config: any, linhas: Map<string, any>, revisao: string | null): Promise<string> {
+export async function calcularRevisaoConfig(
+    config: any,
+    linhas: Map<string, any>,
+    revisao: string | null,
+    estrategiaNacional: EstrategiaNacional | null = null,
+): Promise<string> {
     const { ligados } = conjuntoLigado(config, linhas)
     const linhaDosLigados = linhas.get(LINHA_DOS_LIGADOS)
     const chaves = chavesDeTransportadora(metodosDaLoja(config)).map((c) => String(c)).sort()
@@ -132,6 +175,15 @@ export async function calcularRevisaoConfig(config: any, linhas: Map<string, any
             free_shipping_min: config?.free_shipping_min ?? null,
             shipping_fee: config?.shipping_fee ?? null,
             shipping_coverage: config?.shipping_coverage ?? null,
+            ...(estrategiaNacional
+                ? {
+                    national_shipping_strategy: estrategiaNacional.estrategia,
+                    national_shipping_min: estrategiaNacional.minimo,
+                    national_discount_type: estrategiaNacional.tipoDesconto,
+                    national_discount_value: estrategiaNacional.valorDesconto,
+                    national_benefit_scope: estrategiaNacional.alcance,
+                }
+                : {}),
         },
         provedores: ligados.map((p) => {
             const linha = linhas.get(p)
@@ -236,7 +288,13 @@ export function cotacaoDoCacheServe(options: unknown, assinatura: string): boole
     })
 }
 
-/** Lê store_config + credenciais + `_revisao` e calcula a revisão (ação pública e testes). */
+/**
+ * Lê store_config + credenciais + `_revisao` e calcula a revisão (ação
+ * pública e testes). Também lê a estratégia nacional (tolerante — banco sem
+ * as colunas não muda o hash) para que o `revisao_config_frete` público (que
+ * invalida o cache do celular) reaja a uma mudança de estratégia nacional
+ * como reage a qualquer outra mudança de configuração.
+ */
 export async function revisaoConfigDaLoja(supabase: any): Promise<string | null> {
     const revisao = await lerRevisao(supabase)
     if (!revisao.ok) return null
@@ -244,5 +302,6 @@ export async function revisaoConfigDaLoja(supabase: any): Promise<string | null>
     if (error || !config) return null
     const credenciais = await lerCredenciais(supabase)
     if (!credenciais.ok) return null
-    return await calcularRevisaoConfig(config, credenciais.linhas, revisao.revisao)
+    const leituraNacional = await lerEstrategiaNacionalDaLoja(supabase)
+    return await calcularRevisaoConfig(config, credenciais.linhas, revisao.revisao, leituraNacional.ok ? leituraNacional.estrategia : null)
 }

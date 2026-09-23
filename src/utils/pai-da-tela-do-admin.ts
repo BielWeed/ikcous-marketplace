@@ -92,6 +92,11 @@ export function paiDaTelaDoAdmin(
     case "admin-coupons":
     case "admin-shipping":
       return "admin-products";
+    // Sub-view de "Fora da cidade" (botão "Estratégias do frete nacional
+    // →" em FreteNacionalBloco, dentro de admin-shipping) — o Voltar
+    // volta para a tela de Frete, nunca para admin-products (nova-tela.md:45).
+    case "admin-shipping-national":
+      return "admin-shipping";
     case "admin-user-detail":
       return "admin-customers";
     case "admin-push":

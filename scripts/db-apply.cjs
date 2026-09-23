@@ -1861,14 +1861,115 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O frete nacional ganha estratégia própria (T1/banco, estratégias de
+  // frete local e nacional, 23/09/2026): 5 colunas novas em store_config
+  // (contrato do plano), a regra LOCAL (sentinelas de free_shipping_min)
+  // some do topo do bloco 4 e passa a valer só dentro de local-delivery, e
+  // o ramo de transportadora ganha o portão de CEP nacional + o carimbo
+  // estrategiaNacional conferido contra as 5 colunas atuais (ou, na
+  // ausência do carimbo, contra o espelho legado). Cada marcador é
+  // CONTÍGUO e mede CÓDIGO, nunca prosa solta — todos 0 ocorrência no corpo
+  // anterior (20261170000000 / 20261167000000), medido contra o .sql desta
+  // própria migration:
+  //   1. as três variáveis novas do DECLARE (v_estrategia_nacional +
+  //      v_espelho_strategy contíguas, v_subtotal_cotacao à parte — a
+  //      terceira nasceu na EMENDA pós-revisão T1, 23/09, separada da dupla
+  //      original por uma linha de comentário no meio).
+  //   2. o cálculo do espelho legado (v_espelho_strategy), bloco CASE
+  //      inteiro — sem ele a checagem do carimbo ausente não tem com que
+  //      comparar.
+  //   3. o portão de CEP nacional (conhecido e não local) + a mensagem.
+  //   4. a checagem de CEP salvo × CEP do payload para endereço de conta.
+  //   5. o atalho free-shipping-promo, sem cache.
+  //   6. o SELECT do cache passa a trazer o carimbo estrategiaNacional E o
+  //      subtotalCotacao (EMENDA) na MESMA linha do preço e da revisão de
+  //      credenciais.
+  //   7. a comparação completa do espelho legado (carimbo VERDADEIRAMENTE
+  //      ausente — SQL NULL, chave nunca escrita).
+  //   8. EMENDA (revisão T1): o ELSIF que separa carimbo presente-mas-não-
+  //      objeto (json null, array, string) do carimbo ausente — sem isto um
+  //      `estrategiaNacional: null` explícito caía no ramo do espelho.
+  //   9. EMENDA (revisão T1): a comparação das 5 colunas envolta em
+  //      COALESCE(...,false) — sem isto um carimbo incompleto (`{}` ou
+  //      campo faltando) fazia `IF NOT (...)` virar `IF NULL` e nunca
+  //      disparar o RAISE (bug fail-open apanhado na revisão).
+  //   10. EMENDA (revisão T1): a checagem de subtotal velho — mesmo com as
+  //       5 colunas batendo, acima_de_valor/desconto_na_mais_barata com
+  //       mínimo > 0 exige subtotalCotacao do MESMO lado do mínimo que o
+  //       subtotal atual.
+  //   11. FRETE_COTACAO_DESATUALIZADA: 1 ocorrência pré-existente (checagem
+  //       _revisao da 20261170000000, que PERMANECE) + 4 novas (ausente sem
+  //       espelho, carimbo não-objeto, carimbo objeto divergente/incompleto,
+  //       subtotal velho) = 5.
+  //   12. a sentinela local-delivery MOVIDA para dentro do is_local_cep —
+  //       prova que ela deixou de decidir para QUALQUER id (o defeito que
+  //       esta migration fecha) e passou a decidir só dentro do ramo local.
+  // upsert_store_config: as 5 colunas no INSERT (lista + VALUES com os
+  // defaults do contrato) e o bloco inteiro dos 5 CASE do ON CONFLICT —
+  // contíguo, prova que salvar frete local não apaga o nacional e
+  // vice-versa (mesmo aceite das colunas de endereço/descrição).
+  "20261171000000_o_frete_nacional_ganha_estrategia_propria.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        "v_estrategia_nacional jsonb;\n    v_espelho_strategy text;",
+        "v_subtotal_cotacao numeric;",
+        "v_espelho_strategy := CASE\n        WHEN v_free_shipping_min = 0.01 THEN 'sempre'\n        WHEN v_free_shipping_min < 0 THEN 'por_produto'\n        WHEN v_free_shipping_min > 0 THEN 'acima_de_valor'\n        ELSE 'desligado'\n    END;",
+        {
+          texto:
+            "IF v_dest_cep = '' OR COALESCE(public.is_local_cep(v_store_config.origin_cep, v_dest_cep, v_store_config.local_cep_range), false) THEN\n            RAISE EXCEPTION 'Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.'",
+          vezes: 1,
+        },
+        "AND EXISTS (\n               SELECT 1 FROM public.user_addresses\n                WHERE id = p_address_id AND user_id = v_user_id\n                  AND regexp_replace(cep, '\\D', '', 'g') <> regexp_replace(p_address_data->>'cep', '\\D', '', 'g')\n           )",
+        "IF p_shipping_option_id = 'free-shipping-promo' THEN\n            IF v_store_config.national_shipping_strategy = 'por_produto' AND v_has_free_shipping_item = true THEN\n                v_shipping_validated := 0;",
+        "SELECT (opt->>'price')::numeric, opt->>'revisaoCredenciais', opt->'estrategiaNacional', (opt->>'subtotalCotacao')::numeric\n              INTO v_shipping_validated, v_revisao_credenciais, v_estrategia_nacional, v_subtotal_cotacao",
+        "IF NOT (\n                    v_store_config.national_shipping_strategy = v_espelho_strategy\n                    AND (v_store_config.national_shipping_strategy <> 'acima_de_valor' OR v_store_config.national_shipping_min = v_free_shipping_min)\n                    AND (v_store_config.national_shipping_strategy = 'desligado' OR v_store_config.national_benefit_scope = 'todas')\n                    AND v_store_config.national_discount_type IS NULL\n                ) THEN",
+        "ELSIF jsonb_typeof(v_estrategia_nacional) <> 'object' THEN",
+        "IF NOT COALESCE(\n                    (v_estrategia_nacional->>'estrategia') = v_store_config.national_shipping_strategy\n                    AND (v_estrategia_nacional->>'minimo')::numeric = v_store_config.national_shipping_min\n                    AND (v_estrategia_nacional->>'tipoDesconto') IS NOT DISTINCT FROM v_store_config.national_discount_type\n                    AND (v_estrategia_nacional->>'valorDesconto')::numeric = v_store_config.national_discount_value\n                    AND (v_estrategia_nacional->>'alcance') = v_store_config.national_benefit_scope,\n                    false\n                ) THEN",
+        "IF v_store_config.national_shipping_strategy IN ('acima_de_valor', 'desconto_na_mais_barata')\n                   AND v_store_config.national_shipping_min > 0\n                   AND (\n                       v_subtotal_cotacao IS NULL\n                       OR (v_calculated_subtotal >= v_store_config.national_shipping_min)\n                          IS DISTINCT FROM (v_subtotal_cotacao >= v_store_config.national_shipping_min)\n                   )\n                THEN",
+        { texto: "FRETE_COTACAO_DESATUALIZADA", vezes: 5 },
+        "IF public.is_local_cep(v_store_config.origin_cep, v_dest_cep, v_store_config.local_cep_range) THEN\n            IF (v_free_shipping_min < 0 AND v_has_free_shipping_item = true)\n               OR v_free_shipping_min = 0.01\n               OR (v_free_shipping_min > 0 AND v_calculated_subtotal >= v_free_shipping_min)\n            THEN\n                v_shipping_validated := 0;\n            ELSE\n                v_shipping_validated := COALESCE(v_store_config.local_delivery_fee, 0);\n            END IF;",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "v_estrategia_nacional jsonb;\n    v_espelho_strategy text;",
+        "v_subtotal_cotacao numeric;",
+        "v_espelho_strategy := CASE\n        WHEN v_free_shipping_min = 0.01 THEN 'sempre'\n        WHEN v_free_shipping_min < 0 THEN 'por_produto'\n        WHEN v_free_shipping_min > 0 THEN 'acima_de_valor'\n        ELSE 'desligado'\n    END;",
+        {
+          texto:
+            "IF v_dest_cep = '' OR COALESCE(public.is_local_cep(v_store_config.origin_cep, v_dest_cep, v_store_config.local_cep_range), false) THEN\n            RAISE EXCEPTION 'Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.'",
+          vezes: 1,
+        },
+        "AND EXISTS (\n               SELECT 1 FROM public.user_addresses\n                WHERE id = p_address_id AND user_id = v_user_id\n                  AND regexp_replace(cep, '\\D', '', 'g') <> regexp_replace(p_address_data->>'cep', '\\D', '', 'g')\n           )",
+        "IF p_shipping_option_id = 'free-shipping-promo' THEN\n            IF v_store_config.national_shipping_strategy = 'por_produto' AND v_has_free_shipping_item = true THEN\n                v_shipping_validated := 0;",
+        "SELECT (opt->>'price')::numeric, opt->>'revisaoCredenciais', opt->'estrategiaNacional', (opt->>'subtotalCotacao')::numeric\n              INTO v_shipping_validated, v_revisao_credenciais, v_estrategia_nacional, v_subtotal_cotacao",
+        "IF NOT (\n                    v_store_config.national_shipping_strategy = v_espelho_strategy\n                    AND (v_store_config.national_shipping_strategy <> 'acima_de_valor' OR v_store_config.national_shipping_min = v_free_shipping_min)\n                    AND (v_store_config.national_shipping_strategy = 'desligado' OR v_store_config.national_benefit_scope = 'todas')\n                    AND v_store_config.national_discount_type IS NULL\n                ) THEN",
+        "ELSIF jsonb_typeof(v_estrategia_nacional) <> 'object' THEN",
+        "IF NOT COALESCE(\n                    (v_estrategia_nacional->>'estrategia') = v_store_config.national_shipping_strategy\n                    AND (v_estrategia_nacional->>'minimo')::numeric = v_store_config.national_shipping_min\n                    AND (v_estrategia_nacional->>'tipoDesconto') IS NOT DISTINCT FROM v_store_config.national_discount_type\n                    AND (v_estrategia_nacional->>'valorDesconto')::numeric = v_store_config.national_discount_value\n                    AND (v_estrategia_nacional->>'alcance') = v_store_config.national_benefit_scope,\n                    false\n                ) THEN",
+        "IF v_store_config.national_shipping_strategy IN ('acima_de_valor', 'desconto_na_mais_barata')\n                   AND v_store_config.national_shipping_min > 0\n                   AND (\n                       v_subtotal_cotacao IS NULL\n                       OR (v_calculated_subtotal >= v_store_config.national_shipping_min)\n                          IS DISTINCT FROM (v_subtotal_cotacao >= v_store_config.national_shipping_min)\n                   )\n                THEN",
+        { texto: "FRETE_COTACAO_DESATUALIZADA", vezes: 5 },
+        "IF public.is_local_cep(v_store_config.origin_cep, v_dest_cep, v_store_config.local_cep_range) THEN\n            IF (v_free_shipping_min < 0 AND v_has_free_shipping_item = true)\n               OR v_free_shipping_min = 0.01\n               OR (v_free_shipping_min > 0 AND v_calculated_subtotal >= v_free_shipping_min)\n            THEN\n                v_shipping_validated := 0;\n            ELSE\n                v_shipping_validated := COALESCE(v_store_config.local_delivery_fee, 0);\n            END IF;",
+      ],
+    },
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        "national_shipping_strategy, national_shipping_min,\n    national_discount_type, national_discount_value, national_benefit_scope",
+        "COALESCE(config_json->>'national_shipping_strategy', 'desligado'),\n    COALESCE((config_json->>'national_shipping_min')::numeric, 0),\n    config_json->>'national_discount_type',\n    COALESCE((config_json->>'national_discount_value')::numeric, 0),\n    COALESCE(config_json->>'national_benefit_scope', 'mais_barata')",
+        "national_shipping_strategy = CASE WHEN config_json ? 'national_shipping_strategy'\n      THEN config_json->>'national_shipping_strategy'\n      ELSE store_config.national_shipping_strategy END,\n    national_shipping_min = CASE WHEN config_json ? 'national_shipping_min'\n      THEN (config_json->>'national_shipping_min')::numeric\n      ELSE store_config.national_shipping_min END,\n    national_discount_type = CASE WHEN config_json ? 'national_discount_type'\n      THEN config_json->>'national_discount_type'\n      ELSE store_config.national_discount_type END,\n    national_discount_value = CASE WHEN config_json ? 'national_discount_value'\n      THEN (config_json->>'national_discount_value')::numeric\n      ELSE store_config.national_discount_value END,\n    national_benefit_scope = CASE WHEN config_json ? 'national_benefit_scope'\n      THEN config_json->>'national_benefit_scope'\n      ELSE store_config.national_benefit_scope END,",
+      ],
+    },
+  ],
   // O CPF do destinatário mora no pedido (checkout compacto + CPF,
   // 23/09/2026, REBASEADA sobre a 20261171000000 -- ver o cabeçalho da
   // migration). Ao contrário do rascunho anterior (que acrescentava
   // `p_customer_cpf` à assinatura), esta versão não muda ASSINATURA
   // nenhuma -- o CPF viaja dentro do jsonb `p_address_data` já existente,
   // então tanto v23 quanto v24 ganham CORPO novo (não só a v24) e os dois
-  // entram aqui. A 20261171000000 (migration-base) não tem entrada neste
-  // mapa nesta branch -- não inventada aqui (fora do escopo desta tarefa).
+  // entram aqui. A 20261171000000 (migration-base, logo acima) tem a
+  // entrada própria dela, mantida intacta.
   "20261172000000_o_cpf_do_destinatario_mora_no_pedido.sql": [
     {
       funcao: "create_marketplace_order_v23",

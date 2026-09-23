@@ -8,8 +8,10 @@ import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
 } from "@/lib/endereco-de-entrega";
+import type { PromessaDeCanal } from "@/lib/estrategias-de-frete";
+import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import { precoVendido } from "@/lib/preco-vendido";
-import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem, Order, Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -32,6 +34,7 @@ import { EmptyCart } from "@/components/ui/custom/EmptyCart";
 import { OrderList } from "@/components/ui/custom/OrderList";
 import { OrderSearch } from "@/components/ui/custom/OrderSearch";
 import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
+import type { EstadoDaBarraDeFrete } from "@/components/ui/custom/ShippingProgress";
 import { ShippingProgress } from "@/components/ui/custom/ShippingProgress";
 import {
   Sheet,
@@ -96,11 +99,17 @@ export const mesclarListaAposRecarga = <T,>(
  * passando progressPercent=0 e amountToFree=0 — e o componente, que não
  * distingue "zero porque falta tudo" de "zero porque não existe meta",
  * imprimia "META FRETE GRÁTIS ... Faltam R$ 0,00". Só existe meta de VALOR
- * no preset "acima_de_valor" (fonte única em presets-de-frete-gratis.ts);
- * "desligado" e "por_produto" sem marcação não têm limiar nenhum para
- * anunciar. Quando o frete já está garantido (`freteGratis` — inclui os
- * presets "sempre" e "por_produto" com item marcado) o bloco também deve
- * aparecer, só que para comemorar "Liberado", não para uma meta.
+ * na estratégia "acima_de_valor"; "desligado" e "por_produto" sem marcação
+ * não têm limiar nenhum para anunciar. Quando o frete já está garantido
+ * (`freteGratis` — inclui "sempre" e "por_produto" com item marcado) o
+ * bloco também deve aparecer, só que para comemorar "Liberado", não para
+ * uma meta.
+ *
+ * FRETE V3 (T3, 23/09/2026): o segundo parâmetro deixou de ser
+ * `freeShippingMin` (só o canal local) — vira `temMetaPorValor`, já
+ * decidido pelo chamador para o canal da MODALIDADE ESCOLHIDA (local ou
+ * nacional, via `promessasDeFrete`): a meta que faz sentido mostrar depende
+ * de qual delas está na mesa, nunca mais só da local.
  *
  * Função pura exportada pelo mesmo motivo de `mesclarListaAposRecarga`
  * acima: montar a `CartView` inteira no teste arrasta o mundo (useOrders,
@@ -108,9 +117,87 @@ export const mesclarListaAposRecarga = <T,>(
  */
 export function deveExibirMetaDeFreteGratis(
   freteGratis: boolean,
-  freeShippingMin: number,
+  temMetaPorValor: boolean,
 ): boolean {
-  return freteGratis || presetDoConfig(freeShippingMin) === "acima_de_valor";
+  return freteGratis || temMetaPorValor;
+}
+
+/**
+ * O ESTADO da barra de progresso (`ShippingProgress`) — os dois defeitos que
+ * esta função fecha (T3-2, 23/09/2026, revisão pós-T3):
+ *
+ * CASO A (retirada): `store-pickup` chega SEMPRE com preço 0 da edge — o
+ * preço zero dela é a NATUREZA da retirada, não a meta de valor tendo sido
+ * batida (ver `precoFinalDaOpcao`, estrategias-de-frete.ts: a regra local
+ * aplicada num preço já 0 continua 0, com QUALQUER preset). Com retirada
+ * escolhida e a meta de valor do canal LOCAL ainda não alcançada, o estado
+ * certo é "meta" (progresso real) — nunca "liberado". Se a meta de valor JÁ
+ * foi alcançada, "liberado" continua valendo: a promessa é real, a
+ * retirada só a antecipa.
+ *
+ * CORREÇÃO (revisão Opus, 23/09/2026): retirada + "sempre"/"por_produto"
+ * marcado (canal SEM meta de valor) NÃO chega a esta função na tela — o
+ * PRÓPRIO CARTÃO fica ESCONDIDO nesse caso, não "liberado". O portão de
+ * exibição (`deveExibirMetaDeFreteGratis`, chamado pelo `CartView` antes de
+ * montar `ShippingProgress`) recebe `freteGratis && !ehRetirada` (falso,
+ * porque é retirada) e `temMetaPorValor` (falso, porque "sempre"/
+ * "por_produto" não são "acima_de_valor") — os dois falsos escondem o
+ * cartão. Se esta função FOR chamada com esses parâmetros (ela aceita
+ * qualquer `estrategiaDoCanal`, sem essa guarda), devolve "liberado" — a
+ * promessa daquele preset é real —, mas isso é comportamento de função
+ * pura sem chamador hoje, não o que a tela mostra.
+ *
+ * CASO B (nacional "mais_barata"): a meta de valor pode estar batida
+ * (`subtotal >= minimoDoCanal`) sem que a OPÇÃO ESCOLHIDA seja a
+ * beneficiada — o alcance "mais_barata" só zera a mais barata; as demais
+ * mantêm o preço cheio (contrato §3: front nunca recalcula, só lê o preço
+ * final que a edge já mandou). Meta batida + opção escolhida cobrando
+ * (`precoDaOpcaoEscolhida > 0`) NUNCA pode virar "liberado" nem "meta" (que
+ * mostraria "Faltam R$ 0,00", mentira): "gratis_so_na_mais_barata" avisa que
+ * o grátis é só na mais barata; "meta_atingida_sem_gratis" cobre o alcance
+ * "todas" residual (cotação nacional desatualizada — caso raro, texto
+ * neutro sem prometer o grátis para a opção escolhida).
+ *
+ * Função pura pelo mesmo motivo de `deveExibirMetaDeFreteGratis` logo
+ * acima: decisão de dinheiro se prova em unit test que discrimina, não
+ * colada na árvore de JSX.
+ */
+export function estadoDaBarraDeFrete(args: {
+  /** Veredito único do CartContext: preço final da opção escolhida é 0. */
+  freteGratis: boolean;
+  /** `ehRetiradaNaLoja(selectedShippingOption?.id)`. */
+  ehRetirada: boolean;
+  estrategiaDoCanal: PromessaDeCanal["estrategia"];
+  /** Só significa algo quando `estrategiaDoCanal === "acima_de_valor"`. */
+  minimoDoCanal: number;
+  nationalBenefitScope: "mais_barata" | "todas";
+  subtotal: number;
+  /** Preço final da opção escolhida (`null` = sem opção/indefinido). */
+  precoDaOpcaoEscolhida: number | null;
+}): EstadoDaBarraDeFrete {
+  const temMetaPorValor = args.estrategiaDoCanal === "acima_de_valor";
+  const metaBatida = temMetaPorValor && args.subtotal >= args.minimoDoCanal;
+
+  // CASO A: retirada com meta de valor em jogo e ainda não batida — o preço
+  // 0 da retirada não conta.
+  if (args.ehRetirada && temMetaPorValor && !metaBatida) {
+    return "meta";
+  }
+
+  const opcaoCobra =
+    args.precoDaOpcaoEscolhida != null && args.precoDaOpcaoEscolhida > 0;
+
+  // CASO B: meta batida, mas a opção escolhida ainda cobra — o alcance
+  // decide a frase, nunca "liberado" nem "Faltam R$ 0,00".
+  if (metaBatida && opcaoCobra) {
+    return args.nationalBenefitScope === "mais_barata"
+      ? "gratis_so_na_mais_barata"
+      : "meta_atingida_sem_gratis";
+  }
+
+  if (args.freteGratis) return "liberado";
+
+  return "meta";
 }
 
 export function CartView({
@@ -380,6 +467,18 @@ export function CartView({
     [cart],
   );
 
+  // T3 (23/09): a promessa que vale para a barra de progresso é a do CANAL
+  // da modalidade ESCOLHIDA (local ou nacional) — nunca mais só a local.
+  // Sem escolha, o resultado não é exibido (a `ShippingProgress` só monta
+  // com `!freteIndefinido`, mais abaixo), então o default "nacional" aqui é
+  // inofensivo.
+  const promessaDoCanalEscolhido = useMemo(() => {
+    const promessas = promessasDeFrete(config);
+    return ehModalidadeDaLoja(selectedShippingOption?.id)
+      ? promessas.local
+      : promessas.nacional;
+  }, [config, selectedShippingOption?.id]);
+
   const {
     progressPercent,
     amountToFree,
@@ -416,7 +515,30 @@ export function CartView({
     // que de fato deixaria de ser cobrado é a cotação/entrega local — e, com
     // o grátis ativo, não há cotação em mãos para citar número nenhum. Sem
     // número honesto, sem número: o selo diz "Frete grátis aplicado".
-    if (freteGratis) {
+    //
+    // Barra de progresso segue o limiar da MODALIDADE ESCOLHIDA (T3, 23/09
+    // — antes só existia a regra local; agora local e nacional têm
+    // estratégias independentes, e o limiar certo é o do canal que está de
+    // fato na mesa). SEM trava de login (mesmo padrão do CartReminder na
+    // frente B). "desligado" e "por_produto" não têm barra de valor — quem
+    // comunica o grátis por produto é a marcação no produto.
+    const isRuleActive =
+      promessaDoCanalEscolhido.estrategia === "acima_de_valor";
+    const meta = promessaDoCanalEscolhido.minimo;
+
+    // CASO A (revisão Opus, pós-T3, 23/09): `store-pickup` chega SEMPRE com
+    // preço 0 da edge — isso não é a meta de VALOR batida (a retirada é
+    // grátis por natureza, com QUALQUER preset). Sem esta guarda, o atalho
+    // `freteGratis` abaixo mostrava 100%/"Faltam R$ 0,00" para uma loja cuja
+    // meta local a cliente ainda não alcançou. Só pula o atalho quando a
+    // retirada está em jogo E existe meta de valor E ela AINDA não foi
+    // batida — meta já batida (ou canal sem meta de valor, "sempre"/
+    // "por_produto") continua no atalho: a promessa ali é real.
+    const ehRetiradaEscolhida = ehRetiradaNaLoja(selectedShippingOption?.id);
+    const retiradaComMetaNaoBatida =
+      ehRetiradaEscolhida && isRuleActive && subtotal < meta;
+
+    if (freteGratis && !retiradaComMetaNaoBatida) {
       return {
         progressPercent: 100,
         amountToFree: 0,
@@ -427,18 +549,8 @@ export function CartView({
       };
     }
 
-    // Barra de progresso segue o limiar do preset de valor, SEM trava de
-    // login (mesmo padrão do CartReminder na frente B). "desligado" (0) e
-    // "por_produto" (sentinela -1) não têm barra de valor — quem comunica o
-    // grátis é a marcação no produto dentro do próprio preset.
-    const isRuleActive =
-      presetDoConfig(config.freeShippingMin) === "acima_de_valor";
-    const progress = isRuleActive
-      ? Math.min((subtotal / config.freeShippingMin) * 100, 100)
-      : 0;
-    const diff = isRuleActive
-      ? Math.max(0, config.freeShippingMin - subtotal)
-      : 0;
+    const progress = isRuleActive ? Math.min((subtotal / meta) * 100, 100) : 0;
+    const diff = isRuleActive ? Math.max(0, meta - subtotal) : 0;
     // FRETE INDEFINIDO (laudo caça-bugs 30/08, achado 7): com provedor de
     // cotação real e nenhuma cotação escolhida, `ctxShippingFee` é o chute de
     // fábrica — exibir `null` ("A calcular") e NÃO somar frete ao total.
@@ -459,11 +571,12 @@ export function CartView({
     };
   }, [
     subtotal,
-    config.freeShippingMin,
+    promessaDoCanalEscolhido,
     freteGratis,
     cart.length,
     ctxShippingFee,
     freteIndefinido,
+    selectedShippingOption?.id,
   ]);
 
   const freeShippingProducts = useMemo(() => {
@@ -776,11 +889,32 @@ export function CartView({
                       cart.length > 0 &&
                       !freteIndefinido &&
                       deveExibirMetaDeFreteGratis(
-                        freteGratis,
-                        config.freeShippingMin,
+                        // MENOR (revisão Opus, pós-T3): retirada na loja
+                        // (`store-pickup`) SEMPRE chega a R$ 0 da edge — o
+                        // preço zero dela não é a promessa da loja tendo
+                        // batido. Sem esta guarda, uma loja com o grátis
+                        // DESLIGADO ainda comemorava "Frete Grátis Liberado"
+                        // assim que a cliente escolhia retirar. A barra de
+                        // meta por valor (`temMetaPorValor`, abaixo) continua
+                        // igual — ela não depende de retirada.
+                        freteGratis &&
+                          !ehRetiradaNaLoja(selectedShippingOption?.id),
+                        promessaDoCanalEscolhido.estrategia ===
+                          "acima_de_valor",
                       ) && (
                         <ShippingProgress
-                          shipping={shipping ?? 0}
+                          estado={estadoDaBarraDeFrete({
+                            freteGratis,
+                            ehRetirada: ehRetiradaNaLoja(
+                              selectedShippingOption?.id,
+                            ),
+                            estrategiaDoCanal:
+                              promessaDoCanalEscolhido.estrategia,
+                            minimoDoCanal: promessaDoCanalEscolhido.minimo,
+                            nationalBenefitScope: config.nationalBenefitScope,
+                            subtotal,
+                            precoDaOpcaoEscolhida: shipping,
+                          })}
                           savings={savings}
                           progressPercent={progressPercent}
                           amountToFree={amountToFree}

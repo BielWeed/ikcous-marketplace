@@ -358,6 +358,7 @@ const VIEW_COMPONENTS = {
   "admin-banners": AdminArea,
   "admin-carousels": AdminArea,
   "admin-shipping": AdminArea,
+  "admin-shipping-national": AdminArea,
   "admin-settings": AdminArea,
   "admin-reviews": AdminArea,
   "admin-qa": AdminArea,
@@ -429,6 +430,7 @@ const getNavigationDirection = (
     "admin-banners": 2.6,
     "admin-carousels": 2.62,
     "admin-shipping": 2.7,
+    "admin-shipping-national": 2.72,
     "admin-customers": 3,
     "admin-whatsapp-config": 3.4,
     "admin-about-store": 4.2,
@@ -1622,6 +1624,7 @@ const AppContent = () => {
           "admin-coupons",
           "admin-coupon-form",
           "admin-shipping",
+          "admin-shipping-national",
           "admin-reviews",
           "admin-qa",
           "admin-whatsapp-config",
@@ -1651,6 +1654,17 @@ const AppContent = () => {
               { view: "admin-products" },
               "",
               "/admin-products",
+            );
+          } else if (currView === "admin-shipping-national") {
+            // Mesmo pai de paiDaTelaDoAdmin("admin-shipping-national", ...):
+            // sub-view do botão "Estratégias do frete nacional →" dentro de
+            // admin-shipping — o Voltar do navegador volta para a tela de
+            // Frete, nunca para admin-products (nova-tela.md:39/45).
+            targetView = "admin-shipping";
+            globalThis.history.replaceState(
+              { view: "admin-shipping" },
+              "",
+              "/admin-shipping",
             );
           } else if (currView === "admin-about-store") {
             // Porta única: a tela "Sobre a Loja" nasce do cartão nos Ajustes
@@ -2395,6 +2409,7 @@ const AppContent = () => {
       "admin-banners",
       "admin-carousels",
       "admin-shipping",
+      "admin-shipping-national",
       "admin-settings",
       "admin-reviews",
       "admin-qa",

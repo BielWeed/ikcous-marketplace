@@ -40,6 +40,7 @@ export const telasDeEntrada = Object.freeze([
   "admin-banners",
   "admin-carousels",
   "admin-shipping",
+  "admin-shipping-national",
   "admin-settings",
   "admin-reviews",
   "admin-qa",
