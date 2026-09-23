@@ -502,6 +502,12 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     // Fecha manualmente a seção (mesmo incompleta) para provar que o
     // submit é quem REABRE — não só a heurística de "ficou completo".
     await drenar();
+    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("true");
+    await act(async () => {
+      cabecalhoDaSecao().click();
+    });
+    await drenar();
+    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
 
     const botao = botaoFinalizar();
     expect(botao.disabled).toBe(true);
@@ -557,6 +563,24 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     await drenar();
     expect(document.getElementById("checkout-cpf")).not.toBeNull();
     expect(botaoFinalizar().disabled).toBe(true);
+    // Revisão Opus (23/09): escolher o endereço NÃO pode fechar a seção à
+    // força quando o CPF passou a faltar — o campo tem de estar À VISTA.
+    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("true");
+    expect(corpoDaSecao().hidden).toBe(false);
+
+    // E se a pessoa fechar mesmo assim, o resumo diz o que falta.
+    await act(async () => {
+      cabecalhoDaSecao().click();
+    });
+    await drenar();
+    expect(corpoDaSecao().hidden).toBe(true);
+    expect(
+      document.querySelector('[data-testid="checkout-resumo-falta-cpf"]'),
+    ).not.toBeNull();
+    await act(async () => {
+      cabecalhoDaSecao().click();
+    });
+    await drenar();
 
     // CPF com dígito verificador errado: continua bloqueado.
     await act(async () => {

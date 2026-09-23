@@ -724,10 +724,11 @@ export function CheckoutView({
   // da troca. Sentido que mais dói: sair de transportadora sem CPF de volta
   // para entrega local prendia o Finalizar desabilitado por uma exigência
   // que TINHA acabado de deixar de existir — provado por
-  // `checkout-frete-automatico-troca-de-endereco.test.tsx`. `form.trigger`
-  // sem argumento revalida o formulário INTEIRO contra o schema atual, sem
-  // marcar nada como "tocado" (não acende erro em campo que a pessoa nunca
-  // chegou a ver).
+  // `checkout-compacto-e-cpf.test.tsx` ("CPF inválido BLOQUEIA o Finalizar
+  // com transportadora, e NÃO bloqueia com entrega local"). `form.trigger`
+  // sem argumento revalida o formulário INTEIRO contra o schema atual; os
+  // campos ainda vazios passam a carregar erro no estado do formulário (o
+  // mesmo que o `mode: "onChange"` já faria ao primeiro toque).
   const exigeCpfMontadoRef = useRef(false);
   useEffect(() => {
     // SÓ depois do primeiro paint: no MOUNT, `form.trigger()` validaria o
@@ -740,7 +741,7 @@ export function CheckoutView({
       return;
     }
     form.trigger();
-  }, [exigeCpfDoDestinatario]);
+  }, [exigeCpfDoDestinatario, form]);
 
   const hasInitializedRef = useRef(false);
   useEffect(() => {
@@ -2155,9 +2156,9 @@ export function CheckoutView({
       ...(data as unknown as Customer),
       // CPF sai do CheckoutView JÁ só em dígitos — o formulário guarda a
       // máscara (para a pessoa ler enquanto digita), mas o que atravessa
-      // para `createOrder`/a RPC é o dado cru; `useOrders.ts` também
-      // higieniza antes de montar o payload da RPC (defesa em duas
-      // camadas, não duas réguas de VALIDAÇÃO — aqui é só formatação).
+      // para `createOrder` é o dado cru. A RPC ainda NÃO recebe o CPF: a
+      // gravação em `orders.customer_data.cpf` chega com a migration
+      // 20261172 (depende da 20261171) — ver o comentário em `useOrders.ts`.
       cpf: data.cpf ? somenteDigitosDoCpf(data.cpf) : undefined,
     };
     const observations = notes || undefined;
@@ -2836,11 +2837,19 @@ export function CheckoutView({
                   <p className="text-xs font-medium text-zinc-500">
                     {abreviarWhatsapp(whatsappAtual ?? "")}
                   </p>
-                  {exigeCpfDoDestinatario && (
-                    <p className="text-xs font-medium text-zinc-500">
-                      CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
-                    </p>
-                  )}
+                  {exigeCpfDoDestinatario &&
+                    (cpfValido(cpfAtual ?? "") ? (
+                      <p className="text-xs font-medium text-zinc-500">
+                        CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
+                      </p>
+                    ) : (
+                      <p
+                        className="text-xs font-bold text-red-600"
+                        data-testid="checkout-resumo-falta-cpf"
+                      >
+                        Informe o CPF de quem recebe
+                      </p>
+                    ))}
                 </div>
                 <button
                   type="button"
@@ -3354,7 +3363,12 @@ export function CheckoutView({
                       // "Trocar" da ShippingCalculator em `modoResumo`, logo
                       // abaixo (consistência entre as duas seções que
                       // aprenderam a resumir).
-                      setIdentificacaoAbertaManual(false);
+                      // `null` (e não `false`): devolve a decisão à regra
+                      // "fecha quando completo". Se o endereço novo é de
+                      // transportadora e o CPF ainda falta, a seção fica
+                      // aberta com o campo à vista em vez de travar o
+                      // Finalizar sem motivo visível.
+                      setIdentificacaoAbertaManual(null);
                     }}
                     onEdit={handleEditAddress}
                   />

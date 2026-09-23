@@ -390,14 +390,19 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
   }, [isPresetsOpen]);
 
   // Foco entra na folha ao abrir (role="dialog") e volta para o botão que
-  // abriu ao fechar -- laudo de acessibilidade pedido pelo dono.
+  // abriu ao fechar -- laudo de acessibilidade pedido pelo dono. Só devolve
+  // o foco na TRANSIÇÃO aberta→fechada: na montagem (folha nasce fechada) o
+  // focus() rolaria a tela até o botão em toda visita ao Atendimento.
+  const folhaJaAbriuRef = useRef(false);
   useEffect(() => {
     if (isPresetsOpen) {
+      folhaJaAbriuRef.current = true;
       const id = window.requestAnimationFrame(() => {
         folhaRef.current?.focus();
       });
       return () => window.cancelAnimationFrame(id);
     }
+    if (!folhaJaAbriuRef.current) return;
     botaoQueAbriuRef.current?.focus();
   }, [isPresetsOpen]);
 

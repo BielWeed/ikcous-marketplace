@@ -51,9 +51,9 @@ export interface RascunhoDoCheckout {
 // checkout de propósito, o CPF vive SÓ no estado do react-hook-form do
 // CheckoutView: se a aba recarrega ou o componente desmonta no meio do
 // preenchimento, o campo volta vazio e a pessoa digita de novo — o custo
-// aceito pela regra de dado sensível. `tests/front/cpf-nunca-vai-para-o-
-// rascunho.test.ts` tranca isto: nenhum CPF digitado aparece no
-// `sessionStorage` depois de salvar o rascunho.
+// aceito pela regra de dado sensível. `tests/front/checkout-compacto-e-
+// cpf.test.tsx` ("CPF NUNCA entra no rascunho da sessão") tranca isto:
+// nenhum CPF digitado aparece no `sessionStorage` depois de salvar.
 export function rascunhoVazio(): RascunhoDoCheckout {
   return {
     nome: "",

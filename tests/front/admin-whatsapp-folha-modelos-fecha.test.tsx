@@ -139,6 +139,21 @@ describe("Atendimento — folha de modelos prontos fecha por todos os caminhos",
     return el!;
   }
 
+  it("montagem fria (folha nunca aberta) NÃO puxa o foco para o botão — a tela não rola sozinha", async () => {
+    const { AdminWhatsAppConfigView } = await import(
+      "@/views/admin/AdminWhatsAppConfigView"
+    );
+    await act(async () => {
+      raiz.render(<AdminWhatsAppConfigView active />);
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+    const botaoAbrir = localizarBotaoPorTexto(hospedeiro, "Modelos prontos");
+    expect(botaoAbrir).toBeDefined();
+    expect(document.activeElement).not.toBe(botaoAbrir);
+  });
+
   it("tocar no véu (fora da folha) fecha", async () => {
     await montarEAbrir();
     // Fora da janela de guarda do clique sintético pós-abertura.
