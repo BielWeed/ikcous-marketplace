@@ -149,9 +149,17 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       VitePWA(pwaOptions),
     ],
     resolve: {
-      alias: {
-        "@": path.resolve(__dirname, "./src"),
-      },
+      alias: [
+        { find: "@", replacement: path.resolve(__dirname, "./src") },
+        // O recharts importa 29 funções `lodash/<nome>` na versão CommonJS:
+        // 263 módulos, cada um embrulhado pelo plugin commonjs. A MESMA versão
+        // em ES module (lodash-es, mesma 4.18.1 do lodash que o recharts
+        // resolve) sai sem os embrulhos: vendor-charts -3,2 kB brotli no build
+        // fixture de 23/09/2026 (entrega 804,34 -> 801,16 kB, teto D8 de 800).
+        // Só o recharts importa `lodash/` (e o lodash-es cai no vendor-charts,
+        // fora do boot); o `lodash` raiz não casa com a regex.
+        { find: /^lodash\/(.*)$/, replacement: "lodash-es/$1" },
+      ],
     },
     build: {
       outDir: identity.outDir,
@@ -160,8 +168,23 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       // do size-limit). Presets seguros — sem drop_console, sem pure_funcs,
       // sem unsafe; target e divisão de chunks preservados.
       minify: "terser",
+      // Segunda passada do compress (opção segura, sem `unsafe`): -1,1 kB
+      // brotli na entrega somada (23/09/2026).
+      terserOptions: { compress: { passes: 2 } },
       rollupOptions: {
         output: {
+          // Chunks menores que 1 kB (antes de comprimir) são fundidos num
+          // vizinho — o Rollup só funde quando não muda o que executa ao
+          // carregar cada entrada. 117 -> 103 arquivos, -2,7 kB na entrega
+          // somada (fixture de 23/09/2026). Medido POR TELA (fecho estático
+          // brotli além do boot), não só no boot: Home 64,8 -> 64,7 kB,
+          // Busca 45,9 -> 46,1, Produto 67,0 -> 67,0, Carrinho 69,6 -> 69,1,
+          // Checkout 82,5 -> 81,9. NÃO subir para 2000: a entrega cai mais
+          // 1,1 kB, mas Home/Busca/Favoritos passam a baixar ~10 kB a mais
+          // (vendor-date e telas vizinhas penduradas nelas). De brinde, o
+          // PdvBalcao deixou de importar estaticamente um `Admin*.js`, que o
+          // globIgnores `assets/Admin*.js` tira do precache (balcão offline).
+          experimentalMinChunkSize: 1000,
           chunkFileNames(chunk) {
             const id = chunk.facadeModuleId?.replace(/\\/g, "/");
             const name =

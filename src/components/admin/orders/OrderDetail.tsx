@@ -41,9 +41,10 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EstornoCard } from "./EstornoCard";
+import { EtiquetaDoPedidoCard } from "./EtiquetaDoPedidoCard";
 import { OrderReceipt } from "./OrderReceipt";
 import {
   OrderStatusBadge,
@@ -1129,6 +1130,19 @@ export const OrderDetail = memo(function OrderDetail({
   const [trackingValue, setTrackingValue] = useState(order.trackingCode || "");
   const [isSavingTracking, setIsSavingTracking] = useState(false);
 
+  // Espelho do pedido que ESTE componente está mostrando agora — escrita no
+  // corpo do render (não em `useEffect`) porque, ao contrário do card de
+  // etiqueta, `OrderDetail` é `memo`d e NÃO desmonta ao trocar de pedido: o
+  // pai troca a prop `order`, este componente recebe a renderização nova, e
+  // o valor fica correto a tempo de qualquer callback que chegue depois.
+  // Usado para validar o `orderId` que `EtiquetaDoPedidoCard` devolve no
+  // `onTrackingAtualizado` (2ª rodada da revisão Opus sobre aadbf4c): o
+  // card pode estar desmontado (com `key={order.id}`) quando a resposta de
+  // um pedido antigo chega, então a defesa que protege O ESTADO DESTE
+  // componente tem que morar AQUI, não só dentro do card.
+  const orderIdAtualRef = useRef(order.id);
+  orderIdAtualRef.current = order.id;
+
   const [localNotes, setLocalNotes] = useState(order.notes || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState(order.notes || "");
@@ -1576,6 +1590,38 @@ export const OrderDetail = memo(function OrderDetail({
             order.paymentStatus === "estornado") && (
             <EstornoCard order={order} />
           )}
+        {/* Emissão da etiqueta de envio dentro da ficha do pedido — migrou de
+            Admin > Frete (busca/seleção global) para o pedido já aberto.
+            Venda de balcão (`canal === "presencial"`) não tem envio: a
+            cliente leva o produto na hora, não existe etiqueta para gerar. */}
+        {order.canal !== "presencial" && (
+          <EtiquetaDoPedidoCard
+            // `key={order.id}` aqui NÃO é o que impede o vazamento entre
+            // pedidos — 2ª rodada da revisão Opus sobre aadbf4c corrigiu um
+            // comentário anterior que dizia o contrário. O que protege é a
+            // dupla checagem por `orderId` (dentro do card, via
+            // `useEffect`+cleanup; e aqui embaixo, no `onTrackingAtualizado`)
+            // — essa dupla checagem funciona COM ou SEM o `key`. Mantemos o
+            // `key` só pelo ganho de UX: ele força o card a desmontar e
+            // remontar ao trocar de pedido, então a troca já entra direto no
+            // skeleton de "carregando" em vez de mostrar por um instante os
+            // dados do pedido anterior antes do `useEffect` interno do card
+            // zerar o estado.
+            key={order.id}
+            orderId={order.id}
+            isOffline={isOffline}
+            onTrackingAtualizado={(orderIdDaResposta, codigo) => {
+              // A resposta pode ser de um pedido que este componente não
+              // mostra mais (card desmontado com a resposta ainda em voo, ou
+              // clique antigo cuja resposta chegou depois da troca) —
+              // ignora sem tocar no estado local se não bater com o pedido
+              // ATUAL. Independe de o card ainda existir na árvore.
+              if (orderIdDaResposta !== orderIdAtualRef.current) return;
+              setLocalTrackingCode(codigo);
+              setTrackingValue(codigo);
+            }}
+          />
+        )}
         <OrderLogisticsCard
           localTrackingCode={localTrackingCode}
           isEditingTracking={isEditingTracking}

@@ -273,25 +273,53 @@ describe("CartContext — presets de frete grátis governam o carrinho (frente B
     expect(freteAtual.shippingFee).toBe(15);
   });
 
-  it("acima_de_valor: CONVIDADO no limite ganha grátis — a trava && user morreu", async () => {
+  // FRETE V3 (T3, 23/09/2026): a regra local passou a valer SÓ para
+  // local-delivery/store-pickup — não existe mais "grátis" sem uma
+  // modalidade escolhida (a guarda de Finalizar já exigia a escolha desde
+  // 21/09; agora shippingFee/freteIndefinido acompanham a MESMA exigência,
+  // em vez de adiantar um veredito que dependia de saber que modalidade
+  // vale). Por isso os testes abaixo escolhem `local-delivery` ANTES de
+  // conferir o preço — é o equivalente ao clique que a cliente dá na
+  // calculadora.
+  it("acima_de_valor: CONVIDADO no limite ganha grátis NA ENTREGA LOCAL — a trava && user morreu", async () => {
     estado.config = {
       ...estado.config,
       freeShippingMin: 100,
     };
     await montarCarrinho([item(produto(), 2)]); // 2 × 50 = 100
-
     expect(freteAtual.cartTotal).toBe(100);
+
+    await act(async () => {
+      freteAtual.setSelectedShippingOption({
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 10,
+        deliveryDays: 1,
+        provider: "local",
+      });
+    });
+
     expect(freteAtual.shippingFee).toBe(0);
     expect(freteAtual.freteIndefinido).toBe(false);
   });
 
-  it("acima_de_valor: logado no limite ganha grátis — paridade com o convidado", async () => {
+  it("acima_de_valor: logado no limite ganha grátis NA ENTREGA LOCAL — paridade com o convidado", async () => {
     estado.user = { id: "u1" };
     estado.config = {
       ...estado.config,
       freeShippingMin: 100,
     };
     await montarCarrinho([item(produto(), 2)]);
+
+    await act(async () => {
+      freteAtual.setSelectedShippingOption({
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 10,
+        deliveryDays: 1,
+        provider: "local",
+      });
+    });
 
     expect(freteAtual.shippingFee).toBe(0);
     expect(freteAtual.freteIndefinido).toBe(false);
@@ -308,7 +336,20 @@ describe("CartContext — presets de frete grátis governam o carrinho (frente B
     expect(freteAtual.freteIndefinido).toBe(true);
   });
 
-  it("acima_de_valor: grátis vence a cotação escolhida — a estratégia é exclusiva", async () => {
+  // CONTRATO CORRIGIDO EM 23/09: antes desta frente, a regra local "vazava"
+  // e zerava QUALQUER cotação — inclusive nacional (bug que este teste
+  // chegou a proteger, com o título invertido). Agora `free_shipping_min`
+  // só governa `local-delivery`/`store-pickup`: uma cotação NACIONAL
+  // CARIMBADA (`estrategiaNacional` presente — cotada por uma edge já nesta
+  // frente) mantém o PRÓPRIO preço, mesmo com o subtotal acima do limite
+  // local.
+  //
+  // CORREÇÃO (revisão Opus, pós-T3): a versão anterior deste teste usava uma
+  // opção SEM carimbo e gravava o valor errado — sem `estrategiaNacional`,
+  // a RPC (migration 20261171000000 ~linha 1195) aplica a REGRA LEGADA
+  // (mesma sentinela do preset local) por segurança, e o front tem que
+  // espelhar isso. O caso "sem carimbo" agora é o teste seguinte.
+  it("acima_de_valor: cotação NACIONAL CARIMBADA escolhida NÃO vira grátis pela regra local — a regra local só vale para modalidade da loja", async () => {
     estado.config = {
       ...estado.config,
       freeShippingMin: 100,
@@ -322,21 +363,61 @@ describe("CartContext — presets de frete grátis governam o carrinho (frente B
         price: 24.9,
         deliveryDays: 3,
         provider: "melhor_envio",
+        estrategiaNacional: {
+          estrategia: "desligado",
+          minimo: 0,
+          tipoDesconto: null,
+          valorDesconto: 0,
+          alcance: "mais_barata",
+        },
       });
     });
 
-    // O preset de grátis é a estratégia ÚNICA que vale: atingido o limite, a
-    // opção cotada não reintroduz frete.
+    expect(freteAtual.shippingFee).toBe(24.9);
+    expect(freteAtual.freteIndefinido).toBe(false);
+  });
+
+  // NOVO (revisão Opus, pós-T3): opção nacional SEM carimbo (edge antiga,
+  // loja sem migration, leitura nacional que falhou, rollback) — a RPC
+  // aplica a REGRA LEGADA (mesma sentinela do preset local) nesse caso, e o
+  // front tem que mostrar o MESMO preço que o pedido vai cobrar.
+  it("acima_de_valor: cotação NACIONAL SEM carimbo segue a REGRA LEGADA (mesma sentinela do preset local) — subtotal bate, zera", async () => {
+    estado.config = {
+      ...estado.config,
+      freeShippingMin: 100,
+    };
+    await montarCarrinho([item(produto(), 2)]); // subtotal 100
+
+    await act(async () => {
+      freteAtual.setSelectedShippingOption({
+        id: "cot-1",
+        name: "SEDEX",
+        price: 24.9,
+        deliveryDays: 3,
+        provider: "melhor_envio",
+      });
+    });
+
     expect(freteAtual.shippingFee).toBe(0);
     expect(freteAtual.freteIndefinido).toBe(false);
   });
 
-  it("sempre (sentinela 0,01): convidado tem frete 0 SEM cotação escolhida", async () => {
+  it("sempre (sentinela 0,01): convidado tem frete 0 na entrega local escolhida", async () => {
     estado.config = {
       ...estado.config,
       freeShippingMin: 0.01,
     };
     await montarCarrinho([item(produto())]);
+
+    await act(async () => {
+      freteAtual.setSelectedShippingOption({
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 10,
+        deliveryDays: 1,
+        provider: "local",
+      });
+    });
 
     expect(freteAtual.shippingFee).toBe(0);
     expect(freteAtual.freteIndefinido).toBe(false);
@@ -350,18 +431,38 @@ describe("CartContext — presets de frete grátis governam o carrinho (frente B
     };
     await montarCarrinho([item(produto())]);
 
+    await act(async () => {
+      freteAtual.setSelectedShippingOption({
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 10,
+        deliveryDays: 1,
+        provider: "local",
+      });
+    });
+
     expect(freteAtual.shippingFee).toBe(0);
     expect(freteAtual.freteIndefinido).toBe(false);
   });
 
-  it("por_produto (sentinela -1): item MARCADO zera o frete — a marcação volta a valer", async () => {
+  it("por_produto (sentinela -1): item MARCADO zera o frete da entrega local escolhida", async () => {
     estado.config = {
       ...estado.config,
       freeShippingMin: -1,
     };
     await montarCarrinho([item(produto({ freeShipping: true }))]);
-
     expect(presetDoConfig(-1)).toBe("por_produto");
+
+    await act(async () => {
+      freteAtual.setSelectedShippingOption({
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 10,
+        deliveryDays: 1,
+        provider: "local",
+      });
+    });
+
     expect(freteAtual.shippingFee).toBe(0);
     expect(freteAtual.freteIndefinido).toBe(false);
   });
@@ -391,6 +492,16 @@ describe("CartContext — presets de frete grátis governam o carrinho (frente B
       freeShippingMin: -1,
     };
     await montarCarrinho([item(produto({ freeShipping: true }))]);
+
+    await act(async () => {
+      freteAtual.setSelectedShippingOption({
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 10,
+        deliveryDays: 1,
+        provider: "local",
+      });
+    });
 
     expect(freteAtual.shippingFee).toBe(0);
     expect(freteAtual.freteIndefinido).toBe(false);

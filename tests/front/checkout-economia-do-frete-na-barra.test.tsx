@@ -401,6 +401,78 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 
+  // T3 (23/09/2026): a opção NACIONAL já ESCOLHIDA carrega a própria
+  // economia (`precoCheio − price`) -- linha 0 de `modoDeEconomiaDoFrete`.
+  // Cenário de DESCONTO (não grátis): `freteGratis` é falso (o preço final
+  // é positivo), mas a pílula e a linha "Entrega" ainda precisam explicar
+  // o desconto -- SEM cotar a edge de novo (a fonte é a própria opção).
+  it("opção NACIONAL com desconto da loja (não grátis): pílula mostra a diferença e a linha Entrega risca o cheio, sem chamar a edge de novo", async () => {
+    mockUseCartOverrides.freteGratis = false;
+    mockUseCartOverrides.selectedShippingOption = {
+      id: "melhorenvio-pac",
+      name: "PAC com desconto da loja",
+      price: 20,
+      precoCheio: 35,
+      deliveryDays: 8,
+      provider: "melhor_envio",
+    };
+    const cart: CartItem[] = [
+      { product: produto({ name: "Camiseta", price: 80 }), quantity: 1 },
+    ];
+
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          cart={cart}
+          subtotal={80}
+          shipping={20}
+          total={100}
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await esperarBarraMontar();
+    await esperarCotacao();
+
+    // Fonte é a PRÓPRIA opção (precoCheio já veio da cotação real) — nunca
+    // cota a edge de novo só para mostrar a pílula.
+    expect(mockInvoke).not.toHaveBeenCalled();
+
+    const botaoFinalizar = localizarBotaoFinalizar()!;
+    const linhaTotal = botaoFinalizar.closest(
+      "div.flex.items-center.justify-between",
+    )!;
+    const pilula = linhaTotal.querySelector(
+      '[aria-label^="Desconto de R$"]',
+    ) as HTMLElement | null;
+    expect(pilula).not.toBeNull();
+    expect(pilula!.getAttribute("aria-label")).toBe("Desconto de R$ 15,00");
+
+    const gatilho = [...document.body.querySelectorAll("button")].find((b) =>
+      b.hasAttribute("aria-expanded"),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      gatilho.click();
+    });
+    const painel = document.body.querySelector(
+      '[role="dialog"][aria-label="Resumo do pedido"]',
+    )!;
+    const linhaEntrega = Array.from(painel.querySelectorAll("div")).find(
+      (d) =>
+        d.children.length === 2 &&
+        d.children[0].textContent?.trim() === "Entrega",
+    )!;
+    // NÃO grátis: mostra o preço FINAL (R$ 20,00), riscando o CHEIO
+    // (R$ 35,00) — nunca "Grátis" (o desconto não é grátis).
+    expect(linhaEntrega.textContent).not.toContain("Grátis");
+    expect(linhaEntrega.textContent).toContain("20,00");
+    expect(linhaEntrega.querySelector(".line-through")?.textContent).toContain(
+      "35,00",
+    );
+  });
+
   it("🔴 TRAVA DE DINHEIRO: cotação de exibição fora da cidade NUNCA chama setSelectedShippingOption/setShippingCep, e o pedido criado mantém shippingOptionId/destinationCep de antes", async () => {
     mockInvoke.mockResolvedValue({
       data: {

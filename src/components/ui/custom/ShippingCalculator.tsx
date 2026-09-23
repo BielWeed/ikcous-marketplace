@@ -1,13 +1,23 @@
-import { useCartState } from "@/contexts/CartContext";
+import {
+  LogoDaTransportadora,
+  SeloDoAgregador,
+} from "@/components/shipping/MarcaDoFrete";
 import { useContextoDoFreteDaLoja } from "@/contexts/ContextoDoFreteDaLoja";
+import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { opcaoFrescaOuMaisBarata } from "@/lib/auto-selecao-de-frete";
+import {
+  type OrigemDaEscolhaDoFrete,
+  resolverEscolhaDoFrete,
+} from "@/lib/auto-selecao-de-frete";
 import { destaquesDoFrete } from "@/lib/destaques-do-frete";
-import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import { precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
+import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import { marcaDoFrete } from "@/lib/marca-do-frete";
 import {
   codigoDoErroDeEdgeFunction,
   mensagemAmigavelErroEdgeFunction,
 } from "@/lib/mensagens-erro";
+import { precoVendido } from "@/lib/preco-vendido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
@@ -227,7 +237,20 @@ export interface DestinoExibido {
 interface ShippingCalculatorProps {
   cart: CartItem[];
   selectedOption: ShippingOption | null;
-  onSelectOption: (option: ShippingOption | null) => void;
+  /**
+   * `selectedOption` foi um TOQUE da cliente (`true`) ou a regra da casa
+   * que escolheu sozinha (`false`)? Vive no CartContext ao lado da opção —
+   * sobrevive à remontagem (carrinho → checkout → volta). Só a escolha da
+   * cliente é preservada numa cotação nova; a automática é refeita contra
+   * a lista de agora (a mais barata). Sem a prop, vale só o que foi tocado
+   * NESTA montagem.
+   */
+  selecaoEscolhidaPelaCliente?: boolean;
+  /** `origem` diz quem escolheu — o pai guarda junto com a opção. */
+  onSelectOption: (
+    option: ShippingOption | null,
+    origem?: OrigemDaEscolhaDoFrete,
+  ) => void;
   onCepValidated?: (cep: string) => void;
   /**
    * CEP do destino efetivo de entrega (endereço escolhido ou principal; para
@@ -251,12 +274,6 @@ interface ShippingCalculatorProps {
   mensagemSemDestino?: string;
   onStatusChange?: (status: StatusDaCotacao) => void;
   /**
-   * Veredito de frete grátis. Quem já o tem em mãos (o checkout, via
-   * `useCart`) passa aqui; sem a prop, vem do `useCartState` — a MESMA fonte
-   * única (memo `freteGratis` do CartContext) nos dois casos.
-   */
-  freteGratis?: boolean;
-  /**
    * R1-2/R2-8: incrementar este número força uma recotação de REDE do
    * destino atual, ignorando o cache do navegador — o checkout usa isto
    * quando descobre, antes de criar o pedido, que a configuração de frete
@@ -264,34 +281,33 @@ interface ShippingCalculatorProps {
    * valor repetido não fazem nada.
    */
   forcarNovaCotacaoEm?: number;
-}
-
-type PropsComFreteGratis = Omit<ShippingCalculatorProps, "freteGratis"> & {
-  freteGratis: boolean;
-};
-
-export function ShippingCalculator(props: ShippingCalculatorProps) {
-  if (props.freteGratis !== undefined) {
-    return <CalculadoraDeFrete {...props} freteGratis={props.freteGratis} />;
-  }
-  return <CalculadoraComFreteDoContexto {...props} />;
-}
-
-function CalculadoraComFreteDoContexto(props: ShippingCalculatorProps) {
-  // FRETE V2 (onda D-1, 03/09): a regra de grátis tem FONTE ÚNICA — o memo
-  // `freteGratis` do CartContext (preset do lojista). Ver
-  // tests/front/shipping-calculator-frete-gratis-fonte-unica.test.tsx.
-  const { freteGratis } = useCartState();
-  return <CalculadoraDeFrete {...props} freteGratis={freteGratis} />;
+  /**
+   * CHECKOUT COMPACTO (23/09/2026): usada SÓ pelo checkout — o carrinho
+   * continua igual, sem a prop. Com `modoResumo` e a cotação PRONTA e uma
+   * opção ESCOLHIDA, a lista de opções fica escondida atrás de um resumo
+   * (logo/nome + "via" + prazo + preço + botão "Trocar"); qualquer outro
+   * estado — carregando, erro, vazio, sem destino, sem seleção — mostra o
+   * corpo INTEIRO de sempre, nunca esconde erro nem "Tentar de novo".
+   * Escolher outra opção na lista expandida recolhe de volta ao resumo,
+   * já com a opção nova.
+   */
+  modoResumo?: boolean;
 }
 
 function soDigitosDoCep(valor: string | null | undefined): string {
   return (valor ?? "").replace(/\D/g, "");
 }
 
-function CalculadoraDeFrete({
+// FRETE V3 (T3, 23/09/2026): não existe mais um "isFree" GLOBAL vindo de
+// fora — cada modalidade tem sua própria regra (local recalcula aqui,
+// nacional já vem final da edge), e por isso não há mais wrapper de
+// contexto: a calculadora sempre lê a `config` da loja diretamente (abaixo)
+// e decide o preço CARTÃO A CARTÃO. Ver
+// tests/front/shipping-calculator-preco-por-modalidade.test.tsx.
+export function ShippingCalculator({
   cart,
   selectedOption,
+  selecaoEscolhidaPelaCliente,
   onSelectOption,
   onCepValidated,
   cepDestino,
@@ -300,9 +316,13 @@ function CalculadoraDeFrete({
   acaoDoEndereco,
   mensagemSemDestino = "Cadastre um endereço de entrega para ver o frete e o prazo.",
   onStatusChange,
-  freteGratis: isFree,
   forcarNovaCotacaoEm,
-}: PropsComFreteGratis) {
+  modoResumo,
+}: ShippingCalculatorProps) {
+  // Fora do StoreProvider (peça montada sozinha em teste/storybook) o
+  // `useStore` real quebraria — mas todo chamador de produção (CartView,
+  // CheckoutView) já vive dentro dele, mesmo contrato de hoje.
+  const { config } = useStore();
   const isOffline = useOnlineStatus();
   // Contexto da loja da cotação (cache v2). Fora do StoreProvider (peça
   // montada sozinha) vale o contexto "sem config" — estável, o cache segue
@@ -324,6 +344,11 @@ function CalculadoraDeFrete({
   // abaixo, na hora de montar a lista): contrato §6, "recolher não troca a
   // escolha".
   const [outrasExpandidas, setOutrasExpandidas] = useState(false);
+  // MODO RESUMO (checkout compacto): começa recolhido — `podeResumir`,
+  // calculado mais abaixo (depende de `status`), é quem decide se o resumo
+  // chega a aparecer. `Trocar` abre; escolher uma opção nova na lista
+  // aberta fecha de novo (ver o onClick de `renderizarCartaoDeOpcao`).
+  const [detalhesAbertosNoResumo, setDetalhesAbertosNoResumo] = useState(false);
 
   // Lacre de sequência: cada `calculateShipping` tira um número; só quem tem
   // o número MAIS RECENTE pode escrever o resultado na tela. Sem isso, duas
@@ -351,11 +376,46 @@ function CalculadoraDeFrete({
   // `calculateShipping` em execução fecha sobre a seleção do render em que
   // a COTAÇÃO saiu. Com cotação em voo, um clique novo era REVERTIDO pela
   // resposta. Este ref espelha a prop POR RENDER e é a ENTRADA de
-  // `opcaoFrescaOuMaisBarata` — mesma modalidade na lista nova ⇒ objeto NOVO
+  // `resolverEscolhaDoFrete` — mesma modalidade na lista nova ⇒ objeto NOVO
   // (preço fresco); modalidade sumida ⇒ a mais barata; seleção nula ⇒ a mais
   // barata.
   const selecaoVivaRef = useRef(selectedOption);
   selecaoVivaRef.current = selectedOption;
+
+  // QUEM ESCOLHEU a seleção viva (captura do dono, 23/09/2026). Com a prop
+  // (CartContext), ela é a fonte — espelhada por render como a seleção. Sem
+  // a prop, a memória é o id tocado NESTA montagem. Os dois refs são
+  // gravados também no clique, síncronos: uma resposta que pousa antes do
+  // re-render do pai já enxerga a escolha da cliente.
+  const idTocadoNestaMontagemRef = useRef<string | null>(null);
+  const escolhaDaClienteViaPropRef = useRef(selecaoEscolhidaPelaCliente);
+  escolhaDaClienteViaPropRef.current = selecaoEscolhidaPelaCliente;
+  const selecaoVivaEhDaCliente = (): boolean => {
+    const viva = selecaoVivaRef.current;
+    if (!viva) return false;
+    return (
+      escolhaDaClienteViaPropRef.current ??
+      idTocadoNestaMontagemRef.current === viva.id
+    );
+  };
+
+  // Aplica a escolha resolvida contra uma lista NOVA: a da cliente, se ela
+  // ainda está na lista (objeto fresco); senão a mais barata, como escolha
+  // automática. Lista sem nada auto-selecionável (só a retirada) derruba a
+  // escolha anterior, que é preço de OUTRA cotação.
+  const aplicarEscolhaContra = (lista: ShippingOption[]) => {
+    const { opcao, origem } = resolverEscolhaDoFrete(
+      selecaoVivaRef.current,
+      lista,
+      selecaoVivaEhDaCliente(),
+    );
+    if (origem === "automatica") idTocadoNestaMontagemRef.current = null;
+    if (opcao) {
+      onSelectOption(opcao, origem);
+    } else if (selecaoVivaRef.current) {
+      onSelectOption(null);
+    }
+  };
 
   // Tira a tela da cotação anterior: resposta em voo vira obsoleta (lacre),
   // debounce pendente morre e nada do destino antigo continua clicável.
@@ -441,18 +501,7 @@ function CalculadoraDeFrete({
               setOptions(opcoesEmCache);
               setCotouSemOpcoes(false);
               assinaturaCotadaRef.current = cartSignature;
-              const selecionadaAtualizada = opcaoFrescaOuMaisBarata(
-                selecaoVivaRef.current,
-                opcoesEmCache,
-              );
-              if (selecionadaAtualizada) {
-                onSelectOption(selecionadaAtualizada);
-              } else if (selecaoVivaRef.current) {
-                // Lista sem nada auto-selecionável (só a retirada, que é
-                // escolha da cliente): a escolha anterior é preço de outra
-                // cotação e cai.
-                onSelectOption(null);
-              }
+              aplicarEscolhaContra(opcoesEmCache);
               onCepValidated?.(cepFormatado);
               setLoading(false);
               localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
@@ -529,23 +578,14 @@ function CalculadoraDeFrete({
       localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
 
       // Auto-select: MENOR PREÇO, não o primeiro da lista (laudo 31/08,
-      // menor E). Mesmo id na resposta nova = mesma escolha de serviço, com
-      // o objeto FRESCO; id sumido = a mais barata. A entrada é a seleção
-      // VIVA — o clique dado com a cotação em voo não é desfeito.
+      // menor E). Escolha da CLIENTE com o mesmo id na resposta nova = a
+      // mesma escolha, com o objeto FRESCO; escolha automática ou id sumido
+      // = a mais barata DESTA lista. A entrada é a seleção VIVA — o clique
+      // dado com a cotação em voo não é desfeito. RETIRADA NA LOJA (1.5.3):
+      // lista só com a retirada derruba a escolha anterior (nunca é o app
+      // quem escolhe a retirada).
       if (calculatedOptions.length > 0) {
-        const selecionadaAtualizada = opcaoFrescaOuMaisBarata(
-          selecaoVivaRef.current,
-          calculatedOptions,
-        );
-        if (selecionadaAtualizada) {
-          onSelectOption(selecionadaAtualizada);
-        } else if (selecaoVivaRef.current) {
-          // RETIRADA NA LOJA (release 1.5.3): a lista pode não ter nada
-          // auto-selecionável (só a retirada, que nunca é escolhida pelo
-          // app). A escolha anterior é preço de OUTRA cotação e cai — a
-          // cliente escolhe na lista nova.
-          onSelectOption(null);
-        }
+        aplicarEscolhaContra(calculatedOptions);
       }
       onCepValidated?.(cepFormatado);
     } catch (err: any) {
@@ -659,7 +699,7 @@ function CalculadoraDeFrete({
   // diferente da atual e incrementa esta prop. Remove o cache do destino
   // adotado (senão a leitura de cache do PRÓXIMO `calculateShipping`
   // acharia a MESMA entrada desatualizada) e recota de rede — se o id
-  // escolhido sumiu da lista nova, `opcaoFrescaOuMaisBarata` já escolhe a
+  // escolhido sumiu da lista nova, `resolverEscolhaDoFrete` já escolhe a
   // mais barata dela sozinho (só limpa de vez se a lista nova vier vazia).
   const forcarNovaCotacaoVistoRef = useRef(forcarNovaCotacaoEm);
   useEffect(() => {
@@ -753,6 +793,17 @@ function CalculadoraDeFrete({
     onStatusChange?.(status);
   }, [status, onStatusChange]);
 
+  // MODO RESUMO: só cabe resumir quando há UMA opção pronta e ESCOLHIDA —
+  // "cotando"/"erro"/"vazio"/"sem-destino"/"ocioso" continuam mostrando o
+  // corpo inteiro (a guarda do pedido do dono: nunca esconder erro nem
+  // "Tentar de novo"). `detalhesAbertosNoResumo` é o override manual do
+  // "Trocar"; volta a `false` sozinho ao escolher uma opção nova (ver o
+  // onClick de `renderizarCartaoDeOpcao`).
+  const podeMostrarResumoDaOpcao =
+    !!modoResumo && status === "pronto" && !!selectedOption;
+  const exibindoResumoDaOpcao =
+    podeMostrarResumoDaOpcao && !detalhesAbertosNoResumo;
+
   const cepExibido = destinoValido
     ? `${soDigitosDoCep(cepDestino).slice(0, 5)}-${soDigitosDoCep(cepDestino).slice(5, 8)}`
     : null;
@@ -760,6 +811,43 @@ function CalculadoraDeFrete({
   const titulo = apelido ? `Entrega para ${apelido}` : "Entrega";
   const resumo =
     destino?.resumo?.trim() || (cepExibido ? `CEP ${cepExibido}` : null);
+
+  // FRETE V3 (T3, 23/09): preço FINAL por CARTÃO. Local recalcula aqui a
+  // regra de sempre (`precoFinalDaOpcao`, mesma conta do CartContext);
+  // nacional só repassa o que a edge já mandou pronto (contrato §3: o
+  // front NUNCA recalcula preço de transportadora).
+  const subtotalDoCarrinho = useMemo(
+    () =>
+      cart.reduce(
+        (soma, item) =>
+          soma +
+          precoVendido(
+            item.product,
+            item.product.variants?.find((v) => v.id === item.variantId),
+          ) *
+            item.quantity,
+        0,
+      ),
+    [cart],
+  );
+  const temItemMarcado = useMemo(
+    () => cart.some((item) => item.product.freeShipping),
+    [cart],
+  );
+  const contextoDoPreco = {
+    config,
+    subtotal: subtotalDoCarrinho,
+    temItemMarcado,
+  };
+  // Alguma opção NACIONAL foi beneficiada (grátis ou desconto) só na "mais
+  // barata"? As demais nacionais da lista ganham uma nota dizendo que o
+  // benefício não é delas (contrato §5, alcance='mais_barata').
+  const algumaNacionalBeneficiadaSoNaMaisBarata = options.some((o) => {
+    if (ehModalidadeDaLoja(o.id)) return false;
+    const cheio = o.precoCheio;
+    const beneficiada = typeof cheio === "number" && cheio > o.price;
+    return beneficiada && o.estrategiaNacional?.alcance === "mais_barata";
+  });
 
   // DESTAQUES (release 1.5.7 — CONTRATO-1.5.7.md §6, R1-7, R2-4): a
   // retirada nunca disputa destaque (ela é modalidade da loja, aparece à
@@ -789,12 +877,38 @@ function CalculadoraDeFrete({
 
   function renderizarCartaoDeOpcao(option: ShippingOption) {
     const isSelected = selectedOption?.id === option.id;
-    const priceToDisplay = isFree ? 0 : option.price;
     // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
     // há entrega) e sem "pronto agora" — o endereço REAL da loja
     // que a edge mandou e o aviso neutro de esperar a loja.
     const retirada = ehRetiradaNaLoja(option.id);
     const selos = retirada ? [] : selosDoCartao(option.id);
+    // NOME E LOGO (pedido do dono, 23/09/2026): título limpo SEM repetir
+    // transportadora/serviço no subtítulo ("Loggi Express", não "Loggi —
+    // Express" + "Loggi — Express · via Melhor Envio"); logo oficial da
+    // transportadora REAL à esquerda e, menor, o do agregador no "via".
+    // Só exibição — o objeto `option` segue intacto para o pedido.
+    const marca = retirada ? null : marcaDoFrete(option);
+    const titulo = marca?.titulo || option.name;
+
+    // Preço FINAL desta modalidade, e o que exibir em volta dele. Cada
+    // cartão decide sozinho — nunca mais um "isFree" carimbado em TODA a
+    // lista pela regra de outra modalidade (o bug da onda D-1/T2).
+    const precoFinal = precoFinalDaOpcao(option, contextoDoPreco);
+    const gratisDesteCartao = !retirada && precoFinal === 0;
+    const nacional = !ehModalidadeDaLoja(option.id);
+    const precoCheio = nacional ? option.precoCheio : undefined;
+    const temDescontoNaoGratis =
+      !gratisDesteCartao &&
+      typeof precoCheio === "number" &&
+      precoCheio > precoFinal;
+    // Esta opção é nacional, NÃO foi beneficiada, e alguma outra da lista
+    // foi — a nota "vale só na mais barata" explica por que ESTA aqui
+    // continua no preço cheio.
+    const naoBeneficiadaComAvisoDeAlcance =
+      nacional &&
+      !gratisDesteCartao &&
+      !temDescontoNaoGratis &&
+      algumaNacionalBeneficiadaSoNaMaisBarata;
 
     return (
       <button
@@ -805,7 +919,15 @@ function CalculadoraDeFrete({
         aria-pressed={isSelected}
         onClick={() => {
           haptic.light();
-          onSelectOption(option);
+          selecaoVivaRef.current = option;
+          idTocadoNestaMontagemRef.current = option.id;
+          escolhaDaClienteViaPropRef.current =
+            escolhaDaClienteViaPropRef.current === undefined ? undefined : true;
+          onSelectOption(option, "cliente");
+          // MODO RESUMO: escolher uma opção na lista aberta volta ao
+          // resumo compacto, já com a nova opção — a pessoa não precisa
+          // recolher manualmente depois de decidir.
+          if (modoResumo) setDetalhesAbertosNoResumo(false);
         }}
         className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
           isSelected
@@ -814,21 +936,37 @@ function CalculadoraDeFrete({
         }`}
       >
         <div className="flex items-center gap-3">
-          <div
-            className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
-              isSelected
-                ? "border-white/20 bg-white/20 text-white"
-                : "border-zinc-100 bg-zinc-50 text-zinc-500"
-            }`}
-          >
-            {isSelected ? (
-              <Check className="size-4" />
-            ) : retirada ? (
-              <Store className="size-4" />
-            ) : (
-              <Truck className="size-4" />
-            )}
-          </div>
+          {marca?.transportadora ? (
+            <span className="relative shrink-0">
+              <LogoDaTransportadora
+                slug={marca.transportadora.slug}
+                nome={marca.transportadora.nome}
+                tamanho={28}
+                className="w-12 border border-zinc-100"
+              />
+              {isSelected && (
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-white text-primary shadow-sm">
+                  <Check className="size-3" aria-hidden="true" />
+                </span>
+              )}
+            </span>
+          ) : (
+            <div
+              className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
+                isSelected
+                  ? "border-white/20 bg-white/20 text-white"
+                  : "border-zinc-100 bg-zinc-50 text-zinc-500"
+              }`}
+            >
+              {isSelected ? (
+                <Check className="size-4" />
+              ) : retirada ? (
+                <Store className="size-4" />
+              ) : (
+                <Truck className="size-4" />
+              )}
+            </div>
+          )}
           <div>
             {selos.length > 0 && (
               <div className="mb-0.5 flex flex-wrap gap-1">
@@ -847,20 +985,28 @@ function CalculadoraDeFrete({
               </div>
             )}
             <span className="block text-[11px] font-bold leading-snug">
-              {option.name}
+              {titulo}
             </span>
-            {/* R1-7: a linha "Transportadora — Serviço · via Provedor"
-                aparece SEMPRE que houver transportadora — nacional, nunca
-                local/retirada/grátis. */}
-            {!retirada && option.transportadora && (
+            {/* Subtítulo SÓ quando acrescenta (Correios · PAC atrás de
+                "Entrega econômica"); o "via" é selo à parte, com o logo do
+                agregador — nunca a transportadora de novo. */}
+            {(marca?.subtitulo || marca?.agregador) && (
               <span
-                className={`mt-0.5 block text-[9px] leading-snug ${
+                className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[9px] leading-snug ${
                   isSelected ? "text-zinc-200" : "text-zinc-500"
                 }`}
               >
-                {option.transportadora}
-                {option.servico ? ` — ${option.servico}` : ""}
-                {option.provedorRotulo ? ` · via ${option.provedorRotulo}` : ""}
+                {marca.subtitulo && <span>{marca.subtitulo}</span>}
+                {marca.subtitulo && marca.agregador && (
+                  <span aria-hidden="true">·</span>
+                )}
+                {marca.agregador && (
+                  <SeloDoAgregador
+                    slug={marca.agregador.slug}
+                    nome={marca.agregador.nome}
+                    className={`text-[9px] ${isSelected ? "text-zinc-200" : "text-zinc-500"}`}
+                  />
+                )}
               </span>
             )}
             {retirada ? (
@@ -897,28 +1043,157 @@ function CalculadoraDeFrete({
                     }`}
               </span>
             )}
+            {/* Contrato §5: a mesma nota vale para toda nacional NÃO
+                beneficiada, ao lado de outra que foi -- explica por que
+                esta continua no preço cheio, em vez de a cliente achar que
+                é um erro. */}
+            {naoBeneficiadaComAvisoDeAlcance && (
+              <span
+                className={`mt-0.5 block text-[9px] leading-snug ${
+                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                }`}
+              >
+                O benefício da loja vale só na opção mais barata.
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-col justify-center text-right">
+        <div className="flex flex-col items-end justify-center text-right">
           {retirada ? (
             <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
               Grátis
             </span>
-          ) : isFree ? (
+          ) : gratisDesteCartao ? (
             <div className="flex items-center gap-1">
               <Sparkles className="size-3 fill-emerald-500/20 text-emerald-500" />
               <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
                 GRÁTIS
               </span>
             </div>
+          ) : temDescontoNaoGratis ? (
+            <div className="flex flex-col items-end">
+              <span
+                className={`text-[9px] font-semibold leading-none line-through ${
+                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                }`}
+              >
+                {formatCurrency(precoCheio as number)}
+              </span>
+              <span className="text-xs font-black tracking-tight">
+                {formatCurrency(precoFinal)}
+              </span>
+              <span
+                className={`text-[8px] font-black uppercase tracking-wide ${
+                  isSelected ? "text-white/80" : "text-emerald-600"
+                }`}
+              >
+                Desconto da loja
+              </span>
+            </div>
           ) : (
             <span className="text-xs font-black tracking-tight">
-              {formatCurrency(priceToDisplay)}
+              {formatCurrency(precoFinal)}
             </span>
           )}
         </div>
       </button>
+    );
+  }
+
+  // MODO RESUMO: uma linha compacta com a opção JÁ escolhida — logo/nome
+  // limpo, "via <agregador>", prazo, preço e o botão "Trocar" (abre a
+  // lista completa, exatamente o corpo de sempre). Mesma composição visual
+  // de `renderizarCartaoDeOpcao`, sem o clique de seleção nem o destaque
+  // "Mais barata"/"Mais rápida" — aqui já não há lista para destacar
+  // dentro dela.
+  function renderizarResumoDaOpcao() {
+    if (!selectedOption) return null;
+    const option = selectedOption;
+    const retirada = ehRetiradaNaLoja(option.id);
+    const marca = retirada ? null : marcaDoFrete(option);
+    const tituloDaOpcao = marca?.titulo || option.name;
+    // Mesma régua do cartão (`renderizarCartaoDeOpcao`): preço FINAL da
+    // modalidade por `precoFinalDaOpcao` (FRETE V3) — nunca um "isFree"
+    // global.
+    const precoExibido = precoFinalDaOpcao(option, contextoDoPreco);
+
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-100 bg-white p-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {marca?.transportadora ? (
+            <LogoDaTransportadora
+              slug={marca.transportadora.slug}
+              nome={marca.transportadora.nome}
+              tamanho={28}
+              className="w-12 shrink-0 border border-zinc-100"
+            />
+          ) : (
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-100 bg-zinc-50 text-zinc-500">
+              {retirada ? (
+                <Store className="size-4" />
+              ) : (
+                <Truck className="size-4" />
+              )}
+            </div>
+          )}
+          <div className="min-w-0">
+            <span className="block truncate text-[11px] font-bold leading-snug text-zinc-800">
+              {tituloDaOpcao}
+            </span>
+            {(marca?.subtitulo || marca?.agregador) && (
+              <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[9px] leading-snug text-zinc-500">
+                {marca?.subtitulo && <span>{marca.subtitulo}</span>}
+                {marca?.subtitulo && marca?.agregador && (
+                  <span aria-hidden="true">·</span>
+                )}
+                {marca?.agregador && (
+                  <SeloDoAgregador
+                    slug={marca.agregador.slug}
+                    nome={marca.agregador.nome}
+                    className="text-[9px] text-zinc-500"
+                  />
+                )}
+              </span>
+            )}
+            <span className="mt-0.5 block text-[9px] leading-snug text-zinc-400">
+              {retirada
+                ? option.pickupAddress
+                  ? `Retire em: ${option.pickupAddress}`
+                  : "Aguarde a confirmação da loja para retirar"
+                : option.deliveryDays === 0
+                  ? "Entrega no mesmo dia"
+                  : `Entrega em até ${option.deliveryDays} ${
+                      option.deliveryDays > 1 ? "dias úteis" : "dia útil"
+                    }`}
+            </span>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {retirada || precoExibido === 0 ? (
+            <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
+              Grátis
+            </span>
+          ) : (
+            <span className="text-xs font-black tracking-tight text-zinc-800">
+              {formatCurrency(precoExibido)}
+            </span>
+          )}
+          {/* Alvo ≥44px (laudo de acessibilidade — toque confiável no
+              celular): `min-h-11` = 44px na escala do Tailwind deste
+              projeto. */}
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light();
+              setDetalhesAbertosNoResumo(true);
+            }}
+            className="flex min-h-11 items-center rounded-xl bg-zinc-900 px-3 text-[10px] font-black uppercase tracking-wider text-white transition-opacity hover:opacity-90"
+          >
+            Trocar
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -944,95 +1219,106 @@ function CalculadoraDeFrete({
         {acaoDoEndereco && <div className="shrink-0">{acaoDoEndereco}</div>}
       </div>
 
-      {!destinoValido && (
-        <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-600">
-          <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
-          <span>{mensagemSemDestino}</span>
-        </div>
-      )}
-
-      {destinoValido && loading && (
-        // Laudo de acessibilidade 05/09: estado de espera anunciado sem
-        // roubar o foco.
-        <div
-          role="status"
-          className="flex items-center gap-2 text-[11px] font-semibold text-zinc-500"
-        >
-          <span className="size-3 animate-spin rounded-full border-2 border-zinc-200 border-t-primary" />
-          Calculando frete e prazo...
-        </div>
-      )}
-
-      {/* Com a calculadora montada também no carrinho grátis (CartView-495),
-          o alerta de erro de cotação não pode aparecer sozinho: a cotação
-          continua (ela dá o shipping_option_id de reserva), só o aviso cala. */}
-      {destinoValido && !isFree && error && (
-        <div className="flex items-start justify-between gap-2 rounded-2xl border border-amber-100 bg-amber-50 p-2.5 text-[11px] font-medium text-amber-800">
-          {/* Laudo de acessibilidade 05/09, M1: `role="alert"` fala na hora
-              — só a frase; o botão fica fora do que é anunciado. */}
-          <div role="alert" className="flex items-start gap-1.5">
-            <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-            <span>{error}</span>
-          </div>
-          <button
-            type="button"
-            onClick={tentarDeNovo}
-            disabled={loading}
-            className="flex shrink-0 select-none items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
-          >
-            <RefreshCw className="size-3" />
-            Tentar de novo
-          </button>
-        </div>
-      )}
-
-      {/* Lista de opções. SEM animação de saída de propósito: trocar de
-          endereço invalida a cotação na hora, e uma saída animada deixava as
-          opções do destino ANTERIOR na tela — e clicáveis — durante o fade. */}
-      {destinoValido && options.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -5 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-2"
-        >
-          {opcaoDeRetirada && renderizarCartaoDeOpcao(opcaoDeRetirada)}
-          {cartoesDeDestaque.map(renderizarCartaoDeOpcao)}
-          {outrasVisiveis.map(renderizarCartaoDeOpcao)}
-          {/* "+ Ver outras opções" — discreto de propósito (o pedido do
-              dono): não compete visualmente com os cartões de destaque.
-              Só aparece quando existe algo além dos destaques/retirada.
-              Recolher não troca a escolha (a opção escolhida continua
-              visível em `outrasVisiveis` mesmo fechada). */}
-          {destaques.outras.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setOutrasExpandidas((v) => !v)}
-              className="w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline"
-            >
-              {outrasExpandidas
-                ? "Ver menos opções"
-                : `+ Ver outras opções (${destaques.outras.length})`}
-            </button>
+      {exibindoResumoDaOpcao ? (
+        renderizarResumoDaOpcao()
+      ) : (
+        <>
+          {!destinoValido && (
+            <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-600">
+              <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
+              <span>{mensagemSemDestino}</span>
+            </div>
           )}
-        </motion.div>
-      )}
 
-      {/* Exibição honesta (onda D-1): sem opção de entrega E sem grátis da
-          loja, o estado é "A calcular" — nunca silêncio nem preço inventado. */}
-      {destinoValido &&
-        !isFree &&
-        cotouSemOpcoes &&
-        !loading &&
-        !error &&
-        options.length === 0 && (
-          <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-500">
-            <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
-            <span>
-              A calcular: nenhuma opção de entrega para este endereço — combine
-              a entrega com a loja.
-            </span>
-          </div>
-        )}
+          {destinoValido && loading && (
+            // Laudo de acessibilidade 05/09: estado de espera anunciado sem
+            // roubar o foco.
+            <div
+              role="status"
+              className="flex items-center gap-2 text-[11px] font-semibold text-zinc-500"
+            >
+              <span className="size-3 animate-spin rounded-full border-2 border-zinc-200 border-t-primary" />
+              Calculando frete e prazo...
+            </div>
+          )}
+
+          {/* FRETE V3 (T3, 23/09): a supressão por "isFree" GLOBAL morreu com
+              ele — toda modalidade grátis (local, `free-shipping-promo`, ou
+              nacional já a R$ 0) chega como uma OPÇÃO de verdade na lista
+              (`options.length > 0`), nunca como lista vazia. Sem essa
+              modalidade "escondendo" o erro, ele volta a aparecer sempre que
+              houver — o que é o correto: se a cotação falhou, a cliente
+              precisa saber, mesmo que outra modalidade (local) já esteja OK. */}
+          {destinoValido && error && (
+            <div className="flex items-start justify-between gap-2 rounded-2xl border border-amber-100 bg-amber-50 p-2.5 text-[11px] font-medium text-amber-800">
+              {/* Laudo de acessibilidade 05/09, M1: `role="alert"` fala na hora
+                  — só a frase; o botão fica fora do que é anunciado. */}
+              <div role="alert" className="flex items-start gap-1.5">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+                <span>{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={tentarDeNovo}
+                disabled={loading}
+                className="flex shrink-0 select-none items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
+              >
+                <RefreshCw className="size-3" />
+                Tentar de novo
+              </button>
+            </div>
+          )}
+
+          {/* Lista de opções. SEM animação de saída de propósito: trocar de
+              endereço invalida a cotação na hora, e uma saída animada deixava as
+              opções do destino ANTERIOR na tela — e clicáveis — durante o fade. */}
+          {destinoValido && options.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-2"
+            >
+              {opcaoDeRetirada && renderizarCartaoDeOpcao(opcaoDeRetirada)}
+              {cartoesDeDestaque.map(renderizarCartaoDeOpcao)}
+              {outrasVisiveis.map(renderizarCartaoDeOpcao)}
+              {/* "+ Ver outras opções" — discreto de propósito (o pedido do
+                  dono): não compete visualmente com os cartões de destaque.
+                  Só aparece quando existe algo além dos destaques/retirada.
+                  Recolher não troca a escolha (a opção escolhida continua
+                  visível em `outrasVisiveis` mesmo fechada). */}
+              {destaques.outras.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setOutrasExpandidas((v) => !v)}
+                  className="w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline"
+                >
+                  {outrasExpandidas
+                    ? "Ver menos opções"
+                    : `+ Ver outras opções (${destaques.outras.length})`}
+                </button>
+              )}
+            </motion.div>
+          )}
+
+          {/* Exibição honesta (onda D-1): sem opção de entrega nenhuma, o
+              estado é "A calcular" — nunca silêncio nem preço inventado. FRETE
+              V3 (T3, 23/09): a supressão por "isFree" GLOBAL saiu daqui pelo
+              mesmo motivo do bloco de erro acima. */}
+          {destinoValido &&
+            cotouSemOpcoes &&
+            !loading &&
+            !error &&
+            options.length === 0 && (
+              <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-500">
+                <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
+                <span>
+                  A calcular: nenhuma opção de entrega para este endereço —
+                  combine a entrega com a loja.
+                </span>
+              </div>
+            )}
+        </>
+      )}
     </section>
   );
 }

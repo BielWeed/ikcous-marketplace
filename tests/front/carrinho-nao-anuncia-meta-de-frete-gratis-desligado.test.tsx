@@ -32,23 +32,23 @@ import { deveExibirMetaDeFreteGratis } from "@/views/customer/CartView";
 // tests/front/shipping-progress-contraste-aa.test.tsx.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// T3 (23/09): o 2º parâmetro deixou de ser `freeShippingMin` cru (só o
+// canal local) e virou `temMetaPorValor` — já decidido pelo chamador para o
+// canal da MODALIDADE ESCOLHIDA (`promessaDoCanalEscolhido.estrategia ===
+// "acima_de_valor"`, local ou nacional). O comportamento puro que este
+// arquivo prende continua o mesmo: só "acima_de_valor" tem meta.
 describe("deveExibirMetaDeFreteGratis — só existe meta de valor em 'acima_de_valor'", () => {
-  it("preset desligado (freeShippingMin=0) e frete não garantido: não exibe", () => {
-    expect(deveExibirMetaDeFreteGratis(false, 0)).toBe(false);
+  it("canal sem meta por valor (desligado/sempre/por_produto) e frete não garantido: não exibe", () => {
+    expect(deveExibirMetaDeFreteGratis(false, false)).toBe(false);
   });
 
-  it("preset 'por_produto' (sentinela -1) sem item marcado (frete não garantido): não exibe", () => {
-    expect(deveExibirMetaDeFreteGratis(false, -1)).toBe(false);
+  it("canal com meta por valor ('acima_de_valor') ainda não atingida: exibe (é a meta de verdade)", () => {
+    expect(deveExibirMetaDeFreteGratis(false, true)).toBe(true);
   });
 
-  it("preset 'acima_de_valor' (freeShippingMin=100) ainda não atingido: exibe (é a meta de verdade)", () => {
-    expect(deveExibirMetaDeFreteGratis(false, 100)).toBe(true);
-  });
-
-  it("frete já garantido (freteGratis=true), qualquer preset: exibe para comemorar 'Liberado'", () => {
-    expect(deveExibirMetaDeFreteGratis(true, 0)).toBe(true);
-    expect(deveExibirMetaDeFreteGratis(true, -1)).toBe(true);
-    expect(deveExibirMetaDeFreteGratis(true, 0.01)).toBe(true);
+  it("frete já garantido (freteGratis=true), qualquer canal: exibe para comemorar 'Liberado'", () => {
+    expect(deveExibirMetaDeFreteGratis(true, false)).toBe(true);
+    expect(deveExibirMetaDeFreteGratis(true, true)).toBe(true);
   });
 });
 
@@ -77,7 +77,7 @@ describe("ShippingProgress — rede de segurança contra meta 0%/R$ 0,00", () =>
     await act(async () => {
       raiz.render(
         <ShippingProgress
-          shipping={25}
+          estado="meta"
           savings={0}
           progressPercent={0}
           amountToFree={0}
@@ -101,7 +101,7 @@ describe("ShippingProgress — rede de segurança contra meta 0%/R$ 0,00", () =>
     await act(async () => {
       raiz.render(
         <ShippingProgress
-          shipping={25}
+          estado="meta"
           savings={0}
           progressPercent={40}
           amountToFree={60}

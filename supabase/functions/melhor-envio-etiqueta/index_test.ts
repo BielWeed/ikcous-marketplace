@@ -58,6 +58,7 @@ const {
     erroDeServicoParaEtiqueta,
     normalizarServicoEscolhidoPeloLojista,
 } = await import('./index.ts')
+const { cpfValido, cpfDoDestinatario, sanitizarCpfDoTexto } = await import('./cpf.ts')
 globalThis.fetch = fetchNativo
 
 /** Instala o fetch admin falso SÓ durante a chamada ao handler. */
@@ -84,6 +85,21 @@ async function comConsoleLogCapturado(executar: () => Promise<void>): Promise<st
         await executar()
     } finally {
         console.log = original
+    }
+    return linhas
+}
+
+/** Mesma ideia de `comConsoleLogCapturado`, para `console.error` — usada para
+ *  provar que o CPF nunca aparece cru num log (achado da revisão Opus sobre
+ *  o commit aadbf4c: o `cart sem id` ecoava o corpo cru do ME). */
+async function comConsoleErrorCapturado(executar: () => Promise<void>): Promise<string[]> {
+    const linhas: string[] = []
+    const original = console.error
+    console.error = ((...args: any[]) => { linhas.push(args.map(String).join(' ')) }) as any
+    try {
+        await executar()
+    } finally {
+        console.error = original
     }
     return linhas
 }
@@ -458,6 +474,11 @@ const PEDIDO_FELIZ = {
         city: 'Monte Carmelo',
         state: 'MG',
         shipping_option_id: 'melhor-envio-1',
+        // CPF válido de teste (52998224725) — requisito novo do Melhor
+        // Envio (`to.document`). Sem ele, todo fluxo feliz deste arquivo
+        // pararia no portão de CPF antes de chegar aos ramos que cada teste
+        // quer provar.
+        cpf: '52998224725',
     },
 }
 
@@ -483,11 +504,14 @@ const CONTA_ME_FELIZ = {
  * (reivindicação gravada? liberação com os dois filtros? evento de qual
  * etapa?).
  */
-function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any } = {}) {
+function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any } = {}) {
     const registro = {
         reivindicacoes: [] as Array<{ valores: any; filtros: any[] }>,
         liberacoes: [] as Array<{ valores: any; filtros: any[] }>,
         completacoes: [] as Array<{ valores: any; filtros: any[] }>,
+        // update do CPF (definir_cpf_destinatario) — assento à parte porque o
+        // valor gravado é `customer_data` (não `shipping_label_id`).
+        cpfAtualizacoes: [] as Array<{ valores: any; filtros: any[] }>,
         eventos: [] as any[],
     }
     const resolver = (no: any): Promise<any> => {
@@ -520,6 +544,14 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
                 // Quem vence a corrida recebe 1 linha; o teste que arma
                 // `linhasReivindicadas: []` simula o perdedor.
                 const linhas = configuracao.linhasReivindicadas ?? [{ id: configuracao.pedido?.id ?? 'pedido-1' }]
+                return Promise.resolve({ data: linhas, error: null })
+            }
+            const atualizaCpf = 'customer_data' in (no.valores || {})
+            if (atualizaCpf) {
+                registro.cpfAtualizacoes.push({ valores: no.valores, filtros: [...no.filtros] })
+                // O teste que arma `linhasCpfAtualizadas: []` simula a corrida
+                // perdida (update condicional que não bateu em nenhuma linha).
+                const linhas = configuracao.linhasCpfAtualizadas ?? [{ id: configuracao.pedido?.id ?? 'pedido-1' }]
                 return Promise.resolve({ data: linhas, error: null })
             }
             registro.completacoes.push({ valores: no.valores, filtros: [...no.filtros] })
@@ -581,7 +613,7 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
  * revisor A′ da 3ª rodada) ou 'excecao' (a chamada estoura no meio —
  * timeout/queda de rede pós-reivindicação).
  */
-function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'erro-5xx' } = {}) {
+function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'erro-5xx'; cartSemId?: boolean; cartSemIdPayload?: Record<string, unknown> } = {}) {
     const registro = {
         carrinho: 0,
         remocoes: 0,
@@ -591,6 +623,8 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'e
         ultimoServico: null as string | null,
         ultimoInsuranceValue: null as number | null,
         ultimoProducts: null as Array<Record<string, unknown>> | null,
+        // CPF (`to.document`) — assento para o portão de CPF do destinatário.
+        ultimoTo: null as Record<string, unknown> | null,
         userAgentsVistos: [] as string[],
     }
     const buscar = (async (input: any, init?: any) => {
@@ -612,10 +646,27 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'e
                 registro.ultimoServico = corpo?.service ?? null
                 registro.ultimoInsuranceValue = corpo?.options?.insurance_value ?? null
                 registro.ultimoProducts = corpo?.products ?? null
+                registro.ultimoTo = corpo?.to ?? null
             } catch {
                 registro.ultimoServico = null
                 registro.ultimoInsuranceValue = null
                 registro.ultimoProducts = null
+                registro.ultimoTo = null
+            }
+            if (opcoes.cartSemId) {
+                // Simula o ME ecoando o `to.document` cru numa resposta 201
+                // SEM `id` (o campo que dispara o log 'cart sem id') — é
+                // exatamente o formato que o log tinha de sanitizar antes de
+                // imprimir (achado da revisão Opus sobre o commit aadbf4c).
+                // `cartSemIdPayload` deixa o teste escolher o corpo exato —
+                // usado para colocar o CPF cruzando a fronteira do corte de
+                // 500 caracteres (2ª rodada da revisão).
+                return new Response(
+                    JSON.stringify(
+                        opcoes.cartSemIdPayload ?? { errors: { 'to.document': ['529.982.247-25 já está em uso'] } },
+                    ),
+                    { status: 201, headers: { 'Content-Type': 'application/json' } },
+                )
             }
             return new Response(JSON.stringify({ id: LABEL_ID, protocol: 'proto-1' }), {
                 status: 201,
@@ -1235,5 +1286,348 @@ Deno.test("handler - o e-mail de contato do ME e o token NUNCA vazam na resposta
         const textoResposta = JSON.stringify(await res.json())
         assertEquals(textoResposta.includes('segredo-super-secreto-do-me'), false)
         assertEquals(textoResposta.includes('loja@exemplo.com.br'), false)
+    })
+})
+
+// ============================================================================
+// CPF do destinatário (requisito novo: o Melhor Envio exige `to.document`
+// para inserir o frete no carrinho — docs.melhorenvio.com.br/reference/
+// inserir-fretes-no-carrinho, "Documentos from/to"). Contrato com a frente
+// de checkout: `customer_data.cpf` é STRING de 11 dígitos sem máscara,
+// gravada só quando a entrega é por transportadora; pedido antigo não tem a
+// chave.
+// ============================================================================
+
+// ── cpfValido / cpfDoDestinatario (funções puras, cpf.ts) ──────────────────
+
+Deno.test("cpfValido - aceita CPF real com e sem máscara; recusa dígitos repetidos, checksum errado e tamanho errado", () => {
+    assertEquals(cpfValido('529.982.247-25'), true)
+    assertEquals(cpfValido('52998224725'), true)
+    assertEquals(cpfValido('11111111111'), false) // todos os dígitos iguais
+    assertEquals(cpfValido('00000000000'), false)
+    assertEquals(cpfValido('52998224700'), false) // dígitos verificadores errados
+    assertEquals(cpfValido('5299822472'), false) // 10 dígitos
+    assertEquals(cpfValido('529982247256'), false) // 12 dígitos
+    assertEquals(cpfValido(null), false)
+    assertEquals(cpfValido(undefined), false)
+    assertEquals(cpfValido(''), false)
+    assertEquals(cpfValido({}), false)
+})
+
+Deno.test("cpfDoDestinatario - lê SÓ customer_data.cpf (nunca customer_data.document nem outro campo); ausente e inválido devolvem null", () => {
+    assertEquals(cpfDoDestinatario({ cpf: '529.982.247-25' }), '52998224725')
+    assertEquals(cpfDoDestinatario({ cpf: '52998224725' }), '52998224725')
+    assertEquals(cpfDoDestinatario({}), null)
+    assertEquals(cpfDoDestinatario({ cpf: null }), null)
+    assertEquals(cpfDoDestinatario({ cpf: '' }), null)
+    assertEquals(cpfDoDestinatario({ cpf: '11111111111' }), null)
+    assertEquals(cpfDoDestinatario(null), null)
+    assertEquals(cpfDoDestinatario(undefined), null)
+    assertEquals(cpfDoDestinatario({ document: '52998224725' }), null)
+})
+
+// ── sanitizarCpfDoTexto ──────────────────────────────────────────────────
+
+Deno.test("sanitizarCpfDoTexto - troca CPF mascarado e cru por [cpf], preserva o resto do texto", () => {
+    assertEquals(
+        sanitizarCpfDoTexto('to.document 529.982.247-25 é inválido para este destinatário'),
+        'to.document [cpf] é inválido para este destinatário',
+    )
+    assertEquals(
+        sanitizarCpfDoTexto('{"document":"52998224725","field":"to.document"}'),
+        '{"document":"[cpf]","field":"to.document"}',
+    )
+    assertEquals(sanitizarCpfDoTexto('mensagem sem nada sensível aqui'), 'mensagem sem nada sensível aqui')
+    // não confunde CEP (8 dígitos) nem telefone com DDI (mais de 11) com CPF
+    assertEquals(sanitizarCpfDoTexto('CEP 38500000, telefone 5534999990000'), 'CEP 38500000, telefone 5534999990000')
+})
+
+// ── gerar_etiqueta: to.document e o portão de CPF ──────────────────────────
+
+Deno.test("handler - carrinho do ME leva to.document = CPF do banco (11 dígitos, sem máscara)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.document, '52998224725')
+    })
+})
+
+Deno.test("handler - CPF ausente no pedido: 400 com precisa_cpf, zero chamadas ao ME (nem /me nem /cart) e pedido NÃO reivindicado", async () => {
+    await comEnvAdmin(async () => {
+        const customerDataSemCpf = { ...PEDIDO_FELIZ.customer_data }
+        // @ts-ignore — a linha de cima existe só no PEDIDO_FELIZ (com cpf);
+        // esta cópia remove a chave para simular pedido antigo/sem checkout novo.
+        delete customerDataSemCpf.cpf
+        const pedidoSemCpf = { ...PEDIDO_FELIZ, customer_data: customerDataSemCpf }
+        const supa = clienteFalso({ pedido: pedidoSemCpf })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(corpo.precisa_cpf, true)
+        assertEquals(String(corpo.error).toLowerCase().includes('não tem o cpf'), true)
+        assertEquals(me.registro.carrinho, 0)
+        assertEquals(me.registro.chamadasMe, 0)
+        assertEquals(supa.registro.reivindicacoes.length, 0)
+    })
+})
+
+Deno.test("handler - CPF inválido no pedido (checksum errado, dígitos repetidos, tamanho errado): 400 com precisa_cpf, mensagem distinta de 'ausente', zero chamadas ao ME", async () => {
+    await comEnvAdmin(async () => {
+        for (const cpfInvalido of ['52998224700', '11111111111', '5299822472']) {
+            const pedidoCpfInvalido = {
+                ...PEDIDO_FELIZ,
+                customer_data: { ...PEDIDO_FELIZ.customer_data, cpf: cpfInvalido },
+            }
+            const supa = clienteFalso({ pedido: pedidoCpfInvalido })
+            const me = buscarMeFalso()
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 400)
+            const corpo = await res.json()
+            assertEquals(corpo.precisa_cpf, true)
+            assertEquals(String(corpo.error).toLowerCase().includes('inválido'), true)
+            assertEquals(String(corpo.error).toLowerCase().includes('não tem o cpf'), false)
+            assertEquals(me.registro.carrinho, 0)
+        }
+    })
+})
+
+Deno.test("handler - CPF válido COM máscara no banco passa normalmente (o portão limpa antes de validar)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoComMascara = {
+            ...PEDIDO_FELIZ,
+            customer_data: { ...PEDIDO_FELIZ.customer_data, cpf: '529.982.247-25' },
+        }
+        const supa = clienteFalso({ pedido: pedidoComMascara })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.document, '52998224725')
+    })
+})
+
+Deno.test("handler - cpf no BODY de gerar_etiqueta é IGNORADO: pedido sem CPF no banco continua recusando mesmo com CPF válido no corpo", async () => {
+    await comEnvAdmin(async () => {
+        const customerDataSemCpf = { ...PEDIDO_FELIZ.customer_data }
+        // @ts-ignore
+        delete customerDataSemCpf.cpf
+        const pedidoSemCpf = { ...PEDIDO_FELIZ, customer_data: customerDataSemCpf }
+        const supa = clienteFalso({ pedido: pedidoSemCpf })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar('gerar_etiqueta', { cpf: '52998224725' }), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(corpo.precisa_cpf, true)
+        assertEquals(me.registro.carrinho, 0)
+        assertEquals(me.registro.chamadasMe, 0)
+    })
+})
+
+Deno.test("handler - pedido já etiquetado sem CPF continua devolvendo `already` (legado não quebra pelo portão novo)", async () => {
+    await comEnvAdmin(async () => {
+        const customerDataSemCpf = { ...PEDIDO_FELIZ.customer_data }
+        // @ts-ignore
+        delete customerDataSemCpf.cpf
+        const pedidoLegadoEtiquetado = {
+            ...PEDIDO_FELIZ,
+            shipping_label_id: 'lbl-legado',
+            shipping_label_url: 'https://melhorenvio.com.br/imprimir/legado',
+            tracking_code: 'ME-legado',
+            customer_data: customerDataSemCpf,
+        }
+        const supa = clienteFalso({ pedido: pedidoLegadoEtiquetado })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        const corpo = await res.json()
+        assertEquals(corpo.already, true)
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+// ── ACTION: definir_cpf_destinatario ────────────────────────────────────────
+
+function requisicaoDefinirCpf(cpf: unknown, orderId = 'pedido-2', extra: Record<string, unknown> = {}): Request {
+    return new Request('http://localhost/melhor-envio-etiqueta', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer jwt-admin-de-teste' },
+        body: JSON.stringify({ action: 'definir_cpf_destinatario', orderId, cpf, ...extra }),
+    })
+}
+
+const PEDIDO_PARA_DEFINIR_CPF = {
+    id: 'pedido-2',
+    status: 'processing',
+    shipping_label_id: null,
+    customer_data: { cep: '38500-000', whatsapp: '34999999999' },
+}
+
+Deno.test("definir_cpf_destinatario - sem Authorization recusa 403 ANTES de qualquer leitura/escrita (mesmo portão de admin das outras actions)", async () => {
+    const supa = clienteFalso({ pedido: PEDIDO_PARA_DEFINIR_CPF })
+    const res = await handler(
+        new Request('http://localhost/melhor-envio-etiqueta', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'definir_cpf_destinatario', orderId: 'pedido-2', cpf: '52998224725' }),
+        }),
+        { supabase: supa.cliente },
+    )
+    assertEquals(res.status, 403)
+    assertEquals(supa.registro.cpfAtualizacoes.length, 0)
+})
+
+Deno.test("definir_cpf_destinatario - não depende do token do Melhor Envio (roda mesmo sem credencial cadastrada)", async () => {
+    await comEnvAdmin(async () => {
+        // credentials com token vazio — se a action dependesse do portão de
+        // token (linha ~646), cairia em 400 de 'token não configurado' antes
+        // de chegar ao próprio código da action.
+        const supa = clienteFalso({ pedido: PEDIDO_PARA_DEFINIR_CPF, credentials: { token: '', sandbox: true } })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+    })
+})
+
+Deno.test("definir_cpf_destinatario - CPF inválido recusa 400 SEM gravar (checksum errado, repetido e tamanho errado)", async () => {
+    await comEnvAdmin(async () => {
+        for (const cpfInvalido of ['52998224700', '11111111111', '5299822472', '', null]) {
+            const supa = clienteFalso({ pedido: PEDIDO_PARA_DEFINIR_CPF })
+            const res = await comAdminFalso(() =>
+                handler(requisicaoDefinirCpf(cpfInvalido), { supabase: supa.cliente }))
+            assertEquals(res.status, 400)
+            assertEquals(supa.registro.cpfAtualizacoes.length, 0)
+        }
+    })
+})
+
+Deno.test("definir_cpf_destinatario - pedido já etiquetado recusa 409: CPF de etiqueta emitida não muda mais", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoEtiquetado = { ...PEDIDO_PARA_DEFINIR_CPF, shipping_label_id: 'lbl-existente' }
+        const supa = clienteFalso({ pedido: pedidoEtiquetado })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 409)
+        assertEquals(supa.registro.cpfAtualizacoes.length, 0)
+    })
+})
+
+Deno.test("definir_cpf_destinatario - pedido cancelado/entregue/devolvido recusa 400 sem gravar", async () => {
+    await comEnvAdmin(async () => {
+        for (const status of ['cancelled', 'delivered', 'returned']) {
+            const pedidoMorto = { ...PEDIDO_PARA_DEFINIR_CPF, status }
+            const supa = clienteFalso({ pedido: pedidoMorto })
+            const res = await comAdminFalso(() =>
+                handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+            assertEquals(res.status, 400)
+            assertEquals(supa.registro.cpfAtualizacoes.length, 0)
+        }
+    })
+})
+
+Deno.test("definir_cpf_destinatario - sucesso grava o CPF preservando as OUTRAS chaves de customer_data, com update condicional (id + sem etiqueta + cpf anterior ausente), e NUNCA devolve o CPF inteiro", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_PARA_DEFINIR_CPF })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('529.982.247-25'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+        const corpo = await res.json()
+        assertEquals(corpo.success, true)
+        assertEquals(corpo.cpf_final, '25')
+        assertEquals(JSON.stringify(corpo).includes('52998224725'), false)
+
+        assertEquals(supa.registro.cpfAtualizacoes.length, 1)
+        assertEquals(supa.registro.cpfAtualizacoes[0].valores.customer_data, {
+            cep: '38500-000',
+            whatsapp: '34999999999',
+            cpf: '52998224725',
+        })
+        const filtros = supa.registro.cpfAtualizacoes[0].filtros
+        const colunas = filtros.map((f: any) => f.coluna)
+        assertEquals(colunas.includes('id'), true)
+        assertEquals(colunas.includes('shipping_label_id'), true)
+        const filtroCpfAnterior = filtros.find((f: any) => f.coluna === 'customer_data->>cpf')
+        assertEquals(filtroCpfAnterior?.metodo, 'is')
+        assertEquals(filtroCpfAnterior?.valor, null)
+    })
+})
+
+Deno.test("definir_cpf_destinatario - CPF anterior presente usa filtro eq (não is) contra o valor antigo (update condicional cobre também troca de CPF)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoComCpfAntigo = {
+            ...PEDIDO_PARA_DEFINIR_CPF,
+            customer_data: { ...PEDIDO_PARA_DEFINIR_CPF.customer_data, cpf: '11144477735' },
+        }
+        const supa = clienteFalso({ pedido: pedidoComCpfAntigo })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+        const filtroCpfAnterior = supa.registro.cpfAtualizacoes[0].filtros.find((f: any) => f.coluna === 'customer_data->>cpf')
+        assertEquals(filtroCpfAnterior?.metodo, 'eq')
+        assertEquals(filtroCpfAnterior?.valor, '11144477735')
+    })
+})
+
+Deno.test("definir_cpf_destinatario - update condicional sem bater linha (corrida: outra escrita mudou o pedido no meio tempo) devolve 409 mandando recarregar", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_PARA_DEFINIR_CPF, linhasCpfAtualizadas: [] })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 409)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).toLowerCase().includes('recarregue'), true)
+    })
+})
+
+// ── log 'cart sem id' sanitiza o CPF (achado da revisão Opus, aadbf4c) ────
+
+Deno.test("handler - cart sem id: o log de erro NUNCA imprime o CPF cru (mascarado ou não) que o ME ecoou na resposta", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso({ cartSemId: true })
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 502)
+        })
+        const linhaDoCart = linhas.find((l) => l.includes('cart sem id'))
+        assertEquals(linhaDoCart !== undefined, true)
+        assertEquals(String(linhaDoCart).includes('529.982.247-25'), false)
+        assertEquals(String(linhaDoCart).includes('52998224725'), false)
+        assertEquals(String(linhaDoCart).includes('[cpf]'), true)
+    })
+})
+
+Deno.test("handler - cart sem id: CPF que cruza a fronteira do corte de 500 caracteres não vaza pedaço nenhum (sanitiza ANTES de cortar)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        // Preenchimento calculado para o CPF cair ATRAVESSANDO o caractere
+        // 500 do JSON.stringify: `{"pad":"` (8) + 478 'A' (posições 8-485) +
+        // `","cpf":"` (9, posições 486-494) + CPF (11, posições 495-505) —
+        // o corte em 500 cairia no MEIO do CPF (dígito de índice 5). É
+        // exatamente o caso que "cortar primeiro, sanitizar depois" deixava
+        // vazar um pedaço de dígitos (2ª rodada da revisão Opus, aadbf4c).
+        const preenchimento = 'A'.repeat(478)
+        const me = buscarMeFalso({
+            cartSemId: true,
+            cartSemIdPayload: { pad: preenchimento, cpf: '52998224725' },
+        })
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 502)
+        })
+        const linhaDoCart = linhas.find((l) => l.includes('cart sem id'))
+        assertEquals(linhaDoCart !== undefined, true)
+        // Nenhuma corrida de 4+ dígitos pode sobrar — nem o CPF inteiro, nem
+        // um pedaço cortado dele.
+        assertEquals(/\d{4,}/.test(String(linhaDoCart)), false)
+        assertEquals(String(linhaDoCart).includes('[cpf]'), true)
     })
 })

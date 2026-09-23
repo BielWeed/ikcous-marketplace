@@ -1,10 +1,16 @@
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
-import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
+import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { ProductCard } from "./ProductCard";
 import { ProductCardSkeleton } from "./ProductCardSkeleton";
 
@@ -43,7 +49,7 @@ export const ProductList = React.memo(function ProductList({
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
   // preset da LOJA (ProductCard-520), derivado do MESMO config que já
   // alimentava `showRating` — mesmo padrão do ProductView.
-  const presetDaLoja = presetDoConfig(config.freeShippingMin);
+  const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
   const { prefetchView } = usePrefetchOnHover();
   const [visibleCount, setVisibleCount] = useState(12);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -184,7 +190,7 @@ export const ProductList = React.memo(function ProductList({
               priority={index < 4}
               selectedProductId={selectedProductId}
               showRating={config.enableReviews}
-              freeShippingPreset={presetDaLoja}
+              promessasDeFrete={promessasDaLoja}
             />
           </motion.div>
         ))}

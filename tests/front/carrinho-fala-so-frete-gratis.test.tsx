@@ -192,7 +192,7 @@ describe("ShippingProgress com frete grátis — 'Frete Grátis Liberado' no tom
     await act(async () => {
       raiz.render(
         <ShippingProgress
-          shipping={0}
+          estado="liberado"
           savings={12.34}
           progressPercent={82}
           amountToFree={0}

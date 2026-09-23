@@ -3152,6 +3152,26 @@ export function useOrders(
           p_destination_cep: orderData.destinationCep || null,
           p_shipping_option_id: orderData.shippingOptionId || null,
           p_idempotency_key: orderData.idempotencyKey || null,
+          // CPF DO DESTINATÁRIO (23/09/2026): NÃO é um parâmetro novo aqui —
+          // a assinatura viva (13 args) continua igual, e mandar um `p_cpf`
+          // à parte derrubaria TODO pedido ("function not found"). O
+          // CheckoutView já embute `{cpf}` dentro do MESMO jsonb que sobe
+          // como `p_address_data` (ver `orderData.addressData` em
+          // `CheckoutView.tsx`, gatilho `exigeCpfDoDestinatario`), e esta
+          // linha já forwarda `orderData.addressData` inteiro — nenhuma
+          // mudança de código é necessária aqui para o CPF chegar à RPC.
+          //
+          // 🔴 A JANELA QUE IMPORTA É A DO BANCO, NÃO A DESTE ARQUIVO: a RPC
+          // viva (20261171 e anteriores) grava `p_address_data` INTEIRO em
+          // `customer_data.address` — para o logado ele hoje chega NULL e o
+          // mapper cai no endereço salvo; um `{cpf}` sozinho ali, SEM a
+          // migration nova, apagaria o endereço de entrega da ficha do
+          // pedido. A migration 20261172 (rebaseada na 20261171 do frete
+          // nacional) é quem separa o CPF do endereço, grava em
+          // `customer_data.cpf` e zera `address` quando só sobra `{cpf}`.
+          // Por isso o deploy do front que manda `{cpf}` só pode subir
+          // DEPOIS que 20261172 estiver aplicada em TODAS as lojas — ver o
+          // relatório da tarefa que introduziu este comentário.
         });
 
         if (error) throw error;

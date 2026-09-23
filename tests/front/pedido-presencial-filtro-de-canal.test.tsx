@@ -606,7 +606,11 @@ describe("AdminOrdersView — o chip 'Balcão' chega de verdade ao hook (achado 
     // temporizador de VERDADE em vez de mockar timers, mesmo padrão de
     // admin-orders-total-concluido-e-aviso-pago-cancelado.test.tsx.
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      // 320ms é o debounce real de `loadAllData` (AdminOrdersView.tsx) — 400ms
+      // de folga é POUCO (achado 23/09/2026: falhou intermitente, 465-485ms
+      // medidos em runs reais desta máquina). 700ms dá margem sem trocar o
+      // que está sendo provado (a POSIÇÃO do parâmetro, não o tempo).
+      await new Promise((resolve) => setTimeout(resolve, 700));
     });
 
     expect(espiaoLoadOrders).toHaveBeenCalled();
@@ -625,7 +629,11 @@ describe("AdminOrdersView — o chip 'Balcão' chega de verdade ao hook (achado 
     });
 
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      // 320ms é o debounce real de `loadAllData` (AdminOrdersView.tsx) — 400ms
+      // de folga é POUCO (achado 23/09/2026: falhou intermitente, 465-485ms
+      // medidos em runs reais desta máquina). 700ms dá margem sem trocar o
+      // que está sendo provado (a POSIÇÃO do parâmetro, não o tempo).
+      await new Promise((resolve) => setTimeout(resolve, 700));
     });
 
     expect(espiaoLoadOrders).toHaveBeenCalled();

@@ -422,6 +422,7 @@ describe("mapOrderFromDB", () => {
           number: "5",
           city: "Araxá",
           whatsapp: "34999990000",
+          campo_desconhecido: "fica",
           cpf: "000.000.000-00",
         },
       }),
@@ -430,8 +431,14 @@ describe("mapOrderFromDB", () => {
     expect(o.customer.number).toBe("5");
     expect(o.customer.city).toBe("Araxá");
     expect(o.customer.whatsapp).toBe("34999990000");
-    // O spread de customer_data preserva o que o mapper não conhece.
-    expect((o.customer as { cpf?: string }).cpf).toBe("000.000.000-00");
+    // O spread de customer_data preserva o que o mapper não conhece...
+    expect(
+      (o.customer as { campo_desconhecido?: string }).campo_desconhecido,
+    ).toBe("fica");
+    // ...menos o CPF (migration 20261172): o pedido mapeado vai para o
+    // cache do localStorage, e CPF nunca entra em storage do navegador —
+    // ver tests/front/mapper-cpf-nao-vai-para-o-cache.test.ts.
+    expect("cpf" in o.customer).toBe(false);
   });
 
   it("cai para o telefone quando o snapshot só tem `phone`", () => {

@@ -330,6 +330,11 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
       botaoOnline.click();
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
+      // TRANSPORTADORA EXIGE CPF (checkout compacto + CPF, 23/09/2026): o
+      // caminho "Pagar agora com PIX" só existe com transportadora — sem
+      // CPF válido o formulário fica inválido e o Finalizar nunca chega à
+      // tela de aguardar pagamento que este teste precisa.
+      digitar("checkout-cpf", "11144477735");
       // Campos de endereço de convidado só existem no DOM quando `!user` —
       // com sessão, o endereço vem do mock de useAddresses (auto-selecionado
       // pelo efeito de CheckoutView).

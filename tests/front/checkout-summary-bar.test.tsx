@@ -202,16 +202,6 @@ async function esperarAte(
   });
 }
 
-/** O gatilho do resumo (miniaturas + "N itens" + "ver mais") é PORTADO para
- * o slot do Header — não é descendente do host de render, e o Header real
- * não está montado nestes testes. Achamos pelo `aria-expanded`, único
- * atributo exclusivo dele (o botão "Finalizar" não tem). */
-function localizarGatilhoDoResumo() {
-  return [...document.body.querySelectorAll("button")].find((b) =>
-    b.hasAttribute("aria-expanded"),
-  ) as HTMLButtonElement | undefined;
-}
-
 function localizarBotaoFinalizar() {
   return [...document.body.querySelectorAll("button")].find(
     (b) => b.getAttribute("aria-label") === "Finalizar pedido",
@@ -222,6 +212,20 @@ describe("CheckoutView — gatilho do resumo no topo, painel e barra de baixo co
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let slotDoHeader: HTMLDivElement;
+
+  /** O gatilho do resumo (miniaturas + "N itens" + "ver mais") é PORTADO
+   * para o slot do Header — não é descendente do host de render, e o
+   * Header real não está montado nestes testes. Achamos pelo
+   * `aria-expanded` DENTRO do slot do Header: desde o checkout compacto
+   * (23/09/2026) o cabeçalho da seção "Seus dados e entrega" TAMBÉM tem
+   * `aria-expanded` (é um accordion), mas ele mora no host do formulário,
+   * nunca no slot portado — escopar ao slot volta a tornar a busca
+   * inequívoca. */
+  function localizarGatilhoDoResumo() {
+    return [...slotDoHeader.querySelectorAll("button")].find((b) =>
+      b.hasAttribute("aria-expanded"),
+    ) as HTMLButtonElement | undefined;
+  }
 
   beforeEach(async () => {
     onNavigate.mockClear();

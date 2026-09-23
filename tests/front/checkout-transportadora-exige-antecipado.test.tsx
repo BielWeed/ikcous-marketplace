@@ -519,6 +519,14 @@ describe("CheckoutView — transportadora exige pagamento antecipado", () => {
       digitar("checkout-tel", "34999999999");
       await esperarMicrotarefas();
     });
+    // TRANSPORTADORA EXIGE CPF (checkout compacto + CPF, 23/09/2026): as
+    // três opções deste arquivo são `melhor-envio-*` — sem o CPF válido o
+    // formulário fica inválido e mascara a regra que o teste quer provar
+    // atrás de "preencha todos os campos" (mensagem genérica de validação).
+    await act(async () => {
+      digitar("checkout-cpf", "11144477735");
+      await esperarMicrotarefas();
+    });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 420));
     });
@@ -571,6 +579,14 @@ describe("CheckoutView — transportadora exige pagamento antecipado", () => {
       digitar("checkout-tel", "34999999999");
       await esperarMicrotarefas();
     });
+    // TRANSPORTADORA EXIGE CPF (checkout compacto + CPF, 23/09/2026): as
+    // três opções deste arquivo são `melhor-envio-*` — sem o CPF válido o
+    // formulário fica inválido e mascara a regra que o teste quer provar
+    // atrás de "preencha todos os campos" (mensagem genérica de validação).
+    await act(async () => {
+      digitar("checkout-cpf", "11144477735");
+      await esperarMicrotarefas();
+    });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 420));
     });
@@ -604,6 +620,14 @@ describe("CheckoutView — transportadora exige pagamento antecipado", () => {
     });
     await act(async () => {
       digitar("checkout-tel", "34999999999");
+      await esperarMicrotarefas();
+    });
+    // TRANSPORTADORA EXIGE CPF (checkout compacto + CPF, 23/09/2026): as
+    // três opções deste arquivo são `melhor-envio-*` — sem o CPF válido o
+    // formulário fica inválido e mascara a regra que o teste quer provar
+    // atrás de "preencha todos os campos" (mensagem genérica de validação).
+    await act(async () => {
+      digitar("checkout-cpf", "11144477735");
       await esperarMicrotarefas();
     });
     await act(async () => {

@@ -8,7 +8,6 @@ import {
   buscarConfiguracaoDeFrete,
   emailDeContatoValido,
 } from "@/components/admin/settings/TransportadorasCard";
-import { EtiquetasEnvioCard } from "@/components/admin/shipping/EtiquetasEnvioCard";
 import { FreteGratisBloco } from "@/components/admin/shipping/FreteGratisBloco";
 import { FreteLocalBloco } from "@/components/admin/shipping/FreteLocalBloco";
 import {
@@ -21,6 +20,7 @@ import {
 } from "@/components/admin/shipping/FreteResumoFaixa";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { resumoDaEstrategiaNacional } from "@/lib/estrategias-de-frete";
 import { listaComRetirada, retiradaLigadaNaLista } from "@/lib/guarda-de-frete";
 import {
   type PresetFreteGratis,
@@ -287,6 +287,16 @@ export const AdminShippingView = memo(function AdminShippingView({
           tom: "positivo",
         };
 
+    // T4 (23/09/2026): a estratégia NACIONAL (grátis/desconto por
+    // transportadora) tem tela própria agora — não cabe uma 4ª coluna na
+    // faixa, então o resumo curto entra no DETALHE desta mesma coluna
+    // (ela já é sobre "fora da cidade"). `desligado` some do detalhe: nada
+    // de poluir a linha com "desligado" quando não há nada a dizer.
+    const resumoNacional =
+      config != null ? resumoDaEstrategiaNacional(config) : "desligado";
+    const detalheNacional = (base: string): string =>
+      resumoNacional === "desligado" ? base : `${base} · ${resumoNacional}`;
+
     const nacional: StatusDaFaixaFrete =
       (config?.shippingCoverage || "national") === "local"
         ? {
@@ -309,7 +319,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                   nomesLigados.length === 1
                     ? `${nomesLigados[0]} ligado`
                     : `${nomesLigados.length} provedores ligados`,
-                detalhe: "cotação real na hora",
+                detalhe: detalheNacional("cotação real na hora"),
                 tom: "positivo",
               }
             : {
@@ -319,30 +329,39 @@ export const AdminShippingView = memo(function AdminShippingView({
                 tom: "atencao",
               };
 
+    // A coluna que era "Frete grátis" agora se identifica como LOCAL: a
+    // regra aqui vale só para local-delivery/store-pickup (T3) — a
+    // estratégia nacional tem a faixa própria acima. REVISÃO (correção 4,
+    // revisão Opus): os detalhes diziam "não paga entrega"/"sai com entrega
+    // grátis" sem dizer ONDE — lido rápido, parecia valer para qualquer
+    // modalidade (o mesmo engano que a T3 corrigiu no cálculo). Agora cada
+    // frase nomeia cidade/retirada.
     const gratis: StatusDaFaixaFrete =
       presetSalvo === "acima_de_valor"
         ? {
-            rotulo: "Frete grátis",
+            rotulo: "Frete grátis local",
             valor: `Acima de R$ ${reais(minSalvo)}`,
-            detalhe: "a compra que passa do valor não paga entrega",
+            detalhe:
+              "a compra que passa do valor não paga entrega na cidade nem retirada",
             tom: "positivo",
           }
         : presetSalvo === "sempre"
           ? {
-              rotulo: "Frete grátis",
+              rotulo: "Frete grátis local",
               valor: "Em toda a loja",
-              detalhe: "todo pedido sai com entrega grátis",
+              detalhe: "toda entrega na cidade e retirada saem grátis",
               tom: "positivo",
             }
           : presetSalvo === "por_produto"
             ? {
-                rotulo: "Frete grátis",
+                rotulo: "Frete grátis local",
                 valor: "Por produto marcado",
-                detalhe: "produtos marcados saem sem custo de entrega",
+                detalhe:
+                  "produtos marcados saem sem custo na entrega da cidade e na retirada",
                 tom: "positivo",
               }
             : {
-                rotulo: "Frete grátis",
+                rotulo: "Frete grátis local",
                 valor: "Desligado",
                 detalhe: "nenhuma regra de grátis ativa",
                 tom: "neutro",
@@ -534,6 +553,14 @@ export const AdminShippingView = memo(function AdminShippingView({
                 }
                 onTentarDeNovo={fetchCreds}
                 desabilitado={isOffline}
+                resumoDaEstrategiaNacional={
+                  config ? resumoDaEstrategiaNacional(config) : undefined
+                }
+                onAbrirEstrategiasNacionais={
+                  onNavigate
+                    ? () => onNavigate("admin-shipping-national")
+                    : undefined
+                }
               />
 
               <FreteGratisBloco
@@ -560,13 +587,28 @@ export const AdminShippingView = memo(function AdminShippingView({
                 desabilitado={isOffline}
               />
 
-              {/* ── Seção 4: etiquetas de envio (Onda 3, rastreio automático)
-                  A etiqueta nasce da API do Melhor Envio — a confirmação de
-                  saldo e a gravação do rastreio no pedido moram no card (e na
-                  edge function melhor-envio-etiqueta). Sempre visível: é
-                  operação de envio, não regra de cobrança — não depende do
-                  interruptor de cobertura acima. */}
-              <EtiquetasEnvioCard />
+              {/* ── Etiquetas de envio MIGRARAM para a ficha do pedido
+                  (EtiquetaDoPedidoCard, dentro de OrderDetail.tsx): a busca
+                  global de pedido nesta tela obrigava o lojista a achar o
+                  pedido de novo, quando ele normalmente já está com a ficha
+                  aberta. Esta linha só aponta o caminho novo — com link
+                  direto para Pedidos quando a navegação do painel está
+                  disponível. */}
+              <p className="text-[11px] leading-snug text-zinc-500">
+                Etiquetas de envio agora ficam no próprio pedido: abra{" "}
+                {onNavigate ? (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin-orders")}
+                    className="font-semibold text-admin-gold underline decoration-admin-gold/40 underline-offset-2 transition-colors hover:text-admin-gold/80"
+                  >
+                    Pedidos
+                  </button>
+                ) : (
+                  "Pedidos"
+                )}
+                , toque no pedido e use "Etiqueta de envio".
+              </p>
             </div>
 
             <p className="mt-10 flex items-start gap-2 text-[11px] leading-snug text-zinc-600">

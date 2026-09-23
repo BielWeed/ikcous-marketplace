@@ -188,14 +188,37 @@ function linhaCruaDoDeepLink() {
   };
 }
 
+// A ficha renderiza `EtiquetaDoPedidoCard` (OrderDetail.tsx), que faz a SUA
+// PRÓPRIA busca avulsa (`.eq("id", orderId).maybeSingle()`) na mesma tabela
+// `marketplace_orders` — sem distinguir, ela contaria como uma segunda
+// chamada de `fetchSingleOrder` (`eqDaBuscaAvulsa`) e quebraria as
+// asserções de "busca de novo?" deste arquivo, que são sobre A VIEW, não
+// sobre o card do pedido. A distinção é pela STRING de `select()`:
+// `fetchSingleOrder` (AdminOrdersView.tsx) é a ÚNICA consulta que pede
+// `marketplace_order_items` (join de itens); o card pede colunas soltas.
+function ehSelectDaFichaAvulsa(colunas: unknown): boolean {
+  return (
+    typeof colunas === "string" && colunas.includes("marketplace_order_items")
+  );
+}
+
 function builderPedidoUnico(linha: unknown) {
   const builder: any = {};
-  builder.select = vi.fn(() => builder);
+  let ehFichaAvulsa = false;
+  builder.select = vi.fn((colunas: unknown) => {
+    ehFichaAvulsa = ehSelectDaFichaAvulsa(colunas);
+    return builder;
+  });
   builder.eq = vi.fn((...args: unknown[]) => {
-    eqDaBuscaAvulsa(...args);
+    if (ehFichaAvulsa) eqDaBuscaAvulsa(...args);
     return builder;
   });
   builder.single = vi.fn(() => Promise.resolve({ data: linha, error: null }));
+  // Busca do EtiquetaDoPedidoCard — nunca é o pedido X/Y deste arquivo,
+  // resolve vazio (o card mostra "Pedido não encontrado", irrelevante aqui).
+  builder.maybeSingle = vi.fn(() =>
+    Promise.resolve({ data: null, error: null }),
+  );
   return builder;
 }
 
@@ -309,10 +332,16 @@ describe("AdminOrdersView — ficha aberta por deep link não remonta quando `or
     from.mockImplementation(() => {
       const builder: any = {};
       let idConsultado: string | undefined;
-      builder.select = vi.fn(() => builder);
+      let ehFichaAvulsa = false;
+      builder.select = vi.fn((colunas: unknown) => {
+        ehFichaAvulsa = ehSelectDaFichaAvulsa(colunas);
+        return builder;
+      });
       builder.eq = vi.fn((...args: unknown[]) => {
-        eqDaBuscaAvulsa(...args);
-        idConsultado = args[1] as string;
+        if (ehFichaAvulsa) {
+          eqDaBuscaAvulsa(...args);
+          idConsultado = args[1] as string;
+        }
         return builder;
       });
       builder.single = vi.fn(() => {
@@ -327,6 +356,12 @@ describe("AdminOrdersView — ficha aberta por deep link não remonta quando `or
           error: null,
         });
       });
+      // Busca do EtiquetaDoPedidoCard (`.maybeSingle()`) — irrelevante aqui,
+      // resolve vazio; sem isto ela lançava TypeError, o card caía em
+      // "erro" e "Não foi possível carregar..." colidia com `telaDeErro()`.
+      builder.maybeSingle = vi.fn(() =>
+        Promise.resolve({ data: null, error: null }),
+      );
       return builder;
     });
 
