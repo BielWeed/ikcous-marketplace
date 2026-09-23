@@ -118,7 +118,7 @@ describe("EtiquetaDoPedidoCard", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     eqChamadas.length = 0;
     colunasPedidas.length = 0;
@@ -127,6 +127,17 @@ describe("EtiquetaDoPedidoCard", () => {
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
+    // As travas de reentrada (`geracaoDaEtiquetaEmVoo`/`cpfEmVoo`/
+    // `rastreioEmVoo`) vivem em escopo de MÓDULO (2ª rodada da revisão Opus
+    // sobre aadbf4c — precisam sobreviver ao desmonte/remonte do card via
+    // `key`), e o módulo só é importado UMA vez por todo o arquivo de teste
+    // (o `import()` dinâmico é cacheado): sem zerar aqui, um `orderId` que
+    // ficou "em voo" e não passou pelo `finally` de um teste anterior (ex.:
+    // suíte interrompida no meio) vazaria para o teste seguinte.
+    const { _resetTravasDeReentranciaParaTeste } = await import(
+      "@/components/admin/orders/EtiquetaDoPedidoCard"
+    );
+    _resetTravasDeReentranciaParaTeste();
   });
 
   afterEach(() => {
@@ -192,6 +203,10 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(invokeMock).not.toHaveBeenCalled();
     expect(hospedeiro.textContent).toMatch(/saldo da SUA conta/i);
     expect(botao("Confirmar e gerar")).toBeTruthy();
+    // Cobertura herdada do card antigo (EtiquetasEnvioCard): a confirmação
+    // mostra o frete PAGO DESTE pedido (pedido() tem shipping: 24.9), não um
+    // valor genérico — achado da revisão Opus sobre a migração (aadbf4c).
+    expect(hospedeiro.textContent).toMatch(/R\$\s*24,90/);
   });
 
   it("confirmar invoca com body EXATO { action: 'gerar_etiqueta', orderId }", async () => {
@@ -289,7 +304,10 @@ describe("EtiquetaDoPedidoCard", () => {
     // Link externo abre em aba nova sem entregar a janela abridora
     // (tabnabbing) — mesma checagem do card antigo.
     expect(linkEtiqueta?.getAttribute("rel")).toMatch(/noopener/);
-    expect(onTrackingAtualizado).toHaveBeenCalledWith("ME23002OWZ7BR");
+    expect(onTrackingAtualizado).toHaveBeenCalledWith(
+      "11111111-1111-1111-1111-111111111111",
+      "ME23002OWZ7BR",
+    );
     expect(hospedeiro.textContent).toContain(
       "Etiqueta gerada e vinculada ao pedido!",
     );
@@ -321,6 +339,14 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(hospedeiro.textContent).toContain(
       "Este pedido já tinha etiqueta — nada foi comprado de novo.",
     );
+    // Cobertura herdada do card antigo: `already` mostra o link da etiqueta
+    // EXISTENTE (achado da revisão Opus sobre a migração, aadbf4c) — sem
+    // isso a lojista não tem como abrir/reimprimir a etiqueta já paga.
+    const linkEtiquetaExistente = hospedeiro.querySelector<HTMLAnchorElement>(
+      'a[href="https://melhorenvio.com.br/imprimir/existia"]',
+    );
+    expect(linkEtiquetaExistente).toBeTruthy();
+    expect(linkEtiquetaExistente?.getAttribute("rel")).toMatch(/noopener/);
   });
 
   it("erro de negócio no formato REAL do SDK (FunctionsHttpError + context): mensagem persiste na tela", async () => {
@@ -501,7 +527,10 @@ describe("EtiquetaDoPedidoCard", () => {
         orderId: "11111111-1111-1111-1111-111111111111",
       },
     });
-    expect(onTrackingAtualizado).toHaveBeenCalledWith("ME999NOVO");
+    expect(onTrackingAtualizado).toHaveBeenCalledWith(
+      "11111111-1111-1111-1111-111111111111",
+      "ME999NOVO",
+    );
   });
 
   it("emitida: 'Atualizar rastreio' com erro de negócio mostra a mensagem do corpo no toast (herdado de admin-shipping-etiqueta-melhor-envio.test.tsx)", async () => {
@@ -802,5 +831,387 @@ describe("EtiquetaDoPedidoCard", () => {
       "";
     expect(textoCpf).toContain("25");
     expect(hospedeiro.textContent).not.toContain("52998224725");
+  });
+
+  // ── Corrida: pedido troca de A para B com uma chamada de A ainda em voo ──
+  // (achado da revisão Opus sobre o commit aadbf4c: 5-20 s de geração de
+  // etiqueta é tempo de sobra para o lojista trocar de ficha no meio).
+
+  const ORDER_A = "11111111-1111-1111-1111-111111111111";
+  const ORDER_B = "bbbbbbbb-1111-1111-1111-111111111111";
+
+  it("gerar_etiqueta em voo + troca A→B: a resposta de A NÃO vira 'emitida' em B, sem link de A, onTrackingAtualizado nunca chamado com o código de A", async () => {
+    let resolverA: (v: unknown) => void = () => {};
+    invokeMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolverA = resolve;
+      }),
+    );
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(ORDER_A, { onTrackingAtualizado });
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+    });
+
+    // Troca para B enquanto a compra de A está em voo.
+    pedidoState.data = pedido({
+      id: ORDER_B,
+      shipping_option_id: "store-pickup",
+    });
+    await abrirCard(ORDER_B, { onTrackingAtualizado });
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+
+    // A resposta ATRASADA de A chega só agora.
+    await act(async () => {
+      resolverA({
+        data: {
+          success: true,
+          already: false,
+          tracking_code: "ME-DE-A",
+          label_url: "https://melhorenvio.com.br/imprimir/de-A",
+          label_id: "lbl-A",
+        },
+      });
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+    expect(
+      hospedeiro.querySelector(
+        'a[href="https://melhorenvio.com.br/imprimir/de-A"]',
+      ),
+    ).toBeNull();
+    expect(onTrackingAtualizado).not.toHaveBeenCalledWith(ORDER_A, "ME-DE-A");
+  });
+
+  it("consultar_rastreio em voo + troca A→B: o rastreio de A NÃO aparece sobre B e onTrackingAtualizado nunca é chamado com ele", async () => {
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-A",
+      shipping_label_url: null,
+      tracking_code: "ME-ANTIGO-A",
+    });
+    let resolverA: (v: unknown) => void = () => {};
+    invokeMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolverA = resolve;
+      }),
+    );
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(ORDER_A, { onTrackingAtualizado });
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+    });
+
+    // Troca para B enquanto a consulta de A está em voo.
+    pedidoState.data = pedido({
+      id: ORDER_B,
+      shipping_option_id: "store-pickup",
+    });
+    await abrirCard(ORDER_B, { onTrackingAtualizado });
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+
+    await act(async () => {
+      resolverA({
+        data: {
+          success: true,
+          tracking_code: "ME-NOVO-DE-A",
+          status_etiqueta: "posted",
+        },
+      });
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+    expect(onTrackingAtualizado).not.toHaveBeenCalledWith(
+      ORDER_A,
+      "ME-NOVO-DE-A",
+    );
+  });
+
+  it("definir_cpf_destinatario em voo + troca A→B: o resultado de A não grava/mostra nada sobre B", async () => {
+    pedidoState.data = pedido({ cpf: null });
+    let resolverA: (v: unknown) => void = () => {};
+    invokeMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolverA = resolve;
+      }),
+    );
+    await abrirCard(ORDER_A);
+    const campo =
+      hospedeiro.querySelector<HTMLInputElement>("#cpf-destinatario")!;
+    await act(async () => {
+      digitarNoInput(campo, "52998224725");
+    });
+    await act(async () => {
+      botao("Salvar CPF")?.click();
+    });
+
+    // Troca para B enquanto o salvamento de A está em voo.
+    pedidoState.data = pedido({
+      id: ORDER_B,
+      shipping_option_id: "store-pickup",
+    });
+    await abrirCard(ORDER_B);
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+
+    await act(async () => {
+      resolverA({ data: { success: true, cpf_final: "25" } });
+      await esperarMicrotarefas();
+    });
+
+    // B continua mostrando B (indisponível) — nem o campo de CPF nem
+    // "Gerar etiqueta" herdados do desfecho de A aparecem.
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+    expect(hospedeiro.querySelector("#cpf-destinatario")).toBeNull();
+    expect(botao("Gerar etiqueta")).toBeUndefined();
+  });
+
+  it("resgate em voo + troca A→B: a releitura do resgate NÃO busca A por cima de B (prova pelo id que cada `.eq` recebeu)", async () => {
+    let resolverA: (v: unknown) => void = () => {};
+    invokeMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolverA = resolve;
+      }),
+    );
+    await abrirCard(ORDER_A);
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+    });
+
+    // Troca para B enquanto a geração de A está em voo.
+    pedidoState.data = pedido({
+      id: ORDER_B,
+      shipping_option_id: "store-pickup",
+    });
+    await abrirCard(ORDER_B);
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+    // Até aqui, só A (leitura inicial) e B (leitura da troca) foram lidos.
+    expect(eqChamadas).toEqual([ORDER_A, ORDER_B]);
+
+    // A resposta de A chega DEPOIS da troca: é um resgate (409) — se a
+    // guarda não existisse, o handler releria o pedido pelo `orderId` da
+    // CLOSURE velha (A), gerando um 3º `.eq` com o id de A.
+    await act(async () => {
+      resolverA({
+        data: null,
+        error: {
+          name: "FunctionsHttpError",
+          context: new Response(
+            JSON.stringify({
+              error:
+                "Já existe uma geração de etiqueta em andamento para este pedido.",
+              label_id: "lbl-corrida-A",
+              resgate: true,
+            }),
+            { status: 409 },
+          ),
+        },
+      });
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+    expect(eqChamadas).toEqual([ORDER_A, ORDER_B]);
+    expect(
+      hospedeiro.querySelector('[data-testid="erro-etiqueta"]'),
+    ).toBeNull();
+  });
+
+  // ── Corrida MODELANDO PRODUÇÃO: com `key={orderId}` a troca A→B DESMONTA
+  // a instância de A de verdade (React não reaproveita) — os 5 testes de
+  // corrida acima usam `abrirCard`, que re-renderiza a MESMA instância com
+  // uma prop nova, sem `key`, e por isso nunca passam por este caminho. 2ª
+  // rodada da revisão Opus sobre aadbf4c: é exatamente esta diferença que
+  // fazia a guarda por `useRef` escrito no corpo do render nunca disparar em
+  // produção (`OrderDetail.tsx` usa `key={order.id}`).
+
+  it("[PRODUÇÃO] key={orderId} desmonta A ao trocar para B: resposta atrasada de A não chama onTrackingAtualizado nem mostra toast de sucesso/erro de A", async () => {
+    const { EtiquetaDoPedidoCard } = await import(
+      "@/components/admin/orders/EtiquetaDoPedidoCard"
+    );
+    let resolverA: (v: unknown) => void = () => {};
+    invokeMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolverA = resolve;
+      }),
+    );
+    const onTrackingAtualizado = vi.fn();
+
+    await act(async () => {
+      raiz.render(
+        <EtiquetaDoPedidoCard
+          key={ORDER_A}
+          orderId={ORDER_A}
+          isOffline={false}
+          onTrackingAtualizado={onTrackingAtualizado}
+        />,
+      );
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+    });
+
+    // Troca para B com `key` diferente — DESMONTA a instância de A de
+    // verdade, igual `OrderDetail.tsx` faz ao trocar de pedido.
+    pedidoState.data = pedido({
+      id: ORDER_B,
+      shipping_option_id: "store-pickup",
+    });
+    await act(async () => {
+      raiz.render(
+        <EtiquetaDoPedidoCard
+          key={ORDER_B}
+          orderId={ORDER_B}
+          isOffline={false}
+          onTrackingAtualizado={onTrackingAtualizado}
+        />,
+      );
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+
+    // A resposta ATRASADA de A chega só agora, sobre a instância JÁ
+    // DESMONTADA (o `fetch`/`invoke` em voo sobrevive na closure mesmo sem
+    // o componente estar mais na árvore).
+    await act(async () => {
+      resolverA({
+        data: {
+          success: true,
+          already: false,
+          tracking_code: "ME-DE-A",
+          label_url: "https://melhorenvio.com.br/imprimir/de-A",
+          label_id: "lbl-A",
+        },
+      });
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+    expect(onTrackingAtualizado).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+  });
+
+  it("[PRODUÇÃO] A→B→A com a compra de A ainda em voo: o 2º 'Confirmar e gerar' de A (instância NOVA, pós-desmonte) não dispara 2ª invocação — trava de reentrada sobrevive ao desmonte por estar em escopo de MÓDULO", async () => {
+    const { EtiquetaDoPedidoCard } = await import(
+      "@/components/admin/orders/EtiquetaDoPedidoCard"
+    );
+    let resolverA: (v: unknown) => void = () => {};
+    invokeMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolverA = resolve;
+      }),
+    );
+
+    // 1) Abre A, confirma a compra — fica em voo (resolverA ainda não foi
+    // chamado).
+    await act(async () => {
+      raiz.render(
+        <EtiquetaDoPedidoCard
+          key={ORDER_A}
+          orderId={ORDER_A}
+          isOffline={false}
+        />,
+      );
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+    });
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    // 2) Troca para B — DESMONTA a instância de A com a compra ainda em voo.
+    pedidoState.data = pedido({
+      id: ORDER_B,
+      shipping_option_id: "store-pickup",
+    });
+    await act(async () => {
+      raiz.render(
+        <EtiquetaDoPedidoCard
+          key={ORDER_B}
+          orderId={ORDER_B}
+          isOffline={false}
+        />,
+      );
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    expect(hospedeiro.textContent).toMatch(/retirada na loja/i);
+
+    // 3) Volta para A — MONTA UMA INSTÂNCIA NOVA (3ª), sem nenhuma memória
+    // de que uma compra de A já está em voo: se a trava fosse por INSTÂNCIA
+    // (o `useRef<Set>` de antes desta correção), o Set desta instância
+    // nasceria VAZIO e um 2º clique em "Confirmar e gerar" passaria
+    // despercebido — comprando a etiqueta duas vezes (dinheiro de verdade).
+    pedidoState.data = pedido({ id: ORDER_A });
+    await act(async () => {
+      raiz.render(
+        <EtiquetaDoPedidoCard
+          key={ORDER_A}
+          orderId={ORDER_A}
+          isOffline={false}
+        />,
+      );
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    // Os botões TÊM de existir: sem isto, um card ainda carregando faria o
+    // clique não acontecer e o teste passaria sem provar a trava.
+    expect(botao("Gerar etiqueta")).toBeTruthy();
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    expect(botao("Confirmar e gerar")).toBeTruthy();
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+    });
+
+    // A compra original de A continua em voo — a trava de MÓDULO ainda tem
+    // ORDER_A dentro, então este clique NÃO pode invocar de novo, e AVISA.
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("em andamento"),
+    );
+
+    // Limpeza: resolve a chamada original para não vazar estado pendente
+    // entre testes (o `beforeEach` seguinte também zera a trava, mas a
+    // promise em si ficaria pendurada sem isto).
+    await act(async () => {
+      resolverA({
+        data: {
+          success: true,
+          already: false,
+          tracking_code: "ME-A",
+          label_url: null,
+          label_id: "lbl-A",
+        },
+      });
+      await esperarMicrotarefas();
+    });
   });
 });

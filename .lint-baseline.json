@@ -137,11 +137,18 @@
     "via git archive do 737465e + biome da versão do package-lock), porque o",
     "log do job exige login nesta sessão e o GITHUB_STEP_SUMMARY não é servido",
     "sem autenticação. Se a rodada do CI deste PR acusar 'biome errors' acima",
-    "de 15, o número real está no summary do run para conferir e corrigir."
+    "de 15, o número real está no summary do run para conferir e corrigir.",
+    "",
+    "23/09/2026 — warnings de eslint de 467 para 458. Medido local com `npm",
+    "run lint:ratchet` (mesmo número apontado pela revisão Opus do PR de CPF",
+    "do destinatário, achado 3 do laudo REPROVADO sobre o commit aadbf4c):",
+    "'eslint warnings 458 / teto 467 — baixou -9'. Biome não mexido (errors",
+    "16 local — CRLF do Windows, não cobrado fora do CI, conforme a nota de",
+    "22/08/2026 acima)."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 467
+    "warnings": 458
   },
   "biome": {
     "errors": 15,

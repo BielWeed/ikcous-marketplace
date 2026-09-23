@@ -21,6 +21,12 @@ vi.mock("@/lib/supabase", () => {
     // Sempre devolve lista vazia: nenhum SKU cadastrado para os produtos de
     // teste, então o fallback de ID é o único caminho renderizado.
     in: vi.fn(() => Promise.resolve({ data: [], error: null })),
+    // A busca PRÓPRIA do card de etiqueta (EtiquetaDoPedidoCard, dentro de
+    // OrderDetail) usa `.select().eq("id", ...).maybeSingle()` — mesmo
+    // builder encadeável, ramo diferente do `.in()` do SKU (achado da
+    // revisão Opus: sem isso, `.eq` não existe e o card só loga exceção).
+    eq: vi.fn(() => builder),
+    maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
   };
   return {
     supabase: {

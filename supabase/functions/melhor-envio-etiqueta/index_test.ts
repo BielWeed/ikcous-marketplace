@@ -89,6 +89,21 @@ async function comConsoleLogCapturado(executar: () => Promise<void>): Promise<st
     return linhas
 }
 
+/** Mesma ideia de `comConsoleLogCapturado`, para `console.error` — usada para
+ *  provar que o CPF nunca aparece cru num log (achado da revisão Opus sobre
+ *  o commit aadbf4c: o `cart sem id` ecoava o corpo cru do ME). */
+async function comConsoleErrorCapturado(executar: () => Promise<void>): Promise<string[]> {
+    const linhas: string[] = []
+    const original = console.error
+    console.error = ((...args: any[]) => { linhas.push(args.map(String).join(' ')) }) as any
+    try {
+        await executar()
+    } finally {
+        console.error = original
+    }
+    return linhas
+}
+
 /** Env de que a porta de admin precisa ANTES de criar qualquer client.
  *  DEVOLVE a função de restauração: quem chama roda dentro de `comEnvAdmin`
  *  e o env volta ao valor anterior no fim — sem vazar para os testes
@@ -598,7 +613,7 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
  * revisor A′ da 3ª rodada) ou 'excecao' (a chamada estoura no meio —
  * timeout/queda de rede pós-reivindicação).
  */
-function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'erro-5xx' } = {}) {
+function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'erro-5xx'; cartSemId?: boolean; cartSemIdPayload?: Record<string, unknown> } = {}) {
     const registro = {
         carrinho: 0,
         remocoes: 0,
@@ -637,6 +652,21 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'e
                 registro.ultimoInsuranceValue = null
                 registro.ultimoProducts = null
                 registro.ultimoTo = null
+            }
+            if (opcoes.cartSemId) {
+                // Simula o ME ecoando o `to.document` cru numa resposta 201
+                // SEM `id` (o campo que dispara o log 'cart sem id') — é
+                // exatamente o formato que o log tinha de sanitizar antes de
+                // imprimir (achado da revisão Opus sobre o commit aadbf4c).
+                // `cartSemIdPayload` deixa o teste escolher o corpo exato —
+                // usado para colocar o CPF cruzando a fronteira do corte de
+                // 500 caracteres (2ª rodada da revisão).
+                return new Response(
+                    JSON.stringify(
+                        opcoes.cartSemIdPayload ?? { errors: { 'to.document': ['529.982.247-25 já está em uso'] } },
+                    ),
+                    { status: 201, headers: { 'Content-Type': 'application/json' } },
+                )
             }
             return new Response(JSON.stringify({ id: LABEL_ID, protocol: 'proto-1' }), {
                 status: 201,
@@ -1552,5 +1582,52 @@ Deno.test("definir_cpf_destinatario - update condicional sem bater linha (corrid
         assertEquals(res.status, 409)
         const corpo = await res.json()
         assertEquals(String(corpo.error).toLowerCase().includes('recarregue'), true)
+    })
+})
+
+// ── log 'cart sem id' sanitiza o CPF (achado da revisão Opus, aadbf4c) ────
+
+Deno.test("handler - cart sem id: o log de erro NUNCA imprime o CPF cru (mascarado ou não) que o ME ecoou na resposta", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso({ cartSemId: true })
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 502)
+        })
+        const linhaDoCart = linhas.find((l) => l.includes('cart sem id'))
+        assertEquals(linhaDoCart !== undefined, true)
+        assertEquals(String(linhaDoCart).includes('529.982.247-25'), false)
+        assertEquals(String(linhaDoCart).includes('52998224725'), false)
+        assertEquals(String(linhaDoCart).includes('[cpf]'), true)
+    })
+})
+
+Deno.test("handler - cart sem id: CPF que cruza a fronteira do corte de 500 caracteres não vaza pedaço nenhum (sanitiza ANTES de cortar)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        // Preenchimento calculado para o CPF cair ATRAVESSANDO o caractere
+        // 500 do JSON.stringify: `{"pad":"` (8) + 478 'A' (posições 8-485) +
+        // `","cpf":"` (9, posições 486-494) + CPF (11, posições 495-505) —
+        // o corte em 500 cairia no MEIO do CPF (dígito de índice 5). É
+        // exatamente o caso que "cortar primeiro, sanitizar depois" deixava
+        // vazar um pedaço de dígitos (2ª rodada da revisão Opus, aadbf4c).
+        const preenchimento = 'A'.repeat(478)
+        const me = buscarMeFalso({
+            cartSemId: true,
+            cartSemIdPayload: { pad: preenchimento, cpf: '52998224725' },
+        })
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 502)
+        })
+        const linhaDoCart = linhas.find((l) => l.includes('cart sem id'))
+        assertEquals(linhaDoCart !== undefined, true)
+        // Nenhuma corrida de 4+ dígitos pode sobrar — nem o CPF inteiro, nem
+        // um pedaço cortado dele.
+        assertEquals(/\d{4,}/.test(String(linhaDoCart)), false)
+        assertEquals(String(linhaDoCart).includes('[cpf]'), true)
     })
 })

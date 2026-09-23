@@ -1063,7 +1063,11 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         const cartData = await cartResponse.json()
         const labelId = cartData?.id
         if (!labelId) {
-            console.error('[melhor-envio-etiqueta] cart sem id:', JSON.stringify(cartData).slice(0, 500))
+            // Sanitiza ANTES de cortar em 500 caracteres — cortar primeiro
+            // podia partir um CPF ao meio na fronteira do corte, deixando um
+            // pedaço de dígitos que a regex de 11 não reconhece mais (achado
+            // da 2ª rodada da revisão Opus sobre o commit aadbf4c).
+            console.error('[melhor-envio-etiqueta] cart sem id:', sanitizarCpfDoTexto(JSON.stringify(cartData)).slice(0, 500))
             return new Response(
                 JSON.stringify({ error: 'O Melhor Envio não devolveu o id da etiqueta. Tente novamente.' }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

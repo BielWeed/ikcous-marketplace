@@ -56,7 +56,41 @@ interface MensagemResultado {
 interface EtiquetaDoPedidoCardProps {
   orderId: string;
   isOffline: boolean;
-  onTrackingAtualizado?: (codigo: string) => void;
+  /**
+   * Leva o `orderId` da resposta JUNTO com o código — 2ª rodada da revisão
+   * Opus sobre aadbf4c: com `key={order.id}` no card (OrderDetail.tsx), a
+   * instância de A é DESMONTADA ao trocar para B, e uma resposta atrasada de
+   * A ainda chama este callback (a função em si sobrevive na closure do
+   * `fetch` em voo, mesmo com o componente que a criou já desmontado). Quem
+   * CONSOME o callback (OrderDetail, que não desmonta ao trocar de pedido)
+   * tem que validar o `orderId` recebido contra o pedido que está mostrando
+   * AGORA — o card não pode garantir isso sozinho depois de desmontado.
+   */
+  onTrackingAtualizado?: (orderId: string, codigo: string) => void;
+}
+
+// ── Travas de reentrada em escopo de MÓDULO (não de instância/useRef) ──────
+// Precisam sobreviver ao desmonte/remonte do card via `key={order.id}`
+// (OrderDetail.tsx): sem isso, o caso A→B→A com a compra de A ainda em voo
+// ganha uma instância NOVA (Set vazio) ao voltar para A, e um segundo
+// "Confirmar e gerar" para A passaria despercebido — comprando a etiqueta
+// DUAS vezes. Isolado por `orderId` (não um `boolean` único): o voo de A
+// nunca trava o primeiro clique genuíno em B, nem a conclusão de A libera um
+// voo de B que ainda está rodando. Cada `add` no clique é desfeito no
+// `finally` da PRÓPRIA invocação — nunca fica preso em erro/exceção.
+const geracaoDaEtiquetaEmVoo = new Set<string>();
+const cpfEmVoo = new Set<string>();
+const rastreioEmVoo = new Set<string>();
+
+/**
+ * SÓ PARA TESTE: o módulo é importado uma vez e as travas acima persistem
+ * entre `it()` do mesmo arquivo (o dynamic import do componente é cacheado).
+ * Chamar no `afterEach`/`beforeEach` da suíte — nunca em código de produção.
+ */
+export function _resetTravasDeReentranciaParaTeste(): void {
+  geracaoDaEtiquetaEmVoo.clear();
+  cpfEmVoo.clear();
+  rastreioEmVoo.clear();
 }
 
 /**
@@ -120,11 +154,29 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   // Guarda de geração (mesmo padrão do card antigo, src/hooks/useOnlineStatus.ts):
   // descarta a resposta de uma consulta em voo se o `orderId` mudou antes
   // dela resolver — sem isso, uma resposta lenta do pedido ANTERIOR podia
-  // sobrescrever o pedido NOVO já na tela.
+  // sobrescrever o pedido NOVO já na tela. Isto protege só o `fetchPedido`.
   const geracaoRef = useRef(0);
-  // Trava de clique duplo: dois cliques rápidos em "Confirmar e gerar" (antes
-  // do primeiro `setState` propagar) não podem virar duas invocações.
-  const cliqueEmVooRef = useRef(false);
+
+  // Espelho SEMPRE atual do `orderId` — mas escrito num `useEffect` COM
+  // CLEANUP, não no corpo do render. 2ª rodada da revisão Opus sobre
+  // aadbf4c: com `key={order.id}` (OrderDetail.tsx), trocar de A para B
+  // DESMONTA a instância de A — ela nunca mais renderiza, então uma escrita
+  // no corpo do render (`orderIdAtualRef.current = orderId`) NUNCA rodaria
+  // de novo para marcá-la como obsoleta, e `orderIdAtualRef.current` desta
+  // instância ficaria PARADO em "A" para sempre. A resposta atrasada de A
+  // bateria `orderIdAtualRef.current !== orderIdDoClique` como FALSO (A ===
+  // A) e passaria pela guarda — exatamente o vazamento que o comentário
+  // anterior (errado) dizia que não acontecia. O cleanup do efeito É o único
+  // gancho que roda no desmonte: zera para `null`, e `null !== "A"` volta a
+  // ser verdadeiro. Compatível com StrictMode (que desmonta/remonta uma vez
+  // a mais em dev): o efeito reescreve o valor certo ao remontar.
+  const orderIdAtualRef = useRef<string | null>(orderId);
+  useEffect(() => {
+    orderIdAtualRef.current = orderId;
+    return () => {
+      orderIdAtualRef.current = null;
+    };
+  }, [orderId]);
 
   const fetchPedido = useCallback(async () => {
     const minhaGeracao = ++geracaoRef.current;
@@ -165,6 +217,8 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     setPedido(null);
     setCpfInput("");
     setCpfErro(null);
+    setCpfSalvando(false);
+    setConsultandoRastreio(false);
     fetchPedido();
   }, [fetchPedido]);
 
@@ -173,16 +227,31 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     : null;
 
   const handleGerarEtiqueta = useCallback(async () => {
-    if (isOffline || !pedido || cliqueEmVooRef.current) return;
-    cliqueEmVooRef.current = true;
+    const orderIdDoClique = orderId;
+    if (isOffline || !pedido) return;
+    // Compra deste pedido ainda em voo (ex.: lojista saiu e voltou para a
+    // ficha no meio da geração): não invoca de novo e AVISA — o clique mudo
+    // deixava o lojista sem saber se algo aconteceu (ressalva da revisão).
+    if (geracaoDaEtiquetaEmVoo.has(orderIdDoClique)) {
+      toast.info(
+        "A compra da etiqueta deste pedido ainda está em andamento — aguarde alguns segundos e reabra o pedido.",
+      );
+      return;
+    }
+    geracaoDaEtiquetaEmVoo.add(orderIdDoClique);
     setCompraFase("gerando");
     setMensagemResultado(null);
     haptic.medium();
     try {
       const { data, error } = await supabase.functions.invoke(
         "melhor-envio-etiqueta",
-        { body: { action: "gerar_etiqueta", orderId } },
+        { body: { action: "gerar_etiqueta", orderId: orderIdDoClique } },
       );
+      // A ficha pode ter trocado de pedido enquanto a compra estava em voo
+      // (5-20 s) — a resposta de A não pode aparecer sobre B, nem sucesso
+      // nem erro: nenhum `setState`, nenhum toast, nenhum callback daqui
+      // pra baixo.
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
       if (error) throw error;
 
       setPedido((prev) =>
@@ -211,9 +280,10 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           : "Etiqueta gerada com sucesso!",
       );
       if (data?.tracking_code) {
-        onTrackingAtualizado?.(String(data.tracking_code));
+        onTrackingAtualizado?.(orderIdDoClique, String(data.tracking_code));
       }
     } catch (err) {
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
       console.error("[EtiquetaDoPedido] Erro na geração:", err);
       const {
         mensagem: detalhe,
@@ -223,6 +293,9 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         mensagemGenerica:
           "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
       });
+      // `mensagemDeErroInvocacao` também tem `await` (lê o corpo da
+      // resposta) — checa de novo antes de qualquer efeito visível.
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
       setMensagemResultado({ tipo: "erro", texto: detalhe });
       if (resgate || precisaCpf) {
         // A etiqueta já existe/está paga (ou o estado é indeterminado): a
@@ -230,7 +303,12 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         // cai em "emitida" sozinha — nunca reapresenta o botão de compra.
         // `precisaCpf`: a edge recusou por falta/invalidez de CPF (tela
         // desatualizada) — a releitura cai sozinha no estado `precisa_cpf`.
+        // `fetchPedido` aqui é o da MESMA renderização deste handler — ligado
+        // ao `orderIdDoClique` (a checagem acima já provou que ele ainda é o
+        // pedido atual); chamar sem essa checagem buscaria o pedido ERRADO
+        // se a ficha já tivesse trocado.
         await fetchPedido();
+        if (orderIdAtualRef.current !== orderIdDoClique) return;
         setCompraFase("ocioso");
       } else {
         setCompraFase("confirmar");
@@ -238,25 +316,38 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       haptic.error();
       toast.error(detalhe);
     } finally {
-      cliqueEmVooRef.current = false;
+      geracaoDaEtiquetaEmVoo.delete(orderIdDoClique);
     }
   }, [isOffline, pedido, orderId, onTrackingAtualizado, fetchPedido]);
 
   const handleSalvarCpf = useCallback(async () => {
-    if (isOffline || !pedido || cpfSalvando) return;
+    const orderIdDoClique = orderId;
+    if (isOffline || !pedido || cpfEmVoo.has(orderIdDoClique)) {
+      return;
+    }
     const digitos = somenteDigitos(cpfInput);
     if (!cpfValido(digitos)) {
       setCpfErro("CPF inválido — confira os números e tente de novo.");
       return;
     }
+    cpfEmVoo.add(orderIdDoClique);
     setCpfSalvando(true);
     setCpfErro(null);
     haptic.medium();
     try {
       const { error } = await supabase.functions.invoke(
         "melhor-envio-etiqueta",
-        { body: { action: "definir_cpf_destinatario", orderId, cpf: digitos } },
+        {
+          body: {
+            action: "definir_cpf_destinatario",
+            orderId: orderIdDoClique,
+            cpf: digitos,
+          },
+        },
       );
+      // Ficha trocou de pedido enquanto salvava — a resposta de A não pode
+      // mexer no CPF/estado que a tela está mostrando de B.
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
       if (error) throw error;
       setCpfInput("");
       haptic.success();
@@ -264,34 +355,52 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       // Relê o pedido: com o CPF gravado, a elegibilidade sai sozinha de
       // "precisa_cpf" e vira "disponivel" (ou o que já era antes, se algo
       // mudou no meio tempo) — sem gambiarra de estado local otimista.
+      // O `fetchPedido` chamado aqui é o da MESMA renderização (ligado ao
+      // `orderIdDoClique`) — a checagem acima já provou que ainda é o
+      // pedido atual.
       await fetchPedido();
     } catch (err) {
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
       console.error("[EtiquetaDoPedido] Erro ao salvar CPF:", err);
       const { mensagem } = await mensagemDeErroInvocacao(err, {
         mensagemGenerica:
           "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
       });
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
       setCpfErro(mensagem);
       haptic.error();
       toast.error(mensagem);
     } finally {
-      setCpfSalvando(false);
+      cpfEmVoo.delete(orderIdDoClique);
+      // `cpfSalvando` é um `boolean` ÚNICO (não isolado por pedido, como o
+      // `Set` acima) — só zera se ainda for o pedido que estava salvando;
+      // senão apagaria o `true` de um salvamento genuíno de OUTRO pedido
+      // que começou depois da troca.
+      if (orderIdAtualRef.current === orderIdDoClique) setCpfSalvando(false);
     }
-  }, [isOffline, pedido, cpfSalvando, cpfInput, orderId, fetchPedido]);
+  }, [isOffline, pedido, cpfInput, orderId, fetchPedido]);
 
   const handleConsultarRastreio = useCallback(async () => {
-    if (isOffline) return;
+    const orderIdDoClique = orderId;
+    if (isOffline || rastreioEmVoo.has(orderIdDoClique)) return;
+    rastreioEmVoo.add(orderIdDoClique);
     setConsultandoRastreio(true);
     try {
       const { data, error } = await supabase.functions.invoke(
         "melhor-envio-etiqueta",
-        { body: { action: "consultar_rastreio", orderId } },
+        { body: { action: "consultar_rastreio", orderId: orderIdDoClique } },
       );
+      // Ficha trocou de pedido durante a consulta — o rastreio de A não
+      // pode pintar B. `onTrackingAtualizado` agora leva o `orderIdDoClique`
+      // junto: mesmo que esta checagem falhe por algum caminho não previsto,
+      // o consumidor (OrderDetail) valida de novo, sozinho, contra o pedido
+      // que está mostrando — defesa nas DUAS pontas.
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
       if (error) throw error;
       if (data?.tracking_code) {
         const codigo = String(data.tracking_code);
         setPedido((prev) => (prev ? { ...prev, tracking_code: codigo } : prev));
-        onTrackingAtualizado?.(codigo);
+        onTrackingAtualizado?.(orderIdDoClique, codigo);
         toast.success("Rastreio atualizado!");
       } else {
         toast.info(
@@ -299,14 +408,19 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         );
       }
     } catch (err) {
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
       console.error("[EtiquetaDoPedido] Erro ao consultar rastreio:", err);
       const { mensagem } = await mensagemDeErroInvocacao(err, {
         mensagemGenerica:
           "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
       });
+      if (orderIdAtualRef.current !== orderIdDoClique) return;
       toast.error(mensagem);
     } finally {
-      setConsultandoRastreio(false);
+      rastreioEmVoo.delete(orderIdDoClique);
+      if (orderIdAtualRef.current === orderIdDoClique) {
+        setConsultandoRastreio(false);
+      }
     }
   }, [isOffline, orderId, onTrackingAtualizado]);
 
