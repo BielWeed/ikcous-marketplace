@@ -39,6 +39,15 @@ Campos novos em toda opção NACIONAL (não em `local-delivery`/`store-pickup`):
 - `precoCheio`: preço da transportadora antes da estratégia.
 - `estrategiaNacional`: `{ "estrategia": text, "minimo": number, "tipoDesconto": text|null,
   "valorDesconto": number, "alcance": text }` = as 5 colunas lidas no instante da cotação.
+- `subtotalCotacao`: number — o subtotal (preços do BANCO) com que a regra foi aplicada
+  (EMENDA pós-revisão T1, 23/09). Vai em toda opção carimbada.
+
+EMENDA (revisão T1): na RPC, (a) carimbo que não é objeto JSON completo (null, `{}`, campo
+faltando) = DIVERGENTE (`IF NOT COALESCE((...), false)`); (b) com estratégia `acima_de_valor`
+ou `desconto_na_mais_barata` e mínimo > 0: se `(v_calculated_subtotal >= minimo)` difere de
+`(subtotalCotacao >= minimo)` — ou `subtotalCotacao` ausente — recusa
+`FRETE_COTACAO_DESATUALIZADA` (a cliente recota e a edge aplica a regra com o subtotal de agora).
+Espelho legado de `desligado` na edge: alcance `mais_barata` (igual ao default do banco).
 
 ### Regra nacional (edge, fonte ÚNICA do preço)
 subtotal = Σ preço do BANCO (`price_override` da variação, senão `preco_venda`) × quantidade.
