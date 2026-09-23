@@ -829,7 +829,7 @@ function espelhoDe(freeShippingMin) {
 
 /**
  * (b) a (h): tudo que NÃO envolve o rollback-manual da própria 20261171.
- * Roda igual nos dois containers (com e sem --com-migration) -- é a prova
+ * Roda nos dois containers; (b) não reaplica a 20261171 sobre uma extra. A prova
  * de que a regra nacional continua funcionando com uma migration extra
  * aplicada por cima.
  */
@@ -853,7 +853,9 @@ async function rodarCasosBAteH(cliente, migrationSql) {
     discountValue: 0,
     scope: "mais_barata",
   });
-  await cliente.query(migrationSql); // reaplica (recebido por parâmetro)
+  if (migrationSql) {
+    await cliente.query(migrationSql); // só no banco sem migration posterior
+  }
   config = await lerConfigNacional(cliente);
   assert.equal(
     config.strategy,
@@ -866,7 +868,9 @@ async function rodarCasosBAteH(cliente, migrationSql) {
     "(b) free_shipping_min continua o que foi setado (não é tocado pela migration)",
   );
   log(
-    "PASS (b) reaplicar a migration depois de a lojista escolher 'desligado' não reescreve",
+    migrationSql
+      ? "PASS (b) reaplicar a migration depois de a lojista escolher 'desligado' não reescreve"
+      : "SKIP (b) com migration posterior: reaplicação da 20261171 já verificada no banco principal",
   );
   // Devolve free_shipping_min a um valor neutro para os casos seguintes.
   await cliente.query(
@@ -2117,7 +2121,7 @@ async function rodarCasosConjuntos(cliente, rotulo, extras) {
       pagamento: "online",
       itens,
       addressCep: "20005-000",
-      cpf: "12345678901",
+      cpf: "52998224725", // CPF válido para exercitar a verificação da 20261172
     });
     const pedidoJ1 = await lerPedido(cliente, rJ1.rows[0].id);
     assert.equal(
@@ -2130,9 +2134,10 @@ async function rodarCasosConjuntos(cliente, rotulo, extras) {
       [rJ1.rows[0].id],
     );
     const cpfGravado = rCustomerData.rows[0] ? rCustomerData.rows[0].cpf : null;
-    assert.ok(
-      cpfGravado && /^\d{11}$/.test(cpfGravado),
-      `(j1) customer_data->>'cpf' tem 11 dígitos (veio: ${cpfGravado})`,
+    assert.equal(
+      cpfGravado,
+      "52998224725",
+      "(j1) customer_data.cpf preserva exatamente o CPF válido enviado",
     );
     log(
       `PASS (j1) [${rotulo}] v24 nacional com desconto + CPF: frete com desconto e CPF de 11 dígitos gravado`,
@@ -2274,7 +2279,7 @@ async function prepararContainerCompleto(rotulo, extras) {
       path.join(MIGRATIONS_DIR, MIGRATION),
       "utf8",
     );
-    await rodarCasosBAteH(cliente, migrationSql);
+    await rodarCasosBAteH(cliente, extras.length > 0 ? null : migrationSql);
 
     if (extras.length > 0) {
       await rodarCasosConjuntos(cliente, rotulo, extras);

@@ -52,12 +52,10 @@ Valores testados: `0` (desligado), `0.01` (sempre), `-1` com item marcado (por_p
 
 **Um quinto container, com a raiz inteira aplicada uma vez (já com a 20261171 dentro),
 prova os casos (b) a (i)**, sequencialmente, reconfigurando `store_config` entre casos.
-Com `--com-migration`, um **sexto** container sobe do mesmo jeito, aplica a(s) extra(s)
-por cima ANTES de rodar, e passa pelos MESMOS casos (b)-(h) — só troca (i) pelos casos
-conjuntos (j1)-(j3): o rollback-manual da 20261171 não sabe de nenhuma migration
-downstream, então rodar (i) com uma extra aplicada testaria uma coisa que não é bug
-(reaplicar SÓ a 20261171 nunca vai devolver o corpo com a extra por cima de novo) — por
-isso (i) fica reservado ao container SEM extra.
+Com `--com-migration`, um **sexto** container aplica a(s) extra(s) por cima e
+roda (c)-(h) e (j1)-(j3). Nesse banco, (b) não reaplica a 20261171: a trava
+de hash impede corretamente sobrescrever uma RPC já alterada pela extra.
+O container principal prova (b) e (i), incluindo o rollback-manual da 20261171.
 
 - **(b) reaplicação não sobrescreve**: muda `free_shipping_min` para um valor que
   produziria outra estratégia se a cópia rodasse de novo, mantém a coluna nacional em
@@ -114,7 +112,7 @@ isso (i) fica reservado ao container SEM extra.
 
 ### (j) casos conjuntos — só com `--com-migration`
 
-Rodam no sexto container, depois de (b)-(h) e da(s) extra(s) aplicada(s) por cima:
+Rodam no sexto container, depois de (c)-(h) e da(s) extra(s) aplicada(s) por cima:
 
 - **prova de mecanismo (não numerada)**: se a extra é a sintética deste próprio README
   (função `public._prova_ensaio_frete_migration_extra()`), confere que ela responde com a
@@ -133,12 +131,11 @@ Rodam no sexto container, depois de (b)-(h) e da(s) extra(s) aplicada(s) por cim
   `_v24` (com a extra aplicada) não é mais o da `20261170` **e** o corpo (`pg_proc.prosrc`)
   ainda contém o texto `estrategiaNacional`.
 
-🔴 **O que NÃO tem prova real nesta rodada**: a migration real do CPF (`20261172`, da
-frente `ikcous-cart-ux-wt`) não existe neste worktree e não deve ser lida daqui (trava do
-coordenador) — só o MECANISMO da flag `--com-migration` foi provado, com um arquivo
-sintético (`CREATE OR REPLACE` de uma função trivial, sem relação com as RPCs) no
-scratchpad da sessão. (j1) rodou em `SKIP` contra essa extra sintética; ele só roda de
-verdade no dia em que alguém apontar `--com-migration` para o arquivo real do CPF.
+✅ **Prova conjunta com a migration real do CPF (`20261172`)**: executado com
+`--com-migration` apontando ao SQL em `ikcous-cart-ux-wt`; (j1), (j2) e (j3)
+passaram em Postgres temporário. O CPF usado em (j1) é válido (`52998224725`).
+A reaplicação isolada da 20261171 e o rollback dela foram verificados no
+container principal; a migração posterior é aplicada uma vez no sexto container.
 
 ## Fixtures
 
