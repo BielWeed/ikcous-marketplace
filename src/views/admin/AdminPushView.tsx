@@ -220,8 +220,15 @@ function PreviaNoCelular({
       data-testid="previa-celular"
       className="flex flex-col items-center gap-2.5 py-1"
     >
-      {/* Shell do aparelho — borda escura com brilho de tela */}
-      <div className="w-[300px] rounded-[34px] border border-zinc-700/60 bg-gradient-to-b from-zinc-900 to-black p-1.5 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+      {/* Shell do aparelho — borda escura com brilho de tela.
+          `w-full max-w-[300px]` (correção 23/09/2026): a largura fixa
+          `w-[300px]` cabia por pouco em 360px (8px de folga, contando o
+          padding da página + do cartão) e já não cabia em 360px NENHUMA
+          quando somada a qualquer variação de padding, e estourava de vez
+          em telas ainda mais estreitas (320px, iPhone SE). `max-w-[300px]`
+          mantém o tamanho de referência quando há espaço e encolhe com a
+          tela quando não há. */}
+      <div className="w-full max-w-[300px] rounded-[34px] border border-zinc-700/60 bg-gradient-to-b from-zinc-900 to-black p-1.5 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
         <div className="relative overflow-hidden rounded-[26px] bg-[#0a0a0c] pb-3">
           {/* Status bar — hora real à esquerda, punch hole no meio, sinais à direita */}
           <div className="relative flex items-center justify-between px-4.5 pt-2.5 text-[9.5px] font-semibold text-zinc-400">
@@ -963,7 +970,16 @@ export const AdminPushView = memo(function AdminPushView({
           título e os indicadores à direita. O subtítulo fica na view. */}
       <div className="sticky top-0 z-20 border-b border-white/10 bg-[#09090b]/90 px-4 py-3 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-4xl">
-          <div className="flex items-center justify-between gap-4">
+          {/* `flex-wrap` (correção 23/09/2026, pedido do dono): título
+              (h1, shrink-0) e o wrapper de `acoes` (selo de status,
+              shrink-0 também — vem do próprio AdminPageHeader) são os DOIS
+              filhos desta linha. Nenhum encolhe, e sem quebra a soma das
+              duas larguras estourava a página inteira em 360-390px ("Enviar
+              Notificações" ~300px + selo ~160px > ~328px disponíveis). O
+              `AdminPageHeader` é compartilhado por 20 telas — a correção
+              fica aqui, local: o selo cai para uma segunda linha quando não
+              cabe, em vez de mudar o componente para todo mundo. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
             <AdminPageHeader
               titulo="Enviar Notificações"
               acoes={
