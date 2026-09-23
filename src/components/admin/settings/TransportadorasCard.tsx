@@ -225,17 +225,6 @@ const PROVEDORES_COM_EMAIL_EM_CONSULTA: ReadonlySet<ProvedorFrete> = new Set([
 // chave sem e-mail e só recusa LIGAR sem ele (`save_active_providers`).
 export const PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR: ReadonlySet<ProvedorFrete> =
   new Set(["superfrete"]);
-// Nome dos serviços que a tela conhece sem perguntar à transportadora — para
-// mostrar a seleção SALVA antes de "Ver serviços da conta" (PR #637). Código
-// fora daqui aparece cru, que é o que o servidor guarda.
-const NOME_DO_SERVICO_CONHECIDO: ReadonlyMap<string, string> = new Map([
-  ["frenet:JTE_INT", "J&T Express — Standard"],
-]);
-
-function nomeDoServicoSalvo(provider: ProvedorFrete, codigo: string): string {
-  return NOME_DO_SERVICO_CONHECIDO.get(`${provider}:${codigo}`) ?? codigo;
-}
-
 /**
  * Cartão expansível (pedido do dono, 23/09/2026 — os cartões ficaram longos
  * demais no celular): fechado mostra só nome + estado em palavras; clique
@@ -1585,21 +1574,9 @@ function CartaoDoProvedor({
             </button>
           </div>
 
-          {/* PR #637: sem isto, depois de recarregar a lista ficava vazia e a
-           * seleção salva parecia perdida — ela só aparecia depois de "Ver
-           * serviços da conta". `null` = nunca escolheu (filtro antigo). */}
-          {!rascunho.servicosCarregados &&
-            salvo?.servicos &&
-            salvo.servicos.length > 0 && (
-              <div className="rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-[11px] text-zinc-300">
-                <span className="block text-zinc-500">Salvos nesta loja:</span>
-                <ul className="ml-4 list-disc">
-                  {salvo.servicos.map((codigo) => (
-                    <li key={codigo}>{nomeDoServicoSalvo(provider, codigo)}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          {/* 23/09/2026, pedido do dono: a lista "Salvos nesta loja" (códigos
+           * crus antes de "Ver serviços da conta") saiu da tela. A seleção
+           * continua salva no servidor e aparece marcada ao abrir a lista. */}
 
           {rascunho.erroServicos && (
             <p className="text-[11px] text-red-300">
