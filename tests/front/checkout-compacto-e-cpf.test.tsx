@@ -625,6 +625,116 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     expect(notas).not.toContain("11144477735");
   });
 
+  it("addressData leva {cpf} (11 dígitos) pronto para a RPC em transportadora — 23/09/2026, migration 20261172", async () => {
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montar();
+    await escolherEndereco("Trabalho");
+    await act(async () => {
+      digitar("checkout-name", "Maria Teste");
+    });
+    await act(async () => {
+      digitar("checkout-tel", "34999998888");
+    });
+    await act(async () => {
+      digitar("checkout-cpf", "111.444.777-35");
+    });
+    await drenar();
+    await act(async () => {
+      botaoPorTexto("Pagar agora com PIX")?.click();
+    });
+    await drenar();
+    expect(botaoFinalizar().disabled).toBe(false);
+
+    await act(async () => {
+      botaoFinalizar().click();
+    });
+    await drenar();
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    const [pedido] = createOrder.mock.calls[0];
+    // Cliente logado: o endereço em si viaja por addressId (endereço já
+    // salvo) — addressData carrega SÓ o CPF, sempre em dígitos, nunca a
+    // máscara. É este objeto que a migration 20261172 espera em
+    // p_address_data para gravar em customer_data.cpf.
+    expect(pedido.addressData).toEqual({ cpf: "11144477735" });
+  });
+
+  it("addressData NÃO ganha a chave cpf em entrega local — nem a exigência, nem o envio à RPC", async () => {
+    cotacoesControladas({ "38500000": [LOCAL] });
+    await montar();
+    await act(async () => {
+      digitar("checkout-name", "Maria Teste");
+    });
+    await act(async () => {
+      digitar("checkout-tel", "34999998888");
+    });
+    await drenar();
+    await act(async () => {
+      botaoPorTexto("Dinheiro na Entrega")?.click();
+    });
+    await drenar();
+    expect(botaoFinalizar().disabled).toBe(false);
+
+    await act(async () => {
+      botaoFinalizar().click();
+    });
+    await drenar();
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    const [pedido] = createOrder.mock.calls[0];
+    // Local: nunca exigido, então customerInfo.cpf é undefined e o gate
+    // `exigeCpfDoDestinatario && customerInfo.cpf` some — addressData
+    // continua exatamente como era antes do CPF (null para logado).
+    expect(pedido.addressData).toBeNull();
+  });
+
+  it("CPF digitado em transportadora e depois troca para entrega local: o CPF NÃO viaja (revisão Opus 23/09)", async () => {
+    cotacoesControladas({
+      "38500000": [LOCAL],
+      "01001000": [PAC_SP],
+    });
+    await montar();
+    await escolherEndereco("Trabalho");
+    await act(async () => {
+      digitar("checkout-name", "Maria Teste");
+    });
+    await act(async () => {
+      digitar("checkout-tel", "34999998888");
+    });
+    await act(async () => {
+      digitar("checkout-cpf", "111.444.777-35");
+    });
+    await drenar();
+
+    // Volta para a Casa (entrega local): o CPF já digitado continua no
+    // formulário, mas a exigência acabou — não pode ir para a RPC.
+    const trocar = botaoPorTexto("Trocar");
+    if (trocar) {
+      await act(async () => {
+        trocar.click();
+      });
+      await drenar();
+    }
+    await escolherEndereco("Casa");
+    await act(async () => {
+      botaoPorTexto("Dinheiro na Entrega")?.click();
+    });
+    await drenar();
+    expect(botaoFinalizar().disabled).toBe(false);
+
+    await act(async () => {
+      botaoFinalizar().click();
+    });
+    await drenar();
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    const [pedido] = createOrder.mock.calls[0];
+    expect(pedido.addressData).toBeNull();
+    expect(JSON.stringify(pedido.addressData ?? {})).not.toContain(
+      "11144477735",
+    );
+  });
+
   it("CPF NUNCA entra no rascunho da sessão (sessionStorage) — nome/WhatsApp/endereço continuam sobrevivendo à volta ao carrinho", async () => {
     cotacoesControladas({ "01001000": [PAC_SP] });
     await montar();

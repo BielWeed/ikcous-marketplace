@@ -2156,11 +2156,27 @@ export function CheckoutView({
       ...(data as unknown as Customer),
       // CPF sai do CheckoutView JÁ só em dígitos — o formulário guarda a
       // máscara (para a pessoa ler enquanto digita), mas o que atravessa
-      // para `createOrder` é o dado cru. A RPC ainda NÃO recebe o CPF: a
-      // gravação em `orders.customer_data.cpf` chega com a migration
-      // 20261172 (depende da 20261171) — ver o comentário em `useOrders.ts`.
+      // para `createOrder` é o dado cru.
       cpf: data.cpf ? somenteDigitosDoCpf(data.cpf) : undefined,
     };
+    // CPF DO DESTINATÁRIO NA RPC (23/09/2026, migration 20261172, rebaseada
+    // sobre a 20261171): viaja dentro do jsonb `p_address_data.cpf` — SÓ
+    // quando `exigeCpfDoDestinatario` (transportadora; nunca em
+    // local-delivery/store-pickup, mesma régua do formulário e da RPC) —
+    // NUNCA manda a chave fora desse caso, para não fazer a RPC gravar CPF
+    // de um pedido que não precisa dele. `customerInfo.cpf` pode ser
+    // `undefined` mesmo com `exigeCpfDoDestinatario` true (formulário ainda
+    // sendo preenchido); o `&&` cobre isso — sem CPF, sem a chave.
+    //
+    // 🔴 GATILHO DE PUBLICAÇÃO: esta chave só pode ir para produção DEPOIS
+    // que a migration 20261172 estiver aplicada em TODAS as lojas — banco
+    // sem ela recebe `p_address_data` como HOJE (objeto de endereço puro) e
+    // gravaria `{cpf}` sozinho (usuário logado) como `customer_data.address`,
+    // apagando o endereço de entrega da ficha do pedido (ver o comentário
+    // "MAPPER" no cabeçalho da migration). Commit deliberadamente separado
+    // do banco — ver o relatório da tarefa que introduziu este bloco.
+    const cpfParaRpc =
+      exigeCpfDoDestinatario && customerInfo.cpf ? customerInfo.cpf : undefined;
     const observations = notes || undefined;
 
     const variantNotes = cart
@@ -2190,7 +2206,9 @@ export function CheckoutView({
       paymentMethod,
       addressId: user ? selectedAddressId : null,
       addressData: user
-        ? null
+        ? cpfParaRpc
+          ? { cpf: cpfParaRpc }
+          : null
         : {
             cep: data.cep,
             street: data.street,
@@ -2199,6 +2217,7 @@ export function CheckoutView({
             city: data.city,
             state: data.state,
             complement: data.complement,
+            ...(cpfParaRpc ? { cpf: cpfParaRpc } : {}),
           },
 
       couponCode: appliedCoupon?.code,
