@@ -92,6 +92,23 @@ export const LOGO_AGREGADOR: Readonly<Record<string, string>> = {
   superfrete: "/logos/provedores/superfrete.png",
 };
 
+// Consulta por Map, nunca `OBJETO[slug]`: um slug como "constructor" ou
+// "toString" devolveria um membro do protótipo em vez de `undefined`.
+const LOGO_TRANSPORTADORA_POR_SLUG = new Map(
+  Object.entries(LOGO_TRANSPORTADORA),
+);
+const LOGO_AGREGADOR_POR_SLUG = new Map(Object.entries(LOGO_AGREGADOR));
+
+/** Arquivo do logo da transportadora, ou `undefined` se não há logo oficial. */
+export function logoDaTransportadora(slug: string): string | undefined {
+  return LOGO_TRANSPORTADORA_POR_SLUG.get(slug);
+}
+
+/** Arquivo do logo do agregador, ou `undefined` se não há logo oficial. */
+export function logoDoAgregador(slug: string): string | undefined {
+  return LOGO_AGREGADOR_POR_SLUG.get(slug);
+}
+
 /** Remove acento, caixa e pontuação — a mesma chave serve "JadLog", "JADLOG" e "Jad Log". */
 function canonizar(texto: string): string {
   return texto
@@ -134,7 +151,10 @@ const TRANSPORTADORAS: readonly DefinicaoTransportadora[] = [
     nome: "J&T Express",
     // "J&T Express", "JeT", "J&T", "JT", "J & T" — tudo vira "jt"/"jet"/"jtexpress".
     apelidos: ["jt", "jet", "jtexpress", "jetexpress"],
-    prefixoNoServico: /^(?:j\s*&?\s*t|jet)(?:\s*express)?\s+/i,
+    // Espaços já vêm colapsados em `limparServico` (um espaço só), então
+    // o espaço é literal e o "express" opcional vira alternância — sem
+    // quantificador aninhado (security/detect-unsafe-regex).
+    prefixoNoServico: /^(?:j ?&? ?t|jet)(?:express| express)? /i,
   },
   {
     slug: "total-express",
@@ -156,7 +176,7 @@ const TRANSPORTADORAS: readonly DefinicaoTransportadora[] = [
     // Logística" (02/05/2026): o edge ainda manda "Azul Cargo"/"Azul Cargo
     // Express", então o reconhecimento cobre as duas.
     apelidos: ["azulcargoexpress", "azulcargo"],
-    prefixoNoServico: /^azul\s*cargo(?:\s*express)?\s+/i,
+    prefixoNoServico: /^azul ?cargo(?:express| express)? /i,
   },
   {
     slug: "buslog",
@@ -190,7 +210,8 @@ function limparServico(
   def: DefinicaoTransportadora | undefined,
   servicoBruto: string,
 ): string | null {
-  let s = servicoBruto.trim();
+  // Espaços colapsados ANTES dos prefixos (eles contam com no máximo um).
+  let s = servicoBruto.replace(/\s+/g, " ").trim();
   if (!s) return null;
   // ".Com" é NOME de produto da Jadlog (o dono o escreve com o ponto):
   // sem o ponto, "Com" não diz nada. Os demais pontos soltos caem.

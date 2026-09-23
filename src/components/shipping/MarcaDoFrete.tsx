@@ -1,7 +1,7 @@
 import {
-  LOGO_AGREGADOR,
   LOGO_SOBRE_FUNDO_ESCURO,
-  LOGO_TRANSPORTADORA,
+  logoDaTransportadora,
+  logoDoAgregador,
 } from "@/lib/marca-do-frete";
 import { cn } from "@/lib/utils";
 // MARCA DO FRETE (peça 3, tarefa "cart-frete-logos", 23/09/2026) — os dois
@@ -36,7 +36,7 @@ export function LogoDaTransportadora({
   tamanho = 32,
   className,
 }: LogoDaTransportadoraProps) {
-  const caminho = slug ? LOGO_TRANSPORTADORA[slug] : undefined;
+  const caminho = slug ? logoDaTransportadora(slug) : undefined;
   const [falhouAoCarregar, setFalhouAoCarregar] = useState(false);
   const mostrarFallback = !caminho || falhouAoCarregar;
 
@@ -94,7 +94,7 @@ export function SeloDoAgregador({
   nome,
   className,
 }: SeloDoAgregadorProps) {
-  const caminho = LOGO_AGREGADOR[slug];
+  const caminho = logoDoAgregador(slug);
   const [falhouAoCarregar, setFalhouAoCarregar] = useState(false);
   const mostrarLogo = Boolean(caminho) && !falhouAoCarregar;
 
@@ -113,7 +113,7 @@ export function SeloDoAgregador({
           decoding="async"
           width={14}
           height={14}
-          className="h-3.5 w-3.5 shrink-0 object-contain"
+          className="size-3.5 shrink-0 object-contain"
           onError={() => setFalhouAoCarregar(true)}
         />
       )}

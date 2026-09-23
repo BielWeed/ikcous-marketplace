@@ -1,4 +1,8 @@
-import { marcaDoFrete } from "@/lib/marca-do-frete";
+import {
+  logoDaTransportadora,
+  logoDoAgregador,
+  marcaDoFrete,
+} from "@/lib/marca-do-frete";
 // MARCA DO FRETE (peça 2 da tarefa "cart-frete-logos") — normalizador central
 // de nome de transportadora e agregador para os cartões de cotação de frete
 // (carrinho, checkout e painel admin). Só EXIBIÇÃO: não altera id, código
@@ -288,5 +292,30 @@ describe("marcaDoFrete — admin usa só (transportadora, servico, provedor)", (
     expect(r.transportadora).toEqual({ slug: "jadlog", nome: "Jadlog" });
     expect(r.servico).toBe("Package");
     expect(r.agregador).toEqual({ slug: "frenet", nome: "Frenet" });
+  });
+});
+
+describe("marcaDoFrete — prefixo com espaços repetidos e consulta de logo segura", () => {
+  it.each([
+    ["J & T Express   Standard", "Standard"],
+    ["JeT	Standard", "Standard"],
+    ["Azul  Cargo  Express  Standard", "Standard"],
+    ["Azul Cargo Standard", "Standard"],
+  ])("serviço %j perde o prefixo da transportadora", (servico, esperado) => {
+    const transportadora = servico.startsWith("Azul")
+      ? "Azul Cargo Express"
+      : "J&T Express";
+    expect(marcaDoFrete({ transportadora, servico }).servico).toBe(esperado);
+  });
+
+  it("slug que é nome de membro do protótipo não devolve logo", () => {
+    for (const slug of ["constructor", "toString", "__proto__"]) {
+      expect(logoDaTransportadora(slug)).toBeUndefined();
+      expect(logoDoAgregador(slug)).toBeUndefined();
+    }
+    expect(logoDaTransportadora("correios")).toBe(
+      "/logos/transportadoras/correios.svg",
+    );
+    expect(logoDoAgregador("frenet")).toBe("/logos/provedores/frenet.svg");
   });
 });

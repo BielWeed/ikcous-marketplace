@@ -34,7 +34,8 @@ function criarStorageDeReserva(): Storage {
     },
     clear: () => armazem.clear(),
     getItem: (chave: string) => armazem.get(chave) ?? null,
-    key: (indice: number) => [...armazem.keys()][indice] ?? null,
+    key: (indice: number) =>
+      indice >= 0 ? ([...armazem.keys()].at(indice) ?? null) : null,
     removeItem: (chave: string) => {
       armazem.delete(chave);
     },

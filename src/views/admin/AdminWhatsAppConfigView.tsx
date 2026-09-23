@@ -1219,9 +1219,9 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                   animate={{ y: 0 }}
                   exit={{ y: "100%" }}
                   transition={{ type: "spring", damping: 30, stiffness: 350 }}
-                  className="relative z-10 w-full max-w-2xl rounded-t-[2rem] border-t border-white/10 bg-[#09090b] px-4 pb-8 pt-4 shadow-2xl flex flex-col max-h-[85vh] outline-none"
+                  className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-t-[2rem] border-t border-white/10 bg-[#09090b] px-4 pb-8 pt-4 shadow-2xl outline-none"
                 >
-                  <div className="w-full flex flex-col items-center pb-3 pt-1 select-none">
+                  <div className="flex w-full select-none flex-col items-center pb-3 pt-1">
                     {/* Alça que fecha (porta o padrão de ProductCard.tsx
                         ~764-791): clicar nela fecha; arrastar para baixo
                         além do limiar também (aoPuxarAlcaDaFolha). Botão
@@ -1240,7 +1240,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                         fecharFolhaDePresets();
                       }}
                       onPointerDown={aoPuxarAlcaDaFolha}
-                      className="focus:outline-hidden flex h-11 w-full shrink-0 cursor-grab touch-none items-center justify-center rounded-full active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-purple-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b]"
+                      className="focus:outline-hidden flex h-11 w-full shrink-0 cursor-grab touch-none items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-purple-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:cursor-grabbing"
                     >
                       <span
                         aria-hidden="true"
@@ -1250,11 +1250,11 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
 
                     {/* Header (não-interativo, fora da alça): título e
                         subtítulo -- toque aqui não arrasta nem fecha. */}
-                    <div className="flex items-center justify-between border-b border-white/5 pb-4 pt-2 w-full text-left">
+                    <div className="flex w-full items-center justify-between border-b border-white/5 pb-4 pt-2 text-left">
                       <div>
                         <h3
                           id="presets-sheet-titulo"
-                          className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2"
+                          className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-white"
                         >
                           <Sparkles className="size-4 text-purple-400" />
                           Modelos prontos de mensagem

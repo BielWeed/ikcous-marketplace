@@ -1,7 +1,7 @@
 import { GuiaDaChaveDoProvedor } from "@/components/admin/settings/GuiaDaChaveDoProvedor";
 import { LogoDaTransportadora } from "@/components/shipping/MarcaDoFrete";
 import { Switch } from "@/components/ui/switch";
-import { LOGO_AGREGADOR, marcaDoFrete } from "@/lib/marca-do-frete";
+import { logoDoAgregador, marcaDoFrete } from "@/lib/marca-do-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { haptic } from "@/utils/haptic";
@@ -1693,14 +1693,15 @@ function CartaoDoProvedor({
 // Slug do logo oficial de cada provedor (public/logos/provedores/, fontes em
 // public/logos/FONTES.md). O nome segue no texto do cabeçalho: o logo é
 // decorativo (alt vazio) — o leitor de tela não lê o nome duas vezes.
-const SLUG_DO_LOGO_DO_PROVEDOR: Readonly<Record<ProvedorFrete, string>> = {
-  melhor_envio: "melhor-envio",
-  superfrete: "superfrete",
-  frenet: "frenet",
-};
+const SLUG_DO_LOGO_DO_PROVEDOR: ReadonlyMap<ProvedorFrete, string> = new Map([
+  ["melhor_envio", "melhor-envio"],
+  ["superfrete", "superfrete"],
+  ["frenet", "frenet"],
+]);
 
 function LogoDoProvedor({ provider }: { readonly provider: ProvedorFrete }) {
-  const caminho = LOGO_AGREGADOR[SLUG_DO_LOGO_DO_PROVEDOR[provider]];
+  const slug = SLUG_DO_LOGO_DO_PROVEDOR.get(provider);
+  const caminho = slug ? logoDoAgregador(slug) : undefined;
   const [falhou, setFalhou] = useState(false);
   if (!caminho || falhou) {
     // Sem logo (ou falhou ao carregar): as iniciais, decorativas.
