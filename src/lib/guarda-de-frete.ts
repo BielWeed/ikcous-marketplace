@@ -139,3 +139,47 @@ export function pagamentoIncompativelComFrete(args: {
   if (args.ehEntregaLocal) return false;
   return args.paymentMethod !== "online";
 }
+
+// A OPÇÃO MARCADA × A COTAÇÃO NA TELA (captura do dono, 23/09/2026): o
+// cartão com "Mais barata" era um, a opção marcada era outra e o total
+// somava a marcada. O total SEMPRE deriva da opção marcada (CartContext),
+// então a conferência que importa antes de criar o pedido é outra: a opção
+// marcada ainda é, com o MESMO preço, uma opção da cotação que está na tela
+// (o envelope do cache do navegador — a lista que a calculadora mostrou).
+//   - `sem-evidencia`: não há lista legível (envelope ausente, formato
+//     antigo) — não bloqueia, pelo mesmo motivo da checagem de revisão:
+//     quem decide então é a RPC (que confere o preço pela cotação gravada);
+//   - `confere`: mesmo id, mesmo preço em centavos;
+//   - `preco-mudou`: mesmo id, preço diferente — `fresca` é o objeto certo;
+//   - `sumiu`: o id não está na lista — a escolha é de outra cotação.
+export type ConferenciaDoFreteEscolhido<T> =
+  | { tipo: "sem-evidencia" }
+  | { tipo: "confere" }
+  | { tipo: "preco-mudou"; fresca: T }
+  | { tipo: "sumiu" };
+
+function emCentavos(valor: number): number {
+  return Math.round(valor * 100);
+}
+
+export function conferirFreteEscolhidoComACotacao<
+  T extends { id: string; price: number },
+>(escolhida: T, opcoesDaCotacao: unknown): ConferenciaDoFreteEscolhido<T> {
+  if (!Array.isArray(opcoesDaCotacao) || opcoesDaCotacao.length === 0) {
+    return { tipo: "sem-evidencia" };
+  }
+  const mesma = (opcoesDaCotacao as unknown[]).find(
+    (o): o is T =>
+      !!o &&
+      typeof o === "object" &&
+      (o as { id?: unknown }).id === escolhida.id,
+  );
+  if (!mesma) return { tipo: "sumiu" };
+  const preco = (mesma as { price?: unknown }).price;
+  if (typeof preco !== "number" || !Number.isFinite(preco)) {
+    return { tipo: "sumiu" };
+  }
+  return emCentavos(preco) === emCentavos(escolhida.price)
+    ? { tipo: "confere" }
+    : { tipo: "preco-mudou", fresca: mesma };
+}

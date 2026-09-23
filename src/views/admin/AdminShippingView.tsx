@@ -20,6 +20,7 @@ import {
 } from "@/components/admin/shipping/FreteResumoFaixa";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { resumoDaEstrategiaNacional } from "@/lib/estrategias-de-frete";
 import { listaComRetirada, retiradaLigadaNaLista } from "@/lib/guarda-de-frete";
 import {
   type PresetFreteGratis,
@@ -286,6 +287,16 @@ export const AdminShippingView = memo(function AdminShippingView({
           tom: "positivo",
         };
 
+    // T4 (23/09/2026): a estratégia NACIONAL (grátis/desconto por
+    // transportadora) tem tela própria agora — não cabe uma 4ª coluna na
+    // faixa, então o resumo curto entra no DETALHE desta mesma coluna
+    // (ela já é sobre "fora da cidade"). `desligado` some do detalhe: nada
+    // de poluir a linha com "desligado" quando não há nada a dizer.
+    const resumoNacional =
+      config != null ? resumoDaEstrategiaNacional(config) : "desligado";
+    const detalheNacional = (base: string): string =>
+      resumoNacional === "desligado" ? base : `${base} · ${resumoNacional}`;
+
     const nacional: StatusDaFaixaFrete =
       (config?.shippingCoverage || "national") === "local"
         ? {
@@ -308,7 +319,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                   nomesLigados.length === 1
                     ? `${nomesLigados[0]} ligado`
                     : `${nomesLigados.length} provedores ligados`,
-                detalhe: "cotação real na hora",
+                detalhe: detalheNacional("cotação real na hora"),
                 tom: "positivo",
               }
             : {
@@ -318,30 +329,39 @@ export const AdminShippingView = memo(function AdminShippingView({
                 tom: "atencao",
               };
 
+    // A coluna que era "Frete grátis" agora se identifica como LOCAL: a
+    // regra aqui vale só para local-delivery/store-pickup (T3) — a
+    // estratégia nacional tem a faixa própria acima. REVISÃO (correção 4,
+    // revisão Opus): os detalhes diziam "não paga entrega"/"sai com entrega
+    // grátis" sem dizer ONDE — lido rápido, parecia valer para qualquer
+    // modalidade (o mesmo engano que a T3 corrigiu no cálculo). Agora cada
+    // frase nomeia cidade/retirada.
     const gratis: StatusDaFaixaFrete =
       presetSalvo === "acima_de_valor"
         ? {
-            rotulo: "Frete grátis",
+            rotulo: "Frete grátis local",
             valor: `Acima de R$ ${reais(minSalvo)}`,
-            detalhe: "a compra que passa do valor não paga entrega",
+            detalhe:
+              "a compra que passa do valor não paga entrega na cidade nem retirada",
             tom: "positivo",
           }
         : presetSalvo === "sempre"
           ? {
-              rotulo: "Frete grátis",
+              rotulo: "Frete grátis local",
               valor: "Em toda a loja",
-              detalhe: "todo pedido sai com entrega grátis",
+              detalhe: "toda entrega na cidade e retirada saem grátis",
               tom: "positivo",
             }
           : presetSalvo === "por_produto"
             ? {
-                rotulo: "Frete grátis",
+                rotulo: "Frete grátis local",
                 valor: "Por produto marcado",
-                detalhe: "produtos marcados saem sem custo de entrega",
+                detalhe:
+                  "produtos marcados saem sem custo na entrega da cidade e na retirada",
                 tom: "positivo",
               }
             : {
-                rotulo: "Frete grátis",
+                rotulo: "Frete grátis local",
                 valor: "Desligado",
                 detalhe: "nenhuma regra de grátis ativa",
                 tom: "neutro",
@@ -533,6 +553,14 @@ export const AdminShippingView = memo(function AdminShippingView({
                 }
                 onTentarDeNovo={fetchCreds}
                 desabilitado={isOffline}
+                resumoDaEstrategiaNacional={
+                  config ? resumoDaEstrategiaNacional(config) : undefined
+                }
+                onAbrirEstrategiasNacionais={
+                  onNavigate
+                    ? () => onNavigate("admin-shipping-national")
+                    : undefined
+                }
               />
 
               <FreteGratisBloco

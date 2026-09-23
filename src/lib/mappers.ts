@@ -191,6 +191,12 @@ export function mapVariantFromDB(row: VariantRow): ProductVariant {
   };
 }
 
+/** customer_data sem o CPF do destinatário — ver o uso em mapOrderFromDB. */
+function semCpf(dados: Record<string, unknown>): Record<string, unknown> {
+  const { cpf: _cpfFicaNoBanco, ...resto } = dados;
+  return resto;
+}
+
 /**
  * Maps a database order row to the application Order interface
  */
@@ -230,7 +236,12 @@ export function mapOrderFromDB(
     id: row.id,
     userId: row.user_id || undefined,
     customer: {
-      ...customerData,
+      // CPF DO DESTINATÁRIO (migration 20261172): `customer_data.cpf` fica
+      // no BANCO (quem consome é a etiqueta, no servidor). O pedido mapeado
+      // aqui vai para o cache de pedidos no `localStorage` (useOrders), e
+      // CPF nunca entra em storage do navegador — por isso ele é retirado
+      // do espalhamento. Nenhuma tela lê `customer.cpf`.
+      ...semCpf(customerData),
       name: row.customer_name || customerData?.name || "Cliente",
       whatsapp: customerData?.whatsapp || customerData?.phone || "",
       address:

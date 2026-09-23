@@ -299,6 +299,20 @@ describe("CheckoutView — retirada na loja é escolha explícita e chega inteir
     );
   }
 
+  // CHECKOUT COMPACTO (23/09/2026): com opção pronta e escolhida, a
+  // ShippingCalculator resume atrás de um botão "Trocar" (prop
+  // `modoResumo`, só no checkout) — a lista de opções (incluindo "Retirar
+  // na loja") só aparece depois desse clique. Escopado à seção "Entrega e
+  // frete" para nunca casar com o "Trocar" do card de dados/endereço.
+  function trocarFrete(): HTMLButtonElement | undefined {
+    const secao = document.querySelector(
+      'section[aria-label="Entrega e frete"]',
+    );
+    return [...(secao?.querySelectorAll("button") ?? [])].find((b) =>
+      b.textContent?.includes("Trocar"),
+    ) as HTMLButtonElement | undefined;
+  }
+
   async function clicar(elemento: HTMLElement | undefined) {
     expect(elemento).toBeDefined();
     await act(async () => {
@@ -311,6 +325,9 @@ describe("CheckoutView — retirada na loja é escolha explícita e chega inteir
     await montar();
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(espelho.selecionada?.id).toBe("local-delivery");
+    // Opção pronta + escolhida: a calculadora resume atrás de "Trocar" —
+    // a lista completa (com "Retirar na loja") só aparece depois do clique.
+    await clicar(trocarFrete());
     expect(regiaoDoFrete()).toContain("Retirar na loja");
     expect(regiaoDoFrete()).toContain(`Retire em: ${ENDERECO_FICTICIO}`);
     // Controle dos rótulos: com a entrega local, o pagamento é "na Entrega".
@@ -320,6 +337,7 @@ describe("CheckoutView — retirada na loja é escolha explícita e chega inteir
 
   it("escolha explícita chega ao payload: store-pickup, frete 0, total = subtotal, nota com o endereço e sem prazo; pagamento na retirada", async () => {
     await montar();
+    await clicar(trocarFrete());
     await clicar(botao("Retirar na loja"));
     expect(espelho.selecionada?.id).toBe("store-pickup");
 
@@ -353,6 +371,7 @@ describe("CheckoutView — retirada na loja é escolha explícita e chega inteir
 
   it("trocar para endereço FORA da área derruba a retirada e recota: a transportadora do destino novo entra", async () => {
     await montar();
+    await clicar(trocarFrete());
     await clicar(botao("Retirar na loja"));
     expect(espelho.selecionada?.id).toBe("store-pickup");
 
@@ -378,6 +397,7 @@ describe("CheckoutView — retirada na loja é escolha explícita e chega inteir
       document.body.querySelector('[aria-label="Desconto de R$ 10,00"]'),
     ).not.toBeNull();
 
+    await clicar(trocarFrete());
     await clicar(botao("Retirar na loja"));
     expect(espelho.selecionada?.id).toBe("store-pickup");
     expect(

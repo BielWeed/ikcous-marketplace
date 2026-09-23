@@ -14,7 +14,7 @@ import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useSearch } from "@/hooks/useSearch";
-import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
+import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import type { View } from "@/types";
 import {
   ArrowLeft,
@@ -90,7 +90,7 @@ export const SearchView = React.memo(function SearchView({
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
   // preset da LOJA (ProductCard-520), derivado do MESMO config que já
   // alimentava `showRating` — mesmo padrão do ProductView.
-  const presetDaLoja = presetDoConfig(config.freeShippingMin);
+  const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
   const { prefetchView } = usePrefetchOnHover();
   const { products: allProducts } = useProducts();
   const {
@@ -372,7 +372,7 @@ export const SearchView = React.memo(function SearchView({
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
                     showRating={config.enableReviews}
-                    freeShippingPreset={presetDaLoja}
+                    promessasDeFrete={promessasDaLoja}
                     onMouseEnter={handlePrefetchProductDetail}
                     onTouchStart={handlePrefetchProductDetail}
                     priority={index < 4}
@@ -437,7 +437,7 @@ export const SearchView = React.memo(function SearchView({
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
                     showRating={config.enableReviews}
-                    freeShippingPreset={presetDaLoja}
+                    promessasDeFrete={promessasDaLoja}
                     onMouseEnter={handlePrefetchProductDetail}
                     onTouchStart={handlePrefetchProductDetail}
                   />

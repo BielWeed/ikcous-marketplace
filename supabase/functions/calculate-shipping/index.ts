@@ -22,11 +22,13 @@ import {
     conjuntoLigado,
     cotacaoDoCacheServe,
     lerCredenciais,
+    lerEstrategiaNacionalDaLoja,
     lerRevisao,
     metodosDaLoja,
     montarInsumos,
 } from './configuracao.ts'
 import { tratarAcao } from './acoes.ts'
+import { aplicarEstrategiaNacional, espelhoLegado, type EstrategiaNacional, subtotalDoCarrinho } from './estrategia-nacional.ts'
 
 // RELEASE 1.5.7 (vários provedores): a régua comum mora em `regua.ts`, os
 // adaptadores das transportadoras em `provedores.ts`, o modo legado/multi, a
@@ -63,8 +65,10 @@ export {
     VERSAO_DA_COTACAO_SUPERFRETE,
     VERSAO_DA_INTEGRACAO_SUPERFRETE,
 } from './provedores.ts'
-export { assinaturaDaCotacao, calcularRevisaoConfig, chavesDeTransportadora, conjuntoLigado, cotacaoDoCacheServe, montarInsumos } from './configuracao.ts'
+export { assinaturaDaCotacao, calcularRevisaoConfig, chavesDeTransportadora, conjuntoLigado, cotacaoDoCacheServe, lerEstrategiaNacionalDaLoja, montarInsumos } from './configuracao.ts'
 export { testarCredencial, validarServicos } from './acoes.ts'
+export { aplicarEstrategiaNacional, espelhoLegado, estrategiaNacionalDaLinha, subtotalDoCarrinho } from './estrategia-nacional.ts'
+export type { EstrategiaNacional } from './estrategia-nacional.ts'
 
 
 const corsHeaders = {
@@ -854,16 +858,25 @@ async function cotarUmaVez(
     // igual à RPC e ao CartContext). Fonte do predicado:
     // `src/lib/presets-de-frete-gratis.ts`.
     const presetPorProduto = Number(storeConfig.free_shipping_min ?? 0) < 0
-    const allFree = presetPorProduto && itensDoCarrinho.length > 0 && itensDoCarrinho.some((item: any) => {
+    const itemComFreteGratisMarcado = itensDoCarrinho.length > 0 && itensDoCarrinho.some((item: any) => {
         const dbProd = dbProductsMap.get(item?.product?.id || item?.productId)
         return !!(dbProd?.frete_gratis ?? item?.product?.freeShipping)
     })
+    const allFree = presetPorProduto && itemComFreteGratisMarcado
 
     // 3. Credenciais — ANTES do cache (A5/D8). Uma consulta só, todas as
     // linhas; a revisão da configuração sai daqui e vai em TODA resposta.
+    //
+    // ESTRATÉGIA NACIONAL (23/09, T2): leitura SEPARADA e tolerante das 5
+    // colunas (`lerEstrategiaNacionalDaLoja`, molde `lerEnderecoDaLoja`).
+    // Falhou/ausente (banco antigo) → espelho legado de `free_shipping_min`
+    // (comportamento de hoje). Entra em `revisaoConfig` SÓ quando a leitura
+    // teve sucesso — banco antigo mantém o hash de hoje, byte a byte.
+    const leituraNacional = await lerEstrategiaNacionalDaLoja(supabaseClient)
+    const estrategiaNacionalAtual: EstrategiaNacional = leituraNacional.ok ? leituraNacional.estrategia : espelhoLegado(storeConfig.free_shipping_min)
     const lidas = await lerCredenciais(supabaseClient)
     const revisaoConfig = lidas.ok && revisaoLida.ok
-        ? await calcularRevisaoConfig(storeConfig, lidas.linhas, revisaoLida.revisao)
+        ? await calcularRevisaoConfig(storeConfig, lidas.linhas, revisaoLida.revisao, leituraNacional.ok ? leituraNacional.estrategia : null)
         : null
     const comRevisao = (conteudo: Record<string, unknown>) => (revisaoConfig ? { ...conteudo, revisaoConfig } : conteudo)
 
@@ -896,8 +909,13 @@ async function cotarUmaVez(
         }))
     }
 
-    if (allFree) {
-        console.log('[calculate-shipping] Item com frete grátis no carrinho (preset por_produto): frete zerado para o pedido inteiro.')
+    // O atalho de grátis por produto (`free-shipping-promo`) é NACIONAL — o
+    // preset LOCAL usou `allFree` acima (free_shipping_min, sem mudança).
+    // Aqui a estratégia é a NACIONAL (colunas novas, com o espelho legado
+    // como queda): só dispara quando ela é `por_produto` E há item marcado.
+    // Sem cache (a RPC resolve este id pela regra, como hoje).
+    if (estrategiaNacionalAtual.estrategia === 'por_produto' && itemComFreteGratisMarcado) {
+        console.log('[calculate-shipping] Item com frete grátis no carrinho (estratégia nacional por_produto): frete zerado para o pedido inteiro.')
         return respostaJson(comRevisao({
             options: [{ id: 'free-shipping-promo', name: 'Frete Grátis (Promoção)', price: 0, deliveryDays: 3, provider: 'free' }],
             cotacaoIncompleta: false,
@@ -1108,6 +1126,19 @@ async function cotarUmaVez(
             error_message: 'configuracao_mudou_durante_cotacao: a configuração do frete mudou duas vezes durante a cotação; nada foi gravado.',
         })
         return respostaJson({ error: 'Não foi possível registrar a cotação de frete. Tente calcular novamente.', cotacaoIncompleta: true }, 503)
+    }
+
+    // 6-bis. Estratégia NACIONAL: aplicada UMA vez aqui, sobre as opções que
+    // vão para o cache (todas nacionais — local e retirada já retornaram
+    // antes). SÓ quando a leitura tolerante teve sucesso E o subtotal é
+    // confiável (nenhum item do carrinho ficou "sem cadastro" — decisão da
+    // hub, 23/09: subtotal incompleto nunca decide um grátis/desconto em
+    // silêncio). Sem isso, o preço fica CHEIO e SEM carimbo — o
+    // "comportamento de hoje" que a RPC (e qualquer edge velha na janela de
+    // publicação) trata como espelho legado.
+    if (leituraNacional.ok && insumos.produtosSemCadastro === 0) {
+        const subtotal = subtotalDoCarrinho(itensDoCarrinho, dbProductsMap, variantesMap)
+        shippingOptions = aplicarEstrategiaNacional(shippingOptions, estrategiaNacionalAtual, subtotal)
     }
 
     // 7. Grava o cache — AGUARDANDO (a RPC do pedido exige esta linha).

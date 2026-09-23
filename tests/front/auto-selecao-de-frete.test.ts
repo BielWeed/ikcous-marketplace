@@ -5,7 +5,10 @@
 // PAC barato que ninguém viu). Aqui a regra é explícita: MENOR PREÇO;
 // empate, MENOR PRAZO — e nenhum caso inventa opção que não veio.
 
-import { opcaoMaisBarata } from "@/lib/auto-selecao-de-frete";
+import {
+  opcaoMaisBarata,
+  resolverEscolhaDoFrete,
+} from "@/lib/auto-selecao-de-frete";
 import { describe, expect, it } from "vitest";
 
 type Opcao = { id: string; price: number; deliveryDays: number };
@@ -40,5 +43,48 @@ describe("opcaoMaisBarata — a auto-seleção honesta", () => {
 
   it("uma opção só: é ela", () => {
     expect(opcaoMaisBarata([opcao("unica", 15, 3)])?.id).toBe("unica");
+  });
+});
+
+// Captura do dono (23/09/2026): PAC R$ 25,31 auto-selecionado sobrevivia à
+// Loggi R$ 10,49 da cotação seguinte, porque QUALQUER seleção era
+// preservada por id. Só a escolha da CLIENTE é preservada.
+describe("resolverEscolhaDoFrete — quem escolheu decide o que sobrevive", () => {
+  const pac = opcao("superfrete-1", 25.31, 8);
+  const loggi = opcao("melhor-envio-31", 10.49, 3);
+  const pacFresco = opcao("superfrete-1", 24.9, 8);
+
+  it("escolha AUTOMÁTICA anterior ainda na lista: a mais barata da lista nova vence", () => {
+    expect(resolverEscolhaDoFrete(pac, [pac, loggi], false)).toEqual({
+      opcao: loggi,
+      origem: "automatica",
+    });
+  });
+
+  it("escolha da CLIENTE ainda na lista: preservada, com o objeto FRESCO", () => {
+    const r = resolverEscolhaDoFrete(pac, [pacFresco, loggi], true);
+    expect(r.opcao).toBe(pacFresco);
+    expect(r.origem).toBe("cliente");
+  });
+
+  it("escolha da CLIENTE que sumiu: a mais barata, e a origem volta a ser automática", () => {
+    expect(resolverEscolhaDoFrete(pac, [loggi], true)).toEqual({
+      opcao: loggi,
+      origem: "automatica",
+    });
+  });
+
+  it("sem seleção: a mais barata, automática (a bandeira sozinha não inventa escolha)", () => {
+    expect(resolverEscolhaDoFrete(null, [pac, loggi], true)).toEqual({
+      opcao: loggi,
+      origem: "automatica",
+    });
+  });
+
+  it("lista vazia: nada, automática", () => {
+    expect(resolverEscolhaDoFrete(pac, [], true)).toEqual({
+      opcao: null,
+      origem: "automatica",
+    });
   });
 });

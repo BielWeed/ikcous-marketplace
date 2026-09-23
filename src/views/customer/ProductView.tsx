@@ -15,9 +15,12 @@ import { useProducts } from "@/hooks/useProducts";
 import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import {
+  fraseDoSeloDeFreteGratis,
+  promessasDeFrete,
+} from "@/lib/estrategias-de-frete";
 import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
-import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -35,7 +38,13 @@ import {
   Star,
   Truck,
 } from "lucide-react";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -553,16 +562,22 @@ export const ProductView = React.memo(function ProductView({
       )
     : 0;
 
-  // ProductCard-520: `product.freeShipping` só é verdade DENTRO do preset
-  // "por_produto" (ou em "sempre", que vale para qualquer produto) desde a
-  // migração de presets de 03/09 -- mesmo raciocínio de ProductCard.tsx.
-  // Fora desses dois presets a marcação pode ser resíduo de campanha antiga
-  // que a loja já desligou; sem esta guarda a folha do produto anunciava
-  // grátis que o carrinho (que já obedece o preset) ia cobrar.
-  const presetDaLoja = presetDoConfig(config.freeShippingMin);
-  const isEligibleForFreeShipping =
-    presetDaLoja === "sempre" ||
-    (presetDaLoja === "por_produto" && product.freeShipping);
+  // ProductCard-520 + T3 (23/09): `product.freeShipping` só é verdade
+  // DENTRO do preset "por_produto" (local OU nacional) ou em "sempre" de
+  // qualquer um dos dois canais -- mesmo raciocínio de ProductCard.tsx.
+  // Fora disso a marcação pode ser resíduo de campanha antiga que a loja já
+  // desligou; sem esta guarda a folha do produto anunciava grátis que o
+  // carrinho (que já obedece a regra por modalidade) ia cobrar.
+  const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
+  // IMPORTANTE (revisão Opus, pós-T3): o selo mostrava "Grátis" sem
+  // qualificar onde vale — mesmo defeito que os outros 6 pontos de selo já
+  // tinham corrigido com `fraseDoSeloDeFreteGratis` (esta folha era o único
+  // que ainda faltava). `null` = nenhum canal promete para ESTE produto —
+  // mesmo critério que `produtoTemFreteGratisPrometido` usava.
+  const fraseDoSelo = fraseDoSeloDeFreteGratis(
+    promessasDaLoja,
+    product.freeShipping,
+  );
 
   const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (cartStatus !== "idle") return;
@@ -984,10 +999,10 @@ export const ProductView = React.memo(function ProductView({
                 EM ALTA
               </span>
             )}
-            {isEligibleForFreeShipping && (
+            {fraseDoSelo && (
               <span className="flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-emerald-700">
                 <Truck className="animate-bounce-subtle size-3 text-emerald-600" />
-                Grátis
+                {fraseDoSelo}
               </span>
             )}
           </div>
@@ -1433,7 +1448,7 @@ export const ProductView = React.memo(function ProductView({
                       onQuickBuy={handleQuickBuyFromCard}
                       onClick={handleProductClick}
                       showRating={config.enableReviews}
-                      freeShippingPreset={presetDaLoja}
+                      promessasDeFrete={promessasDaLoja}
                     />
                   ))}
             </div>

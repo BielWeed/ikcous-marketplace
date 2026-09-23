@@ -314,6 +314,29 @@ export interface StoreConfig {
   shippingCoverage?: "local" | "national";
   localDeliveryFee?: number;
   localCepRange?: string;
+  /**
+   * ESTRATÉGIAS DE FRETE NACIONAL (23/09/2026, migration
+   * 20261171000000_o_frete_nacional_ganha_estrategia_propria.sql): a mesma
+   * ideia dos presets locais (`freeShippingMin`), mas para transportadora —
+   * `desligado` (preço cheio), `acima_de_valor` (grátis a partir de
+   * `nationalShippingMin`), `sempre`, `por_produto` (item marcado
+   * `freeShipping`) ou `desconto_na_mais_barata` (percentual/fixo só na(s)
+   * opção(ões) de menor preço cheio). Fonte única em
+   * `src/lib/estrategias-de-frete.ts` — o front NUNCA recalcula o preço
+   * nacional, só lê `ShippingOption.price`/`precoCheio` (já finais, vindos
+   * da edge). NÃO OPCIONAL: o StoreContext preenche sempre, com o ESPELHO
+   * LEGADO de `freeShippingMin` quando as colunas ainda não existem no
+   * banco (contrato do plano de 23/09).
+   */
+  nationalShippingStrategy: EstrategiaDeFreteNacional;
+  /** `>= 0`. Só usado quando a estratégia é `acima_de_valor` (>0) ou como piso opcional de `desconto_na_mais_barata` (0 = sem mínimo). */
+  nationalShippingMin: number;
+  /** `null` fora da estratégia `desconto_na_mais_barata`. */
+  nationalDiscountType: "percentual" | "fixo" | null;
+  /** `>= 0`. Só usado em `desconto_na_mais_barata`. */
+  nationalDiscountValue: number;
+  /** Alcance do GRÁTIS nacional (`sempre`/`por_produto`/`acima_de_valor`): `mais_barata` beneficia só as opções de menor preço cheio; `todas`, todas as nacionais. O desconto (`desconto_na_mais_barata`) é sempre `mais_barata` por definição da própria estratégia. */
+  nationalBenefitScope: "mais_barata" | "todas";
   homeSections?: {
     id: string;
     title: string;
@@ -325,12 +348,48 @@ export interface StoreConfig {
   }[];
 }
 
+/** As 5 estratégias de `store_config.national_shipping_strategy` — mesmos nomes do CHECK da migration 20261171000000. */
+export type EstrategiaDeFreteNacional =
+  | "desligado"
+  | "acima_de_valor"
+  | "sempre"
+  | "por_produto"
+  | "desconto_na_mais_barata";
+
+/**
+ * O carimbo que a edge grava em TODA opção NACIONAL (nunca em
+ * `local-delivery`/`store-pickup`): as 5 colunas de `store_config` lidas no
+ * instante da cotação. A RPC do pedido compara este carimbo com a config
+ * ATUAL da loja — divergiu, `FRETE_COTACAO_DESATUALIZADA` (recota).
+ */
+export interface EstrategiaNacionalDaOpcao {
+  estrategia: EstrategiaDeFreteNacional;
+  minimo: number;
+  tipoDesconto: "percentual" | "fixo" | null;
+  valorDesconto: number;
+  alcance: "mais_barata" | "todas";
+}
+
 export interface ShippingOption {
   id: string;
   name: string;
+  /**
+   * Preço FINAL. Em opção NACIONAL, já sai da edge com grátis/desconto
+   * aplicados — o front NUNCA recalcula (fonte única: `estrategias-de-frete.ts`).
+   * Em `local-delivery`/`store-pickup` é o preço CHEIO (a regra local, que
+   * SEMPRE foi calculada no front, continua sendo — `precoFinalDaOpcao`).
+   */
   price: number;
   deliveryDays: number;
   provider: string;
+  /**
+   * Só em opção NACIONAL: o preço da transportadora ANTES da estratégia
+   * (para riscar/mostrar economia). Ausente em local/retirada/grátis e em
+   * opção cotada por edge anterior a 23/09/2026.
+   */
+  precoCheio?: number;
+  /** Só em opção NACIONAL — ver `EstrategiaNacionalDaOpcao`. */
+  estrategiaNacional?: EstrategiaNacionalDaOpcao;
   /**
    * Só na retirada na loja (id `store-pickup`, release 1.5.3): o endereço
    * físico REAL da loja (`store_config.store_address`, aparado) que a edge
@@ -389,6 +448,7 @@ export type View =
   | "admin-banners"
   | "admin-carousels"
   | "admin-shipping"
+  | "admin-shipping-national"
   | "admin-settings"
   | "admin-reviews"
   | "admin-qa"

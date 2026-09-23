@@ -149,6 +149,34 @@ export const TABLE_CONFIGS: TableConfig[] = [
           : undefined,
       localCepRange: raw.local_cep_range,
       homeSections: raw.home_sections,
+      // 20261171000000 (T3, 23/09): banco sem as colunas -- `undefined`,
+      // mesmo tratamento das demais colunas deste mapa (o merge com o
+      // config já carregado NÃO sobrescreve com ausência; StoreContext é
+      // quem preenche o ESPELHO LEGADO na leitura inicial).
+      nationalShippingStrategy:
+        raw.national_shipping_strategy !== null &&
+        raw.national_shipping_strategy !== undefined
+          ? raw.national_shipping_strategy
+          : undefined,
+      nationalShippingMin:
+        raw.national_shipping_min !== null &&
+        raw.national_shipping_min !== undefined
+          ? Number(raw.national_shipping_min)
+          : undefined,
+      nationalDiscountType:
+        raw.national_discount_type !== undefined
+          ? raw.national_discount_type
+          : undefined,
+      nationalDiscountValue:
+        raw.national_discount_value !== null &&
+        raw.national_discount_value !== undefined
+          ? Number(raw.national_discount_value)
+          : undefined,
+      nationalBenefitScope:
+        raw.national_benefit_scope !== null &&
+        raw.national_benefit_scope !== undefined
+          ? raw.national_benefit_scope
+          : undefined,
       // Sem estes três, a identidade da loja (Tarefa 2/3 do bloco "o app
       // para de inventar endereço") some assim que o app carrega
       // `store_config` pelo caminho offline/realtime em vez de vir direto

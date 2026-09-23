@@ -4,7 +4,12 @@ import {
   Linha,
   PontoEstado,
 } from "@/components/admin/shipping/primitivas-direcao-d";
-import { AlertCircle, ExternalLink, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronRight,
+  ExternalLink,
+  RefreshCw,
+} from "lucide-react";
 import { memo } from "react";
 
 /**
@@ -51,6 +56,8 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
   onAbrirAjustes,
   onTentarDeNovo,
   desabilitado,
+  resumoDaEstrategiaNacional,
+  onAbrirEstrategiasNacionais,
 }: {
   readonly originCep: string;
   readonly onOriginCep: (cep: string) => void;
@@ -63,6 +70,13 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
   readonly onAbrirAjustes?: () => void;
   readonly onTentarDeNovo?: () => void;
   readonly desabilitado?: boolean;
+  /** Texto curto do estado SALVO da estratégia nacional (T4, 23/09/2026) —
+   * `resumoDaEstrategiaNacional` de `src/lib/estrategias-de-frete.ts`, ao
+   * lado do botão que abre a tela nova. */
+  readonly resumoDaEstrategiaNacional?: string;
+  /** Abre `admin-shipping-national` — ausente quando a view não recebeu
+   * `onNavigate` (mesmo padrão de `onAbrirAjustes`). */
+  readonly onAbrirEstrategiasNacionais?: () => void;
 }) {
   const formatCEP = (val: string) => {
     const clean = val.replace(/\D/g, "");
@@ -253,6 +267,33 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           </button>
         )}
       </Linha>
+
+      {/* T4 (23/09/2026): a estratégia de frete grátis/desconto para
+          transportadora tem tela PRÓPRIA — o estado salvo mostra o que já
+          vale sem precisar abrir a tela. */}
+      {onAbrirEstrategiasNacionais && (
+        <Linha
+          nome="Estratégias do frete nacional"
+          dica={
+            <>
+              Estado salvo:{" "}
+              <b className="font-semibold text-zinc-300">
+                {resumoDaEstrategiaNacional ?? "desligado"}
+              </b>
+            </>
+          }
+        >
+          <button
+            type="button"
+            onClick={onAbrirEstrategiasNacionais}
+            disabled={desabilitado}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+          >
+            Estratégias do frete nacional
+            <ChevronRight className="size-3.5 text-admin-accent" />
+          </button>
+        </Linha>
+      )}
     </section>
   );
 });

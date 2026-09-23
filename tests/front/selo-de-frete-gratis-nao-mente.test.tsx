@@ -132,7 +132,12 @@ describe("ProductList — via a config real da loja, o selo do card afirma só o
 
     await renderizarLista(produto);
 
-    expect(hospedeiro.textContent).toContain("Frete Grátis");
+    // T3 (23/09): mock sem colunas nacionais -- ESPELHO LEGADO
+    // (`espelhoLegado`, mesmo fallback de `StoreContext.mapConfig`) copia o
+    // preset local para o canal nacional quando o banco/teste não configurou
+    // nada -- os dois "concordam" e a frase de hoje continua sem qualificar
+    // onde vale.
+    expect(hospedeiro.textContent).toContain("Frete grátis");
   });
 
   it("B3: produto MARCADO não ganha o selo quando a loja trocou para o preset 'acima de valor' (resíduo de campanha antiga)", async () => {
@@ -237,7 +242,13 @@ describe("HeroOfferCard — a faixa de ofertas tem a propria copia da condicao",
 
     await renderizarOfertas(produto);
 
-    expect(hospedeiro.textContent).toContain("Frete Grátis");
+    // T3 (23/09): mock sem colunas nacionais -- ESPELHO LEGADO
+    // (`espelhoLegado`, mesmo fallback de `StoreContext.mapConfig`) copia o
+    // preset local para o canal nacional quando o banco/teste não configurou
+    // nada -- os dois "concordam" e a frase de hoje continua sem qualificar
+    // onde vale (sem essa cópia mockConfig representaria uma loja com
+    // divergência que ela nunca configurou).
+    expect(hospedeiro.textContent).toContain("Frete grátis");
   });
 
   it("B3: na mesma faixa, produto MARCADO não ganha o selo no preset 'acima de valor' (resíduo de campanha antiga)", async () => {

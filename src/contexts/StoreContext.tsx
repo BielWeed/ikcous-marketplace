@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { DataVault } from "@/lib/dataVault";
+import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -130,6 +131,14 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   ["shipping_coverage", "texto"],
   ["local_cep_range", "texto"],
   ["home_sections", "home_sections"],
+  // 20261171000000: estratégias de frete NACIONAL (T3, 23/09/2026) — sem
+  // entrada aqui `updateConfig` gravaria a coluna mas o comparador de
+  // "gravou mesmo?" acusaria falha (coluna desconhecida nunca confirma).
+  ["national_shipping_strategy", "texto"],
+  ["national_shipping_min", "numeric"],
+  ["national_discount_type", "texto"],
+  ["national_discount_value", "numeric"],
+  ["national_benefit_scope", "texto"],
 ]);
 
 // Normaliza um valor de `home_sections` para comparação POR VALOR: ordena
@@ -280,7 +289,7 @@ function componhaShareText(
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { isAdmin, loading, user } = useAuth();
+  const { isAdmin, loading } = useAuth();
   const { isLeader } = useLeaderElection();
   const vaultRef = useRef<DataVault | null>(null);
   // O motor de tempo real precisa do cofre, e `ref` NÃO é dependência de
@@ -302,6 +311,16 @@ export function StoreProvider({
   const configInicial: StoreConfig = {
     ...defaultStoreConfig,
     freeShippingMin: 0,
+    // Mesma razão do freeShippingMin acima (StoreContext-576): o estado
+    // ANTES do primeiro fetchConfig não pode prometer uma estratégia
+    // nacional que ninguém escolheu. `mapConfig` já cai no ESPELHO de
+    // freeShippingMin=0 ("desligado") quando a coluna falta — as duas
+    // fontes concordam.
+    nationalShippingStrategy: espelhoLegado(0).estrategia,
+    nationalShippingMin: espelhoLegado(0).minimo,
+    nationalDiscountType: null,
+    nationalDiscountValue: 0,
+    nationalBenefitScope: espelhoLegado(0).alcance,
   };
   const [config, setConfig] = useState<StoreConfig>(configInicial);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -483,6 +502,14 @@ export function StoreProvider({
     // que a RPC do pedido usa para ausência (COALESCE(...,0)) — ausência
     // aqui tem que significar desligado, como já significa lá.
     const freeMin = getVal("free_shipping_min", "freeShippingMin", 0);
+    // ESPELHO LEGADO (contrato do plano 23/09): banco/config ainda sem as
+    // 5 colunas nacionais (a migration 20261171000000 não rodou nesta
+    // loja) devolve `undefined`/`null` nelas -- `getVal` cai no fallback,
+    // que aqui é a MESMA conta que a migration faria a partir do
+    // freeShippingMin ATUAL (nunca dos 350 do defaultStoreConfig: mesma
+    // razão da nota StoreContext-576 acima). Loja já migrada: os 5
+    // `getVal` abaixo leem a coluna de verdade, e este espelho não é usado.
+    const espelho = espelhoLegado(Number(freeMin));
     const shipFee = getVal(
       "shipping_fee",
       "shippingFee",
@@ -586,6 +613,27 @@ export function StoreProvider({
         "home_sections",
         "homeSections",
         defaultStoreConfig.homeSections,
+      ),
+      nationalShippingStrategy: getVal(
+        "national_shipping_strategy",
+        "nationalShippingStrategy",
+        espelho.estrategia,
+      ),
+      nationalShippingMin: Number(
+        getVal("national_shipping_min", "nationalShippingMin", espelho.minimo),
+      ),
+      nationalDiscountType: getVal(
+        "national_discount_type",
+        "nationalDiscountType",
+        null,
+      ),
+      nationalDiscountValue: Number(
+        getVal("national_discount_value", "nationalDiscountValue", 0),
+      ),
+      nationalBenefitScope: getVal(
+        "national_benefit_scope",
+        "nationalBenefitScope",
+        espelho.alcance,
       ),
     };
   }, []);
@@ -890,6 +938,17 @@ export function StoreProvider({
           dbUpdates.local_cep_range = updates.localCepRange;
         if (updates.homeSections !== undefined)
           dbUpdates.home_sections = updates.homeSections;
+        if (updates.nationalShippingStrategy !== undefined)
+          dbUpdates.national_shipping_strategy =
+            updates.nationalShippingStrategy;
+        if (updates.nationalShippingMin !== undefined)
+          dbUpdates.national_shipping_min = updates.nationalShippingMin;
+        if (updates.nationalDiscountType !== undefined)
+          dbUpdates.national_discount_type = updates.nationalDiscountType;
+        if (updates.nationalDiscountValue !== undefined)
+          dbUpdates.national_discount_value = updates.nationalDiscountValue;
+        if (updates.nationalBenefitScope !== undefined)
+          dbUpdates.national_benefit_scope = updates.nationalBenefitScope;
 
         if (!current()) return false;
         const { data, error } = await (supabase.rpc as any)(
@@ -1127,17 +1186,20 @@ export function StoreProvider({
     }, []),
   );
 
+  // CÓPIA VELHA (T3, 23/09/2026): sem consumidor (nenhum chamador de
+  // `useStore()` destrutura `calculateShipping` -- grep confirmado antes
+  // desta edição). Mantida no contrato do contexto por segurança de tipo
+  // (StoreContextType é público), mas delegando à fonte única
+  // (`estrategias-de-frete.ts`) em vez de carregar uma SEGUNDA cópia da
+  // regra de frete grátis (lição #53) -- inclusive a trava de login que já
+  // morreu nas outras duas cópias (CartContext, ShippingCalculator) desde a
+  // frente B (03/09).
   const calculateShipping = useCallback(
     (cart: CartItem[], selectedOption?: ShippingOption | null) => {
       if (cart.length === 0) return 0;
+      if (!selectedOption) return config.shippingFee;
 
-      const hasFreeShippingItem = cart.some(
-        (item) => item.product.freeShipping,
-      );
-      if (hasFreeShippingItem) return 0;
-
-      const totalAmount = cart.reduce((sum, item) => {
-        // Laudo 31/08 (menor E): regra única do preço em preco-vendido.ts.
+      const subtotal = cart.reduce((sum, item) => {
         return (
           sum +
           precoVendido(
@@ -1147,24 +1209,15 @@ export function StoreProvider({
             item.quantity
         );
       }, 0);
+      const temItemMarcado = cart.some((item) => item.product.freeShipping);
 
-      // Frete grátis exige login — mesma regra do CartContext, da RPC
-      // create_marketplace_order_v22 e do que o FreeShippingBlock promete na Home.
-      // Sem o `user` aqui, esta função divergia das outras duas.
-      if (
-        config.freeShippingMin > 0 &&
-        totalAmount >= config.freeShippingMin &&
-        user
-      )
-        return 0;
-
-      if (selectedOption) {
-        return selectedOption.price;
-      }
-
-      return config.shippingFee;
+      return precoFinalDaOpcao(selectedOption, {
+        config,
+        subtotal,
+        temItemMarcado,
+      });
     },
-    [config.freeShippingMin, config.shippingFee, user],
+    [config],
   );
 
   const refresh = useCallback(
