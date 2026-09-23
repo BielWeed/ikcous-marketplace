@@ -1861,6 +1861,38 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O CPF do destinatário mora no pedido (checkout compacto + CPF,
+  // 23/09/2026, REBASEADA sobre a 20261171000000 -- ver o cabeçalho da
+  // migration). Ao contrário do rascunho anterior (que acrescentava
+  // `p_customer_cpf` à assinatura), esta versão não muda ASSINATURA
+  // nenhuma -- o CPF viaja dentro do jsonb `p_address_data` já existente,
+  // então tanto v23 quanto v24 ganham CORPO novo (não só a v24) e os dois
+  // entram aqui. A 20261171000000 (migration-base) não tem entrada neste
+  // mapa nesta branch -- não inventada aqui (fora do escopo desta tarefa).
+  "20261172000000_o_cpf_do_destinatario_mora_no_pedido.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        "v_address_data_sem_cpf jsonb := CASE\n        WHEN p_address_data IS NULL THEN NULL\n        WHEN jsonb_typeof(p_address_data) <> 'object' THEN p_address_data\n        WHEN (p_address_data - 'cpf') = '{}'::jsonb THEN NULL\n        ELSE (p_address_data - 'cpf')\n    END;",
+        "'address', v_address_data_sem_cpf,",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "v_customer_cpf_digits text := NULLIF(regexp_replace(COALESCE(p_address_data->>'cpf', ''), '\\D', '', 'g'), '');",
+        // A checagem mora FORA do 2-ter (não dentro do ELSE dele) — ver o
+        // cabeçalho da 20261172000000, item (b), e o contrato da 20261171
+        // ("não mexer... no 2-ter").
+        "IF v_opcao NOT IN ('local-delivery', 'store-pickup') AND v_customer_cpf_digits IS NOT NULL THEN\n        IF length(v_customer_cpf_digits) <> 11",
+        "SELECT array_agg(substr(v_customer_cpf_digits, gs, 1)::int ORDER BY gs)\n          INTO v_cpf_digitos\n          FROM generate_series(1, 11) AS gs;",
+        "CASE WHEN v_opcao NOT IN ('local-delivery', 'store-pickup') AND v_customer_cpf_digits IS NOT NULL\n                THEN jsonb_build_object('cpf', v_customer_cpf_digits)",
+        // Sem este, a v24 poderia gravar o p_address_data CRU (com o cpf
+        // dentro do endereço) e a verificação passaria — revisão Opus 23/09.
+        "'address', v_address_data_sem_cpf,",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
