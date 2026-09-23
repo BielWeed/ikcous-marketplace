@@ -213,6 +213,16 @@ const PROVEDORES_COM_EMAIL_EM_CONSULTA: ReadonlySet<ProvedorFrete> = new Set([
 // chave sem e-mail e só recusa LIGAR sem ele (`save_active_providers`).
 export const PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR: ReadonlySet<ProvedorFrete> =
   new Set(["superfrete"]);
+// Nome dos serviços que a tela conhece sem perguntar à transportadora — para
+// mostrar a seleção SALVA antes de "Ver serviços da conta" (PR #637). Código
+// fora daqui aparece cru, que é o que o servidor guarda.
+const NOME_DO_SERVICO_CONHECIDO: ReadonlyMap<string, string> = new Map([
+  ["frenet:JTE_INT", "J&T Express — Standard"],
+]);
+
+function nomeDoServicoSalvo(provider: ProvedorFrete, codigo: string): string {
+  return NOME_DO_SERVICO_CONHECIDO.get(`${provider}:${codigo}`) ?? codigo;
+}
 
 function mensagemParaAtivar(provider: ProvedorFrete): string {
   return `Cole a chave de acesso e preencha o e-mail de contato d${
@@ -363,6 +373,12 @@ export const TransportadorasSection = memo(function TransportadorasSection({
     ReadonlySet<ProvedorFrete>
   >(() => new Set());
   const [salvandoLigados, setSalvandoLigados] = useState(false);
+  // PR #637: a recusa do "Salvar provedores" fica ESCRITA no bloco até a
+  // escolha mudar — só o toast some no celular antes de ser lido.
+  const [erroLigados, setErroLigados] = useState<{
+    readonly mensagem: string;
+    readonly resumo?: string;
+  } | null>(null);
 
   // `Map`, não `Record` indexado por `provider` — mesmo motivo de
   // `NOME_DO_PROVEDOR` (o eslint não distingue união fechada de dicionário
@@ -422,6 +438,9 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       setProvedoresSalvos(config.provedores);
       setLigadosSalvos(new Set(config.ligados));
       setLigadosEscolhidos(new Set(config.ligados));
+      // A escolha pendente acabou de voltar à do servidor — a recusa que
+      // falava dela sai junto (revisão Opus, PR #637).
+      setErroLigados(null);
       if (resetarRascunhoDe !== "nenhum") {
         const rascunhoFresco = (
           provider: ProvedorFrete,
@@ -443,7 +462,26 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           const provider = resetarRascunhoDe;
           setRascunhos((prev) => {
             const proximo = new Map(prev);
-            proximo.set(provider, rascunhoFresco(provider));
+            // PR #637: a lista já aberta continua aberta, marcada com o que
+            // o SERVIDOR devolveu como salvo — antes ela sumia e a tela
+            // voltava a "Ver serviços da conta", parecendo que nada gravou.
+            const carregados = prev.get(provider)?.servicosCarregados ?? null;
+            const salvos = new Set(
+              config.provedores.get(provider)?.servicos ?? [],
+            );
+            proximo.set(provider, {
+              ...rascunhoFresco(provider),
+              servicosCarregados: carregados,
+              servicosDoCatalogo:
+                prev.get(provider)?.servicosDoCatalogo ?? false,
+              servicosSelecionados: carregados
+                ? new Set(
+                    carregados
+                      .map((s) => s.codigo)
+                      .filter((codigo) => salvos.has(codigo)),
+                  )
+                : null,
+            });
             return proximo;
           });
         }
@@ -883,11 +921,13 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       else proximo.add(provider);
       return proximo;
     });
+    setErroLigados(null);
     haptic.light();
   }, []);
 
   const salvarLigados = useCallback(async () => {
     setSalvandoLigados(true);
+    setErroLigados(null);
     haptic.medium();
     try {
       const { data, error } = await chamarEdgeDeFrete({
@@ -905,6 +945,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
             ? data.error
             : "Não foi possível salvar os provedores ligados.";
         const resumo = resumoServicosTestados(data?.servicosTestados);
+        setErroLigados({ mensagem: `Nada foi salvo. ${mensagemErro}`, resumo });
         if (resumo) {
           toast.error(mensagemErro, { description: resumo });
         } else {
@@ -949,11 +990,16 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         err,
       );
       haptic.error();
+      const descricao = mensagemAmigavelErroEdgeFunction(err as Error, {
+        mensagemGenerica:
+          "Não foi possível falar com o servidor. Tente de novo em instantes.",
+      });
+      setErroLigados({
+        mensagem: "Erro ao salvar os provedores ligados.",
+        resumo: descricao,
+      });
       toast.error("Erro ao salvar os provedores ligados.", {
-        description: mensagemAmigavelErroEdgeFunction(err as Error, {
-          mensagemGenerica:
-            "Não foi possível falar com o servidor. Tente de novo em instantes.",
-        }),
+        description: descricao,
       });
     } finally {
       setSalvandoLigados(false);
@@ -1132,6 +1178,22 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           )}
           <span>{salvandoLigados ? "Salvando…" : "Salvar provedores"}</span>
         </button>
+        {erroLigados && (
+          <div
+            role="alert"
+            className="flex items-start gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-red-300"
+          >
+            <AlertCircle className="mt-px size-3.5 shrink-0" />
+            <span>
+              {erroLigados.mensagem}
+              {erroLigados.resumo && (
+                <span className="mt-0.5 block font-normal text-red-300/80">
+                  {erroLigados.resumo}
+                </span>
+              )}
+            </span>
+          </div>
+        )}
         {modo === "legado" && (
           <p className="text-[10px] leading-snug text-zinc-500">
             Sua loja ainda está no modo antigo (um provedor só). Salvar aqui
@@ -1405,6 +1467,22 @@ function CartaoDoProvedor({
             </span>
           </button>
         </div>
+
+        {/* PR #637: sem isto, depois de recarregar a lista ficava vazia e a
+         * seleção salva parecia perdida — ela só aparecia depois de "Ver
+         * serviços da conta". `null` = nunca escolheu (filtro antigo). */}
+        {!rascunho.servicosCarregados &&
+          salvo?.servicos &&
+          salvo.servicos.length > 0 && (
+            <div className="rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-[11px] text-zinc-300">
+              <span className="block text-zinc-500">Salvos nesta loja:</span>
+              <ul className="ml-4 list-disc">
+                {salvo.servicos.map((codigo) => (
+                  <li key={codigo}>{nomeDoServicoSalvo(provider, codigo)}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
         {rascunho.erroServicos && (
           <p className="text-[11px] text-red-300">
