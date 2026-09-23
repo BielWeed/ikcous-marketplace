@@ -44,6 +44,7 @@ const fetchAdminFalso = ((input: any) =>
 
 globalThis.fetch = fetchAdminFalso
 const {
+    analisarOpcaoMelhorEnvio,
     extrairEnderecoDoPedido,
     extrairServiceIdDaOpcao,
     handler,
@@ -51,6 +52,7 @@ const {
     montarRemetente,
     normalizarCheckout,
     normalizarTracking,
+    erroDeAgenciaObrigatoria,
     erroDePagamentoParaEtiqueta,
     erroDePedidoParaEtiqueta,
     erroDeServicoParaEtiqueta,
@@ -67,6 +69,23 @@ async function comAdminFalso(executar: () => Promise<any>): Promise<any> {
     } finally {
         globalThis.fetch = anterior
     }
+}
+
+/**
+ * Captura as linhas de `console.log` durante o bloco — usada só para provar
+ * o marcador `ua_contato:legado` (contrato 1.5.7, R3-7) sem acoplar no
+ * formato completo da mensagem de log.
+ */
+async function comConsoleLogCapturado(executar: () => Promise<void>): Promise<string[]> {
+    const linhas: string[] = []
+    const original = console.log
+    console.log = ((...args: any[]) => { linhas.push(args.map(String).join(' ')) }) as any
+    try {
+        await executar()
+    } finally {
+        console.log = original
+    }
+    return linhas
 }
 
 /** Env de que a porta de admin precisa ANTES de criar qualquer client.
@@ -135,6 +154,43 @@ Deno.test("service id - frete fixo, entrega local e null não casam", () => {
   assertEquals(extrairServiceIdDaOpcao("local-delivery"), null)
   assertEquals(extrairServiceIdDaOpcao(null), null)
   assertEquals(extrairServiceIdDaOpcao("melhor-envio-abc"), null)
+})
+
+// ── analisarOpcaoMelhorEnvio (contrato 1.5.7, R1-6: captura completa,
+// ^melhor-envio-(\d+)(-ss)?$, nunca parseInt parcial nem startsWith) ───────
+
+Deno.test("opção ME - id com sufixo -ss é seguro ZERO; extrairServiceIdDaOpcao continua achando só os dígitos", () => {
+  assertEquals(analisarOpcaoMelhorEnvio("melhor-envio-31-ss"), { id: "31", semSeguro: true })
+  assertEquals(extrairServiceIdDaOpcao("melhor-envio-31-ss"), "31")
+})
+
+Deno.test("opção ME - id sem sufixo é seguro do subtotal (padrão de hoje)", () => {
+  assertEquals(analisarOpcaoMelhorEnvio("melhor-envio-31"), { id: "31", semSeguro: false })
+})
+
+Deno.test("opção ME - superfrete-*, frenet-*, formato quebrado e sufixo errado não casam", () => {
+  assertEquals(analisarOpcaoMelhorEnvio("superfrete-1"), null)
+  assertEquals(analisarOpcaoMelhorEnvio("frenet-ABC123"), null)
+  assertEquals(analisarOpcaoMelhorEnvio("melhor-envio-abc-ss"), null)
+  assertEquals(analisarOpcaoMelhorEnvio("melhor-envio-31-outro"), null)
+  assertEquals(analisarOpcaoMelhorEnvio(null), null)
+})
+
+// ── erroDeAgenciaObrigatoria (contrato §5/A7: LATAM 12, Azul 15/16, Buslog 22) ──
+
+Deno.test("agência obrigatória - ids 12, 15, 16 e 22 recusam com a mensagem do site do Melhor Envio", () => {
+  for (const id of ["12", "15", "16", "22"]) {
+    const mensagem = erroDeAgenciaObrigatoria(id)
+    assertEquals(mensagem !== null, true)
+    assertEquals(String(mensagem).includes("Melhor Envio"), true)
+    assertEquals(String(mensagem).toLowerCase().includes("agência") || String(mensagem).toLowerCase().includes("agencia"), true)
+  }
+})
+
+Deno.test("agência obrigatória - qualquer outro id passa (null)", () => {
+  assertEquals(erroDeAgenciaObrigatoria("1"), null)
+  assertEquals(erroDeAgenciaObrigatoria("31"), null)
+  assertEquals(erroDeAgenciaObrigatoria("120"), null) // não é '12' — string inteira, não substring
 })
 
 // ── erroDeServicoParaEtiqueta (achado index-691: a recusa tem que dizer a
@@ -265,8 +321,10 @@ Deno.test("produtos e volumes - leitura do banco com fallbacks da cotação", ()
   const { products, volumes } = montarProdutosEVolumes(itens, produtosDb)
   assertEquals(products.length, 2)
   assertEquals(volumes.length, 2)
-  // Produto no banco: preço e medida do banco, peso da LINHA (0.4 × 2).
-  assertEquals(products[0], { name: "Caneca", quantity: 2, unitary_value: 25 })
+  // Produto no banco: nome e medida do banco; PREÇO é o VENDIDO no pedido
+  // (item.price = 10, gravado pela RPC), NUNCA o preco_venda atual do
+  // catálogo (25) — correção pós-revisão Opus. Peso da LINHA (0.4 × 2).
+  assertEquals(products[0], { name: "Caneca", quantity: 2, unitary_value: 10 })
   assertEquals(volumes[0], { weight: 0.8, width: 10, height: 12, length: 14 })
   // Produto fora do banco: fallbacks iguais aos do calculate-shipping.
   assertEquals(products[1], { name: "Produto", quantity: 1, unitary_value: 5 })
@@ -425,7 +483,7 @@ const CONTA_ME_FELIZ = {
  * (reivindicação gravada? liberação com os dois filtros? evento de qual
  * etapa?).
  */
-function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[] } = {}) {
+function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any } = {}) {
     const registro = {
         reivindicacoes: [] as Array<{ valores: any; filtros: any[] }>,
         liberacoes: [] as Array<{ valores: any; filtros: any[] }>,
@@ -435,7 +493,7 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[] 
     const resolver = (no: any): Promise<any> => {
         if (no.tabela === 'store_shipping_credentials') {
             return Promise.resolve({
-                data: { credentials: { token: 'token-me-de-teste', sandbox: true } },
+                data: { credentials: configuracao.credentials ?? { token: 'token-me-de-teste', sandbox: true } },
                 error: null,
             })
         }
@@ -444,10 +502,10 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[] 
             return Promise.resolve({ data: null, error: null })
         }
         if (no.tabela === 'marketplace_order_items') {
-            return Promise.resolve({ data: [{ product_id: 'p1', quantity: 1, price: 10 }], error: null })
+            return Promise.resolve({ data: configuracao.itens ?? [{ product_id: 'p1', quantity: 1, price: 10 }], error: null })
         }
         if (no.tabela === 'produtos') {
-            return Promise.resolve({ data: [{ id: 'p1', nome: 'Caneca', preco_venda: 10 }], error: null })
+            return Promise.resolve({ data: configuracao.produtosDb ?? [{ id: 'p1', nome: 'Caneca', preco_venda: 10 }], error: null })
         }
         // marketplace_orders
         if (no.acao === 'update') {
@@ -524,18 +582,40 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[] 
  * timeout/queda de rede pós-reivindicação).
  */
 function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'erro-5xx' } = {}) {
-    const registro = { carrinho: 0, remocoes: 0, checkouts: 0, geracoes: 0, ultimoServico: null as string | null }
+    const registro = {
+        carrinho: 0,
+        remocoes: 0,
+        checkouts: 0,
+        geracoes: 0,
+        chamadasMe: 0,
+        ultimoServico: null as string | null,
+        ultimoInsuranceValue: null as number | null,
+        ultimoProducts: null as Array<Record<string, unknown>> | null,
+        userAgentsVistos: [] as string[],
+    }
     const buscar = (async (input: any, init?: any) => {
         const url = String(input instanceof Request ? input.url : input)
         const metodo = String(init?.method || 'GET')
+        // R3-7: assento do User-Agent em TODA chamada (/me, /cart, /checkout,
+        // /generate, /print, /tracking) — prova que é sempre o MESMO.
+        const userAgent = init?.headers?.['User-Agent']
+        if (typeof userAgent === 'string') registro.userAgentsVistos.push(userAgent)
         if (url.endsWith('/api/v2/me/cart') && metodo === 'POST') {
             registro.carrinho++
             // Assento para os testes de índice-691: qual `service` chegou de
             // fato no carrinho do ME (o do checkout ou o escolhido pelo lojista).
+            // O seguro efetivamente cotado (`-ss` → 0, contrato A6/R1-6) e os
+            // `products` (declaração fiscal — regressão pós-revisão Opus:
+            // unitary_value tem que ser o preço VENDIDO, não o do catálogo).
             try {
-                registro.ultimoServico = JSON.parse(String(init?.body || '{}'))?.service ?? null
+                const corpo = JSON.parse(String(init?.body || '{}'))
+                registro.ultimoServico = corpo?.service ?? null
+                registro.ultimoInsuranceValue = corpo?.options?.insurance_value ?? null
+                registro.ultimoProducts = corpo?.products ?? null
             } catch {
                 registro.ultimoServico = null
+                registro.ultimoInsuranceValue = null
+                registro.ultimoProducts = null
             }
             return new Response(JSON.stringify({ id: LABEL_ID, protocol: 'proto-1' }), {
                 status: 201,
@@ -580,6 +660,7 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'e
             })
         }
         if (url.endsWith('/api/v2/me')) {
+            registro.chamadasMe++
             return new Response(JSON.stringify(CONTA_ME_FELIZ), {
                 status: 200,
                 headers: { 'Content-Type': 'application/json' },
@@ -892,31 +973,267 @@ Deno.test("erro de serviço - pedido cotado pela SuperFrete recusa etiqueta e N�
     }
 })
 
-Deno.test("handler - pedido superfrete-* com serviceId no corpo recusa 400: nenhum carrinho, checkout ou geração no ME", async () => {
+// --- FRENET (release 1.5.7) -------------------------------------------------
+// Mesma ideia do ramo SuperFrete: pedido cotado e cobrado pela Frenet não tem
+// etiqueta pelo Melhor Envio (contrato 1.5.7, §5/R1-6).
+Deno.test("erro de serviço - pedido cotado pela Frenet recusa etiqueta e NÃO oferece escolher serviço, com frete 0 e com frete > 0", () => {
+    for (const frete of [25, 0]) {
+        const { mensagem, podeEscolherServico } = erroDeServicoParaEtiqueta('frenet-ABC123', frete)
+        assertEquals(podeEscolherServico, false)
+        assertEquals(mensagem.includes('Frenet'), true)
+    }
+})
+
+Deno.test("handler - pedido superfrete-* com serviceId no corpo recusa 400 com frete 0 e com frete > 0: nenhuma chamada de rede ao ME (nem o GET /me)", async () => {
     await comEnvAdmin(async () => {
-        const pedidoSuperFrete = {
-            ...PEDIDO_FELIZ,
-            shipping: 18.61,
-            customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: 'superfrete-1' },
+        for (const shipping of [18.61, 0]) {
+            const pedidoSuperFrete = {
+                ...PEDIDO_FELIZ,
+                shipping,
+                customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: 'superfrete-1' },
+            }
+            for (const corpoExtra of [{ serviceId: '1' }, {}]) {
+                const supa = clienteFalso({ pedido: pedidoSuperFrete })
+                const me = buscarMeFalso()
+                const urls: string[] = []
+                const buscarQueAnota = ((input: any, init?: any) => {
+                    urls.push(`${String(init?.method || 'GET')} ${String(input instanceof Request ? input.url : input)}`)
+                    return me.buscar(input, init)
+                }) as any
+                const res = await comAdminFalso(() =>
+                    handler(requisicaoGerar('gerar_etiqueta', corpoExtra), { supabase: supa.cliente, buscar: buscarQueAnota }))
+                assertEquals(res.status, 400)
+                const corpo = await res.json()
+                assertEquals(corpo.precisa_escolher_servico, false)
+                assertEquals(String(corpo.error).includes('SuperFrete'), true)
+                assertEquals(me.registro.carrinho, 0)
+                assertEquals(me.registro.checkouts, 0)
+                assertEquals(me.registro.geracoes, 0)
+                // contrato 1.5.7, §5: nenhuma chamada ao ME, INCLUSIVE o GET /me
+                assertEquals(me.registro.chamadasMe, 0)
+                assertEquals(urls, [])
+            }
         }
-        for (const corpoExtra of [{ serviceId: '1' }, {}]) {
-            const supa = clienteFalso({ pedido: pedidoSuperFrete })
-            const me = buscarMeFalso()
-            const urls: string[] = []
-            const buscarQueAnota = ((input: any, init?: any) => {
-                urls.push(`${String(init?.method || 'GET')} ${String(input instanceof Request ? input.url : input)}`)
-                return me.buscar(input, init)
+    })
+})
+
+// --- FRENET (release 1.5.7) -------------------------------------------------
+// Pedido cotado e cobrado pela Frenet (`frenet-<ServiceCode>`) não tem
+// etiqueta pelo Melhor Envio — mesmo contrato do ramo SuperFrete acima.
+Deno.test("handler - pedido frenet-* com serviceId no corpo recusa 400 com frete 0 e com frete > 0: nenhuma chamada de rede ao ME (nem o GET /me)", async () => {
+    await comEnvAdmin(async () => {
+        for (const shipping of [18.61, 0]) {
+            const pedidoFrenet = {
+                ...PEDIDO_FELIZ,
+                shipping,
+                customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: 'frenet-ABC123' },
+            }
+            for (const corpoExtra of [{ serviceId: '1' }, {}]) {
+                const supa = clienteFalso({ pedido: pedidoFrenet })
+                const me = buscarMeFalso()
+                const urls: string[] = []
+                const buscarQueAnota = ((input: any, init?: any) => {
+                    urls.push(`${String(init?.method || 'GET')} ${String(input instanceof Request ? input.url : input)}`)
+                    return me.buscar(input, init)
+                }) as any
+                const res = await comAdminFalso(() =>
+                    handler(requisicaoGerar('gerar_etiqueta', corpoExtra), { supabase: supa.cliente, buscar: buscarQueAnota }))
+                assertEquals(res.status, 400)
+                const corpo = await res.json()
+                assertEquals(corpo.precisa_escolher_servico, false)
+                assertEquals(String(corpo.error).includes('Frenet'), true)
+                assertEquals(me.registro.carrinho, 0)
+                assertEquals(me.registro.checkouts, 0)
+                assertEquals(me.registro.geracoes, 0)
+                assertEquals(me.registro.chamadasMe, 0)
+                assertEquals(urls, [])
+            }
+        }
+    })
+})
+
+// --- Ids que exigem agência de coleta (LATAM 12, Azul 15/16, Buslog 22) ----
+
+Deno.test("handler - opção do CHECKOUT com id que exige agência recusa SEM oferecer novo serviço (o cliente já pagou por este) e sem chamada nenhuma ao ME", async () => {
+    await comEnvAdmin(async () => {
+        for (const idAgencia of ['12', '15', '16', '22']) {
+            const pedido = {
+                ...PEDIDO_FELIZ,
+                customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: `melhor-envio-${idAgencia}` },
+            }
+            const supa = clienteFalso({ pedido })
+            let chamadas = 0
+            const buscarQueConta = (() => {
+                chamadas++
+                throw new Error('não deveria chamar rede nenhuma do ME')
             }) as any
             const res = await comAdminFalso(() =>
-                handler(requisicaoGerar('gerar_etiqueta', corpoExtra), { supabase: supa.cliente, buscar: buscarQueAnota }))
+                handler(requisicaoGerar(), { supabase: supa.cliente, buscar: buscarQueConta }))
             assertEquals(res.status, 400)
             const corpo = await res.json()
+            assertEquals(String(corpo.error).includes('Melhor Envio'), true)
             assertEquals(corpo.precisa_escolher_servico, false)
-            assertEquals(String(corpo.error).includes('SuperFrete'), true)
-            assertEquals(me.registro.carrinho, 0)
-            assertEquals(me.registro.checkouts, 0)
-            assertEquals(me.registro.geracoes, 0)
-            assertEquals(urls.filter((u) => /\/cart|\/checkout|\/generate|\/print/.test(u)), [])
+            assertEquals(chamadas, 0)
         }
+    })
+})
+
+Deno.test("handler - lojista escolhe manualmente um id que exige agência: recusa MAS pode tentar outro serviço, sem chamada nenhuma ao ME", async () => {
+    await comEnvAdmin(async () => {
+        for (const idAgencia of ['12', '15', '16', '22']) {
+            // Frete grátis, sem opção salva no checkout — o lojista escolhe
+            // agora (índice-691) e tropeça num id que exige agência.
+            const pedidoFreteGratis = {
+                ...PEDIDO_FELIZ,
+                shipping: 0,
+                customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: null },
+            }
+            const supa = clienteFalso({ pedido: pedidoFreteGratis })
+            let chamadas = 0
+            const buscarQueConta = (() => {
+                chamadas++
+                throw new Error('não deveria chamar rede nenhuma do ME')
+            }) as any
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar('gerar_etiqueta', { serviceId: idAgencia }), { supabase: supa.cliente, buscar: buscarQueConta }))
+            assertEquals(res.status, 400)
+            const corpo = await res.json()
+            assertEquals(String(corpo.error).includes('Melhor Envio'), true)
+            // veio da escolha do LOJISTA (sem opção travada no checkout):
+            // ele pode tentar um serviço diferente (R1-6 item 6).
+            assertEquals(corpo.precisa_escolher_servico, true)
+            assertEquals(chamadas, 0)
+        }
+    })
+})
+
+// --- Seguro coerente entre cotação e etiqueta (contrato A6/R1-6) ----------
+
+Deno.test("handler - opção com sufixo -ss cota seguro ZERO no carrinho do ME", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoSemSeguro = {
+            ...PEDIDO_FELIZ,
+            customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: 'melhor-envio-1-ss' },
+        }
+        const supa = clienteFalso({ pedido: pedidoSemSeguro })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoInsuranceValue, 0)
+    })
+})
+
+Deno.test("handler - opção sem sufixo continua declarando o subtotal como seguro (comportamento de hoje preservado)", async () => {
+    await comEnvAdmin(async () => {
+        // PEDIDO_FELIZ tem shipping_option_id 'melhor-envio-1' (sem -ss) e o
+        // clienteFalso devolve 1 item (price 10, quantity 1) -> subtotal 10.
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoInsuranceValue, 10)
+    })
+})
+
+// --- Item 5 do pacote L (regressão pós-revisão Opus): a base do SEGURO e da
+// DECLARAÇÃO FISCAL da etiqueta é o valor VENDIDO no pedido (item.price,
+// gravado pela RPC = COALESCE(price_override, preco_venda) no momento da
+// compra) — NUNCA o preco_venda ATUAL do catálogo, que pode ter mudado desde
+// a venda. Provado NO HANDLER (não só na função pura): produtos.preco_venda
+// diverge do item.price de propósito, e o corpo real do POST /cart é
+// inspecionado (contrato com o comentário do revisor, item 3).
+Deno.test("handler - unitary_value e insurance_value usam o preço VENDIDO no pedido, não o preco_venda atual do catálogo", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({
+            pedido: PEDIDO_FELIZ,
+            itens: [{ product_id: 'p1', quantity: 1, price: 80 }],
+            produtosDb: [{ id: 'p1', nome: 'Caneca', preco_venda: 45 }],
+        })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoProducts, [{ name: 'Caneca', quantity: 1, unitary_value: 80 }])
+        assertEquals(me.registro.ultimoInsuranceValue, 80)
+    })
+})
+
+Deno.test("handler - opção -ss: unitary_value continua o preço VENDIDO (80), mas o seguro (insurance_value) vai a zero", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoSemSeguro = {
+            ...PEDIDO_FELIZ,
+            customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: 'melhor-envio-1-ss' },
+        }
+        const supa = clienteFalso({
+            pedido: pedidoSemSeguro,
+            itens: [{ product_id: 'p1', quantity: 1, price: 80 }],
+            produtosDb: [{ id: 'p1', nome: 'Caneca', preco_venda: 45 }],
+        })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoProducts, [{ name: 'Caneca', quantity: 1, unitary_value: 80 }])
+        assertEquals(me.registro.ultimoInsuranceValue, 0)
+    })
+})
+
+// --- User-Agent com contact_email da credencial ME (contrato 1.5.7, R3-7,
+// root 23/09: "Se precisa de email deve ter no app para eu colocar e não
+// você colocar") ------------------------------------------------------------
+
+Deno.test("handler - User-Agent do ME leva o contact_email da credencial melhor_envio em TODAS as chamadas", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({
+            pedido: PEDIDO_FELIZ,
+            credentials: { token: 'token-me-de-teste', sandbox: true, contact_email: 'loja@exemplo.com.br' },
+        })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        // pelo menos as chamadas do fluxo feliz: /me, /cart, /checkout, /generate, /print, /tracking
+        assertEquals(me.registro.userAgentsVistos.length >= 5, true)
+        // MESMO User-Agent em TODAS elas — um Set de tamanho 1
+        assertEquals(new Set(me.registro.userAgentsVistos).size, 1)
+        assertEquals(me.registro.userAgentsVistos[0], 'IKCOUS-Marketplace-Integration (loja@exemplo.com.br)')
+    })
+})
+
+Deno.test("handler - sem contact_email na credencial ME cai no User-Agent legado, e o log marca a queda sem imprimir e-mail", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({
+            pedido: PEDIDO_FELIZ,
+            credentials: { token: 'token-me-de-teste', sandbox: true }, // sem contact_email
+        })
+        const me = buscarMeFalso()
+        const linhasDeLog = await comConsoleLogCapturado(async () => {
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 200)
+        })
+        assertEquals(new Set(me.registro.userAgentsVistos).size, 1)
+        assertEquals(me.registro.userAgentsVistos[0], 'IKCOUS-Marketplace-Integration (contato@ikcous.com.br)')
+        assertEquals(linhasDeLog.some((l) => l.includes('ua_contato:legado')), true)
+        // sem contact_email não há e-mail nenhum para vazar — mas garante
+        // que a linha do log não tem arroba nenhuma
+        assertEquals(linhasDeLog.some((l) => l.includes('@')), false)
+    })
+})
+
+Deno.test("handler - o e-mail de contato do ME e o token NUNCA vazam na resposta pública (contrato R3-7)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({
+            pedido: PEDIDO_FELIZ,
+            credentials: { token: 'segredo-super-secreto-do-me', sandbox: true, contact_email: 'loja@exemplo.com.br' },
+        })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        const textoResposta = JSON.stringify(await res.json())
+        assertEquals(textoResposta.includes('segredo-super-secreto-do-me'), false)
+        assertEquals(textoResposta.includes('loja@exemplo.com.br'), false)
     })
 })

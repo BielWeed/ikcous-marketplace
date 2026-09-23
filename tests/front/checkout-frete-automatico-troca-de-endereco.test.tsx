@@ -202,16 +202,29 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 type Resposta = { data: unknown; error: unknown };
 
+/** R1-2: revisão fixa usada nas cotações desta suíte (cache × confirmação). */
+const REVISAO_FIXA_DO_TESTE = "rev-fixa-troca-de-endereco";
+
 /** Cada CEP cotado fica preso numa promessa que o teste resolve quando quer. */
 function cotacoesControladas() {
   const pendentes = new Map<string, Array<(r: Resposta) => void>>();
   invoke.mockImplementation(
-    (_nome: string, opts: { body: { cep: string } }) =>
-      new Promise<Resposta>((resolve) => {
-        const lista = pendentes.get(opts.body.cep) ?? [];
+    (_nome: string, opts: { body: { cep?: string; action?: string } }) => {
+      // R1-2: a confirmação de revisão (chamada em todo acerto de cache) não
+      // é uma cotação — não fica em voo, responde na hora com a MESMA
+      // revisão gravada em cada envelope abaixo.
+      if (opts.body.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: REVISAO_FIXA_DO_TESTE },
+          error: null,
+        });
+      }
+      return new Promise<Resposta>((resolve) => {
+        const lista = pendentes.get(opts.body.cep as string) ?? [];
         lista.push(resolve);
-        pendentes.set(opts.body.cep, lista);
-      }),
+        pendentes.set(opts.body.cep as string, lista);
+      });
+    },
   );
   return {
     async responder(cep: string, resposta: Resposta) {
@@ -377,12 +390,12 @@ describe("CheckoutView — frete automático pelo endereço de entrega", () => {
     const frete = cotacoesControladas();
     await montar();
     await frete.responder("38500000", {
-      data: { options: [LOCAL] },
+      data: { options: [LOCAL], revisaoConfig: REVISAO_FIXA_DO_TESTE },
       error: null,
     });
     await escolherEndereco("Trabalho");
     await frete.responder("01001000", {
-      data: { options: [PAC_SP] },
+      data: { options: [PAC_SP], revisaoConfig: REVISAO_FIXA_DO_TESTE },
       error: null,
     });
     expect(freteTravaOFinalizar()).toBe(false);
@@ -398,7 +411,9 @@ describe("CheckoutView — frete automático pelo endereço de entrega", () => {
     expect(espelho.shippingCep).toBe("38500-000");
     expect(espelho.selecionada?.id).toBe("local-delivery");
     expect(document.body.textContent).toContain("261,50");
-    expect(invoke).toHaveBeenCalledTimes(2);
+    // R1-2: as duas cotações reais (casa, trabalho) + UMA confirmação de
+    // revisão no acerto de cache ao voltar para a casa.
+    expect(invoke).toHaveBeenCalledTimes(3);
     expect(botaoFinalizar().disabled).toBe(false);
   });
 

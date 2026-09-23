@@ -769,6 +769,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [cart],
   );
 
+  // R2-5 (CONTRATO-1.5.7.md §8, escopo do pacote C): "a seleção cujo id
+  // sumiu é limpa" — mudou o carrinho, a lista de opções que a próxima
+  // cotação devolve pode nem trazer mais o id escolhido, e o efeito abaixo
+  // já cobre isso limpando a seleção JUNTO com a assinatura (o gatilho é o
+  // mesmo: qualquer id que dependa de "este carrinho" perde a validade
+  // quando o carrinho muda). Nenhuma mudança de código foi necessária aqui
+  // além desta nota — o efeito já existia antes da 1.5.7.
   useEffect(() => {
     setSelectedShippingOption(null);
     setShippingCep(null);

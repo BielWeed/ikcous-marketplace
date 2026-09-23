@@ -68,6 +68,8 @@ function carrinhoComQuantidade(quantidade: number): CartItem[] {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const DUAS_HORAS_MS = 2 * 60 * 60 * 1000;
+/** R1-2: revisão fixa usada nos dois lados (ação e resposta de cotação). */
+const REVISAO_FIXA_DO_TESTE = "rev-fixa-do-teste";
 
 describe("ShippingCalculator — o cache do navegador não serve cotação de outro carrinho nem cotação vencida", () => {
   let raiz: Root;
@@ -95,6 +97,16 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     // Preço = 10 * quantidade do carrinho efetivamente enviado à função.
     invoke.mockReset();
     invoke.mockImplementation((_nome: string, opts: any) => {
+      // R1-2 (release 1.5.7): antes de servir um acerto de cache, a
+      // calculadora confirma a revisão numa ação PÚBLICA separada, sem
+      // `cart` no corpo — responde com uma revisão FIXA, igual à gravada em
+      // cada envelope abaixo.
+      if (opts.body.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: REVISAO_FIXA_DO_TESTE },
+          error: null,
+        });
+      }
       const quantidade = opts.body.cart[0].quantity as number;
       return Promise.resolve({
         data: {
@@ -106,6 +118,7 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
               deliveryDays: 7,
             },
           ],
+          revisaoConfig: REVISAO_FIXA_DO_TESTE,
         },
         error: null,
       });
@@ -229,8 +242,97 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     vi.setSystemTime(new Date(Date.now() + DUAS_HORAS_MS - 60_000));
     await remontar();
 
-    expect(invoke).toHaveBeenCalledTimes(1);
+    // R1-2: a remontagem soma UMA chamada de CONFIRMAÇÃO da revisão (sem
+    // ela, nenhuma cotação NOVA — a lista de R$ 10,00 continua vindo do
+    // cache, não de uma segunda chamada de cotação).
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke.mock.calls[1][1]).toEqual({
+      body: { action: "revisao_config_frete" },
+    });
     expect(hospedeiro.textContent).toContain("10,00");
+  });
+
+  // Revisão da task de revisão Opus (item 3): sem estes dois testes, remover
+  // a checagem de revisão em `calculateShipping` (linhas ~431-464) ou
+  // `cotacaoAindaBateComARevisao` (linhas ~188-198) não fazia NADA falhar —
+  // o teste "dentro das 2h" acima prova só o caminho em que a revisão BATE.
+  it("revisão do cache DIVERGE da atual: o acerto de cache (mesmo carrinho, dentro da validade) NÃO é servido — vai à rede", async () => {
+    await pintar(carrinhoComQuantidade(1));
+    await digitarCep("69000000");
+    await enviar();
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    // A lojista mudou a configuração: a revisão "atual" (R1) diverge da que
+    // ficou gravada no envelope (R0 = REVISAO_FIXA_DO_TESTE), e a cotação de
+    // rede devolveria um preço novo.
+    invoke.mockImplementation((_nome: string, opts: any) => {
+      if (opts.body.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: "rev-nova-diferente" },
+          error: null,
+        });
+      }
+      const quantidade = opts.body.cart[0].quantity as number;
+      return Promise.resolve({
+        data: {
+          options: [
+            {
+              id: "melhorenvio-pac",
+              name: "PAC",
+              price: quantidade * 99,
+              deliveryDays: 7,
+            },
+          ],
+          revisaoConfig: "rev-nova-diferente",
+        },
+        error: null,
+      });
+    });
+
+    await remontar();
+
+    // Duas chamadas NOVAS: a confirmação (que veio diferente) e a cotação de
+    // rede de verdade — o acerto de cache foi descartado.
+    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(hospedeiro.textContent).toContain("99,00");
+    expect(hospedeiro.textContent).not.toContain("10,00");
+  });
+
+  it("confirmação de revisão não carrega (null, ex.: edge fora do ar): o acerto de cache também NÃO é servido — vai à rede", async () => {
+    await pintar(carrinhoComQuantidade(1));
+    await digitarCep("69000000");
+    await enviar();
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    invoke.mockImplementation((_nome: string, opts: any) => {
+      if (opts.body.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: null,
+          error: { message: "Edge Function retornou 500" },
+        });
+      }
+      const quantidade = opts.body.cart[0].quantity as number;
+      return Promise.resolve({
+        data: {
+          options: [
+            {
+              id: "melhorenvio-pac",
+              name: "PAC",
+              price: quantidade * 77,
+              deliveryDays: 7,
+            },
+          ],
+          revisaoConfig: REVISAO_FIXA_DO_TESTE,
+        },
+        error: null,
+      });
+    });
+
+    await remontar();
+
+    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(hospedeiro.textContent).toContain("77,00");
+    expect(hospedeiro.textContent).not.toContain("10,00");
   });
 
   it("entrada no formato antigo (lista crua, sem carrinho e sem data) é tratada como ausência", async () => {

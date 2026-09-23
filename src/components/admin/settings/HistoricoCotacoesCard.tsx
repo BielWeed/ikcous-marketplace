@@ -1,5 +1,5 @@
+import { buscarConfiguracaoDeFrete } from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useStore } from "@/contexts/StoreContext";
 import { supabase } from "@/lib/supabase";
 import { Boxes, RefreshCw } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useState } from "react";
@@ -76,7 +76,9 @@ function cortarMotivoExibido(motivo: string): string {
  * 02/09/2026): a tabela de cotações vivia no pé da tela de Frete. Registro
  * técnico de diagnóstico — aqui virou seção colapsável, nascida fechada.
  *
- * O motivo do estado vazio lê o provedor SALVO (`config.shippingProvider`),
+ * O motivo do estado vazio lê os provedores LIGADOS (RELEASE 1.5.7 v2,
+ * EMENDA R2: `ler_configuracao_frete`, nunca o espelho
+ * `config.shippingProvider` — que no modo multi não decide mais nada),
  * nunca uma escolha não salva de outra seção: consulta que falhou não pode
  * se parecer com histórico vazio de verdade.
  *
@@ -99,10 +101,14 @@ function cortarMotivoExibido(motivo: string): string {
  */
 export const HistoricoCotacoesSection = memo(
   function HistoricoCotacoesSection() {
-    const { config } = useStore();
     const [logs, setLogs] = useState<any[]>([]);
     const [loadingLogs, setLoadingLogs] = useState(false);
     const [logsError, setLogsError] = useState(false);
+    // RELEASE 1.5.7 v2 (EMENDA R2, R2-5): "sem provedor ligado" deixa de vir
+    // do espelho `config.shippingProvider` — no modo multi ele NÃO decide
+    // mais nada (R1-3/R2-1). A verdade vem da MESMA edge que a seção de
+    // Transportadoras usa (`ler_configuracao_frete`).
+    const [algumLigado, setAlgumLigado] = useState<boolean | null>(null);
 
     const fetchLogs = useCallback(async () => {
       setLoadingLogs(true);
@@ -129,10 +135,13 @@ export const HistoricoCotacoesSection = memo(
       fetchLogs();
     }, [fetchLogs]);
 
-    // O provedor SALVO decide a frase do vazio — não o que está digitado em
-    // outra seção sem salvar (a edge function segue na transportadora salva
-    // até alguém gravar a mudança).
-    const provedorSalvo = config?.shippingProvider || "flat_fee";
+    useEffect(() => {
+      buscarConfiguracaoDeFrete().then((resultado) => {
+        setAlgumLigado(
+          resultado.ok ? resultado.config.ligados.length > 0 : null,
+        );
+      });
+    }, []);
 
     // Calculado uma vez e usado tanto na tabela quanto no rodapé — achado
     // ANOTADO da rodada de correção: o rodapé contava `logs.length` (a
@@ -164,7 +173,7 @@ export const HistoricoCotacoesSection = memo(
             Não foi possível carregar o histórico de cotações. Tente novamente
             em "Atualizar".
           </div>
-        ) : logs.length === 0 && provedorSalvo === "flat_fee" ? (
+        ) : logs.length === 0 && algumLigado === false ? (
           <p className="py-4 text-center text-xs text-zinc-400">
             Sem transportadora conectada (a Taxa Única Fixa foi descontinuada):
             este histórico registra um erro a cada tentativa de entrega fora da

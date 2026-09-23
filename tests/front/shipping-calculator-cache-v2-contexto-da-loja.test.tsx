@@ -48,6 +48,8 @@ const OUTRO_ENDERECO_FICTICIO = "Avenida Inventada, 200 — Bairro Teste";
 const CEP = "38500000";
 const CHAVE_ANTIGA = `ikcous_shipping_cache_${CEP}`;
 const CHAVE_V2 = `ikcous_shipping_cache_v2_${CEP}`;
+/** R1-2: revisão fixa usada nos dois lados (ação e resposta de cotação). */
+const REVISAO_FIXA_DO_TESTE = "rev-fixa-do-teste";
 
 const LOJA_COM_RETIRADA: Partial<StoreConfig> = {
   shippingProvider: "melhor_envio",
@@ -115,9 +117,27 @@ describe("ShippingCalculator — sinal aceitaRetirada e cache v2 com o contexto 
     });
     loja.config = { ...LOJA_COM_RETIRADA };
     invoke.mockReset();
-    invoke.mockResolvedValue({
-      data: { options: [LOCAL, retirada()], cotacaoIncompleta: false },
-      error: null,
+    // R1-2 (release 1.5.7): antes de servir um acerto de cache, a
+    // calculadora confirma a revisão numa ação PÚBLICA separada. O dublê
+    // responde ela com uma revisão FIXA, e a mesma revisão vai em toda
+    // resposta de cotação — sem isto, NENHUM acerto de cache deste arquivo
+    // serviria mais, e os testes que provam "mesmo contexto = cache serve"
+    // deixariam de provar o que dizem provar.
+    invoke.mockImplementation((_nome: string, opts: any) => {
+      if (opts?.body?.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: REVISAO_FIXA_DO_TESTE },
+          error: null,
+        });
+      }
+      return Promise.resolve({
+        data: {
+          options: [LOCAL, retirada()],
+          cotacaoIncompleta: false,
+          revisaoConfig: REVISAO_FIXA_DO_TESTE,
+        },
+        error: null,
+      });
     });
     pai.selecionada = null;
     hospedeiro = document.createElement("div");
@@ -252,7 +272,9 @@ describe("ShippingCalculator — sinal aceitaRetirada e cache v2 com o contexto 
     await pintar();
     expect(invoke).toHaveBeenCalledTimes(1);
     await remontar();
-    expect(invoke).toHaveBeenCalledTimes(1);
+    // R1-2: a remontagem soma UMA chamada de CONFIRMAÇÃO da revisão — sem
+    // uma segunda cotação, já que o cache continua servindo.
+    expect(invoke).toHaveBeenCalledTimes(2);
   });
 
   it.each<[string, Partial<StoreConfig>]>([
@@ -272,9 +294,10 @@ describe("ShippingCalculator — sinal aceitaRetirada e cache v2 com o contexto 
       await pintar(1);
       expect(invoke).toHaveBeenCalledTimes(2);
 
-      // E a remontagem com o contexto novo acha o cache NOVO.
+      // E a remontagem com o contexto novo acha o cache NOVO — R1-2 soma
+      // UMA chamada de confirmação da revisão, sem uma terceira cotação.
       await remontar();
-      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(invoke).toHaveBeenCalledTimes(3);
     },
   );
 

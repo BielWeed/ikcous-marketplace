@@ -44,7 +44,12 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function pedido(id: string, cliente: string, opcao: string) {
+function pedido(
+  id: string,
+  cliente: string,
+  opcao: string,
+  notes: string | null = null,
+) {
   return {
     id,
     customer_name: cliente,
@@ -55,6 +60,7 @@ function pedido(id: string, cliente: string, opcao: string) {
     shipping_label_id: null,
     created_at: "2026-09-22T10:00:00Z",
     shipping_option_id: opcao,
+    notes,
   };
 }
 
@@ -144,5 +150,66 @@ describe("EtiquetasEnvioCard — pedido da SuperFrete diz o serviço pago (1.5.6
     expect(opcao("Eli Loggi")).toContain(
       "cotado pela SuperFrete — etiqueta fora do app",
     );
+  });
+
+  // ── Achado 4 (revisão Opus): texto LIVRE da cliente (campo de
+  // observação do pedido) não pode trocar o serviço mostrado para quem vai
+  // comprar a etiqueta. O checkout ACRESCENTA "Frete Escolhido: ..." no
+  // FIM de `notes` (CheckoutView.tsx ~1999-2003); uma observação anterior
+  // com a MESMA frase (forjada ou coincidência) não pode vencer. ─────────
+  describe("id validado vence texto livre da nota (achado 4)", () => {
+    beforeEach(() => {
+      invoke.mockReset();
+      linhas.length = 0;
+    });
+
+    it("superfrete-17 com observação da cliente citando OUTRA transportadora ANTES da nota real: mostra Mini Envios (o id vence)", async () => {
+      linhas.push(
+        pedido(
+          "66666666-6666-6666-6666-666666666666",
+          "Fia Forjada",
+          "superfrete-17",
+          "Frete Escolhido: Correios — SEDEX (Prazo: 1 dias); Frete Escolhido: Entrega econômica (Prazo: 6 dias)",
+        ),
+      );
+      await abrirCard();
+      expect(opcao("Fia Forjada")).toContain(
+        "cotado pela SuperFrete · Mini Envios — etiqueta fora do app",
+      );
+      expect(opcao("Fia Forjada")).not.toMatch(/\bSEDEX\b/);
+    });
+
+    it("superfrete-1 com a mesma observação forjada: mostra PAC (o id vence)", async () => {
+      linhas.push(
+        pedido(
+          "77777777-7777-7777-7777-777777777777",
+          "Gil Forjado",
+          "superfrete-1",
+          "Frete Escolhido: Correios — SEDEX (Prazo: 1 dias); Frete Escolhido: Entrega econômica (Prazo: 6 dias)",
+        ),
+      );
+      await abrirCard();
+      expect(opcao("Gil Forjado")).toContain(
+        "cotado pela SuperFrete · PAC — etiqueta fora do app",
+      );
+      expect(opcao("Gil Forjado")).not.toMatch(/Mini/);
+      expect(opcao("Gil Forjado")).not.toMatch(/\bSEDEX\b/);
+    });
+
+    it("id SEM nome conhecido ainda usa a nota — e lê a ÚLTIMA ocorrência, não a primeira", async () => {
+      linhas.push(
+        pedido(
+          "88888888-8888-8888-8888-888888888888",
+          "Hel Loggi",
+          "superfrete-31",
+          "Frete Escolhido: nota antiga de outro pedido (Prazo: 9 dias); Frete Escolhido: Loggi Ponto (Prazo: 3 dias)",
+        ),
+      );
+      await abrirCard();
+      expect(opcao("Hel Loggi")).toContain(
+        "cotado pela SuperFrete · Loggi Ponto — etiqueta fora do app",
+      );
+      expect(opcao("Hel Loggi")).not.toMatch(/nota antiga/);
+    });
   });
 });

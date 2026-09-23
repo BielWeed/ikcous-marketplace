@@ -52,6 +52,9 @@ const LOJA_SF: Partial<StoreConfig> = {
 };
 /** O contexto EXATO que a 1.5.5 gravava para esta loja (sem versão). */
 const CONTEXTO_DA_1_5_5 = '["superfrete",["pac","sedex"],false,""]';
+/** R1-2: revisão fixa usada nos dois lados (ação e envelope) nos testes
+ * abaixo que dependem do cache ainda servir. */
+const REVISAO_FIXA_DO_TESTE = "rev-fixa-do-teste";
 
 function produto(): Product {
   return {
@@ -146,9 +149,25 @@ describe("ShippingCalculator com o envelope da 1.5.5 no localStorage", () => {
       },
     });
     invoke.mockReset();
-    invoke.mockResolvedValue({
-      data: { options: [MINI_NOVO], cotacaoIncompleta: false },
-      error: null,
+    // R1-2 (release 1.5.7): antes de servir um acerto de cache, a
+    // calculadora confirma a revisão da config numa ação pública separada.
+    // O dublê responde ela com uma revisão FIXA; para o resto, devolve a
+    // cotação normal.
+    invoke.mockImplementation((_nome: string, opts: any) => {
+      if (opts?.body?.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: REVISAO_FIXA_DO_TESTE },
+          error: null,
+        });
+      }
+      return Promise.resolve({
+        data: {
+          options: [MINI_NOVO],
+          cotacaoIncompleta: false,
+          revisaoConfig: REVISAO_FIXA_DO_TESTE,
+        },
+        error: null,
+      });
     });
     selecionada = null;
     hospedeiro = document.createElement("div");
@@ -209,18 +228,23 @@ describe("ShippingCalculator com o envelope da 1.5.5 no localStorage", () => {
     expect(regravado.contexto).toBe(contextoDaLojaParaFrete(LOJA_SF));
   });
 
-  it("controle: envelope gravado com o contexto de agora é servido sem chamar a edge", async () => {
+  it("controle: envelope gravado com o contexto de agora é servido sem chamar a edge para COTAR", async () => {
     armazem.set(
       chaveDoCacheDeFrete(CEP),
       JSON.stringify({
         contexto: contextoDaLojaParaFrete(LOJA_SF),
         assinatura: ASSINATURA,
         gravadoEm: Date.now() - 60_000,
+        revisaoConfig: REVISAO_FIXA_DO_TESTE,
         opcoes: [MINI_NOVO],
       }),
     );
     await pintar();
-    expect(invoke).not.toHaveBeenCalled();
+    // R1-2: uma chamada — a confirmação da revisão —, nenhuma de COTAÇÃO.
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("calculate-shipping", {
+      body: { action: "revisao_config_frete" },
+    });
     expect(selecionada?.id).toBe("superfrete-17");
   });
 });

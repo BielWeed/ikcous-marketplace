@@ -11,6 +11,7 @@ import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import {
   ShippingCalculator,
   type StatusDaCotacao,
+  chaveDoCacheDeFrete,
 } from "@/components/ui/custom/ShippingCalculator";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
@@ -52,10 +53,18 @@ import {
   type RecusaDoPedido,
   classificarRecusaDoPedido,
 } from "@/lib/recusaDoPedido";
+import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { cn } from "@/lib/utils";
-import type { Address, CartItem, Customer, PaymentMethod, View } from "@/types";
+import type {
+  Address,
+  CartItem,
+  Customer,
+  PaymentMethod,
+  ShippingOption,
+  View,
+} from "@/types";
 import { haptic } from "@/utils/haptic";
 import { zodResolver } from "@hookform/resolvers/zod";
 import confetti from "canvas-confetti";
@@ -224,6 +233,45 @@ const ehFalhaDeRedeAntesDoEnvio = (error: unknown): boolean => {
   }
 
   return codigo === "" && PREFIXO_DE_EXCECAO_DE_FETCH.test(mensagem);
+};
+
+/**
+ * A nota do pedido para a opção de frete escolhida (release 1.5.7,
+ * CONTRATO-1.5.7.md R1-4): prazo 0 é "no mesmo dia" — o valor CANÔNICO do
+ * servidor —, nunca "0 dias" (um prazo que não existe para quem lê a nota
+ * depois, lojista ou cliente). Pura e exportada pelo mesmo motivo de
+ * `decidirSaidaDoCheckout`: testável sem montar a tela inteira.
+ */
+export const notaDoFreteEscolhido = (
+  option: Pick<
+    ShippingOption,
+    "id" | "name" | "deliveryDays" | "pickupAddress"
+  > | null,
+): string | undefined => {
+  if (!option) return undefined;
+  if (ehRetiradaNaLoja(option.id)) {
+    return `Retirada na loja${option.pickupAddress ? `: ${option.pickupAddress}` : ""}`;
+  }
+  const prazo =
+    option.deliveryDays === 0 ? "no mesmo dia" : `${option.deliveryDays} dias`;
+  return `Frete Escolhido: ${option.name} (Prazo: ${prazo})`;
+};
+
+/**
+ * EMENDA R3-4 (CONTRATO-1.5.7.md §9): a RPC recusa com este marcador exato
+ * na mensagem quando a lojista mudou a configuração de frete DEPOIS que a
+ * cotação escolhida foi gravada — o cache do servidor foi apagado (R2-2) e
+ * o id/preço escolhido não bate mais com nada válido. Por TEXTO, não por
+ * SQLSTATE: a RPC usa `RAISE EXCEPTION` sem `USING ERRCODE` (mesma razão de
+ * `recusaDoPedido.ts`). `includes`, não igualdade exata: o banco pode
+ * prefixar/sufixar a frase com contexto sem que o sinal deixe de valer.
+ */
+const MARCADOR_DE_FRETE_DESATUALIZADO = "FRETE_COTACAO_DESATUALIZADA";
+
+const ehErroDeFreteDesatualizado = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { message?: unknown };
+  const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
+  return mensagem.includes(MARCADOR_DE_FRETE_DESATUALIZADO);
 };
 
 /**
@@ -918,6 +966,12 @@ export function CheckoutView({
   // e a recotação que a calculadora dispara na montagem reporta "cotando".
   const [statusDoFrete, setStatusDoFrete] = useState<StatusDaCotacao>("ocioso");
   const freteEmCotacao = cart.length > 0 && statusDoFrete === "cotando";
+  // REVISÃO DO FRETE (release 1.5.7, CONTRATO-1.5.7.md R1-2/R2-2/EMENDA
+  // R3-4): incrementado quando o ENVIO do pedido descobre que a
+  // configuração de frete mudou desde que a opção escolhida foi cotada —
+  // força a `ShippingCalculator` a recotar de rede, ignorando o cache do
+  // navegador (que já não é confiável para este destino).
+  const [forcarNovaCotacaoEm, setForcarNovaCotacaoEm] = useState(0);
   const cepDoDestinoDaCotacao =
     cepDeEntrega && soDigitos(cepDeEntrega).length === 8 ? cepDeEntrega : null;
 
@@ -1878,6 +1932,62 @@ export function CheckoutView({
       return;
     }
 
+    // REVISÃO DO FRETE (release 1.5.7, CONTRATO-1.5.7.md R1-2): a lojista
+    // pode ter mudado a configuração de frete (ligado/desligado provedor,
+    // trocado serviço, mudado seguro) DEPOIS que esta cotação foi gravada
+    // — até 2h atrás, prazo do cache do navegador — e o preço mudaria.
+    // Confirma a revisão ANTES de criar o pedido; se não bater, recota e
+    // NUNCA cobra o frete antigo. Retirada e entrega local não vêm de
+    // cotação de provedor — não passam por aqui.
+    //
+    // SÓ investiga quando há EVIDÊNCIA de que a cotação escolhida carregava
+    // uma revisão (envelope 1.5.7 em diante, escrito por `ShippingCalculator`).
+    // Sem essa evidência (nenhum envelope, formato anterior à 1.5.7) não há o
+    // que comparar — bloquear aqui faria ESTE checkpoint, e não a lojista,
+    // decidir se todo pedido nasce ou não, e os pedidos de hoje (sem
+    // envelope 1.5.7 ainda) parariam de fechar. A RPC (EMENDA R3-4,
+    // `FRETE_COTACAO_DESATUALIZADA`) é backstop, mas NÃO é uma trava que
+    // sempre vale: a migration que a reforça ainda não foi aplicada e ela
+    // não cobre mudança em `store_config` — por isso, HAVENDO evidência de
+    // revisão, uma confirmação que não bate OU que não carrega é tratada
+    // como "não confirmado", e o pedido não nasce.
+    if (
+      selectedShippingOption &&
+      !ehModalidadeDaLoja(selectedShippingOption.id) &&
+      shippingCep
+    ) {
+      let revisaoDaCotacaoEscolhida: string | null = null;
+      try {
+        const bruto = localStorage.getItem(
+          chaveDoCacheDeFrete(soDigitos(shippingCep)),
+        );
+        if (bruto) {
+          const envelope = JSON.parse(bruto) as { revisaoConfig?: unknown };
+          revisaoDaCotacaoEscolhida =
+            typeof envelope.revisaoConfig === "string"
+              ? envelope.revisaoConfig
+              : null;
+        }
+      } catch {
+        // Envelope ilegível: sem evidência — segue sem bloquear.
+      }
+      if (revisaoDaCotacaoEscolhida) {
+        const revisaoAtual = await buscarRevisaoConfigFrete();
+        if (revisaoAtual !== revisaoDaCotacaoEscolhida) {
+          toast.error(
+            revisaoAtual
+              ? "O frete mudou, calcule de novo."
+              : "Não deu para confirmar o frete agora. Calculamos de novo — confira e finalize.",
+          );
+          setSelectedShippingOption(null);
+          setForcarNovaCotacaoEm((n) => n + 1);
+          setIsSubmitting(false);
+          travaDeEnvioRef.current.liberar();
+          return;
+        }
+      }
+    }
+
     const customerInfo = data as unknown as Customer;
     const observations = notes || undefined;
 
@@ -1885,14 +1995,7 @@ export function CheckoutView({
       .filter((item) => item.variantNames)
       .map((item) => `${item.product.name}: ${item.variantNames}`)
       .join("\n");
-    // Retirada: a nota diz ONDE buscar (endereço real da loja, vindo da
-    // cotação) e nunca um prazo — prazo de retirada não existe; a loja
-    // confirma quando o pedido está separado.
-    const shippingNotes = selectedShippingOption
-      ? ehRetiradaNaLoja(selectedShippingOption.id)
-        ? `Retirada na loja${selectedShippingOption.pickupAddress ? `: ${selectedShippingOption.pickupAddress}` : ""}`
-        : `Frete Escolhido: ${selectedShippingOption.name} (Prazo: ${selectedShippingOption.deliveryDays} dias)`
-      : undefined;
+    const shippingNotes = notaDoFreteEscolhido(selectedShippingOption);
     const noteParts = [observations, variantNotes, shippingNotes].filter(
       Boolean,
     );
@@ -2009,6 +2112,20 @@ export function CheckoutView({
       });
     } catch (error: any) {
       console.error("Error creating order:", error);
+      // EMENDA R3-4 (CONTRATO-1.5.7.md §9): a config pode ter mudado numa
+      // corrida rara ENTRE a checagem acima e o clique chegar ao banco — a
+      // RPC recusa com o marcador FRETE_COTACAO_DESATUALIZADA. Mesma saída
+      // da checagem prévia: avisa, limpa a seleção, força recotação e sai
+      // ANTES do painel genérico — isto não é "tente de novo" nem "confira
+      // o pedido" (nenhum pedido nasceu), é "escolha de novo".
+      if (ehErroDeFreteDesatualizado(error)) {
+        toast.error("O frete mudou, calcule de novo.");
+        setSelectedShippingOption(null);
+        setForcarNovaCotacaoEm((n) => n + 1);
+        // `setIsSubmitting`/`liberar` ficam para o `finally` logo abaixo —
+        // convenção de `travaDeEnvio.ts`: "vai no finally, nunca antes".
+        return;
+      }
       // Este catch recebe o MESMO erro que useOrders.ts (createOrder) já
       // relança depois do próprio toast interno — mesma tradução aqui, para
       // não haver dois textos diferentes para a mesma falha.
@@ -2932,6 +3049,7 @@ export function CheckoutView({
             }
             onStatusChange={setStatusDoFrete}
             freteGratis={Boolean(freteGratis)}
+            forcarNovaCotacaoEm={forcarNovaCotacaoEm}
           />
         )}
 

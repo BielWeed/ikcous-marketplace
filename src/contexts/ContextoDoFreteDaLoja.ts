@@ -3,16 +3,19 @@ import type { StoreConfig } from "@/types";
 import { createContext, useContext } from "react";
 
 /**
- * Versão do CONTRATO da cotação de frete (release 1.5.6). Entra no contexto
+ * Versão do CONTRATO da cotação de frete (release 1.5.7). Entra no contexto
  * abaixo, e com ele no envelope do cache do navegador: quando a edge muda o
  * que a cotação significa, o envelope gravado pela versão anterior do app
- * deixa de casar e a tela recota. A 1.5.6 mudou a SuperFrete (sem seguro no
- * preço, Mini Envios disputando a "Entrega econômica") — sem esta versão, a
- * tela 1.5.6 serviria por até 2 h o preço guardado pela 1.5.5, porque o
- * resto do contexto é idêntico. A chave (`ikcous_shipping_cache_v2_<CEP>`)
- * não muda: o logout continua limpando pelo prefixo.
+ * deixa de casar e a tela recota. A 1.5.7 muda o SIGNIFICADO da resposta
+ * (vários provedores ao mesmo tempo, `contratoCliente: 3`, prazo 0 canônico,
+ * `revisaoConfig` no envelope) — sem bumpar esta versão, a tela 1.5.7
+ * serviria por até 2 h uma lista cotada pela 1.5.6, que não tem os campos
+ * novos (`transportadora`, `servico`, `provedorRotulo`) nem a revisão para
+ * validar contra mudança na configuração da loja. A chave
+ * (`ikcous_shipping_cache_v2_<CEP>`) não muda: o logout continua limpando
+ * pelo prefixo (`ikcous_shipping_cache_`).
  */
-export const VERSAO_DO_CONTRATO_DE_COTACAO = "cotacao-2";
+export const VERSAO_DO_CONTRATO_DE_COTACAO = "cotacao-3";
 
 /**
  * O CONTEXTO DA LOJA que uma cotação de frete responde (release 1.5.3 —

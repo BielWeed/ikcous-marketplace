@@ -93,6 +93,11 @@ const SEDEX_B: ShippingOption = {
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// R1-2: valor fixo usado nos dois lados (a ação de revisão e a
+// `revisaoConfig` de cada resposta de cotação) para o cache gravado por um
+// `invoke` ainda bater com a revisão "atual" no próximo `invoke`.
+const REVISAO_FIXA_DO_TESTE = "rev-fixa-do-teste";
+
 describe("ShippingCalculator — cotação nova com o MESMO id substitui o objeto/preço selecionado", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -100,6 +105,7 @@ describe("ShippingCalculator — cotação nova com o MESMO id substitui o objet
   // Espelho do `selectedShippingOption` do CartContext: o componente pai
   // guarda o objeto que `onSelectOption` entrega e o devolve na prop.
   let selecionada: { current: ShippingOption | null };
+  let respostaDeCotacaoAtual: { data: unknown; error: unknown };
 
   let cepDestinoAtual: string | null = null;
   let paiMontado = false;
@@ -119,9 +125,25 @@ describe("ShippingCalculator — cotação nova com o MESMO id substitui o objet
       },
     });
     invoke.mockReset();
-    invoke.mockResolvedValue({
-      data: { options: [ECO_A] },
+    respostaDeCotacaoAtual = {
+      data: { options: [ECO_A], revisaoConfig: REVISAO_FIXA_DO_TESTE },
       error: null,
+    };
+    // R1-2 (release 1.5.7): antes de servir um acerto de cache, a
+    // calculadora confirma a revisão da configuração numa ação PÚBLICA
+    // separada (`action: 'revisao_config_frete'`). Este dublê responde ela
+    // com uma revisão FIXA; para os outros corpos, devolve o que os testes
+    // guardaram em `respostaDeCotacaoAtual` (substitui os antigos
+    // `invoke.mockResolvedValue(...)` no meio dos testes, que apagariam
+    // este ramo se chamados de novo).
+    invoke.mockImplementation((_nome: string, opts: any) => {
+      if (opts?.body?.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: REVISAO_FIXA_DO_TESTE },
+          error: null,
+        });
+      }
+      return Promise.resolve(respostaDeCotacaoAtual);
     });
     selecionada = { current: null };
     hospedeiro = document.createElement("div");
@@ -249,7 +271,10 @@ describe("ShippingCalculator — cotação nova com o MESMO id substitui o objet
 
     // Mesmo carrinho (assinatura igual — o debounce nem dispara), CEP
     // diferente: o preço do mesmo serviço muda de cidade para cidade.
-    invoke.mockResolvedValue({ data: { options: [ECO_B] }, error: null });
+    respostaDeCotacaoAtual = {
+      data: { options: [ECO_B], revisaoConfig: REVISAO_FIXA_DO_TESTE },
+      error: null,
+    };
 
     await cotar("12345678");
 
@@ -273,18 +298,22 @@ describe("ShippingCalculator — cotação nova com o MESMO id substitui o objet
     // B: cotação fresca de outro CEP — o cache de A continua intacto (a
     // invalidação por mudança de carrinho apaga só a chave do CEP corrente,
     // e trocar o campo não muda a assinatura do carrinho).
-    invoke.mockResolvedValue({ data: { options: [ECO_B] }, error: null });
+    respostaDeCotacaoAtual = {
+      data: { options: [ECO_B], revisaoConfig: REVISAO_FIXA_DO_TESTE },
+      error: null,
+    };
     await cotar("12345678");
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(selecionada.current?.price).toBe(19.9);
     await sincronizarPai(carrinho());
 
     // Voltou para A: HIT de cache (mesma assinatura, dentro da validade) —
-    // nenhuma chamada nova à transportadora, e a escolha de B tem de cair
-    // pelo objeto fresco do cache de A.
+    // nenhuma chamada NOVA à transportadora (a lista continua com 2), mas
+    // R1-2 soma UMA chamada de CONFIRMAÇÃO da revisão antes de confiar no
+    // cache — e a escolha de B tem de cair pelo objeto fresco do cache de A.
     await cotar("69000000");
 
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledTimes(3);
     expect(selecionada.current?.id).toBe("eco");
     // 🔴 O DEFEITO: o mesmo `hasMatch` por id no ramo do cache mantinha o
     // R$ 19,90 de B como escolha para o destino A.
