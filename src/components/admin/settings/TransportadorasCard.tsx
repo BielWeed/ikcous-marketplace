@@ -1,3 +1,4 @@
+import { GuiaDaChaveDoProvedor } from "@/components/admin/settings/GuiaDaChaveDoProvedor";
 import { Switch } from "@/components/ui/switch";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
@@ -5,6 +6,7 @@ import { haptic } from "@/utils/haptic";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   KeyRound,
   Lock,
   Mail,
@@ -12,7 +14,15 @@ import {
   Save,
   ShieldCheck,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 /**
@@ -222,6 +232,66 @@ const NOME_DO_SERVICO_CONHECIDO: ReadonlyMap<string, string> = new Map([
 
 function nomeDoServicoSalvo(provider: ProvedorFrete, codigo: string): string {
   return NOME_DO_SERVICO_CONHECIDO.get(`${provider}:${codigo}`) ?? codigo;
+}
+
+/**
+ * Cartão expansível (pedido do dono, 23/09/2026 — os cartões ficaram longos
+ * demais no celular): fechado mostra só nome + estado em palavras; clique
+ * no cabeçalho revela chave, e-mail, modo de teste, serviços e botões.
+ *
+ * Estado inicial de cada cartão: ABERTO quando há pendência (sem chave,
+ * `precisa_salvar_de_novo`, ou — só a SuperFrete exige isso para GRAVAR —
+ * chave salva sem e-mail de contato válido); FECHADO quando o provedor já
+ * está configurado e nada precisa da atenção da lojista agora. Calculado
+ * uma vez, ao montar o cartão (a seção só monta os cartões depois que
+ * `ler_configuracao_frete` respondeu — nunca com dado velho) — depois disso
+ * quem manda é o clique da lojista, nunca mais um recálculo automático:
+ * salvar não pode fechar um cartão que ela decidiu deixar aberto, nem
+ * reabrir um que ela fechou.
+ */
+function temPendencia(
+  provider: ProvedorFrete,
+  salvo: ConfigDoProvedor | undefined,
+): boolean {
+  if (salvo?.precisa_salvar_de_novo) return true;
+  if (!(salvo?.tem_chave ?? false)) return true;
+  if (
+    PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(provider) &&
+    !emailDeContatoValido(salvo?.contato_email)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Resumo do estado do cartão FECHADO, em palavras — nunca o segredo. */
+function resumoDoCartao(
+  provider: ProvedorFrete,
+  salvo: ConfigDoProvedor | undefined,
+  ligado: boolean,
+  sandbox: boolean,
+  quantidadeServicos: number,
+): { estado: string; servicos?: string } {
+  const temChave = salvo?.tem_chave ?? false;
+  const estado = salvo?.precisa_salvar_de_novo
+    ? "Precisa salvar de novo"
+    : !temChave
+      ? "Sem chave"
+      : PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(provider) &&
+          !emailDeContatoValido(salvo?.contato_email)
+        ? "Sem e-mail de contato"
+        : sandbox
+          ? "Modo de testes"
+          : ligado
+            ? "Ligado"
+            : "Chave salva, desligado";
+  return {
+    estado,
+    servicos:
+      quantidadeServicos > 0
+        ? `${quantidadeServicos} serviço${quantidadeServicos === 1 ? "" : "s"} escolhido${quantidadeServicos === 1 ? "" : "s"}`
+        : undefined,
+  };
 }
 
 function mensagemParaAtivar(provider: ProvedorFrete): string {
@@ -1211,6 +1281,7 @@ function CartaoDoProvedor({
   ligado,
   rascunho,
   sandboxAtual,
+  logo,
   onTokenMudou,
   onSandboxMudou,
   onEmailMudou,
@@ -1228,6 +1299,10 @@ function CartaoDoProvedor({
   readonly ligado: boolean;
   readonly rascunho: RascunhoDoProvedor;
   readonly sandboxAtual: boolean;
+  /** Slot do logo do provedor — outra frente vai plugar aqui depois
+   * (pedido do dono, 23/09/2026). Sem logo próprio ainda: cai no
+   * `data-slot="logo-provedor"` abaixo, fácil de substituir por busca. */
+  readonly logo?: ReactNode;
   readonly onTokenMudou: (v: string) => void;
   readonly onSandboxMudou: (v: boolean) => void;
   readonly onEmailMudou: (v: string) => void;
@@ -1242,15 +1317,62 @@ function CartaoDoProvedor({
     rascunho.emailDigitado.trim() !== "" &&
     !emailDeContatoValido(rascunho.emailDigitado);
 
+  // Aberto/fechado nasce da pendência LIDA do servidor (ver `temPendencia`)
+  // e, depois disso, só o clique da lojista muda — `useState` com
+  // inicializador preguiçoso roda uma vez só, no primeiro render deste
+  // cartão (a seção só monta os cartões depois que a leitura inicial
+  // terminou, então `salvo` aqui já é o dado real, nunca placeholder).
+  const [aberto, setAberto] = useState(() => temPendencia(provider, salvo));
+  const idCorpo = useId();
+  const quantidadeServicos =
+    rascunho.servicosSelecionados?.size ?? salvo?.servicos?.length ?? 0;
+  const resumo = resumoDoCartao(
+    provider,
+    salvo,
+    ligado,
+    sandboxAtual,
+    quantidadeServicos,
+  );
+
   return (
-    <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-3.5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
-          <Lock className="size-3.5 text-admin-gold" />
-          <span>Chave de acesso — {nomeDoProvedor(provider)}</span>
-        </div>
+    <div className="rounded-2xl border border-white/5 bg-zinc-950/60">
+      <button
+        type="button"
+        aria-expanded={aberto}
+        aria-controls={idCorpo}
+        onClick={() => setAberto((v) => !v)}
+        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl p-3.5 text-left transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-admin-gold"
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
+          {logo ?? (
+            <span
+              data-slot="logo-provedor"
+              aria-hidden="true"
+              className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[9px] font-black uppercase text-zinc-500"
+            >
+              {nomeDoProvedor(provider).slice(0, 2)}
+            </span>
+          )}
+          <span className="flex min-w-0 flex-col items-start gap-0.5">
+            <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              <Lock className="size-3.5 text-admin-gold" />
+              <span>Chave de acesso — {nomeDoProvedor(provider)}</span>
+            </span>
+            <span className="truncate text-[11px] text-zinc-400">
+              {resumo.estado}
+              {resumo.servicos ? ` · ${resumo.servicos}` : ""}
+            </span>
+          </span>
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={`size-4 shrink-0 text-zinc-500 transition-transform ${aberto ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      <div id={idCorpo} hidden={!aberto} className="space-y-3 px-3.5 pb-3.5">
         {PROVEDORES_COM_SANDBOX.has(provider) && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-zinc-400">
               Modo de testes (Sandbox)
             </span>
@@ -1270,302 +1392,304 @@ function CartaoDoProvedor({
             />
           </div>
         )}
-      </div>
 
-      {ligado && !sandboxAtual && PROVEDORES_COM_SANDBOX.has(provider) && (
-        <p className="text-[11px] leading-snug text-zinc-500">
-          Desligue esta transportadora antes de usar o modo de testes.
-        </p>
-      )}
-
-      {salvo?.precisa_salvar_de_novo && (
-        <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
-          <AlertCircle className="mt-px size-3.5 shrink-0" />
-          <span>
-            A configuração deste provedor precisa ser salva de novo — outro
-            aparelho pode ter gravado uma versão mais antiga.
-          </span>
-        </p>
-      )}
-
-      {temChave && (
-        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
-          <KeyRound className="size-3.5 shrink-0" />
-          <span>
-            Chave salva. Por segurança ela não aparece aqui — para trocar, cole
-            a nova e salve.
-          </span>
-        </p>
-      )}
-
-      <div className="flex gap-2">
-        <input
-          type="password"
-          autoComplete="off"
-          value={rascunho.tokenDigitado}
-          disabled={rascunho.testando || rascunho.salvando}
-          onChange={(e) => onTokenMudou(e.target.value)}
-          placeholder={
-            temChave
-              ? "Cole uma chave nova só se quiser trocar a salva..."
-              : "Cole aqui a chave de acesso da sua conta..."
-          }
-          className="h-9 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none"
-        />
-        <button
-          type="button"
-          disabled={
-            rascunho.testando ||
-            rascunho.carregandoServicos ||
-            (!rascunho.tokenDigitado.trim() && !temChave)
-          }
-          onClick={onTestar}
-          className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
-        >
-          {rascunho.testando ? (
-            <RefreshCw className="size-3 animate-spin" />
-          ) : (
-            <CheckCircle2 className="size-3" />
-          )}
-          <span>Testar</span>
-        </button>
-      </div>
-
-      {PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) && (
-        <div className="space-y-1.5">
-          <label
-            htmlFor={`email-contato-${provider}`}
-            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
-          >
-            <Mail className="size-3.5 text-admin-gold" />
-            <span>E-mail de contato</span>
-          </label>
-          <p className="text-[11px] leading-snug text-zinc-400">
-            {provider === "melhor_envio"
-              ? "O Melhor Envio exige um e-mail de contato em cada consulta."
-              : "A SuperFrete exige um e-mail para falar com quem cuida desta integração se algo der errado nas cotações."}{" "}
-            Use um e-mail seu que você lê. Ele não aparece para as clientes.
+        {ligado && !sandboxAtual && PROVEDORES_COM_SANDBOX.has(provider) && (
+          <p className="text-[11px] leading-snug text-zinc-500">
+            Desligue esta transportadora antes de usar o modo de testes.
           </p>
+        )}
+
+        {salvo?.precisa_salvar_de_novo && (
+          <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
+            <AlertCircle className="mt-px size-3.5 shrink-0" />
+            <span>
+              A configuração deste provedor precisa ser salva de novo — outro
+              aparelho pode ter gravado uma versão mais antiga.
+            </span>
+          </p>
+        )}
+
+        {temChave && (
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
+            <KeyRound className="size-3.5 shrink-0" />
+            <span>
+              Chave salva. Por segurança ela não aparece aqui — para trocar,
+              cole a nova e salve.
+            </span>
+          </p>
+        )}
+
+        <GuiaDaChaveDoProvedor provider={provider} />
+
+        <div className="flex gap-2">
           <input
-            id={`email-contato-${provider}`}
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            maxLength={254}
-            value={rascunho.emailDigitado}
-            aria-invalid={emailComAviso}
-            onChange={(e) => onEmailMudou(e.target.value)}
-            placeholder="voce@sualoja.com.br"
-            className={`h-9 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:outline-none ${
-              emailComAviso
-                ? "border-red-500/50 focus:border-red-400"
-                : "border-white/5 focus:border-admin-gold"
-            }`}
+            type="password"
+            autoComplete="off"
+            value={rascunho.tokenDigitado}
+            disabled={rascunho.testando || rascunho.salvando}
+            onChange={(e) => onTokenMudou(e.target.value)}
+            placeholder={
+              temChave
+                ? "Cole uma chave nova só se quiser trocar a salva..."
+                : "Cole aqui a chave de acesso da sua conta..."
+            }
+            className="h-9 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none"
           />
-          {emailComAviso && (
-            <p className="flex items-start gap-1.5 text-[11px] font-semibold leading-snug text-red-300">
-              <AlertCircle className="mt-px size-3.5 shrink-0" />
-              <span>{MENSAGEM_EMAIL_INVALIDO}</span>
-            </p>
-          )}
-          {provider === "melhor_envio" && !emailComAviso && (
-            <p className="text-[11px] leading-snug text-zinc-500">
-              Deixe em branco para manter o e-mail já salvo — ele só é
-              obrigatório para LIGAR o Melhor Envio na loja.
-            </p>
-          )}
-          <p className="text-[11px] leading-snug text-zinc-400">
-            O teste faz uma cotação de verdade n
-            {provider === "melhor_envio" ? "o" : "a"} {nomeDoProvedor(provider)}{" "}
-            (nada é comprado) e só passa com uma chave válida do ambiente
-            escolhido.
-          </p>
-        </div>
-      )}
-
-      {/* Ajuste do dono (rodada 4, 23/09/2026): "zerar a declaração NÃO
-       * foi autorizado" — o controle "Sem seguro" saiu da interface por
-       * inteiro. Nenhum caminho da tela seleciona nem envia
-       * seguro:"sem_seguro" (ver salvarProvedor, corpo.seguro sempre
-       * "valor_dos_produtos"). O único resquício possível de
-       * "sem_seguro" é uma gravação feita POR FORA do painel — aqui só
-       * avisamos, sem deixar a lojista presa nisso. */}
-      {provider === "melhor_envio" && salvo?.seguro === "sem_seguro" && (
-        <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
-          <AlertCircle className="mt-px size-3.5 shrink-0" />
-          <span>
-            Seguro desligado por fora do painel — ao salvar, volta para Com
-            seguro.
-          </span>
-        </p>
-      )}
-
-      {rascunho.resultadoTeste && (
-        <div
-          className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs ${
-            rascunho.resultadoTeste.sucesso
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              : "border-red-500/30 bg-red-500/10 text-red-300"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {rascunho.resultadoTeste.sucesso ? (
-              <CheckCircle2 className="size-4 shrink-0" />
-            ) : (
-              <AlertCircle className="size-4 shrink-0" />
-            )}
-            <span>{rascunho.resultadoTeste.mensagem}</span>
-          </div>
-          {rascunho.resultadoTeste.servicosTestados &&
-            rascunho.resultadoTeste.servicosTestados.length > 0 && (
-              <ul className="ml-6 list-disc space-y-0.5 text-[11px] text-zinc-300">
-                {rascunho.resultadoTeste.servicosTestados.map((s) => {
-                  // ANOTADO (revisão Opus): o nome do serviço junto do
-                  // código — "PAC" ao lado de "1", não só o código cru.
-                  const nomeDoServico = rascunho.servicosCarregados?.find(
-                    (sc) => sc.codigo === s.codigo,
-                  )?.servico;
-                  return (
-                    <li key={s.codigo}>
-                      {s.codigo}
-                      {nomeDoServico ? ` (${nomeDoServico})` : ""}:{" "}
-                      {s.ok
-                        ? "cotou certo"
-                        : s.motivo === "erro_do_servico"
-                          ? `não cotou (${s.detalhe ?? "erro do serviço"})`
-                          : "não retornou"}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-        </div>
-      )}
-
-      <div className="space-y-1.5 pt-1">
-        <div className="flex items-center justify-between">
-          <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-            Serviços da conta
-          </span>
           <button
             type="button"
-            onClick={onCarregarServicos}
             disabled={
-              rascunho.carregandoServicos ||
               rascunho.testando ||
-              (!temChave && !rascunho.tokenDigitado.trim())
+              rascunho.carregandoServicos ||
+              (!rascunho.tokenDigitado.trim() && !temChave)
             }
-            className="flex items-center gap-1 text-[10px] font-bold text-admin-gold hover:underline disabled:opacity-40"
+            onClick={onTestar}
+            className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
           >
-            <RefreshCw
-              className={`size-3 ${rascunho.carregandoServicos ? "animate-spin" : ""}`}
-            />
-            <span>
-              {rascunho.servicosCarregados
-                ? "Atualizar lista"
-                : "Ver serviços da conta"}
-            </span>
+            {rascunho.testando ? (
+              <RefreshCw className="size-3 animate-spin" />
+            ) : (
+              <CheckCircle2 className="size-3" />
+            )}
+            <span>Testar</span>
           </button>
         </div>
 
-        {/* PR #637: sem isto, depois de recarregar a lista ficava vazia e a
-         * seleção salva parecia perdida — ela só aparecia depois de "Ver
-         * serviços da conta". `null` = nunca escolheu (filtro antigo). */}
-        {!rascunho.servicosCarregados &&
-          salvo?.servicos &&
-          salvo.servicos.length > 0 && (
-            <div className="rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-[11px] text-zinc-300">
-              <span className="block text-zinc-500">Salvos nesta loja:</span>
-              <ul className="ml-4 list-disc">
-                {salvo.servicos.map((codigo) => (
-                  <li key={codigo}>{nomeDoServicoSalvo(provider, codigo)}</li>
-                ))}
-              </ul>
+        {PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) && (
+          <div className="space-y-1.5">
+            <label
+              htmlFor={`email-contato-${provider}`}
+              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+            >
+              <Mail className="size-3.5 text-admin-gold" />
+              <span>E-mail de contato</span>
+            </label>
+            <p className="text-[11px] leading-snug text-zinc-400">
+              {provider === "melhor_envio"
+                ? "O Melhor Envio exige um e-mail de contato em cada consulta."
+                : "A SuperFrete exige um e-mail para falar com quem cuida desta integração se algo der errado nas cotações."}{" "}
+              Use um e-mail seu que você lê. Ele não aparece para as clientes.
+            </p>
+            <input
+              id={`email-contato-${provider}`}
+              type="email"
+              autoComplete="email"
+              inputMode="email"
+              maxLength={254}
+              value={rascunho.emailDigitado}
+              aria-invalid={emailComAviso}
+              onChange={(e) => onEmailMudou(e.target.value)}
+              placeholder="voce@sualoja.com.br"
+              className={`h-9 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:outline-none ${
+                emailComAviso
+                  ? "border-red-500/50 focus:border-red-400"
+                  : "border-white/5 focus:border-admin-gold"
+              }`}
+            />
+            {emailComAviso && (
+              <p className="flex items-start gap-1.5 text-[11px] font-semibold leading-snug text-red-300">
+                <AlertCircle className="mt-px size-3.5 shrink-0" />
+                <span>{MENSAGEM_EMAIL_INVALIDO}</span>
+              </p>
+            )}
+            {provider === "melhor_envio" && !emailComAviso && (
+              <p className="text-[11px] leading-snug text-zinc-500">
+                Deixe em branco para manter o e-mail já salvo — ele só é
+                obrigatório para LIGAR o Melhor Envio na loja.
+              </p>
+            )}
+            <p className="text-[11px] leading-snug text-zinc-400">
+              O teste faz uma cotação de verdade n
+              {provider === "melhor_envio" ? "o" : "a"}{" "}
+              {nomeDoProvedor(provider)} (nada é comprado) e só passa com uma
+              chave válida do ambiente escolhido.
+            </p>
+          </div>
+        )}
+
+        {/* Ajuste do dono (rodada 4, 23/09/2026): "zerar a declaração NÃO
+         * foi autorizado" — o controle "Sem seguro" saiu da interface por
+         * inteiro. Nenhum caminho da tela seleciona nem envia
+         * seguro:"sem_seguro" (ver salvarProvedor, corpo.seguro sempre
+         * "valor_dos_produtos"). O único resquício possível de
+         * "sem_seguro" é uma gravação feita POR FORA do painel — aqui só
+         * avisamos, sem deixar a lojista presa nisso. */}
+        {provider === "melhor_envio" && salvo?.seguro === "sem_seguro" && (
+          <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
+            <AlertCircle className="mt-px size-3.5 shrink-0" />
+            <span>
+              Seguro desligado por fora do painel — ao salvar, volta para Com
+              seguro.
+            </span>
+          </p>
+        )}
+
+        {rascunho.resultadoTeste && (
+          <div
+            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs ${
+              rascunho.resultadoTeste.sucesso
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                : "border-red-500/30 bg-red-500/10 text-red-300"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {rascunho.resultadoTeste.sucesso ? (
+                <CheckCircle2 className="size-4 shrink-0" />
+              ) : (
+                <AlertCircle className="size-4 shrink-0" />
+              )}
+              <span>{rascunho.resultadoTeste.mensagem}</span>
             </div>
-          )}
-
-        {rascunho.erroServicos && (
-          <p className="text-[11px] text-red-300">
-            Não foi possível carregar os serviços agora. As caixas continuam com
-            a última seleção salva — nada foi apagado.
-          </p>
+            {rascunho.resultadoTeste.servicosTestados &&
+              rascunho.resultadoTeste.servicosTestados.length > 0 && (
+                <ul className="ml-6 list-disc space-y-0.5 text-[11px] text-zinc-300">
+                  {rascunho.resultadoTeste.servicosTestados.map((s) => {
+                    // ANOTADO (revisão Opus): o nome do serviço junto do
+                    // código — "PAC" ao lado de "1", não só o código cru.
+                    const nomeDoServico = rascunho.servicosCarregados?.find(
+                      (sc) => sc.codigo === s.codigo,
+                    )?.servico;
+                    return (
+                      <li key={s.codigo}>
+                        {s.codigo}
+                        {nomeDoServico ? ` (${nomeDoServico})` : ""}:{" "}
+                        {s.ok
+                          ? "cotou certo"
+                          : s.motivo === "erro_do_servico"
+                            ? `não cotou (${s.detalhe ?? "erro do serviço"})`
+                            : "não retornou"}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+          </div>
         )}
 
-        {rascunho.servicosDoCatalogo && (
-          <p className="text-[11px] leading-snug text-zinc-500">
-            Lista de serviços da SuperFrete. O teste confirma quais cotam na sua
-            conta.
-          </p>
-        )}
+        <div className="space-y-1.5 pt-1">
+          <div className="flex items-center justify-between">
+            <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              Serviços da conta
+            </span>
+            <button
+              type="button"
+              onClick={onCarregarServicos}
+              disabled={
+                rascunho.carregandoServicos ||
+                rascunho.testando ||
+                (!temChave && !rascunho.tokenDigitado.trim())
+              }
+              className="flex items-center gap-1 text-[10px] font-bold text-admin-gold hover:underline disabled:opacity-40"
+            >
+              <RefreshCw
+                className={`size-3 ${rascunho.carregandoServicos ? "animate-spin" : ""}`}
+              />
+              <span>
+                {rascunho.servicosCarregados
+                  ? "Atualizar lista"
+                  : "Ver serviços da conta"}
+              </span>
+            </button>
+          </div>
 
-        {rascunho.servicosCarregados &&
-          rascunho.servicosCarregados.length === 0 && (
-            <p className="text-[11px] italic text-zinc-500">
-              Nenhum serviço encontrado nesta conta.
+          {/* PR #637: sem isto, depois de recarregar a lista ficava vazia e a
+           * seleção salva parecia perdida — ela só aparecia depois de "Ver
+           * serviços da conta". `null` = nunca escolheu (filtro antigo). */}
+          {!rascunho.servicosCarregados &&
+            salvo?.servicos &&
+            salvo.servicos.length > 0 && (
+              <div className="rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-[11px] text-zinc-300">
+                <span className="block text-zinc-500">Salvos nesta loja:</span>
+                <ul className="ml-4 list-disc">
+                  {salvo.servicos.map((codigo) => (
+                    <li key={codigo}>{nomeDoServicoSalvo(provider, codigo)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+          {rascunho.erroServicos && (
+            <p className="text-[11px] text-red-300">
+              Não foi possível carregar os serviços agora. As caixas continuam
+              com a última seleção salva — nada foi apagado.
             </p>
           )}
 
-        {rascunho.servicosCarregados &&
-          rascunho.servicosCarregados.length > 0 && (
-            <div className="space-y-1">
-              {rascunho.servicosCarregados.map((servico) => {
-                const marcado =
-                  rascunho.servicosSelecionados?.has(servico.codigo) ?? false;
-                const exigeAgencia =
-                  provider === "melhor_envio" &&
-                  IDS_ME_QUE_EXIGEM_AGENCIA.has(servico.codigo);
-                return (
-                  <label
-                    key={servico.codigo}
-                    className="flex flex-col gap-0.5 rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-xs"
-                  >
-                    <span className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={marcado}
-                        disabled={rascunho.testando || rascunho.salvando}
-                        onChange={() => onAlternarServico(servico.codigo)}
-                        className="size-4 accent-admin-gold"
-                      />
-                      <span className="text-zinc-200">
-                        {servico.transportadora} — {servico.servico}
-                      </span>
-                    </span>
-                    {servico.ausenteDaListaDaApi && (
-                      <span className="ml-6 text-[10.5px] font-semibold text-amber-300">
-                        A Frenet não listou este serviço para esta chave.
-                        Aparecer no app de etiquetas não garante a cotação no
-                        checkout: marque J&T, toque em Testar e só salve se
-                        aparecer como cotou certo.
-                      </span>
-                    )}
-                    {exigeAgencia && (
-                      <span className="ml-6 flex items-start gap-1 text-[10.5px] font-semibold text-amber-300">
-                        <AlertCircle className="mt-px size-3 shrink-0" />
-                        {AVISO_ID_EXIGE_AGENCIA}
-                      </span>
-                    )}
-                  </label>
-                );
-              })}
-            </div>
+          {rascunho.servicosDoCatalogo && (
+            <p className="text-[11px] leading-snug text-zinc-500">
+              Lista de serviços da SuperFrete. O teste confirma quais cotam na
+              sua conta.
+            </p>
           )}
-      </div>
 
-      <div className="flex justify-end border-t border-white/5 pt-3">
-        <button
-          type="button"
-          disabled={rascunho.salvando || rascunho.testando}
-          onClick={onSalvar}
-          className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-        >
-          {rascunho.salvando ? (
-            <RefreshCw className="size-3 animate-spin text-admin-gold" />
-          ) : (
-            <Save className="size-3 text-admin-gold" />
-          )}
-          <span>{rascunho.salvando ? "Salvando..." : "Salvar"}</span>
-        </button>
+          {rascunho.servicosCarregados &&
+            rascunho.servicosCarregados.length === 0 && (
+              <p className="text-[11px] italic text-zinc-500">
+                Nenhum serviço encontrado nesta conta.
+              </p>
+            )}
+
+          {rascunho.servicosCarregados &&
+            rascunho.servicosCarregados.length > 0 && (
+              <div className="space-y-1">
+                {rascunho.servicosCarregados.map((servico) => {
+                  const marcado =
+                    rascunho.servicosSelecionados?.has(servico.codigo) ?? false;
+                  const exigeAgencia =
+                    provider === "melhor_envio" &&
+                    IDS_ME_QUE_EXIGEM_AGENCIA.has(servico.codigo);
+                  return (
+                    <label
+                      key={servico.codigo}
+                      className="flex flex-col gap-0.5 rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={marcado}
+                          disabled={rascunho.testando || rascunho.salvando}
+                          onChange={() => onAlternarServico(servico.codigo)}
+                          className="size-4 accent-admin-gold"
+                        />
+                        <span className="text-zinc-200">
+                          {servico.transportadora} — {servico.servico}
+                        </span>
+                      </span>
+                      {servico.ausenteDaListaDaApi && (
+                        <span className="ml-6 text-[10.5px] font-semibold text-amber-300">
+                          A Frenet não listou este serviço para esta chave.
+                          Aparecer no app de etiquetas não garante a cotação no
+                          checkout: marque J&T, toque em Testar e só salve se
+                          aparecer como cotou certo.
+                        </span>
+                      )}
+                      {exigeAgencia && (
+                        <span className="ml-6 flex items-start gap-1 text-[10.5px] font-semibold text-amber-300">
+                          <AlertCircle className="mt-px size-3 shrink-0" />
+                          {AVISO_ID_EXIGE_AGENCIA}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+        </div>
+
+        <div className="flex justify-end border-t border-white/5 pt-3">
+          <button
+            type="button"
+            disabled={rascunho.salvando || rascunho.testando}
+            onClick={onSalvar}
+            className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+          >
+            {rascunho.salvando ? (
+              <RefreshCw className="size-3 animate-spin text-admin-gold" />
+            ) : (
+              <Save className="size-3 text-admin-gold" />
+            )}
+            <span>{rascunho.salvando ? "Salvando..." : "Salvar"}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
