@@ -44,6 +44,7 @@ export interface ServicoDoProvedor {
   readonly codigo: string;
   readonly transportadora: string;
   readonly servico: string;
+  readonly ausenteDaListaDaApi?: boolean;
 }
 
 export interface ConfigDoProvedor {
@@ -517,6 +518,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       atualizarRascunho(provider, {
         carregandoServicos: true,
         erroServicos: false,
+        resultadoTeste: null,
       });
       try {
         const { data, error } = await chamarEdgeDeFrete({
@@ -539,7 +541,22 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           );
           return;
         }
-        const servicosCarregados: ServicoDoProvedor[] = data.servicos;
+        // A Frenet documenta J&T Standard (JTE_INT), mas /shipping/info
+        // lista apenas os serviços vinculados ao token. Deixe a opção
+        // visível quando ausente e exija a cotação real antes de salvá-la.
+        const servicosCarregados: ServicoDoProvedor[] =
+          provider === "frenet" &&
+          !data.servicos.some((s: ServicoDoProvedor) => s.codigo === "JTE_INT")
+            ? [
+                ...data.servicos,
+                {
+                  codigo: "JTE_INT",
+                  transportadora: "J&T Express",
+                  servico: "Standard",
+                  ausenteDaListaDaApi: true,
+                },
+              ]
+            : data.servicos;
         const salvos = new Set(provedoresSalvos.get(provider)?.servicos ?? []);
         atualizarRascunho(provider, {
           carregandoServicos: false,
@@ -585,6 +602,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           ...atual,
           servicosSelecionados: conjunto,
           servicosMexeu: true,
+          resultadoTeste: null,
         });
         return proximo;
       });
@@ -736,6 +754,22 @@ export const TransportadorasSection = memo(function TransportadorasSection({
 
       if (r.servicosMexeu && (r.servicosSelecionados?.size ?? 0) === 0) {
         toast.error("Selecione ao menos um serviço antes de salvar.");
+        return;
+      }
+      const jtEntrando =
+        provider === "frenet" &&
+        r.servicosSelecionados?.has("JTE_INT") === true &&
+        !provedoresSalvos.get(provider)?.servicos?.includes("JTE_INT");
+      if (
+        jtEntrando &&
+        !r.resultadoTeste?.servicosTestados?.some(
+          (s) => s.codigo === "JTE_INT" && s.ok,
+        )
+      ) {
+        toast.error("J&T Express — Standard ainda não cotou com esta chave.", {
+          description:
+            "Toque em Testar com J&T marcado. Se não cotar, desmarque J&T para salvar os demais serviços ou consulte a Frenet.",
+        });
         return;
       }
 
@@ -986,7 +1020,10 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           rascunho={rascunhoDoProvider(provider)}
           sandboxAtual={sandboxAtual(provider)}
           onTokenMudou={(v) =>
-            atualizarRascunho(provider, { tokenDigitado: v })
+            atualizarRascunho(provider, {
+              tokenDigitado: v,
+              resultadoTeste: null,
+            })
           }
           onSandboxMudou={(v) =>
             atualizarRascunho(provider, { sandboxEscolhido: v })
@@ -1080,7 +1117,11 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         </div>
         <button
           type="button"
-          disabled={!ligadosMudou || salvandoLigados}
+          disabled={
+            salvandoLigados ||
+            (!ligadosMudou &&
+              (modo === "multi" || ligadosEscolhidos.size === 0))
+          }
           onClick={salvarLigados}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
         >
@@ -1200,6 +1241,7 @@ function CartaoDoProvedor({
           type="password"
           autoComplete="off"
           value={rascunho.tokenDigitado}
+          disabled={rascunho.testando || rascunho.salvando}
           onChange={(e) => onTokenMudou(e.target.value)}
           placeholder={
             temChave
@@ -1211,7 +1253,9 @@ function CartaoDoProvedor({
         <button
           type="button"
           disabled={
-            rascunho.testando || (!rascunho.tokenDigitado.trim() && !temChave)
+            rascunho.testando ||
+            rascunho.carregandoServicos ||
+            (!rascunho.tokenDigitado.trim() && !temChave)
           }
           onClick={onTestar}
           className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
@@ -1346,6 +1390,7 @@ function CartaoDoProvedor({
             onClick={onCarregarServicos}
             disabled={
               rascunho.carregandoServicos ||
+              rascunho.testando ||
               (!temChave && !rascunho.tokenDigitado.trim())
             }
             className="flex items-center gap-1 text-[10px] font-bold text-admin-gold hover:underline disabled:opacity-40"
@@ -1400,6 +1445,7 @@ function CartaoDoProvedor({
                       <input
                         type="checkbox"
                         checked={marcado}
+                        disabled={rascunho.testando || rascunho.salvando}
                         onChange={() => onAlternarServico(servico.codigo)}
                         className="size-4 accent-admin-gold"
                       />
@@ -1407,6 +1453,14 @@ function CartaoDoProvedor({
                         {servico.transportadora} — {servico.servico}
                       </span>
                     </span>
+                    {servico.ausenteDaListaDaApi && (
+                      <span className="ml-6 text-[10.5px] font-semibold text-amber-300">
+                        A Frenet não listou este serviço para esta chave.
+                        Aparecer no app de etiquetas não garante a cotação no
+                        checkout: marque J&T, toque em Testar e só salve se
+                        aparecer como cotou certo.
+                      </span>
+                    )}
                     {exigeAgencia && (
                       <span className="ml-6 flex items-start gap-1 text-[10.5px] font-semibold text-amber-300">
                         <AlertCircle className="mt-px size-3 shrink-0" />
@@ -1423,7 +1477,7 @@ function CartaoDoProvedor({
       <div className="flex justify-end border-t border-white/5 pt-3">
         <button
           type="button"
-          disabled={rascunho.salvando}
+          disabled={rascunho.salvando || rascunho.testando}
           onClick={onSalvar}
           className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
         >

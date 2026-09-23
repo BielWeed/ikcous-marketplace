@@ -167,6 +167,215 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     expect(hospedeiro.textContent).toContain("Chave de acesso — Frenet");
   });
 
+  it("mostra J&T Standard quando a lista da conta Frenet o omite, sem afirmar que já cota", async () => {
+    invoke.mockImplementation((_nome: string, opcoes: any) => {
+      if (opcoes?.body?.action === "ler_configuracao_frete") {
+        return Promise.resolve({
+          data: {
+            ...RESPOSTA_LEGADO,
+            provedores: {
+              ...RESPOSTA_LEGADO.provedores,
+              frenet: { tem_chave: true, sandbox: false, servicos: null },
+            },
+          },
+          error: null,
+        });
+      }
+      if (opcoes?.body?.action === "list_services") {
+        return Promise.resolve({
+          data: {
+            success: true,
+            servicos: [
+              { codigo: "03298", transportadora: "Correios", servico: "PAC" },
+            ],
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
+    await abrir();
+    await clicar(botoes(/Ver serviços da conta/)[2]);
+    expect(hospedeiro.textContent).toContain("J&T Express — Standard");
+    expect(hospedeiro.textContent).toContain("não listou este serviço");
+  });
+
+  it("J&T novo só é salvo após a cotação deste serviço passar no Testar", async () => {
+    let jtCotou = false;
+    invoke.mockImplementation((_nome: string, opcoes: any) => {
+      const action = opcoes?.body?.action;
+      if (action === "ler_configuracao_frete")
+        return Promise.resolve({
+          data: {
+            ...RESPOSTA_LEGADO,
+            provedores: {
+              ...RESPOSTA_LEGADO.provedores,
+              frenet: { tem_chave: true, sandbox: false, servicos: null },
+            },
+          },
+          error: null,
+        });
+      if (action === "list_services")
+        return Promise.resolve({
+          data: {
+            success: true,
+            servicos: [
+              { codigo: "03298", transportadora: "Correios", servico: "PAC" },
+            ],
+          },
+          error: null,
+        });
+      if (action === "test_credentials")
+        return Promise.resolve({
+          data: {
+            success: true,
+            servicosTestados: [
+              { codigo: "03298", ok: true, preco: 13.43, prazo: 6 },
+              { codigo: "JTE_INT", ok: jtCotou, preco: 11.74, prazo: 3 },
+            ],
+          },
+          error: null,
+        });
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
+    await abrir();
+    await clicar(botoes(/Ver serviços da conta/)[2]);
+    const linhaJT = [...hospedeiro.querySelectorAll("label")].find((l) =>
+      l.textContent?.includes("J&T Express — Standard"),
+    );
+    const linhaPAC = [...hospedeiro.querySelectorAll("label")].find((l) =>
+      l.textContent?.includes("Correios — PAC"),
+    );
+    await clicar(linhaPAC?.querySelector("input") ?? undefined);
+    await clicar(linhaJT?.querySelector("input") ?? undefined);
+    invoke.mockClear();
+    await clicar(botoes(/^Salvar$/)[2]);
+    await clicar(botoes(/^Testar$/)[2]);
+    expect(invoke).toHaveBeenCalledWith(
+      "calculate-shipping",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          action: "test_credentials",
+          servicos: ["03298", "JTE_INT"],
+        }),
+      }),
+    );
+    await clicar(botoes(/^Salvar$/)[2]);
+    expect(
+      invoke.mock.calls.some(
+        (c: any[]) => c[1]?.body?.action === "save_credentials",
+      ),
+    ).toBe(false);
+    jtCotou = true;
+    await clicar(botoes(/^Testar$/)[2]);
+    await digitar(camposToken()[2], "chave-trocada-ficticia");
+    await clicar(botoes(/^Salvar$/)[2]);
+    expect(
+      invoke.mock.calls.some(
+        (c: any[]) => c[1]?.body?.action === "save_credentials",
+      ),
+    ).toBe(false);
+    await digitar(camposToken()[2], "");
+    await clicar(botoes(/^Testar$/)[2]);
+    await clicar(botoes(/^Salvar$/)[2]);
+    expect(invoke).toHaveBeenCalledWith(
+      "calculate-shipping",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          action: "save_credentials",
+          provider: "frenet",
+          servicos: ["03298", "JTE_INT"],
+        }),
+      }),
+    );
+  });
+
+  it("bloqueia troca de chave, serviços e salvamento durante Testar", async () => {
+    let responderTeste: ((value: unknown) => void) | undefined;
+    invoke.mockImplementation((_nome: string, opcoes: any) => {
+      const action = opcoes?.body?.action;
+      if (action === "ler_configuracao_frete")
+        return Promise.resolve({
+          data: {
+            ...RESPOSTA_LEGADO,
+            provedores: {
+              ...RESPOSTA_LEGADO.provedores,
+              frenet: { tem_chave: true, sandbox: false, servicos: null },
+            },
+          },
+          error: null,
+        });
+      if (action === "list_services")
+        return Promise.resolve({
+          data: {
+            success: true,
+            servicos: [
+              { codigo: "03298", transportadora: "Correios", servico: "PAC" },
+            ],
+          },
+          error: null,
+        });
+      if (action === "test_credentials")
+        return new Promise((resolve) => {
+          responderTeste = resolve;
+        });
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
+    await abrir();
+    await clicar(botoes(/Ver serviços da conta/)[2]);
+    await clicar(botoes(/^Testar$/)[2]);
+    expect(camposToken()[2].disabled).toBe(true);
+    expect(botoes(/^Salvar$/)[2].disabled).toBe(true);
+    const jt = [...hospedeiro.querySelectorAll("label")].find((l) =>
+      l.textContent?.includes("J&T Express — Standard"),
+    );
+    expect((jt?.querySelector("input") as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    await act(async () => {
+      responderTeste?.({
+        data: { success: true, servicosTestados: [] },
+        error: null,
+      });
+      await esperarMicrotarefas();
+    });
+    expect(camposToken()[2].disabled).toBe(false);
+  });
+
+  it("modo legado sem provedor selecionado não migra por engano", async () => {
+    invoke.mockImplementation((_nome: string, opcoes: any) =>
+      Promise.resolve({
+        data:
+          opcoes?.body?.action === "ler_configuracao_frete"
+            ? { ...RESPOSTA_LEGADO, ligados: [] }
+            : { success: true },
+        error: null,
+      }),
+    );
+    await abrir();
+    const botao = botoes(/Salvar provedores/)[0];
+    expect(botao.disabled).toBe(true);
+    await clicar(botao);
+    expect(
+      invoke.mock.calls.some(
+        (c: any[]) => c[1]?.body?.action === "save_active_providers",
+      ),
+    ).toBe(false);
+  });
+
+  it("permite salvar a seleção atual para migrar do modo legado ao multiprovedor", async () => {
+    await abrir();
+    const botao = botoes(/Salvar provedores/)[0];
+    expect(botao.disabled).toBe(false);
+    await clicar(botao);
+    expect(invoke).toHaveBeenCalledWith(
+      "calculate-shipping",
+      expect.objectContaining({
+        body: { action: "save_active_providers", ligados: ["melhor_envio"] },
+      }),
+    );
+  });
+
   it("chave salva não some do DOM: o campo nasce vazio e mostra o selo 'chave salva' só para quem tem token", async () => {
     await abrir();
     const [tokenME] = camposToken();
