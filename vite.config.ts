@@ -173,15 +173,18 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       terserOptions: { compress: { passes: 2 } },
       rollupOptions: {
         output: {
-          // Chunks menores que 2 kB (antes de comprimir) são fundidos num
+          // Chunks menores que 1 kB (antes de comprimir) são fundidos num
           // vizinho — o Rollup só funde quando não muda o que executa ao
-          // carregar cada entrada. Eram 53 arquivos < 2 kB brotli pagando
-          // cabeçalho de import/export cada um: -3,8 kB na entrega somada e
-          // o boot do cliente NÃO cresce (234,87 -> 234,66 kB brotli, fixture
-          // de 23/09/2026). De brinde, o PdvBalcao deixou de importar
-          // estaticamente o `AdminPageHeader-*.js`, que o globIgnores
-          // `assets/Admin*.js` tira do precache (balcão offline).
-          experimentalMinChunkSize: 2000,
+          // carregar cada entrada. 117 -> 103 arquivos, -2,7 kB na entrega
+          // somada (fixture de 23/09/2026). Medido POR TELA (fecho estático
+          // brotli além do boot), não só no boot: Home 64,8 -> 64,7 kB,
+          // Busca 45,9 -> 46,1, Produto 67,0 -> 67,0, Carrinho 69,6 -> 69,1,
+          // Checkout 82,5 -> 81,9. NÃO subir para 2000: a entrega cai mais
+          // 1,1 kB, mas Home/Busca/Favoritos passam a baixar ~10 kB a mais
+          // (vendor-date e telas vizinhas penduradas nelas). De brinde, o
+          // PdvBalcao deixou de importar estaticamente um `Admin*.js`, que o
+          // globIgnores `assets/Admin*.js` tira do precache (balcão offline).
+          experimentalMinChunkSize: 1000,
           chunkFileNames(chunk) {
             const id = chunk.facadeModuleId?.replace(/\\/g, "/");
             const name =
