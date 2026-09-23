@@ -627,7 +627,9 @@ export function CartView({
                           key={user?.id ?? "convidado"}
                           cart={cart}
                           selectedOption={selectedShippingOption}
-                          selecaoEscolhidaPelaCliente={freteEscolhidoPelaCliente}
+                          selecaoEscolhidaPelaCliente={
+                            freteEscolhidoPelaCliente
+                          }
                           onSelectOption={setSelectedShippingOption}
                           onCepValidated={setShippingCep}
                           cepDestino={cepDoDestino}

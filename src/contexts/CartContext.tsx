@@ -171,6 +171,35 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [isLoading, setIsLoading] = useState(true);
+
+  // Declarados AQUI, antes dos efeitos que os zeram (troca de conta,
+  // limpar, mudança de carrinho): o setter do frete é um `useCallback` e
+  // entra nas listas de dependências — referenciá-lo antes da declaração
+  // seria erro de TDZ no render.
+  // A opção e QUEM a escolheu mudam juntas, num estado só — nunca um sem o
+  // outro (uma escolha nula nunca é "da cliente").
+  const [escolhaDoFrete, setEscolhaDoFrete] = React.useState<{
+    opcao: ShippingOption | null;
+    daCliente: boolean;
+  }>({ opcao: null, daCliente: false });
+  const selectedShippingOption = escolhaDoFrete.opcao;
+  const freteEscolhidoPelaCliente = escolhaDoFrete.daCliente;
+  const setSelectedShippingOption = useCallback(
+    (
+      option: ShippingOption | null,
+      origem: OrigemDaEscolhaDoFrete = "automatica",
+    ) => {
+      setEscolhaDoFrete({
+        opcao: option,
+        daCliente: option !== null && origem === "cliente",
+      });
+    },
+    [],
+  );
+  const [shippingCep, setShippingCep] = React.useState<string | null>(null);
+  const [enderecoSelecionadoId, setEnderecoSelecionadoId] = React.useState<
+    string | null
+  >(null);
   const isInitialLoad = useRef(true);
   const syncLocked = useRef(true); // Guard for initial hydration
 
@@ -409,7 +438,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
 
     syncFromDB();
-  }, [userId, syncFromDB]);
+  }, [userId, syncFromDB, setSelectedShippingOption]);
 
   // Realtime subscription for cart updates
   useEffect(() => {
@@ -741,31 +770,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [removeFromCart],
   );
 
-  // A opção e QUEM a escolheu mudam juntas, num estado só — nunca um sem o
-  // outro (uma escolha nula nunca é "da cliente").
-  const [escolhaDoFrete, setEscolhaDoFrete] = React.useState<{
-    opcao: ShippingOption | null;
-    daCliente: boolean;
-  }>({ opcao: null, daCliente: false });
-  const selectedShippingOption = escolhaDoFrete.opcao;
-  const freteEscolhidoPelaCliente = escolhaDoFrete.daCliente;
-  const setSelectedShippingOption = useCallback(
-    (
-      option: ShippingOption | null,
-      origem: OrigemDaEscolhaDoFrete = "automatica",
-    ) => {
-      setEscolhaDoFrete({
-        opcao: option,
-        daCliente: option !== null && origem === "cliente",
-      });
-    },
-    [],
-  );
-  const [shippingCep, setShippingCep] = React.useState<string | null>(null);
-  const [enderecoSelecionadoId, setEnderecoSelecionadoId] = React.useState<
-    string | null
-  >(null);
-
   const clearCart = useCallback(() => {
     // Tombstone all current items before clearing
     setCart((prev) => {
@@ -782,7 +786,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setShippingCep(null);
     localStorage.removeItem(CART_STORAGE_KEY);
     toast.info("Carrinho limpo");
-  }, []);
+  }, [setSelectedShippingOption]);
 
   // A cotação de frete vale para uma composição específica de carrinho: o preço
   // depende de peso e dimensões. Mudou item ou quantidade, a cotação anterior
@@ -807,7 +811,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setSelectedShippingOption(null);
     setShippingCep(null);
-  }, [assinaturaDoCarrinho]);
+  }, [assinaturaDoCarrinho, setSelectedShippingOption]);
 
   const cartTotal = React.useMemo(() => {
     return cart.reduce((total, item) => {
@@ -943,6 +947,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       clearCart,
       getCartTotal,
       getCartCount,
+      setSelectedShippingOption,
     ],
   );
 

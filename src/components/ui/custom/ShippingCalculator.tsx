@@ -840,9 +840,7 @@ function CalculadoraDeFrete({
           selecaoVivaRef.current = option;
           idTocadoNestaMontagemRef.current = option.id;
           escolhaDaClienteViaPropRef.current =
-            escolhaDaClienteViaPropRef.current === undefined
-              ? undefined
-              : true;
+            escolhaDaClienteViaPropRef.current === undefined ? undefined : true;
           onSelectOption(option, "cliente");
         }}
         className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${

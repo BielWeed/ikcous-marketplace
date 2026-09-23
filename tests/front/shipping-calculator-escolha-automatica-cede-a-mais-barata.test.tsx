@@ -139,7 +139,10 @@ describe("ShippingCalculator — escolha AUTOMÁTICA cede à mais barata; escolh
   });
 
   function responder(opcoes: ShippingOption[]) {
-    resposta = { data: { options: opcoes, revisaoConfig: REVISAO }, error: null };
+    resposta = {
+      data: { options: opcoes, revisaoConfig: REVISAO },
+      error: null,
+    };
   }
 
   async function assentar() {

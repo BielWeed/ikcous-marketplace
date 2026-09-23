@@ -49,19 +49,10 @@ export type OrigemDaEscolhaDoFrete = "cliente" | "automatica";
 //   - escolha da CLIENTE ainda na lista → o objeto fresco dela;
 //   - qualquer outro caso (sem escolha, escolha automática, escolha que
 //     sumiu) → a regra da casa: a mais barata (que já exclui a retirada).
-export function opcaoFrescaOuMaisBarata<T extends OpcaoDeFrete>(
-  selecionada: T | null | undefined,
-  opcoes: readonly T[] | null | undefined,
-  escolhidaPelaCliente: boolean,
-): T | null {
-  return resolverEscolhaDoFrete(selecionada, opcoes, escolhidaPelaCliente)
-    .opcao;
-}
-
 /**
- * O mesmo que `opcaoFrescaOuMaisBarata`, dizendo também a ORIGEM do
- * resultado — é ela que o carrinho guarda ao lado da opção, para a próxima
- * cotação saber se deve preservar ou refazer a escolha.
+ * Devolve a opção E a ORIGEM do resultado — é a origem que o carrinho
+ * guarda ao lado da opção, para a próxima cotação saber se deve preservar
+ * ou refazer a escolha.
  */
 export function resolverEscolhaDoFrete<T extends OpcaoDeFrete>(
   selecionada: T | null | undefined,
