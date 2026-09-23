@@ -149,9 +149,17 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       VitePWA(pwaOptions),
     ],
     resolve: {
-      alias: {
-        "@": path.resolve(__dirname, "./src"),
-      },
+      alias: [
+        { find: "@", replacement: path.resolve(__dirname, "./src") },
+        // O recharts importa 29 funções `lodash/<nome>` na versão CommonJS:
+        // 263 módulos, cada um embrulhado pelo plugin commonjs. A MESMA versão
+        // em ES module (lodash-es, mesma 4.18.1 do lodash que o recharts
+        // resolve) sai sem os embrulhos: vendor-charts -3,2 kB brotli no build
+        // fixture de 23/09/2026 (entrega 804,34 -> 801,16 kB, teto D8 de 800).
+        // Só o recharts importa `lodash/` (e o lodash-es cai no vendor-charts,
+        // fora do boot); o `lodash` raiz não casa com a regex.
+        { find: /^lodash\/(.*)$/, replacement: "lodash-es/$1" },
+      ],
     },
     build: {
       outDir: identity.outDir,
@@ -160,8 +168,20 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       // do size-limit). Presets seguros — sem drop_console, sem pure_funcs,
       // sem unsafe; target e divisão de chunks preservados.
       minify: "terser",
+      // Segunda passada do compress (opção segura, sem `unsafe`): -1,1 kB
+      // brotli na entrega somada (23/09/2026).
+      terserOptions: { compress: { passes: 2 } },
       rollupOptions: {
         output: {
+          // Chunks menores que 2 kB (antes de comprimir) são fundidos num
+          // vizinho — o Rollup só funde quando não muda o que executa ao
+          // carregar cada entrada. Eram 53 arquivos < 2 kB brotli pagando
+          // cabeçalho de import/export cada um: -3,8 kB na entrega somada e
+          // o boot do cliente NÃO cresce (234,87 -> 234,66 kB brotli, fixture
+          // de 23/09/2026). De brinde, o PdvBalcao deixou de importar
+          // estaticamente o `AdminPageHeader-*.js`, que o globIgnores
+          // `assets/Admin*.js` tira do precache (balcão offline).
+          experimentalMinChunkSize: 2000,
           chunkFileNames(chunk) {
             const id = chunk.facadeModuleId?.replace(/\\/g, "/");
             const name =
