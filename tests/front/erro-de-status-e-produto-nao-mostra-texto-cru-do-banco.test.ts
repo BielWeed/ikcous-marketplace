@@ -81,7 +81,9 @@ import {
 } from "@/hooks/useOrders";
 import { mensagemAmigavelErroProduto, useProducts } from "@/hooks/useProducts";
 import { toast } from "sonner";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("mensagemAmigavelErroAtualizacaoStatus — as causas de update_order_status_atomic", () => {
   it("P0001 (RAISE EXCEPTION da RPC) é confiável — sai em português, específica", () => {
@@ -165,11 +167,15 @@ describe("mensagemAmigavelErroProduto — as causas de INSERT/UPDATE em vw_produ
 
 describe("updateOrderStatus toasta a versão traduzida, nunca o err.message cru (Ponto 4)", () => {
   beforeEach(() => {
+    vi.stubGlobal("navigator", { onLine: true });
     mock.rpc.mockReset();
     vi.mocked(toast.error).mockReset();
   });
 
   it("RPC recusa com erro técnico cru: o toast NUNCA mostra o texto técnico", async () => {
+    mock.from.mockReturnValue(
+      criarQueryEncadeavel({ data: { status: "pending" }, error: null }),
+    );
     mock.rpc.mockResolvedValue({
       data: null,
       error: {
@@ -180,8 +186,11 @@ describe("updateOrderStatus toasta a versão traduzida, nunca o err.message cru 
     });
     const { updateOrderStatus } = useOrders(false, true);
 
-    await expect(updateOrderStatus("order-1", "shipping")).rejects.toThrow();
+    await expect(
+      updateOrderStatus("order-1", "shipping", undefined, false, "pending"),
+    ).rejects.toThrow();
 
+    expect(mock.rpc).toHaveBeenCalledTimes(1);
     expect(toast.error).toHaveBeenCalledTimes(1);
     const mensagemMostrada = String(vi.mocked(toast.error).mock.calls[0][0]);
     expect(mensagemMostrada).not.toContain("constraint");
@@ -210,6 +219,7 @@ describe("addProduct/updateProduct toastam a versão traduzida, nunca o err.mess
   beforeEach(() => {
     mock.from.mockReset();
     vi.mocked(toast.error).mockReset();
+    vi.stubGlobal("navigator", { onLine: true });
   });
 
   it("addProduct: INSERT recusado com erro técnico cru — o toast NUNCA mostra o texto técnico", async () => {
