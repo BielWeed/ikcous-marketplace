@@ -1,22 +1,31 @@
 import type { View } from "@/types";
 // @vitest-environment jsdom
 //
-// TAREFA T4 (23/09/2026) — CONTRATO da tela nova "Estratégias do frete
-// nacional" (`admin-shipping-national`), gramática direção D (mesma de
-// AdminShippingView: AdminPageHeader, CabecaDeSecao/Linha de
-// primitivas-direcao-d, pills role="radiogroup"/"radio", barra de salvar
-// fixa só com alteração pendente). Prende:
+// CONTRATO da rota "Estratégias do frete nacional" (`admin-shipping-national`).
 //
-//   1. as 5 pills da estratégia, e o painel certo por escolha (mínimo para
-//      acima_de_valor; tipo+valor+mínimo opcional para o desconto; alcance
-//      só para as 3 de GRÁTIS);
+// T4-UNIFICAÇÃO (23/09/2026, pedido do dono): a tela PRÓPRIA morreu poucas
+// horas depois de nascer — o cabeçalho transbordava e a tela ficou poluída
+// com uma seção a mais. `AdminShippingNationalView` virou uma CASCA fina
+// que renderiza `AdminShippingView` com o painel "Fora da cidade" aberto
+// (`painelInicial="nacional"`) — este arquivo testa exatamente essa casca,
+// através da ROTA (o componente que `AdminArea.tsx` importa), então tudo
+// que muda aqui é o que muda pela unificação:
+//
+//   1. as 5 pills da estratégia continuam existindo, e o painel certo por
+//      escolha (mínimo para acima_de_valor; tipo+valor+mínimo opcional
+//      para o desconto; alcance só para as 3 de GRÁTIS);
 //   2. o alcance NUNCA muda sozinho — só pré-seleciona "mais_barata" ao
 //      sair de "desligado" pela primeira vez; mexer só no mínimo preserva;
 //   3. o aviso de custo com alcance "todas", e o botão que troca;
 //   4. a prévia em reais com a MESMA conta da edge;
 //   5. o aviso sem transportadora ligada;
-//   6. validação antes de salvar (espelha os CHECKs do banco);
-//   7. salvar grava SÓ as 5 colunas nacionais.
+//   6. validação antes de salvar (espelha os CHECKs do banco) — o botão do
+//      CABEÇALHO fica desabilitado, não mais o da barra fixa;
+//   7. SALVAR AGORA É UMA AÇÃO SÓ (mudança do dia): o clique grava os 5
+//      campos nacionais E os campos locais da mesma config, porque as duas
+//      telas viraram UM formulário. O que se prova aqui é que os 5 campos
+//      nacionais saem CORRETOS dentro desse payload maior — não mais que o
+//      payload seja SÓ eles.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,6 +36,11 @@ const { estadoDaLoja, estadoDoBanco, estadoOnline, updateConfig, invoke } =
     estadoDaLoja: {
       atual: {
         freeShippingMin: 100,
+        originCep: "38400-000",
+        shippingCoverage: "national" as "local" | "national",
+        localDeliveryFee: 10,
+        localCepRange: "",
+        enabledShippingMethods: ["sedex", "pac"] as string[],
         nationalShippingStrategy: "desligado" as
           | "desligado"
           | "acima_de_valor"
@@ -73,6 +87,13 @@ vi.mock("@/hooks/useOnlineStatus", () => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    from: () => ({
+      select: () => ({
+        order: () => ({
+          limit: () => Promise.resolve({ data: [], error: null }),
+        }),
+      }),
+    }),
     functions: {
       invoke: (...args: unknown[]) => invoke(...(args as [any, any])),
     },
@@ -90,7 +111,7 @@ function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe("AdminShippingNationalView — CONTRATO", () => {
+describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let onNavigate: ReturnType<typeof vi.fn<(view: View) => void>>;
@@ -99,6 +120,11 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     vi.clearAllMocks();
     estadoDaLoja.atual = {
       freeShippingMin: 100,
+      originCep: "38400-000",
+      shippingCoverage: "national",
+      localDeliveryFee: 10,
+      localCepRange: "",
+      enabledShippingMethods: ["sedex", "pac"],
       nationalShippingStrategy: "desligado",
       nationalShippingMin: 0,
       nationalDiscountType: null,
@@ -150,7 +176,11 @@ describe("AdminShippingNationalView — CONTRATO", () => {
   }
 
   function pill(padrao: RegExp): HTMLElement | undefined {
-    return [...hospedeiro.querySelectorAll('[role="radio"]')].find((r) =>
+    // Escopado ao bloco da ESTRATÉGIA NACIONAL: a tela unificada também
+    // tem pills do preset LOCAL com o mesmo texto ("Grátis acima de um
+    // valor", "Sempre grátis"…) no painel "Estratégias do frete local".
+    const escopo = hospedeiro.querySelector("#bloco-estrategia-nacional");
+    return [...(escopo?.querySelectorAll('[role="radio"]') ?? [])].find((r) =>
       padrao.test(r.textContent || ""),
     ) as HTMLElement | undefined;
   }
@@ -164,9 +194,13 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     });
   }
 
-  function botaoComTexto(padrao: RegExp): HTMLButtonElement | undefined {
+  /** O botão Salvar do cabeçalho (T4 unificação): o rótulo troca por
+   * estado, o botão nunca some da tela. */
+  function botaoSalvar(): HTMLButtonElement | undefined {
     return [...hospedeiro.querySelectorAll("button")].find((b) =>
-      padrao.test(b.textContent || ""),
+      /^(Salvo|Salvar|Salvando…|Tentar de novo)$/.test(
+        b.textContent?.trim() || "",
+      ),
     ) as HTMLButtonElement | undefined;
   }
 
@@ -183,6 +217,15 @@ describe("AdminShippingNationalView — CONTRATO", () => {
       await esperarMicrotarefas();
     });
   }
+
+  it("a rota abre a tela de Frete com o painel 'Fora da cidade' JÁ aberto", async () => {
+    await abrirTela();
+    const botaoPainel = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      /^fora da cidade/i.test(b.textContent?.trim() || ""),
+    );
+    expect(botaoPainel).toBeDefined();
+    expect(botaoPainel?.getAttribute("aria-expanded")).toBe("true");
+  });
 
   it("as 5 estratégias existem como pills, com 'Desligado' marcada por padrão", async () => {
     await abrirTela();
@@ -225,17 +268,19 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     expect(pill(/todas as op[çc][õo]es/i)).toBeUndefined();
   });
 
-  it("REVISÃO (correção 2): o cabeçalho descreve a ESTRATÉGIA escolhida, não finge ser 'estado salvo'", async () => {
+  it("o cabeçalho da estratégia descreve a ESTRATÉGIA escolhida, não finge ser 'estado salvo'", async () => {
     await abrirTela();
-    expect(hospedeiro.textContent).toMatch(/estrat[ée]gia:/i);
-    expect(hospedeiro.textContent).not.toMatch(/estado salvo:/i);
+    const escopo = hospedeiro.querySelector("#bloco-estrategia-nacional");
+    expect(escopo?.textContent).toMatch(/estrat[ée]gia:/i);
+    expect(escopo?.textContent).not.toMatch(/estado salvo:/i);
   });
 
-  it("REVISÃO (correção 2): desconto sem tipo escolhido NUNCA mostra 'R$ 0 na mais barata'", async () => {
+  it("desconto sem tipo escolhido NUNCA mostra 'R$ 0 na mais barata'", async () => {
     await abrirTela();
     await clicar(pill(/Desconto na opção mais barata/i)!);
 
-    expect(hospedeiro.textContent).not.toMatch(/r\$\s*0\s*na mais barata/i);
+    const escopo = hospedeiro.querySelector("#bloco-estrategia-nacional");
+    expect(escopo?.textContent).not.toMatch(/r\$\s*0\s*na mais barata/i);
   });
 
   it("alcance salvo 'todas' é preservado ao mexer só no mínimo (não reseta sozinho)", async () => {
@@ -284,7 +329,9 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     expect(hospedeiro.textContent).toMatch(
       /entrega expressa.*frete dela fica por sua conta/i,
     );
-    const botaoLimitar = botaoComTexto(/limitar.*mais barata/i);
+    const botaoLimitar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      /limitar.*mais barata/i.test(b.textContent || ""),
+    ) as HTMLButtonElement | undefined;
     expect(botaoLimitar).toBeDefined();
 
     await clicar(botaoLimitar!);
@@ -292,7 +339,7 @@ describe("AdminShippingNationalView — CONTRATO", () => {
       pill(/s[óo] a op[çc][ãa]o mais barata/i)?.getAttribute("aria-checked"),
     ).toBe("true");
     // Ainda exige salvar — não é aplicado sozinho.
-    expect(botaoComTexto(/salvar altera[çc][õo]es/i)).toBeDefined();
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
   });
 
   it("sem transportadora ligada: avisa que a estratégia só vale com cotação de transportadora", async () => {
@@ -323,9 +370,7 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     ) as HTMLInputElement;
     await digitar(minimo, "0");
 
-    const botaoSalvar = botaoComTexto(/salvar altera[çc][õo]es/i);
-    expect(botaoSalvar).toBeDefined();
-    expect(botaoSalvar!.disabled).toBe(true);
+    expect(botaoSalvar()?.disabled).toBe(true);
   });
 
   it("validação: desconto percentual > 100 bloqueia o salvar", async () => {
@@ -337,10 +382,10 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     ) as HTMLInputElement;
     await digitar(valor, "150");
 
-    expect(botaoComTexto(/salvar altera[çc][õo]es/i)!.disabled).toBe(true);
+    expect(botaoSalvar()?.disabled).toBe(true);
   });
 
-  it("REVISÃO (correção 3): acima_de_valor com mínimo que ARREDONDA para R$ 0,00 em centavos bloqueia o salvar (0,001 passa no '> 0' cru, mas o CHECK do banco vê centavos)", async () => {
+  it("REVISÃO (correção 3): acima_de_valor com mínimo que ARREDONDA para R$ 0,00 em centavos bloqueia o salvar", async () => {
     await abrirTela();
     await clicar(pill(/Grátis acima de um valor/i)!);
     const minimo = hospedeiro.querySelector(
@@ -348,7 +393,7 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     ) as HTMLInputElement;
     await digitar(minimo, "0.001");
 
-    expect(botaoComTexto(/salvar altera[çc][õo]es/i)!.disabled).toBe(true);
+    expect(botaoSalvar()?.disabled).toBe(true);
   });
 
   it("REVISÃO (correção 3): desconto fixo com valor que ARREDONDA para R$ 0,00 em centavos bloqueia o salvar", async () => {
@@ -360,10 +405,31 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     ) as HTMLInputElement;
     await digitar(valor, "0.004");
 
-    expect(botaoComTexto(/salvar altera[çc][õo]es/i)!.disabled).toBe(true);
+    expect(botaoSalvar()?.disabled).toBe(true);
   });
 
-  it("REVISÃO (correção 1, achado da revisão Opus): depois de salvar, o formData bate com o payload AJUSTADO — a barra some de vez e uma edição nova volta a avisar", async () => {
+  it("painel com erro de validação não recolhe, e o erro aparece perto da estratégia", async () => {
+    await abrirTela();
+    await clicar(pill(/Grátis acima de um valor/i)!);
+    const minimo = hospedeiro.querySelector(
+      "#frete-nacional-minimo",
+    ) as HTMLInputElement;
+    await digitar(minimo, "0");
+
+    const botaoPainel = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      /^fora da cidade/i.test(b.textContent?.trim() || ""),
+    ) as HTMLButtonElement;
+    expect(botaoPainel.getAttribute("aria-expanded")).toBe("true");
+
+    await clicar(botaoPainel);
+    // A tentativa de fechar não fez efeito — ainda há erro pendente.
+    expect(botaoPainel.getAttribute("aria-expanded")).toBe("true");
+    expect(hospedeiro.textContent).toMatch(
+      /informe um valor m[íi]nimo maior que r\$ 0/i,
+    );
+  });
+
+  it("depois de salvar, o formData bate com o payload AJUSTADO — o botão volta a 'Salvo' e uma edição nova volta a avisar", async () => {
     // Estado salvo: acima_de_valor 199, alcance "todas".
     estadoDaLoja.atual = {
       ...estadoDaLoja.atual,
@@ -371,11 +437,6 @@ describe("AdminShippingNationalView — CONTRATO", () => {
       nationalShippingMin: 199,
       nationalBenefitScope: "todas",
     };
-    // updateConfig de VERDADE — muda a config que useStore devolve no
-    // próximo render, como o updateConfig real faz. O mock ingênuo
-    // (`mockResolvedValue(true)`, sem tocar a config) não pegava este
-    // defeito: ele sempre devolvia sucesso sem jamais fazer `formData` e
-    // `config` baterem de novo.
     updateConfig.mockImplementation(
       async (payload: Record<string, unknown>) => {
         estadoDaLoja.atual = { ...estadoDaLoja.atual, ...payload };
@@ -404,35 +465,25 @@ describe("AdminShippingNationalView — CONTRATO", () => {
       await esperarMicrotarefas();
     });
 
-    // Escolhe "Sempre grátis" (o mínimo salvo de acima_de_valor, 199, fica
-    // "esquecido" no formData — é exatamente o valor que o payload ajustado
-    // precisa zerar ao montar o envio).
     await clicar(pill(/Sempre grátis/i)!);
 
-    const botaoSalvar = botaoComTexto(/salvar altera[çc][õo]es/i)!;
-    expect(botaoSalvar).toBeDefined();
+    const botao = botaoSalvar()!;
+    expect(botao.textContent?.trim()).toBe("Salvar");
     await act(async () => {
-      botaoSalvar.click();
+      botao.click();
       await esperarMicrotarefas();
     });
     await act(async () => {
       await esperarMicrotarefas();
     });
 
-    // A barra "Alterações não salvas" SOME — se formData ainda guardasse o
-    // mínimo/alcance velhos, isFormDirty ficaria preso em `true` para
-    // sempre e o botão continuaria na tela.
-    expect(botaoComTexto(/salvar altera[çc][õo]es/i)).toBeUndefined();
-    // O ÚLTIMO sinal de dirty que a tela emitiu foi `false`.
+    // O botão volta a "Salvo" — se formData ainda guardasse o mínimo/alcance
+    // velhos, isFormDirty nacional ficaria preso em `true` para sempre.
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
     expect(onSetDirty.mock.calls.at(-1)?.[0]).toBe(false);
 
     onSetDirty.mockClear();
 
-    // Mexe de novo — troca o alcance salvo ("todas") para "mais_barata".
-    // Se o bug persistisse, formData já estaria "sujo" desde o save
-    // anterior e este clique não mudaria isFormDirty (que já seria `true`),
-    // então onSetDirty(true) NUNCA seria chamado de novo — a lojista não
-    // veria aviso nenhum da edição real que acabou de fazer.
     const alcanceMaisBarata = pill(/s[óo] a op[çc][ãa]o mais barata/i)!;
     expect(alcanceMaisBarata).toBeDefined();
     await clicar(alcanceMaisBarata);
@@ -440,7 +491,7 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     expect(onSetDirty).toHaveBeenCalledWith(true);
   });
 
-  it("salvar grava SÓ as 5 colunas nacionais — acima_de_valor", async () => {
+  it("salvar grava os 5 campos nacionais corretos, dentro do payload único da tela — acima_de_valor", async () => {
     await abrirTela();
     await clicar(pill(/Grátis acima de um valor/i)!);
     const minimo = hospedeiro.querySelector(
@@ -448,22 +499,27 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     ) as HTMLInputElement;
     await digitar(minimo, "250");
 
-    const botaoSalvar = botaoComTexto(/salvar altera[çc][õo]es/i)!;
+    const botao = botaoSalvar()!;
     await act(async () => {
-      botaoSalvar.click();
+      botao.click();
       await esperarMicrotarefas();
     });
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
     const payload = updateConfig.mock.calls[0][0];
-    expect(payload).toEqual({
+    expect(payload).toMatchObject({
       nationalShippingStrategy: "acima_de_valor",
       nationalShippingMin: 250,
       nationalDiscountType: null,
       nationalDiscountValue: 0,
       nationalBenefitScope: "mais_barata",
     });
-    expect(payload).not.toHaveProperty("freeShippingMin");
+    // A tela unificada grava os campos LOCAIS junto, na MESMA ação — a
+    // regra que morreu foi "só os 5 nacionais", não a de campo alheio
+    // (nada de Transportadoras, isso continua provado em
+    // admin-frete-v2-contrato.test.tsx / admin-visual-frete.test.tsx).
+    expect(payload).toHaveProperty("originCep");
+    expect(payload).not.toHaveProperty("shippingProvider");
   });
 
   it("salvar desconto: grava tipo/valor e zera o mínimo quando o campo ficou vazio (sem mínimo)", async () => {
@@ -475,13 +531,13 @@ describe("AdminShippingNationalView — CONTRATO", () => {
     ) as HTMLInputElement;
     await digitar(valor, "5");
 
-    const botaoSalvar = botaoComTexto(/salvar altera[çc][õo]es/i)!;
+    const botao = botaoSalvar()!;
     await act(async () => {
-      botaoSalvar.click();
+      botao.click();
       await esperarMicrotarefas();
     });
 
-    expect(updateConfig.mock.calls[0][0]).toEqual({
+    expect(updateConfig.mock.calls[0][0]).toMatchObject({
       nationalShippingStrategy: "desconto_na_mais_barata",
       nationalShippingMin: 0,
       nationalDiscountType: "fixo",
@@ -491,12 +547,12 @@ describe("AdminShippingNationalView — CONTRATO", () => {
   });
 
   it("offline: salvar não chama updateConfig", async () => {
-    // Fica dirty ONLINE (os controles ficam desabilitados quando offline,
-    // igual à tela de Frete local — não daria para nem escolher a pill
-    // depois de ficar offline). Só então a rede cai.
+    // Fica dirty ONLINE (os controles ficam desabilitados quando offline —
+    // não daria para nem escolher a pill depois de ficar offline). Só
+    // então a rede cai.
     await abrirTela();
     await clicar(pill(/Sempre grátis/i)!);
-    expect(botaoComTexto(/salvar altera[çc][õo]es/i)?.disabled).toBe(false);
+    expect(botaoSalvar()?.disabled).toBe(false);
 
     estadoOnline.offline = true;
     const { AdminShippingNationalView } = await import(
@@ -515,12 +571,12 @@ describe("AdminShippingNationalView — CONTRATO", () => {
       await esperarMicrotarefas();
     });
 
-    const botaoSalvar = botaoComTexto(/salvar altera[çc][õo]es/i);
-    expect(botaoSalvar?.disabled).toBe(true);
+    const botao = botaoSalvar();
+    expect(botao?.disabled).toBe(true);
 
-    if (botaoSalvar) {
+    if (botao) {
       await act(async () => {
-        botaoSalvar.click();
+        botao.click();
       });
     }
     expect(updateConfig).not.toHaveBeenCalled();

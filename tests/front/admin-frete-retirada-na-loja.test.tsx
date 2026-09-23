@@ -184,9 +184,14 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     return chave as HTMLButtonElement;
   }
 
-  function botao(texto: string): HTMLButtonElement | undefined {
-    return [...hospedeiro.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === texto,
+  /** O botão Salvar do cabeçalho (T4 unificação, 23/09/2026): o rótulo
+   * troca por estado ("Salvo"/"Salvar"/"Salvando…"/"Tentar de novo"), o
+   * botão nunca some — a barra fixa antiga morreu. */
+  function botaoSalvar(): HTMLButtonElement | undefined {
+    return [...hospedeiro.querySelectorAll("button")].find((b) =>
+      /^(Salvo|Salvar|Salvando…|Tentar de novo)$/.test(
+        b.textContent?.trim() || "",
+      ),
     ) as HTMLButtonElement | undefined;
   }
 
@@ -210,7 +215,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
 
     await clicar(chaveDaRetirada());
     expect(chaveDaRetirada().getAttribute("aria-checked")).toBe("true");
-    await clicar(botao("Salvar alterações"));
+    await clicar(botaoSalvar());
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(updateConfig.mock.calls[0][0].enabledShippingMethods).toEqual([
@@ -229,7 +234,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     await renderizarFrete();
     expect(chaveDaRetirada().getAttribute("aria-checked")).toBe("true");
     await clicar(chaveDaRetirada());
-    await clicar(botao("Salvar alterações"));
+    await clicar(botaoSalvar());
     expect(updateConfig.mock.calls[0][0].enabledShippingMethods).toEqual([
       "pac",
     ]);
@@ -247,7 +252,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
         'button[role="switch"][aria-label="Só entregar na cidade"]',
       ) as HTMLButtonElement,
     );
-    await clicar(botao("Salvar alterações"));
+    await clicar(botaoSalvar());
     expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(updateConfig.mock.calls[0][0]).not.toHaveProperty(
       "enabledShippingMethods",
@@ -266,8 +271,10 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     expect(chaveDaRetirada().getAttribute("aria-checked")).toBe("false");
     const alerta = hospedeiro.querySelector('[role="alert"]');
     expect(alerta?.textContent).toContain("Sobre a Loja");
-    // Nada pendente para salvar: a chave não mudou.
-    expect(botao("Salvar alterações")).toBeUndefined();
+    // Nada pendente para salvar: a chave não mudou (T4 unificação, o botão
+    // nunca some — mostra "Salvo" desabilitado quando não há alteração).
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
+    expect(botaoSalvar()?.disabled).toBe(true);
     expect(updateConfig).not.toHaveBeenCalled();
   });
 

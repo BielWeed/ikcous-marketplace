@@ -19,8 +19,9 @@ import type { View } from "@/types";
 //      `shippingCoverage` (role="switch"); a credencial da transportadora é
 //      de Ajustes, então "Cotação na hora" é EXIBIÇÃO — nenhum botão finge
 //      salvar o que não salva;
-//   5. a BARRA DE SALVAR FIXA só existe com alteração pendente, e salvar
-//      aqui NÃO envia campo da seção de Transportadoras.
+//   5. o botão SALVAR (agora no cabeçalho, T4 unificação 23/09/2026) só
+//      fica CLICÁVEL com alteração pendente, e salvar aqui NÃO envia campo
+//      da seção de Transportadoras.
 //
 // RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): a tela deixou de ler
 // `store_shipping_credentials` por PostgREST e de comparar
@@ -35,6 +36,16 @@ import type { View } from "@/types";
 // `shippingProvider` nomeado ou ausente — no modo multi-provedor a frase de
 // zero-ligados é sempre a mesma, genérica, sem nome de provedor nenhum
 // (ver FreteNacionalBloco.tsx).
+//
+// TAREFA T4-UNIFICAÇÃO (23/09/2026): a barra de salvar fixa morreu — o
+// botão vive no cabeçalho, com 4 estados ("Salvo"/"Salvar"/"Salvando…"/
+// "Tentar de novo"), e nunca some da tela (só troca de rótulo/estilo). As
+// seções viraram painéis recolhíveis (`PainelRecolhivel`) — o conteúdo
+// continua no DOM sempre (o painel esconde por `hidden`, não desmonta),
+// então testes que só LEEM estado não precisam abrir o painel; testes que
+// CLICAM numa pill abrem o painel primeiro (`abrirPainel`) para não colidir
+// com a pill homônima do OUTRO painel (a estratégia nacional, agora na
+// mesma tela, repete rótulos como "Grátis acima de um valor").
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -215,9 +226,41 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     ) as HTMLButtonElement | undefined;
   }
 
-  async function escolherPreset(nome: RegExp) {
-    const pill = [...hospedeiro.querySelectorAll('[role="radio"]')].find((r) =>
-      nome.test(r.textContent || ""),
+  /** O botão Salvar do cabeçalho — o rótulo muda por estado, o botão nunca
+   * some (T4 unificação, 23/09/2026: a barra fixa morreu). */
+  function botaoSalvar(): HTMLButtonElement | undefined {
+    return [...hospedeiro.querySelectorAll("button")].find((b) =>
+      /^(Salvo|Salvar|Salvando…|Tentar de novo)$/.test(
+        b.textContent?.trim() || "",
+      ),
+    ) as HTMLButtonElement | undefined;
+  }
+
+  /** Abre um painel recolhível pelo título (não faz nada se já estiver
+   * aberto) — necessário só quando o teste CLICA numa pill/campo que tem
+   * homônimo no outro painel (a estratégia nacional repete rótulos como
+   * "Grátis acima de um valor"). */
+  async function abrirPainel(padrao: RegExp) {
+    const botao = botaoComTexto(padrao);
+    expect(botao).toBeDefined();
+    if (botao!.getAttribute("aria-expanded") !== "true") {
+      await act(async () => {
+        botao!.click();
+      });
+      await act(async () => {
+        await esperarMicrotarefas();
+      });
+    }
+  }
+
+  /** Pills do preset LOCAL (`FreteGratisBloco`), escopadas ao próprio
+   * painel — a estratégia NACIONAL tem pills com o MESMO texto agora que
+   * as duas vivem na mesma tela. */
+  async function escolherPresetLocal(nome: RegExp) {
+    await abrirPainel(/estrat[ée]gias do frete local/i);
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
+    const pill = [...(escopo?.querySelectorAll('[role="radio"]') ?? [])].find(
+      (r) => nome.test(r.textContent || ""),
     );
     expect(pill).toBeDefined();
     await act(async () => {
@@ -229,11 +272,12 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
   }
 
   async function salvar() {
-    const botaoSalvar = botaoComTexto(/salvar alterações/i);
-    expect(botaoSalvar).toBeDefined();
-    expect(botaoSalvar!.disabled).toBe(false);
+    const botao = botaoSalvar();
+    expect(botao).toBeDefined();
+    expect(botao!.disabled).toBe(false);
+    expect(botao!.textContent?.trim()).toBe("Salvar");
     await act(async () => {
-      botaoSalvar!.click();
+      botao!.click();
       await esperarMicrotarefas();
     });
   }
@@ -245,8 +289,9 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     expect(textoDaFaixa()).toContain("Uberlândia/MG");
     expect(textoDaFaixa()).toContain("Melhor Envio ligado");
     expect(textoDaFaixa()).toContain("Acima de R$ 100");
-    // Nada foi mexido: sem aviso de pendência em lugar nenhum.
-    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+    // Nada foi mexido: o botão do cabeçalho mostra "Salvo", desabilitado.
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
+    expect(botaoSalvar()?.disabled).toBe(true);
   });
 
   it("a taxa fixa morreu: nenhum card, campo ou interruptor dela na tela", async () => {
@@ -263,6 +308,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
       shippingCoverage: "national",
     };
     await abrirTela();
+    await abrirPainel(/entrega na sua cidade/i);
 
     // A credencial da transportadora NÃO tem chave clicável (é de Ajustes —
     // aqui é exibição). As chaves interativas são SÓ as que têm campo
@@ -304,7 +350,9 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
   it("'Cotação na hora' é EXIBIÇÃO de estado: a frase do estado existe, mas nenhum botão com esse nome (nada salva credencial daqui)", async () => {
     await abrirTela();
 
-    // O estado aparece em texto (dica/cabeçalho da seção "Fora da cidade")…
+    // O estado aparece em texto (dica da Linha "Cotação na hora", dentro do
+    // painel "Fora da cidade" — o conteúdo NUNCA desmonta, só fica
+    // `hidden`, então o texto é lido sem precisar abrir o painel)…
     expect(texto()).toMatch(
       /Cota[çc][ãa]o real, na hora, pelos provedores ligados/i,
     );
@@ -313,27 +361,25 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     expect(botaoComTexto(/cota[çc][ãa]o na hora/i)).toBeUndefined();
   });
 
-  it("a barra de salvar fixa: NÃO existe quando está limpo, aparece com o aviso e o botão habilitado quando há mudança", async () => {
+  it("o botão Salvar do cabeçalho: 'Salvo' e desabilitado quando está limpo, 'Salvar' e habilitado quando há mudança", async () => {
     await abrirTela();
 
-    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
-    expect(botaoComTexto(/salvar alterações/i)).toBeUndefined();
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
+    expect(botaoSalvar()?.disabled).toBe(true);
 
-    await escolherPreset(/Sempre grátis/);
+    await escolherPresetLocal(/Sempre grátis/);
 
-    expect(texto()).toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
-    const botao = botaoComTexto(/salvar alterações/i) as HTMLButtonElement;
-    expect(botao).toBeDefined();
-    expect(botao.disabled).toBe(false);
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
+    expect(botaoSalvar()?.disabled).toBe(false);
   });
 
   it("preset 'Sempre grátis' grava a sentinela 0,01 (0 sempre significou desligado)", async () => {
     await abrirTela();
 
-    await escolherPreset(/Sempre grátis/);
+    await escolherPresetLocal(/Sempre grátis/);
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
     expect(
-      hospedeiro.querySelector('[role="radio"][aria-checked="true"]')
-        ?.textContent,
+      escopo?.querySelector('[role="radio"][aria-checked="true"]')?.textContent,
     ).toMatch(/Sempre grátis/);
 
     await salvar();
@@ -349,7 +395,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0 };
     await abrirTela();
 
-    await escolherPreset(/Grátis acima de um valor/);
+    await escolherPresetLocal(/Grátis acima de um valor/);
 
     const campoValor = hospedeiro.querySelector(
       "#frete-gratis-acima-de",
@@ -373,7 +419,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 100 };
     await abrirTela();
 
-    await escolherPreset(/Grátis acima de um valor/);
+    await escolherPresetLocal(/Grátis acima de um valor/);
 
     const campoValor = hospedeiro.querySelector(
       "#frete-gratis-acima-de",
@@ -388,7 +434,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0 };
     await abrirTela();
 
-    await escolherPreset(/Por produto marcado/);
+    await escolherPresetLocal(/Por produto marcado/);
     await salvar();
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
@@ -409,18 +455,19 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     expect(textoDaFaixa()).toContain("Por produto marcado");
-    const marcado = hospedeiro.querySelector(
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
+    const marcado = escopo?.querySelector(
       '[role="radio"][aria-checked="true"]',
     )?.textContent;
     expect(marcado).toMatch(/Por produto marcado/);
     // Nada foi mexido: o config já descreve o preset escolhido.
-    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
   });
 
   it("escolher 'Desligado' sobre um config de grátis-por-valor grava 0 (presets são exclusivos)", async () => {
     await abrirTela();
 
-    await escolherPreset(/Desligado/);
+    await escolherPresetLocal(/Desligado/);
     await salvar();
 
     expect(updateConfig.mock.calls[0][0]).toHaveProperty("freeShippingMin", 0);
@@ -431,7 +478,8 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     expect(textoDaFaixa()).toContain("Em toda a loja");
-    const marcado = hospedeiro.querySelector(
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
+    const marcado = escopo?.querySelector(
       '[role="radio"][aria-checked="true"]',
     )?.textContent;
     expect(marcado).toMatch(/Sempre grátis/);
