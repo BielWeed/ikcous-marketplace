@@ -3,7 +3,7 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { AnimatePresence, motion, useDragControls } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   Check,
@@ -257,7 +257,29 @@ const getProcessedPreviewText = (
 interface AdminWhatsAppConfigViewProps {
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
+  /**
+   * Voltar do Android/AdminLayout com a folha de "Modelos prontos" aberta
+   * (23/09, achado do Gabriel — folha presa): mesmo padrão de
+   * AdminBannersView.tsx (onSetBackOverride/history.pushState com
+   * `modal: "presets"`) — fecha só a folha, sem sair da tela. Opcional: sem
+   * este prop (AdminArea.tsx ainda não o repassa para esta rota), o
+   * componente funciona igual, só sem o atalho do Voltar físico — backdrop,
+   * arrasto e Escape continuam fechando normalmente.
+   */
+  onSetBackOverride?: (fn: (() => void) | null) => void;
 }
+
+// Janela de guarda contra o clique sintético do MESMO toque que abriu a
+// folha (mobile atrasa o "click" de touchend por ~300ms, na MESMA
+// coordenada de tela — que passa a cair sobre o véu recém-montado). Mesma
+// ordem de grandeza da guarda equivalente em sheet.tsx
+// (JANELA_DO_GUARDIAO_MS = 450).
+const JANELA_DO_TOQUE_QUE_ABRIU_A_FOLHA_MS = 400;
+
+// Limiar de arrasto que fecha a folha ao soltar a alça — o MESMO valor da
+// alça da folha de opções do card (ProductCard.tsx ~238), para o gesto se
+// sentir igual em toda a casa.
+const LIMIAR_DE_ARRASTO_PARA_FECHAR_PX = 64;
 
 const getCleanPhone = (val: string) => {
   const clean = (val || "").toString().replace(/\D/g, "");
@@ -314,6 +336,7 @@ function BlocoNumerado({
 export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
   active,
   onSetDirty,
+  onSetBackOverride,
 }: Readonly<AdminWhatsAppConfigViewProps>) {
   const { config, isLoaded, updateConfig, refresh, products } = useStore();
   const isOffline = useOnlineStatus();
@@ -330,7 +353,139 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
 
   const [isPresetsOpen, setIsPresetsOpen] = useState(false);
   const [presetSearch, setPresetSearch] = useState("");
-  const dragControls = useDragControls();
+
+  // ── Folha "Modelos prontos" presa (23/09, achado do Gabriel com print) ──
+  // A folha dependia inteiramente do gesto `drag`/`dragControls` do
+  // framer-motion (useDragControls + onDragEnd) para fechar por arrasto —
+  // API que precisa de `PointerEvent`/`setPointerCapture` de verdade e que
+  // NENHUM outro lugar do repo usa para fechar folha (ProductCard.tsx
+  // ~196-243/764-791 resolve o mesmo problema com listeners de pointer NA
+  // JANELA, sem depender de gesto nativo do framer-motion, exatamente
+  // porque essa API não é testável em jsdom — ver comentário lá). Esta
+  // folha porta o MESMO padrão comprovado: alça arrastável com listeners na
+  // janela + guarda `movimentou` contra o clique sintético pós-arrasto.
+  const folhaRef = useRef<HTMLDivElement>(null);
+  const arrastoDaAlcaRef = useRef({ y: 0, ativo: false, movimentou: false });
+  // Guarda contra o clique sintético do MESMO toque que abriu a folha: no
+  // toque, o "click" de quem apertou "Modelos prontos" pode chegar ~300ms
+  // depois, na MESMA coordenada de tela — que já é o véu recém-montado.
+  const abertaEmRef = useRef(0);
+  // Foco: devolvido a quem abriu a folha ao fechar (a11y).
+  const botaoQueAbriuRef = useRef<HTMLButtonElement | null>(null);
+
+  const fecharFolhaDePresets = useCallback(() => {
+    setIsPresetsOpen(false);
+  }, []);
+
+  // Limpa a guarda de clique pós-arrasto a cada abertura -- evita que um
+  // resíduo de um arrasto anterior (fechado e reaberto rápido) engula o
+  // primeiro clique/Enter na alça da vez seguinte (mesmo raciocínio do
+  // comentário equivalente em ProductCard.tsx). Também marca o instante da
+  // abertura, para a guarda do clique sintético do véu.
+  useEffect(() => {
+    if (isPresetsOpen) {
+      arrastoDaAlcaRef.current.movimentou = false;
+      abertaEmRef.current = Date.now();
+    }
+  }, [isPresetsOpen]);
+
+  // Foco entra na folha ao abrir (role="dialog") e volta para o botão que
+  // abriu ao fechar -- laudo de acessibilidade pedido pelo dono.
+  useEffect(() => {
+    if (isPresetsOpen) {
+      const id = window.requestAnimationFrame(() => {
+        folhaRef.current?.focus();
+      });
+      return () => window.cancelAnimationFrame(id);
+    }
+    botaoQueAbriuRef.current?.focus();
+  }, [isPresetsOpen]);
+
+  // Escape fecha a folha -- só ativo enquanto ela está aberta.
+  useEffect(() => {
+    if (!isPresetsOpen) return;
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === "Escape") fecharFolhaDePresets();
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [isPresetsOpen, fecharFolhaDePresets]);
+
+  // Voltar físico do Android / botão Voltar do AdminLayout: mesmo padrão de
+  // AdminBannersView.tsx (achado AdminBannersView-1156) -- empurra uma
+  // entrada de histórico própria na MESMA URL ao abrir, e a consome
+  // (history.back()) ao fechar por QUALQUER caminho, só se ela ainda não
+  // tiver sido consumida pelo pop físico do navegador.
+  const temEntradaDeHistoricoPendenteRef = useRef(false);
+  useEffect(() => {
+    if (isPresetsOpen) {
+      if (!temEntradaDeHistoricoPendenteRef.current) {
+        window.history.pushState(
+          { ...window.history.state, modal: "presets" },
+          "",
+          window.location.pathname + window.location.search,
+        );
+        temEntradaDeHistoricoPendenteRef.current = true;
+      }
+    } else if (temEntradaDeHistoricoPendenteRef.current) {
+      temEntradaDeHistoricoPendenteRef.current = false;
+      if (window.history.state?.modal === "presets") {
+        window.history.back();
+      }
+    }
+  }, [isPresetsOpen]);
+
+  const efetuouFechamentoRef = useRef(false);
+  useEffect(() => {
+    if (onSetBackOverride) {
+      if (isPresetsOpen) {
+        efetuouFechamentoRef.current = false;
+        onSetBackOverride(() => () => {
+          if (efetuouFechamentoRef.current) return;
+          efetuouFechamentoRef.current = true;
+          fecharFolhaDePresets();
+        });
+      } else {
+        onSetBackOverride(null);
+      }
+    }
+    return () => {
+      if (onSetBackOverride) onSetBackOverride(null);
+    };
+  }, [isPresetsOpen, onSetBackOverride, fecharFolhaDePresets]);
+
+  // Arrasto da alça (porta o padrão de ProductCard.tsx ~213-243): listeners
+  // de move/up na JANELA -- o gesto continua mesmo com o dedo saindo da
+  // alça, e dispensa `setPointerCapture` (API que o jsdom não tem).
+  const aoPuxarAlcaDaFolha = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const folhaEl = folhaRef.current;
+    if (!folhaEl) return;
+    arrastoDaAlcaRef.current = { y: e.clientY, ativo: true, movimentou: false };
+    // A folha segue o dedo SEM transição -- a transição de spring é para
+    // abrir/fechar, não para seguir o arrasto.
+    folhaEl.style.transition = "none";
+    const aoMover = (ev: PointerEvent) => {
+      if (!arrastoDaAlcaRef.current.ativo) return;
+      const dy = Math.max(0, ev.clientY - arrastoDaAlcaRef.current.y);
+      if (dy > 8) arrastoDaAlcaRef.current.movimentou = true;
+      folhaEl.style.transform = `translateY(${dy}px)`;
+    };
+    const aoSoltar = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", aoMover);
+      window.removeEventListener("pointerup", aoSoltar);
+      window.removeEventListener("pointercancel", aoSoltar);
+      arrastoDaAlcaRef.current.ativo = false;
+      // Limpa o transform ANTES de fechar/voltar, para a animação de saída
+      // (ou o retorno ao lugar) partir do ponto certo.
+      folhaEl.style.transition = "";
+      folhaEl.style.transform = "";
+      const dy = ev.clientY - arrastoDaAlcaRef.current.y;
+      if (dy > LIMIAR_DE_ARRASTO_PARA_FECHAR_PX) fecharFolhaDePresets();
+    };
+    window.addEventListener("pointermove", aoMover);
+    window.addEventListener("pointerup", aoSoltar);
+    window.addEventListener("pointercancel", aoSoltar);
+  };
 
   // Lock scroll when presets bottom sheet is open
   useEffect(() => {
@@ -985,6 +1140,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
             {/* Botão de Modelos Prontos */}
             <div>
               <button
+                ref={botaoQueAbriuRef}
                 type="button"
                 disabled={isOffline}
                 onClick={() => {
@@ -1020,48 +1176,81 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
               >
-                {/* Backdrop overlay */}
+                {/* Backdrop overlay -- fecha ao tocar fora, com guarda contra
+                    o clique sintético do MESMO toque que abriu a folha (o
+                    "click" atrasado do touchend cai nesta MESMA coordenada,
+                    que já é o véu recém-montado). */}
                 {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  onClick={() => setIsPresetsOpen(false)}
+                  onClick={() => {
+                    if (
+                      Date.now() - abertaEmRef.current <
+                      JANELA_DO_TOQUE_QUE_ABRIU_A_FOLHA_MS
+                    ) {
+                      return;
+                    }
+                    fecharFolhaDePresets();
+                  }}
                   className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
                 />
 
-                {/* Bottom Sheet Container */}
+                {/* Bottom Sheet Container -- diálogo acessível: foco entra
+                    aqui ao abrir (tabIndex -1 + ref) e volta ao botão que
+                    abriu ao fechar (efeito acima). O fechamento por arrasto
+                    mora só na ALÇA logo abaixo, não no corpo inteiro -- a
+                    rolagem normal da lista de modelos nunca é interpretada
+                    como arrasto de fechar. */}
                 <motion.div
-                  drag="y"
-                  dragListener={false}
-                  dragControls={dragControls}
-                  dragConstraints={{ top: 0 }}
-                  dragElastic={{ top: 0, bottom: 0.8 }}
-                  dragMomentum={false}
-                  onDragEnd={(_, info) => {
-                    if (info.offset.y > 150 || info.velocity.y > 500) {
-                      setIsPresetsOpen(false);
-                    }
-                  }}
+                  ref={folhaRef}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="presets-sheet-titulo"
+                  tabIndex={-1}
                   initial={{ y: "100%" }}
                   animate={{ y: 0 }}
                   exit={{ y: "100%" }}
                   transition={{ type: "spring", damping: 30, stiffness: 350 }}
-                  className="relative z-10 w-full max-w-2xl rounded-t-[2rem] border-t border-white/10 bg-[#09090b] px-4 pb-8 pt-4 shadow-2xl flex flex-col max-h-[85vh] touch-none"
+                  className="relative z-10 w-full max-w-2xl rounded-t-[2rem] border-t border-white/10 bg-[#09090b] px-4 pb-8 pt-4 shadow-2xl flex flex-col max-h-[85vh] outline-none"
                 >
-                  {/* Grab handle and Header drag target */}
-                  <div
-                    onPointerDown={(e) => dragControls.start(e)}
-                    className="w-full cursor-grab active:cursor-grabbing pb-3 pt-1 touch-none flex flex-col items-center select-none"
-                  >
-                    {/* Top decorative handle */}
-                    <div className="mb-4 h-1.5 w-12 rounded-full bg-zinc-800" />
+                  <div className="w-full flex flex-col items-center pb-3 pt-1 select-none">
+                    {/* Alça que fecha (porta o padrão de ProductCard.tsx
+                        ~764-791): clicar nela fecha; arrastar para baixo
+                        além do limiar também (aoPuxarAlcaDaFolha). Botão
+                        real com área de toque generosa (h-11 = 44px, alvo
+                        WCAG 2.5.5) -- é o único botão de fechar explícito da
+                        folha e carrega o rótulo que um leitor de tela
+                        anuncia. */}
+                    <button
+                      type="button"
+                      aria-label="Fechar (arraste para baixo)"
+                      onClick={() => {
+                        if (arrastoDaAlcaRef.current.movimentou) {
+                          arrastoDaAlcaRef.current.movimentou = false;
+                          return;
+                        }
+                        fecharFolhaDePresets();
+                      }}
+                      onPointerDown={aoPuxarAlcaDaFolha}
+                      className="focus:outline-hidden flex h-11 w-full shrink-0 cursor-grab touch-none items-center justify-center rounded-full active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-purple-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b]"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="h-1.5 w-12 rounded-full bg-zinc-800"
+                      />
+                    </button>
 
-                    {/* Header content inside the drag area to make it easy to drag */}
-                    <div className="flex items-center justify-between border-b border-white/5 pb-4 w-full text-left pointer-events-none">
+                    {/* Header (não-interativo, fora da alça): título e
+                        subtítulo -- toque aqui não arrasta nem fecha. */}
+                    <div className="flex items-center justify-between border-b border-white/5 pb-4 pt-2 w-full text-left">
                       <div>
-                        <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                        <h3
+                          id="presets-sheet-titulo"
+                          className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2"
+                        >
                           <Sparkles className="size-4 text-purple-400" />
                           Modelos prontos de mensagem
                         </h3>

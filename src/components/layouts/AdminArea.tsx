@@ -709,6 +709,7 @@ export function AdminArea({
                           props={{
                             active: currentView === "admin-whatsapp-config",
                             onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
                           }}
                         />
                       </LocalErrorBoundary>
