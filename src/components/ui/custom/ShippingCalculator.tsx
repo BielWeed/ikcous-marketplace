@@ -1,13 +1,15 @@
-import { useCartState } from "@/contexts/CartContext";
 import { useContextoDoFreteDaLoja } from "@/contexts/ContextoDoFreteDaLoja";
+import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { opcaoFrescaOuMaisBarata } from "@/lib/auto-selecao-de-frete";
 import { destaquesDoFrete } from "@/lib/destaques-do-frete";
-import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import { precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
+import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import {
   codigoDoErroDeEdgeFunction,
   mensagemAmigavelErroEdgeFunction,
 } from "@/lib/mensagens-erro";
+import { precoVendido } from "@/lib/preco-vendido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
@@ -251,12 +253,6 @@ interface ShippingCalculatorProps {
   mensagemSemDestino?: string;
   onStatusChange?: (status: StatusDaCotacao) => void;
   /**
-   * Veredito de frete grátis. Quem já o tem em mãos (o checkout, via
-   * `useCart`) passa aqui; sem a prop, vem do `useCartState` — a MESMA fonte
-   * única (memo `freteGratis` do CartContext) nos dois casos.
-   */
-  freteGratis?: boolean;
-  /**
    * R1-2/R2-8: incrementar este número força uma recotação de REDE do
    * destino atual, ignorando o cache do navegador — o checkout usa isto
    * quando descobre, antes de criar o pedido, que a configuração de frete
@@ -266,30 +262,17 @@ interface ShippingCalculatorProps {
   forcarNovaCotacaoEm?: number;
 }
 
-type PropsComFreteGratis = Omit<ShippingCalculatorProps, "freteGratis"> & {
-  freteGratis: boolean;
-};
-
-export function ShippingCalculator(props: ShippingCalculatorProps) {
-  if (props.freteGratis !== undefined) {
-    return <CalculadoraDeFrete {...props} freteGratis={props.freteGratis} />;
-  }
-  return <CalculadoraComFreteDoContexto {...props} />;
-}
-
-function CalculadoraComFreteDoContexto(props: ShippingCalculatorProps) {
-  // FRETE V2 (onda D-1, 03/09): a regra de grátis tem FONTE ÚNICA — o memo
-  // `freteGratis` do CartContext (preset do lojista). Ver
-  // tests/front/shipping-calculator-frete-gratis-fonte-unica.test.tsx.
-  const { freteGratis } = useCartState();
-  return <CalculadoraDeFrete {...props} freteGratis={freteGratis} />;
-}
-
 function soDigitosDoCep(valor: string | null | undefined): string {
   return (valor ?? "").replace(/\D/g, "");
 }
 
-function CalculadoraDeFrete({
+// FRETE V3 (T3, 23/09/2026): não existe mais um "isFree" GLOBAL vindo de
+// fora — cada modalidade tem sua própria regra (local recalcula aqui,
+// nacional já vem final da edge), e por isso não há mais wrapper de
+// contexto: a calculadora sempre lê a `config` da loja diretamente (abaixo)
+// e decide o preço CARTÃO A CARTÃO. Ver
+// tests/front/shipping-calculator-preco-por-modalidade.test.tsx.
+export function ShippingCalculator({
   cart,
   selectedOption,
   onSelectOption,
@@ -300,9 +283,12 @@ function CalculadoraDeFrete({
   acaoDoEndereco,
   mensagemSemDestino = "Cadastre um endereço de entrega para ver o frete e o prazo.",
   onStatusChange,
-  freteGratis: isFree,
   forcarNovaCotacaoEm,
-}: PropsComFreteGratis) {
+}: ShippingCalculatorProps) {
+  // Fora do StoreProvider (peça montada sozinha em teste/storybook) o
+  // `useStore` real quebraria — mas todo chamador de produção (CartView,
+  // CheckoutView) já vive dentro dele, mesmo contrato de hoje.
+  const { config } = useStore();
   const isOffline = useOnlineStatus();
   // Contexto da loja da cotação (cache v2). Fora do StoreProvider (peça
   // montada sozinha) vale o contexto "sem config" — estável, o cache segue
@@ -761,6 +747,43 @@ function CalculadoraDeFrete({
   const resumo =
     destino?.resumo?.trim() || (cepExibido ? `CEP ${cepExibido}` : null);
 
+  // FRETE V3 (T3, 23/09): preço FINAL por CARTÃO. Local recalcula aqui a
+  // regra de sempre (`precoFinalDaOpcao`, mesma conta do CartContext);
+  // nacional só repassa o que a edge já mandou pronto (contrato §3: o
+  // front NUNCA recalcula preço de transportadora).
+  const subtotalDoCarrinho = useMemo(
+    () =>
+      cart.reduce(
+        (soma, item) =>
+          soma +
+          precoVendido(
+            item.product,
+            item.product.variants?.find((v) => v.id === item.variantId),
+          ) *
+            item.quantity,
+        0,
+      ),
+    [cart],
+  );
+  const temItemMarcado = useMemo(
+    () => cart.some((item) => item.product.freeShipping),
+    [cart],
+  );
+  const contextoDoPreco = {
+    config,
+    subtotal: subtotalDoCarrinho,
+    temItemMarcado,
+  };
+  // Alguma opção NACIONAL foi beneficiada (grátis ou desconto) só na "mais
+  // barata"? As demais nacionais da lista ganham uma nota dizendo que o
+  // benefício não é delas (contrato §5, alcance='mais_barata').
+  const algumaNacionalBeneficiadaSoNaMaisBarata = options.some((o) => {
+    if (ehModalidadeDaLoja(o.id)) return false;
+    const cheio = o.precoCheio;
+    const beneficiada = typeof cheio === "number" && cheio > o.price;
+    return beneficiada && o.estrategiaNacional?.alcance === "mais_barata";
+  });
+
   // DESTAQUES (release 1.5.7 — CONTRATO-1.5.7.md §6, R1-7, R2-4): a
   // retirada nunca disputa destaque (ela é modalidade da loja, aparece à
   // parte, como sempre); a entrega local participa do ranking igual a
@@ -789,12 +812,31 @@ function CalculadoraDeFrete({
 
   function renderizarCartaoDeOpcao(option: ShippingOption) {
     const isSelected = selectedOption?.id === option.id;
-    const priceToDisplay = isFree ? 0 : option.price;
     // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
     // há entrega) e sem "pronto agora" — o endereço REAL da loja
     // que a edge mandou e o aviso neutro de esperar a loja.
     const retirada = ehRetiradaNaLoja(option.id);
     const selos = retirada ? [] : selosDoCartao(option.id);
+
+    // Preço FINAL desta modalidade, e o que exibir em volta dele. Cada
+    // cartão decide sozinho — nunca mais um "isFree" carimbado em TODA a
+    // lista pela regra de outra modalidade (o bug da onda D-1/T2).
+    const precoFinal = precoFinalDaOpcao(option, contextoDoPreco);
+    const gratisDesteCartao = !retirada && precoFinal === 0;
+    const nacional = !ehModalidadeDaLoja(option.id);
+    const precoCheio = nacional ? option.precoCheio : undefined;
+    const temDescontoNaoGratis =
+      !gratisDesteCartao &&
+      typeof precoCheio === "number" &&
+      precoCheio > precoFinal;
+    // Esta opção é nacional, NÃO foi beneficiada, e alguma outra da lista
+    // foi — a nota "vale só na mais barata" explica por que ESTA aqui
+    // continua no preço cheio.
+    const naoBeneficiadaComAvisoDeAlcance =
+      nacional &&
+      !gratisDesteCartao &&
+      !temDescontoNaoGratis &&
+      algumaNacionalBeneficiadaSoNaMaisBarata;
 
     return (
       <button
@@ -897,24 +939,57 @@ function CalculadoraDeFrete({
                     }`}
               </span>
             )}
+            {/* Contrato §5: a mesma nota vale para toda nacional NÃO
+                beneficiada, ao lado de outra que foi -- explica por que
+                esta continua no preço cheio, em vez de a cliente achar que
+                é um erro. */}
+            {naoBeneficiadaComAvisoDeAlcance && (
+              <span
+                className={`mt-0.5 block text-[9px] leading-snug ${
+                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                }`}
+              >
+                O benefício da loja vale só na opção mais barata.
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-col justify-center text-right">
+        <div className="flex flex-col items-end justify-center text-right">
           {retirada ? (
             <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
               Grátis
             </span>
-          ) : isFree ? (
+          ) : gratisDesteCartao ? (
             <div className="flex items-center gap-1">
               <Sparkles className="size-3 fill-emerald-500/20 text-emerald-500" />
               <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
                 GRÁTIS
               </span>
             </div>
+          ) : temDescontoNaoGratis ? (
+            <div className="flex flex-col items-end">
+              <span
+                className={`text-[9px] font-semibold leading-none line-through ${
+                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                }`}
+              >
+                {formatCurrency(precoCheio as number)}
+              </span>
+              <span className="text-xs font-black tracking-tight">
+                {formatCurrency(precoFinal)}
+              </span>
+              <span
+                className={`text-[8px] font-black uppercase tracking-wide ${
+                  isSelected ? "text-white/80" : "text-emerald-600"
+                }`}
+              >
+                Desconto da loja
+              </span>
+            </div>
           ) : (
             <span className="text-xs font-black tracking-tight">
-              {formatCurrency(priceToDisplay)}
+              {formatCurrency(precoFinal)}
             </span>
           )}
         </div>
@@ -963,10 +1038,14 @@ function CalculadoraDeFrete({
         </div>
       )}
 
-      {/* Com a calculadora montada também no carrinho grátis (CartView-495),
-          o alerta de erro de cotação não pode aparecer sozinho: a cotação
-          continua (ela dá o shipping_option_id de reserva), só o aviso cala. */}
-      {destinoValido && !isFree && error && (
+      {/* FRETE V3 (T3, 23/09): a supressão por "isFree" GLOBAL morreu com
+          ele — toda modalidade grátis (local, `free-shipping-promo`, ou
+          nacional já a R$ 0) chega como uma OPÇÃO de verdade na lista
+          (`options.length > 0`), nunca como lista vazia. Sem essa
+          modalidade "escondendo" o erro, ele volta a aparecer sempre que
+          houver — o que é o correto: se a cotação falhou, a cliente
+          precisa saber, mesmo que outra modalidade (local) já esteja OK. */}
+      {destinoValido && error && (
         <div className="flex items-start justify-between gap-2 rounded-2xl border border-amber-100 bg-amber-50 p-2.5 text-[11px] font-medium text-amber-800">
           {/* Laudo de acessibilidade 05/09, M1: `role="alert"` fala na hora
               — só a frase; o botão fica fora do que é anunciado. */}
@@ -1017,10 +1096,11 @@ function CalculadoraDeFrete({
         </motion.div>
       )}
 
-      {/* Exibição honesta (onda D-1): sem opção de entrega E sem grátis da
-          loja, o estado é "A calcular" — nunca silêncio nem preço inventado. */}
+      {/* Exibição honesta (onda D-1): sem opção de entrega nenhuma, o
+          estado é "A calcular" — nunca silêncio nem preço inventado. FRETE
+          V3 (T3, 23/09): a supressão por "isFree" GLOBAL saiu daqui pelo
+          mesmo motivo do bloco de erro acima. */}
       {destinoValido &&
-        !isFree &&
         cotouSemOpcoes &&
         !loading &&
         !error &&

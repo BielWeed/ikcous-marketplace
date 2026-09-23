@@ -17,11 +17,31 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import {
   FRETE_GRATIS_POR_PRODUTO,
   FRETE_GRATIS_SEMPRE,
+  type PresetFreteGratis,
+  valorDoPreset,
 } from "@/lib/presets-de-frete-gratis";
 import type { Product } from "@/types";
+
+// T3 (23/09): o preset por si só não basta mais para ProductCard -- ela
+// recebe a PROMESSA (local + nacional). O nacional fica "desligado" nestes
+// testes de propósito: eles provam o comportamento do preset LOCAL (o que
+// `freeShippingPreset` testava antes desta frente), sem misturar com o
+// canal novo (esse é o assunto de estrategias-de-frete-regra-pura.test.ts).
+function promessaSoLocal(preset: PresetFreteGratis | undefined) {
+  if (preset === undefined) return undefined;
+  return promessasDeFrete({
+    freeShippingMin: valorDoPreset(preset, 100),
+    nationalShippingStrategy: "desligado",
+    nationalShippingMin: 0,
+    nationalDiscountType: null,
+    nationalDiscountValue: 0,
+    nationalBenefitScope: "mais_barata",
+  });
+}
 
 // @ts-expect-error flag interna do React, sem tipo público -- mesmo padrão
 // dos outros testes de componente deste projeto.
@@ -64,12 +84,7 @@ describe("ProductCard — o selo do card e da folha seguem o preset da loja, nã
     hospedeiro.remove();
   });
 
-  async function renderizarCard(
-    produto: Product,
-    freeShippingPreset?: Parameters<
-      typeof import("@/components/ui/custom/ProductCard").ProductCard
-    >[0]["freeShippingPreset"],
-  ) {
+  async function renderizarCard(produto: Product, preset?: PresetFreteGratis) {
     const { ProductCard } = await import("@/components/ui/custom/ProductCard");
     await act(async () => {
       raiz.render(
@@ -80,7 +95,7 @@ describe("ProductCard — o selo do card e da folha seguem o preset da loja, nã
           onClick={() => {}}
           showRating={false}
           priority
-          freeShippingPreset={freeShippingPreset}
+          promessasDeFrete={promessaSoLocal(preset)}
         />,
       );
     });
@@ -91,7 +106,10 @@ describe("ProductCard — o selo do card e da folha seguem o preset da loja, nã
 
     await renderizarCard(produto, "por_produto");
 
-    expect(hospedeiro.textContent).toContain("Frete Grátis");
+    // T3 (23/09): a promessa é SÓ local nestes testes (nacional desligado)
+    // -- a frase diz onde vale, em vez do genérico de quando os dois
+    // canais concordavam.
+    expect(hospedeiro.textContent).toContain("Frete grátis na cidade");
   });
 
   it("preset por_produto + produto NÃO marcado: o selo não aparece", async () => {
@@ -123,7 +141,7 @@ describe("ProductCard — o selo do card e da folha seguem o preset da loja, nã
 
     await renderizarCard(produto, "sempre");
 
-    expect(hospedeiro.textContent).toContain("Frete Grátis");
+    expect(hospedeiro.textContent).toContain("Frete grátis na cidade");
   });
 
   it("sentinelas de presets-de-frete-gratis.ts continuam sendo as mesmas que CartContext usa (por_produto=-1, sempre=0.01)", () => {
@@ -181,9 +199,23 @@ vi.mock("@/components/ui/custom/ProductQA", () => ({
 }));
 
 let mockFreeShippingMin = 0;
+// IMPORTANTE (revisão Opus, pós-T3): `undefined` por padrão -- o mesmo
+// fallback de espelho legado de `promessasDeFrete` (config sem as colunas
+// nacionais mirra o local, `iguais=true`, frase genérica "Frete grátis").
+// Alguns testes abaixo setam um valor real para provar a divergência de
+// verdade ("na cidade").
+let mockNationalStrategy: "desligado" | undefined;
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    config: { enableReviews: false, freeShippingMin: mockFreeShippingMin },
+    config: {
+      enableReviews: false,
+      freeShippingMin: mockFreeShippingMin,
+      nationalShippingStrategy: mockNationalStrategy,
+      nationalShippingMin: 0,
+      nationalDiscountType: null,
+      nationalDiscountValue: 0,
+      nationalBenefitScope: "mais_barata",
+    },
     isLoaded: true,
   }),
 }));
@@ -220,6 +252,7 @@ describe("ProductView — o selo 'Grátis' do preço também segue o preset da l
     document.getElementById("product-structured-data")?.remove();
     vi.unstubAllGlobals();
     mockFreeShippingMin = 0;
+    mockNationalStrategy = undefined;
   });
 
   async function renderizarProduto(produto: Product) {
@@ -252,7 +285,7 @@ describe("ProductView — o selo 'Grátis' do preço também segue o preset da l
 
     await renderizarProduto(produto);
 
-    expect(hospedeiro.textContent).toContain("Grátis");
+    expect(hospedeiro.textContent).toContain("Frete grátis");
   });
 
   it("preset por_produto + produto NÃO marcado -- a folha não anuncia Grátis", async () => {
@@ -270,6 +303,20 @@ describe("ProductView — o selo 'Grátis' do preço também segue o preset da l
 
     await renderizarProduto(produto);
 
-    expect(hospedeiro.textContent).toContain("Grátis");
+    expect(hospedeiro.textContent).toContain("Frete grátis");
+  });
+
+  // IMPORTANTE (revisão Opus, pós-T3): a folha do produto ainda mostrava
+  // "Grátis" sem qualificar onde vale -- este é o teste que prova o
+  // conserto com uma divergência REAL entre os dois canais (não o espelho
+  // legado, que mostraria a frase genérica).
+  it("local sempre + nacional desligado -- a folha diz 'Frete grátis na cidade'", async () => {
+    mockFreeShippingMin = FRETE_GRATIS_SEMPRE;
+    mockNationalStrategy = "desligado";
+    const produto = criarProduto({ freeShipping: false });
+
+    await renderizarProduto(produto);
+
+    expect(hospedeiro.textContent).toContain("Frete grátis na cidade");
   });
 });

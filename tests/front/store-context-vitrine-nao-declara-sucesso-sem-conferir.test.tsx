@@ -708,6 +708,13 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
       localDeliveryFee: 1,
       localCepRange: "x",
       homeSections: [],
+      // 20261171000000: estratégias de frete NACIONAL (T3, 23/09) — a
+      // coluna existe e o updateConfig tem o `if` de cada uma.
+      nationalShippingStrategy: "acima_de_valor",
+      nationalShippingMin: 199,
+      nationalDiscountType: "percentual",
+      nationalDiscountValue: 10,
+      nationalBenefitScope: "todas",
     };
 
     await act(async () => {
