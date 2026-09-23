@@ -2,11 +2,13 @@ import { useCartState } from "@/contexts/CartContext";
 import { useContextoDoFreteDaLoja } from "@/contexts/ContextoDoFreteDaLoja";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { opcaoFrescaOuMaisBarata } from "@/lib/auto-selecao-de-frete";
+import { destaquesDoFrete } from "@/lib/destaques-do-frete";
 import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import {
   codigoDoErroDeEdgeFunction,
   mensagemAmigavelErroEdgeFunction,
 } from "@/lib/mensagens-erro";
+import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
 import type { CartItem, ShippingOption } from "@/types";
@@ -94,6 +96,14 @@ interface EnvelopeDeCacheDeFrete {
   /** `Date.now()` de quando a cotação foi gravada. */
   gravadoEm: number;
   opcoes: ShippingOption[];
+  /**
+   * R1-2 (release 1.5.7): a revisão da configuração de frete sob a qual
+   * ESTA cotação foi feita — vem de `data.revisaoConfig` na resposta da
+   * edge. `null`/ausente (edge sem o campo, ou envelope de antes desta
+   * release) trava a leitura em `cotacaoAindaBateComARevisao`: sem saber a
+   * revisão de então, não dá para provar que ainda é a de agora.
+   */
+  revisaoConfig?: string | null;
 }
 
 /**
@@ -162,6 +172,32 @@ export function cotacaoCacheadaQueAindaServe(
 }
 
 /**
+ * A ÚLTIMA guarda antes de servir um acerto de cache (R1-2): mesmo com
+ * contexto, assinatura e validade batendo, a lojista pode ter mudado a
+ * configuração do frete (ligado/desligado provedor, trocado serviço,
+ * mudado seguro) DEPOIS que esta cotação foi gravada — e o preço mudaria.
+ * `revisaoAtual` vem de `buscarRevisaoConfigFrete()`, chamada fresca a cada
+ * tentativa de servir cache; `revisaoDoCache` vem do envelope.
+ *
+ * Fail closed: só serve quando as DUAS são texto não vazio e IGUAIS. Se a
+ * revisão atual não carregou (rede fora do ar, edge sem o campo ainda) ou o
+ * envelope é de antes desta guarda existir, a resposta é `false` — recotar
+ * custa uma chamada a mais; servir errado custa cobrar frete que a lojista
+ * já mudou.
+ */
+export function cotacaoAindaBateComARevisao(
+  revisaoDoCache: unknown,
+  revisaoAtual: string | null,
+): boolean {
+  return (
+    typeof revisaoAtual === "string" &&
+    revisaoAtual.length > 0 &&
+    typeof revisaoDoCache === "string" &&
+    revisaoDoCache === revisaoAtual
+  );
+}
+
+/**
  * Em que pé está o frete do destino corrente. O pai que FECHA pedido
  * (checkout) usa isto para travar o Finalizar enquanto a cotação ainda não
  * é do destino/carrinho de agora:
@@ -220,6 +256,14 @@ interface ShippingCalculatorProps {
    * única (memo `freteGratis` do CartContext) nos dois casos.
    */
   freteGratis?: boolean;
+  /**
+   * R1-2/R2-8: incrementar este número força uma recotação de REDE do
+   * destino atual, ignorando o cache do navegador — o checkout usa isto
+   * quando descobre, antes de criar o pedido, que a configuração de frete
+   * mudou desde que a opção escolhida foi cotada. `undefined` (padrão) ou
+   * valor repetido não fazem nada.
+   */
+  forcarNovaCotacaoEm?: number;
 }
 
 type PropsComFreteGratis = Omit<ShippingCalculatorProps, "freteGratis"> & {
@@ -257,6 +301,7 @@ function CalculadoraDeFrete({
   mensagemSemDestino = "Cadastre um endereço de entrega para ver o frete e o prazo.",
   onStatusChange,
   freteGratis: isFree,
+  forcarNovaCotacaoEm,
 }: PropsComFreteGratis) {
   const isOffline = useOnlineStatus();
   // Contexto da loja da cotação (cache v2). Fora do StoreProvider (peça
@@ -273,6 +318,12 @@ function CalculadoraDeFrete({
   // conectada, frente C). É o que permite mostrar o estado "A calcular" em
   // vez de silêncio.
   const [cotouSemOpcoes, setCotouSemOpcoes] = useState(false);
+  // DESTAQUES (release 1.5.7): a lista nasce recolhida — só os destaques (e
+  // a retirada/local, que seguem à parte) aparecem; "+ Ver outras opções"
+  // revela o resto. Recolher de novo NÃO esconde a escolha atual (mais
+  // abaixo, na hora de montar a lista): contrato §6, "recolher não troca a
+  // escolha".
+  const [outrasExpandidas, setOutrasExpandidas] = useState(false);
 
   // Lacre de sequência: cada `calculateShipping` tira um número; só quem tem
   // o número MAIS RECENTE pode escrever o resultado na tela. Sem isso, duas
@@ -320,6 +371,7 @@ function CalculadoraDeFrete({
     setError(null);
     setOptions([]);
     setCotouSemOpcoes(false);
+    setOutrasExpandidas(false);
   };
 
   const calculateShipping = async (cepAlvo: string, skipHaptic = true) => {
@@ -361,35 +413,54 @@ function CalculadoraDeFrete({
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         try {
+          const envelopeCru = JSON.parse(cached) as unknown;
           const opcoesEmCache = cotacaoCacheadaQueAindaServe(
-            JSON.parse(cached),
+            envelopeCru,
             cartSignature,
             Date.now(),
             contextoDaCotacao,
           );
           if (opcoesEmCache) {
-            // Sem lacre aqui de propósito: até este ponto só rodou código
-            // síncrono — nenhum `await` passou, então `meuId` ainda é
-            // garantidamente o valor mais recente de `reqRef.current`.
-            setOptions(opcoesEmCache);
-            setCotouSemOpcoes(false);
-            assinaturaCotadaRef.current = cartSignature;
-            const selecionadaAtualizada = opcaoFrescaOuMaisBarata(
-              selecaoVivaRef.current,
-              opcoesEmCache,
-            );
-            if (selecionadaAtualizada) {
-              onSelectOption(selecionadaAtualizada);
-            } else if (selecaoVivaRef.current) {
-              // Lista sem nada auto-selecionável (só a retirada, que é
-              // escolha da cliente): a escolha anterior é preço de outra
-              // cotação e cai.
-              onSelectOption(null);
+            // R1-2: contexto, assinatura e validade batem, mas isso não
+            // basta mais — a lojista pode ter mudado a configuração do
+            // frete DEPOIS que esta cotação foi gravada (até 2h atrás).
+            // Confirma a revisão antes de confiar no preço. Sem rede
+            // (offline), a confirmação não tem como acontecer: cai direto
+            // para a cotação de rede abaixo, que vai mostrar o aviso de
+            // conexão — em vez de arriscar um preço que a lojista já mudou.
+            const revisaoDoCache = (
+              envelopeCru as Partial<EnvelopeDeCacheDeFrete>
+            ).revisaoConfig;
+            const revisaoAtual = isOffline
+              ? null
+              : await buscarRevisaoConfigFrete();
+            // Lacre: uma chamada mais nova pode ter começado durante o
+            // `await` acima.
+            if (meuId !== reqRef.current) return;
+            if (cotacaoAindaBateComARevisao(revisaoDoCache, revisaoAtual)) {
+              setOptions(opcoesEmCache);
+              setCotouSemOpcoes(false);
+              assinaturaCotadaRef.current = cartSignature;
+              const selecionadaAtualizada = opcaoFrescaOuMaisBarata(
+                selecaoVivaRef.current,
+                opcoesEmCache,
+              );
+              if (selecionadaAtualizada) {
+                onSelectOption(selecionadaAtualizada);
+              } else if (selecaoVivaRef.current) {
+                // Lista sem nada auto-selecionável (só a retirada, que é
+                // escolha da cliente): a escolha anterior é preço de outra
+                // cotação e cai.
+                onSelectOption(null);
+              }
+              onCepValidated?.(cepFormatado);
+              setLoading(false);
+              localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
+              return;
             }
-            onCepValidated?.(cepFormatado);
-            setLoading(false);
-            localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
-            return;
+            // Revisão não confere (ou não deu para confirmar): o cache NÃO
+            // serve — segue para a cotação de rede abaixo, como se este
+            // acerto de cache nunca tivesse existido.
           }
         } catch (e) {
           console.error("Error parsing cached shipping options:", e);
@@ -407,7 +478,15 @@ function CalculadoraDeFrete({
           // `aceitaRetirada`: o sinal de que ESTE app entende a retirada na
           // loja (nunca a auto-seleciona). Sem ele, a edge não a oferece — é
           // o que protege o app 1.5.2 ainda no ar.
-          body: { cep: cleanCep, cart: cart, aceitaRetirada: true },
+          // `contratoCliente: 3` (release 1.5.7): o sinal de que este app
+          // entende vários provedores ao mesmo tempo e prazo 0 canônico
+          // ("no mesmo dia") — CONTRATO-1.5.7.md §2 e EMENDA R1-4.
+          body: {
+            cep: cleanCep,
+            cart: cart,
+            aceitaRetirada: true,
+            contratoCliente: 3,
+          },
         },
       );
 
@@ -440,6 +519,11 @@ function CalculadoraDeFrete({
         assinatura: cartSignature,
         gravadoEm: Date.now(),
         opcoes: calculatedOptions,
+        // R1-2: a resposta traz a revisão sob a qual ELA foi calculada —
+        // sem isto, a próxima leitura deste envelope nunca teria como
+        // confirmar que a configuração continua a mesma.
+        revisaoConfig:
+          typeof data.revisaoConfig === "string" ? data.revisaoConfig : null,
       };
       localStorage.setItem(cacheKey, JSON.stringify(envelope));
       localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
@@ -570,6 +654,25 @@ function CalculadoraDeFrete({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextoDaLoja]);
 
+  // FORÇAR RECOTAÇÃO (R1-2/R2-8): o checkout, antes de criar o pedido,
+  // descobre que a opção escolhida veio de uma cotação com revisão
+  // diferente da atual e incrementa esta prop. Remove o cache do destino
+  // adotado (senão a leitura de cache do PRÓXIMO `calculateShipping`
+  // acharia a MESMA entrada desatualizada) e recota de rede — se o id
+  // escolhido sumiu da lista nova, `opcaoFrescaOuMaisBarata` já escolhe a
+  // mais barata dela sozinho (só limpa de vez se a lista nova vier vazia).
+  const forcarNovaCotacaoVistoRef = useRef(forcarNovaCotacaoEm);
+  useEffect(() => {
+    if (forcarNovaCotacaoEm === undefined) return;
+    if (forcarNovaCotacaoVistoRef.current === forcarNovaCotacaoEm) return;
+    forcarNovaCotacaoVistoRef.current = forcarNovaCotacaoEm;
+    const alvo = cepAdotadoRef.current;
+    if (!alvo || cart.length === 0) return;
+    localStorage.removeItem(chaveDoCacheDeFrete(alvo));
+    calculateShipping(alvo, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forcarNovaCotacaoEm]);
+
   // Resposta atrasada não sobrevive ao desmonte: sem o lacre, a cotação em
   // voo gravava `ikcous_last_shipping_cep` e o cache DEPOIS que o destino
   // já era outro. Zerar o destino adotado faz a remontagem (inclusive a do
@@ -658,6 +761,167 @@ function CalculadoraDeFrete({
   const resumo =
     destino?.resumo?.trim() || (cepExibido ? `CEP ${cepExibido}` : null);
 
+  // DESTAQUES (release 1.5.7 — CONTRATO-1.5.7.md §6, R1-7, R2-4): a
+  // retirada nunca disputa destaque (ela é modalidade da loja, aparece à
+  // parte, como sempre); a entrega local participa do ranking igual a
+  // qualquer transportadora.
+  const opcaoDeRetirada = options.find((o) => ehRetiradaNaLoja(o.id)) ?? null;
+  const destaques = destaquesDoFrete(options);
+  const cartoesDeDestaque = [
+    ...(destaques.maisBarata ? [destaques.maisBarata] : []),
+    ...(!destaques.mesmaOferta && destaques.maisRapida
+      ? [destaques.maisRapida]
+      : []),
+  ];
+  // Recolhida, a lista de "outras" some — MENOS a opção que a cliente já
+  // escolheu: recolher não pode tirar a escolha da vista nem trocá-la
+  // (contrato §6).
+  const outrasVisiveis = outrasExpandidas
+    ? destaques.outras
+    : destaques.outras.filter((o) => o.id === selectedOption?.id);
+
+  function selosDoCartao(id: string): string[] {
+    const selos: string[] = [];
+    if (destaques.maisBarata?.id === id) selos.push("Mais barata");
+    if (destaques.maisRapida?.id === id) selos.push("Mais rápida");
+    return selos;
+  }
+
+  function renderizarCartaoDeOpcao(option: ShippingOption) {
+    const isSelected = selectedOption?.id === option.id;
+    const priceToDisplay = isFree ? 0 : option.price;
+    // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
+    // há entrega) e sem "pronto agora" — o endereço REAL da loja
+    // que a edge mandou e o aviso neutro de esperar a loja.
+    const retirada = ehRetiradaNaLoja(option.id);
+    const selos = retirada ? [] : selosDoCartao(option.id);
+
+    return (
+      <button
+        key={option.id}
+        type="button"
+        // Laudo de acessibilidade 05/09, A1 (ALTA): a escolha é
+        // anunciada por `aria-pressed`.
+        aria-pressed={isSelected}
+        onClick={() => {
+          haptic.light();
+          onSelectOption(option);
+        }}
+        className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
+          isSelected
+            ? "border-primary bg-primary text-white shadow-md shadow-black/10"
+            : "border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
+              isSelected
+                ? "border-white/20 bg-white/20 text-white"
+                : "border-zinc-100 bg-zinc-50 text-zinc-500"
+            }`}
+          >
+            {isSelected ? (
+              <Check className="size-4" />
+            ) : retirada ? (
+              <Store className="size-4" />
+            ) : (
+              <Truck className="size-4" />
+            )}
+          </div>
+          <div>
+            {selos.length > 0 && (
+              <div className="mb-0.5 flex flex-wrap gap-1">
+                {selos.map((selo) => (
+                  <span
+                    key={selo}
+                    className={`rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${
+                      isSelected
+                        ? "bg-white/20 text-white"
+                        : "bg-emerald-100 text-emerald-700"
+                    }`}
+                  >
+                    {selo}
+                  </span>
+                ))}
+              </div>
+            )}
+            <span className="block text-[11px] font-bold leading-snug">
+              {option.name}
+            </span>
+            {/* R1-7: a linha "Transportadora — Serviço · via Provedor"
+                aparece SEMPRE que houver transportadora — nacional, nunca
+                local/retirada/grátis. */}
+            {!retirada && option.transportadora && (
+              <span
+                className={`mt-0.5 block text-[9px] leading-snug ${
+                  isSelected ? "text-zinc-200" : "text-zinc-500"
+                }`}
+              >
+                {option.transportadora}
+                {option.servico ? ` — ${option.servico}` : ""}
+                {option.provedorRotulo ? ` · via ${option.provedorRotulo}` : ""}
+              </span>
+            )}
+            {retirada ? (
+              <>
+                {option.pickupAddress && (
+                  <span
+                    className={`mt-0.5 block text-[10px] leading-snug ${
+                      isSelected ? "text-zinc-200" : "text-zinc-500"
+                    }`}
+                  >
+                    Retire em: {option.pickupAddress}
+                  </span>
+                )}
+                <span
+                  className={`mt-0.5 block text-[9px] leading-snug ${
+                    isSelected ? "text-zinc-300" : "text-zinc-400"
+                  }`}
+                >
+                  Aguarde a confirmação da loja para retirar
+                </span>
+              </>
+            ) : (
+              <span
+                className={`mt-0.5 block text-[9px] leading-none ${
+                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                }`}
+              >
+                {/* Prazo 0 (release 1.5.7, EMENDA R1-4): "no mesmo dia" —
+                    nunca "até 0 dia útil", um prazo que não existe. */}
+                {option.deliveryDays === 0
+                  ? "Entrega no mesmo dia"
+                  : `Entrega em até ${option.deliveryDays} ${
+                      option.deliveryDays > 1 ? "dias úteis" : "dia útil"
+                    }`}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-center text-right">
+          {retirada ? (
+            <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
+              Grátis
+            </span>
+          ) : isFree ? (
+            <div className="flex items-center gap-1">
+              <Sparkles className="size-3 fill-emerald-500/20 text-emerald-500" />
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
+                GRÁTIS
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs font-black tracking-tight">
+              {formatCurrency(priceToDisplay)}
+            </span>
+          )}
+        </div>
+      </button>
+    );
+  }
+
   return (
     <section
       aria-label="Entrega e frete"
@@ -731,104 +995,25 @@ function CalculadoraDeFrete({
           animate={{ opacity: 1, y: 0 }}
           className="space-y-2"
         >
-          {options.map((option) => {
-            const isSelected = selectedOption?.id === option.id;
-            const priceToDisplay = isFree ? 0 : option.price;
-            // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
-            // há entrega) e sem "pronto agora" — o endereço REAL da loja
-            // que a edge mandou e o aviso neutro de esperar a loja.
-            const retirada = ehRetiradaNaLoja(option.id);
-
-            return (
-              <button
-                key={option.id}
-                type="button"
-                // Laudo de acessibilidade 05/09, A1 (ALTA): a escolha é
-                // anunciada por `aria-pressed`.
-                aria-pressed={isSelected}
-                onClick={() => {
-                  haptic.light();
-                  onSelectOption(option);
-                }}
-                className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
-                  isSelected
-                    ? "border-primary bg-primary text-white shadow-md shadow-black/10"
-                    : "border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
-                      isSelected
-                        ? "border-white/20 bg-white/20 text-white"
-                        : "border-zinc-100 bg-zinc-50 text-zinc-500"
-                    }`}
-                  >
-                    {isSelected ? (
-                      <Check className="size-4" />
-                    ) : retirada ? (
-                      <Store className="size-4" />
-                    ) : (
-                      <Truck className="size-4" />
-                    )}
-                  </div>
-                  <div>
-                    <span className="block text-[11px] font-bold leading-snug">
-                      {option.name}
-                    </span>
-                    {retirada ? (
-                      <>
-                        {option.pickupAddress && (
-                          <span
-                            className={`mt-0.5 block text-[10px] leading-snug ${
-                              isSelected ? "text-zinc-200" : "text-zinc-500"
-                            }`}
-                          >
-                            Retire em: {option.pickupAddress}
-                          </span>
-                        )}
-                        <span
-                          className={`mt-0.5 block text-[9px] leading-snug ${
-                            isSelected ? "text-zinc-300" : "text-zinc-400"
-                          }`}
-                        >
-                          Aguarde a confirmação da loja para retirar
-                        </span>
-                      </>
-                    ) : (
-                      <span
-                        className={`mt-0.5 block text-[9px] leading-none ${
-                          isSelected ? "text-zinc-300" : "text-zinc-400"
-                        }`}
-                      >
-                        Entrega em até {option.deliveryDays}{" "}
-                        {option.deliveryDays > 1 ? "dias úteis" : "dia útil"}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-col justify-center text-right">
-                  {retirada ? (
-                    <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
-                      Grátis
-                    </span>
-                  ) : isFree ? (
-                    <div className="flex items-center gap-1">
-                      <Sparkles className="size-3 fill-emerald-500/20 text-emerald-500" />
-                      <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
-                        GRÁTIS
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-xs font-black tracking-tight">
-                      {formatCurrency(priceToDisplay)}
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+          {opcaoDeRetirada && renderizarCartaoDeOpcao(opcaoDeRetirada)}
+          {cartoesDeDestaque.map(renderizarCartaoDeOpcao)}
+          {outrasVisiveis.map(renderizarCartaoDeOpcao)}
+          {/* "+ Ver outras opções" — discreto de propósito (o pedido do
+              dono): não compete visualmente com os cartões de destaque.
+              Só aparece quando existe algo além dos destaques/retirada.
+              Recolher não troca a escolha (a opção escolhida continua
+              visível em `outrasVisiveis` mesmo fechada). */}
+          {destaques.outras.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setOutrasExpandidas((v) => !v)}
+              className="w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline"
+            >
+              {outrasExpandidas
+                ? "Ver menos opções"
+                : `+ Ver outras opções (${destaques.outras.length})`}
+            </button>
+          )}
         </motion.div>
       )}
 

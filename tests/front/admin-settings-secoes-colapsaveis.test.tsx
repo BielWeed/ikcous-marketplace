@@ -15,6 +15,16 @@
 //   2. Um clique no cabeçalho expande o conteúdo; clicar de novo recolhe.
 //   3. Os atalhos de vitrine (grupo "Sua loja") continuam SEMPRE visíveis —
 //      são a porta de trabalho.
+//
+// RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): a seção de
+// Transportadoras deixou de ler `store_shipping_credentials` por PostgREST e
+// de decidir estado por `config.shippingProvider` — ela lê e grava pela edge
+// `calculate-shipping` (`ler_configuracao_frete`/`save_credentials`) e
+// mostra um CARTÃO POR PROVEDOR (Melhor Envio, SuperFrete, Frenet), cada um
+// com seu próprio campo de chave e botão "Salvar". Os testes de
+// pendência/onSetDirty abaixo miram o PRIMEIRO cartão (Melhor Envio, index 0
+// na ordem de exibição) em vez de um único campo — não existe mais "o"
+// campo de token, existem três.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,15 +42,41 @@ vi.mock("@/lib/env-valores", () => ({
 }));
 const updateConfig = vi.fn();
 
-const { mockConfig } = vi.hoisted(() => ({
+const { mockConfig, estadoDoBanco, invoke } = vi.hoisted(() => ({
   mockConfig: {
     storeName: "Loja Teste",
     storeCity: "Uberlândia",
     storeState: "MG",
-    shippingProvider: "flat_fee" as "flat_fee" | "melhor_envio" | "frenet",
-    enabledShippingMethods: ["sedex", "pac"] as string[],
   },
+  // Estado que a edge `ler_configuracao_frete` devolveria — a fonte única
+  // que a seção de Transportadoras e o subtítulo "Ativo: ..." consultam.
+  estadoDoBanco: {
+    ligados: ["melhor_envio"] as string[],
+    provedores: {
+      melhor_envio: { tem_chave: true, sandbox: false },
+    } as Record<string, { tem_chave: boolean; sandbox?: boolean }>,
+  },
+  invoke: vi.fn(),
 }));
+
+function respostaConfig() {
+  return {
+    success: true,
+    modo: estadoDoBanco.ligados.length > 0 ? "multi" : "legado",
+    ligados: estadoDoBanco.ligados,
+    provedores: {
+      melhor_envio: { tem_chave: false, sandbox: false, servicos: null },
+      superfrete: { tem_chave: false, sandbox: false, servicos: null },
+      frenet: { tem_chave: false, sandbox: false, servicos: null },
+      ...Object.fromEntries(
+        Object.entries(estadoDoBanco.provedores).map(([p, v]) => [
+          p,
+          { servicos: null, ...v },
+        ]),
+      ),
+    },
+  };
+}
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -52,27 +88,17 @@ vi.mock("@/contexts/StoreContext", () => ({
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
+vi.mock("@/lib/revisao-do-frete", () => ({
+  descartarCacheDeFreteDoNavegador: vi.fn(),
+}));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: (tabela: string) => {
-      if (tabela === "store_shipping_credentials") {
-        // 1.5.4: a seção só pergunta `provider` com filtro em
-        // `credentials->>token`/`->>sandbox` (a chave não desce ao
-        // navegador). Linha com token, sandbox desligado.
-        const consulta = (linhas: Array<{ provider: string }>): any =>
-          Object.assign(Promise.resolve({ data: linhas, error: null }), {
-            not: () => consulta(linhas),
-            neq: () => consulta(linhas),
-            eq: () => consulta([]),
-          });
-        return {
-          select: () => consulta([{ provider: "melhor_envio" }]),
-          upsert: () => Promise.resolve({ error: null }),
-        };
-      }
-      return {
-        select: () => Promise.resolve({ data: [], error: null }),
-      };
+    from: () => ({
+      select: () => Promise.resolve({ data: [], error: null }),
+    }),
+    functions: {
+      invoke: (...args: unknown[]) => invoke(...(args as [any, any])),
     },
   },
 }));
@@ -83,6 +109,10 @@ vi.mock("sonner", () => ({
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+function esperarMicrotarefas(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 class ObservadorFalso {
   observe() {}
@@ -95,6 +125,20 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    estadoDoBanco.ligados = ["melhor_envio"];
+    estadoDoBanco.provedores = { melhor_envio: { tem_chave: true } };
+    invoke.mockImplementation((_nome: string, opcoes: any) => {
+      const action = opcoes?.body?.action;
+      if (action === "ler_configuracao_frete") {
+        return Promise.resolve({ data: respostaConfig(), error: null });
+      }
+      if (action === "save_credentials") {
+        return Promise.resolve({ data: { success: true }, error: null });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
+    updateConfig.mockResolvedValue(true);
     vi.stubGlobal(
       "BroadcastChannel",
       class {
@@ -147,6 +191,24 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
         />,
       );
     });
+  }
+
+  // Abre "Entrega e frete" e drena os dois fetches que a seção de
+  // Transportadoras faz no mount (ela só monta quando a seção expande):
+  // `ler_configuracao_frete` chega em dois `await` (o `chamarEdgeDeFrete` e
+  // a normalização do estado).
+  async function abrirEntregaEFrete() {
+    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
+    await act(async () => {
+      cabecalho.click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    return cabecalho;
   }
 
   it("a tela abre com as seções técnicas FECHADAS e os atalhos de vitrine visíveis", async () => {
@@ -231,31 +293,21 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     // Achado A1 da revisão adversária: fechar a seção desmonta o card e
     // jogaria fora o token digitado, sem aviso nenhum. Com pendência, o
     // clique no cabeçalho é recusado (com aviso); depois de salvar, fecha.
-    updateConfig.mockResolvedValue(true);
-    mockConfig.shippingProvider = "melhor_envio";
-    mockConfig.enabledShippingMethods = ["sedex", "pac"];
-
     await renderizar();
+    const cabecalho = await abrirEntregaEFrete();
 
-    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
-    await act(async () => {
-      cabecalho.click();
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
-
-    const campoToken = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    expect(campoToken).not.toBeNull();
-    // 1.5.4: a chave salva não volta ao campo (só-escrita) — nasce vazio.
+    // Três cartões (Melhor Envio, SuperFrete, Frenet) — o teste mira o
+    // PRIMEIRO (Melhor Envio), que é o que a resposta mockada marca como
+    // "tem_chave".
+    const campos = [
+      ...hospedeiro.querySelectorAll('input[type="password"]'),
+    ] as HTMLInputElement[];
+    expect(campos).toHaveLength(3);
+    const campoToken = campos[0];
+    // 1.5.4/1.5.7: a chave salva não volta ao campo (só-escrita) — nasce vazio.
     expect(campoToken.value).toBe("");
 
-    // Mexe no token: pendência criada.
+    // Mexe no token do primeiro cartão: pendência criada.
     const setter = Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
       "value",
@@ -271,24 +323,33 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     // O aviso de pendência aparece no cabeçalho…
     expect(hospedeiro.textContent).toMatch(/salve antes de fechar/i);
 
-    // …e o clique de fechar é RECUSADO: o token continua na tela.
+    // …e o clique de fechar é RECUSADO: os campos continuam na tela.
     await act(async () => {
       cabecalho.click();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(hospedeiro.querySelector('input[type="password"]')).not.toBeNull();
+    expect(hospedeiro.querySelectorAll('input[type="password"]')).toHaveLength(
+      3,
+    );
     expect(cabecalho.getAttribute("aria-expanded")).toBe("true");
 
-    // Salva dentro da própria seção…
-    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
+    // Salva o PRIMEIRO cartão (Melhor Envio)…
+    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Salvar",
     ) as HTMLButtonElement;
+    expect(botaoSalvar).toBeDefined();
     expect(botaoSalvar.disabled).toBe(false);
     await act(async () => {
       botaoSalvar.click();
       await new Promise((r) => setTimeout(r, 0));
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
     });
 
     // …a pendência acaba, o aviso some, e fechar volta a funcionar.
@@ -310,10 +371,6 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     // espelhada nele também — recarregar/sair do painel não pode descartar
     // o token digitado em silêncio.
     const onSetDirty = vi.fn();
-    updateConfig.mockResolvedValue(true);
-    mockConfig.shippingProvider = "melhor_envio";
-    mockConfig.enabledShippingMethods = ["sedex", "pac"];
-
     await renderizar(onSetDirty);
 
     // Montagem limpa: nenhuma pendência reportada.
@@ -324,10 +381,10 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
       cabecalho.click();
     });
     await act(async () => {
-      await Promise.resolve();
+      await esperarMicrotarefas();
     });
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await esperarMicrotarefas();
     });
 
     const campoToken = hospedeiro.querySelector(
@@ -335,7 +392,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     ) as HTMLInputElement;
     expect(campoToken).not.toBeNull();
 
-    // Mexe no token: a guarda liga.
+    // Mexe no token do primeiro cartão: a guarda liga.
     const setter = Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
       "value",
@@ -350,13 +407,85 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
 
     // Salva: a guarda desliga.
-    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
+    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Salvar",
     ) as HTMLButtonElement;
     await act(async () => {
       botaoSalvar.click();
       await new Promise((r) => setTimeout(r, 0));
     });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
+  });
+
+  // ── Achado 5 (revisão Opus): o subtítulo "Ativo: X" só lia os
+  // provedores ligados UMA VEZ, ao montar — salvar dentro da seção não o
+  // atualizava até a página recarregar. `TransportadorasSection` agora
+  // avisa o pai (`onLigadosMudou`) a cada leitura confirmada. ────────────
+  it("salvar os provedores ligados dentro da seção atualiza 'Ativo: X' sem precisar reabrir a tela", async () => {
+    estadoDoBanco.provedores = {
+      melhor_envio: { tem_chave: true },
+      superfrete: { tem_chave: true },
+    };
+    await renderizar();
+    expect(hospedeiro.textContent).toContain("Ativo: Melhor Envio");
+    expect(hospedeiro.textContent).not.toContain("Melhor Envio + SuperFrete");
+
+    await abrirEntregaEFrete();
+
+    const linhaSF = [...hospedeiro.querySelectorAll("label")].find(
+      (l) =>
+        /SuperFrete/.test(l.textContent ?? "") &&
+        l.querySelector('input[type="checkbox"]'),
+    ) as HTMLLabelElement;
+    const caixaSF = linhaSF.querySelector(
+      'input[type="checkbox"]',
+    ) as HTMLInputElement;
+    await act(async () => {
+      caixaSF.click();
+    });
+
+    invoke.mockImplementation((_nome: string, opcoes: any) => {
+      const action = opcoes?.body?.action;
+      if (action === "ler_configuracao_frete") {
+        return Promise.resolve({ data: respostaConfig(), error: null });
+      }
+      if (action === "save_active_providers") {
+        estadoDoBanco.ligados = ["melhor_envio", "superfrete"];
+        return Promise.resolve({
+          data: { success: true, ligados: estadoDoBanco.ligados },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
+
+    const botaoSalvarProvedores = [
+      ...hospedeiro.querySelectorAll("button"),
+    ].find((b) => /Salvar provedores/.test(b.textContent ?? "")) as
+      | HTMLButtonElement
+      | undefined;
+    expect(botaoSalvarProvedores).toBeDefined();
+    await act(async () => {
+      botaoSalvarProvedores?.click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    // O cabeçalho "Entrega e frete" mostra o subtítulo "Ativo: X" fora da
+    // seção — reflete a mudança SEM fechar/reabrir e sem recarregar a
+    // página: o callback avisou o pai direto.
+    expect(hospedeiro.textContent).toContain(
+      "Ativo: Melhor Envio + SuperFrete",
+    );
   });
 });

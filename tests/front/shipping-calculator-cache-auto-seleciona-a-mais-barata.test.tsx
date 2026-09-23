@@ -134,6 +134,21 @@ describe("ShippingCalculator — o acerto de cache do navegador auto-seleciona a
   }
 
   it("acerto de cache seleciona a opção mais barata, não `opcoesEmCache[0]`", async () => {
+    // R1-2 (release 1.5.7): antes de servir o cache, a calculadora confirma
+    // a revisão da config numa ação pública separada — o dublê responde ela
+    // com a MESMA revisão gravada no envelope, senão o cache nunca serviria
+    // e este teste não provaria a auto-seleção que ele existe para provar.
+    const REVISAO = "rev-fixa";
+    invoke.mockImplementation((_nome: string, opts: any) => {
+      if (opts?.body?.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: REVISAO },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { options: [] }, error: null });
+    });
+
     // Envelope já gravado por uma consulta anterior: a transportadora
     // devolveu a Expressa (cara) em primeiro e a Econômica (barata) em
     // segundo — ordem do provedor, não de preço.
@@ -145,6 +160,7 @@ describe("ShippingCalculator — o acerto de cache do navegador auto-seleciona a
         contexto: contextoDaLojaParaFrete(undefined),
         assinatura: "prod-1::1",
         gravadoEm: Date.now(),
+        revisaoConfig: REVISAO,
         opcoes: [
           {
             id: "expressa",
@@ -166,8 +182,12 @@ describe("ShippingCalculator — o acerto de cache do navegador auto-seleciona a
     await digitarCep("69000000");
     await enviar();
 
-    // Acerto de cache: nenhuma chamada à edge function.
-    expect(invoke).not.toHaveBeenCalled();
+    // Acerto de cache: nenhuma chamada de COTAÇÃO à edge function — só a
+    // confirmação da revisão (R1-2), que não cota nada.
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("calculate-shipping", {
+      body: { action: "revisao_config_frete" },
+    });
 
     // A auto-seleção tem que escolher a barata (R$ 22), nunca a primeira da
     // lista (R$ 45) — mesma regra que o ramo da resposta fresca já aplica

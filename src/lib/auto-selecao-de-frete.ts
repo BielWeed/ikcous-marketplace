@@ -4,31 +4,34 @@
 // comprador podia nascer travado na opção cara sem ver que existia a
 // barata. Regra explícita: MENOR preço; empate, MENOR prazo; sem lista,
 // nada (a tela segue sem opção, como antes).
+//
+// EMENDA R2-3 (release 1.5.7, CONTRATO-1.5.7.md §8): com vários provedores
+// ligados a "mais barata" passou a ter NOME próprio na tela —
+// `destaquesDoFrete(opcoes).maisBarata` — e a auto-seleção usa o MESMO
+// comparador dali, para nunca escolher algo que a tela não destaca como
+// "Mais barata". A retirada nunca entra (já era assim, e `destaquesDoFrete`
+// já a exclui).
 
-import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import {
+  type OpcaoParaDestaque,
+  destaquesDoFrete,
+} from "@/lib/destaques-do-frete";
 
-export interface OpcaoDeFrete {
-  price: number;
-  deliveryDays: number;
-}
+export type OpcaoDeFrete = OpcaoParaDestaque;
 
 export function opcaoMaisBarata<T extends OpcaoDeFrete>(
   opcoes: readonly T[] | null | undefined,
 ): T | null {
   if (!opcoes || opcoes.length === 0) return null;
-  return [...opcoes].sort(
-    (a, b) => a.price - b.price || a.deliveryDays - b.deliveryDays,
-  )[0];
+  return destaquesDoFrete(opcoes).maisBarata;
 }
 
 // A MESMA ESCOLHA, COM O PREÇO DE AGORA: casar a escolha anterior só POR ID
 // mantinha o objeto VELHO — preço de outra cotação — como preço do pedido.
 // O id diz QUAL serviço foi escolhido; o objeto da lista nova carrega o
 // preço válido. Sem escolha anterior, ou com o id sumido da lista, vale a
-// regra da casa: a mais barata.
-export function opcaoFrescaOuMaisBarata<
-  T extends OpcaoDeFrete & { id: string },
->(
+// regra da casa: a mais barata (que já exclui a retirada).
+export function opcaoFrescaOuMaisBarata<T extends OpcaoDeFrete>(
   selecionada: T | null | undefined,
   opcoes: readonly T[] | null | undefined,
 ): T | null {
@@ -42,5 +45,5 @@ export function opcaoFrescaOuMaisBarata<
   // Ela fica FORA do fallback: só é mantida quando a própria cliente a
   // escolheu (mesmo id, acima). Se sobrar só ela, `null`: a tela mostra a
   // opção e espera o clique.
-  return opcaoMaisBarata(opcoes.filter((opt) => !ehRetiradaNaLoja(opt.id)));
+  return opcaoMaisBarata(opcoes);
 }

@@ -176,19 +176,6 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     await drenar();
   }
 
-  async function renderizarTransportadoras() {
-    const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
-    );
-    // Callback NOVO a cada render: a seção é `memo` e o dublê do useStore
-    // não é contexto de verdade — sem prop nova, o "config novo que chegou"
-    // nunca re-renderizaria (no app, a troca do contexto é que re-renderiza).
-    await act(async () => {
-      raiz.render(<TransportadorasSection onDirtyMudou={vi.fn()} />);
-    });
-    await drenar();
-  }
-
   function chaveDaRetirada(): HTMLButtonElement {
     const chave = hospedeiro.querySelector(
       'button[role="switch"][aria-label="Permitir retirada na loja"]',
@@ -297,43 +284,13 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     );
   });
 
-  it("Transportadoras: salvar preserva store-pickup do config ATUAL (ligada depois da sincronização)", async () => {
-    estadoDaLoja.atual = {
-      shippingProvider: "melhor_envio",
-      enabledShippingMethods: ["sedex", "pac"],
-    };
-    await renderizarTransportadoras();
-    // A lojista marca jadlog (a seção fica suja)...
-    await clicar(botao("jadlog"));
-    // ...e, em outra aba, a retirada é ligada: config novo chega, a seção
-    // suja NÃO ressincroniza.
-    estadoDaLoja.atual = {
-      shippingProvider: "melhor_envio",
-      enabledShippingMethods: ["sedex", "pac", "store-pickup"],
-    };
-    await renderizarTransportadoras();
-
-    await clicar(botao("Salvar"));
-    expect(updateConfig).toHaveBeenCalledTimes(1);
-    expect(updateConfig.mock.calls[0][0].enabledShippingMethods).toEqual([
-      "sedex",
-      "pac",
-      "jadlog",
-      "store-pickup",
-    ]);
-  });
-
-  it("Transportadoras: a retirada ligada em Frete não suja esta seção (Salvar continua apagado)", async () => {
-    estadoDaLoja.atual = {
-      shippingProvider: "melhor_envio",
-      enabledShippingMethods: ["sedex", "pac"],
-    };
-    await renderizarTransportadoras();
-    estadoDaLoja.atual = {
-      shippingProvider: "melhor_envio",
-      enabledShippingMethods: ["sedex", "pac", "store-pickup"],
-    };
-    await renderizarTransportadoras();
-    expect(botao("Salvar")?.disabled).toBe(true);
-  });
+  // RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md): os dois testes "Transportadoras: ..."
+  // que viviam aqui foram REMOVIDOS. Eles provavam que
+  // `TransportadorasSection` preservava `store-pickup` ao salvar os chips de
+  // serviço (sedex/pac/jadlog) via `updateConfig`. Esse desenho morreu: a
+  // seção não gerencia mais `enabledShippingMethods` nem chama `updateConfig`
+  // — os serviços por transportadora agora vêm de `list_services` (ids reais
+  // da conta) e são salvos pela edge (`save_credentials`). `store-pickup`
+  // continua intacto porque ninguém além de AdminShippingView escreve nessa
+  // lista agora (prova pelos testes acima, que continuam de pé).
 });

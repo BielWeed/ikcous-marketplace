@@ -8,7 +8,7 @@ import type { View } from "@/types";
 // prende o que a tela É, não só como ela parece:
 //
 //   1. a FAIXA descreve o estado REAL salvo no config (local com cidade,
-//      nacional com transportadora conectada, grátis pelo preset);
+//      nacional com transportadora ligada, grátis pelo preset);
 //   2. a taxa fixa MORREU: nenhum card, campo ou payload dela;
 //   3. os presets de frete grátis são EXCLUSIVOS (escolher um é desligar os
 //      outros) e gravam via `valorDoPreset` — inclusive as sentinelas do
@@ -22,40 +22,68 @@ import type { View } from "@/types";
 //   5. a BARRA DE SALVAR FIXA só existe com alteração pendente, e salvar
 //      aqui NÃO envia campo da seção de Transportadoras.
 //
-// Os companheiros desta prova: admin-shipping-nao-inventa-cep-de-origem
-// (CEP de origem), admin-shipping-trocar-de-aba (guarda de dirty),
-// admin-visual-frete (divisão de território).
+// RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): a tela deixou de ler
+// `store_shipping_credentials` por PostgREST e de comparar
+// `config.shippingProvider` — a conexão agora é POR PROVEDOR, lida pela
+// mesma edge que Ajustes → Transportadoras usa (`ler_configuracao_frete`).
+// Este arquivo foi reescrito para o mock de `functions.invoke`
+// (admin-shipping-frete-por-provedor.test.tsx already prova o estado por
+// provedor isoladamente; aqui a prova é que o RESTO da tela — faixa,
+// presets, chaves, barra de salvar — convive corretamente com esse estado).
+// As duas provas de gramática "REVISÃO A5" ("conecte o Melhor Envio" vs.
+// "conecte uma transportadora") foram REMOVIDAS: elas dependiam de um único
+// `shippingProvider` nomeado ou ausente — no modo multi-provedor a frase de
+// zero-ligados é sempre a mesma, genérica, sem nome de provedor nenhum
+// (ver FreteNacionalBloco.tsx).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { estadoDaLoja, estadoDoBanco, updateConfig } = vi.hoisted(() => ({
-  estadoDaLoja: {
-    atual: {
-      freeShippingMin: 100,
-      shippingCoverage: "national" as "local" | "national",
-      shippingProvider: "melhor_envio" as
-        | "flat_fee"
-        | "melhor_envio"
-        | "frenet",
-      originCep: "38400-000",
-      enabledShippingMethods: ["sedex", "pac"] as string[],
-      localDeliveryFee: 10,
-      localCepRange: "",
-      storeCity: "Uberlândia" as string | null,
-      storeState: "MG" as string | null,
-    },
-  },
-  estadoDoBanco: {
-    credenciais: [
-      {
-        provider: "melhor_envio",
-        credentials: { token: "tok-salvo", sandbox: false },
+const { estadoDaLoja, estadoDoBanco, updateConfig, invoke } = vi.hoisted(
+  () => ({
+    estadoDaLoja: {
+      atual: {
+        freeShippingMin: 100,
+        shippingCoverage: "national" as "local" | "national",
+        originCep: "38400-000",
+        enabledShippingMethods: ["sedex", "pac"] as string[],
+        localDeliveryFee: 10,
+        localCepRange: "",
+        storeCity: "Uberlândia" as string | null,
+        storeState: "MG" as string | null,
       },
-    ] as any[],
-  },
-  updateConfig: vi.fn(),
-}));
+    },
+    // Estado que a edge `ler_configuracao_frete` devolveria — o único que
+    // esta tela consulta para saber quem está ligado.
+    estadoDoBanco: {
+      ligados: ["melhor_envio"] as string[],
+      provedores: {
+        melhor_envio: { tem_chave: true, sandbox: false },
+      } as Record<string, { tem_chave: boolean; sandbox?: boolean }>,
+    },
+    updateConfig: vi.fn(),
+    invoke: vi.fn(),
+  }),
+);
+
+function respostaConfig() {
+  return {
+    success: true,
+    modo: estadoDoBanco.ligados.length > 0 ? "multi" : "legado",
+    ligados: estadoDoBanco.ligados,
+    provedores: {
+      melhor_envio: { tem_chave: false, sandbox: false, servicos: null },
+      superfrete: { tem_chave: false, sandbox: false, servicos: null },
+      frenet: { tem_chave: false, sandbox: false, servicos: null },
+      ...Object.fromEntries(
+        Object.entries(estadoDoBanco.provedores).map(([p, v]) => [
+          p,
+          { servicos: null, ...v },
+        ]),
+      ),
+    },
+  };
+}
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -69,53 +97,16 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: (tabela: string) => {
-      if (tabela === "store_shipping_credentials") {
-        // AdminShippingView-126: a tela de Frete pede só `provider` e
-        // filtra `credentials->>token` no "banco" via `.not()/.neq()` —
-        // ela não lê mais o token. O builder abaixo é "thenable" (resolve
-        // sozinho se ninguém encadear `.not`/`.neq`) e também aceita a
-        // cadeia de filtro.
-        // `Object.assign` sobre um Promise DE VERDADE, não um objeto com
-        // `then` próprio (o Biome recusa thenable disfarçado): os métodos
-        // extras ficam pendurados no Promise real, que continua
-        // `await`ável no fim da cadeia.
-        const construirConsulta = (colunas: string, linhas: any[]): any =>
-          Object.assign(
-            Promise.resolve({
-              data:
-                colunas === "provider"
-                  ? linhas.map((l) => ({ provider: l.provider }))
-                  : linhas,
-              error: null,
-            }),
-            {
-              not: (coluna: string) =>
-                construirConsulta(
-                  colunas,
-                  coluna === "credentials->>token"
-                    ? linhas.filter((l) => l.credentials?.token != null)
-                    : linhas,
-                ),
-              neq: (coluna: string, valor: unknown) =>
-                construirConsulta(
-                  colunas,
-                  coluna === "credentials->>token"
-                    ? linhas.filter((l) => l.credentials?.token !== valor)
-                    : linhas,
-                ),
-            },
-          );
-        return {
-          select: (colunas: string) =>
-            construirConsulta(colunas, estadoDoBanco.credenciais),
-        };
-      }
-      return {
-        select: () => Promise.resolve({ data: [], error: null }),
-      };
+    from: () => ({
+      select: () => ({
+        order: () => ({
+          limit: () => Promise.resolve({ data: [], error: null }),
+        }),
+      }),
+    }),
+    functions: {
+      invoke: (...args: unknown[]) => invoke(...(args as [any, any])),
     },
-    functions: { invoke: vi.fn() },
   },
 }));
 
@@ -161,7 +152,6 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = {
       freeShippingMin: 100,
       shippingCoverage: "national",
-      shippingProvider: "melhor_envio",
       originCep: "38400-000",
       enabledShippingMethods: ["sedex", "pac"],
       localDeliveryFee: 10,
@@ -169,12 +159,14 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
       storeCity: "Uberlândia",
       storeState: "MG",
     };
-    estadoDoBanco.credenciais = [
-      {
-        provider: "melhor_envio",
-        credentials: { token: "tok-salvo", sandbox: false },
-      },
-    ];
+    estadoDoBanco.ligados = ["melhor_envio"];
+    estadoDoBanco.provedores = { melhor_envio: { tem_chave: true } };
+    invoke.mockImplementation((_nome: string, opcoes: any) => {
+      if (opcoes?.body?.action === "ler_configuracao_frete") {
+        return Promise.resolve({ data: respostaConfig(), error: null });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
     updateConfig.mockResolvedValue(true);
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -246,12 +238,12 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     });
   }
 
-  it("a faixa descreve o estado REAL salvo: local com cidade, nacional conectado, grátis pelo preset", async () => {
+  it("a faixa descreve o estado REAL salvo: local com cidade, nacional ligado, grátis pelo preset", async () => {
     await abrirTela();
 
     expect(textoDaFaixa()).toContain("R$ 10 por entrega");
     expect(textoDaFaixa()).toContain("Uberlândia/MG");
-    expect(textoDaFaixa()).toContain("Melhor Envio conectado");
+    expect(textoDaFaixa()).toContain("Melhor Envio ligado");
     expect(textoDaFaixa()).toContain("Acima de R$ 100");
     // Nada foi mexido: sem aviso de pendência em lugar nenhum.
     expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
@@ -312,8 +304,10 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
   it("'Cotação na hora' é EXIBIÇÃO de estado: a frase do estado existe, mas nenhum botão com esse nome (nada salva credencial daqui)", async () => {
     await abrirTela();
 
-    // O estado aparece em texto (dica/cabeçalho)…
-    expect(texto()).toMatch(/Conectado ao Melhor Envio/i);
+    // O estado aparece em texto (dica/cabeçalho da seção "Fora da cidade")…
+    expect(texto()).toMatch(
+      /Cota[çc][ãa]o real, na hora, pelos provedores ligados/i,
+    );
     // …mas NÃO existe botão "Cotação na hora" — chave decorativa que não
     // salvaria nada é proibida nesta tela.
     expect(botaoComTexto(/cota[çc][ãa]o na hora/i)).toBeUndefined();
@@ -443,12 +437,13 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     expect(marcado).toMatch(/Sempre grátis/);
   });
 
-  it("sem transportadora conectada: aviso BEM VISÍVEL de loja-só-cidade + caminho para Ajustes", async () => {
-    estadoDoBanco.credenciais = [];
+  it("sem transportadora ligada: aviso BEM VISÍVEL de loja-só-cidade + caminho para Ajustes", async () => {
+    estadoDoBanco.ligados = [];
+    estadoDoBanco.provedores = {};
     await abrirTela();
 
-    expect(texto()).toMatch(/Nenhuma transportadora conectada/i);
-    expect(texto()).toMatch(/s[óo] entrega na/i);
+    expect(texto()).toMatch(/Nenhuma transportadora ligada/i);
+    expect(texto()).toMatch(/s[óo] entrega na sua cidade/i);
 
     const cta = botaoComTexto(/conectar transportadora/i);
     expect(cta).toBeDefined();
@@ -458,11 +453,11 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
   });
 
-  it("com transportadora conectada: o aviso de sem-conexão NÃO aparece, e o atalho de Ajustes segue existindo", async () => {
+  it("com transportadora ligada: o aviso de sem-conexão NÃO aparece, e o atalho de Ajustes segue existindo", async () => {
     await abrirTela();
 
-    expect(texto()).not.toMatch(/Nenhuma transportadora conectada/i);
-    expect(texto()).toMatch(/Conectado ao Melhor Envio/i);
+    expect(texto()).not.toMatch(/Nenhuma transportadora ligada/i);
+    expect(texto()).toMatch(/Melhor Envio ligado/);
 
     const botaoAjustes = botaoComTexto(/abrir ajustes/i);
     expect(botaoAjustes).toBeDefined();
@@ -470,27 +465,6 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
       (botaoAjustes as HTMLElement).click();
     });
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
-  });
-
-  it("REVISÃO A5: provedor flat_fee (sem nome) diz 'conecte uma transportadora', nunca 'conecte o uma transportadora'", async () => {
-    // Loja antiga com `flat_fee` remanescente (ou provedor ausente): o nome
-    // é indefinido, então a frase do aviso troca o artigo em vez de costurar
-    // "o" + "uma transportadora".
-    estadoDaLoja.atual = {
-      ...estadoDaLoja.atual,
-      shippingProvider: "flat_fee",
-    };
-    await abrirTela();
-
-    expect(texto()).toMatch(/conecte uma transportadora em Ajustes/);
-    expect(texto()).not.toMatch(/conecte o uma transportadora/i);
-  });
-
-  it("REVISÃO A5: provedor nomeado sem credencial mantém o artigo 'o' ('conecte o Melhor Envio')", async () => {
-    estadoDoBanco.credenciais = [];
-    await abrirTela();
-
-    expect(texto()).toMatch(/conecte o Melhor Envio em Ajustes/);
   });
 
   it("CEP da loja vazio no config: a faixa diz que a entrega está PARADA (não inventa funcionamento)", async () => {

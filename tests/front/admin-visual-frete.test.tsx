@@ -19,32 +19,30 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { estadoDaLoja, estadoDoBanco, updateConfig } = vi.hoisted(() => ({
-  estadoDaLoja: {
-    atual: {
-      freeShippingMin: 100,
-      shippingCoverage: "national" as "local" | "national",
-      shippingProvider: "melhor_envio" as
-        | "flat_fee"
-        | "melhor_envio"
-        | "frenet",
-      originCep: "38400-000",
-      enabledShippingMethods: ["sedex", "pac"] as string[],
-      localDeliveryFee: 10,
-      localCepRange: "",
-    },
-  },
-  estadoDoBanco: {
-    credenciais: [
-      {
-        provider: "melhor_envio",
-        credentials: { token: "tok-salvo", sandbox: false },
+const { estadoDaLoja, estadoDoBanco, updateConfig, invoke } = vi.hoisted(
+  () => ({
+    estadoDaLoja: {
+      atual: {
+        freeShippingMin: 100,
+        shippingCoverage: "national" as "local" | "national",
+        originCep: "38400-000",
+        enabledShippingMethods: ["sedex", "pac"] as string[],
+        localDeliveryFee: 10,
+        localCepRange: "",
       },
-    ] as any[],
-    credenciaisSalvas: [] as any[],
-  },
-  updateConfig: vi.fn(),
-}));
+    },
+    estadoDoBanco: {
+      credenciais: [
+        {
+          provider: "melhor_envio",
+          credentials: { token: "tok-salvo", sandbox: false },
+        },
+      ] as any[],
+    },
+    updateConfig: vi.fn(),
+    invoke: vi.fn(),
+  }),
+);
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -56,74 +54,50 @@ vi.mock("@/contexts/StoreContext", () => ({
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
+// RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): a leitura de
+// credenciais deixou de ser PostgREST em `store_shipping_credentials` — é a
+// ação `ler_configuracao_frete` da edge. O `estadoDoBanco.credenciais`
+// virou a fonte dessa resposta em vez de linhas de tabela.
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: (tabela: string) => {
-      if (tabela === "store_shipping_credentials") {
-        // AdminShippingView-126: a tela de Frete não lê mais `credentials`
-        // (o token) — ela pede só `provider` e filtra no "banco" com
-        // `.not()/.neq()` em `credentials->>token`. Desde a 1.5.4 a seção
-        // TransportadorasSection faz o MESMO (chave só-escrita), com um
-        // `.eq()` a mais em `credentials->>sandbox` para o modo de testes.
-        // `Object.assign` sobre um Promise DE VERDADE, não um objeto com
-        // `then` próprio (o Biome recusa thenable disfarçado): os métodos
-        // extras ficam pendurados no Promise real, que continua
-        // `await`ável no fim da cadeia.
-        const construirConsulta = (colunas: string, linhas: any[]): any =>
-          Object.assign(
-            Promise.resolve({
-              data:
-                colunas === "provider"
-                  ? linhas.map((l) => ({ provider: l.provider }))
-                  : linhas,
-              error: null,
-            }),
-            {
-              not: (coluna: string) =>
-                construirConsulta(
-                  colunas,
-                  coluna === "credentials->>token"
-                    ? linhas.filter((l) => l.credentials?.token != null)
-                    : linhas,
-                ),
-              neq: (coluna: string, valor: unknown) =>
-                construirConsulta(
-                  colunas,
-                  coluna === "credentials->>token"
-                    ? linhas.filter((l) => l.credentials?.token !== valor)
-                    : linhas,
-                ),
-              // 1.5.4: a seção de Transportadoras pergunta o modo de testes
-              // por filtro (`credentials->>sandbox`), sem baixar a chave.
-              eq: (coluna: string, valor: unknown) =>
-                construirConsulta(
-                  colunas,
-                  coluna === "credentials->>sandbox"
-                    ? linhas.filter(
-                        (l) => String(l.credentials?.sandbox) === valor,
-                      )
-                    : linhas,
-                ),
-            },
-          );
-        return {
-          select: (colunas: string) =>
-            construirConsulta(colunas, estadoDoBanco.credenciais),
-          upsert: (linha: any) => {
-            estadoDoBanco.credenciaisSalvas.push(linha);
-            return Promise.resolve({ error: null });
-          },
-        };
-      }
-      return {
-        select: () => ({
-          order: () => ({
-            limit: () => Promise.resolve({ data: [], error: null }),
-          }),
+    from: () => ({
+      select: () => ({
+        order: () => ({
+          limit: () => Promise.resolve({ data: [], error: null }),
         }),
-      };
+      }),
+    }),
+    functions: {
+      invoke: (nome: string, opcoes: any) => {
+        if (opcoes?.body?.action === "ler_configuracao_frete") {
+          const linhaME = estadoDoBanco.credenciais.find(
+            (l) => l.provider === "melhor_envio",
+          );
+          return Promise.resolve({
+            data: {
+              success: true,
+              modo: "legado",
+              ligados: linhaME?.credentials?.token ? ["melhor_envio"] : [],
+              provedores: {
+                melhor_envio: {
+                  tem_chave: Boolean(linhaME?.credentials?.token),
+                  sandbox: Boolean(linhaME?.credentials?.sandbox),
+                  servicos: null,
+                },
+                superfrete: {
+                  tem_chave: false,
+                  sandbox: false,
+                  servicos: null,
+                },
+                frenet: { tem_chave: false, sandbox: false, servicos: null },
+              },
+            },
+            error: null,
+          });
+        }
+        return invoke(nome, opcoes);
+      },
     },
-    functions: { invoke: vi.fn() },
   },
 }));
 
@@ -161,7 +135,6 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    estadoDoBanco.credenciaisSalvas = [];
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -250,116 +223,21 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
   });
 
-  it("Salvar a seção Transportadoras grava a escolha no config; a credencial SÓ com chave nova digitada (1.5.4)", async () => {
-    updateConfig.mockResolvedValue(true);
-    const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
-    );
-    await act(async () => {
-      raiz.render(<TransportadorasSection />);
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    // Torna a seção suja: habilita um serviço novo (jadlog).
-    const chipJadlog = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "jadlog",
-    ) as HTMLButtonElement;
-    expect(chipJadlog).toBeDefined();
-    await act(async () => {
-      chipJadlog.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
-    ) as HTMLButtonElement;
-    expect(botaoSalvar.disabled).toBe(false);
-    await act(async () => {
-      botaoSalvar.click();
-      await esperarMicrotarefas();
-    });
-
-    // A escolha vai para o store_config — SOMENTE os campos dela.
-    expect(updateConfig).toHaveBeenCalledWith({
-      shippingProvider: "melhor_envio",
-      enabledShippingMethods: ["sedex", "pac", "jadlog"],
-    });
-
-    // Só serviços mudaram: a credencial NÃO é regravada (1.5.4 — o
-    // navegador nem tem mais a chave salva para reenviar).
-    expect(estadoDoBanco.credenciaisSalvas).toHaveLength(0);
-
-    // Chave NOVA digitada: vai para a tabela própria, com o provedor certo.
-    const campoToken = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campoToken, "tok-novo-ficticio");
-      campoToken.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const salvarDeNovo = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
-    ) as HTMLButtonElement;
-    await act(async () => {
-      salvarDeNovo.click();
-      await esperarMicrotarefas();
-    });
-    expect(estadoDoBanco.credenciaisSalvas).toHaveLength(1);
-    expect(estadoDoBanco.credenciaisSalvas[0]).toMatchObject({
-      provider: "melhor_envio",
-    });
-    expect(estadoDoBanco.credenciaisSalvas[0].credentials).toEqual({
-      token: "tok-novo-ficticio",
-      sandbox: false,
-    });
-  });
-
-  it("updateConfig recusando PARA o fluxo: a credencial não é gravada e ninguém comemora sucesso", async () => {
-    // ADMIN-010 (#94): o toast de erro sai de dentro do StoreContext; aqui o
-    // que se prova é o LADO DE CÁ do conserto — retorno `false` interrompe o
-    // save antes do upsert e não vira toast verde.
-    updateConfig.mockResolvedValue(false);
-
-    const { toast } = await import("sonner");
-    const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
-    );
-    await act(async () => {
-      raiz.render(<TransportadorasSection />);
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    const chipJadlog = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "jadlog",
-    ) as HTMLButtonElement;
-    await act(async () => {
-      chipJadlog.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
-    ) as HTMLButtonElement;
-    await act(async () => {
-      botaoSalvar.click();
-      await esperarMicrotarefas();
-    });
-
-    expect(estadoDoBanco.credenciaisSalvas).toHaveLength(0);
-    expect(toast.success).not.toHaveBeenCalled();
-  });
+  // RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): os dois testes que
+  // viviam aqui — "Salvar a seção Transportadoras grava a escolha no
+  // config..." e "updateConfig recusando PARA o fluxo..." — foram
+  // REMOVIDOS. Eles provavam que TransportadorasSection ligava um chip de
+  // serviço (ex.: "jadlog") e salvava via `updateConfig({shippingProvider,
+  // enabledShippingMethods})`. Esse desenho morreu: a seção não chama mais
+  // `updateConfig` para NADA — ela lê e grava só pela edge
+  // (`ler_configuracao_frete`/`save_credentials`/`save_active_providers`),
+  // e os "serviços" viraram a lista real da conta (`list_services`), sem
+  // chip sintético. A cobertura equivalente vive em
+  // transportadoras-por-provedor-e-ligados.test.tsx ("salvar a chave do
+  // Melhor Envio NÃO liga nada sozinho: só save_credentials é chamado") e em
+  // admin-frete-v2-contrato.test.tsx (Salvar em Frete não envia campo de
+  // Transportadoras) — a divisão de território que este arquivo prende
+  // continua de pé, só que pelo lado da edge.
 
   it("lote E: a seção veste o idioma visual do novo Ajustes (o card é da casca, não do conteúdo)", async () => {
     const { TransportadorasSection } = await import(
@@ -367,6 +245,9 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     );
     await act(async () => {
       raiz.render(<TransportadorasSection />);
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
     });
     await act(async () => {
       await esperarMicrotarefas();
@@ -389,7 +270,7 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     ].find(
       (el) =>
         el.children.length === 0 &&
-        el.textContent?.trim() === "Serviços que o cliente pode escolher",
+        el.textContent?.trim() === "Serviços da conta",
     );
     expect(rotuloServicos).toBeDefined();
     for (const classe of [

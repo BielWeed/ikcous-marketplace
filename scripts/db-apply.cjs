@@ -1806,6 +1806,61 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // A cotação de frete confere a revisão (Emenda R3 do root, 23/09/2026,
+  // pacote M da release 1.5.7 v2): no ramo único de cotação de
+  // transportadora (o mesmo bloco que já casava opt->>'id' no cache — não
+  // cobre 'local-delivery' nem 'store-pickup'), a RPC passa a exigir que a
+  // revisão carimbada na opção bata com a revisão ATUAL da loja, quando a
+  // linha 'store_shipping_credentials' provider='_revisao' existir. Sem
+  // essa linha, o comportamento é IDÊNTICO ao de hoje — a checagem nem
+  // roda. Os cinco marcadores, todos MEDIDOS contra o .sql da própria
+  // migration (0 ocorrência no corpo anterior, 20261169000000):
+  //   1. o SELECT que já buscava (opt->>'price')::numeric passa a trazer
+  //      opt->>'revisaoCredenciais' na MESMA linha de cache, para a MESMA
+  //      variável nova — sem isto a checagem nunca teria o valor da
+  //      cotação para comparar.
+  //   2. a leitura da linha '_revisao' (contígua: SELECT + FROM + WHERE) —
+  //      sem isto a checagem nunca teria a revisão ATUAL para comparar.
+  //   3. o bloco CONDIÇÃO+CONSEQUÊNCIA (o IF que compara as duas revisões
+  //      seguido do RAISE): marcador contíguo, não solto, pelo mesmo motivo
+  //      de outras entradas deste mapa (ex.: 20260729000002) — um RAISE
+  //      "FRETE_COTACAO_DESATUALIZADA" solto continuaria "ok" mesmo se a
+  //      condição virasse `IF false THEN` (a checagem nunca dispararia de
+  //      verdade, e o marcador solto não perceberia).
+  //   4 e 5. as duas variáveis novas do DECLARE (v_revisao_credenciais e
+  //      v_revisao_atual, com o `text;` da declaração — não a prosa do
+  //      comentário que as cita sem esse sufixo, medido: prosa e código não
+  //      colidem). Sobrevivem sozinhas a pouco, mas custam nada e reforçam
+  //      que a variável não foi renomeada nem removida por um REPLACE
+  //      futuro.
+  // Achado documentado (não é o que este mapa cobre, e não impede a
+  // entrada): em v23 este ramo é código MORTO no estado atual — o bloco
+  // 2-ter (20261168000000, anterior a esta) recusa toda opção de
+  // transportadora antes de alcançar aqui. O marcador prova que o CÓDIGO
+  // está lá, byte a byte, nas duas funções — não que o ramo é alcançável
+  // (isso é coberto por tests/frete-revisao-database/run.cjs, RPC real).
+  "20261170000000_a_cotacao_de_frete_confere_a_revisao.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        "SELECT (opt->>'price')::numeric, opt->>'revisaoCredenciais'\n          INTO v_shipping_validated, v_revisao_credenciais",
+        "SELECT credentials->>'revisao' INTO v_revisao_atual\n          FROM public.store_shipping_credentials\n         WHERE provider = '_revisao';",
+        "IF v_revisao_atual IS NOT NULL\n           AND v_revisao_credenciais IS DISTINCT FROM v_revisao_atual THEN\n            RAISE EXCEPTION 'FRETE_COTACAO_DESATUALIZADA: a configuração de frete da loja mudou depois desta cotação. Calcule o frete novamente e refaça o pedido.'",
+        "v_revisao_credenciais text;",
+        "v_revisao_atual text;",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "SELECT (opt->>'price')::numeric, opt->>'revisaoCredenciais'\n          INTO v_shipping_validated, v_revisao_credenciais",
+        "SELECT credentials->>'revisao' INTO v_revisao_atual\n          FROM public.store_shipping_credentials\n         WHERE provider = '_revisao';",
+        "IF v_revisao_atual IS NOT NULL\n           AND v_revisao_credenciais IS DISTINCT FROM v_revisao_atual THEN\n            RAISE EXCEPTION 'FRETE_COTACAO_DESATUALIZADA: a configuração de frete da loja mudou depois desta cotação. Calcule o frete novamente e refaça o pedido.'",
+        "v_revisao_credenciais text;",
+        "v_revisao_atual text;",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

@@ -16,12 +16,20 @@ import {
   Wallet,
   Wifi,
 } from "lucide-react";
-import { Suspense, lazy, memo, useEffect, useState } from "react";
+import { Suspense, lazy, memo, useCallback, useEffect, useState } from "react";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
-import { TransportadorasSection } from "@/components/admin/settings/TransportadorasCard";
+import {
+  type ConfigDoProvedor,
+  NOME_DO_PROVEDOR,
+  PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR,
+  type ProvedorFrete,
+  TransportadorasSection,
+  buscarConfiguracaoDeFrete,
+  emailDeContatoValido,
+} from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useStore } from "@/contexts/StoreContext";
@@ -553,17 +561,6 @@ const ESTADO_DO_PIX = new Map<NivelDoPix, EstadoDoIndicador>([
   ["off", "apagado"],
 ]);
 
-// Nome amigável do provedor de frete. O fallback de LEITURA é o mesmo do
-// resto da tela (`config.shippingProvider || "flat_fee"`, como em
-// TransportadorasCard e HistoricoCotacoesCard); valor fora dos 4 conhecidos
-// (drift de banco) cai no ramo seguro em vez de imprimir lixo cru.
-const NOME_DO_PROVEDOR_DE_FRETE = new Map<string, string>([
-  ["flat_fee", "Sem cotação automática"],
-  ["melhor_envio", "Melhor Envio"],
-  ["frenet", "Frenet"],
-  ["superfrete", "SuperFrete"],
-]);
-
 export const AdminSettingsView = memo(function AdminSettingsView({
   onNavigate,
   active,
@@ -630,9 +627,58 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       : "alerta";
   const rotuloDoPix = ROTULO_DO_PIX.get(nivelDoPix) ?? "";
 
+  // RELEASE 1.5.7 v2 (EMENDA R2, R2-5): quem está ligado vem da MESMA edge
+  // que a seção de Transportadoras usa (`ler_configuracao_frete`) — nunca
+  // do espelho `config.shippingProvider`, que no modo multi não decide mais
+  // nada (R1-3/R2-1). `null` = ainda não sabemos (leitura em curso ou
+  // falhou); o painel não afirma "sem cotação automática" nesse meio-tempo.
+  const [ligadosDeFrete, setLigadosDeFrete] = useState<
+    readonly ProvedorFrete[] | null
+  >(null);
+  // Achado 2 (revisão Opus, rodada 2): guarda o `Map` de provedores junto
+  // com `ligados` — sem ele não dá para saber se um provedor ligado está
+  // de fato COMPLETO (a SuperFrete precisa de `contato_email` válido;
+  // mesma régua da tela de Frete). Um provedor "ligado" mas incompleto
+  // não pode aparecer aqui como se estivesse cotando de verdade.
+  const [provedoresDeFrete, setProvedoresDeFrete] = useState<
+    ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
+  >(() => new Map());
+  useEffect(() => {
+    buscarConfiguracaoDeFrete().then((resultado) => {
+      setLigadosDeFrete(resultado.ok ? resultado.config.ligados : null);
+      if (resultado.ok) setProvedoresDeFrete(resultado.config.provedores);
+    });
+  }, []);
+  // Revisão Opus (achado 5): a leitura acima só rodava UMA vez, ao montar
+  // — salvar provedores dentro da seção (aberta logo abaixo) não
+  // atualizava o "Ativo: X" deste indicador até um recarregamento
+  // completo da página. `TransportadorasSection` agora avisa a cada
+  // leitura confirmada (montagem e após salvar); o indicador do topo
+  // segue essa MESMA verdade em vez de só a da primeira leitura.
+  const onLigadosDaSecaoMudou = useCallback(
+    (
+      ligados: readonly ProvedorFrete[],
+      provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>,
+    ) => {
+      setLigadosDeFrete(ligados);
+      setProvedoresDeFrete(provedores);
+    },
+    [],
+  );
   const nomeDoFrete =
-    NOME_DO_PROVEDOR_DE_FRETE.get(config.shippingProvider || "flat_fee") ??
-    "Sem cotação automática";
+    ligadosDeFrete === null
+      ? "A confirmar"
+      : ligadosDeFrete.length === 0
+        ? "Sem cotação automática"
+        : ligadosDeFrete
+            .map((p) => {
+              const nome = NOME_DO_PROVEDOR.get(p) ?? p;
+              const incompleta =
+                PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(p) &&
+                !emailDeContatoValido(provedoresDeFrete.get(p)?.contato_email);
+              return incompleta ? `${nome} incompleta` : nome;
+            })
+            .join(" + ");
   // Vazio após trim = não informado (string de espaços não é horário).
   const horarioSalvo = (config.businessHours ?? "").trim();
   const atendimentoDeRelacao =
@@ -849,10 +895,15 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               {/* Transportadoras e cotação de frete — MUDOU DE TELA (frente
                   glm-visual-admin-0209, pedido do Gabriel 02/09: não fazia
                   sentido o token da transportadora morar no meio das regras
-                  de frete). Dona de `shippingProvider`,
-                  `enabledShippingMethods` e das credenciais — salvar a tela
-                  de Frete não toca nelas. COLAPSADA e nascida FECHADA: ajuste
-                  raro, feito uma vez. */}
+                  de frete). RELEASE 1.5.7 v2 (revisão Opus, comentário
+                  corrigido): a seção já não é dona de `shippingProvider`
+                  nem `enabledShippingMethods` — esses campos só existem
+                  como espelho legado que a edge escreve por conta própria
+                  (R1-3/R2-1). Ela é dona só das CREDENCIAIS de cada
+                  provedor e de quem está LIGADO na loja, tudo pela edge
+                  (`save_credentials`/`save_active_providers`) — salvar a
+                  tela de Frete continua sem tocar em nada disso.
+                  COLAPSADA e nascida FECHADA: ajuste raro, feito uma vez. */}
               <SecaoColapsavel
                 titulo="Entrega e frete"
                 subtitulo={`Ativo: ${nomeDoFrete}`}
@@ -861,6 +912,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               >
                 <TransportadorasSection
                   onDirtyMudou={setTransportadorasPendentes}
+                  onLigadosMudou={onLigadosDaSecaoMudou}
                 />
               </SecaoColapsavel>
 

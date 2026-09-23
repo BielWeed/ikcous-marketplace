@@ -337,6 +337,23 @@ export interface ShippingOption {
    * calculate-shipping manda junto. A tela mostra "Retire em: …" com ele.
    */
   pickupAddress?: string;
+  /**
+   * CAMPOS NOVOS DA 1.5.7 (vários provedores ao mesmo tempo —
+   * CONTRATO-1.5.7.md §2 e R1-7). Ausentes em opção local/retirada/grátis e
+   * em pedido antigo (id sem sufixo, cotado antes desta release).
+   */
+  /** Nome da transportadora, ex. "Loggi", "Correios" (só nacional). */
+  transportadora?: string;
+  /** Nome do serviço na transportadora, ex. "Express", "PAC". */
+  servico?: string;
+  /** Rótulo do provedor para a tela, ex. "Melhor Envio", "SuperFrete", "Frenet". */
+  provedorRotulo?: string;
+  /**
+   * EMENDA R3 do CONTRATO-1.5.7.md: campo opcional que a tela NÃO mostra —
+   * só preserva ao repassar a opção adiante (ex.: no envelope do cache do
+   * navegador). Quem decide algo com ele é o servidor, nunca esta tela.
+   */
+  revisaoCredenciais?: string;
 }
 
 export interface WaitlistItem {

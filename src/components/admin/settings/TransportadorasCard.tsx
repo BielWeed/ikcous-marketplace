@@ -1,14 +1,6 @@
 import { Switch } from "@/components/ui/switch";
-import { useStore } from "@/contexts/StoreContext";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import {
-  chavesDeTransportadoraDaLista,
-  listaComRetirada,
-  retiradaLigadaNaLista,
-} from "@/lib/guarda-de-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
-import type { StoreConfig } from "@/types";
 import { haptic } from "@/utils/haptic";
 import {
   AlertCircle,
@@ -16,44 +8,173 @@ import {
   KeyRound,
   Lock,
   Mail,
-  Package,
   RefreshCw,
   Save,
-  Sparkles,
-  Tag,
-  Truck,
+  ShieldCheck,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-type ProvedorDeFrete = NonNullable<StoreConfig["shippingProvider"]>;
-
 /**
- * Provedores cuja chave tem AMBIENTE (Sandbox x produção). As duas
- * documentações dizem o mesmo: a chave de um ambiente não vale no outro —
- * por isso trocar o modo de testes exige colar a chave do ambiente novo.
+ * RELEASE 1.5.7 v2 — FRETE COM VÁRIOS PROVEDORES (ME + SuperFrete + Frenet).
+ *
+ * MUDANÇA DE ARQUITETURA (CONTRATO-1.5.7.md, EMENDA R2): esta seção deixa de
+ * ser "escolha UM provedor" (radiogroup) e vira "configure CADA provedor, e
+ * escolha quais estão LIGADOS na loja". As duas metades são independentes:
+ * salvar a chave de um provedor NUNCA liga/desliga nada sozinho.
+ *
+ * TODA leitura e gravação passa pela edge (`calculate-shipping`). O
+ * navegador NUNCA mais faz `select`/`upsert` direto em
+ * `store_shipping_credentials` — nem para ler "tem chave", nem para gravar
+ * `{token}`. Quem decide o que existe e o que é ligado é o servidor
+ * (service role), inclusive a linha especial `_ligados` (R2-1) que guarda o
+ * conjunto ligado da loja — este componente só enxerga o resultado já
+ * pronto de `ler_configuracao_frete`.
+ *
+ * `servicos`: a lista de serviços reais da conta (ids do Melhor Envio/
+ * SuperFrete, `ServiceCode` da Frenet) vem de `list_services`. Ela só entra
+ * no pedido de salvar quando CARREGOU e a lojista MEXEU nela (regra 3 do
+ * despacho) — sem isso, uma falha de rede na listagem nunca apaga o filtro
+ * legado que já funcionava.
  */
-const PROVEDORES_COM_SANDBOX: ReadonlySet<ProvedorDeFrete> = new Set([
+
+export type ProvedorFrete = "melhor_envio" | "superfrete" | "frenet";
+
+export interface ServicoDoProvedor {
+  readonly codigo: string;
+  readonly transportadora: string;
+  readonly servico: string;
+}
+
+export interface ConfigDoProvedor {
+  readonly tem_chave: boolean;
+  readonly sandbox: boolean;
+  readonly servicos: readonly string[] | null;
+  readonly seguro?: "valor_dos_produtos" | "sem_seguro";
+  readonly contato_email?: string;
+  readonly precisa_salvar_de_novo?: boolean;
+}
+
+export interface ConfiguracaoDeFrete {
+  readonly modo: "legado" | "multi";
+  readonly ligados: readonly ProvedorFrete[];
+  readonly provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>;
+}
+
+// `Map`, não `Record` indexado por variável — `provider` é uma UNIÃO
+// FECHADA, mas o eslint-plugin-security não distingue isso de um
+// dicionário arbitrário e acusa `security/detect-object-injection` em
+// toda indexação dinâmica (`NOME_DO_PROVEDOR[provider]`). Mesma técnica de
+// `statusConfigByKey` em useOrders.ts: `Map.get` não é indexação para o
+// eslint. `NOME_DO_PROVEDOR_ROTULOS` abaixo é só o literal fonte, legível
+// como Record; o Map é o que o código de verdade consulta.
+const NOME_DO_PROVEDOR_ROTULOS: Readonly<Record<ProvedorFrete, string>> = {
+  melhor_envio: "Melhor Envio",
+  superfrete: "SuperFrete",
+  frenet: "Frenet",
+};
+export const NOME_DO_PROVEDOR: ReadonlyMap<ProvedorFrete, string> = new Map(
+  Object.entries(NOME_DO_PROVEDOR_ROTULOS) as [ProvedorFrete, string][],
+);
+function nomeDoProvedor(provider: ProvedorFrete): string {
+  return NOME_DO_PROVEDOR.get(provider) ?? provider;
+}
+
+// Ordem fixa do contrato (§4 save_active_providers — mesma ordem do
+// espelho `store_config.shipping_provider`), reaproveitada aqui só para a
+// ORDEM DE EXIBIÇÃO dos três cartões — não muda nenhuma regra de negócio.
+const ORDEM_DOS_PROVEDORES: readonly ProvedorFrete[] = [
+  "melhor_envio",
+  "superfrete",
+  "frenet",
+];
+
+// Só ME e SuperFrete têm ambiente de testes — a Frenet não tem sandbox no
+// contrato (§1).
+const PROVEDORES_COM_SANDBOX: ReadonlySet<ProvedorFrete> = new Set([
   "melhor_envio",
   "superfrete",
 ]);
 
-const NOME_DA_CHAVE: Readonly<Record<string, string>> = {
-  melhor_envio: "Melhor Envio",
-  frenet: "Frenet",
-  superfrete: "SuperFrete",
-};
+// Ids do Melhor Envio que exigem agência própria (LATAM Cargo, Azul) — a
+// etiqueta recusa esses ids (A7/R1-6) porque o app não manda agência. O
+// aviso aqui é PREVENTIVO: a lojista pode LIGAR o serviço (ele cota e vende
+// no checkout), mas precisa saber, ANTES de vender, que a etiqueta desse
+// pedido não sai pelo app.
+const IDS_ME_QUE_EXIGEM_AGENCIA: ReadonlySet<string> = new Set([
+  "12",
+  "15",
+  "16",
+  "22",
+]);
+const AVISO_ID_EXIGE_AGENCIA =
+  "Vende no checkout, mas a etiqueta tem de ser feita no site do Melhor Envio.";
 
 /**
- * E-mail de contato técnico da SuperFrete (release 1.5.5) — CÓPIA da régua
- * da edge (`emailDeContatoValido` em calculate-shipping/index.ts), só para a
- * experiência de uso: avisar no campo antes de ir ao servidor. Quem decide é
- * a edge; se ela recusar, a tela mostra a frase dela. Só ASCII, sem espaço
- * nem nada que quebre o header onde o e-mail vai, no máximo 254 caracteres.
- * Em partes (um `@`; local; 2+ rótulos, o último só letras) para não ter
- * quantificador aninhado.
+ * Chama uma ação da edge `calculate-shipping` e devolve o corpo da
+ * resposta — nunca lança para quem chama tratar erro de rede como qualquer
+ * outra falha (o `try/catch` de cada handler decide a mensagem).
  */
-function emailDeContatoValido(valor: unknown): string | null {
+async function chamarEdgeDeFrete(
+  body: Record<string, unknown>,
+): Promise<{ data: any; error: unknown }> {
+  const resposta = await supabase.functions.invoke("calculate-shipping", {
+    body,
+  });
+  return { data: resposta?.data, error: resposta?.error };
+}
+
+/**
+ * Lê a configuração de frete inteira pela edge (`ler_configuracao_frete`) —
+ * usada por esta seção e, para mostrar os provedores LIGADOS do modo multi
+ * sem depender do espelho `shipping_provider` (EMENDA R2, R2-5), por
+ * `HistoricoCotacoesCard.tsx` e `AdminSettingsView.tsx`.
+ */
+export async function buscarConfiguracaoDeFrete(): Promise<
+  { ok: true; config: ConfiguracaoDeFrete } | { ok: false }
+> {
+  try {
+    const { data, error } = await chamarEdgeDeFrete({
+      action: "ler_configuracao_frete",
+    });
+    if (error || !data?.success) return { ok: false };
+    const ligados = Array.isArray(data.ligados)
+      ? (data.ligados.filter((p: unknown) =>
+          ORDEM_DOS_PROVEDORES.includes(p as ProvedorFrete),
+        ) as ProvedorFrete[])
+      : [];
+    // `Map` a partir do JSON da edge (`Object.entries`, nunca indexação por
+    // variável) — mesma técnica de `NOME_DO_PROVEDOR` acima.
+    const provedores = new Map(
+      Object.entries(data.provedores ?? {}) as [
+        ProvedorFrete,
+        ConfigDoProvedor,
+      ][],
+    );
+    return {
+      ok: true,
+      config: {
+        modo: data.modo === "multi" ? "multi" : "legado",
+        ligados,
+        provedores,
+      },
+    };
+  } catch (err) {
+    console.error("[TransportadorasCard] Erro ao ler configuração:", err);
+    return { ok: false };
+  }
+}
+
+/**
+ * E-mail de contato técnico da SuperFrete (release 1.5.5, preservado
+ * intacto na v2) — CÓPIA da régua da edge (`emailDeContatoValido`). Quem
+ * decide é a edge; esta cópia só evita uma ida ao servidor com e-mail
+ * obviamente inválido. EXPORTADA (revisão do pacote P, achado 2): a tela de
+ * Frete precisa da MESMA régua para saber se uma chave salva está de fato
+ * completa (estado "incompleta" de `AdminShippingView.tsx`) — uma segunda
+ * cópia divergiria cedo ou tarde.
+ */
+export function emailDeContatoValido(valor: unknown): string | null {
   if (typeof valor !== "string") return null;
   const email = valor.trim();
   if (email.length === 0 || email.length > 254) return null;
@@ -68,1032 +189,1252 @@ function emailDeContatoValido(valor: unknown): string | null {
     : null;
 }
 
-const MENSAGEM_PARA_ATIVAR_SUPERFRETE =
-  "Para ativar a SuperFrete, cole a chave de acesso e preencha o e-mail de contato.";
+// CONTRATO-1.5.7.md §9 R3-7 (ordem do dono, 22/09/2026): o Melhor Envio
+// também exige e-mail de contato em cada consulta — ganha o MESMO campo,
+// MESMA validação (`emailDeContatoValido`) e MESMAS mensagens que a
+// SuperFrete usa desde a 1.5.5, só trocando o nome do provedor na frase.
+// O e-mail entra na cotação/teste dos DOIS (cada "consulta" precisa dele) —
+// mas SALVAR a credencial diverge: a SuperFrete continua exigindo o e-mail
+// para gravar (regra 1.5.5, intacta); o Melhor Envio aceita gravar SEM
+// e-mail (campo vazio = mantém o que já estava salvo no servidor — mesma
+// filosofia do campo de chave, que também é vazio-mantém) e é a ATIVAÇÃO
+// (`save_active_providers`) quem recusa ligar o ME sem e-mail, com a
+// mensagem que o servidor devolver.
+const PROVEDORES_COM_EMAIL_EM_CONSULTA: ReadonlySet<ProvedorFrete> = new Set([
+  "melhor_envio",
+  "superfrete",
+]);
+// EXPORTADA: é também a régua do estado "incompleta" que
+// `AdminShippingView.tsx` usa (revisão do pacote P, achado 2) — só a
+// SuperFrete tem o e-mail preso À PRÓPRIA CHAVE do lado da edge
+// (acoes.ts/save_credentials: `provider === 'superfrete' &&
+// !emailDeContatoValido(...)` recusa GRAVAR); o Melhor Envio aceita a
+// chave sem e-mail e só recusa LIGAR sem ele (`save_active_providers`).
+export const PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR: ReadonlySet<ProvedorFrete> =
+  new Set(["superfrete"]);
+
+function mensagemParaAtivar(provider: ProvedorFrete): string {
+  return `Cole a chave de acesso e preencha o e-mail de contato d${
+    provider === "melhor_envio" ? "o" : "a"
+  } ${nomeDoProvedor(provider)}.`;
+}
 const MENSAGEM_EMAIL_INVALIDO =
   "Confira o e-mail de contato técnico: use um endereço completo, sem espaços nem acentos (exemplo: voce@sualoja.com.br).";
-const MENSAGEM_EMAIL_VAZIO =
-  "Preencha o e-mail de contato técnico para testar e salvar a SuperFrete.";
-
-interface TransportadorasSectionProps {
-  /**
-   * Avisar o pai quando a seção tem alteração não salva. Em Ajustes, o pai
-   * usa isto para BLOQUEAR o fechamento da seção colapsável — fechar
-   * desmonta o card e descartaria o token digitado sem aviso (a trava que
-   * a tela de Frete tinha via guarda de navegação do painel; aqui o
-   * "sair" é o clique no cabeçalho da própria seção).
-   */
-  readonly onDirtyMudou?: (dirty: boolean) => void;
+// Revisão do pacote P (ANOTADO barato): só a SuperFrete exige o e-mail
+// para SALVAR — o Melhor Envio só o exige para TESTAR (salvar aceita
+// vazio, R3-7). A frase dizia "testar e salvar" para os dois; agora só
+// promete o que é verdade PARA aquele provedor.
+function mensagemEmailVazio(provider: ProvedorFrete): string {
+  const finalidade = PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(provider)
+    ? "testar e salvar"
+    : "testar";
+  return `Preencha o e-mail de contato técnico para ${finalidade} ${
+    provider === "melhor_envio" ? "o" : "a"
+  } ${nomeDoProvedor(provider)}.`;
 }
 
-/**
- * Card "Transportadoras e cotação de frete" da tela de Ajustes.
- *
- * ESTE CONTEÚDO MODOU DE TELA (frente glm-visual-admin-0209, pedido do
- * Gabriel em 02/09/2026): o token da transportadora, o teste de conexão e
- * os serviços habilitados viviam DENTRO da tela de Frete, misturados com as
- * regras de cobrança. Configuração de API é ajuste raro — aqui virou uma
- * seção colapsável, nascida fechada como as demais da tela. A tela de Frete
- * segue dona das REGRAS (frete grátis, taxa, origem, cobertura); esta seção
- * é a dona de `shippingProvider`, `enabledShippingMethods` e das credenciais
- * — salvar Frete não toca nelas, e salvar aqui não toca nas regras.
- *
- * Todas as travas auditadas vieram junto, sem reescrita do comportamento:
- * - PAINEL-01: sem `credsLoaded`, o campo da chave fica travado — nada é
- *   gravado por cima do que já está salvo;
- * - erro de leitura vira mensagem na tela com "Tentar de novo" — nunca
- *   "Recarregando…" nem estado morto sem saída;
- * - falha do `updateConfig` para o fluxo ANTES do upsert (ADMIN-010);
- * - mudança de config vinda de fora não sobrescreve escolha não salva
- *   (guarda "já sincronizou E está sujo" — a primeira carga sempre passa).
- *
- * LOTE E (13/09/2026, peça C — salão e porão): o conteúdo veste o idioma
- * visual do novo Ajustes. O card `rounded-3xl border-white/5` passou a ser
- * da casca (SecaoColapsavel — mesma divisão da seção de Identidade, que
- * sempre foi conteúdo puro), então aqui sobra conteúdo: rótulos font-black
- * uppercase tracking-[0.2em], blocos internos em zinc-950/900, admin-gold
- * como único acento.
- *
- * RELEASE 1.5.4 — A CHAVE VIRA SÓ-ESCRITA (e chega a SuperFrete). Esta seção
- * era a última porta por onde o token da conta real da transportadora
- * descia ao navegador (`select("*")` + campo de senha preenchido com o
- * salvo). Agora ela sabe só SE há chave e SE o modo de testes está ligado —
- * os dois perguntados ao Postgres por FILTRO (`credentials->>token`,
- * `credentials->>sandbox`), com `select("provider")`: a coluna
- * `credentials` nunca é pedida (mesmo molde da tela de Frete,
- * AdminShippingView-126). O campo nasce vazio com o selo "chave salva";
- * Salvar só grava credencial quando uma chave NOVA foi digitada
- * (`{ token, sandbox }`); "Testar" sem chave digitada pede à edge que use a
- * SALVA (`usarCredencialSalva`), que ela lê com a service role depois de
- * conferir que quem pede é admin.
- *
- * RELEASE 1.5.5 — O E-MAIL DE CONTATO DA SUPERFRETE É DA LOJISTA. Pedido do
- * dono: "se precisa de email deve ter no app para eu colocar". A SuperFrete
- * exige um e-mail de contato técnico no User-Agent; a edge monta o UA com o
- * e-mail que ESTA tela salva (`credentials.contact_email`). A tela lê só o
- * e-mail, por alias (`contato:credentials->>contact_email`) — nunca o token.
- * Salvar a SuperFrete vai SEMPRE pela edge (`save_credentials`: valida o
- * e-mail no servidor e mantém a chave salva quando o campo está vazio); o
- * provedor vivo só muda DEPOIS, e só se a resposta da edge disser que ficou
- * completo (chave + e-mail) — nunca pelo estado local, que pode estar velho
- * (outro aparelho com o painel 1.5.4 grava `{token, sandbox}` e apaga o
- * e-mail). Melhor Envio e Frenet seguem a ordem ADMIN-010 de sempre.
- * O rodapé "Ativo agora" passou a mostrar o provedor SALVO: antes mostrava
- * a escolha não salva, e dizia "SuperFrete" com a SuperFrete bloqueada.
- */
-
-const OPCOES: ReadonlyArray<{
-  readonly id: ProvedorDeFrete;
-  readonly nome: string;
-  readonly descricao: string;
-  readonly detalhe: string;
-}> = [
-  {
-    id: "flat_fee",
-    // TEXTOS ajustados pela frete-v2-0309 (frente A — permissão do dossiê:
-    // só texto, sem lógica nova): a taxa fixa foi aposentada na edge
-    // (calculate-shipping deixa de cotar por ela). Escolher esta opção
-    // agora significa, honestamente, "sem cotação de fora".
-    nome: "Sem cotação automática",
-    descricao:
-      "Sem transportadora: a loja entrega apenas na sua cidade. Para vender para todo o Brasil, conecte uma transportadora.",
-    detalhe: "Não precisa de conta em transportadora",
-  },
-  {
-    id: "melhor_envio",
-    nome: "Melhor Envio",
-    descricao:
-      "O frete é cotado na hora com Correios, Jadlog e Azul Cargo. Precisa de uma conta no Melhor Envio e da chave de acesso dela.",
-    detalhe: "Cotação automática",
-  },
-  {
-    id: "frenet",
-    nome: "Frenet",
-    descricao:
-      "O frete é cotado na hora com as transportadoras conectadas à sua conta Frenet. Precisa da chave de acesso dela.",
-    detalhe: "Cotação automática",
-  },
-  {
-    id: "superfrete",
-    nome: "SuperFrete",
-    descricao:
-      "O frete é cotado na hora com Correios (PAC e SEDEX) e, onde houver ponto de postagem perto da loja, Jadlog. Precisa de uma conta na SuperFrete e da chave de acesso dela. A etiqueta é feita no site da SuperFrete.",
-    detalhe: "Cotação automática",
-  },
-];
-
-const SERVICOS = ["sedex", "pac", "jadlog"] as const;
-
-/**
- * Texto do chip de um serviço (release 1.5.6). Na SuperFrete a chave `pac`
- * pede o PAC E o Mini Envios, e a cliente vê só o mais barato como "Entrega
- * econômica" — o chip diz isso. Só o texto: o valor gravado continua a chave.
- */
-function rotuloDoServico(servico: string, provider: string): string {
-  if (provider === "superfrete" && servico === "pac") {
-    return "PAC e Mini Envios (o mais barato)";
+/** Mensagem honesta por motivo de falha do teste (R1-8: nunca confunde
+ * "chave recusada" com "indisponível" nem com "serviço sem cotação"). */
+function mensagemDoMotivo(motivo: unknown, respostaErro: unknown): string {
+  switch (motivo) {
+    case "chave_recusada":
+      return "A chave foi recusada pelo provedor. Confira se copiou certo.";
+    case "indisponivel":
+      return "O provedor não respondeu agora. Tente de novo em instantes.";
+    case "sem_servicos":
+      return "Nenhum serviço encontrado para testar. Marque ao menos um serviço da lista.";
+    case "sem_cotacao_valida":
+      return "A chave está certa; estes serviços não cotaram para o pacote de teste.";
+    default:
+      return typeof respostaErro === "string" && respostaErro
+        ? respostaErro
+        : "Falha na validação das credenciais.";
   }
-  return servico;
+}
+
+interface ServicoTestado {
+  readonly codigo: string;
+  readonly ok: boolean;
+  readonly preco?: number;
+  readonly prazo?: number;
+  readonly motivo?: "erro_do_servico" | "nao_retornado";
+  readonly detalhe?: string;
+}
+
+interface ResultadoDeTeste {
+  readonly sucesso: boolean;
+  readonly mensagem: string;
+  readonly servicosTestados?: readonly ServicoTestado[];
+}
+
+/** Resumo por serviço (R1-8, ANOTADO da revisão Opus): "SEDEX: não cotou
+ * (erro do serviço); PAC: cotou certo" — a MESMA granularidade que o
+ * "Testar" já mostrava, agora também na recusa de salvar/ligar, para a
+ * lojista saber QUAL serviço travou, não só que algo travou. */
+function resumoServicosTestados(
+  servicosTestados: readonly ServicoTestado[] | undefined,
+): string | undefined {
+  if (!servicosTestados || servicosTestados.length === 0) return undefined;
+  return servicosTestados
+    .map(
+      (s) =>
+        `${s.codigo}: ${
+          s.ok
+            ? "cotou certo"
+            : s.motivo === "erro_do_servico"
+              ? `não cotou (${s.detalhe ?? "erro do serviço"})`
+              : "não retornou"
+        }`,
+    )
+    .join("; ");
+}
+
+/** Rascunho local de UM provedor — tudo que a lojista ainda não salvou. */
+interface RascunhoDoProvedor {
+  tokenDigitado: string;
+  sandboxEscolhido?: boolean;
+  emailDigitado: string;
+  seguroEscolhido?: "valor_dos_produtos" | "sem_seguro";
+  servicosCarregados: ServicoDoProvedor[] | null;
+  servicosSelecionados: ReadonlySet<string> | null;
+  servicosMexeu: boolean;
+  /** `true` quando `list_services` veio do catálogo documentado da
+   * SuperFrete (`origem:'catalogo_documentado'`, aviso da hub 22/09) —
+   * ela lista o que EXISTE no plano, não o que a conta tem ativo. A
+   * disponibilidade real só se confirma pelo "Testar" (`servicosTestados`). */
+  servicosDoCatalogo: boolean;
+  carregandoServicos: boolean;
+  erroServicos: boolean;
+  testando: boolean;
+  resultadoTeste: ResultadoDeTeste | null;
+  salvando: boolean;
+}
+
+function rascunhoVazio(): RascunhoDoProvedor {
+  return {
+    tokenDigitado: "",
+    emailDigitado: "",
+    servicosCarregados: null,
+    servicosSelecionados: null,
+    servicosMexeu: false,
+    servicosDoCatalogo: false,
+    carregandoServicos: false,
+    erroServicos: false,
+    testando: false,
+    resultadoTeste: null,
+    salvando: false,
+  };
+}
+
+interface TransportadorasSectionProps {
+  /** Avisa o pai (Ajustes) quando há alteração não salva — a seção não
+   * pode fechar com trabalho pendente (mesma trava de sempre). */
+  readonly onDirtyMudou?: (dirty: boolean) => void;
+  /** Revisão Opus (achado 5, rodada 2): o subtítulo "Ativo: X" da seção em
+   * Ajustes só lia os provedores ligados UMA VEZ, ao montar — salvar aqui
+   * não atualizava aquele texto até a página recarregar. Avisa o pai a
+   * cada leitura (montagem e depois de cada `carregar()` bem-sucedido)
+   * para o subtítulo nunca ficar contando uma história velha. Carrega
+   * também o `Map` de provedores (não só a lista de ligados): o pai
+   * precisa de `contato_email`/`tem_chave` para saber se um provedor
+   * ligado está de fato COMPLETO (achado 2 da rodada 2 — "incompleta"
+   * tem de valer aqui também, não só na tela de Frete). */
+  readonly onLigadosMudou?: (
+    ligados: readonly ProvedorFrete[],
+    provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>,
+  ) => void;
 }
 
 export const TransportadorasSection = memo(function TransportadorasSection({
   onDirtyMudou,
+  onLigadosMudou,
 }: TransportadorasSectionProps) {
-  const { config, isLoaded, updateConfig } = useStore();
-  const isOffline = useOnlineStatus();
+  const [carregado, setCarregado] = useState(false);
+  const [erroCarga, setErroCarga] = useState(false);
+  const [modo, setModo] = useState<"legado" | "multi">("legado");
+  const [provedoresSalvos, setProvedoresSalvos] = useState<
+    ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
+  >(() => new Map());
+  const [ligadosSalvos, setLigadosSalvos] = useState<
+    ReadonlySet<ProvedorFrete>
+  >(() => new Set());
+  const [ligadosEscolhidos, setLigadosEscolhidos] = useState<
+    ReadonlySet<ProvedorFrete>
+  >(() => new Set());
+  const [salvandoLigados, setSalvandoLigados] = useState(false);
 
-  // Escolha local: só vira config de verdade quando o lojista salva.
-  const [escolha, setEscolha] = useState<{
-    provider: ProvedorDeFrete;
-    methods: string[];
-  }>({ provider: "flat_fee", methods: ["sedex", "pac"] });
-
-  // Credenciais — SÓ-ESCRITA (1.5.4). O que o banco conta ao navegador:
-  // quais provedores TÊM chave e quais estão no modo de testes. A chave em si
-  // só existe aqui enquanto a lojista digita uma NOVA (`chaveDigitada`), e
-  // some do estado assim que é salva.
-  const [comChaveSalva, setComChaveSalva] = useState<ReadonlySet<string>>(
-    () => new Set(),
+  // `Map`, não `Record` indexado por `provider` — mesmo motivo de
+  // `NOME_DO_PROVEDOR` (o eslint não distingue união fechada de dicionário
+  // arbitrário). `rascunhoDoProvider` abaixo garante o fallback vazio para
+  // quem consome (as três chaves sempre existem depois do `carregar()`
+  // inicial, mas o tipo de `Map.get` é honesto sobre isso).
+  const [rascunhos, setRascunhos] = useState<
+    ReadonlyMap<ProvedorFrete, RascunhoDoProvedor>
+  >(
+    () =>
+      new Map(
+        ORDEM_DOS_PROVEDORES.map((provider) => [provider, rascunhoVazio()]),
+      ),
   );
-  const [sandboxSalvo, setSandboxSalvo] = useState<ReadonlySet<string>>(
-    () => new Set(),
+  const rascunhoDoProvider = useCallback(
+    (provider: ProvedorFrete): RascunhoDoProvedor =>
+      rascunhos.get(provider) ?? rascunhoVazio(),
+    [rascunhos],
   );
-  const [chaveDigitada, setChaveDigitada] = useState<Record<string, string>>(
-    {},
+
+  const atualizarRascunho = useCallback(
+    (provider: ProvedorFrete, patch: Partial<RascunhoDoProvedor>) => {
+      setRascunhos((prev) => {
+        const proximo = new Map(prev);
+        proximo.set(provider, {
+          ...(prev.get(provider) ?? rascunhoVazio()),
+          ...patch,
+        });
+        return proximo;
+      });
+    },
+    [],
   );
-  // Escolha do modo de testes ainda não salva, por provedor (ausente = o
-  // salvo vale).
-  const [sandboxEscolhido, setSandboxEscolhido] = useState<
-    Record<string, boolean>
-  >({});
-  // E-mail de contato técnico da SuperFrete (1.5.5): o SALVO (lido sozinho,
-  // por alias) e o do campo. Diferentes = há o que salvar.
-  const [emailSalvo, setEmailSalvo] = useState("");
-  const [emailDigitado, setEmailDigitado] = useState("");
-  // Liga quando Testar/Salvar foram barrados pelo e-mail — o aviso aparece
-  // no campo até a lojista mexer nele.
-  const [avisoEmail, setAvisoEmail] = useState(false);
-  // PAINEL-01: `credsLoaded` só vira true quando a leitura devolveu dados de
-  // verdade — sem ela o campo da chave fica travado.
-  const [credsLoaded, setCredsLoaded] = useState(false);
-  const [credsError, setCredsError] = useState(false);
 
-  const [isTestingCreds, setIsTestingCreds] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
-
-  const [isSaving, setIsSaving] = useState(false);
-
-  const fetchShippingCreds = useCallback(async () => {
-    // Limpa o erro da rodada anterior no início de CADA busca — um "Tentar
-    // de novo" que deu certo precisa tirar o aviso vermelho da tela.
-    setCredsError(false);
-    try {
-      // Duas perguntas, as duas respondidas pelo Postgres por FILTRO: a
-      // coluna `credentials` nunca entra no `select` (o token não sai do
-      // banco). RLS já restringe as linhas ao admin da loja. A terceira
-      // (1.5.5) pede SÓ o e-mail de contato da SuperFrete, por alias — o
-      // PostgREST devolve o texto daquele campo e nada mais do JSON.
-      const [comToken, emSandbox, emailDaSuperFrete] = await Promise.all([
-        supabase
-          .from("store_shipping_credentials")
-          .select("provider")
-          .not("credentials->>token", "is", null)
-          .neq("credentials->>token", ""),
-        supabase
-          .from("store_shipping_credentials")
-          .select("provider")
-          .eq("credentials->>sandbox", "true"),
-        supabase
-          .from("store_shipping_credentials")
-          .select("provider, contato:credentials->>contact_email")
-          .eq("provider", "superfrete"),
-      ]);
-      const erro = comToken.error ?? emSandbox.error ?? emailDaSuperFrete.error;
-      if (!erro && comToken.data && emSandbox.data && emailDaSuperFrete.data) {
-        const linhaDaSuperFrete = (
-          emailDaSuperFrete.data as ReadonlyArray<{
-            provider: string;
-            contato: unknown;
-          }>
-        ).find((row) => row.provider === "superfrete");
-        const email =
-          typeof linhaDaSuperFrete?.contato === "string"
-            ? linhaDaSuperFrete.contato
-            : "";
-        setEmailSalvo(email);
-        setEmailDigitado(email);
-        setAvisoEmail(false);
-        setComChaveSalva(
-          new Set(
-            comToken.data.map((row: { provider: string }) => row.provider),
-          ),
-        );
-        setSandboxSalvo(
-          new Set(
-            emSandbox.data.map((row: { provider: string }) => row.provider),
-          ),
-        );
-        setSandboxEscolhido({});
-        setCredsLoaded(true);
-      } else {
-        console.error(
-          "[TransportadorasCard] Credenciais não carregaram:",
-          erro,
-        );
-        setCredsError(true);
-      }
-    } catch (err) {
-      console.error("Error fetching shipping credentials:", err);
-      setCredsError(true);
-    }
-  }, []);
-
-  // Guarda de sincronização (mesma da tela de Frete): a primeira carga
-  // sempre passa; depois, config nova de fora não apaga escolha não salva.
-  // A seção é montada sob demanda (nasce fechada dentro de Ajustes), então
-  // o efeito dispara no primeiro render com config já carregada — mas a
-  // guarda de duas condições continua correta e barata.
-  const jaSincronizouRef = useRef(false);
-  const isDirtyRef = useRef(false);
-
-  useEffect(() => {
-    if (isLoaded && config) {
-      if (jaSincronizouRef.current && isDirtyRef.current) {
+  // `resetarRascunhoDe`: revisão Opus (ANOTADO barato) — `carregar()`
+  // recarregava e ZERAVA os rascunhos dos TRÊS provedores toda vez, mesmo
+  // quando só UM foi salvo. Salvar o Melhor Envio apagava, em silêncio, o
+  // token que a lojista já tinha colado no card da Frenet e ainda não
+  // salvara. Agora:
+  //   "tudo"     — carga inicial e "Tentar de novo": ainda não há rascunho
+  //                de ninguém para preservar, parte tudo do zero;
+  //   provider   — `salvarProvedor` passa QUEM acabou de ser salvo: só o
+  //                rascunho dele volta limpo (a chave nova já está
+  //                gravada); os demais mantêm o que estava sendo digitado;
+  //   "nenhum"   — `salvarLigados` passa isto: liga/desliga NUNCA mexe em
+  //                credencial nenhuma, então nenhum rascunho é tocado.
+  const carregar = useCallback(
+    async (resetarRascunhoDe: "tudo" | ProvedorFrete | "nenhum" = "tudo") => {
+      setErroCarga(false);
+      const resultado = await buscarConfiguracaoDeFrete();
+      if (!resultado.ok) {
+        setErroCarga(true);
         return;
       }
-      jaSincronizouRef.current = true;
-      setEscolha({
-        provider: (config.shippingProvider || "flat_fee") as ProvedorDeFrete,
-        methods: config.enabledShippingMethods || ["sedex", "pac"],
-      });
-      fetchShippingCreds();
-    }
-  }, [isLoaded, config, fetchShippingCreds]);
-
-  const isDirty = useMemo(() => {
-    if (!config) return false;
-    if (
-      escolha.provider !==
-      ((config.shippingProvider || "flat_fee") as ProvedorDeFrete)
-    ) {
-      return true;
-    }
-
-    // Só os SERVIÇOS de transportadora contam: a chave `store-pickup` é da
-    // tela de Frete (retirada na loja) e ligá-la lá não pode sujar esta seção.
-    const methodsA = chavesDeTransportadoraDaLista(escolha.methods);
-    const methodsB = chavesDeTransportadoraDaLista(
-      config.enabledShippingMethods,
-    );
-    if (methodsA.length !== methodsB.length) return true;
-    const sortedA = [...methodsA].sort();
-    const sortedB = [...methodsB].sort();
-    for (let i = 0; i < sortedA.length; i++) {
-      if (sortedA[i] !== sortedB[i]) return true;
-    }
-
-    const provider = escolha.provider;
-    if (provider !== "flat_fee") {
-      // Chave NOVA digitada = há o que salvar. (A salva não está aqui para
-      // comparar — e não precisa: campo vazio = "mantém a salva".)
-      if ((chaveDigitada[provider] ?? "").trim() !== "") return true;
-      if (
-        PROVEDORES_COM_SANDBOX.has(provider) &&
-        provider in sandboxEscolhido &&
-        sandboxEscolhido[provider] !== sandboxSalvo.has(provider)
-      ) {
-        return true;
+      const { config } = resultado;
+      setModo(config.modo);
+      setProvedoresSalvos(config.provedores);
+      setLigadosSalvos(new Set(config.ligados));
+      setLigadosEscolhidos(new Set(config.ligados));
+      if (resetarRascunhoDe !== "nenhum") {
+        const rascunhoFresco = (
+          provider: ProvedorFrete,
+        ): RascunhoDoProvedor => ({
+          ...rascunhoVazio(),
+          emailDigitado: config.provedores.get(provider)?.contato_email ?? "",
+        });
+        if (resetarRascunhoDe === "tudo") {
+          setRascunhos(
+            () =>
+              new Map(
+                ORDEM_DOS_PROVEDORES.map((provider) => [
+                  provider,
+                  rascunhoFresco(provider),
+                ]),
+              ),
+          );
+        } else {
+          const provider = resetarRascunhoDe;
+          setRascunhos((prev) => {
+            const proximo = new Map(prev);
+            proximo.set(provider, rascunhoFresco(provider));
+            return proximo;
+          });
+        }
       }
-      // E-mail de contato diferente do salvo (1.5.5, só SuperFrete).
-      if (provider === "superfrete" && emailDigitado.trim() !== emailSalvo) {
-        return true;
-      }
-    }
-
-    return false;
-  }, [
-    escolha,
-    config,
-    chaveDigitada,
-    sandboxEscolhido,
-    sandboxSalvo,
-    emailDigitado,
-    emailSalvo,
-  ]);
-
-  // O modo de testes que a tela mostra: a escolha pendente, ou o salvo.
-  const sandboxDe = useCallback(
-    (provider: string) =>
-      provider in sandboxEscolhido
-        ? sandboxEscolhido[provider]
-        : sandboxSalvo.has(provider),
-    [sandboxEscolhido, sandboxSalvo],
+      setCarregado(true);
+    },
+    [],
   );
 
   useEffect(() => {
-    isDirtyRef.current = isDirty;
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sandboxAtual = useCallback(
+    (provider: ProvedorFrete): boolean => {
+      const r = rascunhoDoProvider(provider);
+      if (r.sandboxEscolhido !== undefined) return r.sandboxEscolhido;
+      return provedoresSalvos.get(provider)?.sandbox ?? false;
+    },
+    [rascunhoDoProvider, provedoresSalvos],
+  );
+
+  // Dirty geral: qualquer rascunho tocado, ou a escolha de ligados diferente
+  // da salva.
+  const isDirty = useMemo(() => {
+    for (const provider of ORDEM_DOS_PROVEDORES) {
+      const r = rascunhos.get(provider) ?? rascunhoVazio();
+      const salvo = provedoresSalvos.get(provider);
+      if (r.tokenDigitado.trim() !== "") return true;
+      if (
+        r.sandboxEscolhido !== undefined &&
+        r.sandboxEscolhido !== (salvo?.sandbox ?? false)
+      )
+        return true;
+      if (
+        PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) &&
+        r.emailDigitado.trim() !== (salvo?.contato_email ?? "")
+      )
+        return true;
+      if (
+        r.seguroEscolhido &&
+        r.seguroEscolhido !== (salvo?.seguro ?? "valor_dos_produtos")
+      )
+        return true;
+      if (r.servicosMexeu) return true;
+    }
+    if (ligadosEscolhidos.size !== ligadosSalvos.size) return true;
+    for (const p of ligadosEscolhidos) {
+      if (!ligadosSalvos.has(p)) return true;
+    }
+    return false;
+  }, [rascunhos, provedoresSalvos, ligadosEscolhidos, ligadosSalvos]);
+
+  useEffect(() => {
     onDirtyMudou?.(isDirty);
   }, [isDirty, onDirtyMudou]);
 
-  const handleTestCredentials = useCallback(async () => {
-    if (isOffline) {
-      toast.error("Sem conexão com a internet");
-      return;
-    }
+  // Achado 5: dispara a cada leitura confirmada (montagem, e de novo após
+  // qualquer `carregar()` bem-sucedido) — nunca só na montagem. Leva o
+  // `Map` de provedores junto (achado 2, rodada 2): o pai precisa dele
+  // para saber se um ligado está de fato completo.
+  useEffect(() => {
+    if (!carregado) return;
+    onLigadosMudou?.(Array.from(ligadosSalvos), provedoresSalvos);
+  }, [carregado, ligadosSalvos, provedoresSalvos, onLigadosMudou]);
 
-    const provider = escolha.provider;
-    const digitada = (chaveDigitada[provider] ?? "").trim();
-    if (!digitada && !comChaveSalva.has(provider)) {
-      toast.error("Informe a chave de acesso para testar.");
-      return;
-    }
-
-    // SuperFrete (1.5.5): o teste usa o e-mail DO CAMPO (a edge monta o
-    // User-Agent com ele) — inválido ou vazio, nem sai daqui.
-    const emailDoTeste =
-      provider === "superfrete" ? emailDeContatoValido(emailDigitado) : null;
-    if (provider === "superfrete" && !emailDoTeste) {
-      setAvisoEmail(true);
-      toast.error(
-        emailDigitado.trim() ? MENSAGEM_EMAIL_INVALIDO : MENSAGEM_EMAIL_VAZIO,
-      );
-      return;
-    }
-    const comEmail = emailDoTeste ? { contact_email: emailDoTeste } : {};
-
-    setIsTestingCreds(true);
-    setTestResult(null);
-    haptic.light();
-
-    // Chave digitada (ainda não salva) vai no corpo — é a lojista testando o
-    // que acabou de colar. Sem ela, a edge usa a SALVA: o navegador não tem
-    // (nem precisa ter) o token.
-    const corpo = digitada
-      ? {
-          action: "test_credentials",
-          provider,
-          credentials:
-            provider === "frenet"
-              ? { token: digitada }
-              : { token: digitada, sandbox: sandboxDe(provider), ...comEmail },
-        }
-      : {
-          action: "test_credentials",
-          provider,
-          usarCredencialSalva: true,
-          ...(emailDoTeste ? { credentials: comEmail } : {}),
-        };
-
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        "calculate-shipping",
-        { body: corpo },
-      );
-
-      if (error) throw error;
-
-      if (data?.success) {
-        setTestResult({
-          success: true,
-          message: data.message || "Credenciais válidas e conectadas!",
-        });
-        toast.success("Integração de frete validada com sucesso!");
-      } else {
-        setTestResult({
-          success: false,
-          message: data?.error || "Falha na validação das credenciais.",
-        });
-        toast.error("Falha ao validar credenciais de frete");
-      }
-    } catch (err: any) {
-      console.error("[TestCredentials] Error:", err);
-      setTestResult({
-        success: false,
-        message: mensagemAmigavelErroEdgeFunction(err, {
-          mensagemGenerica:
-            "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
-        }),
+  const listarServicos = useCallback(
+    async (provider: ProvedorFrete) => {
+      const r = rascunhoDoProvider(provider);
+      const digitada = r.tokenDigitado.trim();
+      atualizarRascunho(provider, {
+        carregandoServicos: true,
+        erroServicos: false,
       });
-      toast.error("Erro ao testar credenciais");
-    } finally {
-      setIsTestingCreds(false);
-    }
-  }, [
-    isOffline,
-    escolha.provider,
-    chaveDigitada,
-    comChaveSalva,
-    sandboxDe,
-    emailDigitado,
-  ]);
+      try {
+        const { data, error } = await chamarEdgeDeFrete({
+          action: "list_services",
+          provider,
+          ...(digitada ? { token: digitada } : {}),
+        });
+        if (error || !data?.success || !Array.isArray(data.servicos)) {
+          atualizarRascunho(provider, {
+            carregandoServicos: false,
+            erroServicos: true,
+          });
+          toast.error(
+            mensagemAmigavelErroEdgeFunction(error as Error | undefined, {
+              mensagemGenerica:
+                typeof data?.error === "string" && data.error
+                  ? data.error
+                  : "Não foi possível carregar os serviços desta transportadora.",
+            }),
+          );
+          return;
+        }
+        const servicosCarregados: ServicoDoProvedor[] = data.servicos;
+        const salvos = new Set(provedoresSalvos.get(provider)?.servicos ?? []);
+        atualizarRascunho(provider, {
+          carregandoServicos: false,
+          erroServicos: false,
+          servicosCarregados,
+          servicosSelecionados: new Set(
+            servicosCarregados
+              .map((s) => s.codigo)
+              .filter((codigo) => salvos.has(codigo)),
+          ),
+          servicosMexeu: false,
+          // Aviso da hub (22/09): a SuperFrete lista pelo CATÁLOGO
+          // documentado (`/api/v0/services/info`), não pelo que a conta tem
+          // ativo — ME e Frenet vêm da conta e não trazem este campo.
+          servicosDoCatalogo: data.origem === "catalogo_documentado",
+        });
+      } catch (err) {
+        console.error("[TransportadorasCard] Erro ao listar serviços:", err);
+        atualizarRascunho(provider, {
+          carregandoServicos: false,
+          erroServicos: true,
+        });
+        toast.error(
+          mensagemAmigavelErroEdgeFunction(err as Error, {
+            mensagemGenerica:
+              "Não foi possível carregar os serviços desta transportadora.",
+          }),
+        );
+      }
+    },
+    [rascunhoDoProvider, provedoresSalvos, atualizarRascunho],
+  );
 
-  /**
-   * Salvar com a SuperFrete escolhida (1.5.5), nesta ORDEM:
-   * (a) grava chave + modo de testes + e-mail PELA EDGE (`save_credentials`)
-   *     — sempre, mesmo sem nada mudado (é idempotente); falhou ou recusou,
-   *     PARA e o provedor vivo não muda;
-   * (b) ativa só se a RESPOSTA da edge disser que ficou completo (chave +
-   *     e-mail) — nunca pelo estado local;
-   * (c) `updateConfig` (provedor + serviços, retirada preservada).
-   */
-  const salvarSuperFrete = async (chaveNova: string, sandboxNovo: boolean) => {
-    const email = emailDeContatoValido(emailDigitado);
-    if (!email) {
-      setAvisoEmail(true);
-      haptic.error();
-      toast.error(
-        emailDigitado.trim()
-          ? MENSAGEM_EMAIL_INVALIDO
-          : MENSAGEM_PARA_ATIVAR_SUPERFRETE,
-      );
-      return;
-    }
+  const alternarServico = useCallback(
+    (provider: ProvedorFrete, codigo: string) => {
+      setRascunhos((prev) => {
+        const atual = prev.get(provider) ?? rascunhoVazio();
+        const conjunto = new Set(atual.servicosSelecionados ?? []);
+        if (conjunto.has(codigo)) conjunto.delete(codigo);
+        else conjunto.add(codigo);
+        const proximo = new Map(prev);
+        proximo.set(provider, {
+          ...atual,
+          servicosSelecionados: conjunto,
+          servicosMexeu: true,
+        });
+        return proximo;
+      });
+      haptic.light();
+    },
+    [],
+  );
 
-    setIsSaving(true);
-    haptic.medium();
+  const testarProvedor = useCallback(
+    async (provider: ProvedorFrete) => {
+      const r = rascunhoDoProvider(provider);
+      const digitada = r.tokenDigitado.trim();
+      const temChaveSalva = provedoresSalvos.get(provider)?.tem_chave ?? false;
+      if (!digitada && !temChaveSalva) {
+        toast.error("Informe a chave de acesso para testar.");
+        return;
+      }
+      let emailDoTeste: string | null = null;
+      if (PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider)) {
+        emailDoTeste = emailDeContatoValido(r.emailDigitado);
+        if (!emailDoTeste) {
+          toast.error(
+            r.emailDigitado.trim()
+              ? MENSAGEM_EMAIL_INVALIDO
+              : mensagemEmailVazio(provider),
+          );
+          return;
+        }
+      }
+      atualizarRascunho(provider, { testando: true, resultadoTeste: null });
+      haptic.light();
 
-    try {
-      // Campo da chave vazio = a edge mantém a SALVA (o navegador não a tem).
-      const credentials = chaveNova
-        ? { token: chaveNova, sandbox: sandboxNovo, contact_email: email }
-        : { contact_email: email };
-      const { data, error } = await supabase.functions.invoke(
-        "calculate-shipping",
-        {
-          body: {
-            action: "save_credentials",
-            provider: "superfrete",
-            credentials,
+      const servicos =
+        r.servicosSelecionados && r.servicosSelecionados.size > 0
+          ? Array.from(r.servicosSelecionados)
+          : undefined;
+
+      const corpoCredenciais =
+        provider === "frenet"
+          ? { token: digitada }
+          : {
+              token: digitada,
+              sandbox: sandboxAtual(provider),
+              ...(PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) && emailDoTeste
+                ? { contact_email: emailDoTeste }
+                : {}),
+            };
+
+      const corpo = digitada
+        ? {
+            action: "test_credentials",
+            provider,
+            credentials: corpoCredenciais,
+            ...(servicos ? { servicos } : {}),
+          }
+        : {
+            action: "test_credentials",
+            provider,
+            usarCredencialSalva: true,
+            ...(PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) && emailDoTeste
+              ? { credentials: { contact_email: emailDoTeste } }
+              : {}),
+            ...(servicos ? { servicos } : {}),
+          };
+
+      try {
+        const { data, error } = await chamarEdgeDeFrete(corpo);
+        if (error) throw error;
+        if (data?.success) {
+          atualizarRascunho(provider, {
+            testando: false,
+            resultadoTeste: {
+              sucesso: true,
+              mensagem: "Credenciais válidas e conectadas!",
+              servicosTestados: data.servicosTestados,
+            },
+          });
+          toast.success("Integração de frete validada com sucesso!");
+        } else {
+          atualizarRascunho(provider, {
+            testando: false,
+            resultadoTeste: {
+              sucesso: false,
+              mensagem: mensagemDoMotivo(data?.motivo, data?.error),
+              servicosTestados: data?.servicosTestados,
+            },
+          });
+          toast.error("Falha ao validar credenciais de frete");
+        }
+      } catch (err) {
+        console.error("[TransportadorasCard] Erro ao testar:", err);
+        atualizarRascunho(provider, {
+          testando: false,
+          resultadoTeste: {
+            sucesso: false,
+            mensagem: mensagemAmigavelErroEdgeFunction(err as Error, {
+              mensagemGenerica:
+                "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+            }),
           },
-        },
-      );
+        });
+        toast.error("Erro ao testar credenciais");
+      }
+    },
+    [rascunhoDoProvider, provedoresSalvos, sandboxAtual, atualizarRascunho],
+  );
+
+  const salvarProvedor = useCallback(
+    async (provider: ProvedorFrete) => {
+      const r = rascunhoDoProvider(provider);
+      const digitada = r.tokenDigitado.trim();
+      const temChaveSalva = provedoresSalvos.get(provider)?.tem_chave ?? false;
+
+      if (!digitada && !temChaveSalva) {
+        toast.error(
+          "Cole a chave de acesso desta transportadora antes de salvar.",
+        );
+        return;
+      }
+
+      let emailValido: string | null = null;
+      if (PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(provider)) {
+        // SuperFrete (1.5.5, intacto): sem e-mail válido, nem grava.
+        emailValido = emailDeContatoValido(r.emailDigitado);
+        if (!emailValido) {
+          haptic.error();
+          toast.error(
+            r.emailDigitado.trim()
+              ? MENSAGEM_EMAIL_INVALIDO
+              : mensagemParaAtivar(provider),
+          );
+          return;
+        }
+      } else if (
+        PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) &&
+        r.emailDigitado.trim() !== ""
+      ) {
+        // Melhor Envio (R3-7): e-mail é OPCIONAL para SALVAR — campo vazio
+        // mantém o que já está salvo no servidor (o `contact_email` nem
+        // entra no corpo abaixo). Só valida o FORMATO quando a lojista
+        // digitou algo — mesma régua e mesma mensagem da SuperFrete.
+        emailValido = emailDeContatoValido(r.emailDigitado);
+        if (!emailValido) {
+          haptic.error();
+          toast.error(MENSAGEM_EMAIL_INVALIDO);
+          return;
+        }
+      }
+
+      if (r.servicosMexeu && (r.servicosSelecionados?.size ?? 0) === 0) {
+        toast.error("Selecione ao menos um serviço antes de salvar.");
+        return;
+      }
+
+      atualizarRascunho(provider, { salvando: true });
+      haptic.medium();
+
+      const corpo: Record<string, unknown> = {
+        action: "save_credentials",
+        provider,
+      };
+      if (digitada) corpo.token = digitada;
+      if (provider !== "frenet") corpo.sandbox = sandboxAtual(provider);
+      // Vazio para o ME = `emailValido` fica `null` e o campo nem entra no
+      // corpo — o servidor mantém o que já tinha. Para a SuperFrete
+      // `emailValido` nunca chega aqui nulo (bloqueou acima).
+      if (emailValido) corpo.contact_email = emailValido;
+      // Ajuste do dono (rodada 4, 23/09/2026): o controle de seguro saiu
+      // da interface — a tela NUNCA envia "sem_seguro", sempre
+      // "valor_dos_produtos" (mesmo quando a config lida já veio
+      // "sem_seguro" por fora do painel: o próximo salvar corrige,
+      // porque manda o valor EXPLÍCITO em vez de omitir — omitir faria a
+      // edge preservar o "sem_seguro" já gravado por herança).
+      if (provider === "melhor_envio") corpo.seguro = "valor_dos_produtos";
+      if (r.servicosMexeu && r.servicosSelecionados) {
+        corpo.servicos = Array.from(r.servicosSelecionados);
+      }
+
+      try {
+        const { data, error } = await chamarEdgeDeFrete(corpo);
+        if (error) throw error;
+        if (!data?.success) {
+          haptic.error();
+          const mensagemErro =
+            typeof data?.error === "string" && data.error
+              ? data.error
+              : "Não foi possível salvar esta transportadora. Tente de novo.";
+          toast.error(mensagemErro);
+          // R1-8 (ANOTADO): a recusa também pode vir por serviço (edge
+          // testou os marcados antes de gravar) — reaproveita o mesmo
+          // bloco do "Testar" para listar QUAL serviço travou.
+          atualizarRascunho(provider, {
+            salvando: false,
+            resultadoTeste: data?.servicosTestados
+              ? {
+                  sucesso: false,
+                  mensagem: mensagemErro,
+                  servicosTestados: data.servicosTestados,
+                }
+              : null,
+          });
+          return;
+        }
+
+        if (data.cache === "pendente") {
+          toast.success("Transportadora salva!", {
+            description:
+              "As cotações antigas em cache podem demorar um pouco a atualizar.",
+          });
+        } else {
+          toast.success("Transportadora salva!");
+        }
+
+        // Descarta o cache de frete deste aparelho (R1-2/R2-8) — a rota
+        // vive em src/lib/revisao-do-frete.ts, do pacote da cliente
+        // (comentário corrigido, revisão Opus rodada 2: o arquivo já
+        // existe hoje; o `try/catch` fica como rede de segurança — se um
+        // dia a rota sumir ou o import falhar por outro motivo, este
+        // catch avisa no console em vez de fingir sucesso).
+        try {
+          const { descartarCacheDeFreteDoNavegador } = await import(
+            "@/lib/revisao-do-frete"
+          );
+          descartarCacheDeFreteDoNavegador();
+        } catch (erroImport) {
+          console.error(
+            "[TransportadorasCard] Não foi possível descartar o cache do navegador:",
+            erroImport,
+          );
+        }
+
+        // Só o rascunho DESTE provedor volta limpo (ANOTADO, ver
+        // `carregar`) — os demais cards mantêm o que a lojista ainda
+        // estava digitando.
+        await carregar(provider);
+        haptic.success();
+      } catch (err) {
+        console.error("[TransportadorasCard] Erro ao salvar:", err);
+        haptic.error();
+        toast.error("Erro ao salvar a transportadora.", {
+          description: mensagemAmigavelErroEdgeFunction(err as Error, {
+            mensagemGenerica:
+              "Não foi possível falar com o servidor. Tente de novo em instantes.",
+          }),
+        });
+        atualizarRascunho(provider, { salvando: false });
+      }
+    },
+    [
+      rascunhoDoProvider,
+      provedoresSalvos,
+      sandboxAtual,
+      atualizarRascunho,
+      carregar,
+    ],
+  );
+
+  const alternarLigado = useCallback((provider: ProvedorFrete) => {
+    setLigadosEscolhidos((prev) => {
+      const proximo = new Set(prev);
+      if (proximo.has(provider)) proximo.delete(provider);
+      else proximo.add(provider);
+      return proximo;
+    });
+    haptic.light();
+  }, []);
+
+  const salvarLigados = useCallback(async () => {
+    setSalvandoLigados(true);
+    haptic.medium();
+    try {
+      const { data, error } = await chamarEdgeDeFrete({
+        action: "save_active_providers",
+        ligados: Array.from(ligadosEscolhidos),
+      });
       if (error) throw error;
       if (!data?.success) {
         haptic.error();
-        toast.error(
+        // R1-8 (ANOTADO): `data.servicosTestados` vem quando a recusa foi
+        // no teste de um serviço específico do provedor que estava
+        // ENTRANDO na lista (acoes.ts, `salvarLigados` → `reprovado`).
+        const mensagemErro =
           typeof data?.error === "string" && data.error
             ? data.error
-            : "Não foi possível salvar a chave da SuperFrete. Tente de novo.",
+            : "Não foi possível salvar os provedores ligados.";
+        const resumo = resumoServicosTestados(data?.servicosTestados);
+        if (resumo) {
+          toast.error(mensagemErro, { description: resumo });
+        } else {
+          toast.error(mensagemErro);
+        }
+        return;
+      }
+      setLigadosSalvos(new Set(data.ligados ?? []));
+      setLigadosEscolhidos(new Set(data.ligados ?? []));
+
+      try {
+        const { descartarCacheDeFreteDoNavegador } = await import(
+          "@/lib/revisao-do-frete"
         );
-        return;
-      }
-
-      // O estado local acompanha o que a EDGE gravou — mesmo que o passo (c)
-      // falhe depois. A chave digitada sai do estado.
-      const temChave = data.tem_chave === true;
-      const emailGravado = emailDeContatoValido(data.contact_email);
-      setComChaveSalva((prev) => {
-        const proximo = new Set(prev);
-        if (temChave) proximo.add("superfrete");
-        else proximo.delete("superfrete");
-        return proximo;
-      });
-      setSandboxSalvo((prev) => {
-        const proximo = new Set(prev);
-        if (data.sandbox === true) proximo.add("superfrete");
-        else proximo.delete("superfrete");
-        return proximo;
-      });
-      setEmailSalvo(emailGravado ?? "");
-      if (emailGravado) setEmailDigitado(emailGravado);
-      setChaveDigitada((prev) => ({ ...prev, superfrete: "" }));
-      setSandboxEscolhido((prev) => {
-        const { superfrete: _descartado, ...resto } = prev;
-        return resto;
-      });
-
-      if (!temChave || !emailGravado) {
-        haptic.error();
-        toast.error(MENSAGEM_PARA_ATIVAR_SUPERFRETE);
-        return;
-      }
-
-      const salvou = await updateConfig({
-        shippingProvider: "superfrete",
-        enabledShippingMethods: listaComRetirada(
-          escolha.methods,
-          retiradaLigadaNaLista(config?.enabledShippingMethods),
-        ),
-      });
-      if (!salvou) {
-        haptic.error();
-        toast.error(
-          "A chave e o e-mail da SuperFrete foram salvos, mas a transportadora ativa não mudou.",
-          { description: "Toque em Salvar de novo para ativar a SuperFrete." },
+        descartarCacheDeFreteDoNavegador();
+      } catch (erroImport) {
+        console.error(
+          "[TransportadorasCard] Não foi possível descartar o cache do navegador:",
+          erroImport,
         );
-        return;
       }
 
+      const avisos: string[] = [];
+      if (data.espelho === "pendente") {
+        avisos.push(
+          "provedores salvos; o indicador antigo não atualizou — salve de novo para sincronizar.",
+        );
+      }
+      if (data.cache === "pendente") {
+        avisos.push("as cotações antigas em cache podem demorar a atualizar.");
+      }
       haptic.success();
-      toast.success("Transportadora salva!", {
-        description:
-          "A SuperFrete está ativa, com a chave de acesso e o e-mail de contato salvos.",
+      toast.success("Provedores atualizados!", {
+        description: avisos.length > 0 ? avisos.join(" ") : undefined,
       });
+      // Ligar/desligar NUNCA mexe em credencial nenhuma (ANOTADO, ver
+      // `carregar`) — nenhum rascunho é tocado aqui.
+      await carregar("nenhum");
     } catch (err) {
-      console.error("[TransportadorasCard] Error saving SuperFrete:", err);
+      console.error(
+        "[TransportadorasCard] Erro ao salvar provedores ligados:",
+        err,
+      );
       haptic.error();
-      toast.error("Erro ao salvar a SuperFrete.", {
-        description: mensagemAmigavelErroEdgeFunction(err, {
+      toast.error("Erro ao salvar os provedores ligados.", {
+        description: mensagemAmigavelErroEdgeFunction(err as Error, {
           mensagemGenerica:
-            "Não foi possível falar com o servidor. A transportadora ativa não mudou; tente de novo em instantes.",
+            "Não foi possível falar com o servidor. Tente de novo em instantes.",
         }),
       });
     } finally {
-      setIsSaving(false);
+      setSalvandoLigados(false);
     }
-  };
+  }, [ligadosEscolhidos, carregar]);
 
-  const handleSave = async () => {
-    if (isOffline) {
-      toast.error("Sem conexão com a internet", {
-        description: "Você precisa estar online para salvar.",
-      });
-      return;
-    }
-    if (isSaving || !isDirty) return;
+  const ligadosMudou = useMemo(() => {
+    if (ligadosEscolhidos.size !== ligadosSalvos.size) return true;
+    for (const p of ligadosEscolhidos) if (!ligadosSalvos.has(p)) return true;
+    return false;
+  }, [ligadosEscolhidos, ligadosSalvos]);
 
-    const provider = escolha.provider;
-    const chaveNova = (chaveDigitada[provider] ?? "").trim();
-    const sandboxNovo = sandboxDe(provider);
-    const temAmbiente =
-      provider !== "flat_fee" && PROVEDORES_COM_SANDBOX.has(provider);
-    // A chave é POR AMBIENTE (Sandbox x produção): mudar só o interruptor,
-    // sem colar a chave do ambiente novo, deixaria a chave velha apontada
-    // para o ambiente errado. Recusa ANTES de gravar qualquer coisa.
-    if (
-      temAmbiente &&
-      !chaveNova &&
-      sandboxNovo !== sandboxSalvo.has(provider)
-    ) {
-      toast.error("Cole a chave do ambiente escolhido", {
-        description:
-          "Sandbox e produção usam chaves diferentes: para trocar o modo de testes, cole a chave de acesso do ambiente novo e salve.",
-      });
-      return;
-    }
+  if (!carregado && !erroCarga) {
+    return (
+      <div className="space-y-3">
+        <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
+        <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
+        <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
+      </div>
+    );
+  }
 
-    // SuperFrete (1.5.5): credencial pela edge ANTES de trocar o provedor.
-    if (provider === "superfrete") {
-      await salvarSuperFrete(chaveNova, sandboxNovo);
-      return;
-    }
-
-    setIsSaving(true);
-    haptic.medium();
-
-    try {
-      // 1. A escolha (transportadora + serviços) grava no store_config.
-      // Falhou? PARA AQUI — antes de tocar em credencial (ADMIN-010).
-      // A retirada na loja (`store-pickup`) vem do config ATUAL, nunca da
-      // escolha local: a tela de Frete pode tê-la ligado/desligado depois que
-      // esta seção sincronizou — gravar a lista local a desfaria em silêncio.
-      const salvou = await updateConfig({
-        shippingProvider: escolha.provider,
-        enabledShippingMethods: listaComRetirada(
-          escolha.methods,
-          retiradaLigadaNaLista(config?.enabledShippingMethods),
-        ),
-      });
-      if (!salvou) {
-        haptic.error();
-        return;
-      }
-
-      // 2. Credencial SÓ quando há chave NOVA (1.5.4). Campo vazio = a salva
-      // continua valendo; nada é regravado a partir do navegador.
-      if (provider !== "flat_fee" && chaveNova) {
-        const credentials =
-          provider === "frenet"
-            ? { token: chaveNova }
-            : { token: chaveNova, sandbox: sandboxNovo };
-        const { error: erroCreds } = await supabase
-          .from("store_shipping_credentials")
-          .upsert(
-            {
-              provider,
-              credentials,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "provider" },
-          );
-
-        if (erroCreds) throw erroCreds;
-
-        // A chave sai do estado: daqui em diante a tela só sabe que ela existe.
-        setComChaveSalva((prev) => new Set(prev).add(provider));
-        setSandboxSalvo((prev) => {
-          const proximo = new Set(prev);
-          if (credentials.sandbox === true) proximo.add(provider);
-          else proximo.delete(provider);
-          return proximo;
-        });
-        setChaveDigitada((prev) => ({ ...prev, [provider]: "" }));
-        setSandboxEscolhido((prev) => {
-          const { [provider]: _descartado, ...resto } = prev;
-          return resto;
-        });
-      }
-
-      haptic.success();
-      toast.success("Transportadora salva!", {
-        description:
-          provider === "flat_fee"
-            ? "Preferência salva: sem cotação automática."
-            : chaveNova
-              ? "A escolha e a chave de acesso foram salvas."
-              : comChaveSalva.has(provider)
-                ? "A escolha foi salva. A chave de acesso já salva continua valendo."
-                : "A escolha foi salva, mas ainda falta a chave de acesso: sem ela o frete de fora da cidade não é cotado.",
-      });
-    } catch (err) {
-      console.error("[TransportadorasCard] Error saving:", err);
-      haptic.error();
-      toast.error("Erro ao salvar as transportadoras.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Rodapé (1.5.5): "Ativo agora" é o SALVO no config — a escolha não salva
-  // aparece à parte. Antes a frase mostrava o rascunho.
-  const provedorSalvo = (config?.shippingProvider ||
-    "flat_fee") as ProvedorDeFrete;
-  const nomeDoSalvo =
-    OPCOES.find((o) => o.id === provedorSalvo)?.nome ?? provedorSalvo;
-  const nomeDaEscolha = OPCOES.find((o) => o.id === escolha.provider)?.nome;
-  // SuperFrete ativa mas sem o que a edge exige para cotar: só se afirma com
-  // a leitura carregada (sem ela a tela não sabe, e não finge saber).
-  const faltaNaSuperFreteSalva =
-    provedorSalvo === "superfrete" && credsLoaded
-      ? [
-          comChaveSalva.has("superfrete") ? null : "a chave de acesso",
-          emailDeContatoValido(emailSalvo) ? null : "o e-mail de contato",
-        ].filter(Boolean)
-      : [];
-  const emailComAviso =
-    avisoEmail ||
-    (emailDigitado.trim() !== "" && !emailDeContatoValido(emailDigitado));
+  if (erroCarga) {
+    return (
+      <div className="flex flex-col gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+        <div className="flex items-start gap-2">
+          <AlertCircle className="mt-px size-3.5 shrink-0 text-red-400" />
+          <p className="text-[11px] font-semibold leading-snug text-red-300">
+            Não foi possível carregar as chaves de frete.
+            <span className="mt-0.5 block font-normal text-red-300/70">
+              Nada é gravado por cima do que já está salvo até a leitura
+              funcionar.
+            </span>
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => carregar()}
+          className="self-start rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
+        >
+          Tentar de novo
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-3 text-zinc-200">
-      {/* Rótulo em linguagem de gente (lote E): a pergunta que o lojista
-              responde aqui — o título da seção é da casca. */}
+    <div className="flex flex-col gap-4 text-zinc-200">
       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
         Como sua loja envia
       </p>
       <p className="text-xs leading-relaxed text-zinc-400">
-        Escolha como o frete é calculado fora da sua cidade: cotado na hora por
-        uma transportadora, ou sem cotação automática (a loja entrega apenas na
-        sua cidade). Quem compra vê o resultado no fechamento do pedido.
+        Configure a chave de cada transportadora e escolha, no bloco abaixo,
+        quais estão LIGADAS na sua loja. Salvar uma chave nunca liga a
+        transportadora sozinha.
       </p>
 
-      {/* Escolha da transportadora — cartões selecionáveis, um por
-                opção. Selecionado = borda e fundo na cor da opção; o
-                botão inteiro é o alvo de toque (área generosa no celular). */}
-      <div
-        role="radiogroup"
-        aria-label="Como sua loja envia"
-        className="space-y-2"
-      >
-        {OPCOES.map((opcao) => {
-          const ativa = escolha.provider === opcao.id;
-          return (
-            <button
-              key={opcao.id}
-              type="button"
-              role="radio"
-              aria-checked={ativa}
-              disabled={isOffline}
-              onClick={() => {
-                setEscolha((prev) => ({ ...prev, provider: opcao.id }));
-                // Trocar de transportadora invalida o teste anterior:
-                // ele pertencia à chave da opção de antes.
-                setTestResult(null);
-                haptic.light();
-              }}
-              className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all active:scale-[0.99] disabled:opacity-40 ${
-                ativa
-                  ? "border-admin-gold/40 bg-admin-gold/5"
-                  : "border-white/5 bg-zinc-900/40 hover:border-white/20"
-              }`}
-            >
-              <span
-                className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl border transition-all ${
-                  ativa
-                    ? "border-admin-gold/30 bg-admin-gold/15 text-admin-gold"
-                    : "border-white/5 bg-zinc-900 text-zinc-500"
-                }`}
-              >
-                {opcao.id === "flat_fee" ? (
-                  <Tag className="size-4" strokeWidth={2.2} />
-                ) : opcao.id === "melhor_envio" ? (
-                  <Truck className="size-4" strokeWidth={2.2} />
-                ) : opcao.id === "superfrete" ? (
-                  <Package className="size-4" strokeWidth={2.2} />
-                ) : (
-                  <Sparkles className="size-4" strokeWidth={2.2} />
-                )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span
-                  className={`block text-xs font-bold ${ativa ? "text-white" : "text-zinc-300"}`}
-                >
-                  {opcao.nome}
-                </span>
-                <span className="mt-0.5 block text-xs leading-snug text-zinc-400">
-                  {opcao.descricao}
-                </span>
-              </span>
-              {ativa && (
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-admin-gold" />
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {ORDEM_DOS_PROVEDORES.map((provider) => (
+        <CartaoDoProvedor
+          key={provider}
+          provider={provider}
+          salvo={provedoresSalvos.get(provider)}
+          ligado={ligadosSalvos.has(provider)}
+          rascunho={rascunhoDoProvider(provider)}
+          sandboxAtual={sandboxAtual(provider)}
+          onTokenMudou={(v) =>
+            atualizarRascunho(provider, { tokenDigitado: v })
+          }
+          onSandboxMudou={(v) =>
+            atualizarRascunho(provider, { sandboxEscolhido: v })
+          }
+          onEmailMudou={(v) =>
+            atualizarRascunho(provider, { emailDigitado: v })
+          }
+          onCarregarServicos={() => listarServicos(provider)}
+          onAlternarServico={(codigo) => alternarServico(provider, codigo)}
+          onTestar={() => testarProvedor(provider)}
+          onSalvar={() => salvarProvedor(provider)}
+        />
+      ))}
 
-      {/* Chave de acesso — só existe quando a transportadora é real. */}
-      {escolha.provider !== "flat_fee" && (
-        <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-3.5">
-          {credsError && (
-            <div className="flex flex-col gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="mt-px size-3.5 shrink-0 text-red-400" />
-                <p className="text-[11px] font-semibold leading-snug text-red-300">
-                  Não foi possível carregar as chaves de frete.
-                  <span className="mt-0.5 block font-normal text-red-300/70">
-                    O token e o modo Sandbox ficam bloqueados até a leitura
-                    funcionar — assim nada é gravado por cima do que já está
-                    salvo.
-                  </span>
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  fetchShippingCreds();
-                }}
-                className="self-start rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
-              >
-                Tentar de novo
-              </button>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              <Lock className="size-3.5 text-admin-gold" />
-              <span>
-                Chave de acesso — {NOME_DA_CHAVE[escolha.provider] ?? ""}
-              </span>
-            </div>
-
-            {PROVEDORES_COM_SANDBOX.has(escolha.provider) && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400">
-                  Modo de testes (Sandbox)
-                </span>
-                {!credsLoaded ? (
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-admin-gold">
-                    {credsError ? "Indisponível" : "Carregando…"}
-                  </span>
-                ) : (
-                  <Switch
-                    checked={sandboxDe(escolha.provider)}
-                    disabled={!credsLoaded}
-                    onCheckedChange={(checked) => {
-                      setSandboxEscolhido((prev) => ({
-                        ...prev,
-                        [escolha.provider]: checked,
-                      }));
-                      // O teste anterior era do outro ambiente.
-                      setTestResult(null);
-                    }}
-                    className="scale-75 data-[state=checked]:bg-admin-gold"
-                  />
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Selo "chave salva": só com token de verdade no banco (o filtro
-              `credentials->>token` não vazio) — linha sem token não conta. */}
-          {credsLoaded && comChaveSalva.has(escolha.provider) && (
-            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
-              <KeyRound className="size-3.5 shrink-0" />
-              <span>
-                Chave salva. Por segurança ela não aparece aqui — para trocar,
-                cole a nova e salve.
-              </span>
-            </p>
-          )}
-
-          <div className="flex gap-2">
-            <input
-              type="password"
-              autoComplete="off"
-              disabled={!credsLoaded}
-              value={chaveDigitada[escolha.provider] ?? ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                setChaveDigitada((prev) => ({
-                  ...prev,
-                  [escolha.provider]: val,
-                }));
-              }}
-              placeholder={
-                comChaveSalva.has(escolha.provider)
-                  ? "Cole uma chave nova só se quiser trocar a salva..."
-                  : "Cole aqui a chave de acesso da sua conta..."
-              }
-              className="h-9 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-            />
-            <button
-              type="button"
-              disabled={
-                isTestingCreds ||
-                (!(chaveDigitada[escolha.provider] ?? "").trim() &&
-                  !comChaveSalva.has(escolha.provider))
-              }
-              onClick={handleTestCredentials}
-              className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
-            >
-              {isTestingCreds ? (
-                <RefreshCw className="size-3 animate-spin" />
-              ) : (
-                <CheckCircle2 className="size-3" />
-              )}
-              <span>Testar</span>
-            </button>
-          </div>
-
-          {/* E-mail de contato técnico (1.5.5) — só a SuperFrete pede. */}
-          {escolha.provider === "superfrete" && (
-            <div className="space-y-1.5">
-              <label
-                htmlFor="superfrete-email-contato"
-                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
-              >
-                <Mail className="size-3.5 text-admin-gold" />
-                <span>E-mail de contato técnico</span>
-              </label>
-              <p className="text-[11px] leading-snug text-zinc-400">
-                A SuperFrete exige um e-mail para falar com quem cuida desta
-                integração se algo der errado nas cotações. Use um e-mail seu
-                que você lê. Ele não aparece para as clientes.
-              </p>
-              <input
-                id="superfrete-email-contato"
-                type="email"
-                autoComplete="email"
-                inputMode="email"
-                maxLength={254}
-                disabled={!credsLoaded}
-                value={emailDigitado}
-                aria-invalid={emailComAviso}
-                aria-describedby={
-                  emailComAviso ? "superfrete-email-contato-aviso" : undefined
-                }
-                onChange={(e) => {
-                  setEmailDigitado(e.target.value);
-                  setAvisoEmail(false);
-                  // O teste anterior era com o e-mail de antes.
-                  setTestResult(null);
-                }}
-                placeholder="voce@sualoja.com.br"
-                className={`h-9 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
-                  emailComAviso
-                    ? "border-red-500/50 focus:border-red-400"
-                    : "border-white/5 focus:border-admin-gold"
-                }`}
-              />
-              {emailComAviso && (
-                <p
-                  id="superfrete-email-contato-aviso"
-                  className="flex items-start gap-1.5 text-[11px] font-semibold leading-snug text-red-300"
-                >
-                  <AlertCircle className="mt-px size-3.5 shrink-0" />
-                  <span>
-                    {emailDigitado.trim()
-                      ? MENSAGEM_EMAIL_INVALIDO
-                      : MENSAGEM_EMAIL_VAZIO}
-                  </span>
-                </p>
-              )}
-            </div>
-          )}
-
-          {escolha.provider === "superfrete" && (
-            <p className="text-[11px] leading-snug text-zinc-400">
-              O teste faz uma cotação de verdade na SuperFrete (nada é comprado)
-              e só passa com uma chave válida do ambiente escolhido — Sandbox e
-              produção têm chaves diferentes.
-            </p>
-          )}
-
-          {testResult && (
-            <div
-              className={`flex items-center gap-2 rounded-lg border p-2.5 text-xs ${
-                testResult.success
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : "border-red-500/30 bg-red-500/10 text-red-300"
-              }`}
-            >
-              {testResult.success ? (
-                <CheckCircle2 className="size-4 shrink-0" />
-              ) : (
-                <AlertCircle className="size-4 shrink-0" />
-              )}
-              <span>{testResult.message}</span>
-            </div>
-          )}
-
-          {/* Serviços habilitados: o que o cliente pode escolher na
-                    hora de pagar o frete cotado. */}
-          <div className="space-y-1.5 pt-1">
-            <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Serviços que o cliente pode escolher
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {SERVICOS.map((method) => {
-                const selecionado = escolha.methods.some(
-                  (m) => m.toLowerCase() === method,
-                );
-                return (
-                  <button
-                    key={method}
-                    type="button"
-                    disabled={isOffline}
-                    onClick={() => {
-                      setEscolha((prev) => {
-                        const tem = prev.methods.some(
-                          (m) => m.toLowerCase() === method,
-                        );
-                        return {
-                          ...prev,
-                          methods: tem
-                            ? prev.methods.filter(
-                                (m) => m.toLowerCase() !== method,
-                              )
-                            : [...prev.methods, method],
-                        };
-                      });
-                      haptic.light();
-                    }}
-                    className={`rounded-lg border px-2.5 py-1 text-xs font-bold transition-all ${
-                      rotuloDoServico(method, escolha.provider) === method
-                        ? "capitalize"
-                        : ""
-                    } ${
-                      selecionado
-                        ? "border-admin-gold/50 bg-admin-gold/15 text-admin-gold"
-                        : "border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"
-                    }`}
-                  >
-                    {rotuloDoServico(method, escolha.provider)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+      {/* Bloco separado (R2-1): liga/desliga não mexe em nenhuma credencial. */}
+      <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-3.5">
+        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+          <ShieldCheck className="size-3.5 text-admin-gold" />
+          <span>Provedores ligados na loja</span>
         </div>
-      )}
-
-      {/* Rodapé do card: o que está ativo agora + Salvar. */}
-      <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-3">
-        <span className="min-w-0 text-[10px] leading-snug text-zinc-500">
-          Ativo agora:{" "}
-          <span className="font-bold text-zinc-300">{nomeDoSalvo}</span>
-          {escolha.provider !== provedorSalvo && (
-            <>
-              {" · "}Selecionado (falta salvar):{" "}
-              <span className="font-bold text-admin-gold">{nomeDaEscolha}</span>
-            </>
-          )}
-          {faltaNaSuperFreteSalva.length > 0 && (
-            <span className="mt-0.5 block font-semibold text-amber-300">
-              As cotações de fora da cidade não saem até você preencher{" "}
-              {faltaNaSuperFreteSalva.join(" e ")} da SuperFrete.
-            </span>
-          )}
-        </span>
+        <p className="text-[11px] leading-snug text-zinc-400">
+          Marque quem cota frete de verdade para as suas clientes. Só é possível
+          ligar um provedor com chave salva, fora do modo de testes.
+        </p>
+        <div className="space-y-1.5">
+          {ORDEM_DOS_PROVEDORES.map((provider) => {
+            const salvo = provedoresSalvos.get(provider);
+            const temChave = salvo?.tem_chave ?? false;
+            const emSandbox = sandboxAtual(provider);
+            const podeLigar = temChave && !emSandbox;
+            const marcado = ligadosEscolhidos.has(provider);
+            // Revisão Opus (achado 1): a caixa SEMPRE deixa DESMARCAR —
+            // um provedor que perdeu a chave ou caiu em sandbox depois de
+            // já estar ligado não pode ficar preso ligado só porque a
+            // lojista não consegue mais destravar a caixa.
+            const desabilitada = !podeLigar && !marcado;
+            // Revisão Opus (achado 2, regressão 1.5.5): a chave não basta
+            // para a SuperFrete cotar de verdade — sem e-mail de contato
+            // válido a edge nunca manda a cotação embora a linha exista
+            // (dado pode ter sido salvo direto no banco, ou de antes da
+            // 1.5.5). Mesma régua de `PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR`.
+            const semEmailQueEssePedeParaSalvar =
+              temChave &&
+              PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(provider) &&
+              !emailDeContatoValido(salvo?.contato_email);
+            // Revisão Opus (achado 3): o rótulo era o RASCUNHO
+            // (`ligadosEscolhidos`/`marcado`) travestido de estado salvo —
+            // marcar a caixa sem clicar em "Salvar provedores" já dizia
+            // "ligado", uma mentira. Agora o rótulo compara o SALVO
+            // (`ligadosSalvos`, a verdade) com o rascunho, no idioma do
+            // 1.5.6 ("Ativo agora" × "Selecionado (falta salvar)").
+            const estaSalvo = ligadosSalvos.has(provider);
+            const rotulo = !temChave
+              ? "sem chave salva"
+              : semEmailQueEssePedeParaSalvar
+                ? "sem e-mail de contato"
+                : emSandbox
+                  ? "em modo de testes — não pode ligar"
+                  : estaSalvo && marcado
+                    ? "ligado"
+                    : estaSalvo && !marcado
+                      ? "será desligado (falta salvar)"
+                      : !estaSalvo && marcado
+                        ? "selecionado (falta salvar)"
+                        : "chave salva";
+            return (
+              <label
+                key={provider}
+                className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  podeLigar
+                    ? "border-white/5 bg-zinc-900/40"
+                    : "border-white/5 bg-zinc-900/20 opacity-50"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={marcado}
+                    disabled={desabilitada}
+                    onChange={() => alternarLigado(provider)}
+                    className="size-4 accent-admin-gold"
+                  />
+                  <span className="font-bold text-zinc-200">
+                    {nomeDoProvedor(provider)}
+                  </span>
+                </span>
+                <span className="text-[10px] text-zinc-500">{rotulo}</span>
+              </label>
+            );
+          })}
+        </div>
         <button
           type="button"
-          disabled={!isDirty || isSaving || isOffline}
-          onClick={handleSave}
-          className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+          disabled={!ligadosMudou || salvandoLigados}
+          onClick={salvarLigados}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
         >
-          {isSaving ? (
-            <RefreshCw className="size-3 animate-spin text-admin-gold" />
+          {salvandoLigados ? (
+            <RefreshCw className="size-3 animate-spin" />
           ) : (
-            <Save className="size-3 text-admin-gold" />
+            <Save className="size-3" />
           )}
-          <span>{isSaving ? "Salvando..." : "Salvar"}</span>
+          <span>{salvandoLigados ? "Salvando…" : "Salvar provedores"}</span>
         </button>
+        {modo === "legado" && (
+          <p className="text-[10px] leading-snug text-zinc-500">
+            Sua loja ainda está no modo antigo (um provedor só). Salvar aqui
+            liga o modo novo, com vários provedores ao mesmo tempo.
+          </p>
+        )}
       </div>
     </div>
   );
 });
+
+function CartaoDoProvedor({
+  provider,
+  salvo,
+  ligado,
+  rascunho,
+  sandboxAtual,
+  onTokenMudou,
+  onSandboxMudou,
+  onEmailMudou,
+  onCarregarServicos,
+  onAlternarServico,
+  onTestar,
+  onSalvar,
+}: {
+  readonly provider: ProvedorFrete;
+  readonly salvo: ConfigDoProvedor | undefined;
+  /** Este provedor está LIGADO na loja agora (R3-8, revisão do pacote E):
+   * a edge recusa `sandbox:true` em provedor ligado, nos dois modos — a
+   * chave de sandbox nasce desabilitada aqui para não deixar a lojista
+   * tentar algo que o servidor vai recusar de qualquer jeito. */
+  readonly ligado: boolean;
+  readonly rascunho: RascunhoDoProvedor;
+  readonly sandboxAtual: boolean;
+  readonly onTokenMudou: (v: string) => void;
+  readonly onSandboxMudou: (v: boolean) => void;
+  readonly onEmailMudou: (v: string) => void;
+  readonly onCarregarServicos: () => void;
+  readonly onAlternarServico: (codigo: string) => void;
+  readonly onTestar: () => void;
+  readonly onSalvar: () => void;
+}) {
+  const temChave = salvo?.tem_chave ?? false;
+  const emailComAviso =
+    PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) &&
+    rascunho.emailDigitado.trim() !== "" &&
+    !emailDeContatoValido(rascunho.emailDigitado);
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-3.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+          <Lock className="size-3.5 text-admin-gold" />
+          <span>Chave de acesso — {nomeDoProvedor(provider)}</span>
+        </div>
+        {PROVEDORES_COM_SANDBOX.has(provider) && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400">
+              Modo de testes (Sandbox)
+            </span>
+            <Switch
+              checked={sandboxAtual}
+              // Revisão Opus (achado 1, R3-8): a trava é só para LIGAR o
+              // sandbox — nunca para DESLIGAR. `ligado && sandboxAtual` (a
+              // loja está presa em sandbox porque a credencial já entrou
+              // assim, ou a regra mudou depois) precisa continuar clicável,
+              // senão a lojista fica presa: não dá para desligar o
+              // sandbox, e não dá para desligar a transportadora com o
+              // sandbox ligado (a edge também recusaria — acoes.ts §R3-8).
+              disabled={ligado && !sandboxAtual}
+              aria-label={`Modo de testes (Sandbox) — ${nomeDoProvedor(provider)}`}
+              onCheckedChange={(checked) => onSandboxMudou(checked)}
+              className="scale-75 data-[state=checked]:bg-admin-gold"
+            />
+          </div>
+        )}
+      </div>
+
+      {ligado && !sandboxAtual && PROVEDORES_COM_SANDBOX.has(provider) && (
+        <p className="text-[11px] leading-snug text-zinc-500">
+          Desligue esta transportadora antes de usar o modo de testes.
+        </p>
+      )}
+
+      {salvo?.precisa_salvar_de_novo && (
+        <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
+          <AlertCircle className="mt-px size-3.5 shrink-0" />
+          <span>
+            A configuração deste provedor precisa ser salva de novo — outro
+            aparelho pode ter gravado uma versão mais antiga.
+          </span>
+        </p>
+      )}
+
+      {temChave && (
+        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
+          <KeyRound className="size-3.5 shrink-0" />
+          <span>
+            Chave salva. Por segurança ela não aparece aqui — para trocar, cole
+            a nova e salve.
+          </span>
+        </p>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          type="password"
+          autoComplete="off"
+          value={rascunho.tokenDigitado}
+          onChange={(e) => onTokenMudou(e.target.value)}
+          placeholder={
+            temChave
+              ? "Cole uma chave nova só se quiser trocar a salva..."
+              : "Cole aqui a chave de acesso da sua conta..."
+          }
+          className="h-9 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none"
+        />
+        <button
+          type="button"
+          disabled={
+            rascunho.testando || (!rascunho.tokenDigitado.trim() && !temChave)
+          }
+          onClick={onTestar}
+          className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+        >
+          {rascunho.testando ? (
+            <RefreshCw className="size-3 animate-spin" />
+          ) : (
+            <CheckCircle2 className="size-3" />
+          )}
+          <span>Testar</span>
+        </button>
+      </div>
+
+      {PROVEDORES_COM_EMAIL_EM_CONSULTA.has(provider) && (
+        <div className="space-y-1.5">
+          <label
+            htmlFor={`email-contato-${provider}`}
+            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+          >
+            <Mail className="size-3.5 text-admin-gold" />
+            <span>E-mail de contato</span>
+          </label>
+          <p className="text-[11px] leading-snug text-zinc-400">
+            {provider === "melhor_envio"
+              ? "O Melhor Envio exige um e-mail de contato em cada consulta."
+              : "A SuperFrete exige um e-mail para falar com quem cuida desta integração se algo der errado nas cotações."}{" "}
+            Use um e-mail seu que você lê. Ele não aparece para as clientes.
+          </p>
+          <input
+            id={`email-contato-${provider}`}
+            type="email"
+            autoComplete="email"
+            inputMode="email"
+            maxLength={254}
+            value={rascunho.emailDigitado}
+            aria-invalid={emailComAviso}
+            onChange={(e) => onEmailMudou(e.target.value)}
+            placeholder="voce@sualoja.com.br"
+            className={`h-9 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:outline-none ${
+              emailComAviso
+                ? "border-red-500/50 focus:border-red-400"
+                : "border-white/5 focus:border-admin-gold"
+            }`}
+          />
+          {emailComAviso && (
+            <p className="flex items-start gap-1.5 text-[11px] font-semibold leading-snug text-red-300">
+              <AlertCircle className="mt-px size-3.5 shrink-0" />
+              <span>{MENSAGEM_EMAIL_INVALIDO}</span>
+            </p>
+          )}
+          {provider === "melhor_envio" && !emailComAviso && (
+            <p className="text-[11px] leading-snug text-zinc-500">
+              Deixe em branco para manter o e-mail já salvo — ele só é
+              obrigatório para LIGAR o Melhor Envio na loja.
+            </p>
+          )}
+          <p className="text-[11px] leading-snug text-zinc-400">
+            O teste faz uma cotação de verdade n
+            {provider === "melhor_envio" ? "o" : "a"} {nomeDoProvedor(provider)}{" "}
+            (nada é comprado) e só passa com uma chave válida do ambiente
+            escolhido.
+          </p>
+        </div>
+      )}
+
+      {/* Ajuste do dono (rodada 4, 23/09/2026): "zerar a declaração NÃO
+       * foi autorizado" — o controle "Sem seguro" saiu da interface por
+       * inteiro. Nenhum caminho da tela seleciona nem envia
+       * seguro:"sem_seguro" (ver salvarProvedor, corpo.seguro sempre
+       * "valor_dos_produtos"). O único resquício possível de
+       * "sem_seguro" é uma gravação feita POR FORA do painel — aqui só
+       * avisamos, sem deixar a lojista presa nisso. */}
+      {provider === "melhor_envio" && salvo?.seguro === "sem_seguro" && (
+        <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] font-semibold leading-snug text-amber-300">
+          <AlertCircle className="mt-px size-3.5 shrink-0" />
+          <span>
+            Seguro desligado por fora do painel — ao salvar, volta para Com
+            seguro.
+          </span>
+        </p>
+      )}
+
+      {rascunho.resultadoTeste && (
+        <div
+          className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs ${
+            rascunho.resultadoTeste.sucesso
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              : "border-red-500/30 bg-red-500/10 text-red-300"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {rascunho.resultadoTeste.sucesso ? (
+              <CheckCircle2 className="size-4 shrink-0" />
+            ) : (
+              <AlertCircle className="size-4 shrink-0" />
+            )}
+            <span>{rascunho.resultadoTeste.mensagem}</span>
+          </div>
+          {rascunho.resultadoTeste.servicosTestados &&
+            rascunho.resultadoTeste.servicosTestados.length > 0 && (
+              <ul className="ml-6 list-disc space-y-0.5 text-[11px] text-zinc-300">
+                {rascunho.resultadoTeste.servicosTestados.map((s) => {
+                  // ANOTADO (revisão Opus): o nome do serviço junto do
+                  // código — "PAC" ao lado de "1", não só o código cru.
+                  const nomeDoServico = rascunho.servicosCarregados?.find(
+                    (sc) => sc.codigo === s.codigo,
+                  )?.servico;
+                  return (
+                    <li key={s.codigo}>
+                      {s.codigo}
+                      {nomeDoServico ? ` (${nomeDoServico})` : ""}:{" "}
+                      {s.ok
+                        ? "cotou certo"
+                        : s.motivo === "erro_do_servico"
+                          ? `não cotou (${s.detalhe ?? "erro do serviço"})`
+                          : "não retornou"}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+        </div>
+      )}
+
+      <div className="space-y-1.5 pt-1">
+        <div className="flex items-center justify-between">
+          <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            Serviços da conta
+          </span>
+          <button
+            type="button"
+            onClick={onCarregarServicos}
+            disabled={
+              rascunho.carregandoServicos ||
+              (!temChave && !rascunho.tokenDigitado.trim())
+            }
+            className="flex items-center gap-1 text-[10px] font-bold text-admin-gold hover:underline disabled:opacity-40"
+          >
+            <RefreshCw
+              className={`size-3 ${rascunho.carregandoServicos ? "animate-spin" : ""}`}
+            />
+            <span>
+              {rascunho.servicosCarregados
+                ? "Atualizar lista"
+                : "Ver serviços da conta"}
+            </span>
+          </button>
+        </div>
+
+        {rascunho.erroServicos && (
+          <p className="text-[11px] text-red-300">
+            Não foi possível carregar os serviços agora. As caixas continuam com
+            a última seleção salva — nada foi apagado.
+          </p>
+        )}
+
+        {rascunho.servicosDoCatalogo && (
+          <p className="text-[11px] leading-snug text-zinc-500">
+            Lista de serviços da SuperFrete. O teste confirma quais cotam na sua
+            conta.
+          </p>
+        )}
+
+        {rascunho.servicosCarregados &&
+          rascunho.servicosCarregados.length === 0 && (
+            <p className="text-[11px] italic text-zinc-500">
+              Nenhum serviço encontrado nesta conta.
+            </p>
+          )}
+
+        {rascunho.servicosCarregados &&
+          rascunho.servicosCarregados.length > 0 && (
+            <div className="space-y-1">
+              {rascunho.servicosCarregados.map((servico) => {
+                const marcado =
+                  rascunho.servicosSelecionados?.has(servico.codigo) ?? false;
+                const exigeAgencia =
+                  provider === "melhor_envio" &&
+                  IDS_ME_QUE_EXIGEM_AGENCIA.has(servico.codigo);
+                return (
+                  <label
+                    key={servico.codigo}
+                    className="flex flex-col gap-0.5 rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-xs"
+                  >
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={marcado}
+                        onChange={() => onAlternarServico(servico.codigo)}
+                        className="size-4 accent-admin-gold"
+                      />
+                      <span className="text-zinc-200">
+                        {servico.transportadora} — {servico.servico}
+                      </span>
+                    </span>
+                    {exigeAgencia && (
+                      <span className="ml-6 flex items-start gap-1 text-[10.5px] font-semibold text-amber-300">
+                        <AlertCircle className="mt-px size-3 shrink-0" />
+                        {AVISO_ID_EXIGE_AGENCIA}
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+      </div>
+
+      <div className="flex justify-end border-t border-white/5 pt-3">
+        <button
+          type="button"
+          disabled={rascunho.salvando}
+          onClick={onSalvar}
+          className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+        >
+          {rascunho.salvando ? (
+            <RefreshCw className="size-3 animate-spin text-admin-gold" />
+          ) : (
+            <Save className="size-3 text-admin-gold" />
+          )}
+          <span>{rascunho.salvando ? "Salvando..." : "Salvar"}</span>
+        </button>
+      </div>
+    </div>
+  );
+}

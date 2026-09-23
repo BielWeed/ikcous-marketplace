@@ -1,6 +1,6 @@
+import type { ProvedorFrete } from "@/components/admin/settings/TransportadorasCard";
 import {
   CabecaDeSecao,
-  Chave,
   Linha,
   PontoEstado,
 } from "@/components/admin/shipping/primitivas-direcao-d";
@@ -8,74 +8,70 @@ import { AlertCircle, ExternalLink, RefreshCw } from "lucide-react";
 import { memo } from "react";
 
 /**
- * Seção "Fora da cidade" da tela de Frete v2 — direção D aprovada pelo
- * dono (03/09): linhas finas, sem caixa/card. Verdade desta frente: a
- * cotação de fora é SÓ de transportadora real (Melhor Envio/Frenet) — o
- * card "Taxa de entrega fixa" MORRE e não volta (o campo `shippingFee`
- * fica órfão no banco de propósito; esta seção nem o exibe nem o salva).
+ * Seção "Fora da cidade" da tela de Frete — RELEASE 1.5.7 v2 (frete com
+ * vários provedores ao mesmo tempo). Até a 1.5.6 esta seção mostrava UM
+ * estado ("conectado"/"desconectado") porque só existia UM provedor de
+ * cotação por loja. Agora podem estar ligados Melhor Envio, SuperFrete e
+ * Frenet ao mesmo tempo — o estado passa a ser POR PROVEDOR (F10, tarefa
+ * P: "nunca 'conectado' só por ter chave").
  *
- * A CHAVE "Cotação na hora" é EXIBIÇÃO DE ESTADO, não interruptor: o que
- * ela mostra é a credencial SALVA da transportadora (mesma tabela que a
- * seção de Transportadoras em Ajustes grava) — e esta tela NUNCA grava
- * credencial nem `shippingProvider` (divisão de território). Chave
- * clicável aqui seria decorativa: "desligar" não gravaria nada. Por isso
- * ela renderiza um span (Chave sem onToggle) e, quando desconectado, o
- * comando de verdade é o CTA que leva a Ajustes.
- *
- * Estado da conexão chega PRONTO da view:
- * - "conectado": credencial com token para o provedor salvo;
- * - "desconectado": provedor de cotação salvo sem credencial, ou taxa fixa
- *   remanescente de loja antiga — em ambos, a loja de fora NÃO é atendida;
- * - "indeterminado": a leitura das credenciais falhou — a tela não sabe, e
- *   não finge saber (estados honestos são a lei deste repo);
- * - "chave_salva" (release 1.5.4, só SuperFrete): há chave e e-mail de
- *   contato salvos, mas isso NÃO prova conexão. Quem prova é o "Testar" em
- *   Ajustes; aqui a tela diz só o que sabe ("chave salva"), nunca
- *   "conectado"/"preço real";
- * - "incompleta" (release 1.5.5, só SuperFrete): há chave salva, mas falta o
- *   e-mail de contato técnico — sem ele a edge não chama a SuperFrete, e a
- *   loja de fora NÃO é atendida até a lojista preencher em Ajustes.
+ * Esta tela continua só de LEITURA: quem grava chave, testa e liga/desliga
+ * é a seção "Transportadoras" em Ajustes. Aqui o estado chega PRONTO da
+ * view, lido pela MESMA edge (`ler_configuracao_frete`).
  */
-export type EstadoConexaoNacional =
-  | "conectado"
-  | "chave_salva"
+// "incompleta" (revisão Opus, achado 2 — regressão 1.5.5): tem chave, mas
+// falta o que a transportadora exige para cotar de verdade (hoje só a
+// SuperFrete, que precisa de e-mail de contato válido na PRÓPRIA
+// credencial). NUNCA conta como "ligado" — cotação real é a promessa que
+// "ligado" faz, e uma chave incompleta não cota nada.
+export type EstadoConexaoProvedor =
+  | "ligado"
   | "incompleta"
-  | "desconectado"
-  | "indeterminado";
+  | "chave_salva"
+  | "sem_chave";
 
-const formatCEP = (val: string) => {
-  const clean = val.replace(/\D/g, "");
-  if (clean.length <= 5) return clean;
-  return `${clean.slice(0, 5)}-${clean.slice(5, 8)}`;
+export interface ProvedorNacional {
+  readonly provider: ProvedorFrete;
+  readonly nome: string;
+  readonly estado: EstadoConexaoProvedor;
+}
+
+const ROTULO_DO_ESTADO: Readonly<Record<EstadoConexaoProvedor, string>> = {
+  ligado: "ligado",
+  incompleta: "incompleta",
+  chave_salva: "chave salva",
+  sem_chave: "sem chave",
 };
 
 export const FreteNacionalBloco = memo(function FreteNacionalBloco({
   originCep,
   onOriginCep,
-  conexao,
+  provedores,
+  erroNaLeitura,
   onAbrirAjustes,
   onTentarDeNovo,
   desabilitado,
 }: {
   readonly originCep: string;
   readonly onOriginCep: (cep: string) => void;
-  readonly conexao: {
-    readonly estado: EstadoConexaoNacional;
-    /**
-     * Nome do provedor salvo ("Melhor Envio", "Frenet") — ou NULL quando o
-     * config não nomeia transportadora (flat_fee remanescente de loja antiga
-     * ou ausente). REVISÃO A5: o nulo define o ARTIGO da frase do aviso —
-     * "conecte o Melhor Envio" x "conecte uma transportadora"; jamais
-     * "conecte o uma transportadora". No estado `conectado` o nome nunca é
-     * nulo (a view só conecta provedor nomeado + credencial).
-     */
-    readonly provedorNome: string | null;
-  };
+  /** Estado de CADA um dos três provedores — sempre os três, na ordem de
+   * exibição (Melhor Envio, SuperFrete, Frenet). */
+  readonly provedores: readonly ProvedorNacional[];
+  /** A leitura da configuração de frete falhou — a tela não sabe e não
+   * finge saber (estados honestos são a lei deste repo). */
+  readonly erroNaLeitura?: boolean;
   readonly onAbrirAjustes?: () => void;
   readonly onTentarDeNovo?: () => void;
   readonly desabilitado?: boolean;
 }) {
-  const { estado, provedorNome } = conexao;
+  const formatCEP = (val: string) => {
+    const clean = val.replace(/\D/g, "");
+    if (clean.length <= 5) return clean;
+    return `${clean.slice(0, 5)}-${clean.slice(5, 8)}`;
+  };
+
+  const algumLigado = provedores.some((p) => p.estado === "ligado");
+  const ligados = provedores.filter((p) => p.estado === "ligado");
 
   return (
     <section
@@ -86,33 +82,29 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
       <CabecaDeSecao
         titulo="Fora da cidade"
         estado={
-          estado === "conectado" ? (
-            <>
-              <PontoEstado tom="positivo" />
-              <span>
-                <b className="font-semibold text-zinc-200">conectado</b> ·{" "}
-                {provedorNome}
-              </span>
-            </>
-          ) : estado === "chave_salva" ? (
-            <>
-              <PontoEstado tom="neutro" />
-              <span>
-                <b className="font-semibold text-zinc-200">chave salva</b> ·{" "}
-                {provedorNome}
-              </span>
-            </>
-          ) : estado === "incompleta" ? (
-            <>
-              <PontoEstado tom="atencao" />
-              <span className="text-amber-300">
-                incompleta · {provedorNome}
-              </span>
-            </>
-          ) : estado === "indeterminado" ? (
+          erroNaLeitura ? (
             <>
               <PontoEstado tom="neutro" />
               <span>conexão a confirmar</span>
+            </>
+          ) : algumLigado ? (
+            <>
+              <PontoEstado tom="positivo" />
+              <span>
+                {ligados.length === 1 ? (
+                  <>
+                    <b className="font-semibold text-zinc-200">ligado</b> ·{" "}
+                    {ligados[0].nome}
+                  </>
+                ) : (
+                  <>
+                    <b className="font-semibold text-zinc-200">
+                      {ligados.length} provedores
+                    </b>{" "}
+                    ligados
+                  </>
+                )}
+              </span>
             </>
           ) : (
             <>
@@ -126,39 +118,21 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
       <Linha
         nome="Cotação na hora"
         dica={
-          estado === "conectado" ? (
+          erroNaLeitura ? (
             <>
-              Conectado ao {provedorNome} — PAC e SEDEX com preço real, na hora.
-            </>
-          ) : estado === "chave_salva" ? (
-            <>
-              {
-                "Chave da SuperFrete salva — confirme a conexão com 'Testar' em Ajustes > Transportadoras."
-              }
-            </>
-          ) : estado === "incompleta" ? (
-            <>
-              {
-                "Falta o e-mail de contato técnico da SuperFrete — preencha em Ajustes > Transportadoras. Sem ele, nenhuma cotação de fora da cidade sai."
-              }
-            </>
-          ) : estado === "indeterminado" ? (
-            <>
-              Não foi possível confirmar a conexão com a transportadora. Sem
+              Não foi possível confirmar a conexão com as transportadoras. Sem
               confirmar, não dá para garantir entrega fora da cidade.
             </>
+          ) : algumLigado ? (
+            <>Cotação real, na hora, pelos provedores ligados abaixo.</>
           ) : (
             <>
-              Nenhuma transportadora conectada — sua loja só entrega na sua
-              cidade.
+              Nenhuma transportadora ligada — sua loja só entrega na sua cidade.
             </>
           )
         }
       >
-        {/* Chave de EXIBIÇÃO (sem onToggle → span, não é botão): o estado
-            dela é a credencial salva, que aqui só se lê. */}
-        <Chave rotulo="Cotação na hora" ligada={estado === "conectado"} />
-        {estado === "desconectado" && onAbrirAjustes && (
+        {!erroNaLeitura && !algumLigado && onAbrirAjustes && (
           <button
             type="button"
             onClick={onAbrirAjustes}
@@ -167,16 +141,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
             Conectar transportadora
           </button>
         )}
-        {estado === "incompleta" && onAbrirAjustes && (
-          <button
-            type="button"
-            onClick={onAbrirAjustes}
-            className="flex shrink-0 items-center rounded-lg bg-admin-accent px-4 py-2 text-[12px] font-extrabold text-zinc-950 transition-all hover:opacity-90 active:scale-95"
-          >
-            Preencher em Ajustes
-          </button>
-        )}
-        {estado === "indeterminado" && onTentarDeNovo && (
+        {erroNaLeitura && onTentarDeNovo && (
           <button
             type="button"
             onClick={onTentarDeNovo}
@@ -188,18 +153,63 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
         )}
       </Linha>
 
-      {estado === "desconectado" && (
+      {/* Estado POR PROVEDOR (F10) — nunca "conectado" só por ter chave. */}
+      {!erroNaLeitura && (
+        <div className="-mt-2 flex flex-wrap gap-2 pb-4">
+          {provedores.map((p) => (
+            <span
+              key={p.provider}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                p.estado === "ligado"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                  : p.estado === "incompleta"
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                    : p.estado === "chave_salva"
+                      ? "border-white/10 bg-white/5 text-zinc-300"
+                      : "border-white/5 bg-transparent text-zinc-600"
+              }`}
+            >
+              {p.nome}: {ROTULO_DO_ESTADO[p.estado]}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Regressão 1.5.5 (revisão Opus, achado 2): chave sem e-mail de
+          contato válido não cota — "incompleta" ganha o MESMO texto e CTA
+          que a release 1.5.5 já usava para isso, agora por provedor. */}
+      {!erroNaLeitura && provedores.some((p) => p.estado === "incompleta") && (
+        <div className="-mt-2 flex flex-col gap-2 pb-4">
+          {provedores
+            .filter((p) => p.estado === "incompleta")
+            .map((p) => (
+              <p
+                key={p.provider}
+                className="flex flex-wrap items-center gap-2 text-[12.5px] leading-snug text-amber-300"
+              >
+                <AlertCircle className="size-3.5 shrink-0" />
+                <span>
+                  {p.nome} incompleta — falta o e-mail de contato em Ajustes.
+                </span>
+                {onAbrirAjustes && (
+                  <button
+                    type="button"
+                    onClick={onAbrirAjustes}
+                    className="shrink-0 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
+                  >
+                    Preencher em Ajustes
+                  </button>
+                )}
+              </p>
+            ))}
+        </div>
+      )}
+
+      {!algumLigado && !erroNaLeitura && (
         <p className="-mt-2 pb-4 text-[12.5px] leading-snug text-zinc-500">
-          {/* REVISÃO A5 (frete v2, 03/09): o artigo acompanha o nome que o
-              config salvou. Provedor nomeado leva "o" ("conecte o Melhor
-              Envio"); sem nome (flat_fee remanescente ou ausente) a frase é
-              "conecte uma transportadora" — nunca "conecte o uma
-              transportadora". */}
-          Para vender para todo o Brasil,{" "}
-          {provedorNome
-            ? `conecte o ${provedorNome} em Ajustes`
-            : "conecte uma transportadora em Ajustes"}
-          . Quem compra de fora não consegue fechar o pedido até lá.
+          Para vender para todo o Brasil, conecte e ligue ao menos uma
+          transportadora em Ajustes. Quem compra de fora não consegue fechar o
+          pedido até lá.
         </p>
       )}
 
@@ -230,7 +240,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
 
       <Linha
         nome="Transportadoras e serviços"
-        dica="A chave de acesso, o teste de conexão, os serviços habilitados (Sedex, PAC, Jadlog) e o histórico de cotações ficam em Ajustes."
+        dica="A chave de acesso, o teste de conexão, os serviços habilitados e quem está ligado ficam em Ajustes."
       >
         {onAbrirAjustes && (
           <button

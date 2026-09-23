@@ -1,11 +1,19 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import {
+  type ConfigDoProvedor,
+  NOME_DO_PROVEDOR,
+  PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR,
+  type ProvedorFrete,
+  buscarConfiguracaoDeFrete,
+  emailDeContatoValido,
+} from "@/components/admin/settings/TransportadorasCard";
 import { EtiquetasEnvioCard } from "@/components/admin/shipping/EtiquetasEnvioCard";
 import { FreteGratisBloco } from "@/components/admin/shipping/FreteGratisBloco";
 import { FreteLocalBloco } from "@/components/admin/shipping/FreteLocalBloco";
 import {
-  type EstadoConexaoNacional,
   FreteNacionalBloco,
+  type ProvedorNacional,
 } from "@/components/admin/shipping/FreteNacionalBloco";
 import {
   FreteResumoFaixa,
@@ -19,34 +27,17 @@ import {
   presetDoConfig,
   valorDoPreset,
 } from "@/lib/presets-de-frete-gratis";
-import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AlertCircle, HelpCircle, RefreshCw, Save } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-/**
- * E-mail de contato técnico da SuperFrete (release 1.5.5) — CÓPIA da régua
- * da edge (`emailDeContatoValido` em calculate-shipping/index.ts; a seção de
- * Transportadoras tem outra cópia). A edge revalida o e-mail salvo antes de
- * cada cotação e, se ele não passa, não cota — esta tela usa a mesma régua
- * para não dizer "chave salva" numa SuperFrete que a edge vai recusar.
- * Em partes (um `@`; local; 2+ rótulos, o último só letras) para não ter
- * quantificador aninhado.
- */
-function emailDeContatoValido(valor: unknown): boolean {
-  if (typeof valor !== "string") return false;
-  const email = valor.trim();
-  if (email.length === 0 || email.length > 254) return false;
-  const arroba = email.indexOf("@");
-  if (arroba <= 0 || arroba !== email.lastIndexOf("@")) return false;
-  if (!/^[A-Za-z0-9._%+-]+$/.test(email.slice(0, arroba))) return false;
-  const rotulos = email.slice(arroba + 1).split(".");
-  if (rotulos.length < 2) return false;
-  if (!/^[A-Za-z]{2,}$/.test(rotulos.at(-1) ?? "")) return false;
-  return rotulos.every((rotulo) => /^[A-Za-z0-9-]+$/.test(rotulo));
-}
+const ORDEM_DE_EXIBICAO: readonly ProvedorFrete[] = [
+  "melhor_envio",
+  "superfrete",
+  "frenet",
+];
 
 interface AdminShippingViewProps {
   onNavigate?: (view: View) => void;
@@ -140,75 +131,43 @@ export const AdminShippingView = memo(function AdminShippingView({
     retiradaNaLoja: false,
   });
 
-  // Leitura da credencial de transportadora (mesma tabela que Ajustes
-  // grava) — só para dizer a VERDADE sobre a conexão na faixa e na seção
-  // "Fora da cidade". Esta tela nunca grava credencial e, desde o achado
-  // AdminShippingView-126 (segurança), também não LÊ o token: baixar o
-  // JSON inteiro (`credentials`, com o token da conta real do Melhor
-  // Envio/Frenet) só para acender um booleano deixava o segredo parado no
-  // estado React durante toda a sessão, exposto a extensão, DevTools e
-  // qualquer captura de estado — para uma tela que só precisa saber SE
-  // existe conexão. O filtro `credentials->>token` roda no PRÓPRIO
-  // Postgres (RLS já restringe a linha ao admin da loja; o filtro só
-  // decide quais linhas voltam) e a coluna `credentials` nem entra no
-  // `select` — o navegador recebe só o `provider` de quem já tem token.
-  // Set (não Map com o valor da credencial): não há mais nada para
-  // guardar além de "este provedor tem token".
-  const [credsConectados, setCredsConectados] = useState<Set<string>>(
-    () => new Set(),
-  );
+  // Leitura da credencial de transportadora (mesma edge que Ajustes usa)
+  // — só para dizer a VERDADE sobre a conexão na faixa e na seção "Fora da
+  // cidade". Esta tela nunca grava credencial e, desde o achado
+  // AdminShippingView-126 (segurança), também não LÊ o token: a edge
+  // (`ler_configuracao_frete`) devolve só o formato PRONTO de cada
+  // provedor (`tem_chave`, `sandbox`, `contato_email`, `servicos`) —
+  // nunca o token, que fica só no service role do servidor. O navegador
+  // não tem, e nunca teve nesta release, um caminho para baixar o
+  // segredo só para acender um booleano.
+  // RELEASE 1.5.7 v2 (frete com vários provedores): a tela deixou de fazer
+  // qualquer `select` direto em `store_shipping_credentials` — toda a
+  // configuração vem pronta da edge (`ler_configuracao_frete`), que é a
+  // MESMA fonte que a seção de Transportadoras usa. Sem isso, provedor
+  // ligado no modo multi (linha `_ligados`, EMENDA R2) ficaria invisível
+  // para quem só sabe ler a tabela de credenciais linha a linha.
+  // Achado 2 (revisão Opus, regressão 1.5.5): guarda o `Map` inteiro que a
+  // edge devolveu, não só um `Set` de "tem chave" — a SuperFrete PRECISA
+  // do `contato_email` para saber se a chave está de fato COMPLETA (ver
+  // `provedoresNacional` abaixo); um `Set` booleano não carrega isso.
+  const [ligadosSalvos, setLigadosSalvos] = useState<
+    ReadonlySet<ProvedorFrete>
+  >(() => new Set());
+  const [provedoresSalvos, setProvedoresSalvos] = useState<
+    ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
+  >(() => new Map());
   const [credsErro, setCredsErro] = useState(false);
-  // Release 1.5.5: com a SuperFrete SALVA como provedor, a tela também
-  // precisa saber se o e-mail de contato técnico está lá (sem ele a edge não
-  // cota). Lê SÓ o e-mail, por alias — nunca o token, nunca `credentials`.
-  const [emailDaSuperFreteOk, setEmailDaSuperFreteOk] = useState(false);
-  const provedorSalvo = config?.shippingProvider || "flat_fee";
 
   const fetchCreds = useCallback(async () => {
     setCredsErro(false);
-    try {
-      const [comToken, emailDaSuperFrete] = await Promise.all([
-        supabase
-          .from("store_shipping_credentials")
-          .select("provider")
-          .not("credentials->>token", "is", null)
-          .neq("credentials->>token", ""),
-        // Só a SuperFrete pergunta pelo e-mail — ME/Frenet seguem com a
-        // mesma consulta única de sempre.
-        provedorSalvo === "superfrete"
-          ? supabase
-              .from("store_shipping_credentials")
-              .select("provider, contato:credentials->>contact_email")
-              .eq("provider", "superfrete")
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-      if (
-        !comToken.error &&
-        comToken.data &&
-        !emailDaSuperFrete.error &&
-        emailDaSuperFrete.data
-      ) {
-        setCredsConectados(
-          new Set(
-            comToken.data.map((row: { provider: string }) => row.provider),
-          ),
-        );
-        const linhaDaSuperFrete = (
-          emailDaSuperFrete.data as ReadonlyArray<{
-            provider: string;
-            contato: unknown;
-          }>
-        ).find((row) => row.provider === "superfrete");
-        setEmailDaSuperFreteOk(
-          emailDeContatoValido(linhaDaSuperFrete?.contato),
-        );
-      } else {
-        setCredsErro(true);
-      }
-    } catch {
+    const resultado = await buscarConfiguracaoDeFrete();
+    if (!resultado.ok) {
       setCredsErro(true);
+      return;
     }
-  }, [provedorSalvo]);
+    setLigadosSalvos(new Set(resultado.config.ligados));
+    setProvedoresSalvos(resultado.config.provedores);
+  }, []);
 
   // ── Achado 3 da auditoria rodada 2 (26/08/2026), intacto ─────────────────
   // O efeito abaixo redispara quando `active` volta a `true` (a view do painel
@@ -248,46 +207,55 @@ export const AdminShippingView = memo(function AdminShippingView({
     }
   }, [isLoaded, config, active, fetchCreds]);
 
-  // Estado da conexão com a transportadora de cotação — derivado do provedor
-  // SALVO (nunca de escolha pendente: fora daqui não existe escolha de
-  // provedor "por salvar") cruzado com a credencial gravada.
+  // Estado POR PROVEDOR (F10, EMENDA R2): nunca "conectado" só por ter
+  // chave. `ligado` só vale quando o provedor está na lista `ligados` DA
+  // EDGE *e* tem chave salva — protege contra o espelho antigo apontar um
+  // provedor sem credencial nenhuma (loja recém-migrada para o modo multi).
   //
-  // REVISÃO A5 (frete v2, 03/09): `provedorNome` é NULL quando o config não
-  // nomeia transportadora (provedor `flat_fee` remanescente de loja antiga ou
-  // ausente). O nome define o ARTIGO da frase da seção "Fora da cidade" —
-  // "conecte o Melhor Envio" existe; "conecte o uma transportadora", não. O
-  // estado `conectado` só ocorre com provedor nomeado + credencial, então o
-  // nome lá nunca é nulo.
-  const conexao = useMemo(() => {
-    const nome =
-      provedorSalvo === "melhor_envio"
-        ? "Melhor Envio"
-        : provedorSalvo === "frenet"
-          ? "Frenet"
-          : provedorSalvo === "superfrete"
-            ? "SuperFrete"
-            : null;
-    // Taxa fixa remanescente de loja antiga = sem cotação de fora, igual a
-    // não conectado (a edge deixou de cotar por ela).
-    // SuperFrete (1.5.4): chave salva NÃO prova conexão (quem prova é o
-    // "Testar" em Ajustes) — o estado é "chave_salva", nunca "conectado".
-    // 1.5.5: chave salva SEM e-mail de contato válido é "incompleta" — a
-    // edge nem chama a API sem ele. Sem chave continua "desconectado".
-    // ME/Frenet seguem como sempre.
-    const estado: EstadoConexaoNacional =
-      provedorSalvo === "flat_fee"
-        ? "desconectado"
-        : credsErro
-          ? "indeterminado"
-          : credsConectados.has(provedorSalvo)
-            ? provedorSalvo === "superfrete"
-              ? emailDaSuperFreteOk
+  // Achado 2 (revisão Opus, regressão 1.5.5): ter chave NÃO basta para a
+  // SuperFrete cotar de verdade — sem `contato_email` válido a edge nunca
+  // manda a cotação, mesmo que `ligados`/`tem_chave` digam que sim (a
+  // linha pode ter sido salva direto no banco, ou de antes de existir essa
+  // exigência). "ligado" sem essa garantia é mentira: "incompleta" entra
+  // ANTES de "ligado" na régua, mesma checagem de
+  // `PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR` que `TransportadorasCard.tsx`
+  // usa para bloquear o SALVAR.
+  const provedoresNacional: ProvedorNacional[] = useMemo(
+    () =>
+      ORDEM_DE_EXIBICAO.map((p) => {
+        const salvo = provedoresSalvos.get(p);
+        const temChave = salvo?.tem_chave ?? false;
+        const incompleta =
+          temChave &&
+          PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(p) &&
+          !emailDeContatoValido(salvo?.contato_email);
+        return {
+          provider: p,
+          nome: NOME_DO_PROVEDOR.get(p) ?? p,
+          estado: incompleta
+            ? "incompleta"
+            : ligadosSalvos.has(p) && temChave
+              ? "ligado"
+              : temChave
                 ? "chave_salva"
-                : "incompleta"
-              : "conectado"
-            : "desconectado";
-    return { estado, provedorNome: nome };
-  }, [provedorSalvo, credsConectados, credsErro, emailDaSuperFreteOk]);
+                : "sem_chave",
+        };
+      }),
+    [ligadosSalvos, provedoresSalvos],
+  );
+  const algumProvedorLigado = provedoresNacional.some(
+    (p) => p.estado === "ligado",
+  );
+  // Achado 5 (ANOTADO): estável entre renders que não mudam
+  // `provedoresNacional` — evita recriar o array (e o texto derivado dele)
+  // a cada render do formulário de regras, que não tem nada a ver com isto.
+  const nomesLigados = useMemo(
+    () =>
+      provedoresNacional
+        .filter((p) => p.estado === "ligado")
+        .map((p) => p.nome),
+    [provedoresNacional],
+  );
 
   // ── A faixa-resumo descreve o que está SALVO (a realidade da loja hoje) ──
   // Frases derivadas do config, nunca do formulário pendente: quem abriu a
@@ -327,40 +295,29 @@ export const AdminShippingView = memo(function AdminShippingView({
             detalhe: "fora dela, a loja não atende",
             tom: "neutro",
           }
-        : conexao.estado === "conectado"
+        : credsErro
           ? {
               rotulo: "Fora da cidade",
-              valor: `${conexao.provedorNome} conectado`,
-              detalhe: "cotação real na hora",
-              tom: "positivo",
+              valor: "Conexão a confirmar",
+              detalhe: "confira a transportadora em Ajustes",
+              tom: "neutro",
             }
-          : conexao.estado === "chave_salva"
+          : algumProvedorLigado
             ? {
                 rotulo: "Fora da cidade",
-                valor: `${conexao.provedorNome}: chave salva`,
-                detalhe: "confirme com 'Testar' em Ajustes",
-                tom: "neutro",
+                valor:
+                  nomesLigados.length === 1
+                    ? `${nomesLigados[0]} ligado`
+                    : `${nomesLigados.length} provedores ligados`,
+                detalhe: "cotação real na hora",
+                tom: "positivo",
               }
-            : conexao.estado === "incompleta"
-              ? {
-                  rotulo: "Fora da cidade",
-                  valor: `${conexao.provedorNome} incompleta`,
-                  detalhe: "falta o e-mail de contato em Ajustes",
-                  tom: "atencao",
-                }
-              : conexao.estado === "indeterminado"
-                ? {
-                    rotulo: "Fora da cidade",
-                    valor: "Conexão a confirmar",
-                    detalhe: "confira a transportadora em Ajustes",
-                    tom: "neutro",
-                  }
-                : {
-                    rotulo: "Fora da cidade",
-                    valor: "Sem transportadora",
-                    detalhe: "por enquanto, só entrega na cidade",
-                    tom: "atencao",
-                  };
+            : {
+                rotulo: "Fora da cidade",
+                valor: "Sem transportadora",
+                detalhe: "por enquanto, só entrega na cidade",
+                tom: "atencao",
+              };
 
     const gratis: StatusDaFaixaFrete =
       presetSalvo === "acima_de_valor"
@@ -392,7 +349,7 @@ export const AdminShippingView = memo(function AdminShippingView({
               };
 
     return [local, nacional, gratis] as const;
-  }, [config, conexao]);
+  }, [config, credsErro, algumProvedorLigado, nomesLigados]);
 
   // Dirty check to enable save bar — estratégia de grátis explícita +
   // regras. Comparar a ESTRATÉGIA (via `presetDoConfig`, não só o número
@@ -570,7 +527,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                 onOriginCep={(originCep) =>
                   setFormData((prev) => ({ ...prev, originCep }))
                 }
-                conexao={conexao}
+                provedores={provedoresNacional}
+                erroNaLeitura={credsErro}
                 onAbrirAjustes={
                   onNavigate ? () => onNavigate("admin-settings") : undefined
                 }

@@ -70,53 +70,110 @@ const PAGE_SIZE = 20;
 // finge sucesso calado.
 const TETO_BUSCA = 500;
 
-// Formato do id de opção que o checkout grava quando o cliente escolheu um
-// serviço do Melhor Envio (mesmo padrão de `extrairServiceIdDaOpcao` em
-// supabase/functions/melhor-envio-etiqueta/index.ts — duplicado aqui porque
-// a function roda em Deno e esta tela não importa dali). Pedido de frete
-// fixo/local ou de frete GRÁTIS (achado irmão index-691: sai com
-// `shipping_option_id` nulo) não casa — e a tela avisa "sem serviço do ME"
-// ANTES do clique, em vez do lojista descobrir só com o 400 da function.
+// RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md, R1-6) — regra ÚNICA de extração do id
+// do Melhor Envio, IGUAL à da edge `melhor-envio-etiqueta`
+// (`REGEX_OPCAO_MELHOR_ENVIO`, index.ts): captura completa
+// `^melhor-envio-(\d+)(-ss)?$`, nunca `parseInt` parcial nem `startsWith`. O
+// sufixo `-ss` (A6) marca a opção cotada SEM seguro; não muda nada aqui —
+// esta tela só precisa do id numérico para achar o serviço na lista.
 //
-// CONTRATO PENDENTE (achado ANOTADO da rodada de correção): a edge
-// `melhor-envio-etiqueta` já classifica o pedido de frete grátis como
-// RESGATÁVEL — `erroDeServicoParaEtiqueta` responde 400 com
-// `precisa_escolher_servico: true` e existe `normalizarServicoEscolhidoPeloLojista`
-// esperando um `serviceId` do card. O aviso abaixo cobre só a METADE de
-// "avisar antes do clique"; a outra metade do contrato — um seletor de
-// serviço aqui na tela, que devolva `serviceId` no corpo do invoke — não
-// existe ainda. Se o lojista insistir mesmo com o aviso, a function
-// continua recusando e não há como escolher pela tela. Falta tarefa
-// própria para o seletor (mexeria em `handleGerarEtiqueta`, fora do
-// escopo desta tarefa, que é só a lista).
-const SERVICO_MELHOR_ENVIO = /^melhor-envio-\d+$/;
+// Pedido de frete fixo/local ou de frete GRÁTIS (achado irmão index-691: sai
+// com `shipping_option_id` nulo) não casa — e a tela avisa "sem serviço do
+// ME" ANTES do clique, em vez do lojista descobrir só com o 400 da function.
+const REGEX_OPCAO_MELHOR_ENVIO = /^melhor-envio-(\d+)(-ss)?$/;
+function idNumericoDoMelhorEnvio(opcao: unknown): string | null {
+  if (typeof opcao !== "string") return null;
+  const casou = opcao.match(REGEX_OPCAO_MELHOR_ENVIO);
+  return casou ? casou[1] : null;
+}
+function ehOpcaoDoMelhorEnvio(opcao: unknown): boolean {
+  return idNumericoDoMelhorEnvio(opcao) !== null;
+}
 
-// SUPERFRETE (release 1.5.4): provedor SÓ de cotação. A etiqueta do pedido
-// cotado por ela é feita no site da SuperFrete — esta tela compra no Melhor
-// Envio, e oferecer isso para um frete cotado e cobrado em OUTRA
-// transportadora seria gastar o saldo da lojista numa etiqueta que não é a
-// do pedido. O rótulo diz de onde veio e o botão de compra fica apagado.
+// Ids do Melhor Envio que só saem com AGÊNCIA de coleta — LATAM Cargo (12),
+// Azul (15 e 16) e Buslog (22). MESMA lista e MESMO texto da edge
+// (`IDS_QUE_EXIGEM_AGENCIA_DE_COLETA`, melhor-envio-etiqueta/index.ts): o
+// app não manda agência, então a compra pela API é recusada — a tela avisa
+// e desabilita ANTES do clique, em vez do lojista gastar o clique de
+// confirmação só para ler o 400 da function.
+const IDS_QUE_EXIGEM_AGENCIA_DE_COLETA: ReadonlySet<string> = new Set([
+  "12",
+  "15",
+  "16",
+  "22",
+]);
+const AVISO_EXIGE_AGENCIA =
+  "Esta transportadora exige agência de coleta — gere esta etiqueta no site do Melhor Envio.";
+function ehIdQueExigeAgencia(opcao: unknown): boolean {
+  const id = idNumericoDoMelhorEnvio(opcao);
+  return id !== null && IDS_QUE_EXIGEM_AGENCIA_DE_COLETA.has(id);
+}
+
+/**
+ * A nota do pedido (coluna `notes`, gravada pelo checkout — CheckoutView.tsx
+ * ~1999-2003) traz "Frete Escolhido: <nome> (Prazo: ...)". Quando o nome
+ * contém a transportadora e o serviço (contrato A4: "Transportadora —
+ * Serviço" para tudo que não é PAC/SEDEX dos Correios), este é o rótulo mais
+ * honesto para um provedor cuja etiqueta é feita fora do app. Sem nota
+ * (pedido antigo, ou nota livre sem esse texto), o chamador cai no próprio
+ * código/mapa.
+ *
+ * Revisão Opus (achado 4): lê a ÚLTIMA ocorrência, nunca a primeira. O
+ * checkout ACRESCENTA esta linha no FIM de `notes` (CheckoutView.tsx
+ * ~1999-2003) — texto livre que a cliente escreve ANTES dela (observação
+ * do pedido) pode conter a MESMA frase "Frete Escolhido: X (Prazo: ...)" e
+ * enganar um `.match()` que para no primeiro achado. A última ocorrência é
+ * sempre a que o checkout gravou.
+ */
+function nomeDoFreteNaNota(notes: unknown): string | null {
+  if (typeof notes !== "string") return null;
+  const casamentos = [...notes.matchAll(/Frete Escolhido:\s*(.+?)\s*\(Prazo/g)];
+  const nome = casamentos.at(-1)?.[1]?.trim();
+  return nome ? nome : null;
+}
+
+// SUPERFRETE e FRENET (releases 1.5.4 e 1.5.7): provedores SÓ de cotação. A
+// etiqueta do pedido cotado por eles é feita no site DELES — esta tela
+// compra no Melhor Envio, e oferecer isso para um frete cotado e cobrado em
+// OUTRA transportadora seria gastar o saldo da lojista numa etiqueta que
+// não é a do pedido. O rótulo diz de onde veio e o botão de compra fica
+// apagado (mesma recusa da edge, `erroDeServicoParaEtiqueta`).
 const COTADO_PELA_SUPERFRETE = /^superfrete-/;
 function ehCotacaoDaSuperFrete(opcao: unknown): boolean {
   return typeof opcao === "string" && COTADO_PELA_SUPERFRETE.test(opcao);
 }
+const COTADO_PELA_FRENET = /^frenet-/;
+function ehCotacaoDaFrenet(opcao: unknown): boolean {
+  return typeof opcao === "string" && COTADO_PELA_FRENET.test(opcao);
+}
+function ehEtiquetaForaDoApp(opcao: unknown): boolean {
+  return ehCotacaoDaSuperFrete(opcao) || ehCotacaoDaFrenet(opcao);
+}
 
 // Release 1.5.6: a "Entrega econômica" da SuperFrete é o PAC OU o Mini
-// Envios (o mais barato), e a cliente só vê "Entrega econômica". A lojista
-// compra a etiqueta no site da SuperFrete — o rótulo diz QUAL serviço a
-// cliente pagou, pelo id que a RPC do pedido validou, para ela não comprar
-// PAC num pedido pago como Mini. Id sem nome aqui: rótulo de antes.
+// Envios (o mais barato), e a cliente só vê "Entrega econômica". Mapa de
+// FALLBACK para pedido antigo, sem a nota nova — quando a nota tem o nome
+// (pedidos da v2 em diante), ele vence.
 const SERVICO_DA_SUPERFRETE: ReadonlyMap<string, string> = new Map([
   ["superfrete-1", "PAC"],
   ["superfrete-2", "SEDEX"],
   ["superfrete-3", "Jadlog"],
   ["superfrete-17", "Mini Envios"],
 ]);
-function rotuloDaSuperFrete(opcao: string): string {
-  const servico = SERVICO_DA_SUPERFRETE.get(opcao);
-  return servico
-    ? `cotado pela SuperFrete · ${servico} — etiqueta fora do app`
+function rotuloDaSuperFrete(opcao: string, notes: unknown): string {
+  // Revisão Opus (achado 4): o id VALIDADO pela RPC vence — texto livre
+  // da cliente (campo de observação do pedido) não pode trocar o serviço
+  // mostrado para quem vai comprar a etiqueta. Só cai para a nota quando o
+  // id não está no mapa (serviço novo/sem nome fixo ainda).
+  const nome = SERVICO_DA_SUPERFRETE.get(opcao) ?? nomeDoFreteNaNota(notes);
+  return nome
+    ? `cotado pela SuperFrete · ${nome} — etiqueta fora do app`
     : "cotado pela SuperFrete — etiqueta fora do app";
+}
+function rotuloDaFrenet(opcao: string, notes: unknown): string {
+  const codigo = opcao.replace(/^frenet-/, "");
+  const nome = nomeDoFreteNaNota(notes) ?? codigo;
+  return `cotado pela Frenet · ${nome} — etiqueta fora do app`;
 }
 
 /**
@@ -136,15 +193,21 @@ function rotuloEtiquetaPedido(p: any): string {
     return "retirada na loja — sem etiqueta";
   }
   if (ehCotacaoDaSuperFrete(p?.shipping_option_id)) {
-    return rotuloDaSuperFrete(p.shipping_option_id);
+    return rotuloDaSuperFrete(p.shipping_option_id, p?.notes);
+  }
+  if (ehCotacaoDaFrenet(p?.shipping_option_id)) {
+    return rotuloDaFrenet(p.shipping_option_id, p?.notes);
   }
   // Campo solto na linha (não `p.customer_data.shipping_option_id`): o
   // `select` pede o caminho JSON direto (`customer_data->>shipping_option_id`),
   // e o PostgREST devolve esse valor com o nome do próprio caminho — ver
   // comentário de TETO_BUSCA.
   const opcaoDoCheckout = p?.shipping_option_id;
-  if (!SERVICO_MELHOR_ENVIO.test(String(opcaoDoCheckout || ""))) {
+  if (!ehOpcaoDoMelhorEnvio(opcaoDoCheckout)) {
     return "sem serviço do ME";
+  }
+  if (ehIdQueExigeAgencia(opcaoDoCheckout)) {
+    return "exige agência — gere no site do Melhor Envio";
   }
   return p.status || "aberto";
 }
@@ -260,7 +323,7 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
       const { data, error } = await supabase
         .from("marketplace_orders")
         .select(
-          "id, customer_name, status, payment_status, shipping, tracking_code, shipping_label_id, created_at, customer_data->>shipping_option_id",
+          "id, customer_name, status, payment_status, shipping, tracking_code, shipping_label_id, notes, created_at, customer_data->>shipping_option_id",
         )
         .in("status", ["new", "pending", "processing", "shipping"])
         .in("payment_status", [
@@ -760,6 +823,18 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
                     {erroMsg}
                   </p>
                 )}
+                {/* Ids que exigem agência de coleta (A7/R1-6): a etiqueta
+                    NUNCA sai pelo app — o aviso aparece ANTES do clique, no
+                    lugar do botão habilitado, para a lojista não descobrir
+                    só com o 400 da function. */}
+                {pedido && ehIdQueExigeAgencia(pedido?.shipping_option_id) && (
+                  <p
+                    data-testid="aviso-exige-agencia"
+                    className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-2 text-[10.5px] font-semibold leading-snug text-amber-300"
+                  >
+                    {AVISO_EXIGE_AGENCIA}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -779,7 +854,8 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
                     isOffline ||
                     loadingPedidos ||
                     ehRetiradaNaLoja(pedido?.shipping_option_id) ||
-                    ehCotacaoDaSuperFrete(pedido?.shipping_option_id)
+                    ehEtiquetaForaDoApp(pedido?.shipping_option_id) ||
+                    ehIdQueExigeAgencia(pedido?.shipping_option_id)
                   }
                   className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 py-2.5 text-xs font-bold text-black shadow-lg shadow-amber-500/20 transition-all hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 sm:w-auto"
                 >
