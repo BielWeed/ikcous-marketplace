@@ -165,18 +165,34 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
     expect(botaoDe("Ver outras opções")).toBeUndefined();
   });
 
-  it("a linha 'Transportadora — Serviço · via Provedor' aparece SEMPRE que houver transportadora", async () => {
-    await montar([PAC, SEDEX]);
+  // Pedido do dono (23/09/2026): nada de repetir transportadora/serviço
+  // entre título e subtítulo — o subtítulo só aparece quando acrescenta
+  // (Correios · PAC atrás de "Entrega econômica") e o "via <Provedor>" é
+  // selo à parte, com o logo do agregador.
+  it("com transportadora: o 'via Provedor' aparece SEMPRE; o subtítulo só quando acrescenta", async () => {
+    await montar([PAC, SEDEX, LOGGI]);
+    // A Loggi vence os dois destaques; PAC e SEDEX ficam em "outras".
+    await act(async () => {
+      botaoDe("Ver outras opções")?.click();
+    });
     const cartaoPac = botaoDe("Entrega econômica");
-    expect(cartaoPac?.textContent).toContain(
-      "Correios — PAC · via Melhor Envio",
-    );
+    expect(cartaoPac?.textContent).toContain("Correios · PAC");
+    expect(cartaoPac?.textContent).toContain("via Melhor Envio");
+    expect(cartaoPac?.textContent).not.toContain("Correios — PAC");
+    const cartaoLoggi = botaoDe("Loggi Express");
+    expect(cartaoLoggi?.textContent).toContain("via Frenet");
+    // "Loggi" aparece UMA vez no texto do cartão (o logo tem alt, não texto).
+    expect(cartaoLoggi?.textContent?.match(/Loggi/g)).toHaveLength(1);
+    expect(
+      cartaoLoggi?.querySelector('img[alt="Loggi"]'),
+      "logo oficial da transportadora",
+    ).not.toBeNull();
   });
 
   it("três opções: os dois destaques aparecem; a terceira fica atrás de '+ Ver outras opções'", async () => {
     const meioTermo: ShippingOption = {
       id: "melhor-envio-3",
-      name: "Meio termo",
+      name: "Correios — Meio",
       price: 40,
       deliveryDays: 5,
       provider: "melhor_envio",
@@ -188,27 +204,27 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
 
     expect(botaoDe("Entrega econômica")).toBeDefined();
     expect(botaoDe("Entrega expressa")).toBeDefined();
-    expect(botaoDe("Meio termo")).toBeUndefined();
+    expect(botaoDe("Correios Meio")).toBeUndefined();
     const toggle = botaoDe("Ver outras opções");
     expect(toggle).toBeDefined();
 
     await act(async () => {
       toggle?.click();
     });
-    expect(botaoDe("Meio termo")).toBeDefined();
+    expect(botaoDe("Correios Meio")).toBeDefined();
     expect(botaoDe("Ver menos opções")).toBeDefined();
   });
 
   it("Loggi mais barata E mais rápida: UM cartão com os dois selos; o SEDEX vai para 'outras'", async () => {
     await montar([LOGGI, SEDEX, PAC]);
 
-    const cartaoLoggi = botaoDe("Loggi — Express");
+    const cartaoLoggi = botaoDe("Loggi Express");
     expect(cartaoLoggi?.textContent).toContain("Mais barata");
     expect(cartaoLoggi?.textContent).toContain("Mais rápida");
     // Um cartão só para a Loggi — não dois.
     expect(
       [...hospedeiro.querySelectorAll("button")].filter((b) =>
-        b.textContent?.includes("Loggi — Express"),
+        b.textContent?.includes("Loggi Express"),
       ),
     ).toHaveLength(1);
     // O SEDEX (não vencedor) foi para "outras": não aparece antes de expandir.
@@ -221,7 +237,7 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
 
   it("prazo 0: 'Entrega no mesmo dia', nunca 'em até 0 dia útil'", async () => {
     await montar([NO_MESMO_DIA, SEDEX]);
-    const cartao = botaoDe("Loggi — Hoje");
+    const cartao = botaoDe("Loggi Hoje");
     expect(cartao?.textContent).toContain("Entrega no mesmo dia");
     expect(cartao?.textContent).not.toMatch(/até 0 dia/);
   });
@@ -229,7 +245,7 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
   it("recolher a lista não esconde a opção escolhida, mesmo estando em 'outras'", async () => {
     const meioTermo: ShippingOption = {
       id: "melhor-envio-3",
-      name: "Meio termo",
+      name: "Correios — Meio",
       price: 40,
       deliveryDays: 5,
       provider: "melhor_envio",
@@ -270,12 +286,12 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
     }
     await pintar();
 
-    // Expande e escolhe a que estava escondida ("Meio termo", em "outras").
+    // Expande e escolhe a que estava escondida ("Correios Meio", em "outras").
     await act(async () => {
       botaoDe("Ver outras opções")?.click();
     });
     await act(async () => {
-      botaoDe("Meio termo")?.click();
+      botaoDe("Correios Meio")?.click();
     });
     await pintar();
     expect(selecionada as ShippingOption | null).toMatchObject({
@@ -286,7 +302,7 @@ describe("ShippingCalculator — destaques na tela (release 1.5.7)", () => {
     await act(async () => {
       botaoDe("Ver menos opções")?.click();
     });
-    const cartaoEscolhido = botaoDe("Meio termo");
+    const cartaoEscolhido = botaoDe("Correios Meio");
     expect(cartaoEscolhido).toBeDefined();
     expect(cartaoEscolhido?.getAttribute("aria-pressed")).toBe("true");
     // E o botão volta a oferecer "Ver outras opções" (ainda recolhido).

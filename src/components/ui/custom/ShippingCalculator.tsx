@@ -1,3 +1,7 @@
+import {
+  LogoDaTransportadora,
+  SeloDoAgregador,
+} from "@/components/shipping/MarcaDoFrete";
 import { useCartState } from "@/contexts/CartContext";
 import { useContextoDoFreteDaLoja } from "@/contexts/ContextoDoFreteDaLoja";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -7,6 +11,7 @@ import {
 } from "@/lib/auto-selecao-de-frete";
 import { destaquesDoFrete } from "@/lib/destaques-do-frete";
 import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import { marcaDoFrete } from "@/lib/marca-do-frete";
 import {
   codigoDoErroDeEdgeFunction,
   mensagemAmigavelErroEdgeFunction,
@@ -827,6 +832,13 @@ function CalculadoraDeFrete({
     // que a edge mandou e o aviso neutro de esperar a loja.
     const retirada = ehRetiradaNaLoja(option.id);
     const selos = retirada ? [] : selosDoCartao(option.id);
+    // NOME E LOGO (pedido do dono, 23/09/2026): título limpo SEM repetir
+    // transportadora/serviço no subtítulo ("Loggi Express", não "Loggi —
+    // Express" + "Loggi — Express · via Melhor Envio"); logo oficial da
+    // transportadora REAL à esquerda e, menor, o do agregador no "via".
+    // Só exibição — o objeto `option` segue intacto para o pedido.
+    const marca = retirada ? null : marcaDoFrete(option);
+    const titulo = marca?.titulo || option.name;
 
     return (
       <button
@@ -850,21 +862,37 @@ function CalculadoraDeFrete({
         }`}
       >
         <div className="flex items-center gap-3">
-          <div
-            className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
-              isSelected
-                ? "border-white/20 bg-white/20 text-white"
-                : "border-zinc-100 bg-zinc-50 text-zinc-500"
-            }`}
-          >
-            {isSelected ? (
-              <Check className="size-4" />
-            ) : retirada ? (
-              <Store className="size-4" />
-            ) : (
-              <Truck className="size-4" />
-            )}
-          </div>
+          {marca?.transportadora ? (
+            <span className="relative shrink-0">
+              <LogoDaTransportadora
+                slug={marca.transportadora.slug}
+                nome={marca.transportadora.nome}
+                tamanho={28}
+                className="w-12 border border-zinc-100"
+              />
+              {isSelected && (
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-white text-primary shadow-sm">
+                  <Check className="size-3" aria-hidden="true" />
+                </span>
+              )}
+            </span>
+          ) : (
+            <div
+              className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
+                isSelected
+                  ? "border-white/20 bg-white/20 text-white"
+                  : "border-zinc-100 bg-zinc-50 text-zinc-500"
+              }`}
+            >
+              {isSelected ? (
+                <Check className="size-4" />
+              ) : retirada ? (
+                <Store className="size-4" />
+              ) : (
+                <Truck className="size-4" />
+              )}
+            </div>
+          )}
           <div>
             {selos.length > 0 && (
               <div className="mb-0.5 flex flex-wrap gap-1">
@@ -883,20 +911,28 @@ function CalculadoraDeFrete({
               </div>
             )}
             <span className="block text-[11px] font-bold leading-snug">
-              {option.name}
+              {titulo}
             </span>
-            {/* R1-7: a linha "Transportadora — Serviço · via Provedor"
-                aparece SEMPRE que houver transportadora — nacional, nunca
-                local/retirada/grátis. */}
-            {!retirada && option.transportadora && (
+            {/* Subtítulo SÓ quando acrescenta (Correios · PAC atrás de
+                "Entrega econômica"); o "via" é selo à parte, com o logo do
+                agregador — nunca a transportadora de novo. */}
+            {(marca?.subtitulo || marca?.agregador) && (
               <span
-                className={`mt-0.5 block text-[9px] leading-snug ${
+                className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[9px] leading-snug ${
                   isSelected ? "text-zinc-200" : "text-zinc-500"
                 }`}
               >
-                {option.transportadora}
-                {option.servico ? ` — ${option.servico}` : ""}
-                {option.provedorRotulo ? ` · via ${option.provedorRotulo}` : ""}
+                {marca.subtitulo && <span>{marca.subtitulo}</span>}
+                {marca.subtitulo && marca.agregador && (
+                  <span aria-hidden="true">·</span>
+                )}
+                {marca.agregador && (
+                  <SeloDoAgregador
+                    slug={marca.agregador.slug}
+                    nome={marca.agregador.nome}
+                    className={`text-[9px] ${isSelected ? "text-zinc-200" : "text-zinc-500"}`}
+                  />
+                )}
               </span>
             )}
             {retirada ? (

@@ -1,5 +1,7 @@
 import { GuiaDaChaveDoProvedor } from "@/components/admin/settings/GuiaDaChaveDoProvedor";
+import { LogoDaTransportadora } from "@/components/shipping/MarcaDoFrete";
 import { Switch } from "@/components/ui/switch";
+import { LOGO_AGREGADOR, marcaDoFrete } from "@/lib/marca-do-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { haptic } from "@/utils/haptic";
@@ -1344,15 +1346,7 @@ function CartaoDoProvedor({
         className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl p-3.5 text-left transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-admin-gold"
       >
         <span className="flex min-w-0 items-center gap-2.5">
-          {logo ?? (
-            <span
-              data-slot="logo-provedor"
-              aria-hidden="true"
-              className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[9px] font-black uppercase text-zinc-500"
-            >
-              {nomeDoProvedor(provider).slice(0, 2)}
-            </span>
-          )}
+          {logo ?? <LogoDoProvedor provider={provider} />}
           <span className="flex min-w-0 flex-col items-start gap-0.5">
             <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
               <Lock className="size-3.5 text-admin-gold" />
@@ -1650,9 +1644,10 @@ function CartaoDoProvedor({
                           onChange={() => onAlternarServico(servico.codigo)}
                           className="size-4 accent-admin-gold"
                         />
-                        <span className="text-zinc-200">
-                          {servico.transportadora} — {servico.servico}
-                        </span>
+                        <RotuloDoServico
+                          transportadora={servico.transportadora}
+                          servico={servico.servico}
+                        />
                       </span>
                       {servico.ausenteDaListaDaApi && (
                         <span className="ml-6 text-[10.5px] font-semibold text-amber-300">
@@ -1692,5 +1687,76 @@ function CartaoDoProvedor({
         </div>
       </div>
     </div>
+  );
+}
+
+// Slug do logo oficial de cada provedor (public/logos/provedores/, fontes em
+// public/logos/FONTES.md). O nome segue no texto do cabeçalho: o logo é
+// decorativo (alt vazio) — o leitor de tela não lê o nome duas vezes.
+const SLUG_DO_LOGO_DO_PROVEDOR: Readonly<Record<ProvedorFrete, string>> = {
+  melhor_envio: "melhor-envio",
+  superfrete: "superfrete",
+  frenet: "frenet",
+};
+
+function LogoDoProvedor({ provider }: { readonly provider: ProvedorFrete }) {
+  const caminho = LOGO_AGREGADOR[SLUG_DO_LOGO_DO_PROVEDOR[provider]];
+  const [falhou, setFalhou] = useState(false);
+  if (!caminho || falhou) {
+    // Sem logo (ou falhou ao carregar): as iniciais, decorativas.
+    return (
+      <span
+        data-slot="logo-provedor"
+        aria-hidden="true"
+        className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[9px] font-black uppercase text-zinc-500"
+      >
+        {nomeDoProvedor(provider).slice(0, 2)}
+      </span>
+    );
+  }
+  return (
+    <span
+      data-slot="logo-provedor"
+      className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white p-1"
+    >
+      <img
+        src={caminho}
+        alt=""
+        width={24}
+        height={24}
+        loading="lazy"
+        decoding="async"
+        className="size-full object-contain"
+        onError={() => setFalhou(true)}
+      />
+    </span>
+  );
+}
+
+// Serviço na lista do provedor com o NOME NORMALIZADO (pedido do dono,
+// 23/09/2026: "JeT — Standard", "Jadlog — Jadlog Package", ".Package") e o
+// logo oficial da transportadora. Só exibição: o `codigo` salvo é o mesmo.
+function RotuloDoServico({
+  transportadora,
+  servico,
+}: {
+  readonly transportadora: string;
+  readonly servico: string;
+}) {
+  const marca = marcaDoFrete({ transportadora, servico });
+  const nome = marca.transportadora?.nome ?? transportadora;
+  const servicoLimpo = marca.servico ?? servico;
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <LogoDaTransportadora
+        slug={marca.transportadora?.slug ?? null}
+        nome={nome}
+        tamanho={22}
+        className="w-10"
+      />
+      <span className="min-w-0 text-zinc-200">
+        {servicoLimpo ? `${nome} — ${servicoLimpo}` : nome}
+      </span>
+    </span>
   );
 }
