@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
+import { cpfValido, formatarCpf } from "@/lib/cpf";
 import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
@@ -11,6 +12,7 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
+  IdCard,
   Loader2,
   Lock,
   Mail,
@@ -104,6 +106,13 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     }
   }, [user, isPasswordRecovery, onSuccess, onNavigate]);
   const [phone, setPhone] = useState("");
+  // CPF é OPCIONAL no cadastro (23/09/2026, "o CPF mora na conta"): vazio
+  // segue o cadastro normal; preenchido e INVÁLIDO marca erro no campo e
+  // não envia — a mesma régua (`cpfValido`) que o checkout e o perfil já
+  // usam, para a pessoa nunca ler "CPF inválido" em três lugares
+  // diferentes com critérios diferentes.
+  const [cpf, setCpf] = useState("");
+  const [cpfErro, setCpfErro] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -272,11 +281,20 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           setIsLoading(false);
           return;
         }
+        // CPF vazio = cadastro normal (opcional). Preenchido e inválido:
+        // erro NO CAMPO (não no toast genérico) e não envia — mesmo
+        // padrão do campo de CPF do checkout.
+        if (cpf.trim() && !cpfValido(cpf)) {
+          setCpfErro(true);
+          setIsLoading(false);
+          return;
+        }
         const success = await signUp(
           email.trim(),
           password,
           fullName.trim(),
           phone.trim(),
+          cpf.trim() ? cpf : undefined,
         );
         if (success) {
           setShowConfirmation(true);
@@ -607,6 +625,48 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         required={viewMode === "signup"}
                       />
                     </div>
+                  </motion.div>
+
+                  <motion.div
+                    initial="hidden"
+                    animate="visible"
+                    variants={itemVariants}
+                    className="space-y-2"
+                  >
+                    <label
+                      htmlFor="cpf"
+                      className="ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                    >
+                      CPF (OPCIONAL)
+                    </label>
+                    <div className="group/field relative">
+                      <IdCard className="absolute left-5 top-1/2 size-4 -translate-y-1/2 text-zinc-300 transition-colors group-focus-within/field:text-zinc-900" />
+                      <Input
+                        id="cpf"
+                        name="cpf"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="000.000.000-00"
+                        value={cpf}
+                        onChange={(e) => {
+                          setCpf(formatarCpf(e.target.value).formatado);
+                          if (cpfErro) setCpfErro(false);
+                          if (loginError) setLoginError(null);
+                        }}
+                        aria-invalid={cpfErro}
+                        aria-describedby={cpfErro ? "cpf-erro" : undefined}
+                        className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                      />
+                    </div>
+                    {cpfErro && (
+                      <p
+                        id="cpf-erro"
+                        className="ml-1 text-xs font-bold text-red-600"
+                      >
+                        CPF inválido. Confira os números ou deixe em branco.
+                      </p>
+                    )}
                   </motion.div>
                 </>
               )}

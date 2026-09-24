@@ -302,6 +302,10 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
 
   beforeEach(() => {
     estadoEnderecos.lista = [CASA, TRABALHO];
+    contaEstavel.user = {
+      id: "user-1",
+      user_metadata: { name: "Cliente Teste" },
+    };
     contaEstavel.profile = { full_name: "", whatsapp: "" };
     espelho.selecionada = null;
     espelho.shippingCep = null;
@@ -372,11 +376,14 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     await drenar();
   }
 
-  it("preenchida (local, sem CPF exigido): a seção recolhe sozinha e mostra o resumo — nome, WhatsApp abreviado e o endereço escolhido", async () => {
+  it("nasce SEMPRE recolhida (revisão do dono, 23/09) — mesmo antes de preencher nome/WhatsApp; preenchida, o resumo mostra nome, WhatsApp abreviado e o endereço escolhido", async () => {
     cotacoesControladas({ "38500000": [LOCAL] });
     await montar();
 
-    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("true");
+    // Recolhida desde o primeiro paint, mesmo com nome/WhatsApp vazios —
+    // não existe mais heurística "abre se incompleto".
+    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
+    expect(corpoDaSecao().hidden).toBe(true);
 
     await act(async () => {
       digitar("checkout-name", "Maria Teste");
@@ -395,6 +402,36 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     expect(resumo).toContain("8888");
     expect(resumo).not.toContain("999998888");
     expect(resumo).toContain("Casa");
+  });
+
+  it("resumo recolhido aponta CADA pendência — nome, WhatsApp e endereço (guest) faltando", async () => {
+    contaEstavel.user = null as any;
+    contaEstavel.profile = null as any;
+    cotacoesControladas({ "38500000": [LOCAL] });
+    await montar();
+
+    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
+    expect(
+      document.querySelector('[data-testid="checkout-resumo-falta-nome"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-testid="checkout-resumo-falta-whatsapp"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-testid="checkout-resumo-falta-endereco"]'),
+    ).not.toBeNull();
+
+    await act(async () => {
+      digitar("checkout-name", "Maria Teste");
+    });
+    await drenar();
+    // Preencheu o nome: a pendência dele some, as outras continuam.
+    expect(
+      document.querySelector('[data-testid="checkout-resumo-falta-nome"]'),
+    ).toBeNull();
+    expect(
+      document.querySelector('[data-testid="checkout-resumo-falta-whatsapp"]'),
+    ).not.toBeNull();
   });
 
   it("cabeçalho é um <button type=button> com aria-expanded/aria-controls corretos, e clicar alterna — a MESMA seção que o teclado nativo de um <button> já ativa por Enter/Espaço", async () => {
@@ -496,17 +533,13 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     expect(espelho.selecionada?.id).toBe("melhorenvio-sedex");
   });
 
-  it("dados incompletos: submeter abre a seção, marca o campo inválido e trava o Finalizar — sem criar pedido", async () => {
+  it("dados incompletos: a seção já nasce recolhida, e submeter abre e marca o campo inválido — trava o Finalizar, sem criar pedido", async () => {
     cotacoesControladas({ "38500000": [LOCAL] });
     await montar();
-    // Fecha manualmente a seção (mesmo incompleta) para provar que o
-    // submit é quem REABRE — não só a heurística de "ficou completo".
     await drenar();
-    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("true");
-    await act(async () => {
-      cabecalhoDaSecao().click();
-    });
-    await drenar();
+    // Nasce recolhida mesmo com nome/WhatsApp vazios (revisão do dono,
+    // 23/09/2026) — é o SUBMIT que reabre, não uma heurística de
+    // completude.
     expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
 
     const botao = botaoFinalizar();
@@ -563,24 +596,22 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     await drenar();
     expect(document.getElementById("checkout-cpf")).not.toBeNull();
     expect(botaoFinalizar().disabled).toBe(true);
-    // Revisão Opus (23/09): escolher o endereço NÃO pode fechar a seção à
-    // força quando o CPF passou a faltar — o campo tem de estar À VISTA.
-    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("true");
-    expect(corpoDaSecao().hidden).toBe(false);
-
-    // E se a pessoa fechar mesmo assim, o resumo diz o que falta.
-    await act(async () => {
-      cabecalhoDaSecao().click();
-    });
-    await drenar();
+    // Revisão do dono (23/09/2026): escolher endereço volta a RECOLHER
+    // sempre, mesmo com o CPF passando a faltar — o resumo recolhido é
+    // quem avisa a pendência (substitui a revisão anterior que forçava a
+    // seção aberta nesse caso).
+    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("false");
     expect(corpoDaSecao().hidden).toBe(true);
     expect(
       document.querySelector('[data-testid="checkout-resumo-falta-cpf"]'),
     ).not.toBeNull();
+
+    // Abre para digitar o CPF.
     await act(async () => {
       cabecalhoDaSecao().click();
     });
     await drenar();
+    expect(corpoDaSecao().hidden).toBe(false);
 
     // CPF com dígito verificador errado: continua bloqueado.
     await act(async () => {

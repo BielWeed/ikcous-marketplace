@@ -2416,6 +2416,10 @@ export type Database = {
           whatsapp: string;
         }[];
       };
+      get_my_cpf: {
+        Args: never;
+        Returns: string;
+      };
       get_orders_by_otp_v1: {
         Args: { p_email: string; p_otp: string };
         Returns: Json;
@@ -2634,6 +2638,10 @@ export type Database = {
           desired_identity: Json;
         };
         Returns: Json;
+      };
+      set_my_cpf: {
+        Args: { p_cpf: string };
+        Returns: undefined;
       };
       solicitar_estorno: {
         Args: { p_amount: number; p_motivo: string; p_order_id: string };
