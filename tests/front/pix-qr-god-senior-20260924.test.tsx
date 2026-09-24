@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
-// Tela do Pix com prazo dinâmico (24/09/2026). Antes, a tela do QR mostrava só
-// um "Vence às HH:MM" fixo. Agora ela conta o tempo e, quando o horário
-// previsto passa, AVISA com prudência.
+// Tela do Pix com prazo informado e aviso prudente (24/09/2026).
+// Sem hora do servidor na resposta, um relógio atrasado inventaria minutos
+// restantes; só o banco e o servidor confirmam a validade.
 //
 // A regra que estes testes seguram (revisão independente, 24/09/2026): o
 // relógio do aparelho NÃO é prova de vencimento. Um celular adiantado veria o
@@ -217,7 +217,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     expect(onErro).not.toHaveBeenCalled();
   }
 
-  it("antes do horário: mostra valor, pedido, QR, código, orientação, prazo com contagem e copia", async () => {
+  it("antes do horário: mostra valor, pedido, QR, código e prazo sem prometer minutos", async () => {
     vi.setSystemTime(new Date("2026-09-24T15:00:00.000Z"));
     await renderComPix();
 
@@ -226,8 +226,9 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     expect(texto).toContain(`Pedido #${ORDER_ID.slice(0, 8)}`);
     expect(texto).toContain("Código copia e cola");
     expect(texto).toContain("Abra o app do seu banco");
-    expect(texto).toContain("Vence às");
-    expect(texto).toContain("Faltam 30:00");
+    expect(texto).toContain("Prazo informado: até");
+    expect(texto).toContain("Confira a validade no app do seu banco.");
+    expect(texto).not.toContain("Faltam");
     expect(texto).not.toContain(AVISO_HORARIO);
 
     await esperarPagamentoAindaPossivel();
@@ -255,8 +256,9 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
 
     await esperarPagamentoAindaPossivel();
 
-    // O contador não fica rodando depois do horário previsto.
-    expect(vi.getTimerCount()).toBe(0);
+    // A checagem periódica permanece para retirar o aviso se o aparelho
+    // corrigir o próprio relógio.
+    expect(vi.getTimerCount()).toBe(1);
     esperarSemNovaCobrancaNemTerminal();
   });
 
@@ -273,11 +275,12 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     esperarSemNovaCobrancaNemTerminal();
   });
 
-  it("transição pelo relógio: conta 00:02 → 00:01 e, no horário previsto, só avisa — sem bloquear nada", async () => {
+  it("transição pelo relógio: após o horário previsto só avisa, sem bloquear nada", async () => {
     vi.setSystemTime(new Date("2026-09-24T15:29:58.000Z"));
     await renderComPix();
 
-    expect(hospedeiro.textContent).toContain("Faltam 00:02");
+    expect(hospedeiro.textContent).toContain("Prazo informado: até");
+    expect(hospedeiro.textContent).not.toContain("Faltam");
 
     // A região viva existe ANTES do aviso (vazia) — é o MESMO nó que o
     // recebe depois, senão o leitor de tela não anuncia nada.
@@ -287,18 +290,16 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     expect(regiaoViva).toBeTruthy();
     expect(regiaoViva!.textContent).toBe("");
 
-    avancar(1000);
-    expect(hospedeiro.textContent).toContain("Faltam 00:01");
     expect(hospedeiro.textContent).not.toContain(AVISO_HORARIO);
 
-    avancar(1000);
+    avancar(10_000);
     expect(regiaoViva!.isConnected).toBe(true);
     expect(regiaoViva!.textContent).toContain(AVISO_HORARIO);
     expect(hospedeiro.textContent).not.toContain("Faltam");
     esperarSemAfirmarVencimento();
 
-    // O intervalo parou sozinho depois do horário previsto.
-    expect(vi.getTimerCount()).toBe(0);
+    // A checagem continua para perceber eventual correção do relógio.
+    expect(vi.getTimerCount()).toBe(1);
 
     await esperarPagamentoAindaPossivel();
     esperarSemNovaCobrancaNemTerminal();
@@ -315,7 +316,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     const campo = hospedeiro.querySelector("textarea");
     expect(campo).not.toBeNull();
 
-    avancar(1000);
+    avancar(10_000);
     expect(hospedeiro.textContent).toContain(AVISO_HORARIO);
     expect(hospedeiro.querySelector("textarea")?.value).toBe(QR_CODE_TESTE);
     esperarSemAfirmarVencimento();
@@ -325,7 +326,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
   it("aba volta do segundo plano depois do horário: o aviso aparece na hora, e pagar continua possível", async () => {
     vi.setSystemTime(new Date("2026-09-24T15:20:00.000Z"));
     await renderComPix();
-    expect(hospedeiro.textContent).toContain("Faltam 10:00");
+    expect(hospedeiro.textContent).toContain("Prazo informado: até");
 
     // O relógio anda SEM disparar o intervalo — é o que o navegador faz com
     // timer de aba escondida enquanto o cliente paga no app do banco.
@@ -346,7 +347,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Não conseguimos ler o prazo deste Pix.");
-    expect(texto).not.toContain("Vence às");
+    expect(texto).not.toContain("Prazo informado:");
     expect(texto).not.toContain(AVISO_HORARIO);
     expect(texto).not.toContain("Invalid Date");
     expect(vi.getTimerCount()).toBe(0);
