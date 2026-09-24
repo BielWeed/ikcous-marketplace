@@ -250,6 +250,32 @@ export function emailDoToken(authorization: string | null): string | null {
 }
 
 /**
+ * Usa primeiro o e-mail da sessão autenticada. Um campo antigo do formulário
+ * nunca pode trocar a identidade do pagador, e valores vazios ou malformados
+ * são ignorados em todos os candidatos.
+ */
+export function emailDoPagador({
+  authorization,
+  customerEmail,
+  bodyEmail,
+}: {
+  authorization: string | null;
+  customerEmail: unknown;
+  bodyEmail: unknown;
+}): string {
+  const valido = (valor: unknown) =>
+    typeof valor === "string" && /^\S+@\S+\.\S+$/.test(valor.trim())
+      ? valor.trim()
+      : null;
+  return (
+    valido(emailDoToken(authorization)) ??
+    valido(customerEmail) ??
+    valido(bodyEmail) ??
+    "sem-email@ikcous.com.br"
+  );
+}
+
+/**
  * `deps` é a mesma costura que a Task 1 já provou com `fetchImpl` em
  * `criarPagamento`: sem ela, o handler só é alcançável fazendo requisição HTTP
  * de verdade contra Postgres e Mercado Pago reais, e a fiação onde a
@@ -551,14 +577,13 @@ async function handler(
     );
   }
 
-  // decisao.acao === "criar" a partir daqui.
-  // LAUDO 31/08 (menor E5): o e-mail da sessão entra na corrente antes do
-  // fallback genérico — o MP passa a ver quem de verdade paga.
-  const email =
-    (body.email as string) ??
-    (pedido.customer_data as Record<string, unknown>)?.email ??
-    emailDoToken(req.headers.get("Authorization")) ??
-    "sem-email@ikcous.com.br";
+  // A conta autenticada vence o formulário antigo, inclusive se este errou
+  // o e-mail. O mesmo e-mail é usado ao criar a cobrança no gateway.
+  const email = emailDoPagador({
+    authorization: req.headers.get("Authorization"),
+    customerEmail: (pedido.customer_data as Record<string, unknown>)?.email,
+    bodyEmail: body.email,
+  });
 
   // Os quatro valores que os dois caminhos (PIX/Orders novo, cartão/clássico
   // morto) precisam produzir para a gravação e a resposta abaixo, que são

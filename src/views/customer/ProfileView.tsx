@@ -609,6 +609,16 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
 
                       <OrderTimeline status={order.status} />
 
+                      {order.status === "pending" &&
+                        order.paymentMethod === "online" &&
+                        order.paymentStatus === "aguardando" && (
+                          <Button
+                            onClick={() => onNavigate("checkout", order.id)}
+                            className="min-h-11 w-full rounded-xl bg-zinc-900 px-3 text-[12px] font-semibold text-white hover:bg-zinc-800"
+                          >
+                            Continuar pagamento Pix
+                          </Button>
+                        )}
                       <div className="flex gap-2">
                         <Button
                           variant="outline"

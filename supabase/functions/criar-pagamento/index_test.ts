@@ -12,6 +12,7 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   descricaoDoPedido,
   donoConfere,
+  emailDoPagador,
   emailDoToken,
   expiracaoRealinhavel,
   handler,
@@ -1807,6 +1808,66 @@ Deno.test("handler: MP_SANDBOX_PAYER_EMAIL presente avisa por log qual e-mail es
   // que vazasse o e-mail real do cliente no log (dívida de PII já conhecida
   // neste repositório) passaria despercebida.
   assertEquals(juntos.includes("cliente-real@exemplo.com"), false);
+});
+
+
+Deno.test("emailDoPagador prefere o e-mail autenticado ao digitado errado", () => {
+  const payload = btoa(JSON.stringify({ sub: UUID, email: "conta@exemplo.com" }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  assertEquals(
+    emailDoPagador({
+      authorization: `cabecalho.${payload}.assinatura`,
+      customerEmail: "cadastro@exemplo.com",
+      bodyEmail: "errado@exemplo.com",
+    }),
+    "conta@exemplo.com",
+  );
+});
+
+Deno.test("emailDoPagador ignora entrada vazia e e-mail inválido", () => {
+  assertEquals(
+    emailDoPagador({
+      authorization: null,
+      customerEmail: "cadastro@exemplo.com",
+      bodyEmail: "",
+    }),
+    "cadastro@exemplo.com",
+  );
+  assertEquals(
+    emailDoPagador({
+      authorization: null,
+      customerEmail: "sem-formato",
+      bodyEmail: "  correto@exemplo.com  ",
+    }),
+    "correto@exemplo.com",
+  );
+});
+
+
+Deno.test("handler envia o e-mail da conta ao gateway mesmo com formulário errado", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({
+    customer_data: { email: "cadastro@exemplo.com" },
+    user_id: DONO_LOGADO,
+  });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const capturado: { corpo?: Record<string, unknown> } = {};
+  const fetchImpl = fetchFalsoMP(capturado);
+  const payload = btoa(JSON.stringify({ sub: DONO_LOGADO, email: "conta@exemplo.com" }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  await handler(
+    requisicao(
+      { orderId: UUID, metodo: "pix", email: "errado@exemplo.com" },
+      `cabecalho.${payload}.assinatura`,
+    ),
+    { supabase, fetchImpl },
+  );
+  const payer = capturado.corpo?.payer as Record<string, unknown>;
+  assertEquals(payer.email, "conta@exemplo.com");
 });
 
 // --- CHECKOUT-080 (#213): `traduzirStatusOrderParaClassico` foi apagada —

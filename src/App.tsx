@@ -2275,7 +2275,10 @@ const AppContent = () => {
           <PreloadedOrLazy
             component={CheckoutView}
             props={{
-              key: user?.id ? `checkout-${user.id}` : "checkout-guest",
+              key: user?.id
+                ? `checkout-${user.id}-${selectedProductId || "novo"}`
+                : "checkout-guest",
+              resumeOrderId: selectedProductId || undefined,
               onNavigate: handleNavigate,
               onSetBackOverride: setBackOverride,
             }}

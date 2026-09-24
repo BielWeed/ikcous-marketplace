@@ -47,7 +47,7 @@ import { toast } from "sonner";
 interface OrderDetailsViewProps {
   orderId: string;
   onBack: () => void;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, id?: string) => void;
 }
 
 const statusConfig: Record<
@@ -232,7 +232,7 @@ function cancelledDescription(
 export function OrderDetailsView({
   orderId,
   onBack,
-  onNavigate: _onNavigate,
+  onNavigate,
 }: OrderDetailsViewProps) {
   const { orders, fetchUserOrders, updateOrderStatus, reenviarComprovante } =
     useOrders(true, false);
@@ -768,6 +768,19 @@ export function OrderDetailsView({
                 : "Reenviar comprovante por e-mail"}
             </button>
           </div>
+
+          {user &&
+            order.status === "pending" &&
+            order.paymentMethod === "online" &&
+            order.paymentStatus === "aguardando" && (
+              <button
+                type="button"
+                onClick={() => onNavigate("checkout", order.id)}
+                className="mt-4 flex min-h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 text-xs font-semibold text-white"
+              >
+                Continuar pagamento Pix
+              </button>
+            )}
 
           {/* Exige sessão: o convidado chega nesta tela pelo fallback de
               sessionStorage do loadOrder, e update_order_status_atomic passou a
