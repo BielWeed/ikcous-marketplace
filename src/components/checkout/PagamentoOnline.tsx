@@ -1,7 +1,9 @@
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useOrders } from "@/hooks/useOrders";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
-import { useEffect, useRef, useState } from "react";
+import { cn, formatCurrency } from "@/lib/utils";
+import { AlertCircle, Check, Clock, Copy } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 
 const SDK_URL = "https://sdk.mercadopago.com/js/v2";
 
@@ -370,6 +372,24 @@ export function montarBrick({
   };
 }
 
+/** "29:59", ou "1:05:00" quando passa de uma hora. Arredonda PARA CIMA: com
+ * meio segundo restante o Pix ainda vale, e "00:00" diria o contrário. */
+function formatarTempoRestante(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const horas = Math.floor(total / 3600);
+  const minutos = Math.floor((total % 3600) / 60);
+  const segundos = total % 60;
+  const mmss = `${String(minutos).padStart(2, "0")}:${String(segundos).padStart(2, "0")}`;
+  return horas > 0 ? `${horas}:${mmss}` : mmss;
+}
+
+function formatarHora(ms: number): string {
+  return new Date(ms).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function PagamentoOnline({
   orderId,
   valor,
@@ -415,13 +435,46 @@ export function PagamentoOnline({
     onErroRef.current = onErro;
   });
 
+  // Relógio do prazo — AVISO ESTIMADO, nunca decisão. `agora` é o relógio
+  // DESTE aparelho, e relógio de celular erra (o mesmo risco que o
+  // CheckoutView documenta no comentário de TETO_TICKS_VERIFICACAO_PAGAMENTO):
+  // um aparelho 40 min adiantado veria o horário "passar" com o Pix ainda
+  // valendo no servidor. Por isso, passado o horário previsto, a tela só
+  // AVISA com prudência — QR, código, botão de copiar e link continuam
+  // funcionando até o servidor decidir; o CheckoutView acompanha a confirmação
+  // do pagamento. Nada aqui muda status de pagamento, reserva nem
+  // cria cobrança.
+  const [agora, setAgora] = useState(() => Date.now());
+  const expiraEmMs = pix ? Date.parse(pix.expiraEm) : Number.NaN;
+  const prazoConhecido = Number.isFinite(expiraEmMs);
+  const horarioPrevistoPassou = prazoConhecido && agora >= expiraEmMs;
+
+  useEffect(() => {
+    if (!prazoConhecido || horarioPrevistoPassou) return;
+    const atualizar = () => setAgora(Date.now());
+    const id = setInterval(atualizar, 1000);
+    // Aba em segundo plano tem o timer estrangulado pelo navegador — ao voltar
+    // (o caminho comum: pagar no app do banco e retornar), o prazo tem de
+    // estar certo no MESMO instante, não no próximo tick.
+    document.addEventListener("visibilitychange", atualizar);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", atualizar);
+    };
+  }, [prazoConhecido, horarioPrevistoPassou]);
+
   useEffect(() => {
     return montarBrick({
       orderId,
       valor,
       criarPagamento,
       onErro: (msg, categoria) => onErroRef.current(msg, categoria),
-      onPix: setPix,
+      // `agora` nasce na montagem, que pode ter sido minutos antes do QR
+      // chegar: sincroniza junto do Pix para o contador não aparecer esticado.
+      onPix: (dados) => {
+        setAgora(Date.now());
+        setPix(dados);
+      },
     });
     // `onErro` de propósito fora das deps — ver o comentário do onErroRef
     // acima. O Brick fica vivo enquanto `orderId`/`valor` (primitivos) e
@@ -447,6 +500,9 @@ export function PagamentoOnline({
     // sem ter copiado nada. O botão já não renderiza quando `!pix.qrCode`
     // (abaixo); esta é a segunda trava, para uma refatoração futura que volte
     // a renderizar o botão sem QR não reabrir o mesmo defeito.
+    //
+    // SEM trava de horário aqui, de propósito: o relógio do aparelho não é
+    // prova de vencimento (ver o comentário do relógio do prazo, acima).
     const ok = codigo !== "" && (await copiarParaClipboard(codigo));
     if (!ok) {
       setPixFalhouCopia(true);
@@ -457,27 +513,130 @@ export function PagamentoOnline({
     setTimeout(() => setPixCopiado(false), 2000);
   };
 
+  const idTitulo = useId();
+  const idAvisoHorario = useId();
+
   if (pix) {
+    const valorConhecido = Number.isFinite(valor) && valor > 0;
+    const restanteMs = prazoConhecido ? expiraEmMs - agora : 0;
+    // Últimos 5 minutos em âmbar: o cliente que ainda está abrindo o app do
+    // banco precisa perceber que o tempo está acabando antes de acabar.
+    const prazoCurto =
+      prazoConhecido && !horarioPrevistoPassou && restanteMs <= 5 * 60 * 1000;
+    const descritoPeloAviso = horarioPrevistoPassou
+      ? idAvisoHorario
+      : undefined;
+
     return (
-      <div className="space-y-4 rounded-2xl border border-zinc-100 bg-white p-4">
-        {pix.qrCodeBase64 && (
+      <section
+        aria-labelledby={idTitulo}
+        className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6"
+      >
+        <header className="space-y-1 text-center">
+          <h2
+            id={idTitulo}
+            className="text-xs font-bold uppercase tracking-wider text-zinc-500"
+          >
+            Pagamento via Pix
+          </h2>
+          {valorConhecido && (
+            <p className="text-2xl font-black tabular-nums text-zinc-900">
+              {formatCurrency(valor)}
+            </p>
+          )}
+          {orderId && (
+            <p className="text-xs text-zinc-500">
+              Pedido #{orderId.slice(0, 8)}
+            </p>
+          )}
+        </header>
+
+        {/* Região viva SEMPRE montada (mesmo motivo do Laudo Opus A-2,
+            abaixo): o aviso do horário previsto aparece DENTRO dela, e o
+            leitor de tela só anuncia mudança em região que já existia. Sem
+            `role="status"` de propósito — esse papel é da região de falha de
+            cópia, e há teste que a acha pelo papel.
+
+            O texto é PRUDENTE de propósito: quem sabe se o Pix venceu é o
+            servidor, não o relógio deste aparelho. Nada de "expirou". */}
+        <div aria-live="polite">
+          {horarioPrevistoPassou && (
+            <div
+              id={idAvisoHorario}
+              className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
+            >
+              <AlertCircle
+                aria-hidden="true"
+                className="mt-0.5 size-5 shrink-0 text-amber-600"
+              />
+              <div className="space-y-1 text-sm text-amber-800">
+                <p className="font-semibold">
+                  O horário previsto para pagar já passou.
+                </p>
+                <p>
+                  O prazo informado era até {formatarHora(expiraEmMs)}, e pelo
+                  relógio deste aparelho esse horário já passou. Se você já
+                  pagou, continue nesta tela: a confirmação aparece aqui. Se
+                  ainda não pagou, o banco pode recusar este código — nesse
+                  caso, faça um pedido novo.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {pix.qrCodeBase64 ? (
           <img
             src={`data:image/png;base64,${pix.qrCodeBase64}`}
             alt="QR code do PIX"
-            className="mx-auto size-56"
+            aria-describedby={descritoPeloAviso}
+            className="mx-auto size-56 max-w-full rounded-xl border border-zinc-100 bg-white p-2"
           />
+        ) : (
+          // Degrada com honestidade: a edge extrai a imagem e o código em
+          // separado, então pode faltar um dos dois — dizer o que existe em
+          // vez de deixar um buraco na tela.
+          <p className="rounded-xl bg-zinc-50 p-3 text-center text-xs text-zinc-500">
+            A imagem do QR code não veio nesta cobrança.
+            {pix.qrCode
+              ? " Use o código copia e cola abaixo."
+              : pix.ticketUrl
+                ? " Use o link do Mercado Pago abaixo."
+                : ""}
+          </p>
         )}
+
+        <ol className="list-inside list-decimal space-y-1 text-xs text-zinc-600">
+          <li>Abra o app do seu banco e escolha pagar com Pix.</li>
+          <li>Escaneie o QR code ou use o código copia e cola.</li>
+          <li>Confira o valor e confirme. A confirmação aparece nesta tela.</li>
+        </ol>
+
         {/* Laudo Opus A-1 (08/09/2026): sem `qrCode` não existe código para
             copiar — não oferecer o botão nem o campo de falha. O cliente
             segue pelo QR acima e pelo link "Pagar pelo Mercado Pago" abaixo,
             que já são condicionais ao próprio campo existir. */}
         {pix.qrCode && (
           <>
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                Código copia e cola
+              </p>
+              <p className="line-clamp-2 select-all break-all rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-[10px] text-zinc-700">
+                {pix.qrCode}
+              </p>
+            </div>
             <button
               type="button"
+              aria-describedby={descritoPeloAviso}
               onClick={() => handleCopiarPix(pix.qrCode ?? "")}
-              className="w-full rounded-xl bg-zinc-900 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white"
             >
+              {pixCopiado ? (
+                <Check aria-hidden="true" className="size-4" />
+              ) : (
+                <Copy aria-hidden="true" className="size-4" />
+              )}
               <span aria-live="polite">
                 {pixCopiado ? "Copiado!" : "Copiar código PIX"}
               </span>
@@ -517,14 +676,35 @@ export function PagamentoOnline({
             Pagar pelo Mercado Pago
           </a>
         )}
-        <p className="text-center text-xs text-zinc-500">
-          Vence às{" "}
-          {new Date(pix.expiraEm).toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+        <p
+          className={cn(
+            "flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs text-zinc-500",
+            (prazoCurto || horarioPrevistoPassou) &&
+              "font-semibold text-amber-700",
+          )}
+        >
+          <Clock aria-hidden="true" className="size-4 shrink-0" />
+          {!prazoConhecido ? (
+            // Prazo ilegível: não inventar horário nem declarar vencido —
+            // o botão continua valendo e o banco do cliente mostra a validade.
+            <span>
+              Não conseguimos ler o prazo deste Pix. Confira a validade no app
+              do seu banco antes de pagar.
+            </span>
+          ) : horarioPrevistoPassou ? (
+            <span>Horário previsto: até {formatarHora(expiraEmMs)}</span>
+          ) : (
+            <>
+              <span>Vence às {formatarHora(expiraEmMs)}</span>
+              {/* Contador fora de região viva de propósito: anunciar a cada
+                  segundo tornaria a tela inutilizável no leitor de tela. */}
+              <span className="font-mono tabular-nums">
+                Faltam {formatarTempoRestante(restanteMs)}
+              </span>
+            </>
+          )}
         </p>
-      </div>
+      </section>
     );
   }
 

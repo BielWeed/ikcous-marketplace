@@ -111,7 +111,11 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
     criarPagamento.mockReset().mockResolvedValue({
       paymentId: "pay-1",
       statusPagamento: "aguardando",
-      expiraEm: "2026-08-06T15:30:00.000Z",
+      // Prazo RELATIVO ao relógio real: a tela agora desabilita a cópia
+      // quando `expiraEm` passa, e a data fixa antiga (06/08/2026) virou um
+      // Pix vencido. Estes testes são sobre a cópia de um Pix VÁLIDO; o
+      // vencimento é coberto em pix-qr-god-senior-20260924.test.tsx.
+      expiraEm: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       qrCode: QR_CODE_TESTE,
       qrCodeBase64: "abc123",
       ...resposta,
