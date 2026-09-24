@@ -149,6 +149,32 @@ describe("Retomada do CPF pendente — nova aba, sem estado em memória", () => 
     return { supabase };
   }
 
+  it("pendente VENCIDO some ao abrir o app mesmo SEM sessão nenhuma (aparelho compartilhado onde ninguém volta a entrar) — revisão de segurança 23/09", async () => {
+    armazem.setItem(
+      CHAVE_PENDENTE,
+      JSON.stringify({
+        v: 1,
+        userId: USER_ID,
+        email: EMAIL,
+        cpf: CPF_DIGITOS,
+        expiraEm: Date.now() - 1,
+      }),
+    );
+    const { supabase } = await montarProvider();
+
+    expect(armazem.getItem(CHAVE_PENDENTE)).toBeNull();
+    expect(
+      chamadasDeSetMyCpf(supabase.rpc as unknown as ReturnType<typeof vi.fn>),
+    ).toBe(0);
+  });
+
+  it("pendente DENTRO do prazo continua guardado ao abrir o app sem sessão (espera o login confirmado)", async () => {
+    gravarPendente(armazem);
+    await montarProvider();
+
+    expect(armazem.getItem(CHAVE_PENDENTE)).not.toBeNull();
+  });
+
   it("SIGNED_IN do mesmo usuário: uma chamada set_my_cpf, e o pendente some", async () => {
     gravarPendente(armazem);
     const { supabase } = await montarProvider();

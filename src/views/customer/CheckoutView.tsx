@@ -750,19 +750,31 @@ export function CheckoutView({
   // vazio", nunca um erro na tela). NUNCA abre a seção sozinho: só
   // `form.setValue`, sem tocar `identificacaoAbertaManual` — a seção
   // nasce recolhida de qualquer forma (ver comentário grande de
-  // `identificacaoExpandida`, acima). `contaTemCpfRef` guarda o resultado
+  // `identificacaoExpandida`, acima). `contaTemCpf` guarda o resultado
   // da leitura para a gravação pós-pedido, mais abaixo: só persiste se a
   // conta ESTAVA sem CPF (nunca sobrescreve um CPF que já existia por um
   // motivo qualquer — essa decisão é só do Perfil).
-  const contaTemCpfRef = useRef<boolean | null>(null);
+  //
+  // Revisão de segurança + dono (23/09/2026): o campo é o CPF do
+  // DESTINATÁRIO, que pode ser um terceiro (presente). Por isso a gravação
+  // na conta só acontece com a confirmação explícita
+  // `salvarCpfNaConta` ("Este CPF é meu…"), desmarcada por padrão; o CPF
+  // do pedido continua indo no pedido de qualquer forma. `contaTemCpf` é
+  // estado (a caixa só aparece quando a conta está sem CPF) e volta a
+  // `null` na troca de usuário, junto com a confirmação — o resultado de
+  // uma conta nunca vale para a outra.
+  const [contaTemCpf, setContaTemCpf] = useState<boolean | null>(null);
+  const [salvarCpfNaConta, setSalvarCpfNaConta] = useState(false);
   useEffect(() => {
+    setContaTemCpf(null);
+    setSalvarCpfNaConta(false);
     if (!user) return;
     let cancelado = false;
     void (async () => {
       const resultado = await lerCpfDaConta();
       if (cancelado || !resultado.ok) return;
       const digitos = resultado.cpf ?? "";
-      contaTemCpfRef.current = digitos.length > 0;
+      setContaTemCpf(digitos.length > 0);
       if (digitos && !form.getValues("cpf")) {
         form.setValue("cpf", formatarCpf(digitos).formatado);
       }
@@ -788,6 +800,11 @@ export function CheckoutView({
       // transitória dos resets é substituída, logo depois, pela gravação dos
       // valores restaurados.
       const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+      // Revisão de segurança (23/09/2026): quando a config da loja chega
+      // DEPOIS de `get_my_cpf`, os resets abaixo apagavam o CPF que a conta
+      // acabou de preencher. O valor atual do campo (nunca o rascunho — CPF
+      // não entra no rascunho) atravessa os resets.
+      const cpfJaCarregado = form.getValues("cpf") || "";
       hasInitializedRef.current = true;
       if (!form.formState.isDirty) {
         // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
@@ -795,7 +812,7 @@ export function CheckoutView({
         // mora. O ternário de `isNational` que existia aqui preenchia os
         // dois com "Monte Carmelo"/"MG" na cobertura local.
         form.reset({
-          cpf: "",
+          cpf: cpfJaCarregado,
           name: profile?.full_name || user?.user_metadata?.name || "",
           whatsapp: getDefaultWhatsApp(),
           cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
@@ -813,9 +830,10 @@ export function CheckoutView({
           form.reset({
             // CPF NUNCA vem do rascunho (ver o comentário grande em
             // rascunho-do-checkout.ts) — este reset restaura endereço/nome/
-            // WhatsApp/cupom da sessão anterior, mas o CPF sempre recomeça
-            // vazio, mesmo quando o resto do formulário é restaurado.
-            cpf: "",
+            // WhatsApp/cupom da sessão anterior; o CPF só mantém o que já
+            // estava no campo (o da conta, se chegou antes), nunca o
+            // rascunho.
+            cpf: cpfJaCarregado,
             name:
               rascunho.nome ||
               profile?.full_name ||
@@ -2305,12 +2323,14 @@ export function CheckoutView({
       // isto é conveniência para a PRÓXIMA compra, nunca condição deste
       // pedido. Só grava se: logado, o CPF desta entrega é válido
       // (`cpfParaRpc` — undefined em local/retirada) E a conta NÃO tinha
-      // CPF antes (`contaTemCpfRef.current === false`, da leitura no
+      // CPF antes (`contaTemCpf === false`, da leitura no
       // mount — `null` é "não sei, leitura falhou ou ainda não terminou",
       // e por segurança NÃO sobrescreve nesse caso). Em segundo plano: não
       // bloqueia a navegação pós-pedido; `gravarCpfDaConta` nunca lança e
-      // nunca loga o CPF.
-      if (user && cpfParaRpc && contaTemCpfRef.current === false) {
+      // nunca loga o CPF. E só com a confirmação explícita "Este CPF é
+      // meu…" (`salvarCpfNaConta`, desmarcada por padrão): o CPF do
+      // destinatário pode ser de um terceiro e continua só no pedido.
+      if (user && cpfParaRpc && contaTemCpf === false && salvarCpfNaConta) {
         void gravarCpfDaConta(cpfParaRpc);
       }
       setOrderId(order.id);
@@ -3145,6 +3165,21 @@ export function CheckoutView({
                   >
                     Exigido pela transportadora para emitir a etiqueta de envio.
                   </p>
+                )}
+                {user && contaTemCpf === false && (
+                  <label
+                    htmlFor="checkout-salvar-cpf-na-conta"
+                    className="ml-1 mt-3 flex cursor-pointer items-start gap-2 text-[11px] font-medium text-zinc-600"
+                  >
+                    <input
+                      id="checkout-salvar-cpf-na-conta"
+                      type="checkbox"
+                      checked={salvarCpfNaConta}
+                      onChange={(e) => setSalvarCpfNaConta(e.target.checked)}
+                      className="mt-0.5 size-4 shrink-0 accent-zinc-900"
+                    />
+                    <span>Este CPF é meu e quero salvá-lo na minha conta</span>
+                  </label>
                 )}
               </div>
             )}

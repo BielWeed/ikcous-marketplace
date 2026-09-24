@@ -30,6 +30,8 @@ const {
   espelho,
   createOrder,
   toastError,
+  estadoLoja,
+  cpfDaConta,
 } = vi.hoisted(() => ({
   estadoEnderecos: { lista: [] as Address[] },
   contaEstavel: {
@@ -43,6 +45,8 @@ const {
   },
   createOrder: vi.fn(),
   toastError: vi.fn(),
+  estadoLoja: { isLoaded: true },
+  cpfDaConta: { ler: vi.fn(), gravar: vi.fn() },
 }));
 
 const produto: Product = {
@@ -121,8 +125,17 @@ vi.mock("@/contexts/StoreContext", () => ({
       originCep: "38500-000",
       enableCoupons: false,
     },
-    isLoaded: true,
+    isLoaded: estadoLoja.isLoaded,
   }),
+}));
+
+// CPF da conta (get_my_cpf/set_my_cpf) — dublê controlável por teste. O
+// padrão (beforeEach) é leitura que FALHA: o checkout se comporta como se
+// não soubesse se a conta tem CPF (não preenche, não mostra a caixa, não
+// grava), que é o que os testes mais antigos deste arquivo esperam.
+vi.mock("@/lib/cpf-da-conta", () => ({
+  lerCpfDaConta: (...a: unknown[]) => cpfDaConta.ler(...a),
+  gravarCpfDaConta: (...a: unknown[]) => cpfDaConta.gravar(...a),
 }));
 
 vi.mock("@/hooks/useAddresses", () => ({
@@ -313,6 +326,11 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     createOrder.mockReset();
     createOrder.mockResolvedValue({ id: "ped-1" });
     toastError.mockReset();
+    estadoLoja.isLoaded = true;
+    cpfDaConta.ler.mockReset();
+    cpfDaConta.ler.mockResolvedValue({ ok: false, motivo: "falha" });
+    cpfDaConta.gravar.mockReset();
+    cpfDaConta.gravar.mockResolvedValue({ ok: true });
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -792,5 +810,151 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     // Controle: o resto do formulário SOBREVIVE de propósito (regressão do
     // próprio rascunho, que este teste não deve quebrar).
     expect(bruto).toContain("Maria Teste");
+  });
+
+  // ─── CPF da conta no checkout (23/09/2026, revisão de segurança + dono) ───
+  // O campo é o CPF do DESTINATÁRIO (pode ser um presenteado). Ele sempre vai
+  // no pedido; só vai para a CONTA com a confirmação explícita "Este CPF é
+  // meu e quero salvá-lo na minha conta", desmarcada por padrão, e só quando
+  // a conta está sem CPF.
+
+  async function finalizarComTransportadora(cpfDigitado?: string) {
+    await escolherEndereco("Trabalho");
+    await act(async () => {
+      digitar("checkout-name", "Maria Teste");
+    });
+    await act(async () => {
+      digitar("checkout-tel", "34999998888");
+    });
+    if (cpfDigitado) {
+      await act(async () => {
+        digitar("checkout-cpf", cpfDigitado);
+      });
+    }
+    await drenar();
+    await act(async () => {
+      botaoPorTexto("Pagar agora com PIX")?.click();
+    });
+    await drenar();
+    expect(botaoFinalizar().disabled).toBe(false);
+  }
+
+  function caixaSalvarNaConta(): HTMLInputElement | null {
+    return document.getElementById(
+      "checkout-salvar-cpf-na-conta",
+    ) as HTMLInputElement | null;
+  }
+
+  it("conta SEM CPF: a caixa 'Este CPF é meu' aparece DESMARCADA; finalizar sem marcar manda o CPF no pedido e NÃO grava na conta", async () => {
+    cpfDaConta.ler.mockResolvedValue({ ok: true, cpf: null });
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montar();
+    await finalizarComTransportadora("111.444.777-35");
+
+    expect(caixaSalvarNaConta()).not.toBeNull();
+    expect(caixaSalvarNaConta()?.checked).toBe(false);
+    expect(caixaSalvarNaConta()?.closest("label")?.textContent).toContain(
+      "Este CPF é meu e quero salvá-lo na minha conta",
+    );
+
+    await act(async () => {
+      botaoFinalizar().click();
+    });
+    await drenar();
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0].addressData).toEqual({
+      cpf: "11144477735",
+    });
+    expect(cpfDaConta.gravar).not.toHaveBeenCalled();
+  });
+
+  it("conta SEM CPF + caixa MARCADA: depois do pedido grava na conta o mesmo CPF (11 dígitos), uma vez", async () => {
+    cpfDaConta.ler.mockResolvedValue({ ok: true, cpf: null });
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montar();
+    await finalizarComTransportadora("111.444.777-35");
+
+    await act(async () => {
+      caixaSalvarNaConta()?.click();
+    });
+    expect(caixaSalvarNaConta()?.checked).toBe(true);
+
+    await act(async () => {
+      botaoFinalizar().click();
+    });
+    await drenar();
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(cpfDaConta.gravar).toHaveBeenCalledTimes(1);
+    expect(cpfDaConta.gravar).toHaveBeenCalledWith("11144477735");
+  });
+
+  it("conta JÁ com CPF: o campo vem preenchido, a caixa não aparece e nada é gravado na conta", async () => {
+    cpfDaConta.ler.mockResolvedValue({ ok: true, cpf: "52998224725" });
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montar();
+    await finalizarComTransportadora();
+
+    const campo = document.getElementById("checkout-cpf") as HTMLInputElement;
+    expect(campo.value).toBe("529.982.247-25");
+    expect(caixaSalvarNaConta()).toBeNull();
+
+    await act(async () => {
+      botaoFinalizar().click();
+    });
+    await drenar();
+
+    expect(createOrder.mock.calls[0][0].addressData).toEqual({
+      cpf: "52998224725",
+    });
+    expect(cpfDaConta.gravar).not.toHaveBeenCalled();
+  });
+
+  it("leitura da conta FALHA: a caixa não aparece e nada é gravado (não sabe se a conta tem CPF)", async () => {
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montar();
+    await finalizarComTransportadora("111.444.777-35");
+
+    expect(caixaSalvarNaConta()).toBeNull();
+    await act(async () => {
+      botaoFinalizar().click();
+    });
+    await drenar();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(cpfDaConta.gravar).not.toHaveBeenCalled();
+  });
+
+  it("config da loja chega DEPOIS do CPF da conta: o reset tardio não apaga o CPF já preenchido", async () => {
+    estadoLoja.isLoaded = false;
+    cpfDaConta.ler.mockResolvedValue({ ok: true, cpf: "52998224725" });
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montar();
+    await drenar();
+
+    estadoLoja.isLoaded = true;
+    await montar();
+    await escolherEndereco("Trabalho");
+
+    const campo = document.getElementById("checkout-cpf") as HTMLInputElement;
+    expect(campo.value).toBe("529.982.247-25");
+  });
+
+  it("troca de conta com o checkout aberto: o 'sem CPF' da conta anterior não vale para a nova (caixa some enquanto a nova leitura não volta)", async () => {
+    cpfDaConta.ler.mockResolvedValueOnce({ ok: true, cpf: null });
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montar();
+    await escolherEndereco("Trabalho");
+    expect(caixaSalvarNaConta()).not.toBeNull();
+
+    cpfDaConta.ler.mockReturnValueOnce(new Promise(() => {}));
+    contaEstavel.user = {
+      id: "user-2",
+      user_metadata: { name: "Outra Pessoa" },
+    };
+    await montar();
+    await drenar();
+
+    expect(caixaSalvarNaConta()).toBeNull();
   });
 });

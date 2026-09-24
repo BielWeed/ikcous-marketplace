@@ -1,6 +1,7 @@
 import { cpfValido } from "@/lib/cpf";
 import { gravarCpfDaConta } from "@/lib/cpf-da-conta";
 import {
+  lerPendente,
   retomarCpfPendente,
   salvarPendente,
 } from "@/lib/cpf-pendente-do-cadastro";
@@ -198,6 +199,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     return false;
   });
+
+  // Revisão de segurança (23/09/2026): o TTL de 24 h do CPF pendente do
+  // cadastro só era cobrado dentro da retomada, que exige sessão. Num
+  // aparelho compartilhado onde ninguém volta a entrar numa conta, o
+  // registro vencido ficaria para sempre. `lerPendente` já apaga o que
+  // venceu (ou está corrompido) — chamá-la ao montar, com ou sem sessão,
+  // faz o prazo valer sempre.
+  useEffect(() => {
+    lerPendente();
+  }, []);
 
   useEffect(() => {
     if (isPasswordRecovery && typeof window !== "undefined") {
