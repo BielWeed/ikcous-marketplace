@@ -100,8 +100,14 @@ export function AboutStoreView() {
     haptic.light();
   };
 
+  // `shrink-0` (24/09/2026, medido a 375x800 na loja no ar): esta raiz é item
+  // de uma coluna flex com a altura da tela; sem ele o flex ENCOLHIA a raiz
+  // para 747px, o conteúdo (~935px) transbordava e o `pb-customer` ficava
+  // DENTRO da caixa encolhida — o fim do cartão "Horário de atendimento"
+  // parava 41px debaixo da barra inferior. Crescendo com o conteúdo, o
+  // respiro (barra + safe area) volta a ficar depois do último cartão.
   return (
-    <div className="pb-customer min-h-full bg-zinc-50/40">
+    <div className="pb-customer min-h-full shrink-0 bg-zinc-50/40">
       <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         {/* Header */}
         <motion.div
@@ -288,24 +294,31 @@ export function AboutStoreView() {
             </p>
           </motion.div>
         )}
-      </div>
 
-      {/* WhatsApp ANCORADO (pedido do dono, 14/09): sai da lista e vira botão
-          flutuante, sempre visível enquanto a pessoa rola a descrição e o
-          mapa. Ícone oficial do WhatsApp (IconeWhatsapp). Só existe se a loja
-          configurou o número. O offset nasce ACIMA da nav do app
-          (--nav-height); z sob a nav para nunca competir com ela. */}
-      {temWhatsapp && (
-        <button
-          type="button"
-          onClick={falarComALoja}
-          aria-label="Falar com a loja no WhatsApp"
-          className="fixed right-4 z-[115] flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 transition-transform hover:bg-emerald-700 active:scale-95"
-          style={{ bottom: "calc(var(--nav-height, 56px) + 20px)" }}
-        >
-          <IconeWhatsapp className="size-8" />
-        </button>
-      )}
+        {/* WhatsApp NO CONTEÚDO (pedido do dono, 24/09/2026): o botão
+            flutuante de 14/09 ficava preso sobre o texto no celular. Agora
+            ele é o fecho da página e rola junto — nunca cobre leitura nem a
+            barra inferior. Mesmo desenho do WhatsApp do pedido no Perfil
+            (glifo oficial IconeWhatsapp, verde AA com texto branco). Só
+            existe se a loja configurou o número. */}
+        {temWhatsapp && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+          >
+            <button
+              type="button"
+              onClick={falarComALoja}
+              aria-label="Falar com a loja no WhatsApp"
+              className="flex h-12 w-full items-center justify-center gap-2.5 rounded-full bg-emerald-700 text-[13px] font-bold text-white shadow-sm shadow-emerald-700/20 transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 active:scale-[0.98]"
+            >
+              <IconeWhatsapp className="size-5" />
+              Falar com a loja no WhatsApp
+            </button>
+          </motion.div>
+        )}
+      </div>
     </div>
   );
 }
