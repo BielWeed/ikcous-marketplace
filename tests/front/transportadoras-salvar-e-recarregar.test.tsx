@@ -7,8 +7,9 @@
 // `ler_configuracao_frete` devolve o gravado) para conferir o ciclo inteiro
 // salvar → recarregar, e prendem:
 //
-//   1. a seleção de serviços SALVA aparece depois de recarregar, sem tocar em
-//      "Ver serviços da conta" (antes a lista ficava vazia e parecia perdida);
+//   1. a seleção de serviços SALVA sobrevive à recarga e volta MARCADA ao
+//      abrir "Ver serviços da conta" (a lista de códigos "Salvos nesta loja"
+//      saiu da tela em 23/09/2026, pedido do dono);
 //   2. depois de salvar com a lista aberta, a lista continua aberta e marcada;
 //   3. a recusa do "Salvar provedores" fica ESCRITA no bloco (role=alert),
 //      não só num toast que some — e sai quando a escolha muda;
@@ -204,15 +205,24 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
     },
   };
 
-  it("a seleção salva da Frenet aparece depois de recarregar, sem tocar em 'Ver serviços'", async () => {
+  it("a seleção salva da Frenet NÃO aparece como lista de códigos, e volta marcada ao abrir 'Ver serviços'", async () => {
+    // 23/09/2026, pedido do dono: o bloco "Salvos nesta loja" (códigos crus
+    // antes de abrir a lista) saiu da tela. A seleção continua no servidor e
+    // aparece MARCADA quando a lojista abre os serviços da conta.
     const estado = criarServidor(LEGADO_SF);
-    estado.provedores.frenet.servicos = ["JTE_INT", "JADLOG_PACKAGE"];
+    estado.provedores.frenet.servicos = ["JTE_INT"];
     await montar();
 
     const frenet = cartaoDe("Frenet");
-    expect(frenet.textContent).toContain("J&T Express — Standard");
-    expect(frenet.textContent).toContain("JADLOG_PACKAGE");
-    expect(frenet.textContent).not.toContain("Nenhum serviço");
+    expect(frenet.textContent).not.toContain("Salvos nesta loja");
+    expect(frenet.textContent).not.toContain("JTE_INT");
+
+    await clicar(botaoCom(cartaoDe("Frenet"), "Ver serviços da conta"));
+    const caixaJt = Array.from(cartaoDe("Frenet").querySelectorAll("label"))
+      .find((l) => l.textContent?.includes("J&T Express — Standard"))
+      ?.querySelector("input") as HTMLInputElement | undefined;
+    expect(caixaJt?.checked).toBe(true);
+    expect(estado.provedores.frenet.servicos).toEqual(["JTE_INT"]);
   });
 
   it("salvar a Frenet com J&T testado grava, mantém a lista aberta e sobrevive à recarga", async () => {
@@ -239,7 +249,14 @@ describe("TransportadorasSection — salvar e recarregar (PR #637)", () => {
     expect(jtDepois?.checked).toBe(true);
 
     await recarregar();
-    expect(cartaoDe("Frenet").textContent).toContain("J&T Express — Standard");
+    expect(estado.provedores.frenet.servicos).toEqual(["JTE_INT"]);
+    await clicar(botaoCom(cartaoDe("Frenet"), "Ver serviços da conta"));
+    const jtRecarregado = Array.from(
+      cartaoDe("Frenet").querySelectorAll("label"),
+    )
+      .find((l) => l.textContent?.includes("J&T Express — Standard"))
+      ?.querySelector("input") as HTMLInputElement | undefined;
+    expect(jtRecarregado?.checked).toBe(true);
   });
 
   it("cenário do print: ME + Frenet marcados, ME sem e-mail — a recusa fica escrita e nada grava", async () => {

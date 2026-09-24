@@ -34,6 +34,7 @@ import {
   mascararCpfParaExibicao,
   somenteDigitosDoCpf,
 } from "@/lib/cpf";
+import { gravarCpfDaConta, lerCpfDaConta } from "@/lib/cpf-da-conta";
 import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
@@ -743,6 +744,49 @@ export function CheckoutView({
     form.trigger();
   }, [exigeCpfDoDestinatario, form]);
 
+  // O CPF MORA NA CONTA (23/09/2026): logado, ao montar, se o campo ainda
+  // está vazio, tenta preencher com o CPF já gravado na conta —
+  // `lerCpfDaConta` é best-effort (nunca lança; falha vira "campo continua
+  // vazio", nunca um erro na tela). NUNCA abre a seção sozinho: só
+  // `form.setValue`, sem tocar `identificacaoAbertaManual` — a seção
+  // nasce recolhida de qualquer forma (ver comentário grande de
+  // `identificacaoExpandida`, acima). `contaTemCpf` guarda o resultado
+  // da leitura para a gravação pós-pedido, mais abaixo: só persiste se a
+  // conta ESTAVA sem CPF (nunca sobrescreve um CPF que já existia por um
+  // motivo qualquer — essa decisão é só do Perfil).
+  //
+  // Revisão de segurança + dono (23/09/2026): o campo é o CPF do
+  // DESTINATÁRIO, que pode ser um terceiro (presente). Por isso a gravação
+  // na conta só acontece com a confirmação explícita
+  // `salvarCpfNaConta` ("Este CPF é meu…"), desmarcada por padrão; o CPF
+  // do pedido continua indo no pedido de qualquer forma. `contaTemCpf` é
+  // estado (a caixa só aparece quando a conta está sem CPF) e volta a
+  // `null` na troca de usuário, junto com a confirmação — o resultado de
+  // uma conta nunca vale para a outra.
+  const [contaTemCpf, setContaTemCpf] = useState<boolean | null>(null);
+  const [salvarCpfNaConta, setSalvarCpfNaConta] = useState(false);
+  useEffect(() => {
+    setContaTemCpf(null);
+    setSalvarCpfNaConta(false);
+    if (!user) return;
+    let cancelado = false;
+    void (async () => {
+      const resultado = await lerCpfDaConta();
+      if (cancelado || !resultado.ok) return;
+      const digitos = resultado.cpf ?? "";
+      setContaTemCpf(digitos.length > 0);
+      if (digitos && !form.getValues("cpf")) {
+        form.setValue("cpf", formatarCpf(digitos).formatado);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+    // `form` de propósito fora do array: só ao montar por usuário — refazer
+    // a cada digitação sobrescreveria o que a pessoa acabou de apagar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   const hasInitializedRef = useRef(false);
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
@@ -756,6 +800,11 @@ export function CheckoutView({
       // transitória dos resets é substituída, logo depois, pela gravação dos
       // valores restaurados.
       const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+      // Revisão de segurança (23/09/2026): quando a config da loja chega
+      // DEPOIS de `get_my_cpf`, os resets abaixo apagavam o CPF que a conta
+      // acabou de preencher. O valor atual do campo (nunca o rascunho — CPF
+      // não entra no rascunho) atravessa os resets.
+      const cpfJaCarregado = form.getValues("cpf") || "";
       hasInitializedRef.current = true;
       if (!form.formState.isDirty) {
         // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
@@ -763,7 +812,7 @@ export function CheckoutView({
         // mora. O ternário de `isNational` que existia aqui preenchia os
         // dois com "Monte Carmelo"/"MG" na cobertura local.
         form.reset({
-          cpf: "",
+          cpf: cpfJaCarregado,
           name: profile?.full_name || user?.user_metadata?.name || "",
           whatsapp: getDefaultWhatsApp(),
           cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
@@ -781,9 +830,10 @@ export function CheckoutView({
           form.reset({
             // CPF NUNCA vem do rascunho (ver o comentário grande em
             // rascunho-do-checkout.ts) — este reset restaura endereço/nome/
-            // WhatsApp/cupom da sessão anterior, mas o CPF sempre recomeça
-            // vazio, mesmo quando o resto do formulário é restaurado.
-            cpf: "",
+            // WhatsApp/cupom da sessão anterior; o CPF só mantém o que já
+            // estava no campo (o da conta, se chegou antes), nunca o
+            // rascunho.
+            cpf: cpfJaCarregado,
             name:
               rascunho.nome ||
               profile?.full_name ||
@@ -1002,11 +1052,15 @@ export function CheckoutView({
 
   // CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
   // Endereços" viraram UMA seção só ("Seus dados e entrega"), com resumo
-  // compacto quando preenchidos — pedido do dono, tela de "Finalizar" longa
-  // demais no celular. `dadosDeEntregaCompletos` é heurística de EXIBIÇÃO
-  // (decide resumo vs. formulário aberto); NUNCA decide o que pode ser
+  // compacto — pedido do dono, tela de "Finalizar" longa demais no celular.
+  // REVISÃO DO DONO (23/09/2026, tarefa "o CPF mora na conta"): a seção
+  // nasce SEMPRE recolhida, mesmo faltando nome/WhatsApp/endereço/CPF — não
+  // existe mais heurística de "abre se estiver incompleto" (a versão
+  // anterior deste código tinha isso; foi substituída porque o resumo
+  // recolhido agora aponta CADA pendência, então não precisa mais forçar a
+  // tela aberta para avisar). `falta*` NUNCA decide o que pode ser
   // enviado — quem trava o Finalizar continua sendo `dynamicSchema` +
-  // `handleSubmitEvent`, sem relação nenhuma com este cálculo.
+  // `handleSubmitEvent`, sem relação nenhuma com estes cálculos.
   const nomeAtual = form.watch("name");
   const whatsappAtual = form.watch("whatsapp");
   const cpfAtual = form.watch("cpf");
@@ -1015,8 +1069,8 @@ export function CheckoutView({
   const bairroAtual = form.watch("neighborhood");
   const cidadeAtual = form.watch("city");
   const estadoAtual = form.watch("state");
-  const identificacaoBasicaCompleta =
-    !!nomeAtual?.trim() && (whatsappAtual?.length ?? 0) >= 14;
+  const faltaNome = !nomeAtual?.trim();
+  const faltaWhatsapp = (whatsappAtual?.length ?? 0) < 14;
   const enderecoConvidadoCompleto =
     soDigitos(cepDigitadoNoFormulario ?? "").length === 8 &&
     !!ruaAtual?.trim() &&
@@ -1024,23 +1078,16 @@ export function CheckoutView({
     !!bairroAtual?.trim() &&
     !!cidadeAtual?.trim() &&
     !!estadoAtual?.trim();
-  const cpfCompletoSeExigido =
-    !exigeCpfDoDestinatario || cpfValido(cpfAtual ?? "");
-  const dadosDeEntregaCompletos =
-    identificacaoBasicaCompleta &&
-    (user ? !!selectedAddressId : enderecoConvidadoCompleto) &&
-    cpfCompletoSeExigido;
-  // `null` = "sem escolha manual ainda": segue a heurística acima (fechado
-  // quando completo, aberto quando não). Um clique explícito (editar/
-  // trocar/recolher) grava `true`/`false` e essa escolha PASSA A MANDAR —
-  // de propósito não existe efeito reabrindo/fechando sozinho a cada tecla:
-  // fechar embaixo do dedo de quem está no meio de uma correção é o defeito
-  // que a versão anterior deste código tinha (ver o `git log` da tarefa).
-  const [identificacaoAbertaManual, setIdentificacaoAbertaManual] = useState<
-    boolean | null
-  >(null);
-  const identificacaoExpandida =
-    identificacaoAbertaManual ?? !dadosDeEntregaCompletos;
+  const faltaCpf = exigeCpfDoDestinatario && !cpfValido(cpfAtual ?? "");
+  // Só uma ação EXPLÍCITA abre a seção: cabeçalho, "Editar"/"Trocar"/
+  // "Cadastre um endereço" do resumo, ou o submit inválido (que também foca
+  // o primeiro campo com erro). Nada reabre nem refecha sozinho a cada
+  // tecla — fechar embaixo do dedo de quem está no meio de uma correção é o
+  // defeito que a versão anterior deste código tinha (ver o `git log` da
+  // tarefa).
+  const [identificacaoAbertaManual, setIdentificacaoAbertaManual] =
+    useState(false);
+  const identificacaoExpandida = identificacaoAbertaManual;
   // Último CEP que a calculadora DESTA tela gravou como cotado. Ao voltar
   // para um endereço já cotado, a calculadora serve do cache NO MESMO commit
   // da troca (síncrono) — e este efeito, que roda depois do dela, ainda vê o
@@ -2271,6 +2318,21 @@ export function CheckoutView({
       // rascunho — vale para sucesso E para aguardando pagamento (o pedido
       // nasceu nos dois; o que segue é pagamento, não digitação).
       limparRascunhoDoCheckout(globalThis.sessionStorage);
+
+      // O CPF MORA NA CONTA (23/09/2026): pedido JÁ criado com sucesso —
+      // isto é conveniência para a PRÓXIMA compra, nunca condição deste
+      // pedido. Só grava se: logado, o CPF desta entrega é válido
+      // (`cpfParaRpc` — undefined em local/retirada) E a conta NÃO tinha
+      // CPF antes (`contaTemCpf === false`, da leitura no
+      // mount — `null` é "não sei, leitura falhou ou ainda não terminou",
+      // e por segurança NÃO sobrescreve nesse caso). Em segundo plano: não
+      // bloqueia a navegação pós-pedido; `gravarCpfDaConta` nunca lança e
+      // nunca loga o CPF. E só com a confirmação explícita "Este CPF é
+      // meu…" (`salvarCpfNaConta`, desmarcada por padrão): o CPF do
+      // destinatário pode ser de um terceiro e continua só no pedido.
+      if (user && cpfParaRpc && contaTemCpf === false && salvarCpfNaConta) {
+        void gravarCpfDaConta(cpfParaRpc);
+      }
       setOrderId(order.id);
       setValorDoPedido(finalTotal);
       // Snapshot ANTES do onClearCart() da linha seguinte — depois dele
@@ -2854,23 +2916,41 @@ export function CheckoutView({
             <div className="space-y-3 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-0.5">
-                  <p className="truncate text-sm font-bold text-zinc-800">
-                    {nomeAtual || "—"}
-                  </p>
-                  <p className="text-xs font-medium text-zinc-500">
-                    {abreviarWhatsapp(whatsappAtual ?? "")}
-                  </p>
+                  {faltaNome ? (
+                    <p
+                      className="text-xs font-bold text-red-600"
+                      data-testid="checkout-resumo-falta-nome"
+                    >
+                      Informe seu nome
+                    </p>
+                  ) : (
+                    <p className="truncate text-sm font-bold text-zinc-800">
+                      {nomeAtual}
+                    </p>
+                  )}
+                  {faltaWhatsapp ? (
+                    <p
+                      className="text-xs font-bold text-red-600"
+                      data-testid="checkout-resumo-falta-whatsapp"
+                    >
+                      Informe seu WhatsApp
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium text-zinc-500">
+                      {abreviarWhatsapp(whatsappAtual ?? "")}
+                    </p>
+                  )}
                   {exigeCpfDoDestinatario &&
-                    (cpfValido(cpfAtual ?? "") ? (
-                      <p className="text-xs font-medium text-zinc-500">
-                        CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
-                      </p>
-                    ) : (
+                    (faltaCpf ? (
                       <p
                         className="text-xs font-bold text-red-600"
                         data-testid="checkout-resumo-falta-cpf"
                       >
                         Informe o CPF de quem recebe
+                      </p>
+                    ) : (
+                      <p className="text-xs font-medium text-zinc-500">
+                        CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
                       </p>
                     ))}
                 </div>
@@ -2905,11 +2985,12 @@ export function CheckoutView({
                   <button
                     type="button"
                     onClick={() => setIdentificacaoAbertaManual(true)}
-                    className="text-xs font-bold uppercase tracking-wide text-zinc-500 underline"
+                    className="text-xs font-bold text-red-600 underline"
+                    data-testid="checkout-resumo-falta-endereco"
                   >
                     Cadastre um endereço de entrega
                   </button>
-                ) : (
+                ) : enderecoConvidadoCompleto ? (
                   <p className="text-xs font-medium text-zinc-500">
                     {resumoDoEndereco({
                       street: ruaAtual ?? "",
@@ -2919,6 +3000,13 @@ export function CheckoutView({
                       state: estadoAtual ?? "",
                       cep: cepDigitadoNoFormulario ?? "",
                     })}
+                  </p>
+                ) : (
+                  <p
+                    className="text-xs font-bold text-red-600"
+                    data-testid="checkout-resumo-falta-endereco"
+                  >
+                    Informe o endereço de entrega
                   </p>
                 )}
               </div>
@@ -3077,6 +3165,21 @@ export function CheckoutView({
                   >
                     Exigido pela transportadora para emitir a etiqueta de envio.
                   </p>
+                )}
+                {user && contaTemCpf === false && (
+                  <label
+                    htmlFor="checkout-salvar-cpf-na-conta"
+                    className="ml-1 mt-3 flex cursor-pointer items-start gap-2 text-[11px] font-medium text-zinc-600"
+                  >
+                    <input
+                      id="checkout-salvar-cpf-na-conta"
+                      type="checkbox"
+                      checked={salvarCpfNaConta}
+                      onChange={(e) => setSalvarCpfNaConta(e.target.checked)}
+                      className="mt-0.5 size-4 shrink-0 accent-zinc-900"
+                    />
+                    <span>Este CPF é meu e quero salvá-lo na minha conta</span>
+                  </label>
                 )}
               </div>
             )}
@@ -3385,13 +3488,13 @@ export function CheckoutView({
                       // resumo, já com o novo endereço — mesmo gesto de
                       // "Trocar" da ShippingCalculator em `modoResumo`, logo
                       // abaixo (consistência entre as duas seções que
-                      // aprenderam a resumir).
-                      // `null` (e não `false`): devolve a decisão à regra
-                      // "fecha quando completo". Se o endereço novo é de
-                      // transportadora e o CPF ainda falta, a seção fica
-                      // aberta com o campo à vista em vez de travar o
-                      // Finalizar sem motivo visível.
-                      setIdentificacaoAbertaManual(null);
+                      // aprenderam a resumir). REVISÃO DO DONO (23/09/2026):
+                      // recolhe SEMPRE, mesmo se o endereço novo for de
+                      // transportadora e o CPF ainda faltar — o resumo
+                      // recolhido avisa a pendência (data-testid
+                      // `checkout-resumo-falta-cpf`) em vez de forçar a
+                      // seção aberta; quem quer corrigir toca em "Editar".
+                      setIdentificacaoAbertaManual(false);
                     }}
                     onEdit={handleEditAddress}
                   />

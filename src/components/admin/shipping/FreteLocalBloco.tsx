@@ -54,6 +54,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   retirada = false,
   onRetirada,
   enderecoDaLoja,
+  mostrarCabecalho = true,
 }: {
   readonly valor: number;
   readonly onValor: (valor: number) => void;
@@ -72,6 +73,10 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   readonly onRetirada?: (ligada: boolean) => void;
   /** `store_address` salvo — sem ele a retirada não liga. */
   readonly enderecoDaLoja?: string | null;
+  /** `false` quando um `PainelRecolhivel` externo já mostra o título e o
+   * estado (tela de Frete unificada, 23/09/2026) — evita cabeçalho em
+   * dobro. Default `true` preserva o uso isolado (e os testes). */
+  readonly mostrarCabecalho?: boolean;
 }) {
   const [semEnderecoAoLigar, setSemEnderecoAoLigar] = useState(false);
   const temEndereco = (enderecoDaLoja ?? "").trim() !== "";
@@ -84,27 +89,29 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       aria-label="Entrega na sua cidade"
       className="scroll-mt-24"
     >
-      <CabecaDeSecao
-        titulo="Entrega na sua cidade"
-        estado={
-          semOrigem ? (
-            <>
-              <PontoEstado tom="atencao" />
-              <span className="text-amber-300">
-                parada — falta o CEP da loja
-              </span>
-            </>
-          ) : (
-            <>
-              <PontoEstado tom="positivo" />
-              <span>
-                <b className="font-semibold text-zinc-200">ligada</b> · entrega
-                própria
-              </span>
-            </>
-          )
-        }
-      />
+      {mostrarCabecalho && (
+        <CabecaDeSecao
+          titulo="Entrega na sua cidade"
+          estado={
+            semOrigem ? (
+              <>
+                <PontoEstado tom="atencao" />
+                <span className="text-amber-300">
+                  parada — falta o CEP da loja
+                </span>
+              </>
+            ) : (
+              <>
+                <PontoEstado tom="positivo" />
+                <span>
+                  <b className="font-semibold text-zinc-200">ligada</b> ·
+                  entrega própria
+                </span>
+              </>
+            )
+          }
+        />
+      )}
 
       <Linha
         nome="Só entregar na cidade"

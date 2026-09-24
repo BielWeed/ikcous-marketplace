@@ -109,6 +109,11 @@ describe("AdminShippingView — a faixa distingue local de nacional, e o botão 
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // O jsdom não implementa scrollIntoView (mesmo stub das telas de
+    // Pedidos) — o botão "Estratégias do frete nacional" agora rola até o
+    // bloco em vez de navegar (T4 unificação, 23/09/2026).
+    Element.prototype.scrollIntoView =
+      vi.fn() as unknown as typeof Element.prototype.scrollIntoView;
     estadoDaLoja.atual = {
       freeShippingMin: 100,
       shippingCoverage: "national",
@@ -213,15 +218,30 @@ describe("AdminShippingView — a faixa distingue local de nacional, e o botão 
     expect(textoDaFaixa()).not.toContain("desligado ·");
   });
 
-  it("o botão 'Estratégias do frete nacional' navega para admin-shipping-national", async () => {
+  // T4-UNIFICAÇÃO (23/09/2026): o botão deixou de NAVEGAR para uma tela
+  // própria — a estratégia nacional agora mora no MESMO painel "Fora da
+  // cidade". Clicar garante o painel aberto (`aria-expanded="true"`) em
+  // vez de chamar `onNavigate`.
+  it("o botão 'Estratégias do frete nacional' abre o painel 'Fora da cidade' (não navega mais)", async () => {
     await abrirTela();
-    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      /estrat[ée]gias do frete nacional/i.test(b.textContent || ""),
+    const botaoPainel = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      /^fora da cidade/i.test(b.textContent?.trim() || ""),
     ) as HTMLButtonElement;
-    expect(botao).toBeDefined();
+    expect(botaoPainel).toBeDefined();
+    expect(botaoPainel.getAttribute("aria-expanded")).toBe("false");
+
+    const botaoEstrategias = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => /estrat[ée]gias do frete nacional/i.test(b.textContent || ""),
+    ) as HTMLButtonElement;
+    expect(botaoEstrategias).toBeDefined();
     await act(async () => {
-      botao.click();
+      botaoEstrategias.click();
     });
-    expect(onNavigate).toHaveBeenCalledWith("admin-shipping-national");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(onNavigate).not.toHaveBeenCalledWith("admin-shipping-national");
+    expect(botaoPainel.getAttribute("aria-expanded")).toBe("true");
   });
 });

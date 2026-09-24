@@ -50,12 +50,18 @@ export function CabecaDeSecao({
   readonly estado?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-3.5">
-      <h2 className="text-xs font-extrabold uppercase tracking-[0.22em] text-zinc-300">
+    // `flex-wrap` + `min-w-0` no título (correção 23/09/2026, pedido do
+    // dono): título e estado eram os dois únicos filhos de uma linha
+    // `justify-between` sem quebra — em 375px um estado longo ("Melhor
+    // Envio ligado", "grátis acima de R$ 199 · todas as opções") empurrava
+    // a linha inteira para fora da tela, igual ao achado já corrigido em
+    // AdminPushView (admin-push-cabecalho-nao-estoura-no-mobile.test.tsx).
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-white/10 pb-3.5">
+      <h2 className="min-w-0 break-words text-xs font-extrabold uppercase tracking-[0.22em] text-zinc-300">
         {titulo}
       </h2>
       {estado != null && (
-        <div className="flex shrink-0 items-center gap-2 text-[13px] text-zinc-400">
+        <div className="flex min-w-0 shrink-0 items-center gap-2 text-[13px] text-zinc-400">
           {estado}
         </div>
       )}

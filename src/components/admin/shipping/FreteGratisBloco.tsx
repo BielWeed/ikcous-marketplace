@@ -74,6 +74,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
   onEscolher,
   onAcimaDe,
   desabilitado,
+  mostrarCabecalho = true,
 }: {
   readonly preset: PresetFreteGratis;
   /** Valor do preset "acima de" (só faz sentido com o preset ativo dele). */
@@ -81,6 +82,10 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
   readonly onEscolher: (preset: PresetFreteGratis) => void;
   readonly onAcimaDe: (valor: number) => void;
   readonly desabilitado?: boolean;
+  /** `false` quando um `PainelRecolhivel` externo já mostra o título e o
+   * estado (tela de Frete unificada, 23/09/2026) — evita cabeçalho em
+   * dobro. Default `true` preserva o uso isolado (e os testes). */
+  readonly mostrarCabecalho?: boolean;
 }) {
   return (
     <section
@@ -88,17 +93,19 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
       aria-label="Estratégias do frete local"
       className="scroll-mt-24"
     >
-      <CabecaDeSecao
-        titulo="Estratégias do frete local"
-        estado={
-          <>
-            estratégia:{" "}
-            <b className="font-semibold text-zinc-200">
-              {ESTRATEGIA.get(preset)}
-            </b>
-          </>
-        }
-      />
+      {mostrarCabecalho && (
+        <CabecaDeSecao
+          titulo="Estratégias do frete local"
+          estado={
+            <>
+              estratégia:{" "}
+              <b className="font-semibold text-zinc-200">
+                {ESTRATEGIA.get(preset)}
+              </b>
+            </>
+          }
+        />
+      )}
       <p className="pt-3.5 text-[12.5px] leading-snug text-zinc-500">
         Vale só para a entrega própria na cidade e a retirada na loja — o frete
         cotado por transportadora tem a estratégia própria em "Fora da cidade".

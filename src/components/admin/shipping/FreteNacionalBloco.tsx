@@ -58,6 +58,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
   desabilitado,
   resumoDaEstrategiaNacional,
   onAbrirEstrategiasNacionais,
+  mostrarCabecalho = true,
 }: {
   readonly originCep: string;
   readonly onOriginCep: (cep: string) => void;
@@ -77,6 +78,10 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
   /** Abre `admin-shipping-national` — ausente quando a view não recebeu
    * `onNavigate` (mesmo padrão de `onAbrirAjustes`). */
   readonly onAbrirEstrategiasNacionais?: () => void;
+  /** `false` quando um `PainelRecolhivel` externo já mostra o título e o
+   * estado (tela de Frete unificada, 23/09/2026) — evita cabeçalho em
+   * dobro. Default `true` preserva o uso isolado (e os testes). */
+  readonly mostrarCabecalho?: boolean;
 }) {
   const formatCEP = (val: string) => {
     const clean = val.replace(/\D/g, "");
@@ -93,41 +98,43 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
       aria-label="Fora da cidade"
       className="scroll-mt-24"
     >
-      <CabecaDeSecao
-        titulo="Fora da cidade"
-        estado={
-          erroNaLeitura ? (
-            <>
-              <PontoEstado tom="neutro" />
-              <span>conexão a confirmar</span>
-            </>
-          ) : algumLigado ? (
-            <>
-              <PontoEstado tom="positivo" />
-              <span>
-                {ligados.length === 1 ? (
-                  <>
-                    <b className="font-semibold text-zinc-200">ligado</b> ·{" "}
-                    {ligados[0].nome}
-                  </>
-                ) : (
-                  <>
-                    <b className="font-semibold text-zinc-200">
-                      {ligados.length} provedores
-                    </b>{" "}
-                    ligados
-                  </>
-                )}
-              </span>
-            </>
-          ) : (
-            <>
-              <PontoEstado tom="atencao" />
-              <span className="text-amber-300">desconectado</span>
-            </>
-          )
-        }
-      />
+      {mostrarCabecalho && (
+        <CabecaDeSecao
+          titulo="Fora da cidade"
+          estado={
+            erroNaLeitura ? (
+              <>
+                <PontoEstado tom="neutro" />
+                <span>conexão a confirmar</span>
+              </>
+            ) : algumLigado ? (
+              <>
+                <PontoEstado tom="positivo" />
+                <span>
+                  {ligados.length === 1 ? (
+                    <>
+                      <b className="font-semibold text-zinc-200">ligado</b> ·{" "}
+                      {ligados[0].nome}
+                    </>
+                  ) : (
+                    <>
+                      <b className="font-semibold text-zinc-200">
+                        {ligados.length} provedores
+                      </b>{" "}
+                      ligados
+                    </>
+                  )}
+                </span>
+              </>
+            ) : (
+              <>
+                <PontoEstado tom="atencao" />
+                <span className="text-amber-300">desconectado</span>
+              </>
+            )
+          }
+        />
+      )}
 
       <Linha
         nome="Cotação na hora"
