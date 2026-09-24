@@ -441,7 +441,7 @@ export function PagamentoOnline({
     ? Date.parse(
         pix.expiraEm.replace(
           /\.(\d+)(?=Z$|[+-]\d{2}:\d{2}$)/i,
-          (_, fracao: string) => `.${(fracao + "00").slice(0, 3)}`,
+          (_, fracao: string) => `.${fracao.padEnd(3, "0").slice(0, 3)}`,
         ),
       )
     : Number.NaN;

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase", () => ({
@@ -61,7 +61,9 @@ describe("Pix quando o relógio do celular está errado", () => {
         />,
       );
     });
-    document.querySelector("script[data-mp-sdk]")?.dispatchEvent(new Event("load"));
+    document
+      .querySelector("script[data-mp-sdk]")
+      ?.dispatchEvent(new Event("load"));
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
@@ -75,7 +77,9 @@ describe("Pix quando o relógio do celular está errado", () => {
     vi.setSystemTime(new Date("2026-09-24T14:55:00.000Z"));
     await mostrarPix();
     expect(host.textContent).toContain("Prazo informado: até");
-    expect(host.textContent).toContain("Confira a validade no app do seu banco.");
+    expect(host.textContent).toContain(
+      "Confira a validade no app do seu banco.",
+    );
     expect(host.textContent).not.toMatch(/Faltam \d/);
     expect(host.querySelector("img[alt='QR code do PIX']")).not.toBeNull();
     expect(criarPagamento).toHaveBeenCalledTimes(1);
@@ -84,10 +88,14 @@ describe("Pix quando o relógio do celular está errado", () => {
   it("retira aviso local quando o próprio aparelho corrige o horário", async () => {
     vi.setSystemTime(new Date("2026-09-24T16:00:00.000Z"));
     await mostrarPix();
-    expect(host.textContent).toContain("O horário previsto para pagar já passou.");
+    expect(host.textContent).toContain(
+      "O horário previsto para pagar já passou.",
+    );
     vi.setSystemTime(new Date("2026-09-24T15:20:00.000Z"));
     act(() => document.dispatchEvent(new Event("visibilitychange")));
-    expect(host.textContent).not.toContain("O horário previsto para pagar já passou.");
+    expect(host.textContent).not.toContain(
+      "O horário previsto para pagar já passou.",
+    );
     expect(host.querySelector("img[alt='QR code do PIX']")).not.toBeNull();
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
@@ -111,9 +119,13 @@ describe("Pix quando o relógio do celular está errado", () => {
     });
     vi.setSystemTime(new Date("2026-09-24T15:20:00.000Z"));
     await mostrarPix();
-    const hora = new Date("2026-09-24T15:30:00.123Z").toLocaleTimeString("pt-BR", {
-      hour: "2-digit", minute: "2-digit",
-    });
+    const hora = new Date("2026-09-24T15:30:00.123Z").toLocaleTimeString(
+      "pt-BR",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      },
+    );
     expect(host.textContent).toContain(`Prazo informado: até ${hora}`);
     expect(host.textContent).not.toContain("Não conseguimos ler o prazo");
   });
