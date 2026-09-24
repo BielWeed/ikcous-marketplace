@@ -651,6 +651,7 @@ export function PagamentoOnline({
                   </p>
                   <textarea
                     readOnly
+                    aria-label="Código Pix para copiar manualmente"
                     value={pix.qrCode ?? ""}
                     onFocus={(e) => e.currentTarget.select()}
                     rows={3}
@@ -666,6 +667,7 @@ export function PagamentoOnline({
             href={pix.ticketUrl}
             target="_blank"
             rel="noopener noreferrer"
+            aria-describedby={descritoPeloAviso}
             className="block text-center text-xs font-medium text-zinc-500 underline"
           >
             Pagar pelo Mercado Pago
