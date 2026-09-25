@@ -4087,7 +4087,19 @@ export function CheckoutView({
                         type="button"
                         onClick={() => {
                           haptic.medium();
-                          handleSubmitEvent();
+                          void handleSubmitEvent().catch((error: unknown) => {
+                            // Protege também as exceções ANTES do try da RPC
+                            // (ex.: Web Crypto ou sessionStorage indisponível).
+                            setIsSubmitting(false);
+                            travaDeEnvioRef.current.liberar();
+                            console.error(
+                              "Falha inesperada no checkout:",
+                              error,
+                            );
+                            const saida = decidirSaidaDoCheckout(error);
+                            setRecusaDoUltimoClique(saida);
+                            toast.error(`Falha no Pedido: ${saida.mensagem}`);
+                          });
                         }}
                         disabled={botaoFinalizarDesabilitado}
                         // Texto visível compacto ("Finalizar", não "Finalizar

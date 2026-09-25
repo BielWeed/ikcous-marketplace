@@ -171,7 +171,7 @@ function localizarAvisoDeComoDestravar() {
   );
 }
 
-async function preencherEClicarFinalizar() {
+async function preencherEClicarFinalizar(antesDoClique?: () => void) {
   await act(async () => {
     digitar("checkout-name", "Cliente Teste");
     digitar("checkout-tel", "34999999999");
@@ -198,6 +198,7 @@ async function preencherEClicarFinalizar() {
   });
 
   const botao = localizarBotaoFinalizar()!;
+  antesDoClique?.();
   await act(async () => {
     botao.click();
     await esperarMicrotarefas();
@@ -320,6 +321,56 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
     expect(
       JSON.parse(sessionStorage.getItem("ikcous-chave-do-pedido")!).chave,
     ).toBe(chaveDoPrimeiroEnvio);
+  });
+
+  it("no HTTP local sem randomUUID, gera chave e envia apenas um pedido", async () => {
+    createOrder.mockResolvedValueOnce({ id: "pedido-http" });
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await preencherEClicarFinalizar(() => {
+      sessionStorage.removeItem("ikcous-chave-do-pedido");
+      vi.stubGlobal("crypto", {
+        getRandomValues: (bytes: Uint8Array) => bytes.fill(7),
+      });
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0].idempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(clearCart).toHaveBeenCalledTimes(1);
+  });
+
+  it("erro inesperado antes da RPC encerra o spinner e mostra conferência", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await preencherEClicarFinalizar(() => {
+      sessionStorage.removeItem("ikcous-chave-do-pedido");
+      vi.stubGlobal("crypto", {
+        getRandomValues: () => {
+          throw new Error("Web Crypto indisponível");
+        },
+      });
+    });
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(localizarBotaoFinalizar()?.textContent).toContain("Finalizar");
+    expect(
+      document.querySelector('button[data-acao="conferir_antes"]'),
+    ).not.toBeNull();
+    expect(clearCart).not.toHaveBeenCalled();
   });
 
   it("recusa com SQLSTATE (ex.: falha transitória do Postgres): o painel de tentar_de_novo aparece e o Finalizar Pedido continua HABILITADO", async () => {
