@@ -623,13 +623,19 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     expect(
       document.querySelector('[data-testid="checkout-resumo-falta-cpf"]'),
     ).not.toBeNull();
+    const avisoNaBarra = document.querySelector<HTMLButtonElement>(
+      '[data-testid="checkout-pendencia-identificacao"]',
+    );
+    expect(avisoNaBarra?.textContent).toContain("Informe o CPF de quem recebe");
 
-    // Abre para digitar o CPF.
+    // O aviso na barra leva ao campo oculto sem liberar pedido sem CPF.
     await act(async () => {
-      cabecalhoDaSecao().click();
+      avisoNaBarra?.click();
     });
     await drenar();
+    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("true");
     expect(corpoDaSecao().hidden).toBe(false);
+    expect(document.activeElement?.id).toBe("checkout-cpf");
 
     // CPF com dígito verificador errado: continua bloqueado.
     await act(async () => {
@@ -909,6 +915,34 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
       cpf: "52998224725",
     });
     expect(cpfDaConta.gravar).not.toHaveBeenCalled();
+  });
+
+  it("CPF da conta carregado depois do frete libera Finalizar sem redigitar o campo", async () => {
+    let resolverCpf!: (resultado: { ok: true; cpf: string }) => void;
+    cpfDaConta.ler.mockReturnValue(
+      new Promise((resolve) => {
+        resolverCpf = resolve;
+      }),
+    );
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montar();
+    await escolherEndereco("Trabalho");
+    await act(async () => {
+      digitar("checkout-name", "Maria Teste");
+      digitar("checkout-tel", "34999998888");
+      botaoPorTexto("Pagar agora com PIX")?.click();
+    });
+    await drenar();
+    expect(botaoFinalizar().disabled).toBe(true);
+
+    await act(async () => {
+      resolverCpf({ ok: true, cpf: "52998224725" });
+    });
+    await drenar();
+    expect(
+      (document.getElementById("checkout-cpf") as HTMLInputElement).value,
+    ).toBe("529.982.247-25");
+    expect(botaoFinalizar().disabled).toBe(false);
   });
 
   it("leitura da conta FALHA: a caixa não aparece e nada é gravado (não sabe se a conta tem CPF)", async () => {

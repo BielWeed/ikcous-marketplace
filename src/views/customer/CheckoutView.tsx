@@ -776,7 +776,11 @@ export function CheckoutView({
       const digitos = resultado.cpf ?? "";
       setContaTemCpf(digitos.length > 0);
       if (digitos && !form.getValues("cpf")) {
-        form.setValue("cpf", formatarCpf(digitos).formatado);
+        // A leitura da conta pode terminar depois da seleção do frete.
+        // Sem revalidar, o CPF aparece preenchido mas isValid continua falso.
+        form.setValue("cpf", formatarCpf(digitos).formatado, {
+          shouldValidate: true,
+        });
       }
     })();
     return () => {
@@ -1896,6 +1900,19 @@ export function CheckoutView({
     aguardandoConferenciaDaRecusa ||
     convidadoForaDaCidade ||
     pagamentoIncompativel;
+  // Com a identificação recolhida, o botão cinza precisa apontar o campo
+  // pendente na própria barra, sem afrouxar a validação do pedido.
+  const pendenciaDeIdentificacao = !isValid
+    ? faltaNome
+      ? "Informe seu nome para finalizar"
+      : faltaWhatsapp
+        ? "Informe seu WhatsApp para finalizar"
+        : faltaCpf
+          ? "Informe o CPF de quem recebe para finalizar"
+          : !user && !enderecoConvidadoCompleto
+            ? "Complete o endereço de entrega para finalizar"
+            : "Confira seus dados e entrega para finalizar"
+    : null;
 
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
@@ -4082,6 +4099,39 @@ export function CheckoutView({
                         )}
                       </button>
                     </div>
+                    {!semFreteSelecionado &&
+                      !isOffline &&
+                      !pagamentoIncompativel &&
+                      !isSubmitting &&
+                      pendenciaDeIdentificacao && (
+                        <button
+                          type="button"
+                          data-testid="checkout-pendencia-identificacao"
+                          onClick={() => {
+                            flushSync(() => setIdentificacaoAbertaManual(true));
+                            const campoPendente = faltaNome
+                              ? "checkout-name"
+                              : faltaWhatsapp
+                                ? "checkout-tel"
+                                : faltaCpf
+                                  ? "checkout-cpf"
+                                  : null;
+                            if (campoPendente)
+                              document.getElementById(campoPendente)?.focus();
+                            else
+                              document
+                                .getElementById("cabecalho-dados-e-entrega")
+                                ?.scrollIntoView?.({
+                                  behavior: "smooth",
+                                  block: "start",
+                                });
+                          }}
+                          className="mx-auto mt-1.5 flex max-w-md items-center gap-1.5 text-left text-[11px] font-bold text-red-600 underline underline-offset-2"
+                        >
+                          <AlertCircle className="size-3.5 shrink-0" />
+                          {pendenciaDeIdentificacao}
+                        </button>
+                      )}
                     {semFreteSelecionado && (
                       // Motivo visível: botão apagado sem explicação faz a
                       // pessoa desistir sem saber por quê. Cenário real: a
