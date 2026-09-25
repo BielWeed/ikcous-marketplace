@@ -140,6 +140,39 @@ export function pagamentoIncompativelComFrete(args: {
   return args.paymentMethod !== "online";
 }
 
+// FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a loja liga/desliga pix, cartão
+// e dinheiro NA ENTREGA (store_config.formas_pagamento_entrega, migration
+// 20261174000000). Este é o SEGUNDO eixo de travamento do Finalizar — a
+// guarda de cima (`pagamentoIncompativelComFrete`) já cobre "online"
+// (selecionado com a flag desligada); esta cobre pix/card/cash desligados
+// pela loja. As duas convivem: o Finalizar trava se QUALQUER uma acusar.
+export function formaDePagamentoDesligadaNaLoja(args: {
+  paymentMethod: "pix" | "card" | "cash" | "online";
+  formasNaEntrega: readonly ("pix" | "card" | "cash")[];
+}): boolean {
+  if (args.paymentMethod === "online") return false;
+  return !args.formasNaEntrega.includes(args.paymentMethod);
+}
+
+// A ORDEM DE FALLBACK quando o método selecionado deixa de estar disponível
+// (checkout, brief 25/09/2026): "online" primeiro, SE a cliente está logada
+// e a loja tem pagamento pelo app ligado — senão a primeira das formas na
+// entrega ainda disponíveis, na ordem em que a loja as tem (o servidor
+// preserva a ordem que o front manda). `null` quando NENHUMA das duas
+// existe — convidado numa loja só "online" (mostra o aviso de login, NUNCA
+// seleciona "online" para quem não tem conta) ou loja genuinamente sem
+// forma de pagamento nenhuma (o invariante do banco — trigger
+// store_config_exige_forma_de_pagamento — já deveria impedir esse estado;
+// aqui é defesa em profundidade).
+export function primeiraFormaDePagamentoDisponivel(args: {
+  formasNaEntrega: readonly ("pix" | "card" | "cash")[];
+  pagamentoOnlineLigado: boolean;
+  logado: boolean;
+}): "pix" | "card" | "cash" | "online" | null {
+  if (args.logado && args.pagamentoOnlineLigado) return "online";
+  return args.formasNaEntrega[0] ?? null;
+}
+
 // A OPÇÃO MARCADA × A COTAÇÃO NA TELA (captura do dono, 23/09/2026): o
 // cartão com "Mais barata" era um, a opção marcada era outra e o total
 // somava a marcada. O total SEMPRE deriva da opção marcada (CartContext),

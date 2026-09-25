@@ -197,10 +197,21 @@ async function garantirEnderecoDaConta(cliente, { id, userId, cep }) {
 /** Cria/atualiza a linha id=1 de store_config com os campos LOCAIS de sempre. */
 async function garantirLojaFixture(cliente, extra = {}) {
   await cliente.query(
+    // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration 20261174000000):
+    // `pagamento_online = true` entrou na lista -- o invariante novo
+    // (forma_de_pagamento_aceita) recusa 'online' com
+    // FORMA_DE_PAGAMENTO_DESLIGADA quando a coluna está no padrão (false), e
+    // este arquivo tem ~20 chamadas com `pagamento: "online"`. A coluna é
+    // frota-only (trigger dominio_publico_so_muda_pela_frota) -- este script
+    // já grava direto via `pg`, com a mesma conexão privilegiada que também
+    // escreve free_shipping_min/national_* fora de qualquer RPC. `formas_
+    // pagamento_entrega` NÃO entra aqui: o padrão da coluna (as 3 formas) já
+    // cobre os casos "pix"/"cash" deste arquivo sem precisar de fixture.
     `INSERT INTO public.store_config
        (id, origin_cep, local_cep_range, free_shipping_min, shipping_coverage,
-        enabled_shipping_methods, store_address, local_delivery_fee)
-     VALUES (1, $1, $2, $3, 'national', $4, $5, $6)
+        enabled_shipping_methods, store_address, local_delivery_fee,
+        pagamento_online)
+     VALUES (1, $1, $2, $3, 'national', $4, $5, $6, true)
      ON CONFLICT (id) DO UPDATE
        SET origin_cep = EXCLUDED.origin_cep,
            local_cep_range = EXCLUDED.local_cep_range,
@@ -208,7 +219,8 @@ async function garantirLojaFixture(cliente, extra = {}) {
            shipping_coverage = EXCLUDED.shipping_coverage,
            enabled_shipping_methods = EXCLUDED.enabled_shipping_methods,
            store_address = EXCLUDED.store_address,
-           local_delivery_fee = EXCLUDED.local_delivery_fee`,
+           local_delivery_fee = EXCLUDED.local_delivery_fee,
+           pagamento_online = true`,
     [
       ORIGEM_CEP,
       FAIXA_LOCAL,

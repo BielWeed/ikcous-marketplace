@@ -246,6 +246,21 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
       /^Envio por transportadora exige pagamento antecipado\. Pague com PIX no app para finalizar este envio\.$/,
     acao: "trocar_entrega",
   },
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026 — migration 20261174000000): a
+  // loja pode desligar uma forma "na entrega" (ou o PIX pelo app) ENTRE a
+  // tela filtrar as opções e o clique chegar ao banco. A RPC recusa com o
+  // TEXTO puro (sem prefixo de código, ao contrário de
+  // FRETE_COTACAO_DESATUALIZADA — que tem tratamento PRÓPRIO em
+  // CheckoutView.tsx, fora daqui). Mesma ação de "Envio por transportadora
+  // exige pagamento antecipado" (linha abaixo): volta ao carrinho, onde a
+  // forma de pagamento é escolhida de novo, já filtrada pela config atual
+  // (CheckoutView também chama refresh({ onlyConfig: true }) neste caso —
+  // ver o catch de handleSubmit).
+  {
+    padrao:
+      /^Esta forma de pagamento não está disponível nesta loja\. Escolha outra\.$/,
+    acao: "trocar_entrega",
+  },
   {
     padrao: /^Endereço inválido ou não pertence ao usuário\.$/,
     acao: "trocar_endereco",

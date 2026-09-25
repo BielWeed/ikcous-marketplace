@@ -120,10 +120,17 @@ async function garantirUsuario(cliente, userId) {
 
 async function garantirLojaFixture(cliente, extra = {}) {
   await cliente.query(
+    // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration 20261174000000):
+    // `pagamento_online = true` entrou na lista -- o invariante novo
+    // (forma_de_pagamento_aceita) recusa 'online' com
+    // FORMA_DE_PAGAMENTO_DESLIGADA quando a coluna está no padrão (false), e
+    // este arquivo tem chamadas (:335+) com `pagamento: "online"`. Mesma
+    // conexão privilegiada que já escreve outras colunas fora de RPC.
     `INSERT INTO public.store_config
        (id, origin_cep, local_cep_range, free_shipping_min, shipping_coverage,
-        enabled_shipping_methods, store_address, local_delivery_fee)
-     VALUES (1, $1, $2, 0, 'national', $3, $4, 0)
+        enabled_shipping_methods, store_address, local_delivery_fee,
+        pagamento_online)
+     VALUES (1, $1, $2, 0, 'national', $3, $4, 0, true)
      ON CONFLICT (id) DO UPDATE
        SET origin_cep = EXCLUDED.origin_cep,
            local_cep_range = EXCLUDED.local_cep_range,
@@ -131,7 +138,8 @@ async function garantirLojaFixture(cliente, extra = {}) {
            shipping_coverage = EXCLUDED.shipping_coverage,
            enabled_shipping_methods = EXCLUDED.enabled_shipping_methods,
            store_address = EXCLUDED.store_address,
-           local_delivery_fee = EXCLUDED.local_delivery_fee`,
+           local_delivery_fee = EXCLUDED.local_delivery_fee,
+           pagamento_online = true`,
     [
       ORIGEM_CEP,
       FAIXA_LOCAL,

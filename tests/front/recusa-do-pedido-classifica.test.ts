@@ -292,6 +292,23 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.mensagem).toContain("transportadora exige pagamento antecipado");
   });
 
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026 — migration 20261174000000): a
+  // loja desligou pix/card/cash na entrega ou o PIX pelo app ENTRE a tela
+  // filtrar e o clique chegar ao banco. Sem regra, cai em conferir_antes
+  // ("Ver meus pedidos") sem pedido nenhum ter nascido — mesmo defeito da
+  // regra de cima.
+  it("forma de pagamento desligada pela loja -> trocar a entrega (volta e escolhe outra)", () => {
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
+      ),
+    );
+    expect(r.acao).toBe("trocar_entrega");
+    expect(r.mensagem).toBe(
+      "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
+    );
+  });
+
   it("o nome guloso continua resolvendo parenteses dentro do nome", () => {
     // Provado pela revisao: o `.+` guloso ja acertava isto, e trocar para
     // `[\s\S]*` nao pode ter quebrado. Nome do produto contendo o proprio

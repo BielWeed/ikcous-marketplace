@@ -45,12 +45,15 @@ import {
   resumoDoEndereco,
 } from "@/lib/endereco-de-entrega";
 import { pagamentoOnlineLigado } from "@/lib/flags";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
   conferirFreteEscolhidoComACotacao,
   ehModalidadeDaLoja,
   ehRetiradaNaLoja,
   finalizarBloqueadoPorFrete,
+  formaDePagamentoDesligadaNaLoja,
   pagamentoIncompativelComFrete,
+  primeiraFormaDePagamentoDisponivel,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
@@ -309,6 +312,23 @@ const ehErroDeFreteDesatualizado = (error: unknown): boolean => {
 };
 
 /**
+ * FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration 20261174000000): mesma
+ * corrida rara do frete acima, do lado do pagamento — a lojista desliga uma
+ * forma ENTRE a checagem local e o clique chegar à RPC. Por TEXTO, não por
+ * SQLSTATE (mesma razão do marcador de frete acima e de `recusaDoPedido.ts`):
+ * `includes`, não igualdade exata, pelo mesmo motivo — o banco pode
+ * prefixar/sufixar a frase sem que o sinal deixe de valer.
+ */
+const MARCADOR_DE_FORMA_DE_PAGAMENTO_DESLIGADA =
+  "Esta forma de pagamento não está disponível nesta loja";
+
+const ehErroDeFormaDePagamentoDesligada = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { message?: unknown };
+  const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
+  return mensagem.includes(MARCADOR_DE_FORMA_DE_PAGAMENTO_DESLIGADA);
+};
+
+/**
  * Para ONDE cada ação leva. Tabela, e não cadeia de `if`, pelo mesmo motivo do
  * `ROTULO_DA_ACAO` no componente: `Record<AcaoDeRecusa, …>` **para de compilar**
  * no dia em que `AcaoDeRecusa` ganhar um caso novo, em vez de deixá-lo cair num
@@ -510,7 +530,11 @@ export function CheckoutView({
   onNavigate,
   onSetBackOverride,
 }: CheckoutViewProps) {
-  const { config, isLoaded: storeConfigLoaded } = useStore();
+  const {
+    config,
+    isLoaded: storeConfigLoaded,
+    refresh: refreshStoreConfig,
+  } = useStore();
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(380);
   const {
@@ -1588,6 +1612,48 @@ export function CheckoutView({
     user,
   ]);
 
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a loja pode desligar a forma
+  // "na entrega" que estava selecionada (pix/card/cash) entre uma tela e
+  // outra — o painel do lojista, uma corrida com outra aba. Cai na PRIMEIRA
+  // disponível, na ordem do contrato: "online" se logada e ligado, senão a
+  // primeira forma na entrega ainda ligada. Sem NENHUMA disponível, o efeito
+  // não mexe — a UI mostra o aviso de login (convidado) ou trava o
+  // Finalizar (`formaDePagamentoDesligadaNaLoja`, abaixo).
+  //
+  // NUNCA disputa com o efeito de transportadora (de cima): guarda por
+  // `!ehEntregaLocal && selectedShippingOption`, o mesmo caso que o efeito
+  // irmão já possui inteiro. E NUNCA seleciona "online" para quem não tem
+  // conta (`user` no cálculo de `primeiraFormaDePagamentoDisponivel`) — é
+  // essa condição que impede o ping-pong com o efeito de cima (guest-forças-
+  // pix): um convidado nunca chega a "online" por aqui.
+  useEffect(() => {
+    if (!ehEntregaLocal && selectedShippingOption) return;
+    if (authLoading) return;
+    if (paymentMethod === "online") return;
+    if (
+      formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).includes(
+        paymentMethod as "pix" | "card" | "cash",
+      )
+    ) {
+      return;
+    }
+    const proxima = primeiraFormaDePagamentoDisponivel({
+      formasNaEntrega: formasPagamentoNaEntregaValidas(
+        config.formasPagamentoEntrega,
+      ),
+      pagamentoOnlineLigado: pagamentoOnlineLigado(),
+      logado: !!user,
+    });
+    if (proxima) setPaymentMethod(proxima);
+  }, [
+    config.formasPagamentoEntrega,
+    ehEntregaLocal,
+    selectedShippingOption,
+    paymentMethod,
+    authLoading,
+    user,
+  ]);
+
   useEffect(() => {
     if (profile) {
       form.setValue("name", profile.full_name || "", { shouldValidate: true });
@@ -1877,6 +1943,20 @@ export function CheckoutView({
     pagamentoOnlineLigado: pagamentoOnlineLigado(),
   });
 
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o segundo eixo — a loja
+  // desligou pix/card/cash na entrega DEPOIS de a tela ter selecionado essa
+  // forma (o efeito de fallback, acima, corrige na maioria dos casos, mas
+  // não troca se não houver PARA ONDE ir — convidado numa loja só "online").
+  // Função pura em `src/lib/guarda-de-frete.ts`, mesmo motivo de
+  // `pagamentoIncompativelComFrete`: regra de dinheiro se discrimina em unit
+  // test, não colada num componente inteiro.
+  const formaDePagamentoDesligada = formaDePagamentoDesligadaNaLoja({
+    paymentMethod,
+    formasNaEntrega: formasPagamentoNaEntregaValidas(
+      config.formasPagamentoEntrega,
+    ),
+  });
+
   // Achado 1 do BLOQUEANTE (12/09/2026): `finalTotal` sempre soma `shipping`
   // com fallback 0 quando `ctxFreteIndefinido` (linha ~350) — então SEM
   // cotação válida `finalTotal` já é "produtos, frete zero", nunca "produtos,
@@ -1916,7 +1996,8 @@ export function CheckoutView({
     isOffline ||
     aguardandoConferenciaDaRecusa ||
     convidadoForaDaCidade ||
-    pagamentoIncompativel;
+    pagamentoIncompativel ||
+    formaDePagamentoDesligada;
   // Com a identificação recolhida, o botão cinza precisa apontar o campo
   // pendente na própria barra, sem afrouxar a validação do pedido.
   const pendenciaDeIdentificacao = !isValid
@@ -2146,6 +2227,20 @@ export function CheckoutView({
           : pagamentoOnlineLigado()
             ? "Envio por transportadora exige pagamento antecipado. Escolha \u201cPagar agora com PIX\u201d para finalizar."
             : "Esta loja não recebe pagamento pelo app, então o envio por transportadora não está disponível. Fale com a loja para combinar a entrega.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // QUARTA TRAVA, irmã da de cima: a loja desligou pix/card/cash na
+    // entrega (formas de pagamento por loja, 25/09/2026). O efeito de
+    // fallback já corrige a maioria dos casos; esta guarda cobre o resto —
+    // corrida entre a tela e o clique, ou convidado numa loja só "online"
+    // (sem para onde cair).
+    if (formaDePagamentoDesligada) {
+      toast.error(
+        "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
       );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -2425,6 +2520,20 @@ export function CheckoutView({
         // `setIsSubmitting`/`liberar` ficam para o `finally` logo abaixo —
         // convenção de `travaDeEnvio.ts`: "vai no finally, nunca antes".
         return;
+      }
+      // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a MESMA corrida rara do
+      // frete acima, agora do lado da forma de pagamento — a RPC recusa com
+      // o texto "Esta forma de pagamento não está disponível...". Ao
+      // contrário do frete, não precisa de um ramo PRÓPRIO com retorno
+      // antecipado: o painel genérico (recusaDoPedido.ts, acao
+      // "trocar_entrega") já leva de volta ao carrinho/checkout, onde a
+      // seleção some da lista assim que a config atualizar. Só falta pedir
+      // a config NOVA — sem isto a opção desligada continuaria aparecendo
+      // disponível até um refresh manual da página. Fogo-e-esquece: a tela
+      // já segue o caminho normal (toast + painel) abaixo, com ou sem essa
+      // atualização ter terminado.
+      if (ehErroDeFormaDePagamentoDesligada(error)) {
+        refreshStoreConfig({ onlyConfig: true }).catch(() => {});
       }
       // Este catch recebe o MESMO erro que useOrders.ts (createOrder) já
       // relança depois do próprio toast interno — mesma tradução aqui, para
@@ -2739,29 +2848,41 @@ export function CheckoutView({
   // `value` (pix/card/cash) e as regras de cobrança são os mesmos da entrega
   // local (a RPC não distingue as duas modalidades no meio de pagamento).
   const quandoPaga = ehRetirada ? "na Retirada" : "na Entrega";
-  const opcoesNaEntrega: OpcaoDePagamento[] = [
-    {
-      value: "pix",
-      label: `Pix ${quandoPaga}`,
-      icon: IconePix,
-      color: "text-[#32BCAD] bg-[#32BCAD]/10",
-      requerConta: false,
-    },
-    {
-      value: "card",
-      label: `Cartão ${quandoPaga}`,
-      icon: IconeCartao,
-      color: "text-blue-500 bg-blue-50",
-      requerConta: false,
-    },
-    {
-      value: "cash",
-      label: `Dinheiro ${quandoPaga}`,
-      icon: IconeDinheiro,
-      color: "text-amber-600 bg-amber-50",
-      requerConta: false,
-    },
-  ];
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a lista fixa vira filtrada
+  // pela config — a loja liga/desliga cada uma no painel (AdminSettingsView,
+  // grupo "Pagamentos" > "Formas de pagamento"). Ausente/inválido no dado
+  // lido é tratado como as três (`formasPagamentoNaEntregaValidas`) — loja
+  // velha, sem a coluna ainda, não muda de comportamento sozinha.
+  const formasNaEntregaDisponiveis = formasPagamentoNaEntregaValidas(
+    config.formasPagamentoEntrega,
+  );
+  const opcoesNaEntrega: OpcaoDePagamento[] = (
+    [
+      {
+        value: "pix",
+        label: `Pix ${quandoPaga}`,
+        icon: IconePix,
+        color: "text-[#32BCAD] bg-[#32BCAD]/10",
+        requerConta: false,
+      },
+      {
+        value: "card",
+        label: `Cartão ${quandoPaga}`,
+        icon: IconeCartao,
+        color: "text-blue-500 bg-blue-50",
+        requerConta: false,
+      },
+      {
+        value: "cash",
+        label: `Dinheiro ${quandoPaga}`,
+        icon: IconeDinheiro,
+        color: "text-amber-600 bg-amber-50",
+        requerConta: false,
+      },
+    ] satisfies OpcaoDePagamento[]
+  ).filter((opcao) =>
+    formasNaEntregaDisponiveis.includes(opcao.value as "pix" | "card" | "cash"),
+  );
 
   // Extraído do `.map()` que existia antes da separação em grupos — o
   // corpo do botão não mudou UMA linha, só passou a ser chamado duas vezes
@@ -3660,16 +3781,43 @@ export function CheckoutView({
                   : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
               </p>
             )}
-            {(!selectedShippingOption || ehEntregaLocal) && (
-              <div className="space-y-2.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                  {ehRetirada ? "Na retirada" : "Na entrega"}
-                </span>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+            {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o grupo "Na
+                entrega/retirada" some INTEIRO quando a loja desligou as
+                três — nunca um radiogroup vazio sem explicação. Convidado
+                (pagamento pelo app EXIGE conta, P6) vê o aviso de login no
+                lugar; cliente logado com o PIX ligado já vê o grupo "No
+                app" acima e não precisa de aviso extra. */}
+            {(!selectedShippingOption || ehEntregaLocal) &&
+              opcoesNaEntrega.length > 0 && (
+                <div className="space-y-2.5">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    {ehRetirada ? "Na retirada" : "Na entrega"}
+                  </span>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            {(!selectedShippingOption || ehEntregaLocal) &&
+              opcoesNaEntrega.length === 0 &&
+              !user && (
+                <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                  <p className="text-[11px] font-bold leading-snug text-amber-700">
+                    Para comprar nesta loja, entre na sua conta — o pagamento é
+                    feito pelo app
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic.light();
+                      onNavigate("auth");
+                    }}
+                    className="flex min-h-[40px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                  >
+                    Entrar ou criar conta
+                  </button>
+                </div>
+              )}
           </div>
         </div>
 
@@ -4217,6 +4365,27 @@ export function CheckoutView({
                           <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                           Pagamento pelo app indisponível — escolha um meio de
                           pagamento na entrega
+                        </p>
+                      )}
+                    {!semFreteSelecionado &&
+                      !isOffline &&
+                      !pagamentoIncompativel &&
+                      formaDePagamentoDesligada && (
+                        // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o
+                        // efeito de fallback (mais acima) já resolve o
+                        // caminho feliz sozinho — este aviso só aparece na
+                        // corrida residual (a loja desligou a forma ENTRE a
+                        // tela filtrar e o clique chegar) ou quando não
+                        // sobra para onde cair (mesmo espírito dos avisos
+                        // acima: botão apagado sem explicação faz a pessoa
+                        // desistir sem saber por quê).
+                        <p
+                          role="alert"
+                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                        >
+                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                          Esta forma de pagamento não está disponível — escolha
+                          outra na lista acima
                         </p>
                       )}
                     {!semFreteSelecionado && isOffline && (

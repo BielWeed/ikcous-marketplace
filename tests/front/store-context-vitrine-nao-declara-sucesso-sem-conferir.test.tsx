@@ -715,6 +715,9 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
       nationalDiscountType: "percentual",
       nationalDiscountValue: 10,
       nationalBenefitScope: "todas",
+      // 20261174000000: formas de pagamento por loja (pix/card/cash na
+      // entrega) — a coluna existe e o updateConfig tem o `if` dela.
+      formasPagamentoEntrega: ["pix", "card"],
     };
 
     await act(async () => {

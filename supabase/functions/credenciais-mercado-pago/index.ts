@@ -263,6 +263,18 @@ async function lerFichaDaLoja(supabase: any): Promise<FichaDaLoja> {
  */
 const FICHA_NAO_EXISTE = "a ficha da loja (store_config id=1) não existe";
 
+/**
+ * `error.message` EXATO que a trigger `store_config_exige_forma_de_pagamento`
+ * (migration 20261174000000) devolve quando um UPDATE deixaria a loja sem
+ * NENHUMA forma de pagamento (nem na entrega, nem pelo app) — RAISE
+ * EXCEPTION sem texto em português: a trigger é fonte única do INVARIANTE,
+ * a tradução amigável mora aqui (mesmo desenho da FICHA_NAO_EXISTE acima).
+ * `escreverNaFichaDaLoja` só devolve `error.message` (nunca `error.code`),
+ * então o código tem de viajar como o próprio texto da mensagem — ver o
+ * comentário da migration (achado A8 do crítico de desenho, 25/09/2026).
+ */
+const LOJA_SEM_FORMA_DE_PAGAMENTO = "LOJA_SEM_FORMA_DE_PAGAMENTO";
+
 async function escreverNaFichaDaLoja(
     supabase: any,
     campos: Partial<FichaDaLoja>,
@@ -282,16 +294,27 @@ async function escreverNaFichaDaLoja(
 /**
  * Traduz a recusa da ficha para o recado do lojista (mp-10). Ficha AUSENTE
  * é caso de suporte (nenhum retry cria a linha `id = 1` sozinho — prometer
- * "tente de novo" é mentira); qualquer outra recusa (RLS/trigger) usa o
- * recado específico de quem chamou, que já sabe o que ficou pela metade.
+ * "tente de novo" é mentira). A recusa do invariante de forma de pagamento
+ * (LOJA_SEM_FORMA_DE_PAGAMENTO) usa o recado ESPECÍFICO de quem chamou —
+ * desligar o PIX e trocar as chaves do MP explicam o mesmo invariante com
+ * palavras diferentes (25/09/2026, achado B2 do crítico de desenho); sem
+ * `mensagemSemFormaDePagamento`, cai no `mensagemPadrao` de quem chamou (não
+ * quebra chamador nenhum que ainda não previu este caso). Qualquer outra
+ * recusa (RLS/trigger desconhecida) também usa o recado padrão de quem
+ * chamou, que já sabe o que ficou pela metade.
  */
 function mensagemDeRecusaDaFicha(
     recusa: string,
     mensagemPadrao: string,
+    mensagemSemFormaDePagamento?: string,
 ): string {
-    return recusa === FICHA_NAO_EXISTE
-        ? "A ficha da loja (store_config id=1) não existe. Isto não se resolve tentando de novo — fale com o suporte."
-        : mensagemPadrao;
+    if (recusa === FICHA_NAO_EXISTE) {
+        return "A ficha da loja (store_config id=1) não existe. Isto não se resolve tentando de novo — fale com o suporte.";
+    }
+    if (recusa === LOJA_SEM_FORMA_DE_PAGAMENTO && mensagemSemFormaDePagamento) {
+        return mensagemSemFormaDePagamento;
+    }
+    return mensagemPadrao;
 }
 
 function respostaLer(
@@ -522,14 +545,23 @@ export async function handler(
                     "[credenciais-mp] ficha da loja recusou a Public Key:",
                     recusa,
                 );
+                // B2 (revisão do desenho, 25/09/2026): trocar a credencial
+                // desliga o PIX no MESMO update (mp-8, acima) — numa loja com
+                // nenhuma forma "na entrega", isso deixaria a loja SEM
+                // NENHUMA forma de pagamento, e a trigger do invariante
+                // recusa. mp-8 NÃO relaxa: a saída é a lojista ligar uma
+                // forma na entrega antes de trocar a chave (ou não trocar
+                // ainda) — nunca o servidor decidir por ela.
+                const semFormaDePagamento = recusa === LOJA_SEM_FORMA_DE_PAGAMENTO;
                 return json(
                     {
                         erro: mensagemDeRecusaDaFicha(
                             recusa,
                             "Não consegui publicar a Public Key na ficha da loja — as chaves não foram salvas, para o PIX não ficar aceso com uma credencial que ninguém testou. Tente salvar de novo.",
+                            "Ligue ao menos uma forma de pagamento na entrega antes de trocar as chaves do Mercado Pago.",
                         ),
                     },
-                    500,
+                    semFormaDePagamento ? 409 : 500,
                 );
             }
             try {
@@ -785,14 +817,21 @@ export async function handler(
                     "[credenciais-mp] ficha da loja recusou desligar o PIX:",
                     recusa,
                 );
+                // Formas de pagamento por loja (25/09/2026): desligar o PIX
+                // numa loja SEM nenhuma forma "na entrega" deixaria a loja
+                // sem forma de pagamento nenhuma — a trigger do invariante
+                // (migration 20261174000000) recusa, e o recado aqui é
+                // amigável em vez do 500 genérico.
+                const semFormaDePagamento = recusa === LOJA_SEM_FORMA_DE_PAGAMENTO;
                 return json(
                     {
                         erro: mensagemDeRecusaDaFicha(
                             recusa,
                             "Não consegui desligar o PIX na ficha da loja agora. Tente de novo em instantes.",
+                            "Ligue ao menos uma forma de pagamento na entrega antes de desligar o PIX pelo app.",
                         ),
                     },
-                    500,
+                    semFormaDePagamento ? 409 : 500,
                 );
             }
             return json({ pix_ligado: false }, 200);

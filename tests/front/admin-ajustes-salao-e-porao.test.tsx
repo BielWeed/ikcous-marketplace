@@ -492,6 +492,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // contagem abaixo).
     for (const novo of [
       "Entrega e frete",
+      "Formas de pagamento",
       "Mercado Pago",
       "Minha loja está no ar?",
       "Consultas de frete",
@@ -516,9 +517,10 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
       ...hospedeiro.querySelectorAll("button[aria-expanded]"),
     ];
     // "Nome, logo e cores" e "Atendimento" SAÍRAM em 22/09/2026 (duplicados
-    // de AdminAboutStoreView): sobram Entrega e frete, Mercado Pago, Minha
-    // loja está no ar? e Consultas de frete.
-    expect(cabecalhos.length).toBe(4);
+    // de AdminAboutStoreView): sobram Entrega e frete, Formas de pagamento
+    // (25/09/2026, migration 20261174000000), Mercado Pago, Minha loja está
+    // no ar? e Consultas de frete.
+    expect(cabecalhos.length).toBe(5);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }

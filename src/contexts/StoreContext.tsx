@@ -8,6 +8,7 @@ import { useSyncListener } from "@/hooks/useDataVault";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { DataVault } from "@/lib/dataVault";
 import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -139,6 +140,13 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   ["national_discount_type", "texto"],
   ["national_discount_value", "numeric"],
   ["national_benefit_scope", "texto"],
+  // 20261174000000: formas de pagamento por loja (pix/card/cash na
+  // entrega) — sem entrada aqui `updateConfig` gravaria a coluna mas o
+  // comparador de "gravou mesmo?" acusaria falha (coluna desconhecida
+  // nunca confirma). "texto_array": mesma comparação sensível a ORDEM de
+  // `enabled_shipping_methods` (o servidor preserva a ordem que o front
+  // manda — nunca reordena).
+  ["formas_pagamento_entrega", "texto_array"],
 ]);
 
 // Normaliza um valor de `home_sections` para comparação POR VALOR: ordena
@@ -467,7 +475,7 @@ export function StoreProvider({
   const configIgual = useCallback(
     (a: StoreConfig, b: StoreConfig): boolean =>
       Object.keys(a).every((k) => {
-        if (k === "enabledShippingMethods") {
+        if (k === "enabledShippingMethods" || k === "formasPagamentoEntrega") {
           const arrA = a[k] || [];
           const arrB = b[k] || [];
           if (arrA.length !== arrB.length) return false;
@@ -634,6 +642,17 @@ export function StoreProvider({
         "national_benefit_scope",
         "nationalBenefitScope",
         espelho.alcance,
+      ),
+      // 20261174000000: ausente/inválido no dado lido (loja sem a coluna
+      // ainda, ou linha corrompida) cai no default — as três formas, MESMO
+      // comportamento de hoje. `formasPagamentoNaEntregaValidas` é a
+      // fonte única dessa normalização (compartilhada com o checkout).
+      formasPagamentoEntrega: formasPagamentoNaEntregaValidas(
+        getVal(
+          "formas_pagamento_entrega",
+          "formasPagamentoEntrega",
+          defaultStoreConfig.formasPagamentoEntrega,
+        ),
       ),
     };
   }, []);
@@ -949,6 +968,15 @@ export function StoreProvider({
           dbUpdates.national_discount_value = updates.nationalDiscountValue;
         if (updates.nationalBenefitScope !== undefined)
           dbUpdates.national_benefit_scope = updates.nationalBenefitScope;
+        // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
+        // 20261174000000): a lojista liga/desliga pix/cartão/dinheiro na
+        // entrega. Chave omitida => `upsert_store_config` preserva o valor
+        // atual (padrão "partial update" de toda a função); mandar SEMPRE
+        // que a chamadora passar a lista (mesmo vazia) é o que permite
+        // AdminSettingsView gravar "desligou a última", que o trigger do
+        // banco (store_config_exige_forma_de_pagamento) então recusa.
+        if (updates.formasPagamentoEntrega !== undefined)
+          dbUpdates.formas_pagamento_entrega = updates.formasPagamentoEntrega;
 
         if (!current()) return false;
         const { data, error } = await (supabase.rpc as any)(
