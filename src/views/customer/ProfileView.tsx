@@ -77,9 +77,11 @@ import { haptic } from "@/utils/haptic";
 
 interface ProfileViewProps {
   onNavigate: (view: View, id?: string) => void;
+  /** A aba fica montada escondida; `true` quando é a aba visível. */
+  isActive?: boolean;
 }
 
-export function ProfileView({ onNavigate }: ProfileViewProps) {
+export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
   const {
     user,
     profile,
@@ -94,7 +96,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
     deleteAddress,
     loading: addressesLoading,
   } = useAddresses();
-  const { orders } = useOrders(true, false);
+  const { orders, fetchUserOrders } = useOrders(true, false);
   const { config } = useStore();
   const [isOrdersExpanded, setIsOrdersExpanded] = useState(false);
   const [isAddressesExpanded, setIsAddressesExpanded] = useState(false);
@@ -313,6 +315,16 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
       onNavigate("auth");
     }
   }, [user, fetchAddresses, authLoading, onNavigate]);
+
+  // `useOrders` não busca ao montar: só lê o cache do aparelho, que só a
+  // busca grava, e cada tela tem a SUA cópia da lista. Sem esta chamada o
+  // cartão "Pedidos em Andamento" some logo depois do login (o logout apaga o
+  // cache) — defeito do print de 25/09/2026. Busca de novo sempre que a aba
+  // volta a ser a visível: ela fica montada escondida, e a busca feita em
+  // Meus Pedidos não chega nesta cópia. Silenciosa: cartão secundário.
+  useEffect(() => {
+    if (user && isActive) fetchUserOrders(true);
+  }, [user, isActive, fetchUserOrders]);
 
   const activeOrders = useMemo(() => {
     return orders.filter((o) =>

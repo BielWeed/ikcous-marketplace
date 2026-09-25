@@ -36,7 +36,7 @@ vi.mock("@/hooks/useAddresses", () => ({
 }));
 
 vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ orders: [] }),
+  useOrders: () => ({ orders: [], fetchUserOrders: async () => [] }),
 }));
 
 vi.mock("@/contexts/StoreContext", () => ({
