@@ -65,6 +65,9 @@
 //       credencial NOVA gravada com o PIX ainda aceso na chave ANTIGA
 //   C28 mp-10: dois avisos de `ligar_pix` juntos saem com pontuação entre
 //       eles (a mensagem de chave de TESTE não terminava em ponto)
+//   C30 (25/09/2026): `GET /users/me` do MP responde 200 SEM `live_mode` (é
+//       o real: o endpoint não devolve esse campo) -> `ambiente` fica null e
+//       a mensagem NÃO afirma "de teste" nem "de produção"
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 // ── Costura de REDE para a porta de admin (verifyIsAdmin monta os PRÓPRIOS
@@ -1421,6 +1424,48 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(estado.loja.pagamento_online, false);
             // O registro (a credencial) NÃO trocou: gravarRegistro recusou.
             assertEquals(estado.valor, registroAntesDaFalha);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C30 — MP responde 200 sem live_mode (endpoint real de /users/me): sem afirmar ambiente", async () => {
+        // Medido em 25/09/2026: `GET /users/me` do Mercado Pago NÃO devolve
+        // `live_mode` (o struct oficial do SDK Go do MP só tem id, nickname,
+        // first_name, last_name, country_id, email, site_id). Com credencial
+        // de PRODUÇÃO a tela mostrava "Conectado! Conta X no ambiente de
+        // teste." — `ambiente` cai em null e a mensagem não pode afirmar
+        // nenhum dos dois ambientes.
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            const { buscar } = buscarMpFalso(200, {
+                id: 123456,
+                nickname: "Loja Real",
+                site_id: "MLB",
+            });
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.conectado, true);
+            assertEquals(corpo.ambiente, null);
+            assertEquals(corpo.mensagem.includes("de teste"), false);
+            assertEquals(corpo.mensagem.includes("de produção"), false);
+            assertEquals(corpo.mensagem.includes("Loja Real"), true);
+            const salvo = JSON.parse(estado.valor!);
+            assertEquals(salvo.ultimo_teste.ambiente, null);
         } finally {
             desfazerEnv();
         }

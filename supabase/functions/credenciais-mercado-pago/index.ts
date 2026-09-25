@@ -623,8 +623,17 @@ export async function handler(
                     conta = typeof dados.nickname === "string"
                         ? dados.nickname
                         : null;
+                    // `GET /users/me` do MP (medido 25/09/2026) não devolve
+                    // `live_mode` — o struct oficial do SDK Go do MP para
+                    // esse endpoint só tem id/nickname/first_name/last_name/
+                    // country_id/email/site_id. Com `ambiente` null, a
+                    // mensagem NÃO pode afirmar "de teste" nem "de
+                    // produção" — dizia "de teste" até para credencial de
+                    // PRODUÇÃO.
                     mensagem = conta
-                        ? `Conectado! Conta "${conta}" no ambiente ${ambiente === "producao" ? "de produção" : "de teste"}.`
+                        ? ambiente === null
+                            ? `Conectado! Conta "${conta}".`
+                            : `Conectado! Conta "${conta}" no ambiente ${ambiente === "producao" ? "de produção" : "de teste"}.`
                         : "Conectado ao Mercado Pago!";
                 } else if (
                     resposta.status === 401 || resposta.status === 403
