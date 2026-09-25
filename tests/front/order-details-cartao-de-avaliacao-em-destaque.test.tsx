@@ -362,9 +362,9 @@ describe("OrderDetailsView — o título muda por status", () => {
   });
 
   it("status desconhecido (fora do type): cai no título de pending, não fica em branco", async () => {
-    expect(
-      await renderizarComStatus("new" as unknown as Order["status"]),
-    ).toBe("Pedido recebido");
+    expect(await renderizarComStatus("new" as unknown as Order["status"])).toBe(
+      "Pedido recebido",
+    );
   });
 });
 

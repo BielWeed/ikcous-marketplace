@@ -121,6 +121,14 @@ describe("OrderDetailsView — cartão de status do pedido entregue passa no con
     expect(cartao.className).not.toContain("emerald-400");
     expect(cartao.className).not.toContain("emerald-500");
     expect(cartao.className).not.toContain("emerald-600");
+    // Revisão Opus rodada 2: proibir três nomes deixava passar
+    // `from-emerald-300` ou `from-green-400`. Toda cor do degradê tem de ser
+    // de tom 700 ou mais escuro, seja qual for a família.
+    const paradas = cartao.className.match(/\b(?:from|via|to)-[a-z]+-(\d+)\b/g);
+    expect(paradas?.length).toBe(3);
+    for (const parada of paradas ?? []) {
+      expect(Number(parada.split("-").pop())).toBeGreaterThanOrEqual(700);
+    }
   });
 
   it("a descrição do status usa text-white sólido, nunca text-white/80 (3,77:1 sobre o tom antigo)", async () => {

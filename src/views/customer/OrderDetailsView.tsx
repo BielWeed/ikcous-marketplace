@@ -91,7 +91,7 @@ const statusConfig: Record<
     icon: XCircle,
     description: "Este pedido foi cancelado e não seguirá para entrega.",
   },
-};;
+};
 
 /**
  * Redesenho visual (25/09/2026): o título grande do cabeçalho da ficha é uma
@@ -652,9 +652,7 @@ export function OrderDetailsView({
     chaveDoPagamento === "pago_apos_expirar" ||
     chaveDoPagamento === "recebido_na_entrega";
   const rotuloDoTotal =
-    order.status !== "cancelled" && dinheiroConfirmado
-      ? "Total pago"
-      : "Total";
+    order.status !== "cancelled" && dinheiroConfirmado ? "Total pago" : "Total";
 
   return (
     <div className="pb-customer min-h-full bg-zinc-50/50">
