@@ -7,65 +7,89 @@ import {
   Banknote,
   Check,
   ChevronRight,
+  ClipboardCheck,
   Copy,
   CreditCard,
   MapPin,
   Package,
+  PackageCheck,
+  PackageOpen,
   QrCode,
   ShieldCheck,
   Truck,
+  XCircle,
 } from "lucide-react";
 import { memo, useState } from "react";
 import { toast } from "sonner";
 
-// O texto de `color` e o `desc` (abaixo, ~386) rodam a 8px — bem abaixo do
-// limiar de "texto grande" do WCAG —, então o mínimo AA é 4,5:1. Medido
-// (Tailwind v3) contra o fundo REAL do pill: `bg` é a cor `*-50/50` (50% de
-// opacidade) sobre o card branco, não a cor `*-50` pura.
-//   processing (amber-600/amber-50 a 50%):  3,13 → amber-700:   4,93
-//   delivered  (emerald-600/emerald-50 a 50%): 3,67 → emerald-700: 5,35
-//   cancelled  (rose-600/rose-50 a 50%):    4,48 → rose-700:    6,00
-// `pending` (4,97) e `shipping` (5,97) já passavam e não mudam.
+// O `color` roda a 11px sobre o `panel` (a cor `*-50` cheia, sem
+// transparência) — abaixo do limiar de "texto grande" do WCAG, então o
+// mínimo AA é 4,5:1. Tom 600/700 escolhido por família para fechar a conta
+// contra o `*-50` (o mais apertado é blue-600/blue-50, ~4,9).
 const statusConfig: Record<
   OrderStatus,
-  { label: string; color: string; bg: string; dot: string; desc: string }
+  {
+    label: string;
+    color: string;
+    panel: string;
+    bar: string;
+    icon: typeof Package;
+    desc: string;
+  }
 > = {
   pending: {
     label: "Pedido Recebido",
     color: "text-blue-600",
-    bg: "bg-blue-50/50",
-    dot: "bg-blue-500",
-    desc: "Recebido com sucesso",
+    panel: "bg-blue-50 border-blue-100",
+    bar: "bg-blue-500",
+    icon: ClipboardCheck,
+    desc: "A loja já recebeu seu pedido",
   },
   processing: {
     label: "Em Separação",
     color: "text-amber-700",
-    bg: "bg-amber-50/50",
-    dot: "bg-amber-500",
+    panel: "bg-amber-50 border-amber-100",
+    bar: "bg-amber-500",
+    icon: PackageOpen,
     desc: "Preparando seu envio",
   },
   shipping: {
     label: "Em Trânsito",
     color: "text-indigo-600",
-    bg: "bg-indigo-50/50",
-    dot: "bg-indigo-500",
-    desc: "A caminho do endereço",
+    panel: "bg-indigo-50 border-indigo-100",
+    bar: "bg-indigo-500",
+    icon: Truck,
+    desc: "A caminho do seu endereço",
   },
   delivered: {
     label: "Entregue",
     color: "text-emerald-700",
-    bg: "bg-emerald-50/50",
-    dot: "bg-emerald-500",
-    desc: "Entregue com sucesso!",
+    panel: "bg-emerald-50 border-emerald-100",
+    bar: "bg-emerald-500",
+    icon: PackageCheck,
+    desc: "Pedido entregue",
   },
   cancelled: {
     label: "Cancelado",
     color: "text-rose-700",
-    bg: "bg-rose-50/50",
-    dot: "bg-rose-500",
-    desc: "Pedido cancelado",
+    panel: "bg-rose-50 border-rose-100",
+    bar: "bg-rose-500",
+    icon: XCircle,
+    desc: "Este pedido foi cancelado",
   },
 };
+
+const trailSteps = ["Recebido", "Separação", "A caminho", "Entregue"];
+
+// `Map.get` em vez de indexar o Record: mesma escolha de
+// CustomerPaymentBadge.tsx, para o lint de injeção de objeto.
+const statusStep = new Map<OrderStatus, number>([
+  ["pending", 0],
+  ["processing", 1],
+  ["shipping", 2],
+  ["delivered", 3],
+  ["cancelled", -1],
+]);
 
 const paymentConfig: Record<PaymentMethod, { label: string; icon: any }> = {
   pix: { label: "PIX", icon: QrCode },
@@ -74,43 +98,51 @@ const paymentConfig: Record<PaymentMethod, { label: string; icon: any }> = {
   online: { label: "Pagamento online", icon: CreditCard },
 };
 
-function OrderSegmentedProgressBar({ status }: { status: OrderStatus }) {
-  if (status === "cancelled") {
-    return (
-      <div className="absolute inset-x-0 bottom-0 h-[3px] rounded-b-2xl bg-rose-500/80" />
-    );
-  }
-
-  const statusOrder: Record<OrderStatus, number> = {
-    pending: 0,
-    processing: 1,
-    shipping: 2,
-    delivered: 3,
-    cancelled: -1,
-  };
-
-  const currentStep = statusOrder[status] ?? 0;
+// Trilha das 4 etapas com o nome de cada uma embaixo: o cliente vê de relance
+// quanto falta. Pedido cancelado não tem trilha — não há etapa a percorrer.
+function OrderStatusTrail({
+  status,
+  config,
+}: {
+  status: OrderStatus;
+  config: (typeof statusConfig)[OrderStatus];
+}) {
+  const currentStep = statusStep.get(status) ?? 0;
+  if (currentStep < 0) return null;
 
   return (
-    <div className="absolute inset-x-0 bottom-0 flex h-[3px] gap-[2px] overflow-hidden rounded-b-2xl bg-zinc-100/50">
-      {[0, 1, 2, 3].map((idx) => {
-        const isCompleted = idx < currentStep;
-        const isCurrent = idx === currentStep;
-
-        return (
-          <div
-            key={idx}
+    <div className="mt-2.5" data-testid="order-status-trail">
+      <div className="flex gap-1">
+        {trailSteps.map((step, idx) => (
+          <span
+            key={step}
             className={cn(
-              "flex-1 h-full transition-all duration-500",
-              isCompleted
-                ? "bg-emerald-500"
-                : isCurrent
-                  ? "bg-emerald-500/80 animate-pulse shadow-[0_-1px_6px_rgba(16,185,129,0.4)]"
-                  : "bg-zinc-200/40",
+              "h-1 flex-1 rounded-full",
+              idx <= currentStep ? config.bar : "bg-zinc-200",
+              idx === currentStep && status !== "delivered" && "animate-pulse",
             )}
           />
-        );
-      })}
+        ))}
+      </div>
+      <div className="mt-1.5 grid grid-cols-4 text-[9px] font-bold uppercase tracking-wide">
+        {trailSteps.map((step, idx) => (
+          <span
+            key={step}
+            className={cn(
+              "truncate",
+              idx === 0 && "text-left",
+              idx === 1 && "text-center",
+              idx === 2 && "text-center",
+              idx === 3 && "text-right",
+              // zinc-600, não 500: sobre blue-50 e indigo-50 o zinc-500
+              // fica em 4,42 e 4,30 (reprova AA a 9px); zinc-600 passa ~7.
+              idx === currentStep ? config.color : "text-zinc-600",
+            )}
+          >
+            {step}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -221,6 +253,7 @@ export const OrderList = memo(function OrderList({
         const status = statusConfig[order.status] || statusConfig.pending;
         const payment = paymentConfig[order.paymentMethod] || paymentConfig.pix;
         const PaymentIcon = payment.icon;
+        const StatusIcon = status.icon;
         const total = order?.total || 0;
         const date = order?.createdAt ? new Date(order.createdAt) : new Date();
 
@@ -232,159 +265,79 @@ export const OrderList = memo(function OrderList({
             transition={{ delay: idx * 0.05 }}
             className="group"
           >
-            <div className="relative flex h-full flex-col gap-3 overflow-hidden rounded-2xl border border-zinc-100/80 bg-white p-3.5 shadow-sm transition-all duration-300 hover:border-zinc-200/80 hover:shadow-[0_12px_24px_rgba(0,0,0,0.04)]">
-              {/* Soft top gradient bar */}
-              <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-zinc-100 via-zinc-200 to-zinc-100 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-
-              {/* Top row: ID, Date and Status Badge */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      copyToClipboard(order?.id || "");
-                    }}
-                    className={cn(
-                      "flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition-all duration-200 group/id",
-                      copiedId === order.id
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
-                        : "bg-zinc-50/50 border-zinc-100/80 hover:bg-zinc-100/50 text-zinc-500",
-                    )}
-                  >
-                    {copiedId === order.id ? (
-                      <>
-                        <span className="text-[7.5px] font-extrabold uppercase tracking-wider">
-                          Copiado!
-                        </span>
-                        <Check className="size-2 text-emerald-500" />
-                      </>
+            {/* O card inteiro abre o pedido: o `after:` do botão "Ver
+                Detalhes" se estica sobre o card (padrão "stretched link"),
+                então teclado e leitor de tela seguem vendo UM botão só. O
+                botão do #id fica acima dele (`relative z-10`) para copiar
+                sem abrir. */}
+            <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-100 bg-white p-3.5 shadow-sm transition-all duration-300 hover:border-zinc-200 hover:shadow-[0_12px_24px_rgba(0,0,0,0.05)] active:scale-[0.99]">
+              {/* Topo: foto, nome e resumo, e o valor. Uma foto só, com o
+                  "+N" no canto: fotos lado a lado espremiam o nome e
+                  quebravam o resumo em 3 linhas a 375px. */}
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="relative size-14 flex-shrink-0">
+                  <div className="flex size-full items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                    {order.items[0]?.image ? (
+                      <img
+                        src={order.items[0].image}
+                        alt={order.items[0].name || ""}
+                        className="size-full object-cover"
+                      />
                     ) : (
+                      <Package className="size-6 text-zinc-300" />
+                    )}
+                  </div>
+                  {order.items.length > 1 && (
+                    <span className="absolute -bottom-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-zinc-900 px-1 text-[9px] font-black text-white">
+                      +{order.items.length - 1}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex min-w-0 flex-1 flex-col justify-center">
+                  <h4 className="truncate text-[12px] font-black uppercase tracking-tight text-zinc-950">
+                    {order.items[0]?.name || "N/A"}
+                  </h4>
+
+                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-500">
+                    <div className="flex items-center gap-0.5">
+                      <Package className="size-3 stroke-[2.5] text-zinc-400" />
+                      <span>
+                        {order.items.length}{" "}
+                        {order.items.length === 1 ? "Item" : "Itens"}
+                      </span>
+                    </div>
+
+                    <span className="size-0.5 rounded-full bg-zinc-300" />
+
+                    <div className="flex items-center gap-0.5">
+                      <PaymentIcon className="size-3 stroke-[2.5] text-zinc-400" />
+                      <span>{payment.label}</span>
+                    </div>
+
+                    {order.customer.neighborhood && (
                       <>
-                        <span className="font-mono text-[8px] font-bold uppercase tracking-tight">
-                          #{order?.id?.slice(0, 8) || "......."}
-                        </span>
-                        <Copy className="size-2 text-zinc-300 transition-colors group-hover/id:text-zinc-400" />
+                        <span className="size-0.5 rounded-full bg-zinc-300" />
+                        <div className="flex max-w-[96px] items-center gap-0.5 truncate">
+                          <MapPin className="size-3 stroke-[2.5] text-zinc-400" />
+                          <span className="truncate">
+                            {order.customer.neighborhood}
+                          </span>
+                        </div>
                       </>
                     )}
-                  </button>
-                  <span className="font-mono text-[8.5px] font-semibold tracking-tight text-zinc-500">
-                    {date.toLocaleDateString("pt-BR")}
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-end gap-1">
-                  <div
-                    className={cn(
-                      "px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-current/10 flex items-center gap-1",
-                      status.color,
-                      status.bg,
-                      // Utiliza dinamicamente a borda baseada na cor do status
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "w-1 h-1 rounded-full",
-                        status.dot,
-                        (order.status === "shipping" ||
-                          order.status === "pending") &&
-                          "animate-pulse",
-                      )}
-                    />
-                    {status.label}
-                  </div>
-                  <CustomerPaymentBadge
-                    paymentStatus={order.paymentStatus}
-                    orderStatus={order.status}
-                  />
-                </div>
-              </div>
-
-              {/* Middle: Images Stack, Info Column and Price */}
-              <div className="flex min-w-0 items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  {/* Left: Overlapping image stack (technological/straight design) */}
-                  <div className="flex flex-shrink-0 -space-x-2.5">
-                    {order.items.slice(0, 3).map((item, i) => (
-                      <div
-                        key={i}
-                        className="relative z-[1] size-11 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100/60 bg-zinc-50 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-300 hover:z-10 hover:scale-105"
-                      >
-                        <img
-                          src={item.image}
-                          alt={item.name}
-                          className="size-full object-cover"
-                        />
-                      </div>
-                    ))}
-                    {order.items.length > 3 && (
-                      <div className="relative z-0 flex size-11 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-100/60 bg-zinc-50/80 text-[9px] font-black text-zinc-500 shadow-[0_2px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm">
-                        +{order.items.length - 3}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Center: Product Summary & Info */}
-                  <div className="flex min-w-0 flex-1 flex-col justify-center">
-                    <h4 className="truncate text-[10px] font-black uppercase tracking-tight text-zinc-950">
-                      {order.items[0]?.name || "N/A"}
-                    </h4>
-
-                    {/* Condensed Metadata Row */}
-                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[8px] font-bold uppercase tracking-wide text-zinc-500">
-                      <div className="flex items-center gap-0.5">
-                        <Package className="size-2.5 stroke-[2.5] text-zinc-300" />
-                        <span>
-                          {order.items.length}{" "}
-                          {order.items.length === 1 ? "Item" : "Itens"}
-                        </span>
-                      </div>
-
-                      <span className="size-0.5 rounded-full bg-zinc-200" />
-
-                      <div className="flex items-center gap-0.5">
-                        <PaymentIcon className="size-2.5 stroke-[2.5] text-zinc-300" />
-                        <span>{payment.label}</span>
-                      </div>
-
-                      {order.customer.neighborhood && (
-                        <>
-                          <span className="size-0.5 rounded-full bg-zinc-200" />
-                          <div className="flex max-w-[80px] items-center gap-0.5 truncate">
-                            <MapPin className="size-2.5 stroke-[2.5] text-zinc-300" />
-                            <span>{order.customer.neighborhood}</span>
-                          </div>
-                        </>
-                      )}
-
-                      {/* Rastreio (PEDIDO-060, #105): visível sem abrir o
-                          pedido. `trim()` porque o campo do painel é texto
-                          livre — apagar deixa "" ou espaço, e um rótulo
-                          "Rastreio:" em branco parece envio que não houve. */}
-                      {order.trackingCode?.trim() && (
-                        <>
-                          <span className="size-0.5 rounded-full bg-zinc-200" />
-                          <div className="flex max-w-[120px] items-center gap-0.5 truncate">
-                            <Truck className="size-2.5 stroke-[2.5] text-zinc-300" />
-                            <span className="truncate font-mono normal-case tracking-tight text-zinc-500">
-                              {order.trackingCode.trim()}
-                            </span>
-                          </div>
-                        </>
-                      )}
-                    </div>
                   </div>
                 </div>
 
-                {/* Right side: Price */}
                 <div className="flex-shrink-0 self-center text-right">
-                  <span className="mb-0.5 block text-[7px] font-black uppercase tracking-widest text-zinc-500">
+                  <span className="mb-0.5 block text-[8px] font-black uppercase tracking-widest text-zinc-500">
                     Total
                   </span>
                   <div className="flex items-baseline justify-end leading-none">
-                    <span className="mr-0.5 text-[8px] font-extrabold text-zinc-500">
+                    <span className="mr-0.5 text-[9px] font-extrabold text-zinc-500">
                       R$
                     </span>
-                    <span className="text-sm font-black tracking-tight text-zinc-950">
+                    <span className="text-base font-black tracking-tight text-zinc-950">
                       {total.toLocaleString("pt-BR", {
                         minimumFractionDigits: 2,
                       })}
@@ -393,31 +346,96 @@ export const OrderList = memo(function OrderList({
                 </div>
               </div>
 
-              {/* Bottom: Detailed status and Ver Detalhes Button */}
-              <div className="mt-auto flex items-center justify-between border-t border-zinc-100/50 pt-2.5">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span
+              {/* Meio: onde o pedido está — uma frase, a trilha das etapas e
+                  o selo de pagamento (que carrega os avisos de "não pague",
+                  expirado e recusado, e por isso fica sempre visível aqui). */}
+              <div
+                data-testid="order-status-panel"
+                className={cn(
+                  "mt-3 rounded-xl border px-3 py-2.5",
+                  status.panel,
+                )}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+                  <div
                     className={cn(
-                      "w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0",
-                      status.dot,
+                      "flex min-w-0 items-center gap-1.5",
+                      status.color,
                     )}
+                  >
+                    <StatusIcon className="size-3.5 flex-shrink-0 stroke-[2.5]" />
+                    <span className="truncate text-[11px] font-black uppercase tracking-wide">
+                      {status.desc}
+                    </span>
+                  </div>
+                  <CustomerPaymentBadge
+                    paymentStatus={order.paymentStatus}
+                    orderStatus={order.status}
                   />
-                  <span className="max-w-[160px] truncate text-[8px] font-bold uppercase tracking-wider text-zinc-500">
-                    {status.desc}
+                </div>
+
+                <OrderStatusTrail status={order.status} config={status} />
+
+                {/* Rastreio (PEDIDO-060, #105): visível sem abrir o
+                    pedido. `trim()` porque o campo do painel é texto
+                    livre — apagar deixa "" ou espaço, e um rótulo
+                    "Rastreio:" em branco parece envio que não houve. */}
+                {order.trackingCode?.trim() && (
+                  <div className="mt-2 flex min-w-0 items-center gap-1 text-[10px] text-zinc-600">
+                    <Truck className="size-3 flex-shrink-0 stroke-[2.5]" />
+                    <span className="truncate font-mono font-semibold tracking-tight">
+                      {order.trackingCode.trim()}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Rodapé: número (toque copia) e data, e o botão */}
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      copyToClipboard(order?.id || "");
+                    }}
+                    aria-label="Copiar número do pedido"
+                    className={cn(
+                      "relative z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition-all duration-200 group/id",
+                      copiedId === order.id
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
+                        : "bg-zinc-50 border-zinc-100 hover:bg-zinc-100 text-zinc-500",
+                    )}
+                  >
+                    {copiedId === order.id ? (
+                      <>
+                        <span className="text-[9px] font-extrabold uppercase tracking-wider">
+                          Copiado!
+                        </span>
+                        <Check className="size-2.5 text-emerald-500" />
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-mono text-[9px] font-bold uppercase tracking-tight">
+                          #{order?.id?.slice(0, 8) || "......."}
+                        </span>
+                        <Copy className="size-2.5 text-zinc-400 transition-colors group-hover/id:text-zinc-500" />
+                      </>
+                    )}
+                  </button>
+                  <span className="font-mono text-[10px] font-semibold tracking-tight text-zinc-500">
+                    {date.toLocaleDateString("pt-BR")}
                   </span>
                 </div>
 
                 <button
                   onClick={() => onNavigate("order-details", order.id)}
-                  className="group/btn flex h-[30px] items-center justify-center gap-1 rounded-lg bg-primary px-3 text-[8px] font-black uppercase tracking-widest text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                  data-testid="order-card-open"
+                  className="group/btn flex h-8 flex-shrink-0 items-center justify-center gap-1 rounded-lg bg-primary px-3 text-[9px] font-black uppercase tracking-widest text-white shadow-sm transition-all after:absolute after:inset-0 after:rounded-2xl after:content-[''] hover:opacity-90 active:scale-[0.97]"
                 >
                   <span>Ver Detalhes</span>
-                  <ChevronRight className="size-2.5 transition-transform duration-200 group-hover/btn:translate-x-0.5" />
+                  <ChevronRight className="size-3 transition-transform duration-200 group-hover/btn:translate-x-0.5" />
                 </button>
               </div>
-
-              {/* Absolute edge segmented progress bar */}
-              <OrderSegmentedProgressBar status={order.status} />
             </div>
           </motion.div>
         );
