@@ -15,6 +15,7 @@ import {
   emailDoToken,
   expiracaoRealinhavel,
   handler,
+  MENSAGEM_CREDENCIAL_RECUSADA,
   pareceUuid,
   podeCobrar,
   subDoToken,
@@ -710,6 +711,72 @@ Deno.test("handler: MP_ACCESS_TOKEN ausente vira 503 TERMINAL (laudo 0109, D1) �
   assertEquals(corpo.error, "Pagamento indisponível.");
   assertEquals(corpo.terminal, true);
 });
+
+// Incidente 25/09/2026: o POST /v1/orders respondeu 401 "invalid access
+// token" e a tela ficou em "Tentar de novo" — cada toque batia na mesma
+// recusa, porque credencial recusada não se conserta dentro dos 30 min do
+// PIX. A mesma tabela prova as duas metades: credencial recusada (401/403)
+// vira terminal com frase fixa, e falha transitória (rede, 5xx, 4xx de
+// corpo) continua recuperável — o conserto não pode engolir o retry que já
+// funcionava.
+const SEGREDO_NO_CORPO_DO_MP = "APP_USR-token-que-nao-pode-vazar";
+const CONTA_NO_CORPO_DO_MP = "conta-1234567";
+
+function fetchMPRecusando(status: number) {
+  return async (_url: string, _init?: RequestInit) => {
+    // status 0 = nem houve resposta HTTP (rede caiu); criarOrder trata o throw.
+    if (status === 0) throw new TypeError("network error");
+    return new Response(
+      JSON.stringify({
+        code: "unauthorized",
+        message: `invalid access token ${SEGREDO_NO_CORPO_DO_MP}`,
+        collector_id: CONTA_NO_CORPO_DO_MP,
+      }),
+      { status },
+    );
+  };
+}
+
+for (
+  const caso of [
+    { status: 401, esperado: 503, terminal: true },
+    { status: 403, esperado: 503, terminal: true },
+    { status: 500, esperado: 502, terminal: undefined },
+    { status: 503, esperado: 502, terminal: undefined },
+    { status: 400, esperado: 502, terminal: undefined },
+    { status: 0, esperado: 502, terminal: undefined },
+  ]
+) {
+  Deno.test(`handler: POST /v1/orders com status ${caso.status} devolve ${caso.esperado} ${caso.terminal ? "TERMINAL" : "recuperável"}, sem vazar o corpo do MP`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const pedido = pedidoBase({ user_id: DONO_LOGADO });
+    const registro = { chamadasUpdate: 0 };
+    const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+
+    const resposta = await handler(
+      requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+      { supabase, fetchImpl: fetchMPRecusando(caso.status) },
+    );
+    const texto = await resposta.text();
+    const corpo = JSON.parse(texto);
+
+    assertEquals(resposta.status, caso.esperado);
+    assertEquals(corpo.terminal, caso.terminal);
+    if (caso.terminal) {
+      assertEquals(corpo.error, MENSAGEM_CREDENCIAL_RECUSADA);
+    } else {
+      assertEquals(corpo.error === MENSAGEM_CREDENCIAL_RECUSADA, false);
+    }
+    // Nada do corpo cru do MP chega ao cliente — nem token, nem conta, nem
+    // o texto da recusa.
+    assertEquals(texto.includes(SEGREDO_NO_CORPO_DO_MP), false);
+    assertEquals(texto.includes(CONTA_NO_CORPO_DO_MP), false);
+    assertEquals(texto.includes("invalid access token"), false);
+    assertEquals(texto.includes("token-de-teste"), false);
+    // Recusa não grava cobrança no pedido.
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
 
 Deno.test("handler: o corpo Orders enviado ao MP NÃO leva notification_url — a Orders API não tem esse campo (issue #212, operacional)", async () => {
   // Tarefa 2 (CHECKOUT-070), migração para a Orders API: este teste cobria
@@ -2164,7 +2231,12 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // virou dois — falha de LEITURA (503) e "não existe" (404) — porque as
   // duas causas eram opostas e tinham que responder diferente (achado da
   // revisão do CHECKOUT-050, #194).
-  assertEquals(achados, 19);
+  //
+  // 20, não mais 19: incidente 25/09/2026 — o POST /v1/orders recusado com
+  // 401/403 (credencial da loja) ganhou retorno próprio, `json({ error:
+  // MENSAGEM_CREDENCIAL_RECUSADA, terminal: true }, 503)`, antes do
+  // `r.erro` recuperável do ramo PIX. Já leva `terminal: true` no literal.
+  assertEquals(achados, 20);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper

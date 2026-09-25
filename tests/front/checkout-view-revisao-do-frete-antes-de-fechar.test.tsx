@@ -312,6 +312,27 @@ describe("CheckoutView — checagem prévia de revisão do frete antes de fechar
     expect(ultimoValor).toBeGreaterThan(primeiroValor);
   });
 
+  it("confirmação do frete sem resposta: termina a espera, recota e não cria pedido", async () => {
+    await gravarEnvelope("rev-antiga");
+    invoke.mockImplementation(() => new Promise(() => {}));
+    const agendar = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(
+      (callback, prazo, ...args) =>
+        agendar(callback, prazo === 12_000 ? 1 : prazo, ...args),
+    );
+
+    await montarEFinalizar();
+
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith(
+      "Não deu para confirmar o frete agora. Calculamos de novo — confira e finalize.",
+    );
+    expect(setSelectedShippingOption).toHaveBeenCalledWith(null);
+    expect(
+      localizarBotaoPorTexto(document.body, "Finalizar Pedido")?.disabled,
+    ).toBe(true);
+  });
+
   it("revisão do envelope BATE com a atual: segue e cria o pedido normalmente", async () => {
     await gravarEnvelope("rev-igual");
     invoke.mockResolvedValue({

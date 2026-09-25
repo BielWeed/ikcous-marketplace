@@ -9,9 +9,12 @@
 // PIX é o único ponto de atenção da tela e o cliente precisa conseguir pagar
 // mesmo sem a cópia automática.
 //
-// Montagem: mesmo helper `renderComPix` de pagamento-online.test.tsx (dispara
-// o `onSubmit` do Brick sem token = caminho PIX), com o clipboard estubado no
-// padrão de ficha-do-pedido-copiar-endereco-falha-avisa.test.tsx.
+// Montagem: mesmo helper `renderComPix` de pagamento-online.test.tsx —
+// adaptado em 25/09/2026 (pedido do dono: PIX sem Brick) para esperar a
+// resposta de `criarPagamento`, disparada DIRETO ao montar, em vez de
+// simular o `onSubmit` de um Brick que este caminho não usa mais — com o
+// clipboard estubado no padrão de
+// ficha-do-pedido-copiar-endereco-falha-avisa.test.tsx.
 import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -64,11 +67,9 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    document.head.innerHTML = "";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
-    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
     clipboardWriteText = vi.fn().mockResolvedValue(undefined);
     stubClipboard();
   });
@@ -78,17 +79,13 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
-    document.querySelectorAll("script[data-mp-sdk]").forEach((s) => s.remove());
-    // @ts-expect-error limpando o global entre testes
-    globalThis.MercadoPago = undefined;
     Reflect.deleteProperty(window.navigator, "clipboard");
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
   /**
-   * Renderiza o componente de verdade e dispara o `onSubmit` do Brick (PIX,
-   * sem token) — mesmo caminho de `renderComPix` em pagamento-online.test.tsx.
+   * Renderiza o componente de verdade e espera a resposta de `criarPagamento`
+   * — disparada DIRETO ao montar (sem Brick, ver comentário do describe).
    *
    * `resposta` permite ao chamador sobrescrever o que `criarPagamento`
    * resolve — usado pelo teste do estado `{qrCodeBase64, qrCode: undefined}`
@@ -102,16 +99,14 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       ticketUrl: string;
     }>,
   ) {
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
     criarPagamento.mockReset().mockResolvedValue({
       paymentId: "pay-1",
       statusPagamento: "aguardando",
-      expiraEm: "2026-08-06T15:30:00.000Z",
+      // Prazo relativo para exercitar a cópia durante a estimativa de validade.
+      // O relógio local nunca desabilita QR, código ou link; só o servidor
+      // decide quando o Pix realmente expirou. Esse caso está coberto em
+      // pix-qr-god-senior-20260924.test.tsx.
+      expiraEm: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       qrCode: QR_CODE_TESTE,
       qrCodeBase64: "abc123",
       ...resposta,
@@ -122,17 +117,8 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
         <PagamentoOnline orderId="ped-1" valor={100} onErro={() => {}} />,
       );
     });
-
-    document
-      .querySelector("script[data-mp-sdk]")
-      ?.dispatchEvent(new Event("load"));
     await act(async () => {
       await esperarMicrotarefas();
-    });
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await act(async () => {
-      await onSubmit({ formData: {} }); // sem token => PIX
     });
   }
 
@@ -259,4 +245,87 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
     });
     expect(botaoCopiar()!.textContent).toContain("Copiar código PIX");
   }, 10000);
+
+  it("dois toques seguidos: o timer do primeiro não apaga o 'Copiado!' do segundo antes dos 2s", async () => {
+    await renderComPix();
+    // Relógio falso só DEPOIS da montagem do Brick (que precisa de
+    // `setTimeout` real — ver o teste acima).
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => {
+        botaoCopiar()!.click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      await act(async () => {
+        botaoCopiar()!.click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      // 2,5s depois do PRIMEIRO toque, 1s depois do segundo: o timer antigo
+      // já teria disparado e apagado o aviso.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(botaoCopiar()!.textContent).toContain("Copiado!");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100);
+      });
+      expect(botaoCopiar()!.textContent).toContain("Copiar código PIX");
+      expect(clipboardWriteText).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("desmontar com 'Copiado!' na tela não deixa timer pendurado", async () => {
+    await renderComPix();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => {
+        botaoCopiar()!.click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(vi.getTimerCount()).toBe(1);
+      act(() => {
+        raiz.unmount();
+      });
+      expect(vi.getTimerCount()).toBe(0);
+      // O afterEach desmonta de novo — raiz nova para isso não estourar.
+      raiz = createRoot(hospedeiro);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("desmontar com a cópia ainda em andamento não arma timer depois da limpeza", async () => {
+    let terminarCopia: () => void = () => {};
+    clipboardWriteText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          terminarCopia = resolve;
+        }),
+    );
+    await renderComPix();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      act(() => {
+        botaoCopiar()!.click();
+      });
+      act(() => {
+        raiz.unmount();
+      });
+      await act(async () => {
+        terminarCopia();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(clipboardWriteText).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+      raiz = createRoot(hospedeiro);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
