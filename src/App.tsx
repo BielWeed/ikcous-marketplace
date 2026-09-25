@@ -2575,6 +2575,7 @@ const AppContent = () => {
                     props={{
                       key: user?.id ? `profile-${user.id}` : "profile-guest",
                       onNavigate: handleNavigate,
+                      isActive: currentView === "profile",
                     }}
                   />
                 </DeferredTabContent>
@@ -2692,6 +2693,7 @@ const AppContent = () => {
                       props={{
                         key: user?.id ? `profile-${user.id}` : "profile-guest",
                         onNavigate: handleNavigate,
+                        isActive: currentView === "profile",
                       }}
                     />
                   </DeferredTabContent>
