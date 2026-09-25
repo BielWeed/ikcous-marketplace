@@ -191,9 +191,10 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
     await abrirASecao();
     await clicar(switchPorRotulo("Cartão na entrega ou retirada"));
 
-    expect(mockStore.updateConfig).toHaveBeenCalledWith({
-      formasPagamentoEntrega: ["pix", "cash"],
-    });
+    expect(mockStore.updateConfig).toHaveBeenCalledWith(
+      { formasPagamentoEntrega: ["pix", "cash"] },
+      { silentSuccess: true },
+    );
   });
 
   it("religar uma forma desligada volta na ordem CANÔNICA, não na ordem do clique", async () => {
@@ -203,9 +204,10 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
 
     // Canônica é [pix, card, cash] — "cash" já ligado, "pix" entra na
     // posição dele, nunca no fim por ter sido clicado por último.
-    expect(mockStore.updateConfig).toHaveBeenCalledWith({
-      formasPagamentoEntrega: ["pix", "cash"],
-    });
+    expect(mockStore.updateConfig).toHaveBeenCalledWith(
+      { formasPagamentoEntrega: ["pix", "cash"] },
+      { silentSuccess: true },
+    );
   });
 
   it("EDGE CASE: desligar a ÚLTIMA forma com o pagamento pelo app DESLIGADO é recusado pela UI, sem chamar updateConfig", async () => {
@@ -226,9 +228,10 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
     await abrirASecao();
     await clicar(switchPorRotulo("Pix na entrega ou retirada"));
 
-    expect(mockStore.updateConfig).toHaveBeenCalledWith({
-      formasPagamentoEntrega: [],
-    });
+    expect(mockStore.updateConfig).toHaveBeenCalledWith(
+      { formasPagamentoEntrega: [] },
+      { silentSuccess: true },
+    );
   });
 
   it("loja sem nenhuma forma na entrega, com o app ligado: aviso nomeia que está pronto (chave ok)", async () => {

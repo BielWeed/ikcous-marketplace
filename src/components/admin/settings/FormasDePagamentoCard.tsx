@@ -38,7 +38,10 @@ interface FormasDePagamentoSectionProps {
   readonly pixLigado: boolean;
   readonly pixChaveOk: boolean;
   readonly isOffline: boolean;
-  readonly updateConfig: (updates: Partial<StoreConfig>) => Promise<boolean>;
+  readonly updateConfig: (
+    updates: Partial<StoreConfig>,
+    options?: { readonly silentSuccess?: boolean },
+  ) => Promise<boolean>;
   readonly onDirtyMudou?: (dirty: boolean) => void;
   /** Abre a seção Mercado Pago (a outra SecaoColapsavel, no hub) — ligar o
    * pagamento pelo app exige credencial, que mora só lá. */
@@ -100,9 +103,18 @@ export function FormasDePagamentoSection({
     setSalvando(forma);
     onDirtyMudou?.(true);
     try {
-      // O toast de erro sai de dentro do `updateConfig` (ADMIN-010, #94) —
-      // aqui só não se segue em frente se a gravação não confirmou.
-      const salvou = await updateConfig({ formasPagamentoEntrega: proxima });
+      // ANOTAÇÃO 3 da revisão Opus do commit 085282c3: `silentSuccess`
+      // cala o "Configurações salvas" genérico — cada switch já mostra o
+      // PRÓPRIO toast de sucesso, mais específico, logo abaixo. Sem isto,
+      // cada clique mostrava DOIS toasts de sucesso ao mesmo tempo. O
+      // toast de ERRO continua saindo de dentro do `updateConfig`
+      // (ADMIN-010, #94; e a mensagem específica de FORMA_DE_PAGAMENTO
+      // desligada quando o `pixLigado` local está stale) — aqui só não se
+      // segue em frente se a gravação não confirmou.
+      const salvou = await updateConfig(
+        { formasPagamentoEntrega: proxima },
+        { silentSuccess: true },
+      );
       if (!salvou) return;
       toast.success(
         ligar

@@ -89,7 +89,22 @@ vi.mock("@/hooks/useCart", () => ({
     shippingFee: 0,
     freteIndefinido: false,
     clearCart: vi.fn(),
-    selectedShippingOption: null,
+    // Entrega LOCAL selecionada (não null): sem opção nenhuma, a guarda de
+    // frete (`finalizarBloqueadoPorFrete`) já desabilita o Finalizar
+    // sozinha e os avisos vermelhos da barra (região ~4340-4390) nem
+    // chegam a avaliar `formaDePagamentoDesligada` — o teste da ANOTAÇÃO 2
+    // (abaixo) precisa que o frete NÃO seja o motivo do bloqueio, para
+    // provar que o aviso de pagamento por si só não contradiz o aviso de
+    // login. `ehEntregaLocal` continua true com este id, então o aviso de
+    // login (que também exige `!selectedShippingOption || ehEntregaLocal`)
+    // segue satisfeito.
+    selectedShippingOption: {
+      id: "local-delivery",
+      name: "Entrega Local",
+      price: 0,
+      deliveryDays: 1,
+      provider: "local",
+    },
     shippingCep: "",
   }),
 }));
@@ -208,6 +223,22 @@ describe("CheckoutView (convidado) — loja que vende só pelo app (formas na en
     expect(
       document.body.querySelector('[data-testid="pagamento-online-brick"]'),
     ).toBeNull();
+  });
+
+  // ANOTAÇÃO 2 da revisão Opus do commit 085282c3: o aviso vermelho
+  // "escolha outra na lista acima" contradiz o aviso de login — não existe
+  // NENHUMA lista acima para o convidado escolher (o grupo "Na entrega"
+  // inteiro está ausente, provado no teste de cima). Os dois avisos juntos
+  // mandam a pessoa em direções opostas no mesmo instante.
+  it("o aviso vermelho 'escolha outra na lista acima' NÃO aparece junto do aviso de login (não existe lista para escolher)", async () => {
+    await montar();
+    await esperarBarra();
+
+    const texto = (document.body.textContent ?? "").replace(/\u00A0/g, " ");
+    expect(texto).toContain(
+      "Para comprar nesta loja, entre na sua conta — o pagamento é feito pelo app",
+    );
+    expect(texto).not.toContain("escolha outra na lista acima");
   });
 
   it("o Finalizar fica desabilitado — nenhuma forma de pagamento válida para um convidado nesta loja", async () => {

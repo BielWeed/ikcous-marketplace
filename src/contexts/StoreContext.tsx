@@ -34,8 +34,24 @@ import { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 export { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 
 interface UpdateConfigOptions {
-  readonly isCurrent: () => boolean;
+  // Já tratado como opcional na implementação (`options?.isCurrent`, com
+  // guarda `isCurrent &&` antes de chamar) — só nunca tinha sido declarado
+  // assim. Sem o `?`, qualquer chamador que precisasse mandar `silent`/
+  // `silentSuccess` sem `isCurrent` (ex.: FormasDePagamentoCard, anotação 3
+  // da revisão Opus do commit 085282c3) era forçado a inventar um `isCurrent`
+  // que não tem função nenhuma ali.
+  readonly isCurrent?: () => boolean;
   readonly silent?: boolean;
+  /**
+   * FORMAS DE PAGAMENTO POR LOJA (revisão Opus do commit 085282c3, anotação
+   * 3): INDEPENDENTE de `silent` — `silent` cala TUDO (sucesso e erro);
+   * `silentSuccess` cala só o "Configurações salvas" genérico, para um
+   * chamador que já mostra o PRÓPRIO toast de sucesso mais específico
+   * (ex.: "Pix ligado") sem duplicar. Os toasts de ERRO (RPC recusada,
+   * write não confirmado) continuam saindo daqui — é aqui que mora o
+   * acesso à mensagem crua da RPC, que o chamador não tem.
+   */
+  readonly silentSuccess?: boolean;
 }
 
 interface StoreContextType {
@@ -856,6 +872,7 @@ export function StoreProvider({
       // Captura o contrato antes da rede: mutar options não troca o destinatário.
       const isCurrent = options?.isCurrent;
       const silent = options?.silent === true;
+      const silentSuccess = options?.silentSuccess === true;
       let invalidated = false;
       const current = () => {
         if (invalidated) return false;
@@ -1078,13 +1095,31 @@ export function StoreProvider({
           } as StoreConfig),
         );
         if (!current()) return false;
-        if (!silent) toast.success("Configurações salvas");
+        if (!silent && !silentSuccess) toast.success("Configurações salvas");
         return true;
       } catch (err) {
         if (!current()) return false;
         console.error("[StoreContext] Update error:", err);
-        if (!silent && current())
-          toast.error("Erro ao salvar as configurações");
+        if (!silent && current()) {
+          // FORMAS DE PAGAMENTO POR LOJA (revisão Opus do commit 085282c3,
+          // anotação 4): o trigger `store_config_exige_forma_de_pagamento`
+          // recusa com este texto CRU (sem prosa — o mesmo marcador que a
+          // edge credenciais-mercado-pago já traduz do lado dela) quando o
+          // `pixLigado` em memória do painel está STALE — a lojista
+          // desligou o PIX pelo app por outra aba/sessão ENTRE abrir o
+          // card de formas de pagamento e tentar desligar a última forma
+          // na entrega. O genérico "Erro ao salvar" não diz o que fazer;
+          // isto diz.
+          const mensagemCrua =
+            err && typeof err === "object" && "message" in err
+              ? (err as { message?: unknown }).message
+              : undefined;
+          toast.error(
+            mensagemCrua === "LOJA_SEM_FORMA_DE_PAGAMENTO"
+              ? "Ligue ao menos uma forma de pagamento — o PIX pelo app está desligado"
+              : "Erro ao salvar as configurações",
+          );
+        }
         return false;
       }
     },

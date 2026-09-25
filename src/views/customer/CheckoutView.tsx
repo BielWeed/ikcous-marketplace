@@ -4370,7 +4370,17 @@ export function CheckoutView({
                     {!semFreteSelecionado &&
                       !isOffline &&
                       !pagamentoIncompativel &&
-                      formaDePagamentoDesligada && (
+                      formaDePagamentoDesligada &&
+                      // 🔴 CORRIGIDO na revisão Opus do commit 085282c3
+                      // (anotação 2): sem esta guarda, um convidado numa
+                      // loja só-pelo-app (nenhuma forma na entrega) via
+                      // ESTE aviso ("escolha outra na lista acima") AO
+                      // MESMO TEMPO do aviso de login — mas não existe
+                      // lista nenhuma para escolher (o grupo "Na
+                      // entrega/retirada" some inteiro nesse estado, ver
+                      // `opcoesNaEntrega.length === 0` abaixo), e os dois
+                      // avisos mandavam a pessoa em direções opostas.
+                      !(opcoesNaEntrega.length === 0 && !user) && (
                         // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o
                         // efeito de fallback (mais acima) já resolve o
                         // caminho feliz sozinho — este aviso só aparece na

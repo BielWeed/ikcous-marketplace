@@ -251,15 +251,28 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
   // tela filtrar as opções e o clique chegar ao banco. A RPC recusa com o
   // TEXTO puro (sem prefixo de código, ao contrário de
   // FRETE_COTACAO_DESATUALIZADA — que tem tratamento PRÓPRIO em
-  // CheckoutView.tsx, fora daqui). Mesma ação de "Envio por transportadora
-  // exige pagamento antecipado" (linha abaixo): volta ao carrinho, onde a
-  // forma de pagamento é escolhida de novo, já filtrada pela config atual
-  // (CheckoutView também chama refresh({ onlyConfig: true }) neste caso —
-  // ver o catch de handleSubmit).
+  // CheckoutView.tsx, fora daqui).
+  //
+  // 🔴 CORRIGIDO na revisão Opus do commit 085282c3 (anotação 1): a versão
+  // anterior usava `trocar_entrega` (volta ao CARRINHO, botão "Ver outras
+  // formas de entrega") — errado aqui, porque a forma de PAGAMENTO se
+  // escolhe NO PRÓPRIO CHECKOUT, não no carrinho, e aquele botão nem fala
+  // de pagamento. `tentar_de_novo` fecha o painel e mantém a pessoa no
+  // checkout, onde `refresh({ onlyConfig: true })` (CheckoutView, catch de
+  // handleSubmit) já recarregou a config e o efeito de fallback
+  // (`primeiraFormaDePagamentoDisponivel`) já trocou o método sozinho.
+  //
+  // Isto NÃO viola a regra do cabeçalho ("texto do banco nunca vira
+  // tentar_de_novo" — ela existe para não duplicar pedido reenviando um
+  // clique cujo estoque/cupom já foi decrementado): a checagem de forma de
+  // pagamento roda no PASSO 0/1 da RPC, antes de qualquer decremento
+  // (provado em migration_formas_de_pagamento_por_loja_test.ts), e o
+  // reenvio já parte de um `paymentMethod` corrigido pelo efeito acima —
+  // não é "tente igual", é "tente com o que já foi trocado".
   {
     padrao:
       /^Esta forma de pagamento não está disponível nesta loja\. Escolha outra\.$/,
-    acao: "trocar_entrega",
+    acao: "tentar_de_novo",
   },
   {
     padrao: /^Endereço inválido ou não pertence ao usuário\.$/,

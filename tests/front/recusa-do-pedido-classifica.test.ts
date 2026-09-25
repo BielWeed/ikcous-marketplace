@@ -294,16 +294,24 @@ describe("classificarRecusaDoPedido", () => {
 
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026 — migration 20261174000000): a
   // loja desligou pix/card/cash na entrega ou o PIX pelo app ENTRE a tela
-  // filtrar e o clique chegar ao banco. Sem regra, cai em conferir_antes
-  // ("Ver meus pedidos") sem pedido nenhum ter nascido — mesmo defeito da
-  // regra de cima.
-  it("forma de pagamento desligada pela loja -> trocar a entrega (volta e escolhe outra)", () => {
+  // filtrar e o clique chegar ao banco. CORRIGIDO na revisão Opus do commit
+  // 085282c3 (anotação 1): `trocar_entrega` manda para o CARRINHO ("Ver
+  // outras formas de entrega") — mas a forma de pagamento se escolhe NO
+  // PRÓPRIO CHECKOUT, não no carrinho, e o botão daquela ação nem fala de
+  // pagamento. `tentar_de_novo` fecha o painel e mantém a pessoa no
+  // checkout, onde `refresh({ onlyConfig: true })` (chamado no catch de
+  // handleSubmit) já recarregou a config e o efeito de fallback
+  // (`primeiraFormaDePagamentoDisponivel`) já trocou o método sozinho —
+  // "tente de novo" aqui NÃO duplica pedido: a checagem roda ANTES de
+  // qualquer decremento de estoque/cupom (passo 0/idempotência, provado em
+  // migration_formas_de_pagamento_por_loja_test.ts).
+  it("forma de pagamento desligada pela loja -> tentar de novo (o checkout já recarregou a config sozinho)", () => {
     const r = classificarRecusaDoPedido(
       p0001(
         "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
       ),
     );
-    expect(r.acao).toBe("trocar_entrega");
+    expect(r.acao).toBe("tentar_de_novo");
     expect(r.mensagem).toBe(
       "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
     );
