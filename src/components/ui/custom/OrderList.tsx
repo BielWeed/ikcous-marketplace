@@ -134,7 +134,9 @@ function OrderStatusTrail({
               idx === 1 && "text-center",
               idx === 2 && "text-center",
               idx === 3 && "text-right",
-              idx === currentStep ? config.color : "text-zinc-500",
+              // zinc-600, não 500: sobre blue-50 e indigo-50 o zinc-500
+              // fica em 4,42 e 4,30 (reprova AA a 9px); zinc-600 passa ~7.
+              idx === currentStep ? config.color : "text-zinc-600",
             )}
           >
             {step}
@@ -274,12 +276,16 @@ export const OrderList = memo(function OrderList({
                   quebravam o resumo em 3 linhas a 375px. */}
               <div className="flex min-w-0 items-center gap-3">
                 <div className="relative size-14 flex-shrink-0">
-                  <div className="size-full overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
-                    <img
-                      src={order.items[0]?.image}
-                      alt={order.items[0]?.name || ""}
-                      className="size-full object-cover"
-                    />
+                  <div className="flex size-full items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                    {order.items[0]?.image ? (
+                      <img
+                        src={order.items[0].image}
+                        alt={order.items[0].name || ""}
+                        className="size-full object-cover"
+                      />
+                    ) : (
+                      <Package className="size-6 text-zinc-300" />
+                    )}
                   </div>
                   {order.items.length > 1 && (
                     <span className="absolute -bottom-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-zinc-900 px-1 text-[9px] font-black text-white">

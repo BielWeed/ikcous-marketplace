@@ -83,10 +83,10 @@ describe("OrderList — card do pedido redesenhado", () => {
     const trilha = hospedeiro.querySelector(
       '[data-testid="order-status-trail"]',
     );
-    // A etapa atual é a única com a cor do status em vez de zinc-500.
+    // A etapa atual é a única com a cor do status em vez de zinc-600.
     return (
       Array.from(trilha?.querySelectorAll("span.truncate") ?? []).find(
-        (el) => !el.classList.contains("text-zinc-500"),
+        (el) => !el.classList.contains("text-zinc-600"),
       )?.textContent ?? undefined
     );
   }
@@ -111,6 +111,37 @@ describe("OrderList — card do pedido redesenhado", () => {
       expect(etapaAtual()).toBe(atual);
     },
   );
+
+  // Achado de revisão (25/09/2026): zinc-500 sobre blue-50 (4,42) e
+  // indigo-50 (4,30) reprova AA a 9px — e `pending` é o status de TODO pedido
+  // novo. As etapas que não são a atual ficam em zinc-600.
+  it.each<OrderStatus>(["pending", "shipping"])(
+    "status %s: etapas não atuais em zinc-600, nenhuma em zinc-500",
+    async (status) => {
+      await renderizar({ ...pedidoBase, status });
+
+      const rotulos = Array.from(
+        hospedeiro.querySelectorAll(
+          '[data-testid="order-status-trail"] span.truncate',
+        ),
+      );
+      expect(rotulos).toHaveLength(4);
+      const inativos = rotulos.filter((el) =>
+        el.classList.contains("text-zinc-600"),
+      );
+      expect(inativos).toHaveLength(3);
+      expect(rotulos.some((el) => el.classList.contains("text-zinc-500"))).toBe(
+        false,
+      );
+    },
+  );
+
+  it("pedido sem itens: sem <img> quebrada, mostra o ícone no lugar da foto", async () => {
+    await renderizar({ ...pedidoBase, items: [] });
+
+    expect(hospedeiro.querySelector("img")).toBeNull();
+    expect(hospedeiro.textContent).toContain("N/A");
+  });
 
   it("cancelado: sem trilha, faixa vermelha e o aviso 'não pague' dentro dela", async () => {
     await renderizar({
