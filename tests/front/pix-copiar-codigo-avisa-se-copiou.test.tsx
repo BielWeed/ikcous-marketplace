@@ -9,9 +9,12 @@
 // PIX é o único ponto de atenção da tela e o cliente precisa conseguir pagar
 // mesmo sem a cópia automática.
 //
-// Montagem: mesmo helper `renderComPix` de pagamento-online.test.tsx (dispara
-// o `onSubmit` do Brick sem token = caminho PIX), com o clipboard estubado no
-// padrão de ficha-do-pedido-copiar-endereco-falha-avisa.test.tsx.
+// Montagem: mesmo helper `renderComPix` de pagamento-online.test.tsx —
+// adaptado em 25/09/2026 (pedido do dono: PIX sem Brick) para esperar a
+// resposta de `criarPagamento`, disparada DIRETO ao montar, em vez de
+// simular o `onSubmit` de um Brick que este caminho não usa mais — com o
+// clipboard estubado no padrão de
+// ficha-do-pedido-copiar-endereco-falha-avisa.test.tsx.
 import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -64,11 +67,9 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    document.head.innerHTML = "";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
-    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
     clipboardWriteText = vi.fn().mockResolvedValue(undefined);
     stubClipboard();
   });
@@ -78,17 +79,13 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
-    document.querySelectorAll("script[data-mp-sdk]").forEach((s) => s.remove());
-    // @ts-expect-error limpando o global entre testes
-    globalThis.MercadoPago = undefined;
     Reflect.deleteProperty(window.navigator, "clipboard");
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
   /**
-   * Renderiza o componente de verdade e dispara o `onSubmit` do Brick (PIX,
-   * sem token) — mesmo caminho de `renderComPix` em pagamento-online.test.tsx.
+   * Renderiza o componente de verdade e espera a resposta de `criarPagamento`
+   * — disparada DIRETO ao montar (sem Brick, ver comentário do describe).
    *
    * `resposta` permite ao chamador sobrescrever o que `criarPagamento`
    * resolve — usado pelo teste do estado `{qrCodeBase64, qrCode: undefined}`
@@ -102,12 +99,6 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       ticketUrl: string;
     }>,
   ) {
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
     criarPagamento.mockReset().mockResolvedValue({
       paymentId: "pay-1",
       statusPagamento: "aguardando",
@@ -122,17 +113,8 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
         <PagamentoOnline orderId="ped-1" valor={100} onErro={() => {}} />,
       );
     });
-
-    document
-      .querySelector("script[data-mp-sdk]")
-      ?.dispatchEvent(new Event("load"));
     await act(async () => {
       await esperarMicrotarefas();
-    });
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await act(async () => {
-      await onSubmit({ formData: {} }); // sem token => PIX
     });
   }
 

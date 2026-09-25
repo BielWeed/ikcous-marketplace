@@ -193,6 +193,9 @@ describe("carregarSdkMercadoPago", () => {
 // parse de `typeof import(\n "...",\n)` com vírgula à direita.
 type ModuloComponente = typeof import("@/components/checkout/PagamentoOnline");
 type OpcoesMontarBrick = Parameters<ModuloComponente["montarBrick"]>[0];
+type OpcoesDispararPagamentoPix = Parameters<
+  ModuloComponente["dispararPagamentoPix"]
+>[0];
 
 describe("montarBrick", () => {
   beforeEach(() => {
@@ -856,28 +859,203 @@ describe("montarBrick", () => {
   });
 });
 
+// Pedido do dono (25/09/2026): depois de escolher "Pagar agora com PIX", o
+// cliente caía na tela do Payment Brick pedindo pra escolher Pix DE NOVO e
+// digitar um e-mail que a conta já tem. `dispararPagamentoPix` substitui o
+// `onSubmit` do Brick como origem do disparo — mesma classificação de
+// resposta (`classificarRespostaPagamento`, testada à exaustão acima via
+// `montarBrick`), só que chamando `criarPagamento` direto ao montar.
+describe("dispararPagamentoPix", () => {
+  function opcoesPadrao(
+    sobrepor: Partial<OpcoesDispararPagamentoPix> = {},
+  ): OpcoesDispararPagamentoPix {
+    return {
+      orderId: "ped-1",
+      criarPagamento: vi.fn(),
+      onErro: vi.fn(),
+      onPix: vi.fn(),
+      ...sobrepor,
+    };
+  }
+
+  function respostaPixOk(sobrepor: Record<string, unknown> = {}) {
+    return {
+      paymentId: "pay-1",
+      statusPagamento: "aguardando",
+      expiraEm: "2026-09-25T12:00:00.000Z",
+      qrCode: "000201...",
+      qrCodeBase64: "abc123",
+      ...sobrepor,
+    };
+  }
+
+  // Teste 1 do brief: ao montar, chama criar-pagamento com metodo "pix" DIRETO
+  // — sem interação nenhuma com Brick ou SDK (nem `document.head`, nem
+  // `globalThis.MercadoPago` são tocados neste describe inteiro) — e o QR
+  // aparece assim que a resposta volta.
+  it("dispara criarPagamento com metodo 'pix' uma vez ao montar, sem Brick, e entrega o QR", async () => {
+    const { dispararPagamentoPix } = await importarLimpo();
+    const onPix = vi.fn();
+    const criarPagamento = vi.fn().mockResolvedValue(respostaPixOk());
+
+    dispararPagamentoPix(opcoesPadrao({ criarPagamento, onPix }));
+    await esperarMicrotarefas();
+
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    // Nem `email` nem `documento`: a conta já logada não precisa digitar de
+    // novo o que o servidor já resolve sozinho (criar-pagamento/index.ts).
+    expect(criarPagamento).toHaveBeenCalledWith({
+      orderId: "ped-1",
+      metodo: "pix",
+    });
+    expect(onPix).toHaveBeenCalledWith({
+      qrCodeBase64: "abc123",
+      qrCode: "000201...",
+      expiraEm: "2026-09-25T12:00:00.000Z",
+    });
+  });
+
+  // Teste 2 do brief: StrictMode monta o efeito, desmonta e remonta de forma
+  // SÍNCRONA (tudo antes de qualquer microtarefa rodar) — sem o cache por
+  // `orderId`, a segunda montagem chamaria `criarPagamento` de novo antes da
+  // primeira resposta voltar, duplicando a cobrança.
+  it("StrictMode (mount → cleanup → mount antes da resposta voltar) chama criarPagamento uma vez só", async () => {
+    const { dispararPagamentoPix } = await importarLimpo();
+    let resolverCriacao!: (v: ReturnType<typeof respostaPixOk>) => void;
+    const criarPagamento = vi.fn(
+      () =>
+        new Promise<ReturnType<typeof respostaPixOk>>((resolve) => {
+          resolverCriacao = resolve;
+        }),
+    );
+    const onPix = vi.fn();
+
+    const cleanup1 = dispararPagamentoPix(
+      opcoesPadrao({ criarPagamento, onPix }),
+    );
+    cleanup1(); // "fake unmount" do StrictMode, ANTES da resposta voltar
+    const cleanup2 = dispararPagamentoPix(
+      opcoesPadrao({ criarPagamento, onPix }),
+    );
+
+    resolverCriacao(respostaPixOk());
+    await esperarMicrotarefas();
+
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    // Só a segunda montagem (a que sobreviveu) repassa o QR — a primeira
+    // ficou cancelada e não chama nada.
+    expect(onPix).toHaveBeenCalledTimes(1);
+    cleanup2();
+  });
+
+  // Teste 3 do brief: erro recuperável mostra "Tentar de novo" (CheckoutView)
+  // e a nova tentativa — uma REMONTAGEM de verdade do componente, não o
+  // StrictMode — chama criarPagamento de novo. Pelo momento em que o cliente
+  // consegue clicar, a promessa anterior já assentou (o onErro já disparou) e
+  // já saiu do cache — é isso que este teste prova.
+  it("erro recuperável chama onErro com 'recuperavel', e uma nova tentativa (remontagem) chama criarPagamento de novo", async () => {
+    const { dispararPagamentoPix } = await importarLimpo();
+    const onErro = vi.fn();
+    const criarPagamento = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Não foi possível gerar a cobrança."));
+
+    const cleanup1 = dispararPagamentoPix(
+      opcoesPadrao({ criarPagamento, onErro, onPix: vi.fn() }),
+    );
+    await esperarMicrotarefas();
+
+    expect(onErro).toHaveBeenCalledWith(
+      "Não foi possível gerar a cobrança.",
+      "recuperavel",
+    );
+    cleanup1(); // o CheckoutView trocou a tela por "Tentar de novo"
+
+    criarPagamento.mockResolvedValueOnce(respostaPixOk());
+    const onPix2 = vi.fn();
+    dispararPagamentoPix(
+      opcoesPadrao({ criarPagamento, onErro, onPix: onPix2 }),
+    );
+    await esperarMicrotarefas();
+
+    expect(criarPagamento).toHaveBeenCalledTimes(2);
+    expect(onPix2).toHaveBeenCalledTimes(1);
+  });
+
+  // Teste 4 do brief: erro terminal não pode virar loop — uma chamada só,
+  // mesmo esperando uma folga extra de microtarefas (se houvesse retentativa
+  // automática escondida em algum `.then`, apareceria aqui).
+  it("erro terminal chama onErro com 'terminal' uma vez só — sem retentativa automática", async () => {
+    const { dispararPagamentoPix } = await importarLimpo();
+    const onErro = vi.fn();
+    const erro = Object.assign(
+      new Error(
+        "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
+      ),
+      { terminal: true },
+    );
+    const criarPagamento = vi.fn().mockRejectedValue(erro);
+
+    dispararPagamentoPix(
+      opcoesPadrao({ criarPagamento, onErro, onPix: vi.fn() }),
+    );
+    await esperarMicrotarefas();
+    await esperarMicrotarefas(); // folga extra: um loop apareceria aqui
+
+    expect(onErro).toHaveBeenCalledTimes(1);
+    expect(onErro).toHaveBeenCalledWith(erro.message, "terminal");
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+  });
+
+  // Rede de segurança: sem QR (os dois campos ausentes) é recuperável, MESMO
+  // com statusPagamento "conhecido" — mesma regra de `montarBrick`, agora
+  // pelo caminho direto.
+  it("resposta sem QR (qrCode e qrCodeBase64 ausentes) chama onErro com 'recuperavel', não onPix", async () => {
+    const { dispararPagamentoPix } = await importarLimpo();
+    const onErro = vi.fn();
+    const onPix = vi.fn();
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "aguardando",
+      expiraEm: "2026-09-25T12:00:00.000Z",
+    });
+
+    dispararPagamentoPix(opcoesPadrao({ criarPagamento, onErro, onPix }));
+    await esperarMicrotarefas();
+
+    expect(onErro).toHaveBeenCalledWith(
+      "Não foi possível gerar o QR code do PIX.",
+      "recuperavel",
+    );
+    expect(onPix).not.toHaveBeenCalled();
+  });
+});
+
 // Revisão da rodada de correção 1: remover o `jaMontou` (para o StrictMode
-// funcionar, B1) amarrou a vida do Brick à identidade de `onErro` — um prop
+// funcionar, B1) amarrou a vida do efeito à identidade de `onErro` — um prop
 // que, na forma natural de escrever a Task 5 (`onErro={(m) => setErro(m)}`),
 // é um closure NOVO a cada render do pai. Com `onErro` nas deps do efeito,
 // qualquer re-render (um toast, um evento realtime do useOrders, o contador
-// regressivo do prazo) desmontava o Brick vivo — perdendo o que o cliente já
-// tinha digitado — e recriava do zero. SILENCIOSAMENTE: o unmount roda antes
-// do create seguinte, então não estoura ALREADY_INITIALIZED.
+// regressivo do prazo) disparava `criarPagamento` de novo, silenciosamente.
+//
+// Adaptado em 25/09/2026 (pedido do dono: PIX sem Brick): a versão antiga
+// media isto pelo número de vezes que o Brick era CRIADO
+// (`mp.bricks().create()`); sem Brick nenhum no caminho de PIX, a mesma
+// garantia agora se mede pelo número de vezes que `criarPagamento` é
+// CHAMADO — o resto do teste (identidade nova de `onErro` a cada render)
+// não mudou.
 //
 // Só um teste que renderiza `PagamentoOnline` de verdade (não só
-// `montarBrick`) prova isto — a identidade do prop só existe no ciclo de
-// render do React, não em uma chamada direta de função.
+// `dispararPagamentoPix`) prova isto — a identidade do prop só existe no
+// ciclo de render do React, não em uma chamada direta de função.
 describe("PagamentoOnline (render de verdade)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    document.head.innerHTML = "";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
-    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
   });
 
   afterEach(() => {
@@ -885,10 +1063,6 @@ describe("PagamentoOnline (render de verdade)", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
-    document.querySelectorAll("script[data-mp-sdk]").forEach((s) => s.remove());
-    // @ts-expect-error limpando o global entre testes
-    globalThis.MercadoPago = undefined;
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -903,26 +1077,23 @@ describe("PagamentoOnline (render de verdade)", () => {
     return <PagamentoOnline orderId="ped-1" valor={100} onErro={() => {}} />;
   }
 
-  it("re-render do pai com onErro inline NÃO recria o Brick", async () => {
-    const unmount = vi.fn();
-    const create = vi.fn().mockResolvedValue({ unmount });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
+  it("re-render do pai com onErro inline NÃO dispara criarPagamento de novo", async () => {
+    criarPagamento.mockReset().mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "aguardando",
+      expiraEm: "2026-09-25T12:00:00.000Z",
+      qrCode: "000201...",
+      qrCodeBase64: "abc123",
+    });
 
     await act(async () => {
       raiz.render(<Pai />);
     });
-
-    document
-      .querySelector("script[data-mp-sdk]")
-      ?.dispatchEvent(new Event("load"));
     await act(async () => {
       await esperarMicrotarefas();
     });
 
-    expect(create).toHaveBeenCalledTimes(1);
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
 
     // Três re-renders do pai — cada um com `onErro` NOVO. Reproduz a rede: um
     // toast do sonner, um evento realtime, o contador regressivo do prazo.
@@ -932,8 +1103,7 @@ describe("PagamentoOnline (render de verdade)", () => {
       });
     }
 
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(unmount).not.toHaveBeenCalled();
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -948,11 +1118,9 @@ describe("PagamentoOnline - link para o ticket_url", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    document.head.innerHTML = "";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
-    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
   });
 
   afterEach(() => {
@@ -960,27 +1128,15 @@ describe("PagamentoOnline - link para o ticket_url", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
-    document.querySelectorAll("script[data-mp-sdk]").forEach((s) => s.remove());
-    // @ts-expect-error limpando o global entre testes
-    globalThis.MercadoPago = undefined;
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
   /**
-   * Renderiza o componente de verdade e dispara o `onSubmit` do Brick (PIX,
-   * sem token) com a resposta informada — o mesmo caminho que `montarBrick`
-   * usa para chegar no estado "pix", mas passando pelo componente real para
-   * poder inspecionar o DOM renderizado (o teste de `montarBrick` sozinho não
-   * alcança JSX nenhum).
+   * Renderiza o componente de verdade e espera a resposta de `criarPagamento`
+   * — disparada DIRETO ao montar desde 25/09/2026 (pedido do dono: PIX sem
+   * Brick), sem `onSubmit` de Brick nenhum para simular.
    */
   async function renderComPix(respostaPix: Record<string, unknown>) {
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
     // Mesma referência mocada em todo o arquivo (`vi.hoisted` no topo,
     // compartilhada com a factory do `vi.mock` de "@/hooks/useOrders") —
     // reset explícito porque `vi.restoreAllMocks()` não limpa implementação
@@ -999,17 +1155,8 @@ describe("PagamentoOnline - link para o ticket_url", () => {
         <PagamentoOnline orderId="ped-1" valor={100} onErro={() => {}} />,
       );
     });
-
-    document
-      .querySelector("script[data-mp-sdk]")
-      ?.dispatchEvent(new Event("load"));
     await act(async () => {
       await esperarMicrotarefas();
-    });
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await act(async () => {
-      await onSubmit({ formData: {} }); // sem token => PIX
     });
   }
 

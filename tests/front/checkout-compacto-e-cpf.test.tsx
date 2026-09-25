@@ -32,6 +32,7 @@ const {
   toastError,
   estadoLoja,
   cpfDaConta,
+  criarPagamento,
 } = vi.hoisted(() => ({
   estadoEnderecos: { lista: [] as Address[] },
   contaEstavel: {
@@ -47,6 +48,20 @@ const {
   toastError: vi.fn(),
   estadoLoja: { isLoaded: true },
   cpfDaConta: { ler: vi.fn(), gravar: vi.fn() },
+  // 25/09/2026 (PIX sem Brick): `PagamentoOnline` passou a chamar
+  // `criarPagamento` DIRETO ao montar (antes só disparava dentro do
+  // `onSubmit` do Brick, que este arquivo nunca simula) — sem este campo no
+  // dublê, os testes que clicam em "Pagar agora com PIX" e finalizam
+  // quebram com "criarPagamento is not a function" assim que a tela de
+  // pagamento monta. Resolve sem QR de propósito: este arquivo testa
+  // CPF/endereço, não a tela de pagamento — a resposta só precisa assentar
+  // (sem QR cai no ramo recuperável de `classificarRespostaPagamento`, que
+  // ninguém aqui escuta).
+  criarPagamento: vi.fn().mockResolvedValue({
+    paymentId: "pay-1",
+    statusPagamento: "aguardando",
+    expiraEm: new Date(Date.now() + 30 * 60_000).toISOString(),
+  }),
 }));
 
 const produto: Product = {
@@ -194,7 +209,11 @@ vi.mock("@/hooks/useOrders", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/hooks/useOrders")>();
   return {
     ...real,
-    useOrders: () => ({ createOrder, updateOrderStatus: vi.fn() }),
+    useOrders: () => ({
+      createOrder,
+      updateOrderStatus: vi.fn(),
+      criarPagamento,
+    }),
   };
 });
 vi.mock("@/hooks/useEconomiaDoFreteExibida", () => ({

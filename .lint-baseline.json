@@ -144,11 +144,18 @@
     "do destinatário, achado 3 do laudo REPROVADO sobre o commit aadbf4c):",
     "'eslint warnings 458 / teto 467 — baixou -9'. Biome não mexido (errors",
     "16 local — CRLF do Windows, não cobrado fora do CI, conforme a nota de",
-    "22/08/2026 acima)."
+    "22/08/2026 acima).",
+    "",
+    "25/09/2026 — warnings de eslint de 458 para 454. Medido local com `npm",
+    "run lint:ratchet`, no PR do disparo direto de PIX (sem Brick):",
+    "'eslint warnings 454 / teto 458 — baixou -4'. Biome sem mudança (15",
+    "errors / 1 warning local). Baixado com a mesma régua da entrada de",
+    "23/09/2026 (medição local); se o CI deste PR acusar número diferente, o",
+    "valor do summary do run é quem manda."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 458
+    "warnings": 454
   },
   "biome": {
     "errors": 15,
