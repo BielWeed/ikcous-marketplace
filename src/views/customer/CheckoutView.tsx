@@ -2,6 +2,11 @@ import {
   type CategoriaErroPagamento,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
+import {
+  IconeCartao,
+  IconeDinheiro,
+  IconePix,
+} from "@/components/icons/IconesDePagamento";
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
@@ -81,23 +86,27 @@ import { AnimatePresence, motion, usePresence } from "framer-motion";
 import {
   AlertCircle,
   ArrowLeft,
-  Banknote,
   Check,
   ChevronDown,
   CreditCard,
   FileText,
   Loader2,
   Lock,
-  type LucideIcon,
   MapPin,
   Phone,
   Plus,
-  Smartphone,
   Sparkles,
   Tag,
   User,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ComponentType,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal, flushSync } from "react-dom";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -2699,7 +2708,7 @@ export function CheckoutView({
   interface OpcaoDePagamento {
     value: PaymentMethod;
     label: string;
-    icon: LucideIcon;
+    icon: ComponentType<{ className?: string }>;
     color: string;
     requerConta: boolean;
   }
@@ -2716,8 +2725,8 @@ export function CheckoutView({
           // código nega. Ao religar cartão na Fase 3.5, este rótulo volta
           // junto.
           label: "Pagar agora com PIX",
-          icon: CreditCard,
-          color: "text-violet-500 bg-violet-50",
+          icon: IconePix,
+          color: "text-[#32BCAD] bg-[#32BCAD]/10",
           // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) —
           // só esta opção carrega a exigência; as outras (entrega)
           // continuam abertas a convidado.
@@ -2734,22 +2743,22 @@ export function CheckoutView({
     {
       value: "pix",
       label: `Pix ${quandoPaga}`,
-      icon: Smartphone,
-      color: "text-emerald-500 bg-emerald-50",
+      icon: IconePix,
+      color: "text-[#32BCAD] bg-[#32BCAD]/10",
       requerConta: false,
     },
     {
       value: "card",
       label: `Cartão ${quandoPaga}`,
-      icon: CreditCard,
+      icon: IconeCartao,
       color: "text-blue-500 bg-blue-50",
       requerConta: false,
     },
     {
       value: "cash",
       label: `Dinheiro ${quandoPaga}`,
-      icon: Banknote,
-      color: "text-amber-500 bg-amber-50",
+      icon: IconeDinheiro,
+      color: "text-amber-600 bg-amber-50",
       requerConta: false,
     },
   ];
