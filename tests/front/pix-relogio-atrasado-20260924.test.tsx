@@ -21,11 +21,9 @@ describe("Pix quando o relógio do celular está errado", () => {
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
-    document.head.innerHTML = "";
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
-    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
     criarPagamento.mockReset().mockResolvedValue({
       paymentId: "pay-test",
       statusPagamento: "aguardando",
@@ -38,20 +36,18 @@ describe("Pix quando o relógio do celular está errado", () => {
   afterEach(() => {
     act(() => root.unmount());
     host.remove();
-    document.querySelectorAll("script[data-mp-sdk]").forEach((s) => s.remove());
-    // @ts-expect-error cleanup of SDK stub
-    globalThis.MercadoPago = undefined;
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
+  /**
+   * Monta o componente de verdade e espera a resposta de `criarPagamento` —
+   * disparada DIRETO ao montar desde 25/09/2026 (PIX sem Brick). O
+   * `setTimeout(resolve, 0)` continua real (fora do `toFake` do
+   * `beforeEach`, que só cobre Date/setInterval/clearInterval), então drena
+   * a promessa normalmente mesmo com o relógio congelado.
+   */
   async function mostrarPix() {
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error Mercado Pago SDK stub
-    globalThis.MercadoPago = function Stub() {
-      return { bricks: () => ({ create }) };
-    };
     await act(async () => {
       root.render(
         <PagamentoOnline
@@ -61,14 +57,9 @@ describe("Pix quando o relógio do celular está errado", () => {
         />,
       );
     });
-    document
-      .querySelector("script[data-mp-sdk]")
-      ?.dispatchEvent(new Event("load"));
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await act(async () => onSubmit({ formData: {} }));
   }
 
   it("não promete minutos restantes quando o aparelho pode estar atrasado", async () => {

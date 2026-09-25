@@ -29,6 +29,7 @@ const {
   invoke,
   espelho,
   createOrder,
+  criarPagamento,
   toastError,
   estadoLoja,
   cpfDaConta,
@@ -44,6 +45,11 @@ const {
     shippingCep: null as string | null,
   },
   createOrder: vi.fn(),
+  // PIX direto (25/09/2026): o checkout finalizado monta <PagamentoOnline>
+  // de verdade, que chama `criarPagamento` no próprio mount (sem Brick) —
+  // sem este mock a suíte quebra com "criarPagamento is not a function"
+  // assim que um teste chega na tela de pagamento.
+  criarPagamento: vi.fn(),
   toastError: vi.fn(),
   estadoLoja: { isLoaded: true },
   cpfDaConta: { ler: vi.fn(), gravar: vi.fn() },
@@ -194,7 +200,11 @@ vi.mock("@/hooks/useOrders", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/hooks/useOrders")>();
   return {
     ...real,
-    useOrders: () => ({ createOrder, updateOrderStatus: vi.fn() }),
+    useOrders: () => ({
+      createOrder,
+      updateOrderStatus: vi.fn(),
+      criarPagamento,
+    }),
   };
 });
 vi.mock("@/hooks/useEconomiaDoFreteExibida", () => ({
@@ -325,6 +335,15 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     invoke.mockReset();
     createOrder.mockReset();
     createOrder.mockResolvedValue({ id: "ped-1" });
+    criarPagamento.mockReset();
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "aguardando",
+      expiraEm: new Date(Date.now() + 30 * 60_000).toISOString(),
+      qrCode: "00020126",
+      qrCodeBase64: "abc123",
+      ticketUrl: "https://mercadopago.com/ticket",
+    });
     toastError.mockReset();
     estadoLoja.isLoaded = true;
     cpfDaConta.ler.mockReset();

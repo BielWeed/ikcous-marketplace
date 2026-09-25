@@ -76,11 +76,9 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
-    document.head.innerHTML = "";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
-    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
     clipboardWriteText = vi.fn().mockResolvedValue(undefined);
     stubClipboard();
     onErro = vi.fn<(msg: string, categoria: CategoriaErroPagamento) => void>();
@@ -91,16 +89,19 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
       raiz.unmount();
     });
     hospedeiro.remove();
-    document.querySelectorAll("script[data-mp-sdk]").forEach((s) => s.remove());
-    // @ts-expect-error limpando o global entre testes
-    globalThis.MercadoPago = undefined;
     Reflect.deleteProperty(window.navigator, "clipboard");
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
-  /** Monta o componente de verdade e dispara o `onSubmit` do Brick (PIX). */
+  /**
+   * Monta o componente de verdade e espera a resposta de `criarPagamento` —
+   * disparada DIRETO ao montar desde 25/09/2026 (pedido do dono: PIX sem
+   * Brick). `esperarMicrotarefas` continua usando `setTimeout` REAL (fora do
+   * `toFake` do `beforeEach`, que só cobre Date/setInterval/clearInterval),
+   * então drena a promessa de `criarPagamento` normalmente mesmo com o
+   * relógio congelado.
+   */
   async function renderComPix(
     resposta?: Partial<{
       qrCode: string;
@@ -109,12 +110,6 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
       expiraEm: string;
     }>,
   ) {
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
     criarPagamento.mockReset().mockResolvedValue({
       paymentId: "pay-1",
       statusPagamento: "aguardando",
@@ -130,17 +125,8 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
         <PagamentoOnline orderId={ORDER_ID} valor={129.9} onErro={onErro} />,
       );
     });
-
-    document
-      .querySelector("script[data-mp-sdk]")
-      ?.dispatchEvent(new Event("load"));
     await act(async () => {
       await esperarMicrotarefas();
-    });
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await act(async () => {
-      await onSubmit({ formData: {} }); // sem token => PIX
     });
   }
 
