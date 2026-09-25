@@ -1,3 +1,4 @@
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { OrderTimeline } from "@/components/ui/custom/OrderTimeline";
@@ -34,7 +35,6 @@ import {
   Loader2,
   LogOut,
   MapPin,
-  MessageCircle,
   Package,
   Plus,
   Settings,
@@ -610,7 +610,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                             onClick={() => handleWhatsAppSupport(order.id)}
                             className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl border-none bg-emerald-600 text-[10px] font-black uppercase tracking-widest text-white shadow-sm shadow-emerald-600/10 transition-all hover:bg-emerald-700 active:scale-95"
                           >
-                            <MessageCircle className="size-4" />
+                            <IconeWhatsapp className="size-[18px]" />
                             WhatsApp
                           </Button>
                         )}
