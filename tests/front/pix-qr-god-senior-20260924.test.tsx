@@ -405,7 +405,9 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     await renderComPix();
 
     const preenchimento = () =>
-      hospedeiro.querySelector<HTMLDivElement>('[aria-hidden="true"] > div');
+      hospedeiro.querySelector<HTMLDivElement>(
+        '[data-testid="barra-prazo-pix"]',
+      );
     // Recém-chegado: prazo inteiro pela frente.
     expect(preenchimento()?.style.width).toBe("100%");
 
@@ -420,9 +422,13 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     await esperarPagamentoAindaPossivel();
   });
 
-  it("QR que chega já além do horário: sem barra inventada", async () => {
+  it("QR que chega já além do horário: a caixa de prazo (contagem e barra) não aparece — só o aviso", async () => {
     vi.setSystemTime(new Date("2026-09-24T16:00:00.000Z"));
     await renderComPix();
-    expect(hospedeiro.querySelector('[aria-hidden="true"] > div')).toBeNull();
+    expect(
+      hospedeiro.querySelector('[data-testid="barra-prazo-pix"]'),
+    ).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Contagem estimada");
+    expect(hospedeiro.textContent).toContain(AVISO_HORARIO);
   });
 });

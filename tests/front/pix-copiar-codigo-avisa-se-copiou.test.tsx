@@ -318,4 +318,33 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       vi.useRealTimers();
     }
   });
+
+  it("desmontar com a cópia ainda em andamento não arma timer depois da limpeza", async () => {
+    let terminarCopia: () => void = () => {};
+    clipboardWriteText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          terminarCopia = resolve;
+        }),
+    );
+    await renderComPix();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      act(() => {
+        botaoCopiar()!.click();
+      });
+      act(() => {
+        raiz.unmount();
+      });
+      await act(async () => {
+        terminarCopia();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(clipboardWriteText).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+      raiz = createRoot(hospedeiro);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

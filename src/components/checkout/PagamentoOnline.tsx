@@ -497,13 +497,19 @@ export function PagamentoOnline({
   // Um timer só por vez: dois toques seguidos em "Copiar" deixavam o timer do
   // PRIMEIRO apagar o "Copiado!" do segundo antes dos 2s, e o timer
   // sobrevivia à desmontagem da tela.
+  // `montadoRef` fecha a janela do `await` da cópia: se a tela desmontar com
+  // o clipboard ainda respondendo, o timer não chega a ser armado depois da
+  // limpeza (achado 3 da revisão independente, 24/09/2026).
   const timerCopiadoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
+  const montadoRef = useRef(false);
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
       if (timerCopiadoRef.current) clearTimeout(timerCopiadoRef.current);
-    },
-    [],
-  );
+      timerCopiadoRef.current = null;
+    };
+  }, []);
 
   const handleCopiarPix = async (codigo: string) => {
     // Laudo Opus A-1 (08/09/2026): `montarBrick` só recusa o PIX quando
@@ -518,6 +524,7 @@ export function PagamentoOnline({
     // SEM trava de horário aqui, de propósito: o relógio do aparelho não é
     // prova de vencimento (ver o comentário do relógio do prazo, acima).
     const ok = codigo !== "" && (await copiarParaClipboard(codigo));
+    if (!montadoRef.current) return;
     if (!ok) {
       setPixFalhouCopia(true);
       return;
@@ -638,6 +645,7 @@ export function PagamentoOnline({
                     className="h-1.5 overflow-hidden rounded-full bg-zinc-200"
                   >
                     <div
+                      data-testid="barra-prazo-pix"
                       className={cn(
                         "h-full rounded-full transition-[width] duration-1000 ease-linear",
                         prazoCurto ? "bg-amber-500" : "bg-emerald-500",
