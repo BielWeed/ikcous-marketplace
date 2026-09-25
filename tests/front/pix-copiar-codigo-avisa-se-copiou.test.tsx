@@ -111,10 +111,11 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
     criarPagamento.mockReset().mockResolvedValue({
       paymentId: "pay-1",
       statusPagamento: "aguardando",
-      // Prazo RELATIVO ao relógio real: a tela agora desabilita a cópia
-      // quando `expiraEm` passa, e a data fixa antiga (06/08/2026) virou um
-      // Pix vencido. Estes testes são sobre a cópia de um Pix VÁLIDO; o
-      // vencimento é coberto em pix-qr-god-senior-20260924.test.tsx.
+      // Prazo RELATIVO ao relógio real: com a data fixa antiga (06/08/2026)
+      // a tela mostraria o aviso de horário previsto já passado (a cópia
+      // continua liberada — o relógio local nunca bloqueia). Estes testes são
+      // sobre a cópia de um Pix no prazo; o horário passado é coberto em
+      // pix-qr-god-senior-20260924.test.tsx.
       expiraEm: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       qrCode: QR_CODE_TESTE,
       qrCodeBase64: "abc123",
@@ -263,4 +264,58 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
     });
     expect(botaoCopiar()!.textContent).toContain("Copiar código PIX");
   }, 10000);
+
+  it("dois toques seguidos: o timer do primeiro não apaga o 'Copiado!' do segundo antes dos 2s", async () => {
+    await renderComPix();
+    // Relógio falso só DEPOIS da montagem do Brick (que precisa de
+    // `setTimeout` real — ver o teste acima).
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => {
+        botaoCopiar()!.click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      await act(async () => {
+        botaoCopiar()!.click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      // 2,5s depois do PRIMEIRO toque, 1s depois do segundo: o timer antigo
+      // já teria disparado e apagado o aviso.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(botaoCopiar()!.textContent).toContain("Copiado!");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100);
+      });
+      expect(botaoCopiar()!.textContent).toContain("Copiar código PIX");
+      expect(clipboardWriteText).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("desmontar com 'Copiado!' na tela não deixa timer pendurado", async () => {
+    await renderComPix();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => {
+        botaoCopiar()!.click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(vi.getTimerCount()).toBe(1);
+      act(() => {
+        raiz.unmount();
+      });
+      expect(vi.getTimerCount()).toBe(0);
+      // O afterEach desmonta de novo — raiz nova para isso não estourar.
+      raiz = createRoot(hospedeiro);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

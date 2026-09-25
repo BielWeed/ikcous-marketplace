@@ -989,8 +989,9 @@ describe("PagamentoOnline - link para o ticket_url", () => {
       paymentId: "pay-1",
       statusPagamento: "aguardando",
       // Prazo RELATIVO ao relógio real: com a data fixa antiga (06/08/2026)
-      // a tela mostrava o Pix como vencido e escondia o link. Este describe é
-      // sobre um Pix VÁLIDO; o vencimento é coberto em
+      // a tela mostraria o aviso de horário previsto já passado (o link
+      // continua — o relógio local nunca esconde nada). Este describe é sobre
+      // um Pix no prazo; o horário passado é coberto em
       // pix-qr-god-senior-20260924.test.tsx.
       expiraEm: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       qrCode: "000201...",

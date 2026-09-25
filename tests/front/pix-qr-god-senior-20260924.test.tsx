@@ -226,8 +226,10 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     expect(texto).toContain(`Pedido #${ORDER_ID.slice(0, 8)}`);
     expect(texto).toContain("Código copia e cola");
     expect(texto).toContain("Abra o app do seu banco");
-    expect(texto).toContain("Vence às");
+    // Prazo dito como ESTIMADO, nunca como fato do servidor.
+    expect(texto).toContain("Pague até");
     expect(texto).toContain("Faltam 30:00");
+    expect(texto).toContain("Contagem estimada pelo relógio deste aparelho.");
     expect(texto).not.toContain(AVISO_HORARIO);
 
     await esperarPagamentoAindaPossivel();
@@ -241,8 +243,11 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain(AVISO_HORARIO);
     expect(texto).toContain("Se você já pagou, continue nesta tela");
-    expect(texto).toContain("Horário previsto: até");
+    expect(texto).toContain("O prazo informado era até");
+    // Uma caixa só: a do prazo sai, o aviso já traz o horário.
+    expect(texto).not.toContain("Pague até");
     expect(texto).not.toContain("Faltam");
+    expect(texto).not.toContain("Contagem estimada");
     esperarSemAfirmarVencimento();
 
     // O botão aponta para o aviso — o leitor de tela sabe do horário, mas o
@@ -346,7 +351,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Não conseguimos ler o prazo deste Pix.");
-    expect(texto).not.toContain("Vence às");
+    expect(texto).not.toContain("Pague até");
     expect(texto).not.toContain(AVISO_HORARIO);
     expect(texto).not.toContain("Invalid Date");
     expect(vi.getTimerCount()).toBe(0);
@@ -359,8 +364,65 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
 
     expect(imagemQr()).toBeNull();
     expect(hospedeiro.textContent).toContain(
-      "A imagem do QR code não veio nesta cobrança. Use o código copia e cola abaixo.",
+      "A imagem do QR code não veio nesta cobrança. Use o código copia e cola acima.",
     );
     expect(botaoCopiar()!.disabled).toBe(false);
+  });
+
+  it("celular: o botão de copiar vem ANTES do QR, com alvo de toque de 48px e texto legível", async () => {
+    // Quem paga no mesmo aparelho não escaneia a própria tela: copiar é o
+    // caminho principal e tem de aparecer primeiro.
+    vi.setSystemTime(new Date("2026-09-24T15:00:00.000Z"));
+    await renderComPix();
+
+    const botao = botaoCopiar()!;
+    const img = imagemQr()!;
+    expect(
+      botao.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(botao.className).toContain("min-h-12");
+    expect(botao.className).toContain("text-sm");
+    expect(hospedeiro.textContent).toContain(
+      "Pagando por outro aparelho? Escaneie o QR code.",
+    );
+
+    // O código visível não usa mais a fonte de 10px.
+    const codigoVisivel = [...hospedeiro.querySelectorAll("p")].find(
+      (p) => p.textContent === QR_CODE_TESTE,
+    );
+    expect(codigoVisivel).toBeTruthy();
+    expect(codigoVisivel!.className).not.toContain("text-[10px]");
+    expect(codigoVisivel!.className).toContain("text-xs");
+
+    await clicarCopiar();
+    expect(botaoCopiar()!.textContent).toContain(
+      "Copiado! Cole no app do seu banco",
+    );
+  });
+
+  it("barra de tempo acompanha a contagem e some quando o horário previsto passa", async () => {
+    vi.setSystemTime(new Date("2026-09-24T15:20:00.000Z"));
+    await renderComPix();
+
+    const preenchimento = () =>
+      hospedeiro.querySelector<HTMLDivElement>('[aria-hidden="true"] > div');
+    // Recém-chegado: prazo inteiro pela frente.
+    expect(preenchimento()?.style.width).toBe("100%");
+
+    avancar(5 * 60 * 1000);
+    expect(preenchimento()?.style.width).toBe("50%");
+    // Faltando 5 minutos: âmbar.
+    expect(preenchimento()?.className).toContain("bg-amber-500");
+
+    avancar(5 * 60 * 1000);
+    expect(preenchimento()).toBeNull();
+    expect(hospedeiro.textContent).toContain(AVISO_HORARIO);
+    await esperarPagamentoAindaPossivel();
+  });
+
+  it("QR que chega já além do horário: sem barra inventada", async () => {
+    vi.setSystemTime(new Date("2026-09-24T16:00:00.000Z"));
+    await renderComPix();
+    expect(hospedeiro.querySelector('[aria-hidden="true"] > div')).toBeNull();
   });
 });

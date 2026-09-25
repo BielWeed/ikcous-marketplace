@@ -445,6 +445,8 @@ export function PagamentoOnline({
   // do pagamento. Nada aqui muda status de pagamento, reserva nem
   // cria cobrança.
   const [agora, setAgora] = useState(() => Date.now());
+  // Quando o QR chegou (relógio local) — só dá a escala da barra de tempo.
+  const [inicioPrazoMs, setInicioPrazoMs] = useState<number | null>(null);
   const expiraEmMs = pix ? Date.parse(pix.expiraEm) : Number.NaN;
   const prazoConhecido = Number.isFinite(expiraEmMs);
   const horarioPrevistoPassou = prazoConhecido && agora >= expiraEmMs;
@@ -472,7 +474,9 @@ export function PagamentoOnline({
       // `agora` nasce na montagem, que pode ter sido minutos antes do QR
       // chegar: sincroniza junto do Pix para o contador não aparecer esticado.
       onPix: (dados) => {
-        setAgora(Date.now());
+        const recebidoEm = Date.now();
+        setAgora(recebidoEm);
+        setInicioPrazoMs(recebidoEm);
         setPix(dados);
       },
     });
@@ -490,6 +494,16 @@ export function PagamentoOnline({
   // porque sem cópia automática o cliente ainda precisa conseguir pagar.
   const [pixCopiado, setPixCopiado] = useState(false);
   const [pixFalhouCopia, setPixFalhouCopia] = useState(false);
+  // Um timer só por vez: dois toques seguidos em "Copiar" deixavam o timer do
+  // PRIMEIRO apagar o "Copiado!" do segundo antes dos 2s, e o timer
+  // sobrevivia à desmontagem da tela.
+  const timerCopiadoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timerCopiadoRef.current) clearTimeout(timerCopiadoRef.current);
+    },
+    [],
+  );
 
   const handleCopiarPix = async (codigo: string) => {
     // Laudo Opus A-1 (08/09/2026): `montarBrick` só recusa o PIX quando
@@ -510,7 +524,11 @@ export function PagamentoOnline({
     }
     setPixFalhouCopia(false);
     setPixCopiado(true);
-    setTimeout(() => setPixCopiado(false), 2000);
+    if (timerCopiadoRef.current) clearTimeout(timerCopiadoRef.current);
+    timerCopiadoRef.current = setTimeout(() => {
+      timerCopiadoRef.current = null;
+      setPixCopiado(false);
+    }, 2000);
   };
 
   const idTitulo = useId();
@@ -523,10 +541,23 @@ export function PagamentoOnline({
     // banco precisa perceber que o tempo está acabando antes de acabar.
     const prazoCurto =
       prazoConhecido && !horarioPrevistoPassou && restanteMs <= 5 * 60 * 1000;
+    // Barra de tempo: fração do prazo que resta desde que o QR chegou. Sem
+    // escala (prazo ilegível, ou QR que já chegou além do horário) não há
+    // barra — melhor nada que uma barra inventada.
+    const totalPrazoMs =
+      prazoConhecido && inicioPrazoMs !== null ? expiraEmMs - inicioPrazoMs : 0;
+    const fracaoRestante =
+      totalPrazoMs > 0
+        ? Math.min(1, Math.max(0, restanteMs / totalPrazoMs))
+        : null;
     const descritoPeloAviso = horarioPrevistoPassou
       ? idAvisoHorario
       : undefined;
 
+    // Ordem pensada para o CELULAR (24/09/2026): quem paga no mesmo aparelho
+    // não consegue escanear a própria tela — o caminho dele é copiar e colar
+    // no app do banco. Por isso valor → prazo → botão de copiar vêm antes do
+    // QR; o QR fica logo abaixo para quem paga lendo com outro aparelho.
     return (
       <section
         aria-labelledby={idTitulo}
@@ -540,7 +571,7 @@ export function PagamentoOnline({
             Pagamento via Pix
           </h2>
           {valorConhecido && (
-            <p className="text-2xl font-black tabular-nums text-zinc-900">
+            <p className="text-3xl font-black tabular-nums text-zinc-900">
               {formatCurrency(valor)}
             </p>
           )}
@@ -550,6 +581,78 @@ export function PagamentoOnline({
             </p>
           )}
         </header>
+
+        {/* Prazo. O texto é ESTIMADO de propósito: a contagem sai do relógio
+            deste aparelho, que pode estar errado — quem decide se o Pix
+            ainda vale é o servidor (ver o comentário do relógio do prazo).
+            Passado o horário previsto, esta caixa sai e fica só o aviso
+            abaixo, que já traz o horário — duas caixas âmbar empilhadas
+            diziam a mesma coisa duas vezes na tela pequena. */}
+        {!horarioPrevistoPassou && (
+          <div
+            className={cn(
+              "space-y-2 rounded-xl border p-3",
+              prazoCurto
+                ? "border-amber-200 bg-amber-50"
+                : "border-zinc-100 bg-zinc-50",
+            )}
+          >
+            <p
+              className={cn(
+                "flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-zinc-700",
+                prazoCurto && "font-semibold text-amber-800",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <Clock aria-hidden="true" className="size-4 shrink-0" />
+                {!prazoConhecido ? (
+                  // Prazo ilegível: não inventar horário nem declarar vencido —
+                  // o botão continua valendo e o banco do cliente mostra a
+                  // validade.
+                  <span>
+                    Não conseguimos ler o prazo deste Pix. Confira a validade no
+                    app do seu banco antes de pagar.
+                  </span>
+                ) : (
+                  <span>
+                    Pague até{" "}
+                    <strong className="tabular-nums">
+                      {formatarHora(expiraEmMs)}
+                    </strong>
+                  </span>
+                )}
+              </span>
+              {prazoConhecido && (
+                // Contador fora de região viva de propósito: anunciar a cada
+                // segundo tornaria a tela inutilizável no leitor de tela.
+                <span className="font-mono text-base font-bold tabular-nums">
+                  Faltam {formatarTempoRestante(restanteMs)}
+                </span>
+              )}
+            </p>
+            {prazoConhecido && (
+              <>
+                {fracaoRestante !== null && (
+                  <div
+                    aria-hidden="true"
+                    className="h-1.5 overflow-hidden rounded-full bg-zinc-200"
+                  >
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-[width] duration-1000 ease-linear",
+                        prazoCurto ? "bg-amber-500" : "bg-emerald-500",
+                      )}
+                      style={{ width: `${fracaoRestante * 100}%` }}
+                    />
+                  </div>
+                )}
+                <p className="text-xs text-zinc-500">
+                  Contagem estimada pelo relógio deste aparelho.
+                </p>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Região viva SEMPRE montada (mesmo motivo do Laudo Opus A-2,
             abaixo): o aviso do horário previsto aparece DENTRO dela, e o
@@ -585,62 +688,46 @@ export function PagamentoOnline({
           )}
         </div>
 
-        {pix.qrCodeBase64 ? (
-          <img
-            src={`data:image/png;base64,${pix.qrCodeBase64}`}
-            alt="QR code do PIX"
-            aria-describedby={descritoPeloAviso}
-            className="mx-auto size-56 max-w-full rounded-xl border border-zinc-100 bg-white p-2"
-          />
-        ) : (
-          // Degrada com honestidade: a edge extrai a imagem e o código em
-          // separado, então pode faltar um dos dois — dizer o que existe em
-          // vez de deixar um buraco na tela.
-          <p className="rounded-xl bg-zinc-50 p-3 text-center text-xs text-zinc-500">
-            A imagem do QR code não veio nesta cobrança.
-            {pix.qrCode
-              ? " Use o código copia e cola abaixo."
-              : pix.ticketUrl
-                ? " Use o link do Mercado Pago abaixo."
-                : ""}
-          </p>
-        )}
-
-        <ol className="list-inside list-decimal space-y-1 text-xs text-zinc-600">
-          <li>Abra o app do seu banco e escolha pagar com Pix.</li>
-          <li>Escaneie o QR code ou use o código copia e cola.</li>
-          <li>Confira o valor e confirme. A confirmação aparece nesta tela.</li>
-        </ol>
-
         {/* Laudo Opus A-1 (08/09/2026): sem `qrCode` não existe código para
             copiar — não oferecer o botão nem o campo de falha. O cliente
-            segue pelo QR acima e pelo link "Pagar pelo Mercado Pago" abaixo,
-            que já são condicionais ao próprio campo existir. */}
+            segue pelo QR abaixo e pelo link "Pagar pelo Mercado Pago", que
+            já são condicionais ao próprio campo existir. */}
         {pix.qrCode && (
-          <>
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                Código copia e cola
-              </p>
-              <p className="line-clamp-2 select-all break-all rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-[10px] text-zinc-700">
-                {pix.qrCode}
-              </p>
-            </div>
+          <div className="space-y-2">
+            {/* Alvo de toque de 48px (min-h-12) e texto de 14px: é a ação
+                principal no celular. */}
             <button
               type="button"
               aria-describedby={descritoPeloAviso}
               onClick={() => handleCopiarPix(pix.qrCode ?? "")}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white"
+              className={cn(
+                "flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white transition-colors",
+                pixCopiado
+                  ? "bg-emerald-700"
+                  : "bg-zinc-900 active:bg-zinc-700",
+              )}
             >
               {pixCopiado ? (
-                <Check aria-hidden="true" className="size-4" />
+                <Check aria-hidden="true" className="size-5" />
               ) : (
-                <Copy aria-hidden="true" className="size-4" />
+                <Copy aria-hidden="true" className="size-5" />
               )}
               <span aria-live="polite">
-                {pixCopiado ? "Copiado!" : "Copiar código PIX"}
+                {pixCopiado
+                  ? "Copiado! Cole no app do seu banco"
+                  : "Copiar código PIX"}
               </span>
             </button>
+            <div className="space-y-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Código copia e cola
+              </p>
+              {/* O clamp mora no <span>: no <p> com padding, a sobra da
+                  3ª linha aparecia cortada ao meio dentro do padding. */}
+              <p className="select-all break-all rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-xs text-zinc-800">
+                <span className="line-clamp-2">{pix.qrCode}</span>
+              </p>
+            </div>
             {/* Laudo Opus A-2 (08/09/2026): container SEMPRE montado (vazio
                 por padrão) com `role="status"`/`aria-live="polite"` — antes
                 o <div> só entrava no DOM quando `pixFalhouCopia` virava true,
@@ -650,7 +737,7 @@ export function PagamentoOnline({
             <div role="status" aria-live="polite" className="space-y-1.5">
               {pixFalhouCopia && (
                 <>
-                  <p className="text-center text-xs text-zinc-500">
+                  <p className="text-center text-sm text-zinc-600">
                     Não consegui copiar sozinho. Toque no código abaixo, segure
                     e copie.
                   </p>
@@ -658,52 +745,59 @@ export function PagamentoOnline({
                     readOnly
                     value={pix.qrCode ?? ""}
                     onFocus={(e) => e.currentTarget.select()}
-                    rows={3}
-                    className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-[10px] text-zinc-900"
+                    rows={4}
+                    className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-sm text-zinc-900"
                   />
                 </>
               )}
             </div>
-          </>
+          </div>
         )}
+
+        {pix.qrCodeBase64 ? (
+          <figure className="space-y-2">
+            {pix.qrCode && (
+              <figcaption className="text-center text-xs text-zinc-500">
+                Pagando por outro aparelho? Escaneie o QR code.
+              </figcaption>
+            )}
+            <img
+              src={`data:image/png;base64,${pix.qrCodeBase64}`}
+              alt="QR code do PIX"
+              aria-describedby={descritoPeloAviso}
+              className="mx-auto size-60 max-w-full rounded-xl border border-zinc-100 bg-white p-2"
+            />
+          </figure>
+        ) : (
+          // Degrada com honestidade: a edge extrai a imagem e o código em
+          // separado, então pode faltar um dos dois — dizer o que existe em
+          // vez de deixar um buraco na tela.
+          <p className="rounded-xl bg-zinc-50 p-3 text-center text-sm text-zinc-600">
+            A imagem do QR code não veio nesta cobrança.
+            {pix.qrCode
+              ? " Use o código copia e cola acima."
+              : pix.ticketUrl
+                ? " Use o link do Mercado Pago abaixo."
+                : ""}
+          </p>
+        )}
+
+        <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600">
+          <li>Abra o app do seu banco e escolha pagar com Pix.</li>
+          <li>Cole o código copia e cola ou escaneie o QR code.</li>
+          <li>Confira o valor e confirme. A confirmação aparece nesta tela.</li>
+        </ol>
+
         {pix.ticketUrl && (
           <a
             href={pix.ticketUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="block text-center text-xs font-medium text-zinc-500 underline"
+            className="flex min-h-11 items-center justify-center text-center text-sm font-medium text-zinc-600 underline"
           >
             Pagar pelo Mercado Pago
           </a>
         )}
-        <p
-          className={cn(
-            "flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs text-zinc-500",
-            (prazoCurto || horarioPrevistoPassou) &&
-              "font-semibold text-amber-700",
-          )}
-        >
-          <Clock aria-hidden="true" className="size-4 shrink-0" />
-          {!prazoConhecido ? (
-            // Prazo ilegível: não inventar horário nem declarar vencido —
-            // o botão continua valendo e o banco do cliente mostra a validade.
-            <span>
-              Não conseguimos ler o prazo deste Pix. Confira a validade no app
-              do seu banco antes de pagar.
-            </span>
-          ) : horarioPrevistoPassou ? (
-            <span>Horário previsto: até {formatarHora(expiraEmMs)}</span>
-          ) : (
-            <>
-              <span>Vence às {formatarHora(expiraEmMs)}</span>
-              {/* Contador fora de região viva de propósito: anunciar a cada
-                  segundo tornaria a tela inutilizável no leitor de tela. */}
-              <span className="font-mono tabular-nums">
-                Faltam {formatarTempoRestante(restanteMs)}
-              </span>
-            </>
-          )}
-        </p>
       </section>
     );
   }
