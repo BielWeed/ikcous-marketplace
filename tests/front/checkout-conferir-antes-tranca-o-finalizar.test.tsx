@@ -287,6 +287,41 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
     expect(createOrder).toHaveBeenCalledTimes(1);
   });
 
+  it("RPC sem resposta: para o spinner, preserva a chave e bloqueia novo clique até conferir o pedido", async () => {
+    createOrder.mockImplementationOnce(() => new Promise(() => {}));
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    const agendar = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(
+      (callback, prazo, ...args) =>
+        agendar(callback, prazo === 30_000 ? 1 : prazo, ...args),
+    );
+    await preencherEClicarFinalizar();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain(
+      "O pedido pode ter sido criado",
+    );
+    expect(
+      document.querySelector('button[data-acao="conferir_antes"]'),
+    ).not.toBeNull();
+    const botao = localizarBotaoFinalizar()!;
+    expect(botao.disabled).toBe(true);
+    botao.click();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(clearCart).not.toHaveBeenCalled();
+    const chaveDoPrimeiroEnvio = createOrder.mock.calls[0][0].idempotencyKey;
+    expect(
+      JSON.parse(sessionStorage.getItem("ikcous-chave-do-pedido")!).chave,
+    ).toBe(chaveDoPrimeiroEnvio);
+  });
+
   it("recusa com SQLSTATE (ex.: falha transitória do Postgres): o painel de tentar_de_novo aparece e o Finalizar Pedido continua HABILITADO", async () => {
     createOrder.mockRejectedValueOnce({
       code: "08006",

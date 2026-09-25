@@ -48,6 +48,7 @@ import {
   pagamentoIncompativelComFrete,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   lerRascunhoDoCheckout,
@@ -191,6 +192,13 @@ const ORDEM_CAMPOS_FOCO = [
  * o teste já está montado.
  */
 export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido => {
+  if ((error as { code?: string } | null)?.code === "PEDIDO_SEM_RESPOSTA") {
+    return {
+      acao: "conferir_antes",
+      mensagem:
+        "O servidor demorou para responder. O pedido pode ter sido criado: confira seus pedidos ou fale com a loja antes de tentar novamente.",
+    };
+  }
   if (ehFalhaDeRedeAntesDoEnvio(error)) {
     // Sem rede o POST não chega ao servidor (ou a resposta não volta), e
     // `classificarRecusaDoPedido` mandaria esse `code` vazio para o caso
@@ -2204,7 +2212,11 @@ export function CheckoutView({
         return;
       }
       if (revisaoDaCotacaoEscolhida) {
-        const revisaoAtual = await buscarRevisaoConfigFrete();
+        const revisaoAtual = await aguardarComPrazo(
+          buscarRevisaoConfigFrete(),
+          12_000,
+          () => new Error("A confirmação do frete demorou demais."),
+        ).catch(() => null);
         if (revisaoAtual !== revisaoDaCotacaoEscolhida) {
           toast.error(
             revisaoAtual
@@ -2324,9 +2336,14 @@ export function CheckoutView({
     );
 
     try {
-      const order = await createOrder(orderData, {
-        comPagamentoOnline: ehOnline,
-      });
+      const order = await aguardarComPrazo(
+        createOrder(orderData, { comPagamentoOnline: ehOnline }),
+        30_000,
+        () =>
+          Object.assign(new Error("O pedido ficou sem resposta do servidor."), {
+            code: "PEDIDO_SEM_RESPOSTA",
+          }),
+      );
       // O pedido entrou. A chave cumpriu seu papel: a PRÓXIMA compra — mesmo
       // com carrinho idêntico — tem de nascer com chave nova, não herdar a
       // resposta desta.
@@ -2419,7 +2436,8 @@ export function CheckoutView({
       const saida = decidirSaidaDoCheckout(error);
       toast.error(
         `Falha no Pedido: ${
-          ehFalhaDeRedeAntesDoEnvio(error)
+          ehFalhaDeRedeAntesDoEnvio(error) ||
+          error?.code === "PEDIDO_SEM_RESPOSTA"
             ? saida.mensagem
             : mensagemAmigavelErroPedido(error)
         }`,
