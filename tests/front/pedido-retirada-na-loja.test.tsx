@@ -230,7 +230,7 @@ describe("telas do pedido — retirada na loja", () => {
     expect(texto).not.toMatch(/dia útil|dias úteis/);
   });
 
-  it("detalhe da cliente, pedido de ENTREGA: 'Endereço de Entrega' e nada de retirada (controle)", async () => {
+  it("detalhe da cliente, pedido de ENTREGA: 'Endereço de entrega' e nada de retirada (controle)", async () => {
     estado.pedido = await mapear({ address: ENDERECO_DA_CLIENTE });
     const { OrderDetailsView } = await import(
       "@/views/customer/OrderDetailsView"
@@ -248,7 +248,11 @@ describe("telas do pedido — retirada na loja", () => {
       await Promise.resolve();
     });
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Endereço de Entrega");
+    // Redesenho, rodada 2 (revisor Opus, 25/09/2026): "Endereço de Entrega"
+    // (Title Case) virou "Endereço de entrega" (frase normal) — mesmo
+    // comportamento provado (pedido de entrega não mostra nada de
+    // retirada), só a caixa do texto mudou.
+    expect(texto).toContain("Endereço de entrega");
     expect(texto).not.toContain("Retire em:");
   });
 });

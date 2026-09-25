@@ -68,10 +68,12 @@ vi.mock("@/hooks/useOrders", () => ({
 }));
 
 // `user` precisa ser a MESMA referência em toda chamada — o efeito
-// `checkIfReviewed` de OrderDetailsView tem `[user, order]` nas deps.
-const usuario = { id: "user-1" };
+// `checkIfReviewed` de OrderDetailsView tem `[user, order]` nas deps. É um
+// `let` (não `const`) para o teste de convidado poder zerar para `null` sem
+// trocar de referência NO MEIO de um render — só entre testes.
+let usuarioAtual: { id: string } | null = { id: "user-1" };
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: usuario }),
+  useAuth: () => ({ user: usuarioAtual }),
 }));
 
 let enableReviews = true;
@@ -110,6 +112,7 @@ describe("OrderDetailsView — cartão de avaliação em destaque", () => {
     fetchUserOrders.mockClear();
     updateOrderStatus.mockClear();
     enableReviews = true;
+    usuarioAtual = { id: "user-1" };
     pedidoAtual = pedidoBase;
     productIdsJaAvaliados = [];
     hospedeiro = document.createElement("div");
@@ -166,6 +169,18 @@ describe("OrderDetailsView — cartão de avaliação em destaque", () => {
     await renderizar();
 
     expect(cartaoDeAvaliacao()).toBeNull();
+  });
+
+  // Rodada 2 (revisor Opus, "anotados"): convidado (sem sessão) com pedido
+  // entregue e enableReviews ligado NÃO pode ver o cartão — avaliar exige
+  // `auth.uid()` (a folha grava em `reviews`, tabela com RLS por usuário).
+  it("convidado (user null), pedido entregue e enableReviews ligado: o cartão não existe", async () => {
+    usuarioAtual = null;
+
+    await renderizar();
+
+    expect(cartaoDeAvaliacao()).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("O que achou da compra?");
   });
 
   it("com user + enableReviews + delivered, o cartão aparece", async () => {

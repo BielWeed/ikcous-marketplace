@@ -56,57 +56,50 @@ const statusConfig: Record<
   {
     label: string;
     icon: LucideIcon;
-    color: string;
-    bg: string;
     description: string;
   }
 > = {
   pending: {
-    label: "Pedido Recebido",
+    label: "Pedido recebido",
     icon: Package,
-    color: "text-blue-500",
-    bg: "bg-blue-500/10",
     description:
       "Aguardando confirmação de pagamento para iniciar a separação.",
   },
   processing: {
-    label: "Em Separação",
+    label: "Em separação",
     icon: Clock,
-    color: "text-amber-500",
-    bg: "bg-amber-500/10",
     description: "Seu pedido está sendo preparado com todo cuidado e atenção.",
   },
   shipping: {
-    label: "Em Trânsito",
+    // Rodada 2 (revisor Opus, 25/09/2026): o rótulo dizia "Em Trânsito"
+    // enquanto a linha do tempo do mesmo cartão (TIMELINE_STEPS, abaixo)
+    // chamava a etapa atual de "A caminho" — dois nomes para o mesmo estado
+    // dentro do MESMO cartão. Unificado para o vocabulário da linha do
+    // tempo, que é quem o cliente lê primeiro.
+    label: "A caminho",
     icon: Truck,
-    color: "text-emerald-500",
-    bg: "bg-emerald-500/10",
     description: "Seu pedido já saiu para entrega e chegará em breve.",
   },
   delivered: {
     label: "Entregue",
     icon: CheckCircle,
-    color: "text-green-500",
-    bg: "bg-green-500/10",
     description:
       "O pedido foi entregue com sucesso. Aproveite sua experiência!",
   },
   cancelled: {
     label: "Cancelado",
     icon: XCircle,
-    color: "text-red-500",
-    bg: "bg-red-500/10",
     description: "Este pedido foi cancelado e não seguirá para entrega.",
   },
-};
+};;
 
 /**
  * Redesenho visual (25/09/2026): o título grande do cabeçalho da ficha é uma
  * frase própria por status — diferente de `statusConfig[status].label`, que
- * continua existindo e aparece dentro do cartão de status (hero), sem mudar
- * uma vírgula. As duas coisas coexistem de propósito: este título fala com
- * quem está lendo ("Chegando até você"); o `label` do hero nomeia o estado
- * técnico ("Em Trânsito").
+ * continua existindo e aparece dentro do cartão de status (hero). As duas
+ * coisas coexistem de propósito: este título fala com quem está lendo
+ * ("Chegando até você"); o `label` do hero nomeia o estado do pedido em
+ * frase normal ("A caminho").
  */
 const heroTitleByStatus: Record<OrderStatus, string> = {
   pending: "Pedido recebido",
@@ -118,10 +111,11 @@ const heroTitleByStatus: Record<OrderStatus, string> = {
 
 /**
  * A linha do tempo de 4 etapas do cartão de status. Mesma guarda de status
- * desconhecido do resto do arquivo: `indexOf` devolve -1 para um valor fora
- * da lista (ex.: 'new', linha 559), e -1 nunca é `>= i` nem `=== i` — nenhuma
- * etapa fica marcada como passada ou atual, mas a lista renderiza sem
- * quebrar.
+ * desconhecido do resto do arquivo (a mesma ideia de
+ * `statusConfig[order.status as OrderStatus] || statusConfig.pending`, mais
+ * abaixo): `indexOf` devolve -1 para um valor fora da lista (ex.: 'new'), e
+ * -1 nunca é `>= i` nem `=== i` — nenhuma etapa fica marcada como passada ou
+ * atual, mas a lista renderiza sem quebrar.
  */
 const TIMELINE_STATUS_ORDER: OrderStatus[] = [
   "pending",
@@ -644,6 +638,24 @@ export function OrderDetailsView({
     order.status as OrderStatus,
   );
 
+  // BLOQUEIA B1 (revisor Opus, rodada 2, 25/09/2026): "Total pago" só é
+  // verdade quando o dinheiro de fato entrou — mesma chave
+  // (`chaveDoPagamento`, calculada acima para `mostrarDevolucao`) que decide
+  // a descrição e o selo — E o pedido não está cancelado. Cancelado nunca
+  // afirma "pago" aqui, mesmo com dinheiro confirmado: quem conta essa
+  // história é `cancelledDescription`/`textoDevolucao`, não o rótulo do
+  // total. Antes desta correção "Total pago" aparecia também para PIX
+  // `aguardando`, `recusado`, `expirado`, `estornado` e pagamento na entrega
+  // ainda não confirmado — uma afirmação falsa sobre dinheiro.
+  const dinheiroConfirmado =
+    chaveDoPagamento === "pago" ||
+    chaveDoPagamento === "pago_apos_expirar" ||
+    chaveDoPagamento === "recebido_na_entrega";
+  const rotuloDoTotal =
+    order.status !== "cancelled" && dinheiroConfirmado
+      ? "Total pago"
+      : "Total";
+
   return (
     <div className="pb-customer min-h-full bg-zinc-50/50">
       {/* Cabeçalho */}
@@ -702,12 +714,20 @@ export function OrderDetailsView({
       <div className="mx-auto max-w-2xl space-y-4 px-6 py-4">
         {/* Cartão de status (hero) */}
         <motion.div
+          data-testid="cartao-status"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className={cn(
             "relative overflow-hidden rounded-3xl p-5 shadow-sm",
             order.status === "delivered"
-              ? "bg-gradient-to-br from-emerald-400 via-emerald-600 to-emerald-700 text-white"
+              ? // BLOQUEIA B2 (revisor Opus, rodada 2, 25/09/2026): o
+                // degradê antigo (emerald-400→600→700) reprovava AA — o
+                // texto sentava sobre o emerald-400 claro, e mesmo o
+                // emerald-600 mede 3,77:1 contra branco (abaixo do mínimo
+                // 4,5:1). emerald-700 já mede 5,48:1; este degradê fica
+                // inteiro em 700-900, nunca mais claro que 700 em ponto
+                // nenhum do cartão.
+                "bg-gradient-to-br from-emerald-700 via-emerald-800 to-emerald-900 text-white"
               : order.status === "cancelled"
                 ? "border border-red-100 bg-white text-zinc-900"
                 : "bg-gradient-to-br from-zinc-700 via-zinc-900 to-zinc-950 text-white",
@@ -737,7 +757,11 @@ export function OrderDetailsView({
                 {currentStatus.label}
               </h2>
               {order.status !== "cancelled" && (
-                <p className="mt-0.5 text-[13px] leading-snug text-white/80">
+                // BLOQUEIA B2: `text-white/80` reprovava AA sobre o
+                // emerald-400/600 antigo do cartão entregue — branco sólido
+                // nunca reprova, em qualquer um dos fundos escuros deste
+                // cartão (dark ou emerald).
+                <p className="mt-0.5 text-[13px] leading-snug text-white">
                   {statusDescription}
                 </p>
               )}
@@ -747,7 +771,21 @@ export function OrderDetailsView({
           {/* Linha do tempo de 4 etapas — some no cancelado, que tem seu
               próprio quadro de aviso logo abaixo. */}
           {order.status !== "cancelled" && (
-            <div className="mt-5 flex items-start justify-between gap-1">
+            <div className="relative mt-5 flex items-start justify-between gap-1">
+              {/* Trilha atrás dos nós (ajuste visual pedido na rodada 2):
+                  `inset-x-3.5` (14px) inset até o CENTRO do
+                  primeiro e do último nó (`size-7` = 28px, metade = 14px) —
+                  o preenchimento é filho desta trilha, então a % do
+                  `style.width` é relativa à própria trilha, nunca à linha
+                  inteira. */}
+              <div className="absolute inset-x-3.5 top-3.5 h-0.5 overflow-hidden rounded-full bg-white/20">
+                <div
+                  className="h-full rounded-full bg-white transition-all duration-700"
+                  style={{
+                    width: `${(Math.max(timelineIndex, 0) / (TIMELINE_STEPS.length - 1)) * 100}%`,
+                  }}
+                />
+              </div>
               {TIMELINE_STEPS.map((step, i) => {
                 const isPast = timelineIndex > i;
                 const isCurrent = timelineIndex === i;
@@ -755,7 +793,13 @@ export function OrderDetailsView({
                 return (
                   <div
                     key={step.status}
-                    className="flex flex-1 flex-col items-center gap-1.5"
+                    // `relative` (mesmo com offset 0): sem isso, a trilha
+                    // `absolute` acima pintaria POR CIMA dos nós — elemento
+                    // posicionado pinta depois de elemento estático na mesma
+                    // pilha, mesmo vindo antes no DOM. Com os dois
+                    // posicionados, a ordem do DOM decide, e a trilha
+                    // (declarada primeiro) fica atrás.
+                    className="relative flex flex-1 flex-col items-center gap-1.5"
                   >
                     <div
                       className={cn(
@@ -789,9 +833,8 @@ export function OrderDetailsView({
             </div>
           )}
 
-          {/* Cancelado: a descrição (pendingDescription/cancelledDescription,
-              sem mudar uma vírgula) vai num quadro de aviso, não sob o
-              título. */}
+          {/* Cancelado: a descrição (cancelledDescription, sem mudar uma
+              vírgula) vai num quadro de aviso, não sob o título. */}
           {order.status === "cancelled" && (
             <div className="mt-4 flex gap-2.5 rounded-2xl bg-red-50 p-3">
               <Clock className="mt-0.5 size-4 flex-shrink-0 text-red-600" />
@@ -816,9 +859,11 @@ export function OrderDetailsView({
                 <span
                   className={cn(
                     "block text-[10px] font-semibold",
+                    // BLOQUEIA B2: mesmo motivo do parágrafo de descrição —
+                    // `text-white/60` reprovava AA sobre o cartão entregue.
                     order.status === "cancelled"
                       ? "text-zinc-500"
-                      : "text-white/60",
+                      : "text-white",
                   )}
                 >
                   Código de rastreio
@@ -842,7 +887,9 @@ export function OrderDetailsView({
                   "flex size-9 flex-shrink-0 items-center justify-center rounded-xl transition-colors active:scale-95",
                   order.status === "cancelled"
                     ? "bg-white text-zinc-500 hover:text-zinc-900"
-                    : "bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",
+                    : // BLOQUEIA B2: ícone em branco sólido — só o fundo
+                      // muda de opacidade no hover, nunca o texto/ícone.
+                      "bg-white/10 text-white hover:bg-white/20",
                 )}
               >
                 {copiedTracking ? (
@@ -918,7 +965,7 @@ export function OrderDetailsView({
                             <button
                               key={nota}
                               type="button"
-                              aria-label={`Dar ${nota} estrelas para ${item.name}`}
+                              aria-label={`Dar ${nota} ${nota === 1 ? "estrela" : "estrelas"} para ${item.name}`}
                               onClick={(e) => {
                                 avaliarTriggerRef.current = e.currentTarget;
                                 setReviewingItem({
@@ -1054,7 +1101,7 @@ export function OrderDetailsView({
             <div className="my-3 border-t border-dashed border-zinc-200" />
             <div className="flex items-baseline justify-between">
               <span className="text-sm font-semibold text-zinc-500">
-                {order.status === "cancelled" ? "Total" : "Total pago"}
+                {rotuloDoTotal}
               </span>
               <span
                 className={cn(
@@ -1086,7 +1133,7 @@ export function OrderDetailsView({
               <p className="text-xs font-semibold text-zinc-500">
                 {order.retiradaNaLoja
                   ? "Retirada na loja"
-                  : "Endereço de Entrega"}
+                  : "Endereço de entrega"}
               </p>
               {order.retiradaNaLoja && (
                 // O endereço REAL da loja no momento da compra, e o aviso
