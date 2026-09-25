@@ -48,6 +48,7 @@ import {
   pagamentoIncompativelComFrete,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   lerRascunhoDoCheckout,
@@ -191,6 +192,13 @@ const ORDEM_CAMPOS_FOCO = [
  * o teste já está montado.
  */
 export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido => {
+  if ((error as { code?: string } | null)?.code === "PEDIDO_SEM_RESPOSTA") {
+    return {
+      acao: "conferir_antes",
+      mensagem:
+        "O servidor demorou para responder. O pedido pode ter sido criado: confira seus pedidos ou fale com a loja antes de tentar novamente.",
+    };
+  }
   if (ehFalhaDeRedeAntesDoEnvio(error)) {
     // Sem rede o POST não chega ao servidor (ou a resposta não volta), e
     // `classificarRecusaDoPedido` mandaria esse `code` vazio para o caso
@@ -776,7 +784,11 @@ export function CheckoutView({
       const digitos = resultado.cpf ?? "";
       setContaTemCpf(digitos.length > 0);
       if (digitos && !form.getValues("cpf")) {
-        form.setValue("cpf", formatarCpf(digitos).formatado);
+        // A leitura da conta pode terminar depois da seleção do frete.
+        // Sem revalidar, o CPF aparece preenchido mas isValid continua falso.
+        form.setValue("cpf", formatarCpf(digitos).formatado, {
+          shouldValidate: true,
+        });
       }
     })();
     return () => {
@@ -1896,6 +1908,19 @@ export function CheckoutView({
     aguardandoConferenciaDaRecusa ||
     convidadoForaDaCidade ||
     pagamentoIncompativel;
+  // Com a identificação recolhida, o botão cinza precisa apontar o campo
+  // pendente na própria barra, sem afrouxar a validação do pedido.
+  const pendenciaDeIdentificacao = !isValid
+    ? faltaNome
+      ? "Informe seu nome para finalizar"
+      : faltaWhatsapp
+        ? "Informe seu WhatsApp para finalizar"
+        : faltaCpf
+          ? "Informe o CPF de quem recebe para finalizar"
+          : !user && !enderecoConvidadoCompleto
+            ? "Complete o endereço de entrega para finalizar"
+            : "Confira seus dados e entrega para finalizar"
+    : null;
 
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
@@ -2187,7 +2212,11 @@ export function CheckoutView({
         return;
       }
       if (revisaoDaCotacaoEscolhida) {
-        const revisaoAtual = await buscarRevisaoConfigFrete();
+        const revisaoAtual = await aguardarComPrazo(
+          buscarRevisaoConfigFrete(),
+          12_000,
+          () => new Error("A confirmação do frete demorou demais."),
+        ).catch(() => null);
         if (revisaoAtual !== revisaoDaCotacaoEscolhida) {
           toast.error(
             revisaoAtual
@@ -2307,9 +2336,14 @@ export function CheckoutView({
     );
 
     try {
-      const order = await createOrder(orderData, {
-        comPagamentoOnline: ehOnline,
-      });
+      const order = await aguardarComPrazo(
+        createOrder(orderData, { comPagamentoOnline: ehOnline }),
+        30_000,
+        () =>
+          Object.assign(new Error("O pedido ficou sem resposta do servidor."), {
+            code: "PEDIDO_SEM_RESPOSTA",
+          }),
+      );
       // O pedido entrou. A chave cumpriu seu papel: a PRÓXIMA compra — mesmo
       // com carrinho idêntico — tem de nascer com chave nova, não herdar a
       // resposta desta.
@@ -2402,7 +2436,8 @@ export function CheckoutView({
       const saida = decidirSaidaDoCheckout(error);
       toast.error(
         `Falha no Pedido: ${
-          ehFalhaDeRedeAntesDoEnvio(error)
+          ehFalhaDeRedeAntesDoEnvio(error) ||
+          error?.code === "PEDIDO_SEM_RESPOSTA"
             ? saida.mensagem
             : mensagemAmigavelErroPedido(error)
         }`,
@@ -4052,7 +4087,19 @@ export function CheckoutView({
                         type="button"
                         onClick={() => {
                           haptic.medium();
-                          handleSubmitEvent();
+                          void handleSubmitEvent().catch((error: unknown) => {
+                            // Protege também as exceções ANTES do try da RPC
+                            // (ex.: Web Crypto ou sessionStorage indisponível).
+                            setIsSubmitting(false);
+                            travaDeEnvioRef.current.liberar();
+                            console.error(
+                              "Falha inesperada no checkout:",
+                              error,
+                            );
+                            const saida = decidirSaidaDoCheckout(error);
+                            setRecusaDoUltimoClique(saida);
+                            toast.error(`Falha no Pedido: ${saida.mensagem}`);
+                          });
                         }}
                         disabled={botaoFinalizarDesabilitado}
                         // Texto visível compacto ("Finalizar", não "Finalizar
@@ -4082,6 +4129,39 @@ export function CheckoutView({
                         )}
                       </button>
                     </div>
+                    {!semFreteSelecionado &&
+                      !isOffline &&
+                      !pagamentoIncompativel &&
+                      !isSubmitting &&
+                      pendenciaDeIdentificacao && (
+                        <button
+                          type="button"
+                          data-testid="checkout-pendencia-identificacao"
+                          onClick={() => {
+                            flushSync(() => setIdentificacaoAbertaManual(true));
+                            const campoPendente = faltaNome
+                              ? "checkout-name"
+                              : faltaWhatsapp
+                                ? "checkout-tel"
+                                : faltaCpf
+                                  ? "checkout-cpf"
+                                  : null;
+                            if (campoPendente)
+                              document.getElementById(campoPendente)?.focus();
+                            else
+                              document
+                                .getElementById("cabecalho-dados-e-entrega")
+                                ?.scrollIntoView?.({
+                                  behavior: "smooth",
+                                  block: "start",
+                                });
+                          }}
+                          className="mx-auto mt-1.5 flex max-w-md items-center gap-1.5 text-left text-[11px] font-bold text-red-600 underline underline-offset-2"
+                        >
+                          <AlertCircle className="size-3.5 shrink-0" />
+                          {pendenciaDeIdentificacao}
+                        </button>
+                      )}
                     {semFreteSelecionado && (
                       // Motivo visível: botão apagado sem explicação faz a
                       // pessoa desistir sem saber por quê. Cenário real: a

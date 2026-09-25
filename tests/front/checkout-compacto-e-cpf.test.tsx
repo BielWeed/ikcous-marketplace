@@ -29,6 +29,7 @@ const {
   invoke,
   espelho,
   createOrder,
+  criarPagamento,
   toastError,
   estadoLoja,
   cpfDaConta,
@@ -44,6 +45,11 @@ const {
     shippingCep: null as string | null,
   },
   createOrder: vi.fn(),
+  // PIX direto (25/09/2026): o checkout finalizado monta <PagamentoOnline>
+  // de verdade, que chama `criarPagamento` no próprio mount (sem Brick) —
+  // sem este mock a suíte quebra com "criarPagamento is not a function"
+  // assim que um teste chega na tela de pagamento.
+  criarPagamento: vi.fn(),
   toastError: vi.fn(),
   estadoLoja: { isLoaded: true },
   cpfDaConta: { ler: vi.fn(), gravar: vi.fn() },
@@ -194,7 +200,11 @@ vi.mock("@/hooks/useOrders", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/hooks/useOrders")>();
   return {
     ...real,
-    useOrders: () => ({ createOrder, updateOrderStatus: vi.fn() }),
+    useOrders: () => ({
+      createOrder,
+      updateOrderStatus: vi.fn(),
+      criarPagamento,
+    }),
   };
 });
 vi.mock("@/hooks/useEconomiaDoFreteExibida", () => ({
@@ -325,6 +335,15 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     invoke.mockReset();
     createOrder.mockReset();
     createOrder.mockResolvedValue({ id: "ped-1" });
+    criarPagamento.mockReset();
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "aguardando",
+      expiraEm: new Date(Date.now() + 30 * 60_000).toISOString(),
+      qrCode: "00020126",
+      qrCodeBase64: "abc123",
+      ticketUrl: "https://mercadopago.com/ticket",
+    });
     toastError.mockReset();
     estadoLoja.isLoaded = true;
     cpfDaConta.ler.mockReset();
@@ -623,13 +642,19 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     expect(
       document.querySelector('[data-testid="checkout-resumo-falta-cpf"]'),
     ).not.toBeNull();
+    const avisoNaBarra = document.querySelector<HTMLButtonElement>(
+      '[data-testid="checkout-pendencia-identificacao"]',
+    );
+    expect(avisoNaBarra?.textContent).toContain("Informe o CPF de quem recebe");
 
-    // Abre para digitar o CPF.
+    // O aviso na barra leva ao campo oculto sem liberar pedido sem CPF.
     await act(async () => {
-      cabecalhoDaSecao().click();
+      avisoNaBarra?.click();
     });
     await drenar();
+    expect(cabecalhoDaSecao().getAttribute("aria-expanded")).toBe("true");
     expect(corpoDaSecao().hidden).toBe(false);
+    expect(document.activeElement?.id).toBe("checkout-cpf");
 
     // CPF com dígito verificador errado: continua bloqueado.
     await act(async () => {
@@ -909,6 +934,34 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
       cpf: "52998224725",
     });
     expect(cpfDaConta.gravar).not.toHaveBeenCalled();
+  });
+
+  it("CPF da conta carregado depois do frete libera Finalizar sem redigitar o campo", async () => {
+    let resolverCpf!: (resultado: { ok: true; cpf: string }) => void;
+    cpfDaConta.ler.mockReturnValue(
+      new Promise((resolve) => {
+        resolverCpf = resolve;
+      }),
+    );
+    cotacoesControladas({ "01001000": [PAC_SP] });
+    await montar();
+    await escolherEndereco("Trabalho");
+    await act(async () => {
+      digitar("checkout-name", "Maria Teste");
+      digitar("checkout-tel", "34999998888");
+      botaoPorTexto("Pagar agora com PIX")?.click();
+    });
+    await drenar();
+    expect(botaoFinalizar().disabled).toBe(true);
+
+    await act(async () => {
+      resolverCpf({ ok: true, cpf: "52998224725" });
+    });
+    await drenar();
+    expect(
+      (document.getElementById("checkout-cpf") as HTMLInputElement).value,
+    ).toBe("529.982.247-25");
+    expect(botaoFinalizar().disabled).toBe(false);
   });
 
   it("leitura da conta FALHA: a caixa não aparece e nada é gravado (não sabe se a conta tem CPF)", async () => {
