@@ -111,10 +111,9 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
     criarPagamento.mockReset().mockResolvedValue({
       paymentId: "pay-1",
       statusPagamento: "aguardando",
-      // Prazo RELATIVO ao relógio real: com a data fixa antiga (06/08/2026)
-      // a tela mostraria o aviso de horário previsto já passado (a cópia
-      // continua liberada — o relógio local nunca bloqueia). Estes testes são
-      // sobre a cópia de um Pix no prazo; o horário passado é coberto em
+      // Prazo relativo para exercitar a cópia durante a estimativa de validade.
+      // O relógio local nunca desabilita QR, código ou link; só o servidor
+      // decide quando o Pix realmente expirou. Esse caso está coberto em
       // pix-qr-god-senior-20260924.test.tsx.
       expiraEm: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       qrCode: QR_CODE_TESTE,

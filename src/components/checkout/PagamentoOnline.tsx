@@ -372,17 +372,6 @@ export function montarBrick({
   };
 }
 
-/** "29:59", ou "1:05:00" quando passa de uma hora. Arredonda PARA CIMA: com
- * meio segundo restante o Pix ainda vale, e "00:00" diria o contrário. */
-function formatarTempoRestante(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const horas = Math.floor(total / 3600);
-  const minutos = Math.floor((total % 3600) / 60);
-  const segundos = total % 60;
-  const mmss = `${String(minutos).padStart(2, "0")}:${String(segundos).padStart(2, "0")}`;
-  return horas > 0 ? `${horas}:${mmss}` : mmss;
-}
-
 function formatarHora(ms: number): string {
   return new Date(ms).toLocaleTimeString("pt-BR", {
     hour: "2-digit",
@@ -419,7 +408,7 @@ export function PagamentoOnline({
   // Padrão de ref para callback em recurso imperativo. `onErro` é tipicamente
   // um closure inline de quem consome o componente (`onErro={(m) =>
   // setErro(m)}`), e MUDA de identidade a cada re-render do pai — um toast,
-  // um evento realtime do useOrders, o contador regressivo do prazo. Se
+  // um evento realtime do useOrders, o aviso estimado de prazo. Se
   // `onErro` estivesse nas deps do efeito abaixo, cada re-render do pai
   // desmontaria o Brick vivo (perdendo o formulário e o que o cliente já
   // digitou) e recriaria do zero, silenciosamente — sem estourar
@@ -445,25 +434,34 @@ export function PagamentoOnline({
   // do pagamento. Nada aqui muda status de pagamento, reserva nem
   // cria cobrança.
   const [agora, setAgora] = useState(() => Date.now());
-  // Quando o QR chegou (relógio local) — só dá a escala da barra de tempo.
-  const [inicioPrazoMs, setInicioPrazoMs] = useState<number | null>(null);
-  const expiraEmMs = pix ? Date.parse(pix.expiraEm) : Number.NaN;
+  // Postgres pode devolver frações com 1 a 6 dígitos, enquanto o formato
+  // interoperável de Date.parse usa milissegundos (3). Completar/truncar a
+  // fração preserva o instante e o fuso sem depender de parsers permissivos.
+  const expiraEmMs = pix
+    ? Date.parse(
+        pix.expiraEm.replace(
+          /\.(\d+)(?=Z$|[+-]\d{2}:\d{2}$)/i,
+          (_, fracao: string) => `.${fracao.padEnd(3, "0").slice(0, 3)}`,
+        ),
+      )
+    : Number.NaN;
   const prazoConhecido = Number.isFinite(expiraEmMs);
   const horarioPrevistoPassou = prazoConhecido && agora >= expiraEmMs;
 
   useEffect(() => {
-    if (!prazoConhecido || horarioPrevistoPassou) return;
+    if (!prazoConhecido) return;
     const atualizar = () => setAgora(Date.now());
-    const id = setInterval(atualizar, 1000);
-    // Aba em segundo plano tem o timer estrangulado pelo navegador — ao voltar
-    // (o caminho comum: pagar no app do banco e retornar), o prazo tem de
-    // estar certo no MESMO instante, não no próximo tick.
+    // Sem contagem regressiva: a resposta não traz a hora do servidor, então
+    // um aparelho atrasado inventaria minutos de validade. A checagem local
+    // serve só para mostrar ou retirar o aviso prudente. Continua ativa
+    // depois do horário para reagir se o próprio relógio for corrigido.
+    const id = setInterval(atualizar, 10_000);
     document.addEventListener("visibilitychange", atualizar);
     return () => {
       clearInterval(id);
       document.removeEventListener("visibilitychange", atualizar);
     };
-  }, [prazoConhecido, horarioPrevistoPassou]);
+  }, [prazoConhecido]);
 
   useEffect(() => {
     return montarBrick({
@@ -472,11 +470,9 @@ export function PagamentoOnline({
       criarPagamento,
       onErro: (msg, categoria) => onErroRef.current(msg, categoria),
       // `agora` nasce na montagem, que pode ter sido minutos antes do QR
-      // chegar: sincroniza junto do Pix para o contador não aparecer esticado.
+      // chegar: sincroniza junto do Pix para o aviso começar correto.
       onPix: (dados) => {
-        const recebidoEm = Date.now();
-        setAgora(recebidoEm);
-        setInicioPrazoMs(recebidoEm);
+        setAgora(Date.now());
         setPix(dados);
       },
     });
@@ -543,20 +539,6 @@ export function PagamentoOnline({
 
   if (pix) {
     const valorConhecido = Number.isFinite(valor) && valor > 0;
-    const restanteMs = prazoConhecido ? expiraEmMs - agora : 0;
-    // Últimos 5 minutos em âmbar: o cliente que ainda está abrindo o app do
-    // banco precisa perceber que o tempo está acabando antes de acabar.
-    const prazoCurto =
-      prazoConhecido && !horarioPrevistoPassou && restanteMs <= 5 * 60 * 1000;
-    // Barra de tempo: fração do prazo que resta desde que o QR chegou. Sem
-    // escala (prazo ilegível, ou QR que já chegou além do horário) não há
-    // barra — melhor nada que uma barra inventada.
-    const totalPrazoMs =
-      prazoConhecido && inicioPrazoMs !== null ? expiraEmMs - inicioPrazoMs : 0;
-    const fracaoRestante =
-      totalPrazoMs > 0
-        ? Math.min(1, Math.max(0, restanteMs / totalPrazoMs))
-        : null;
     const descritoPeloAviso = horarioPrevistoPassou
       ? idAvisoHorario
       : undefined;
@@ -589,77 +571,33 @@ export function PagamentoOnline({
           )}
         </header>
 
-        {/* Prazo. O texto é ESTIMADO de propósito: a contagem sai do relógio
-            deste aparelho, que pode estar errado — quem decide se o Pix
-            ainda vale é o servidor (ver o comentário do relógio do prazo).
+        {/* Prazo. Só o horário INFORMADO, sem contagem regressiva: a
+            resposta não traz a hora do servidor, e um aparelho atrasado
+            inventaria minutos de validade (ver o efeito do relógio acima).
             Passado o horário previsto, esta caixa sai e fica só o aviso
             abaixo, que já traz o horário — duas caixas âmbar empilhadas
             diziam a mesma coisa duas vezes na tela pequena. */}
         {!horarioPrevistoPassou && (
-          <div
-            className={cn(
-              "space-y-2 rounded-xl border p-3",
-              prazoCurto
-                ? "border-amber-200 bg-amber-50"
-                : "border-zinc-100 bg-zinc-50",
-            )}
-          >
-            <p
-              className={cn(
-                "flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-zinc-700",
-                prazoCurto && "font-semibold text-amber-800",
-              )}
-            >
-              <span className="flex items-center gap-2">
-                <Clock aria-hidden="true" className="size-4 shrink-0" />
-                {!prazoConhecido ? (
-                  // Prazo ilegível: não inventar horário nem declarar vencido —
-                  // o botão continua valendo e o banco do cliente mostra a
-                  // validade.
-                  <span>
-                    Não conseguimos ler o prazo deste Pix. Confira a validade no
-                    app do seu banco antes de pagar.
-                  </span>
-                ) : (
-                  <span>
-                    Pague até{" "}
-                    <strong className="tabular-nums">
-                      {formatarHora(expiraEmMs)}
-                    </strong>
-                  </span>
-                )}
+          <p className="flex items-start gap-2 rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm text-zinc-700">
+            <Clock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            {prazoConhecido ? (
+              <span>
+                Prazo informado: até{" "}
+                <strong className="tabular-nums">
+                  {formatarHora(expiraEmMs)}
+                </strong>
+                . Confira a validade no app do seu banco.
               </span>
-              {prazoConhecido && (
-                // Contador fora de região viva de propósito: anunciar a cada
-                // segundo tornaria a tela inutilizável no leitor de tela.
-                <span className="font-mono text-base font-bold tabular-nums">
-                  Faltam {formatarTempoRestante(restanteMs)}
-                </span>
-              )}
-            </p>
-            {prazoConhecido && (
-              <>
-                {fracaoRestante !== null && (
-                  <div
-                    aria-hidden="true"
-                    className="h-1.5 overflow-hidden rounded-full bg-zinc-200"
-                  >
-                    <div
-                      data-testid="barra-prazo-pix"
-                      className={cn(
-                        "h-full rounded-full transition-[width] duration-1000 ease-linear",
-                        prazoCurto ? "bg-amber-500" : "bg-emerald-500",
-                      )}
-                      style={{ width: `${fracaoRestante * 100}%` }}
-                    />
-                  </div>
-                )}
-                <p className="text-xs text-zinc-500">
-                  Contagem estimada pelo relógio deste aparelho.
-                </p>
-              </>
+            ) : (
+              // Prazo ilegível: não inventar horário nem declarar vencido —
+              // o botão continua valendo e o banco do cliente mostra a
+              // validade.
+              <span>
+                Não conseguimos ler o prazo deste Pix. Confira a validade no app
+                do seu banco antes de pagar.
+              </span>
             )}
-          </div>
+          </p>
         )}
 
         {/* Região viva SEMPRE montada (mesmo motivo do Laudo Opus A-2,
@@ -751,6 +689,7 @@ export function PagamentoOnline({
                   </p>
                   <textarea
                     readOnly
+                    aria-label="Código Pix para copiar manualmente"
                     value={pix.qrCode ?? ""}
                     onFocus={(e) => e.currentTarget.select()}
                     rows={4}
@@ -801,6 +740,7 @@ export function PagamentoOnline({
             href={pix.ticketUrl}
             target="_blank"
             rel="noopener noreferrer"
+            aria-describedby={descritoPeloAviso}
             className="flex min-h-11 items-center justify-center text-center text-sm font-medium text-zinc-600 underline"
           >
             Pagar pelo Mercado Pago
