@@ -101,161 +101,146 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
 
   const progressPercent = Math.min((totalCartValue / minShipping) * 100, 100);
 
-  // T3 (23/09): quando local e nacional divergem (`soLocal`), o headline
-  // ganha o qualificador "na cidade" -- essa meta só vale para entrega
-  // local, e sem ele a visitante lia "Frete Grátis" pensando em qualquer
-  // destino (o mesmo bug que a Home tinha antes desta frente).
-  const renderHeadline = () => {
-    if (isGoalReached) {
-      return (
-        <>
-          Oba!{" "}
-          <span className="text-emerald-400 font-extrabold">
-            Frete Grátis {soLocal ? "na Cidade " : ""}Liberado!
-          </span>{" "}
-          🎉
-        </>
-      );
-    }
-    if (totalCartValue > 0) {
-      return (
-        <>
-          Falta pouquinho pro{" "}
-          <span className="text-emerald-400 font-extrabold">
-            Frete Grátis{soLocal ? " na Cidade" : ""}!
-          </span>{" "}
-          ✨
-        </>
-      );
-    }
-    return (
-      <>
-        Frete{" "}
-        <span className="text-emerald-400 font-extrabold italic">
-          Grátis{soLocal ? " na Cidade" : ""}
-        </span>
-      </>
-    );
-  };
+  // AVISO MINIMALISTA (pedido do dono, 24/09/2026, print a 375px): "Falta
+  // pouquinho pro Frete Grátis na ..." e "Adicione mais R$ 0,20 para garantir
+  // o frete ..." cortavam com reticências, e o valor que falta ficava
+  // escondido no fim da frase. Agora a FRASE é o valor: "Faltam R$ 0,20 para
+  // o frete grátis" (cabe a 375px mesmo com R$ 1.999,90 — ~38 caracteres
+  // numa coluna de ~259px), e o contexto do limite vira a barra + "R$ 149,80
+  // de R$ 150,00" na mesma linha. Nenhum texto usa `truncate`: se um dia não
+  // couber, quebra linha em vez de esconder. O qualificador "na cidade"
+  // (T3, 23/09 — só quando local e nacional divergem) mora no rótulo de cima,
+  // que já existia, para a frase principal não crescer. A conta
+  // (`remaining`, `isGoalReached`, `progressPercent`) é a mesma de antes.
+  const qualificador = soLocal ? " na cidade" : "";
 
-  const renderSubtext = () => {
-    if (isGoalReached) {
-      return soLocal
-        ? "Seu carrinho já ganhou entrega local grátis!"
-        : "Seu carrinho já ganhou entrega grátis!";
-    }
-    if (totalCartValue > 0) {
-      return (
-        <>
-          Adicione mais{" "}
-          <span className="font-bold text-white underline decoration-emerald-500">
-            {formatCurrency(remaining)}
-          </span>{" "}
-          para garantir o frete grátis{soLocal ? " na cidade" : ""}!
-        </>
-      );
-    }
-    // Carrinho vazio: o fato verdadeiro da loja — vale para convidado e
-    // logado (a regra de grátis não depende mais de login, frente B).
-    // Frase curta de propósito (relato do dono, 12/09/2026): a versão antiga
-    // ("Ganhe frete grátis em compras acima de R$ X") cortava com reticências
-    // numa tela estreita, sobretudo com meta alta. Esta cabe mesmo com
-    // R$ 1.999,90 e continua dizendo a mesma coisa útil: a partir de quanto
-    // o frete é grátis. `soLocal`: o valor é só da entrega LOCAL (a
-    // transportadora tem outra regra/nenhuma) — dizer isso evita prometer
-    // grátis nacional que a loja não dá.
-    return soLocal
-      ? `A partir de ${formatCurrency(minShipping)} em compras, na entrega local.`
-      : `A partir de ${formatCurrency(minShipping)} em compras.`;
-  };
+  const rotulo = isGoalReached
+    ? soLocal
+      ? "Meta Atingida na Cidade"
+      : "Meta Atingida"
+    : soLocal
+      ? "Entrega Grátis na Cidade"
+      : "Entrega Grátis";
 
-  // FRETE V2: um único render — convidado e logado têm a mesma regra de
-  // grátis agora, e o antigo bloco "Faça login para ganhar frete grátis"
-  // (estado convidado com CTA ENTRAR) era a promessa falsa que a trava
-  // `&& user` sustentava no carrinho.
+  const valorAtual = formatCurrency(totalCartValue);
+  const valorMeta = formatCurrency(minShipping);
+
   return (
-    <div className="group relative h-full overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950 p-3.5 shadow-md transition-all duration-300 hover:border-zinc-700 sm:p-4">
-      {/* Subtle Glow */}
-      <div className="absolute -right-6 -top-6 size-24 rounded-full bg-emerald-500/10 blur-2xl transition-all duration-700 group-hover:bg-emerald-500/20" />
+    <div className="group relative h-full overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950 p-3.5 shadow-md transition-colors duration-300 hover:border-zinc-700 sm:p-4">
+      <div
+        aria-hidden="true"
+        className="absolute -right-6 -top-6 size-24 rounded-full bg-emerald-500/10 blur-2xl"
+      />
 
-      <div className="relative z-10 flex items-center justify-between gap-3">
-        {/* Esquerda: Ícone + Copy */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner transition-transform duration-300 group-hover:scale-105">
-            {isGoalReached ? (
-              <CheckCircle2 className="size-5 text-emerald-400" />
-            ) : (
-              <Truck className="size-5 text-emerald-400" />
-            )}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <div className="mb-0.5 flex items-center gap-1.5 overflow-hidden">
-              {/* Sem cidade configurada — ou com cobertura NACIONAL, em que
-                  o selo leria como "entrega só em <cidade>" e seria falso
-                  (#525) — o rótulo e o ponto separador somem os dois:
-                  "Entrega Grátis" fica sozinho, nunca "• Entrega Grátis"
-                  com o separador órfão. */}
-              {config.storeCity && config.shippingCoverage === "local" && (
-                <>
-                  <span className="whitespace-nowrap text-[9px] font-bold uppercase tracking-wider text-emerald-400">
-                    {config.storeCity}
-                  </span>
-                  <div className="size-1 flex-shrink-0 rounded-full bg-zinc-700" />
-                </>
-              )}
-              <span className="truncate text-[9px] font-semibold text-zinc-400">
-                {isGoalReached
-                  ? soLocal
-                    ? "Meta Atingida na Cidade"
-                    : "Meta Atingida"
-                  : soLocal
-                    ? "Entrega Grátis na Cidade"
-                    : "Entrega Grátis"}
-              </span>
-            </div>
-
-            <h3 className="truncate text-xs font-bold leading-tight text-white sm:text-sm">
-              {renderHeadline()}
-            </h3>
-
-            <p className="truncate text-[10px] font-medium text-zinc-400">
-              {renderSubtext()}
-            </p>
-          </div>
+      <div className="relative z-10 flex items-center gap-3">
+        <div
+          aria-hidden="true"
+          className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner"
+        >
+          {isGoalReached ? (
+            <CheckCircle2 className="size-5 text-emerald-400" />
+          ) : (
+            <Truck className="size-5 text-emerald-400" />
+          )}
         </div>
 
-        {/* Direita: Badge do Valor / Progresso */}
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+        <div className="min-w-0 flex-1">
+          <div className="mb-0.5 flex flex-wrap items-center gap-x-1.5">
+            {/* Sem cidade configurada — ou com cobertura NACIONAL, em que
+                o selo leria como "entrega só em <cidade>" e seria falso
+                (#525) — o rótulo e o ponto separador somem os dois:
+                "Entrega Grátis" fica sozinho, nunca "• Entrega Grátis"
+                com o separador órfão. */}
+            {config.storeCity && config.shippingCoverage === "local" && (
+              <>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                  {config.storeCity}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="size-1 shrink-0 rounded-full bg-zinc-700"
+                />
+              </>
+            )}
+            <span className="text-[10px] font-semibold text-zinc-400">
+              {rotulo}
+            </span>
+          </div>
+
           {isGoalReached ? (
-            <div className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-3 py-1 shadow-2xs">
-              <Sparkles className="size-3 text-emerald-400 animate-pulse" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400">
-                Liberado
-              </span>
-            </div>
+            <>
+              <h3 className="text-[13px] font-bold leading-tight text-white sm:text-sm">
+                <span className="font-extrabold text-emerald-400">
+                  Frete Grátis {soLocal ? "na Cidade " : ""}Liberado!
+                </span>
+              </h3>
+              <p className="text-[11px] font-medium leading-snug text-zinc-400">
+                {soLocal
+                  ? "Seu carrinho já ganhou entrega local grátis!"
+                  : "Seu carrinho já ganhou entrega grátis!"}
+              </p>
+            </>
+          ) : totalCartValue > 0 ? (
+            <>
+              <h3 className="text-[13px] font-bold leading-tight text-white sm:text-sm">
+                Faltam{" "}
+                <span className="whitespace-nowrap font-extrabold tabular-nums text-emerald-400">
+                  {formatCurrency(remaining)}
+                </span>{" "}
+                para o frete grátis
+              </h3>
+              <div className="mt-1.5 flex items-center gap-2">
+                <div
+                  role="progressbar"
+                  aria-label={`Progresso para o frete grátis${qualificador}`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(progressPercent)}
+                  aria-valuetext={`${valorAtual} de ${valorMeta}`}
+                  className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-zinc-800"
+                >
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-[width] duration-700 motion-reduce:transition-none"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <p className="shrink-0 whitespace-nowrap text-[11px] font-medium tabular-nums text-zinc-400">
+                  <span className="text-zinc-200">{valorAtual}</span> de{" "}
+                  {valorMeta}
+                </p>
+              </div>
+            </>
           ) : (
-            <div className="flex flex-col items-end">
-              <span className="text-[11px] font-bold leading-tight text-white sm:text-xs">
-                {formatCurrency(totalCartValue)}
-              </span>
-              <span className="text-[8px] font-semibold uppercase tracking-wider text-emerald-400">
-                {totalCartValue > 0
-                  ? `de ${formatCurrency(minShipping)}`
-                  : "no carrinho"}
-              </span>
-            </div>
+            <>
+              <h3 className="text-[13px] font-bold leading-tight text-white sm:text-sm">
+                Frete{" "}
+                <span className="font-extrabold italic text-emerald-400">
+                  Grátis{soLocal ? " na Cidade" : ""}
+                </span>
+              </h3>
+              {/* Carrinho vazio: o fato verdadeiro da loja — vale para
+                  convidado e logado (a regra de grátis não depende mais de
+                  login, frente B). Frase curta de propósito (relato do dono,
+                  12/09/2026): cabe mesmo com R$ 1.999,90. `soLocal`: o valor
+                  é só da entrega LOCAL — dizer isso evita prometer grátis
+                  nacional que a loja não dá. */}
+              <p className="text-[11px] font-medium leading-snug text-zinc-400">
+                {soLocal
+                  ? `A partir de ${valorMeta} em compras, na entrega local.`
+                  : `A partir de ${valorMeta} em compras.`}
+              </p>
+            </>
           )}
         </div>
       </div>
 
-      {/* Slim Progress Bar no Rodapé */}
-      <div className="absolute inset-x-0 bottom-0 h-1 bg-zinc-900">
+      {/* Meta atingida: a barra cheia no rodapé fecha o card, como antes. */}
+      {isGoalReached && (
         <div
-          className="h-full bg-emerald-500 transition-all duration-700"
-          style={{ width: `${progressPercent}%` }}
+          aria-hidden="true"
+          className="absolute inset-x-0 bottom-0 h-1 bg-emerald-500"
         />
-      </div>
+      )}
     </div>
   );
 }

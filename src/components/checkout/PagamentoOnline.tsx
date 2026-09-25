@@ -2,6 +2,8 @@ import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useOrders } from "@/hooks/useOrders";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { useEffect, useRef, useState } from "react";
+import { IconePix } from "@/components/checkout/IconesDePagamento";
+import { Check, Copy, Loader2, ShieldCheck } from "lucide-react";
 
 const SDK_URL = "https://sdk.mercadopago.com/js/v2";
 
@@ -379,74 +381,77 @@ export function PagamentoOnline({
   valor: number;
   onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
 }) {
-  // Achado 4 da revisão do CHECKOUT-090 (16/08/2026): `isAdmin=false`, não
-  // `true` — este componente é do CLIENTE. Era inofensivo porque
-  // `enabled=false` desliga o efeito inteiro antes de `isAdmin` importar
-  // (useOrders.ts), mas era a mesma forma do bug que a tarefa corrigiu em
-  // CheckoutView. `enabled=false` continua CORRETO aqui: este componente só
-  // usa `criarPagamento` e não precisa de realtime — quem detecta a
-  // confirmação de pagamento é o CheckoutView, não ele.
   const { criarPagamento } = useOrders(false, false);
-  // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
-  // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
   const [pix, setPix] = useState<{
     qrCodeBase64?: string;
     qrCode?: string;
     expiraEm: string;
     ticketUrl?: string;
   } | null>(null);
-
-  // Padrão de ref para callback em recurso imperativo. `onErro` é tipicamente
-  // um closure inline de quem consome o componente (`onErro={(m) =>
-  // setErro(m)}`), e MUDA de identidade a cada re-render do pai — um toast,
-  // um evento realtime do useOrders, o contador regressivo do prazo. Se
-  // `onErro` estivesse nas deps do efeito abaixo, cada re-render do pai
-  // desmontaria o Brick vivo (perdendo o formulário e o que o cliente já
-  // digitou) e recriaria do zero, silenciosamente — sem estourar
-  // ALREADY_INITIALIZED, porque o unmount roda antes do create seguinte.
-  //
-  // A atualização do `.current` vai num `useEffect` sem deps (roda depois de
-  // TODO render), não direto no corpo do componente: mutar ref durante o
-  // render é erro do `eslint-plugin-react-hooks` ("Cannot access refs during
-  // render") — o valor só precisa estar atualizado antes da PRÓXIMA vez que
-  // um callback assíncrono do Brick o ler, nunca durante a renderização.
+  const [confirmando, setConfirmando] = useState(false);
+  const [pixCopiado, setPixCopiado] = useState(false);
+  const [pixFalhouCopia, setPixFalhouCopia] = useState(false);
   const onErroRef = useRef(onErro);
+  const emVoo = useRef<ReturnType<typeof criarPagamento> | null>(null);
   useEffect(() => {
     onErroRef.current = onErro;
   });
 
+  // O pedido já existe. Consultar/criar o Pix por seu ID evita o formulário
+  // redundante do Brick; no servidor, a reconsulta devolve a MESMA cobrança.
+  // O ref também compartilha a chamada entre os dois efeitos do StrictMode.
   useEffect(() => {
-    return montarBrick({
-      orderId,
-      valor,
-      criarPagamento,
-      onErro: (msg, categoria) => onErroRef.current(msg, categoria),
-      onPix: setPix,
-    });
-    // `onErro` de propósito fora das deps — ver o comentário do onErroRef
-    // acima. O Brick fica vivo enquanto `orderId`/`valor` (primitivos) e
-    // `criarPagamento` (useCallback(..., []) em useOrders.ts) não mudarem.
-  }, [orderId, valor, criarPagamento]);
-
-  // Brief "o app não mente quando copia" (08/09/2026): o botão chamava
-  // `navigator.clipboard.writeText(...)` sem await, sem catch e sem NENHUM
-  // aviso — nem quando dava certo. Agora `copiarParaClipboard` (mesma peça do
-  // painel) diz o que aconteceu de verdade: sucesso muda o próprio texto do
-  // botão por ~2s (o botão está no centro da atenção nesta tela — um toast
-  // sumiria sem ninguém notar); falha mostra o código num campo selecionável,
-  // porque sem cópia automática o cliente ainda precisa conseguir pagar.
-  const [pixCopiado, setPixCopiado] = useState(false);
-  const [pixFalhouCopia, setPixFalhouCopia] = useState(false);
+    let ativo = true;
+    const promessa =
+      emVoo.current ?? criarPagamento({ orderId, metodo: "pix" });
+    emVoo.current = promessa;
+    void (async () => {
+      try {
+        const resposta = await promessa;
+        if (!ativo) return;
+        if (resposta.statusPagamento === "pago") {
+          setConfirmando(true);
+          return;
+        }
+        const terminais = new Map([
+          ["recusado", "Este Pix foi recusado. Consulte o pedido para continuar."],
+          ["expirado", "O prazo deste Pix terminou. Consulte o pedido antes de tentar outra compra."],
+          ["estornado", "Este pagamento foi estornado. Fale com a loja."],
+        ]);
+        const mensagemTerminal = terminais.get(resposta.statusPagamento);
+        if (mensagemTerminal) throw new ErroPagamentoTerminal(mensagemTerminal);
+        if (resposta.statusPagamento !== "aguardando") {
+          throw new ErroPagamentoTerminal("Não foi possível confirmar o estado deste Pix. Consulte o pedido.");
+        }
+        if (!resposta.qrCode && !resposta.qrCodeBase64) {
+          throw new Error("O QR Code ainda não está disponível. Tente novamente para consultar o mesmo pedido.");
+        }
+        setPix({
+          qrCodeBase64: resposta.qrCodeBase64,
+          qrCode: resposta.qrCode,
+          expiraEm: resposta.expiraEm,
+          ticketUrl: resposta.ticketUrl,
+        });
+      } catch (erro) {
+        if (ativo) {
+          const e = erro as Error & { terminal?: boolean };
+          onErroRef.current(
+            e.message || "Não foi possível consultar o Pix deste pedido.",
+            e instanceof ErroPagamentoTerminal || e.terminal === true
+              ? "terminal"
+              : "recuperavel",
+          );
+        }
+      } finally {
+        if (emVoo.current === promessa) emVoo.current = null;
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [orderId, criarPagamento]);
 
   const handleCopiarPix = async (codigo: string) => {
-    // Laudo Opus A-1 (08/09/2026): `montarBrick` só recusa o PIX quando
-    // faltam OS DOIS campos (linha ~234) — a edge extrai `qr_code` e
-    // `qr_code_base64` em separado, então o estado `{qrCodeBase64,
-    // qrCode: undefined}` é alcançável. Sem esta guarda,
-    // `copiarParaClipboard("")` resolveria `true` e o botão diria "Copiado!"
-    // sem ter copiado nada. O botão já não renderiza quando `!pix.qrCode`
-    // (abaixo); esta é a segunda trava, para uma refatoração futura que volte
-    // a renderizar o botão sem QR não reabrir o mesmo defeito.
     const ok = codigo !== "" && (await copiarParaClipboard(codigo));
     if (!ok) {
       setPixFalhouCopia(true);
@@ -457,76 +462,85 @@ export function PagamentoOnline({
     setTimeout(() => setPixCopiado(false), 2000);
   };
 
-  if (pix) {
+  if (!pix) {
     return (
-      <div className="space-y-4 rounded-2xl border border-zinc-100 bg-white p-4">
-        {pix.qrCodeBase64 && (
-          <img
-            src={`data:image/png;base64,${pix.qrCodeBase64}`}
-            alt="QR code do PIX"
-            className="mx-auto size-56"
-          />
-        )}
-        {/* Laudo Opus A-1 (08/09/2026): sem `qrCode` não existe código para
-            copiar — não oferecer o botão nem o campo de falha. O cliente
-            segue pelo QR acima e pelo link "Pagar pelo Mercado Pago" abaixo,
-            que já são condicionais ao próprio campo existir. */}
-        {pix.qrCode && (
-          <>
-            <button
-              type="button"
-              onClick={() => handleCopiarPix(pix.qrCode ?? "")}
-              className="w-full rounded-xl bg-zinc-900 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white"
-            >
-              <span aria-live="polite">
-                {pixCopiado ? "Copiado!" : "Copiar código PIX"}
-              </span>
-            </button>
-            {/* Laudo Opus A-2 (08/09/2026): container SEMPRE montado (vazio
-                por padrão) com `role="status"`/`aria-live="polite"` — antes
-                o <div> só entrava no DOM quando `pixFalhouCopia` virava true,
-                e o leitor de tela precisa que a região JÁ EXISTA para
-                anunciar o texto que aparece nela; inseri-la depois do fato
-                silenciava exatamente o caso que precisa de aviso. */}
-            <div role="status" aria-live="polite" className="space-y-1.5">
-              {pixFalhouCopia && (
-                <>
-                  <p className="text-center text-xs text-zinc-500">
-                    Não consegui copiar sozinho. Toque no código abaixo, segure
-                    e copie.
-                  </p>
-                  <textarea
-                    readOnly
-                    value={pix.qrCode ?? ""}
-                    onFocus={(e) => e.currentTarget.select()}
-                    rows={3}
-                    className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-[10px] text-zinc-900"
-                  />
-                </>
-              )}
-            </div>
-          </>
-        )}
-        {pix.ticketUrl && (
-          <a
-            href={pix.ticketUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-center text-xs font-medium text-zinc-500 underline"
-          >
-            Pagar pelo Mercado Pago
-          </a>
-        )}
-        <p className="text-center text-xs text-zinc-500">
-          Vence às{" "}
-          {new Date(pix.expiraEm).toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </p>
+      <div role="status" className="flex items-center gap-3 rounded-2xl border border-zinc-100 bg-white p-5 text-sm text-zinc-600">
+        <Loader2 className="size-5 animate-spin text-[#32BCAD]" aria-hidden="true" />
+        {confirmando ? "Pagamento recebido. Confirmando o pedido…" : "Consultando o Pix deste pedido…"}
       </div>
     );
   }
 
-  return <div id="mp-container" />;
+  return (
+    <section aria-label="Pagar com Pix" className="overflow-hidden rounded-[24px] border border-zinc-100 bg-white shadow-[0_14px_40px_-28px_rgba(0,0,0,.3)]">
+      <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-xl bg-[#E6F8F5] text-[#238F85]">
+            <IconePix className="size-6" />
+          </span>
+          <div>
+            <h2 className="text-sm font-bold text-zinc-900">Pagar com Pix</h2>
+            <p className="text-[11px] text-zinc-500">Pedido #{orderId.slice(0, 8).toUpperCase()}</p>
+          </div>
+        </div>
+        <strong className="text-base font-bold tabular-nums text-zinc-900">
+          {valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+        </strong>
+      </div>
+      <div className="space-y-4 px-5 py-5">
+        <p className="text-center text-[13px] leading-relaxed text-zinc-600">
+          Abra o app do seu banco e escaneie o QR Code. Também pode copiar o código abaixo.
+        </p>
+        {pix.qrCodeBase64 && (
+          <div className="mx-auto w-fit rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+            <img
+              src={`data:image/png;base64,${pix.qrCodeBase64}`}
+              alt="QR Code Pix deste pedido"
+              className="size-52 max-w-full object-contain"
+            />
+          </div>
+        )}
+        {pix.qrCode && (
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[.12em] text-zinc-500">Pix copia e cola</p>
+            <p className="max-h-16 overflow-hidden break-all rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-600">
+              {pix.qrCode}
+            </p>
+            <button
+              type="button"
+              onClick={() => handleCopiarPix(pix.qrCode ?? "")}
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2.5 text-[13px] font-semibold text-white active:scale-[.99]"
+            >
+              {pixCopiado ? <Check className="size-4" /> : <Copy className="size-4" />}
+              <span aria-live="polite">{pixCopiado ? "Código copiado" : "Copiar código Pix"}</span>
+            </button>
+            <div role="status" aria-live="polite">
+              {pixFalhouCopia && (
+                <div className="space-y-2">
+                  <p className="text-xs text-zinc-600">A cópia automática falhou. Selecione e copie o código:</p>
+                  <textarea readOnly value={pix.qrCode} onFocus={(e) => e.currentTarget.select()} rows={3}
+                    className="w-full resize-none rounded-xl border border-zinc-200 p-2 font-mono text-[11px]" />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {pix.ticketUrl && (
+          <a href={pix.ticketUrl} target="_blank" rel="noopener noreferrer"
+            className="block text-center text-xs font-semibold text-[#238F85] underline underline-offset-2">
+            Abrir no Mercado Pago
+          </a>
+        )}
+      </div>
+      <div className="flex items-start gap-2 border-t border-zinc-100 bg-zinc-50/70 px-5 py-3.5 text-[11px] leading-relaxed text-zinc-600">
+        <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[#238F85]" aria-hidden="true" />
+        <p>
+          O pagamento será confirmado automaticamente.
+          {pix.expiraEm && !Number.isNaN(Date.parse(pix.expiraEm)) && (
+            <> Este código vale até <time dateTime={pix.expiraEm}>{new Date(pix.expiraEm).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}</time>.</>
+          )}
+        </p>
+      </div>
+    </section>
+  );
 }

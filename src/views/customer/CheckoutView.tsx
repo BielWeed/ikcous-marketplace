@@ -3,6 +3,7 @@ import {
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
 import { Button } from "@/components/ui/button";
+import { IconeCartao, IconeDinheiro, IconePix } from "@/components/checkout/IconesDePagamento";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { CouponInput } from "@/components/ui/custom/CouponInput";
@@ -80,23 +81,20 @@ import { AnimatePresence, motion, usePresence } from "framer-motion";
 import {
   AlertCircle,
   ArrowLeft,
-  Banknote,
   Check,
   ChevronDown,
   CreditCard,
   FileText,
   Loader2,
   Lock,
-  type LucideIcon,
   MapPin,
   Phone,
   Plus,
-  Smartphone,
   Sparkles,
   Tag,
   User,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -482,6 +480,7 @@ interface CheckoutViewProps {
   readonly onClearCart?: () => void;
   readonly onNavigate: (view: View, productId?: string) => void;
   readonly onSetBackOverride: (override: (() => void) | null) => void;
+  readonly resumeOrderId?: string;
 }
 
 export function CheckoutView({
@@ -492,6 +491,7 @@ export function CheckoutView({
   onClearCart: propOnClearCart,
   onNavigate,
   onSetBackOverride,
+  resumeOrderId,
 }: CheckoutViewProps) {
   const { config, isLoaded: storeConfigLoaded } = useStore();
   const [isPresent] = usePresence();
@@ -930,7 +930,9 @@ export function CheckoutView({
     },
   );
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() =>
+    pagamentoOnlineLigado() ? "online" : "pix",
+  );
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   // A recusa que o banco deu no último clique, quando deu. `null` é o estado
@@ -955,6 +957,7 @@ export function CheckoutView({
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
   // function, dentro do PagamentoOnline (ver comentário lá).
   const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
+  const [restaurandoPagamento, setRestaurandoPagamento] = useState(false);
   // CHECKOUT-090: estado de três valores, não dois booleanos independentes
   // — dois booleanos podem divergir (os dois `true` ao mesmo tempo, ou os
   // dois `false` quando um dos dois status chegou), e essa divergência é
@@ -1015,6 +1018,70 @@ export function CheckoutView({
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
   const itensDoPedidoParaRestaurarRef = useRef<CartItem[]>([]);
+  // O identificador local só aponta para o pedido; status, total e titular
+  // são sempre relidos do banco antes de exibir ou cobrar qualquer Pix.
+  useEffect(() => {
+    if (authLoading || !user || aguardandoPagamento) return;
+    const chave = `pix-pendente:${user.id}`;
+    let salvo: string | null = null;
+    if (!resumeOrderId && cart.length === 0) {
+      try {
+        salvo = sessionStorage.getItem(chave);
+      } catch {
+        // O botão no perfil continua permitindo a retomada sem storage.
+      }
+    }
+    const candidato = resumeOrderId || salvo;
+    if (!candidato) return;
+    let ativo = true;
+    setRestaurandoPagamento(true);
+    void (async () => {
+      const { data, error } = await supabase
+        .from("marketplace_orders")
+        .select("id,user_id,total,status,payment_status,payment_method")
+        .eq("id", candidato)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!ativo) return;
+      if (error) {
+        toast.error("Não foi possível conferir o pedido. Tente abrir seus pedidos novamente.");
+        return;
+      }
+      if (!data || data.payment_method !== "online") {
+        try { sessionStorage.removeItem(chave); } catch { /* armazenamento indisponível */ }
+        if (resumeOrderId) onNavigate("profile");
+        return;
+      }
+      const valor = Number(data.total);
+      if (!Number.isFinite(valor) || valor <= 0) return;
+      if (data.payment_status === "pago" || data.payment_status === "pago_apos_expirar") {
+        setStatusPagamentoPix(data.payment_status === "pago" ? "confirmado" : "fora-do-prazo");
+      } else if (data.payment_status === "aguardando" && data.status === "pending") {
+        setStatusPagamentoPix(null);
+      } else {
+        try { sessionStorage.removeItem(chave); } catch { /* armazenamento indisponível */ }
+        toast.info("Este pedido já não aceita o Pix anterior. Confira os detalhes do pedido.");
+        onNavigate("order-details", data.id);
+        return;
+      }
+      setOrderId(data.id);
+      setValorDoPedido(valor);
+      setAguardandoPagamento(true);
+    })().catch(() => {
+      if (ativo) toast.error("Não foi possível conferir o pedido agora. Tente novamente em seus pedidos.");
+    }).finally(() => {
+      if (ativo) setRestaurandoPagamento(false);
+    });
+    return () => { ativo = false; };
+  }, [authLoading, user?.id, resumeOrderId, cart.length, aguardandoPagamento, onNavigate]);
+
+  useEffect(() => {
+    if (!user?.id || !statusPagamentoPix) return;
+    try { sessionStorage.removeItem(`pix-pendente:${user.id}`); } catch {
+      // O banco continua sendo a fonte de verdade.
+    }
+  }, [user?.id, statusPagamentoPix]);
+
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
@@ -2351,6 +2418,11 @@ export function CheckoutView({
       setIsSummaryPanelOpen(false);
 
       if (ehOnline) {
+        if (user) {
+          try { sessionStorage.setItem(`pix-pendente:${user.id}`, order.id); } catch {
+            // O pedido continua acessível pelo perfil mesmo sem sessionStorage.
+          }
+        }
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
         // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
         // sucesso aqui é a mentira que a tela de hoje conta.
@@ -2490,6 +2562,11 @@ export function CheckoutView({
         return;
       }
 
+      if (user) {
+        try { sessionStorage.removeItem(`pix-pendente:${user.id}`); } catch {
+          // O pedido foi cancelado no banco, mesmo sem storage.
+        }
+      }
       for (const item of itensDoPedidoParaRestaurarRef.current) {
         addToCart(
           item.product,
@@ -2504,6 +2581,10 @@ export function CheckoutView({
       setIsCancelandoPedido(false);
     }
   };
+
+  if (restaurandoPagamento) {
+    return <div role="status" className="flex min-h-[45vh] items-center justify-center gap-3 text-sm text-zinc-600"><Loader2 className="size-5 animate-spin" /> Conferindo seu pedido…</div>;
+  }
 
   if (aguardandoPagamento && orderId) {
     // CHECKOUT-090: pagamento confirmado — troca o QR (e o aviso de reserva
@@ -2664,7 +2745,7 @@ export function CheckoutView({
   interface OpcaoDePagamento {
     value: PaymentMethod;
     label: string;
-    icon: LucideIcon;
+    icon: ComponentType<{ className?: string }>;
     color: string;
     requerConta: boolean;
   }
@@ -2680,9 +2761,9 @@ export function CheckoutView({
           // cartão)" e sobreviveu à Fase 3: prometia ao cliente o que o
           // código nega. Ao religar cartão na Fase 3.5, este rótulo volta
           // junto.
-          label: "Pagar agora com PIX",
-          icon: CreditCard,
-          color: "text-violet-500 bg-violet-50",
+          label: "Pix",
+          icon: IconePix,
+          color: "text-[#238F85] bg-[#E6F8F5]",
           // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) —
           // só esta opção carrega a exigência; as outras (entrega)
           // continuam abertas a convidado.
@@ -2694,27 +2775,26 @@ export function CheckoutView({
   // Retirada na loja: o pagamento acontece NA RETIRADA — só o TEXTO muda;
   // `value` (pix/card/cash) e as regras de cobrança são os mesmos da entrega
   // local (a RPC não distingue as duas modalidades no meio de pagamento).
-  const quandoPaga = ehRetirada ? "na Retirada" : "na Entrega";
   const opcoesNaEntrega: OpcaoDePagamento[] = [
     {
       value: "pix",
-      label: `Pix ${quandoPaga}`,
-      icon: Smartphone,
-      color: "text-emerald-500 bg-emerald-50",
+      label: "Pix",
+      icon: IconePix,
+      color: "text-[#238F85] bg-[#E6F8F5]",
       requerConta: false,
     },
     {
       value: "card",
-      label: `Cartão ${quandoPaga}`,
-      icon: CreditCard,
-      color: "text-blue-500 bg-blue-50",
+      label: "Cartão",
+      icon: IconeCartao,
+      color: "bg-slate-100",
       requerConta: false,
     },
     {
       value: "cash",
-      label: `Dinheiro ${quandoPaga}`,
-      icon: Banknote,
-      color: "text-amber-500 bg-amber-50",
+      label: "Dinheiro",
+      icon: IconeDinheiro,
+      color: "bg-emerald-50",
       requerConta: false,
     },
   ];
@@ -2755,7 +2835,7 @@ export function CheckoutView({
         // justamente o único item da lista que precisa ser LIDO, porque
         // explica o que fazer. Quem diz "indisponível" aqui é o fundo
         // cinza, o cadeado e a cor do rótulo, não a transparência.
-        className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
+        className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-2.5 shadow-sm transition-all duration-200 active:scale-[0.99] ${
           bloqueadaPorFaltaDeConta
             ? "border-zinc-100 bg-zinc-50/60"
             : isSelected
@@ -2764,9 +2844,9 @@ export function CheckoutView({
         }`}
       >
         <div
-          className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${option.color} transition-all duration-200 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
         >
-          <Icon className="size-5" />
+          <Icon className="size-6" />
         </div>
         <div className="flex min-w-0 flex-col items-start gap-1.5 text-left">
           {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de pagamento
@@ -3573,59 +3653,65 @@ export function CheckoutView({
               Meio de Pagamento
             </span>
           </div>
-          {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
-              são uma escolha ÚNICA, mas nada anunciava qual estava marcada —
-              o "check" era só um desenho. `radiogroup` + `radio` com
-              `aria-checked` dá o estado ao leitor de tela.
-              Pedido do dono (12/09/2026): os quatro meios viviam numa lista
-              só, misturando "pagar agora" com "pagar na entrega" — dois
-              subgrupos rotulados dentro do MESMO `radiogroup` (a escolha
-              continua sendo uma só; só o agrupamento visual é novo). */}
-          <div
-            role="radiogroup"
-            aria-label="Meio de pagamento"
-            className="space-y-4 p-4"
-          >
-            {opcoesNoApp.length > 0 && (
-              <div className="space-y-2.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+          <div className="space-y-3 p-3">
+            <div role="group" aria-label="Onde pagar" className={cn(
+              "grid gap-1 rounded-xl bg-zinc-100 p-1",
+              opcoesNoApp.length > 0 && (!selectedShippingOption || ehEntregaLocal)
+                ? "grid-cols-2"
+                : "grid-cols-1",
+            )}>
+              {opcoesNoApp.length > 0 && (
+                <button
+                  type="button"
+                  aria-pressed={paymentMethod === "online" && !!user}
+                  aria-controls="opcoes-pagamento-checkout"
+                  onClick={() => {
+                    if (!user) {
+                      onNavigate("auth");
+                      return;
+                    }
+                    setPaymentMethod("online");
+                  }}
+                  className={cn(
+                    "min-h-11 rounded-lg px-3 text-[12px] font-bold transition-colors",
+                    paymentMethod === "online" && user
+                      ? "bg-white text-zinc-950 shadow-sm"
+                      : "text-zinc-600",
+                  )}
+                >
                   No app
-                </span>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {opcoesNoApp.map(renderOpcaoDePagamento)}
-                </div>
-              </div>
-            )}
-            {/* REGRA DO FRETE × PAGAMENTO (dono, 21/09/2026): envio por
-                transportadora exige pagamento antecipado — o grupo "Na
-                entrega" só some quando o frete escolhido É transportadora
-                (qualquer id ≠ "local-delivery"). Sem opção NENHUMA
-                selecionada ele CONTINUA na tela: a regra do dono é sobre
-                transportadora ESCOLHIDA, não sobre a ausência de escolha
-                (o Finalizar nesse estado já está travado pela
-                `finalizarBloqueadoPorFrete`, e sumir com todos os meios
-                deixaria um radiogroup vazio sem explicação nenhuma). Com
-                transportadora, a orientação fica escrita aqui: com
-                pagamento online ligado é o PIX no app (auto-selecionado
-                pelo efeito da transição); sem ele, NÃO existe fallback "na
-                entrega" — o bloqueio é a regra e o texto diz por quê. */}
-            {selectedShippingOption && !ehEntregaLocal && (
-              <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
-                {pagamentoOnlineLigado()
-                  ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
-                  : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
-              </p>
-            )}
-            {(!selectedShippingOption || ehEntregaLocal) && (
-              <div className="space-y-2.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                </button>
+              )}
+              {(!selectedShippingOption || ehEntregaLocal) && (
+                <button
+                  type="button"
+                  aria-pressed={paymentMethod !== "online"}
+                  aria-controls="opcoes-pagamento-checkout"
+                  onClick={() => setPaymentMethod("pix")}
+                  className={cn(
+                    "min-h-11 rounded-lg px-3 text-[12px] font-bold transition-colors",
+                    paymentMethod !== "online"
+                      ? "bg-white text-zinc-950 shadow-sm"
+                      : "text-zinc-600",
+                  )}
+                >
                   {ehRetirada ? "Na retirada" : "Na entrega"}
-                </span>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {opcoesNaEntrega.map(renderOpcaoDePagamento)}
-                </div>
-              </div>
-            )}
+                </button>
+              )}
+            </div>
+            <div id="opcoes-pagamento-checkout" role="radiogroup" aria-label="Meio de pagamento">
+              {paymentMethod === "online" && opcoesNoApp.length > 0 && user ? (
+                <div className="space-y-2">{opcoesNoApp.map(renderOpcaoDePagamento)}</div>
+              ) : (!selectedShippingOption || ehEntregaLocal) ? (
+                <div className="space-y-2">{opcoesNaEntrega.map(renderOpcaoDePagamento)}</div>
+              ) : (
+                <p className="rounded-xl bg-zinc-50 p-3 text-xs leading-relaxed text-zinc-600">
+                  {pagamentoOnlineLigado()
+                    ? "Envio por transportadora: entre na sua conta para pagar com Pix no app."
+                    : "Pagamento antecipado indisponível. Fale com a loja para combinar a entrega."}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 

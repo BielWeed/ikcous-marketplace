@@ -1,3 +1,4 @@
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { OrderTimeline } from "@/components/ui/custom/OrderTimeline";
@@ -34,7 +35,6 @@ import {
   Loader2,
   LogOut,
   MapPin,
-  MessageCircle,
   Package,
   Plus,
   Settings,
@@ -536,97 +536,126 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
             variants={itemVariants}
             className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
           >
-            <div className="flex items-center gap-3 border-b border-zinc-50 bg-zinc-50/50 p-6">
-              <div className="size-2 animate-pulse rounded-full bg-emerald-500" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            {/* Cartão COMPACTO (pedido do dono, 24/09/2026, prints a 375px):
+                o de antes tinha círculos de 48px, botões de 48px e texto em
+                caixa-alta de 9-10px que encostava. Agora: foto 44px, nome em
+                caixa normal, ID/data num metadado só, linha de fases de 32px
+                (OrderTimeline) e botões de 40px — o toque continua >= 40px e
+                todo texto fica em >= 11px. Nenhum comportamento mudou. */}
+            <div className="flex items-center gap-2.5 border-b border-zinc-50 bg-zinc-50/50 px-5 py-3.5">
+              <div
+                aria-hidden="true"
+                className="size-2 animate-pulse rounded-full bg-emerald-500 motion-reduce:animate-none"
+              />
+              <h2 className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">
                 Pedidos em Andamento
-              </span>
+              </h2>
             </div>
-            <div className="space-y-6 p-6">
+            <div className="divide-y divide-zinc-100 px-5">
               {(isOrdersExpanded ? activeOrders : activeOrders.slice(0, 1)).map(
-                (order, idx) => {
+                (order) => {
                   const firstItem = order.items?.[0];
                   const firstItemImage = firstItem?.image;
                   const firstItemName = firstItem?.name || "Pedido";
+                  const outrosItens = order.items.length - 1;
 
                   return (
-                    <div
+                    <article
                       key={order.id}
-                      className={`space-y-4 ${idx > 0 ? "border-t border-zinc-100 pt-6" : ""}`}
+                      aria-label={`Pedido ${order.id.slice(0, 8)}`}
+                      className="space-y-3.5 py-4"
                     >
-                      <div className="flex items-center gap-4">
-                        {/* Circular product thumbnail */}
-                        <div className="flex size-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        {/* Foto do primeiro item */}
+                        <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
                           {firstItemImage ? (
                             <img
                               src={firstItemImage}
-                              alt={firstItemName}
+                              alt=""
                               className="size-full object-cover"
                             />
                           ) : (
-                            <Package className="size-5 text-zinc-300" />
+                            <Package
+                              aria-hidden="true"
+                              className="size-5 text-zinc-400"
+                            />
                           )}
                         </div>
-                        {/* Product and order details */}
+                        {/* Nome, ID e data */}
                         <div className="min-w-0 flex-1">
-                          <h3 className="truncate text-[11px] font-black uppercase tracking-wider text-zinc-900">
+                          <h3 className="truncate text-[13px] font-bold leading-snug text-zinc-900">
                             {firstItemName}
+                            {outrosItens > 0 && (
+                              <span className="font-medium text-zinc-500">
+                                {" "}
+                                +{outrosItens}{" "}
+                                {outrosItens === 1 ? "item" : "itens"}
+                              </span>
+                            )}
                           </h3>
-                          {order.items.length > 1 && (
-                            <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-400">
-                              +{order.items.length - 1}{" "}
-                              {order.items.length - 1 === 1
-                                ? "outro item"
-                                : "outros itens"}
-                            </p>
-                          )}
-                          <div className="mt-1 flex items-center gap-2">
-                            <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[9px] font-black tracking-widest text-zinc-500">
-                              ID #{order.id.slice(0, 8)}
+                          <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-500">
+                            <span className="font-mono font-semibold tracking-tight text-zinc-600">
+                              #{order.id.slice(0, 8)}
                             </span>
-                            <span className="size-1.5 rounded-full bg-zinc-200" />
-                            <span className="text-[9px] font-bold tracking-tight text-zinc-400">
+                            <span aria-hidden="true">·</span>
+                            <time dateTime={order.createdAt}>
                               {new Date(order.createdAt).toLocaleDateString(
                                 "pt-BR",
                               )}
-                            </span>
-                          </div>
+                            </time>
+                          </p>
                         </div>
                       </div>
 
                       <OrderTimeline status={order.status} />
 
-                      <div className="flex gap-2 pt-2">
+                      {order.status === "pending" &&
+                        order.paymentMethod === "online" &&
+                        order.paymentStatus === "aguardando" && (
+                          <Button
+                            onClick={() => onNavigate("checkout", order.id)}
+                            className="min-h-11 w-full rounded-xl bg-zinc-900 px-3 text-[12px] font-semibold text-white hover:bg-zinc-800"
+                          >
+                            Continuar pagamento Pix
+                          </Button>
+                        )}
+                      <div className="flex gap-2">
                         <Button
                           variant="outline"
                           onClick={() => onNavigate("order-details", order.id)}
-                          className="group h-12 flex-1 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest"
+                          className="group h-10 flex-1 gap-1.5 rounded-xl border-zinc-200 px-3 text-[12px] font-semibold text-zinc-900"
                         >
-                          Ver Detalhes
-                          <ArrowRight className="ml-2 size-3 transition-transform group-hover:translate-x-1" />
+                          Ver detalhes
+                          <ArrowRight
+                            aria-hidden="true"
+                            className="size-3.5 transition-transform group-hover:translate-x-0.5"
+                          />
                         </Button>
                         {lojaTemWhatsappAgora && (
                           <Button
                             onClick={() => handleWhatsAppSupport(order.id)}
-                            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl border-none bg-emerald-600 text-[10px] font-black uppercase tracking-widest text-white shadow-sm shadow-emerald-600/10 transition-all hover:bg-emerald-700 active:scale-95"
+                            aria-label={`Falar sobre o pedido ${order.id.slice(0, 8)} no WhatsApp`}
+                            className="h-10 flex-1 gap-1.5 rounded-xl border-none bg-emerald-700 px-3 text-[12px] font-semibold text-white transition-colors hover:bg-emerald-800 active:scale-[0.98]"
                           >
-                            <MessageCircle className="size-4" />
+                            <IconeWhatsapp className="size-4" />
                             WhatsApp
                           </Button>
                         )}
                       </div>
-                    </div>
+                    </article>
                   );
                 },
               )}
             </div>
             {activeOrders.length > 1 && (
               <button
+                type="button"
+                aria-expanded={isOrdersExpanded}
                 onClick={() => {
                   setIsOrdersExpanded(!isOrdersExpanded);
                   haptic.light();
                 }}
-                className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 bg-zinc-50/10 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:bg-zinc-50/35 hover:text-zinc-900"
+                className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 bg-zinc-50/40 py-3 text-[11px] font-bold uppercase tracking-wider text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
               >
                 {isOrdersExpanded ? (
                   <>
