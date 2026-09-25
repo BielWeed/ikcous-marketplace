@@ -146,11 +146,16 @@ describe("OrderDetailsView — 'Resumo da Transação' e selo 'Avaliado' usam te
     expect(valorFrete?.classList.contains("text-emerald-600")).toBe(false);
   });
 
-  it("com desconto aplicado: a linha 'Benefício / Cupom' troca de tom", async () => {
+  it("com desconto aplicado: a linha 'Desconto' troca de tom", async () => {
     await renderizar();
 
     const spans = Array.from(hospedeiro.querySelectorAll("span"));
-    const rotulo = spans.find((el) => el.textContent === "Benefício / Cupom");
+    // Redesenho visual (25/09/2026): o rótulo "Benefício / Cupom" virou
+    // "Desconto" — o cartão inteiro passou a chamar-se "Resumo", com
+    // linguagem de frase normal em vez do jargão financeiro antigo. O
+    // COMPORTAMENTO provado aqui (contraste AA da linha quando há desconto)
+    // não mudou, só o texto do rótulo.
+    const rotulo = spans.find((el) => el.textContent === "Desconto");
     expect(rotulo).not.toBeUndefined();
     const linhaDesconto = rotulo?.parentElement;
     expect(linhaDesconto?.classList.contains("text-emerald-700")).toBe(true);
