@@ -88,6 +88,11 @@ const corsHeaders = {
  * grande de `expiracaoRealinhavel`) já fechou. */
 const MARGEM_LATENCIA_MINUTOS_PIX = 5;
 
+/** Frase pública do 401/403 do Mercado Pago: diz o que o cliente pode fazer,
+ * sem conta, token nem o corpo cru do gateway. Exportada para o teste. */
+export const MENSAGEM_CREDENCIAL_RECUSADA =
+  "O pagamento pelo app está indisponível nesta loja agora. Fale com a loja para concluir o pedido.";
+
 export function pareceUuid(v: unknown): boolean {
   return (
     typeof v === "string" &&
@@ -666,7 +671,24 @@ async function handler(
       chaveIdempotencia: String(pedido.id),
       fetchImpl: deps.fetchImpl,
     });
-    if (!r.ok) return json({ error: r.erro }, 502);
+    if (!r.ok) {
+      // 401/403 do POST /v1/orders (incidente 25/09/2026, "invalid access
+      // token"): o MP recusou a CREDENCIAL da loja, não este pedido. Mesma
+      // escala de conserto do D1 lá em cima — token revogado ou sem
+      // permissão se resolve no cadastro do lojista, em horas ou dias, e
+      // "Tentar de novo" dentro dos 30 min do PIX só bate na mesma recusa.
+      // `terminal: true` tira o cliente do loop. A frase é fixa: o corpo do
+      // MP (conta, detalhe da credencial) continua só no log de criarOrder.
+      // Qualquer outro status (0 = rede, 5xx, 4xx de corpo) segue 502
+      // recuperável, como sempre foi.
+      if (r.status === 401 || r.status === 403) {
+        console.error(
+          `criar-pagamento: Mercado Pago recusou a credencial da loja (status: ${r.status}, origem: ${credenciaisMp.origem})`,
+        );
+        return json({ error: MENSAGEM_CREDENCIAL_RECUSADA, terminal: true }, 503);
+      }
+      return json({ error: r.erro }, 502);
+    }
 
     const extraido = extrairQrCode(r.order);
     if (!extraido?.orderId) {
