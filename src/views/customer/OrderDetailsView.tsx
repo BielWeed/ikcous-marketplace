@@ -769,36 +769,38 @@ export function OrderDetailsView({
           {/* Linha do tempo de 4 etapas — some no cancelado, que tem seu
               próprio quadro de aviso logo abaixo. */}
           {order.status !== "cancelled" && (
-            <div className="relative mt-5 flex items-start justify-between gap-1">
-              {/* Trilha atrás dos nós (ajuste visual pedido na rodada 2):
-                  `inset-x-3.5` (14px) inset até o CENTRO do
-                  primeiro e do último nó (`size-7` = 28px, metade = 14px) —
-                  o preenchimento é filho desta trilha, então a % do
-                  `style.width` é relativa à própria trilha, nunca à linha
-                  inteira. */}
-              <div className="absolute inset-x-3.5 top-3.5 h-0.5 overflow-hidden rounded-full bg-white/20">
-                <div
-                  className="h-full rounded-full bg-white transition-all duration-700"
-                  style={{
-                    width: `${(Math.max(timelineIndex, 0) / (TIMELINE_STEPS.length - 1)) * 100}%`,
-                  }}
-                />
-              </div>
+            <div className="mt-5 flex items-start justify-between gap-1">
               {TIMELINE_STEPS.map((step, i) => {
                 const isPast = timelineIndex > i;
                 const isCurrent = timelineIndex === i;
+                const isLast = i === TIMELINE_STEPS.length - 1;
                 const StepIcon = step.icon;
                 return (
                   <div
                     key={step.status}
-                    // `relative` (mesmo com offset 0): sem isso, a trilha
-                    // `absolute` acima pintaria POR CIMA dos nós — elemento
-                    // posicionado pinta depois de elemento estático na mesma
-                    // pilha, mesmo vindo antes no DOM. Com os dois
-                    // posicionados, a ordem do DOM decide, e a trilha
-                    // (declarada primeiro) fica atrás.
                     className="relative flex flex-1 flex-col items-center gap-1.5"
                   >
+                    {/* Trilha em SEGMENTOS entre nós, nunca uma linha única
+                        atrás deles: o nó pendente é vazado (só borda), e a
+                        linha única aparecia cortando o ícone por dentro.
+                        Cada segmento vai da borda deste nó à do próximo, com
+                        8px de folga — o dobro do `ring-4` do nó atual, para
+                        não encostar nele. Geometria: nó `size-7` (28px,
+                        metade 14px) centrado numa coluna `flex-1`; o centro
+                        do próximo fica a 100% + 4px (`gap-1`) deste. */}
+                    {!isLast && (
+                      <div
+                        aria-hidden
+                        className={cn(
+                          "absolute top-[13px] h-0.5 rounded-full transition-colors duration-700",
+                          isPast ? "bg-white" : "bg-white/20",
+                        )}
+                        style={{
+                          left: "calc(50% + 22px)",
+                          width: "calc(100% + 4px - 44px)",
+                        }}
+                      />
+                    )}
                     <div
                       className={cn(
                         "flex size-7 items-center justify-center rounded-full transition-colors",
