@@ -84,9 +84,17 @@ vi.mock("@/lib/supabase", () => ({
 // checkout-view-flag-off.test.tsx.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function localizarBotaoAvaliar(dentroDe: HTMLElement) {
-  return [...dentroDe.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes("Avaliar"),
+// Redesenho visual (25/09/2026): a pílula "Avaliar" na lista de itens virou
+// um cartão em destaque ("O que achou da compra?") com estrelas tocáveis por
+// produto (aria-label "Dar N estrelas para <nome>") e um botão "Escrever
+// avaliação" — nenhum controle chama-se mais "Avaliar" sozinho. O
+// COMPORTAMENTO provado por este arquivo (o gate do interruptor) não mudou:
+// procura-se qualquer controle de avaliação, seja qual for a forma dele.
+function localizarControleDeAvaliacao(dentroDe: HTMLElement) {
+  return [...dentroDe.querySelectorAll("button")].find(
+    (b) =>
+      b.getAttribute("aria-label")?.startsWith("Dar ") ||
+      b.textContent?.includes("Escrever avaliação"),
   ) as HTMLButtonElement | undefined;
 }
 
@@ -131,7 +139,7 @@ describe("OrderDetailsView — gate do interruptor de Avaliações (ADMIN-090, #
       await Promise.resolve();
     });
 
-    expect(localizarBotaoAvaliar(hospedeiro)).toBeUndefined();
+    expect(localizarControleDeAvaliacao(hospedeiro)).toBeUndefined();
   });
 
   it("com o flag LIGADO, o pedido entregue continua oferecendo o botão Avaliar", async () => {
@@ -153,6 +161,6 @@ describe("OrderDetailsView — gate do interruptor de Avaliações (ADMIN-090, #
       await Promise.resolve();
     });
 
-    expect(localizarBotaoAvaliar(hospedeiro)).toBeDefined();
+    expect(localizarControleDeAvaliacao(hospedeiro)).toBeDefined();
   });
 });
