@@ -104,7 +104,7 @@ console.log(`SELECT v.funcao, count(p.oid) AS versoes_vivas,
 JS
 ```
 
-  O resultado esperado são 4 linhas, com `versoes_vivas = 1` e `igual_ao_rollback = true`.
+  O resultado esperado são 5 linhas, com `versoes_vivas = 1` e `igual_ao_rollback = true`.
   Se der `false`, **pare**. Compare com
   `SELECT pg_get_functiondef('public.<função>'::regproc);` e leve a diferença ao dono.
 
@@ -223,8 +223,8 @@ SELECT migration, funcao, vezes AS esperado,
 JS
 ```
 
-Cole o `conferir-marcadores.sql` no SQL Editor. Em 26/09/2026 o mapa tinha **19 marcadores**, e
-todos precisam dar `ok = true`. A contagem é exata, como no `db-apply`:
+Cole o `conferir-marcadores.sql` no SQL Editor. No commit `1af39ee1` (26/09/2026) o mapa tem **32
+marcadores**, e todos precisam dar `ok = true`. A contagem é exata, como no `db-apply`:
 - `achado` menor que `esperado` quer dizer que parte do trecho sumiu;
 - `achado` maior que `esperado` quer dizer que a função mudou de um jeito que ninguém previu.
 
