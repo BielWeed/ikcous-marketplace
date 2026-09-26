@@ -17,6 +17,7 @@ import {
   consultarOrder,
   consultarPagamento,
   criarOrder,
+  erro400EhDeDadoDoCartao,
   extrairDataExpiracaoOrder,
   extrairDesafio3ds,
   extrairQrCode,
@@ -1530,6 +1531,30 @@ Deno.test("motivoDaRecusaDoErro: lê a order recusada em `data` do 402; sem moti
   assertEquals(motivoDaRecusaDoErro({ errors: [{ code: "x", details: ["sem motivo"] }] }), MOTIVO_RECUSA_PADRAO);
   assertEquals(motivoDaRecusaDoErro(undefined), MOTIVO_RECUSA_PADRAO);
   assertEquals(motivoDaRecusaDoErro("texto"), MOTIVO_RECUSA_PADRAO);
+});
+
+Deno.test("erro400EhDeDadoDoCartao (Achado A4): só os códigos CURADOS de dado do cartão são 'sim' — o resto (ausente, desconhecido, corpo ilegível) é 'não', para não virar recusa de cartão à toa", () => {
+  // Os três códigos comprovadamente do CARTÃO.
+  assertEquals(erro400EhDeDadoDoCartao({ errors: [{ code: "invalid_card_token" }] }), true);
+  assertEquals(erro400EhDeDadoDoCartao({ errors: [{ code: "card_token_not_found" }] }), true);
+  assertEquals(erro400EhDeDadoDoCartao({ errors: [{ code: "bad_filled_card_data" }] }), true);
+  // Um dos vários códigos, não só o primeiro do array.
+  assertEquals(
+    erro400EhDeDadoDoCartao({ errors: [{ code: "outro_codigo" }, { code: "invalid_card_token" }] }),
+    true,
+  );
+  // Causa de 400 que NÃO é do cartão (ex.: total_amount que não bate com a
+  // soma dos pagamentos) — bug de integração, não "confira seu cartão".
+  assertEquals(
+    erro400EhDeDadoDoCartao({ errors: [{ code: "invalid_parameter", message: "total_amount mismatch" }] }),
+    false,
+  );
+  // Nada reconhecível: nunca um palpite otimista.
+  assertEquals(erro400EhDeDadoDoCartao({ errors: [] }), false);
+  assertEquals(erro400EhDeDadoDoCartao({ message: "corpo sem errors[]" }), false);
+  assertEquals(erro400EhDeDadoDoCartao(undefined), false);
+  assertEquals(erro400EhDeDadoDoCartao(null), false);
+  assertEquals(erro400EhDeDadoDoCartao("texto"), false);
 });
 
 Deno.test("recusaLiberaAVaga: cartão recusado/cancelado/expirado libera; PIX recusado/expirado NÃO (cancela o pedido como antes); PIX CANCELADO libera", () => {
