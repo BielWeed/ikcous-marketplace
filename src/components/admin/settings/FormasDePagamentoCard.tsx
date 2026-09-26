@@ -1,8 +1,20 @@
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
-import { useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CreditCard,
+  Loader2,
+  XCircle,
+} from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
 import { Switch } from "@/components/ui/switch";
+import {
+  type ConfigDoCartao,
+  PARCELAS_MAX_TETO,
+  buscarConfigDoCartao,
+  salvarConfigDoCartao,
+} from "@/lib/config-do-cartao";
 import {
   FORMAS_DE_PAGAMENTO_NA_ENTREGA_EM_ORDEM,
   type FormaDePagamentoNaEntrega,
@@ -10,6 +22,8 @@ import {
 import { haptic } from "@/utils/haptic";
 
 import type { StoreConfig } from "@/types";
+
+import { CARTAO_PELO_APP } from "./mercado-pago-conteudo";
 
 /**
  * FORMAS DE PAGAMENTO POR LOJA (brief 25/09/2026, migration 20261174000000).
@@ -170,6 +184,12 @@ export function FormasDePagamentoSection({
         </button>
       </div>
 
+      <CartaoPeloAppBloco
+        pixLigado={pixLigado}
+        isOffline={isOffline}
+        onDirtyMudou={onDirtyMudou}
+      />
+
       {/* Os 3 switches — cada um é a loja inteira, sempre, sem lote/rascunho
           (mesmo padrão imediato de AdminReviewsView: clique salva). */}
       <div className="space-y-2 rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5">
@@ -225,6 +245,209 @@ export function FormasDePagamentoSection({
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+const OPCOES_DE_PARCELAS = Array.from(
+  { length: PARCELAS_MAX_TETO },
+  (_, i) => i + 1,
+);
+
+type LeituraDoCartao =
+  | { readonly estado: "carregando" }
+  | { readonly estado: "falhou" }
+  | { readonly estado: "ok"; readonly config: ConfigDoCartao };
+
+/**
+ * CARTÃO PELO APP (Fase 3.5, 26/09/2026) — crédito, débito e o teto de
+ * parcelas, gravados pela RPC de admin `salvar_config_pagamento_cartao` e
+ * lidos da tabela `config_pagamento_cartao` (contrato no plano
+ * 2026-09-26-painel-cartao-e-devolucoes.md).
+ *
+ * Mesmo padrão imediato dos switches da entrega: cada toque salva a linha
+ * inteira, e a tela mostra o que o BANCO devolveu (nunca o que o clique
+ * pediu). Sem o PIX pelo app ligado (a mesma credencial do Mercado Pago),
+ * ligar fica travado com o porquê na tela — desligar continua possível, para
+ * a lojista nunca ficar presa com o cartão ligado.
+ */
+function CartaoPeloAppBloco({
+  pixLigado,
+  isOffline,
+  onDirtyMudou,
+}: {
+  readonly pixLigado: boolean;
+  readonly isOffline: boolean;
+  readonly onDirtyMudou?: (dirty: boolean) => void;
+}) {
+  const [leitura, setLeitura] = useState<LeituraDoCartao>({
+    estado: "carregando",
+  });
+  const [salvando, setSalvando] = useState(false);
+  const idDasParcelas = useId();
+
+  useEffect(() => {
+    let vivo = true;
+    buscarConfigDoCartao().then((resultado) => {
+      if (!vivo) return;
+      setLeitura(
+        resultado.ok
+          ? { estado: "ok", config: resultado.config }
+          : { estado: "falhou" },
+      );
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  async function salvar(desejada: ConfigDoCartao, sucesso: string) {
+    if (isOffline) {
+      toast.error("Você está offline");
+      return;
+    }
+    haptic.light();
+    setSalvando(true);
+    onDirtyMudou?.(true);
+    try {
+      const gravada = await salvarConfigDoCartao(desejada);
+      setLeitura({ estado: "ok", config: gravada });
+      toast.success(sucesso);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível salvar o cartão pelo app. Tente de novo.",
+      );
+    } finally {
+      setSalvando(false);
+      onDirtyMudou?.(false);
+    }
+  }
+
+  const config = leitura.estado === "ok" ? leitura.config : null;
+  const podeMexer = config !== null && !salvando;
+
+  return (
+    <div className="space-y-2.5 rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5">
+      <div className="flex items-center gap-2.5">
+        <CreditCard className="size-4 shrink-0 text-admin-gold" />
+        <span className="min-w-0">
+          <span className="block text-[11px] font-bold text-zinc-200">
+            {CARTAO_PELO_APP.titulo}
+          </span>
+          <span className="block text-[10px] text-zinc-500">
+            {CARTAO_PELO_APP.subtitulo}
+          </span>
+        </span>
+        {salvando && (
+          <Loader2 className="ml-auto size-3.5 shrink-0 animate-spin text-zinc-500" />
+        )}
+      </div>
+
+      {leitura.estado === "carregando" && (
+        <p className="text-[11px] text-zinc-500">Lendo a configuração...</p>
+      )}
+      {leitura.estado === "falhou" && (
+        <p role="alert" className="text-[11px] text-red-300">
+          {CARTAO_PELO_APP.leituraFalhou}
+        </p>
+      )}
+
+      {config && (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-zinc-300">Crédito</span>
+            <Switch
+              checked={config.credito}
+              disabled={!podeMexer || (!pixLigado && !config.credito)}
+              aria-label="Cartão de crédito pelo app"
+              onCheckedChange={(checked) =>
+                salvar(
+                  { ...config, credito: checked },
+                  checked
+                    ? "Cartão de crédito pelo app ligado"
+                    : "Cartão de crédito pelo app desligado",
+                )
+              }
+              className="scale-75 data-[state=checked]:bg-admin-gold"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-zinc-300">Débito</span>
+            <Switch
+              checked={config.debito}
+              disabled={!podeMexer || (!pixLigado && !config.debito)}
+              aria-label="Cartão de débito pelo app"
+              onCheckedChange={(checked) =>
+                salvar(
+                  { ...config, debito: checked },
+                  checked
+                    ? "Cartão de débito pelo app ligado"
+                    : "Cartão de débito pelo app desligado",
+                )
+              }
+              className="scale-75 data-[state=checked]:bg-admin-gold"
+            />
+          </div>
+          {config.debito && (
+            <p className="text-[10px] leading-relaxed text-zinc-500">
+              {CARTAO_PELO_APP.debito}
+            </p>
+          )}
+          {config.credito && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <label
+                  htmlFor={idDasParcelas}
+                  className="text-xs text-zinc-300"
+                >
+                  Parcelar em até
+                </label>
+                <select
+                  id={idDasParcelas}
+                  value={config.parcelasMax}
+                  disabled={!podeMexer}
+                  onChange={(e) => {
+                    const parcelasMax = Number(e.target.value);
+                    salvar(
+                      { ...config, parcelasMax },
+                      parcelasMax === 1
+                        ? "Crédito só à vista"
+                        : `Crédito em até ${parcelasMax}x`,
+                    );
+                  }}
+                  className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 font-mono text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-admin-gold/50 disabled:opacity-50"
+                >
+                  {OPCOES_DE_PARCELAS.map((n) => (
+                    <option
+                      key={n}
+                      value={n}
+                      className="bg-zinc-900 text-white"
+                    >
+                      {n === 1 ? "1x (à vista)" : `${n}x`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-[10px] leading-relaxed text-zinc-500">
+                {CARTAO_PELO_APP.parcelas}
+              </p>
+            </div>
+          )}
+        </>
+      )}
+
+      {!pixLigado && (
+        <p className="flex items-start gap-2 text-[11px] leading-relaxed text-zinc-400">
+          <XCircle className="mt-0.5 size-3.5 shrink-0 text-zinc-500" />
+          {CARTAO_PELO_APP.semPix}
+        </p>
+      )}
+      <p className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-amber-200/90">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-400" />
+        {CARTAO_PELO_APP.testeAntes}
+      </p>
     </div>
   );
 }

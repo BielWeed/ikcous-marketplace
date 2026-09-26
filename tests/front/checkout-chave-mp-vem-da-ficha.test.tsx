@@ -6,11 +6,12 @@
 // compartilhado por N lojas não tem mais UM valor assado que sirva para
 // todas (MP e VAPID DIFEREM entre lojas, ver a spec da etapa 3).
 //
-// Mesmo andaime de pagamento-online.test.tsx (`montarBrick` isolado, sem
-// renderizar <PagamentoOnline>): `@/lib/supabase` mockado porque
-// `@/hooks/useOrders` (importado só por tipo aqui) importa esse módulo, que
-// EXPLODE sem as env vars do Supabase — nenhum destes testes chama
-// `criarPagamento` de verdade.
+// Mesmo andaime de pagamento-com-cartao.test.tsx (`montarBrickDeCartao`
+// isolado, sem renderizar componente): `@/lib/supabase` mockado porque
+// `@/hooks/useOrders` importa esse módulo, que EXPLODE sem as env vars do
+// Supabase — nenhum destes testes chama `criarPagamento` de verdade.
+// 26/09/2026: o Brick que monta com a chave da ficha é o de CARTÃO — o
+// Payment Brick só-PIX (`montarBrick`) saiu com o PIX direto.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FichaDaLoja } from "@/config/fichaDaLojaContract";
@@ -122,28 +123,34 @@ function injetarFicha(conteudo: string) {
 
 async function importarLimpo() {
   vi.resetModules();
-  return import("@/components/checkout/PagamentoOnline");
+  return import("@/components/checkout/PagamentoComCartao");
 }
 
 function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-type ModuloComponente = typeof import("@/components/checkout/PagamentoOnline");
-type OpcoesMontarBrick = Parameters<ModuloComponente["montarBrick"]>[0];
+// Nome curto de propósito: a linha do `typeof import(...)` tem de caber em 80
+// colunas, senão o biome a quebra com vírgula à direita — que o parser do
+// eslint (e o esbuild do vite) não aceitam em posição de tipo.
+type Modulo = typeof import("@/components/checkout/PagamentoComCartao");
+type OpcoesMontarBrick = Parameters<Modulo["montarBrickDeCartao"]>[0];
 
-function opcoesPadrao(sobrepor: Partial<OpcoesMontarBrick> = {}) {
+function opcoesPadrao(
+  sobrepor: Partial<OpcoesMontarBrick> = {},
+): OpcoesMontarBrick {
   return {
-    orderId: "ped-1",
+    containerId: "mp-cartao-teste",
     valor: 100,
-    criarPagamento: vi.fn(),
-    onErro: vi.fn(),
-    onPix: vi.fn(),
+    config: { credito: true, debito: false, parcelasMax: 1 },
+    onEnviar: vi.fn(async () => {}),
+    onFalhaDeMontagem: vi.fn(),
+    onPronto: vi.fn(),
     ...sobrepor,
   };
 }
 
-describe("montarBrick — a chave pública do Mercado Pago vem da ficha da loja (escala etapa 3)", () => {
+describe("montarBrickDeCartao — a chave pública do Mercado Pago vem da ficha da loja (escala etapa 3)", () => {
   beforeEach(() => {
     document.head.innerHTML = "";
   });
@@ -173,7 +180,7 @@ describe("montarBrick — a chave pública do Mercado Pago vem da ficha da loja 
     vi.stubEnv("VITE_MP_PUBLIC_KEY", "APP_USR-assado-nunca-usado");
     injetarFicha(JSON.stringify(fichaValida({ mpPublicKey: "APP_USR-teste" })));
 
-    const { montarBrick } = await importarLimpo();
+    const { montarBrickDeCartao } = await importarLimpo();
 
     const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
     const MercadoPagoSpy = vi.fn(function MercadoPagoStub() {
@@ -182,7 +189,7 @@ describe("montarBrick — a chave pública do Mercado Pago vem da ficha da loja 
     // @ts-expect-error stub do SDK
     globalThis.MercadoPago = MercadoPagoSpy;
 
-    montarBrick(opcoesPadrao());
+    montarBrickDeCartao(opcoesPadrao());
     await carregarSdk();
 
     expect(MercadoPagoSpy).toHaveBeenCalledWith("APP_USR-teste", {
@@ -197,13 +204,13 @@ describe("montarBrick — a chave pública do Mercado Pago vem da ficha da loja 
   // O TESTE DE DINHEIRO (ADENDO A.2): num build compartilhado por N lojas,
   // ficha AUSENTE em produção nunca pode cair no assado — mesmo com ele
   // preenchido no env. `chavePublicaMercadoPago()` devolve `null`, e é esse
-  // `null` que faz `montarBrick` lançar `new Error("Pagamento
+  // `null` que faz `montarBrickDeCartao` lançar `new Error("Pagamento
   // indisponível.")` ANTES de sequer tentar montar o SDK.
   it("ficha ausente em produção (DEV falso), com VITE_MP_PUBLIC_KEY preenchido no env: nunca constrói o SDK — 'Pagamento indisponível.' é a causa logada", async () => {
     vi.stubEnv("DEV", false);
     vi.stubEnv("VITE_MP_PUBLIC_KEY", "APP_USR-assado-nunca-usado");
 
-    const { montarBrick } = await importarLimpo();
+    const { montarBrickDeCartao } = await importarLimpo();
 
     const MercadoPagoSpy = vi.fn();
     // @ts-expect-error stub do SDK
@@ -212,8 +219,8 @@ describe("montarBrick — a chave pública do Mercado Pago vem da ficha da loja 
     const consoleErroSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    const onErro = vi.fn();
-    montarBrick(opcoesPadrao({ onErro }));
+    const onFalhaDeMontagem = vi.fn();
+    montarBrickDeCartao(opcoesPadrao({ onFalhaDeMontagem }));
     await carregarSdk();
     await esperarMicrotarefas();
 
@@ -221,12 +228,9 @@ describe("montarBrick — a chave pública do Mercado Pago vem da ficha da loja 
     // — se a trava sumisse, `chavePublicaMercadoPago()` voltaria a ler o
     // env assado e este `new MercadoPago(...)` aconteceria.
     expect(MercadoPagoSpy).not.toHaveBeenCalled();
-    expect(onErro).toHaveBeenCalledWith(
-      "Não foi possível carregar o pagamento.",
-      "recuperavel",
-    );
+    expect(onFalhaDeMontagem).toHaveBeenCalledTimes(1);
     const chamadaDoErro = consoleErroSpy.mock.calls.find(
-      (chamada) => chamada[0] === "montarBrick:",
+      (chamada) => chamada[0] === "montarBrickDeCartao:",
     );
     expect(chamadaDoErro?.[1]).toBeInstanceOf(Error);
     expect((chamadaDoErro?.[1] as Error).message).toBe(

@@ -1,5 +1,6 @@
 import {
   type CategoriaErroPagamento,
+  type MetodoOnline,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
 import {
@@ -23,6 +24,7 @@ import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
+import { useConfigDoCartao } from "@/hooks/useConfigDoCartao";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
@@ -33,6 +35,7 @@ import {
   criarGerenciadorDeChave,
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
+import { rotuloDaOpcaoDeCartao } from "@/lib/config-do-cartao";
 import {
   cpfValido,
   formatarCpf,
@@ -985,6 +988,22 @@ export function CheckoutView({
   );
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
+  // CARTÃO PELO APP (Fase 3.5, 26/09/2026): PIX e cartão pelo app são o
+  // MESMO `payment_method: "online"` para o pedido (mesma RPC, mesma reserva
+  // de 30 min, mesma chave de idempotência) — o que muda é só a tela depois
+  // que o pedido nasce. Por isso o submétodo mora num estado à parte e só
+  // vale enquanto `paymentMethod === "online"` (ver `metodoOnlineEfetivo`).
+  // Toda seleção AUTOMÁTICA de "online" (transportadora, fallback da loja)
+  // volta para PIX — cartão só por escolha explícita do cliente.
+  const [metodoOnline, setMetodoOnline] = useState<MetodoOnline>("pix");
+  // `null` = cartão NÃO oferecido (carregando, desligado, leitura falhou ou
+  // loja sem Public Key) — falha fechada, ver useConfigDoCartao.
+  const configDoCartao = useConfigDoCartao(pagamentoOnlineLigado());
+  const cartaoDisponivel = pagamentoOnlineLigado() && configDoCartao !== null;
+  const metodoOnlineEfetivo: MetodoOnline =
+    paymentMethod === "online" && metodoOnline === "cartao" && cartaoDisponivel
+      ? "cartao"
+      : "pix";
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   // A recusa que o banco deu no último clique, quando deu. `null` é o estado
@@ -1065,6 +1084,11 @@ export function CheckoutView({
   // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
   // valor que não bate com o total já gravado no pedido.
   const [valorDoPedido, setValorDoPedido] = useState(0);
+  // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
+  // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
+  // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
+  // cartão por uma cobrança PIX criada sozinha.
+  const [metodoDoPedido, setMetodoDoPedido] = useState<MetodoOnline>("pix");
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
@@ -1580,6 +1604,7 @@ export function CheckoutView({
   useEffect(() => {
     if (!authLoading && !user && paymentMethod === "online") {
       setPaymentMethod("pix");
+      setMetodoOnline("pix");
     }
   }, [authLoading, user, paymentMethod]);
 
@@ -1610,6 +1635,8 @@ export function CheckoutView({
     if (!pagamentoOnlineLigado()) return;
     if (authLoading || !user) return;
     setPaymentMethod("online");
+    // Auto-seleção é sempre o PIX (o texto do toast promete isso).
+    setMetodoOnline("pix");
     toast.info(
       "Envio por transportadora exige pagamento antecipado: selecionamos o PIX no app para você.",
     );
@@ -1653,7 +1680,10 @@ export function CheckoutView({
       pagamentoOnlineLigado: pagamentoOnlineLigado(),
       logado: !!user,
     });
-    if (proxima) setPaymentMethod(proxima);
+    if (proxima) {
+      setPaymentMethod(proxima);
+      if (proxima === "online") setMetodoOnline("pix");
+    }
   }, [
     config.formasPagamentoEntrega,
     ehEntregaLocal,
@@ -2234,7 +2264,9 @@ export function CheckoutView({
             ? "O pagamento pelo app saiu do ar nesta loja. Escolha um meio de pagamento na entrega para finalizar."
             : "O pagamento pelo app saiu do ar nesta loja, e o envio por transportadora exige pagamento antecipado. Fale com a loja para combinar a entrega."
           : pagamentoOnlineLigado()
-            ? "Envio por transportadora exige pagamento antecipado. Escolha \u201cPagar agora com PIX\u201d para finalizar."
+            ? cartaoDisponivel
+              ? "Envio por transportadora exige pagamento antecipado. Escolha um pagamento pelo app para finalizar."
+              : "Envio por transportadora exige pagamento antecipado. Escolha \u201cPagar agora com PIX\u201d para finalizar."
             : "Esta loja não recebe pagamento pelo app, então o envio por transportadora não está disponível. Fale com a loja para combinar a entrega.",
       );
       setIsSubmitting(false);
@@ -2501,6 +2533,7 @@ export function CheckoutView({
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
         // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
         // sucesso aqui é a mentira que a tela de hoje conta.
+        setMetodoDoPedido(metodoOnlineEfetivo);
         setAguardandoPagamento(true);
         return;
       }
@@ -2773,6 +2806,12 @@ export function CheckoutView({
           <PagamentoOnline
             orderId={orderId}
             valor={valorDoPedido}
+            metodo={metodoDoPedido}
+            configDoCartao={configDoCartao}
+            emailDoPagador={user?.email ?? null}
+            // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
+            // novo" posterior remonta já no PIX, não de volta no cartão.
+            onTrocarParaPix={() => setMetodoDoPedido("pix")}
             onErro={(msg, categoria) =>
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
@@ -2825,6 +2864,9 @@ export function CheckoutView({
   // dentro.
   interface OpcaoDePagamento {
     value: PaymentMethod;
+    // Só nas opções "no app": PIX e cartão dividem `value: "online"` e se
+    // distinguem aqui (ver `metodoOnline`).
+    metodoOnline?: MetodoOnline;
     label: string;
     icon: ComponentType<{ className?: string }>;
     color: string;
@@ -2835,21 +2877,33 @@ export function CheckoutView({
     ? [
         {
           value: "online",
-          // SÓ PIX, e o rótulo tem de dizer isso. A Fase 3 recusa cartão em
-          // DOIS lugares — o Brick só oferece `bankTransfer`
-          // (PagamentoOnline.tsx) e a criar-pagamento devolve 400 "No
-          // momento aceitamos apenas PIX". O rótulo antigo dizia "(PIX ou
-          // cartão)" e sobreviveu à Fase 3: prometia ao cliente o que o
-          // código nega. Ao religar cartão na Fase 3.5, este rótulo volta
-          // junto.
+          metodoOnline: "pix",
+          // SÓ PIX, e o rótulo tem de dizer isso — o cartão pelo app (Fase
+          // 3.5) é uma opção PRÓPRIA, logo abaixo, que só aparece quando a
+          // loja ligou crédito ou débito. O rótulo antigo "(PIX ou cartão)"
+          // prometia ao cliente o que o código negava.
           label: "Pagar agora com PIX",
           icon: IconePix,
           color: "text-[#32BCAD] bg-[#32BCAD]/10",
           // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) —
-          // só esta opção carrega a exigência; as outras (entrega)
+          // só as opções "no app" carregam a exigência; as outras (entrega)
           // continuam abertas a convidado.
           requerConta: true,
         },
+        ...(configDoCartao
+          ? [
+              {
+                value: "online",
+                metodoOnline: "cartao",
+                // O rótulo diz só o que a loja ligou: "Cartão de crédito",
+                // "Cartão de débito" ou os dois.
+                label: rotuloDaOpcaoDeCartao(configDoCartao),
+                icon: IconeCartao,
+                color: "text-blue-500 bg-blue-50",
+                requerConta: true,
+              } satisfies OpcaoDePagamento,
+            ]
+          : []),
       ]
     : [];
 
@@ -2898,7 +2952,12 @@ export function CheckoutView({
   // (uma por grupo) em vez de uma.
   const renderOpcaoDePagamento = (option: OpcaoDePagamento) => {
     const Icon = option.icon;
-    const isSelected = paymentMethod === option.value;
+    // PIX e cartão pelo app dividem `value: "online"`: a opção marcada é a
+    // do submétodo EFETIVO (cartão que a loja desligou volta a ser PIX).
+    const isSelected =
+      paymentMethod === option.value &&
+      (option.metodoOnline === undefined ||
+        option.metodoOnline === metodoOnlineEfetivo);
     // Bloqueada só pela FALTA DE CONTA, nunca só por `requerConta` — um
     // cliente logado escolhe "Pagar agora com PIX" normalmente. NÃO
     // esconde a opção: some sem explicação faria o convidado achar que a
@@ -2908,7 +2967,7 @@ export function CheckoutView({
     const bloqueadaPorFaltaDeConta = option.requerConta && !user;
     return (
       <button
-        key={option.value}
+        key={`${option.value}-${option.metodoOnline ?? ""}`}
         type="button"
         role="radio"
         // Fiel ao que se VÊ: opção bloqueada por falta de conta não mostra
@@ -2922,6 +2981,7 @@ export function CheckoutView({
             return;
           }
           setPaymentMethod(option.value);
+          if (option.metodoOnline) setMetodoOnline(option.metodoOnline);
         }}
         // Sem `opacity-70` na opção bloqueada: ela multiplicava cores JÁ
         // claras e derrubava o texto para ~1,9:1 de contraste (medido em
@@ -3786,7 +3846,9 @@ export function CheckoutView({
             {selectedShippingOption && !ehEntregaLocal && (
               <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
                 {pagamentoOnlineLigado()
-                  ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
+                  ? cartaoDisponivel
+                    ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
+                    : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
                   : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
               </p>
             )}
