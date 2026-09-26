@@ -736,7 +736,11 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     expect(elementoForaDoSelo(".text-rose-600")).toBeNull();
   });
 
-  it("subtexto do status (status.desc) usa text-zinc-500 (contraste AA), não mais text-zinc-400", async () => {
+  // Redesenho do card (25/09/2026): o `desc` saiu do rodapé cinza e virou a
+  // frase da faixa de status, na cor do status sobre o `*-50` cheio. A
+  // propriedade que este teste guarda continua a mesma — o texto não pode
+  // cair num tom que reprova AA (zinc-400, ou o blue-500 da bolinha).
+  it("frase do status (status.desc) fica na faixa, no tom AA do status (blue-600), nunca zinc-400", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const order: Order = { ...pedidoComPagamento(null), status: "pending" };
 
@@ -744,15 +748,19 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
       raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
     });
 
-    // "Recebido com sucesso" é o `desc` de 'pending' em `statusConfig`
-    // (OrderList.tsx) — texto próprio, que não colide com nenhum outro
-    // `span` da lista (ID do pedido, data, "Total", preço, metadados).
     const spans = Array.from(hospedeiro.querySelectorAll("span"));
-    const subtexto = spans.find(
-      (el) => el.textContent === "Recebido com sucesso",
+    const frase = spans.find(
+      (el) => el.textContent === "A loja já recebeu seu pedido",
     );
-    expect(subtexto).not.toBeUndefined();
-    expect(subtexto?.classList.contains("text-zinc-500")).toBe(true);
-    expect(subtexto?.classList.contains("text-zinc-400")).toBe(false);
+    expect(frase).not.toBeUndefined();
+    const portadorDaCor = frase?.closest(".text-blue-600");
+    expect(portadorDaCor).not.toBeNull();
+    expect(frase?.closest(".text-zinc-400")).toBeNull();
+    expect(frase?.closest(".text-blue-500")).toBeNull();
+    expect(
+      frase
+        ?.closest('[data-testid="order-status-panel"]')
+        ?.classList.contains("bg-blue-50"),
+    ).toBe(true);
   });
 });

@@ -179,7 +179,11 @@ describe("GlobalErrorBoundary — chunk sem trava (prazo finito + saída manual)
       );
     });
 
-    expect(hospedeiro.textContent).toContain("Atualizando o Aplicativo");
+    // Peça 22/09: erro de módulo não prova versão nova — a tela fala em
+    // RECUPERAÇÃO, nunca em "Atualizando"/"Instalando uma nova versão".
+    expect(hospedeiro.textContent).toContain("Recuperando o aplicativo");
+    expect(hospedeiro.textContent).not.toContain("Atualizando o Aplicativo");
+    expect(hospedeiro.textContent).not.toContain("Instalando uma nova versão");
     expect(botaoPorTexto("Recarregar a página")).toBeUndefined();
 
     act(() => {
@@ -191,7 +195,10 @@ describe("GlobalErrorBoundary — chunk sem trava (prazo finito + saída manual)
       vi.advanceTimersByTime(1);
     });
     expect(botaoPorTexto("Recarregar a página")).toBeDefined();
-    expect(hospedeiro.textContent).toContain("A atualização está demorando");
+    expect(hospedeiro.textContent).toContain("A recuperação está demorando");
+    expect(hospedeiro.textContent).not.toContain(
+      "A atualização está demorando",
+    );
   });
 
   it("b) clicar no botão de saída recarrega a página e não apaga carrinho nem sessão", async () => {

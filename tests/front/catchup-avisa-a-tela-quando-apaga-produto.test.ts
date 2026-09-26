@@ -153,6 +153,9 @@ function criarDubleVault(conteudoDoCofre: any[] = []) {
     getById: vi.fn(async () => undefined),
     getByIndex: vi.fn(async () => []),
     getAll: vi.fn(async () => conteudoDoCofre),
+    // dataVault-129: o DataVault real tem o par; o motor passa a ler pelo
+    // getAllOrThrow (leitura quebrada NÃO vira "cofre vazio").
+    getAllOrThrow: vi.fn(async () => conteudoDoCofre),
   };
 }
 

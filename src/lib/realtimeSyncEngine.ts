@@ -16,7 +16,7 @@
  * @module realtimeSyncEngine
  */
 
-import type { DataVault, StoreName } from "@/lib/dataVault";
+import { DataVault, type StoreName } from "@/lib/dataVault";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
@@ -149,6 +149,34 @@ export const TABLE_CONFIGS: TableConfig[] = [
           : undefined,
       localCepRange: raw.local_cep_range,
       homeSections: raw.home_sections,
+      // 20261171000000 (T3, 23/09): banco sem as colunas -- `undefined`,
+      // mesmo tratamento das demais colunas deste mapa (o merge com o
+      // config já carregado NÃO sobrescreve com ausência; StoreContext é
+      // quem preenche o ESPELHO LEGADO na leitura inicial).
+      nationalShippingStrategy:
+        raw.national_shipping_strategy !== null &&
+        raw.national_shipping_strategy !== undefined
+          ? raw.national_shipping_strategy
+          : undefined,
+      nationalShippingMin:
+        raw.national_shipping_min !== null &&
+        raw.national_shipping_min !== undefined
+          ? Number(raw.national_shipping_min)
+          : undefined,
+      nationalDiscountType:
+        raw.national_discount_type !== undefined
+          ? raw.national_discount_type
+          : undefined,
+      nationalDiscountValue:
+        raw.national_discount_value !== null &&
+        raw.national_discount_value !== undefined
+          ? Number(raw.national_discount_value)
+          : undefined,
+      nationalBenefitScope:
+        raw.national_benefit_scope !== null &&
+        raw.national_benefit_scope !== undefined
+          ? raw.national_benefit_scope
+          : undefined,
       // Sem estes três, a identidade da loja (Tarefa 2/3 do bloco "o app
       // para de inventar endereço") some assim que o app carrega
       // `store_config` pelo caminho offline/realtime em vez de vir direto
@@ -191,6 +219,12 @@ export const TABLE_CONFIGS: TableConfig[] = [
 let _channel: RealtimeChannel | null = null;
 let _bcListener: ((event: MessageEvent) => void) | null = null;
 let _isCatchingUp = false;
+// realtimeSyncEngine-317: janela mínima entre rodadas de catchUp disparadas
+// pelos gatilhos de reconexão/visibilidade (ver `rodadaPorGatilho` em
+// `start`). Rodadas por outros caminhos (inscrição no canal, chamada direta)
+// não passam pela janela.
+const JANELA_MINIMA_ENTRE_GATILHOS_MS = 60_000;
+let _ultimoGatilhoDeRodada = 0;
 let _connectivityListeners: (() => void) | null = null;
 const _listeners = new Set<SyncCallback>();
 const bc =
@@ -199,6 +233,30 @@ const bc =
     : null;
 
 // ─── Engine ──────────────────────────────────────────────────────────────────
+
+/**
+ * dataVault-129: quem chegou até aqui segurando uma instância capturada há
+ * tempo (o `start(vault)` do StoreContext guarda-a por closure) pode estar
+ * segurando uma CONEXÃO MORTA — `onversionchange` fechou-a quando outra aba
+ * subiu a versão do cofre. Escrever nela é InvalidStateError (só console) e
+ * ler com `getAll` devolve `[]`, que o catchUp leria como "cofre vazio".
+ * Nas bordas ASSÍNCRONAS (`_applyChangeAndNotify`, `catchUp`) a instância é
+ * re-resolvida: a sadia volta como está; a morta é substituída pela
+ * reaberta (o init memoriza a promessa do singleton — custo desprezível).
+ * Dublês de teste não implementam `isClosed` e passam direto.
+ *
+ * Exportada por ser a peça testável do conserto (prova de mutação: remover
+ * a consulta a `isClosed` faz o teste de reabertura falhar).
+ */
+export async function cofreVivo(instancia: DataVault): Promise<DataVault> {
+  if (typeof instancia.isClosed === "function" && instancia.isClosed()) {
+    console.warn(
+      "[RealtimeSyncEngine] DataVault fechado (versionchange de outra aba) — reabrindo o singleton antes de tocar nele.",
+    );
+    return DataVault.init();
+  }
+  return instancia;
+}
 
 export const RealtimeSyncEngine = {
   /**
@@ -307,11 +365,35 @@ export const RealtimeSyncEngine = {
 
       // Register connectivity/visibility change listeners
       if (typeof window !== "undefined") {
+        // realtimeSyncEngine-317: cada volta à aba disparava um catchUp
+        // COMPLETO (5 consultas + resumo do catálogo inteiro + detalhes) sem
+        // janela mínima — o mutex `_isCatchingUp` só evita rodadas
+        // CONCORRENTES, não repetidas. Alternar app/WhatsApp cinco vezes em
+        // um minuto (rotina de balcão) eram cinco varreduras completas sem
+        // nada ter mudado no servidor. Os dois gatilhos passam agora pela
+        // mesma janela: disparou há menos de um minuto, adia — o dado que
+        // mudou de verdade não depende da janela (chega pelo websocket, que
+        // não passa por aqui) e o catchUp do fim da janela cobre o resto.
+        const rodadaPorGatilho = (motivo: string) => {
+          const agora = Date.now();
+          if (
+            agora - _ultimoGatilhoDeRodada <
+            JANELA_MINIMA_ENTRE_GATILHOS_MS
+          ) {
+            console.log(
+              `[RealtimeSyncEngine] ${motivo}: última rodada há menos de ${JANELA_MINIMA_ENTRE_GATILHOS_MS / 1000}s — catchUp adiado.`,
+            );
+            return;
+          }
+          _ultimoGatilhoDeRodada = agora;
+          this.catchUp(vault, isAdmin).catch(() => {});
+        };
+
         const handleOnline = () => {
           console.log(
             "[RealtimeSyncEngine] Connection restored (online). Triggering catchUp...",
           );
-          this.catchUp(vault, isAdmin).catch(() => {});
+          rodadaPorGatilho("Conexão restabelecida");
         };
 
         const handleVisibilityChange = () => {
@@ -319,7 +401,7 @@ export const RealtimeSyncEngine = {
             console.log(
               "[RealtimeSyncEngine] Tab active (visible). Triggering catchUp...",
             );
-            this.catchUp(vault, isAdmin).catch(() => {});
+            rodadaPorGatilho("Aba ativa");
           }
         };
 
@@ -466,6 +548,11 @@ export const RealtimeSyncEngine = {
     raw: any,
     old: any,
   ): Promise<void> {
+    // dataVault-129: toda borda assíncrona re-resolve o cofre — o handle
+    // capturado em start() pode ter sido fechado por um versionchange de
+    // outra aba; gravar nele seria InvalidStateError com aviso à tela como
+    // se tivesse gravado.
+    vault = await cofreVivo(vault);
     // A exclusão de produto deste app é *soft-delete*: `useProducts` grava
     // `deleted_at` com um UPDATE, então a exclusão chega aqui como UPDATE. Sem
     // esta checagem o `case "UPDATE"` daria `vault.put` e gravaria de volta no
@@ -668,6 +755,9 @@ export const RealtimeSyncEngine = {
   async catchUp(vault: DataVault, isAdmin: boolean): Promise<void> {
     if (_isCatchingUp) return;
     _isCatchingUp = true;
+    // dataVault-129: mesma regra da borda de escrita — a rodada inteira
+    // (leituras e reconciliação) passa a rodar sobre o cofre VIVO.
+    vault = await cofreVivo(vault);
     console.log("[RealtimeSyncEngine] 🔄 Running catchUp/reconciliation...");
 
     try {
@@ -853,7 +943,15 @@ export const RealtimeSyncEngine = {
       if (serverProductsSummary) {
         const serverSummary = serverProductsSummary as any[];
         const serverIds = new Set(serverSummary.map((p: any) => p.id));
-        const localProducts = await vault.getAll<Product>("products");
+        // dataVault-129: getAllOrThrow, e não getAll. Uma leitura quebrada
+        // (conexão fechada por versionchange, store ausente) precisa ABORTAR
+        // a rodada — o getAll engolia o throw e devolvia [], que aqui embaixo
+        // significaria "o cofre está vazio": TODO o catálogo entraria em
+        // outOfDateIds/deletedIds a cada foco da aba. O rejection sobe até o
+        // catch do próprio catchUp (log) e o finally libera a trava — sem
+        // setLastSync (nada é marcado como sincronizado), sem escrita, sem
+        // aviso à tela com estado que o cofre não tem.
+        const localProducts = await vault.getAllOrThrow<Product>("products");
 
         // Find deleted/inactive items: in local but not on server
         const deletedIds = localProducts
@@ -938,35 +1036,76 @@ export const RealtimeSyncEngine = {
           // `deleted_at` preenchido -- e o `putMany` o grava no cofre como se
           // estivesse vivo. A view `vw_produtos_public` já filtra por conta
           // própria e não expõe a coluna, então o filtro só entra no ramo admin.
-          let detailQuery = supabase
-            .from(isAdmin ? "produtos" : ("vw_produtos_public" as any))
-            .select(
-              // Laudo #2 (achado da revisão do PR #395): no ramo admin, o
-              // `*` pedia `custo` — coluna com SELECT NEGADO ao authenticated
-              // desde o BANCO-010 — e o `const { data }` sem checar `error`
-              // ENGOLIA o permission denied: o catch-up de detalhes do painel
-              // falhava em silêncio. Colunas explícitas (as 29 públicas) fazem
-              // a mesma leitura funcionar; o custo do admin segue vindo por
-              // vw_produtos_admin/RPCs, que são as portas de propósito.
-              isAdmin
-                ? "id, nome, descricao, categoria, codigo, preco_venda, preco_original, imagem_url, imagem_urls, estoque, estoque_minimo, ativo, deleted_at, data_cadastro, ultima_atualizacao, peso_kg, altura_cm, largura_cm, comprimento_cm, frete_gratis, tags, meta_title, meta_description, rating, review_count, sold, calculated_points, fornecedor_id, is_bestseller, product_variants(*)"
-                : "*, product_variants(*)",
-            )
-            .in("id", outOfDateIds);
-          if (isAdmin) {
-            detailQuery = detailQuery.is("deleted_at", null);
+          //
+          // realtimeSyncEngine-955: o `.in("id", [...])` é montado em LOTES de
+          // 100 ids. Cada UUID custa ~37 caracteres na query string; o resumo
+          // de onde nasce `outOfDateIds` é deliberadamente sem `.limit()` (um
+          // limite causaria falso-sync), então uma loja com algumas centenas de
+          // produtos e cofre vazio (primeiro boot, purge de versão) passava de
+          // 8 KB de linha de requisição num GET único — 414/431 no gateway, a
+          // falha morria no console e o cofre NUNCA recebia nada pelo catchUp.
+          // Erro num lote não descarta os outros: os lotes que chegaram são
+          // gravados e marcados com setLastSync; o que faltou tenta de novo na
+          // próxima rodada (o resumo dele continua desatualizado).
+          const TAMANHO_DO_LOTE_DE_IDS = 100;
+          const rawProducts: any[] = [];
+          let lotesComErro = 0;
+          for (
+            let inicio = 0;
+            inicio < outOfDateIds.length;
+            inicio += TAMANHO_DO_LOTE_DE_IDS
+          ) {
+            const lote = outOfDateIds.slice(
+              inicio,
+              inicio + TAMANHO_DO_LOTE_DE_IDS,
+            );
+            let detailQuery = supabase
+              .from(
+                isAdmin ? "vw_produtos_admin" : ("vw_produtos_public" as any),
+              )
+              .select(
+                // realtimeSyncEngine-952: MESMA PORTA E MESMA LITERAL do
+                // `fetchProducts` (StoreContext) — um esquema só. A view
+                // resolve `custo` por `is_admin()` e traz `codigo_barras`
+                // sem ninguém precisar lembrar de coluna em lista. A lista
+                // escolhida a dedo que morava aqui (laudo #2 do PR #395,
+                // nascida porque `*` na TABELA pedia `custo` com SELECT
+                // negado ao authenticated) aposentou: toda coluna nova
+                // precisava entrar nela à mão, e o esquecimento era
+                // silencioso — o `putMany` SOBRESCREVE o registro do cofre,
+                // então cada catchUp regravava o produto sem o campo que
+                // ficou fora da lista (custo sumia; metade do catálogo com
+                // custo, metade sem, dependendo de quem gravou por último).
+                "*, product_variants(*)",
+              )
+              .in("id", lote);
+            if (isAdmin) {
+              detailQuery = detailQuery.is("deleted_at", null);
+            }
+            const { data: rawDoLote, error: erroDoLote } = await detailQuery;
+            // Laudo #2: o catchup de detalhes não pode engolir falha em
+            // silêncio — loga, conta o lote como perdido e segue para o
+            // próximo (-955): um lote que falha não derruba os que chegaram.
+            if (erroDoLote || !rawDoLote) {
+              lotesComErro += 1;
+              console.error(
+                "[RealtimeSync] Falha no catchup de detalhes de produtos (lote de %d ids):",
+                lote.length,
+                erroDoLote?.message,
+              );
+              continue;
+            }
+            rawProducts.push(...rawDoLote);
           }
-          const { data: rawProducts, error: erroDetalhes } = await detailQuery;
-          // Laudo #2: o catchup de detalhes não pode engolir falha em
-          // silêncio — loga e segue (o próximo catchup tenta de novo).
-          if (erroDetalhes) {
+          if (lotesComErro > 0) {
             console.error(
-              "[RealtimeSync] Falha no catchup de detalhes de produtos:",
-              erroDetalhes.message,
+              "[RealtimeSync] Catchup de detalhes: %d de %d lote(s) falharam — os demais foram gravados; a próxima rodada tenta os que faltaram.",
+              lotesComErro,
+              Math.ceil(outOfDateIds.length / TAMANHO_DO_LOTE_DE_IDS),
             );
           }
 
-          if (rawProducts) {
+          if (rawProducts.length > 0) {
             const variantRecord = TABLE_CONFIGS.find(
               (c) => c.table === "product_variants",
             );

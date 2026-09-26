@@ -948,6 +948,34 @@ async function interpretarRespostaDePagamento(
 export type CandidatoManifesto = { rotulo: string; manifesto: string };
 
 /**
+ * Os dois campos que o `x-signature` do MP carrega (`ts=<epoch>,v1=<hex>`):
+ * separa por vírgula, parte no primeiro `=`, o valor é o resto. Devolve
+ * `null` (não string vazia) para campo ausente.
+ *
+ * ÚNICA regra de parse do repositório (mp-10): até esta extração,
+ * `webhook-mercadopago/index.ts` tinha uma CÓPIA deste laço (para a porta
+ * barata que recusa sem tocar o banco) e `avaliarAssinatura`, logo abaixo,
+ * tinha outra — duas grafias que podiam divergir em silêncio e fariam a
+ * porta barata recusar (ou aceitar) notificação que a validação de verdade
+ * decidiria diferente. Exportada para quem mais precisar dos dois campos
+ * (hoje só o próprio webhook, em três lugares: a recusa barata, o log de
+ * entrada e o log de falha).
+ */
+export function camposDaAssinatura(
+  xSignature: string | null,
+): { ts: string | null; v1: string | null } {
+  let ts = "";
+  let v1 = "";
+  for (const parte of xSignature?.split(",") ?? []) {
+    const [chave, ...resto] = parte.split("=");
+    const valor = resto.join("=").trim();
+    if (chave?.trim() === "ts") ts = valor;
+    if (chave?.trim() === "v1") v1 = valor;
+  }
+  return { ts: ts || null, v1: v1 || null };
+}
+
+/**
  * Monta os manifestos candidatos da assinatura, já DEDUPLICADOS pelo TEXTO
  * do manifesto — não só pelo `dataId`: um id numérico (ex.: "999") tem a
  * mesma forma em maiúsculas e minúsculas, então "corpo-original" e
@@ -1075,14 +1103,13 @@ export async function avaliarAssinatura(args: {
 
   if (!xSignature || !segredo || !dataId) return semCandidatos;
 
-  let ts = "";
-  let v1 = "";
-  for (const parte of xSignature.split(",")) {
-    const [chave, ...resto] = parte.split("=");
-    const valor = resto.join("=").trim();
-    if (chave?.trim() === "ts") ts = valor;
-    if (chave?.trim() === "v1") v1 = valor;
-  }
+  // `camposDaAssinatura` (acima): a MESMA regra de parse que a porta barata
+  // do webhook usa para recusar sem tocar o banco — duas grafias divergentes
+  // fariam essa porta e esta validação discordar sobre o que é um header
+  // "sem forma" (mp-10).
+  const { ts: tsOuNulo, v1: v1OuNulo } = camposDaAssinatura(xSignature);
+  const ts = tsOuNulo ?? "";
+  const v1 = v1OuNulo ?? "";
   if (!ts || !v1) return semCandidatos;
 
   // `ts` fora da janela: só importa para um chamador que passe uma

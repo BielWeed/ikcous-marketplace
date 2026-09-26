@@ -11,9 +11,16 @@ import { applyThemeColor, branding } from "@/config/branding";
 import { destinoPosLogin } from "@/lib/destinoPosLogin";
 import {
   CHAVE_MOTIVO_DE_RECARGA,
+  atualizacaoTrocouDeBuild,
   descreveMotivoDeRecarga,
   limpaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
+
+// Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
+// fora dele (runner de teste), o app segue de pé.
+declare const __APP_VERSION__: string;
+const VERSAO_DO_APP =
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { PreloadedOrLazy, lazyWithPreload } from "@/utils/lazyWithPreload";
@@ -292,12 +299,6 @@ const FavoritesView = lazyWithPreload(() =>
   })),
 );
 
-const DebugPanel = React.lazy(() =>
-  import("@/components/debug/DebugPanel").then((m) => ({
-    default: m.DebugPanel,
-  })),
-);
-
 // F1 (glm-perf-1paint-0309): os três usos de framer-motion que viviam no
 // corpo do App (wrapper das abas, troca de view secundária e barra de
 // progresso de rota) moram agora no módulo abaixo — fora do gráfico estático
@@ -345,11 +346,13 @@ const VIEW_COMPONENTS = {
   "admin-products": AdminArea,
   "admin-product-form": AdminArea,
   "admin-orders": AdminArea,
+  "admin-pdv": AdminArea,
   "admin-coupons": AdminArea,
   "admin-coupon-form": AdminArea,
   "admin-banners": AdminArea,
   "admin-carousels": AdminArea,
   "admin-shipping": AdminArea,
+  "admin-shipping-national": AdminArea,
   "admin-settings": AdminArea,
   "admin-reviews": AdminArea,
   "admin-qa": AdminArea,
@@ -358,6 +361,7 @@ const VIEW_COMPONENTS = {
   "admin-push": AdminArea,
   "admin-notifications": AdminArea,
   "admin-whatsapp-config": AdminArea,
+  "admin-about-store": AdminArea,
   "address-form": AddressFormView,
   "admin-login": AdminLogin,
   "user-profile": UserProfileView,
@@ -410,6 +414,7 @@ const getNavigationDirection = (
     "admin-push": 0.5,
     "admin-notifications": 0.3,
     "admin-orders": 1,
+    "admin-pdv": 1.2,
     "admin-reviews": 1.4,
     "admin-qa": 1.6,
     "admin-products": 2,
@@ -419,8 +424,10 @@ const getNavigationDirection = (
     "admin-banners": 2.6,
     "admin-carousels": 2.62,
     "admin-shipping": 2.7,
+    "admin-shipping-national": 2.72,
     "admin-customers": 3,
     "admin-whatsapp-config": 3.4,
+    "admin-about-store": 4.2,
     "admin-user-detail": 3.5,
     "admin-settings": 4,
   };
@@ -639,7 +646,6 @@ const AppContent = () => {
   }, [adminStatus]);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isHeaderDocked, setIsHeaderDocked] = useState(false);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
@@ -740,6 +746,27 @@ const AppContent = () => {
 
   const handleNavigate = useCallback(
     async (view: View, id?: string, bypassDirtyCheck = false) => {
+      // App-743: tocar a própria aba/view JÁ ativa é sempre só scroll-to-top
+      // (ramo espelhado abaixo, em 834-842) — não há "para onde ir", então
+      // isso precisa vencer o gate de formulário sujo, nunca abrir o
+      // diálogo "Alterações Não Salvas". Antes esse gate rodava primeiro
+      // (usando `isAdminDirtyRef` puro) e tocar a aba ativa com dirty=true
+      // abria o diálogo; "Descartar e Sair" reentrava aqui com a MESMA view
+      // e caía neste mesmo caso de "mesmo destino" — só rolava pro topo,
+      // nunca desmontava o formulário, mas já tinha desligado a guarda.
+      if (
+        currentViewRef.current === view &&
+        selectedProductIdRef.current === (id || null)
+      ) {
+        const scrollContainer = view.startsWith("admin")
+          ? document.querySelector(".active-scroll-container")
+          : mainRef.current;
+        if (scrollContainer) {
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        return;
+      }
+
       if (isAdminDirtyRef.current && !bypassDirtyCheck) {
         setPendingNavigation({ view, id });
         return;
@@ -1080,7 +1107,10 @@ const AppContent = () => {
   useBehavioralPrefetch(currentView, prefetchView);
   useWebVitals();
 
-  // Prefetching of admin views is handled internally within the secure AdminArea.tsx bundle.
+  // Prefetch por hover/touch das views admin é feito dentro do AdminLayout
+  // (handleHoverTab). O prefetch em massa do boot (useEffect abaixo, com
+  // prefetchAll) só inclui essas views quando isAdminRef confirma o
+  // visitante como lojista — ver App-2114.
 
   const favoriteIds = React.useMemo(
     () => favorites.map((p) => p.id),
@@ -1334,11 +1364,19 @@ const AppContent = () => {
   // PWA Reload Reason Consumption — laudo #2 (P-1): o motivo descreve o que
   // REALMENTE aconteceu (update, recuperação de erro, crash, sentinela);
   // "Sistema Atualizado" só aparece quando houve atualização de verdade.
+  // Peça 22/09: e "de verdade" é PROVADO — a origem gravada na partida do
+  // apply tem de diferir do build deste boot. Apply pendurado, recarga de
+  // segurança ou purge que não curou: toast neutro, nunca sucesso inventado.
   // ==============================
   useEffect(() => {
-    const motivo = descreveMotivoDeRecarga(
-      localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA),
-    );
+    const bruto = localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA);
+    // Lê e limpa a evidência em TODO boot (com motivo de atualização ou sem)
+    // para a chave não órfã; a decisão de sucesso usa o resultado abaixo.
+    const trocouDeBuild = atualizacaoTrocouDeBuild(VERSAO_DO_APP);
+    const motivo =
+      bruto === "atualizacao-aplicada" && !trocouDeBuild
+        ? descreveMotivoDeRecarga("atualizacao-nao-confirmada")
+        : descreveMotivoDeRecarga(bruto);
     if (motivo) {
       console.log(`[PWA] Consuming reload reason: ${motivo.titulo}`);
       import("sonner").then(({ toast }) => {
@@ -1573,14 +1611,17 @@ const AppContent = () => {
           "admin-product-form",
           "admin-user-detail",
           "admin-push",
+          "admin-pdv",
           "admin-banners",
           "admin-carousels",
           "admin-coupons",
           "admin-coupon-form",
           "admin-shipping",
+          "admin-shipping-national",
           "admin-reviews",
           "admin-qa",
           "admin-whatsapp-config",
+          "admin-about-store",
         ];
         if (
           subAdminViews.includes(currView) &&
@@ -1607,6 +1648,26 @@ const AppContent = () => {
               "",
               "/admin-products",
             );
+          } else if (currView === "admin-shipping-national") {
+            // Mesmo pai de paiDaTelaDoAdmin("admin-shipping-national", ...):
+            // sub-view do botão "Estratégias do frete nacional →" dentro de
+            // admin-shipping — o Voltar do navegador volta para a tela de
+            // Frete, nunca para admin-products (nova-tela.md:39/45).
+            targetView = "admin-shipping";
+            globalThis.history.replaceState(
+              { view: "admin-shipping" },
+              "",
+              "/admin-shipping",
+            );
+          } else if (currView === "admin-about-store") {
+            // Porta única: a tela "Sobre a Loja" nasce do cartão nos Ajustes
+            // — o Voltar do navegador volta para lá, nunca para a vitrine.
+            targetView = "admin-settings";
+            globalThis.history.replaceState(
+              { view: "admin-settings" },
+              "",
+              "/admin-settings",
+            );
           } else if (
             currView === "admin-user-detail" ||
             currView === "admin-whatsapp-config"
@@ -1619,8 +1680,13 @@ const AppContent = () => {
             );
           } else if (
             currView === "admin-push" ||
-            currView === "admin-banners"
+            currView === "admin-banners" ||
+            currView === "admin-pdv"
           ) {
+            // Mesmo pai de `paiDaTelaDoAdmin("admin-pdv", ...)` — o
+            // checklist (nova-tela.md:39) avisa que já existem casos onde o
+            // reroute do popstate diverge do pai declarado ali; aqui os dois
+            // concordam de propósito.
             targetView = "admin-dashboard";
             globalThis.history.replaceState(
               { view: "admin-dashboard" },
@@ -1883,78 +1949,90 @@ const AppContent = () => {
 
     syncWithUrl("efeito");
     const handlePopState = (e: PopStateEvent) => {
-      if (isAdminDirtyRef.current) {
-        console.warn("[App] Popstate blocked by unsaved changes.");
-        const path =
-          currentViewRef.current === "home"
-            ? "/"
-            : [
-                  "product-detail",
-                  "user-profile",
-                  "order-details",
-                  "admin-product-form",
-                  "admin-coupon-form",
-                  "admin-user-detail",
-                  "admin-orders",
-                  "admin-push",
-                ].includes(currentViewRef.current) &&
-                selectedProductIdRef.current
-              ? `/${currentViewRef.current}?id=${selectedProductIdRef.current}`
-              : `/${currentViewRef.current}`;
-        globalThis.history.pushState(
-          globalThis.history.state || { view: currentViewRef.current },
-          "",
-          path,
-        );
-
-        const targetState = e.state;
-        let targetView: View = "home";
-        let targetId: string | undefined;
-        if (targetState?.view) {
-          targetView = targetState.view;
-          targetId = targetState.id;
-        }
-        setPendingNavigation({ view: targetView, id: targetId });
-        return;
-      }
-
-      if (isTransitioningRef.current) {
-        console.warn(
-          "[App] Popstate blocked by transition lock. Reverting history to maintain sync.",
-        );
-        // Re-push the state to prevent URL getting out of sync with current locked view
-        const path =
-          currentView === "home"
-            ? caminhoDaHomeRef.current()
-            : [
-                  "product-detail",
-                  "user-profile",
-                  "order-details",
-                  "admin-product-form",
-                  "admin-coupon-form",
-                  "admin-user-detail",
-                  "admin-orders",
-                  "admin-push",
-                ].includes(currentView) && selectedProductId
-              ? `/${currentView}?id=${selectedProductId}`
-              : `/${currentView}`;
-        globalThis.history.pushState(
-          globalThis.history.state || { view: currentView },
-          "",
-          path,
-        );
-        return;
-      }
-
-      isTransitioningRef.current = true;
-      lastTransitionStartTimeRef.current = Date.now();
-
-      // 1. PRIORITY: Execute any registered override (e.g., closing a modal)
-      // We use the Ref to ensure we always have the latest function without re-adding the listener
+      // 1. PRIORITY: a camada aberta consome o Voltar ANTES do gate de
+      //      dirty (mesmo tema do 94c2638, agora do lado do App). Com cupom
+      //      cheio no PDV e a camada de cliente/variação/fechamento aberta,
+      //      o Voltar do aparelho pertence à CAMADA: fechá-la não perde
+      //      nada (os itens continuam no cupom) e o popstate já consumiu a
+      //      entrada `{modal}` que ela empurrou — se o gate de dirty
+      //      corresse primeiro, re-empurraria o histórico SEM essa marca e
+      //      abriria o diálogo "alterações não salvas" por cima da camada
+      //      que continuaria aberta, sem ninguém ter saído de tela nenhuma.
+      //      O dirty segue valendo para o Voltar sem camada no meio.
+      //      Usamos o Ref para sempre ter a função mais recente sem
+      //      re-registrar o listener.
       if (backOverrideRef.current) {
         console.log("[App] Intercepting popstate via backOverrideRef");
+        isTransitioningRef.current = true;
+        lastTransitionStartTimeRef.current = Date.now();
         backOverrideRef.current();
         // Fall through to syncWithUrl to handle any potential URL changes
+      } else {
+        if (isAdminDirtyRef.current) {
+          console.warn("[App] Popstate blocked by unsaved changes.");
+          const path =
+            currentViewRef.current === "home"
+              ? "/"
+              : [
+                    "product-detail",
+                    "user-profile",
+                    "order-details",
+                    "admin-product-form",
+                    "admin-coupon-form",
+                    "admin-user-detail",
+                    "admin-orders",
+                    "admin-push",
+                  ].includes(currentViewRef.current) &&
+                  selectedProductIdRef.current
+                ? `/${currentViewRef.current}?id=${selectedProductIdRef.current}`
+                : `/${currentViewRef.current}`;
+          globalThis.history.pushState(
+            globalThis.history.state || { view: currentViewRef.current },
+            "",
+            path,
+          );
+
+          const targetState = e.state;
+          let targetView: View = "home";
+          let targetId: string | undefined;
+          if (targetState?.view) {
+            targetView = targetState.view;
+            targetId = targetState.id;
+          }
+          setPendingNavigation({ view: targetView, id: targetId });
+          return;
+        }
+
+        if (isTransitioningRef.current) {
+          console.warn(
+            "[App] Popstate blocked by transition lock. Reverting history to maintain sync.",
+          );
+          // Re-push the state to prevent URL getting out of sync with current locked view
+          const path =
+            currentView === "home"
+              ? caminhoDaHomeRef.current()
+              : [
+                    "product-detail",
+                    "user-profile",
+                    "order-details",
+                    "admin-product-form",
+                    "admin-coupon-form",
+                    "admin-user-detail",
+                    "admin-orders",
+                    "admin-push",
+                  ].includes(currentView) && selectedProductId
+                ? `/${currentView}?id=${selectedProductId}`
+                : `/${currentView}`;
+          globalThis.history.pushState(
+            globalThis.history.state || { view: currentView },
+            "",
+            path,
+          );
+          return;
+        }
+
+        isTransitioningRef.current = true;
+        lastTransitionStartTimeRef.current = Date.now();
       }
 
       // 2. Home Trap logic
@@ -2110,11 +2188,16 @@ const AppContent = () => {
     return () => clearTimeout(safetyTimer);
   }, [authLoading, productsLoading]);
 
-  // Preemptively prefetch all view chunks in background when network is idle
+  // Preemptively prefetch all view chunks in background when network is idle.
+  // App-2114: as views "admin-*" só entram quando `isAdminRef` já confirma o
+  // visitante como lojista — antes disso, prefetchAll baixava o painel
+  // inteiro (1,23 MB + recharts do dashboard) para todo cliente. Lê o ref
+  // (não `isAdmin` direto) para não reiniciar este timer de boot toda vez
+  // que o status de admin mudar — só importa o valor no instante do disparo.
   useEffect(() => {
     if (!authLoading && !productsLoading) {
       const timer = setTimeout(() => {
-        prefetchAll();
+        prefetchAll(isAdminRef.current);
       }, 800); // 800ms delay to ensure first paint is completely done
       return () => clearTimeout(timer);
     }
@@ -2313,11 +2396,13 @@ const AppContent = () => {
       "admin-products",
       "admin-product-form",
       "admin-orders",
+      "admin-pdv",
       "admin-coupons",
       "admin-coupon-form",
       "admin-banners",
       "admin-carousels",
       "admin-shipping",
+      "admin-shipping-national",
       "admin-settings",
       "admin-reviews",
       "admin-qa",
@@ -2326,6 +2411,7 @@ const AppContent = () => {
       "admin-push",
       "admin-notifications",
       "admin-whatsapp-config",
+      "admin-about-store",
     ];
 
     const privateViews: View[] = [
@@ -2482,6 +2568,7 @@ const AppContent = () => {
                     props={{
                       key: user?.id ? `profile-${user.id}` : "profile-guest",
                       onNavigate: handleNavigate,
+                      isActive: currentView === "profile",
                     }}
                   />
                 </DeferredTabContent>
@@ -2599,6 +2686,7 @@ const AppContent = () => {
                       props={{
                         key: user?.id ? `profile-${user.id}` : "profile-guest",
                         onNavigate: handleNavigate,
+                        isActive: currentView === "profile",
                       }}
                     />
                   </DeferredTabContent>
@@ -2881,13 +2969,6 @@ const AppContent = () => {
           </>
         )}
 
-      <React.Suspense fallback={null}>
-        <DebugPanel
-          isOpen={isDebugOpen}
-          onClose={() => setIsDebugOpen(false)}
-        />
-      </React.Suspense>
-
       <AlertDialog
         open={!!pendingNavigation}
         onOpenChange={(open) => !open && setPendingNavigation(null)}
@@ -2928,7 +3009,11 @@ const AppContent = () => {
       </AlertDialog>
 
       <React.Suspense fallback={null}>
-        <PWAUpdateManager currentView={currentView} />
+        {/* UpdateNotification-138: o mesmo sinal de dirty que arma o
+            beforeunload acima — o aviso de atualização não cobre a tela
+            com formulário do admin no meio da edição; fica armado e volta
+            quando o trabalho termina. */}
+        <PWAUpdateManager currentView={currentView} adminDirty={isAdminDirty} />
       </React.Suspense>
       <Toaster />
     </div>

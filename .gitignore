@@ -85,6 +85,10 @@ scratch_*
 !public/branding/logo.png
 !public/icons/*.png
 !public/og-image.png
+# Logos oficiais do frete (fontes e SHA-256 em public/logos/FONTES.md). Sem
+# esta exceção os PNG ficaram fora do repositório em 23/09/2026 e produção
+# servia o app shell no lugar deles.
+!public/logos/**/*.png
 
 # NÃO reintroduza um `*.yml` global aqui. Ele existia até 30/07/2026 e ignorava
 # em silêncio `.github/workflows/*.yml`, `.github/ISSUE_TEMPLATE/*.yml` e o
@@ -154,3 +158,10 @@ rollback-*.sql
 # de ALTER TABLE so existe se alguem o escrever, e ele tem de estar no git:
 # fora dele, a unica copia mora numa maquina so.
 !rollback-manual-*.sql
+
+# Worktrees de agentes (comando /wt): cópias de trabalho locais com estado
+# próprio em estado.json — trabalho em andamento de uma sessão, não entrega.
+.worktrees/
+
+.vercel
+.env*

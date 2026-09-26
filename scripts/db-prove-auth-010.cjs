@@ -147,8 +147,13 @@ async function main() {
     if (prod.length === 0) throw new Error("Nenhum produto elegivel.");
     await client.query("SELECT set_config('request.jwt.claims', '', true)");
     const { rows: novo } = await client.query(
+      // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration 20261174000000):
+      // era 'whatsapp' — nunca um payment_method válido, só passava porque
+      // a RPC não validava a forma. O invariante novo (forma_de_pagamento_
+      // aceita) recusaria com FORMA_DE_PAGAMENTO_DESLIGADA. 'pix' é aceito
+      // por padrão (store_config.formas_pagamento_entrega nasce com as 3).
       `SELECT public.create_marketplace_order_v23(
-         $1::jsonb, $2::numeric, $3::numeric, 'whatsapp', NULL, NULL,
+         $1::jsonb, $2::numeric, $3::numeric, 'pix', NULL, NULL,
          'Prova AUTH-010', $4::text, 'ROLLBACK - teste', NULL, NULL, NULL) AS id`,
       [
         JSON.stringify([

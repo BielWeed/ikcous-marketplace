@@ -1,9 +1,17 @@
+import { cpfValido } from "@/lib/cpf";
+import { gravarCpfDaConta } from "@/lib/cpf-da-conta";
+import {
+  lerPendente,
+  retomarCpfPendente,
+  salvarPendente,
+} from "@/lib/cpf-pendente-do-cadastro";
 import {
   type LoginAudience,
   MENSAGEM_ERRO_LOGIN_GENERICA,
   MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
 } from "@/lib/mensagens-auth";
 import { supabase } from "@/lib/supabase";
+import { limparCachesDeAdmin } from "@/utils/admin_cache";
 import {
   isAuthApiError,
   isAuthRetryableFetchError,
@@ -108,6 +116,15 @@ let initPromise: Promise<any> | null = null;
 // dispositivo compartilhado acumula cache de vários usuários, não só do que
 // acabou de sair.
 function clearLocalUserData() {
+  // admin_cache-17 — os quatro caches de admin (customers/coupons/reviews/
+  // questions) são variáveis de módulo em src/utils/admin_cache.ts, fora do
+  // localStorage: sem esta chamada, sobreviviam ao logout e o próximo login
+  // na mesma aba via `onAuthStateChange` (tablet de balcão compartilhado)
+  // reaproveitava o cache do lojista anterior. Fica ANTES do `return` de
+  // SSR/teste sem `window` de propósito — memória de módulo não depende de
+  // `window`, e assim continua valendo em qualquer ambiente que chame esta
+  // função.
+  limparCachesDeAdmin();
   if (typeof window === "undefined") return;
   localStorage.removeItem("marketplace_cart_v1");
   localStorage.removeItem("ikcous_recently_viewed");
@@ -182,6 +199,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     return false;
   });
+
+  // Revisão de segurança (23/09/2026): o TTL de 24 h do CPF pendente do
+  // cadastro só era cobrado dentro da retomada, que exige sessão. Num
+  // aparelho compartilhado onde ninguém volta a entrar numa conta, o
+  // registro vencido ficaria para sempre. `lerPendente` já apaga o que
+  // venceu (ou está corrompido) — chamá-la ao montar, com ou sem sessão,
+  // faz o prazo valer sempre.
+  useEffect(() => {
+    lerPendente();
+  }, []);
 
   useEffect(() => {
     if (isPasswordRecovery && typeof window !== "undefined") {
@@ -673,6 +700,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const currentUserId = session?.user?.id || null;
       activeUserIdRef.current = currentUserId;
 
+      // admin_cache-17 — troca de conta na MESMA aba sem passar por
+      // SIGNED_OUT explícito (ex.: sessão expira e outra pessoa loga em
+      // seguida no mesmo tablet de balcão) também precisa zerar os caches de
+      // admin; sem isto, o caso coberto por `clearLocalUserData()` no
+      // SIGNED_OUT (abaixo) não pegaria essa troca direta uid→uid.
+      if (previousUserId && currentUserId && previousUserId !== currentUserId) {
+        limparCachesDeAdmin();
+      }
+
       // Only set loading screen for explicit critical transitions (login/logout).
       // Do not block UI on background events (such as TOKEN_REFRESHED) or initial load recovery.
       // A transition is critical only if the auth state has actually changed for a different user.
@@ -704,6 +740,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (session?.user) {
+        // O CPF MORA NA CONTA (23/09/2026): retomada do pendente de
+        // cadastro (ver src/lib/cpf-pendente-do-cadastro.ts) — SÓ em
+        // SIGNED_IN/INITIAL_SESSION (nunca em TOKEN_REFRESHED ou outro
+        // evento de fundo), em QUALQUER aba, sem depender de estado da
+        // aba do cadastro. Em segundo plano: nunca atrasa o boot nem o
+        // login. O dedupe de "SIGNED_IN + INITIAL_SESSION quase
+        // simultâneos" mora DENTRO de `retomarCpfPendente` (flag em
+        // voo) — não precisa de guarda extra aqui.
+        if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+          void retomarCpfPendente({
+            userId: session.user.id,
+            email: session.user.email ?? "",
+          })
+            .then((resultado) => {
+              if (resultado === "falhou") {
+                toast.error(
+                  "Não foi possível salvar o CPF do cadastro. Informe-o em Minha conta > Informações pessoais.",
+                );
+              }
+            })
+            .catch(() => {});
+        }
         if (isCriticalTransition) {
           // For SIGNED_IN, race checkAdmin and fetchProfile against a 2.5-second timeout to unblock loading state
           try {
@@ -771,7 +829,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       phone: string,
       cpf?: string,
     ): Promise<boolean> => {
-      const { error } = await supabase.auth.signUp({
+      // O CPF MORA NA CONTA (23/09/2026): CPF NUNCA vai em `options.data`
+      // (user_metadata) — user_metadata é visível no JWT e não passa pela
+      // validação de dígito verificador nem pelo `REVOKE` de `set_my_cpf`.
+      // O caminho único é a RPC `set_my_cpf` (via `gravarCpfDaConta`),
+      // chamada abaixo quando o `signUp` já devolve sessão, ou guardada
+      // como PENDENTE (`salvarPendente`) quando a confirmação por e-mail
+      // ainda vai acontecer — ver `src/lib/cpf-pendente-do-cadastro.ts`
+      // para o porquê (link de confirmação abre aba nova no Android).
+      const { data, error } = await supabase.auth.signUp({
         email,
         password: senha,
         options: {
@@ -779,7 +845,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           data: {
             full_name: fullName,
             phone: phone,
-            cpf: cpf,
           },
         },
       });
@@ -817,6 +882,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         toast.error(message);
         return false;
       }
+
+      // CPF é OPCIONAL no cadastro — só entra em jogo se a pessoa
+      // preencheu (e o campo já foi validado na tela antes de chegar
+      // aqui; `cpfValido` de novo é defesa em profundidade, não a régua
+      // principal).
+      if (cpf && cpfValido(cpf)) {
+        if (data.session) {
+          // Sessão IMEDIATA (confirmação por e-mail desligada, ou conta
+          // já confirmada por outro caminho) — grava na hora, mesma RPC
+          // que o perfil e o checkout usam.
+          const resultado = await gravarCpfDaConta(cpf);
+          if (!resultado.ok) {
+            toast.error(
+              "Cadastro concluído, mas não foi possível salvar o CPF agora. Você pode informá-lo depois em Minha conta > Informações pessoais.",
+            );
+          }
+        } else if (data.user) {
+          // SEM sessão (caso normal: confirmação por e-mail pendente) —
+          // guarda o pendente; a retomada acontece no listener de
+          // `onAuthStateChange` abaixo, em QUALQUER aba que a pessoa
+          // confirmar o e-mail.
+          const salvou = salvarPendente({
+            userId: data.user.id,
+            email,
+            cpf,
+          });
+          if (!salvou) {
+            toast.error(
+              "Cadastro concluído, mas não foi possível guardar o CPF neste aparelho. Você pode informá-lo depois em Minha conta ou no checkout.",
+            );
+          }
+        }
+      }
+
       return true;
     },
     [],

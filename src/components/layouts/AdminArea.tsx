@@ -28,6 +28,11 @@ const AdminOrders = lazyWithPreload(() =>
     default: m.AdminOrdersView,
   })),
 );
+const AdminPdv = lazyWithPreload(() =>
+  import("@/views/admin/AdminPdvView").then((m) => ({
+    default: m.AdminPdvView,
+  })),
+);
 const AdminCoupons = lazyWithPreload(() =>
   import("@/views/admin/AdminCouponsView").then((m) => ({
     default: m.AdminCouponsView,
@@ -53,6 +58,11 @@ const AdminShipping = lazyWithPreload(() =>
     default: m.AdminShippingView,
   })),
 );
+const AdminShippingNational = lazyWithPreload(() =>
+  import("@/views/admin/AdminShippingNationalView").then((m) => ({
+    default: m.AdminShippingNationalView,
+  })),
+);
 const AdminSettings = lazyWithPreload(() =>
   import("@/views/admin/AdminSettingsView").then((m) => ({
     default: m.AdminSettingsView,
@@ -66,6 +76,11 @@ const AdminReviews = lazyWithPreload(() =>
 const AdminWhatsAppConfig = lazyWithPreload(() =>
   import("@/views/admin/AdminWhatsAppConfigView").then((m) => ({
     default: m.AdminWhatsAppConfigView,
+  })),
+);
+const AdminAboutStore = lazyWithPreload(() =>
+  import("@/views/admin/AdminAboutStoreView").then((m) => ({
+    default: m.AdminAboutStoreView,
   })),
 );
 const AdminQA = lazyWithPreload(() =>
@@ -161,6 +176,8 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   if (view === "admin-dashboard" || view === "admin") title = "Dashboard";
   else if (view === "admin-products") title = "Produtos";
   else if (view === "admin-orders") title = "Pedidos";
+  // Mesma palavra do botão da barra, não "PDV".
+  else if (view === "admin-pdv") title = "Vender";
   else if (view === "admin-customers") title = "Clientes";
   else if (view === "admin-settings") title = "Ajustes";
   else if (view === "admin-coupons") title = "Cupons";
@@ -168,6 +185,7 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   else if (view === "admin-banners") title = "Banners";
   else if (view === "admin-carousels") title = "Vitrines";
   else if (view === "admin-shipping") title = "Frete";
+  else if (view === "admin-shipping-national") title = "Frete nacional";
   else if (view === "admin-reviews") title = "Avaliações";
   else if (view === "admin-qa") title = "Suporte Q&A";
   else if (view === "admin-push") title = "Avisar clientes";
@@ -572,6 +590,20 @@ export function AdminArea({
                         />
                       </LocalErrorBoundary>
                     );
+                  case "admin-pdv":
+                    return (
+                      <LocalErrorBoundary key="admin-pdv">
+                        <PreloadedOrLazy
+                          component={AdminPdv}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-pdv",
+                            onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
                   case "admin-banners":
                     return (
                       <LocalErrorBoundary key="admin-banners">
@@ -607,6 +639,19 @@ export function AdminArea({
                           props={{
                             onNavigate: onNavigate,
                             active: currentView === "admin-shipping",
+                            onSetDirty: setIsAdminDirty,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-shipping-national":
+                    return (
+                      <LocalErrorBoundary key="admin-shipping-national">
+                        <PreloadedOrLazy
+                          component={AdminShippingNational}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-shipping-national",
                             onSetDirty: setIsAdminDirty,
                           }}
                         />
@@ -682,6 +727,20 @@ export function AdminArea({
                           component={AdminWhatsAppConfig}
                           props={{
                             active: currentView === "admin-whatsapp-config",
+                            onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-about-store":
+                    return (
+                      <LocalErrorBoundary key="admin-about-store">
+                        <PreloadedOrLazy
+                          component={AdminAboutStore}
+                          props={{
+                            onNavigate,
+                            active: currentView === "admin-about-store",
                             onSetDirty: setIsAdminDirty,
                           }}
                         />

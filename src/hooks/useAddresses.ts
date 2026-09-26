@@ -1,52 +1,116 @@
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import type { Address } from "@/types";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
+const LISTA_VAZIA: Address[] = [];
+
+// UMA LISTA POR CONTA, VÁRIAS TELAS: cada tela que usa este hook tem o
+// próprio estado — e o carrinho continua montado atrás do checkout. Sem
+// aviso entre elas, o endereço criado ou editado no checkout (ou na tela de
+// endereço) não existia para o carrinho, que seguia cotando o frete do
+// principal. Toda lista gravada (busca, inclusão, edição, remoção) é
+// publicada aqui; as outras instâncias DA MESMA CONTA adotam.
+type OuvinteDaLista = (dono: string, itens: Address[], origem: symbol) => void;
+const ouvintesDaLista = new Set<OuvinteDaLista>();
+
+function publicarLista(dono: string, itens: Address[], origem: symbol) {
+  for (const ouvir of ouvintesDaLista) ouvir(dono, itens, origem);
+}
+
+interface EstadoDaLista {
+  /** Conta dueña de `itens`. A lista só é exposta para ELA. */
+  dono: string | null;
+  itens: Address[];
+}
+
+function carregarCacheDoDisco(id: string | null | undefined): Address[] {
+  if (!id || typeof window === "undefined") return [];
+  try {
+    const cached = localStorage.getItem(`ikcous_addresses_cache_${id}`);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error("Error loading cached addresses:", e);
+  }
+  return [];
+}
 
 export function useAddresses() {
   const { user } = useAuth();
-  const [addresses, setAddresses] = useState<Address[]>(() => {
-    if (typeof window === "undefined" || !user?.id) return [];
-    try {
-      const cacheKey = `ikcous_addresses_cache_${user.id}`;
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error("Error loading cached addresses:", e);
-    }
-    return [];
-  });
+  // Identidade da conta: resposta em voo da conta ANTERIOR (troca/logout)
+  // não grava estado nem cache.
+  const usuarioAtualRef = useRef(user?.id);
+  // A lista nasce vinculada à conta corrente e só é exposta para ela — nem
+  // no primeiro render após a troca a lista da conta anterior aparece.
+  const [estado, setEstado] = useState<EstadoDaLista>(() => ({
+    dono: user?.id ?? null,
+    itens: carregarCacheDoDisco(user?.id),
+  }));
   const [loading, setLoading] = useState(false);
+  // Espelho síncrono do estado: as mutações calculam a lista nova a partir
+  // DELE (e não num updater funcional), para gravar disco, estado e aviso às
+  // outras telas com o MESMO valor.
+  const estadoRef = useRef(estado);
+  const [identidade] = useState(() => Symbol("useAddresses"));
 
-  // Synchronously load cache on mount or when user changes
-  useEffect(() => {
-    if (!user?.id) {
-      setAddresses([]);
-      return;
-    }
-    const cacheKey = `ikcous_addresses_cache_${user.id}`;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) {
-          setAddresses(parsed);
-        }
+  const gravarLista = useCallback(
+    (dono: string, itens: Address[]) => {
+      const novo = { dono, itens };
+      estadoRef.current = novo;
+      setEstado(novo);
+      try {
+        localStorage.setItem(
+          `ikcous_addresses_cache_${dono}`,
+          JSON.stringify(itens),
+        );
+      } catch {
+        // cota/modo privado: a lista em memória continua valendo
       }
-    } catch (e) {
-      console.error("Error loading cached addresses:", e);
-    }
+      publicarLista(dono, itens, identidade);
+    },
+    [identidade],
+  );
+
+  useEffect(() => {
+    const ouvir: OuvinteDaLista = (dono, itens, origem) => {
+      if (origem === identidade) return;
+      // Lista de OUTRA conta nunca entra (troca de conta em voo).
+      if (dono !== usuarioAtualRef.current) return;
+      const novo = { dono, itens };
+      estadoRef.current = novo;
+      setEstado(novo);
+    };
+    ouvintesDaLista.add(ouvir);
+    return () => {
+      ouvintesDaLista.delete(ouvir);
+    };
+  }, [identidade]);
+
+  const addresses =
+    estado.dono === (user?.id ?? null) ? estado.itens : LISTA_VAZIA;
+
+  useEffect(() => {
+    usuarioAtualRef.current = user?.id;
+  }, [user?.id]);
+
+  // Troca de conta: recarrega o cache DA CONTA CORRENTE.
+  useEffect(() => {
+    const id = user?.id ?? null;
+    const novo = { dono: id, itens: carregarCacheDoDisco(id) };
+    estadoRef.current = novo;
+    setEstado(novo);
   }, [user?.id]);
 
   const fetchAddresses = useCallback(async () => {
     if (!user) return;
-    const cacheKey = `ikcous_addresses_cache_${user.id}`;
+    const idDaBusca = user.id;
+    const cacheKey = `ikcous_addresses_cache_${idDaBusca}`;
     let hasCache = false;
     try {
       const cached = localStorage.getItem(cacheKey);
@@ -64,11 +128,13 @@ export function useAddresses() {
       const { data, error } = await supabase
         .from("user_addresses")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", idDaBusca)
         .order("is_default", { ascending: false })
         .order("created_at", { ascending: false });
 
       if (error) throw error;
+      // Resposta da conta anterior não grava nada.
+      if (usuarioAtualRef.current !== idDaBusca) return;
       const mapped = (data || []).map((a) => ({
         id: a.id,
         user_id: a.user_id,
@@ -84,18 +150,21 @@ export function useAddresses() {
         reference: a.reference,
         is_default: a.is_default || false,
       }));
-      setAddresses(mapped);
-      localStorage.setItem(cacheKey, JSON.stringify(mapped));
+      gravarLista(idDaBusca, mapped);
     } catch (error) {
+      if (usuarioAtualRef.current !== idDaBusca) return;
       console.error("Error fetching addresses:", error);
       toast.error("Erro ao carregar endereços");
     } finally {
-      setLoading(false);
+      if (usuarioAtualRef.current === idDaBusca) {
+        setLoading(false);
+      }
     }
-  }, [user]);
+  }, [user, gravarLista]);
 
   const addAddress = async (address: Omit<Address, "id" | "user_id">) => {
     if (!user) return null;
+    const idDaConta = user.id;
     try {
       // If this is the first address, make it default automatically
       const isFirst = addresses.length === 0;
@@ -112,6 +181,8 @@ export function useAddresses() {
         .single();
 
       if (error) throw error;
+      // Resposta da conta anterior não grava nada, nem avisa sucesso.
+      if (usuarioAtualRef.current !== idDaConta) return null;
 
       const formattedAddress: Address = {
         id: data.id,
@@ -129,27 +200,23 @@ export function useAddresses() {
         is_default: data.is_default || false,
       };
 
-      setAddresses((prev) => {
-        let updated;
+      const prev = estadoRef.current;
+      // Estado trocou de dono em voo: não escreve.
+      if (prev.dono === idDaConta) {
         // If new address is default, update others
-        if (formattedAddress.is_default) {
-          updated = [
-            formattedAddress,
-            ...prev.map((a) => ({ ...a, is_default: false })),
-          ];
-        } else {
-          updated = [...prev, formattedAddress];
-        }
-        localStorage.setItem(
-          `ikcous_addresses_cache_${user.id}`,
-          JSON.stringify(updated),
-        );
-        return updated;
-      });
+        const updated: Address[] = formattedAddress.is_default
+          ? [
+              formattedAddress,
+              ...prev.itens.map((a) => ({ ...a, is_default: false })),
+            ]
+          : [...prev.itens, formattedAddress];
+        gravarLista(idDaConta, updated);
+      }
 
       toast.success("Endereço adicionado com sucesso");
       return formattedAddress;
     } catch (error) {
+      if (usuarioAtualRef.current !== idDaConta) return null;
       console.error("Error adding address:", error);
       toast.error("Erro ao adicionar endereço");
       return null;
@@ -158,6 +225,7 @@ export function useAddresses() {
 
   const updateAddress = async (id: string, updates: Partial<Address>) => {
     if (!user) return false;
+    const idDaConta = user.id;
     try {
       const { data, error } = await supabase
         .from("user_addresses")
@@ -168,6 +236,8 @@ export function useAddresses() {
         .single();
 
       if (error) throw error;
+      // Resposta da conta anterior não grava nada, nem avisa sucesso.
+      if (usuarioAtualRef.current !== idDaConta) return false;
 
       const formattedAddress: Address = {
         id: data.id,
@@ -185,29 +255,25 @@ export function useAddresses() {
         is_default: data.is_default || false,
       };
 
-      setAddresses((prev) => {
-        let updated;
-        if (updates.is_default) {
-          updated = prev
-            .map((a) =>
-              a.id === id ? formattedAddress : { ...a, is_default: false },
-            )
-            .sort((a, b) =>
-              a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1,
-            );
-        } else {
-          updated = prev.map((a) => (a.id === id ? formattedAddress : a));
-        }
-        localStorage.setItem(
-          `ikcous_addresses_cache_${user.id}`,
-          JSON.stringify(updated),
-        );
-        return updated;
-      });
+      const prev = estadoRef.current;
+      // Estado trocou de dono em voo: não escreve.
+      if (prev.dono === idDaConta) {
+        const updated: Address[] = updates.is_default
+          ? prev.itens
+              .map((a) =>
+                a.id === id ? formattedAddress : { ...a, is_default: false },
+              )
+              .sort((a, b) =>
+                a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1,
+              )
+          : prev.itens.map((a) => (a.id === id ? formattedAddress : a));
+        gravarLista(idDaConta, updated);
+      }
 
       toast.success("Endereço atualizado");
       return true;
     } catch (error) {
+      if (usuarioAtualRef.current !== idDaConta) return false;
       console.error("Error updating address:", error);
       toast.error("Erro ao atualizar endereço");
       return false;
@@ -216,6 +282,7 @@ export function useAddresses() {
 
   const deleteAddress = async (id: string) => {
     if (!user) return false;
+    const idDaConta = user.id;
     try {
       const { error } = await supabase
         .from("user_addresses")
@@ -224,18 +291,21 @@ export function useAddresses() {
         .eq("user_id", user.id);
 
       if (error) throw error;
+      // Resposta da conta anterior não grava nada, nem avisa sucesso.
+      if (usuarioAtualRef.current !== idDaConta) return false;
 
-      setAddresses((prev) => {
-        const updated = prev.filter((a) => a.id !== id);
-        localStorage.setItem(
-          `ikcous_addresses_cache_${user.id}`,
-          JSON.stringify(updated),
+      const prev = estadoRef.current;
+      // Estado trocou de dono em voo: não escreve.
+      if (prev.dono === idDaConta) {
+        gravarLista(
+          idDaConta,
+          prev.itens.filter((a) => a.id !== id),
         );
-        return updated;
-      });
+      }
       toast.success("Endereço removido");
       return true;
     } catch (error) {
+      if (usuarioAtualRef.current !== idDaConta) return false;
       console.error("Error deleting address:", error);
       toast.error("Erro ao remover endereço");
       return false;

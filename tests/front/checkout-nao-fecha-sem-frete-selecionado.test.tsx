@@ -13,9 +13,11 @@
 //
 // Esta suíte prova: (1) o defeito — cliente preenche tudo, cotação nunca
 // selecionou opção, e o botão fica desabilitado com o motivo visível, sem
-// criar pedido; (2) os dois caminhos legítimos sem opção selecionada não
-// ficam travados — item com frete grátis, e limite de frete grátis
-// atingido por cliente logado.
+// criar pedido; (2) o DEFEITO NOVO da regra apertada (21/09/2026, mesma
+// exigência do servidor no ELSIF do bloco 4 da RPC viva): item com frete
+// grátis TAMBÉM trava sem opção selecionada — o número R$ 0 não substitui
+// a ESCOLHA de entrega; (3) o caminho legítimo que FICA livre: frete
+// grátis COM a opção escolhida (local-delivery grátis, price 0).
 //
 // Montagem copiada de checkout-guest-endereco-editavel-cobertura-local.
 // test.tsx (mesmo padrão de mocks e do helper `digitar`).
@@ -36,6 +38,14 @@ const { mockConfig } = vi.hoisted(() => ({
     enableCoupons: false,
     freeShippingMin: 0,
   },
+}));
+
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
 }));
 
 vi.mock("@/contexts/StoreContext", () => ({
@@ -257,7 +267,7 @@ describe("CheckoutView — não fecha pedido sem opção de frete selecionada", 
     // Motivo visível — botão apagado sem explicação faz a pessoa desistir
     // sem saber por quê.
     expect(document.body.textContent).toContain(
-      "Volte ao carrinho e calcule o frete para continuar",
+      "Escolha uma opção de frete para continuar",
     );
 
     // Clique no botão desabilitado não deve criar pedido nenhum — nem pelo
@@ -272,7 +282,7 @@ describe("CheckoutView — não fecha pedido sem opção de frete selecionada", 
     expect(createOrder).not.toHaveBeenCalled();
   });
 
-  it("caminho legítimo: item com frete grátis no carrinho não trava o botão", async () => {
+  it("REGRA NOVA (21/09): item com frete grátis SEM opção selecionada também trava — o R$ 0 não substitui a escolha", async () => {
     mockCartItemFreeShipping = true;
     mockShippingFee = 0;
     mockSelectedShippingOption = null;
@@ -290,9 +300,54 @@ describe("CheckoutView — não fecha pedido sem opção de frete selecionada", 
 
     const botaoFinalizar = await preencherFormularioEAcharBotaoFinalizar();
     expect(botaoFinalizar).toBeDefined();
+
+    // O formulário é válido e o frete é R$ 0 legítimo — mas não existe
+    // ESCOLHA de entrega atrás do número, e o servidor recusa pedido com
+    // id ausente (FRETE V2 EMENDA, ELSIF do bloco 4). O front exige o
+    // mesmo: escolher a opção gratuita no carrinho não custa a gratuidade.
+    expect(botaoFinalizar.disabled).toBe(true);
+    expect(document.body.textContent).toContain(
+      "Escolha uma opção de frete para continuar",
+    );
+
+    await act(async () => {
+      botaoFinalizar.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("caminho legítimo que FICA livre: frete grátis COM a opção escolhida (local-delivery grátis, price 0)", async () => {
+    mockCartItemFreeShipping = true;
+    mockShippingFee = 0;
+    // A opção existe e é o que o servidor grava — price 0 da entrega
+    // local grátis não trava nada (é o positivo nomeado da regra nova).
+    mockSelectedShippingOption = {
+      id: "local-delivery",
+      name: "Entrega Local",
+      price: 0,
+      deliveryDays: 1,
+      provider: "local",
+    };
+
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    const botaoFinalizar = await preencherFormularioEAcharBotaoFinalizar();
+    expect(botaoFinalizar).toBeDefined();
     expect(botaoFinalizar.disabled).toBe(false);
     expect(document.body.textContent).not.toContain(
-      "Volte ao carrinho e calcule o frete para continuar",
+      "Escolha uma opção de frete para continuar",
     );
 
     await act(async () => {
@@ -307,12 +362,19 @@ describe("CheckoutView — não fecha pedido sem opção de frete selecionada", 
   it("caminho legítimo: opção de frete paga já selecionada não trava o botão", async () => {
     mockCartItemFreeShipping = false;
     mockShippingFee = 15;
+    // ENTREGA LOCAL paga (regra frete × pagamento do dono, 21/09/2026): o
+    // id é o contrato — "local-delivery" é o único que mantém as
+    // modalidades "na entrega" na tela. O id antigo "opt-1"/flat_fee não
+    // existe mais na edge (taxa fixa morreu) e, classificado como
+    // transportadora pela regra nova, esconderia o "Pix na Entrega" que o
+    // helper clica — o que ESTE teste prova (opção paga selecionada ->
+    // botão livre) continua valendo com a entrega local paga.
     mockSelectedShippingOption = {
-      id: "opt-1",
-      name: "Entrega Padrão",
+      id: "local-delivery",
+      name: "Entrega Local",
       price: 15,
-      deliveryDays: 3,
-      provider: "flat_fee",
+      deliveryDays: 1,
+      provider: "local",
     };
 
     const { CheckoutView } = await import("@/views/customer/CheckoutView");

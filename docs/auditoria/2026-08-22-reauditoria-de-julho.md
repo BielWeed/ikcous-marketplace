@@ -6,6 +6,30 @@ trabalho nem a receita do conserto.**
 Medido contra `HEAD = 10830e6`, branch `fix/caca-defeitos-lote-1`, com a árvore limpa exceto o
 trabalho em curso da frente `noturno-mensagens-cruas`.
 
+## Nota de 15/09/2026 — placar atualizado, tabelas internas preservadas
+
+Medido no código de hoje: **dos 38 abertos registrados nesta reauditoria (22/08/2026), 5 seguem
+abertos.** Os outros 33 não foram reconferidos item a item nesta nota — a conta fecha por
+diferença (38 − 5 = 33); os 5 abaixo foram confirmados diretamente no código de hoje:
+
+- **#18** — `src/contexts/StoreContext.tsx:668` e `:679` ainda têm `.limit(200)`. Segue sendo
+  decisão de arquitetura pendente, como já registrado abaixo.
+- **#36** — metade resolvida: o front não deixa mais enviar checkout com carrinho vazio, mas a
+  RPC não ganhou guarda de `jsonb_array_length(p_items) = 0`
+  (`grep -rl "jsonb_array_length(p_items)" supabase/migrations/*.sql` não retorna nada). A
+  metade de banco segue aberta.
+- **R8** — `console.*` em produção não caiu: 574 ocorrências reais medidas hoje
+  (`grep -rEo 'console\.(log|error|warn|info|debug|trace)' src/ | wc -l`), sem `drop_console`
+  em `vite.config.ts`.
+- **R9** — continua sem rota 404. `src/App.tsx:1591-1903`: caminho fora de `TELAS_DE_ENTRADA`
+  cai no `else` de `:1903`, que só zera `isTransitioningRef.current` — a tela renderizada não
+  muda e a URL inválida fica na barra.
+- **R4** — segue **não medido**: exige o app rodando com o servidor de desenvolvimento no ar
+  (Resource Timing), o que esta rodada de documentação não fez.
+
+As tabelas internas abaixo (placar de 22/08/2026, faixas 1-76, R1-R9) **não foram alteradas** —
+ficam como retrato daquela data. Esta nota é o único trecho atualizado nesta rodada.
+
 ## Por que esta reauditoria existe
 
 Três documentos do projeto afirmam **"66 achados ainda abertos"**. Esse número é de

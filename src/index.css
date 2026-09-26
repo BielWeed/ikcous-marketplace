@@ -942,10 +942,20 @@ main {
 .admin-scroll-container {
   -webkit-overflow-scrolling: touch; /* Kinetic/inertial scroll on iOS */
   scroll-behavior: smooth;
-  will-change: auto;
+  /* `will-change: transform` num ancestral cria containing block para
+     position: fixed mesmo com transform: none — e sequestrava a barra fixa
+     da ficha do pedido à rolagem do painel (medido em 20/09/2026: com
+     scrollTop ~780 a barra cruzava a tela sobre o cartão de pagamento). As
+     travas só protegem com !important: uma declaração comum de mesma
+     especificidade que venha depois na folha venceria — era exatamente o
+     caso da transição do painel de aba logo abaixo. O teste
+     tests/front/admin-ficha-barra-de-acoes-nao-rola-junto.test.ts prende
+     este contrato. */
+  will-change: auto !important;
   transform: none !important;
   -webkit-transform: none !important;
   perspective: none !important;
+  transform-style: flat !important;
 }
 
 /* Lock admin dashboard scroll when help modal is open */
@@ -1069,8 +1079,12 @@ body.admin-modal-open .active-scroll-container {
   transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms
     cubic-bezier(0.16, 1, 0.3, 1), visibility 220ms
     cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform, opacity;
-  transform-style: preserve-3d;
+  /* will-change e transform-style saíram (20/09/2026): no painel do admin a
+     defesa .admin-scroll-container já os trava (!important) e aqui só
+     sobrava o efeito colateral — will-change: transform criava containing
+     block para position: fixed. No painel do cliente (App.tsx, com
+     .gpu-accelerated) o will-change segue vivo e vem de lá; o fade de
+     entrada continua pelo transition acima. */
   backface-visibility: hidden;
 }
 

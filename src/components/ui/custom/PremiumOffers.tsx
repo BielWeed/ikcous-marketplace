@@ -1,6 +1,11 @@
 import { LazyImage } from "@/components/LazyImage";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import {
+  type PromessasDeFrete,
+  fraseDoSeloDeFreteGratis,
+  promessasDeFrete,
+} from "@/lib/estrategias-de-frete";
 import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -15,7 +20,7 @@ import {
   ShoppingCart,
   Truck,
 } from "lucide-react";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { StarRating } from "./StarRating";
 
 interface PremiumOffersProps {
@@ -38,6 +43,10 @@ export const PremiumOffers = React.memo(function PremiumOffers({
   title = "Super Descontos",
 }: PremiumOffersProps) {
   const { config } = useStore();
+  // B3 do item 2 da fila (19/09) + T3 (23/09): o selo "Frete Grátis" do
+  // herói obedece à MESMA promessa (local + nacional) do ProductCard-520,
+  // derivada do MESMO config que já alimentava `showRating`.
+  const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
   const { prefetchView } = usePrefetchOnHover();
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -173,6 +182,7 @@ export const PremiumOffers = React.memo(function PremiumOffers({
                   onMouseEnter={handlePrefetchProductDetail}
                   onTouchStart={handlePrefetchProductDetail}
                   showRating={config.enableReviews}
+                  promessasDeFrete={promessasDaLoja}
                 />
               </div>
             ))}
@@ -218,6 +228,10 @@ interface HeroOfferCardProps {
   /** ADMIN-091 (#202): espelha `config.enableReviews`, lido uma vez pelo
    * `PremiumOffers` pai e repassado aqui. */
   showRating: boolean;
+  /** B3 do item 2 da fila (19/09) + T3 (23/09): a promessa de frete grátis
+   * da LOJA (ProductCard-520), lida uma vez pelo pai e repassada aqui — o
+   * selo "Frete Grátis" do herói obedece à mesma regra do ProductCard. */
+  promessasDeFrete: PromessasDeFrete;
 }
 
 function HeroOfferCard({
@@ -231,6 +245,7 @@ function HeroOfferCard({
   onMouseEnter,
   onTouchStart,
   showRating,
+  promessasDeFrete: promessasDaLoja,
 }: HeroOfferCardProps) {
   const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
     "idle",
@@ -368,14 +383,26 @@ function HeroOfferCard({
               <span className="rounded-md border border-secondary/20 bg-secondary/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-primary">
                 {product.category}
               </span>
-              {/* O selo só pode afirmar o que é verdade PARA ESTE produto --
-                  ver o comentário equivalente em ProductCard.tsx. */}
-              {product.freeShipping && (
-                <div className="flex items-center gap-1 rounded-md border border-emerald-100/40 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold text-emerald-800">
-                  <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
-                  <span>Frete Grátis</span>
-                </div>
-              )}
+              {/* O selo só pode afirmar o que é verdade PARA ESTE produto
+                  sob a promessa VIGENTE da loja — mesma regra e mesmo
+                  motivo do ProductCard-520: `product.freeShipping` cru é
+                  resíduo de campanha antiga quando a loja trocou de preset
+                  sem desmarcar os produtos. T3 (23/09): a frase diz ONDE o
+                  grátis vale quando local e nacional divergem. */}
+              {(() => {
+                const frase = fraseDoSeloDeFreteGratis(
+                  promessasDaLoja,
+                  product.freeShipping,
+                );
+                return (
+                  frase && (
+                    <div className="flex items-center gap-1 rounded-md border border-emerald-100/40 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold text-emerald-800">
+                      <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
+                      <span>{frase}</span>
+                    </div>
+                  )
+                );
+              })()}
             </div>
 
             {/* B3 (laudo de acessibilidade, 08/09): mesmo desenho do

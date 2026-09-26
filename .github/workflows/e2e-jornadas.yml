@@ -21,7 +21,7 @@ name: CI Jornadas E2E
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
     paths:
       - "src/**"
       - "tests/e2e/**"
@@ -31,7 +31,7 @@ on:
       - "vite.config.ts"
       - ".github/workflows/e2e-jornadas.yml"
   push:
-    branches: [develop]
+    branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
       - "src/**"
       - "tests/e2e/**"

@@ -40,6 +40,16 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
 vi.mock("@/contexts/CartContext", () => ({
   useCartState: () => ({ freteGratis: false }),
 }));
+// FRETE V3 (T3, 23/09/2026): ShippingCalculator deixou de ler `freteGratis`
+// do CartContext (a cópia global morreu — cada cartão calcula o preço
+// FINAL da própria modalidade) e passou a ler `config` de `useStore()`
+// diretamente, mesmo padrão de CartReminder/FreeShippingBlock.
+// `freeShippingMin: 0` = preset "desligado" -- os ids destes cenários não
+// dependem da regra local (nacional nunca a usa; local, quando aparece,
+// não é o alvo do teste).
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: { freeShippingMin: 0 }, isLoaded: true }),
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/utils/haptic", () => ({
   haptic: { light: vi.fn(), medium: vi.fn(), success: vi.fn() },
@@ -75,7 +85,12 @@ describe("ShippingCalculator — recota quando a QUANTIDADE muda, sem virar cham
   let hospedeiro: HTMLDivElement;
   let selecionadas: unknown[];
 
+  let cepDestinoAtual: string | null = null;
+  let ultimoCarrinho: CartItem[] = [];
+
   beforeEach(() => {
+    cepDestinoAtual = null;
+    ultimoCarrinho = [];
     vi.useFakeTimers();
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -118,6 +133,7 @@ describe("ShippingCalculator — recota quando a QUANTIDADE muda, sem virar cham
   });
 
   async function montar(cart: CartItem[]) {
+    ultimoCarrinho = cart;
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
@@ -127,12 +143,14 @@ describe("ShippingCalculator — recota quando a QUANTIDADE muda, sem virar cham
           cart={cart}
           selectedOption={null}
           onSelectOption={(opt) => selecionadas.push(opt)}
+          cepDestino={cepDestinoAtual}
         />,
       );
     });
   }
 
   async function rerender(cart: CartItem[]) {
+    ultimoCarrinho = cart;
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
@@ -142,28 +160,20 @@ describe("ShippingCalculator — recota quando a QUANTIDADE muda, sem virar cham
           cart={cart}
           selectedOption={null}
           onSelectOption={(opt) => selecionadas.push(opt)}
+          cepDestino={cepDestinoAtual}
         />,
       );
     });
   }
 
-  /** Digita o CEP e envia o formulário — cotação imediata, como hoje. */
+  /**
+   * O endereço de entrega chega (`cepDestino`) — cotação imediata. Frete
+   * automático (22/09/2026): substitui o antigo "digitar o CEP e enviar".
+   */
   async function cotarPelaPrimeiraVez(cepDigitado: string) {
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
+    cepDestinoAtual = cepDigitado;
+    await rerender(ultimoCarrinho);
     await act(async () => {
-      setter?.call(campo, cepDigitado);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
-    await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
       await Promise.resolve();
       await Promise.resolve();
     });

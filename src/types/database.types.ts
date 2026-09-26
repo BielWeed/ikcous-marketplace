@@ -569,6 +569,7 @@ export type Database = {
       marketplace_orders: {
         Row: {
           address_id: string | null;
+          canal: string;
           cancelled_after_shipping: boolean;
           confirmation_email_sent_at: string | null;
           coupon_code: string | null;
@@ -604,9 +605,11 @@ export type Database = {
           updated_at: string;
           user_id: string | null;
           valor_estornado: number;
+          vendedor_id: string | null;
         };
         Insert: {
           address_id?: string | null;
+          canal?: string;
           cancelled_after_shipping?: boolean;
           confirmation_email_sent_at?: string | null;
           coupon_code?: string | null;
@@ -642,9 +645,11 @@ export type Database = {
           updated_at?: string;
           user_id?: string | null;
           valor_estornado?: number;
+          vendedor_id?: string | null;
         };
         Update: {
           address_id?: string | null;
+          canal?: string;
           cancelled_after_shipping?: boolean;
           confirmation_email_sent_at?: string | null;
           coupon_code?: string | null;
@@ -680,6 +685,7 @@ export type Database = {
           updated_at?: string;
           user_id?: string | null;
           valor_estornado?: number;
+          vendedor_id?: string | null;
         };
         Relationships: [
           {
@@ -887,6 +893,7 @@ export type Database = {
       product_variants: {
         Row: {
           active: boolean | null;
+          codigo_barras: string | null;
           created_at: string;
           id: string;
           image_url: string | null;
@@ -899,6 +906,7 @@ export type Database = {
         };
         Insert: {
           active?: boolean | null;
+          codigo_barras?: string | null;
           created_at?: string;
           id?: string;
           image_url?: string | null;
@@ -911,6 +919,7 @@ export type Database = {
         };
         Update: {
           active?: boolean | null;
+          codigo_barras?: string | null;
           created_at?: string;
           id?: string;
           image_url?: string | null;
@@ -952,6 +961,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string;
@@ -984,6 +994,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string;
@@ -1016,6 +1027,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string;
@@ -1422,6 +1434,11 @@ export type Database = {
           manutencao: boolean;
           min_app_version: string | null;
           mp_public_key: string | null;
+          national_benefit_scope: string;
+          national_discount_type: string | null;
+          national_discount_value: number;
+          national_shipping_min: number;
+          national_shipping_strategy: string;
           origin_cep: string | null;
           pagamento_online: boolean;
           primary_color: string | null;
@@ -1434,9 +1451,11 @@ export type Database = {
           shipping_coverage: string;
           shipping_fee: number | null;
           shipping_provider: string;
+          store_address: string | null;
           store_city: string | null;
           store_name: string | null;
           store_state: string | null;
+          store_description: string | null;
           theme_mode: string | null;
           updated_at: string | null;
           vapid_public_key: string | null;
@@ -1458,6 +1477,11 @@ export type Database = {
           manutencao?: boolean;
           min_app_version?: string | null;
           mp_public_key?: string | null;
+          national_benefit_scope?: string;
+          national_discount_type?: string | null;
+          national_discount_value?: number;
+          national_shipping_min?: number;
+          national_shipping_strategy?: string;
           origin_cep?: string | null;
           pagamento_online?: boolean;
           primary_color?: string | null;
@@ -1470,9 +1494,11 @@ export type Database = {
           shipping_coverage?: string;
           shipping_fee?: number | null;
           shipping_provider?: string;
+          store_address?: string | null;
           store_city?: string | null;
           store_name?: string | null;
           store_state?: string | null;
+          store_description?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -1494,6 +1520,11 @@ export type Database = {
           manutencao?: boolean;
           min_app_version?: string | null;
           mp_public_key?: string | null;
+          national_benefit_scope?: string;
+          national_discount_type?: string | null;
+          national_discount_value?: number;
+          national_shipping_min?: number;
+          national_shipping_strategy?: string;
           origin_cep?: string | null;
           pagamento_online?: boolean;
           primary_color?: string | null;
@@ -1506,9 +1537,11 @@ export type Database = {
           shipping_coverage?: string;
           shipping_fee?: number | null;
           shipping_provider?: string;
+          store_address?: string | null;
           store_city?: string | null;
           store_name?: string | null;
           store_state?: string | null;
+          store_description?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -1650,6 +1683,11 @@ export type Database = {
           manutencao: boolean | null;
           min_app_version: string | null;
           mp_public_key: string | null;
+          national_benefit_scope: string | null;
+          national_discount_type: string | null;
+          national_discount_value: number | null;
+          national_shipping_min: number | null;
+          national_shipping_strategy: string | null;
           origin_cep: string | null;
           pagamento_online: boolean | null;
           primary_color: string | null;
@@ -1658,6 +1696,8 @@ export type Database = {
           branding_assets: Json | null;
           push_marketing_enabled: boolean | null;
           real_time_sales_alerts: boolean | null;
+          store_address: string | null;
+          store_description: string | null;
           share_text: string | null;
           shipping_coverage: string | null;
           shipping_fee: number | null;
@@ -1686,6 +1726,11 @@ export type Database = {
           manutencao?: boolean | null;
           min_app_version?: string | null;
           mp_public_key?: string | null;
+          national_benefit_scope?: string | null;
+          national_discount_type?: string | null;
+          national_discount_value?: number | null;
+          national_shipping_min?: number | null;
+          national_shipping_strategy?: string | null;
           origin_cep?: string | null;
           pagamento_online?: boolean | null;
           primary_color?: string | null;
@@ -1722,6 +1767,11 @@ export type Database = {
           manutencao?: boolean | null;
           min_app_version?: string | null;
           mp_public_key?: string | null;
+          national_benefit_scope?: string | null;
+          national_discount_type?: string | null;
+          national_discount_value?: number | null;
+          national_shipping_min?: number | null;
+          national_shipping_strategy?: string | null;
           origin_cep?: string | null;
           pagamento_online?: boolean | null;
           primary_color?: string | null;
@@ -1751,6 +1801,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string | null;
@@ -1783,6 +1834,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string | null;
@@ -1815,6 +1867,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string | null;
@@ -1850,6 +1903,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           data_cadastro: string | null;
           descricao: string | null;
@@ -1878,6 +1932,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           data_cadastro?: string | null;
           descricao?: string | null;
@@ -1906,6 +1961,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           data_cadastro?: string | null;
           descricao?: string | null;
@@ -2162,6 +2218,10 @@ export type Database = {
         };
         Returns: string;
       };
+      buscar_por_codigo_barras: {
+        Args: { p_codigo: string };
+        Returns: Json;
+      };
       decrement_stock: {
         Args: { p_id: string; quantity: number };
         Returns: undefined;
@@ -2188,6 +2248,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string;
@@ -2248,8 +2309,17 @@ export type Database = {
         };
         Returns: Json;
       };
+      get_admin_orders_cancelados_recentes: {
+        Args: {
+          p_dias?: number | null;
+          p_page?: number;
+          p_page_size?: number;
+        };
+        Returns: Json;
+      };
       get_admin_orders_paged: {
         Args: {
+          p_canal?: string;
           p_end_date?: string;
           p_page?: number;
           p_page_size?: number;
@@ -2346,6 +2416,10 @@ export type Database = {
           whatsapp: string;
         }[];
       };
+      get_my_cpf: {
+        Args: never;
+        Returns: string;
+      };
       get_orders_by_otp_v1: {
         Args: { p_email: string; p_otp: string };
         Returns: Json;
@@ -2375,6 +2449,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string;
@@ -2521,6 +2596,19 @@ export type Database = {
         Args: { p_order_id: string; p_recebido: boolean };
         Returns: Json;
       };
+      registrar_venda_presencial: {
+        Args: {
+          p_cliente_nome?: string | null;
+          p_cliente_user_id?: string | null;
+          p_cliente_whatsapp?: string | null;
+          p_desconto?: number;
+          p_idempotency_key?: string | null;
+          p_itens: unknown;
+          p_observacao?: string | null;
+          p_pagamento: string;
+        };
+        Returns: Json;
+      };
       reivindicar_email_de_confirmacao: {
         Args: { p_order_id: string };
         Returns: boolean;
@@ -2550,6 +2638,10 @@ export type Database = {
           desired_identity: Json;
         };
         Returns: Json;
+      };
+      set_my_cpf: {
+        Args: { p_cpf: string };
+        Returns: undefined;
       };
       solicitar_estorno: {
         Args: { p_amount: number; p_motivo: string; p_order_id: string };

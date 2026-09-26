@@ -47,7 +47,13 @@ import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
-import type { Order, OrderStatus, PaymentStatus, View } from "@/types";
+import type {
+  CanalDaVenda,
+  Order,
+  OrderStatus,
+  PaymentStatus,
+  View,
+} from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import { motion } from "framer-motion";
@@ -281,6 +287,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // Achados B/D da revisão de 26/08/2026 (rodada 4) — mesma razão do
     // default acima, campo mais novo ainda.
     pedidosCanceladosIncompleto = false,
+    // pedidos-4 (20261164000000) — mesma razão dos defaults acima: quem
+    // mocou o hook antes deste campo não o conhece; 0 = nada fora da janela.
+    canceladosForaDaJanela = 0,
+    buscarTambemCanceladosAntigos = async () => [],
   } = useOrders(active ?? false, true, {
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload),
   });
@@ -325,6 +335,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // (filterOrdersByPaymentStatus, abaixo) é defesa, não a regra.
   const [paymentFilter, setPaymentFilter] =
     useLocalStorage<PaymentStatusFilter>("admin_orders_payment_filter", "all");
+  // Filtro de canal (C4.4): filtra NO BANCO (`p_canal` em
+  // `get_admin_orders_paged`, migration 20261163000000 — C1.4), mesmo
+  // contrato do filtro de pagamento acima. A chave começa com "admin_" e por
+  // isso FICA FORA da whitelist do purge de localStorage (src/lib/
+  // localStoragePurgeWhitelist.ts) de propósito: é conveniência de tela, não
+  // escrita pendente — a purga pode levá-la sem perda nenhuma.
+  const [canalFilter, setCanalFilter] = useLocalStorage<
+    "all" | "online" | "presencial"
+  >("admin_orders_canal_filter", "all");
   const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {
     const saved = localStorage.getItem("admin_orders_view_mode");
     return saved === "detailed" || saved === "compact" ? saved : "compact";
@@ -562,6 +581,26 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
   // Sync selectedOrder with selectedOrderId prop driven by URL
   const lastSelectedOrderIdRef = useRef<string | null | undefined>(undefined);
+  // AdminOrdersView-648: guarda o id do pedido já RESOLVIDO (achado em
+  // `orders` OU trazido por `fetchSingleOrder`, abaixo). Antes, este efeito
+  // reentrava em `fetchSingleOrder` — e acendia o spinner de tela cheia por
+  // cima da ficha — toda vez que `orders` ganhava NOVA REFERÊNCIA (recarga
+  // silenciosa por visibilidade/reconexão, realtime INSERT/UPDATE de OUTRO
+  // pedido), mesmo com `selectedOrderId` intacto. Como a ficha aberta por
+  // deep link (pedido fora da página/filtro carregado) nunca aparece em
+  // `orders`, isso remontava `<OrderDetail>` do zero a cada mudança alheia,
+  // apagando anotação em edição e o diálogo "Recebeu?" (useState local de
+  // OrderDetail.tsx). Comparando contra este ref, só refazemos a busca de
+  // rede quando o ID realmente muda — `orders` continua na dependência para
+  // pegar o pedido assim que ele aparecer na página carregada.
+  const resolvedOrderIdRef = useRef<string | null | undefined>(undefined);
+  // Revalidação SILENCIOSA da ficha de deep link (ressalva da revisão de
+  // 648): como esse pedido não está em `orders`, um UPDATE de realtime
+  // sobre ele não chega pela lista — sem isto a ficha congelaria no retrato
+  // da primeira busca. O handler de realtime (abaixo) bumpa o contador; o
+  // efeito refaz a busca SEM acender o spinner (a ficha continua montada).
+  const [revalidacaoDaFicha, setRevalidacaoDaFicha] = useState(0);
+  const revalidacaoSilenciosaRef = useRef(false);
   useEffect(() => {
     if (!active) return;
 
@@ -593,26 +632,41 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     };
 
     // B1+B2 da 3a revisao: limpar AMBOS os estados de detalhe no TOPO do
-    // efeito, ANTES dos retornos rapidos — senao "Voltar aos pedidos" e
-    // "clicar noutro pedido da lista" deixavam detailError=true e o painel
-    // morria ate o F5 (a view nunca desmonta por causa do DeferredTabContent).
+    // efeito, ANTES dos retornos rapidos — senao "Voltar aos pedidos",
+    // "clicar noutro pedido da lista" e o retorno antecipado de um id ja
+    // resolvido (linha abaixo) deixavam detailError=true ou loadingDetail=true
+    // presos de uma busca ANTERIOR de OUTRO id, e o painel morria ate o F5
+    // (a view nunca desmonta por causa do DeferredTabContent).
     setDetailError(false);
     setLoadingDetail(false);
 
     if (!selectedOrderId) {
+      resolvedOrderIdRef.current = null;
       triggerUpdate(null);
       return;
     }
 
     if (nextOrder) {
+      resolvedOrderIdRef.current = selectedOrderId;
       triggerUpdate(nextOrder);
       return;
     }
 
+    // Pedido fora da página/filtro carregado (deep link, vindo do sino ou
+    // da ficha do cliente). Se ESTE MESMO id já foi resolvido antes (por
+    // uma busca anterior que teve sucesso), não refaz a busca nem acende o
+    // spinner só porque `orders` mudou de referência por causa de OUTRO
+    // pedido — é exatamente isso que desmontava a ficha em edição.
+    const revalidar = revalidacaoSilenciosaRef.current;
+    revalidacaoSilenciosaRef.current = false;
+    if (resolvedOrderIdRef.current === selectedOrderId && !revalidar) return;
+
     // Fetch from Supabase if not found locally (e.g., deep link or pagination)
     let isCurrent = true;
     const fetchSingleOrder = async () => {
-      setLoadingDetail(true);
+      // Na revalidação a ficha já está na tela: nada de spinner de tela
+      // cheia (era ele que desmontava o OrderDetail em edição).
+      if (!revalidar) setLoadingDetail(true);
       setDetailError(false);
       try {
         const { data, error } = await supabase
@@ -628,6 +682,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         if (error) throw error;
         if (data && isCurrent) {
           const mapped = mapOrderFromDB(data as any);
+          resolvedOrderIdRef.current = selectedOrderId;
           triggerUpdate(mapped);
         }
       } catch (err) {
@@ -645,7 +700,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     return () => {
       isCurrent = false;
     };
-  }, [selectedOrderId, orders, active]);
+  }, [selectedOrderId, orders, active, revalidacaoDaFicha]);
 
   useEffect(() => {
     const container =
@@ -684,6 +739,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // recorte em memória (filterOrdersByPaymentStatus, abaixo) fica
         // como defesa.
         paymentFilter,
+        // C4.4: o chip "Balcão" também filtra NO BANCO — mesmo contrato do
+        // filtro de pagamento acima.
+        canalFilter,
       );
       loadStats();
     },
@@ -695,6 +753,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       dateRange,
       loadStats,
       paymentFilter,
+      canalFilter,
     ],
   );
 
@@ -731,16 +790,21 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     id: string;
     total?: number | null;
     customer?: { name?: string | null } | null;
+    // D1 (lote C4): venda de balcão nunca passou por gateway nenhum — o
+    // `confirm` não pode mandar o lojista abrir o painel do Mercado Pago
+    // para um dinheiro que ele recebeu na mão. Opcional: os chamadores de
+    // hoje (pedido de canal online) continuam sem passar o campo.
+    canal?: CanalDaVenda;
   }) => {
     const valor = (pedido.total || 0).toLocaleString("pt-BR", {
       minimumFractionDigits: 2,
     });
     const cliente = pedido.customer?.name || "o cliente";
-    if (
-      !globalThis.confirm(
-        `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`,
-      )
-    ) {
+    const pergunta =
+      pedido.canal === "presencial"
+        ? `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no balcão?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`
+        : `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
+    if (!globalThis.confirm(pergunta)) {
       return;
     }
     setEstornandoId(pedido.id);
@@ -777,6 +841,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const irParaPedidosCancelados = () => {
     setFilter("cancelled");
     setPaymentFilter("all");
+    // C4.4: o canal também precisa voltar a "all" aqui — senão um chip
+    // "Balcão" deixado ligado numa sessão anterior filtra no banco e some
+    // com o pedido de estorno do SITE, recriando o mesmo achado 2 acima
+    // (lista vazia sem pista visível do porquê).
+    setCanalFilter("all");
     setSearchQuery("");
     setDateRange({ start: "", end: "" });
     setCurrentPage(0);
@@ -842,6 +911,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       } else if (payload.eventType === "UPDATE") {
         const updatedId = payload.new?.id;
         const newStatus = payload.new?.status as OrderStatus;
+        // Ficha de deep link aberta para ESTE pedido: revalida em silêncio
+        // (ver revalidacaoDaFicha, acima).
+        if (
+          updatedId &&
+          updatedId === selectedOrderId &&
+          resolvedOrderIdRef.current === selectedOrderId
+        ) {
+          revalidacaoSilenciosaRef.current = true;
+          setRevalidacaoDaFicha((n) => n + 1);
+        }
         toast.info(
           `Pedido #${updatedId ? updatedId.slice(-6) : ""} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
         );
@@ -850,7 +929,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // Atualiza apenas os KPIs (listagem já é atualizada reativamente em memória)
       loadStats();
     };
-  }, [loadStats, handleSelectOrder]);
+  }, [loadStats, handleSelectOrder, selectedOrderId]);
 
   const totalPages = Math.ceil(totalOrders / itemsPerPage);
   const paginatedOrders = useMemo(
@@ -880,6 +959,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         startDate: dateRange.start || undefined,
         endDate: dateRange.end || undefined,
         paymentStatus: paymentFilter,
+        // C4.4: sem isto, o CSV exportaria um filtro diferente do que está
+        // na tela quando o chip "Balcão" está ligado.
+        canal: canalFilter,
       });
       const agora = new Date();
       const doisDigitos = (numero: number) => String(numero).padStart(2, "0");
@@ -1270,6 +1352,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               pedidosEsperandoRetorno={pedidosEsperandoRetorno}
               pedidosParaDevolverAgora={pedidosParaDevolverAgora}
               incompleto={pedidosCanceladosIncompleto}
+              foraDaJanela={canceladosForaDaJanela}
+              onIncluirAntigos={() => {
+                void buscarTambemCanceladosAntigos();
+              }}
               confirmandoRetornoId={confirmandoRetornoId}
               onConfirmarRetorno={handleConfirmarRetorno}
               estornandoId={estornandoId}
@@ -1360,10 +1446,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   className="group relative size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
                 >
                   <Filter className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                  {paymentFilter !== "all" && (
+                  {(paymentFilter !== "all" || canalFilter !== "all") && (
                     // O filtro persiste em localStorage: sem isto, o admin
                     // reabre a tela já filtrada sem nenhuma pista visível
-                    // (achado da revisão da Task 9).
+                    // (achado da revisão da Task 9). C4.4: canalFilter
+                    // persiste do mesmo jeito e precisa da mesma bolinha.
                     <span
                       aria-hidden="true"
                       className="absolute right-2.5 top-2.5 size-2 rounded-full bg-admin-gold shadow-[0_0_6px_rgba(212,175,55,0.6)]"
@@ -1488,6 +1575,72 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       }}
                     >
                       Limpar Status de Pagamento
+                    </Button>
+                  )}
+
+                  {/* C4.4: chip de canal — molde literal do grupo "Status de
+                      Pagamento" acima. Filtra NO BANCO (p_canal na RPC), não
+                      em memória. */}
+                  <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                    Canal da venda
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCanalFilter("all");
+                        setCurrentPage(0);
+                      }}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        canalFilter === "all"
+                          ? "bg-admin-gold border-admin-gold text-black"
+                          : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                      )}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCanalFilter("online");
+                        setCurrentPage(0);
+                      }}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        canalFilter === "online"
+                          ? "bg-admin-gold border-admin-gold text-black"
+                          : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                      )}
+                    >
+                      Site
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCanalFilter("presencial");
+                        setCurrentPage(0);
+                      }}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        canalFilter === "presencial"
+                          ? "bg-admin-gold border-admin-gold text-black"
+                          : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                      )}
+                    >
+                      Balcão
+                    </button>
+                  </div>
+                  {canalFilter !== "all" && (
+                    <Button
+                      variant="ghost"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      onClick={() => {
+                        setCanalFilter("all");
+                        setCurrentPage(0);
+                      }}
+                    >
+                      Limpar Canal da Venda
                     </Button>
                   )}
                 </div>
@@ -1729,6 +1882,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         filtro para ver todos os pedidos.
                       </p>
                     </>
+                  ) : canalFilter !== "all" ? (
+                    // Mesmo contrato do ramo de pagamento acima: o filtro de
+                    // canal também roda NO BANCO (lista E contagem), então
+                    // lista vazia aqui é "não existe pedido nesse canal" —
+                    // não "loja sem pedido nenhum" (achado 4 da rodada de
+                    // correção: sem este ramo, uma loja com dezenas de
+                    // pedidos ouvia "ainda não tem nenhum pedido" só por ter
+                    // ligado o chip "Balcão").
+                    <>
+                      <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                        Nenhum pedido nesse canal
+                      </h3>
+                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                        Limpe o filtro de canal da venda para ver todos os
+                        pedidos.
+                      </p>
+                    </>
                   ) : filter !== "all" ||
                     searchQuery.trim() !== "" ||
                     dateRange.start ||
@@ -1938,6 +2108,11 @@ const AdminOrderCard = memo(function AdminOrderCard({
         layout
         onClick={() => onSelect(order)}
         role="button"
+        // Âncora estável para teste (achado 6 da rodada de correção do
+        // C4.4): a tela tem outros elementos com `role="button"` (os
+        // atalhos de Feedback/Dúvidas), então medir o subárvore do card
+        // pelo primeiro `[role="button"]` encontrado pega o card errado.
+        data-testid="pedido-card"
         tabIndex={0}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -1991,10 +2166,29 @@ const AdminOrderCard = memo(function AdminOrderCard({
             </div>
           </div>
           <div className="flex flex-col items-end gap-1.5">
-            <OrderStatusBadge status={order.status} />
+            {/* C4.4 (rodada de correção, achado "ANTES DE CRESCER" sobre a
+                altura do card): o selo de canal vai na MESMA linha do
+                OrderStatusBadge, não empilhado como uma terceira pill. Esta
+                coluna dita, junto com a miniatura do outro lado, a altura da
+                fileira inteira do grid — uma pill a mais aqui esticaria
+                TODOS os cards vizinhos na mesma fileira, não só este. Com o
+                selo ao lado do status, a coluna continua com duas linhas
+                (status+canal, depois pagamento) com ou sem venda de balcão. */}
+            <div className="flex items-center gap-1.5">
+              <OrderStatusBadge status={order.status} />
+              {order.canal === "presencial" && (
+                <span
+                  data-testid="selo-canal"
+                  className="flex items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                >
+                  Balcão
+                </span>
+              )}
+            </div>
             <PaymentStatusBadge
               paymentStatus={order.paymentStatus}
               orderStatus={order.status}
+              canal={order.canal}
             />
           </div>
         </div>
@@ -2128,6 +2322,7 @@ const AdminOrderCard = memo(function AdminOrderCard({
       layout
       onClick={() => onSelect(order)}
       role="button"
+      data-testid="pedido-card"
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -2217,8 +2412,23 @@ const AdminOrderCard = memo(function AdminOrderCard({
           <PaymentStatusBadge
             paymentStatus={order.paymentStatus}
             orderStatus={order.status}
+            canal={order.canal}
             compact
           />
+          {/* C4.4: mesmo selo do card detalhado — o `flex-wrap` do
+              container já absorve a peça extra sem estourar a borda.
+              `data-testid` igual ao do card detalhado (rodada de correção,
+              achado sobre a prova por texto): ancora a prova no ELEMENTO,
+              não no texto da subárvore, que também contém "balcão" minúsculo
+              no rótulo do PaymentStatusBadge ("Recebido no balcão"). */}
+          {order.canal === "presencial" && (
+            <span
+              data-testid="selo-canal"
+              className="flex items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-zinc-400"
+            >
+              Balcão
+            </span>
+          )}
         </div>
       </div>
 

@@ -60,11 +60,27 @@ export const defaultStoreConfig: StoreConfig = {
   shippingCoverage: "national",
   localDeliveryFee: 10,
   localCepRange: "",
+  // Estratégias de frete nacional (migration 20261171000000): loja nova
+  // nasce DESLIGADA -- mesma decisão (D2/M2) de "sem regra até a lojista
+  // escolher" que já vale para o preset local (freeShippingMin=0 no
+  // configInicial do StoreContext). `mais_barata` é o DEFAULT da coluna
+  // (`national_benefit_scope`), sem efeito enquanto a estratégia está
+  // desligada.
+  nationalShippingStrategy: "desligado",
+  nationalShippingMin: 0,
+  nationalDiscountType: null,
+  nationalDiscountValue: 0,
+  nationalBenefitScope: "mais_barata",
   homeSections: [
     { id: "new_arrivals", title: "Últimos Lançamentos", active: true },
     { id: "offers", title: "Ofertas Imperdíveis", active: true },
     { id: "bestsellers", title: "Destaques em Alta", active: true },
   ],
+  // Formas de pagamento por loja (migration 20261174000000): loja nova
+  // nasce com as três ligadas — MESMO default da coluna no banco
+  // (`ARRAY['pix','card','cash']`). Nenhuma loja muda de comportamento
+  // sozinha.
+  formasPagamentoEntrega: ["pix", "card", "cash"],
 };
 
 // Devolve a cor da loja quando ela EXISTE, senão `null` (quem consome fica

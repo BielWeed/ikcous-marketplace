@@ -38,6 +38,16 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
 vi.mock("@/contexts/CartContext", () => ({
   useCartState: () => ({ freteGratis: false }),
 }));
+// FRETE V3 (T3, 23/09/2026): ShippingCalculator deixou de ler `freteGratis`
+// do CartContext (a cópia global morreu — cada cartão calcula o preço
+// FINAL da própria modalidade) e passou a ler `config` de `useStore()`
+// diretamente, mesmo padrão de CartReminder/FreeShippingBlock.
+// `freeShippingMin: 0` = preset "desligado" -- os ids destes cenários não
+// dependem da regra local (nacional nunca a usa; local, quando aparece,
+// não é o alvo do teste).
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: { freeShippingMin: 0 }, isLoaded: true }),
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/utils/haptic", () => ({
   haptic: { light: vi.fn(), medium: vi.fn(), success: vi.fn() },
@@ -68,13 +78,20 @@ function carrinhoComQuantidade(quantidade: number): CartItem[] {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const DUAS_HORAS_MS = 2 * 60 * 60 * 1000;
+/** R1-2: revisão fixa usada nos dois lados (ação e resposta de cotação). */
+const REVISAO_FIXA_DO_TESTE = "rev-fixa-do-teste";
 
 describe("ShippingCalculator — o cache do navegador não serve cotação de outro carrinho nem cotação vencida", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let armazem: Map<string, string>;
 
+  let cepDestinoAtual: string | null = null;
+  let ultimoCarrinho: CartItem[] = [];
+
   beforeEach(() => {
+    cepDestinoAtual = null;
+    ultimoCarrinho = [];
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-22T12:00:00Z"));
     armazem = new Map<string, string>();
@@ -90,6 +107,16 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     // Preço = 10 * quantidade do carrinho efetivamente enviado à função.
     invoke.mockReset();
     invoke.mockImplementation((_nome: string, opts: any) => {
+      // R1-2 (release 1.5.7): antes de servir um acerto de cache, a
+      // calculadora confirma a revisão numa ação PÚBLICA separada, sem
+      // `cart` no corpo — responde com uma revisão FIXA, igual à gravada em
+      // cada envelope abaixo.
+      if (opts.body.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: REVISAO_FIXA_DO_TESTE },
+          error: null,
+        });
+      }
       const quantidade = opts.body.cart[0].quantity as number;
       return Promise.resolve({
         data: {
@@ -101,6 +128,7 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
               deliveryDays: 7,
             },
           ],
+          revisaoConfig: REVISAO_FIXA_DO_TESTE,
         },
         error: null,
       });
@@ -120,6 +148,7 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
   });
 
   async function pintar(cart: CartItem[]) {
+    ultimoCarrinho = cart;
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
@@ -129,29 +158,39 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
           cart={cart}
           selectedOption={null}
           onSelectOption={() => {}}
+          cepDestino={cepDestinoAtual}
         />,
       );
     });
   }
 
+  // Frete automático (22/09/2026): não há mais campo de CEP nem botão
+  // "Calcular". O destino chega como `cepDestino` (o endereço de entrega
+  // escolhido) e a TROCA de destino cota na hora — é o equivalente exato do
+  // antigo "digitar o CEP e enviar".
   async function digitarCep(valor: string) {
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
+    cepDestinoAtual = valor;
+    await pintar(ultimoCarrinho);
+  }
+
+  // Voltar ao carrinho / abrir o checkout: a calculadora desmonta e monta de
+  // novo no MESMO destino — é o único caminho para "cotar de novo" o mesmo
+  // CEP sem mudar o carrinho.
+  async function remontar() {
+    act(() => {
+      raiz.unmount();
+    });
+    raiz = createRoot(hospedeiro);
+    await pintar(ultimoCarrinho);
     await act(async () => {
-      setter?.call(campo, valor);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
     });
   }
 
   async function enviar() {
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
+    // Sem botão: só escoa as respostas já resolvidas da cotação automática.
     await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -197,7 +236,7 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     // relógio: nenhum timer pendente dispara, então a única coisa que pode
     // mudar o número de chamadas é a validade do cache.
     vi.setSystemTime(new Date("2026-08-23T12:00:00Z"));
-    await enviar();
+    await remontar();
 
     expect(invoke).toHaveBeenCalledTimes(2);
   });
@@ -211,10 +250,99 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     // Um minuto antes de vencer: ainda é acerto. Sem esta asserção, apagar o
     // cache inteiro passaria pelos dois testes acima.
     vi.setSystemTime(new Date(Date.now() + DUAS_HORAS_MS - 60_000));
-    await enviar();
+    await remontar();
 
-    expect(invoke).toHaveBeenCalledTimes(1);
+    // R1-2: a remontagem soma UMA chamada de CONFIRMAÇÃO da revisão (sem
+    // ela, nenhuma cotação NOVA — a lista de R$ 10,00 continua vindo do
+    // cache, não de uma segunda chamada de cotação).
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke.mock.calls[1][1]).toEqual({
+      body: { action: "revisao_config_frete" },
+    });
     expect(hospedeiro.textContent).toContain("10,00");
+  });
+
+  // Revisão da task de revisão Opus (item 3): sem estes dois testes, remover
+  // a checagem de revisão em `calculateShipping` (linhas ~431-464) ou
+  // `cotacaoAindaBateComARevisao` (linhas ~188-198) não fazia NADA falhar —
+  // o teste "dentro das 2h" acima prova só o caminho em que a revisão BATE.
+  it("revisão do cache DIVERGE da atual: o acerto de cache (mesmo carrinho, dentro da validade) NÃO é servido — vai à rede", async () => {
+    await pintar(carrinhoComQuantidade(1));
+    await digitarCep("69000000");
+    await enviar();
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    // A lojista mudou a configuração: a revisão "atual" (R1) diverge da que
+    // ficou gravada no envelope (R0 = REVISAO_FIXA_DO_TESTE), e a cotação de
+    // rede devolveria um preço novo.
+    invoke.mockImplementation((_nome: string, opts: any) => {
+      if (opts.body.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: "rev-nova-diferente" },
+          error: null,
+        });
+      }
+      const quantidade = opts.body.cart[0].quantity as number;
+      return Promise.resolve({
+        data: {
+          options: [
+            {
+              id: "melhorenvio-pac",
+              name: "PAC",
+              price: quantidade * 99,
+              deliveryDays: 7,
+            },
+          ],
+          revisaoConfig: "rev-nova-diferente",
+        },
+        error: null,
+      });
+    });
+
+    await remontar();
+
+    // Duas chamadas NOVAS: a confirmação (que veio diferente) e a cotação de
+    // rede de verdade — o acerto de cache foi descartado.
+    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(hospedeiro.textContent).toContain("99,00");
+    expect(hospedeiro.textContent).not.toContain("10,00");
+  });
+
+  it("confirmação de revisão não carrega (null, ex.: edge fora do ar): o acerto de cache também NÃO é servido — vai à rede", async () => {
+    await pintar(carrinhoComQuantidade(1));
+    await digitarCep("69000000");
+    await enviar();
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    invoke.mockImplementation((_nome: string, opts: any) => {
+      if (opts.body.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: null,
+          error: { message: "Edge Function retornou 500" },
+        });
+      }
+      const quantidade = opts.body.cart[0].quantity as number;
+      return Promise.resolve({
+        data: {
+          options: [
+            {
+              id: "melhorenvio-pac",
+              name: "PAC",
+              price: quantidade * 77,
+              deliveryDays: 7,
+            },
+          ],
+          revisaoConfig: REVISAO_FIXA_DO_TESTE,
+        },
+        error: null,
+      });
+    });
+
+    await remontar();
+
+    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(hospedeiro.textContent).toContain("77,00");
+    expect(hospedeiro.textContent).not.toContain("10,00");
   });
 
   it("entrada no formato antigo (lista crua, sem carrinho e sem data) é tratada como ausência", async () => {
@@ -222,7 +350,7 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     // — não há como saber de qual carrinho veio nem quando foi gravada — e
     // também não pode quebrar a tela.
     armazem.set(
-      "ikcous_shipping_cache_69000000",
+      "ikcous_shipping_cache_v2_69000000",
       JSON.stringify([
         { id: "melhorenvio-pac", name: "PAC", price: 999, deliveryDays: 7 },
       ]),

@@ -9,7 +9,7 @@ export function OrderTimeline({ status }: OrderTimelineProps) {
   const steps = [
     { key: "pending", label: "Recebido", icon: Check },
     { key: "processing", label: "Preparando", icon: Package },
-    { key: "shipping", label: "Em Rota", icon: Truck },
+    { key: "shipping", label: "Em rota", icon: Truck },
     { key: "delivered", label: "Entregue", icon: Home },
   ];
 
@@ -59,7 +59,7 @@ export function OrderTimeline({ status }: OrderTimelineProps) {
         aria-label="Andamento do pedido"
         // biome-ignore lint/a11y/noRedundantRoles: list-style:none apaga o papel de lista no Safari/VoiceOver
         role="list"
-        className="m-0 flex w-full list-none items-start justify-between p-0"
+        className="m-0 flex w-full list-none items-start justify-between gap-2 p-0"
       >
         {steps.map((step, index) => {
           const Icon = step.icon;
@@ -98,8 +98,13 @@ export function OrderTimeline({ status }: OrderTimelineProps) {
                   </span>
                 )}
               </div>
+              {/* 11px é o piso de legibilidade (linha-do-tempo-do-pedido-legivel.test).
+                  Os rótulos colavam: em maiúsculas com `tracking-[0.2em]`,
+                  "PREPARANDO" passava da coluna (~65px a 375px). Em caixa
+                  normal e sem espaçamento extra, cada rótulo cabe na sua
+                  coluna com folga para o vizinho. */}
               <span
-                className={`mt-3 text-center text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-500 ${
+                className={`mt-3 w-full text-center text-[11px] font-bold leading-tight tracking-normal transition-colors duration-500 ${
                   isActive ? "text-zinc-900" : "text-zinc-500"
                 }`}
               >

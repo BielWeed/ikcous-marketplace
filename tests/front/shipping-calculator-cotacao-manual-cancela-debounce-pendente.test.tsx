@@ -37,6 +37,16 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
 vi.mock("@/contexts/CartContext", () => ({
   useCartState: () => ({ freteGratis: false }),
 }));
+// FRETE V3 (T3, 23/09/2026): ShippingCalculator deixou de ler `freteGratis`
+// do CartContext (a cópia global morreu — cada cartão calcula o preço
+// FINAL da própria modalidade) e passou a ler `config` de `useStore()`
+// diretamente, mesmo padrão de CartReminder/FreeShippingBlock.
+// `freeShippingMin: 0` = preset "desligado" -- os ids destes cenários não
+// dependem da regra local (nacional nunca a usa; local, quando aparece,
+// não é o alvo do teste).
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: { freeShippingMin: 0 }, isLoaded: true }),
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/utils/haptic", () => ({
   haptic: { light: vi.fn(), medium: vi.fn(), success: vi.fn() },
@@ -72,7 +82,12 @@ describe("ShippingCalculator — cotação manual cancela o debounce pendente do
   let selecionadas: unknown[];
   let cepsValidados: string[];
 
+  let cepDestinoAtual: string | null = null;
+  let ultimoCarrinho: CartItem[] = [];
+
   beforeEach(() => {
+    cepDestinoAtual = null;
+    ultimoCarrinho = [];
     vi.useFakeTimers();
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -120,6 +135,7 @@ describe("ShippingCalculator — cotação manual cancela o debounce pendente do
   });
 
   async function pintar(cart: CartItem[]) {
+    ultimoCarrinho = cart;
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
@@ -130,29 +146,24 @@ describe("ShippingCalculator — cotação manual cancela o debounce pendente do
           selectedOption={null}
           onSelectOption={(opt) => selecionadas.push(opt)}
           onCepValidated={(cep) => cepsValidados.push(cep)}
+          cepDestino={cepDestinoAtual}
         />,
       );
     });
   }
 
+  // Frete automático (22/09/2026): não há mais campo de CEP nem botão
+  // "Calcular". O destino chega como `cepDestino` (o endereço de entrega
+  // escolhido) e a TROCA de destino cota na hora — é o equivalente exato do
+  // antigo "digitar o CEP e enviar".
   async function digitarCep(valor: string) {
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, valor);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    cepDestinoAtual = valor;
+    await pintar(ultimoCarrinho);
   }
 
   async function enviarFormulario() {
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
+    // Sem botão: só escoa as respostas já resolvidas da cotação automática.
     await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
       await Promise.resolve();
       await Promise.resolve();
     });

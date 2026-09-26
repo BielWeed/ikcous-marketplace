@@ -59,7 +59,7 @@ describe("ShippingProgress — contraste do verde (WCAG AA)", () => {
     await act(async () => {
       raiz.render(
         <ShippingProgress
-          shipping={0}
+          estado="liberado"
           savings={12.34}
           progressPercent={82}
           amountToFree={0}
@@ -116,5 +116,73 @@ describe("ShippingProgress — contraste do verde (WCAG AA)", () => {
     expect(percentual).not.toBeUndefined();
     expect(percentual?.classList.contains("text-emerald-700")).toBe(true);
     expect(percentual?.classList.contains("text-emerald-600")).toBe(false);
+  });
+});
+
+// REVISÃO Opus (BLOQUEIA 2, 23/09/2026): os subtítulos dos estados
+// "gratis_so_na_mais_barata" e "meta_atingida_sem_gratis" carregam
+// informação de dinheiro (a opção escolhida cobra) sobre `text-zinc-400`
+// (2,56:1 — o MESMO valor REPROVADO em
+// order-list-contraste-do-card.test.tsx:9), abaixo do mínimo AA (4,5:1).
+describe("ShippingProgress — contraste do subtítulo nos estados não-liberado (WCAG AA)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+  });
+
+  async function renderizarComEstado(
+    estado: "gratis_so_na_mais_barata" | "meta_atingida_sem_gratis",
+  ) {
+    const { ShippingProgress } = await import(
+      "@/components/ui/custom/ShippingProgress"
+    );
+    const produtos: Product[] = [];
+    await act(async () => {
+      raiz.render(
+        <ShippingProgress
+          estado={estado}
+          savings={0}
+          progressPercent={100}
+          amountToFree={0}
+          isNearlyThere={false}
+          freeShippingProducts={produtos}
+          onAddToCart={() => {}}
+          onNavigate={() => {}}
+        />,
+      );
+    });
+  }
+
+  it("estado 'gratis_so_na_mais_barata': subtítulo usa text-zinc-600, não mais text-zinc-400", async () => {
+    await renderizarComEstado("gratis_so_na_mais_barata");
+
+    const subtitulo = Array.from(hospedeiro.querySelectorAll("p")).find(
+      (el) => el.textContent === "A opção escolhida não entra no grátis",
+    );
+    expect(subtitulo).not.toBeUndefined();
+    expect(subtitulo?.classList.contains("text-zinc-600")).toBe(true);
+    expect(subtitulo?.classList.contains("text-zinc-400")).toBe(false);
+  });
+
+  it("estado 'meta_atingida_sem_gratis': subtítulo usa text-zinc-600, não mais text-zinc-400", async () => {
+    await renderizarComEstado("meta_atingida_sem_gratis");
+
+    const subtitulo = Array.from(hospedeiro.querySelectorAll("p")).find(
+      (el) => el.textContent === "Recalcule o frete para aplicar o grátis",
+    );
+    expect(subtitulo).not.toBeUndefined();
+    expect(subtitulo?.classList.contains("text-zinc-600")).toBe(true);
+    expect(subtitulo?.classList.contains("text-zinc-400")).toBe(false);
   });
 });

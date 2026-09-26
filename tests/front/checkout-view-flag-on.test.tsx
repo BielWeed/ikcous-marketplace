@@ -37,6 +37,14 @@ const pagamentoOnlineOnErro: Array<
 // a sintaxe se ficasse inline no parâmetro da função abaixo.
 type TelaCheckout = typeof import("@/views/customer/CheckoutView").CheckoutView;
 
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
@@ -133,11 +141,18 @@ let mockSelectedShippingOption: {
   deliveryDays: number;
   provider: string;
 } | null = {
-  id: "opt-mock",
-  name: "Entrega Padrão",
+  // ENTREGA LOCAL por padrão (regra frete × pagamento do dono, 21/09/2026):
+  // o id "local-delivery" é o ÚNICO que preserva as modalidades "na
+  // entrega" na tela — com qualquer outro id (transportadora) o grupo "Na
+  // entrega" some e o efeito novo auto-seleciona "online" (flag ligada +
+  // logado), o que mudaria o que ESTES testes provam sem querer. Os
+  // cenários de transportadora têm provas próprias em
+  // checkout-transportadora-exige-antecipado.test.tsx.
+  id: "local-delivery",
+  name: "Entrega Local",
   price: 20,
-  deliveryDays: 3,
-  provider: "flat_fee",
+  deliveryDays: 1,
+  provider: "local",
 };
 // O dublê nasce SEM cotação (como o carrinho antes de cotar): o efeito da
 // reconciliação de CEP (onda 4 do laudo 3108) fica inerte — os cenários
@@ -146,34 +161,37 @@ let mockSelectedShippingOption: {
 // cotacao-vale-so-para-o-destino.test.ts e na migration 20261039000000.
 let mockShippingCep: string | null = null;
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: mockCart,
-    cartTotal: mockCartTotal,
-    shippingFee: mockShippingFee,
-    clearCart: () => {
-      clearCart();
-      // Espelha CartContext.tsx:690-706/726/741: setCart([]) e frete/CEP
-      // zerados, cartTotal reduzindo sobre [] e shippingFee com o guard
-      // `cart.length === 0`. `setSelectedShippingOption(null)` também roda
-      // nesse ponto (CartContext.tsx:707), daí zerar aqui junto.
-      mockCart = [];
-      mockCartTotal = 0;
-      mockShippingFee = 0;
-      mockSelectedShippingOption = null;
-    },
-    selectedShippingOption: mockSelectedShippingOption,
-    shippingCep: mockShippingCep,
-    // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
-    // laudo 3108), espelhando o estado do dublê como o contexto real faz.
-    setSelectedShippingOption: (optao: typeof mockSelectedShippingOption) => {
-      mockSelectedShippingOption = optao;
-    },
-    setShippingCep: (cep: string | null) => {
-      mockShippingCep = cep;
-    },
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: mockCart,
+      cartTotal: mockCartTotal,
+      shippingFee: mockShippingFee,
+      clearCart: () => {
+        clearCart();
+        // Espelha CartContext.tsx:690-706/726/741: setCart([]) e frete/CEP
+        // zerados, cartTotal reduzindo sobre [] e shippingFee com o guard
+        // `cart.length === 0`. `setSelectedShippingOption(null)` também roda
+        // nesse ponto (CartContext.tsx:707), daí zerar aqui junto.
+        mockCart = [];
+        mockCartTotal = 0;
+        mockShippingFee = 0;
+        mockSelectedShippingOption = null;
+      },
+      selectedShippingOption: mockSelectedShippingOption,
+      shippingCep: mockShippingCep,
+      // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
+      // laudo 3108), espelhando o estado do dublê como o contexto real faz.
+      setSelectedShippingOption: (optao: typeof mockSelectedShippingOption) => {
+        mockSelectedShippingOption = optao;
+      },
+      setShippingCep: (cep: string | null) => {
+        mockShippingCep = cep;
+      },
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
@@ -281,11 +299,11 @@ describe("CheckoutView com pagamentoOnlineLigado() ligada", () => {
     mockCartTotal = 100;
     mockShippingFee = 20;
     mockSelectedShippingOption = {
-      id: "opt-mock",
-      name: "Entrega Padrão",
+      id: "local-delivery",
+      name: "Entrega Local",
       price: 20,
-      deliveryDays: 3,
-      provider: "flat_fee",
+      deliveryDays: 1,
+      provider: "local",
     };
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {

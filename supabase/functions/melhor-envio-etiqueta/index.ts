@@ -58,12 +58,17 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
+import { cpfDoDestinatario, cpfValido, sanitizarCpfDoTexto } from "./cpf.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Recuo LEGADO do User-Agent (contrato 1.5.7, R3-7): só usado quando a
+// credencial melhor_envio NÃO tem `contact_email` salvo — mantém as lojas de
+// hoje (SAVY, IKCOUS) no ar até a lojista preencher o campo no painel.
 const USER_AGENT = 'IKCOUS-Marketplace-Integration (contato@ikcous.com.br)'
 
 /**
@@ -134,21 +139,43 @@ async function verifyIsAdmin(
 }
 
 /**
+ * Regra ÚNICA de extração do id do Melhor Envio embutido na opção de frete —
+ * captura completa `^melhor-envio-(\d+)(-ss)?$` (contrato 1.5.7, R1-6): nunca
+ * `parseInt` parcial nem `startsWith` para tirar o número. O sufixo `-ss`
+ * (contrato A6) marca a opção cotada SEM seguro; id sem sufixo mantém o
+ * comportamento de hoje (seguro = subtotal dos itens).
+ */
+const REGEX_OPCAO_MELHOR_ENVIO = /^melhor-envio-(\d+)(-ss)?$/
+
+/**
+ * Analisa o id completo da opção do Melhor Envio (do checkout ou do seletor
+ * manual): devolve o id numérico do serviço e se ela foi cotada SEM seguro
+ * (sufixo `-ss`). `null` para qualquer formato que não seja da própria casa
+ * (flat-fee-*, local-delivery, superfrete-*, frenet-*, null).
+ */
+export function analisarOpcaoMelhorEnvio(optionId: unknown): { id: string; semSeguro: boolean } | null {
+    if (typeof optionId !== 'string') return null
+    const casou = optionId.match(REGEX_OPCAO_MELHOR_ENVIO)
+    if (!casou) return null
+    return { id: casou[1], semSeguro: casou[2] === '-ss' }
+}
+
+/**
  * O id do serviço do Melhor Envio escondido no id da opção de frete que o
  * pedido guardou no checkout (`customer_data.shipping_option_id` — a RPC
  * `create_marketplace_order_v2*` grava o id cru da opção, e a cotação do
- * `calculate-shipping` monta ids `melhor-envio-{service.id}`).
+ * `calculate-shipping` monta ids `melhor-envio-{service.id}` ou
+ * `melhor-envio-{service.id}-ss`).
  *
- * Só casa o formato da própria casa: `melhor-envio-` + dígitos. Qualquer
- * outra coisa (flat-fee-*, local-delivery, null) devolve null — e o chamador
- * RECUSA o pedido: cotar de novo aqui escolheria `opcoes[0]` SEM o filtro de
- * métodos que a loja habilitou (contratar serviço que o lojista nem oferece),
- * e entrega fixa/local é feita pelo próprio lojista, não por etiqueta.
+ * Só casa o formato da própria casa (com ou sem `-ss`). Qualquer outra coisa
+ * (flat-fee-*, local-delivery, superfrete-*, frenet-*, null) devolve null —
+ * e o chamador RECUSA o pedido: cotar de novo aqui escolheria `opcoes[0]` SEM
+ * o filtro de métodos que a loja habilitou (contratar serviço que o lojista
+ * nem oferece), e entrega fixa/local é feita pelo próprio lojista, não por
+ * etiqueta.
  */
 export function extrairServiceIdDaOpcao(optionId: unknown): string | null {
-    if (typeof optionId !== 'string') return null
-    const casou = optionId.match(/^melhor-envio-(\d+)$/)
-    return casou ? casou[1] : null
+    return analisarOpcaoMelhorEnvio(optionId)?.id ?? null
 }
 
 /**
@@ -225,6 +252,116 @@ export function erroDePagamentoParaEtiqueta(paymentStatus: unknown): string | nu
 }
 
 /**
+ * Mensagem de recusa para quando o pedido NÃO tem serviço do Melhor Envio
+ * para etiquetar (`extrairServiceIdDaOpcao` devolveu null) — achado
+ * index-691. ANTES este caminho tinha UMA frase fixa, "foi frete fixo ou
+ * entrega local", para qualquer opção ausente. Mas a taxa fixa MORREU na
+ * migração do frete v2 (a RPC recusa `flat-fee-%`, calculate-shipping
+ * index.ts:278) e o caso mais comum de opção ausente hoje é OUTRO: um preset
+ * de frete grátis esconde a calculadora do carrinho inteira
+ * (CartView.tsx:495), então o pedido nasce sem NENHUMA opção — não com uma
+ * opção fixa/local que alguém escolheu. Dizer "foi frete fixo ou entrega
+ * local" nesse caso manda o lojista atrás do motivo errado.
+ *
+ * `podeEscolherServico` é o sinal para o CARD (contrato com a tarefa irmã
+ * EtiquetasEnvioCard): true quando a causa é FALTA de opção — grátis, pedido
+ * antigo sem opção salva, ou a taxa fixa morta — porque nesses casos o
+ * lojista pode escolher o serviço agora e reenviar com `serviceId` (ver
+ * `normalizarServicoEscolhidoPeloLojista`); false quando o pedido de fato foi
+ * por ENTREGA LOCAL — aí quem despacha é a própria loja, não existe serviço
+ * de transportadora para escolher.
+ *
+ * RETIRADA NA LOJA (release 1.5.3): false também — a cliente busca o pedido
+ * no balcão, não existe envio. Sem este ramo, `store-pickup` (frete 0) caía
+ * em "saiu com frete grátis… escolha o serviço" e o lojista conseguia
+ * comprar etiqueta com o saldo do Melhor Envio para um pedido que ninguém
+ * vai despachar.
+ */
+export function erroDeServicoParaEtiqueta(
+    shippingOptionId: unknown,
+    shippingFee: unknown,
+): { mensagem: string; podeEscolherServico: boolean } {
+    if (ehRetiradaNaLoja(shippingOptionId)) {
+        return {
+            mensagem: 'Este pedido é de retirada na loja — a cliente busca no seu endereço. Não existe etiqueta de envio para este caso.',
+            podeEscolherServico: false,
+        }
+    }
+    if (shippingOptionId === 'local-delivery') {
+        return {
+            mensagem: 'Este pedido foi por entrega local — quem despacha é a própria loja. Não existe etiqueta pela API do Melhor Envio para este caso.',
+            podeEscolherServico: false,
+        }
+    }
+    // SUPERFRETE (release 1.5.4): frete cotado e cobrado em OUTRA
+    // transportadora. No ramo genérico lá embaixo (`podeEscolherServico:
+    // true`) o `serviceId` do corpo era aceito e a etiqueta saía COMPRADA no
+    // Melhor Envio, com o saldo da lojista. A etiqueta é feita no site da
+    // SuperFrete.
+    if (typeof shippingOptionId === 'string' && shippingOptionId.startsWith('superfrete-')) {
+        return {
+            mensagem: 'Este pedido foi cotado e cobrado pela SuperFrete — a etiqueta é feita no site da SuperFrete, não pelo Melhor Envio.',
+            podeEscolherServico: false,
+        }
+    }
+    // FRENET (release 1.5.7): mesma ideia do ramo SuperFrete acima — frete
+    // cotado e cobrado em outra transportadora. Sem este ramo, `frenet-*`
+    // caía no genérico (`podeEscolherServico: true`) e um `serviceId` do
+    // corpo comprava a etiqueta no Melhor Envio com o saldo da lojista para
+    // um frete de outro provedor (contrato 1.5.7, §5/R1-6).
+    if (typeof shippingOptionId === 'string' && shippingOptionId.startsWith('frenet-')) {
+        return {
+            mensagem: 'Este pedido foi cotado e cobrado pela Frenet — a etiqueta é feita no site da Frenet, não pelo Melhor Envio.',
+            podeEscolherServico: false,
+        }
+    }
+    if (typeof shippingOptionId === 'string' && shippingOptionId.startsWith('flat-fee-')) {
+        return {
+            mensagem: 'Este pedido usou uma taxa de frete fixa (recurso desativado) e não tem serviço do Melhor Envio associado. Escolha o serviço abaixo para gerar a etiqueta.',
+            podeEscolherServico: true,
+        }
+    }
+    if (!(Number(shippingFee) > 0)) {
+        return {
+            mensagem: 'O pedido saiu com frete grátis e sem serviço do Melhor Envio escolhido no checkout (a calculadora do carrinho fica oculta quando o frete é grátis). Escolha o serviço abaixo para gerar a etiqueta.',
+            podeEscolherServico: true,
+        }
+    }
+    return {
+        mensagem: 'Este pedido não registrou um serviço do Melhor Envio no checkout. Escolha o serviço abaixo para gerar a etiqueta.',
+        podeEscolherServico: true,
+    }
+}
+
+/**
+ * Ids de serviço do Melhor Envio que só saem com AGÊNCIA de coleta: LATAM
+ * Cargo (12), Azul (15 e 16) e Buslog (22). O `POST /api/v2/me/cart` do app
+ * não manda agência nenhuma — bloquear aqui é melhor que cobrar diferente
+ * escondido (plano 1.5.7, A7). Vale tanto para o serviço que veio do
+ * CHECKOUT quanto para o que o lojista escolhe agora no card (contrato
+ * 1.5.7, R1-6 item 6: a mesma recusa vale para o seletor manual).
+ */
+const IDS_QUE_EXIGEM_AGENCIA_DE_COLETA = new Set(['12', '15', '16', '22'])
+
+export function erroDeAgenciaObrigatoria(serviceId: string): string | null {
+    if (!IDS_QUE_EXIGEM_AGENCIA_DE_COLETA.has(serviceId)) return null
+    return 'Esta transportadora exige agência de coleta — gere esta etiqueta no site do Melhor Envio.'
+}
+
+/**
+ * Serviço que o LOJISTA escolhe na hora de etiquetar um pedido sem opção
+ * (índice-691) — só entra em jogo quando `extrairServiceIdDaOpcao` não achou
+ * nada no checkout. Mesmo formato de dígitos que ela devolve (sem o prefixo
+ * `melhor-envio-`): quem manda aqui é o seletor do card, não a opção salva no
+ * pedido.
+ */
+export function normalizarServicoEscolhidoPeloLojista(valor: unknown): string | null {
+    if (typeof valor !== 'string') return null
+    const limpo = valor.trim()
+    return /^\d+$/.test(limpo) ? limpo : null
+}
+
+/**
  * Produtos e volumes do corpo do carrinho do ME, a partir dos itens do pedido
  * (JOIN `marketplace_order_items` × `produtos`) — mesmo padrão de leitura do
  * `calculate-shipping`: peso/dimensões vêm do BANCO, com fallbacks iguais aos
@@ -251,7 +388,13 @@ export function montarProdutosEVolumes(
         const largura = Number(db?.largura_cm ?? 15)
         const altura = Number(db?.altura_cm ?? 15)
         const comprimento = Number(db?.comprimento_cm ?? 15)
-        const preco = Number(db?.preco_venda ?? item.price ?? 0)
+        // Correção pós-revisão Opus (root autorizou): a declaração fiscal é o
+        // valor VENDIDO no pedido — o `price` gravado pela RPC
+        // (COALESCE(price_override, preco_venda) no momento da compra) —,
+        // não o preco_venda ATUAL do catálogo (que pode ter mudado desde a
+        // venda). Medidas e nome continuam vindo do banco (db).
+        const precoVendido = Number(item.price)
+        const preco = item.price != null && Number.isFinite(precoVendido) ? precoVendido : Number(db?.preco_venda ?? 0)
         const nome = String(db?.nome || 'Produto')
 
         products.push({
@@ -416,7 +559,13 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
     try {
         const body = await req.json()
-        const { action, orderId } = body
+        // `serviceId` (índice-691): o serviço que o LOJISTA escolhe no card
+        // quando o pedido não tem opção do Melhor Envio salva no checkout —
+        // ver `erroDeServicoParaEtiqueta` / `normalizarServicoEscolhidoPeloLojista`.
+        // `cpf` (só usado pela action `definir_cpf_destinatario` abaixo): o
+        // `gerar_etiqueta` NUNCA lê este campo — o CPF daquele fluxo vem
+        // SOMENTE do banco (`customerData.cpf`, mais abaixo).
+        const { action, orderId, serviceId: serviceIdEscolhidoNoCard, cpf: cpfDoCorpo } = body
 
         if (!orderId || typeof orderId !== 'string') {
             return new Response(
@@ -444,6 +593,99 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
         const supabaseClient = deps.supabase ?? createClient(supabaseUrl, supabaseServiceRole)
 
+        // ── ACTION: definir_cpf_destinatario ────────────────────────────────
+        // Caminho seguro para pedido ANTIGO (nasceu antes do checkout gravar
+        // CPF) completar o dado direto na ficha, sem depender de migration.
+        // Fica ANTES da leitura de credencial/token do Melhor Envio de
+        // propósito: esta action nunca fala com o ME, então não deve falhar
+        // por causa de um token que ainda nem foi configurado — só passa
+        // pelo MESMO portão de admin que as outras (já checado acima).
+        if (action === 'definir_cpf_destinatario') {
+            const cpfLimpo = typeof cpfDoCorpo === 'string' || typeof cpfDoCorpo === 'number'
+                ? String(cpfDoCorpo).replace(/\D/g, '')
+                : ''
+            if (!cpfValido(cpfLimpo)) {
+                return new Response(
+                    JSON.stringify({ error: 'CPF inválido — confira os números e tente de novo.' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            const { data: pedidoAtual, error: pedidoAtualError } = await supabaseClient
+                .from('marketplace_orders')
+                .select('id, status, shipping_label_id, customer_data')
+                .eq('id', orderId)
+                .maybeSingle()
+
+            if (pedidoAtualError || !pedidoAtual) {
+                return new Response(
+                    JSON.stringify({ error: 'Pedido não encontrado.' }),
+                    { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            // Etiqueta já emitida: o CPF que foi para o Melhor Envio na compra
+            // não muda mais retroativamente — não faz sentido reescrever o
+            // banco depois do fato.
+            if (pedidoAtual.shipping_label_id) {
+                return new Response(
+                    JSON.stringify({ error: 'Este pedido já tem etiqueta emitida — o CPF não pode mais ser alterado.' }),
+                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            const statusAtual = String(pedidoAtual.status || '').toLowerCase()
+            if (['cancelled', 'delivered', 'returned'].includes(statusAtual)) {
+                return new Response(
+                    JSON.stringify({ error: `Pedido com status "${statusAtual}" não recebe alteração de CPF.` }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            const customerDataAtual = pedidoAtual.customer_data || {}
+            const cpfAnterior = typeof customerDataAtual.cpf === 'string' ? customerDataAtual.cpf : null
+
+            // UPDATE CONDICIONAL contra corrida: só grava se o pedido AINDA
+            // não tem etiqueta E o CPF anterior é exatamente o que este
+            // pedido de escrita leu — outra aba/clique que gravou no meio
+            // tempo faz esta linha não bater e devolve 0 linhas (o front
+            // manda recarregar). O front NUNCA reescreve `customer_data`
+            // inteiro por conta própria (PII + corrida); só esta action, no
+            // servidor, com validação e filtro condicional.
+            let atualizacao = supabaseClient
+                .from('marketplace_orders')
+                .update({ customer_data: { ...customerDataAtual, cpf: cpfLimpo } })
+                .eq('id', orderId)
+                .is('shipping_label_id', null)
+            atualizacao = cpfAnterior === null
+                ? atualizacao.is('customer_data->>cpf', null)
+                : atualizacao.eq('customer_data->>cpf', cpfAnterior)
+
+            const { data: linhasAtualizadas, error: updateError } = await atualizacao.select('id')
+
+            if (updateError) {
+                console.error('[melhor-envio-etiqueta] Falha ao gravar CPF do destinatário:', updateError)
+                return new Response(
+                    JSON.stringify({ error: 'Não foi possível salvar o CPF agora. Tente novamente em instantes.' }),
+                    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            if (!Array.isArray(linhasAtualizadas) || linhasAtualizadas.length !== 1) {
+                return new Response(
+                    JSON.stringify({ error: 'O pedido mudou enquanto você salvava — recarregue e tente de novo.' }),
+                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            // NUNCA devolve o CPF inteiro — só os 2 últimos dígitos, para a
+            // tela confirmar sem reexibir o número completo depois de salvo.
+            return new Response(
+                JSON.stringify({ success: true, cpf_final: cpfLimpo.slice(-2) }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        }
+
         // ── Credencial do provedor (padrão da casa: nada de env var) ──
         const { data: credRow, error: credError } = await supabaseClient
             .from('store_shipping_credentials')
@@ -469,11 +711,28 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         const isSandbox = credentials.sandbox === true
         const baseUrl = isSandbox ? 'https://sandbox.melhorenvio.com.br' : 'https://melhorenvio.com.br'
 
+        // R3-7 (contrato 1.5.7, root 23/09 — "Se precisa de email deve ter no
+        // app para eu colocar e não você colocar"): o User-Agent do ME é
+        // montado com o `contact_email` da PRÓPRIA credencial melhor_envio —
+        // a leitura acima já é escopada a `provider = 'melhor_envio'`
+        // (linha ~593), então este e-mail NUNCA pode ser o da SuperFrete
+        // (linha diferente, nunca lida aqui). Sem `contact_email` salvo, cai
+        // no User-Agent LEGADO (`USER_AGENT`) e o log marca a queda — sem
+        // imprimir e-mail (não há nenhum neste ramo) nem token.
+        const contactEmail = typeof credentials.contact_email === 'string' ? credentials.contact_email.trim() : ''
+        if (!contactEmail) {
+            console.log('[melhor-envio-etiqueta] ua_contato:legado')
+        }
+        const userAgentME = contactEmail ? `IKCOUS-Marketplace-Integration (${contactEmail})` : USER_AGENT
+
+        // MESMO User-Agent em TODAS as chamadas ao ME desta requisição (/me,
+        // /cart, /checkout, /generate, /print, tracking) — `headersME` é
+        // construído uma vez e reutilizado por elas.
         const headersME = {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
-            'User-Agent': USER_AGENT,
+            'User-Agent': userAgentME,
         }
 
         // Sem token não existe fluxo NENHUM (nem consultar rastreio, que hoje
@@ -521,7 +780,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
             if (!response.ok) {
                 const detalhe = await response.text()
-                console.error('[melhor-envio-etiqueta] tracking HTTP', response.status, detalhe)
+                console.error('[melhor-envio-etiqueta] tracking HTTP', response.status, sanitizarCpfDoTexto(detalhe))
                 await gravarEvento(supabaseClient, {
                     order_id: orderId,
                     event_type: 'erro',
@@ -571,7 +830,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         //    pagamento para o portão e a URL da etiqueta para o `already`).
         const { data: pedido, error: pedidoError } = await supabaseClient
             .from('marketplace_orders')
-            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, customer_name, customer_data')
+            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, customer_name, customer_data, shipping, shipping_cost')
             .eq('id', orderId)
             .maybeSingle()
 
@@ -614,6 +873,59 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         }
 
         const customerData = pedido.customer_data || {}
+
+        // 3. O SERVIÇO de transporte — determinado ANTES de qualquer leitura
+        //    de endereço/itens e de qualquer chamada ao Melhor Envio,
+        //    INCLUSIVE o GET /api/v2/me (contrato 1.5.7, §5 e R1-6): pedido
+        //    cotado por outro provedor (SuperFrete/Frenet) ou por
+        //    transportadora que exige agência de coleta nunca pode gastar
+        //    uma chamada de rede no ME antes de recusar. O que o cliente
+        //    ESCOLHEU no checkout sempre vence; sem opção salva, o LOJISTA
+        //    escolhe agora (`serviceId` do corpo — índice-691), com o mesmo
+        //    veredito das recusas abaixo.
+        //    O frete efetivo: pedido antigo (RPC anterior à v23) gravava o
+        //    frete em shipping_cost e deixava shipping no DEFAULT 0 — sem
+        //    olhar as duas colunas, a recusa afirmaria "saiu com frete
+        //    grátis" para um pedido que cobrou frete.
+        const freteEfetivo = Number(pedido.shipping) > 0 ? pedido.shipping : pedido.shipping_cost
+        const opcaoDoCheckout = analisarOpcaoMelhorEnvio(customerData.shipping_option_id)
+        const serviceIdDoCheckout = opcaoDoCheckout?.id ?? null
+        // O veredito é calculado ANTES de aceitar a escolha do lojista: o
+        // `serviceId` do corpo só vale quando a recusa autoriza
+        // (`podeEscolherServico`). Entrega local, por exemplo, NUNCA vira
+        // etiqueta — quem despacha é a própria loja.
+        const recusa = serviceIdDoCheckout ? null : erroDeServicoParaEtiqueta(customerData.shipping_option_id, freteEfetivo)
+        const serviceIdEscolhidoAgora = recusa?.podeEscolherServico
+            ? normalizarServicoEscolhidoPeloLojista(serviceIdEscolhidoNoCard)
+            : null
+        const serviceId = serviceIdDoCheckout ?? serviceIdEscolhidoAgora
+        if (!serviceId) {
+            const { mensagem, podeEscolherServico } = recusa ?? erroDeServicoParaEtiqueta(customerData.shipping_option_id, freteEfetivo)
+            return new Response(
+                JSON.stringify({ error: mensagem, precisa_escolher_servico: podeEscolherServico }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        }
+        // Transportadora que exige agência de coleta (LATAM Cargo id 12,
+        // Azul ids 15/16, Buslog id 22): vale tanto para o serviço do
+        // CHECKOUT (o cliente já pagou por ele; sem escolha nova aqui) quanto
+        // para o escolhido AGORA pelo lojista (aí ele pode tentar outro
+        // serviço — por isso `precisa_escolher_servico` acompanha a origem
+        // do id, contrato R1-6 item 6).
+        const erroAgencia = erroDeAgenciaObrigatoria(serviceId)
+        if (erroAgencia) {
+            return new Response(
+                JSON.stringify({ error: erroAgencia, precisa_escolher_servico: !serviceIdDoCheckout }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        }
+        const service = serviceId
+        // Seguro (contrato A6/R1-6): a opção cotada SEM seguro leva o
+        // sufixo `-ss` no id — só existe numa opção real do CHECKOUT (o
+        // seletor manual do lojista nunca tem sufixo, então segue com o
+        // subtotal, como sempre foi).
+        const semSeguro = opcaoDoCheckout?.semSeguro === true
+
         const endereco = extrairEnderecoDoPedido(customerData)
         if (!endereco) {
             return new Response(
@@ -624,7 +936,30 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             )
         }
 
-        // 3. Itens do pedido + medições do banco (mesma leitura da cotação).
+        // 3.7 CPF do destinatário pessoa física (doc oficial do Melhor Envio,
+        //     "Documentos from/to": inserir-fretes-no-carrinho) — ANTES de
+        //     ler itens/produtos e de qualquer chamada ao ME (INCLUSIVE o
+        //     GET /me): sem CPF válido não vale gastar rede nem ler o
+        //     catálogo. O CPF vem SOMENTE do banco (`customerData.cpf`,
+        //     contrato com a frente de checkout) — `cpfDoCorpo` do body
+        //     NUNCA é lido aqui, mesmo que venha preenchido.
+        const cpfBrutoDoPedido = customerData.cpf
+        const cpfAusenteNoPedido =
+            cpfBrutoDoPedido === undefined || cpfBrutoDoPedido === null || String(cpfBrutoDoPedido).trim() === ''
+        const cpfDestinatario = cpfDoDestinatario(customerData)
+        if (!cpfDestinatario) {
+            return new Response(
+                JSON.stringify({
+                    error: cpfAusenteNoPedido
+                        ? 'Este pedido não tem o CPF do destinatário. O Melhor Envio exige o CPF para emitir a etiqueta — complete o CPF na ficha do pedido e tente de novo.'
+                        : 'O CPF do destinatário salvo neste pedido é inválido — corrija na ficha do pedido.',
+                    precisa_cpf: true,
+                }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        }
+
+        // 4. Itens do pedido + medições do banco (mesma leitura da cotação).
         //    A coluna de preço no schema vivo é `price` (baseline
         //    20260806000000 / src/types/supabase.ts) — `unit_price` não existe.
         const { data: itens, error: itensError } = await supabaseClient
@@ -659,14 +994,14 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             0,
         )
 
-        // 4. Remetente: a conta do lojista no Melhor Envio é a fonte.
+        // 5. Remetente: a conta do lojista no Melhor Envio é a fonte.
         const meResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me`, {
             method: 'GET',
             headers: headersME,
         })
         if (!meResponse.ok) {
             const detalhe = await meResponse.text()
-            console.error('[melhor-envio-etiqueta] /me HTTP', meResponse.status, detalhe)
+            console.error('[melhor-envio-etiqueta] /me HTTP', meResponse.status, sanitizarCpfDoTexto(detalhe))
             return new Response(
                 JSON.stringify({ error: mensagemDoErroHttp(meResponse.status, 'leitura do remetente') }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -683,27 +1018,11 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             )
         }
 
-        // 5. O serviço de transporte: o que o cliente ESCOLHEU no checkout.
-        //    Pedido sem opção do Melhor Envio (frete fixo, entrega local,
-        //    null) NÃO etiqueta pela API: cotar de novo aqui escolheria
-        //    opcoes[0] SEM o filtro de métodos que a loja habilitou, e
-        //    entrega fixa/local é o próprio lojista entregando — sem etiqueta.
-        const serviceId = extrairServiceIdDaOpcao(customerData.shipping_option_id)
-        if (!serviceId) {
-            return new Response(
-                JSON.stringify({
-                    error: 'Este pedido não tem frete do Melhor Envio escolhido no checkout (foi frete fixo ou entrega local — entregue você mesmo). A etiqueta pela API só sai para pedido com opção do Melhor Envio.',
-                }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-            )
-        }
-        const service = serviceId
-
         const to = {
             name: pedido.customer_name || 'Cliente',
             phone: String(customerData.whatsapp || customerData.phone || '0000000000').replace(/\D/g, '') || '0000000000',
             email: customerData.email || null,
-            document: null,
+            document: cpfDestinatario,
             address: endereco.street,
             complement: endereco.complement || null,
             number: endereco.number,
@@ -725,7 +1044,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 products,
                 volumes,
                 options: {
-                    insurance_value: subtotalItens,
+                    insurance_value: semSeguro ? 0 : subtotalItens,
                     receipt: false,
                     own_hand: false,
                     reverse: false,
@@ -735,7 +1054,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         })
         if (!cartResponse.ok) {
             const detalhe = await cartResponse.text()
-            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, detalhe)
+            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, sanitizarCpfDoTexto(detalhe))
             return new Response(
                 JSON.stringify({ error: mensagemDoErroHttp(cartResponse.status, 'criação da etiqueta') }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -744,7 +1063,11 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         const cartData = await cartResponse.json()
         const labelId = cartData?.id
         if (!labelId) {
-            console.error('[melhor-envio-etiqueta] cart sem id:', JSON.stringify(cartData).slice(0, 500))
+            // Sanitiza ANTES de cortar em 500 caracteres — cortar primeiro
+            // podia partir um CPF ao meio na fronteira do corte, deixando um
+            // pedaço de dígitos que a regex de 11 não reconhece mais (achado
+            // da 2ª rodada da revisão Opus sobre o commit aadbf4c).
+            console.error('[melhor-envio-etiqueta] cart sem id:', sanitizarCpfDoTexto(JSON.stringify(cartData)).slice(0, 500))
             return new Response(
                 JSON.stringify({ error: 'O Melhor Envio não devolveu o id da etiqueta. Tente novamente.' }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -907,7 +1230,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             })
             if (!checkoutResponse.ok) {
                 const detalhe = await checkoutResponse.text()
-                console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, detalhe)
+                console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, sanitizarCpfDoTexto(detalhe))
                 if (checkoutResponse.status >= 500) {
                     // 5xx de gateway: a compra PODE ter fechado com a resposta
                     // perdida — indeterminado, NÃO "não pagou" (A′).
@@ -936,7 +1259,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             })
             if (!generateResponse.ok) {
                 const detalhe = await generateResponse.text()
-                console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, detalhe)
+                console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, sanitizarCpfDoTexto(detalhe))
                 return await finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
             }
 
@@ -953,7 +1276,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                     const printData = await printResponse.json()
                     labelUrl = printData?.url || null
                 } else {
-                    console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, await printResponse.text())
+                    console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, sanitizarCpfDoTexto(await printResponse.text()))
                 }
             } catch (printErr) {
                 console.error('[melhor-envio-etiqueta] print falhou (suave):', printErr)

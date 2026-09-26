@@ -286,6 +286,12 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
       "ikcous_shipping_cache_01310100",
       JSON.stringify([{ id: "y" }]),
     );
+    // Release 1.5.3: o cache de frete ganhou a chave v2 (com o contexto da
+    // loja) sob o MESMO prefixo — o logout a leva junto.
+    localStorage.setItem(
+      "ikcous_shipping_cache_v2_38500000",
+      JSON.stringify({ contexto: "x", assinatura: "a", gravadoEm: 0 }),
+    );
 
     const cb = callback();
     await act(async () => {

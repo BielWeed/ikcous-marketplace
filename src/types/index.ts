@@ -37,6 +37,8 @@ export interface Product {
   metaDescription?: string;
   /** `null` = limpar o codigo; `undefined` = nao mexer. Ver [ADMIN-050, #96]. */
   sku?: string | null;
+  /** Mesma convencao do sku acima: `null` = limpar o codigo de barras; `undefined` = nao mexer. */
+  codigoBarras?: string | null;
   weightKg?: number | null;
   widthCm?: number | null;
   heightCm?: number | null;
@@ -47,6 +49,7 @@ export interface ProductVariant {
   id: string;
   productId: string;
   sku?: string;
+  codigoBarras?: string;
   name: string;
   value: string;
   stockIncrement: number;
@@ -142,6 +145,13 @@ export type PaymentStatus =
   | "pago_apos_expirar"
   | "recebido_na_entrega";
 
+/**
+ * De onde a venda veio. `online` é a loja (checkout); `presencial` é o balcão
+ * (PDV). A coluna é `marketplace_orders.canal`, NOT NULL DEFAULT 'online'
+ * (migration 20261160000000) — pedido antigo nenhum fica sem canal.
+ */
+export type CanalDaVenda = "online" | "presencial";
+
 export interface OrderItem {
   productId: string;
   variantId?: string;
@@ -182,6 +192,25 @@ export interface Order {
   pagamentoRecebidoEm?: string | null;
   /** Qual admin confirmou o recebimento. */
   pagamentoRecebidoPor?: string | null;
+  /**
+   * De onde a venda veio. Opcional porque existe `Order` sem a chave em
+   * RUNTIME: o cache de pedidos do cliente em localStorage gravado por versão
+   * anterior do app é hidratado sem passar pelo mapper (useOrders). Regra para
+   * todo consumidor: ramifique por `canal === "presencial"`, nunca por
+   * `=== "online"` — ausente é online.
+   */
+  canal?: CanalDaVenda;
+  /** Qual admin registrou a venda no balcão. NULL em venda online. */
+  vendedorId?: string | null;
+  /**
+   * Retirada na loja (release 1.5.3): a cliente busca o pedido no endereço
+   * físico da loja. Derivado do retrato `customer_data.pickup_address` que a
+   * RPC v23/v24 grava SÓ para `store-pickup` — opcional pelo mesmo motivo do
+   * `canal` (cache antigo hidratado sem o mapper): ausente = entrega.
+   */
+  retiradaNaLoja?: boolean;
+  /** O endereço da loja no momento da compra (retrato, aparado). */
+  enderecoDeRetirada?: string | null;
 }
 
 export interface Review {
@@ -266,19 +295,48 @@ export interface StoreConfig {
   /** UF de onde a loja opera. Ausente ou `null` = não configurado. */
   storeState?: string | null;
   /**
-   * Texto "Sobre a loja" exibido na página Sobre a Loja (peça 24). CAMPO
-   * FUTURO: a coluna `store_description` ainda não existe em
-   * `store_config`/`v_store_config` (migration é decisão do dono). Enquanto
-   * não existir, o campo NUNCA chega do banco e o bloco fica oculto — a
-   * tela omite, nunca inventa.
+   * Endereço de texto que alimenta o mapa da página Sobre a Loja (20261167).
+   * Ausente/`null` = a loja não disse — o mapa cai para o CEP de frete e
+   * depois para cidade/UF, como antes da coluna existir.
+   */
+  storeAddress?: string | null;
+  /**
+   * Texto "Sobre a loja" exibido na página Sobre a Loja (peça 24), gravado
+   * como HTML simples (parágrafos) pela tela do painel desde a migration
+   * 20261167000000. A página pública sanitiza com DOMPurify no render;
+   * ausente/`null` = o bloco não existe na tela — a tela omite, nunca
+   * inventa.
    */
   storeDescription?: string | null;
   originCep?: string;
-  shippingProvider?: "flat_fee" | "melhor_envio" | "frenet";
+  shippingProvider?: "flat_fee" | "melhor_envio" | "frenet" | "superfrete";
   enabledShippingMethods?: string[];
   shippingCoverage?: "local" | "national";
   localDeliveryFee?: number;
   localCepRange?: string;
+  /**
+   * ESTRATÉGIAS DE FRETE NACIONAL (23/09/2026, migration
+   * 20261171000000_o_frete_nacional_ganha_estrategia_propria.sql): a mesma
+   * ideia dos presets locais (`freeShippingMin`), mas para transportadora —
+   * `desligado` (preço cheio), `acima_de_valor` (grátis a partir de
+   * `nationalShippingMin`), `sempre`, `por_produto` (item marcado
+   * `freeShipping`) ou `desconto_na_mais_barata` (percentual/fixo só na(s)
+   * opção(ões) de menor preço cheio). Fonte única em
+   * `src/lib/estrategias-de-frete.ts` — o front NUNCA recalcula o preço
+   * nacional, só lê `ShippingOption.price`/`precoCheio` (já finais, vindos
+   * da edge). NÃO OPCIONAL: o StoreContext preenche sempre, com o ESPELHO
+   * LEGADO de `freeShippingMin` quando as colunas ainda não existem no
+   * banco (contrato do plano de 23/09).
+   */
+  nationalShippingStrategy: EstrategiaDeFreteNacional;
+  /** `>= 0`. Só usado quando a estratégia é `acima_de_valor` (>0) ou como piso opcional de `desconto_na_mais_barata` (0 = sem mínimo). */
+  nationalShippingMin: number;
+  /** `null` fora da estratégia `desconto_na_mais_barata`. */
+  nationalDiscountType: "percentual" | "fixo" | null;
+  /** `>= 0`. Só usado em `desconto_na_mais_barata`. */
+  nationalDiscountValue: number;
+  /** Alcance do GRÁTIS nacional (`sempre`/`por_produto`/`acima_de_valor`): `mais_barata` beneficia só as opções de menor preço cheio; `todas`, todas as nacionais. O desconto (`desconto_na_mais_barata`) é sempre `mais_barata` por definição da própria estratégia. */
+  nationalBenefitScope: "mais_barata" | "todas";
   homeSections?: {
     id: string;
     title: string;
@@ -288,14 +346,87 @@ export interface StoreConfig {
     productIds?: string[];
     isCustom?: boolean;
   }[];
+  /**
+   * Formas de pagamento NA ENTREGA/RETIRADA que a loja aceita (migration
+   * 20261174000000, coluna `store_config.formas_pagamento_entrega`).
+   * "online" (PIX pelo app) não entra aqui — continua em `pagamentoOnline`,
+   * lido pela ficha da loja (`pagamentoOnlineLigado()`), nunca por este
+   * campo. NÃO OPCIONAL: ausente/inválido no dado lido é tratado como as
+   * três (`["pix","card","cash"]`) por quem lê — mesma régua de
+   * `nationalShippingStrategy` (loja velha, sem a coluna, não muda de
+   * comportamento sozinha). Ordem CANÔNICA sempre pix, card, cash — o
+   * servidor preserva a ordem que o front manda (StoreContext,
+   * `TIPO_DAS_COLUNAS_STORE_CONFIG`, "texto_array": comparação sensível a
+   * ordem).
+   */
+  formasPagamentoEntrega: ("pix" | "card" | "cash")[];
+}
+
+/** As 5 estratégias de `store_config.national_shipping_strategy` — mesmos nomes do CHECK da migration 20261171000000. */
+export type EstrategiaDeFreteNacional =
+  | "desligado"
+  | "acima_de_valor"
+  | "sempre"
+  | "por_produto"
+  | "desconto_na_mais_barata";
+
+/**
+ * O carimbo que a edge grava em TODA opção NACIONAL (nunca em
+ * `local-delivery`/`store-pickup`): as 5 colunas de `store_config` lidas no
+ * instante da cotação. A RPC do pedido compara este carimbo com a config
+ * ATUAL da loja — divergiu, `FRETE_COTACAO_DESATUALIZADA` (recota).
+ */
+export interface EstrategiaNacionalDaOpcao {
+  estrategia: EstrategiaDeFreteNacional;
+  minimo: number;
+  tipoDesconto: "percentual" | "fixo" | null;
+  valorDesconto: number;
+  alcance: "mais_barata" | "todas";
 }
 
 export interface ShippingOption {
   id: string;
   name: string;
+  /**
+   * Preço FINAL. Em opção NACIONAL, já sai da edge com grátis/desconto
+   * aplicados — o front NUNCA recalcula (fonte única: `estrategias-de-frete.ts`).
+   * Em `local-delivery`/`store-pickup` é o preço CHEIO (a regra local, que
+   * SEMPRE foi calculada no front, continua sendo — `precoFinalDaOpcao`).
+   */
   price: number;
   deliveryDays: number;
   provider: string;
+  /**
+   * Só em opção NACIONAL: o preço da transportadora ANTES da estratégia
+   * (para riscar/mostrar economia). Ausente em local/retirada/grátis e em
+   * opção cotada por edge anterior a 23/09/2026.
+   */
+  precoCheio?: number;
+  /** Só em opção NACIONAL — ver `EstrategiaNacionalDaOpcao`. */
+  estrategiaNacional?: EstrategiaNacionalDaOpcao;
+  /**
+   * Só na retirada na loja (id `store-pickup`, release 1.5.3): o endereço
+   * físico REAL da loja (`store_config.store_address`, aparado) que a edge
+   * calculate-shipping manda junto. A tela mostra "Retire em: …" com ele.
+   */
+  pickupAddress?: string;
+  /**
+   * CAMPOS NOVOS DA 1.5.7 (vários provedores ao mesmo tempo —
+   * CONTRATO-1.5.7.md §2 e R1-7). Ausentes em opção local/retirada/grátis e
+   * em pedido antigo (id sem sufixo, cotado antes desta release).
+   */
+  /** Nome da transportadora, ex. "Loggi", "Correios" (só nacional). */
+  transportadora?: string;
+  /** Nome do serviço na transportadora, ex. "Express", "PAC". */
+  servico?: string;
+  /** Rótulo do provedor para a tela, ex. "Melhor Envio", "SuperFrete", "Frenet". */
+  provedorRotulo?: string;
+  /**
+   * EMENDA R3 do CONTRATO-1.5.7.md: campo opcional que a tela NÃO mostra —
+   * só preserva ao repassar a opção adiante (ex.: no envelope do cache do
+   * navegador). Quem decide algo com ele é o servidor, nunca esta tela.
+   */
+  revisaoCredenciais?: string;
 }
 
 export interface WaitlistItem {
@@ -325,11 +456,13 @@ export type View =
   | "admin-products"
   | "admin-product-form"
   | "admin-orders"
+  | "admin-pdv"
   | "admin-coupons"
   | "admin-coupon-form"
   | "admin-banners"
   | "admin-carousels"
   | "admin-shipping"
+  | "admin-shipping-national"
   | "admin-settings"
   | "admin-reviews"
   | "admin-qa"
@@ -338,6 +471,7 @@ export type View =
   | "admin-push"
   | "admin-notifications"
   | "admin-whatsapp-config"
+  | "admin-about-store"
   | "admin-sros"
   | "referral"
   | "account-settings"

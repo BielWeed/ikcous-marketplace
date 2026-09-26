@@ -30,7 +30,7 @@ on:
       - "tests/banco/**"
       - ".github/workflows/rpc-ci.yml"
   push:
-    branches: [develop]
+    branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
       - "supabase/migrations/**"
       - "tests/banco/**"

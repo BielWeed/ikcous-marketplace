@@ -81,7 +81,7 @@ describe("middleware.ts — config.matcher tem de ser um array LITERAL, nunca im
   it("tem os três padrões do desenho (brief T3b, item 6 — lista nomeada; rodada 2, achado 1: offline.html e google*.html)", () => {
     const doMiddleware: unknown = JSON.parse(literalJson);
     expect(doMiddleware).toEqual([
-      "/((?!assets/|store-identity/|icons/|images/|fonts/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|robots\\.txt$|sitemap\\.xml$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
+      "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|robots\\.txt$|sitemap\\.xml$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
       "/identidade.json",
       "/manifest.webmanifest",
     ]);

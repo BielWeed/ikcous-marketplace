@@ -3,6 +3,7 @@ import { modoDeEconomiaDoFrete } from "@/lib/economia-do-frete";
 import { soDigitos } from "@/lib/reconciliacao-de-cep";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, ShippingOption } from "@/types";
+type OpcaoParaEconomia = Pick<ShippingOption, "id" | "price" | "precoCheio">;
 // COTAÇÃO DE EXIBIÇÃO da economia do frete (peça 1, checkout, 12/09/2026).
 //
 // 🔴 ISTO É SÓ EXIBIÇÃO. Nada aqui escreve no pedido: nunca chama
@@ -63,9 +64,24 @@ const CACHE_MAX_ENTRADAS = 50;
 interface EntradaDeCacheDeExibicao {
   valor: number;
   gravadoEm: number;
+  /** R1-2/R2-5: revisão da configuração de frete na hora desta cotação de
+   * EXIBIÇÃO (não confundir com a checagem do pedido de verdade, que chama
+   * `revisao_config_frete` separado). Este hook não faz chamada extra —
+   * só compara com a revisão mais recente que ELE MESMO já viu, abaixo. */
+  revisaoConfig: string | null;
 }
 
 const cacheDeExibicaoPorModulo = new Map<string, EntradaDeCacheDeExibicao>();
+
+/**
+ * Revisão mais recente vista em QUALQUER resposta de cotação de exibição —
+ * atualizada em `gravarCacheDeExibicao`. Sem chamar `revisao_config_frete`
+ * à parte (isso duplicaria uma rede só para um número decorativo), este é
+ * o sinal mais barato de que a config mudou: se uma cotação NOVA (de outro
+ * CEP/carrinho) trouxe uma revisão diferente da que uma entrada mais VELHA
+ * carrega, essa entrada velha não serve mais — mesmo dentro do TTL.
+ */
+let revisaoConfigMaisRecente: string | null = null;
 
 function lerCacheDeExibicao(chave: string, agora: number): number | undefined {
   const entrada = cacheDeExibicaoPorModulo.get(chave);
@@ -74,10 +90,26 @@ function lerCacheDeExibicao(chave: string, agora: number): number | undefined {
     cacheDeExibicaoPorModulo.delete(chave);
     return undefined;
   }
+  if (
+    entrada.revisaoConfig &&
+    revisaoConfigMaisRecente &&
+    entrada.revisaoConfig !== revisaoConfigMaisRecente
+  ) {
+    // A lojista mudou a configuração DEPOIS que esta entrada foi gravada
+    // (visto por outra cotação, mais recente) — número decorativo velho não
+    // vale mais, recota.
+    cacheDeExibicaoPorModulo.delete(chave);
+    return undefined;
+  }
   return entrada.valor;
 }
 
-function gravarCacheDeExibicao(chave: string, valor: number, agora: number) {
+function gravarCacheDeExibicao(
+  chave: string,
+  valor: number,
+  agora: number,
+  revisaoConfig: string | null,
+) {
   if (
     !cacheDeExibicaoPorModulo.has(chave) &&
     cacheDeExibicaoPorModulo.size >= CACHE_MAX_ENTRADAS
@@ -88,7 +120,14 @@ function gravarCacheDeExibicao(chave: string, valor: number, agora: number) {
       cacheDeExibicaoPorModulo.delete(chaveMaisAntiga);
     }
   }
-  cacheDeExibicaoPorModulo.set(chave, { valor, gravadoEm: agora });
+  cacheDeExibicaoPorModulo.set(chave, {
+    valor,
+    gravadoEm: agora,
+    revisaoConfig,
+  });
+  if (revisaoConfig) {
+    revisaoConfigMaisRecente = revisaoConfig;
+  }
 }
 
 /**
@@ -100,6 +139,7 @@ function gravarCacheDeExibicao(chave: string, valor: number, agora: number) {
  */
 export function _limparCacheDeEconomiaDoFreteParaTeste(): void {
   cacheDeExibicaoPorModulo.clear();
+  revisaoConfigMaisRecente = null;
 }
 
 export function useEconomiaDoFreteExibida(params: {
@@ -112,6 +152,10 @@ export function useEconomiaDoFreteExibida(params: {
   freeShippingMin: number;
   cart: readonly CartItem[];
   isOffline: boolean;
+  /** T3 (23/09): a opção JÁ escolhida no ShippingCalculator — repassada
+   * direto para `modoDeEconomiaDoFrete` (linha 0: nacional com `precoCheio`
+   * responde por si mesma, sem cotar de novo). */
+  opcaoSelecionada?: OpcaoParaEconomia | null;
 }): number {
   const {
     freteGratis,
@@ -123,6 +167,7 @@ export function useEconomiaDoFreteExibida(params: {
     freeShippingMin,
     cart,
     isOffline,
+    opcaoSelecionada,
   } = params;
 
   const modo = modoDeEconomiaDoFrete({
@@ -133,6 +178,7 @@ export function useEconomiaDoFreteExibida(params: {
     localCepRange,
     localDeliveryFee,
     freeShippingMin,
+    opcaoSelecionada,
   });
 
   const cepLimpo = cepDeEntrega ? soDigitos(cepDeEntrega) : "";
@@ -174,7 +220,11 @@ export function useEconomiaDoFreteExibida(params: {
         try {
           const { data, error } = await supabase.functions.invoke(
             "calculate-shipping",
-            { body: { cep: cepLimpo, cart } },
+            // CONTRATO-1.5.7.md §2/R1-4: mesmo contrato do cliente que a
+            // cotação de VERDADE (ShippingCalculator) manda — a edge decide
+            // o conjunto de provedores por esse número, e a exibição não
+            // pode inventar outro contrato.
+            { body: { cep: cepLimpo, cart, contratoCliente: 3 } },
           );
           if (meuId !== reqRef.current) return;
           if (error || !data?.options) {
@@ -184,7 +234,9 @@ export function useEconomiaDoFreteExibida(params: {
           const opcoes = data.options as ShippingOption[];
           const maisBarata = opcaoMaisBarata(opcoes);
           const valor = maisBarata ? maisBarata.price : 0;
-          gravarCacheDeExibicao(chave, valor, Date.now());
+          const revisaoConfig =
+            typeof data.revisaoConfig === "string" ? data.revisaoConfig : null;
+          gravarCacheDeExibicao(chave, valor, Date.now(), revisaoConfig);
           if (meuId !== reqRef.current) return;
           setEconomiaCotada(valor);
         } catch {
@@ -203,5 +255,6 @@ export function useEconomiaDoFreteExibida(params: {
 
   if (modo.tipo === "zero") return 0;
   if (modo.tipo === "local") return modo.valor;
+  if (modo.tipo === "opcao") return modo.valor;
   return economiaCotada;
 }

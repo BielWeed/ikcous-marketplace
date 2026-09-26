@@ -8,7 +8,7 @@ import type { View } from "@/types";
 // prende o que a tela É, não só como ela parece:
 //
 //   1. a FAIXA descreve o estado REAL salvo no config (local com cidade,
-//      nacional com transportadora conectada, grátis pelo preset);
+//      nacional com transportadora ligada, grátis pelo preset);
 //   2. a taxa fixa MORREU: nenhum card, campo ou payload dela;
 //   3. os presets de frete grátis são EXCLUSIVOS (escolher um é desligar os
 //      outros) e gravam via `valorDoPreset` — inclusive as sentinelas do
@@ -19,43 +19,82 @@ import type { View } from "@/types";
 //      `shippingCoverage` (role="switch"); a credencial da transportadora é
 //      de Ajustes, então "Cotação na hora" é EXIBIÇÃO — nenhum botão finge
 //      salvar o que não salva;
-//   5. a BARRA DE SALVAR FIXA só existe com alteração pendente, e salvar
-//      aqui NÃO envia campo da seção de Transportadoras.
+//   5. o botão SALVAR (agora no cabeçalho, T4 unificação 23/09/2026) só
+//      fica CLICÁVEL com alteração pendente, e salvar aqui NÃO envia campo
+//      da seção de Transportadoras.
 //
-// Os companheiros desta prova: admin-shipping-nao-inventa-cep-de-origem
-// (CEP de origem), admin-shipping-trocar-de-aba (guarda de dirty),
-// admin-visual-frete (divisão de território).
+// RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): a tela deixou de ler
+// `store_shipping_credentials` por PostgREST e de comparar
+// `config.shippingProvider` — a conexão agora é POR PROVEDOR, lida pela
+// mesma edge que Ajustes → Transportadoras usa (`ler_configuracao_frete`).
+// Este arquivo foi reescrito para o mock de `functions.invoke`
+// (admin-shipping-frete-por-provedor.test.tsx already prova o estado por
+// provedor isoladamente; aqui a prova é que o RESTO da tela — faixa,
+// presets, chaves, barra de salvar — convive corretamente com esse estado).
+// As duas provas de gramática "REVISÃO A5" ("conecte o Melhor Envio" vs.
+// "conecte uma transportadora") foram REMOVIDAS: elas dependiam de um único
+// `shippingProvider` nomeado ou ausente — no modo multi-provedor a frase de
+// zero-ligados é sempre a mesma, genérica, sem nome de provedor nenhum
+// (ver FreteNacionalBloco.tsx).
+//
+// TAREFA T4-UNIFICAÇÃO (23/09/2026): a barra de salvar fixa morreu — o
+// botão vive no cabeçalho, com 4 estados ("Salvo"/"Salvar"/"Salvando…"/
+// "Tentar de novo"), e nunca some da tela (só troca de rótulo/estilo). As
+// seções viraram painéis recolhíveis (`PainelRecolhivel`) — o conteúdo
+// continua no DOM sempre (o painel esconde por `hidden`, não desmonta),
+// então testes que só LEEM estado não precisam abrir o painel; testes que
+// CLICAM numa pill abrem o painel primeiro (`abrirPainel`) para não colidir
+// com a pill homônima do OUTRO painel (a estratégia nacional, agora na
+// mesma tela, repete rótulos como "Grátis acima de um valor").
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { estadoDaLoja, estadoDoBanco, updateConfig } = vi.hoisted(() => ({
-  estadoDaLoja: {
-    atual: {
-      freeShippingMin: 100,
-      shippingCoverage: "national" as "local" | "national",
-      shippingProvider: "melhor_envio" as
-        | "flat_fee"
-        | "melhor_envio"
-        | "frenet",
-      originCep: "38400-000",
-      enabledShippingMethods: ["sedex", "pac"] as string[],
-      localDeliveryFee: 10,
-      localCepRange: "",
-      storeCity: "Uberlândia" as string | null,
-      storeState: "MG" as string | null,
-    },
-  },
-  estadoDoBanco: {
-    credenciais: [
-      {
-        provider: "melhor_envio",
-        credentials: { token: "tok-salvo", sandbox: false },
+const { estadoDaLoja, estadoDoBanco, updateConfig, invoke } = vi.hoisted(
+  () => ({
+    estadoDaLoja: {
+      atual: {
+        freeShippingMin: 100,
+        shippingCoverage: "national" as "local" | "national",
+        originCep: "38400-000",
+        enabledShippingMethods: ["sedex", "pac"] as string[],
+        localDeliveryFee: 10,
+        localCepRange: "",
+        storeCity: "Uberlândia" as string | null,
+        storeState: "MG" as string | null,
       },
-    ] as any[],
-  },
-  updateConfig: vi.fn(),
-}));
+    },
+    // Estado que a edge `ler_configuracao_frete` devolveria — o único que
+    // esta tela consulta para saber quem está ligado.
+    estadoDoBanco: {
+      ligados: ["melhor_envio"] as string[],
+      provedores: {
+        melhor_envio: { tem_chave: true, sandbox: false },
+      } as Record<string, { tem_chave: boolean; sandbox?: boolean }>,
+    },
+    updateConfig: vi.fn(),
+    invoke: vi.fn(),
+  }),
+);
+
+function respostaConfig() {
+  return {
+    success: true,
+    modo: estadoDoBanco.ligados.length > 0 ? "multi" : "legado",
+    ligados: estadoDoBanco.ligados,
+    provedores: {
+      melhor_envio: { tem_chave: false, sandbox: false, servicos: null },
+      superfrete: { tem_chave: false, sandbox: false, servicos: null },
+      frenet: { tem_chave: false, sandbox: false, servicos: null },
+      ...Object.fromEntries(
+        Object.entries(estadoDoBanco.provedores).map(([p, v]) => [
+          p,
+          { servicos: null, ...v },
+        ]),
+      ),
+    },
+  };
+}
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -69,18 +108,16 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: (tabela: string) => {
-      if (tabela === "store_shipping_credentials") {
-        return {
-          select: () =>
-            Promise.resolve({ data: estadoDoBanco.credenciais, error: null }),
-        };
-      }
-      return {
-        select: () => Promise.resolve({ data: [], error: null }),
-      };
+    from: () => ({
+      select: () => ({
+        order: () => ({
+          limit: () => Promise.resolve({ data: [], error: null }),
+        }),
+      }),
+    }),
+    functions: {
+      invoke: (...args: unknown[]) => invoke(...(args as [any, any])),
     },
-    functions: { invoke: vi.fn() },
   },
 }));
 
@@ -126,7 +163,6 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = {
       freeShippingMin: 100,
       shippingCoverage: "national",
-      shippingProvider: "melhor_envio",
       originCep: "38400-000",
       enabledShippingMethods: ["sedex", "pac"],
       localDeliveryFee: 10,
@@ -134,12 +170,14 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
       storeCity: "Uberlândia",
       storeState: "MG",
     };
-    estadoDoBanco.credenciais = [
-      {
-        provider: "melhor_envio",
-        credentials: { token: "tok-salvo", sandbox: false },
-      },
-    ];
+    estadoDoBanco.ligados = ["melhor_envio"];
+    estadoDoBanco.provedores = { melhor_envio: { tem_chave: true } };
+    invoke.mockImplementation((_nome: string, opcoes: any) => {
+      if (opcoes?.body?.action === "ler_configuracao_frete") {
+        return Promise.resolve({ data: respostaConfig(), error: null });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
     updateConfig.mockResolvedValue(true);
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -188,9 +226,41 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     ) as HTMLButtonElement | undefined;
   }
 
-  async function escolherPreset(nome: RegExp) {
-    const pill = [...hospedeiro.querySelectorAll('[role="radio"]')].find((r) =>
-      nome.test(r.textContent || ""),
+  /** O botão Salvar do cabeçalho — o rótulo muda por estado, o botão nunca
+   * some (T4 unificação, 23/09/2026: a barra fixa morreu). */
+  function botaoSalvar(): HTMLButtonElement | undefined {
+    return [...hospedeiro.querySelectorAll("button")].find((b) =>
+      /^(Salvo|Salvar|Salvando…|Tentar de novo)$/.test(
+        b.textContent?.trim() || "",
+      ),
+    ) as HTMLButtonElement | undefined;
+  }
+
+  /** Abre um painel recolhível pelo título (não faz nada se já estiver
+   * aberto) — necessário só quando o teste CLICA numa pill/campo que tem
+   * homônimo no outro painel (a estratégia nacional repete rótulos como
+   * "Grátis acima de um valor"). */
+  async function abrirPainel(padrao: RegExp) {
+    const botao = botaoComTexto(padrao);
+    expect(botao).toBeDefined();
+    if (botao!.getAttribute("aria-expanded") !== "true") {
+      await act(async () => {
+        botao!.click();
+      });
+      await act(async () => {
+        await esperarMicrotarefas();
+      });
+    }
+  }
+
+  /** Pills do preset LOCAL (`FreteGratisBloco`), escopadas ao próprio
+   * painel — a estratégia NACIONAL tem pills com o MESMO texto agora que
+   * as duas vivem na mesma tela. */
+  async function escolherPresetLocal(nome: RegExp) {
+    await abrirPainel(/estrat[ée]gias do frete local/i);
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
+    const pill = [...(escopo?.querySelectorAll('[role="radio"]') ?? [])].find(
+      (r) => nome.test(r.textContent || ""),
     );
     expect(pill).toBeDefined();
     await act(async () => {
@@ -202,24 +272,26 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
   }
 
   async function salvar() {
-    const botaoSalvar = botaoComTexto(/salvar alterações/i);
-    expect(botaoSalvar).toBeDefined();
-    expect(botaoSalvar!.disabled).toBe(false);
+    const botao = botaoSalvar();
+    expect(botao).toBeDefined();
+    expect(botao!.disabled).toBe(false);
+    expect(botao!.textContent?.trim()).toBe("Salvar");
     await act(async () => {
-      botaoSalvar!.click();
+      botao!.click();
       await esperarMicrotarefas();
     });
   }
 
-  it("a faixa descreve o estado REAL salvo: local com cidade, nacional conectado, grátis pelo preset", async () => {
+  it("a faixa descreve o estado REAL salvo: local com cidade, nacional ligado, grátis pelo preset", async () => {
     await abrirTela();
 
     expect(textoDaFaixa()).toContain("R$ 10 por entrega");
     expect(textoDaFaixa()).toContain("Uberlândia/MG");
-    expect(textoDaFaixa()).toContain("Melhor Envio conectado");
+    expect(textoDaFaixa()).toContain("Melhor Envio ligado");
     expect(textoDaFaixa()).toContain("Acima de R$ 100");
-    // Nada foi mexido: sem aviso de pendência em lugar nenhum.
-    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+    // Nada foi mexido: o botão do cabeçalho mostra "Salvo", desabilitado.
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
+    expect(botaoSalvar()?.disabled).toBe(true);
   });
 
   it("a taxa fixa morreu: nenhum card, campo ou interruptor dela na tela", async () => {
@@ -230,27 +302,34 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     expect(hospedeiro.querySelector("#shipping-flat-fee")).toBeNull();
   });
 
-  it("a chave 'Só entregar na cidade' é o ÚNICO interruptor da tela e grava a cobertura de verdade", async () => {
+  it("só há chave onde há campo gravável: 'Só entregar na cidade' grava a cobertura de verdade", async () => {
     estadoDaLoja.atual = {
       ...estadoDaLoja.atual,
       shippingCoverage: "national",
     };
     await abrirTela();
+    await abrirPainel(/entrega na sua cidade/i);
 
     // A credencial da transportadora NÃO tem chave clicável (é de Ajustes —
-    // aqui é exibição). A única chave interativa é a da cobertura, com
-    // campo gravável real por trás.
-    const chaves = hospedeiro.querySelectorAll('[role="switch"]');
-    expect(chaves).toHaveLength(1);
-    expect(chaves[0].getAttribute("aria-checked")).toBe("false");
+    // aqui é exibição). As chaves interativas são SÓ as que têm campo
+    // gravável real por trás: a cobertura e, desde a release 1.5.3, a
+    // retirada na loja (chave `store-pickup` em enabledShippingMethods —
+    // provada em admin-frete-retirada-na-loja.test.tsx).
+    const chaves = [...hospedeiro.querySelectorAll('[role="switch"]')];
+    expect(chaves.map((c) => c.getAttribute("aria-label"))).toEqual([
+      "Só entregar na cidade",
+      "Permitir retirada na loja",
+    ]);
+    const cobertura = chaves[0] as HTMLElement;
+    expect(cobertura.getAttribute("aria-checked")).toBe("false");
 
     await act(async () => {
-      (chaves[0] as HTMLElement).click();
+      cobertura.click();
     });
     await act(async () => {
       await esperarMicrotarefas();
     });
-    expect(chaves[0].getAttribute("aria-checked")).toBe("true");
+    expect(cobertura.getAttribute("aria-checked")).toBe("true");
 
     await salvar();
     expect(updateConfig.mock.calls[0][0]).toHaveProperty(
@@ -271,34 +350,36 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
   it("'Cotação na hora' é EXIBIÇÃO de estado: a frase do estado existe, mas nenhum botão com esse nome (nada salva credencial daqui)", async () => {
     await abrirTela();
 
-    // O estado aparece em texto (dica/cabeçalho)…
-    expect(texto()).toMatch(/Conectado ao Melhor Envio/i);
+    // O estado aparece em texto (dica da Linha "Cotação na hora", dentro do
+    // painel "Fora da cidade" — o conteúdo NUNCA desmonta, só fica
+    // `hidden`, então o texto é lido sem precisar abrir o painel)…
+    expect(texto()).toMatch(
+      /Cota[çc][ãa]o real, na hora, pelos provedores ligados/i,
+    );
     // …mas NÃO existe botão "Cotação na hora" — chave decorativa que não
     // salvaria nada é proibida nesta tela.
     expect(botaoComTexto(/cota[çc][ãa]o na hora/i)).toBeUndefined();
   });
 
-  it("a barra de salvar fixa: NÃO existe quando está limpo, aparece com o aviso e o botão habilitado quando há mudança", async () => {
+  it("o botão Salvar do cabeçalho: 'Salvo' e desabilitado quando está limpo, 'Salvar' e habilitado quando há mudança", async () => {
     await abrirTela();
 
-    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
-    expect(botaoComTexto(/salvar alterações/i)).toBeUndefined();
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
+    expect(botaoSalvar()?.disabled).toBe(true);
 
-    await escolherPreset(/Sempre grátis/);
+    await escolherPresetLocal(/Sempre grátis/);
 
-    expect(texto()).toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
-    const botao = botaoComTexto(/salvar alterações/i) as HTMLButtonElement;
-    expect(botao).toBeDefined();
-    expect(botao.disabled).toBe(false);
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
+    expect(botaoSalvar()?.disabled).toBe(false);
   });
 
   it("preset 'Sempre grátis' grava a sentinela 0,01 (0 sempre significou desligado)", async () => {
     await abrirTela();
 
-    await escolherPreset(/Sempre grátis/);
+    await escolherPresetLocal(/Sempre grátis/);
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
     expect(
-      hospedeiro.querySelector('[role="radio"][aria-checked="true"]')
-        ?.textContent,
+      escopo?.querySelector('[role="radio"][aria-checked="true"]')?.textContent,
     ).toMatch(/Sempre grátis/);
 
     await salvar();
@@ -314,7 +395,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0 };
     await abrirTela();
 
-    await escolherPreset(/Grátis acima de um valor/);
+    await escolherPresetLocal(/Grátis acima de um valor/);
 
     const campoValor = hospedeiro.querySelector(
       "#frete-gratis-acima-de",
@@ -338,7 +419,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 100 };
     await abrirTela();
 
-    await escolherPreset(/Grátis acima de um valor/);
+    await escolherPresetLocal(/Grátis acima de um valor/);
 
     const campoValor = hospedeiro.querySelector(
       "#frete-gratis-acima-de",
@@ -353,7 +434,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0 };
     await abrirTela();
 
-    await escolherPreset(/Por produto marcado/);
+    await escolherPresetLocal(/Por produto marcado/);
     await salvar();
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
@@ -374,18 +455,19 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     expect(textoDaFaixa()).toContain("Por produto marcado");
-    const marcado = hospedeiro.querySelector(
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
+    const marcado = escopo?.querySelector(
       '[role="radio"][aria-checked="true"]',
     )?.textContent;
     expect(marcado).toMatch(/Por produto marcado/);
     // Nada foi mexido: o config já descreve o preset escolhido.
-    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
   });
 
   it("escolher 'Desligado' sobre um config de grátis-por-valor grava 0 (presets são exclusivos)", async () => {
     await abrirTela();
 
-    await escolherPreset(/Desligado/);
+    await escolherPresetLocal(/Desligado/);
     await salvar();
 
     expect(updateConfig.mock.calls[0][0]).toHaveProperty("freeShippingMin", 0);
@@ -396,18 +478,20 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     expect(textoDaFaixa()).toContain("Em toda a loja");
-    const marcado = hospedeiro.querySelector(
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
+    const marcado = escopo?.querySelector(
       '[role="radio"][aria-checked="true"]',
     )?.textContent;
     expect(marcado).toMatch(/Sempre grátis/);
   });
 
-  it("sem transportadora conectada: aviso BEM VISÍVEL de loja-só-cidade + caminho para Ajustes", async () => {
-    estadoDoBanco.credenciais = [];
+  it("sem transportadora ligada: aviso BEM VISÍVEL de loja-só-cidade + caminho para Ajustes", async () => {
+    estadoDoBanco.ligados = [];
+    estadoDoBanco.provedores = {};
     await abrirTela();
 
-    expect(texto()).toMatch(/Nenhuma transportadora conectada/i);
-    expect(texto()).toMatch(/s[óo] entrega na/i);
+    expect(texto()).toMatch(/Nenhuma transportadora ligada/i);
+    expect(texto()).toMatch(/s[óo] entrega na sua cidade/i);
 
     const cta = botaoComTexto(/conectar transportadora/i);
     expect(cta).toBeDefined();
@@ -417,11 +501,11 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
   });
 
-  it("com transportadora conectada: o aviso de sem-conexão NÃO aparece, e o atalho de Ajustes segue existindo", async () => {
+  it("com transportadora ligada: o aviso de sem-conexão NÃO aparece, e o atalho de Ajustes segue existindo", async () => {
     await abrirTela();
 
-    expect(texto()).not.toMatch(/Nenhuma transportadora conectada/i);
-    expect(texto()).toMatch(/Conectado ao Melhor Envio/i);
+    expect(texto()).not.toMatch(/Nenhuma transportadora ligada/i);
+    expect(texto()).toMatch(/Melhor Envio ligado/);
 
     const botaoAjustes = botaoComTexto(/abrir ajustes/i);
     expect(botaoAjustes).toBeDefined();
@@ -429,27 +513,6 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
       (botaoAjustes as HTMLElement).click();
     });
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
-  });
-
-  it("REVISÃO A5: provedor flat_fee (sem nome) diz 'conecte uma transportadora', nunca 'conecte o uma transportadora'", async () => {
-    // Loja antiga com `flat_fee` remanescente (ou provedor ausente): o nome
-    // é indefinido, então a frase do aviso troca o artigo em vez de costurar
-    // "o" + "uma transportadora".
-    estadoDaLoja.atual = {
-      ...estadoDaLoja.atual,
-      shippingProvider: "flat_fee",
-    };
-    await abrirTela();
-
-    expect(texto()).toMatch(/conecte uma transportadora em Ajustes/);
-    expect(texto()).not.toMatch(/conecte o uma transportadora/i);
-  });
-
-  it("REVISÃO A5: provedor nomeado sem credencial mantém o artigo 'o' ('conecte o Melhor Envio')", async () => {
-    estadoDoBanco.credenciais = [];
-    await abrirTela();
-
-    expect(texto()).toMatch(/conecte o Melhor Envio em Ajustes/);
   });
 
   it("CEP da loja vazio no config: a faixa diz que a entrega está PARADA (não inventa funcionamento)", async () => {

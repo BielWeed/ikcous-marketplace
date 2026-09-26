@@ -3,6 +3,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowUpRight,
+  Banknote,
   ChevronDown,
   Clock,
   CreditCard,
@@ -11,24 +12,32 @@ import {
   Layers,
   Palette,
   RefreshCw,
+  Store,
   Truck,
   Wallet,
   Wifi,
 } from "lucide-react";
-import { Suspense, lazy, memo, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { Suspense, lazy, memo, useCallback, useEffect, useState } from "react";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePagamentoCard";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
-import { TransportadorasSection } from "@/components/admin/settings/TransportadorasCard";
+import {
+  type ConfigDoProvedor,
+  NOME_DO_PROVEDOR,
+  PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR,
+  type ProvedorFrete,
+  TransportadorasSection,
+  buscarConfiguracaoDeFrete,
+  emailDeContatoValido,
+} from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useStore } from "@/contexts/StoreContext";
-import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { lerSupabaseUrl } from "@/lib/env-valores";
 import { pagamentoOnlineLigado } from "@/lib/flags";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -49,12 +58,6 @@ interface AdminSettingsViewProps {
   onSetDirty?: (dirty: boolean) => void;
 }
 
-const IdentitySettingsSection = lazy(() =>
-  import("@/components/admin/settings/IdentitySettingsSection").then(
-    (module) => ({ default: module.IdentitySettingsSection }),
-  ),
-);
-
 // Peça 20 (14/09/2026): chaves do Mercado Pago do lojista + guia com prompt
 // pronto + teste de conexão — conteúdo inteiro mora no próprio componente
 // (junto do arquivo de conteúdo do guia); aqui só a porta.
@@ -63,143 +66,6 @@ const MercadoPagoSection = lazy(() =>
     default: module.MercadoPagoSection,
   })),
 );
-
-const BusinessHoursEditor = memo(function BusinessHoursEditor({
-  onDirtyChange,
-  active = true,
-}: { onDirtyChange: (dirty: boolean) => void; active?: boolean }) {
-  const { config, updateConfig } = useStore();
-  const saved = config.businessHours ?? "";
-  const [baseline, setBaseline] = useState(saved);
-  const [value, setValue] = useState(saved);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(false);
-  const lifecycle = useRef({ mounted: true, active, serial: 0 });
-  if (lifecycle.current.active && !active) lifecycle.current.serial++;
-  lifecycle.current.active = active;
-  useEffect(() => {
-    // Sair da aba invalida o pedido, mas preserva o texto para uma nova tentativa.
-    if (!active) setSaving(false);
-  }, [active]);
-  const lastIncoming = useRef(saved);
-  const dirty = value !== baseline;
-  // Incoming data only refreshes a pristine editor. A shipping refresh cannot erase typing.
-  useEffect(() => {
-    if (saved === lastIncoming.current) return;
-    lastIncoming.current = saved;
-    if (!dirty && !saving) {
-      setBaseline(saved);
-      setValue(saved);
-    }
-  }, [saved, dirty, saving]);
-  useEffect(() => {
-    onDirtyChange(dirty || saving);
-  }, [dirty, saving, onDirtyChange]);
-  useEffect(() => {
-    const life = lifecycle.current;
-    life.mounted = true;
-    return () => {
-      life.mounted = false;
-      life.serial++;
-    };
-  }, []);
-  async function save() {
-    if (saving || !active) return;
-    const life = lifecycle.current;
-    const serial = ++life.serial;
-    const isCurrent = () =>
-      life.mounted && life.active && life.serial === serial;
-    const chosen = value.trim();
-    setSaving(true);
-    setError(false);
-    try {
-      const success = await updateConfig(
-        { businessHours: chosen || null },
-        { isCurrent, silent: true },
-      );
-      if (!isCurrent()) return;
-      if (success) {
-        setBaseline(chosen);
-        setValue(chosen);
-        toast.success("Horário de atendimento salvo");
-      } else setError(true);
-    } catch {
-      if (isCurrent()) setError(true);
-    } finally {
-      if (isCurrent()) setSaving(false);
-    }
-  }
-  return (
-    <div className="space-y-3 text-sm text-zinc-300">
-      <p>
-        Informe quando a loja atende. Em branco, o aplicativo omite o horário.
-      </p>
-      <label htmlFor="store-business-hours">Horário de atendimento</label>
-      <input
-        id="store-business-hours"
-        value={value}
-        disabled={saving || !active}
-        onChange={(event) => setValue(event.target.value)}
-        placeholder="Ex: Ter a Sáb, 9h às 18h"
-        className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white"
-      />
-      {error && (
-        <p role="alert">
-          Não foi possível salvar o horário. O texto foi preservado.
-        </p>
-      )}
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          disabled={saving || !active || !dirty}
-          onClick={() => void save()}
-          className="rounded-lg border border-white/10 px-3 py-2"
-        >
-          {saving ? "Salvando…" : "Salvar horário"}
-        </button>
-        <button
-          type="button"
-          disabled={saving || !active || !dirty}
-          onClick={() => {
-            setBaseline(saved);
-            setValue(saved);
-            setError(false);
-          }}
-          className="rounded-lg border border-white/10 px-3 py-2"
-        >
-          Descartar horário
-        </button>
-      </div>
-    </div>
-  );
-});
-
-function BusinessHoursSection({
-  onDirtyChange,
-  active,
-}: {
-  onDirtyChange: (dirty: boolean) => void;
-  active?: boolean;
-}) {
-  const { user, session, isAdmin, adminStatus } = useAuth();
-  const allowed =
-    isAdmin &&
-    adminStatus === "admin" &&
-    !!user &&
-    session?.user.id === user.id;
-  useEffect(() => {
-    if (!allowed) onDirtyChange(false);
-  }, [allowed, onDirtyChange]);
-  if (!allowed)
-    return <p role="alert">Entre como administrador para editar o horário.</p>;
-  return (
-    <BusinessHoursEditor
-      key={`${lerSupabaseUrl()}|${user.id}`}
-      onDirtyChange={onDirtyChange}
-      active={active}
-    />
-  );
-}
 
 // ==========================================
 // Connection Diagnostics Section (Glassmorphism)
@@ -470,15 +336,30 @@ function SecaoColapsavel({
   subtitulo,
   icone: Icone,
   comPendencia = false,
+  abrirGatilho,
   children,
 }: {
   readonly titulo: string;
   readonly subtitulo?: string;
   readonly icone: React.ElementType;
   readonly comPendencia?: boolean;
+  /**
+   * FORMAS DE PAGAMENTO POR LOJA (25/09/2026): incrementa de FORA (um botão
+   * de outra seção — "Formas de pagamento" abrindo "Mercado Pago", sem
+   * duplicar o switch que exige credencial) para forçar esta seção a abrir.
+   * Efeito colateral, não estado controlado: continua sendo a própria seção
+   * quem manda no clique normal do cabeçalho (fechar continua funcionando).
+   */
+  readonly abrirGatilho?: number;
   readonly children: React.ReactNode;
 }) {
   const [aberta, setAberta] = useState(false);
+
+  useEffect(() => {
+    if (abrirGatilho !== undefined && abrirGatilho > 0) setAberta(true);
+    // Só reage a um NOVO pedido de abrir (gatilho subiu) — nunca ao
+    // clique/pendência internos, que já têm o próprio caminho acima.
+  }, [abrirGatilho]);
 
   return (
     <div className="rounded-3xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl">
@@ -698,22 +579,12 @@ const ESTADO_DO_PIX = new Map<NivelDoPix, EstadoDoIndicador>([
   ["off", "apagado"],
 ]);
 
-// Nome amigável do provedor de frete. O fallback de LEITURA é o mesmo do
-// resto da tela (`config.shippingProvider || "flat_fee"`, como em
-// TransportadorasCard e HistoricoCotacoesCard); valor fora dos 3 conhecidos
-// (drift de banco) cai no ramo seguro em vez de imprimir lixo cru.
-const NOME_DO_PROVEDOR_DE_FRETE = new Map<string, string>([
-  ["flat_fee", "Sem cotação automática"],
-  ["melhor_envio", "Melhor Envio"],
-  ["frenet", "Frenet"],
-]);
-
 export const AdminSettingsView = memo(function AdminSettingsView({
   onNavigate,
   active,
   onSetDirty,
 }: Readonly<AdminSettingsViewProps>) {
-  const { config, isLoaded } = useStore();
+  const { config, isLoaded, updateConfig } = useStore();
   const isOffline = useOnlineStatus();
   const [showHelpModal, setShowHelpModal] = useState(false);
   // A seção de Transportadoras reporta se tem alteração não salva; enquanto
@@ -722,29 +593,38 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const [transportadorasPendentes, setTransportadorasPendentes] =
     useState(false);
 
-  const [identidadePendente, setIdentidadePendente] = useState(false);
-  const [horarioPendente, setHorarioPendente] = useState(false);
   // Peça 20: mesma trava das demais — chave digitada e não salva não pode
   // sumir num clique no cabeçalho da seção.
   const [pagamentosPendente, setPagamentosPendente] = useState(false);
 
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): mesma trava, seção PRÓPRIA
+  // (cada switch salva sozinho — a pendência aqui é só "uma gravação está
+  // em voo", pelo mesmo motivo que a trava existe: fechar no meio de um
+  // salvamento em curso não pode desmontar o componente por baixo dele).
+  const [formasPagamentoPendente, setFormasPagamentoPendente] = useState(false);
+  // Contador que só CRESCE: o botão "Configurar credenciais" da seção nova
+  // incrementa para abrir a seção Mercado Pago de fora (SecaoColapsavel
+  // continua dona do próprio fechar).
+  const [abrirMercadoPagoGatilho, setAbrirMercadoPagoGatilho] = useState(0);
+
   // Espelha a soma das pendências para o App (onSetDirty = setIsAdminDirty):
   // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
-  // — mesmo contrato da tela de Frete (AdminShippingView).
+  // — mesmo contrato da tela de Frete (AdminShippingView). Identidade e
+  // horário saíram desta soma em 22/09/2026: os acordeões duplicados desta
+  // tela foram removidos — a edição (e a pendência dela) mora só em
+  // AdminAboutStoreView agora.
   useEffect(() => {
     if (active !== false)
       onSetDirty?.(
         transportadorasPendentes ||
-          identidadePendente ||
-          horarioPendente ||
-          pagamentosPendente,
+          pagamentosPendente ||
+          formasPagamentoPendente,
       );
   }, [
     active,
     transportadorasPendentes,
-    identidadePendente,
-    horarioPendente,
     pagamentosPendente,
+    formasPagamentoPendente,
     onSetDirty,
   ]);
 
@@ -760,9 +640,23 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // contrato de pix-configurado-no-build exige este import cru DENTRO deste
   // arquivo (mesma regra do AdminDashboardView) — não extrair para
   // componente/arquivo novo sem atualizar aquele teste.
-  const pixLigado = pagamentoOnlineLigado();
-  const pixChaveOk = pixConfiguradoNoBuild(
-    chavePublicaMercadoPago() ?? undefined,
+  //
+  // mp-9: `pagamentoOnlineLigado()` é o retrato SÍNCRONO da ficha injetada
+  // no BOOT da página. O interruptor "Receber PIX no app" (MercadoPagoSection,
+  // logo abaixo) escreve `store_config.pagamento_online` pela edge e devolve
+  // o estado GRAVADO — sem este eco, a mesma tela mostrava dois estados do
+  // dinheiro (tile "Pagamento", subtítulo "PIX: …" e termômetro presos no
+  // valor velho) até um recarregamento completo, enquanto a própria seção
+  // dizia "a vitrine reflete em até 1 minuto". Estado LOCAL da sessão de
+  // propósito: a ficha global (configuracaoDaLoja) não se reescreve em
+  // memória, e a vitrine segue com o atraso do cache do porteiro.
+  const [pixLigado, setPixLigado] = useState(() => pagamentoOnlineLigado());
+  // Também estado local: `ligar_pix` só devolve ligado com a Public Key
+  // publicada na ficha junto (edge, mp-8), então o eco de "ligado" também
+  // acende a chave — senão o painel trocaria "Desligado" por um alarme
+  // vermelho falso até o próximo reload (ressalva da revisão de mp-9).
+  const [pixChaveOk, setPixChaveOk] = useState(() =>
+    pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined),
   );
   const nivelDoPix: NivelDoPix = !pixLigado
     ? "off"
@@ -771,14 +665,69 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       : "alerta";
   const rotuloDoPix = ROTULO_DO_PIX.get(nivelDoPix) ?? "";
 
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): ausente/inválido cai nas 3
+  // (mesma regra de tratamento de config velha/corrompida que o resto do
+  // app usa — loja de ontem não muda de comportamento sozinha).
+  const formasNaEntrega = formasPagamentoNaEntregaValidas(
+    config.formasPagamentoEntrega,
+  );
+
+  // RELEASE 1.5.7 v2 (EMENDA R2, R2-5): quem está ligado vem da MESMA edge
+  // que a seção de Transportadoras usa (`ler_configuracao_frete`) — nunca
+  // do espelho `config.shippingProvider`, que no modo multi não decide mais
+  // nada (R1-3/R2-1). `null` = ainda não sabemos (leitura em curso ou
+  // falhou); o painel não afirma "sem cotação automática" nesse meio-tempo.
+  const [ligadosDeFrete, setLigadosDeFrete] = useState<
+    readonly ProvedorFrete[] | null
+  >(null);
+  // Achado 2 (revisão Opus, rodada 2): guarda o `Map` de provedores junto
+  // com `ligados` — sem ele não dá para saber se um provedor ligado está
+  // de fato COMPLETO (a SuperFrete precisa de `contato_email` válido;
+  // mesma régua da tela de Frete). Um provedor "ligado" mas incompleto
+  // não pode aparecer aqui como se estivesse cotando de verdade.
+  const [provedoresDeFrete, setProvedoresDeFrete] = useState<
+    ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
+  >(() => new Map());
+  useEffect(() => {
+    buscarConfiguracaoDeFrete().then((resultado) => {
+      setLigadosDeFrete(resultado.ok ? resultado.config.ligados : null);
+      if (resultado.ok) setProvedoresDeFrete(resultado.config.provedores);
+    });
+  }, []);
+  // Revisão Opus (achado 5): a leitura acima só rodava UMA vez, ao montar
+  // — salvar provedores dentro da seção (aberta logo abaixo) não
+  // atualizava o "Ativo: X" deste indicador até um recarregamento
+  // completo da página. `TransportadorasSection` agora avisa a cada
+  // leitura confirmada (montagem e após salvar); o indicador do topo
+  // segue essa MESMA verdade em vez de só a da primeira leitura.
+  const onLigadosDaSecaoMudou = useCallback(
+    (
+      ligados: readonly ProvedorFrete[],
+      provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>,
+    ) => {
+      setLigadosDeFrete(ligados);
+      setProvedoresDeFrete(provedores);
+    },
+    [],
+  );
   const nomeDoFrete =
-    NOME_DO_PROVEDOR_DE_FRETE.get(config.shippingProvider || "flat_fee") ??
-    "Sem cotação automática";
+    ligadosDeFrete === null
+      ? "A confirmar"
+      : ligadosDeFrete.length === 0
+        ? "Sem cotação automática"
+        : ligadosDeFrete
+            .map((p) => {
+              const nome = NOME_DO_PROVEDOR.get(p) ?? p;
+              const incompleta =
+                PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(p) &&
+                !emailDeContatoValido(provedoresDeFrete.get(p)?.contato_email);
+              return incompleta ? `${nome} incompleta` : nome;
+            })
+            .join(" + ");
   // Vazio após trim = não informado (string de espaços não é horário).
   const horarioSalvo = (config.businessHours ?? "").trim();
   const atendimentoDeRelacao =
     horarioSalvo === "" ? "não informado" : horarioSalvo;
-  const nomeDaLoja = (config.storeName ?? "").trim() || "não informado";
 
   return (
     <div className="pb-admin h-auto bg-admin-bg duration-200 animate-in fade-in lg:pb-12">
@@ -940,52 +889,66 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   </div>
                   <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-amber-500" />
                 </div>
-              </div>
 
-              <SecaoColapsavel
-                titulo="Nome, logo e cores"
-                subtitulo={nomeDaLoja}
-                icone={Palette}
-                comPendencia={identidadePendente}
-              >
-                {/* Lugar reservado (desenho SALÃO+PORÃO): o endereço físico
-                    da loja entra aqui, ao lado de Cidade/UF — peça do
-                    Claude. NÃO criar stub. */}
-                <Suspense
-                  fallback={
-                    <p className="text-sm text-zinc-400">
-                      Carregando identidade…
-                    </p>
-                  }
+                {/* Sobre a Loja (pedido do dono, 20/09/2026): a página
+                    pública "Sobre a Loja" ganhou tela de configuração —
+                    marca, endereço do mapa, horário e descrição. Porta
+                    única: o Voltar do navegador volta para cá. */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onNavigate("admin-about-store")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onNavigate("admin-about-store");
+                    }
+                  }}
+                  className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-amber-500/30 hover:bg-zinc-900/30 active:scale-[0.98]"
                 >
-                  <IdentitySettingsSection
-                    active={active}
-                    onDirtyChange={setIdentidadePendente}
-                  />
-                </Suspense>
-              </SecaoColapsavel>
-
-              <SecaoColapsavel
-                titulo="Atendimento"
-                subtitulo={atendimentoDeRelacao}
-                icone={Clock}
-                comPendencia={horarioPendente}
-              >
-                <BusinessHoursSection
-                  active={active}
-                  onDirtyChange={setHorarioPendente}
-                />
-              </SecaoColapsavel>
+                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 shadow-[0_2px_12px_-4px] shadow-amber-500/25 ring-1 ring-amber-500/20">
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-amber-500/[0.32] to-amber-500/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                    />
+                    <Store
+                      className="relative size-[18px]"
+                      strokeWidth={2.25}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
+                      Sobre a Loja
+                    </h3>
+                    <p className="mt-0.5 truncate text-[10px] text-zinc-500">
+                      Marca, endereço, horário e descrição
+                    </p>
+                  </div>
+                  <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-amber-500" />
+                </div>
+              </div>
+              {/* "Nome, logo e cores" e "Atendimento" — os dois acordeões que
+                  moravam aqui — SAÍRAM em 22/09/2026 (pedido do dono): eram
+                  duplicados de AdminAboutStoreView, que já monta os MESMOS
+                  componentes (IdentitySettingsSection, BusinessHoursSection)
+                  com o mesmo contrato de salvamento. A edição passou a
+                  existir só na tela "Sobre a Loja"; o atalho para lá é o
+                  cartão logo acima. */}
             </GrupoDeAjustes>
 
             <GrupoDeAjustes titulo="Entrega">
               {/* Transportadoras e cotação de frete — MUDOU DE TELA (frente
                   glm-visual-admin-0209, pedido do Gabriel 02/09: não fazia
                   sentido o token da transportadora morar no meio das regras
-                  de frete). Dona de `shippingProvider`,
-                  `enabledShippingMethods` e das credenciais — salvar a tela
-                  de Frete não toca nelas. COLAPSADA e nascida FECHADA: ajuste
-                  raro, feito uma vez. */}
+                  de frete). RELEASE 1.5.7 v2 (revisão Opus, comentário
+                  corrigido): a seção já não é dona de `shippingProvider`
+                  nem `enabledShippingMethods` — esses campos só existem
+                  como espelho legado que a edge escreve por conta própria
+                  (R1-3/R2-1). Ela é dona só das CREDENCIAIS de cada
+                  provedor e de quem está LIGADO na loja, tudo pela edge
+                  (`save_credentials`/`save_active_providers`) — salvar a
+                  tela de Frete continua sem tocar em nada disso.
+                  COLAPSADA e nascida FECHADA: ajuste raro, feito uma vez. */}
               <SecaoColapsavel
                 titulo="Entrega e frete"
                 subtitulo={`Ativo: ${nomeDoFrete}`}
@@ -994,6 +957,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               >
                 <TransportadorasSection
                   onDirtyMudou={setTransportadorasPendentes}
+                  onLigadosMudou={onLigadosDaSecaoMudou}
                 />
               </SecaoColapsavel>
 
@@ -1005,16 +969,42 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
                 lojista cadastra as chaves do Mercado Pago dele — guia com
                 prompt pronto para o agente de IA do app do MP, salvar e
-                testar conexão ali mesmo. O Pix de hoje segue intocado (o
-                painel acima continua mostrando o estado DELE); plugar estas
-                chaves no checkout é frente futura. Nascida FECHADA como as
-                demais: ajuste feito uma vez. */}
+                testar conexão ali mesmo. Desde a mp-4 o interruptor
+                "Receber PIX no app" mora aqui dentro, e desde a mp-9 o que
+                ele grava volta por `onPixAlternado` para o painel acima —
+                era a mesma tela contando dois estados do dinheiro. Nascida
+                FECHADA como as demais: ajuste feito uma vez. */}
             <GrupoDeAjustes titulo="Pagamentos">
+              {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
+                  20261174000000): ANTES do Mercado Pago (pedido explícito do
+                  brief) — a lojista decide primeiro O QUE aceita na
+                  entrega/retirada, e só depois mexe nas credenciais do
+                  pagamento pelo app. Nascida FECHADA como as demais. */}
+              <SecaoColapsavel
+                titulo="Formas de pagamento"
+                subtitulo={`${formasNaEntrega.length} na entrega${pixLigado ? " + app" : ""}`}
+                icone={Banknote}
+                comPendencia={formasPagamentoPendente}
+              >
+                <FormasDePagamentoSection
+                  formasNaEntrega={formasNaEntrega}
+                  pixLigado={pixLigado}
+                  pixChaveOk={pixChaveOk}
+                  isOffline={isOffline}
+                  updateConfig={updateConfig}
+                  onDirtyMudou={setFormasPagamentoPendente}
+                  onAbrirMercadoPago={() =>
+                    setAbrirMercadoPagoGatilho((n) => n + 1)
+                  }
+                />
+              </SecaoColapsavel>
+
               <SecaoColapsavel
                 titulo="Mercado Pago"
                 subtitulo="Chaves do seu Mercado Pago no app"
                 icone={CreditCard}
                 comPendencia={pagamentosPendente}
+                abrirGatilho={abrirMercadoPagoGatilho}
               >
                 <Suspense
                   fallback={
@@ -1023,7 +1013,29 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     </p>
                   }
                 >
-                  <MercadoPagoSection onDirtyMudou={setPagamentosPendente} />
+                  <MercadoPagoSection
+                    onDirtyMudou={setPagamentosPendente}
+                    onPixAlternado={(ligado, chaveNaLoja) => {
+                      setPixLigado(ligado);
+                      // `chaveNaLoja` só vem preenchido no eco do `ler`
+                      // (mp-10): é o único dos quatro que NÃO garante chave
+                      // publicada quando `ligado` é `true` — `ler` devolve o
+                      // retrato cru da ficha (`pagamento_online`), que pode
+                      // estar ligada com a Public Key ausente (teste X6).
+                      // Com o dado do servidor em mãos, usamos ELE; sem ele
+                      // (eco de `ligar_pix`/`salvar`, que a edge só acende
+                      // com a chave publicada JUNTO — mp-8), a inferência
+                      // antiga continua válida: ligado -> chave OK. Sem esta
+                      // distinção o painel acendia "Funcionando" com o PIX
+                      // quebrado assim que o lojista abria esta seção
+                      // (achado BLOQUEIA da revisão de mp-10).
+                      if (chaveNaLoja !== undefined) {
+                        setPixChaveOk(chaveNaLoja);
+                      } else if (ligado) {
+                        setPixChaveOk(true);
+                      }
+                    }}
+                  />
                 </Suspense>
               </SecaoColapsavel>
             </GrupoDeAjustes>
@@ -1125,13 +1137,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
-                    <Clock className="size-3.5" strokeWidth={2.25} />
+                    <Store className="size-3.5" strokeWidth={2.25} />
                   </span>
-                  Nome, logo e cores · Atendimento
+                  Sobre a Loja
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Identidade da loja (nome, cidade/UF, logo, cores) e o horário
-                  de atendimento que a vitrine mostra.
+                  Nome, logo, cores, endereço, horário de atendimento e a
+                  descrição da loja — tudo editado numa única tela.
                 </p>
               </div>
             </div>

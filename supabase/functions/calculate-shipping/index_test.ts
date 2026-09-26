@@ -3,15 +3,19 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   buscarComTempo,
   calculateSmartFallback,
+  chavesDeTransportadora,
+  emailDeContatoValido,
   erroDeTransportadoraEhCepInvalido,
   getCartHash,
   handler,
   isLocalCep,
-  nomeAmigavelDoServico,
+  opcaoDeRetirada,
   precoDeContingenciaDoTopo,
   precoResolvidoSemCache,
+  servicoCasaChave,
   validarOrigemEFrete,
 } from "./index.ts";
+import * as edge from "./index.ts";
 
 Deno.test("calculateSmartFallback - same region", () => {
   // Test same region: starts with same character
@@ -231,51 +235,83 @@ Deno.test("com CEP de origem, permite cotar — a taxa fixa não é mais exigida
 // nada neste arquivo tocava o handler: só as funções puras do topo.
 
 const CARRINHO_DE_TESTE = [{ product: { id: "p1", price: 100 }, quantity: 1 }];
+/** O produto do carrinho de teste no BANCO (1.5.7: o valor vem daqui, nunca do navegador). */
+const PRODUTO_PADRAO_DO_TESTE = { id: "p1", preco_venda: 100 };
 
-// ── Nomes de serviço em linguagem de gente (pedido do Gabriel, 02/09) ──────
+// ── Nomes de serviço (release 1.5.7, contrato §2 + R1-7) ──────────────────
 //
-// A tela mostrava ".Package (Melhor Envio)" e o dono perguntou: "o usuário
-// vai achar que isso é o quê?". A tradução vive na edge (um lugar só: o nome
-// vai traduzido para o carrinho, o checkout e o cache).
+// REESCRITO CONSCIENTEMENTE na 1.5.7. Até a 1.5.6, `nomeAmigavelDoServico`
+// decidia o nome por PEDAÇO de texto do serviço: ".Package" e "Loggi .Com"
+// viravam "Entrega econômica"/"Entrega expressa" — com vários provedores na
+// mesma lista, o nome passava a sugerir ranking ("expressa" ao lado de algo
+// que não é o mais rápido) e escondia a transportadora. Agora `nomeDaOpcao`
+// só dá "Entrega econômica" ao PAC dos Correios e "Entrega expressa" ao SEDEX
+// dos Correios (transportadora E serviço); todo o resto é
+// "<Transportadora> — <Serviço>".
 
-Deno.test("nomeAmigavelDoServico - .Package vira Entrega econômica", () => {
-  assertEquals(nomeAmigavelDoServico({ name: ".Package" }), "Entrega econômica");
+Deno.test("nomeDaOpcao - .Package da Jadlog NÃO vira mais 'Entrega econômica'", () => {
+  assertEquals(edge.nomeDaOpcao("Jadlog", ".Package"), "Jadlog — .Package");
+  assertEquals(edge.nomeDaOpcao("Jadlog", ".Package Centralizado"), "Jadlog — .Package Centralizado");
 });
 
-Deno.test("nomeAmigavelDoServico - .Package Centralizado distingue a modalidade", () => {
-  // A checagem de "centralizado" tem que vir ANTES da de "package" (o nome
-  // contém os dois) — senão as duas modalidades colidem no mesmo nome.
-  assertEquals(
-    nomeAmigavelDoServico({ name: ".Package Centralizado" }),
-    "Entrega econômica (centro de distribuição)",
-  );
+Deno.test("nomeDaOpcao - SEDEX dos Correios é 'Entrega expressa'; SEDEX 10 mostra o nome real", () => {
+  assertEquals(edge.nomeDaOpcao("Correios", "SEDEX"), "Entrega expressa");
+  assertEquals(edge.nomeDaOpcao("Correios", "SEDEX 10"), "Correios — SEDEX 10");
 });
 
-Deno.test("nomeAmigavelDoServico - SEDEX vira Entrega expressa", () => {
-  assertEquals(nomeAmigavelDoServico({ name: "SEDEX" }), "Entrega expressa");
-  assertEquals(nomeAmigavelDoServico({ name: "SEDEX 10" }), "Entrega expressa");
+Deno.test("nomeDaOpcao - PAC dos Correios é 'Entrega econômica'; '.package' e PAC de outra transportadora não", () => {
+  assertEquals(edge.nomeDaOpcao("Correios", "PAC"), "Entrega econômica");
+  assertEquals(edge.nomeDaOpcao("Correios", ".package falso"), "Correios — .package falso");
+  assertEquals(edge.nomeDaOpcao("Outra", "PAC"), "Outra — PAC");
 });
 
-Deno.test("nomeAmigavelDoServico - PAC dos Correios vira econômica sem engolir .package", () => {
-  // `\bpac\b` casa "PAC" isolado e NÃO casa o "pac" embutido em ".package" —
-  // a fronteira de palavra depois do "c" falha quando vem "k".
-  assertEquals(nomeAmigavelDoServico({ name: "PAC" }), "Entrega econômica");
-  assertEquals(
-    nomeAmigavelDoServico({ name: ".package falso" }),
-    "Entrega econômica",
-  );
+Deno.test("nomeDaOpcao - Loggi .Com/Express mostra a transportadora (não vira 'expressa')", () => {
+  assertEquals(edge.nomeDaOpcao("Loggi", ".Com"), "Loggi — .Com");
+  assertEquals(edge.nomeDaOpcao("Loggi", "Express"), "Loggi — Express");
 });
 
-Deno.test("nomeAmigavelDoServico - Loggi .Com vira expressa", () => {
-  assertEquals(nomeAmigavelDoServico({ name: ".Com" }), "Entrega expressa");
+Deno.test("nomeDaOpcao - sem transportadora volta o serviço LIMPO; nada = vazio", () => {
+  assertEquals(edge.nomeDaOpcao("", "Transporta Já Turbo"), "Transporta Já Turbo");
+  assertEquals(edge.nomeDaOpcao(undefined, undefined), "");
 });
 
-Deno.test("nomeAmigavelDoServico - nome desconhecido volta LIMPO, sem o sufixo do integrador", () => {
-  // O sufixo "(Melhor Envio)" dizia com quem a LOJA integrou — assunto do
-  // lojista. Serviço desconhecido: o nome vem como a transportadora manda,
-  // sem o sufixo.
-  assertEquals(nomeAmigavelDoServico({ name: "Transporta Já Turbo" }), "Transporta Já Turbo");
-  assertEquals(nomeAmigavelDoServico({}), "");
+// ── Filtro de métodos habilitados casa por SERVIÇO, não por substring ──────
+//
+// A tela do lojista oferece três chaves fixas ("sedex", "pac", "jadlog" —
+// TransportadorasCard.tsx:95). O filtro antigo comparava a chave com
+// `includes` cru sobre o nome comercial: ".package".includes("pac") é TRUE
+// (liga a Jadlog achando que é PAC dos Correios) e ".package".includes(
+// "jadlog") é FALSE (desliga a Jadlog mesmo com a chave marcada) — a MESMA
+// armadilha do `\bpac\b`, que o filtro antigo não usava.
+
+Deno.test("servicoCasaChave - chave 'pac' NÃO casa '.Package' (não liga a Jadlog)", () => {
+  assertEquals(servicoCasaChave(".Package", "pac"), false);
+  assertEquals(servicoCasaChave(".Package Centralizado", "pac"), false);
+});
+
+Deno.test("servicoCasaChave - chave 'pac' casa o PAC de verdade (fronteira de palavra)", () => {
+  assertEquals(servicoCasaChave("PAC", "pac"), true);
+  assertEquals(servicoCasaChave("PAC Mini", "pac"), true);
+});
+
+Deno.test("servicoCasaChave - chave 'jadlog' casa '.Package' (não desliga tudo)", () => {
+  assertEquals(servicoCasaChave(".Package", "jadlog"), true);
+  assertEquals(servicoCasaChave(".Package Centralizado", "jadlog"), true);
+});
+
+Deno.test("servicoCasaChave - chave 'jadlog' NÃO casa PAC nem SEDEX", () => {
+  assertEquals(servicoCasaChave("PAC", "jadlog"), false);
+  assertEquals(servicoCasaChave("SEDEX", "jadlog"), false);
+});
+
+Deno.test("servicoCasaChave - chave 'sedex' casa SEDEX e não casa .Package", () => {
+  assertEquals(servicoCasaChave("SEDEX", "sedex"), true);
+  assertEquals(servicoCasaChave(".Package", "sedex"), false);
+});
+
+Deno.test("servicoCasaChave - nome ausente/nulo não estoura (anotado vizinho)", () => {
+  assertEquals(servicoCasaChave(undefined, "pac"), false);
+  assertEquals(servicoCasaChave(null as any, "jadlog"), false);
 });
 
 Deno.test("filtro de métodos habilitados com CEP FORA: PAC devolvido x só sedex habilitado -> só a expressa sai (R2 da revisão)", async () => {
@@ -288,9 +324,11 @@ Deno.test("filtro de métodos habilitados com CEP FORA: PAC devolvido x só sede
   globalThis.fetch = (() =>
     Promise.resolve(
       new Response(
+        // 1.5.7: com a transportadora (`company`), como a API real manda —
+        // é ela que faz o SEDEX dos Correios virar "Entrega expressa".
         JSON.stringify([
-          { id: 1, name: "PAC", price: "26.41", delivery_time: 8 },
-          { id: 2, name: "SEDEX", price: "54.88", delivery_time: 4 },
+          { id: 1, name: "PAC", price: "26.41", delivery_time: 8, company: { name: "Correios" } },
+          { id: 2, name: "SEDEX", price: "54.88", delivery_time: 4, company: { name: "Correios" } },
         ]),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -299,6 +337,7 @@ Deno.test("filtro de métodos habilitados com CEP FORA: PAC devolvido x só sede
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -319,17 +358,96 @@ Deno.test("filtro de métodos habilitados com CEP FORA: PAC devolvido x só sede
   }
 });
 
-Deno.test("CEP de fora recebe o nome JÁ traduzido na resposta da cotação (fim a fim)", async () => {
-  // O fetch falso devolve os nomes reais da foto do Gabriel. A resposta do
-  // handler tem que trazer a tradução — é o que o cliente vê no carrinho.
+Deno.test("filtro de métodos habilitados: chave 'pac' NÃO liga a Jadlog '.Package' (fim a fim)", async () => {
+  // Reprodução do achado index-1019: loja marca só "pac" e a transportadora
+  // devolve a Jadlog como ".Package". Com o filtro por substring cru,
+  // ".package".includes("pac") era true e a Jadlog vazava como se fosse PAC.
+  // Corrigido o casamento, a ÚNICA opção devolvida (Jadlog) fica de fora do
+  // filtro — sobra zero opção válida, e o ramo de "nenhum método habilitado
+  // sobrou" (index.ts:1163, já existente e coberto acima em "gravação falha
+  // e NENHUMA opção dispensa o cache") responde 503 sem `options`, não 200
+  // com array vazio.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify([{ id: 1, name: ".Package", price: "31.20", delivery_time: 6 }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["pac"] },
+      }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.options, undefined);
+    assertEquals(typeof corpo.error, "string");
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+Deno.test("filtro de métodos habilitados: chave 'jadlog' NÃO desliga tudo — '.Package' sai normalmente (fim a fim)", async () => {
+  // Reprodução do achado index-1019, sentido inverso: loja desmarca tudo
+  // menos "jadlog". ".package".includes("jadlog") era false, então a única
+  // opção (a Jadlog) caía, shippingOptions ficava vazio e o cliente via 503.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify([{ id: 7, name: ".Package", price: "31.20", delivery_time: 6 }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["jadlog"] },
+      }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options.length, 1);
+    assertEquals(corpo.options[0].id, "melhor-envio-7");
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+Deno.test("CEP de fora recebe o nome JÁ pronto na resposta da cotação (fim a fim) — 1.5.7: só PAC/SEDEX dos Correios viram econômica/expressa", async () => {
+  // O fetch falso devolve os nomes reais da foto do Gabriel. REESCRITO na
+  // 1.5.7 (contrato §2 + R1-7): ".Package" deixou de virar "Entrega
+  // econômica" — com vários provedores o nome não pode sugerir ranking nem
+  // esconder a transportadora; vira "Jadlog — .Package".
   const fetchOriginal = globalThis.fetch;
   globalThis.fetch = (() =>
     Promise.resolve(
       new Response(
         JSON.stringify([
-          { id: 1, name: "SEDEX", price: "12.68", delivery_time: 2 },
-          { id: 2, name: ".Package", price: "16.84", delivery_time: 7 },
-          { id: 3, name: ".Package Centralizado", price: "23.99", delivery_time: 9 },
+          { id: 1, name: "SEDEX", price: "12.68", delivery_time: 2, company: { name: "Correios" } },
+          { id: 2, name: ".Package", price: "16.84", delivery_time: 7, company: { name: "Jadlog" } },
+          { id: 3, name: ".Package Centralizado", price: "23.99", delivery_time: 9, company: { name: "Jadlog" } },
         ]),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -338,6 +456,7 @@ Deno.test("CEP de fora recebe o nome JÁ traduzido na resposta da cotação (fim
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -348,8 +467,8 @@ Deno.test("CEP de fora recebe o nome JÁ traduzido na resposta da cotação (fim
     assertEquals(resposta.status, 200);
     assertEquals(corpo.options.map((o: any) => o.name), [
       "Entrega expressa",
-      "Entrega econômica",
-      "Entrega econômica (centro de distribuição)",
+      "Jadlog — .Package",
+      "Jadlog — .Package Centralizado",
     ]);
     // Os ids ficam intactos: é por eles que a RPC do pedido valida o preço.
     assertEquals(corpo.options.map((o: any) => o.id), [
@@ -411,33 +530,133 @@ function clienteFalso(opts: {
    * preset por_produto).
    */
   produtos?: any[];
+  /**
+   * Linhas que a leitura de `shipping_quotes_cache` encontra para a chave
+   * (origin_cep, destination_cep, cart_hash), NA ORDEM que `created_at desc`
+   * devolveria — índice 0 é a mais recente. Default `[]` (miss, o caminho
+   * que cota na transportadora e grava). A leitura tolerante segue valendo
+   * como defesa: a UNIQUE da 20261166000000 impede duplicata NOVA, mas a
+   * leitura não pode voltar a estourar se uma sobrar de antes do dedup.
+   */
+  cacheLookup?: Array<{ options: unknown }>;
+  /**
+   * RETIRADA NA LOJA (20261169000000): o endereço físico (`store_address`)
+   * é lido numa consulta SEPARADA e tolerante de `store_config` — é pelas
+   * colunas pedidas no `select` que o dublê distingue essa leitura da
+   * leitura principal. `falhaAoLerEndereco`: "erro" = `{ error }` do
+   * PostgREST (banco sem a coluna da 20261167), "excecao" = a promessa
+   * rejeita.
+   */
+  enderecoDaLoja?: string | null;
+  falhaAoLerEndereco?: "erro" | "excecao";
+  /**
+   * SUPERFRETE (1.5.4): credenciais POR PROVEDOR, resolvidas pelo filtro
+   * `.eq('provider', x)` que o handler aplicar — é assim que o teste prova
+   * que a edge lê SÓ a linha do provedor ativo (e o token certo). Provedor
+   * sem entrada = sem linha (`data: null`). Ausente = o comportamento de
+   * sempre (`token-de-teste` para qualquer provedor).
+   */
+  credenciaisPorProvedor?: Record<string, unknown>;
+  /**
+   * SUPERFRETE (1.5.5, `save_credentials`): o upsert em
+   * `store_shipping_credentials` devolve este `{ error }` (o jeito do
+   * PostgREST) — usado para provar que a falha de gravação não vaza o token.
+   */
+  erroAoGravarCredencial?: { message: string };
+  /** 1.5.7: o uuid da linha `_revisao` (ausente = loja sem revisão, como a 1.5.6). */
+  revisao?: string;
 }) {
   const { registro } = opts;
   const config = opts.config ?? CONFIG_DA_LOJA;
 
-  const leitura = (tabela: string) => {
+  const leitura = (tabela: string, colunas = "") => {
+    let usouSingleOuMaybeSingle = false;
+    let limiteRequisitado: number | null = null;
+    const filtros: Array<[string, unknown]> = [];
     const resolver = () => {
       switch (tabela) {
         case "store_config":
+          if (String(colunas).includes("store_address")) {
+            registro.leiturasDeEndereco = (registro.leiturasDeEndereco ?? 0) + 1;
+            if (opts.falhaAoLerEndereco === "excecao") {
+              return Promise.reject(new Error("conexão perdida ao ler o endereço"));
+            }
+            if (opts.falhaAoLerEndereco === "erro") {
+              return Promise.resolve({
+                data: null,
+                error: { message: "column store_config.store_address does not exist", code: "42703" },
+              });
+            }
+            return Promise.resolve({
+              data: { store_address: opts.enderecoDaLoja ?? null },
+              error: null,
+            });
+          }
           return Promise.resolve({ data: config, error: null });
         case "produtos":
-          return Promise.resolve({ data: opts.produtos ?? [], error: null });
-        case "shipping_quotes_cache":
-          // Cache miss: é o caminho que cota na transportadora e grava.
-          return Promise.resolve({ data: null, error: null });
-        case "store_shipping_credentials":
+          // RELEASE 1.5.7: o valor declarado/segurado vem do BANCO
+          // (COALESCE da RPC); sem preço no banco o ME (com seguro) e a
+          // Frenet falham fechado. O produto padrão do carrinho de teste
+          // tem o preço que o navegador mandava (100) — o mesmo número de
+          // antes, agora pela fonte certa.
+          return Promise.resolve({ data: opts.produtos ?? [PRODUTO_PADRAO_DO_TESTE], error: null });
+        case "shipping_quotes_cache": {
+          const linhas = opts.cacheLookup ?? [];
+          if (usouSingleOuMaybeSingle) {
+            // `.maybeSingle()`/`.single()` de verdade ESTOURAM quando mais
+            // de uma linha bate no filtro — é a trava do index-880: sem
+            // UNIQUE em (origin_cep, destination_cep, cart_hash), duas
+            // cotações concorrentes da mesma chave inserem duas linhas e
+            // toda leitura seguinte passa a cair aqui.
+            if (linhas.length > 1) {
+              return Promise.resolve({
+                data: null,
+                error: {
+                  message: "JSON object requested, multiple (or no) rows returned",
+                  code: "PGRST116",
+                },
+              });
+            }
+            return Promise.resolve({ data: linhas[0] ?? null, error: null });
+          }
+          // Sem `.single()`/`.maybeSingle()` o formato do supabase-js é um
+          // ARRAY — é dele que a leitura tolerante (`order` + `limit`) do
+          // index-880 depende para nunca estourar com duplicata.
+          const linhasLimitadas = limiteRequisitado != null ? linhas.slice(0, limiteRequisitado) : linhas;
+          return Promise.resolve({ data: linhasLimitadas, error: null });
+        }
+        case "store_shipping_credentials": {
+          // RELEASE 1.5.7: a cotação lê `_revisao` (maybeSingle com
+          // `.eq('provider','_revisao')`) ANTES da config e depois TODAS as
+          // linhas numa consulta só (`select('provider, credentials,
+          // updated_at')`, sem filtro, array). As ações de admin também leem
+          // todas as linhas. O dublê responde às duas formas.
+          const filtroDoProvedor = filtros.find(([coluna]) => coluna === "provider");
+          if (filtroDoProvedor && String(filtroDoProvedor[1]) === "_revisao") {
+            registro.leiturasDeRevisao = (registro.leiturasDeRevisao ?? 0) + 1;
+            return Promise.resolve({ data: opts.revisao ? { credentials: { revisao: opts.revisao } } : null, error: null });
+          }
           if (opts.falhaAoLerCredenciais) {
             return Promise.reject(new Error("conexão perdida ao buscar credenciais"));
           }
-          if (opts.semCredencial) {
-            // Sem linha para o provedor: `maybeSingle` devolve data nula
-            // sem erro — é o `!credsData` do handler.
-            return Promise.resolve({ data: null, error: null });
+          registro.leiturasDeCredencial = registro.leiturasDeCredencial ?? [];
+          registro.leiturasDeCredencial.push({ colunas, filtros: [...filtros] });
+          const porProvedor: Record<string, unknown> = opts.semCredencial
+            ? {}
+            : opts.credenciaisPorProvedor ?? {
+              melhor_envio: { token: "token-de-teste" },
+              superfrete: { token: "token-de-teste" },
+              frenet: { token: "token-de-teste" },
+            };
+          const linhas = Object.entries(porProvedor)
+            .filter(([, credenciais]) => credenciais !== undefined)
+            .map(([provider, credentials]) => ({ provider, credentials, updated_at: "2026-09-01T00:00:00.000Z" }));
+          if (filtroDoProvedor) {
+            const linha = linhas.find((l) => l.provider === String(filtroDoProvedor[1]));
+            return Promise.resolve({ data: linha ? { credentials: linha.credentials } : null, error: null });
           }
-          return Promise.resolve({
-            data: { credentials: { token: "token-de-teste" } },
-            error: null,
-          });
+          return Promise.resolve({ data: linhas, error: null });
+        }
         default:
           return Promise.resolve({ data: null, error: null });
       }
@@ -446,17 +665,65 @@ function clienteFalso(opts: {
     // construtor; `single`/`maybeSingle`/`then` resolvem a consulta.
     const construtor: any = {
       select: () => construtor,
-      eq: () => construtor,
+      eq: (coluna: string, valor: unknown) => {
+        filtros.push([coluna, valor]);
+        return construtor;
+      },
       gt: () => construtor,
       lt: () => construtor,
       in: () => construtor,
       order: () => construtor,
-      limit: () => construtor,
-      single: resolver,
-      maybeSingle: resolver,
+      limit: (n: number) => {
+        limiteRequisitado = n;
+        return construtor;
+      },
+      single: () => {
+        usouSingleOuMaybeSingle = true;
+        return resolver();
+      },
+      maybeSingle: () => {
+        usouSingleOuMaybeSingle = true;
+        return resolver();
+      },
       then: (ok: any, falha: any) => resolver().then(ok, falha),
     };
     return construtor;
+  };
+
+  /**
+   * `.upsert(...)` do cache — o caminho ÚNICO de gravação desde a
+   * 20261166000000 (a UNIQUE (origin_cep, destination_cep, cart_hash) é o
+   * alvo do `onConflict`). Registra em `registro.upserts` com o alvo
+   * declarado, para o teste afirmar EM QUE chave a gravação conflita.
+   */
+  const upsert = (tabela: string, linha: any, opcoesUpsert?: { onConflict?: string }) => {
+    registro.upserts = registro.upserts ?? [];
+    registro.upserts.push({
+      tabela,
+      linha,
+      onConflict: opcoesUpsert?.onConflict ?? null,
+    });
+    // Mesma resolução do insert de antes: `cacheInsert` decide sucesso/erro
+    // e o marcador `cacheConcluido` só liga quando a promessa termina.
+    const resolver = () => {
+      if (tabela === "shipping_quotes_cache") {
+        return opts.cacheInsert().then(
+          (r: unknown) => {
+            registro.cacheConcluido = true;
+            return r;
+          },
+          (e: unknown) => {
+            registro.cacheConcluido = true;
+            throw e;
+          },
+        );
+      }
+      if (tabela === "store_shipping_credentials" && opts.erroAoGravarCredencial) {
+        return Promise.resolve({ error: opts.erroAoGravarCredencial });
+      }
+      return Promise.resolve({ error: null });
+    };
+    return { then: (ok: any, falha: any) => resolver().then(ok, falha) };
   };
 
   const escrita = (tabela: string, linha: any) => {
@@ -512,17 +779,29 @@ function clienteFalso(opts: {
 
   return {
     from: (tabela: string) => ({
-      select: () => leitura(tabela),
+      select: (colunas?: string) => leitura(tabela, colunas),
       insert: (linha: any) => escrita(tabela, linha),
+      upsert: (linha: any, opcoesUpsert?: { onConflict?: string }) =>
+        upsert(tabela, linha, opcoesUpsert),
+      // 1.5.7 (R2-2): salvar configuração apaga `shipping_quotes_cache`
+      // (`.delete().not('id','is',null)`). O dublê conta e responde sucesso.
+      delete: () => {
+        registro.deletes = [...(registro.deletes ?? []), tabela];
+        const construtor: any = {
+          not: () => construtor,
+          then: (ok: any, falha: any) => Promise.resolve({ error: null }).then(ok, falha),
+        };
+        return construtor;
+      },
     }),
   };
 }
 
-function requisicaoDeCotacao(): Request {
+function requisicaoDeCotacao(extra: Record<string, unknown> = {}): Request {
   return new Request("http://localhost/calculate-shipping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cep: "01001-000", cart: CARRINHO_DE_TESTE }),
+    body: JSON.stringify({ cep: "01001-000", cart: CARRINHO_DE_TESTE, ...extra }),
   });
 }
 
@@ -537,6 +816,7 @@ async function cotar(
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -574,6 +854,120 @@ async function cotar(
   }
 }
 
+// --- index-880: corrida de dois misses simultâneos derrubando o cache -----
+//
+// Desde a 20261166000000 a tabela tem UNIQUE (origin_cep, destination_cep,
+// cart_hash) e a gravação é um `.upsert` de verdade: dois misses do MESMO
+// carrinho disputam a constraint e um vira UPDATE do outro — nunca mais
+// INSERT duplicado. A LEITURA tolerante abaixo segue valendo como defesa:
+// duplicata que nasceu antes do dedup não pode voltar a DERRUBAR o cache.
+
+Deno.test("cache com DUAS linhas da mesma chave (corrida de dois misses) não estoura — pega a mais recente", async () => {
+  const assinatura = await assinaturaEsperada({
+    config: CONFIG_DA_LOJA,
+    credenciais: { melhor_envio: { token: "token-de-teste" }, superfrete: { token: "token-de-teste" }, frenet: { token: "token-de-teste" } },
+  });
+  const registro = {
+    inserts: [] as Array<{ tabela: string; linha: any }>,
+    execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const fetchOriginal = globalThis.fetch;
+  let transportadoraChamada = false;
+  globalThis.fetch = (() => {
+    transportadoraChamada = true;
+    return Promise.resolve(
+      new Response(
+        JSON.stringify([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5 }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+  }) as any;
+
+  try {
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        // Duas linhas da MESMA chave, na ordem que `created_at desc`
+        // devolveria — índice 0 é a mais recente.
+        // 1.5.7: as duas assinadas nesta configuração (senão seriam falta
+        // pela assinatura, e o teste não provaria a leitura tolerante).
+        cacheLookup: [
+          { options: assinar([{ id: "melhor-envio-1", name: "PAC", price: 40, deliveryDays: 5, provider: "melhor_envio" }], assinatura) },
+          { options: assinar([{ id: "melhor-envio-2", name: "PAC", price: 55, deliveryDays: 5, provider: "melhor_envio" }], assinatura) },
+        ],
+      }),
+    });
+    const texto = await resposta.text();
+    const corpo = JSON.parse(texto);
+
+    // Com `.maybeSingle()` a consulta ESTOURA (mais de uma linha bate no
+    // filtro), o cache vira miss por erro, a transportadora é chamada de
+    // novo e MAIS uma linha é inserida — o loop de 2h do index-880. Com a
+    // leitura tolerante, é um HIT normal com a linha mais recente.
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options[0].price, 40);
+    assertEquals(transportadoraChamada, false);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+});
+
+Deno.test("gravação da cotação é UM .upsert com onConflict na chave tripla (20261166000000)", async () => {
+  const registro = {
+    inserts: [] as Array<{ tabela: string; linha: any }>,
+    execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5 }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+
+  try {
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+      }),
+    });
+    await resposta.text();
+
+    assertEquals(resposta.status, 200);
+    // Um upsert, e NENHUM insert/update separado: o alvo do conflito é a
+    // UNIQUE da 20261166000000 — sem ela (edge publicado antes da
+    // migration), o onConflict não conflita nada e volta a ser insert
+    // duplicado, exatamente o bug index-880.
+    const upsertsDoCache = registro.upserts?.filter(
+      (u: { tabela: string }) => u.tabela === "shipping_quotes_cache",
+    ) ?? [];
+    assertEquals(upsertsDoCache.length, 1);
+    assertEquals(
+      upsertsDoCache[0].onConflict,
+      "origin_cep,destination_cep,cart_hash",
+      "o onConflict tem de mirar a chave tripla da UNIQUE",
+    );
+    assertEquals(
+      registro.inserts.some((i) => i.tabela === "shipping_quotes_cache"),
+      false,
+      "a gravação do cache não pode mais passar por .insert direto",
+    );
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+});
+
 Deno.test("cotação gravada com sucesso devolve o preço normalmente", async () => {
   // Controle positivo: sem ele, "o teste passa" e "o teste não exercita nada"
   // dão a mesma saída.
@@ -583,7 +977,9 @@ Deno.test("cotação gravada com sucesso devolve o preço normalmente", async ()
   assertEquals(corpo.options.length, 1);
   assertEquals(corpo.options[0].price, 25.5);
 
-  const gravacao = registro.inserts.find((i) => i.tabela === "shipping_quotes_cache");
+  const gravacao = registro.upserts?.find(
+    (u: { tabela: string }) => u.tabela === "shipping_quotes_cache",
+  );
   assertEquals(gravacao?.linha.destination_cep, "01001000");
   assertEquals(gravacao?.linha.origin_cep, "38500000");
   assertEquals(gravacao?.linha.options[0].price, 25.5);
@@ -659,6 +1055,7 @@ for (const statusDaTransportadora of [422, 500]) {
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -986,6 +1383,7 @@ Deno.test("provedor flat_fee remanescente (loja antiga) -> 200 SEM opções de f
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -1031,6 +1429,7 @@ Deno.test("provedor AUSENTE no config (default) -> mesmo tratamento do flat_fee 
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -1097,6 +1496,7 @@ Deno.test("carrinho vazio -> 200 sem opções, sem explodir e SEM log de erro (n
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -1224,6 +1624,7 @@ Deno.test("resposta sem cotação de fora (flat_fee remanescente) declara a list
     const registro = {
       inserts: [] as Array<{ tabela: string; linha: any }>,
       execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
       cacheConcluido: false,
       logConcluido: false,
     };
@@ -1278,6 +1679,7 @@ async function cotarComTransportadoraFora(config?: typeof CONFIG_DA_LOJA) {
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -1367,6 +1769,7 @@ Deno.test("catch de topo: erro inesperado após ler a config, loja COM taxa fixa
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -1391,6 +1794,7 @@ Deno.test("catch de topo: erro inesperado após ler a config, loja SEM taxa fixa
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
     execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
     cacheConcluido: false,
     logConcluido: false,
   };
@@ -1497,4 +1901,2062 @@ Deno.test("o catch de topo NÃO devolve o texto cru do erro ao navegador", async
   const texto = JSON.stringify(corpo);
   assertEquals(texto.includes("password authentication"), false);
   assertEquals(texto.includes("Não foi possível calcular o frete"), true);
+});
+
+// --- index-736: a regra do por_produto tem que ser a MESMA nos três lugares -
+//
+// A RPC do pedido (20261081000000:294-296, :315) usa `some`: BASTA um item
+// marcado para `v_has_free_shipping_item` ligar e zerar o frete do PEDIDO
+// INTEIRO. O front (CartContext.tsx:803) também usa `some`. Até aqui a edge
+// usava `every` para o `allFree` e, quando ele não batia (carrinho MISTO),
+// caía num segundo ramo (`nonFreeCart`) que cotava só os itens NÃO marcados —
+// uma TERCEIRA resposta para a mesma pergunta. Este teste prende a
+// convergência com a RPC: carrinho com um item marcado e um não marcado tem
+// que virar a MESMA promoção de R$ 0 que a RPC cobraria, sem consultar
+// transportadora nenhuma.
+
+Deno.test("index-736: carrinho MISTO no preset por_produto — um item marcado zera o pedido INTEIRO (mesma regra `some` da RPC)", async () => {
+  const carrinhoMisto = [
+    { product: { id: "p1", price: 100 }, quantity: 1 },
+    { product: { id: "p2", price: 50 }, quantity: 1 },
+  ];
+  const registro = {
+    inserts: [] as Array<{ tabela: string; linha: any }>,
+    execucoes: [] as Array<{ tabela: string; linha: any }>,
+    upserts: [] as Array<{ tabela: string; linha: any; onConflict: string | null }>,
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const fetchOriginal = globalThis.fetch;
+  let transportadoraChamada = false;
+  globalThis.fetch = (() => {
+    transportadoraChamada = true;
+    return Promise.reject(
+      new Error(
+        "NÃO DEVE SER CHAMADO: carrinho misto no por_produto é frete grátis do pedido inteiro, sem consultar transportadora",
+      ),
+    );
+  }) as any;
+  try {
+    const req = new Request("http://localhost/calculate-shipping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cep: "01001-000", cart: carrinhoMisto }),
+    });
+    const resposta = await handler(req, {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, free_shipping_min: -1 },
+        produtos: [
+          { id: "p1", nome: "Marcado", frete_gratis: true, preco_venda: 100 },
+          { id: "p2", nome: "Não marcado", frete_gratis: false, preco_venda: 50 },
+        ],
+      }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options.map((o: any) => o.id), ["free-shipping-promo"]);
+    assertEquals(corpo.options[0].price, 0);
+    assertEquals(transportadoraChamada, false);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+});
+
+// --- RETIRADA NA LOJA (release 1.5.3, 22/09/2026) ---------------------------
+//
+// A opção "Retirar na loja" (id `store-pickup`, preço 0) só sai quando os
+// TRÊS requisitos valem: a loja habilitou a chave `store-pickup` em
+// `enabled_shipping_methods`, tem endereço físico (`store_address` não vazio)
+// e o destino é LOCAL. A RPC do pedido (migration 20261169000000) revalida
+// os três. O endereço é lido numa consulta SEPARADA e tolerante: banco sem a
+// coluna (loja que ainda não recebeu a 20261167) ou leitura que falha NÃO
+// derrubam a cotação — só não há retirada. Endereço de fixture é FICTÍCIO.
+
+const ENDERECO_FICTICIO = "Rua Fictícia de Teste, 100 — Centro";
+const OMITIR_SINAL = Symbol("sem aceitaRetirada no corpo");
+
+async function cotarRetirada(opts: {
+  config: any;
+  /**
+   * O sinal do app 1.5.3 (`aceitaRetirada: true`). Padrão: presente — os
+   * testes da retirada falam do app NOVO; os do app 1.5.2 passam `omitir`.
+   */
+  aceitaRetirada?: unknown;
+  enderecoDaLoja?: string | null;
+  falhaAoLerEndereco?: "erro" | "excecao";
+  servicos?: Array<{ id: number; name: string; price: string; delivery_time: number }>;
+}) {
+  const registro: any = {
+    inserts: [],
+    execucoes: [],
+    upserts: [],
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify(
+          opts.servicos ?? [
+            { id: 1, name: "PAC", price: "26.41", delivery_time: 8 },
+            { id: 2, name: "SEDEX", price: "54.88", delivery_time: 4 },
+          ],
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+  try {
+    const sinal = "aceitaRetirada" in opts ? opts.aceitaRetirada : true;
+    const resposta = await handler(
+      requisicaoDeCotacao(sinal === OMITIR_SINAL ? {} : { aceitaRetirada: sinal }),
+      {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: opts.config,
+        enderecoDaLoja: opts.enderecoDaLoja,
+        falhaAoLerEndereco: opts.falhaAoLerEndereco,
+      }),
+      },
+    );
+    const corpo = await resposta.json();
+    return { resposta, corpo, registro };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+}
+
+const LOJA_COM_RETIRADA = {
+  ...CONFIG_COM_ENTREGA_LOCAL,
+  enabled_shipping_methods: ["sedex", "pac", "store-pickup"],
+};
+
+Deno.test("retirada: contrato da opção — id store-pickup, grátis, sem prazo inventado, endereço aparado", () => {
+  assertEquals(opcaoDeRetirada(`  ${ENDERECO_FICTICIO}  `), {
+    id: "store-pickup",
+    name: "Retirar na loja",
+    price: 0,
+    deliveryDays: 0,
+    provider: "pickup",
+    pickupAddress: ENDERECO_FICTICIO,
+  });
+  // Sem endereço físico, não existe retirada — nunca endereço inventado.
+  assertEquals(opcaoDeRetirada(null), null);
+  assertEquals(opcaoDeRetirada(undefined), null);
+  assertEquals(opcaoDeRetirada(""), null);
+  assertEquals(opcaoDeRetirada("   \n\t "), null);
+  assertEquals(opcaoDeRetirada(42), null);
+});
+
+Deno.test("retirada: cliente local + chave + endereço -> [local-delivery, store-pickup], sem transportadora nem cache", async () => {
+  const { resposta, corpo, registro } = await cotarRetirada({
+    config: LOJA_COM_RETIRADA,
+    enderecoDaLoja: `  ${ENDERECO_FICTICIO} `,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery", "store-pickup"]);
+  // A entrega local fica exatamente como era.
+  assertEquals(corpo.options[0].price, 10);
+  assertEquals(corpo.options[0].provider, "local");
+  const retirada = corpo.options[1];
+  assertEquals(retirada.price, 0);
+  assertEquals(retirada.pickupAddress, ENDERECO_FICTICIO);
+  assertEquals(retirada.provider, "pickup");
+  assertEquals(corpo.cotacaoIncompleta, false);
+  assertEquals(registro.upserts.length, 0);
+  assertEquals(registro.leiturasDeEndereco, 1);
+});
+
+Deno.test("retirada: cobertura só-local também oferece as duas", async () => {
+  const { resposta, corpo } = await cotarRetirada({
+    config: { ...LOJA_COM_RETIRADA, shipping_coverage: "local" },
+    enderecoDaLoja: ENDERECO_FICTICIO,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery", "store-pickup"]);
+});
+
+Deno.test("retirada: SEM a chave store-pickup -> só a entrega local, e o endereço nem é lido", async () => {
+  for (const metodos of [["sedex", "pac"], [], null]) {
+    const { corpo, registro } = await cotarRetirada({
+      config: { ...CONFIG_COM_ENTREGA_LOCAL, enabled_shipping_methods: metodos },
+      enderecoDaLoja: ENDERECO_FICTICIO,
+    });
+    assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"], `métodos ${JSON.stringify(metodos)}`);
+    assertEquals(registro.leiturasDeEndereco ?? 0, 0);
+  }
+});
+
+Deno.test("retirada: chave ligada mas SEM endereço físico (null, vazio, só espaços) -> só a entrega local", async () => {
+  for (const endereco of [null, "", "    "]) {
+    const { corpo } = await cotarRetirada({
+      config: LOJA_COM_RETIRADA,
+      enderecoDaLoja: endereco,
+    });
+    assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"], `endereço ${JSON.stringify(endereco)}`);
+  }
+});
+
+Deno.test("retirada: leitura do endereço FALHA (coluna ausente ou exceção) -> 200 só com a entrega local", async () => {
+  for (const falha of ["erro", "excecao"] as const) {
+    const { resposta, corpo } = await cotarRetirada({
+      config: LOJA_COM_RETIRADA,
+      falhaAoLerEndereco: falha,
+    });
+    assertEquals(resposta.status, 200, falha);
+    assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"], falha);
+  }
+});
+
+Deno.test("retirada: CEP FORA da área -> nenhuma retirada, só transportadora", async () => {
+  const { resposta, corpo, registro } = await cotarRetirada({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["sedex", "pac", "store-pickup"] },
+    enderecoDaLoja: ENDERECO_FICTICIO,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.some((o: any) => o.id === "store-pickup"), false);
+  assertEquals(corpo.options.map((o: any) => o.id), ["melhor-envio-1", "melhor-envio-2"]);
+  // A retirada nunca entra no cache de cotação (a RPC não a procura lá).
+  assertEquals(JSON.stringify(registro.upserts).includes("store-pickup"), false);
+});
+
+Deno.test("chavesDeTransportadora: a chave da retirada NÃO conta como transportadora", () => {
+  assertEquals(chavesDeTransportadora(["store-pickup"]), []);
+  assertEquals(chavesDeTransportadora(["sedex", "store-pickup", "pac"]), ["sedex", "pac"]);
+  assertEquals(chavesDeTransportadora([]), []);
+  assertEquals(chavesDeTransportadora(null), []);
+});
+
+Deno.test("filtro: ['store-pickup'] SOZINHO mantém TODAS as transportadoras, como a lista vazia (fim a fim, CEP fora)", async () => {
+  const soRetirada = await cotarRetirada({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["store-pickup"] },
+  });
+  const vazia = await cotarRetirada({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: [] },
+  });
+  assertEquals(soRetirada.resposta.status, 200);
+  assertEquals(
+    soRetirada.corpo.options.map((o: any) => o.id),
+    vazia.corpo.options.map((o: any) => o.id),
+  );
+  assertEquals(soRetirada.corpo.options.map((o: any) => o.id), ["melhor-envio-1", "melhor-envio-2"]);
+});
+
+Deno.test("filtro: ['sedex','store-pickup'] -> SÓ a sedex (a chave da retirada não liga nem desliga serviço)", async () => {
+  const { resposta, corpo } = await cotarRetirada({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["sedex", "store-pickup"] },
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["melhor-envio-2"]);
+});
+
+Deno.test("precoResolvidoSemCache: a retirada é resolvida pela RPC sem cache (id exato, sem parecença)", () => {
+  assertEquals(precoResolvidoSemCache("store-pickup"), true);
+  assertEquals(precoResolvidoSemCache(" store-pickup"), false);
+  assertEquals(precoResolvidoSemCache("store-pickup-expressa"), false);
+  assertEquals(precoResolvidoSemCache("STORE-PICKUP"), false);
+});
+
+// --- O SINAL DO APP NOVO (bloqueio da revisão, 22/09/2026) -----------------
+//
+// O PWA atualiza por "prompt": o app 1.5.2 continua no ar depois da edge
+// nova. A auto-seleção do 1.5.2 escolhe a opção MAIS BARATA (empate: menor
+// prazo) — com [local-delivery, store-pickup] na resposta, ele escolheria a
+// retirada sozinho e fecharia pedido de retirada que a cliente não pediu.
+// Por isso a retirada só sai para quem DIZ que a entende: corpo com
+// `aceitaRetirada: true` EXATO. Qualquer outro valor = app antigo.
+
+Deno.test("retirada: app ANTIGO (sem aceitaRetirada) -> só a entrega local, e o endereço nem é lido", async () => {
+  const { resposta, corpo, registro } = await cotarRetirada({
+    config: LOJA_COM_RETIRADA,
+    enderecoDaLoja: ENDERECO_FICTICIO,
+    aceitaRetirada: OMITIR_SINAL,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  assertEquals(registro.leiturasDeEndereco ?? 0, 0);
+});
+
+Deno.test("retirada: sinal que NÃO é o booleano true não conta (\"true\", 1, false, null, {}, [])", async () => {
+  for (const valor of ["true", 1, false, null, {}, [true]]) {
+    const { corpo } = await cotarRetirada({
+      config: LOJA_COM_RETIRADA,
+      enderecoDaLoja: ENDERECO_FICTICIO,
+      aceitaRetirada: valor,
+    });
+    assertEquals(
+      corpo.options.map((o: any) => o.id),
+      ["local-delivery"],
+      `aceitaRetirada=${JSON.stringify(valor)} não pode oferecer retirada`,
+    );
+  }
+});
+
+Deno.test("retirada: COM o sinal os três requisitos continuam valendo (sem chave / sem endereço -> nada)", async () => {
+  const semChave = await cotarRetirada({
+    config: CONFIG_COM_ENTREGA_LOCAL,
+    enderecoDaLoja: ENDERECO_FICTICIO,
+  });
+  assertEquals(semChave.corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  const semEndereco = await cotarRetirada({
+    config: LOJA_COM_RETIRADA,
+    enderecoDaLoja: "   ",
+  });
+  assertEquals(semEndereco.corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  const comTudo = await cotarRetirada({
+    config: LOJA_COM_RETIRADA,
+    enderecoDaLoja: ENDERECO_FICTICIO,
+  });
+  assertEquals(comTudo.corpo.options.map((o: any) => o.id), ["local-delivery", "store-pickup"]);
+});
+
+// ============================================================================
+// SUPERFRETE (release 1.5.4) — provedor de COTAÇÃO.
+//
+// Contrato da doc oficial (superfrete.readme.io, lida em 22/09/2026; nenhuma
+// chamada à API foi feita): POST {base}/api/v0/calculator; base de produção
+// https://api.superfrete.com, sandbox https://sandbox.superfrete.com; headers
+// Authorization Bearer, User-Agent "<App> <versão> (<email>)", accept e
+// content-type JSON; corpo com from/to OBJETOS, services string, options e
+// products. Resposta: ARRAY por serviço. Fixture abaixo = o exemplo 200
+// OFICIAL da página de cotação, literal (só o espaçamento mudou).
+// Tokens e e-mail das fixtures são FICTÍCIOS.
+// ============================================================================
+
+const pacoteSF = (price: number, discount: string, format: string, h: string, w: string, l: string, weight: string, insurance: number) => ({
+  price, discount, format, dimensions: { height: h, width: w, length: l }, weight, insurance_value: insurance,
+});
+const CORREIOS_SF = {
+  id: 1,
+  name: "Correios",
+  picture: "https://storage.googleapis.com/sandbox-api-superfrete.appspot.com/logos/correios.png",
+};
+const RESPOSTA_200_OFICIAL_SF = [
+  {
+    id: 1, name: "PAC", price: 18.61, discount: "5.59", currency: "R$", delivery_time: 5,
+    delivery_range: { min: 5, max: 5 },
+    packages: [pacoteSF(18.61, "5.59", "box", "1", "10", "15", "0.003", 0)],
+    additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+  },
+  {
+    id: 2, name: "SEDEX", price: 10.77, discount: "13.43", currency: "R$", delivery_time: 1,
+    delivery_range: { min: 1, max: 1 },
+    packages: [pacoteSF(10.77, "13.43", "box", "1", "10", "15", "0.003", 0)],
+    additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+  },
+  {
+    id: 17, name: "Mini Envios", price: 13, discount: "11.21", currency: "R$", delivery_time: 8,
+    delivery_range: { min: 8, max: 8 },
+    packages: [pacoteSF(13, "11.21", "box", "1", "10", "15", "0.003", 0)],
+    additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+  },
+  {
+    id: 3, name: "JADLOG.PACKAGE", price: 14.4, discount: "7.2", currency: "R$", delivery_time: 2,
+    delivery_range: { min: 2, max: 2 },
+    packages: [pacoteSF(14.4, "7.2", "package", "1", "8", "14", "0.1", 100)],
+    additional_services: { receipt: false, own_hand: false },
+    company: { id: 2, name: "jadlog", picture: "" }, has_error: false,
+  },
+  {
+    id: 31, name: "LOGGI Econômico", price: 9.76, discount: "4.88", currency: "R$", delivery_time: 3,
+    delivery_range: { min: 3, max: 3 },
+    packages: [pacoteSF(9.76, "4.88", "package", "1", "8", "14", "0.1", 100)],
+    additional_services: { receipt: false, own_hand: false },
+    company: { id: 14, name: "loggi", picture: "" }, has_error: false,
+  },
+];
+
+const TOKEN_SF = "tok-sf-FICTICIO-9f8e7d6c5b4a";
+const TOKEN_ME = "tok-me-FICTICIO-1a2b3c4d5e6f";
+// Release 1.5.5: o e-mail de contato técnico é da LOJA (preenchido pela
+// lojista em Ajustes > Transportadoras, salvo em `credentials.contact_email`)
+// e o User-Agent é montado no servidor. Até a 1.5.4 ele vinha inteiro de uma
+// variável de projeto — que SAIU, sem fallback.
+const EMAIL_SF = "loja@ex.com";
+const UA_SF = "IKCOUS Marketplace 1.5.7 (loja@ex.com)"; // 1.5.7: a versão da release que publica a edge
+const CONFIG_SF = { ...CONFIG_DA_LOJA, shipping_provider: "superfrete", enabled_shipping_methods: [] as string[] };
+const SEM_UA = Symbol("variável de projeto ausente");
+// O nome da variável antiga, só para PROVAR que ela não é mais lida: os
+// testes rodam com ela apagada por padrão e, nos casos marcados, DEFINIDA.
+const VARIAVEL_ANTIGA = "SUPERFRETE_USER_AGENT";
+
+/** Liga/desliga a variável ANTIGA só durante `fn` e devolve a original. */
+async function comUserAgent<T>(valor: string | typeof SEM_UA, fn: () => Promise<T>): Promise<T> {
+  const anterior = Deno.env.get(VARIAVEL_ANTIGA);
+  if (valor === SEM_UA) Deno.env.delete(VARIAVEL_ANTIGA);
+  else Deno.env.set(VARIAVEL_ANTIGA, valor);
+  try {
+    return await fn();
+  } finally {
+    if (anterior === undefined) Deno.env.delete(VARIAVEL_ANTIGA);
+    else Deno.env.set(VARIAVEL_ANTIGA, anterior);
+  }
+}
+
+/** Tudo que passou por console.* enquanto `fn` rodava, como texto. */
+async function capturarConsole<T>(fn: () => Promise<T>): Promise<{ resultado: T; saida: string }> {
+  const linhas: string[] = [];
+  const originais = { error: console.error, warn: console.warn, log: console.log, info: console.info };
+  const guardar = (...args: unknown[]) => {
+    linhas.push(args.map((a) => {
+      if (a instanceof Error) return `${a.name}: ${a.message}\n${a.stack ?? ""}`;
+      if (typeof a === "string") return a;
+      try {
+        return JSON.stringify(a);
+      } catch {
+        return String(a);
+      }
+    }).join(" "));
+  };
+  console.error = guardar;
+  console.warn = guardar;
+  console.log = guardar;
+  console.info = guardar;
+  try {
+    const resultado = await fn();
+    return { resultado, saida: linhas.join("\n") };
+  } finally {
+    Object.assign(console, originais);
+  }
+}
+
+type ChamadaDeFetch = { url: string; init: RequestInit };
+
+async function cotarSuperFrete(opts: {
+  config?: any;
+  userAgent?: string | typeof SEM_UA;
+  credenciais?: Record<string, unknown>;
+  responder?: (chamada: ChamadaDeFetch) => Promise<Response> | Response;
+  produtos?: any[];
+  cart?: any[];
+  cep?: string;
+  cacheLookup?: Array<{ options: unknown }>;
+}) {
+  const registro: any = { inserts: [], execucoes: [], upserts: [], cacheConcluido: false, logConcluido: false };
+  const chamadas: ChamadaDeFetch[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = ((url: string, init: RequestInit = {}) => {
+    const chamada = { url: String(url), init };
+    chamadas.push(chamada);
+    const responder = opts.responder ??
+      (() => new Response(JSON.stringify(RESPOSTA_200_OFICIAL_SF), { status: 200, headers: { "Content-Type": "application/json" } }));
+    return Promise.resolve(responder(chamada));
+  }) as any;
+  try {
+    const { resultado, saida } = await capturarConsole(() =>
+      // 1.5.5: por padrão a variável ANTIGA fica APAGADA — o caminho feliz
+      // não pode depender dela. `userAgent` só a DEFINE nos testes que
+      // provam que ela deixou de ser lida.
+      comUserAgent(opts.userAgent ?? SEM_UA, async () => {
+        const resposta = await handler(
+          new Request("http://localhost/calculate-shipping", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cep: opts.cep ?? "01001-000", cart: opts.cart ?? CARRINHO_DE_TESTE }),
+          }),
+          {
+            supabase: clienteFalso({
+              registro,
+              cacheInsert: () => Promise.resolve({ error: null }),
+              config: opts.config ?? CONFIG_SF,
+              produtos: opts.produtos,
+              cacheLookup: opts.cacheLookup,
+              credenciaisPorProvedor: opts.credenciais ??
+                {
+                  superfrete: { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF },
+                  melhor_envio: { token: TOKEN_ME },
+                },
+            }),
+          },
+        );
+        const texto = await resposta.text();
+        // Drena o log disparado sem await (a resposta 200 não o segura).
+        await new Promise((r) => setTimeout(r, 30));
+        return { resposta, texto };
+      })
+    );
+    const { resposta, texto } = resultado;
+    let corpo: any = null;
+    try {
+      corpo = JSON.parse(texto);
+    } catch {
+      corpo = null;
+    }
+    const logs = registro.inserts.filter((i: any) => i.tabela === "shipping_calculation_logs").map((i: any) => i.linha);
+    return { resposta, texto, corpo, registro, chamadas, saida, logs };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+}
+
+const cabecalho = (chamada: ChamadaDeFetch, nome: string) => new Headers(chamada.init.headers as HeadersInit).get(nome);
+
+/** As credenciais que `cotarSuperFrete` põe no banco falso por padrão. */
+const CREDENCIAIS_PADRAO_DO_TESTE_SF = {
+  superfrete: { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF },
+  melhor_envio: { token: TOKEN_ME },
+};
+
+/**
+ * 1.5.7: a `assinaturaCotacao` que a edge espera para este estado do banco
+ * falso (mesma `updated_at` fixa do dublê, sem `_revisao`). É com ela que um
+ * teste monta uma linha de cache que a edge SERVE.
+ */
+async function assinaturaEsperada(opts: {
+  config: any;
+  credenciais?: Record<string, unknown>;
+  produtos?: any[];
+  cart?: any[];
+}): Promise<string> {
+  const credenciais = opts.credenciais ?? CREDENCIAIS_PADRAO_DO_TESTE_SF;
+  const linhas = new Map(
+    Object.entries(credenciais).map(([provider, credentials]) => [
+      provider,
+      { provider, credentials, updated_at: "2026-09-01T00:00:00.000Z" },
+    ]),
+  );
+  const revisao = await edge.calcularRevisaoConfig(opts.config, linhas, null);
+  const produtos = opts.produtos ?? [PRODUTO_PADRAO_DO_TESTE];
+  const { itens } = edge.montarInsumos(opts.cart ?? CARRINHO_DE_TESTE, new Map(produtos.map((p: any) => [p.id, p])), new Map());
+  return await edge.assinaturaDaCotacao(revisao, itens);
+}
+
+/**
+ * 1.5.7: a opção sem os carimbos do servidor (`assinaturaCotacao`, hash que
+ * muda com a configuração, e `revisaoCredenciais`), para comparar por valor.
+ */
+const semCarimbo = (opcao: any) => {
+  const resto = { ...opcao };
+  delete resto.assinaturaCotacao;
+  delete resto.revisaoCredenciais;
+  return resto;
+};
+
+/** As opções carimbadas com a assinatura (como a edge grava no cache). */
+const assinar = (opcoes: any[], assinatura: string) => opcoes.map((o) => ({ ...o, assinaturaCotacao: assinatura }));
+
+Deno.test("superfrete: corpo enviado segue a doc (from/to objetos, services pelas chaves com o Mini junto do PAC, products do BANCO, SEM seguro — 1.5.6)", async () => {
+  const { resposta, chamadas } = await cotarSuperFrete({
+    config: { ...CONFIG_SF, enabled_shipping_methods: ["sedex", "pac", "store-pickup"] },
+    produtos: [
+      { id: "p1", nome: "Caneca", preco_venda: 49.9, peso_kg: 0.45, largura_cm: 12, altura_cm: 10, comprimento_cm: 20, frete_gratis: false },
+    ],
+    // O navegador manda preço/peso diferentes de propósito: quem vale é o BANCO.
+    cart: [
+      { product: { id: "p1", price: 1 }, quantity: 2 },
+      { product: { id: "p-fora-do-banco", price: 999 }, quantity: 1 },
+    ],
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 1);
+  const [chamada] = chamadas;
+  assertEquals(chamada.url, "https://api.superfrete.com/api/v0/calculator");
+  assertEquals(chamada.init.method, "POST");
+  assertEquals(cabecalho(chamada, "Authorization"), `Bearer ${TOKEN_SF}`);
+  assertEquals(cabecalho(chamada, "User-Agent"), UA_SF);
+  assertEquals(cabecalho(chamada, "Accept"), "application/json");
+  assertEquals(cabecalho(chamada, "Content-Type"), "application/json");
+  assertEquals(JSON.parse(String(chamada.init.body)), {
+    from: { postal_code: "38500000" },
+    to: { postal_code: "01001000" },
+    // store-pickup NÃO conta; pac=1 e 17 (Mini Envios, 1.5.6), sedex=2, em ordem crescente.
+    services: "1,2,17",
+    // 1.5.6 (escolha do dono): sem seguro, sem mão própria, sem aviso de
+    // recebimento — explícitos, mesmo com o carrinho valendo R$ 99,80.
+    options: { own_hand: false, receipt: false, insurance_value: 0, use_insurance_value: false },
+    products: [
+      { quantity: 2, weight: 0.45, height: 10, width: 12, length: 20 },
+      // Produto que o banco não conhece: padrões do Melhor Envio.
+      { quantity: 1, weight: 0.3, height: 15, width: 15, length: 15 },
+    ],
+  });
+});
+
+Deno.test("superfrete: services por chave — jadlog=3; lista vazia = todos os serviços da doc; chave sem serviço não inventa", async () => {
+  const soJadlog = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["jadlog"] } });
+  assertEquals(JSON.parse(String(soJadlog.chamadas[0].init.body)).services, "3");
+  const todas = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: [] } });
+  assertEquals(JSON.parse(String(todas.chamadas[0].init.body)).services, "1,2,3,17,31,33");
+  const soRetirada = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["store-pickup"] } });
+  assertEquals(JSON.parse(String(soRetirada.chamadas[0].init.body)).services, "1,2,3,17,31,33");
+  // Chave que não é serviço da SuperFrete: nada a pedir -> não chama, 503, motivo no log.
+  const semServico = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["transportadora-inexistente"] } });
+  assertEquals(semServico.chamadas.length, 0);
+  assertEquals(semServico.resposta.status, 503);
+  assertEquals(semServico.logs.at(-1)?.status, "error");
+});
+
+Deno.test("superfrete: sandbox SÓ com credentials.sandbox === true (\"true\" em texto vai para produção)", async () => {
+  // 1.5.5: `contact_email` entra na linha salva — sem ele a API nem é chamada.
+  const sandbox = await cotarSuperFrete({ credenciais: { superfrete: { token: TOKEN_SF, sandbox: true, contact_email: EMAIL_SF } } });
+  assertEquals(sandbox.chamadas[0].url, "https://sandbox.superfrete.com/api/v0/calculator");
+  const texto = await cotarSuperFrete({ credenciais: { superfrete: { token: TOKEN_SF, sandbox: "true", contact_email: EMAIL_SF } } });
+  assertEquals(texto.chamadas[0].url, "https://api.superfrete.com/api/v0/calculator");
+});
+
+Deno.test("superfrete: a resposta 200 OFICIAL vira opções superfrete-<id> com preço numérico, prazo, provider e transportadora — e é o que vai ao cache", async () => {
+  const { resposta, corpo, registro } = await cotarSuperFrete({});
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.cotacaoIncompleta, false);
+  // 1.5.7 (reescrito): SEM o agrupamento PAC×Mini da 1.5.6 — cada serviço é
+  // uma oferta. "Entrega econômica"/"expressa" só para PAC/SEDEX dos
+  // Correios; o resto mostra "<transportadora> — <serviço>" como a API manda.
+  // Toda opção da SuperFrete continua com a marca `cotacaoSf` e ganha os
+  // carimbos do servidor (assinatura e revisão).
+  const sf = (id: number, name: string, price: number, deliveryDays: number, transportadora: string, servico: string) => ({
+    id: `superfrete-${id}`, name, price, deliveryDays, provider: "superfrete", cotacaoSf: 2, transportadora, servico, provedorRotulo: "SuperFrete",
+  });
+  assertEquals(corpo.options.map(semCarimbo), [
+    sf(1, "Entrega econômica", 18.61, 5, "Correios", "PAC"),
+    sf(2, "Entrega expressa", 10.77, 1, "Correios", "SEDEX"),
+    sf(17, "Correios — Mini Envios", 13, 8, "Correios", "Mini Envios"),
+    sf(3, "jadlog — JADLOG.PACKAGE", 14.4, 2, "jadlog", "JADLOG.PACKAGE"),
+    sf(31, "loggi — LOGGI Econômico", 9.76, 3, "loggi", "LOGGI Econômico"),
+  ]);
+  assertEquals(corpo.options.every((o: any) => /^[0-9a-f]{64}$/.test(o.assinaturaCotacao) && o.revisaoCredenciais === null), true);
+  // O MESMO objeto vai ao cache (é dele que a RPC do pedido lê o preço por id exato).
+  const gravado = registro.upserts.find((u: any) => u.tabela === "shipping_quotes_cache");
+  assertEquals(gravado.linha.options, corpo.options);
+});
+
+Deno.test("superfrete: chaves ['sedex','pac'] -> só PAC, Mini e SEDEX, mesmo que a API devolva Loggi/Jadlog (a guarda é o ID pedido)", async () => {
+  const { corpo } = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["sedex", "pac"] } });
+  // 1.5.7: PAC e Mini vão os dois (sem agrupamento); Loggi/Jadlog não foram pedidos.
+  assertEquals(corpo.options.map((o: any) => o.id), ["superfrete-1", "superfrete-2", "superfrete-17"]);
+  const jad = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: ["jadlog"] } });
+  assertEquals(jad.corpo.options.map((o: any) => o.id), ["superfrete-3"]);
+});
+
+Deno.test("superfrete: descarta has_error, error, preço não finito/<=0/booleano, prazo inválido e item sem id", async () => {
+  const base = RESPOSTA_200_OFICIAL_SF[0];
+  const itens = [
+    { ...base, id: 1, has_error: true },
+    { ...base, id: 1, error: "Serviço indisponível" },
+    { ...base, id: 1, price: "abc" },
+    { ...base, id: 1, price: 0 },
+    { ...base, id: 1, price: -3 },
+    { ...base, id: 1, price: null },
+    { ...base, id: 1, price: true },
+    { ...base, id: 1, price: "Infinity" },
+    { ...base, id: 1, delivery_time: 0 },
+    { ...base, id: 1, delivery_time: -2 },
+    { ...base, id: 1, delivery_time: "x" },
+    { ...base, id: 1, delivery_time: 2.5 },
+    { ...base, id: 1, delivery_time: null },
+    { ...base, id: undefined },
+    { ...base, id: "abc" },
+    null,
+    "PAC",
+    // O único válido: preço em texto numérico é aceito e arredondado ao centavo.
+    { ...base, id: 2, name: "SEDEX", price: "21.456", delivery_time: 3 },
+  ];
+  const { resposta, corpo } = await cotarSuperFrete({
+    responder: () => new Response(JSON.stringify(itens), { status: 200 }),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map(semCarimbo), [
+    {
+      id: "superfrete-2", name: "Entrega expressa", price: 21.46, deliveryDays: 3, provider: "superfrete", cotacaoSf: 2,
+      transportadora: "Correios", servico: "SEDEX", provedorRotulo: "SuperFrete",
+    },
+  ]);
+});
+
+Deno.test("superfrete: todos os itens inválidos -> 503 sem preço (nada de fictício)", async () => {
+  const { resposta, corpo, texto } = await cotarSuperFrete({
+    responder: () => new Response(JSON.stringify([{ ...RESPOSTA_200_OFICIAL_SF[0], has_error: true }]), { status: 200 }),
+  });
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo.options, undefined);
+  assertEquals(texto.includes("18.61"), false);
+});
+
+for (const [nome, corpoDaResposta] of [
+  ["objeto em vez de lista", JSON.stringify({ id: 1, price: 18.61 })],
+  ["JSON inválido", "<html>erro</html>"],
+  ["null", "null"],
+  ["vazio", ""],
+] as const) {
+  Deno.test(`superfrete: resposta malformada (${nome}) -> 503, sem preço, motivo no log`, async () => {
+    const { resposta, corpo, logs } = await cotarSuperFrete({
+      responder: () => new Response(corpoDaResposta, { status: 200 }),
+    });
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.options, undefined);
+    assertEquals(logs.at(-1)?.status, "error");
+    assertEquals(typeof logs.at(-1)?.error_message, "string");
+    assertEquals(logs.at(-1)?.error_message.includes("SuperFrete"), true);
+  });
+}
+
+for (const status of [400, 401, 403, 429, 500, 502]) {
+  Deno.test(`superfrete: HTTP ${status} -> 503 sem preço fictício, e o log diz o status`, async () => {
+    const { resposta, corpo, logs, registro } = await cotarSuperFrete({
+      responder: () => new Response(JSON.stringify({ message: "falhou" }), { status }),
+    });
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.options, undefined);
+    assertEquals(logs.at(-1)?.error_message.includes(String(status)), true);
+    assertEquals(registro.upserts.filter((u: any) => u.tabela === "shipping_quotes_cache").length, 0);
+  });
+}
+
+Deno.test("superfrete: timeout (AbortError) e falha de rede -> 503 sem preço", async () => {
+  for (const erro of [new DOMException("The signal has been aborted", "AbortError"), new TypeError("error sending request")]) {
+    const { resposta, corpo } = await cotarSuperFrete({ responder: () => Promise.reject(erro) });
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.options, undefined);
+  }
+});
+
+Deno.test("superfrete: falha da API NÃO afeta o cliente local — entrega local sai sem chamar a SuperFrete", async () => {
+  const { resposta, corpo, chamadas } = await cotarSuperFrete({
+    config: { ...CONFIG_SF, local_cep_range: "01001" },
+    responder: () => new Response("", { status: 500 }),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  assertEquals(chamadas.length, 0);
+});
+
+// 1.5.5 — o User-Agent vem do e-mail DA LOJA. Estes três substituem os
+// testes da 1.5.4 que exigiam a variável de projeto (ausente/vazia/espaços ->
+// motivo citando o nome dela): a variável saiu, e o motivo agora manda a
+// lojista preencher o campo na tela — nunca cita variável de ambiente.
+
+Deno.test("superfrete: o User-Agent EXATO é 'IKCOUS Marketplace 1.5.7 (<e-mail salvo da loja>)' (versão da release 1.5.7)", async () => {
+  const { resposta, chamadas } = await cotarSuperFrete({});
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 1);
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.7 (loja@ex.com)");
+});
+
+Deno.test("superfrete 1.5.5: SEM contact_email salvo -> NÃO chama a API, 503, e o motivo manda preencher na tela (sem citar variável)", async () => {
+  const { resposta, chamadas, logs, corpo, texto } = await cotarSuperFrete({
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false } },
+  });
+  assertEquals(chamadas.length, 0);
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo.options, undefined);
+  assertEquals(logs.at(-1)?.status, "error");
+  assertEquals(logs.at(-1)?.error_message.includes("preencha em Ajustes > Transportadoras"), true);
+  assertEquals(logs.at(-1)?.error_message.includes("e-mail de contato técnico"), true);
+  assertEquals(logs.at(-1)?.error_message.includes("SUPERFRETE_USER_AGENT"), false);
+  assertEquals(texto.includes("SUPERFRETE_USER_AGENT"), false);
+  assertEquals(JSON.stringify(logs).includes(TOKEN_SF), false);
+});
+
+for (
+  const invalido of [
+    "",
+    "   ",
+    "sem-arroba",
+    "a@b",
+    "a@b.com\r\nX: y",
+    "a@b.com)",
+    "a b@c.com",
+    `${"x".repeat(250)}@b.com`,
+    // D2 (crítico, medido no Deno 2.9.2): não-ASCII no header estoura
+    // ("not a valid ByteString") ou sai como Latin-1 — a RLS deixa o admin
+    // gravar isso direto, então a cotação REVALIDA o salvo.
+    "ő@x.com",
+    "joão@x.com",
+    123,
+    null,
+    { email: EMAIL_SF },
+  ]
+) {
+  Deno.test(`superfrete 1.5.5: contact_email salvo INVÁLIDO (${JSON.stringify(invalido).slice(0, 30)}) -> nenhum fetch`, async () => {
+    const { resposta, chamadas, logs } = await cotarSuperFrete({
+      credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: invalido } },
+    });
+    assertEquals(chamadas.length, 0);
+    assertEquals(resposta.status, 503);
+    assertEquals(logs.at(-1)?.error_message.includes("preencha em Ajustes > Transportadoras"), true);
+  });
+}
+
+Deno.test("superfrete 1.5.5: a variável ANTIGA DEFINIDA e sem e-mail salvo -> ainda nenhum fetch (o fallback saiu)", async () => {
+  const { resposta, chamadas, logs } = await cotarSuperFrete({
+    userAgent: "App Antigo 1.0 (antigo@exemplo.invalid)",
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false } },
+  });
+  assertEquals(chamadas.length, 0);
+  assertEquals(resposta.status, 503);
+  assertEquals(logs.at(-1)?.error_message.includes("SUPERFRETE_USER_AGENT"), false);
+});
+
+Deno.test("superfrete 1.5.5: a variável ANTIGA DEFINIDA NÃO troca o UA quando há e-mail salvo (o e-mail da loja manda)", async () => {
+  const { chamadas } = await cotarSuperFrete({ userAgent: "App Antigo 1.0 (antigo@exemplo.invalid)" });
+  assertEquals(chamadas.length, 1);
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), UA_SF);
+});
+
+Deno.test("superfrete 1.5.5: o e-mail salvo com espaços nas pontas vai APARADO no UA", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: "  loja@ex.com  " } },
+  });
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), UA_SF);
+});
+
+Deno.test("superfrete 1.5.5: o cache NÃO depende do e-mail — linha da SuperFrete em cache serve mesmo sem e-mail salvo", async () => {
+  // 1.5.7: linha com a marca `cotacaoSf: 2` E a assinatura desta configuração
+  // (o e-mail não entra na revisão; o acerto não chama a API).
+  const credenciais = { superfrete: { token: TOKEN_SF, sandbox: false } };
+  const assinatura = await assinaturaEsperada({ config: CONFIG_SF, credenciais });
+  const { corpo, chamadas } = await cotarSuperFrete({
+    cacheLookup: [{ options: assinar([{ id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete", cotacaoSf: 2 }], assinatura) }],
+    credenciais,
+  });
+  assertEquals(chamadas.length, 0);
+  assertEquals(corpo.options.map((o: any) => o.id), ["superfrete-1"]);
+});
+
+Deno.test("superfrete: SEM linha de credencial -> 200 sem opções + motivo (mesmo tratamento do ME/Frenet)", async () => {
+  const { resposta, corpo, chamadas, logs } = await cotarSuperFrete({ credenciais: { melhor_envio: { token: TOKEN_ME } } });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options, []);
+  assertEquals(chamadas.length, 0);
+  assertEquals(logs.at(-1)?.error_message.includes("credencial"), true);
+});
+
+Deno.test("superfrete: linha SEM token -> não chama a API, 503", async () => {
+  const { resposta, chamadas } = await cotarSuperFrete({ credenciais: { superfrete: { sandbox: false } } });
+  assertEquals(resposta.status, 503);
+  assertEquals(chamadas.length, 0);
+});
+
+// REESCRITO na 1.5.7: a cotação lê TODAS as linhas de credencial numa
+// consulta só (modo multi e revisão precisam delas) — mas cada provedor usa
+// SÓ o token da PRÓPRIA linha. Antes a prova era "um filtro provider=superfrete";
+// agora é "uma leitura, sem filtro, e o token da SF na chamada da SF".
+Deno.test("superfrete: a SF usa SÓ o token da linha provider='superfrete' (nunca o de outro provedor), numa leitura única das credenciais", async () => {
+  const { chamadas, registro } = await cotarSuperFrete({});
+  assertEquals(chamadas.length, 1);
+  assertEquals(cabecalho(chamadas[0], "Authorization"), `Bearer ${TOKEN_SF}`);
+  assertEquals(String(chamadas[0].init.body).includes(TOKEN_ME), false);
+  assertEquals(registro.leiturasDeCredencial.length, 1);
+  assertEquals(registro.leiturasDeCredencial[0].colunas, "provider, credentials, updated_at");
+  assertEquals(registro.leiturasDeCredencial[0].filtros, []);
+  // A revisão (`_revisao`) é lida à parte, antes da configuração (R3-2).
+  assertEquals(registro.leiturasDeRevisao >= 1, true);
+});
+
+Deno.test("superfrete: REDACTION — API devolve 401 ecoando o token: nada vaza em log, resposta ou console", async () => {
+  const { resposta, texto, logs, saida } = await cotarSuperFrete({
+    responder: (chamada) =>
+      new Response(
+        JSON.stringify({ error: "unauthenticated", message: `token inválido: ${TOKEN_SF}`, echo: cabecalho(chamada, "Authorization") }),
+        { status: 401 },
+      ),
+  });
+  assertEquals(resposta.status, 503);
+  assertEquals(texto.includes(TOKEN_SF), false);
+  const log = logs.at(-1);
+  assertEquals(JSON.stringify(log).includes(TOKEN_SF), false);
+  assertEquals(log.error_message.includes("[redacted]"), true);
+  assertEquals(log.error_message.includes("401"), true);
+  assertEquals(saida.includes(TOKEN_SF), false);
+});
+
+Deno.test("superfrete: REDACTION também corta o corpo cru em ~300 caracteres", async () => {
+  const { logs } = await cotarSuperFrete({
+    responder: () => new Response("x".repeat(5000), { status: 500 }),
+  });
+  assertEquals(logs.at(-1).error_message.length <= 400, true);
+});
+
+Deno.test("REDACTION no Melhor Envio: 500 ecoando o token não vaza no log nem no console", async () => {
+  const { logs, saida, texto } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA },
+    responder: () => new Response(`erro interno; Authorization: Bearer ${TOKEN_ME}`, { status: 500 }),
+  });
+  assertEquals(JSON.stringify(logs).includes(TOKEN_ME), false);
+  assertEquals(saida.includes(TOKEN_ME), false);
+  assertEquals(texto.includes(TOKEN_ME), false);
+});
+
+Deno.test("REDACTION na Frenet: 500 ecoando o token não vaza no log", async () => {
+  const { logs, saida } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA, shipping_provider: "frenet" },
+    credenciais: { frenet: { token: "tok-frenet-FICTICIO-777" } },
+    responder: () => new Response("token tok-frenet-FICTICIO-777 recusado", { status: 500 }),
+  });
+  assertEquals(JSON.stringify(logs).includes("tok-frenet-FICTICIO-777"), false);
+  assertEquals(saida.includes("tok-frenet-FICTICIO-777"), false);
+});
+
+// --- Cache do servidor separado por provedor -------------------------------
+
+const OPCOES_ME_EM_CACHE = [{ id: "melhor-envio-1", name: "Entrega econômica", price: 40, deliveryDays: 5, provider: "melhor_envio" }];
+// 1.5.6: linha da versão ATUAL da cotação da SuperFrete (`cotacaoSf: 2`). A
+// linha antiga, sem a marca, tem os testes próprios na seção da 1.5.6.
+const OPCOES_SF_EM_CACHE = [{ id: "superfrete-1", name: "Entrega econômica", price: 18.61, deliveryDays: 5, provider: "superfrete", cotacaoSf: 2 }];
+
+// REESCRITOS CONSCIENTEMENTE na 1.5.7 (os antigos L2721 e L2731, que
+// supunham UM provedor por loja). Até a 1.5.6 a guarda era "a opção é do
+// provedor ATUAL" (`cotacaoDoCacheServeAoProvedor`). Com vários provedores ao
+// mesmo tempo, uma linha com opções de dois provedores é NORMAL — a guarda
+// passou a ser a ASSINATURA: trocar de provedor muda a `revisaoConfig`
+// (espelho/ligados/credencial), e a linha assinada na configuração anterior
+// vira falta. Para a prova continuar forte, a linha antiga aqui está
+// ASSINADA — na configuração de antes.
+Deno.test("cache: linha do Melhor Envio (assinada quando a loja era ME) NÃO serve à loja que agora é SuperFrete — recota e SOBRESCREVE a mesma chave", async () => {
+  const assinaturaDoMe = await assinaturaEsperada({ config: { ...CONFIG_DA_LOJA } });
+  const { resposta, corpo, chamadas, registro } = await cotarSuperFrete({ cacheLookup: [{ options: assinar(OPCOES_ME_EM_CACHE, assinaturaDoMe) }] });
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 1);
+  assertEquals(corpo.options.every((o: any) => o.provider === "superfrete"), true);
+  const gravacoes = registro.upserts.filter((u: any) => u.tabela === "shipping_quotes_cache");
+  assertEquals(gravacoes.length, 1);
+  assertEquals(gravacoes[0].onConflict, "origin_cep,destination_cep,cart_hash");
+});
+
+Deno.test("cache: linha da SuperFrete (assinada quando a loja era SF) NÃO serve à loja que voltou ao Melhor Envio (o outro sentido)", async () => {
+  const assinaturaDaSf = await assinaturaEsperada({ config: CONFIG_SF });
+  const { corpo, chamadas } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA },
+    cacheLookup: [{ options: assinar(OPCOES_SF_EM_CACHE, assinaturaDaSf) }],
+    responder: () => new Response(JSON.stringify([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5 }]), { status: 200 }),
+  });
+  assertEquals(chamadas.length, 1);
+  assertEquals(corpo.options.map((o: any) => o.id), ["melhor-envio-1"]);
+});
+
+Deno.test("cache: linha MISTA serve SÓ se TODA opção tem a assinatura atual — uma opção sem ela derruba a linha", async () => {
+  // 1.5.7: mistura de provedores é normal no modo multi; o que decide é a assinatura de cada opção.
+  const assinatura = await assinaturaEsperada({ config: CONFIG_SF });
+  const umaSemAssinatura = await cotarSuperFrete({ cacheLookup: [{ options: [...assinar(OPCOES_SF_EM_CACHE, assinatura), ...OPCOES_ME_EM_CACHE] }] });
+  assertEquals(umaSemAssinatura.chamadas.length, 1);
+  const todasAssinadas = await cotarSuperFrete({ cacheLookup: [{ options: assinar([...OPCOES_SF_EM_CACHE, ...OPCOES_ME_EM_CACHE], assinatura) }] });
+  assertEquals(todasAssinadas.chamadas.length, 0);
+});
+
+Deno.test("cache: linha assinada nesta MESMA configuração serve sem chamar a API (controle)", async () => {
+  const linha = assinar(OPCOES_SF_EM_CACHE, await assinaturaEsperada({ config: CONFIG_SF }));
+  const { corpo, chamadas } = await cotarSuperFrete({ cacheLookup: [{ options: linha }] });
+  assertEquals(chamadas.length, 0);
+  assertEquals(corpo.options, linha);
+});
+
+Deno.test("cache: a gravação renova created_at (senão o gatilho de 2 h apaga a linha recém-atualizada e a RPC diz 'expirou')", async () => {
+  // Vale para TODO provedor (o gravador é um só) — o ME entra como controle
+  // de que o defeito não era da SuperFrete.
+  const meResponde = () => new Response(JSON.stringify([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5 }]), { status: 200 });
+  for (const caso of [{ config: { ...CONFIG_DA_LOJA }, responder: meResponde }, {}]) {
+    const antes = Date.now();
+    const { registro } = await cotarSuperFrete(caso);
+    const depois = Date.now();
+    const gravacao = registro.upserts.find((u: any) => u.tabela === "shipping_quotes_cache");
+    assertEquals(typeof gravacao?.linha.created_at, "string");
+    const instante = Date.parse(gravacao.linha.created_at);
+    assertEquals(instante >= antes - 1000 && instante <= depois + 1000, true);
+  }
+});
+
+// --- Teste de conexão (action test_credentials) ----------------------------
+
+async function testarConexao(opts: {
+  corpo: Record<string, unknown>;
+  admin?: boolean;
+  userAgent?: string | typeof SEM_UA;
+  credenciais?: Record<string, unknown>;
+  responder?: (chamada: ChamadaDeFetch) => Promise<Response> | Response;
+}) {
+  const registro: any = { inserts: [], execucoes: [], upserts: [], cacheConcluido: false, logConcluido: false };
+  const chamadas: ChamadaDeFetch[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = ((url: string, init: RequestInit = {}) => {
+    const chamada = { url: String(url), init };
+    chamadas.push(chamada);
+    const responder = opts.responder ??
+      (() => new Response(JSON.stringify(RESPOSTA_200_OFICIAL_SF), { status: 200 }));
+    return Promise.resolve(responder(chamada));
+  }) as any;
+  try {
+    const { resultado, saida } = await capturarConsole(() =>
+      // 1.5.5: variável ANTIGA apagada por padrão (ver `cotarSuperFrete`).
+      comUserAgent(opts.userAgent ?? SEM_UA, async () => {
+        const resposta = await handler(
+          new Request("http://localhost/calculate-shipping", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-de-admin-ficticio" },
+            body: JSON.stringify({ action: "test_credentials", ...opts.corpo }),
+          }),
+          {
+            supabase: clienteFalso({
+              registro,
+              cacheInsert: () => Promise.resolve({ error: null }),
+              credenciaisPorProvedor: opts.credenciais ?? {},
+            }),
+            verificarAdmin: () => Promise.resolve(opts.admin ?? true),
+          },
+        );
+        return { resposta, texto: await resposta.text() };
+      })
+    );
+    return { ...resultado, corpo: JSON.parse(resultado.texto), chamadas, saida, registro };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+}
+
+Deno.test("teste de conexão SuperFrete: quem não é admin recebe 403 e a API nem é chamada", async () => {
+  const { resposta, chamadas } = await testarConexao({
+    admin: false,
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF } },
+  });
+  assertEquals(resposta.status, 403);
+  assertEquals(chamadas.length, 0);
+});
+
+Deno.test("teste de conexão SuperFrete com usarCredencialSalva: a edge lê o token SALVO e faz uma cotação mínima (sem compra)", async () => {
+  // 1.5.5: "os dois salvos" — token e e-mail vêm da linha da loja.
+  const { corpo, chamadas, registro, texto } = await testarConexao({
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: true, contact_email: EMAIL_SF } },
+  });
+  assertEquals(corpo.success, true);
+  assertEquals(chamadas.length, 1);
+  assertEquals(chamadas[0].url, "https://sandbox.superfrete.com/api/v0/calculator");
+  assertEquals(chamadas[0].init.method, "POST");
+  assertEquals(cabecalho(chamadas[0], "Authorization"), `Bearer ${TOKEN_SF}`);
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), UA_SF);
+  // 1.5.7 (R1-8): a MESMA cotação do checkout, da origem da LOJA para
+  // 01015070, com o pacote de teste 0,1 kg 16×11×4 (antes: o exemplo da doc,
+  // de São Paulo para o Rio, 16×11×2 e 0,3 kg).
+  const pedido = JSON.parse(String(chamadas[0].init.body));
+  assertEquals(pedido.from, { postal_code: "38500000" });
+  assertEquals(pedido.to, { postal_code: "01015070" });
+  assertEquals(pedido.products, [{ quantity: 1, weight: 0.1, height: 4, width: 11, length: 16 }]);
+  assertEquals(pedido.options, { own_hand: false, receipt: false, insurance_value: 0, use_insurance_value: false });
+  // As credenciais são lidas numa consulta só (o token nunca sai daqui).
+  assertEquals(registro.leiturasDeCredencial[0].filtros, []);
+  assertEquals(Array.isArray(corpo.servicosTestados), true);
+  assertEquals(texto.includes(TOKEN_SF), false);
+});
+
+Deno.test("teste de conexão com usarCredencialSalva SEM chave salva -> erro claro, sem chamar a API", async () => {
+  for (const credenciais of [{}, { superfrete: { sandbox: false } }, { superfrete: { token: "" } }]) {
+    const { resposta, corpo, chamadas } = await testarConexao({
+      corpo: { provider: "superfrete", usarCredencialSalva: true },
+      credenciais,
+    });
+    // 1.5.7: recusa de validação é 200 {success:false, error} (contrato §4) —
+    // com 4xx o `functions.invoke` entrega `data: null` e a frase não chega à tela.
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.success, false);
+    assertEquals(chamadas.length, 0);
+    assertEquals(/chave/i.test(corpo.error), true);
+  }
+});
+
+// 1.5.5: substitui "sem SUPERFRETE_USER_AGENT -> erro citando a variável".
+// Sem e-mail nenhum (nem digitado, nem salvo) o teste não sai — e a
+// orientação manda preencher o campo, mesmo com a variável ANTIGA definida.
+Deno.test("teste de conexão SuperFrete com usarCredencialSalva SEM e-mail nenhum -> sem fetch, com orientação de preencher o campo", async () => {
+  const { corpo, chamadas, texto } = await testarConexao({
+    userAgent: "App Antigo 1.0 (antigo@exemplo.invalid)",
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF } },
+  });
+  assertEquals(corpo.success, false);
+  assertEquals(chamadas.length, 0);
+  assertEquals(corpo.error.includes("e-mail de contato técnico"), true);
+  assertEquals(corpo.error.includes("SUPERFRETE_USER_AGENT"), false);
+  assertEquals(texto.includes(TOKEN_SF), false);
+});
+
+Deno.test("teste de conexão SuperFrete: e-mail DIGITADO + token DIGITADO -> UA com o e-mail digitado", async () => {
+  const { corpo, chamadas } = await testarConexao({
+    corpo: {
+      provider: "superfrete",
+      credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false, contact_email: "digitado@ex.com" },
+    },
+  });
+  assertEquals(corpo.success, true);
+  assertEquals(chamadas.length, 1);
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.7 (digitado@ex.com)");
+  assertEquals(cabecalho(chamadas[0], "Authorization"), "Bearer tok-sf-digitado-FICTICIO");
+});
+
+Deno.test("teste de conexão SuperFrete: usarCredencialSalva + e-mail DIGITADO -> token SALVO com o UA do digitado (vence o salvo)", async () => {
+  for (const salvas of [{ token: TOKEN_SF }, { token: TOKEN_SF, contact_email: "velho@ex.com" }]) {
+    const { corpo, chamadas, texto } = await testarConexao({
+      corpo: { provider: "superfrete", usarCredencialSalva: true, credentials: { contact_email: "novo@ex.com" } },
+      credenciais: { superfrete: salvas },
+    });
+    assertEquals(corpo.success, true);
+    assertEquals(chamadas.length, 1);
+    assertEquals(cabecalho(chamadas[0], "Authorization"), `Bearer ${TOKEN_SF}`);
+    assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS Marketplace 1.5.7 (novo@ex.com)");
+    assertEquals(texto.includes(TOKEN_SF), false);
+  }
+});
+
+Deno.test("teste de conexão SuperFrete: e-mail digitado INVÁLIDO (injeção de header) -> sem fetch, mesmo com um e-mail salvo válido", async () => {
+  for (const invalido of ["a@b.com\r\nX: y", "a@b.com)", "sem-arroba"]) {
+    const { corpo, chamadas } = await testarConexao({
+      corpo: { provider: "superfrete", usarCredencialSalva: true, credentials: { contact_email: invalido } },
+      credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
+    });
+    assertEquals(corpo.success, false);
+    assertEquals(chamadas.length, 0);
+    assertEquals(corpo.error.includes("e-mail de contato técnico"), true);
+  }
+});
+
+// Painel 1.5.4 ainda em cache contra a edge 1.5.5: ele não manda e-mail
+// nenhum. Sem e-mail digitado, a edge usa o SALVO da loja (lido com a service
+// role depois da checagem de admin) — nos dois jeitos de testar.
+Deno.test("teste de conexão SuperFrete SEM e-mail digitado cai no e-mail SALVO (token salvo e token digitado)", async () => {
+  const salvo = await testarConexao({
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
+  });
+  assertEquals(salvo.corpo.success, true);
+  assertEquals(cabecalho(salvo.chamadas[0], "User-Agent"), UA_SF);
+
+  for (const emailDigitado of [undefined, "", "   "]) {
+    const digitado = await testarConexao({
+      corpo: {
+        provider: "superfrete",
+        credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false, contact_email: emailDigitado },
+      },
+      credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
+    });
+    assertEquals(digitado.corpo.success, true);
+    assertEquals(cabecalho(digitado.chamadas[0], "Authorization"), "Bearer tok-sf-digitado-FICTICIO");
+    assertEquals(cabecalho(digitado.chamadas[0], "User-Agent"), UA_SF);
+    assertEquals(digitado.texto.includes(TOKEN_SF), false);
+  }
+});
+
+Deno.test("teste de conexão SuperFrete: e-mail SALVO não-ASCII -> sem fetch, orientação em português", async () => {
+  for (const salvoRuim of ["ő@x.com", "joão@x.com"]) {
+    const { corpo, chamadas } = await testarConexao({
+      corpo: { provider: "superfrete", usarCredencialSalva: true },
+      credenciais: { superfrete: { token: TOKEN_SF, contact_email: salvoRuim } },
+    });
+    assertEquals(corpo.success, false);
+    assertEquals(chamadas.length, 0);
+    assertEquals(corpo.error.includes("e-mail de contato técnico"), true);
+  }
+});
+
+Deno.test("teste de conexão SuperFrete: token DIGITADO sem e-mail -> sem fetch (a variável antiga não socorre)", async () => {
+  const { corpo, chamadas } = await testarConexao({
+    userAgent: "App Antigo 1.0 (antigo@exemplo.invalid)",
+    corpo: { provider: "superfrete", credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false } },
+  });
+  assertEquals(corpo.success, false);
+  assertEquals(chamadas.length, 0);
+});
+
+Deno.test("teste de conexão SuperFrete: 401 ecoando o token -> falha SEM o token na resposta nem no console", async () => {
+  const { corpo, texto, saida } = await testarConexao({
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
+    responder: () => new Response(`{"message":"bad token ${TOKEN_SF}"}`, { status: 401 }),
+  });
+  assertEquals(corpo.success, false);
+  assertEquals(texto.includes(TOKEN_SF), false);
+  assertEquals(saida.includes(TOKEN_SF), false);
+  // 1.5.7 (R1-8): 401 = `chave_recusada`, com o status no `detalhe` redigido.
+  assertEquals(corpo.motivo, "chave_recusada");
+  assertEquals(corpo.detalhe.includes("401"), true);
+});
+
+Deno.test("teste de conexão SuperFrete: resposta 200 que não é lista -> falha (não declara conectado)", async () => {
+  const { corpo, chamadas } = await testarConexao({
+    corpo: { provider: "superfrete", usarCredencialSalva: true },
+    credenciais: { superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
+    responder: () => new Response("{}", { status: 200 }),
+  });
+  assertEquals(corpo.success, false);
+  // A falha é da RESPOSTA (a API foi chamada), não da falta de e-mail.
+  assertEquals(chamadas.length, 1);
+});
+
+// REESCRITOS na 1.5.7 (R1-8): o teste do ME deixou de ser o GET /api/v2/me
+// ("a chave existe") e passou a ser a MESMA cotação do checkout, com o pacote
+// de teste — a chave pode existir e mesmo assim não cotar nada.
+const COTACAO_ME_DE_TESTE = [{ id: 1, name: "PAC", price: "20.00", delivery_time: 5, company: { name: "Correios" } }];
+
+Deno.test("teste de conexão Melhor Envio com usarCredencialSalva: usa o token salvo numa COTAÇÃO de teste (o painel não baixa mais o token)", async () => {
+  const { corpo, chamadas, texto } = await testarConexao({
+    corpo: { provider: "melhor_envio", usarCredencialSalva: true },
+    credenciais: { melhor_envio: { token: TOKEN_ME, sandbox: false } },
+    responder: () => new Response(JSON.stringify(COTACAO_ME_DE_TESTE), { status: 200 }),
+  });
+  assertEquals(corpo.success, true);
+  assertEquals(corpo.servicosTestados, [{ codigo: "1", ok: true, preco: 20, prazo: 5 }]);
+  assertEquals(chamadas[0].url, "https://melhorenvio.com.br/api/v2/me/shipment/calculate");
+  assertEquals(cabecalho(chamadas[0], "Authorization"), `Bearer ${TOKEN_ME}`);
+  // R3-7: credencial ME SEM contato = o User-Agent do recuo legado.
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS-Marketplace-Integration (contato@ikcous.com.br)");
+  assertEquals(texto.includes(TOKEN_ME), false);
+});
+
+Deno.test("teste de conexão Melhor Envio: com contact_email salvo, o User-Agent leva o contato DA LOJA (R3-7) — e o e-mail não volta na resposta", async () => {
+  const { corpo, chamadas, texto } = await testarConexao({
+    corpo: { provider: "melhor_envio", usarCredencialSalva: true },
+    credenciais: { melhor_envio: { token: TOKEN_ME, contact_email: "contato-me@ex.com" }, superfrete: { token: TOKEN_SF, contact_email: EMAIL_SF } },
+    responder: () => new Response(JSON.stringify(COTACAO_ME_DE_TESTE), { status: 200 }),
+  });
+  assertEquals(corpo.success, true);
+  assertEquals(cabecalho(chamadas[0], "User-Agent"), "IKCOUS-Marketplace-Integration (contato-me@ex.com)");
+  assertEquals(texto.includes("contato-me@ex.com"), false);
+  // O e-mail da SF nunca vai para o ME.
+  assertEquals(cabecalho(chamadas[0], "User-Agent")?.includes(EMAIL_SF), false);
+});
+
+Deno.test("teste de conexão Melhor Envio com token DIGITADO (antes de salvar) continua funcionando, e o erro sai sem o token", async () => {
+  const ok = await testarConexao({
+    corpo: { provider: "melhor_envio", credentials: { token: "tok-digitado-FICTICIO", sandbox: true } },
+    responder: () => new Response(JSON.stringify(COTACAO_ME_DE_TESTE), { status: 200 }),
+  });
+  assertEquals(ok.corpo.success, true);
+  assertEquals(ok.chamadas[0].url, "https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate");
+  const falha = await testarConexao({
+    corpo: { provider: "melhor_envio", credentials: { token: "tok-digitado-FICTICIO" } },
+    responder: () => new Response("Unauthenticated tok-digitado-FICTICIO", { status: 401 }),
+  });
+  assertEquals(falha.corpo.success, false);
+  assertEquals(falha.corpo.motivo, "chave_recusada");
+  assertEquals(falha.texto.includes("tok-digitado-FICTICIO"), false);
+});
+
+Deno.test("teste de conexão SuperFrete com token DIGITADO usa o token do corpo", async () => {
+  const { corpo, chamadas } = await testarConexao({
+    corpo: {
+      provider: "superfrete",
+      credentials: { token: "tok-sf-digitado-FICTICIO", sandbox: false, contact_email: EMAIL_SF },
+    },
+  });
+  assertEquals(corpo.success, true);
+  assertEquals(chamadas[0].url, "https://api.superfrete.com/api/v0/calculator");
+  assertEquals(cabecalho(chamadas[0], "Authorization"), "Bearer tok-sf-digitado-FICTICIO");
+});
+
+// --- Salvar a SuperFrete pelo servidor (action save_credentials, 1.5.5) -----
+//
+// Pedido do dono: "Se precisa de email deve ter no app para eu colocar". O
+// e-mail de contato técnico vira campo da tela; a chave + o e-mail + o modo de
+// testes da SuperFrete são gravados PELA EDGE (service role, depois de
+// conferir admin), por lista branca. Contrato de resposta (ajuste D4 do
+// crítico): recusa de VALIDAÇÃO = 200 `{ success: false, error }` (o
+// `functions.invoke` perde o corpo de um 400 e a frase não chegaria à tela);
+// não-admin = 403. O token NUNCA volta na resposta.
+
+async function salvarCredenciais(opts: {
+  corpo: Record<string, unknown>;
+  admin?: boolean;
+  credenciais?: Record<string, unknown>;
+  erroAoGravarCredencial?: { message: string };
+}) {
+  const registro: any = { inserts: [], execucoes: [], upserts: [], cacheConcluido: false, logConcluido: false };
+  const chamadas: ChamadaDeFetch[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = ((url: string, init: RequestInit = {}) => {
+    chamadas.push({ url: String(url), init });
+    return Promise.resolve(new Response("[]", { status: 200 }));
+  }) as any;
+  try {
+    const { resultado, saida } = await capturarConsole(() =>
+      comUserAgent(SEM_UA, async () => {
+        const resposta = await handler(
+          new Request("http://localhost/calculate-shipping", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-de-admin-ficticio" },
+            body: JSON.stringify({ action: "save_credentials", ...opts.corpo }),
+          }),
+          {
+            supabase: clienteFalso({
+              registro,
+              cacheInsert: () => Promise.resolve({ error: null }),
+              credenciaisPorProvedor: opts.credenciais ?? {},
+              erroAoGravarCredencial: opts.erroAoGravarCredencial,
+            }),
+            verificarAdmin: () => Promise.resolve(opts.admin ?? true),
+          },
+        );
+        return { resposta, texto: await resposta.text() };
+      })
+    );
+    const gravacoes = registro.upserts.filter((u: any) => u.tabela === "store_shipping_credentials");
+    return { ...resultado, corpo: JSON.parse(resultado.texto), chamadas, saida, registro, gravacoes };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+}
+
+const TOKEN_SF_NOVO = "tok-sf-NOVO-FICTICIO-0a1b2c3d";
+/** 1.5.7 (R3-1): o upsert grava VÁRIAS linhas numa instrução; esta é a do provedor. */
+const linhaGravada = (gravacao: any, provider: string) =>
+  (Array.isArray(gravacao.linha) ? gravacao.linha : [gravacao.linha]).find((l: any) => l.provider === provider);
+
+Deno.test("emailDeContatoValido: ASCII estrito, aparado, <= 254, sem nada que quebre um header", () => {
+  assertEquals(emailDeContatoValido("loja@ex.com"), "loja@ex.com");
+  assertEquals(emailDeContatoValido("  Loja.Tec+sf@sub.exemplo.com.br "), "Loja.Tec+sf@sub.exemplo.com.br");
+  const limite = `${"a".repeat(64)}@${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(57)}.com`;
+  assertEquals(limite.length, 254);
+  assertEquals(emailDeContatoValido(limite), limite);
+  for (
+    const ruim of [
+      "",
+      "   ",
+      "sem-arroba",
+      "a@b",
+      "@b.com",
+      "a@.com",
+      "a@b.c",
+      "a b@c.com",
+      "a@b.com\r\nX: y",
+      "a@b.com\nX: y",
+      "a@b.com)",
+      "a(b)@c.com",
+      "<a@b.com>",
+      "a@b.com,c@d.com",
+      "a@b.com;",
+      "joão@x.com",
+      "ő@x.com",
+      "a@exemplo.cöm",
+      `${limite}m`,
+      undefined,
+      null,
+      123,
+      {},
+    ]
+  ) {
+    assertEquals(emailDeContatoValido(ruim), null, `deveria recusar ${JSON.stringify(ruim)}`);
+  }
+});
+
+Deno.test("save_credentials: quem não é admin recebe 403 e NADA é gravado", async () => {
+  const { resposta, gravacoes, texto } = await salvarCredenciais({
+    admin: false,
+    corpo: { provider: "superfrete", credentials: { token: TOKEN_SF_NOVO, sandbox: false, contact_email: EMAIL_SF } },
+  });
+  assertEquals(resposta.status, 403);
+  assertEquals(gravacoes.length, 0);
+  assertEquals(texto.includes(TOKEN_SF_NOVO), false);
+});
+
+// REESCRITO na 1.5.7 (contrato §4): `save_credentials` passou a valer para os
+// TRÊS provedores (ME e Frenet saíram do upsert direto do navegador). Recusa
+// continua para o que não é provedor: nome errado, `_ligados`, `_revisao`.
+Deno.test("save_credentials: o que NÃO é provedor é recusado (inclusive as linhas especiais _ligados e _revisao)", async () => {
+  for (const provider of ["flat_fee", undefined, "SUPERFRETE", "_ligados", "_revisao"]) {
+    const { resposta, corpo, gravacoes } = await salvarCredenciais({
+      corpo: { provider, credentials: { token: TOKEN_SF_NOVO, contact_email: EMAIL_SF } },
+    });
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.success, false);
+    assertEquals(typeof corpo.error, "string");
+    assertEquals(gravacoes.length, 0);
+  }
+});
+
+Deno.test("save_credentials: e-mail vazio, inválido, não-ASCII ou com injeção de header -> recusa em português, sem gravar", async () => {
+  // 1.5.7: `undefined` saiu desta lista — com o MERGE (R1-3) o e-mail AUSENTE
+  // mantém o salvo (ver o teste logo abaixo). Vazio continua recusado na SF.
+  for (
+    const email of [
+      "",
+      "   ",
+      "sem-arroba",
+      "a@b.com\r\nX: y",
+      "a@b.com)",
+      "a@b.com;",
+      "a@b.com,c@d.com",
+      "<a@b.com>",
+      "joão@x.com",
+      "ő@x.com",
+      `${"x".repeat(250)}@b.com`,
+    ]
+  ) {
+    const { resposta, corpo, gravacoes, texto } = await salvarCredenciais({
+      corpo: { provider: "superfrete", credentials: { token: TOKEN_SF_NOVO, sandbox: false, contact_email: email } },
+      credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF } },
+    });
+    assertEquals(resposta.status, 200, `e-mail ${JSON.stringify(email)}`);
+    assertEquals(corpo.success, false);
+    assertEquals(corpo.error.includes("e-mail"), true);
+    assertEquals(gravacoes.length, 0);
+    assertEquals(texto.includes(TOKEN_SF_NOVO), false);
+    assertEquals(texto.includes(TOKEN_SF), false);
+  }
+});
+
+Deno.test("save_credentials: e-mail AUSENTE mantém o salvo (merge); ausente SEM salvo continua recusado", async () => {
+  const mantido = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { token: TOKEN_SF_NOVO, sandbox: false } },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF } },
+  });
+  assertEquals(mantido.corpo.success, true);
+  assertEquals(linhaGravada(mantido.gravacoes[0], "superfrete").credentials.contact_email, EMAIL_SF);
+  const semNada = await salvarCredenciais({ corpo: { provider: "superfrete", credentials: { token: TOKEN_SF_NOVO, sandbox: false } } });
+  assertEquals(semNada.corpo.success, false);
+  assertEquals(semNada.corpo.error.includes("e-mail"), true);
+  assertEquals(semNada.gravacoes.length, 0);
+});
+
+Deno.test("save_credentials: token NOVO + e-mail -> UM upsert com a linha 'superfrete' e a '_revisao', e a resposta SEM token", async () => {
+  const { resposta, corpo, gravacoes, texto, saida, chamadas } = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { token: `  ${TOKEN_SF_NOVO} `, sandbox: true, contact_email: " loja@ex.com " } },
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(gravacoes.length, 1);
+  assertEquals(gravacoes[0].onConflict, "provider");
+  // 1.5.7 (R3-1): a linha do provedor e a `_revisao` na MESMA instrução.
+  assertEquals(gravacoes[0].linha.map((l: any) => l.provider).sort(), ["_revisao", "superfrete"]);
+  const linha = linhaGravada(gravacoes[0], "superfrete");
+  assertEquals(linha.credentials, { token: TOKEN_SF_NOVO, sandbox: true, contact_email: EMAIL_SF });
+  assertEquals(typeof linha.updated_at, "string");
+  assertEquals(corpo, { success: true, tem_chave: true, servicos: null, sandbox: true, contact_email: EMAIL_SF });
+  assertEquals(texto.includes(TOKEN_SF_NOVO), false);
+  assertEquals(saida.includes(TOKEN_SF_NOVO), false);
+  // Salvar não chama a SuperFrete (quem prova a chave é o "Testar").
+  assertEquals(chamadas.length, 0);
+});
+
+// REESCRITO na 1.5.7 (contrato §4 + R1-3). A 1.5.5 DESCARTAVA em silêncio o
+// campo fora da lista branca e REESCREVIA a linha só com os 3 campos (um
+// `{token}` apagaria `servicos`/`seguro` da 1.5.7). Agora: campo desconhecido
+// no pedido = RECUSA (nada grava), e o que já estava na linha e o pedido não
+// trouxe é PRESERVADO pelo merge.
+Deno.test("save_credentials: LISTA BRANCA — campo desconhecido no pedido RECUSA; campo velho da linha é PRESERVADO (merge)", async () => {
+  const recusado = await salvarCredenciais({
+    corpo: {
+      provider: "superfrete",
+      credentials: { token: TOKEN_SF_NOVO, sandbox: false, contact_email: EMAIL_SF, hack: 1, token_de_outro: "x" },
+    },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: "velho@ex.com", lixo: "y" } },
+  });
+  assertEquals(recusado.corpo.success, false);
+  assertEquals(recusado.gravacoes.length, 0);
+  // Token vazio (mantém o salvo) + só campos permitidos: o `lixo` antigo fica.
+  const mantido = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { token: "", contact_email: EMAIL_SF } },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: "velho@ex.com", lixo: "y" } },
+  });
+  assertEquals(linhaGravada(mantido.gravacoes[0], "superfrete").credentials, { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF, lixo: "y" });
+});
+
+Deno.test("save_credentials: token VAZIO com token salvo -> mantém o token salvo (lido com a service role) e troca o e-mail", async () => {
+  for (const token of [undefined, "", "   "]) {
+    const { corpo, gravacoes, registro, texto } = await salvarCredenciais({
+      corpo: { provider: "superfrete", credentials: { token, contact_email: "novo@ex.com" } },
+      credenciais: { superfrete: { token: TOKEN_SF, sandbox: true, contact_email: "velho@ex.com" } },
+    });
+    assertEquals(corpo, { success: true, tem_chave: true, servicos: null, sandbox: true, contact_email: "novo@ex.com" });
+    assertEquals(gravacoes.length, 1);
+    assertEquals(linhaGravada(gravacoes[0], "superfrete").credentials, { token: TOKEN_SF, sandbox: true, contact_email: "novo@ex.com" });
+    // 1.5.7: a linha salva é lida na leitura única das credenciais (service role, depois do admin).
+    assertEquals(registro.leiturasDeCredencial[0].filtros, []);
+    assertEquals(texto.includes(TOKEN_SF), false);
+  }
+});
+
+Deno.test("save_credentials: token vazio SEM token salvo -> 'Cole a chave de acesso da SuperFrete.', sem gravar", async () => {
+  for (const credenciais of [{}, { superfrete: { sandbox: false } }, { superfrete: { token: "" } }, { superfrete: { token: 42 } }]) {
+    const { resposta, corpo, gravacoes } = await salvarCredenciais({
+      corpo: { provider: "superfrete", credentials: { contact_email: EMAIL_SF } },
+      credenciais,
+    });
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo, { success: false, error: "Cole a chave de acesso da SuperFrete." });
+    assertEquals(gravacoes.length, 0);
+  }
+});
+
+Deno.test("save_credentials: trocar o modo de testes SEM token novo é recusado; o mesmo modo passa", async () => {
+  const trocou = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { sandbox: true, contact_email: EMAIL_SF } },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: EMAIL_SF } },
+  });
+  assertEquals(trocou.resposta.status, 200);
+  assertEquals(trocou.corpo.success, false);
+  assertEquals(/sandbox|modo de testes/i.test(trocou.corpo.error), true);
+  assertEquals(trocou.gravacoes.length, 0);
+
+  const mesmo = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { sandbox: false, contact_email: EMAIL_SF } },
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: false, contact_email: "velho@ex.com" } },
+  });
+  assertEquals(mesmo.corpo.success, true);
+  assertEquals(linhaGravada(mesmo.gravacoes[0], "superfrete").credentials.sandbox, false);
+});
+
+Deno.test("save_credentials: falha do banco ao gravar -> erro em português, SEM o token (nem no console)", async () => {
+  const { resposta, corpo, texto, saida } = await salvarCredenciais({
+    corpo: { provider: "superfrete", credentials: { token: TOKEN_SF_NOVO, contact_email: EMAIL_SF } },
+    erroAoGravarCredencial: { message: `violação ao gravar ${TOKEN_SF_NOVO}` },
+  });
+  assertEquals(corpo.success, false);
+  assertEquals(resposta.status >= 500, true);
+  assertEquals(typeof corpo.error, "string");
+  assertEquals(texto.includes(TOKEN_SF_NOVO), false);
+  assertEquals(saida.includes(TOKEN_SF_NOVO), false);
+});
+
+// ============================================================================
+// RELEASE 1.5.6 — SuperFrete: "Entrega econômica" = PAC ou Mini Envios (o
+// mais barato), sem seguro, medidas fiéis campo a campo, cache versionado e
+// log estruturado.
+//
+// As fixtures abaixo são as respostas BRUTAS da API de produção gravadas na
+// auditoria de 22/09/2026 (Temp/ikcous-superfrete-auditoria/
+// cotacoes-reais-2-corpo-e-normalizacao.json), só com o espaçamento mudado:
+//   B) tênis 10×10×6, 0,1 kg, sem seguro, services 1,2,17: PAC 25,31 (8 d) e
+//      SEDEX 52,59 (4 d) — SEM o Mini (6 cm passa da altura máxima dele, 4).
+//   D) controle 15×10×3, 0,1 kg: PAC 25,31, SEDEX 52,59 e Mini 19,01 (11 d).
+//   C) o MESMO controle CRU 10×10×3 devolveu exatamente D: a própria API sobe
+//      a caixa para 15×10×3 — por isso o app não normaliza medida.
+// ============================================================================
+
+const pacReal = (pkg: [string, string, string, string]) => ({
+  id: 1, name: "PAC", price: 25.31, discount: "7.09", currency: "R$", delivery_time: 8,
+  delivery_range: { min: 8, max: 8 },
+  packages: [pacoteSF(25.31, "7.09", "box", ...pkg, 0)],
+  additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+});
+const sedexReal = (pkg: [string, string, string, string]) => ({
+  id: 2, name: "SEDEX", price: 52.59, discount: "15.41", currency: "R$", delivery_time: 4,
+  delivery_range: { min: 4, max: 4 },
+  packages: [pacoteSF(52.59, "15.41", "box", ...pkg, 0)],
+  additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+});
+const miniReal = (pkg: [string, string, string, string]) => ({
+  id: 17, name: "Mini Envios", price: 19.01, discount: "13.39", currency: "R$", delivery_time: 11,
+  delivery_range: { min: 11, max: 11 },
+  packages: [pacoteSF(19.01, "13.39", "box", ...pkg, 0)],
+  additional_services: { receipt: false, own_hand: false }, company: CORREIOS_SF, has_error: false,
+});
+/** Cotação B (real): tênis de 6 cm — a API não devolve o Mini. */
+const RESPOSTA_REAL_B_TENIS_6CM = [pacReal(["6", "16", "24", "0.3"]), sedexReal(["6", "16", "24", "0.3"])];
+/** Cotação D (real): controle 15×10×3 — Mini a 19,01 em 11 dias. */
+const RESPOSTA_REAL_D_CONTROLE = [
+  pacReal(["3", "10", "15", "0.1"]),
+  sedexReal(["3", "10", "15", "0.1"]),
+  miniReal(["3", "10", "15", "0.1"]),
+];
+
+const CONFIG_SF_PAC_SEDEX = { ...CONFIG_SF, enabled_shipping_methods: ["sedex", "pac"] };
+const responderCom = (dados: unknown) => () =>
+  new Response(JSON.stringify(dados), { status: 200, headers: { "Content-Type": "application/json" } });
+
+
+/** Uma opção da SuperFrete como a 1.5.7 devolve (Correios). */
+const opcaoSf = (id: number, name: string, price: number, deliveryDays: number, servico: string) => ({
+  id: `superfrete-${id}`, name, price, deliveryDays, provider: "superfrete", cotacaoSf: 2,
+  transportadora: "Correios", servico, provedorRotulo: "SuperFrete",
+});
+const PAC_REAL = opcaoSf(1, "Entrega econômica", 25.31, 8, "PAC");
+const MINI_REAL = opcaoSf(17, "Correios — Mini Envios", 19.01, 11, "Mini Envios");
+const EXPRESSA_REAL = opcaoSf(2, "Entrega expressa", 52.59, 4, "SEDEX");
+
+// --- 1.5.7: o servidor NÃO agrupa mais PAC×Mini -------------------------------
+//
+// REESCRITO CONSCIENTEMENTE (contrato 1.5.7 §2 + PLANO A3, ordem do dono "não
+// eliminar PAC só porque Mini é mais barato"). Na 1.5.6 o servidor juntava PAC
+// e Mini numa "Entrega econômica" só (a mais barata, com desempate por prazo
+// e depois pelo PAC); os testes de desempate daquela regra SAÍRAM junto com
+// ela. Agora as duas ofertas vão na lista, cada uma com o seu id e o seu
+// preço (o id é o que a RPC do pedido casa), e agrupar é só visual (tela).
+
+Deno.test("1.5.7 sem agrupamento: cotação real D -> PAC, SEDEX e Mini, cada um com o seu id, preço e prazo", async () => {
+  const { resposta, corpo, registro } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom(RESPOSTA_REAL_D_CONTROLE),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map(semCarimbo), [PAC_REAL, EXPRESSA_REAL, MINI_REAL]);
+  // A MESMA lista vai ao cache que a RPC lê por id.
+  const gravado = registro.upserts.find((u: any) => u.tabela === "shipping_quotes_cache");
+  assertEquals(gravado.linha.options, corpo.options);
+});
+
+Deno.test("1.5.7 sem agrupamento: a ordem da resposta da API é preservada (quem ordena é a tela)", async () => {
+  const [pac, sedex, mini] = RESPOSTA_REAL_D_CONTROLE;
+  const { corpo } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, responder: responderCom([mini, sedex, pac]) });
+  assertEquals(corpo.options.map(semCarimbo), [MINI_REAL, EXPRESSA_REAL, PAC_REAL]);
+});
+
+Deno.test("1.5.7: preço arredondado ao centavo (o MESMO número vai à tela e ao cache)", async () => {
+  const pac = { ...pacReal(["3", "10", "15", "0.1"]), price: 20.004 };
+  const { corpo } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, responder: responderCom([pac]) });
+  assertEquals(corpo.options.map(semCarimbo), [{ ...PAC_REAL, price: 20 }]);
+});
+
+Deno.test("1.5.7: serviço 1 DUPLICADO na resposta vira UMA opção (id único na lista que a RPC lê) — vale a mais barata", async () => {
+  const pac = pacReal(["3", "10", "15", "0.1"]);
+  const { corpo } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([{ ...pac, price: 27 }, sedexReal(["3", "10", "15", "0.1"]), pac]),
+  });
+  assertEquals(corpo.options.map((o: any) => [o.id, o.price]).sort(), [["superfrete-1", 25.31], ["superfrete-2", 52.59]]);
+});
+
+// --- Serviço faltando ou com problema ---------------------------------------
+
+Deno.test("1.5.7: tênis 6 cm (cotação real B, Mini AUSENTE) -> PAC 25,31 + SEDEX 52,59", async () => {
+  const { corpo } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, responder: responderCom(RESPOSTA_REAL_B_TENIS_6CM) });
+  assertEquals(corpo.options.map(semCarimbo), [PAC_REAL, EXPRESSA_REAL]);
+});
+
+Deno.test("1.5.7: Mini com has_error, com error, sem preço ou com preço 0 -> só o Mini sai (preço 0 na SF continua descartado, R2-7)", async () => {
+  const mini = miniReal(["3", "10", "15", "0.1"]);
+  for (const miniRuim of [
+    { ...mini, has_error: true, error: "Dimensões acima do permitido" },
+    { ...mini, error: "Serviço indisponível" },
+    { ...mini, price: undefined },
+    { ...mini, price: null },
+    { ...mini, price: 0 },
+  ]) {
+    const { corpo } = await cotarSuperFrete({
+      config: CONFIG_SF_PAC_SEDEX,
+      responder: responderCom([pacReal(["3", "10", "15", "0.1"]), sedexReal(["3", "10", "15", "0.1"]), miniRuim]),
+    });
+    assertEquals(corpo.options.map(semCarimbo), [PAC_REAL, EXPRESSA_REAL]);
+  }
+});
+
+Deno.test("1.5.7: PAC com erro e Mini válido -> SEDEX e Mini", async () => {
+  const { corpo } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([
+      { ...pacReal(["3", "10", "15", "0.1"]), has_error: true },
+      sedexReal(["3", "10", "15", "0.1"]),
+      miniReal(["3", "10", "15", "0.1"]),
+    ]),
+  });
+  assertEquals(corpo.options.map(semCarimbo), [EXPRESSA_REAL, MINI_REAL]);
+});
+
+Deno.test("1.5.7: PAC e Mini ausentes -> o SEDEX sozinho", async () => {
+  const { resposta, corpo } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([sedexReal(["6", "16", "24", "0.3"])]),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map(semCarimbo), [EXPRESSA_REAL]);
+});
+
+Deno.test("1.5.7: com SÓ a chave sedex, o 17 que a API devolva não entra (a guarda de ID pedido continua)", async () => {
+  const { corpo } = await cotarSuperFrete({
+    config: { ...CONFIG_SF, enabled_shipping_methods: ["sedex"] },
+    responder: responderCom(RESPOSTA_REAL_D_CONTROLE),
+  });
+  assertEquals(corpo.options.map(semCarimbo), [EXPRESSA_REAL]);
+});
+
+Deno.test("1.5.7: para a SuperFrete a guarda é o ID, não o nome — serviço 1 com nome inesperado continua superfrete-1 (e o nome real aparece)", async () => {
+  const { corpo } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: responderCom([{ ...pacReal(["3", "10", "15", "0.1"]), name: "Correios Econômico" }, sedexReal(["3", "10", "15", "0.1"])]),
+  });
+  assertEquals(corpo.options.map(semCarimbo), [
+    { ...PAC_REAL, name: "Correios — Correios Econômico", servico: "Correios Econômico" },
+    EXPRESSA_REAL,
+  ]);
+});
+
+// --- Corpo enviado à API ------------------------------------------------------
+
+Deno.test("1.5.6 corpo: services '1,2,17' para [sedex,pac]; '1,17' só com pac; jadlog continua '3'; vazio continua todas", async () => {
+  const casos: Array<[string[], string]> = [
+    [["sedex", "pac"], "1,2,17"],
+    [["pac"], "1,17"],
+    [["PAC", "store-pickup"], "1,17"],
+    // Nome que existe no PROTÓTIPO de um objeto não vira serviço.
+    [["constructor", "pac"], "1,17"],
+    [["jadlog"], "3"],
+    [["sedex"], "2"],
+    [[], "1,2,3,17,31,33"],
+  ];
+  for (const [chaves, esperado] of casos) {
+    const { chamadas } = await cotarSuperFrete({ config: { ...CONFIG_SF, enabled_shipping_methods: chaves } });
+    assertEquals(JSON.parse(String(chamadas[0].init.body)).services, esperado);
+  }
+});
+
+Deno.test("1.5.6 seguro: options SEM seguro (0/false), sem mão própria e sem AR — mesmo com o carrinho de R$ 59,90", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [{ id: "p1", nome: "Tênis Fictício de Teste", preco_venda: 59.9, peso_kg: 0.1, largura_cm: 10, altura_cm: 6, comprimento_cm: 10, frete_gratis: false }],
+    cart: [{ product: { id: "p1", price: 59.9 }, quantity: 1 }],
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)).options, {
+    own_hand: false,
+    receipt: false,
+    insurance_value: 0,
+    use_insurance_value: false,
+  });
+});
+
+// REESCRITO CONSCIENTEMENTE na 1.5.7 ("ME sem mudança" deixou de ser
+// verdade): o corpo do ME passou ao formato OFICIAL da doc (`products` com
+// `id`, medidas, `weight` e `insurance_value` = valor do BANCO, que é o que a
+// etiqueta já declara — antes a cotação saía SEM o custo do seguro que a
+// etiqueta pagava) e o nome não vai mais: nome de produto não sai para a
+// transportadora. O filtro de NOME continua igual no modo legado.
+Deno.test("1.5.7 ME legado: corpo oficial (id, medidas, insurance_value do BANCO), SEM nome do produto, e a guarda de NOME ('Mini Envios' não passa pela chave pac)", async () => {
+  const correios = { name: "Correios" };
+  const { chamadas, corpo } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["sedex", "pac"] },
+    produtos: [{ id: "p1", nome: "Caneca", preco_venda: 49.9, peso_kg: 0.45, largura_cm: 12, altura_cm: 10, comprimento_cm: 20, frete_gratis: false }],
+    cart: [{ product: { id: "p1", price: 1 }, quantity: 2 }],
+    responder: responderCom([
+      { id: 1, name: "PAC", price: "26.41", delivery_time: 8, company: correios },
+      { id: 2, name: "SEDEX", price: "54.88", delivery_time: 4, company: correios },
+      { id: 17, name: "Mini Envios", price: "19.01", delivery_time: 11, company: correios },
+    ]),
+  });
+  assertEquals(chamadas[0].url, "https://melhorenvio.com.br/api/v2/me/shipment/calculate");
+  assertEquals(JSON.parse(String(chamadas[0].init.body)), {
+    from: { postal_code: "38500000" },
+    to: { postal_code: "01001000" },
+    products: [{ id: "p1", width: 12, height: 10, length: 20, weight: 0.45, insurance_value: 49.9, quantity: 2 }],
+  });
+  assertEquals(String(chamadas[0].init.body).includes("Caneca"), false);
+  const me = (id: number, name: string, price: number, deliveryDays: number, servico: string) => ({
+    id: `melhor-envio-${id}`, name, price, deliveryDays, provider: "melhor_envio",
+    transportadora: "Correios", servico, provedorRotulo: "Melhor Envio", seguroDeclarado: 99.8,
+  });
+  assertEquals(corpo.options.map(semCarimbo), [
+    me(1, "Entrega econômica", 26.41, 8, "PAC"),
+    me(2, "Entrega expressa", 54.88, 4, "SEDEX"),
+  ]);
+});
+
+Deno.test("1.5.7 Frenet legado: corpo de sempre (valor da nota pelo BANCO) e a guarda de NOME", async () => {
+  const { chamadas, corpo } = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA, shipping_provider: "frenet", enabled_shipping_methods: ["sedex", "pac"] },
+    credenciais: { frenet: { token: "tok-frenet-FICTICIO-777" } },
+    produtos: [{ id: "p1", nome: "Caneca", preco_venda: 49.9, peso_kg: 0.45, largura_cm: 12, altura_cm: 10, comprimento_cm: 20, frete_gratis: false }],
+    cart: [{ product: { id: "p1", price: 1 }, quantity: 2 }],
+    responder: responderCom({
+      ShippingSevicesArray: [
+        { Carrier: "Correios", ServiceCode: "04510", ServiceDescription: "PAC", ShippingPrice: "26.41", DeliveryTime: "8", Error: false },
+        { Carrier: "Correios", ServiceCode: "04014", ServiceDescription: "SEDEX", ShippingPrice: "54.88", DeliveryTime: "4", Error: false },
+        { Carrier: "Correios", ServiceCode: "04227", ServiceDescription: "Mini Envios", ShippingPrice: "19.01", DeliveryTime: "11", Error: false },
+      ],
+    }),
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)), {
+    SellerCEP: "38500000",
+    RecipientCEP: "01001000",
+    ShipmentInvoiceValue: 99.8,
+    ShippingItemArray: [{ Weight: 0.45, Length: 20, Height: 10, Width: 12, Quantity: 2 }],
+  });
+  const fr = (codigo: string, name: string, price: number, deliveryDays: number, servico: string) => ({
+    id: `frenet-${codigo}`, name, price, deliveryDays, provider: "frenet", transportadora: "Correios", servico, provedorRotulo: "Frenet",
+  });
+  assertEquals(corpo.options.map(semCarimbo), [
+    fr("04510", "Entrega econômica", 26.41, 8, "PAC"),
+    fr("04014", "Entrega expressa", 54.88, 4, "SEDEX"),
+  ]);
+});
+
+// --- Medidas -----------------------------------------------------------------
+
+const TENIS_FICTICIO = { id: "p-tenis", nome: "Tênis Fictício de Teste", preco_venda: 59.9, peso_kg: 0.1, largura_cm: 10, altura_cm: 6, comprimento_cm: 10, frete_gratis: false };
+
+Deno.test("1.5.6 medidas: tênis 0,1 kg e 10×10×6 sai EXATAMENTE assim (nunca 0,3 kg nem 15×15×15)", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [TENIS_FICTICIO],
+    cart: [{ product: { id: "p-tenis", price: 59.9 }, quantity: 1 }],
+    responder: responderCom(RESPOSTA_REAL_B_TENIS_6CM),
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)).products, [
+    { quantity: 1, weight: 0.1, height: 6, width: 10, length: 10 },
+  ]);
+});
+
+Deno.test("1.5.6 medidas: UM campo ruim (ausente, null, 0, negativo, NaN, texto, booleano) só troca AQUELE campo pelo padrão", async () => {
+  // [coluna do banco, campo no corpo da API, padrão daquele campo]
+  const CAMPOS: Array<[string, string, number]> = [
+    ["peso_kg", "weight", 0.3],
+    ["altura_cm", "height", 15],
+    ["largura_cm", "width", 15],
+    ["comprimento_cm", "length", 15],
+  ];
+  const ruins: Array<[string, unknown]> = [
+    ["ausente", undefined], ["null", null], ["zero", 0], ["negativo", -2], ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY], ["texto", "abc"], ["vazio", ""], ["booleano", true],
+  ];
+  for (const [coluna, noCorpo, padrao] of CAMPOS) {
+    for (const [rotulo, valor] of ruins) {
+      const { [coluna]: _original, ...semOCampo } = TENIS_FICTICIO as Record<string, unknown>;
+      const produto = rotulo === "ausente" ? semOCampo : { ...semOCampo, [coluna]: valor };
+      const { chamadas } = await cotarSuperFrete({
+        config: CONFIG_SF_PAC_SEDEX,
+        produtos: [produto],
+        cart: [{ product: { id: "p-tenis" }, quantity: 1 }],
+        responder: responderCom(RESPOSTA_REAL_B_TENIS_6CM),
+      });
+      const esperado = { quantity: 1, weight: 0.1, height: 6, width: 10, length: 10, [noCorpo]: padrao };
+      assertEquals(JSON.parse(String(chamadas[0].init.body)).products, [esperado], `${coluna} ${rotulo}`);
+    }
+  }
+});
+
+Deno.test("1.5.6 medidas: número em TEXTO vindo do banco ('6.5') vale como número; valor positivo pequeno não sobe", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [{ ...TENIS_FICTICIO, altura_cm: "6.5", peso_kg: 0.001, largura_cm: 1 }],
+    cart: [{ product: { id: "p-tenis" }, quantity: 1 }],
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)).products, [
+    { quantity: 1, weight: 0.001, height: 6.5, width: 1, length: 10 },
+  ]);
+});
+
+Deno.test("1.5.6 medidas: produto que o banco NÃO conhece -> todos os padrões (0,3 kg e 15 cm), como antes", async () => {
+  const { chamadas } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [],
+    cart: [{ product: { id: "p-sumiu", price: 10 }, quantity: 3 }],
+  });
+  assertEquals(JSON.parse(String(chamadas[0].init.body)).products, [
+    { quantity: 3, weight: 0.3, height: 15, width: 15, length: 15 },
+  ]);
+});
+
+// --- Cache do servidor -------------------------------------------------------
+//
+// REESCRITO CONSCIENTEMENTE na 1.5.7 (contrato §3 + R1-1). Até a 1.5.6 o cache
+// servia por PROVEDOR (+ a marca `cotacaoSf` na SF). Agora serve só com a
+// `assinaturaCotacao` ATUAL (hash de {contrato:3, revisaoConfig, insumos do
+// banco}) em TODA opção nacional, nenhuma parcial, e a marca na SF. A linha da
+// 1.5.6 (sem assinatura) é falta: uma recotação, que sobrescreve a mesma chave.
+
+/** A linha que a 1.5.4/1.5.5 gravou: sem a marca, preço COM seguro, sem o Mini. */
+const LINHA_SF_ANTIGA = [
+  { id: "superfrete-1", name: "Entrega econômica", price: 25.7, deliveryDays: 8, provider: "superfrete" },
+  { id: "superfrete-2", name: "Entrega expressa", price: 52.98, deliveryDays: 4, provider: "superfrete" },
+];
+
+Deno.test("1.5.7 cache: linha antiga da SuperFrete (sem assinatura) NÃO é servida — recota e o upsert SOBRESCREVE a mesma chave, com PAC e Mini", async () => {
+  const { corpo, chamadas, registro } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    cacheLookup: [{ options: LINHA_SF_ANTIGA }],
+    responder: responderCom(RESPOSTA_REAL_D_CONTROLE),
+  });
+  assertEquals(chamadas.length, 1);
+  assertEquals(corpo.options.map(semCarimbo), [PAC_REAL, EXPRESSA_REAL, MINI_REAL]);
+  const gravacoes = registro.upserts.filter((u: any) => u.tabela === "shipping_quotes_cache");
+  assertEquals(gravacoes.length, 1);
+  assertEquals(gravacoes[0].onConflict, "origin_cep,destination_cep,cart_hash");
+  // O cart_hash NÃO muda (a RPC o desmonta em produto:variante:qtd).
+  assertEquals(gravacoes[0].linha.cart_hash, getCartHash(CARRINHO_DE_TESTE));
+  // É ESTA lista que a RPC lê por `opt->>'id'`: cada id com o SEU preço.
+  assertEquals(gravacoes[0].linha.options, corpo.options);
+  assertEquals(gravacoes[0].linha.options.find((o: any) => o.id === "superfrete-17").price, 19.01);
+  assertEquals(gravacoes[0].linha.options.find((o: any) => o.id === "superfrete-1").price, 25.31);
+});
+
+Deno.test("1.5.7 cache: assinatura certa mas marca SF ERRADA (1, '2', ausente numa das opções) também não serve", async () => {
+  const assinatura = await assinaturaEsperada({ config: CONFIG_SF_PAC_SEDEX });
+  for (const linha of [
+    [{ ...PAC_REAL, cotacaoSf: 1 }],
+    [{ ...PAC_REAL, cotacaoSf: "2" }],
+    [PAC_REAL, { ...LINHA_SF_ANTIGA[1] }],
+  ]) {
+    const { chamadas } = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, cacheLookup: [{ options: assinar(linha, assinatura) }] });
+    assertEquals(chamadas.length, 1);
+  }
+});
+
+Deno.test("1.5.7 cache: linha da SuperFrete com a assinatura ATUAL e a marca é servida sem chamar a API; assinatura de OUTRA configuração não", async () => {
+  const assinatura = await assinaturaEsperada({ config: CONFIG_SF_PAC_SEDEX });
+  const linha = assinar([PAC_REAL, EXPRESSA_REAL], assinatura);
+  const servida = await cotarSuperFrete({ config: CONFIG_SF_PAC_SEDEX, cacheLookup: [{ options: linha }] });
+  assertEquals(servida.chamadas.length, 0);
+  assertEquals(servida.corpo.options, linha);
+  // A mesma linha, com a loja tendo trocado os métodos: a revisão muda e a linha é falta.
+  const outra = await cotarSuperFrete({ config: { ...CONFIG_SF_PAC_SEDEX, enabled_shipping_methods: ["sedex"] }, cacheLookup: [{ options: linha }] });
+  assertEquals(outra.chamadas.length, 1);
+});
+
+Deno.test("1.5.7 cache: ME também precisa da assinatura; local/grátis/retirada continuam valendo; parcial nunca serve", async () => {
+  const semAssinatura = await cotarSuperFrete({ config: { ...CONFIG_DA_LOJA }, cacheLookup: [{ options: OPCOES_ME_EM_CACHE }] });
+  assertEquals(semAssinatura.chamadas.length, 1);
+  const assinaturaMe = await assinaturaEsperada({ config: { ...CONFIG_DA_LOJA } });
+  const me = await cotarSuperFrete({ config: { ...CONFIG_DA_LOJA }, cacheLookup: [{ options: assinar(OPCOES_ME_EM_CACHE, assinaturaMe) }] });
+  assertEquals(me.chamadas.length, 0);
+  const assinatura = "a".repeat(64);
+  assertEquals(edge.cotacaoDoCacheServe(assinar([{ id: "frenet-04510", price: 26.41, deliveryDays: 8, provider: "frenet" }], assinatura), assinatura), true);
+  assertEquals(edge.cotacaoDoCacheServe(assinar([{ id: "frenet-04510", price: 26.41, deliveryDays: 8, provider: "frenet", cotacaoParcial: true }], assinatura), assinatura), false);
+  for (const dono of ["local", "free", "pickup"]) {
+    const propria = [{ id: "x", name: "x", price: 0, deliveryDays: 0, provider: dono }];
+    assertEquals(edge.cotacaoDoCacheServe(propria, assinatura), true, dono);
+    // Opção da loja ao lado de uma SuperFrete assinada e marcada serve; ao lado de uma antiga, não.
+    assertEquals(edge.cotacaoDoCacheServe([...propria, ...assinar([EXPRESSA_REAL], assinatura)], assinatura), true, dono);
+    assertEquals(edge.cotacaoDoCacheServe([...propria, LINHA_SF_ANTIGA[1]], assinatura), false, dono);
+  }
+  assertEquals(edge.cotacaoDoCacheServe([], assinatura), false);
+  assertEquals(edge.cotacaoDoCacheServe([{ id: "?", provider: "flat_fee" }], assinatura), false);
+});
+
+// --- Log estruturado ---------------------------------------------------------
+//
+// 1.5.7: o evento passou de `cotacao_superfrete` (uma linha, só a SF) para
+// `cotacao_frete`, UMA linha POR PROVEDOR ligado — com o mesmo piso de
+// privacidade: nunca token, e-mail, CEP, nome de produto, endereço nem o texto
+// de erro da transportadora.
+
+/** As linhas JSON do log estruturado da cotação. */
+function linhasDoLogEstruturado(saida: string): any[] {
+  return saida.split("\n").flatMap((linha) => {
+    if (!linha.startsWith("{")) return [];
+    try {
+      const obj = JSON.parse(linha);
+      return obj?.evento === "cotacao_frete" ? [obj] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+const CEP_EM_QUALQUER_FORMATO = /\b\d{5}-?\d{3}\b/;
+
+Deno.test("1.5.7 log: UMA linha JSON por provedor (miss) com serviços pedidos, retornados e opções finais", async () => {
+  const { saida } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    produtos: [TENIS_FICTICIO, { ...TENIS_FICTICIO, id: "p-sem-altura", altura_cm: null }],
+    cart: [
+      { product: { id: "p-tenis" }, quantity: 1 },
+      { product: { id: "p-sem-altura" }, quantity: 1 },
+      { product: { id: "p-fora-do-banco" }, quantity: 1 },
+    ],
+    responder: responderCom(RESPOSTA_REAL_D_CONTROLE),
+  });
+  const linhas = linhasDoLogEstruturado(saida);
+  assertEquals(linhas.length, 1);
+  assertEquals(linhas[0], {
+    evento: "cotacao_frete",
+    provedor: "superfrete",
+    modo: "legado",
+    resultado: "ok",
+    ambiente: "producao",
+    servicos_pedidos: ["1", "2", "17"],
+    retornados: [
+      { codigo: "1", preco: 25.31, preco_original: 25.31, prazo: 8, erro: false },
+      { codigo: "2", preco: 52.59, preco_original: 52.59, prazo: 4, erro: false },
+      { codigo: "17", preco: 19.01, preco_original: 19.01, prazo: 11, erro: false },
+    ],
+    opcoes_finais: [
+      { id: "superfrete-1", preco: 25.31, prazo: 8 },
+      { id: "superfrete-2", preco: 52.59, prazo: 4 },
+      { id: "superfrete-17", preco: 19.01, prazo: 11 },
+    ],
+    precos_mudados_pela_regra: 0,
+    cache: "miss",
+    contrato: null,
+    produtos_sem_cadastro: 1,
+    campos_padrao: 1,
+  });
+});
+
+Deno.test("1.5.7 log: serviço com erro aparece como erro:true; sandbox vira ambiente 'sandbox'", async () => {
+  const { saida } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    credenciais: { superfrete: { token: TOKEN_SF, sandbox: true, contact_email: EMAIL_SF } },
+    responder: responderCom([...RESPOSTA_REAL_B_TENIS_6CM, { id: 17, name: "Mini Envios", has_error: true, error: "Altura acima do permitido" }]),
+  });
+  const [linha] = linhasDoLogEstruturado(saida);
+  assertEquals(linha.ambiente, "sandbox");
+  assertEquals(linha.retornados.at(-1), { codigo: "17", preco: null, preco_original: null, prazo: null, erro: true });
+  assertEquals(linha.opcoes_finais, [{ id: "superfrete-1", preco: 25.31, prazo: 8 }, { id: "superfrete-2", preco: 52.59, prazo: 4 }]);
+});
+
+Deno.test("1.5.7 log: falha da API também deixa a linha (resultado 'falha', motivo classificado, sem opções), e o 503 continua", async () => {
+  const { resposta, saida } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    responder: () => new Response(JSON.stringify({ message: "falhou" }), { status: 500 }),
+  });
+  assertEquals(resposta.status, 503);
+  const linhas = linhasDoLogEstruturado(saida);
+  assertEquals(linhas.length, 1);
+  assertEquals(linhas[0].resultado, "falha");
+  assertEquals(linhas[0].motivo, "indisponivel");
+  assertEquals(linhas[0].retornados, []);
+  assertEquals(linhas[0].opcoes_finais, []);
+  assertEquals(linhas[0].cache, "miss");
+});
+
+Deno.test("1.5.7 log: cache HIT também deixa a linha (cache 'hit', sem chamar a API)", async () => {
+  const assinatura = await assinaturaEsperada({ config: CONFIG_SF_PAC_SEDEX });
+  const { saida, chamadas } = await cotarSuperFrete({
+    config: CONFIG_SF_PAC_SEDEX,
+    cacheLookup: [{ options: assinar([PAC_REAL, EXPRESSA_REAL], assinatura) }],
+  });
+  assertEquals(chamadas.length, 0);
+  const linhas = linhasDoLogEstruturado(saida);
+  assertEquals(linhas.length, 1);
+  assertEquals(linhas[0].cache, "hit");
+  assertEquals(linhas[0].servicos_pedidos, ["1", "2", "17"]);
+  assertEquals(linhas[0].retornados, []);
+  assertEquals(linhas[0].opcoes_finais, [{ id: "superfrete-1", preco: 25.31, prazo: 8 }, { id: "superfrete-2", preco: 52.59, prazo: 4 }]);
+});
+
+Deno.test("1.5.7 log: NUNCA token, e-mail, CEP, nome de produto nem endereço — nem no miss, nem no hit, nem na falha", async () => {
+  const produto = { ...TENIS_FICTICIO, nome: "Tênis Fictício Nome-Secreto-XYZ" };
+  const cart = [{ product: { id: "p-tenis", nome: produto.nome }, quantity: 1 }];
+  const assinatura = await assinaturaEsperada({ config: CONFIG_SF_PAC_SEDEX, produtos: [produto], cart });
+  const cenarios = [
+    { responder: responderCom(RESPOSTA_REAL_D_CONTROLE) },
+    // A API ECOA o token e o e-mail: a linha estruturada não leva nada disso
+    // (o texto de erro da API nunca entra nela, só o booleano), e o console
+    // redige o token E o e-mail de contato (1.5.7).
+    { responder: () => new Response(`erro ${TOKEN_SF} ${EMAIL_SF} 01001-000`, { status: 500 }) },
+    { cacheLookup: [{ options: assinar([PAC_REAL, EXPRESSA_REAL], assinatura) }] },
+  ];
+  for (const cenario of cenarios as any[]) {
+    const { saida } = await cotarSuperFrete({
+      config: CONFIG_SF_PAC_SEDEX,
+      produtos: [produto],
+      cart,
+      cep: "01001-000",
+      ...cenario,
+    });
+    const linhas = linhasDoLogEstruturado(saida);
+    assertEquals(linhas.length, 1);
+    const texto = JSON.stringify(linhas[0]);
+    for (const proibido of [TOKEN_SF, EMAIL_SF, "Nome-Secreto-XYZ", "Rua", "loja@"]) {
+      assertEquals(texto.includes(proibido), false, proibido);
+    }
+    assertEquals(CEP_EM_QUALQUER_FORMATO.test(texto), false, texto);
+    assertEquals(/token|email|e-mail|cep|endereco|nome/i.test(Object.keys(linhas[0]).join(",")), false);
+    // O console INTEIRO também não leva token, e-mail nem o nome do produto.
+    assertEquals(saida.includes(TOKEN_SF), false);
+    assertEquals(saida.includes(EMAIL_SF), false);
+    assertEquals(saida.includes("Nome-Secreto-XYZ"), false);
+  }
+});
+
+Deno.test("1.5.7 log: o ME também ganha a SUA linha (uma por provedor, não só a SF)", async () => {
+  const me = await cotarSuperFrete({
+    config: { ...CONFIG_DA_LOJA },
+    responder: responderCom([{ id: 1, name: "PAC", price: "25.50", delivery_time: 5, company: { name: "Correios" } }]),
+  });
+  const linhas = linhasDoLogEstruturado(me.saida);
+  assertEquals(linhas.map((l) => [l.provedor, l.resultado, l.servicos_pedidos]), [["melhor_envio", "ok", "legado"]]);
+});
+
+// --- Versão ------------------------------------------------------------------
+
+Deno.test("1.5.7 versão: VERSAO_DA_INTEGRACAO_SUPERFRETE é 1.5.7 e a marca do cache SF continua 2 (o corpo da SF não mudou; a assinatura invalida o resto)", () => {
+  assertEquals(edge.VERSAO_DA_INTEGRACAO_SUPERFRETE, "1.5.7");
+  assertEquals(edge.VERSAO_DA_COTACAO_SUPERFRETE, 2);
 });

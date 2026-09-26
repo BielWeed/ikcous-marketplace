@@ -1,15 +1,79 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { ID_RETIRADA_NA_LOJA } from "../_shared/retirada-na-loja.ts"
+import { textoSemSegredo } from './regua.ts'
+import {
+    cotarPeloProvedor,
+    FalhaDoProvedor,
+    precosMudadosPelaRegra,
+    ROTULO_DO_PROVEDOR,
+    type ResultadoDoProvedor,
+    servicosSalvos,
+    servicosSuperFrete,
+    tokenDe,
+    userAgentDoMelhorEnvio,
+} from './provedores.ts'
+import {
+    assinaturaDaCotacao,
+    calcularRevisaoConfig,
+    chavesDeTransportadora,
+    COLUNAS_DA_LOJA,
+    conjuntoLigado,
+    cotacaoDoCacheServe,
+    lerCredenciais,
+    lerEstrategiaNacionalDaLoja,
+    lerRevisao,
+    metodosDaLoja,
+    montarInsumos,
+} from './configuracao.ts'
+import { tratarAcao } from './acoes.ts'
+import { aplicarEstrategiaNacional, espelhoLegado, type EstrategiaNacional, subtotalDoCarrinho } from './estrategia-nacional.ts'
+
+// RELEASE 1.5.7 (vários provedores): a régua comum mora em `regua.ts`, os
+// adaptadores das transportadoras em `provedores.ts`, o modo legado/multi, a
+// revisão e a assinatura do cache em `configuracao.ts` e as ações de admin em
+// `acoes.ts`. Os nomes que os testes e as outras peças já importavam daqui
+// continuam exportados daqui.
+export {
+    aoCentavo,
+    buscarComTempo,
+    codigoDeServicoValido,
+    jsonCanonico,
+    medidaPositivaDoBanco,
+    nomeDaOpcao,
+    prazoDaApi,
+    precoDaApi,
+    textoSemSegredo,
+    valorUnitarioDoBanco,
+} from './regua.ts'
+export {
+    emailDeContatoValido,
+    erroDeTransportadoraEhCepInvalido,
+    FalhaDoProvedor,
+    MOTIVO_EMAIL_DE_CONTATO_INVALIDO,
+    MOTIVO_SEM_EMAIL_MELHOR_ENVIO,
+    MOTIVO_SEM_EMAIL_SUPERFRETE,
+    servicoCasaChave,
+    servicosSuperFrete,
+    SUPERFRETE_SERVICOS_POR_CHAVE,
+    SUPERFRETE_TODOS_OS_SERVICOS,
+    TEMPO_LIMITE_DO_PROVEDOR_MS,
+    urlDaCotacaoSuperFrete,
+    userAgentDaSuperFrete,
+    userAgentDoMelhorEnvio,
+    VERSAO_DA_COTACAO_SUPERFRETE,
+    VERSAO_DA_INTEGRACAO_SUPERFRETE,
+} from './provedores.ts'
+export { assinaturaDaCotacao, calcularRevisaoConfig, chavesDeTransportadora, conjuntoLigado, cotacaoDoCacheServe, lerEstrategiaNacionalDaLoja, montarInsumos } from './configuracao.ts'
+export { testarCredencial, validarServicos } from './acoes.ts'
+export { aplicarEstrategiaNacional, espelhoLegado, estrategiaNacionalDaLinha, subtotalDoCarrinho } from './estrategia-nacional.ts'
+export type { EstrategiaNacional } from './estrategia-nacional.ts'
+
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-export function erroDeTransportadoraEhCepInvalido(mensagem: string | null | undefined): boolean {
-    // Exige status 422 no prefixo e indicação explícita do CEP de destino.
-    return !!mensagem && mensagem.includes('retornou 422:') && mensagem.includes('cep_destino')
 }
 
 // Helper to calculate smart fallback price based on Brazilian CEP regions
@@ -196,6 +260,53 @@ async function gravarCotacao(gravar: () => PromiseLike<unknown>): Promise<unknow
 }
 
 /**
+ * Gravação da cotação em `shipping_quotes_cache` — `.upsert` de verdade
+ * (index-880 fechado pela 20261166000000).
+ *
+ * A migration `20261166000000_o_cache_de_cotacao_nao_guarda_repeticao.sql`
+ * criou a UNIQUE (origin_cep, destination_cep, cart_hash) que este
+ * `onConflict` mira: a gravação ficou ATÔMICA — dois misses simultâneos do
+ * MESMO carrinho agora disputam a mesma constraint e um dos dois vira
+ * UPDATE da linha do outro, nunca mais INSERT duplicado. Este código só
+ * pode ser PUBLICADO depois da migration aplicada no banco da loja (o
+ * aviso de ordem também mora no cabeçalho da migration).
+ *
+ * E se rodar antes, num ambiente ainda SEM a UNIQUE: NÃO é insert
+ * silencioso nem duplicado. O Postgres recusa um ON CONFLICT sem
+ * constraint correspondente com o erro 42P10 ("no unique constraint
+ * matching the ON CONFLICT specification"), o PostgREST devolve isso como
+ * `{ error }` sem rejeitar a promessa, e `gravarCotacao` captura o erro e
+ * o devolve como valor. Daí em diante é o caminho de falha-de-gravação de
+ * sempre: o log sai com status 'error' ("Falha ao gravar a cotação: …"),
+ * as opções cujo preço o servidor resolve SEM cache seguem na resposta
+ * (`precoResolvidoSemCache` — hoje, a entrega local) e, se TODAS as opções
+ * dependiam da linha gravada, o edge recusa com 503 para a cliente
+ * reapertar "calcular". Quem perde é a gravação no cache (e com ela o
+ * frete de transportadora); a cotação que não depende do cache continua
+ * chegando ao usuário.
+ */
+async function salvarCotacaoNoCache(
+    supabaseClient: any,
+    chave: { originCep: string; destinationCep: string; cartHash: string; options: unknown },
+): Promise<unknown | null> {
+    // `created_at` VAI no corpo (release 1.5.4): no conflito o upsert vira
+    // UPDATE só das colunas enviadas. Sem ele, a linha recotada guardava o
+    // `created_at` VELHO — e o gatilho `limpar_cotacoes_fora_da_janela`
+    // (AFTER INSERT/UPDATE, apaga > 2 h) apagava a linha que acabara de ser
+    // atualizada; a RPC do pedido não achava a cotação ("expirou") depois de
+    // a cliente já ter visto o preço.
+    return await gravarCotacao(() =>
+        supabaseClient.from('shipping_quotes_cache').upsert({
+            origin_cep: chave.originCep,
+            destination_cep: chave.destinationCep,
+            cart_hash: chave.cartHash,
+            options: chave.options,
+            created_at: new Date().toISOString(),
+        }, { onConflict: 'origin_cep,destination_cep,cart_hash' }),
+    )
+}
+
+/**
  * Texto legível de um erro que pode ser exceção (`Error`) ou objeto do
  * PostgREST (`{ message, code }`) — as duas formas que `gravarCotacao`
  * devolve. Só vai para `shipping_calculation_logs`, que é tabela de admin;
@@ -254,37 +365,100 @@ function mensagemDoErro(erro: unknown): string {
  * de taxa fixa saiu) e, com a emenda, a RPC os RECUSA em vez de cobrar a
  * taxa da loja — mantê-los neste classificador seria deixá-los vivos numa
  * resposta de falha de cache para o pedido morrer no último clique.
+ *
+ * RETIRADA NA LOJA (20261169000000): a RPC ganhou o ramo
+ *   ELSIF p_shipping_option_id = 'store-pickup'   -> frete 0
+ * ANTES do SELECT no cache — a retirada também é resolvida sem cache (e só
+ * pelo id EXATO: ' store-pickup' é recusado pela RPC).
  */
 export function precoResolvidoSemCache(id: unknown): boolean {
     if (typeof id !== 'string') return false
-    return id === 'local-delivery'
+    return id === 'local-delivery' || id === ID_RETIRADA_NA_LOJA
 }
 
 /**
- * LAUDO 31/08 (D2): fetch com TEMPO DE ESPERA. Até hoje as quatro chamadas
- * a Melhor Envio/Frenet deste arquivo penduravam sem limite — o DNS do ME
- * já caiu de verdade nesta máquina (#356), e uma transportadora lenta
- * segurava a cotação (e o cliente) indefinidamente. O AbortController
- * corta no tempo; quem chama vê AbortError como qualquer falha de rede e
- * cai na contingência que já existe.
- *
- * O `buscar` entra como parâmetro (o fetch de fora, injetável) para o
- * index_test.ts provar o aborto com um fetch falso — em produção nada
- * muda: chama-se com o `fetch` de sempre.
+ * RETIRADA NA LOJA (release 1.5.3): a opção que a cliente da área local vê
+ * ao lado da entrega local. Contrato: id `store-pickup` (o mesmo token da
+ * chave que a loja liga em `enabled_shipping_methods`), preço 0, SEM prazo
+ * inventado (`deliveryDays: 0` — a tela troca o prazo por "Aguarde a
+ * confirmação da loja para retirar") e o endereço físico REAL da loja
+ * (`store_address`, aparado). Sem endereço, não existe retirada: `null`,
+ * nunca endereço inventado — a RPC recusa o mesmo caso.
  */
-export async function buscarComTempo(
-    buscar: typeof fetch,
-    url: string,
-    init: RequestInit = {},
-    tempoMs = 15000,
-): Promise<Response> {
-    const controle = new AbortController()
-    const despertar = setTimeout(() => controle.abort(), tempoMs)
-    try {
-        return await buscar(url, { ...init, signal: controle.signal })
-    } finally {
-        clearTimeout(despertar)
+export function opcaoDeRetirada(enderecoDaLoja: unknown) {
+    if (typeof enderecoDaLoja !== 'string') return null
+    const endereco = enderecoDaLoja.trim()
+    if (endereco.length === 0) return null
+    return {
+        id: ID_RETIRADA_NA_LOJA,
+        name: 'Retirar na loja',
+        price: 0,
+        deliveryDays: 0,
+        provider: 'pickup',
+        pickupAddress: endereco,
     }
+}
+
+/**
+ * O endereço físico da loja, lido numa consulta SEPARADA e TOLERANTE. Não
+ * entra no select principal de `store_config` de propósito: a coluna nasce
+ * na migration 20261167000000 e loja sem ela receberia erro no select
+ * INTEIRO — a cotação de todo mundo cairia por causa de uma opção nova.
+ * Aqui, erro do PostgREST ou exceção = "sem endereço" = sem retirada (a
+ * entrega local e as transportadoras seguem iguais). Só é chamada quando a
+ * loja habilitou a retirada e o destino é local.
+ */
+async function lerEnderecoDaLoja(supabaseClient: any): Promise<string | null> {
+    try {
+        const { data, error } = await supabaseClient
+            .from('store_config')
+            .select('store_address')
+            .eq('id', 1)
+            .maybeSingle()
+        if (error) {
+            console.error('[calculate-shipping] Endereço da loja indisponível; retirada não oferecida:', error.message ?? error)
+            return null
+        }
+        return typeof data?.store_address === 'string' ? data.store_address : null
+    } catch (erro) {
+        console.error('[calculate-shipping] Falha ao ler o endereço da loja; retirada não oferecida:', mensagemDoErro(erro))
+        return null
+    }
+}
+
+/**
+ * As opções da cliente LOCAL: a entrega local de sempre e, DEPOIS dela, a
+ * retirada na loja quando os três requisitos valem (chave habilitada +
+ * endereço físico + destino local — este último garantido por quem chama).
+ * A ordem importa pouco para a tela (a escolha da retirada é sempre da
+ * cliente, nunca automática), mas a entrega local na frente mantém a
+ * resposta de hoje como prefixo exato da nova.
+ *
+ * `aceitaRetirada` é o SINAL do app que entende a retirada (1.5.3+): o PWA
+ * atualiza por "prompt", então o app 1.5.2 segue no ar — e a auto-seleção
+ * dele (mais barata; empate, menor prazo) escolheria a retirada R$ 0 sozinha.
+ * Sem o sinal, a resposta é exatamente a de antes (e o endereço nem é lido).
+ */
+async function opcoesDaClienteLocal(
+    supabaseClient: any,
+    enabledMethods: unknown,
+    precoDaEntregaLocal: number,
+    aceitaRetirada: boolean,
+) {
+    const opcoes: any[] = [
+        {
+            id: 'local-delivery',
+            name: 'Entrega Local',
+            price: precoDaEntregaLocal,
+            deliveryDays: 1,
+            provider: 'local'
+        }
+    ]
+    if (aceitaRetirada && Array.isArray(enabledMethods) && enabledMethods.includes(ID_RETIRADA_NA_LOJA)) {
+        const retirada = opcaoDeRetirada(await lerEnderecoDaLoja(supabaseClient))
+        if (retirada) opcoes.push(retirada)
+    }
+    return opcoes
 }
 
 /**
@@ -320,6 +494,7 @@ async function respostaSemCotacaoDeFora(
         cart: unknown
         motivo: string
     } | null,
+    revisaoConfig: string | null = null,
 ): Promise<Response> {
     if (log) {
         const logEmVoo = Promise.resolve(
@@ -337,35 +512,9 @@ async function respostaSemCotacaoDeFora(
         await logEmVoo.catch(() => {})
     }
     return new Response(
-        JSON.stringify({ options: [], cotacaoIncompleta: false }),
+        JSON.stringify(revisaoConfig ? { options: [], cotacaoIncompleta: false, revisaoConfig } : { options: [], cotacaoIncompleta: false }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
-}
-
-/**
- * Nome de serviço de transportadora em linguagem de gente (pedido do
- * Gabriel, 02/09: ".Package" não explica nada para o cliente).
- *
- * A API do Melhor Envio manda o nome COMERCIAL do serviço ("SEDEX",
- * ".Package", ".Package Centralizado") e a tela mostrava esse nome cru
- * com o sufixo "(Melhor Envio)" — jargão de integrador. A tradução cobre
- * os nomes conhecidos; o que não é conhecido volta LIMPO (sem o sufixo),
- * porque o sufixo dizia com quem a LOJA integrou, assunto do lojista, e
- * o cliente só decide por preço e prazo (que já aparecem no card).
- *
- * A ordem importa: ".Package Centralizado" contém "package" — a checagem
- * de "centralizado" vem antes para distinguir a modalidade; e o PAC dos
- * Correios casa por fronteira de palavra (`\bpac\b`), que NÃO casa no
- * "pac" embutido em ".package".
- */
-export function nomeAmigavelDoServico(service: { name?: string }): string {
-    const nome = String(service?.name || '').trim()
-    const low = nome.toLowerCase()
-    if (low.includes('sedex')) return 'Entrega expressa'
-    if (low.includes('centralizado')) return 'Entrega econômica (centro de distribuição)'
-    if (low.includes('package') || /\bpac\b/.test(low)) return 'Entrega econômica'
-    if (low.includes('.com') || low.includes('express')) return 'Entrega expressa'
-    return nome
 }
 
 // Helper to check if destination is a local CEP
@@ -502,6 +651,87 @@ const isTesting = Deno.mainModule.endsWith("_test.ts") || Deno.mainModule.endsWi
  */
 export type CalculateShippingDeps = {
     supabase?: any
+    /**
+     * Costura da checagem de admin do `test_credentials` (release 1.5.4) —
+     * em produção é `verifyIsAdmin` de sempre; o teste injeta o veredito
+     * sem sair para a rede.
+     */
+    verificarAdmin?: (authHeader: string | null) => Promise<boolean>
+}
+
+/** Sinal interno: a revisão mudou durante a cotação e ela deve ser refeita UMA vez (R3-2). */
+const RECOTAR = Symbol('recotar')
+
+const respostaJson = (conteudo: Record<string, unknown>, status = 200) =>
+    new Response(JSON.stringify(conteudo), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
+/** O que a linha do log estruturado sabe dos serviços pedidos, com ou sem a cotação. */
+function servicosPedidosParaOLog(provider: string, credenciais: any, chaves: string[]): string[] | 'legado' {
+    const salvos = servicosSalvos(provider, credenciais)
+    if (salvos) return salvos
+    if (provider === 'superfrete') return servicosSuperFrete(chaves).split(',').filter(Boolean)
+    return 'legado'
+}
+
+/**
+ * LOG ESTRUTURADO da cotação (release 1.5.7): UMA linha
+ * `console.log(JSON.stringify(...))` POR PROVEDOR ligado, em toda cotação
+ * (falta ou acerto do cache, deu certo ou não). NUNCA token, e-mail, nome de
+ * produto, endereço, CEP nem o texto de erro da transportadora — só códigos,
+ * preços, prazos, contagens e o motivo classificado.
+ */
+function linhaDoLogDaCotacao(entrada: {
+    provider: string
+    modo: 'legado' | 'multi'
+    credenciais: any
+    chaves: string[]
+    resultado: ResultadoDoProvedor | null
+    falha: FalhaDoProvedor | null
+    opcoesFinais: any[]
+    cache: 'hit' | 'miss'
+    contrato: unknown
+    produtosSemCadastro: number
+    camposPadrao: number
+}) {
+    const retornados = entrada.resultado?.retornados ?? []
+    return {
+        evento: 'cotacao_frete',
+        provedor: entrada.provider,
+        modo: entrada.modo,
+        resultado: entrada.falha ? 'falha' : 'ok',
+        motivo: entrada.falha ? entrada.falha.motivo : undefined,
+        ambiente: entrada.credenciais?.sandbox === true ? 'sandbox' : 'producao',
+        servicos_pedidos: entrada.resultado?.servicosPedidos ??
+            servicosPedidosParaOLog(entrada.provider, entrada.credenciais, entrada.chaves),
+        retornados: retornados.map((r) => ({
+            codigo: r.codigo,
+            preco: r.preco,
+            preco_original: r.preco_original,
+            prazo: r.prazo,
+            erro: r.erro,
+        })),
+        opcoes_finais: entrada.opcoesFinais
+            .filter((opcao) => opcao?.provider === entrada.provider)
+            .map((opcao) => ({
+                id: typeof opcao?.id === 'string' ? opcao.id : null,
+                preco: typeof opcao?.price === 'number' ? opcao.price : null,
+                prazo: typeof opcao?.deliveryDays === 'number' ? opcao.deliveryDays : null,
+            })),
+        precos_mudados_pela_regra: precosMudadosPelaRegra(retornados),
+        // R3-7: se o ME saiu com o contato DA LOJA ou com o recuo legado (nunca o e-mail em si).
+        ua_contato: entrada.provider === 'melhor_envio' ? userAgentDoMelhorEnvio(entrada.credenciais).contato : undefined,
+        cache: entrada.cache,
+        contrato: typeof entrada.contrato === 'number' && Number.isFinite(entrada.contrato) ? entrada.contrato : null,
+        produtos_sem_cadastro: entrada.produtosSemCadastro,
+        campos_padrao: entrada.camposPadrao,
+    }
+}
+
+/** A linha do histórico (`shipping_calculation_logs`), materializada numa Promise de verdade. */
+function gravarHistorico(supabaseClient: any, linha: Record<string, unknown>): Promise<unknown> {
+    const emVoo = Promise.resolve(supabaseClient.from('shipping_calculation_logs').insert(linha))
+    fireAndForget(emVoo, 'Failed to log shipping calculation:')
+    return emVoo.catch(() => {})
 }
 
 export async function handler(req: Request, deps: CalculateShippingDeps = {}): Promise<Response> {
@@ -510,807 +740,440 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         return new Response('ok', { headers: corsHeaders })
     }
 
-    // FRETE V2 (03/09/2026): as variáveis `taxaDaLoja`/`taxaDaLojaConfigurada`
-    // que viviam aqui alimentavam a contingência do `catch` de topo — que
-    // devolvia a taxa fixa com id `flat-fee-fallback`. Ela saiu junto com o
-    // caminho de taxa fixa: fora da cidade é SÓ cotação real de
-    // transportadora, e exceção inesperada agora é falha fechado (500), sem
-    // preço nenhum.
-
+    // FRETE V2 (03/09/2026): a contingência de preço do `catch` de topo saiu
+    // junto com o caminho de taxa fixa — exceção inesperada é falha fechada
+    // (500), sem preço nenhum.
     try {
         const body = await req.json()
-        const { cep, cart, action } = body
+        const { cep, cart, action } = body ?? {}
+        // Só o booleano `true` EXATO: "true", 1, objeto… = app que não pediu.
+        const aceitaRetirada = body?.aceitaRetirada === true
 
-        // Initialize Supabase clients
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
         const supabaseServiceRole = readKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
         const supabaseClient = deps.supabase ?? createClient(supabaseUrl, supabaseServiceRole)
 
-        // ROUTE: test_credentials
-        if (action === 'test_credentials') {
-            const authHeader = req.headers.get('Authorization')
-            const isAdmin = await verifyIsAdmin(authHeader, supabaseUrl, supabaseServiceRole)
-            
-            if (!isAdmin) {
-                return new Response(
-                    JSON.stringify({ error: 'Não autorizado: Apenas administradores podem testar credenciais.' }),
-                    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                )
-            }
-            
-            const { provider, credentials } = body
-            if (!provider || !credentials) {
-                return new Response(
-                    JSON.stringify({ error: 'Provedor e credenciais são obrigatórios' }),
-                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                )
-            }
-            
-            const token = credentials.token
-            if (!token) {
-                return new Response(
-                    JSON.stringify({ error: 'Token de acesso não informado.' }),
-                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                )
-            }
-
-            try {
-                if (provider === 'melhor_envio') {
-                    const isSandbox = credentials.sandbox === true
-                    const baseUrl = isSandbox 
-                        ? 'https://sandbox.melhorenvio.com.br' 
-                        : 'https://melhorenvio.com.br'
-                        
-                    const response = await buscarComTempo(fetch, `${baseUrl}/api/v2/me`, {
-                        headers: {
-                            'Accept': 'application/json',
-                            'Authorization': `Bearer ${token}`,
-                            'User-Agent': 'IKCOUS-Marketplace-Integration (contato@ikcous.com.br)'
-                        }
-                    })
-                    
-                    if (response.ok) {
-                        const userData = await response.json()
-                        return new Response(
-                            JSON.stringify({ success: true, message: `Conectado à conta: ${userData.name || 'Melhor Envio'}` }),
-                            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                        )
-                    } else {
-                        const errText = await response.text()
-                        return new Response(
-                            JSON.stringify({ success: false, error: `Melhor Envio (Status ${response.status}): ${errText}` }),
-                            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                        )
-                    }
-                } else if (provider === 'frenet') {
-                    const response = await buscarComTempo(fetch, 'https://api.frenet.com.br/shipping/quote', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'token': token
-                        },
-                        body: JSON.stringify({
-                            SellerCEP: '38500000',
-                            RecipientCEP: '38500000',
-                            ShipmentInvoiceValue: 10,
-                            ShippingItemArray: [
-                                {
-                                    Weight: 0.1,
-                                    Length: 10,
-                                    Height: 10,
-                                    Width: 10,
-                                    Quantity: 1
-                                }
-                            ]
-                        })
-                    })
-                    
-                    if (response.ok) {
-                        const data = await response.json()
-                        const services = data.ShippingSevicesArray || []
-                        const firstService = services[0]
-                        
-                        if (firstService?.Error && firstService.Msg === 'Token inválido') {
-                            return new Response(
-                                JSON.stringify({ success: false, error: 'Frenet retornou: Token inválido' }),
-                                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                            )
-                        }
-                        
-                        return new Response(
-                            JSON.stringify({ success: true, message: 'Conexão com a Frenet estabelecida com sucesso.' }),
-                            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                        )
-                    } else {
-                        const errText = await response.text()
-                        return new Response(
-                            JSON.stringify({ success: false, error: `Frenet (Status ${response.status}): ${errText}` }),
-                            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                        )
-                    }
-                } else {
-                    return new Response(
-                        JSON.stringify({ error: `Provedor de frete desconhecido: ${provider}` }),
-                        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                    )
-                }
-            } catch (err) {
-                return new Response(
-                    JSON.stringify({ success: false, error: `Falha de rede: ${err.message}` }),
-                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                )
-            }
-        }
+        // Ações de admin (e a pública `revisao_config_frete`) — TODAS antes do
+        // `if (!cep)`. Ver `acoes.ts`.
+        const respostaDaAcao = await tratarAcao(action, {
+            body,
+            supabase: supabaseClient,
+            cabecalhos: corsHeaders,
+            ehAdmin: () => {
+                const authHeader = req.headers.get('Authorization')
+                return deps.verificarAdmin
+                    ? deps.verificarAdmin(authHeader)
+                    : verifyIsAdmin(authHeader, supabaseUrl, supabaseServiceRole)
+            },
+        })
+        if (respostaDaAcao) return respostaDaAcao
 
         // ROUTE: calculate (default flow)
-        if (!cep) {
-            return new Response(
-                JSON.stringify({ error: 'CEP de destino é obrigatório' }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
+        if (!cep) return respostaJson({ error: 'CEP de destino é obrigatório' }, 400)
+        const cleanCep = String(cep).replace(/\D/g, '')
+        if (cleanCep.length !== 8) return respostaJson({ error: 'CEP inválido' }, 400)
 
-        // Clean CEP (only digits)
-        const cleanCep = cep.replace(/\D/g, '')
-        if (cleanCep.length !== 8) {
-            return new Response(
-                JSON.stringify({ error: 'CEP inválido' }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        // 1. Fetch public store configuration
-        const { data: storeConfig, error: configError } = await supabaseClient
-            .from('store_config')
-            .select('origin_cep, shipping_provider, shipping_fee, free_shipping_min, enabled_shipping_methods, shipping_coverage, local_delivery_fee, local_cep_range')
-            .eq('id', 1)
-            .single()
-
-        if (configError || !storeConfig) {
-            console.error('Error fetching store config:', configError)
-            throw new Error('Falha ao obter configuração da loja')
-        }
-
-        const provider = storeConfig.shipping_provider || 'flat_fee'
-
-        // Falha fechado: sem CEP de origem, a função não calcula nada. Ver
-        // `validarOrigemEFrete` acima — a exigência de taxa fixa que vivia
-        // aqui saiu junto com o caminho de taxa fixa (frete v2, 03/09/2026).
-        const erroDeConfiguracao = validarOrigemEFrete(storeConfig.origin_cep)
-        if (erroDeConfiguracao) {
-            throw new Error(erroDeConfiguracao)
-        }
-
-        const originCep = storeConfig.origin_cep.replace(/\D/g, '')
-        const enabledMethods = storeConfig.enabled_shipping_methods || ['sedex', 'pac']
-        
-        const shippingCoverage = storeConfig.shipping_coverage || 'national'
-        const localDeliveryFee = Number(storeConfig.local_delivery_fee ?? 10)
-        const localCepRange = storeConfig.local_cep_range || ''
-
-        // 2. Check if destination is local CEP
-        const isLocal = isLocalCep(originCep, cleanCep, localCepRange)
-
-        // 2. Resolve products in cart securely using the database
-        const productIds = cart && Array.isArray(cart) 
-            ? cart.map((item: any) => item.product?.id || item.productId).filter(Boolean)
-            : []
-
-        let dbProducts: any[] = []
-        if (productIds.length > 0) {
-            const { data: prods, error: prodsError } = await supabaseClient
-                .from('produtos')
-                .select('id, nome, preco_venda, peso_kg, largura_cm, altura_cm, comprimento_cm, frete_gratis')
-                .in('id', productIds)
-
-            if (prodsError) {
-                console.error('[calculate-shipping] Error querying database products:', prodsError)
-            } else {
-                dbProducts = prods || []
-            }
-        }
-
-        const dbProductsMap = new Map(dbProducts.map(p => [p.id, p]))
-
-        // FRETE V2 (revisão A1, 03/09/2026): a marcação `produtos.frete_gratis`
-        // vale SÓ dentro do preset "por_produto" — modelo EXCLUSIVO de presets:
-        // a estratégia gravada em `store_config.free_shipping_min` é a ÚNICA
-        // que vale, aqui e na RPC do pedido (migration 20261081000000) e no
-        // carrinho (CartContext). Fonte única do predicado:
-        // `src/lib/presets-de-frete-gratis.ts` (`presetDoConfig` — `min < 0`
-        // = por_produto; a sentinela é FRETE_GRATIS_POR_PRODUTO = -1). Esta
-        // edge roda em Deno com imports de URL e não alcança o `src/` do app,
-        // então o predicado MÍNIMO é replicado com a fonte apontada — lição
-        // #53: regra em dois lugares diverge; se a sentinela mudar lá, muda
-        // aqui na mesma rodada (o teste irmão em index_test.ts prende os dois
-        // lados).
-        const presetPorProduto = Number(storeConfig.free_shipping_min ?? 0) < 0
-
-        // 3. Check if all items in the cart are free shipping — SÓ no preset
-        // por_produto. Fora dele (desligado/sempre/acima_de_valor) TODOS os
-        // itens são tratados como não-grátis: antes este `allFree` honrava a
-        // marcação INCONDICIONALMENTE e devolvia "Frete Grátis (Promoção)"
-        // R$ 0 para loja com o grátis desligado — preço que a RPC do pedido
-        // NÃO honrava (ela cobra a entrega local real no último clique).
-        const allFree = presetPorProduto && cart && Array.isArray(cart) && cart.length > 0 && cart.every((item: any) => {
-            const prodId = item.product?.id || item.productId
-            const dbProd = dbProductsMap.get(prodId)
-            return !!(dbProd?.frete_gratis ?? item.product?.freeShipping)
-        })
-
-        // Se a cobertura da loja é só local, o CEP de fora não é atendido.
-        if (shippingCoverage === 'local') {
-            if (!isLocal) {
-                return new Response(
-                    JSON.stringify({ error: 'Esta loja realiza apenas entregas locais na sua região.' }),
-                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                )
-            }
-            return new Response(
-                JSON.stringify({
-                    options: [
-                        {
-                            id: 'local-delivery',
-                            name: 'Entrega Local',
-                            price: allFree ? 0 : localDeliveryFee,
-                            deliveryDays: 1,
-                            provider: 'local'
-                        }
-                    ],
-                    cotacaoIncompleta: false
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        // Cliente LOCAL recebe SÓ a Entrega Local — mesmo com a loja
-        // atendendo o Brasil inteiro (pedido do Gabriel, 02/09: na foto do
-        // carrinho, um CEP da própria cidade listava SEDEX e .Package ao
-        // lado da Entrega Local; o cliente da cidade não escolhe
-        // transportadora nacional, e a cotação dela não custa de graça).
-        // Este retorno cedo tem que vir ANTES da cotação de transportadora
-        // e do cache — a partir daqui, `isLocal` é invariantemente falso em
-        // todo o resto do handler.
-        //
-        // R3 da revisão: o caminho que existia antes (national+isLocal até
-        // o fim do handler) GRAVAVA linha no `shipping_calculation_logs` —
-        // era a cotação local que aparecia no "Histórico de Cotações" do
-        // painel. O retorno cedo mantém esse registro (mesmo formato dos
-        // outros, provider 'local'), senão a lojista perde a janela de
-        // todas as cotações locais do dia.
-        if (isLocal) {
-            fireAndForget(
-                supabaseClient.from('shipping_calculation_logs').insert({
-                    origin_cep: originCep,
-                    destination_cep: cleanCep,
-                    provider: 'local',
-                    cart_items: cart,
-                    response_time_ms: 0,
-                    status: 'success'
-                }),
-                'Failed to log local quote:',
-            )
-            return new Response(
-                JSON.stringify({
-                    options: [
-                        {
-                            id: 'local-delivery',
-                            name: 'Entrega Local',
-                            price: allFree ? 0 : localDeliveryFee,
-                            deliveryDays: 1,
-                            provider: 'local'
-                        }
-                    ],
-                    cotacaoIncompleta: false
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        if (allFree) {
-            console.log('[calculate-shipping] All cart items have free shipping. Returning 0 freight cost.')
-            return new Response(
-                JSON.stringify({
-                    options: [
-                        {
-                            id: 'free-shipping-promo',
-                            name: 'Frete Grátis (Promoção)',
-                            price: 0,
-                            deliveryDays: 3,
-                            provider: 'free'
-                        }
-                    ],
-                    cotacaoIncompleta: false
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        // 4. SEM COTAÇÃO DE FORA quando não há transportadora real para cotar.
-        //
-        // FRETE V2 (03/09/2026, ordem do dono — "entrega fixa não faz
-        // sentido existir, parece opção duplicada"): o caminho de TAXA FIXA
-        // que vivia aqui (`getFlatFeeResponse`, opção "Entrega Padrão" com o
-        // valor de `store_config.shipping_fee`) foi REMOVIDO. Fora da cidade
-        // o preço vem SÓ da transportadora conectada (Melhor Envio/Frenet).
-        // Restam dois casos sem o que cotar de verdade:
-        //
-        //   - carrinho ausente/vazio: nada para colocar na balança da
-        //     cotação (a transportadora cobra por item). Nada de log de
-        //     erro: não há nada para a lojista consertar.
-        //   - provedor `flat_fee` remanescente no config de loja antiga
-        //     (ou ausente — o default lá em cima): tratado como "sem
-        //     cotação de fora", sem explodir. O motivo vai para o histórico
-        //     (log de erro) — a única janela da lojista para o frete.
-        //
-        // A resposta é a lista VAZIA com `cotacaoIncompleta: false` — a
-        // mesma forma que o carrinho já consumia para "não há opções"
-        // (ver `respostaSemCotacaoDeFora`): nenhum preço inventado, nenhum
-        // spinner eterno.
-        if (!cart || !Array.isArray(cart) || cart.length === 0) {
-            return await respostaSemCotacaoDeFora(supabaseClient, null)
-        }
-        if (provider === 'flat_fee') {
-            return await respostaSemCotacaoDeFora(supabaseClient, {
-                originCep,
-                destinationCep: cleanCep,
-                provider,
-                cart,
-                motivo: 'Loja sem transportadora conectada para entregas fora da cidade (o frete de taxa fixa foi descontinuado). Conecte Melhor Envio ou Frenet para cotar o frete nacional.',
-            })
-        }
-
-        // ── CACHE LOOKUP ──
-        const cartHash = getCartHash(cart)
-        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-        
-        const { data: cachedQuote, error: cacheQueryError } = await supabaseClient
-            .from('shipping_quotes_cache')
-            .select('options')
-            .eq('origin_cep', originCep)
-            .eq('destination_cep', cleanCep)
-            .eq('cart_hash', cartHash)
-            .gt('created_at', twoHoursAgo)
-            .maybeSingle()
-
-        if (cachedQuote && !cacheQueryError && cachedQuote.options) {
-            console.log(`[calculate-shipping] Caching hit for CEP: ${cleanCep}`)
-            
-            // Log cache hit asynchronously (fire and forget)
-            fireAndForget(
-                supabaseClient.from('shipping_calculation_logs').insert({
-                    origin_cep: originCep,
-                    destination_cep: cleanCep,
-                    provider: `${provider} (Cache)`,
-                    cart_items: cart,
-                    response_time_ms: 0,
-                    status: 'success'
-                }),
-                'Failed to log cache hit:',
-            )
-
-            return new Response(
-                JSON.stringify({ options: cachedQuote.options, cotacaoIncompleta: false }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        // 5. Fetch carrier credentials securely
-        const { data: credsData, error: credsError } = await supabaseClient
-            .from('store_shipping_credentials')
-            .select('credentials')
-            .eq('provider', provider)
-            .maybeSingle()
-
-        if (credsError || !credsData) {
-            // FRETE V2 (03/09/2026): este ramo devolvia a taxa fixa como
-            // "Entrega Padrão" (`getFlatFeeResponse`) — o plano B que fazia
-            // loja SEM transportadora conectada aparecer cobrando fora da
-            // cidade. O plano B morreu com o flat_fee: sem credencial não há
-            // cotação de fora, e a resposta honesta é a lista vazia com o
-            // motivo no histórico para a lojista conectar.
-            console.warn(
-                "Credentials not found for provider:",
-                provider,
-                "— responding with no out-of-city options (flat fee is gone). Error:",
-                credsError
-            )
-            return await respostaSemCotacaoDeFora(supabaseClient, {
-                originCep,
-                destinationCep: cleanCep,
-                provider,
-                cart,
-                motivo: `Sem credencial cadastrada para o provedor "${provider}". Conecte a transportadora para cotar entregas fora da cidade.`,
-            })
-        }
-
-        const credentials = credsData.credentials || {}
-        let shippingOptions: any[] = []
-        // Mesmo predicado do `allFree` (revisão A1): fora do por_produto o
-        // carrinho INTEIRO entra na cotação — é ele que a transportadora vai
-        // pesar e cobrar; item marcado não some da balança.
-        const nonFreeCart = presetPorProduto
-            ? cart.filter((item: any) => {
-                const prodId = item.product?.id || item.productId
-                const dbProd = dbProductsMap.get(prodId)
-                return !(dbProd?.frete_gratis ?? item.product?.freeShipping ?? false)
-            })
-            : cart
-
-        if (nonFreeCart.length === 0) {
-            return new Response(
-                JSON.stringify({
-                    options: [
-                        {
-                            id: 'free-shipping-promo',
-                            name: 'Frete Grátis (Promoção)',
-                            price: 0,
-                            deliveryDays: 3,
-                            provider: 'free'
-                        }
-                    ],
-                    cotacaoIncompleta: false
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        const apiStartTime = performance.now()
-        let apiError: string | null = null
-
-        try {
-            if (provider === 'melhor_envio') {
-                const token = credentials.token
-                if (!token) throw new Error('Token do Melhor Envio ausente')
-
-                const products = nonFreeCart.map((item: any) => {
-                    const prodId = item.product?.id || item.productId
-                    const dbProd = dbProductsMap.get(prodId)
-
-                    const price = Number(dbProd?.preco_venda ?? item.product?.price ?? 0)
-                    const weight = Number(dbProd?.peso_kg ?? 0.3)
-                    const width = Number(dbProd?.largura_cm ?? 15)
-                    const height = Number(dbProd?.altura_cm ?? 15)
-                    const length = Number(dbProd?.comprimento_cm ?? 15)
-
-                    return {
-                        name: dbProd?.nome || item.product?.nome || 'Produto',
-                        quantity: Number(item.quantity || 1),
-                        unitary_weight: weight,
-                        price: price,
-                        width: width,
-                        height: height,
-                        length: length
-                    }
-                })
-
-                const isSandbox = credentials.sandbox === true
-                const baseUrl = isSandbox 
-                    ? 'https://sandbox.melhorenvio.com.br' 
-                    : 'https://melhorenvio.com.br'
-
-                const response = await buscarComTempo(fetch, `${baseUrl}/api/v2/me/shipment/calculate`, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                        'User-Agent': 'IKCOUS-Marketplace-Integration (contato@ikcous.com.br)'
-                    },
-                    body: JSON.stringify({
-                        from: { postal_code: originCep },
-                        to: { postal_code: cleanCep },
-                        products: products
-                    })
-                })
-
-                if (!response.ok) {
-                    const errText = await response.text()
-                    throw new Error(`Melhor Envio API retornou ${response.status}: ${errText}`)
-                }
-
-                const data = await response.json()
-                if (Array.isArray(data)) {
-                    shippingOptions = data
-                        .filter(service => !service.error && service.price)
-                        .map(service => {
-                            const serviceNameLower = service.name.toLowerCase()
-                            const isEnabled = enabledMethods.length === 0 || enabledMethods.some((m: string) => serviceNameLower.includes(m.toLowerCase()))
-                            if (!isEnabled) return null
-
-                            return {
-                                id: `melhor-envio-${service.id}`,
-                                name: nomeAmigavelDoServico(service),
-                                price: Number(service.price),
-                                deliveryDays: Number(service.delivery_time),
-                                provider: 'melhor_envio'
-                            }
-                        })
-                        .filter(Boolean)
-                }
-            } 
-            else if (provider === 'frenet') {
-                const token = credentials.token
-                if (!token) throw new Error('Token da Frenet ausente')
-
-                const invoiceValue = nonFreeCart.reduce((sum: number, item: any) => {
-                    const prodId = item.product?.id || item.productId
-                    const dbProd = dbProductsMap.get(prodId)
-                    const price = Number(dbProd?.preco_venda ?? item.product?.price ?? 0)
-                    return sum + (price * Number(item.quantity || 1))
-                }, 0)
-
-                const items = nonFreeCart.map((item: any) => {
-                    const prodId = item.product?.id || item.productId
-                    const dbProd = dbProductsMap.get(prodId)
-
-                    const weight = Number(dbProd?.peso_kg ?? 0.3)
-                    const width = Number(dbProd?.largura_cm ?? 15)
-                    const height = Number(dbProd?.altura_cm ?? 15)
-                    const length = Number(dbProd?.comprimento_cm ?? 15)
-
-                    return {
-                        Weight: weight,
-                        Length: length,
-                        Height: height,
-                        Width: width,
-                        Quantity: Number(item.quantity || 1)
-                    }
-                })
-
-                const response = await buscarComTempo(fetch, 'https://api.frenet.com.br/shipping/quote', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'token': token
-                    },
-                    body: JSON.stringify({
-                        SellerCEP: originCep,
-                        RecipientCEP: cleanCep,
-                        ShipmentInvoiceValue: invoiceValue,
-                        ShippingItemArray: items
-                    })
-                })
-
-                if (!response.ok) {
-                    const errText = await response.text()
-                    throw new Error(`Frenet API retornou ${response.status}: ${errText}`)
-                }
-
-                const data = await response.json()
-                const services = data?.ShippingSevicesArray || []
-                shippingOptions = services
-                    .filter((s: any) => !s.Error && s.ShippingPrice)
-                    .map((s: any) => {
-                        const descLower = s.ServiceDescription.toLowerCase()
-                        const isEnabled = enabledMethods.length === 0 || enabledMethods.some((m: string) => descLower.includes(m.toLowerCase()))
-                        if (!isEnabled) return null
-
-                        return {
-                            id: `frenet-${s.ServiceCode || s.ServiceDescription}`,
-                            name: nomeAmigavelDoServico({ name: s.ServiceDescription }),
-                            price: Number(s.ShippingPrice),
-                            deliveryDays: Number(s.DeliveryTime),
-                            provider: 'frenet'
-                        }
-                    })
-                    .filter(Boolean)
-            }
-        } catch (apiErr) {
-            console.error("[calculate-shipping] API quotation failed for %s:", provider, apiErr)
-            apiError = apiErr.message
-        }
-
-        const apiEndTime = performance.now()
-        const latency = Math.round(apiEndTime - apiStartTime)
-
-        // (O prepend de `local-delivery` que vivia aqui foi absorvido pelo
-        // retorno cedo de `isLocal`, logo acima do ramo de taxa fixa: o
-        // cliente local não chega mais até a cotação de transportadora.)
-
-        // A lista devolvida é a lista INTEIRA? Só deixa de ser quando a
-        // gravação da cotação falha e opções que dependiam dela são removidas
-        // (ver abaixo). O campo viaja nas NOVE rotas normais de 200 — as
-        // oito saídas antecipadas mais o `return` final —, inclusive quando é
-        // `false`: campo que só aparece quando é verdadeiro é campo que quem
-        // consome esquece de checar, e a tela passa a "funcionar" por omissão.
-        //
-        // FRETE V2 (03/09/2026): a DÉCIMA resposta — a contingência do
-        // `catch` de topo, que respondia 200 com `fallback: true` — deixou de
-        // existir junto com o flat_fee; exceção inesperada agora é 500 sem
-        // preço. Toda resposta 200 com `options` leva o campo.
-        let cotacaoIncompleta = false
-
-        // Transportadora falhou ou não devolveu nenhuma opção habilitada.
-        //
-        // ATÉ 25/08/2026 este ramo inventava um preço por `calculateSmartFallback`
-        // (estimativa por REGIÃO de CEP) e o devolvia com id `flat-fee-contingency`.
-        // A RPC que valida o pedido ignora esse preço para QUALQUER id
-        // `flat-fee-%` e cobra `COALESCE(store_config.shipping_fee, 0)` — ver
-        // `precoResolvidoSemCache` acima e
-        // `20260960000000_variacao_obrigatoria_no_servidor.sql:223-224`. Como a
-        // estimativa por região quase nunca bate com a taxa fixa da loja, a
-        // cliente preenchia endereço e pagamento, clicava em Finalizar, e a RPC
-        // recusava por divergência de total — venda perdida no último clique,
-        // sem que nada aparecesse deste lado.
-        //
-        // ATÉ 03/09/2026 ainda havia um SEGUNDO plano B aqui: com a taxa fixa
-        // configurada, o ramo devolvia `getFlatFeeResponse()` ("Entrega
-        // Padrão", preço idêntico ao que a RPC leria). FRETE V2 matou o
-        // flat_fee e com ele o último plano B: fora da cidade só preço de
-        // transportadora real. Sem opção real, não há preço honesto — a
-        // função falha fechado (503), com o motivo no histórico.
-        if (shippingOptions.length === 0) {
-            // O log é AGUARDADO pelo mesmo motivo do 503: aqui não há preço
-            // para entregar, então esperar não tira nada de ninguém, e é a
-            // ÚNICA janela que a lojista tem para essa falha.
-            //
-            // O status é 'error', não 'contingency': este ramo não entrega
-            // NENHUM preço — a resposta é 503 e ninguém compra. O painel
-            // (`AdminShippingView.tsx`) pinta 'contingency' de âmbar,
-            // reservado a "deu certo pelo plano B", e só 'error' de
-            // vermelho. O irmão que gravava 'contingency' com razão (plano B
-            // da taxa fixa) foi removido com o flat_fee.
-            const logEmVoo = Promise.resolve(
-                supabaseClient.from('shipping_calculation_logs').insert({
-                    origin_cep: originCep,
-                    destination_cep: cleanCep,
-                    provider: provider,
-                    cart_items: cart,
-                    response_time_ms: latency,
-                    status: 'error',
-                    error_message: apiError || 'Nenhum método de envio retornado.'
-                }),
-            )
-            fireAndForget(logEmVoo, 'Failed to log contingency:')
-            await logEmVoo.catch(() => {})
-
-            if (erroDeTransportadoraEhCepInvalido(apiError)) {
-                return new Response(
-                    JSON.stringify({ error: 'CEP não encontrado. Confira o número e tente de novo.', codigo: 'cep_invalido' }),
-                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                )
-            }
-
-            return new Response(
-                JSON.stringify({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }),
-                { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        } else {
-            // Save to cache — AGUARDANDO, e a resposta sai daqui.
-            //
-            // Esta linha é a cotação que a validação do pedido vai exigir na
-            // hora de fechar a compra. Enquanto ela era `fireAndForget`, o
-            // preço ia para o navegador com a gravação ainda em voo — e a doc
-            // do Supabase é explícita: promessa não aguardada pode morrer no
-            // encerramento da instância (`EarlyDrop`). A cliente então
-            // preenchia endereço, escolhia pagamento, clicava em finalizar, e
-            // só ali era recusada. Falhar aqui custa um clique; falhar lá
-            // custa a compra inteira.
-            const erroDeGravacao = await gravarCotacao(
-                () => supabaseClient.from('shipping_quotes_cache').insert({
-                    origin_cep: originCep,
-                    destination_cep: cleanCep,
-                    cart_hash: cartHash,
-                    options: shippingOptions
-                }),
-            )
-
-            // Log — DEPOIS de saber se a gravação deu certo, e derivado dela.
-            //
-            // `shipping_calculation_logs` é a única janela da lojista para o
-            // frete, e o painel pinta `status === 'success'` de verde
-            // "Sucesso". Enquanto a resposta era 200 com preço, gravar
-            // 'success' aqui era verdade. Com a recusa abaixo, deixou de ser:
-            // numa loja em que a gravação esteja falhando, ninguém compra e o
-            // único lugar onde ela veria a quebra afirmaria que está tudo bem.
-            //
-            // A query é materializada numa Promise de verdade porque o ramo
-            // que responde 503 precisa AGUARDÁ-LA (ver abaixo), e o builder do
-            // supabase-js é lazy: chamar `.then` nele duas vezes gravaria duas
-            // linhas. `Promise.resolve` dispara a query UMA vez, e o
-            // `fireAndForget` logo abaixo recebe a Promise já pronta — para
-            // ele, `Promise.resolve` de uma Promise nativa é identidade.
-            const logEmVoo = Promise.resolve(
-                supabaseClient.from('shipping_calculation_logs').insert({
-                    origin_cep: originCep,
-                    destination_cep: cleanCep,
-                    provider: provider,
-                    cart_items: cart,
-                    response_time_ms: latency,
-                    status: erroDeGravacao ? 'error' : 'success',
-                    error_message: erroDeGravacao
-                        ? `Falha ao gravar a cotação: ${mensagemDoErro(erroDeGravacao)}`
-                        : null,
-                }),
-            )
-            fireAndForget(logEmVoo, 'Failed to log shipping calculation:')
-
-            if (erroDeGravacao) {
-                // Sem a linha gravada, cai a opção cujo preço a validação do
-                // pedido buscaria NO CACHE. O que a RPC resolve pela
-                // `store_config` continua válido e continua vendável — ver
-                // `precoResolvidoSemCache`. Recusar essas junto era perder uma
-                // venda que o checkout teria aceitado.
-                const opcoesQueDispensamOCache = shippingOptions.filter(opt => precoResolvidoSemCache(opt?.id))
-
-                if (opcoesQueDispensamOCache.length === 0) {
-                    // Aqui a recusa é a resposta certa: todo preço restante
-                    // dependia da linha que não foi gravada. Responder erro
-                    // AGORA é a forma barata de falhar — a cliente reaperta
-                    // "calcular"; falhar no último clique custa a compra.
-                    //
-                    // E o log espera AQUI, pelo mesmo motivo que a gravação da
-                    // cotação virou `await`: promessa não aguardada pode morrer
-                    // no encerramento da instância. Neste ramo a linha do log é
-                    // a ÚNICA coisa que a lojista recebe — e a falha é
-                    // correlacionada, porque a mesma causa que derruba o insert
-                    // do cache derruba o insert do log. Sem esperar, o sintoma
-                    // dela é "ninguém compra" sem linha nenhuma no painel, nem
-                    // verde nem vermelha. Custo zero: aqui não há preço para
-                    // entregar, então atrasar a resposta não tira nada de
-                    // ninguém — o mesmo não vale para o 200 acima.
-                    //
-                    // O `catch` vazio é obrigatório: `fireAndForget` já
-                    // registrou o erro no console, e uma exceção solta aqui
-                    // subiria ao `catch` de topo, que a converteria num 200 com
-                    // preço de contingência — exatamente o que esta recusa
-                    // existe para impedir.
-                    await logEmVoo.catch(() => {})
-
-                    return new Response(
-                        JSON.stringify({ error: 'Não foi possível registrar a cotação de frete. Tente calcular novamente.' }),
-                        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                    )
-                }
-
-                // Incompleta é sobre o que FOI TIRADO, não sobre ter havido
-                // erro: se nada precisava do cache, a lista continua inteira.
-                cotacaoIncompleta = opcoesQueDispensamOCache.length < shippingOptions.length
-                shippingOptions = opcoesQueDispensamOCache
-            }
-        }
-
-        return new Response(
-            JSON.stringify({ options: shippingOptions, cotacaoIncompleta }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-
+        const pedido = { cleanCep, cart, aceitaRetirada, contratoCliente: body?.contratoCliente }
+        // R3-2: a revisão mudou entre a leitura e a gravação? Recota UMA vez;
+        // na segunda, `cotarUmaVez` responde como falha de gravação.
+        const primeira = await cotarUmaVez(supabaseClient, pedido, false)
+        if (primeira !== RECOTAR) return primeira
+        return (await cotarUmaVez(supabaseClient, pedido, true)) as Response
     } catch (err) {
-        console.error('[calculate-shipping] Top-level Edge Function Error:', err)
-
-        // LAUDO 31/08 (D2): o `err.message` que sobe até aqui pode carregar
-        // texto de API de terceiros (o errText do Melhor Envio/Frenet vem
-        // cru dentro dele) ou de banco — e até hoje esse texto era devolvido
-        // AO NAVEGADOR DO CLIENTE no retorno abaixo. O detalhe que
-        // presta fica no console.error acima, nos logs da função; quem paga
-        // lê uma frase utilizável. (O `err.message` do caminho
-        // `test_credentials` fica como está: é o painel da LOJISTA lendo o
-        // erro do token DELA.)
-        const mensagemSegura = 'Não foi possível calcular o frete agora. Tente novamente.'
-
-        // MESMO DEFEITO DO OUTRO FALLBACK, NUM SEGUNDO LUGAR: até 25/08/2026
-        // esta contingência de último recurso usava `precoDeContingenciaDoTopo`
-        // — a escada por região de `calculateSmartFallback` — e devolvia a
-        // estimativa com id `flat-fee-fallback`. A RPC que valida o pedido
-        // ignora esse preço para qualquer id `flat-fee-%` e cobra
-        // `COALESCE(store_config.shipping_fee, 0)` (ver `precoResolvidoSemCache`
-        // acima). A escada quase nunca bate com a taxa fixa real da loja, então
-        // mostrar a estimativa aqui também levava ao "os valores do pedido
-        // mudaram" no último clique.
-        //
-        // FRETE V2 (03/09/2026): a correção intermediária — mostrar a taxa
-        // fixa da loja (`taxaDaLoja`) quando configurada — foi REMOVIDA junto
-        // com o flat_fee. Fora da cidade o único preço honesto é o da
-        // transportadora real; exceção inesperada é falha fechado, sem preço
-        // nenhum.
-        return new Response(
-            JSON.stringify({ error: mensagemSegura }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+        // O detalhe fica no console da função — redigido, porque a mensagem
+        // pode carregar texto de API de terceiro. Quem paga lê uma frase
+        // utilizável, nunca o texto cru.
+        console.error('[calculate-shipping] Top-level Edge Function Error:', textoSemSegredo((err as Error)?.message ?? err))
+        return respostaJson({ error: 'Não foi possível calcular o frete agora. Tente novamente.' }, 500)
     }
+}
+
+/**
+ * UMA passada da cotação pública. Ordem (contrato §3 + R1 + R3-2):
+ * `_revisao` → `store_config` → produtos → credenciais (ANTES do cache) →
+ * local/retirada/grátis → cache assinado → provedores ligados em PARALELO →
+ * relê `_revisao` → grava o cache → responde.
+ */
+async function cotarUmaVez(
+    supabaseClient: any,
+    pedido: { cleanCep: string; cart: any; aceitaRetirada: boolean; contratoCliente: unknown },
+    ultimaTentativa: boolean,
+): Promise<Response | typeof RECOTAR> {
+    const { cleanCep, cart, aceitaRetirada } = pedido
+
+    // 0. A revisão das credenciais — ANTES da configuração (R3-2).
+    const revisaoLida = await lerRevisao(supabaseClient)
+
+    // 1. Configuração pública da loja.
+    const { data: storeConfig, error: configError } = await supabaseClient
+        .from('store_config')
+        .select(COLUNAS_DA_LOJA)
+        .eq('id', 1)
+        .single()
+    if (configError || !storeConfig) {
+        console.error('Error fetching store config:', configError?.code ?? configError)
+        throw new Error('Falha ao obter configuração da loja')
+    }
+
+    // Falha fechado: sem CEP de origem, a função não calcula nada.
+    const erroDeConfiguracao = validarOrigemEFrete(storeConfig.origin_cep)
+    if (erroDeConfiguracao) throw new Error(erroDeConfiguracao)
+
+    const originCep = storeConfig.origin_cep.replace(/\D/g, '')
+    const enabledMethods = metodosDaLoja(storeConfig)
+    const chavesDeServico = chavesDeTransportadora(enabledMethods)
+    const shippingCoverage = storeConfig.shipping_coverage || 'national'
+    const localDeliveryFee = Number(storeConfig.local_delivery_fee ?? 10)
+    const localCepRange = storeConfig.local_cep_range || ''
+    const isLocal = isLocalCep(originCep, cleanCep, localCepRange)
+
+    // 2. Produtos (e variações) pelo BANCO — o navegador não decide peso,
+    // medida nem valor.
+    const itensDoCarrinho = Array.isArray(cart) ? cart : []
+    const productIds = itensDoCarrinho.map((item: any) => item?.product?.id || item?.productId).filter(Boolean)
+    let dbProducts: any[] = []
+    if (productIds.length > 0) {
+        const { data: prods, error: prodsError } = await supabaseClient
+            .from('produtos')
+            .select('id, nome, preco_venda, peso_kg, largura_cm, altura_cm, comprimento_cm, frete_gratis')
+            .in('id', productIds)
+        if (prodsError) console.error('[calculate-shipping] Error querying database products:', prodsError?.code ?? prodsError)
+        else dbProducts = prods || []
+    }
+    const dbProductsMap = new Map(dbProducts.map((p) => [p.id, p]))
+    const variantIds = itensDoCarrinho.map((item: any) => item?.variantId).filter(Boolean)
+    let variantes: any[] = []
+    if (variantIds.length > 0) {
+        const { data, error } = await supabaseClient
+            .from('product_variants')
+            .select('id, product_id, price_override')
+            .in('id', variantIds)
+        if (error) console.error('[calculate-shipping] Error querying product variants:', error?.code ?? error)
+        else variantes = data || []
+    }
+    const variantesMap = new Map(variantes.map((v) => [v.id, v]))
+
+    // FRETE V2 (revisão A1): `produtos.frete_gratis` vale SÓ no preset
+    // "por_produto" (`free_shipping_min < 0`); basta UM item marcado (`some`,
+    // igual à RPC e ao CartContext). Fonte do predicado:
+    // `src/lib/presets-de-frete-gratis.ts`.
+    const presetPorProduto = Number(storeConfig.free_shipping_min ?? 0) < 0
+    const itemComFreteGratisMarcado = itensDoCarrinho.length > 0 && itensDoCarrinho.some((item: any) => {
+        const dbProd = dbProductsMap.get(item?.product?.id || item?.productId)
+        return !!(dbProd?.frete_gratis ?? item?.product?.freeShipping)
+    })
+    const allFree = presetPorProduto && itemComFreteGratisMarcado
+
+    // 3. Credenciais — ANTES do cache (A5/D8). Uma consulta só, todas as
+    // linhas; a revisão da configuração sai daqui e vai em TODA resposta.
+    //
+    // ESTRATÉGIA NACIONAL (23/09, T2): leitura SEPARADA e tolerante das 5
+    // colunas (`lerEstrategiaNacionalDaLoja`, molde `lerEnderecoDaLoja`).
+    // Falhou/ausente (banco antigo) → espelho legado de `free_shipping_min`
+    // (comportamento de hoje). Entra em `revisaoConfig` SÓ quando a leitura
+    // teve sucesso — banco antigo mantém o hash de hoje, byte a byte.
+    const leituraNacional = await lerEstrategiaNacionalDaLoja(supabaseClient)
+    const estrategiaNacionalAtual: EstrategiaNacional = leituraNacional.ok ? leituraNacional.estrategia : espelhoLegado(storeConfig.free_shipping_min)
+    const lidas = await lerCredenciais(supabaseClient)
+    const revisaoConfig = lidas.ok && revisaoLida.ok
+        ? await calcularRevisaoConfig(storeConfig, lidas.linhas, revisaoLida.revisao, leituraNacional.ok ? leituraNacional.estrategia : null)
+        : null
+    const comRevisao = (conteudo: Record<string, unknown>) => (revisaoConfig ? { ...conteudo, revisaoConfig } : conteudo)
+
+    // Cobertura só local: CEP de fora não é atendido.
+    if (shippingCoverage === 'local') {
+        if (!isLocal) return respostaJson({ error: 'Esta loja realiza apenas entregas locais na sua região.' }, 400)
+        return respostaJson(comRevisao({
+            options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada),
+            cotacaoIncompleta: false,
+        }))
+    }
+
+    // Cliente LOCAL recebe SÓ a Entrega Local (e a retirada) — nunca frete
+    // nacional (pedido do Gabriel, 02/09). Mantém a linha no histórico.
+    if (isLocal) {
+        fireAndForget(
+            supabaseClient.from('shipping_calculation_logs').insert({
+                origin_cep: originCep,
+                destination_cep: cleanCep,
+                provider: 'local',
+                cart_items: cart,
+                response_time_ms: 0,
+                status: 'success',
+            }),
+            'Failed to log local quote:',
+        )
+        return respostaJson(comRevisao({
+            options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada),
+            cotacaoIncompleta: false,
+        }))
+    }
+
+    // O atalho de grátis por produto (`free-shipping-promo`) é NACIONAL — o
+    // preset LOCAL usou `allFree` acima (free_shipping_min, sem mudança).
+    // Aqui a estratégia é a NACIONAL (colunas novas, com o espelho legado
+    // como queda): só dispara quando ela é `por_produto` E há item marcado.
+    // Sem cache (a RPC resolve este id pela regra, como hoje).
+    if (estrategiaNacionalAtual.estrategia === 'por_produto' && itemComFreteGratisMarcado) {
+        console.log('[calculate-shipping] Item com frete grátis no carrinho (estratégia nacional por_produto): frete zerado para o pedido inteiro.')
+        return respostaJson(comRevisao({
+            options: [{ id: 'free-shipping-promo', name: 'Frete Grátis (Promoção)', price: 0, deliveryDays: 3, provider: 'free' }],
+            cotacaoIncompleta: false,
+        }))
+    }
+
+    // 4. Sem cotação de fora quando não há o que cotar (lista VAZIA honesta).
+    if (itensDoCarrinho.length === 0 || !Array.isArray(cart)) {
+        return await respostaSemCotacaoDeFora(supabaseClient, null, revisaoConfig)
+    }
+    const provedorDoLog = storeConfig.shipping_provider || 'flat_fee'
+    if (!lidas.ok) {
+        console.warn('[calculate-shipping] Credenciais indisponíveis:', lidas.erro?.code ?? 'sem código')
+        return await respostaSemCotacaoDeFora(supabaseClient, {
+            originCep,
+            destinationCep: cleanCep,
+            provider: provedorDoLog,
+            cart,
+            motivo: 'Não foi possível ler as credenciais das transportadoras agora. A cotação de fora da cidade não foi feita.',
+        }, revisaoConfig)
+    }
+    // Revisão ilegível: o caminho nacional falha FECHADO (R3-2) — sem saber a
+    // revisão, a opção não pode ser carimbada nem conferida pela RPC.
+    if (!revisaoLida.ok) {
+        await gravarHistorico(supabaseClient, {
+            origin_cep: originCep,
+            destination_cep: cleanCep,
+            provider: provedorDoLog,
+            cart_items: cart,
+            response_time_ms: 0,
+            status: 'error',
+            error_message: 'Não foi possível ler a revisão da configuração do frete; a cotação de fora da cidade não foi feita.',
+        })
+        return respostaJson({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }, 503)
+    }
+
+    const conjunto = conjuntoLigado(storeConfig, lidas.linhas)
+    if (conjunto.pedidos.length === 0) {
+        return await respostaSemCotacaoDeFora(supabaseClient, {
+            originCep,
+            destinationCep: cleanCep,
+            provider: provedorDoLog,
+            cart,
+            motivo: conjunto.modo === 'multi'
+                ? 'Nenhuma transportadora ligada para entregas fora da cidade. Ligue ao menos uma em Ajustes > Transportadoras.'
+                : 'Loja sem transportadora conectada para entregas fora da cidade (o frete de taxa fixa foi descontinuado). Conecte Melhor Envio, Frenet ou SuperFrete para cotar o frete nacional.',
+        }, revisaoConfig)
+    }
+    const ligados = conjunto.modo === 'legado'
+        ? conjunto.ligados.filter((p) => lidas.linhas.has(p))
+        : conjunto.ligados
+    if (ligados.length === 0) {
+        const provider = conjunto.pedidos.join(', ')
+        return await respostaSemCotacaoDeFora(supabaseClient, {
+            originCep,
+            destinationCep: cleanCep,
+            provider,
+            cart,
+            motivo: conjunto.modo === 'multi'
+                ? 'As transportadoras ligadas estão sem chave de acesso. Salve a chave em Ajustes > Transportadoras.'
+                : `Sem credencial cadastrada para o provedor "${provider}". Conecte a transportadora para cotar entregas fora da cidade.`,
+        }, revisaoConfig)
+    }
+    const credenciaisDe = (p: string) => lidas.linhas.get(p)?.credentials ?? {}
+    // Redigidos de todo texto de terceiro: o token de cada ligado e o e-mail
+    // de contato da SF (a API pode ecoar os dois).
+    const segredos = ligados.flatMap((p) => [tokenDe(credenciaisDe(p)), credenciaisDe(p)?.contact_email])
+    const provedorNoHistorico = ligados.join(', ')
+
+    const insumos = montarInsumos(itensDoCarrinho, dbProductsMap, variantesMap)
+    const assinatura = await assinaturaDaCotacao(revisaoConfig as string, insumos.itens)
+    const baseDoLog = {
+        modo: conjunto.modo,
+        chaves: chavesDeServico,
+        contrato: pedido.contratoCliente,
+        produtosSemCadastro: insumos.produtosSemCadastro,
+        camposPadrao: insumos.camposPadrao,
+    }
+
+    // ── CACHE (leitura tolerante a duplicata: a mais nova) ──
+    const cartHash = getCartHash(cart)
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+    const { data: linhasDoCache, error: cacheQueryError } = await supabaseClient
+        .from('shipping_quotes_cache')
+        .select('options')
+        .eq('origin_cep', originCep)
+        .eq('destination_cep', cleanCep)
+        .eq('cart_hash', cartHash)
+        .gt('created_at', twoHoursAgo)
+        .order('created_at', { ascending: false })
+        .limit(1)
+    const cachedQuote = linhasDoCache?.[0] ?? null
+
+    // Acerto só com a assinatura ATUAL e nenhuma opção parcial (§3 + R1-1).
+    if (cachedQuote && !cacheQueryError && cotacaoDoCacheServe(cachedQuote.options, assinatura)) {
+        console.log('[calculate-shipping] Caching hit')
+        for (const p of ligados) {
+            console.log(JSON.stringify(linhaDoLogDaCotacao({
+                ...baseDoLog,
+                provider: p,
+                credenciais: credenciaisDe(p),
+                resultado: null,
+                falha: null,
+                opcoesFinais: cachedQuote.options,
+                cache: 'hit',
+            })))
+        }
+        fireAndForget(
+            supabaseClient.from('shipping_calculation_logs').insert({
+                origin_cep: originCep,
+                destination_cep: cleanCep,
+                provider: `${provedorNoHistorico} (Cache)`,
+                cart_items: cart,
+                response_time_ms: 0,
+                status: 'success',
+            }),
+            'Failed to log cache hit:',
+        )
+        return respostaJson({ options: cachedQuote.options, cotacaoIncompleta: false, cotacaoParcial: false, revisaoConfig })
+    }
+
+    // 5. Os ligados em PARALELO, cada um isolado, sem retry (A2).
+    const apiStartTime = performance.now()
+    const entrada = { originCep, destinationCep: cleanCep, itens: insumos.itens, chaves: chavesDeServico }
+    // Defesa (revisão Opus, 1.5.7), SÓ no multi: ligado com a credencial em
+    // Sandbox (gravada por fora, ex.: painel 1.5.6) não cota para cliente —
+    // é a falha DAQUELE provedor e os outros seguem. O legado fica como na 1.5.6.
+    const liquidados = await Promise.allSettled(
+        ligados.map((p) => conjunto.modo === 'multi' && credenciaisDe(p)?.sandbox === true
+            ? Promise.reject(new FalhaDoProvedor('sandbox', `${ROTULO_DO_PROVEDOR.get(p) ?? p}: credencial em modo de testes (Sandbox) não cota para clientes`))
+            : cotarPeloProvedor(p, credenciaisDe(p), entrada, servicosSalvos(p, credenciaisDe(p)))),
+    )
+    const latency = Math.round(performance.now() - apiStartTime)
+
+    const resultados: Array<{ p: string; resultado: ResultadoDoProvedor | null; falha: FalhaDoProvedor | null }> = liquidados.map((l, i) => {
+        // `allSettled` devolve na MESMA ordem de `ligados`.
+        const p = ligados.at(i) as string
+        if (l.status === 'fulfilled') return { p, resultado: l.value, falha: null }
+        const erro = l.reason
+        const falha = erro instanceof FalhaDoProvedor
+            ? erro
+            : new FalhaDoProvedor('indisponivel', String((erro as Error)?.message ?? erro))
+        return { p, resultado: null, falha }
+    })
+    const falhas = resultados.filter((r) => r.falha)
+    const responderam = resultados.filter((r) => r.resultado)
+    const cotacaoParcial = falhas.length > 0 && responderam.length > 0
+
+    let shippingOptions: any[] = responderam.flatMap((r) => (r.resultado as ResultadoDoProvedor).opcoes).map((opcao) => ({
+        ...opcao,
+        revisaoCredenciais: revisaoLida.revisao,
+        assinaturaCotacao: assinatura,
+        ...(cotacaoParcial ? { cotacaoParcial: true } : {}),
+    }))
+
+    // Mensagem de cada falha, redigida (todos os tokens ligados) e cortada.
+    const mensagens = falhas.map((r) => {
+        const texto = textoSemSegredo((r.falha as FalhaDoProvedor).message, segredos)
+        console.error('[calculate-shipping] API quotation failed for %s:', r.p, texto)
+        return ligados.length === 1 ? texto : `${r.p}: ${texto}`
+    })
+    const apiError = mensagens.length > 0 ? mensagens.join(' | ') : null
+
+    for (const r of resultados) {
+        console.log(JSON.stringify(linhaDoLogDaCotacao({
+            ...baseDoLog,
+            provider: r.p,
+            credenciais: credenciaisDe(r.p),
+            resultado: r.resultado,
+            falha: r.falha,
+            opcoesFinais: shippingOptions,
+            cache: 'miss',
+        })))
+    }
+
+    // Nenhuma opção real: falha fechado (503), com o motivo no histórico.
+    if (shippingOptions.length === 0) {
+        await gravarHistorico(supabaseClient, {
+            origin_cep: originCep,
+            destination_cep: cleanCep,
+            provider: provedorNoHistorico,
+            cart_items: cart,
+            response_time_ms: latency,
+            status: 'error',
+            error_message: apiError || 'Nenhum método de envio retornado.',
+        })
+        if (responderam.length === 0 && falhas.some((r) => r.falha?.motivo === 'cep_invalido')) {
+            return respostaJson({ error: 'CEP não encontrado. Confira o número e tente de novo.', codigo: 'cep_invalido' }, 400)
+        }
+        return respostaJson({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }, 503)
+    }
+
+    // 6. A revisão mudou enquanto cotava? (R3-2)
+    const releitura = await lerRevisao(supabaseClient)
+    if (!releitura.ok || releitura.revisao !== revisaoLida.revisao) {
+        if (!ultimaTentativa) {
+            console.warn(JSON.stringify({ evento: 'configuracao_mudou_durante_cotacao', acao: 'recotar' }))
+            return RECOTAR
+        }
+        console.error(JSON.stringify({ evento: 'configuracao_mudou_durante_cotacao', acao: 'recusar' }))
+        await gravarHistorico(supabaseClient, {
+            origin_cep: originCep,
+            destination_cep: cleanCep,
+            provider: provedorNoHistorico,
+            cart_items: cart,
+            response_time_ms: latency,
+            status: 'error',
+            error_message: 'configuracao_mudou_durante_cotacao: a configuração do frete mudou duas vezes durante a cotação; nada foi gravado.',
+        })
+        return respostaJson({ error: 'Não foi possível registrar a cotação de frete. Tente calcular novamente.', cotacaoIncompleta: true }, 503)
+    }
+
+    // 6-bis. Estratégia NACIONAL: aplicada UMA vez aqui, sobre as opções que
+    // vão para o cache (todas nacionais — local e retirada já retornaram
+    // antes). SÓ quando a leitura tolerante teve sucesso E o subtotal é
+    // confiável (nenhum item do carrinho ficou "sem cadastro" — decisão da
+    // hub, 23/09: subtotal incompleto nunca decide um grátis/desconto em
+    // silêncio). Sem isso, o preço fica CHEIO e SEM carimbo — o
+    // "comportamento de hoje" que a RPC (e qualquer edge velha na janela de
+    // publicação) trata como espelho legado.
+    if (leituraNacional.ok && insumos.produtosSemCadastro === 0) {
+        const subtotal = subtotalDoCarrinho(itensDoCarrinho, dbProductsMap, variantesMap)
+        shippingOptions = aplicarEstrategiaNacional(shippingOptions, estrategiaNacionalAtual, subtotal)
+    }
+
+    // 7. Grava o cache — AGUARDANDO (a RPC do pedido exige esta linha).
+    let cotacaoIncompleta = false
+    const erroDeGravacao = await salvarCotacaoNoCache(supabaseClient, {
+        originCep,
+        destinationCep: cleanCep,
+        cartHash,
+        options: shippingOptions,
+    })
+    const logEmVoo = gravarHistorico(supabaseClient, {
+        origin_cep: originCep,
+        destination_cep: cleanCep,
+        provider: provedorNoHistorico,
+        cart_items: cart,
+        response_time_ms: latency,
+        status: erroDeGravacao ? 'error' : 'success',
+        error_message: erroDeGravacao
+            ? `Falha ao gravar a cotação: ${textoSemSegredo(mensagemDoErro(erroDeGravacao), segredos)}`
+            : (apiError ? `Cotação parcial: ${apiError}` : null),
+    })
+
+    if (erroDeGravacao) {
+        // Sem a linha gravada, cai o que a RPC buscaria no cache; fica só o
+        // que ela resolve pela `store_config` (`precoResolvidoSemCache`).
+        const opcoesQueDispensamOCache = shippingOptions.filter((opt) => precoResolvidoSemCache(opt?.id))
+        if (opcoesQueDispensamOCache.length === 0) {
+            await logEmVoo
+            return respostaJson({ error: 'Não foi possível registrar a cotação de frete. Tente calcular novamente.' }, 503)
+        }
+        cotacaoIncompleta = opcoesQueDispensamOCache.length < shippingOptions.length
+        shippingOptions = opcoesQueDispensamOCache
+    }
+
+    return respostaJson({ options: shippingOptions, cotacaoIncompleta, cotacaoParcial, revisaoConfig })
 }
 
 // `(req) => handler(req)`, e não `serve(handler)` direto: o `serve` do std

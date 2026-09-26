@@ -1,8 +1,14 @@
 import { hexToTailwindHsl } from "@/config/branding";
+import {
+  ContextoDoFreteDaLoja,
+  contextoDaLojaParaFrete,
+} from "@/contexts/ContextoDoFreteDaLoja";
 import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { DataVault } from "@/lib/dataVault";
+import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -28,8 +34,24 @@ import { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 export { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 
 interface UpdateConfigOptions {
-  readonly isCurrent: () => boolean;
+  // Já tratado como opcional na implementação (`options?.isCurrent`, com
+  // guarda `isCurrent &&` antes de chamar) — só nunca tinha sido declarado
+  // assim. Sem o `?`, qualquer chamador que precisasse mandar `silent`/
+  // `silentSuccess` sem `isCurrent` (ex.: FormasDePagamentoCard, anotação 3
+  // da revisão Opus do commit 085282c3) era forçado a inventar um `isCurrent`
+  // que não tem função nenhuma ali.
+  readonly isCurrent?: () => boolean;
   readonly silent?: boolean;
+  /**
+   * FORMAS DE PAGAMENTO POR LOJA (revisão Opus do commit 085282c3, anotação
+   * 3): INDEPENDENTE de `silent` — `silent` cala TUDO (sucesso e erro);
+   * `silentSuccess` cala só o "Configurações salvas" genérico, para um
+   * chamador que já mostra o PRÓPRIO toast de sucesso mais específico
+   * (ex.: "Pix ligado") sem duplicar. Os toasts de ERRO (RPC recusada,
+   * write não confirmado) continuam saindo daqui — é aqui que mora o
+   * acesso à mensagem crua da RPC, que o chamador não tem.
+   */
+  readonly silentSuccess?: boolean;
 }
 
 interface StoreContextType {
@@ -115,12 +137,32 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   ["store_name", "texto"],
   ["store_city", "texto"],
   ["store_state", "texto"],
+  // 20261167000000: endereço e descrição da página Sobre a Loja — sem
+  // entrada aqui o save "grava" mas o comparador acusa falha (coluna
+  // desconhecida nunca fica "confirmada").
+  ["store_address", "texto"],
+  ["store_description", "texto"],
   ["origin_cep", "texto"],
   ["shipping_provider", "texto"],
   ["enabled_shipping_methods", "texto_array"],
   ["shipping_coverage", "texto"],
   ["local_cep_range", "texto"],
   ["home_sections", "home_sections"],
+  // 20261171000000: estratégias de frete NACIONAL (T3, 23/09/2026) — sem
+  // entrada aqui `updateConfig` gravaria a coluna mas o comparador de
+  // "gravou mesmo?" acusaria falha (coluna desconhecida nunca confirma).
+  ["national_shipping_strategy", "texto"],
+  ["national_shipping_min", "numeric"],
+  ["national_discount_type", "texto"],
+  ["national_discount_value", "numeric"],
+  ["national_benefit_scope", "texto"],
+  // 20261174000000: formas de pagamento por loja (pix/card/cash na
+  // entrega) — sem entrada aqui `updateConfig` gravaria a coluna mas o
+  // comparador de "gravou mesmo?" acusaria falha (coluna desconhecida
+  // nunca confirma). "texto_array": mesma comparação sensível a ORDEM de
+  // `enabled_shipping_methods` (o servidor preserva a ordem que o front
+  // manda — nunca reordena).
+  ["formas_pagamento_entrega", "texto_array"],
 ]);
 
 // Normaliza um valor de `home_sections` para comparação POR VALOR: ordena
@@ -271,7 +313,7 @@ function componhaShareText(
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { isAdmin, loading, user } = useAuth();
+  const { isAdmin, loading } = useAuth();
   const { isLeader } = useLeaderElection();
   const vaultRef = useRef<DataVault | null>(null);
   // O motor de tempo real precisa do cofre, e `ref` NÃO é dependência de
@@ -282,7 +324,29 @@ export function StoreProvider({
   // desistia e nunca mais era reavaliado — a aba passava a sessão inteira sem
   // atualização ao vivo.
   const [cofrePronto, setCofrePronto] = useState(false);
-  const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
+  // StoreContext-576: o estado ANTES do primeiro fetchConfig não pode
+  // carregar o freeShippingMin de `defaultStoreConfig` (350, o limiar mais
+  // caro do config) -- `mapConfig` já usa 0 (desligado) como fallback de
+  // ausência, e as duas fontes têm de concordar. Sem isso, uma loja cujo
+  // config bate exatamente nos defaults (ex.: teste/mock com `data: []`)
+  // faz `configIgual` enxergar diferença que não existe (350 em memória x 0
+  // vindo da leitura), e o app grava no DataVault um "config mudou" que
+  // nunca mudou de verdade.
+  const configInicial: StoreConfig = {
+    ...defaultStoreConfig,
+    freeShippingMin: 0,
+    // Mesma razão do freeShippingMin acima (StoreContext-576): o estado
+    // ANTES do primeiro fetchConfig não pode prometer uma estratégia
+    // nacional que ninguém escolheu. `mapConfig` já cai no ESPELHO de
+    // freeShippingMin=0 ("desligado") quando a coluna falta — as duas
+    // fontes concordam.
+    nationalShippingStrategy: espelhoLegado(0).estrategia,
+    nationalShippingMin: espelhoLegado(0).minimo,
+    nationalDiscountType: null,
+    nationalDiscountValue: 0,
+    nationalBenefitScope: espelhoLegado(0).alcance,
+  };
+  const [config, setConfig] = useState<StoreConfig>(configInicial);
   const [isLoaded, setIsLoaded] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -427,7 +491,7 @@ export function StoreProvider({
   const configIgual = useCallback(
     (a: StoreConfig, b: StoreConfig): boolean =>
       Object.keys(a).every((k) => {
-        if (k === "enabledShippingMethods") {
+        if (k === "enabledShippingMethods" || k === "formasPagamentoEntrega") {
           const arrA = a[k] || [];
           const arrB = b[k] || [];
           if (arrA.length !== arrB.length) return false;
@@ -454,11 +518,22 @@ export function StoreProvider({
       return fallback;
     };
 
-    const freeMin = getVal(
-      "free_shipping_min",
-      "freeShippingMin",
-      defaultStoreConfig.freeShippingMin,
-    );
+    // 0 aqui, NUNCA defaultStoreConfig.freeShippingMin (StoreContext-576):
+    // esse default ainda carrega 350 — o limiar mais caro do config — e
+    // devolvê-lo quando a coluna faltar inventaria a MESMA regra de frete
+    // grátis que ninguém escolheu. `presetDoConfig(0)` já lê 0 como
+    // "desligado" (src/lib/presets-de-frete-gratis.ts), a mesma semântica
+    // que a RPC do pedido usa para ausência (COALESCE(...,0)) — ausência
+    // aqui tem que significar desligado, como já significa lá.
+    const freeMin = getVal("free_shipping_min", "freeShippingMin", 0);
+    // ESPELHO LEGADO (contrato do plano 23/09): banco/config ainda sem as
+    // 5 colunas nacionais (a migration 20261171000000 não rodou nesta
+    // loja) devolve `undefined`/`null` nelas -- `getVal` cai no fallback,
+    // que aqui é a MESMA conta que a migration faria a partir do
+    // freeShippingMin ATUAL (nunca dos 350 do defaultStoreConfig: mesma
+    // razão da nota StoreContext-576 acima). Loja já migrada: os 5
+    // `getVal` abaixo leem a coluna de verdade, e este espelho não é usado.
+    const espelho = espelhoLegado(Number(freeMin));
     const shipFee = getVal(
       "shipping_fee",
       "shippingFee",
@@ -529,6 +604,13 @@ export function StoreProvider({
       storeName,
       storeCity: getVal("store_city", "storeCity", undefined),
       storeState: getVal("store_state", "storeState", undefined),
+      // 20261167000000: endereço e descrição da página Sobre a Loja.
+      storeAddress: getVal("store_address", "storeAddress", undefined),
+      storeDescription: getVal(
+        "store_description",
+        "storeDescription",
+        undefined,
+      ),
       originCep: getVal("origin_cep", "originCep", undefined),
       shippingProvider: getVal(
         "shipping_provider",
@@ -556,6 +638,38 @@ export function StoreProvider({
         "homeSections",
         defaultStoreConfig.homeSections,
       ),
+      nationalShippingStrategy: getVal(
+        "national_shipping_strategy",
+        "nationalShippingStrategy",
+        espelho.estrategia,
+      ),
+      nationalShippingMin: Number(
+        getVal("national_shipping_min", "nationalShippingMin", espelho.minimo),
+      ),
+      nationalDiscountType: getVal(
+        "national_discount_type",
+        "nationalDiscountType",
+        null,
+      ),
+      nationalDiscountValue: Number(
+        getVal("national_discount_value", "nationalDiscountValue", 0),
+      ),
+      nationalBenefitScope: getVal(
+        "national_benefit_scope",
+        "nationalBenefitScope",
+        espelho.alcance,
+      ),
+      // 20261174000000: ausente/inválido no dado lido (loja sem a coluna
+      // ainda, ou linha corrompida) cai no default — as três formas, MESMO
+      // comportamento de hoje. `formasPagamentoNaEntregaValidas` é a
+      // fonte única dessa normalização (compartilhada com o checkout).
+      formasPagamentoEntrega: formasPagamentoNaEntregaValidas(
+        getVal(
+          "formas_pagamento_entrega",
+          "formasPagamentoEntrega",
+          defaultStoreConfig.formasPagamentoEntrega,
+        ),
+      ),
     };
   }, []);
 
@@ -573,7 +687,13 @@ export function StoreProvider({
           // Initialize if missing (admin only)
           const dbInsert = {
             id: 1,
-            free_shipping_min: 350,
+            // 0 (desligado), NUNCA 350 (StoreContext-576): a loja nova não
+            // escolheu regra nenhuma de frete grátis, e semear o limiar mais
+            // caro do config fazia o carrinho anunciar "Acima de R$ 350" e a
+            // RPC do pedido zerar o frete de verdade sem o lojista ter
+            // ligado nada. `presetDoConfig(0)` já lê "desligado" e é a mesma
+            // sentinela de ausência que a RPC usa (COALESCE(...,0)).
+            free_shipping_min: 0,
             shipping_fee: 15,
             // Laudo 31/08 (menor E): a semente gravava "" (o default do
             // front) em whatsapp_number/business_hours — uma SEGUNDA
@@ -752,6 +872,7 @@ export function StoreProvider({
       // Captura o contrato antes da rede: mutar options não troca o destinatário.
       const isCurrent = options?.isCurrent;
       const silent = options?.silent === true;
+      const silentSuccess = options?.silentSuccess === true;
       let invalidated = false;
       const current = () => {
         if (invalidated) return false;
@@ -832,6 +953,13 @@ export function StoreProvider({
           identityUpdates.storeState = updates.storeState;
           dbUpdates.store_state = identityUpdates.storeState;
         }
+        // 20261167000000: endereço e descrição — campos da página Sobre a
+        // Loja, gravados pela RPC genérica (não entram no pacote de
+        // identidade; a save_store_identity rejeita chaves fora das 8).
+        if (updates.storeAddress !== undefined)
+          dbUpdates.store_address = updates.storeAddress;
+        if (updates.storeDescription !== undefined)
+          dbUpdates.store_description = updates.storeDescription;
         if (updates.originCep !== undefined)
           dbUpdates.origin_cep = updates.originCep;
         if (updates.shippingProvider !== undefined)
@@ -846,6 +974,26 @@ export function StoreProvider({
           dbUpdates.local_cep_range = updates.localCepRange;
         if (updates.homeSections !== undefined)
           dbUpdates.home_sections = updates.homeSections;
+        if (updates.nationalShippingStrategy !== undefined)
+          dbUpdates.national_shipping_strategy =
+            updates.nationalShippingStrategy;
+        if (updates.nationalShippingMin !== undefined)
+          dbUpdates.national_shipping_min = updates.nationalShippingMin;
+        if (updates.nationalDiscountType !== undefined)
+          dbUpdates.national_discount_type = updates.nationalDiscountType;
+        if (updates.nationalDiscountValue !== undefined)
+          dbUpdates.national_discount_value = updates.nationalDiscountValue;
+        if (updates.nationalBenefitScope !== undefined)
+          dbUpdates.national_benefit_scope = updates.nationalBenefitScope;
+        // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
+        // 20261174000000): a lojista liga/desliga pix/cartão/dinheiro na
+        // entrega. Chave omitida => `upsert_store_config` preserva o valor
+        // atual (padrão "partial update" de toda a função); mandar SEMPRE
+        // que a chamadora passar a lista (mesmo vazia) é o que permite
+        // AdminSettingsView gravar "desligou a última", que o trigger do
+        // banco (store_config_exige_forma_de_pagamento) então recusa.
+        if (updates.formasPagamentoEntrega !== undefined)
+          dbUpdates.formas_pagamento_entrega = updates.formasPagamentoEntrega;
 
         if (!current()) return false;
         const { data, error } = await (supabase.rpc as any)(
@@ -947,13 +1095,31 @@ export function StoreProvider({
           } as StoreConfig),
         );
         if (!current()) return false;
-        if (!silent) toast.success("Configurações salvas");
+        if (!silent && !silentSuccess) toast.success("Configurações salvas");
         return true;
       } catch (err) {
         if (!current()) return false;
         console.error("[StoreContext] Update error:", err);
-        if (!silent && current())
-          toast.error("Erro ao salvar as configurações");
+        if (!silent && current()) {
+          // FORMAS DE PAGAMENTO POR LOJA (revisão Opus do commit 085282c3,
+          // anotação 4): o trigger `store_config_exige_forma_de_pagamento`
+          // recusa com este texto CRU (sem prosa — o mesmo marcador que a
+          // edge credenciais-mercado-pago já traduz do lado dela) quando o
+          // `pixLigado` em memória do painel está STALE — a lojista
+          // desligou o PIX pelo app por outra aba/sessão ENTRE abrir o
+          // card de formas de pagamento e tentar desligar a última forma
+          // na entrega. O genérico "Erro ao salvar" não diz o que fazer;
+          // isto diz.
+          const mensagemCrua =
+            err && typeof err === "object" && "message" in err
+              ? (err as { message?: unknown }).message
+              : undefined;
+          toast.error(
+            mensagemCrua === "LOJA_SEM_FORMA_DE_PAGAMENTO"
+              ? "Ligue ao menos uma forma de pagamento — o PIX pelo app está desligado"
+              : "Erro ao salvar as configurações",
+          );
+        }
         return false;
       }
     },
@@ -1083,17 +1249,20 @@ export function StoreProvider({
     }, []),
   );
 
+  // CÓPIA VELHA (T3, 23/09/2026): sem consumidor (nenhum chamador de
+  // `useStore()` destrutura `calculateShipping` -- grep confirmado antes
+  // desta edição). Mantida no contrato do contexto por segurança de tipo
+  // (StoreContextType é público), mas delegando à fonte única
+  // (`estrategias-de-frete.ts`) em vez de carregar uma SEGUNDA cópia da
+  // regra de frete grátis (lição #53) -- inclusive a trava de login que já
+  // morreu nas outras duas cópias (CartContext, ShippingCalculator) desde a
+  // frente B (03/09).
   const calculateShipping = useCallback(
     (cart: CartItem[], selectedOption?: ShippingOption | null) => {
       if (cart.length === 0) return 0;
+      if (!selectedOption) return config.shippingFee;
 
-      const hasFreeShippingItem = cart.some(
-        (item) => item.product.freeShipping,
-      );
-      if (hasFreeShippingItem) return 0;
-
-      const totalAmount = cart.reduce((sum, item) => {
-        // Laudo 31/08 (menor E): regra única do preço em preco-vendido.ts.
+      const subtotal = cart.reduce((sum, item) => {
         return (
           sum +
           precoVendido(
@@ -1103,24 +1272,15 @@ export function StoreProvider({
             item.quantity
         );
       }, 0);
+      const temItemMarcado = cart.some((item) => item.product.freeShipping);
 
-      // Frete grátis exige login — mesma regra do CartContext, da RPC
-      // create_marketplace_order_v22 e do que o FreeShippingBlock promete na Home.
-      // Sem o `user` aqui, esta função divergia das outras duas.
-      if (
-        config.freeShippingMin > 0 &&
-        totalAmount >= config.freeShippingMin &&
-        user
-      )
-        return 0;
-
-      if (selectedOption) {
-        return selectedOption.price;
-      }
-
-      return config.shippingFee;
+      return precoFinalDaOpcao(selectedOption, {
+        config,
+        subtotal,
+        temItemMarcado,
+      });
     },
-    [config.freeShippingMin, config.shippingFee, user],
+    [config],
   );
 
   const refresh = useCallback(
@@ -1158,9 +1318,16 @@ export function StoreProvider({
     ],
   );
 
+  // Contexto do frete (release 1.5.3): um TEXTO derivado de três campos do
+  // config — muda só quando provedor, transportadoras/retirada ou endereço
+  // mudam, e é isso que a ShippingCalculator observa para recotar.
+  const contextoDoFrete = contextoDaLojaParaFrete(config);
+
   return (
     <StoreContext.Provider value={contextValue}>
-      {children}
+      <ContextoDoFreteDaLoja.Provider value={contextoDoFrete}>
+        {children}
+      </ContextoDoFreteDaLoja.Provider>
     </StoreContext.Provider>
   );
 }

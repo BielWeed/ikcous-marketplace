@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
-import type { Order } from "@/types";
+import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
+import type { CanalDaVenda, Order } from "@/types";
 import { AlertTriangle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -32,6 +33,8 @@ interface PedidoDaLista {
   id: string;
   total?: number | null;
   customer?: { name?: string | null } | null;
+  /** Canal da venda (C4.2): o confirm do estorno manual fala 'no balcão' quando presencial. */
+  canal?: CanalDaVenda;
 }
 
 interface AlertasCanceladosProps {
@@ -45,6 +48,14 @@ interface AlertasCanceladosProps {
   /** A consulta de cancelados pode ter vindo truncada (erro/truncagem na
    * RPC) — o aviso fica dentro do dropdown, junto de quem ele descreve. */
   readonly incompleto: boolean;
+  /** pedidos-4 (20261164000000): cancelados com cancelamento ANTERIOR à
+   * janela da varredura enxuta — o servidor conta quem ficou fora
+   * ('fora_da_janela'). 0/undefined = nada ficou fora. Sem este número, o
+   * recorte de 90 dias esconderia pendência antiga em silêncio. */
+  readonly foraDaJanela?: number;
+  /** Pede a varredura completa (p_dias null no servidor): o dropdown fecha
+   * e a lista recarrega incluindo os antigos. */
+  readonly onIncluirAntigos?: () => void;
   readonly confirmandoRetornoId: string | null;
   readonly onConfirmarRetorno: (orderId: string) => void;
   readonly estornandoId: string | null;
@@ -60,6 +71,8 @@ export function AlertasCancelados({
   pedidosEsperandoRetorno,
   pedidosParaDevolverAgora,
   incompleto,
+  foraDaJanela,
+  onIncluirAntigos,
   confirmandoRetornoId,
   onConfirmarRetorno,
   estornandoId,
@@ -71,8 +84,13 @@ export function AlertasCancelados({
   const alavancaRef = useRef<HTMLButtonElement>(null);
 
   const temDinheiroPreso = pagoCanceladoCount > 0;
+  // pedidos-4: cancelados fora da janela são pendência em potencial (estorno
+  // devido, mercadoria a voltar) que as listas de baixo NÃO mostram — o
+  // botão nasce por eles do mesmo jeito, e o bloco de dentro explica.
+  const temForaDaJanela = (foraDaJanela ?? 0) > 0;
   const temPendencia =
     temDinheiroPreso ||
+    temForaDaJanela ||
     pedidosEsperandoRetorno.length > 0 ||
     pedidosParaDevolverAgora.length > 0;
 
@@ -140,7 +158,11 @@ export function AlertasCancelados({
       (pedido) => pedido.id,
     ),
   ).size;
-  const badge = Math.max(pedidosNasListas, pagoCanceladoCount);
+  const badge = Math.max(
+    pedidosNasListas,
+    pagoCanceladoCount,
+    foraDaJanela ?? 0,
+  );
 
   // O aviso de lista incompleta mora dentro do dropdown DESDE o desenho de
   // botão: quando as duas listas vazias podem ser MENTIRA (erro/truncagem na
@@ -204,6 +226,46 @@ export function AlertasCancelados({
           className="absolute right-0 top-full z-50 mt-3 max-h-[min(70vh,640px)] w-[min(calc(100vw-3rem),640px)] space-y-4 overflow-y-auto rounded-[2rem] border border-white/10 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl"
         >
           {avisoIncompleto}
+
+          {/* pedidos-4 (20261164000000): a honestidade do recorte — a
+              varredura enxuta olha só os últimos {JANELA} dias de
+              CANCELAMENTO (não de criação). O servidor conta quem ficou
+              fora; este bloco diz o número e oferece a varredura completa,
+              para pendência antiga (estorno devido, mercadoria a voltar)
+              nunca sumir em silêncio — é o mesmo motivo do BLOQUEIA da
+              revisão de 17/09. */}
+          {temForaDaJanela && (
+            <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/20 p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500">
+                    {foraDaJanela}{" "}
+                    {foraDaJanela === 1
+                      ? "cancelamento anterior à janela"
+                      : "cancelamentos anteriores à janela"}{" "}
+                    de {JANELA_PEDIDOS_CANCELADOS_DIAS} dias
+                  </h3>
+                  <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
+                    A varredura enxuta olha só os cancelamentos recentes. Os
+                    pedidos de fora continuam existindo — com estorno devido e
+                    mercadoria a voltar — e não estão nas listas abaixo.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    onIncluirAntigos?.();
+                    // Fechar junto: a resposta do clique é a lista
+                    // recarregando por trás, não o dropdown aberto sobre ela.
+                    setAberto(false);
+                  }}
+                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[10px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
+                >
+                  Buscar também os antigos
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Aviso fixo: dinheiro recebido em pedido cancelado. Não some
               sozinho (sem botão de dispensar) — foi exatamente isso que fez

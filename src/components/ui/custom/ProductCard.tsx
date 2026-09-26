@@ -7,6 +7,10 @@ import {
 } from "@/components/ui/sheet";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import {
+  type PromessasDeFrete,
+  fraseDoSeloDeFreteGratis,
+} from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada } from "@/lib/imageUrl";
 import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -71,6 +75,24 @@ interface ProductCardProps {
    * completude passa a ser provada pelo compilador, não por revisão.
    */
   showRating: boolean;
+  /**
+   * ProductCard-520 + T3 FRETE V3 (23/09/2026): o que a loja PROMETE de
+   * frete grátis (local e nacional), calculado uma vez pelo chamador via
+   * `promessasDeFrete(config)` (estrategias-de-frete.ts) e repassado aqui —
+   * mesmo padrão do `showRating` (ler `useStore()` dentro de um card
+   * renderizado aos dezenas assinaria a árvore inteira do contexto a cada
+   * instância). O selo "Frete Grátis" só pode afirmar o que a loja DÁ hoje:
+   * `product.freeShipping` sozinho é só a marcação do produto, que vale
+   * apenas dentro do preset "por_produto" (local ou nacional) ou em
+   * "sempre" (qualquer produto) — `fraseDoSeloDeFreteGratis` decide o texto
+   * ("Frete grátis" quando local e nacional concordam; "...na cidade"/"...
+   * para todo o Brasil" quando só um promete).
+   *
+   * Opcional pelo mesmo motivo do antigo `freeShippingPreset`: quando
+   * ausente, o selo cai para `product.freeShipping` sozinho — sem afirmar
+   * "na cidade"/"para todo o Brasil" sem saber a config da loja.
+   */
+  promessasDeFrete?: PromessasDeFrete;
 }
 
 // Global trackers for view transitions to prevent duplicate view-transition-names
@@ -89,6 +111,7 @@ export const ProductCard = memo(function ProductCard({
   priority = false,
   selectedProductId,
   showRating,
+  promessasDeFrete,
 }: Readonly<ProductCardProps>) {
   const instanceId = useId();
   const { prefetchImage } = usePrefetchOnHover();
@@ -120,6 +143,20 @@ export const ProductCard = memo(function ProductCard({
         ((product.originalPrice - product.price) / product.originalPrice) * 100,
       )
     : 0;
+
+  // ProductCard-520 + T3 (23/09): o selo "Frete Grátis" confiava cegamente
+  // em `product.freeShipping`, que só é verdade DENTRO do preset "por
+  // produto marcado" (local OU nacional) ou em "sempre" de qualquer um dos
+  // dois canais. Fora disso, a marcação pode ser resíduo de campanha
+  // antiga: a loja desligou o frete grátis (ou trocou para "acima de
+  // valor") sem desmarcar os produtos. Sem `promessasDeFrete` (chamador
+  // ainda não repassou) o selo preserva o comportamento antigo -- não
+  // piora nada, só ainda não corrige.
+  const fraseDoSelo = promessasDeFrete
+    ? fraseDoSeloDeFreteGratis(promessasDeFrete, product.freeShipping)
+    : product.freeShipping
+      ? "Frete Grátis"
+      : null;
 
   const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
     "idle",
@@ -511,16 +548,17 @@ export const ProductCard = memo(function ProductCard({
             <p className="max-w-[80%] truncate text-[9px] font-bold uppercase tracking-widest text-slate-400">
               {product.category}
             </p>
-            {/* O selo só pode afirmar o que é verdade PARA ESTE produto: o
-                card não conhece o subtotal do carrinho nem se a cliente
-                está logada, então não tem como saber se ela cumpre o
-                mínimo da loja (`config.freeShippingMin`) -- só o próprio
-                `product.freeShipping` é verdade aqui, sempre. A promessa
-                por valor de compra mora no `FreeShippingBlock` (Home). */}
-            {product.freeShipping && (
+            {/* ProductCard-520: o selo só pode afirmar o que a loja
+                realmente dá -- `product.freeShipping` sozinho não basta
+                mais, porque só vale dentro do preset "por_produto" (ou em
+                "sempre", que vale para qualquer produto). Fora disso é
+                marcação de campanha antiga que a loja já desligou. A
+                promessa por valor de compra mora no `FreeShippingBlock`
+                (Home), que compara contra o carrinho de verdade. */}
+            {fraseDoSelo && (
               <div className="flex shrink-0 items-center gap-1 rounded-md border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
                 <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
-                <span className="truncate">Frete Grátis</span>
+                <span className="truncate">{fraseDoSelo}</span>
               </div>
             )}
           </div>
@@ -792,10 +830,10 @@ export const ProductCard = memo(function ProductCard({
                       <span>EM ALTA</span>
                     </span>
                   )}
-                  {product.freeShipping && (
+                  {fraseDoSelo && (
                     <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
                       <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
-                      <span>Frete Grátis</span>
+                      <span>{fraseDoSelo}</span>
                     </span>
                   )}
                   {/* Indicador de estoque: os MESMOS literais do card,

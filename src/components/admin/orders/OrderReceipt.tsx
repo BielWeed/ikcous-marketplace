@@ -62,6 +62,15 @@ export const OrderReceipt = memo(function OrderReceipt({
           <p className="text-xs">{order.customer.neighborhood}</p>
         </div>
 
+        {order.retiradaNaLoja && (
+          <div className="mb-4">
+            <p className="mb-1 border-b border-black font-bold">
+              RETIRADA NA LOJA:
+            </p>
+            <p className="text-xs">{order.enderecoDeRetirada}</p>
+          </div>
+        )}
+
         <div className="mb-4">
           <p className="mb-1 border-b border-black font-bold">ITENS:</p>
           <div className="space-y-1">

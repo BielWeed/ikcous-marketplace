@@ -73,7 +73,11 @@ function construirQueryBuilder(tabela: string, banco: BancoDeTeste) {
       case "coupons":
         return banco.coupons;
       case "produtos":
+      case "vw_produtos_admin":
       case "vw_produtos_public": {
+        // vw_produtos_admin entrou com o -952: o catchup de DETALHES do ramo
+        // admin passou a ler a mesma view do fetchProducts (um esquema só) —
+        // o resumo continua na tabela. A ordem das chamadas não muda.
         const indice = banco.chamadasDeProdutos.length;
         banco.chamadasDeProdutos.push(tabela);
         const dataset = banco.produtosPorChamada.at(indice);
@@ -170,6 +174,9 @@ function criarDubleVault(conteudoDoCofre: any[] = []) {
     // caso da reconciliação começa com o cofre JÁ populado, porque é dele
     // que sai a lista de "está aqui e não está no servidor".
     getAll: vi.fn(async () => conteudoDoCofre),
+    // dataVault-129: o DataVault real tem o par; o motor passa a ler pelo
+    // getAllOrThrow (leitura quebrada NÃO vira "cofre vazio").
+    getAllOrThrow: vi.fn(async () => conteudoDoCofre),
   };
 }
 

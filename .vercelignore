@@ -2,3 +2,15 @@ node_modules
 dist
 .env
 .env.local
+.git
+.zcode
+.specify
+.claude
+.serena
+.worktrees
+.github
+.vscode
+scratch
+NVIDIA Corporation
+relatorio-instalacao.json
+instalacao-prova.json

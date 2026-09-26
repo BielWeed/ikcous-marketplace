@@ -31,9 +31,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
   push:
-    branches: [develop, main]
+    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
 
 # NOTA (14/09/2026): o raciocínio abaixo nasceu quando o repositório era
 # privado e a API de branch protection devolvia 403 no plano Free. Essa
@@ -300,6 +300,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      # A12.4 (package-34): o lint:lockfile existia no package.json e nenhum
+      # workflow o chamava — dependência nova entrava sem NENHUMA checagem de
+      # origem. Valida que todo `resolved` do package-lock aponta para o
+      # registry npm por HTTPS. O gatilho real é a primeira dependência nova
+      # (o leitor de código de barras do PDV, C2.5); o histórico deste repo já
+      # teve service_role commitada — cadeia de suprimento aqui custa caro.
+      - name: Origem do lockfile (registry npm por HTTPS)
+        run: npm run lint:lockfile
       - name: Compara com o teto de dívida
         run: npm run lint:ratchet
 

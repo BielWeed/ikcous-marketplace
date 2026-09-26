@@ -1,13 +1,20 @@
 // @vitest-environment jsdom
 //
-// ONDA D-1 (frente frete-v2-0309, 03/09): o ShippingCalculator tem a MESMA
-// avaliação de grátis que o total — a cópia antiga da regra dentro dele
-// (item marcado INCONDICIONAL + trava `Boolean(user)`) morreu. O componente
-// consome o veredito ÚNICO `freteGratis` do CartContext (memo que lê o
-// preset via `presetDoConfig`, fonte única em presets-de-frete-gratis.ts).
+// ONDA D-1 (frente frete-v2-0309, 03/09) + T3 FRETE V3 (23/09/2026): o
+// ShippingCalculator tem a MESMA avaliação de grátis que o total — a cópia
+// antiga da regra dentro dele (item marcado INCONDICIONAL + trava
+// `Boolean(user)`) morreu. Cada cartão calcula o preço FINAL da própria
+// modalidade via `precoFinalDaOpcao` (estrategias-de-frete.ts).
+//
+// CONTRATO CORRIGIDO EM 23/09: `free_shipping_min` (o preset testado aqui)
+// vale SÓ para `local-delivery`/`store-pickup` — nunca mais para
+// transportadora (o id do carrinho de teste mudou de `melhorenvio-pac`
+// para `local-delivery` por isso; antes desta correção, o preset local
+// "vazava" e carimbava GRÁTIS em QUALQUER cotação, inclusive nacional — o
+// próprio bug que a frente de 23/09 existe para fechar).
 //
 // O defeito que este arquivo prende morto: com o preset "acima_de_valor", um
-// CONVIDADO no limite via as opções de frete a preço cheio na calculadora
+// CONVIDADO no limite via a entrega local a preço cheio na calculadora
 // enquanto o total do pedido saía grátis — duas avaliações da mesma regra
 // divergindo na mesma tela (lição #53).
 //
@@ -179,12 +186,15 @@ function item(produtoDoItem: CartItem["product"], quantity = 1): CartItem {
   };
 }
 
+// Id LOCAL de propósito (T3, 23/09): é `local-delivery`/`store-pickup` que
+// `free_shipping_min` continua governando. Um id de transportadora aqui não
+// provaria mais nada — a regra local NÃO alcança mais nacional.
 const opcaoPac: ShippingOption = {
-  id: "melhorenvio-pac",
-  name: "PAC",
+  id: "local-delivery",
+  name: "Entrega Local",
   price: 41.9,
   deliveryDays: 7,
-  provider: "melhor_envio",
+  provider: "local",
 };
 
 describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do total (onda D-1)", () => {
@@ -227,6 +237,8 @@ describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do
 
   /** Monta provider + calculadora com o carrinho dado e submete um CEP. */
   async function montarECotar(itens: CartItem[]) {
+    // Frete automático (22/09/2026): não há mais campo de CEP — o destino
+    // chega como `cepDestino` (endereço de entrega) e a cotação sai sozinha.
     localStorage.setItem("marketplace_cart_v1", JSON.stringify(itens));
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
@@ -239,28 +251,12 @@ describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do
             cart={itens}
             selectedOption={null}
             onSelectOption={(opt) => selecionadas.push(opt)}
+            cepDestino="69000000"
           />
         </CartProvider>,
       );
     });
 
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, "69000000");
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
-    await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
-      await Promise.resolve();
-    });
     await act(async () => {
       await Promise.resolve();
     });

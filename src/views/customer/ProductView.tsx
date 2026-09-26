@@ -15,6 +15,10 @@ import { useProducts } from "@/hooks/useProducts";
 import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import {
+  fraseDoSeloDeFreteGratis,
+  promessasDeFrete,
+} from "@/lib/estrategias-de-frete";
 import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { cn } from "@/lib/utils";
@@ -34,7 +38,13 @@ import {
   Star,
   Truck,
 } from "lucide-react";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -552,11 +562,22 @@ export const ProductView = React.memo(function ProductView({
       )
     : 0;
 
-  // O selo/aviso de frete grátis desta tela só pode afirmar o que é
-  // verdade PARA ESTE produto: `config.freeShippingMin` é a regra por
-  // valor de compra da loja inteira (carrinho + login), não uma garantia
-  // deste produto isolado -- ver o mesmo raciocínio em ProductCard.tsx.
-  const isEligibleForFreeShipping = product.freeShipping;
+  // ProductCard-520 + T3 (23/09): `product.freeShipping` só é verdade
+  // DENTRO do preset "por_produto" (local OU nacional) ou em "sempre" de
+  // qualquer um dos dois canais -- mesmo raciocínio de ProductCard.tsx.
+  // Fora disso a marcação pode ser resíduo de campanha antiga que a loja já
+  // desligou; sem esta guarda a folha do produto anunciava grátis que o
+  // carrinho (que já obedece a regra por modalidade) ia cobrar.
+  const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
+  // IMPORTANTE (revisão Opus, pós-T3): o selo mostrava "Grátis" sem
+  // qualificar onde vale — mesmo defeito que os outros 6 pontos de selo já
+  // tinham corrigido com `fraseDoSeloDeFreteGratis` (esta folha era o único
+  // que ainda faltava). `null` = nenhum canal promete para ESTE produto —
+  // mesmo critério que `produtoTemFreteGratisPrometido` usava.
+  const fraseDoSelo = fraseDoSeloDeFreteGratis(
+    promessasDaLoja,
+    product.freeShipping,
+  );
 
   const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (cartStatus !== "idle") return;
@@ -978,10 +999,10 @@ export const ProductView = React.memo(function ProductView({
                 EM ALTA
               </span>
             )}
-            {isEligibleForFreeShipping && (
+            {fraseDoSelo && (
               <span className="flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-emerald-700">
                 <Truck className="animate-bounce-subtle size-3 text-emerald-600" />
-                Grátis
+                {fraseDoSelo}
               </span>
             )}
           </div>
@@ -1246,12 +1267,20 @@ export const ProductView = React.memo(function ProductView({
                   </span>
                 </div>
               )}
-              <div className="flex items-center gap-3 text-sm text-gray-700">
-                <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
-                  <ShoppingCart className="size-4" />
+              {/* "Envio rapido" saiu daqui: nao existe envio rapido/expresso
+                  neste app, a mesma promessa ja removida de CartView.tsx e
+                  HomeView.tsx. E o selo so aparece com `!isOutOfStock` -- sem
+                  essa guarda, a mesma tela dizia "Esgotado" no topo (linhas
+                  922-947, `isOutOfStock`) e "em estoque" aqui embaixo, para o
+                  mesmo produto (achado ProductView-1253). */}
+              {!isOutOfStock && (
+                <div className="flex items-center gap-3 text-sm text-gray-700">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
+                    <ShoppingCart className="size-4" />
+                  </div>
+                  <span>Produto em estoque</span>
                 </div>
-                <span>Produto em estoque - Envio rápido</span>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -1419,6 +1448,7 @@ export const ProductView = React.memo(function ProductView({
                       onQuickBuy={handleQuickBuyFromCard}
                       onClick={handleProductClick}
                       showRating={config.enableReviews}
+                      promessasDeFrete={promessasDaLoja}
                     />
                   ))}
             </div>

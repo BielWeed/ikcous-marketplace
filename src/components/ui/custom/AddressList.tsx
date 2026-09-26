@@ -10,6 +10,44 @@ interface AddressListProps {
   selectedId?: string;
   selectable?: boolean;
   compact?: boolean;
+  /** Opt-in do Perfil: mapa por cartão nos detalhes expandidos. O ramo
+   * compacto NUNCA monta iframe, e o checkout (selectable) não passa a flag. */
+  showMaps?: boolean;
+}
+
+// Query de LOCAL para o Google: rua+número, bairro, cidade, UF, CEP e Brasil.
+// Dados privados — destinatário, complemento, referência e apelido — NUNCA
+// saem para o Google. Sem rua e sem CEP não há como apontar o mapa: devolve
+// null para o cartão nem montar iframe vazio (a query é texto; o Google
+// geocodifica sozinho — nada de coordenada inventada nem precisão prometida).
+//
+// CEP sai da query quando rua, cidade e UF estão completos: em alguns
+// endereços, combinar bairro+CEP leva o embed clássico a uma busca ambígua
+// (POIs da região em vez do pin do endereço). O CEP segue como fallback
+// nos casos incompletos.
+export function queryMapsDoEndereco(address: Address): string | null {
+  // Guarda DIRETA em street ou CEP: um número órfão (rua vazia) não monta
+  // query — sem um dos dois não há como apontar o mapa.
+  const temRua = Boolean(address.street?.trim());
+  if (!temRua && !address.cep?.trim()) return null;
+  const rua =
+    temRua && address.number?.trim()
+      ? `${address.street!.trim()}, ${address.number.trim()}`
+      : (address.street?.trim() ?? "");
+  // A omissão do CEP exige rua PRESENTE: sem rua, o CEP é o único
+  // localizador e não pode sair.
+  const omitirCep = Boolean(
+    temRua && address.city?.trim() && address.state?.trim(),
+  );
+  const partes = [
+    rua,
+    address.neighborhood?.trim(),
+    address.city?.trim(),
+    address.state?.trim(),
+    omitirCep ? null : address.cep?.trim(),
+    "Brasil",
+  ].filter(Boolean);
+  return encodeURIComponent(partes.join(", "));
 }
 
 export const AddressList = memo(function AddressList({
@@ -20,6 +58,7 @@ export const AddressList = memo(function AddressList({
   selectedId,
   selectable = false,
   compact = false,
+  showMaps = false,
 }: AddressListProps) {
   if (addresses.length === 0) {
     return (
@@ -126,92 +165,131 @@ export const AddressList = memo(function AddressList({
 
   return (
     <div className="space-y-3">
-      {addresses.map((address) => (
-        <div
-          key={address.id}
-          role={selectable ? "button" : undefined}
-          tabIndex={selectable ? 0 : undefined}
-          className={`relative rounded-2xl border-2 bg-zinc-50/50 p-4 transition-all duration-500 sm:p-5 ${
-            selectable && selectedId === address.id
-              ? "z-10 border-zinc-900 bg-white shadow-2xl shadow-zinc-100"
-              : "border-transparent hover:border-zinc-200 hover:bg-white"
-          } ${selectable ? "cursor-pointer active:scale-[0.98]" : ""}`}
-          onClick={() => selectable && onSelect?.(address)}
-          onKeyDown={(e) => {
-            if (selectable && (e.key === "Enter" || e.key === " ")) {
-              e.preventDefault();
-              onSelect?.(address);
-            }
-          }}
-        >
-          {/* Header */}
-          <div className="mb-2 flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className={`flex size-8 items-center justify-center rounded-xl shadow-sm ${selectable && selectedId === address.id ? "bg-zinc-900 text-white" : "bg-white text-zinc-400"} shrink-0`}
-              >
-                <MapPin className="size-4" />
-              </div>
-              <div>
-                <span className="block text-sm font-bold leading-tight text-zinc-900">
-                  {address.name}
-                </span>
-                {address.is_default && (
-                  <span className="mt-1 block text-[8px] font-bold uppercase tracking-widest text-emerald-500">
-                    Endereço Principal
-                  </span>
-                )}
-              </div>
-            </div>
-            {selectable && selectedId === address.id && (
-              <CheckCircle2 className="size-5 text-zinc-900 duration-300 animate-in zoom-in-50" />
-            )}
-            {(onEdit || onDelete) && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit?.(address);
-                  }}
-                  className="relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
-                  aria-label="Editar"
+      {addresses.map((address) => {
+        // Seletores (checkout) nunca ganham mapa: mesmo com showMaps passado,
+        // selectable bloqueia — o cartão já é interativo e não vira moldura.
+        const queryMaps =
+          showMaps && !selectable ? queryMapsDoEndereco(address) : null;
+        return (
+          <div
+            key={address.id}
+            role={selectable ? "button" : undefined}
+            tabIndex={selectable ? 0 : undefined}
+            className={`relative rounded-2xl border-2 bg-zinc-50/50 p-4 transition-all duration-500 sm:p-5 ${
+              selectable && selectedId === address.id
+                ? "z-10 border-zinc-900 bg-white shadow-2xl shadow-zinc-100"
+                : "border-transparent hover:border-zinc-200 hover:bg-white"
+            } ${selectable ? "cursor-pointer active:scale-[0.98]" : ""}`}
+            onClick={() => selectable && onSelect?.(address)}
+            onKeyDown={(e) => {
+              if (selectable && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                onSelect?.(address);
+              }
+            }}
+          >
+            {/* Header */}
+            <div className="mb-2 flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`flex size-8 items-center justify-center rounded-xl shadow-sm ${selectable && selectedId === address.id ? "bg-zinc-900 text-white" : "bg-white text-zinc-400"} shrink-0`}
                 >
-                  <Edit className="size-3.5" />
-                </button>
-                {onDelete && (
+                  <MapPin className="size-4" />
+                </div>
+                <div>
+                  <span className="block text-sm font-bold leading-tight text-zinc-900">
+                    {address.name}
+                  </span>
+                  {address.is_default && (
+                    <span className="mt-1 block text-[8px] font-bold uppercase tracking-widest text-emerald-500">
+                      Endereço Principal
+                    </span>
+                  )}
+                </div>
+              </div>
+              {selectable && selectedId === address.id && (
+                <CheckCircle2 className="size-5 text-zinc-900 duration-300 animate-in zoom-in-50" />
+              )}
+              {(onEdit || onDelete) && (
+                <div className="flex items-center gap-2">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onDelete?.(address.id);
+                      onEdit?.(address);
                     }}
-                    className="relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500"
-                    aria-label="Excluir"
+                    className="relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
+                    aria-label="Editar"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Edit className="size-3.5" />
                   </button>
-                )}
+                  {onDelete && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete?.(address.id);
+                      }}
+                      className="relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500"
+                      aria-label="Excluir"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Details */}
+            <div className="space-y-1 pl-11 text-[11px] font-medium text-zinc-500">
+              <p className="mb-1 text-xs font-bold uppercase tracking-tighter text-zinc-900">
+                {address.recipient_name}
+              </p>
+              <p className="leading-relaxed">
+                {address.street}, {address.number}
+                {address.complement ? ` - ${address.complement}` : ""}
+              </p>
+              <p className="leading-relaxed">
+                {address.neighborhood}, {address.city} - {address.state}
+              </p>
+              <p className="mt-1 text-[9px] font-bold text-zinc-400">
+                CEP: {address.cep}
+              </p>
+            </div>
+
+            {/* Mapa do endereço (opt-in showMaps, hoje só o Perfil): FORA do
+              pl-11 — largura interna inteira do cartão. O iframe é decorativo
+              (pointer-events none, tabIndex -1: nada de foco invisível); o
+              recorte do topo esconde o chip do embed SEM esconder os créditos
+              do rodapé do Google. O link VISÍVEL sob o mapa abre o Google
+              Maps em nova aba — com o apelido no nome acessível para
+              distinguir os cartões. Recolher os detalhes desmonta o ramo
+              expandido → desmonta o mapa. */}
+            {queryMaps && (
+              <div className="mt-3 overflow-hidden rounded-xl border border-zinc-100">
+                <div className="relative h-40 w-full overflow-hidden">
+                  <iframe
+                    title={`Mapa do endereço ${address.name}`}
+                    src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    credentialless=""
+                    tabIndex={-1}
+                    className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
+                  />
+                </div>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Abrir no Google Maps — endereço ${address.name}`}
+                  className="flex min-h-9 items-center justify-center gap-1 bg-zinc-50 p-2 text-[10px] font-black uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-900"
+                >
+                  Abrir no Google Maps
+                </a>
               </div>
             )}
           </div>
-
-          {/* Details */}
-          <div className="space-y-1 pl-11 text-[11px] font-medium text-zinc-500">
-            <p className="mb-1 text-xs font-bold uppercase tracking-tighter text-zinc-900">
-              {address.recipient_name}
-            </p>
-            <p className="leading-relaxed">
-              {address.street}, {address.number}
-              {address.complement ? ` - ${address.complement}` : ""}
-            </p>
-            <p className="leading-relaxed">
-              {address.neighborhood}, {address.city} - {address.state}
-            </p>
-            <p className="mt-1 text-[9px] font-bold text-zinc-400">
-              CEP: {address.cep}
-            </p>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 });

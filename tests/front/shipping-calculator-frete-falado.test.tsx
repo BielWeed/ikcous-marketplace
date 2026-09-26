@@ -8,9 +8,10 @@
 //   A1 — escolher PAC/SEDEX não era anunciado: o "selecionado" era só
 //        borda/fundo colorido. Agora a opção carrega `aria-pressed` — quem
 //        não vê SABE qual frete vai pagar antes de confirmar.
-//   M1 — CEP inválido aparecia em pixels, em silêncio. Agora `role="alert"`.
-//   M2 — o campo de CEP se explicava só pelo placeholder "00000-000", que
-//        some ao digitar. Agora tem `aria-label`.
+//   M1 — erro do frete aparecia em pixels, em silêncio. Agora `role="alert"`.
+//   M2 — o campo de CEP se explicava só pelo placeholder. Frete automático
+//        (22/09/2026): o campo saiu; a REGIÃO do frete tem nome próprio e o
+//        destino (apelido + endereço) é texto lido.
 //
 // Mesmo molde de shipping-calculator-sem-preco-inventado.test.tsx (mocks
 // secos; jsdom sem localStorage utilizável → dublê em Map).
@@ -29,6 +30,16 @@ vi.mock("@/lib/supabase", () => ({
 // nenhum cenário aqui é grátis.
 vi.mock("@/contexts/CartContext", () => ({
   useCartState: () => ({ freteGratis: false }),
+}));
+// FRETE V3 (T3, 23/09/2026): ShippingCalculator deixou de ler `freteGratis`
+// do CartContext (a cópia global morreu — cada cartão calcula o preço
+// FINAL da própria modalidade) e passou a ler `config` de `useStore()`
+// diretamente, mesmo padrão de CartReminder/FreeShippingBlock.
+// `freeShippingMin: 0` = preset "desligado" -- os ids destes cenários não
+// dependem da regra local (nacional nunca a usa; local, quando aparece,
+// não é o alvo do teste).
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: { freeShippingMin: 0 }, isLoaded: true }),
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/utils/haptic", () => ({
@@ -97,51 +108,73 @@ describe("ShippingCalculator — frete falado (laudo 05/09: A1, M1, M2)", () => 
           cart={carrinho}
           selectedOption={selectedOption}
           onSelectOption={() => {}}
+          cepDestino={cepDestinoAtual}
+          destino={{
+            apelido: "Casa",
+            resumo: "Rua das Flores, 10 — Centro, Manaus/AM · CEP 69000-000",
+          }}
         />,
       );
     });
     return hospedeiro;
   }
 
-  async function digitarECotar(cepDigitado: string) {
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, cepDigitado);
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+  const cepDestinoAtual = "69000000";
 
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
+  async function escoar() {
     await act(async () => {
-      formulario.dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
-      await Promise.resolve();
-    });
-    // Um microtask a mais para o setState do catch/then pintar no DOM.
-    await act(async () => {
-      await Promise.resolve();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
     });
   }
 
-  it("M2 — o campo de CEP tem nome próprio, não só placeholder", async () => {
+  it("M2 — a região do frete tem nome próprio e o destino é texto lido (apelido + endereço)", async () => {
+    invoke.mockResolvedValue({ data: { options: [] }, error: null });
     await montar();
-    const campo = hospedeiro.querySelector(
-      "input#shipping-calculator-cep",
-    ) as HTMLInputElement;
-    expect(campo.getAttribute("aria-label")).toBe("CEP de destino");
+    await escoar();
+    const regiao = hospedeiro.querySelector(
+      'section[aria-label="Entrega e frete"]',
+    );
+    expect(regiao).not.toBeNull();
+    expect(regiao?.textContent ?? "").toContain("Entrega para Casa");
+    expect(regiao?.textContent ?? "").toContain("CEP 69000-000");
+    // Não sobrou campo de CEP para digitar.
+    expect(hospedeiro.querySelector("input")).toBeNull();
   });
 
-  it("M1 — CEP inválido: erro na tela com role=alert (falado na hora)", async () => {
+  it("M1 — cotação que falha: erro com role=alert (falado na hora) e 'Tentar de novo' fora do alerta, que recota", async () => {
+    invoke.mockResolvedValueOnce({
+      data: null,
+      error: { message: "Edge Function retornou 500" },
+    });
     await montar();
-    await digitarECotar("6900");
+    await escoar();
 
     const alerta = hospedeiro.querySelector('[role="alert"]');
     expect(alerta).not.toBeNull();
-    expect(alerta?.textContent ?? "").toContain("CEP deve conter 8 dígitos");
+    expect(alerta?.textContent ?? "").toContain("Não foi possível calcular");
+    // O botão não entra no que é anunciado como alerta.
+    expect(alerta?.textContent ?? "").not.toContain("Tentar de novo");
+    const tentar = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Tentar de novo"),
+    );
+    expect(tentar).toBeDefined();
+
+    invoke.mockResolvedValueOnce({
+      data: {
+        options: [
+          { id: "melhorenvio-pac", name: "PAC", price: 41.9, deliveryDays: 7 },
+        ],
+      },
+      error: null,
+    });
+    await act(async () => {
+      tentar?.click();
+    });
+    await escoar();
+
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+    expect(hospedeiro.textContent).toContain("41,90");
   });
 
   it("A1 — opção selecionada carrega aria-pressed=true; a outra, false", async () => {
@@ -162,12 +195,12 @@ describe("ShippingCalculator — frete falado (laudo 05/09: A1, M1, M2)", () => 
             onSelectOption={(opt) => {
               selecao.atual = opt;
             }}
+            cepDestino="69000000"
           />,
         );
       });
     };
 
-    montarCom(null);
     invoke.mockResolvedValue({
       data: {
         options: [
@@ -190,7 +223,9 @@ describe("ShippingCalculator — frete falado (laudo 05/09: A1, M1, M2)", () => 
       error: null,
     });
 
-    await digitarECotar("69000000");
+    // Frete automático (22/09/2026): o endereço já é o destino — montar cota.
+    montarCom(null);
+    await escoar();
 
     // A auto-seleção pega a mais BARATA (PAC); o pai a guarda e devolve
     // como prop — é esse ciclo que faz o botão anunciar o estado.

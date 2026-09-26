@@ -95,6 +95,7 @@ function variante(extra: Partial<VariantRow> = {}): VariantRow {
 
 const PEDIDO_BASE: OrderRow = {
   address_id: null,
+  canal: "online",
   cancelled_after_shipping: false,
   confirmation_email_sent_at: null,
   coupon_code: null,
@@ -130,6 +131,7 @@ const PEDIDO_BASE: OrderRow = {
   tracking_code: null,
   updated_at: "2026-08-01T11:00:00.000Z",
   user_id: null,
+  vendedor_id: null,
 };
 
 function pedido(
@@ -298,6 +300,22 @@ describe("mapProductFromDB", () => {
     expect(produto.freeShipping).toBe(true);
     expect(produto.costPrice).toBe(4);
   });
+
+  it("traz codigoBarras quando a linha tem a coluna preenchida (C5.1)", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      codigo_barras: "7891234567890",
+    });
+    expect(produto.codigoBarras).toBe("7891234567890");
+  });
+
+  it("codigo_barras nulo vira undefined, não string vazia (C5.1)", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      codigo_barras: null,
+    });
+    expect(produto.codigoBarras).toBeUndefined();
+  });
 });
 
 describe("mapVariantFromDB", () => {
@@ -329,6 +347,16 @@ describe("mapVariantFromDB", () => {
     expect(
       mapVariantFromDB(variante({ price_override: null })).priceOverride,
     ).toBeUndefined();
+  });
+
+  it("traz codigoBarras quando a linha tem a coluna preenchida (C5.1)", () => {
+    const v = mapVariantFromDB(variante({ codigo_barras: "7891234567890" }));
+    expect(v.codigoBarras).toBe("7891234567890");
+  });
+
+  it("codigo_barras nulo vira undefined, não string vazia (C5.1)", () => {
+    const v = mapVariantFromDB(variante({ codigo_barras: null }));
+    expect(v.codigoBarras).toBeUndefined();
   });
 });
 
@@ -394,6 +422,7 @@ describe("mapOrderFromDB", () => {
           number: "5",
           city: "Araxá",
           whatsapp: "34999990000",
+          campo_desconhecido: "fica",
           cpf: "000.000.000-00",
         },
       }),
@@ -402,8 +431,14 @@ describe("mapOrderFromDB", () => {
     expect(o.customer.number).toBe("5");
     expect(o.customer.city).toBe("Araxá");
     expect(o.customer.whatsapp).toBe("34999990000");
-    // O spread de customer_data preserva o que o mapper não conhece.
-    expect((o.customer as { cpf?: string }).cpf).toBe("000.000.000-00");
+    // O spread de customer_data preserva o que o mapper não conhece...
+    expect(
+      (o.customer as { campo_desconhecido?: string }).campo_desconhecido,
+    ).toBe("fica");
+    // ...menos o CPF (migration 20261172): o pedido mapeado vai para o
+    // cache do localStorage, e CPF nunca entra em storage do navegador —
+    // ver tests/front/mapper-cpf-nao-vai-para-o-cache.test.ts.
+    expect("cpf" in o.customer).toBe(false);
   });
 
   it("cai para o telefone quando o snapshot só tem `phone`", () => {

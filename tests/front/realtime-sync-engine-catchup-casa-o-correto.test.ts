@@ -74,8 +74,12 @@ function builderDetalhe(caixa: { idsPedidos: string[] | null }, linhas: any[]) {
 function criarVault(locais: any[]) {
   // Dublê parcial: o catchUp só usa estes métodos. O cast é honesto — o
   // teste declara QUE MÉTODOS usa, não recria o cofre inteiro.
+  // getAllOrThrow e não getAll (dataVault-129, 19/09): o motor passou a ler
+  // o cofre pelo método que ABORTA em leitura quebrada — este dublê ficou
+  // para trás e o teste quebrou sem ninguém da frente tocar nele (quebra
+  // pré-existente no HEAD, consertada aqui na passagem do -952).
   return {
-    getAll: vi.fn(async (store: string) =>
+    getAllOrThrow: vi.fn(async (store: string) =>
       store === "products" ? locais : [],
     ),
     getByIndex: vi.fn(async () => []),

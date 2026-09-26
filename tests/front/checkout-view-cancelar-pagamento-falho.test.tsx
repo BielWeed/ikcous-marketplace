@@ -27,6 +27,14 @@ type TelaCheckout = typeof import("@/views/customer/CheckoutView").CheckoutView;
 // recusa chamador sem auth.uid() desde o PEDIDO-010, #115).
 let mockUser: { id: string } | null = { id: "user-1" };
 
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
@@ -120,28 +128,31 @@ let mockSelectedShippingOption: {
   provider: "flat_fee",
 };
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: mockCart,
-    cartTotal: mockCartTotal,
-    shippingFee: mockShippingFee,
-    clearCart: () => {
-      clearCart();
-      mockCart = [];
-      mockCartTotal = 0;
-      mockShippingFee = 0;
-      mockSelectedShippingOption = null;
-    },
-    addToCart: (
-      product: unknown,
-      quantity: number,
-      variantId?: string,
-      variantNames?: string,
-    ) => addToCart(product, quantity, variantId, variantNames),
-    selectedShippingOption: mockSelectedShippingOption,
-    shippingCep: "38500-000",
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: mockCart,
+      cartTotal: mockCartTotal,
+      shippingFee: mockShippingFee,
+      clearCart: () => {
+        clearCart();
+        mockCart = [];
+        mockCartTotal = 0;
+        mockShippingFee = 0;
+        mockSelectedShippingOption = null;
+      },
+      addToCart: (
+        product: unknown,
+        quantity: number,
+        variantId?: string,
+        variantNames?: string,
+      ) => addToCart(product, quantity, variantId, variantNames),
+      selectedShippingOption: mockSelectedShippingOption,
+      shippingCep: "38500-000",
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
@@ -319,6 +330,11 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
       botaoOnline.click();
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
+      // TRANSPORTADORA EXIGE CPF (checkout compacto + CPF, 23/09/2026): o
+      // caminho "Pagar agora com PIX" só existe com transportadora — sem
+      // CPF válido o formulário fica inválido e o Finalizar nunca chega à
+      // tela de aguardar pagamento que este teste precisa.
+      digitar("checkout-cpf", "11144477735");
       // Campos de endereço de convidado só existem no DOM quando `!user` —
       // com sessão, o endereço vem do mock de useAddresses (auto-selecionado
       // pelo efeito de CheckoutView).
@@ -607,13 +623,20 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
   });
 
   it("BLOQUEIO 1 (#197): sem conexão, o clique NÃO chama a RPC, NÃO navega e avisa que é preciso se reconectar", async () => {
-    // Ligado ANTES do render — a leitura de `isOffline` acontece no render
-    // do componente (hook `useOnlineStatus`), não no clique. O caminho mais
-    // provável descrito na revisão (perder sinal no meio do pagamento) já
-    // deixa o app offline bem antes deste clique.
-    mockIsOffline = true;
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    // Ligado DEPOIS de chegar à tela de aguardar pagamento (CheckoutView-1451,
+    // 15/09/2026): o "Finalizar Pedido" que chega até aqui agora também lê
+    // `isOffline` (achado offline — o botão passou a travar preventivamente
+    // sem rede), então ligar a bandeira antes do clique inicial impediria o
+    // pedido de nascer e este teste nunca chegaria à tela que ele quer
+    // examinar. O caminho mais provável descrito na revisão (perder sinal no
+    // meio do pagamento, já com o pedido criado) é justamente ficar offline
+    // DEPOIS de chegar aqui — a leitura de `isOffline` acontece no próximo
+    // render do componente (hook `useOnlineStatus`), e o `act` do clique de
+    // "Cancelar pedido" abaixo já provoca esse render.
+    mockIsOffline = true;
 
     await act(async () => {
       pagamentoOnlineOnErro[0](

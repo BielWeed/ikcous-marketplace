@@ -2,7 +2,8 @@
 //
 // T3 do lote B de telas admin (12/09/2026): a ficha do pedido vira a "mesa do
 // lojista" — coluna única tipo comanda (largura máx. ~600px), barra de ação
-// FIXA embaixo (imprimir · cancelar · avançar), frase-situação do dinheiro no
+// sticky no TOPO desde o pedido do dono em 20/09/2026 (antes era fixa no pé;
+// imprimir · cancelar · avançar), frase-situação do dinheiro no
 // cabeçalho da seção Pagamento e vocabulário de lojista no lugar do de
 // operador ("GESTÃO OPERACIONAL", "Consolidado Financeiro", "Montante Final",
 // "Logística & Rastreio"… saem; "Pagamento", "Total do pedido",
@@ -211,7 +212,7 @@ describe("ficha do pedido (mesa do lojista) — frase-situação do dinheiro no 
   });
 });
 
-describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", () => {
+describe("ficha do pedido (mesa do lojista) — barra de ação sticky no topo", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -238,21 +239,20 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
     });
   }
 
-  // A barra de ação segue FIXA, mas desde a revisão cruzada do PR 549
-  // (recado 20260912-2320, achado 1) ela SOBE acima do menu inferior do
-  // admin no celular — o seletor antigo `div.fixed.bottom-0` não casa mais
-  // no <lg. A âncora nova: ancestral .fixed com o padrão mobile-safe
-  // (bottom calculado até lg, no pé a partir de lg).
+  // A barra de ação é STICKY no topo desde o pedido do dono (20/09/2026,
+  // com captura): presa logo abaixo da barra "ADMIN" do painel — o seletor
+  // antigo `div.fixed` (era fixa no pé, acima do menu) não casa mais. A
+  // âncora nova: ancestral .sticky com top-0.
   function barraDoBotao(
     botao: Element | null | undefined,
   ): Element | null | undefined {
-    const barra = botao?.closest("div.fixed");
-    expect(barra?.className).toContain("bottom-[calc(6.5rem");
-    expect(barra?.className).toContain("lg:bottom-0");
+    const barra = botao?.closest("div.sticky");
+    expect(barra?.className).toContain("sticky top-0");
+    expect(barra?.className).toContain("border-b");
     return barra;
   }
 
-  it("'Cancelar pedido' (rótulo novo, era 'Abortar Operação') mora na barra fixa, sempre visível ao rolar", async () => {
+  it("'Cancelar pedido' (rótulo novo, era 'Abortar Operação') mora na barra sticky do topo, sempre visível ao rolar", async () => {
     await renderizar(pedidoFake({ status: "pending" }));
 
     const botaoCancelar = hospedeiro.querySelector(
@@ -261,14 +261,18 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
     expect(botaoCancelar).not.toBeNull();
     expect(botaoCancelar?.textContent).toContain("Cancelar pedido");
 
-    // A barra é FIXA (a ação do momento sempre na mão, sem rolar ao topo) e
-    // no celular mora ACIMA do menu inferior do admin (jsdom não faz layout:
-    // é o padrão de classe que garante, conferido por leitura estática na
-    // revisão do PR 549).
-    expect(barraDoBotao(botaoCancelar)).not.toBeNull();
+    // A barra é STICKY (a ação do momento sempre na mão, presa sob a barra
+    // ADMIN) e nasce NO TOPO da ficha, antes de todo o conteúdo (jsdom não
+    // faz layout: é o padrão de classe que garante — e a sticky não depende
+    // de containing block, a lição do bug da barra que rolava junto).
+    const barra = barraDoBotao(botaoCancelar);
+    expect(barra).not.toBeNull();
+    const folha = barra?.closest("div.min-h-screen");
+    expect(barra?.previousElementSibling).toBeNull();
+    expect(folha?.firstElementChild).toBe(barra);
   });
 
-  it("avançar é o botão primário dourado com o rótulo 'Avançar → <próxima etapa>', na MESMA barra fixa", async () => {
+  it("avançar é o botão primário dourado com o rótulo 'Avançar → <próxima etapa>', na MESMA barra do topo", async () => {
     await renderizar(pedidoFake({ status: "pending" }));
 
     const botaoAvancar = Array.from(hospedeiro.querySelectorAll("button")).find(
@@ -290,18 +294,15 @@ describe("ficha do pedido (mesa do lojista) — barra de ação fixa embaixo", (
     expect(barraDoBotao(botaoImprimir)).not.toBeNull();
   });
 
-  it("no celular a barra sobe acima do menu inferior do admin e o rodapé da ficha acompanha (achado 1 da revisão do PR 549)", async () => {
+  it("com a ação no topo, o pé da ficha só cobre o menu inferior do admin (pb encolheu de 11rem para 7rem no pedido do dono de 20/09)", async () => {
     await renderizar(pedidoFake({ status: "pending" }));
 
-    // O padrão mobile-safe já é conferido por botão nos testes de cima;
-    // aqui entra a OUTRA metade do achado: o fim da ficha ("Anotações
-    // internas") precisa de padding que cubra a barra LEVANTADA no <lg
-    // (6.5rem de offset + ~69px de barra ≈ 173px) MAIS o inset de safe-area
-    // do iPhone com notch (~34px que o pb-44 fixo não cobria) — 11rem +
-    // safe-area pela var, mesmo padrão do AdminProductFormView. A partir de
-    // lg a barra volta ao pé: pb-28 chega.
+    // A barra sticky ocupa o próprio lugar no fluxo (não precisa de
+    // compensação no topo); o pb da folha agora cobre SÓ o menu inferior
+    // flutuante (~68px + margens + safe-area do iPhone) — 7rem + safe-area
+    // pela var. A partir de lg o menu some: pb-28 chega.
     const folha = hospedeiro.querySelector("div.min-h-screen");
-    expect(folha?.className).toContain("pb-[calc(11rem");
+    expect(folha?.className).toContain("pb-[calc(7rem");
     expect(folha?.className).toContain("lg:pb-28");
   });
 

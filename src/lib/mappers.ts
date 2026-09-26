@@ -133,6 +133,7 @@ export function mapProductFromDB(
       metaTitle: row.meta_title || undefined,
       metaDescription: row.meta_description || undefined,
       sku: row.codigo || row.sku || undefined,
+      codigoBarras: row.codigo_barras || undefined,
       variants: Array.isArray(row.product_variants)
         ? row.product_variants.map(mapVariantFromDB)
         : [],
@@ -174,6 +175,7 @@ export function mapVariantFromDB(row: VariantRow): ProductVariant {
     id: row.id,
     productId: row.product_id,
     sku: row.sku || undefined,
+    codigoBarras: row.codigo_barras || undefined,
     name: row.name || "Padrão",
     value: row.value || "",
     stockIncrement: Number(row.stock_increment) || 0,
@@ -187,6 +189,12 @@ export function mapVariantFromDB(row: VariantRow): ProductVariant {
     active: row.active ?? true,
     imageUrl: (row as any).image_url || undefined,
   };
+}
+
+/** customer_data sem o CPF do destinatário — ver o uso em mapOrderFromDB. */
+function semCpf(dados: Record<string, unknown>): Record<string, unknown> {
+  const { cpf: _cpfFicaNoBanco, ...resto } = dados;
+  return resto;
 }
 
 /**
@@ -207,6 +215,16 @@ export function mapOrderFromDB(
   // perdiam a verdade. Sem snapshot, o JOIN continua sendo usado
   // (comportamento de hoje preservado). Prendado por
   // tests/front/mappers-endereco-snapshot-vence.test.ts.
+  // RETIRADA NA LOJA (migration 20261169000000): a RPC grava o retrato do
+  // endereço da loja em `customer_data.pickup_address` SÓ quando o pedido é
+  // `store-pickup` (e só aceita a retirada com endereço preenchido). É o
+  // único marcador persistido — vale o retrato, nunca o endereço atual da
+  // loja (a loja pode mudar de endereço depois).
+  const enderecoDeRetirada =
+    typeof customerData.pickup_address === "string"
+      ? customerData.pickup_address.trim()
+      : "";
+
   const addressSource =
     customerData.addressData ||
     (typeof customerData.address === "object" ? customerData.address : null) ||
@@ -218,7 +236,12 @@ export function mapOrderFromDB(
     id: row.id,
     userId: row.user_id || undefined,
     customer: {
-      ...customerData,
+      // CPF DO DESTINATÁRIO (migration 20261172): `customer_data.cpf` fica
+      // no BANCO (quem consome é a etiqueta, no servidor). O pedido mapeado
+      // aqui vai para o cache de pedidos no `localStorage` (useOrders), e
+      // CPF nunca entra em storage do navegador — por isso ele é retirado
+      // do espalhamento. Nenhuma tela lê `customer.cpf`.
+      ...semCpf(customerData),
       name: row.customer_name || customerData?.name || "Cliente",
       whatsapp: customerData?.whatsapp || customerData?.phone || "",
       address:
@@ -274,6 +297,14 @@ export function mapOrderFromDB(
     // database.types.ts, por isso o cast — igual às duas linhas acima.
     pagamentoRecebidoEm: (row as any).pagamento_recebido_em ?? null,
     pagamentoRecebidoPor: (row as any).pagamento_recebido_por ?? null,
+    // Colunas da migration 20261160000000 (canal da venda, PDV). Ao contrário
+    // das quatro linhas acima, estas duas JÁ estão tipadas em OrderRow, então
+    // o acesso é direto: o compilador é a trava se a coluna mudar de nome.
+    // Qualquer valor fora de "presencial" (inclusive ausência) vira "online".
+    canal: row.canal === "presencial" ? "presencial" : "online",
+    vendedorId: row.vendedor_id ?? null,
+    retiradaNaLoja: enderecoDeRetirada !== "",
+    enderecoDeRetirada: enderecoDeRetirada || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

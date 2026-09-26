@@ -41,9 +41,10 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EstornoCard } from "./EstornoCard";
+import { EtiquetaDoPedidoCard } from "./EtiquetaDoPedidoCard";
 import { OrderReceipt } from "./OrderReceipt";
 import {
   OrderStatusBadge,
@@ -139,7 +140,11 @@ function fraseSituacaoDoPagamento(order: Order): string {
   const valor = (order?.total || 0).toLocaleString("pt-BR", {
     minimumFractionDigits: 2,
   });
-  const rotuloDoSelo = rotuloDoPagamento(order.paymentStatus, order.status);
+  const rotuloDoSelo = rotuloDoPagamento(
+    order.paymentStatus,
+    order.status,
+    order.canal,
+  );
   if (rotuloDoSelo.includes("precisa de atenção")) {
     return `${rotuloDoSelo} · R$ ${valor}`;
   }
@@ -158,6 +163,15 @@ function fraseSituacaoDoPagamento(order: Order): string {
   // recebido" (`podeRegistrarPagamento`). `recebido_na_entrega` + cancelado
   // já caiu no ramo de atenção acima.
   if (order.paymentMethod !== "online") {
+    // D1 (lote C4): o banco não ganhou canal como oitavo payment_status — a
+    // venda de balcão grava o MESMO `recebido_na_entrega`/pagamento pendente
+    // de sempre. Só a FRASE muda de "entrega" para "balcão" quando o canal
+    // é presencial; sem canal presencial, nada muda.
+    if (order.canal === "presencial") {
+      return order.pagamentoRecebidoEm
+        ? `Recebido no balcão · R$ ${valor}`
+        : `Falta receber no balcão · R$ ${valor}`;
+    }
     return order.pagamentoRecebidoEm
       ? `Recebido na entrega · R$ ${valor}`
       : `Falta receber na entrega · R$ ${valor}`;
@@ -255,8 +269,9 @@ function ItemSkuBadge({
 
 // T3 (lote B, 12/09) — "Mesa do lojista": o cabeçalho da ficha vira o topo
 // da comanda — título, pills de status do pedido e do pagamento, e a linha
-// meta com data e método. Os botões de ação MIGRARAM para a barra fixa
-// embaixo (`OrderActionBar`): o header fica só com o que se LÊ.
+// meta com data e método. Os botões de ação MIGRARAM para a barra sticky
+// no topo (`OrderActionBar`, pedido do dono 20/09): o header fica só com o
+// que se LÊ.
 interface OrderHeaderProps {
   order: Order;
 }
@@ -279,6 +294,7 @@ function OrderHeader({ order }: Readonly<OrderHeaderProps>) {
         <PaymentStatusBadge
           paymentStatus={order.paymentStatus}
           orderStatus={order.status}
+          canal={order.canal}
         />
       </div>
       <p className="text-[11px] font-medium text-zinc-500">
@@ -303,12 +319,14 @@ interface OrderActionBarProps {
   onCancel: (id: string) => void;
 }
 
-// T3 (lote B, 12/09) — a ação do momento fica PRESA embaixo, sempre visível
-// ao rolar (o header antigo era sticky e prendia a ação no TOPO, obrigando a
-// rolar de volta depois de ler a ficha). São os MESMOS botões e guardas do
-// header antigo, só o endereço mudou: 🖨️ imprime · ✕ Cancelar pedido
-// (vermelho suave, era "Abortar Operação") · Avançar → próxima etapa
-// (dourado, primária).
+// Pedido do dono (20/09/2026, com captura): a ação do momento volta para o
+// TOPO, PRESA logo abaixo da barra "ADMIN" do painel — onde o olho já está.
+// É sticky (não fixed): gruda no topo do painel de rolagem, que fica
+// exatamente sob a barra ADMIN (h-11, lg:hidden), e não depende de
+// containing block — a mesma lição do bug da barra que rolava junto. No
+// desktop a barra ADMIN não existe e ela gruda no topo do painel. São os
+// MESMOS botões e guardas de sempre: 🖨️ imprime · ✕ Cancelar pedido
+// (vermelho suave) · Avançar → próxima etapa (dourado, primária).
 function OrderActionBar({
   orderId,
   orderStatus,
@@ -322,14 +340,11 @@ function OrderActionBar({
     orderStatus !== "cancelled" && orderStatus !== "delivered";
   const podeAvancar = nextStatus !== null && orderStatus !== "cancelled";
 
-  // Sobe acima do menu inferior do admin no celular: a barra e o menu
-  // empatam em z-[60] e o menu vem DEPOIS no DOM (AdminLayout), então no
-  // <lg ele pintava por cima — Avançar/Cancelar/imprimir ficavam atrás das
-  // abas (achado 1 da revisão cruzada do PR 549, recado 20260912-2320).
-  // Mesmo padrão do FAB do AdminProductFormView: acima até lg, no pé a
-  // partir de lg (onde o menu some, lg:hidden). O pb da ficha acompanha.
+  // z-40 basta: dentro do painel é o elemento mais alto ao rolar; a barra
+  // ADMIN (z-50) e o menu inferior (z-[60]) vivem FORA do painel e não
+  // competem. Linha separadora embaixo (border-b): ela é o teto da ficha.
   return (
-    <div className="fixed inset-x-0 bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-[60] border-t border-white/5 bg-admin-bg/95 shadow-2xl backdrop-blur-xl lg:bottom-0">
+    <div className="sticky top-0 z-40 border-b border-white/5 bg-admin-bg/95 shadow-2xl backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[600px] items-center gap-2.5 px-4 py-3">
         <Button
           variant="ghost"
@@ -504,9 +519,24 @@ function OrderCustomerCard({
           </div>
         </div>
       </div>
+      {order.retiradaNaLoja && (
+        // Retirada na loja: a cliente BUSCA — nada a enviar nem etiqueta a
+        // gerar. O endereço é o retrato da compra (customer_data).
+        <div
+          className="space-y-1 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3"
+          aria-label="Retirada na loja"
+        >
+          <p className="text-[9px] font-black uppercase tracking-widest text-emerald-300">
+            Retirada na loja
+          </p>
+          <p className="text-xs leading-relaxed text-zinc-200">
+            A cliente busca o pedido em: {order.enderecoDeRetirada}
+          </p>
+        </div>
+      )}
       <div className="space-y-2 border-t border-white/5 pt-2">
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-          Endereço de Entrega
+          {order.retiradaNaLoja ? "Endereço do cliente" : "Endereço de Entrega"}
         </p>
         <div className="flex flex-col justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-3 md:flex-row md:items-start">
           <p className="flex-1 text-xs uppercase leading-relaxed text-zinc-300">
@@ -662,10 +692,15 @@ function OrderFinanceCard({
   // "precisa de atenção", que não podem pintar de verde só porque a frase
   // começa com "Pago" (pago e cancelado é dinheiro PRESO, não resolvido).
   const situacao = fraseSituacaoDoPagamento(order);
+  // "Recebido no balcão" (D1, lote C4) é o MESMO fato que "Recebido na
+  // entrega" num canal diferente — dinheiro entrou, sem pendência. Sem esta
+  // linha, a venda de balcão paga ficava âmbar (cor de pendência), o
+  // oposto da verdade.
   const situacaoPositiva =
     !situacao.includes("precisa de atenção") &&
     (situacao.startsWith("Pago no site") ||
-      situacao.startsWith("Recebido na entrega"));
+      situacao.startsWith("Recebido na entrega") ||
+      situacao.startsWith("Recebido no balcão"));
 
   return (
     <div className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 p-6 text-white shadow-2xl">
@@ -752,6 +787,7 @@ function OrderFinanceCard({
                 <PaymentStatusBadge
                   paymentStatus={order.paymentStatus}
                   orderStatus={order.status}
+                  canal={order.canal}
                 />
               </div>
               <p className="mt-1 truncate text-xs font-bold uppercase tracking-tight text-white">
@@ -1093,6 +1129,19 @@ export const OrderDetail = memo(function OrderDetail({
   const [isEditingTracking, setIsEditingTracking] = useState(false);
   const [trackingValue, setTrackingValue] = useState(order.trackingCode || "");
   const [isSavingTracking, setIsSavingTracking] = useState(false);
+
+  // Espelho do pedido que ESTE componente está mostrando agora — escrita no
+  // corpo do render (não em `useEffect`) porque, ao contrário do card de
+  // etiqueta, `OrderDetail` é `memo`d e NÃO desmonta ao trocar de pedido: o
+  // pai troca a prop `order`, este componente recebe a renderização nova, e
+  // o valor fica correto a tempo de qualquer callback que chegue depois.
+  // Usado para validar o `orderId` que `EtiquetaDoPedidoCard` devolve no
+  // `onTrackingAtualizado` (2ª rodada da revisão Opus sobre aadbf4c): o
+  // card pode estar desmontado (com `key={order.id}`) quando a resposta de
+  // um pedido antigo chega, então a defesa que protege O ESTADO DESTE
+  // componente tem que morar AQUI, não só dentro do card.
+  const orderIdAtualRef = useRef(order.id);
+  orderIdAtualRef.current = order.id;
 
   const [localNotes, setLocalNotes] = useState(order.notes || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -1457,20 +1506,32 @@ export const OrderDetail = memo(function OrderDetail({
     );
   };
 
-  // pb-[calc(11rem+safe-area)]: no celular a barra fixa mora ACIMA do menu
-  // inferior (6.5rem de offset + ~69px de barra ≈ 173px do fundo) — o pb-28
-  // antigo (112px) deixava o fim de "Anotações internas" atrás da barra
-  // levantada (mesmo achado 1 da revisão do PR 549) — e o iPhone com notch
-  // soma ~34px de inset que o pb-44 fixo (176px) não cobria: o calc com a
-  // var cobre os dois (padrão do AdminProductFormView). A partir de lg a
-  // barra volta ao pé e pb-28 chega.
+  // pb-[calc(7rem+safe-area)]: com a ação no topo (sticky, pedido do dono
+  // 20/09/2026), no celular o pé da folha cobre SÓ o menu inferior flutuante
+  // (~68px + margens + safe-area do iPhone com notch) — o 11rem antigo
+  // compensava a barra que morava no pé (achado 1 da revisão do PR 549) e
+  // virou espaço morto. lg:pb-28 é o respiro final padrão do painel (a
+  // mesma régua do dashboard).
   return (
-    <div className="min-h-screen bg-admin-bg pb-[calc(11rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] duration-500 animate-in fade-in lg:pb-28">
+    <div className="min-h-screen bg-admin-bg pb-[calc(7rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] duration-500 animate-in fade-in lg:pb-28">
+      {/* Pedido do dono (20/09/2026): a barra de ação nasce aqui, no topo da
+          ficha, e gruda sob a barra "ADMIN" ao rolar (sticky). O pb da folha
+          agora cobre só o menu inferior flutuante — a ação não mora mais no
+          pé. */}
+      <OrderActionBar
+        orderId={order.id}
+        orderStatus={order.status}
+        nextStatus={nextStatus}
+        isOffline={isOffline}
+        isUpdatingStatus={isUpdatingStatus}
+        onAdvance={requestStatusChange}
+        onCancel={handleCancelarComConfirmacao}
+      />
       {/* T3 (lote B, 12/09) — "Mesa do lojista": coluna ÚNICA tipo comanda
-          (~600px centrados), na ordem em que o lojista LÊ a ficha: header →
-          espera → trilha → cliente → itens → pagamento (+ devolução) →
-          entrega → anotações. O grid de 2 colunas saiu; a ação migrou para a
-          barra fixa embaixo (`OrderActionBar`). */}
+          (~600px centrados), na ordem em que o lojista LÊ a ficha: ação (fixa
+          no topo desde 20/09) → header → espera → trilha → cliente → itens →
+          pagamento (+ devolução) → entrega → anotações. O grid de 2 colunas
+          saiu. */}
       <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6">
         <OrderHeader order={order} />
 
@@ -1529,6 +1590,38 @@ export const OrderDetail = memo(function OrderDetail({
             order.paymentStatus === "estornado") && (
             <EstornoCard order={order} />
           )}
+        {/* Emissão da etiqueta de envio dentro da ficha do pedido — migrou de
+            Admin > Frete (busca/seleção global) para o pedido já aberto.
+            Venda de balcão (`canal === "presencial"`) não tem envio: a
+            cliente leva o produto na hora, não existe etiqueta para gerar. */}
+        {order.canal !== "presencial" && (
+          <EtiquetaDoPedidoCard
+            // `key={order.id}` aqui NÃO é o que impede o vazamento entre
+            // pedidos — 2ª rodada da revisão Opus sobre aadbf4c corrigiu um
+            // comentário anterior que dizia o contrário. O que protege é a
+            // dupla checagem por `orderId` (dentro do card, via
+            // `useEffect`+cleanup; e aqui embaixo, no `onTrackingAtualizado`)
+            // — essa dupla checagem funciona COM ou SEM o `key`. Mantemos o
+            // `key` só pelo ganho de UX: ele força o card a desmontar e
+            // remontar ao trocar de pedido, então a troca já entra direto no
+            // skeleton de "carregando" em vez de mostrar por um instante os
+            // dados do pedido anterior antes do `useEffect` interno do card
+            // zerar o estado.
+            key={order.id}
+            orderId={order.id}
+            isOffline={isOffline}
+            onTrackingAtualizado={(orderIdDaResposta, codigo) => {
+              // A resposta pode ser de um pedido que este componente não
+              // mostra mais (card desmontado com a resposta ainda em voo, ou
+              // clique antigo cuja resposta chegou depois da troca) —
+              // ignora sem tocar no estado local se não bater com o pedido
+              // ATUAL. Independe de o card ainda existir na árvore.
+              if (orderIdDaResposta !== orderIdAtualRef.current) return;
+              setLocalTrackingCode(codigo);
+              setTrackingValue(codigo);
+            }}
+          />
+        )}
         <OrderLogisticsCard
           localTrackingCode={localTrackingCode}
           isEditingTracking={isEditingTracking}
@@ -1552,16 +1645,6 @@ export const OrderDetail = memo(function OrderDetail({
           onSaveNotes={handleSaveNotes}
         />
       </div>
-
-      <OrderActionBar
-        orderId={order.id}
-        orderStatus={order.status}
-        nextStatus={nextStatus}
-        isOffline={isOffline}
-        isUpdatingStatus={isUpdatingStatus}
-        onAdvance={requestStatusChange}
-        onCancel={handleCancelarComConfirmacao}
-      />
 
       <OrderReceipt order={order} storeName={storeName} />
 

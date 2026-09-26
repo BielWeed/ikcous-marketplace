@@ -92,15 +92,26 @@ export function paiDaTelaDoAdmin(
     case "admin-coupons":
     case "admin-shipping":
       return "admin-products";
+    // Sub-view de "Fora da cidade" (botão "Estratégias do frete nacional
+    // →" em FreteNacionalBloco, dentro de admin-shipping) — o Voltar
+    // volta para a tela de Frete, nunca para admin-products (nova-tela.md:45).
+    case "admin-shipping-national":
+      return "admin-shipping";
     case "admin-user-detail":
       return "admin-customers";
     case "admin-push":
     case "admin-banners":
     case "admin-carousels":
+    case "admin-about-store":
       return "admin-settings";
     case "admin-whatsapp-config":
       return "admin-dashboard";
     case "admin-notifications":
+      return "admin-dashboard";
+    // "Vender" é sub-view do painel principal, não da aba Pedidos (plano
+    // §5.3: "sub-view; não é sexta aba") — por isso o pai é admin-dashboard,
+    // não admin-orders, mesmo sendo vizinha temática em adminViewIndices.
+    case "admin-pdv":
       return "admin-dashboard";
     case "admin-reviews":
     case "admin-qa":
