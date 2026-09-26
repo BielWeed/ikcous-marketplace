@@ -13,6 +13,40 @@ e ao painel do Supabase. Regras de fundo: [AGENTS.md](../../AGENTS.md); function
 **O cartão sai DESLIGADO** (`config_pagamento_cartao`: crédito e débito `false`). Publicar este
 PR não oferece cartão a ninguém. Ligar é o passo 6, separado, depois do teste.
 
+### Atalho: o workflow "Conferir banco da loja", em vez de colar no SQL Editor
+
+Desde 26/09/2026, as consultas dos §0/§1 abaixo e o `INSERT` do §1.3 também rodam pelo workflow
+[`conferir-banco-da-loja.yml`](../../.github/workflows/conferir-banco-da-loja.yml) (Actions → Run
+workflow), sem copiar SQL no painel do Supabase. Ele é **workflow_dispatch só** e usa o mesmo
+segredo `SUPABASE_ACCESS_TOKEN` que já publica functions e aplica migrations — nenhuma
+credencial nova. A lógica mora em
+[`scripts/publicacao/conferir-banco.cjs`](../../scripts/publicacao/conferir-banco.cjs).
+
+| Input | O quê |
+| --- | --- |
+| `consulta` | o nome de um arquivo de [`scripts/publicacao/consultas/`](../../scripts/publicacao/consultas/) (sem `.sql`), ou `backups` |
+| `projeto_ref` | default: o projeto da loja |
+| `gravar_ledger` | `nao` (default), `72-74` ou `75-78` — grava o `INSERT` fixo daquela faixa |
+| `confirmar` | só o job do ledger olha isto; precisa ser exatamente `GRAVAR` |
+
+As consultas de conferência (`consulta`) são **só leitura por construção**: cada uma roda dentro
+de `BEGIN READ ONLY;`, sem `COMMIT`, além de pedir `read_only: true` no request da Management
+API. O job do ledger é o único que escreve, e só com `confirmar = GRAVAR` — sem isso, o job nem
+roda. Correspondência com os passos deste runbook:
+
+- **§0** — `consulta = 0a-antes-base-e-nada-aplicado` (a consulta de "base_74/t75.../f78") e
+  `consulta = 0b-conferir-corpos-vivos` (os 5 corpos vivos das funções que 75/76 redefinem).
+- **§1.1** — `consulta = 1a-conferir-o-que-nasceu`.
+- **§1.2** — `consulta = 1b-conferir-marcadores`.
+- **§1.3** — `gravar_ledger = 75-78`, `confirmar = GRAVAR`. Depois de gravar, o job imprime as
+  linhas de `supabase_migrations.schema_migrations` para 72–78 (leitura, à parte do `INSERT`).
+- **Backup** (checklist do §0) — `consulta = backups`: imprime a hora do último backup, o
+  status, se o PITR está ligado e o total — nada que pareça segredo.
+
+O `consulta = 3a-cpf-no-endereco` também está na lista: é a contagem de pedidos com CPF gravado
+dentro de `customer_data.address` (janela 23/09–26/09/2026) que decide se uma limpeza é
+necessária — nenhum CPF sai na saída, só contagens.
+
 ## A ordem, e o que acontece se ela for trocada
 
 | Passo | O quê | Se pular ou inverter |
