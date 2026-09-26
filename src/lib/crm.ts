@@ -55,6 +55,15 @@ function comoNumero(valor: unknown): number | null {
   return null;
 }
 
+/**
+ * As taxas do `crm_visao` (recompra, receita recorrente, devolução) chegam
+ * como FRAÇÃO de 0 a 1 (ex.: 0,2857); a tela mostra percentual (28,57).
+ */
+function comoPercentualDeFracao(valor: unknown): number | null {
+  const fracao = comoNumero(valor);
+  return fracao == null ? null : Math.round(fracao * 10_000) / 100;
+}
+
 function comoTexto(valor: unknown): string | null {
   if (typeof valor !== "string") return null;
   const limpo = valor.trim();
@@ -280,11 +289,11 @@ export function lerVisaoDoCrm(json: unknown): VisaoDoCrm | null {
       ticketMedioAnterior: comoNumero(kpis.ticket_medio_anterior),
       clientesCompradores: comoNumero(kpis.clientes_compradores),
       clientesNovos: comoNumero(kpis.clientes_novos),
-      taxaRecompra: comoNumero(kpis.taxa_recompra),
-      receitaRecorrentePct: comoNumero(kpis.receita_recorrente_pct),
+      taxaRecompra: comoPercentualDeFracao(kpis.taxa_recompra),
+      receitaRecorrentePct: comoPercentualDeFracao(kpis.receita_recorrente_pct),
       ltvMedio: comoNumero(kpis.ltv_medio),
       receitaEmRisco: comoNumero(kpis.receita_em_risco),
-      taxaDevolucao: comoNumero(kpis.taxa_devolucao),
+      taxaDevolucao: comoPercentualDeFracao(kpis.taxa_devolucao),
     },
     canais: lerCanais(raiz.canais),
     formas: lerFormas(raiz.formas),

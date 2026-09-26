@@ -116,6 +116,9 @@ Conta bancária `…0002` (banco) · Mercado Pago `…0003` (mercado_pago). Vend
 | `crm_clientes(p_segmento text DEFAULT NULL, p_busca text DEFAULT NULL, p_limite int DEFAULT 50, p_offset int DEFAULT 0)` | `{total, clientes:[{chave, user_id, nome, whatsapp, email, pedidos, receita, ticket_medio, primeira_compra, ultima_compra, dias_sem_comprar, r, f, m, segmento, canal_preferido}]}` |
 | `painel_inicio()` | `{hoje:{receita, online, presencial, pedidos, receita_semana_passada}, mes:{receita, receita_mes_anterior, pedidos, ticket_medio, lucro_estimado}, saldo_total, a_receber_7d, a_pagar_7d, contas_vencidas, pendencias:{pedidos_para_preparar, devolucoes_abertas, caixa_aberto, estoque_baixo}, serie_14d:[{dia, receita}]}` |
 
+`taxa_recompra`, `receita_recorrente_pct` e `taxa_devolucao` chegam como **fração de 0 a 1**
+(o front converte para percentual).
+
 Segmentos (`segmento`): `campeoes, leais, ativos, novos, promissores, precisam_atencao,
 quase_dormindo, em_risco, nao_pode_perder, hibernando`. R: ≤30→5, ≤60→4, ≤120→3, ≤240→2, >240→1
 dias. F: 1→1, 2→2, 3→3, 4–5→4, ≥6→5 pedidos. M: quintil por `percent_rank`. FM = ⌊(F+M)/2⌋.
