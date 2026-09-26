@@ -65,6 +65,7 @@ export type AcaoDeRecusa =
   | "escolher_variacao"
   | "trocar_endereco"
   | "trocar_entrega"
+  | "trocar_pagamento"
   | "remover_cupom"
   | "entrar_na_conta"
   | "tentar_de_novo"
@@ -253,26 +254,32 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
   // FRETE_COTACAO_DESATUALIZADA — que tem tratamento PRÓPRIO em
   // CheckoutView.tsx, fora daqui).
   //
-  // 🔴 CORRIGIDO na revisão Opus do commit 085282c3 (anotação 1): a versão
-  // anterior usava `trocar_entrega` (volta ao CARRINHO, botão "Ver outras
-  // formas de entrega") — errado aqui, porque a forma de PAGAMENTO se
-  // escolhe NO PRÓPRIO CHECKOUT, não no carrinho, e aquele botão nem fala
-  // de pagamento. `tentar_de_novo` fecha o painel e mantém a pessoa no
-  // checkout, onde `refresh({ onlyConfig: true })` (CheckoutView, catch de
-  // handleSubmit) já recarregou a config e o efeito de fallback
-  // (`primeiraFormaDePagamentoDisponivel`) já trocou o método sozinho.
+  // 🔴 CORRIGIDO DUAS VEZES. A revisão Opus do commit 085282c3 (anotação 1)
+  // trocou `trocar_entrega` (volta ao CARRINHO, botão "Ver outras formas de
+  // entrega" — que nem fala de pagamento) por `tentar_de_novo`. O RE-review
+  // do commit 3c90059d BLOQUEOU essa segunda versão: P0001 COM `message` é
+  // texto que a RPC escreveu por nome — a regra do cabeçalho deste arquivo
+  // proíbe isso virar `tentar_de_novo` sem ser uma das DUAS exceções já
+  // documentadas lá (nenhuma cobre este caso), e o portão
+  // `recusa-e-toast-nao-divergem.test.ts` existe exatamente para pegar essa
+  // terceira exceção informal — só não pegou na hora porque a frase estava
+  // ausente do corpus dele, e um `it.each` só cobra o que está na lista.
   //
-  // Isto NÃO viola a regra do cabeçalho ("texto do banco nunca vira
-  // tentar_de_novo" — ela existe para não duplicar pedido reenviando um
-  // clique cujo estoque/cupom já foi decrementado): a checagem de forma de
-  // pagamento roda no PASSO 0/1 da RPC, antes de qualquer decremento
-  // (provado em migration_formas_de_pagamento_por_loja_test.ts), e o
-  // reenvio já parte de um `paymentMethod` corrigido pelo efeito acima —
-  // não é "tente igual", é "tente com o que já foi trocado".
+  // A ação certa é `trocar_pagamento`: um destino PRÓPRIO, não um dos dois
+  // já existentes. Ele mapeia para o MESMO `so_fechar` de `tentar_de_novo`
+  // em CheckoutView.tsx (fecha o painel, mantém a pessoa no checkout, onde
+  // `refresh({ onlyConfig: true })` já recarregou a config e o efeito de
+  // fallback `primeiraFormaDePagamentoDisponivel` já trocou o método
+  // sozinho) — então o COMPORTAMENTO na tela não muda nada. O que muda é
+  // que o código para de FINGIR, para o resto da base e para este próprio
+  // arquivo, que o banco não escreveu um texto nomeado: o rótulo do botão
+  // (`ROTULO_DA_ACAO`, `SaidaDaRecusa.tsx`) fica "Escolher outra forma de
+  // pagamento", não "Tentar de novo" — e a regra do cabeçalho continua
+  // fechada sem precisar de uma terceira exceção não escrita.
   {
     padrao:
       /^Esta forma de pagamento não está disponível nesta loja\. Escolha outra\.$/,
-    acao: "tentar_de_novo",
+    acao: "trocar_pagamento",
   },
   {
     padrao: /^Endereço inválido ou não pertence ao usuário\.$/,

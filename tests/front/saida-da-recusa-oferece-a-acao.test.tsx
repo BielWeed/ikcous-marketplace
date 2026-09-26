@@ -39,9 +39,15 @@ const render = (
   });
 };
 
-// As dez ações são o contrato de `AcaoDeRecusa`. A lista é escrita à mão de
+// As onze ações são o contrato de `AcaoDeRecusa`. A lista é escrita à mão de
 // propósito: derivá-la do próprio componente faria o teste concordar consigo
 // mesmo, e um caso esquecido lá passaria a ser um caso esquecido aqui também.
+//
+// `trocar_pagamento` entrou no re-review do commit 3c90059d — é a hand-written
+// list que o "grep todos os consumidores de AcaoDeRecusa" daquele apontamento
+// pediu para conferir: sem esta linha, a ação nova passaria pelos dois
+// `Record` exaustivos (que o TypeScript trava) mas escaparia SILENCIOSAMENTE
+// deste teste, porque `AcaoDeRecusa[]` não é verificado contra a união.
 const TODAS_AS_ACOES: AcaoDeRecusa[] = [
   "reconferir_carrinho",
   "recotar_frete",
@@ -50,6 +56,7 @@ const TODAS_AS_ACOES: AcaoDeRecusa[] = [
   "escolher_variacao",
   "trocar_endereco",
   "trocar_entrega",
+  "trocar_pagamento",
   "remover_cupom",
   "entrar_na_conta",
   "tentar_de_novo",

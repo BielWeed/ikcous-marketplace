@@ -354,6 +354,15 @@ const DESTINO_DA_ACAO: Record<AcaoDeRecusa, DestinoDaRecusa> = {
   remover_item: "carrinho",
   escolher_variacao: "carrinho",
   trocar_entrega: "carrinho",
+  // Re-review do commit 3c90059d: `trocar_pagamento` é o mapeamento CERTO
+  // para a recusa de forma de pagamento desligada — não `trocar_entrega`
+  // (vai ao carrinho, botão que fala de entrega) nem `tentar_de_novo`
+  // (fingiria que o banco não escreveu texto nomeado). O destino é o mesmo
+  // `so_fechar` de `tentar_de_novo`: fecha o painel, mantém a pessoa NO
+  // checkout, onde `refresh({ onlyConfig: true })` já recarregou a config e
+  // o fallback `primeiraFormaDePagamentoDisponivel` já trocou o método
+  // sozinho. Ver o comentário completo em `recusaDoPedido.ts`.
+  trocar_pagamento: "so_fechar",
   remover_cupom: "cupom",
   trocar_endereco: "endereco",
   // Item 3c (12/09/2026): mesmo destino do aviso "Entrega fora da cidade é
@@ -2521,17 +2530,17 @@ export function CheckoutView({
         // convenção de `travaDeEnvio.ts`: "vai no finally, nunca antes".
         return;
       }
-      // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a MESMA corrida rara do
-      // frete acima, agora do lado da forma de pagamento — a RPC recusa com
-      // o texto "Esta forma de pagamento não está disponível...". Ao
-      // contrário do frete, não precisa de um ramo PRÓPRIO com retorno
-      // antecipado: o painel genérico (recusaDoPedido.ts, acao
-      // "trocar_entrega") já leva de volta ao carrinho/checkout, onde a
-      // seleção some da lista assim que a config atualizar. Só falta pedir
-      // a config NOVA — sem isto a opção desligada continuaria aparecendo
-      // disponível até um refresh manual da página. Fogo-e-esquece: a tela
-      // já segue o caminho normal (toast + painel) abaixo, com ou sem essa
-      // atualização ter terminado.
+      // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, corrigido no re-review do
+      // commit 3c90059d): a MESMA corrida rara do frete acima, agora do lado
+      // da forma de pagamento — a RPC recusa com o texto "Esta forma de
+      // pagamento não está disponível...". Ao contrário do frete, não
+      // precisa de um ramo PRÓPRIO com retorno antecipado: o painel genérico
+      // (recusaDoPedido.ts, acao "trocar_pagamento") já fecha o painel e
+      // mantém a pessoa NO checkout, onde a seleção some da lista assim que
+      // a config atualizar. Só falta pedir a config NOVA — sem isto a opção
+      // desligada continuaria aparecendo disponível até um refresh manual da
+      // página. Fogo-e-esquece: a tela já segue o caminho normal (toast +
+      // painel) abaixo, com ou sem essa atualização ter terminado.
       if (ehErroDeFormaDePagamentoDesligada(error)) {
         refreshStoreConfig({ onlyConfig: true }).catch(() => {});
       }
