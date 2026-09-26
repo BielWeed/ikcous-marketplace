@@ -3316,26 +3316,41 @@ export function useOrders(
         // function antiga ainda no ar, ou corpo ilegível) — de propósito
         // SEM reconstruir a categoria a partir de texto nesse caso.
         let terminal = false;
+        // B3 da revisão de risco pré-publicação (26/09/2026): o 409 "Há um
+        // pagamento com cartão em análise para este pedido." (criar-pagamento
+        // /index.ts) carrega `cartaoEmAnalise: true` — sem ele, o CheckoutView
+        // só teria a MENSAGEM para decidir se pode oferecer "Cancelar
+        // pedido", e cancelar um pedido com o cartão ainda em análise é
+        // dinheiro cobrado por um pedido morto se o banco aprovar depois.
+        // MESMA regra estrita do `terminal`: só `true` booleano conta, falha
+        // fechada em qualquer outra coisa (campo ausente, string "true").
+        let cartaoEmAnalise = false;
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
           if (typeof corpo?.terminal === "boolean") terminal = corpo.terminal;
+          if (typeof corpo?.cartaoEmAnalise === "boolean") {
+            cartaoEmAnalise = corpo.cartaoEmAnalise;
+          }
         } catch {
           // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
           // o texto cru de um erro de infraestrutura para o cliente.
         }
-        throw Object.assign(new Error(mensagem), { terminal });
+        throw Object.assign(new Error(mensagem), { terminal, cartaoEmAnalise });
       }
       if (data?.error) {
         // Mesma regra estrita do ramo `error` acima: só `true` literal vira
-        // terminal. `Boolean(...)` aceitaria "false" (string), 1, `{}` — este
-        // ramo é inalcançável hoje (o supabase-js v2 sempre preenche `error`
-        // numa resposta não-2xx), mas duas leituras do mesmo campo lado a
-        // lado é convite para elas divergirem.
+        // terminal/cartaoEmAnalise. `Boolean(...)` aceitaria "false" (string),
+        // 1, `{}` — este ramo é inalcançável hoje (o supabase-js v2 sempre
+        // preenche `error` numa resposta não-2xx), mas duas leituras do mesmo
+        // campo lado a lado é convite para elas divergirem.
         throw Object.assign(new Error(data.error), {
           terminal:
             typeof (data as any).terminal === "boolean" &&
             (data as any).terminal,
+          cartaoEmAnalise:
+            typeof (data as any).cartaoEmAnalise === "boolean" &&
+            (data as any).cartaoEmAnalise,
         });
       }
       return data as RespostaCriarPagamento;

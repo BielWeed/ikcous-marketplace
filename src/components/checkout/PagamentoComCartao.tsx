@@ -77,6 +77,19 @@ const MOTIVO_PADRAO_DA_RECUSA =
   "O banco recusou este cartão. Tente outro cartão ou pague com PIX.";
 
 /**
+ * B2 da revisão de risco pré-publicação (26/09/2026): a tela "em análise"
+ * (sem desafio, `processing` no MP — antifraude/emissor decidindo) ficava
+ * sem saída até a reserva de 30 minutos morrer sozinha. A maioria das
+ * decisões sai em segundos; quem cai numa revisão manual mais longa não
+ * pode ficar preso. Curto o bastante para sobrar tempo de pagar o PIX
+ * dentro da MESMA reserva; longo o bastante para não competir com uma
+ * aprovação normal do banco. Seguro por construção: a edge responde 409
+ * enquanto o cartão segue `processing` (achado B3, tratado no CheckoutView),
+ * nunca cria uma segunda cobrança.
+ */
+export const MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE = 3;
+
+/**
  * Domínios do Mercado Pago que podem hospedar o desafio 3-D Secure e mandar
  * o aviso de "concluído" — os mesmos do `frame-src` do vercel.json.
  */
@@ -570,6 +583,32 @@ export function PagamentoComCartao({
     setEtapa({ tipo: "formulario" });
   };
 
+  // B2: depois de alguns minutos "em análise", oferece PIX como saída (ver o
+  // comentário de MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE, acima). Mesmo
+  // padrão do relógio do prazo do PIX (`PagamentoOnline.tsx`): um `setInterval`
+  // que só reage ao relógio, nunca decide nada sozinho — quem aprova continua
+  // sendo o banco/webhook. Estado, não ref: o valor entra na conta de
+  // `pixDisponivelNaAnalise` durante o RENDER, e ref não pode ser lida ali
+  // (react-hooks/refs — "Cannot access ref value during render").
+  const emAnalise = etapa.tipo === "em-analise";
+  const [inicioDaAnalise, setInicioDaAnalise] = useState<number | null>(null);
+  const [agoraNaAnalise, setAgoraNaAnalise] = useState(() => Date.now());
+  useEffect(() => {
+    if (!emAnalise) {
+      setInicioDaAnalise(null);
+      return;
+    }
+    const agora = Date.now();
+    setInicioDaAnalise(agora);
+    setAgoraNaAnalise(agora);
+    const id = setInterval(() => setAgoraNaAnalise(Date.now()), 10_000);
+    return () => clearInterval(id);
+  }, [emAnalise]);
+  const pixDisponivelNaAnalise =
+    inicioDaAnalise !== null &&
+    agoraNaAnalise - inicioDaAnalise >=
+      MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE * 60_000;
+
   const valorConhecido = Number.isFinite(valor) && valor > 0;
 
   return (
@@ -633,11 +672,26 @@ export function PagamentoComCartao({
         )}
 
         {etapa.tipo === "em-analise" && (
-          <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800">
-            <Clock aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-            Pagamento em análise pelo banco. Você será avisado quando for
-            aprovado.
-          </p>
+          <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="flex items-start gap-2 text-sm font-medium text-amber-800">
+              <Clock aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+              Pagamento em análise pelo banco. Você será avisado quando for
+              aprovado.
+            </p>
+            {/* B2: só depois de alguns minutos — ver
+                MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE. Antes disso a
+                maioria das análises já teria decidido, e oferecer PIX cedo
+                demais competiria com uma aprovação normal. */}
+            {pixDisponivelNaAnalise && (
+              <button
+                type="button"
+                onClick={onPagarComPix}
+                className="flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900"
+              >
+                Pagar com PIX
+              </button>
+            )}
+          </div>
         )}
 
         {etapa.tipo === "confirmando-desafio" && (
@@ -693,6 +747,33 @@ export function PagamentoComCartao({
             credentialless=""
             className="h-[560px] max-h-[75dvh] w-full rounded-xl border border-zinc-200"
           />
+          {/* B2 da revisão de risco pré-publicação (26/09/2026): antes desta
+              correção, o desafio 3DS não tinha saída — só o iframe. Quem
+              abandona o SMS do banco (ou nunca recebe) ficava preso até a
+              reserva de 30 min morrer. "Pagar com PIX" pede o MESMO
+              {orderId, metodo: "pix"} de sempre: a edge já cancela o cartão
+              em action_required/created antes de criar o PIX
+              (criar-pagamento/index.ts). */}
+          <p className="text-xs text-zinc-500">
+            Não conseguiu concluir com o banco? Você pode tentar outro cartão ou
+            pagar com PIX.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={tentarOutroCartao}
+              className="flex min-h-11 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+            >
+              Tentar outro cartão
+            </button>
+            <button
+              type="button"
+              onClick={onPagarComPix}
+              className="flex min-h-11 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+            >
+              Pagar com PIX
+            </button>
+          </div>
         </div>
       )}
 

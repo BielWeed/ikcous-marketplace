@@ -50,7 +50,8 @@ type DadosDoPix = {
 
 type ResultadoClassificacaoPagamento =
   | { tipo: "erro"; mensagem: string; categoria: CategoriaErroPagamento }
-  | { tipo: "pix"; pix: DadosDoPix };
+  | { tipo: "pix"; pix: DadosDoPix }
+  | { tipo: "confirmado" };
 
 /**
  * Traduz a resposta de `criarPagamento` do PIX para o que a tela deve fazer —
@@ -120,10 +121,19 @@ function classificarRespostaPagamento(
     };
   }
   if (!r.qrCode && !r.qrCodeBase64) {
-    // Nunca sinaliza sucesso sem QR de verdade — sem QR o cliente ficaria
-    // preso numa tela vazia, sem volta, com o pedido morrendo em 30 min de
-    // reserva. Recuperável: a cobrança em si não existe de forma útil, e uma
-    // nova tentativa cria/reconsulta do zero sem risco de duplicar cobrança.
+    // B4 da revisão de risco pré-publicação (26/09/2026): 'pago' SEM QR não
+    // é falha nenhuma — é o cliente pedindo PIX com um cartão que a edge já
+    // aprovou (ex.: saiu do desafio 3DS e tocou "Pagar com PIX" antes do
+    // webhook confirmar). Não existe cobrança PIX para desenhar porque o
+    // dinheiro já entrou; dizer "Não foi possível gerar o QR code" seria um
+    // erro falso sobre um pagamento que deu certo. Quem confirma de vez
+    // continua sendo o webhook/CheckoutView — aqui só se evita o susto.
+    if (r.statusPagamento === "pago") return { tipo: "confirmado" };
+    // Sem isso: nunca sinaliza sucesso sem QR de verdade — sem QR o cliente
+    // ficaria preso numa tela vazia, sem volta, com o pedido morrendo em 30
+    // min de reserva. Recuperável: a cobrança em si não existe de forma
+    // útil, e uma nova tentativa cria/reconsulta do zero sem risco de
+    // duplicar cobrança.
     return {
       tipo: "erro",
       mensagem: "Não foi possível gerar o QR code do PIX.",
@@ -184,11 +194,24 @@ export function dispararPagamentoPix({
   criarPagamento,
   onErro,
   onPix,
+  onConfirmado,
 }: {
   orderId: string;
   criarPagamento: CriarPagamento;
-  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
+  // B3: terceiro parâmetro opcional — `cartaoEmAnalise` do 409 "Há um
+  // pagamento com cartão em análise para este pedido." (criarPagamento,
+  // useOrders.ts). Opcional para não quebrar quem ainda chama `onErro` com
+  // dois argumentos.
+  onErro: (
+    msg: string,
+    categoria: CategoriaErroPagamento,
+    cartaoEmAnalise?: boolean,
+  ) => void;
   onPix: (pix: DadosDoPix) => void;
+  // B4: 'pago' sem QR (cartão já aprovado, PIX pedido por cima) — opcional
+  // porque só quem sabe mostrar essa tela (PagamentoComPix) o usa; sem ele,
+  // nenhum chamador quebra, só perde o aviso extra.
+  onConfirmado?: () => void;
 }): () => void {
   let cancelado = false;
 
@@ -220,19 +243,32 @@ export function dispararPagamentoPix({
         onErro(resultado.mensagem, resultado.categoria);
         return;
       }
+      if (resultado.tipo === "confirmado") {
+        onConfirmado?.();
+        return;
+      }
       onPix(resultado.pix);
     })
     .catch((err: any) => {
       if (cancelado) return;
-      // Contrato do CHECKOUT-050: `.terminal`
+      // Contrato do CHECKOUT-050: `.terminal` (e, desde o B3, `.cartaoEmAnalise`)
       // vindo de `criarPagamento` (useOrders.ts) é um DADO lido do corpo do
       // 409/etc. da edge function, nunca reconstruído a partir do texto da
       // mensagem — texto que muda quebraria uma comparação por igualdade.
       const terminal = err?.terminal === true;
-      onErro(
-        err?.message ?? "Não foi possível gerar a cobrança.",
-        terminal ? "terminal" : "recuperavel",
-      );
+      const mensagem = err?.message ?? "Não foi possível gerar a cobrança.";
+      const categoria = terminal ? "terminal" : "recuperavel";
+      // Terceiro argumento OMITIDO quando não é true (não `false` explícito):
+      // testes existentes fixam `onErro` com dois argumentos exatos
+      // (`toHaveBeenCalledWith(msg, categoria)`), e um `false` extra
+      // quebraria essa igualdade estrita sem mudar nada de real — quem lê o
+      // callback (CheckoutView) já trata "ausente" como "não é isso" (achado
+      // B3, revisão de risco pré-publicação).
+      if (err?.cartaoEmAnalise === true) {
+        onErro(mensagem, categoria, true);
+      } else {
+        onErro(mensagem, categoria);
+      }
     });
 
   return () => {
@@ -271,7 +307,12 @@ export function PagamentoOnline({
 }: {
   orderId: string;
   valor: number;
-  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
+  // B3: terceiro parâmetro opcional — ver o comentário em `dispararPagamentoPix`.
+  onErro: (
+    msg: string,
+    categoria: CategoriaErroPagamento,
+    cartaoEmAnalise?: boolean,
+  ) => void;
   metodo?: MetodoOnline;
   configDoCartao?: ConfigDoCartao | null;
   emailDoPagador?: string | null;
@@ -324,7 +365,12 @@ function PagamentoComPix({
 }: {
   orderId: string;
   valor: number;
-  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
+  // B3: terceiro parâmetro opcional — ver o comentário em `dispararPagamentoPix`.
+  onErro: (
+    msg: string,
+    categoria: CategoriaErroPagamento,
+    cartaoEmAnalise?: boolean,
+  ) => void;
 }) {
   // Achado 4 da revisão do CHECKOUT-090 (16/08/2026): `isAdmin=false`, não
   // `true` — este componente é do CLIENTE. Era inofensivo porque
@@ -337,6 +383,11 @@ function PagamentoComPix({
   // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
   // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
   const [pix, setPix] = useState<DadosDoPix | null>(null);
+  // B4: PIX pedido com o cartão já aprovado — a edge devolve 'pago' sem QR
+  // (ver `classificarRespostaPagamento`, acima). Estado final e exclusivo
+  // com `pix`: quem confirma de vez continua sendo o webhook/CheckoutView,
+  // esta tela só troca o erro falso de QR por um aviso honesto.
+  const [confirmado, setConfirmado] = useState(false);
 
   // Padrão de ref para callback em recurso imperativo. `onErro` é tipicamente
   // um closure inline de quem consome o componente (`onErro={(m) =>
@@ -400,13 +451,15 @@ function PagamentoComPix({
     return dispararPagamentoPix({
       orderId,
       criarPagamento,
-      onErro: (msg, categoria) => onErroRef.current(msg, categoria),
+      onErro: (msg, categoria, cartaoEmAnalise) =>
+        onErroRef.current(msg, categoria, cartaoEmAnalise),
       // `agora` nasce na montagem, que pode ter sido minutos antes do QR
       // chegar: sincroniza junto do Pix para o aviso começar correto.
       onPix: (dados) => {
         setAgora(Date.now());
         setPix(dados);
       },
+      onConfirmado: () => setConfirmado(true),
     });
     // `onErro` de propósito fora das deps — ver o comentário do onErroRef
     // acima. O disparo só repete se `orderId` (primitivo) ou `criarPagamento`
@@ -470,6 +523,20 @@ function PagamentoComPix({
 
   const idTitulo = useId();
   const idAvisoHorario = useId();
+
+  // B4: cartão já aprovado, PIX pedido por cima — não existe QR para
+  // desenhar, e não é falha nenhuma. Mesmo tom do "Pagamento aprovado!
+  // Confirmando seu pedido…" do cartão (`PagamentoComCartao.tsx`).
+  if (confirmado) {
+    return (
+      <div className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6">
+        <p className="flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+          <Check aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+          Pagamento confirmado! Finalizando seu pedido…
+        </p>
+      </div>
+    );
+  }
 
   if (pix) {
     const valorConhecido = Number.isFinite(valor) && valor > 0;

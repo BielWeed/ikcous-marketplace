@@ -94,6 +94,7 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
+  Clock,
   CreditCard,
   FileText,
   Loader2,
@@ -152,6 +153,16 @@ const INTERVALO_VERIFICACAO_PAGAMENTO_MS = 10_000;
 // até `pago_apos_expirar`), só deixou de decidir quando parar.
 const TETO_TICKS_VERIFICACAO_PAGAMENTO =
   (60 * 60 * 1000) / INTERVALO_VERIFICACAO_PAGAMENTO_MS; // 60 min / 10s = 360 ticks
+
+// B3 da revisão de risco pré-publicação (26/09/2026, PR #666): texto EXATO do
+// 409 que `criar-pagamento/index.ts` devolve quando o cartão ainda está em
+// análise/3DS e o cliente pede PIX por cima (grep pela mesma frase no arquivo
+// da edge). Serve de RESERVA para quando o corpo não traz o campo
+// `cartaoEmAnalise` (edge antiga, ou versão ainda sem a marca) — a detecção
+// principal é pelo campo (useOrders.ts propaga `.cartaoEmAnalise` do 409),
+// nunca o contrário: a mensagem pode mudar, o campo não.
+const MENSAGEM_CARTAO_EM_ANALISE_409 =
+  "Há um pagamento com cartão em análise para este pedido.";
 
 interface CheckoutFormValues {
   name: string;
@@ -1066,10 +1077,16 @@ export function CheckoutView({
   // "Pagar", no rodapé, para o topo. `categoria` decide se existe "Tentar de
   // novo" (ver CategoriaErroPagamento em PagamentoOnline.tsx): nunca
   // reclassificada aqui por texto de mensagem, só repassada como o
-  // PagamentoOnline mandou.
+  // PagamentoOnline mandou. `cartaoEmAnalise` é o achado B3 da revisão de
+  // risco pré-publicação (26/09/2026, PR #666): detectado pelo campo que a
+  // edge manda no 409 OU, como reserva, pela MESMA mensagem exata
+  // (MENSAGEM_CARTAO_EM_ANALISE_409, abaixo) — funciona antes e depois da
+  // edge mandar o campo. Cancelar o pedido enquanto o banco ainda pode
+  // aprovar o cartão é dinheiro cobrado por um pedido morto.
   const [erroPagamento, setErroPagamento] = useState<{
     mensagem: string;
     categoria: CategoriaErroPagamento;
+    cartaoEmAnalise: boolean;
   } | null>(null);
   // CHECKOUT-070 (#197): saída para pagamento falho. `isCancelandoPedido`
   // trava o botão contra clique repetido (cancelar duas vezes bateria na
@@ -2737,7 +2754,25 @@ export function CheckoutView({
           Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
           itens voltam para o estoque e o pedido é cancelado.
         </p>
-        {erroPagamento ? (
+        {erroPagamento?.cartaoEmAnalise ? (
+          // B3 da revisão de risco pré-publicação (26/09/2026): NUNCA
+          // "Cancelar pedido" aqui — o cartão ainda pode ser aprovado pelo
+          // banco, e cancelar cobraria por um pedido morto se a aprovação
+          // vier depois. Sem botão de "continuar acompanhando": a
+          // verificação periódica do pagamento (useEffect logo abaixo desta
+          // função) já roda sozinha enquanto esta tela está montada e troca
+          // para `<PagamentoConfirmadoView>` assim que o banco decidir.
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <Clock
+              aria-hidden="true"
+              className="mt-0.5 size-5 shrink-0 text-amber-600"
+            />
+            <p className="text-sm font-medium text-amber-800">
+              Seu cartão está em análise pelo banco. Aguarde a resposta; você
+              será avisado aqui.
+            </p>
+          </div>
+        ) : erroPagamento ? (
           <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
@@ -2759,6 +2794,25 @@ export function CheckoutView({
                 className="w-full rounded-xl bg-red-600 text-white hover:bg-red-600/90"
               >
                 Tentar de novo
+              </Button>
+            )}
+            {/* B1 da revisão de risco pré-publicação (26/09/2026): em modo
+                cartão, "Tentar de novo" sozinho remonta a tela AINDA em
+                cartão — um Brick bloqueado pelo COEP (o próprio risco que o
+                commit do cartão já declara) entra em loop, e a única saída
+                virava cancelar o pedido. "Pagar com PIX" troca o método e
+                limpa o erro na hora, sem esperar o cliente cancelar. */}
+            {metodoDoPedido === "cartao" && (
+              <Button
+                onClick={() => {
+                  setMetodoDoPedido("pix");
+                  setErroPagamento(null);
+                  setErroCancelamento(null);
+                }}
+                variant="outline"
+                className="w-full rounded-xl"
+              >
+                Pagar com PIX
               </Button>
             )}
             {/* CHECKOUT-070 (#197): visível nos dois casos — no terminal é a
@@ -2812,7 +2866,7 @@ export function CheckoutView({
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
             onTrocarParaPix={() => setMetodoDoPedido("pix")}
-            onErro={(msg, categoria) =>
+            onErro={(msg, categoria, cartaoEmAnalise) =>
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
                 // Mercado Pago não é clara sobre a ordem entre `onSubmit`
@@ -2823,7 +2877,16 @@ export function CheckoutView({
                 // muda com nova tentativa.
                 atual?.categoria === "terminal"
                   ? atual
-                  : { mensagem: msg, categoria },
+                  : {
+                      mensagem: msg,
+                      categoria,
+                      // B3: pelo campo que a edge manda (quando existir) OU,
+                      // como reserva, pela mensagem exata — funciona antes e
+                      // depois da edge mandar o campo.
+                      cartaoEmAnalise:
+                        cartaoEmAnalise === true ||
+                        msg === MENSAGEM_CARTAO_EM_ANALISE_409,
+                    },
               )
             }
           />

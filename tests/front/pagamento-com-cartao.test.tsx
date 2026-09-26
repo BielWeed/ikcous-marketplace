@@ -19,6 +19,7 @@ import {
 } from "vitest";
 
 import {
+  MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE,
   classificarRespostaCartao,
   desafioConcluido,
   enviarPagamentoComCartao,
@@ -949,5 +950,138 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     expect(hospedeiro.textContent).toContain(
       "O pagamento com cartão não está disponível nesta loja agora.",
     );
+  });
+
+  // B2 da revisão de risco pré-publicação (26/09/2026): o desafio 3DS ficava
+  // SEM saída — só o iframe, sem "Tentar outro cartão" nem "Pagar com PIX",
+  // mesmo a edge já aceitando PIX (cancela o cartão em action_required/
+  // created, ver criar-pagamento/index.ts) para quem abandonou o SMS do
+  // banco. O pedido do front é o MESMO de sempre: {orderId, metodo: "pix"}
+  // — quem decide cancelar ou recusar é a edge, não esta tela.
+  it("desafio 3DS: 'Tentar outro cartão' e 'Pagar com PIX' aparecem junto do iframe", async () => {
+    const { create } = instalarSdkFalso();
+    const url =
+      "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/abc?display_mode=self_hosted";
+    criarPagamento
+      .mockResolvedValueOnce({
+        paymentId: "pay-1",
+        statusPagamento: "aguardando",
+        expiraEm: "x",
+        desafio3ds: { url },
+      })
+      .mockResolvedValueOnce({
+        paymentId: "pay-2",
+        statusPagamento: "aguardando",
+        expiraEm: new Date(Date.now() + 20 * 60_000).toISOString(),
+        qrCode: "000201-pix",
+        qrCodeBase64: "abc123",
+      });
+    const { onTrocarParaPix } = await renderCartao();
+    await enviarCartao(create);
+
+    expect(hospedeiro.querySelector("iframe")).not.toBeNull();
+    const tentar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Tentar outro cartão",
+    );
+    const pix = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Pagar com PIX",
+    );
+    expect(tentar).toBeDefined();
+    expect(pix).toBeDefined();
+
+    // "Pagar com PIX" no desafio dispara o MESMO caminho de sempre: avisa o
+    // pai (onTrocarParaPix) e a próxima cobrança pedida é PIX puro.
+    await act(async () => {
+      pix!.click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(onTrocarParaPix).toHaveBeenCalledTimes(1);
+    expect(criarPagamento).toHaveBeenLastCalledWith({
+      orderId: "ped-12345678",
+      metodo: "pix",
+    });
+    expect(
+      hospedeiro.querySelector("img[alt='QR code do PIX']"),
+    ).not.toBeNull();
+  });
+
+  it("desafio 3DS: 'Tentar outro cartão' fecha o iframe e remonta o Brick do zero", async () => {
+    const { create } = instalarSdkFalso();
+    const url =
+      "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/abc";
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "aguardando",
+      expiraEm: "x",
+      desafio3ds: { url },
+    });
+    await renderCartao();
+    await enviarCartao(create);
+
+    const tentar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Tentar outro cartão",
+    )!;
+    await act(async () => {
+      tentar.click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.querySelector("iframe")).toBeNull();
+    expect(create).toHaveBeenCalledTimes(2);
+    // Continua sem PIX nenhum: a troca não pediu cobrança nova.
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+  });
+
+  // B2, cenário 2: cartão em análise sem desafio (`processing`) — o banco
+  // pode demorar, e a tela ficava presa em "Você será avisado quando for
+  // aprovado" até a reserva de 30 min morrer. Depois de alguns minutos,
+  // "Pagar com PIX" aparece como saída — seguro porque a edge responde 409
+  // enquanto o cartão ainda está em análise (achado B3, tratado no
+  // CheckoutView).
+  describe("em análise: 'Pagar com PIX' só depois de alguns minutos", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("não aparece de imediato, e aparece depois do teto de minutos em análise", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockResolvedValue({
+        paymentId: "pay-1",
+        statusPagamento: "aguardando",
+        expiraEm: "x",
+      });
+      await renderCartao();
+      await enviarCartao(create);
+
+      expect(hospedeiro.textContent).toContain(
+        "Pagamento em análise pelo banco. Você será avisado quando for aprovado.",
+      );
+      expect(
+        [...hospedeiro.querySelectorAll("button")].find(
+          (b) => b.textContent === "Pagar com PIX",
+        ),
+      ).toBeUndefined();
+
+      await act(async () => {
+        vi.advanceTimersByTime(
+          MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE * 60_000 + 10_000,
+        );
+      });
+
+      expect(
+        [...hospedeiro.querySelectorAll("button")].find(
+          (b) => b.textContent === "Pagar com PIX",
+        ),
+      ).toBeDefined();
+    });
   });
 });
