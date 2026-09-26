@@ -6,6 +6,7 @@ import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useConnectionDiagnostics } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
+import { prefetchPainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import {
@@ -414,6 +415,10 @@ export function AdminLayout({
       }
       prefetchView(view);
       if (view === "admin-dashboard" || view === "admin") {
+        // O Início lê `painel_inicio` (+ assinatura); o dashboard de
+        // métricas que ele era foi para a Visão geral do CRM (26/09/2026).
+        prefetchPainelInicio();
+      } else if (view === "admin-crm") {
         fetchExecutiveSummary(false).catch(() => {});
         fetchCategoryAnalytics(
           "2020-01-01T00:00:00.000Z",
