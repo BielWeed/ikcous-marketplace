@@ -1,0 +1,1871 @@
+diff --git a/src/types/database.types.ts b/src/types/database.types.ts
+index ac97ecf1..91b8502d 100644
+--- a/src/types/database.types.ts
++++ b/src/types/database.types.ts
+@@ -2759,6 +2759,10 @@ export type Database = {
+         };
+         Returns: Json;
+       };
++      admin_devolucao_reemitir_reembolso: {
++        Args: { p_devolucao_id: string; p_manual?: boolean };
++        Returns: Json;
++      };
+       admin_devolucao_registrar: {
+         Args: {
+           p_codigo?: string | null;
+diff --git a/supabase/migrations/20261175000000_a_devolucao_nasce_no_pedido.sql b/supabase/migrations/20261175000000_a_devolucao_nasce_no_pedido.sql
+index da48c4d1..a20a2161 100644
+--- a/supabase/migrations/20261175000000_a_devolucao_nasce_no_pedido.sql
++++ b/supabase/migrations/20261175000000_a_devolucao_nasce_no_pedido.sql
+@@ -47,6 +47,23 @@
+ --      aviso em `notificacoes` (best-effort, mesmo esqueleto do
+ --      tr_pedido_avisa_o_cliente).
+ --
++-- REVISÃO DE RISCO (26/09/2026, achados aplicados nesta mesma migration,
++-- ainda não aplicada em produção — editada em vez de corrigida por cima):
++--   A. Snapshot do item rateia o cupom do pedido (`valor_unitario`), em vez
++--      do preço cheio; reembolso default nunca passa do que sobrou do preço
++--      depois do cupom.
++--   B. `payment_status` vira lista de PERMISSÃO (era bloqueio — NULL escapava,
++--      pagamento na entrega nunca confirmado abria devolução com reembolso).
++--   C/H. `admin_devolucao_concluir` revalida status/pagamento/estoque do
++--      pedido no lock (não só da devolução); `devolver_estoque` (redefinida
++--      na seção 7 abaixo) desconta o que a devolução já repôs, para o
++--      cancelamento de um pedido entregue não reestocar duas vezes.
++--   G. Pagamento online com mais de 180 dias vai direto pelo reembolso
++--      manual (o executor recusaria); `admin_devolucao_reemitir_reembolso`
++--      reabre o caminho quando um reembolso nasce e o Mercado Pago recusa.
++--   M. Sem fallback para `updated_at` na data de entrega (pedido legado sem
++--      histórico vira "fale com a loja", não reabre a janela legal).
++--
+ -- DADOS EXISTENTES: nenhuma tabela existente é reescrita. A única linha
+ -- semeada é a política padrão (id=1, ON CONFLICT DO NOTHING).
+ --
+@@ -285,12 +302,14 @@ LANGUAGE sql
+ STABLE
+ SET search_path = public
+ AS $$
+-  SELECT COALESCE(
+-    (SELECT max(h.created_at) FROM public.marketplace_order_history h
+-      WHERE h.order_id = p_order_id AND h.new_status = 'delivered'),
+-    (SELECT o.updated_at FROM public.marketplace_orders o
+-      WHERE o.id = p_order_id AND o.status = 'delivered')
+-  )
++  -- Achado M (revisão de 26/09/2026): SEM fallback para updated_at. Pedido
++  -- legado sem linha 'delivered' no histórico não tem data de entrega
++  -- confiável — updated_at anda por qualquer edição do pedido, e usá-lo
++  -- reabriria a janela legal a cada UPDATE. Sem data, a elegibilidade e o
++  -- pedido recusam com "fale com a loja" (v_entregue IS NULL já tratado nos
++  -- dois chamadores).
++  SELECT max(h.created_at) FROM public.marketplace_order_history h
++   WHERE h.order_id = p_order_id AND h.new_status = 'delivered'
+ $$;
+ 
+ CREATE OR REPLACE FUNCTION public.devolucao__modalidade(p_canal text, p_opcao text)
+@@ -428,7 +447,13 @@ BEGIN
+ 
+   v_bloqueio := CASE
+     WHEN v_o.status IS DISTINCT FROM 'delivered' THEN 'A devolução fica disponível depois que o pedido for entregue.'
+-    WHEN v_o.payment_status IN ('aguardando', 'recusado', 'expirado', 'estornado') THEN 'Este pedido não tem pagamento a devolver.'
++    -- Achado B (revisão de 26/09/2026): lista de PERMISSÃO, não de bloqueio —
++    -- `payment_status IN (...)` com NULL dá NULL (nem bloqueia nem libera). O
++    -- "Ainda não" do admin deixa payment_status NULL num pedido 'delivered'
++    -- (pago na entrega nunca confirmado): sem isto a devolução seguia normal.
++    WHEN v_o.payment_status IS NULL
++      OR v_o.payment_status NOT IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
++      THEN 'Este pedido não tem pagamento a devolver.'
+     WHEN EXISTS (SELECT 1 FROM public.devolucoes d WHERE d.order_id = v_o.id
+                   AND d.status IN ('solicitada', 'aprovada', 'em_transito', 'recebida'))
+       THEN 'Já existe uma devolução em andamento para este pedido.'
+@@ -502,6 +527,11 @@ DECLARE
+   v_protocolo text;
+   v_tentativa integer := 0;
+   v_categoria text;
++  -- Achado A: o cupom mora em marketplace_orders.discount, não no item — o
++  -- snapshot precisa ratear o desconto, senão o reembolso default devolve o
++  -- preço CHEIO de um item pago com desconto.
++  v_fator_desconto numeric := 1;
++  v_valor_unit numeric(12, 2);
+ BEGIN
+   IF v_uid IS NULL THEN
+     RAISE EXCEPTION 'Entre na sua conta para pedir uma devolução.' USING ERRCODE = '42501';
+@@ -514,7 +544,10 @@ BEGIN
+   IF v_o.status IS DISTINCT FROM 'delivered' THEN
+     RAISE EXCEPTION 'A devolução fica disponível depois que o pedido for entregue.' USING ERRCODE = '22023';
+   END IF;
+-  IF v_o.payment_status IN ('aguardando', 'recusado', 'expirado', 'estornado') THEN
++  -- Achado B: mesma lista de PERMISSÃO da devolucao_elegibilidade (NULL IN
++  -- (...) é NULL, nunca verdadeiro — bloqueio por lista negativa não pegava).
++  IF v_o.payment_status IS NULL
++     OR v_o.payment_status NOT IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') THEN
+     RAISE EXCEPTION 'Este pedido não tem pagamento a devolver.' USING ERRCODE = '22023';
+   END IF;
+   IF EXISTS (SELECT 1 FROM public.devolucoes d WHERE d.order_id = v_o.id
+@@ -527,6 +560,12 @@ BEGIN
+   IF v_entregue IS NULL THEN
+     RAISE EXCEPTION 'Não encontramos a data de entrega deste pedido. Fale com a loja.' USING ERRCODE = '22023';
+   END IF;
++  -- Achado A: fração do que sobrou do preço depois do cupom (subtotal >
++  -- discount, sempre — só protegendo contra subtotal 0/negativo de dado
++  -- legado). GREATEST/LEAST prende em [0, 1]: nunca amplia o preço.
++  IF v_o.subtotal > 0 THEN
++    v_fator_desconto := GREATEST(LEAST((v_o.subtotal - COALESCE(v_o.discount, 0)) / v_o.subtotal, 1), 0);
++  END IF;
+   v_entregue_dia := (v_entregue AT TIME ZONE 'America/Sao_Paulo')::date;
+   v_dias := v_hoje - v_entregue_dia;
+ 
+@@ -651,14 +690,21 @@ BEGIN
+       END IF;
+     END IF;
+ 
++    -- Achado A: snapshot rateado pelo cupom, não o preço cheio do item.
++    v_valor_unit := round(v_oi.price * v_fator_desconto, 2);
+     INSERT INTO public.devolucao_itens (
+       devolucao_id, order_item_id, product_id, variant_id, product_name, image_url, quantidade, valor_unitario
+     ) VALUES (
+-      v_id, v_oi.id, v_oi.product_id, v_oi.variant_id, v_oi.product_name, v_oi.image_url, v_qtd, v_oi.price
++      v_id, v_oi.id, v_oi.product_id, v_oi.variant_id, v_oi.product_name, v_oi.image_url, v_qtd, v_valor_unit
+     );
+-    v_valor := v_valor + round(v_qtd * v_oi.price, 2);
++    v_valor := v_valor + round(v_qtd * v_valor_unit, 2);
+   END LOOP;
+ 
++  -- Trava de arredondamento (achado A): a soma dos itens desta devolução
++  -- nunca passa do que o pedido cobrou pelos itens depois do cupom — mesmo
++  -- que o rateio por unidade, arredondado, feche um centavo acima.
++  v_valor := LEAST(v_valor, GREATEST(round(v_o.subtotal - COALESCE(v_o.discount, 0), 2), 0));
++
+   -- Arrependimento/defeito devolvem também o frete de ida quando o pedido
+   -- volta inteiro (CDC art. 49, parágrafo único: "a qualquer título").
+   IF v_tipo IN ('arrependimento', 'vicio') THEN
+@@ -997,6 +1043,26 @@ BEGIN
+ 
+   SELECT * INTO v_o FROM public.marketplace_orders WHERE id = v_d.order_id FOR UPDATE;
+ 
++  -- Achado H (revisão de 26/09/2026): o lock não bastava — a devolução podia
++  -- concluir mesmo depois de o PEDIDO ter mudado de vida por outro caminho
++  -- (admin cancela + registrar_estorno_manual enquanto a devolução está
++  -- 'recebida', ou o estoque já voltou pelo cancelamento). Sem isto: venda de
++  -- balcão de R$100, devolução concluída com reembolso, pedido cancelado e
++  -- estornado por fora → 200 saem por uma venda de 100, e o estoque credita
++  -- de novo (achado C, ver devolver_estoque logo abaixo).
++  IF v_o.status <> 'delivered' THEN
++    RAISE EXCEPTION 'O pedido desta devolução não está mais entregue (status atual: %). Fale com o financeiro antes de concluir.',
++      v_o.status USING ERRCODE = '22023';
++  END IF;
++  IF v_o.payment_status IS NULL
++     OR v_o.payment_status NOT IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') THEN
++    RAISE EXCEPTION 'Este pedido não tem pagamento registrado para devolver.' USING ERRCODE = '22023';
++  END IF;
++  IF v_o.stock_returned_at IS NOT NULL THEN
++    RAISE EXCEPTION 'O estoque deste pedido já voltou à prateleira por outro caminho (cancelamento). Fale com o financeiro antes de concluir.'
++      USING ERRCODE = '22023';
++  END IF;
++
+   -- Inspeção e reestoque por item (uma vez só por item).
+   FOR v_item IN SELECT * FROM jsonb_array_elements(COALESCE(p_itens, '[]'::jsonb)) LOOP
+     SELECT * INTO v_di FROM public.devolucao_itens
+@@ -1029,36 +1095,64 @@ BEGIN
+   END IF;
+ 
+   IF p_resolucao = 'reembolso' THEN
+-    v_valor := round(COALESCE(p_valor_reembolso, v_d.valor_itens + v_d.valor_frete_ida), 2);
+-    IF v_valor <= 0 THEN
+-      RAISE EXCEPTION 'Informe o valor do reembolso.' USING ERRCODE = '22023';
+-    END IF;
+-
++    -- Achado G: pagamento online com mais de 180 dias — o executor
++    -- (supabase/functions/_shared/estorno.ts, guardaAntesDeChamar) RECUSA
++    -- antes de chamar o Mercado Pago (prazo_vicio_dias aceita até 365, o MP
++    -- só até 180). Abrir a linha em order_refunds ali só criaria um
++    -- 'recusado' e a devolução concluiria sem dinheiro sair e sem caminho de
++    -- refazer. Vai direto pelo caminho manual (a loja resolve fora do app).
+     v_pago_pelo_app := v_o.payment_method = 'online'
+                        AND v_o.payment_status IN ('pago', 'pago_apos_expirar')
+-                       AND v_o.gateway_payment_id IS NOT NULL;
++                       AND v_o.gateway_payment_id IS NOT NULL
++                       AND v_o.paid_at IS NOT NULL
++                       AND now() - v_o.paid_at <= interval '180 days';
+ 
+     IF v_pago_pelo_app THEN
+       -- Mesma trava de saldo da solicitar_estorno: total − já devolvido − em voo.
+       SELECT COALESCE(sum(r.amount), 0) INTO v_em_voo FROM public.order_refunds r
+        WHERE r.order_id = v_o.id AND r.status IN ('solicitado', 'em_processamento');
+       v_disponivel := v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo;
+-      IF v_valor > v_disponivel THEN
+-        RAISE EXCEPTION 'O reembolso (R$ %) passa do que ainda pode ser devolvido deste pedido (R$ %).',
+-          v_valor, v_disponivel USING ERRCODE = '22023';
+-      END IF;
+-      INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
+-      VALUES (v_o.id, v_valor, 'Devolução ' || v_d.protocolo, 'lojista', 'solicitado')
+-      RETURNING id INTO v_refund_id;
+     ELSE
+       SELECT v_o.total - COALESCE(v_o.valor_estornado, 0) - COALESCE(sum(d.valor_reembolso), 0)
+         INTO v_disponivel
+         FROM public.devolucoes d
+        WHERE d.order_id = v_o.id AND d.status = 'concluida' AND d.reembolso_manual;
+-      IF v_valor > v_disponivel THEN
+-        RAISE EXCEPTION 'O reembolso (R$ %) passa do valor pago no pedido (R$ %).',
+-          v_valor, v_disponivel USING ERRCODE = '22023';
++    END IF;
++    v_disponivel := GREATEST(COALESCE(v_disponivel, 0), 0);
++
++    -- Achado A: valor explícito do lojista continua recusado se passar do
++    -- disponível (erro dele, ele corrige); o DEFAULT (valor dos itens + frete
++    -- de ida) é CAPADO no disponível em vez de recusar a conclusão — era isto
++    -- que fazia uma devolução integral com cupom (itens no preço cheio,
++    -- 220 > 120 pagos) travar para sempre.
++    IF p_valor_reembolso IS NOT NULL THEN
++      v_valor := round(p_valor_reembolso, 2);
++      IF v_valor <= 0 THEN
++        RAISE EXCEPTION 'Informe o valor do reembolso.' USING ERRCODE = '22023';
++      END IF;
++      IF v_pago_pelo_app THEN
++        IF v_valor > v_disponivel THEN
++          RAISE EXCEPTION 'O reembolso (R$ %) passa do que ainda pode ser devolvido deste pedido (R$ %).',
++            v_valor, v_disponivel USING ERRCODE = '22023';
++        END IF;
++      ELSE
++        IF v_valor > v_disponivel THEN
++          RAISE EXCEPTION 'O reembolso (R$ %) passa do valor pago no pedido (R$ %).',
++            v_valor, v_disponivel USING ERRCODE = '22023';
++        END IF;
+       END IF;
++    ELSE
++      v_valor := LEAST(round(v_d.valor_itens + v_d.valor_frete_ida, 2), v_disponivel);
++      IF v_valor <= 0 THEN
++        RAISE EXCEPTION 'Não há valor disponível para reembolso deste pedido.' USING ERRCODE = '22023';
++      END IF;
++    END IF;
++
++    IF v_pago_pelo_app THEN
++      INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
++      VALUES (v_o.id, v_valor, 'Devolução ' || v_d.protocolo, 'lojista', 'solicitado')
++      RETURNING id INTO v_refund_id;
++    ELSE
+       v_manual := true;
+     END IF;
+   END IF;
+@@ -1087,6 +1181,89 @@ BEGIN
+ END;
+ $$;
+ 
++-- Achado G: um reembolso pode nascer em order_refunds e o EXECUTOR recusar
++-- (saldo do MP, prazo, cobrança expirada) — a devolução fica 'concluida' sem
++-- dinheiro ter saído e sem RPC nenhuma para tentar de novo. Reemite sob a
++-- MESMA trava de saldo da conclusão, ou registra manual quando o lojista já
++-- resolveu por fora.
++CREATE OR REPLACE FUNCTION public.admin_devolucao_reemitir_reembolso(
++  p_devolucao_id uuid,
++  p_manual boolean DEFAULT false
++)
++RETURNS jsonb
++LANGUAGE plpgsql
++SECURITY DEFINER
++SET search_path = public
++AS $$
++DECLARE
++  v_d public.devolucoes%ROWTYPE;
++  v_o public.marketplace_orders%ROWTYPE;
++  v_refund public.order_refunds%ROWTYPE;
++  v_em_voo numeric(12, 2);
++  v_disponivel numeric(12, 2);
++  v_novo_refund_id uuid;
++BEGIN
++  IF NOT public.is_admin() THEN
++    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
++  END IF;
++  SELECT * INTO v_d FROM public.devolucoes WHERE id = p_devolucao_id FOR UPDATE;
++  IF NOT FOUND THEN
++    RAISE EXCEPTION 'Devolução não encontrada.' USING ERRCODE = 'P0002';
++  END IF;
++  IF v_d.status <> 'concluida' OR v_d.resolucao_final <> 'reembolso' THEN
++    RAISE EXCEPTION 'Só uma devolução concluída com reembolso pode reemitir o reembolso.' USING ERRCODE = '22023';
++  END IF;
++  IF v_d.valor_reembolso IS NULL OR v_d.valor_reembolso <= 0 THEN
++    RAISE EXCEPTION 'Esta devolução não tem valor de reembolso.' USING ERRCODE = '22023';
++  END IF;
++
++  SELECT * INTO v_o FROM public.marketplace_orders WHERE id = v_d.order_id FOR UPDATE;
++
++  IF v_d.refund_id IS NOT NULL THEN
++    SELECT * INTO v_refund FROM public.order_refunds WHERE id = v_d.refund_id FOR UPDATE;
++    IF FOUND AND v_refund.status <> 'recusado' THEN
++      RAISE EXCEPTION 'O reembolso desta devolução não foi recusado (status atual: %). Nada para reemitir.', v_refund.status
++        USING ERRCODE = '22023';
++    END IF;
++  ELSIF NOT v_d.reembolso_manual THEN
++    RAISE EXCEPTION 'Esta devolução não tem um reembolso recusado para reemitir.' USING ERRCODE = '22023';
++  END IF;
++
++  -- Mesma trava de saldo da conclusão: total − já devolvido − em voo (menos a
++  -- própria linha recusada, que não compete por saldo com a reemissão dela).
++  SELECT COALESCE(sum(r.amount), 0) INTO v_em_voo FROM public.order_refunds r
++   WHERE r.order_id = v_o.id AND r.status IN ('solicitado', 'em_processamento')
++     AND r.id <> COALESCE(v_d.refund_id, '00000000-0000-0000-0000-000000000000'::uuid);
++  v_disponivel := GREATEST(v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo, 0);
++  IF v_d.valor_reembolso > v_disponivel THEN
++    RAISE EXCEPTION 'O reembolso (R$ %) passa do que ainda pode ser devolvido deste pedido (R$ %).',
++      v_d.valor_reembolso, v_disponivel USING ERRCODE = '22023';
++  END IF;
++
++  IF p_manual THEN
++    UPDATE public.devolucoes
++       SET refund_id = NULL, reembolso_manual = true, updated_at = now()
++     WHERE id = p_devolucao_id;
++    PERFORM public.devolucao__registrar_evento(p_devolucao_id, 'concluida', 'concluida', 'loja',
++      'Reembolso reemitido manualmente (fora do app) após recusa pelo Mercado Pago.');
++    RETURN jsonb_build_object('id', p_devolucao_id, 'reembolso_manual', true, 'refund_id', NULL);
++  END IF;
++
++  INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
++  VALUES (v_o.id, v_d.valor_reembolso, 'Reemissão da devolução ' || v_d.protocolo, 'lojista', 'solicitado')
++  RETURNING id INTO v_novo_refund_id;
++
++  UPDATE public.devolucoes
++     SET refund_id = v_novo_refund_id, reembolso_manual = false, updated_at = now()
++   WHERE id = p_devolucao_id;
++
++  PERFORM public.devolucao__registrar_evento(p_devolucao_id, 'concluida', 'concluida', 'loja',
++    'Reembolso reemitido pelo Mercado Pago após recusa anterior.');
++
++  RETURN jsonb_build_object('id', p_devolucao_id, 'reembolso_manual', false, 'refund_id', v_novo_refund_id);
++END;
++$$;
++
+ CREATE OR REPLACE FUNCTION public.admin_devolucao_reprovar(p_id uuid, p_motivo text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+@@ -1189,6 +1366,7 @@ BEGIN
+     'public.admin_devolucao_decidir(uuid, boolean, text, timestamptz)',
+     'public.admin_devolucao_registrar(uuid, text, text, text)',
+     'public.admin_devolucao_concluir(uuid, text, jsonb, numeric, text)',
++    'public.admin_devolucao_reemitir_reembolso(uuid, boolean)',
+     'public.admin_devolucao_reprovar(uuid, text)',
+     'public.salvar_politica_de_devolucao(jsonb)'
+   ] LOOP
+@@ -1199,7 +1377,101 @@ END
+ $grants$;
+ 
+ -- ---------------------------------------------------------------------------
+--- 7. Aviso ao cliente a cada mudança de status (best-effort)
++-- 7. devolver_estoque não credita duas vezes o que a devolução já repôs
++--    (achado C da revisão de 26/09/2026)
++-- ---------------------------------------------------------------------------
++-- `devolver_estoque` (nascida em 20260807000000, idempotente POR PEDIDO
++-- desde 20261060000000 — laudo 0109, A8) credita TODOS os itens do pedido
++-- quando o admin cancela um pedido 'delivered'. Isso já era possível antes
++-- desta migration (update_order_status_atomic deixa o admin cancelar
++-- qualquer status), mas só virou dobra de estoque real com a devolução: ela
++-- reestoca POR ITEM (admin_devolucao_concluir, seção 6) e marca
++-- devolucao_itens.reestocado_em — e o cancelamento não sabia disso. Cenário:
++-- devolução conclui e reestoca 2 unidades; concluída→recebida não é mais
++-- possível reverter (achado H trava o caminho inverso, cancelar→concluir),
++-- mas o caminho concluir→cancelar continuava aberto: o admin cancela o
++-- pedido DEPOIS da devolução concluída e devolver_estoque credita as MESMAS
++-- 2 unidades de novo.
++--
++-- Fix: mesmo contrato (idempotente por pedido via stock_returned_at, mesma
++-- ordem de operações, mesmo retorno), só descontando por item o que
++-- devolucao_itens.reestocado_em já devolveu à prateleira. Pedido sem
++-- devolução concluída teve subconsulta com resultado 0 — comportamento
++-- byte-idêntico ao de antes desta migration.
++CREATE OR REPLACE FUNCTION public.devolver_estoque(p_order_id uuid)
++RETURNS integer
++LANGUAGE plpgsql
++SECURITY DEFINER
++SET search_path TO 'public'
++AS $devolver$
++DECLARE
++    v_item     RECORD;
++    v_unidades integer := 0;
++    v_ganhou   boolean;
++    v_credito  integer;
++BEGIN
++    -- Reclama o carimbo ANTES de creditar. Quem perder a corrida (ou quem
++    -- chegar de novo — a oscilação de status, o reenvio do webhook, o duplo
++    -- clique do lojista) recebe 0 sem tocar na prateleira. Dentro da mesma
++    -- transação do chamador: se o chamador abortar depois, o carimbo volta
++    -- junto (ROLLBACK), e a próxima tentativa honesta ainda credita.
++    UPDATE public.marketplace_orders
++       SET stock_returned_at = now()
++     WHERE id = p_order_id
++       AND stock_returned_at IS NULL
++    RETURNING true INTO v_ganhou;
++
++    IF v_ganhou IS NOT TRUE THEN
++        RETURN 0;
++    END IF;
++
++    FOR v_item IN
++        SELECT oi.id, oi.product_id, oi.variant_id, oi.quantity,
++               -- Achado C: o que uma devolução já concluída reestocou deste
++               -- MESMO item de pedido não credita de novo aqui.
++               COALESCE((SELECT sum(di.quantidade) FROM public.devolucao_itens di
++                           WHERE di.order_item_id = oi.id AND di.reestocado_em IS NOT NULL), 0) AS ja_reestocado
++        FROM public.marketplace_order_items oi
++        WHERE oi.order_id = p_order_id
++    LOOP
++        v_credito := GREATEST(v_item.quantity - v_item.ja_reestocado, 0);
++        IF v_credito = 0 THEN
++            CONTINUE;
++        END IF;
++
++        -- IF/ELSE, não dois IF: a v23 debita XOR (variante OU produto, nunca os
++        -- dois), e o front manda product_id preenchido junto com variant_id. Com
++        -- dois IF, todo pedido de variante que expirasse creditaria o produto pai
++        -- também, inflando o catalogo para sempre. Mesma forma do restore que ja
++        -- existe em update_order_status_atomic.
++        IF v_item.variant_id IS NOT NULL THEN
++            UPDATE public.product_variants
++               SET stock_increment = stock_increment + v_credito
++             WHERE id = v_item.variant_id;
++        ELSE
++            UPDATE public.produtos
++               SET estoque = estoque + v_credito
++             WHERE id = v_item.product_id;
++        END IF;
++
++        v_unidades := v_unidades + v_credito;
++    END LOOP;
++
++    RETURN v_unidades;
++END;
++$devolver$;
++
++COMMENT ON FUNCTION public.devolver_estoque(uuid) IS
++  'Idempotente desde 20261060000000 (laudo 0109, A8): credita o estoque do '
++  'pedido NO MAXIMO uma vez na vida dele, guardado pela coluna-fato '
++  'stock_returned_at. Desde 20261175000000 (achado C da revisão): credita '
++  'só o que ainda não voltou à prateleira POR ITEM — o que uma devolução já '
++  'concluiu (devolucao_itens.reestocado_em) é descontado aqui, para o '
++  'cancelamento de um pedido entregue com devolução concluída não dobrar o '
++  'estoque. REVOKE de EXECUTE mantido (sao os donos das RPCs quem chamam).';
++
++-- ---------------------------------------------------------------------------
++-- 8. Aviso ao cliente a cada mudança de status (best-effort)
+ -- ---------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION public.devolucao_avisa_o_cliente()
+ RETURNS trigger
+diff --git a/supabase/migrations/20261176000000_o_cartao_online_nasce.sql b/supabase/migrations/20261176000000_o_cartao_online_nasce.sql
+index e27ee3a4..9d86ca4b 100644
+--- a/supabase/migrations/20261176000000_o_cartao_online_nasce.sql
++++ b/supabase/migrations/20261176000000_o_cartao_online_nasce.sql
+@@ -72,7 +72,12 @@ COMMENT ON TABLE public.config_pagamento_cartao IS
+ 
+ ALTER TABLE public.config_pagamento_cartao ENABLE ROW LEVEL SECURITY;
+ REVOKE ALL ON public.config_pagamento_cartao FROM PUBLIC, anon, authenticated;
+-GRANT SELECT ON public.config_pagamento_cartao TO anon, authenticated;
++-- Achado L (revisão de 26/09/2026): SELECT na tabela inteira vazava
++-- updated_by (o uuid do admin que mexeu por último) para anon/authenticated.
++-- Checado ANTES de restringir: o checkout (src/lib/config-do-cartao.ts) e a
++-- edge criar-pagamento leem só `credito,debito,parcelas_max` — nunca `*` —
++-- então a concessão por coluna não quebra ninguém.
++GRANT SELECT (id, credito, debito, parcelas_max, updated_at) ON public.config_pagamento_cartao TO anon, authenticated;
+ GRANT ALL ON public.config_pagamento_cartao TO service_role;
+ 
+ DROP POLICY IF EXISTS config_pagamento_cartao_publica_select_policy ON public.config_pagamento_cartao;
+@@ -208,3 +213,67 @@ COMMENT ON FUNCTION public.liberar_cobranca_do_pedido(uuid, text) IS
+ 
+ REVOKE ALL ON FUNCTION public.liberar_cobranca_do_pedido(uuid, text) FROM PUBLIC, anon, authenticated;
+ GRANT EXECUTE ON FUNCTION public.liberar_cobranca_do_pedido(uuid, text) TO service_role;
++
++-- ---------------------------------------------------------------------------
++-- 4. Estorno manual ganha uma data real (achado F da revisão de 26/09/2026)
++-- ---------------------------------------------------------------------------
++-- O Financeiro (20261177000000) precisa datar o "estorno registrado fora do
++-- app" pelo momento em que a loja apertou o botão — hoje usa
++-- marketplace_orders.updated_at, que QUALQUER update posterior do pedido
++-- (reabrir, editar nota, o próprio confirmar_pagamento de outra tentativa)
++-- empurra para a frente. registrar_estorno_manual (20261072000000) não
++-- grava nenhum carimbo próprio, e não existe hoje outra fonte confiável
++-- desse instante (marketplace_order_payment_history é sobre "recebido/
++-- desfeito" na entrega, natureza diferente) — daí a coluna mínima abaixo, no
++-- lugar que já mexe em colunas do pedido (não pode ir na migration do
++-- Financeiro: ela só LÊ marketplace_orders, nunca escreve).
++ALTER TABLE public.marketplace_orders
++  ADD COLUMN IF NOT EXISTS estorno_manual_registrado_em timestamptz;
++
++COMMENT ON COLUMN public.marketplace_orders.estorno_manual_registrado_em IS
++  'Quando registrar_estorno_manual marcou payment_status = ''estornado'' '
++  '(achado F, 26/09/2026). NULL em pedido estornado manualmente ANTES desta '
++  'migration — o Financeiro cai para updated_at nesse caso legado.';
++
++-- CREATE OR REPLACE de uma função nascida em 20261072000000: mesmo padrão de
++-- devolver_estoque (20261060000000) — a versão viva é sempre a da migration
++-- mais recente que a redefine. Corpo idêntico ao original, só grava o
++-- carimbo na PRIMEIRA vez (guarda IS NULL, idempotente por construção).
++CREATE OR REPLACE FUNCTION public.registrar_estorno_manual(p_order_id uuid)
++RETURNS json
++LANGUAGE plpgsql
++SECURITY DEFINER
++SET search_path = public
++AS $$
++DECLARE
++    v_existe boolean;
++    v_ja_estornado boolean;
++BEGIN
++    IF NOT public.is_admin() THEN
++        RAISE EXCEPTION 'somente a loja registra o estorno'
++            USING ERRCODE = '42501';
++    END IF;
++
++    SELECT EXISTS (
++        SELECT 1 FROM public.marketplace_orders WHERE id = p_order_id
++    ),
++    EXISTS (
++        SELECT 1 FROM public.marketplace_orders
++         WHERE id = p_order_id AND payment_status = 'estornado'
++    )
++    INTO v_existe, v_ja_estornado;
++
++    IF NOT v_existe THEN
++        RAISE EXCEPTION 'pedido nao encontrado' USING ERRCODE = 'P0002';
++    END IF;
++
++    IF NOT v_ja_estornado THEN
++        UPDATE public.marketplace_orders
++           SET payment_status = 'estornado',
++               estorno_manual_registrado_em = COALESCE(estorno_manual_registrado_em, now())
++         WHERE id = p_order_id;
++    END IF;
++
++    RETURN json_build_object('ok'::text, true, 'payment_status'::text, 'estornado');
++END;
++$$;
+diff --git a/supabase/migrations/20261177000000_o_financeiro_da_loja_nasce.sql b/supabase/migrations/20261177000000_o_financeiro_da_loja_nasce.sql
+index d5e829ad..2fc3799e 100644
+--- a/supabase/migrations/20261177000000_o_financeiro_da_loja_nasce.sql
++++ b/supabase/migrations/20261177000000_o_financeiro_da_loja_nasce.sql
+@@ -40,6 +40,21 @@
+ --      fin_caixa_movimentar, fin_caixa_fechar, fin_caixa_historico,
+ --      assinatura_da_loja_ler.
+ --
++-- REVISÃO DE RISCO (26/09/2026, achados aplicados nesta mesma migration,
++-- ainda não aplicada em produção):
++--   D. A gaveta (`fin__caixa_calculo`) agora desconta o estorno feito fora do
++--      app (venda em dinheiro cancelada + "Já devolvi") pela mesma data real
++--      que `fin__saldos` já usava — antes só contava a entrada, nunca a
++--      saída, e o esperado ficava inflado pelo valor total da venda.
++--   E. O ajuste da ABERTURA do caixa (contado × sistema) vai para categorias
++--      `fora_dre` novas — não é lucro nem despesa, é troco/falta que já
++--      existia fora do fluxo. A Quebra/Sobra do FECHAMENTO continua igual.
++--   F. O estorno feito fora do app é datado por `estorno_manual_registrado_em`
++--      (carimbo novo em `marketplace_orders`, 20261176000000), não mais por
++--      `updated_at` (qualquer edição do pedido empurrava a data).
++--   K. O CMV exclui pedido com `stock_returned_at` preenchido — cancelamento
++--      que já devolveu tudo à prateleira não custou mercadoria nenhuma.
++--
+ -- DADOS EXISTENTES: nenhuma tabela existente é reescrita. Sementes: 3 contas e
+ -- as categorias de sistema (ON CONFLICT DO NOTHING — não sobrescrevem o que o
+ -- lojista renomeou).
+@@ -57,7 +72,9 @@
+ --
+ -- FICHA DE VERIFICAÇÃO:
+ --   1. SELECT id, nome, tipo FROM public.fin_contas ORDER BY ordem;  -- 3 linhas
+---   2. SELECT count(*) FROM public.fin_categorias WHERE sistema;     -- 20
++--   2. SELECT count(*) FROM public.fin_categorias WHERE sistema;     -- 22
++--      (20 da semente original + 2 do achado E da revisão: ajuste de saldo
++--      na abertura do caixa, fora da DRE)
+ --   3. SELECT relrowsecurity FROM pg_class WHERE relname LIKE 'fin\_%'
+ --        OR relname = 'assinatura_da_loja';                          -- todos true
+ --
+@@ -224,6 +241,13 @@ INSERT INTO public.fin_categorias (id, nome, natureza, grupo_dre, ordem, sistema
+   ('f2000000-0000-4000-8000-000000000003', 'Rendimentos e juros recebidos', 'receita', 'financeiro', 3, true),
+   ('f2000000-0000-4000-8000-000000000004', 'Aporte do dono', 'receita', 'fora_dre', 4, true),
+   ('f2000000-0000-4000-8000-000000000005', 'Sobra de caixa', 'receita', 'financeiro', 5, true),
++  -- Achado E: o ajuste da ABERTURA do caixa (contado x sistema) é fora da
++  -- DRE — troco trazido de casa não é lucro, falta na abertura não é
++  -- despesa; é dinheiro que já estava (ou faltava) fora do fluxo da loja. A
++  -- Quebra/Sobra "de verdade" continua em grupo `financeiro`: só a do
++  -- FECHAMENTO (achado real de caixa) entra no resultado.
++  ('f2000000-0000-4000-8000-000000000006', 'Ajuste de saldo na abertura do caixa (sobra)', 'receita', 'fora_dre', 6, true),
++  ('f2000000-0000-4000-8000-000000000007', 'Ajuste de saldo na abertura do caixa (falta)', 'despesa', 'fora_dre', 7, true),
+   ('f2000000-0000-4000-8000-000000000010', 'Devoluções e estornos', 'despesa', 'deducao', 10, true),
+   ('f2000000-0000-4000-8000-000000000011', 'Impostos sobre vendas (DAS/Simples)', 'despesa', 'deducao', 11, true),
+   ('f2000000-0000-4000-8000-000000000012', 'Taxas de cartão e Mercado Pago', 'despesa', 'custo_variavel', 12, true),
+@@ -331,14 +355,20 @@ AS $$
+         OR r.status IN ('solicitado', 'em_processamento')
+     UNION ALL
+     -- Estornado fora do app (registrar_estorno_manual / MP direto): o que o
+-    -- ledger não cobriu saiu por fora.
++    -- ledger não cobriu saiu por fora. Achado F: NÃO usa updated_at — QUALQUER
++    -- update posterior do pedido empurraria a data do estorno para a frente.
++    -- estorno_manual_registrado_em (20261176000000) é o carimbo do instante
++    -- real; pedido estornado manualmente ANTES daquela migration cai para o
++    -- updated_at (degradação documentada, sem fonte melhor disponível).
+     SELECT 'estorno_externo:' || v.id::text, 'estorno_externo', 'saida', 'realizado',
+-           (v.total - COALESCE(v.valor_estornado, 0))::numeric, public.fin__dia(v.updated_at),
++           (v.total - COALESCE(v.valor_estornado, 0))::numeric,
++           public.fin__dia(COALESCE(v.estorno_manual_registrado_em, v.updated_at)),
+            public.fin__conta_da_forma(v.payment_method), NULL::uuid,
+            'f2000000-0000-4000-8000-000000000010'::uuid,
+            'Estorno registrado fora do app · pedido #' || upper(left(v.id::text, 8)),
+            public.fin__forma_do_pedido(v.payment_method, v.metodo_online),
+-           v.id, NULL::date, public.fin__dia(v.updated_at), false, v.canal, NULL::uuid, NULL::smallint, NULL::smallint
++           v.id, NULL::date, public.fin__dia(COALESCE(v.estorno_manual_registrado_em, v.updated_at)),
++           false, v.canal, NULL::uuid, NULL::smallint, NULL::smallint
+       FROM vendas v
+      WHERE v.payment_status = 'estornado' AND v.total - COALESCE(v.valor_estornado, 0) > 0
+     UNION ALL
+@@ -398,6 +428,7 @@ DECLARE
+   v_fim timestamptz;
+   v_vendas numeric := 0;
+   v_devolucoes numeric := 0;
++  v_estornos_externos numeric := 0;
+   v_entradas numeric := 0;
+   v_saidas numeric := 0;
+ BEGIN
+@@ -407,6 +438,13 @@ BEGIN
+ 
+   -- Só a conta de sistema recebe as vendas em dinheiro derivadas.
+   IF v_s.conta_id = 'f1000000-0000-4000-8000-000000000001'::uuid THEN
++    -- 'estornado' continua contado aqui, de propósito: o dinheiro ENTROU na
++    -- gaveta quando a venda foi recebida — é isso que 'recebido_na_entrega'
++    -- registrou, e o status mudar depois não desfaz o fato. O que faltava
++    -- (achado D) era descontar a SAÍDA desse mesmo dinheiro quando a loja
++    -- devolve na mão (registrar_estorno_manual): sem isto, vendas contava
++    -- os 100 que entraram, ninguém descontava os 100 que saíram de volta, e
++    -- o esperado ficava 100 acima da gaveta de verdade.
+     SELECT COALESCE(sum(o.total), 0) INTO v_vendas
+       FROM public.marketplace_orders o
+      WHERE o.payment_method = 'cash'
+@@ -416,6 +454,18 @@ BEGIN
+       FROM public.devolucoes d JOIN public.marketplace_orders o ON o.id = d.order_id
+      WHERE d.status = 'concluida' AND d.reembolso_manual AND o.payment_method = 'cash'
+        AND d.concluida_em >= v_s.aberto_em AND d.concluida_em <= v_fim;
++    -- Achado D+F: a SAÍDA do estorno feito fora do app (registrar_estorno_
++    -- manual), pela mesma conta e a mesma data real que fin__saldos já usa
++    -- (77:335-343) — a mesma que a venda usou ENTRA acima, a devolução dela
++    -- SAI aqui. Dinheiro que entrou e voltou na mesma sessão (ou numa
++    -- sessão anterior já fechada, e volta nesta) some do esperado nos dois
++    -- casos — nunca conta como sobra de dinheiro que já saiu da loja.
++    SELECT COALESCE(sum(o.total - COALESCE(o.valor_estornado, 0)), 0) INTO v_estornos_externos
++      FROM public.marketplace_orders o
++     WHERE o.payment_method = 'cash' AND o.payment_status = 'estornado'
++       AND o.total - COALESCE(o.valor_estornado, 0) > 0
++       AND COALESCE(o.estorno_manual_registrado_em, o.updated_at) >= v_s.aberto_em
++       AND COALESCE(o.estorno_manual_registrado_em, o.updated_at) <= v_fim;
+   END IF;
+ 
+   SELECT COALESCE(sum(CASE
+@@ -433,9 +483,10 @@ BEGIN
+   RETURN jsonb_build_object(
+     'vendas_dinheiro', v_vendas,
+     'devolucoes_dinheiro', v_devolucoes,
++    'estornos_externos_dinheiro', v_estornos_externos,
+     'entradas_manuais', v_entradas,
+     'saidas_manuais', v_saidas,
+-    'esperado', v_s.valor_abertura + v_vendas - v_devolucoes + v_entradas - v_saidas
++    'esperado', v_s.valor_abertura + v_vendas - v_devolucoes - v_estornos_externos + v_entradas - v_saidas
+   );
+ END;
+ $$;
+@@ -661,12 +712,20 @@ BEGIN
+     (SELECT COALESCE(sum(CASE WHEN tipo = 'entrada' THEN valor ELSE -valor END), 0)
+        FROM manuais WHERE grupo_dre = 'financeiro'),
+     -- CMV estimado pelo custo ATUAL do produto (o app não guarda custo
+-    -- histórico), menos o que voltou para a prateleira por devolução no período.
++    -- histórico), menos o que voltou para a prateleira por devolução no
++    -- período. Achado K: pedido com `stock_returned_at` preenchido (o
++    -- cancelamento já devolveu TUDO à prateleira — devolver_estoque) sai do
++    -- CMV inteiro: a mercadoria nunca custou de verdade, só a receita/dedução
++    -- ficam (a "venda" continua contada e o estorno a neutraliza — regra
++    -- inalterada). Devolução PARCIAL (nem toda a venda voltou) continua
++    -- descontada abaixo, por item, do mesmo jeito que já era.
+     (SELECT COALESCE(sum(oi.quantity * COALESCE(p.custo, 0)), 0)
+        FROM mov m
++       JOIN public.marketplace_orders o2 ON o2.id = m.pedido_id
+        JOIN public.marketplace_order_items oi ON oi.order_id = m.pedido_id
+        LEFT JOIN public.produtos p ON p.id = oi.product_id
+-      WHERE m.origem IN ('venda_online', 'venda_balcao', 'venda_entrega')),
++      WHERE m.origem IN ('venda_online', 'venda_balcao', 'venda_entrega')
++        AND o2.stock_returned_at IS NULL),
+     (SELECT COALESCE(sum(di.quantidade * COALESCE(p.custo, 0)), 0)
+        FROM public.devolucao_itens di
+        LEFT JOIN public.produtos p ON p.id = di.product_id
+@@ -1092,7 +1151,12 @@ BEGIN
+   END IF;
+ 
+   -- O que foi contado manda: a diferença para o saldo do sistema vira ajuste,
+-  -- para a conta Caixa refletir a gaveta de verdade.
++  -- para a conta Caixa refletir a gaveta de verdade. Achado E: este ajuste é
++  -- da ABERTURA (troco trazido de casa, ou falta antes de vender qualquer
++  -- coisa) — vai para `fora_dre` (categorias 006/007), NUNCA para
++  -- Sobra/Quebra de caixa (`financeiro`, que entra no lucro líquido). A
++  -- Quebra/Sobra de FECHAMENTO, essa sim um resultado real do dia, continua
++  -- em fin_caixa_fechar sem mudança nenhuma.
+   SELECT s.saldo INTO v_saldo FROM public.fin__saldos() s WHERE s.conta_id = v_conta.id;
+   IF round(v_valor - COALESCE(v_saldo, 0), 2) <> 0 THEN
+     INSERT INTO public.fin_lancamentos (
+@@ -1101,8 +1165,8 @@ BEGIN
+     ) VALUES (
+       CASE WHEN v_valor > COALESCE(v_saldo, 0) THEN 'entrada' ELSE 'saida' END,
+       'realizado', abs(round(v_valor - COALESCE(v_saldo, 0), 2)), v_conta.id,
+-      CASE WHEN v_valor > COALESCE(v_saldo, 0) THEN 'f2000000-0000-4000-8000-000000000005'::uuid
+-           ELSE 'f2000000-0000-4000-8000-000000000031'::uuid END,
++      CASE WHEN v_valor > COALESCE(v_saldo, 0) THEN 'f2000000-0000-4000-8000-000000000006'::uuid
++           ELSE 'f2000000-0000-4000-8000-000000000007'::uuid END,
+       'Ajuste na abertura do caixa (contado x sistema)', 'dinheiro',
+       public.fin__hoje(), public.fin__hoje(), public.fin__hoje(), 'ajuste_caixa', auth.uid()
+     );
+diff --git a/supabase/migrations/rollback-manual-20261175000000_a_devolucao_nasce_no_pedido.sql b/supabase/migrations/rollback-manual-20261175000000_a_devolucao_nasce_no_pedido.sql
+index e61d186b..fedead90 100644
+--- a/supabase/migrations/rollback-manual-20261175000000_a_devolucao_nasce_no_pedido.sql
++++ b/supabase/migrations/rollback-manual-20261175000000_a_devolucao_nasce_no_pedido.sql
+@@ -16,13 +16,104 @@
+ -- abriu em `order_refunds` FICAM (são dinheiro — o ledger não se apaga). O
+ -- bucket `devolucoes` e os arquivos dele FICAM (apagar foto de cliente é
+ -- decisão do dono, fora de rollback de schema).
++--
++-- GUARDA DE ORDEM (achado R): reverta 78 -> 77 -> 76 antes desta (75). O
++-- Financeiro (fin__movimentos/fin_dre) e o CRM/Início (crm_visao,
++-- painel_inicio) leem a tabela `devolucoes` direto — revertendo esta
++-- migration primeiro, as duas quebram com 42P01 (relation does not exist).
+ -- ============================================================================
+ 
++DO $$
++BEGIN
++  IF to_regprocedure('public.painel_inicio()') IS NOT NULL
++     OR to_regprocedure('public.crm_visao(date, date)') IS NOT NULL THEN
++    RAISE EXCEPTION 'reverta 78 (o_crm_e_o_inicio_leem_a_loja) antes de reverter esta migration (75).';
++  END IF;
++  IF to_regprocedure('public.fin_dre(date, date)') IS NOT NULL THEN
++    RAISE EXCEPTION 'reverta 77 (o_financeiro_da_loja_nasce) antes de reverter esta migration (75).';
++  END IF;
++  IF to_regclass('public.config_pagamento_cartao') IS NOT NULL THEN
++    RAISE EXCEPTION 'reverta 76 (o_cartao_online_nasce) antes de reverter esta migration (75).';
++  END IF;
++END
++$$;
++
++-- devolver_estoque: corpo ORIGINAL de 20261060000000, VERBATIM — 75
++-- redefiniu a função (achado C) para descontar o que devolucao_itens já
++-- reestocou; restaurado ANTES de apagar as tabelas de devolução, para a
++-- função nunca ficar, nem por um instante, apontando para uma tabela que
++-- este mesmo arquivo vai derrubar.
++CREATE OR REPLACE FUNCTION public.devolver_estoque(p_order_id uuid)
++RETURNS integer
++LANGUAGE plpgsql
++SECURITY DEFINER
++SET search_path TO 'public'
++AS $devolver$
++DECLARE
++    v_item     RECORD;
++    v_unidades integer := 0;
++    v_ganhou   boolean;
++BEGIN
++    -- Reclama o carimbo ANTES de creditar. Quem perder a corrida (ou quem
++    -- chegar de novo — a oscilação de status, o reenvio do webhook, o duplo
++    -- clique do lojista) recebe 0 sem tocar na prateleira. Dentro da mesma
++    -- transação do chamador: se o chamador abortar depois, o carimbo volta
++    -- junto (ROLLBACK), e a próxima tentativa honesta ainda credita.
++    UPDATE public.marketplace_orders
++       SET stock_returned_at = now()
++     WHERE id = p_order_id
++       AND stock_returned_at IS NULL
++    RETURNING true INTO v_ganhou;
++
++    IF v_ganhou IS NOT TRUE THEN
++        RETURN 0;
++    END IF;
++
++    FOR v_item IN
++        SELECT product_id, variant_id, quantity
++        FROM public.marketplace_order_items
++        WHERE order_id = p_order_id
++    LOOP
++        -- IF/ELSE, não dois IF: a v23 debita XOR (variante OU produto, nunca os
++        -- dois), e o front manda product_id preenchido junto com variant_id. Com
++        -- dois IF, todo pedido de variante que expirasse creditaria o produto pai
++        -- também, inflando o catalogo para sempre. Mesma forma do restore que ja
++        -- existe em update_order_status_atomic.
++        IF v_item.variant_id IS NOT NULL THEN
++            UPDATE public.product_variants
++               SET stock_increment = stock_increment + v_item.quantity
++             WHERE id = v_item.variant_id;
++        ELSE
++            UPDATE public.produtos
++               SET estoque = estoque + v_item.quantity
++             WHERE id = v_item.product_id;
++        END IF;
++
++        v_unidades := v_unidades + v_item.quantity;
++    END LOOP;
++
++    RETURN v_unidades;
++END;
++$devolver$;
++
++COMMENT ON FUNCTION public.devolver_estoque(uuid) IS
++  'Idempotente desde 20261060000000 (laudo 0109, A8): credita o estoque do '
++  'pedido NO MAXIMO uma vez na vida dele, guardado pela coluna-fato '
++  'stock_returned_at (o estoque foi debitado uma vez so, na criacao — '
++  'segundo credito e peça fantasma). Devolve 0 sem tocar na prateleira '
++  'quando o carimbo ja existe. Antes desta migration o contrato era "nao e '
++  'idempotente, o chamador garante chamada unica" (20260807000000) — a '
++  'unica porta que nao garantia era a oscilacao cancelled -> processing -> '
++  'cancelled, alcancavel inclusive por PostgREST direto de admin '
++  '(baseline:5585). REVOKE de EXECUTE mantido (sao os donos das RPCs quem '
++  'chamam).';
++
+ DROP TRIGGER IF EXISTS tr_devolucao_avisa_o_cliente ON public.devolucoes;
+ DROP FUNCTION IF EXISTS public.devolucao_avisa_o_cliente();
+ 
+ DROP FUNCTION IF EXISTS public.salvar_politica_de_devolucao(jsonb);
+ DROP FUNCTION IF EXISTS public.admin_devolucao_reprovar(uuid, text);
++DROP FUNCTION IF EXISTS public.admin_devolucao_reemitir_reembolso(uuid, boolean);
+ DROP FUNCTION IF EXISTS public.admin_devolucao_concluir(uuid, text, jsonb, numeric, text);
+ DROP FUNCTION IF EXISTS public.admin_devolucao_registrar(uuid, text, text, text);
+ DROP FUNCTION IF EXISTS public.admin_devolucao_decidir(uuid, boolean, text, timestamptz);
+diff --git a/supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql b/supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
+index 926e0f78..8818778a 100644
+--- a/supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
++++ b/supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
+@@ -8,12 +8,34 @@
+ -- cartão cairia num RPC inexistente. psql -1 -f — nunca pelo db-apply.
+ --
+ -- Remove as RPCs, a tabela de configuração e as CHECKs das colunas novas.
+--- As COLUNAS `tentativas_de_pagamento`, `metodo_online` e `parcelas` FICAM:
++-- As COLUNAS `tentativas_de_pagamento`, `metodo_online`, `parcelas` e
++-- `estorno_manual_registrado_em` (achado F da revisão de 26/09/2026) FICAM:
+ -- guardam como cada pedido foi pago (mesma régua da rollback-manual-
+ -- 20261174000000, que não derruba a configuração que o lojista já salvou).
+ -- `IF EXISTS` em tudo: repetir não dá erro.
++--
++-- GUARDA DE ORDEM (achado R): reverta 78 -> 77 antes desta (76). O
++-- Financeiro (fin__forma_do_pedido) e o CRM (crm__vendas) leem
++-- marketplace_orders.metodo_online, que fica — mas registrar_estorno_manual
++-- volta ao corpo de 20261072000000 aqui embaixo, e o Financeiro (77) datava
++-- o estorno externo por estorno_manual_registrado_em: revertendo 76 antes
++-- de 77, o próximo estorno manual não grava mais o carimbo e 77 cai de
++-- volta para o updated_at (degradação silenciosa, não erro) — documentado,
++-- não bloqueado, porque nada quebra com 42P01/42883.
+ -- ============================================================================
+ 
++DO $$
++BEGIN
++  IF to_regprocedure('public.painel_inicio()') IS NOT NULL
++     OR to_regprocedure('public.crm_visao(date, date)') IS NOT NULL THEN
++    RAISE EXCEPTION 'reverta 78 (o_crm_e_o_inicio_leem_a_loja) antes de reverter esta migration (76).';
++  END IF;
++  IF to_regprocedure('public.fin_dre(date, date)') IS NOT NULL THEN
++    RAISE EXCEPTION 'reverta 77 (o_financeiro_da_loja_nasce) antes de reverter esta migration (76).';
++  END IF;
++END
++$$;
++
+ DROP FUNCTION IF EXISTS public.liberar_cobranca_do_pedido(uuid, text);
+ DROP FUNCTION IF EXISTS public.salvar_config_pagamento_cartao(boolean, boolean, integer);
+ DROP TABLE IF EXISTS public.config_pagamento_cartao;
+@@ -21,3 +43,43 @@ DROP TABLE IF EXISTS public.config_pagamento_cartao;
+ ALTER TABLE public.marketplace_orders DROP CONSTRAINT IF EXISTS marketplace_orders_tentativas_de_pagamento_check;
+ ALTER TABLE public.marketplace_orders DROP CONSTRAINT IF EXISTS marketplace_orders_metodo_online_check;
+ ALTER TABLE public.marketplace_orders DROP CONSTRAINT IF EXISTS marketplace_orders_parcelas_check;
++
++-- registrar_estorno_manual: corpo ORIGINAL de 20261072000000, VERBATIM (sem
++-- o carimbo de estorno_manual_registrado_em que 20261176000000 acrescentou).
++CREATE OR REPLACE FUNCTION public.registrar_estorno_manual(p_order_id uuid)
++RETURNS json
++LANGUAGE plpgsql
++SECURITY DEFINER
++SET search_path = public
++AS $$
++DECLARE
++    v_existe boolean;
++    v_ja_estornado boolean;
++BEGIN
++    IF NOT public.is_admin() THEN
++        RAISE EXCEPTION 'somente a loja registra o estorno'
++            USING ERRCODE = '42501';
++    END IF;
++
++    SELECT EXISTS (
++        SELECT 1 FROM public.marketplace_orders WHERE id = p_order_id
++    ),
++    EXISTS (
++        SELECT 1 FROM public.marketplace_orders
++         WHERE id = p_order_id AND payment_status = 'estornado'
++    )
++    INTO v_existe, v_ja_estornado;
++
++    IF NOT v_existe THEN
++        RAISE EXCEPTION 'pedido nao encontrado' USING ERRCODE = 'P0002';
++    END IF;
++
++    IF NOT v_ja_estornado THEN
++        UPDATE public.marketplace_orders
++           SET payment_status = 'estornado'
++         WHERE id = p_order_id;
++    END IF;
++
++    RETURN json_build_object('ok'::text, true, 'payment_status'::text, 'estornado');
++END;
++$$;
+diff --git a/supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql b/supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
+index 63fdffb6..6197864e 100644
+--- a/supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
++++ b/supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
+@@ -11,8 +11,22 @@
+ -- DADOS: APAGA os lançamentos manuais, contas, categorias e sessões de caixa
+ -- do lojista, e a linha de assinatura que o projeto de cobrança gravou.
+ -- Exportar antes (fin_extrato por período) se houver uso real.
++--
++-- GUARDA DE ORDEM (achado R): reverta 78 antes desta (77). O CRM/Início
++-- (crm_visao, painel_inicio) chama fin__movimentos/fin__saldos/fin_dre —
++-- revertendo o Financeiro primeiro, as duas RPCs de 78 quebram com 42883
++-- (function does not exist).
+ -- ============================================================================
+ 
++DO $$
++BEGIN
++  IF to_regprocedure('public.painel_inicio()') IS NOT NULL
++     OR to_regprocedure('public.crm_visao(date, date)') IS NOT NULL THEN
++    RAISE EXCEPTION 'reverta 78 (o_crm_e_o_inicio_leem_a_loja) antes de reverter esta migration (77).';
++  END IF;
++END
++$$;
++
+ DROP FUNCTION IF EXISTS public.fin_caixa_historico(integer);
+ DROP FUNCTION IF EXISTS public.fin_caixa_fechar(numeric, text);
+ DROP FUNCTION IF EXISTS public.fin_caixa_movimentar(text, numeric, text, uuid);
+diff --git a/tests/banco/cartao-online-viva.cjs b/tests/banco/cartao-online-viva.cjs
+index a555d0f7..a64a6bf8 100644
+--- a/tests/banco/cartao-online-viva.cjs
++++ b/tests/banco/cartao-online-viva.cjs
+@@ -88,6 +88,16 @@ PROVAS.push({
+           ),
+         /permission denied/,
+       );
++      // Achado L (revisão de 26/09/2026): grant por coluna — anon lê
++      // credito/debito/parcelas_max/updated_at, mas não updated_by (o uuid
++      // do admin que mexeu por último não é dado público).
++      await assert.rejects(
++        () =>
++          cliente.query(
++            "SELECT updated_by FROM public.config_pagamento_cartao WHERE id = 1",
++          ),
++        /permission denied/,
++      );
+     } finally {
+       await cliente.query("ROLLBACK");
+     }
+diff --git a/tests/banco/devolucoes-viva.cjs b/tests/banco/devolucoes-viva.cjs
+index cfe0738b..a4abc437 100644
+--- a/tests/banco/devolucoes-viva.cjs
++++ b/tests/banco/devolucoes-viva.cjs
+@@ -813,6 +813,628 @@ PROVAS.push({
+   },
+ });
+ 
++// ---------------------------------------------------------------------------
++// Achados da revisão de risco de 26/09/2026 (migrations 75/76/77 nunca
++// aplicadas em produção — corrigidas em vez de remendadas por cima).
++// ---------------------------------------------------------------------------
++
++/** Pedido customizado para os cenários abaixo (cupom, prazo, estoque já devolvido). */
++async function pedidoCustom(cliente, id, o) {
++  await cliente.query(
++    `INSERT INTO public.marketplace_orders
++       (id, user_id, customer_name, customer_data, total, subtotal, discount, shipping, status, canal,
++        payment_method, payment_status, paid_at, pagamento_recebido_em, gateway_payment_id, stock_returned_at)
++     VALUES ($1, $2, 'Cliente de Prova', $3::jsonb, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
++    [
++      id,
++      o.userId,
++      JSON.stringify(
++        o.customerData || {
++          whatsapp: "5534999990000",
++          shipping_option_id: "local-delivery",
++        },
++      ),
++      o.total,
++      o.subtotal,
++      o.discount || 0,
++      o.shipping || 0,
++      o.status || "delivered",
++      o.canal || "online",
++      o.paymentMethod,
++      o.paymentStatus,
++      o.paidAt || null,
++      o.recebidoEm || null,
++      o.gateway || null,
++      o.stockReturnedAt || null,
++    ],
++  );
++  await cliente.query(
++    `INSERT INTO public.marketplace_order_items (id, order_id, product_id, variant_id, product_name, quantity, price)
++     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
++    [
++      o.itemId,
++      id,
++      o.productId,
++      o.variantId || null,
++      o.nome || "Item de Prova",
++      o.qtd,
++      o.preco,
++    ],
++  );
++  if (o.entregueHaDias !== undefined) {
++    await cliente.query(
++      `INSERT INTO public.marketplace_order_history (order_id, old_status, new_status, created_at)
++       VALUES ($1, 'shipping', 'delivered', now() - make_interval(days => $2::int))`,
++      [id, o.entregueHaDias],
++    );
++  }
++}
++
++async function ateRecebida(cliente, devolucaoId) {
++  await logar(cliente, U_ADMIN);
++  await rpc(cliente, "SELECT public.admin_devolucao_decidir($1::uuid, true) AS r", [
++    devolucaoId,
++  ]);
++  await rpc(
++    cliente,
++    "SELECT public.admin_devolucao_registrar($1::uuid, 'recebida') AS r",
++    [devolucaoId],
++  );
++}
++
++const O_CUPOM = "3eeeeeee-0000-0000-0000-000000000001";
++const I_CUPOM = "3fffffff-0000-0000-0000-000000000001";
++const O_CUPOM_INTEIRO = "3eeeeeee-0000-0000-0000-000000000002";
++const I_CUPOM_INTEIRO = "3fffffff-0000-0000-0000-000000000002";
++const O_180 = "3eeeeeee-0000-0000-0000-000000000003";
++const I_180 = "3fffffff-0000-0000-0000-000000000003";
++const O_REEMITIR = "3eeeeeee-0000-0000-0000-000000000004";
++const I_REEMITIR = "3fffffff-0000-0000-0000-000000000004";
++const O_SEM_PAGAMENTO = "3eeeeeee-0000-0000-0000-000000000005";
++const I_SEM_PAGAMENTO = "3fffffff-0000-0000-0000-000000000005";
++const O_SEM_HISTORICO = "3eeeeeee-0000-0000-0000-000000000006";
++const I_SEM_HISTORICO = "3fffffff-0000-0000-0000-000000000006";
++const O_H = "3eeeeeee-0000-0000-0000-000000000007";
++const I_H = "3fffffff-0000-0000-0000-000000000007";
++const O_MUTANTE = "3eeeeeee-0000-0000-0000-000000000008";
++const I_MUTANTE = "3fffffff-0000-0000-0000-000000000008";
++const O_RESTANTE = "3eeeeeee-0000-0000-0000-000000000009";
++const I_RESTANTE = "3fffffff-0000-0000-0000-000000000009";
++
++PROVAS.push({
++  nome: "(A) reembolso default rateia o cupom do pedido e não passa do disponível",
++  corpo: async (cliente) => {
++    // 2 unidades de 100, cupom -100, frete 20 -> pago 120 (cenário exato do achado A).
++    await pedidoCustom(cliente, O_CUPOM, {
++      userId: U_CLIENTE,
++      total: 120,
++      subtotal: 200,
++      discount: 100,
++      shipping: 20,
++      paymentMethod: "online",
++      paymentStatus: "pago",
++      paidAt: new Date(),
++      gateway: "ORD-A-1",
++      itemId: I_CUPOM,
++      productId: P_CAMISA,
++      qtd: 2,
++      preco: 100,
++      entregueHaDias: 2,
++    });
++    await logar(cliente, U_CLIENTE);
++    const parcial = await solicitar(
++      cliente,
++      O_CUPOM,
++      [{ order_item_id: I_CUPOM, quantidade: 1 }],
++      "desisti",
++      "reembolso",
++      "entrega_na_loja",
++    );
++    const valorUnitario = Number(
++      await valorUnico(
++        cliente,
++        "SELECT valor_unitario FROM public.devolucao_itens WHERE devolucao_id = $1",
++        [parcial.id],
++      ),
++    );
++    assert.equal(
++      valorUnitario,
++      50,
++      "snapshot rateado: 100 * (200-100)/200 = 50, não o preço cheio",
++    );
++    await ateRecebida(cliente, parcial.id);
++    const itemId = await valorUnico(
++      cliente,
++      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
++      [parcial.id],
++    );
++    const concluida = await rpc(
++      cliente,
++      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
++      [
++        parcial.id,
++        JSON.stringify([{ item_id: itemId, condicao: "nova", reestocar: true }]),
++      ],
++    );
++    assert.equal(
++      Number(concluida.valor_reembolso),
++      50,
++      "reembolso proporcional (não 100, o preço cheio de 1 unidade)",
++    );
++
++    // Devolução do pedido INTEIRO: default é CAPADO em 120 (disponível), não
++    // recusado por tentar devolver 220 (2 x 100 + frete, preço cheio).
++    await pedidoCustom(cliente, O_CUPOM_INTEIRO, {
++      userId: U_CLIENTE,
++      total: 120,
++      subtotal: 200,
++      discount: 100,
++      shipping: 20,
++      paymentMethod: "online",
++      paymentStatus: "pago",
++      paidAt: new Date(),
++      gateway: "ORD-A-2",
++      itemId: I_CUPOM_INTEIRO,
++      productId: P_CAMISA,
++      qtd: 2,
++      preco: 100,
++      entregueHaDias: 2,
++    });
++    const inteira = await solicitar(
++      cliente,
++      O_CUPOM_INTEIRO,
++      [{ order_item_id: I_CUPOM_INTEIRO, quantidade: 2 }],
++      "desisti",
++      "reembolso",
++      "entrega_na_loja",
++    );
++    await ateRecebida(cliente, inteira.id);
++    const itemInteira = await valorUnico(
++      cliente,
++      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
++      [inteira.id],
++    );
++    const concluidaInteira = await rpc(
++      cliente,
++      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
++      [
++        inteira.id,
++        JSON.stringify([
++          { item_id: itemInteira, condicao: "nova", reestocar: true },
++        ]),
++      ],
++    );
++    assert.equal(
++      Number(concluidaInteira.valor_reembolso),
++      120,
++      "capado no disponível (100 dos itens rateados + 20 de frete), nunca 220",
++    );
++  },
++});
++
++PROVAS.push({
++  nome: "(B)(M) payment_status NULL e entrega sem histórico são RECUSADOS, não liberados",
++  corpo: async (cliente) => {
++    // "Ainda não" do admin: pedido delivered, payment_status NULL (nunca confirmado).
++    await pedidoCustom(cliente, O_SEM_PAGAMENTO, {
++      userId: U_CLIENTE,
++      total: 80,
++      subtotal: 80,
++      paymentMethod: "cash",
++      paymentStatus: null,
++      itemId: I_SEM_PAGAMENTO,
++      productId: P_CAMISA,
++      qtd: 1,
++      preco: 80,
++      entregueHaDias: 2,
++    });
++    await logar(cliente, U_CLIENTE);
++    const el = await elegibilidade(cliente, O_SEM_PAGAMENTO);
++    assert.equal(el.pode, false, "payment_status NULL não pode devolver");
++    assert.match(el.motivo_bloqueio, /não tem pagamento a devolver/);
++    await assert.rejects(
++      () =>
++        solicitar(
++          cliente,
++          O_SEM_PAGAMENTO,
++          [{ order_item_id: I_SEM_PAGAMENTO, quantidade: 1 }],
++          "desisti",
++          "reembolso",
++          "entrega_na_loja",
++        ),
++      /não tem pagamento a devolver/,
++    );
++
++    // Pedido 'delivered' sem linha 'delivered' no histórico (legado): sem
++    // fallback para updated_at, fica sem data de entrega -> "fale com a loja".
++    await pedidoCustom(cliente, O_SEM_HISTORICO, {
++      userId: U_CLIENTE,
++      total: 40,
++      subtotal: 40,
++      paymentMethod: "online",
++      paymentStatus: "pago",
++      paidAt: new Date(),
++      gateway: "ORD-M-1",
++      itemId: I_SEM_HISTORICO,
++      productId: P_CAMISA,
++      qtd: 1,
++      preco: 40,
++      // sem entregueHaDias: nenhuma linha em marketplace_order_history.
++    });
++    const elM = await elegibilidade(cliente, O_SEM_HISTORICO);
++    assert.equal(elM.pode, false);
++    assert.match(elM.motivo_bloqueio, /Fale com a loja/);
++    await assert.rejects(
++      () =>
++        solicitar(
++          cliente,
++          O_SEM_HISTORICO,
++          [{ order_item_id: I_SEM_HISTORICO, quantidade: 1 }],
++          "desisti",
++          "reembolso",
++          "entrega_na_loja",
++        ),
++      /Fale com a loja/,
++    );
++  },
++});
++
++PROVAS.push({
++  nome: "(G) pagamento com mais de 180 dias vira manual; admin_devolucao_reemitir_reembolso reabre o recusado",
++  corpo: async (cliente) => {
++    await pedidoCustom(cliente, O_180, {
++      userId: U_CLIENTE,
++      total: 100,
++      subtotal: 100,
++      paymentMethod: "online",
++      paymentStatus: "pago",
++      paidAt: new Date(Date.now() - 200 * 86400000),
++      gateway: "ORD-G-1",
++      itemId: I_180,
++      productId: P_CAMISA,
++      qtd: 1,
++      preco: 100,
++      entregueHaDias: 2,
++    });
++    await logar(cliente, U_CLIENTE);
++    const d = await solicitar(
++      cliente,
++      O_180,
++      [{ order_item_id: I_180, quantidade: 1 }],
++      "defeito",
++      "reembolso",
++      "entrega_na_loja",
++      [`${U_CLIENTE}/${O_180}/foto.jpg`],
++    );
++    await ateRecebida(cliente, d.id);
++    const item = await valorUnico(
++      cliente,
++      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
++      [d.id],
++    );
++    const concluida = await rpc(
++      cliente,
++      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
++      [d.id, JSON.stringify([{ item_id: item, condicao: "nova", reestocar: true }])],
++    );
++    assert.equal(
++      concluida.reembolso_manual,
++      true,
++      "pagamento >180 dias: caminho manual (o MP recusaria)",
++    );
++    assert.equal(concluida.refund_id, null);
++    assert.equal(
++      Number(
++        await valorUnico(
++          cliente,
++          "SELECT count(*) FROM public.order_refunds WHERE order_id = $1",
++          [O_180],
++        ),
++      ),
++      0,
++      "nenhuma linha nasceu em order_refunds para o MP recusar depois",
++    );
++
++    // admin_devolucao_reemitir_reembolso: cenário do achado G onde a linha
++    // NASCE (pedido recente) e o EXECUTOR recusa depois.
++    await pedidoCustom(cliente, O_REEMITIR, {
++      userId: U_CLIENTE,
++      total: 90,
++      subtotal: 90,
++      paymentMethod: "online",
++      paymentStatus: "pago",
++      paidAt: new Date(),
++      gateway: "ORD-G-2",
++      itemId: I_REEMITIR,
++      productId: P_CAMISA,
++      qtd: 1,
++      preco: 90,
++      entregueHaDias: 2,
++    });
++    await logar(cliente, U_CLIENTE);
++    const d2 = await solicitar(
++      cliente,
++      O_REEMITIR,
++      [{ order_item_id: I_REEMITIR, quantidade: 1 }],
++      "desisti",
++      "reembolso",
++      "entrega_na_loja",
++    );
++    await ateRecebida(cliente, d2.id);
++    const item2 = await valorUnico(
++      cliente,
++      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
++      [d2.id],
++    );
++    const concluida2 = await rpc(
++      cliente,
++      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
++      [d2.id, JSON.stringify([{ item_id: item2, condicao: "nova", reestocar: true }])],
++    );
++    assert.ok(concluida2.refund_id, "pedido recente: caminho automático abre a linha");
++
++    await logar(cliente, U_ADMIN);
++    await assert.rejects(
++      () =>
++        rpc(
++          cliente,
++          "SELECT public.admin_devolucao_reemitir_reembolso($1::uuid, false) AS r",
++          [d2.id],
++        ),
++      /não foi recusado/,
++      "não há o que reemitir enquanto a linha não foi recusada",
++    );
++
++    // O executor recusou (simulado: só o STATUS muda, quem grava é a edge).
++    await cliente.query(
++      "UPDATE public.order_refunds SET status = 'recusado', ultimo_erro = 'pagamento com mais de 180 dias' WHERE id = $1",
++      [concluida2.refund_id],
++    );
++    const reemitido = await rpc(
++      cliente,
++      "SELECT public.admin_devolucao_reemitir_reembolso($1::uuid, false) AS r",
++      [d2.id],
++    );
++    assert.ok(reemitido.refund_id, "nova linha nasce");
++    assert.notEqual(
++      reemitido.refund_id,
++      concluida2.refund_id,
++      "refund_id troca para a linha nova",
++    );
++    const refundAntigo = (
++      await cliente.query(
++        "SELECT status FROM public.order_refunds WHERE id = $1",
++        [concluida2.refund_id],
++      )
++    ).rows[0];
++    assert.equal(refundAntigo.status, "recusado", "a linha recusada não some");
++
++    // Reemitir de novo (a nova linha está 'solicitado', não recusada): recusado.
++    await assert.rejects(
++      () =>
++        rpc(
++          cliente,
++          "SELECT public.admin_devolucao_reemitir_reembolso($1::uuid, false) AS r",
++          [d2.id],
++        ),
++      /não foi recusado/,
++    );
++
++    // p_manual = true registra como manual, sem depender do MP de novo.
++    await cliente.query(
++      "UPDATE public.order_refunds SET status = 'recusado' WHERE id = $1",
++      [reemitido.refund_id],
++    );
++    const manual = await rpc(
++      cliente,
++      "SELECT public.admin_devolucao_reemitir_reembolso($1::uuid, true) AS r",
++      [d2.id],
++    );
++    assert.equal(manual.reembolso_manual, true);
++    assert.equal(manual.refund_id, null);
++  },
++});
++
++PROVAS.push({
++  nome: "(H) conclusão revalida o pedido: cancelado/estornado/estoque já devolvido travam antes do reembolso",
++  corpo: async (cliente) => {
++    await pedidoCustom(cliente, O_H, {
++      userId: U_CLIENTE,
++      total: 100,
++      subtotal: 100,
++      paymentMethod: "cash",
++      paymentStatus: "recebido_na_entrega",
++      recebidoEm: new Date(),
++      itemId: I_H,
++      productId: P_CAMISA,
++      qtd: 1,
++      preco: 100,
++      entregueHaDias: 0,
++    });
++    await logar(cliente, U_CLIENTE);
++    const d = await solicitar(
++      cliente,
++      O_H,
++      [{ order_item_id: I_H, quantidade: 1 }],
++      "desisti",
++      "reembolso",
++      "entrega_na_loja",
++    );
++    await ateRecebida(cliente, d.id);
++    const item = await valorUnico(
++      cliente,
++      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
++      [d.id],
++    );
++
++    // O admin cancela o pedido (venda de balcão) e registra o estorno fora do
++    // app ENQUANTO a devolução está 'recebida' — exatamente o achado H.
++    await cliente.query(
++      "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
++      [O_H],
++    );
++    await logar(cliente, U_ADMIN);
++    await rpc(cliente, "SELECT public.registrar_estorno_manual($1::uuid)", [O_H]);
++
++    await assert.rejects(
++      () =>
++        rpc(
++          cliente,
++          "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
++          [
++            d.id,
++            JSON.stringify([{ item_id: item, condicao: "nova", reestocar: true }]),
++          ],
++        ),
++      /não está mais entregue/,
++      "pedido cancelado: a conclusão recusa mesmo com a devolução 'recebida'",
++    );
++
++    // Estoque já voltou por outro caminho (stock_returned_at): mesma trava.
++    await pedidoCustom(cliente, O_MUTANTE, {
++      userId: U_CLIENTE,
++      total: 50,
++      subtotal: 50,
++      paymentMethod: "online",
++      paymentStatus: "pago",
++      paidAt: new Date(),
++      gateway: "ORD-H-2",
++      itemId: I_MUTANTE,
++      productId: P_CAMISA,
++      qtd: 1,
++      preco: 50,
++      entregueHaDias: 1,
++    });
++    await logar(cliente, U_CLIENTE);
++    const d2 = await solicitar(
++      cliente,
++      O_MUTANTE,
++      [{ order_item_id: I_MUTANTE, quantidade: 1 }],
++      "desisti",
++      "reembolso",
++      "entrega_na_loja",
++    );
++    await ateRecebida(cliente, d2.id);
++    await cliente.query(
++      "UPDATE public.marketplace_orders SET stock_returned_at = now() WHERE id = $1",
++      [O_MUTANTE],
++    );
++    const item2 = await valorUnico(
++      cliente,
++      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
++      [d2.id],
++    );
++    await assert.rejects(
++      () =>
++        rpc(
++          cliente,
++          "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
++          [
++            d2.id,
++            JSON.stringify([
++              { item_id: item2, condicao: "nova", reestocar: true },
++            ]),
++          ],
++        ),
++      /estoque deste pedido já voltou/,
++    );
++  },
++});
++
++PROVAS.push({
++  nome: "(gap 1)(gap 2) item repetido na conclusão não dobra o reestoque; segunda devolução só pega o restante",
++  corpo: async (cliente) => {
++    await pedidoCustom(cliente, O_RESTANTE, {
++      userId: U_CLIENTE,
++      total: 200,
++      subtotal: 200,
++      paymentMethod: "online",
++      paymentStatus: "pago",
++      paidAt: new Date(),
++      gateway: "ORD-GAP-1",
++      itemId: I_RESTANTE,
++      productId: P_CAMISA,
++      qtd: 2,
++      preco: 100,
++      entregueHaDias: 1,
++    });
++    await logar(cliente, U_CLIENTE);
++    // Uma unidade primeiro.
++    const primeira = await solicitar(
++      cliente,
++      O_RESTANTE,
++      [{ order_item_id: I_RESTANTE, quantidade: 1 }],
++      "desisti",
++      "reembolso",
++      "entrega_na_loja",
++    );
++    await ateRecebida(cliente, primeira.id);
++    const itemPrimeira = await valorUnico(
++      cliente,
++      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
++      [primeira.id],
++    );
++
++    // (gap 1) o mesmo item_id duas vezes no p_itens não credita 2x.
++    const estoqueAntes = Number(
++      await valorUnico(
++        cliente,
++        "SELECT estoque FROM public.produtos WHERE id = $1",
++        [P_CAMISA],
++      ),
++    );
++    await logar(cliente, U_ADMIN);
++    await rpc(
++      cliente,
++      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
++      [
++        primeira.id,
++        JSON.stringify([
++          { item_id: itemPrimeira, condicao: "nova", reestocar: true },
++          { item_id: itemPrimeira, condicao: "nova", reestocar: true },
++        ]),
++      ],
++    );
++    assert.equal(
++      Number(
++        await valorUnico(
++          cliente,
++          "SELECT estoque FROM public.produtos WHERE id = $1",
++          [P_CAMISA],
++        ),
++      ),
++      estoqueAntes + 1,
++      "item repetido em p_itens credita 1 unidade, não 2",
++    );
++
++    // (gap 2) segunda devolução do MESMO item de pedido só pode pegar o
++    // restante (1 de 2 já foi; pedir 2 de novo é recusado, pedir 1 passa).
++    await logar(cliente, U_CLIENTE);
++    await assert.rejects(
++      () =>
++        solicitar(
++          cliente,
++          O_RESTANTE,
++          [{ order_item_id: I_RESTANTE, quantidade: 2 }],
++          "tamanho_grande",
++          "reembolso",
++          "entrega_na_loja",
++        ),
++      /Quantidade indisponível/,
++      "só resta 1 unidade — pedir 2 é recusado",
++    );
++    const segunda = await solicitar(
++      cliente,
++      O_RESTANTE,
++      [{ order_item_id: I_RESTANTE, quantidade: 1 }],
++      "tamanho_grande",
++      "reembolso",
++      "entrega_na_loja",
++    );
++    assert.ok(segunda.id, "a unidade restante ainda pode ser devolvida");
++  },
++});
++
+ async function main() {
+   const url = lerDatabaseUrlEfemera();
+   const cliente = new Client({ connectionString: url });
+diff --git a/tests/banco/financeiro-viva.cjs b/tests/banco/financeiro-viva.cjs
+index c177bbdb..ebe70dff 100644
+--- a/tests/banco/financeiro-viva.cjs
++++ b/tests/banco/financeiro-viva.cjs
+@@ -519,10 +519,19 @@ PROVAS.push({
+         Number(dre.resultado_financeiro),
+     );
+     assert.equal(num(dre.lucro_liquido), identidade);
++    // Achado E (revisão de 26/09/2026): o ajuste da ABERTURA (+20, contado x
++    // sistema) vai para categoria `fora_dre` — não é lucro, é troco que já
++    // existia fora do fluxo da loja. Só a Quebra do FECHAMENTO (-5, um
++    // resultado real do dia) pesa no resultado_financeiro.
+     assert.equal(
+       num(dre.resultado_financeiro),
+-      15,
+-      "sobra de 20 na abertura − quebra de 5 no fechamento",
++      -5,
++      "só a quebra de 5 no fechamento pesa; a sobra de 20 na abertura é fora_dre",
++    );
++    assert.equal(
++      linhas["Ajuste de saldo na abertura do caixa (sobra)"],
++      undefined,
++      "achado E: o ajuste de abertura não aparece nas linhas da DRE",
+     );
+ 
+     const resumo = await rpc(cliente, "SELECT public.fin_resumo($1, $2) AS r", [
+@@ -569,6 +578,182 @@ PROVAS.push({
+   },
+ });
+ 
++// ---------------------------------------------------------------------------
++// Achados da revisão de risco de 26/09/2026 (migrations 75/76/77 nunca
++// aplicadas em produção — corrigidas em vez de remendadas por cima).
++// ---------------------------------------------------------------------------
++PROVAS.push({
++  nome: "(D) gaveta desconta o estorno externo (venda em dinheiro cancelada + 'Já devolvi')",
++  corpo: async (cliente) => {
++    await logar(cliente, U_ADMIN);
++    await rpc(cliente, "SELECT public.fin_caixa_abrir(0) AS r");
++    let atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
++    assert.equal(num(atual.esperado), 0, "caixa recém-aberto, sem venda nenhuma");
++
++    const O_D = "5ddddddd-0000-0000-0000-000000000001";
++    await pedido(cliente, O_D, {
++      total: 100,
++      pagamento: "cash",
++      paymentStatus: "recebido_na_entrega",
++      recebidoEm: new Date(),
++      canal: "presencial",
++    });
++    atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
++    assert.equal(num(atual.vendas_dinheiro), 100);
++    assert.equal(num(atual.esperado), 100, "100 entraram na gaveta");
++
++    // Pedido cancelado + "Já devolvi" (registrar_estorno_manual): o mesmo
++    // dinheiro sai da gaveta pela mesma via.
++    await cliente.query(
++      "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
++      [O_D],
++    );
++    await rpc(cliente, "SELECT public.registrar_estorno_manual($1::uuid) AS r", [
++      O_D,
++    ]);
++    atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
++    assert.equal(
++      num(atual.estornos_externos_dinheiro),
++      100,
++      "achado D: o estorno externo agora aparece na gaveta",
++    );
++    assert.equal(
++      num(atual.esperado),
++      0,
++      "achado D: 100 entraram e 100 saíram — a gaveta esperada volta a 0, não fica em 100",
++    );
++
++    const fechado = await rpc(
++      cliente,
++      "SELECT public.fin_caixa_fechar(0, 'sem sobra nem quebra') AS r",
++    );
++    assert.equal(num(fechado.diferenca), 0, "sem quebra fantasma");
++  },
++});
++
++PROVAS.push({
++  nome: "(F) estorno_manual_registrado_em data o estorno externo — não o updated_at, que qualquer edição move",
++  corpo: async (cliente) => {
++    const O_F = "5ddddddd-0000-0000-0000-000000000002";
++    const antigo = new Date(Date.now() - 40 * 86_400_000);
++    await pedido(cliente, O_F, {
++      total: 60,
++      pagamento: "online",
++      paymentStatus: "pago",
++      paidAt: antigo,
++      status: "cancelled",
++    });
++    // Uma edição qualquer do pedido DEPOIS do estorno: se a data viesse de
++    // updated_at, isto empurraria o movimento para hoje.
++    await logar(cliente, U_ADMIN);
++    await rpc(cliente, "SELECT public.registrar_estorno_manual($1::uuid) AS r", [
++      O_F,
++    ]);
++    const registradoEm = (
++      await cliente.query(
++        "SELECT estorno_manual_registrado_em FROM public.marketplace_orders WHERE id = $1",
++        [O_F],
++      )
++    ).rows[0].estorno_manual_registrado_em;
++    assert.ok(registradoEm, "o carimbo nasce no registro do estorno");
++    await cliente.query(
++      "UPDATE public.marketplace_orders SET customer_name = 'Nome corrigido' WHERE id = $1",
++      [O_F],
++    );
++    const mov = (
++      await cliente.query(
++        "SELECT data FROM public.fin__movimentos(NULL, NULL) WHERE id = $1",
++        [`estorno_externo:${O_F}`],
++      )
++    ).rows[0];
++    // fin__dia() de novo (não .toISOString() no lado do JS): o carimbo é
++    // comparado no mesmo fuso que a função usa (America/Sao_Paulo), sem
++    // risco de virar o dia perto da meia-noite UTC.
++    const dataEsperada = (
++      await cliente.query("SELECT public.fin__dia($1::timestamptz) AS d", [
++        registradoEm,
++      ])
++    ).rows[0].d;
++    assert.equal(
++      mov.data.toISOString().slice(0, 10),
++      dataEsperada.toISOString().slice(0, 10),
++      "achado F: a data é a do carimbo do estorno, não a de uma edição posterior do pedido",
++    );
++  },
++});
++
++PROVAS.push({
++  nome: "(K) CMV exclui pedido cujo estoque já voltou inteiro (stock_returned_at)",
++  corpo: async (cliente) => {
++    // Delta, não total absoluto: o período [estado.inicio, estado.hoje] já
++    // carrega CMV de pedidos de PROVAS anteriores (a mesma régua da prova
++    // (f)(g)) — o que importa aqui é o quanto O_K muda o número.
++    const periodo = async () =>
++      num(
++        (
++          await rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
++            estado.inicio,
++            estado.hoje,
++          ])
++        ).cmv,
++      );
++    const cmvAntes = await periodo();
++
++    const O_K = "5ddddddd-0000-0000-0000-000000000003";
++    await pedido(cliente, O_K, {
++      total: 50,
++      pagamento: "online",
++      paymentStatus: "pago",
++      paidAt: new Date(),
++      itens: [{ produto: P_A, qtd: 1, preco: 50 }],
++    });
++    assert.equal(
++      num((await periodo()) - cmvAntes),
++      20,
++      "O_K entra no CMV: 1 x 20 (custo do Produto A)",
++    );
++
++    await cliente.query(
++      "UPDATE public.marketplace_orders SET status = 'cancelled', stock_returned_at = now() WHERE id = $1",
++      [O_K],
++    );
++    assert.equal(
++      num((await periodo()) - cmvAntes),
++      0,
++      "achado K: estoque de volta por inteiro — a mercadoria não custou nada à loja",
++    );
++  },
++});
++
++PROVAS.push({
++  nome: "(gap 4) fin_dre recusa período invertido ou maior que 400 dias",
++  corpo: async (cliente) => {
++    await assert.rejects(
++      () =>
++        rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
++          estado.hoje,
++          estado.inicio,
++        ]),
++      /Período inválido/,
++      "fim antes do início",
++    );
++    const longeDemais = new Date(
++      new Date(estado.inicio).getTime() - 401 * 86_400_000,
++    )
++      .toISOString()
++      .slice(0, 10);
++    await assert.rejects(
++      () =>
++        rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
++          longeDemais,
++          estado.hoje,
++        ]),
++      /Período inválido/,
++      "mais de 400 dias",
++    );
++  },
++});
++
+ async function main() {
+   const url = lerDatabaseUrlEfemera();
+   const cliente = new Client({ connectionString: url });
+diff --git a/tests/migration_a_devolucao_nasce_no_pedido_test.ts b/tests/migration_a_devolucao_nasce_no_pedido_test.ts
+index 6ac05b97..0823511e 100644
+--- a/tests/migration_a_devolucao_nasce_no_pedido_test.ts
++++ b/tests/migration_a_devolucao_nasce_no_pedido_test.ts
+@@ -51,6 +51,7 @@ const RPCS = [
+   "admin_devolucao_decidir",
+   "admin_devolucao_registrar",
+   "admin_devolucao_concluir",
++  "admin_devolucao_reemitir_reembolso",
+   "admin_devolucao_reprovar",
+   "salvar_politica_de_devolucao",
+ ];
+diff --git a/tests/migration_o_cartao_online_nasce_test.ts b/tests/migration_o_cartao_online_nasce_test.ts
+index e88d3239..6aed3db0 100644
+--- a/tests/migration_o_cartao_online_nasce_test.ts
++++ b/tests/migration_o_cartao_online_nasce_test.ts
+@@ -11,6 +11,7 @@
+ import { createRequire } from "node:module";
+ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
+ import {
++  assert,
+   assertEquals,
+   assertStringIncludes,
+ } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+@@ -58,13 +59,32 @@ Deno.test("cartão nasce DESLIGADO e a configuração só é escrita pela RPC de
+     m,
+     "REVOKE ALL ON public.config_pagamento_cartao FROM PUBLIC, anon, authenticated;",
+   );
++  // Achado L (revisão de 26/09/2026): grant por COLUNA, sem updated_by — o
++  // checkout e a edge criar-pagamento só leem credito/debito/parcelas_max.
+   assertStringIncludes(
+     m,
+-    "GRANT SELECT ON public.config_pagamento_cartao TO anon, authenticated;",
++    "GRANT SELECT (id, credito, debito, parcelas_max, updated_at) ON public.config_pagamento_cartao TO anon, authenticated;",
+   );
++  assert(!m.includes("GRANT SELECT ON public.config_pagamento_cartao"));
+   assertStringIncludes(m, "IF NOT public.is_admin() THEN");
+ });
+ 
++Deno.test("registrar_estorno_manual ganha uma data real do estorno (achado F)", () => {
++  assertStringIncludes(
++    m,
++    "ADD COLUMN IF NOT EXISTS estorno_manual_registrado_em timestamptz;",
++  );
++  const ini = m.indexOf(
++    "CREATE OR REPLACE FUNCTION public.registrar_estorno_manual(",
++  );
++  assert(ini >= 0, "registrar_estorno_manual não encontrada");
++  const corpo = m.slice(ini, m.indexOf("$$;", ini));
++  assertStringIncludes(
++    corpo,
++    "estorno_manual_registrado_em = COALESCE(estorno_manual_registrado_em, now())",
++  );
++});
++
+ Deno.test("liberar_cobranca_do_pedido: só service role, com as três guardas", () => {
+   assertStringIncludes(
+     m,
+@@ -91,4 +111,18 @@ Deno.test("o rollback derruba RPCs e tabela mas mantém as colunas do pedido", (
+     "DROP TABLE IF EXISTS public.config_pagamento_cartao;",
+   );
+   assertEquals(/DROP COLUMN/i.test(rollback), false);
++  // Achado R: a ordem de reversão (78 -> 77 -> 76) é recusada, não só documentada.
++  assertStringIncludes(r, "to_regprocedure('public.painel_inicio()')");
++  assertStringIncludes(r, "to_regprocedure('public.fin_dre(date, date)')");
++  // Achado F: registrar_estorno_manual volta ao corpo de 20261072000000
++  // (sem o carimbo), verbatim.
++  const ini = r.indexOf(
++    "CREATE OR REPLACE FUNCTION public.registrar_estorno_manual(",
++  );
++  assert(ini >= 0, "registrar_estorno_manual não restaurada no rollback");
++  const corpo = r.slice(ini, r.indexOf("$$;", ini));
++  assert(
++    !corpo.includes("estorno_manual_registrado_em"),
++    "rollback deveria restaurar o corpo ORIGINAL, sem o carimbo do achado F",
++  );
+ });
