@@ -88,6 +88,14 @@
 --      do painel (src/views/admin/AdminOrdersView.tsx) não pedir de novo o
 --      que uma devolução já devolveu por fora.
 --
+-- TERCEIRA REVISÃO (mesmo dia, rodada 3 — achado A2 de uma revisão
+-- independente sobre o resultado da rodada 2; o A1 dessa rodada, em
+-- fin_caixa_abrir, mora na migration 77):
+--   A2. `update_order_status_atomic` (base 2026110000000_o_estorno_nasce_no_ledger.sql,
+--       redefinida aqui — seção 11) desconta o reembolso manual de uma
+--       devolução já concluída do mesmo pedido antes de abrir o estorno
+--       automático do cancelamento.
+--
 -- DADOS EXISTENTES: nenhuma tabela existente é reescrita. A única linha
 -- semeada é a política padrão (id=1, ON CONFLICT DO NOTHING).
 --

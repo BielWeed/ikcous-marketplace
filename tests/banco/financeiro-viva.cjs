@@ -1141,6 +1141,129 @@ PROVAS.push({
   },
 });
 
+// Achados A1-09/A1-13 (revisão de 26/09/2026, rodada 4, sobre o resultado da
+// rodada 3 acima — de uma revisão independente): a distinção fora_dre/Quebra
+// na 1ª abertura depende de v_ultimo_contado ser NULL PARA ESTA CONTA — não
+// de "toda 1ª falta é sempre fora_dre" (não é assim que a guarda funciona) e
+// não de "existe algum fechamento em QUALQUER conta do sistema" (o "último
+// fechamento" é por conta, não global). Cada cenário abre uma conta caixa
+// NOVA porque a Caixa da loja, nas provas acima, já fechou várias vezes.
+PROVAS.push({
+  nome: "(A1-09) 1ª abertura de uma conta caixa nova: falta vira fora_dre (007), nunca Quebra de caixa",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    const resFinanceiro = async () =>
+      num(
+        (
+          await rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
+            estado.inicio,
+            estado.hoje,
+          ])
+        ).resultado_financeiro,
+      );
+    const { id: contaId } = await rpc(
+      cliente,
+      "SELECT public.fin_conta_salvar($1::jsonb) AS r",
+      [
+        JSON.stringify({
+          nome: "Caixa R4 A1-09",
+          tipo: "caixa",
+          saldo_inicial: 50,
+          saldo_inicial_em: estado.inicio,
+        }),
+      ],
+    );
+    const resAntes = await resFinanceiro();
+    // Contado 30 contra um sistema de 50: faltam 20 — e esta conta NUNCA
+    // fechou antes (não há "último fechamento" dela para comparar).
+    await rpc(cliente, "SELECT public.fin_caixa_abrir($1, $2) AS r", [
+      30,
+      contaId,
+    ]);
+    const saldo = num(
+      (await rpc(cliente, "SELECT public.fin_contas_listar() AS r")).find(
+        (c) => c.id === contaId,
+      ).saldo,
+    );
+    assert.equal(saldo, 30, "o ajuste reconcilia o sistema para o contado");
+    assert.equal(
+      num((await resFinanceiro()) - resAntes),
+      0,
+      "mutante A1_primeira_vira_quebra: a 1ª falta desta conta é fora_dre (007) — sem a guarda, TODA falta viraria Quebra de caixa (031) na DRE, mesmo a primeira de uma conta",
+    );
+    await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar($1, 'sem diferença') AS r",
+      [30],
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(A1-13) 1ª abertura de uma SEGUNDA conta caixa (a Caixa da loja acabou de fechar): falta continua fora_dre — o último fechamento é por conta",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    const resFinanceiro = async () =>
+      num(
+        (
+          await rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
+            estado.inicio,
+            estado.hoje,
+          ])
+        ).resultado_financeiro,
+      );
+    // A Caixa da loja abre e fecha DE NOVO agora — o fechamento mais recente
+    // do sistema inteiro passa a ser dela, não da conta nova abaixo.
+    const saldoCaixa = num(
+      (await rpc(cliente, "SELECT public.fin_contas_listar() AS r")).find(
+        (c) => c.id === CAIXA,
+      ).saldo,
+    );
+    await rpc(cliente, "SELECT public.fin_caixa_abrir($1) AS r", [saldoCaixa]);
+    await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar($1, 'sem diferença') AS r",
+      [saldoCaixa],
+    );
+
+    const { id: contaId } = await rpc(
+      cliente,
+      "SELECT public.fin_conta_salvar($1::jsonb) AS r",
+      [
+        JSON.stringify({
+          nome: "Caixa R4 A1-13",
+          tipo: "caixa",
+          saldo_inicial: 50,
+          saldo_inicial_em: estado.inicio,
+        }),
+      ],
+    );
+    const resAntes = await resFinanceiro();
+    // Contado 30 contra um sistema de 50: faltam 20 — é a 1ª abertura DESTA
+    // conta, mesmo a Caixa da loja tendo fechado um instante atrás.
+    await rpc(cliente, "SELECT public.fin_caixa_abrir($1, $2) AS r", [
+      30,
+      contaId,
+    ]);
+    const saldo = num(
+      (await rpc(cliente, "SELECT public.fin_contas_listar() AS r")).find(
+        (c) => c.id === contaId,
+      ).saldo,
+    );
+    assert.equal(saldo, 30, "o ajuste reconcilia o sistema para o contado");
+    assert.equal(
+      num((await resFinanceiro()) - resAntes),
+      0,
+      "mutante A1_ultimo_de_qualquer_conta: sem filtrar por conta_id, o 'último fechamento' pegaria o da Caixa da loja (linha acima) e trataria a falta desta conta NOVA como Quebra de caixa (031) na DRE",
+    );
+    await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar($1, 'sem diferença') AS r",
+      [30],
+    );
+  },
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const cliente = new Client({ connectionString: url });
