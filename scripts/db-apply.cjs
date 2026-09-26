@@ -2216,6 +2216,21 @@ const VERIFICACOES = {
       esperado: ["AND o.status NOT IN ('cancelled', 'returned')"],
     },
   ],
+  // O PEDIDO POR WHATSAPP FECHA PARA ANON (achado LGPD, alto — auditoria de
+  // 26/09/2026, migration 20261181000000). O REVOKE de get_orders_by_whatsapp_v3
+  // não muda corpo de função nenhuma (só ACL, fora do que este mapa confere) —
+  // só get_orders_by_otp_v1 entra aqui, pelo CORPO NOVO que tira `cpf` de
+  // `customer_data` (raiz e dentro de `address`, quando `address` é objeto).
+  "20261181000000_pedido_por_whatsapp_fecha_para_anon.sql": [
+    {
+      funcao: "get_orders_by_otp_v1",
+      esperado: [
+        "WHEN jsonb_typeof(o.customer_data -> 'address') = 'object' THEN",
+        "                            (o.customer_data - 'cpf')\n                                || jsonb_build_object('address', (o.customer_data -> 'address') - 'cpf')",
+        "                        ELSE\n                            o.customer_data - 'cpf'\n                    END",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
