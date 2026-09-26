@@ -36,19 +36,48 @@ verificar TUDO: nenhum deles foi verificado ainda.
   6. Nova revisão de risco independente.
 - Ainda falta o grant por coluna em `politica_devolucao`: trocar o `select("*")` do front por colunas explícitas antes.
 
-## cartao-edge-achados-wip.patch (base `b3a26fbc`)
+## cartao-edge-achados-commits.patch (base `b3a26fbc`, commit `28d8c777`)
 
-- Retrato intermediário: o agente ainda não tinha respondido quando a pausa
-  começou. Se houver `cartao-edge-achados-commits.patch`, ele vale mais.
-- Escopo: A1–A4 mais o endurecimento de `metodo_online`, em
-  `supabase/functions/{criar-pagamento,webhook-mercadopago,reconciliar-pagamentos,_shared}`.
-- Verificar com `deno test` da pasta `supabase/functions`. A base tinha 1057 testes passando.
-- Os cenários do revisor precisam virar testes:
-  - duas abas → 1 order aprovada;
-  - resposta perdida + nova tentativa → 1 order;
-  - expira durante a chamada → P1;
-  - 3DS abandonado → PIX liberado;
-  - PIX idêntico ao de antes.
+Aplicar com `git am`. Os hooks passaram no commit.
+
+**Pronto e testado** (257 testes passando em `criar-pagamento` e `_shared/mercadopago`):
+
+- **A1**
+  - A chave do cartão passou a ser `<pedido>:c<n>`, sem o hash do token.
+  - O UPDATE da vaga do cartão não filtra mais por `payment_status`. Assim, uma
+    expiração no meio da chamada cai em P1.
+  - Se a vaga for perdida para outra cobrança, `cancelarOrder` roda quando a order
+    está `action_required`/`created`. Nos outros casos, `alertarAdminCartaoOrfaoReal`
+    manda um push para os admins.
+- **A2**
+  - Um cartão em `action_required`/`created` é cancelado antes de criar o PIX. Com
+    `processing`, o retorno continua sendo 409.
+  - `expiracaoParaDesafio3ds` estende o `expires_at` até 40 min quando surge o
+    desafio 3DS.
+- **A4**
+  - `erro400EhDeDadoDoCartao` usa uma lista curada: `invalid_card_token`,
+    `card_token_not_found`, `bad_filled_card_data`. Ela não foi confirmada na
+    documentação do MP, porque o proxy bloqueia o site.
+  - Qualquer outro 400 vira 502.
+- O PIX continua idêntico, confirmado pelos testes fixados.
+
+**Não iniciado:**
+
+- **A3**, em `webhook-mercadopago/index.ts`, no bloco `rota === "payment"` que troca
+  para `idGravadoNoBanco` (~linha 1667).
+  - Para `pago`/`estornado`, rodar `consultarOrder(idGravado)` e só seguir se o
+    status bater. Se não bater, responder 200 com `ignorado`.
+  - Isso quebra 4 testes, que precisam de `fetchInspecionavel` com mocks de
+    `pagamento` e de `order`: ~522, ~1233, ~1387 e ~1765 (M15).
+  - Adicionar um teste para a devolução órfã.
+- **Endurecimento**, no ramo `rota === "order"`, depois de `recusaLiberaAVaga`.
+  - Se `statusBanco === "recusado"` e a vaga não foi liberada, ler
+    `marketplace_orders.metodo_online`.
+  - Se for `credito`/`debito`, liberar a vaga.
+  - Adicionar 2 testes, um de cartão e um de controle com PIX.
+
+**Depois:** rodar a suíte edge inteira (a base tem 1057 testes), `npm run lint:ratchet`
+e uma nova revisão de risco.
 
 ## portao-dividido-wip.patch (base `03f3eb76`)
 
