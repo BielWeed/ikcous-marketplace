@@ -161,35 +161,6 @@ export function montarCorpoPix(args: {
   };
 }
 
-export function montarCorpoCartao(args: {
-  valor: number;
-  descricao: string;
-  email: string;
-  token: string;
-  parcelas: number;
-  metodo: string;
-  emissor?: string;
-  documento?: { type: string; number: string };
-  orderId: string;
-}): Record<string, unknown> {
-  const payer: Record<string, unknown> = { email: args.email };
-  if (args.documento) payer.identification = args.documento;
-
-  const corpo: Record<string, unknown> = {
-    transaction_amount: args.valor,
-    description: args.descricao,
-    token: args.token,
-    installments: args.parcelas,
-    payment_method_id: args.metodo,
-    payer,
-    // Mesmo motivo do PIX: é o que permite achar o pedido a partir do
-    // pagamento na reconciliação da Fase 3.
-    external_reference: args.orderId,
-  };
-  if (args.emissor) corpo.issuer_id = args.emissor;
-  return corpo;
-}
-
 /**
  * TABELA ÚNICA status+status_detail → `payment_status` deste banco. Único
  * consumidor hoje: `mapearStatusOrder` (abaixo). Até CHECKOUT-080 também
@@ -248,15 +219,31 @@ export function montarCorpoCartao(args: {
  * decisão FAVORÁVEL ao vendedor (o valor volta PARA ELE) mapeando para o
  * mesmo rótulo que uma perda definitiva — os dois merecem uma correção
  * própria, revisada à parte, não incluída aqui.
+ *
+ * CARTÃO (Fase 3.5, 26/09/2026): três pares de ESPERA novos — o desafio
+ * 3-D Secure pendente (`action_required:pending_challenge`) e as duas
+ * análises antifraude (`processing:in_review`,
+ * `processing:pending_review_manual`). Todos 'aguardando': o dinheiro ainda
+ * não entrou, e quem fecha o desfecho é o webhook/reconciliação. Além da
+ * tabela, TODO `failed:<detalhe>` vira 'recusado' (ver `mapearStatusOrder`,
+ * abaixo): a recusa de cartão chega com o motivo no `status_detail`
+ * (`failed:rejected_by_issuer`, `failed:high_risk`…), e enumerar cada motivo
+ * aqui deixaria o próximo que o MP inventar cair em `null` — um cartão
+ * recusado que ninguém liberaria.
  */
 export const MAPA_STATUS_ORDER: Record<string, string> = {
   "processed:accredited": "pago",
   "created:created": "aguardando",
   "processing:in_process": "aguardando",
+  "processing:in_review": "aguardando",
+  "processing:pending_review_manual": "aguardando",
   "action_required:waiting_payment": "aguardando",
   "action_required:waiting_capture": "aguardando",
   // waiting_transfer é o estado do PIX recém-criado — o mais comum em produção.
   "action_required:waiting_transfer": "aguardando",
+  // Cartão com desafio 3-D Secure pedido pelo banco: a URL do desafio vem em
+  // `extrairDesafio3ds` (abaixo).
+  "action_required:pending_challenge": "aguardando",
   "refunded:refunded": "estornado",
   "charged_back:in_process": "estornado",
   "charged_back:settled": "estornado",
@@ -287,13 +274,329 @@ export const MAPA_STATUS_ORDER: Record<string, string> = {
  *
  * Combinação desconhecida devolve `null`, nunca um palpite — mesma regra
  * herdada do mapearStatus clássico. Leitor fino de MAPA_STATUS_ORDER, acima.
+ *
+ * A ÚNICA regra fora da tabela: `status === "failed"` é recusa com qualquer
+ * `status_detail` (Fase 3.5 — ver o comentário do fim de MAPA_STATUS_ORDER).
+ * Não é palpite: `failed` é estado TERMINAL documentado da order, sem
+ * dinheiro capturado; o detalhe só diz o motivo.
  */
 export function mapearStatusOrder(
   status: string,
   statusDetail: string,
 ): string | null {
   if (typeof status !== "string" || typeof statusDetail !== "string") return null;
-  return MAPA_STATUS_ORDER[`${status}:${statusDetail}`] ?? null;
+  const mapeado = MAPA_STATUS_ORDER[`${status}:${statusDetail}`];
+  if (mapeado) return mapeado;
+  return status === "failed" ? "recusado" : null;
+}
+
+// ─── Cartão pela Orders API (Fase 3.5, 26/09/2026) ─────────────────────────
+//
+// Spec: docs/superpowers/specs/2026-09-26-cartao-online-design.md. O dado do
+// cartão NUNCA passa por aqui: o Card Payment Brick tokeniza no navegador e o
+// servidor recebe só o token de uso único (PCI SAQ-A). Nada deste bloco loga
+// token, CPF/CNPJ ou e-mail — as mensagens de erro são genéricas de propósito.
+
+/** Os dois tipos de cartão que a Orders API aceita neste app. */
+const TIPOS_DE_CARTAO = new Set(["credit_card", "debit_card"]);
+
+/** Token de uso único do Brick: letras, dígitos e hífen, 16..128. Fonte única
+ * — `criar-pagamento` valida o corpo com ESTA função antes de tocar o banco,
+ * e `montarCorpoCartaoOrders` confere de novo antes de montar (defesa em
+ * profundidade: o mesmo teste nos dois lugares, nunca duas regex). */
+export function tokenDeCartaoValido(token: unknown): token is string {
+  return typeof token === "string" && /^[A-Za-z0-9-]{16,128}$/.test(token);
+}
+
+/** `payment_method.id` da bandeira (ex.: "master", "visa", "debelo"). */
+export function metodoDeCartaoValido(id: unknown): id is string {
+  return typeof id === "string" && /^[a-z0-9_]{2,30}$/.test(id);
+}
+
+/** `credit_card` ou `debit_card` — nada mais vira cobrança de cartão. */
+export function tipoDeCartaoValido(tipo: unknown): tipo is "credit_card" | "debit_card" {
+  return typeof tipo === "string" && TIPOS_DE_CARTAO.has(tipo);
+}
+
+/** Parcelas: inteiro de 1 a 12 (o teto da loja é conferido por quem chama). */
+export function parcelasValidas(parcelas: unknown): parcelas is number {
+  return Number.isInteger(parcelas) && (parcelas as number) >= 1 && (parcelas as number) <= 12;
+}
+
+/**
+ * Documento do titular, normalizado: aceita a máscara que o Brick ou uma
+ * pessoa digita (ponto, hífen, barra, espaço) e devolve só os dígitos, com 11
+ * para CPF e 14 para CNPJ. Qualquer outra coisa (letra, tamanho errado, tipo
+ * desconhecido) devolve `null` — nunca um documento "consertado" por palpite.
+ */
+export function normalizarDocumento(
+  documento: unknown,
+): { type: "CPF" | "CNPJ"; number: string } | null {
+  if (!documento || typeof documento !== "object") return null;
+  const { type, number } = documento as Record<string, unknown>;
+  if (type !== "CPF" && type !== "CNPJ") return null;
+  if (typeof number !== "string") return null;
+  const digitos = number.replace(/[.\-/\s]/g, "");
+  const tamanho = type === "CPF" ? 11 : 14;
+  if (!/^\d+$/.test(digitos) || digitos.length !== tamanho) return null;
+  return { type, number: digitos };
+}
+
+/**
+ * Monta o corpo de `POST /v1/orders` para CARTÃO (crédito ou débito).
+ *
+ * Mesmas três regras de grafia do PIX (`montarCorpoPixOrders`): valores em
+ * STRING de duas casas, `external_reference` = id do pedido,
+ * `processing_mode: "automatic"`. As diferenças do cartão:
+ *
+ * - `capture_mode: "automatic_async"` — captura automática, assíncrona (o
+ *   desfecho pode chegar depois, pelo webhook).
+ * - `config.online.transaction_security` — 3-D Secure quando o MP vê risco de
+ *   fraude, com a responsabilidade transferida ao emissor (`liability_shift:
+ *   required`). Quando o banco pede desafio, a resposta traz a URL
+ *   (`extrairDesafio3ds`).
+ * - Débito vai SEMPRE com `installments: 1`, qualquer que seja o valor
+ *   recebido — débito não parcela.
+ * - `issuer_id` e o `processing_mode` que o Brick devolve NÃO entram: o
+ *   emissor sai do token, e o modo de processamento é decisão do servidor.
+ *
+ * Valida tudo e LANÇA em entrada inválida (este arquivo tem `@ts-nocheck`:
+ * só o `throw` barra). As mensagens nunca carregam o valor recusado — um
+ * token, CPF ou e-mail não pode parar no log por uma mensagem de erro.
+ */
+export function montarCorpoCartaoOrders(args: {
+  orderId: string;
+  valor: number;
+  email: string;
+  nome?: string;
+  documento: { type: "CPF" | "CNPJ"; number: string };
+  token: string;
+  paymentMethodId: string;
+  paymentTypeId: "credit_card" | "debit_card";
+  parcelas: number;
+}): Record<string, unknown> {
+  if (typeof args.orderId !== "string" || args.orderId.length === 0) {
+    throw new Error("montarCorpoCartaoOrders: orderId obrigatório.");
+  }
+  if (typeof args.valor !== "number" || !Number.isFinite(args.valor) || args.valor <= 0) {
+    throw new Error("montarCorpoCartaoOrders: valor precisa ser um número maior que zero.");
+  }
+  if (typeof args.email !== "string" || !/^\S+@\S+\.\S+$/.test(args.email)) {
+    throw new Error("montarCorpoCartaoOrders: e-mail do pagador inválido.");
+  }
+  if (!tokenDeCartaoValido(args.token)) {
+    throw new Error("montarCorpoCartaoOrders: token do cartão com formato inválido.");
+  }
+  if (!metodoDeCartaoValido(args.paymentMethodId)) {
+    throw new Error("montarCorpoCartaoOrders: paymentMethodId com formato inválido.");
+  }
+  if (!tipoDeCartaoValido(args.paymentTypeId)) {
+    throw new Error("montarCorpoCartaoOrders: paymentTypeId precisa ser credit_card ou debit_card.");
+  }
+  if (!parcelasValidas(args.parcelas)) {
+    throw new Error("montarCorpoCartaoOrders: parcelas precisa ser um inteiro de 1 a 12.");
+  }
+  const documento = normalizarDocumento(args.documento);
+  if (!documento) {
+    throw new Error("montarCorpoCartaoOrders: documento precisa ser CPF (11 dígitos) ou CNPJ (14).");
+  }
+
+  const valorFormatado = args.valor.toFixed(2);
+  const parcelas = args.paymentTypeId === "debit_card" ? 1 : args.parcelas;
+
+  const payer: Record<string, unknown> = { email: args.email };
+  if (args.nome) payer.first_name = args.nome;
+  payer.identification = documento;
+
+  return {
+    type: "online",
+    processing_mode: "automatic",
+    capture_mode: "automatic_async",
+    external_reference: args.orderId,
+    total_amount: valorFormatado,
+    payer,
+    transactions: {
+      payments: [
+        {
+          amount: valorFormatado,
+          payment_method: {
+            id: args.paymentMethodId,
+            type: args.paymentTypeId,
+            token: args.token,
+            installments: parcelas,
+          },
+        },
+      ],
+    },
+    config: {
+      online: {
+        transaction_security: {
+          validation: "on_fraud_risk",
+          liability_shift: "required",
+        },
+      },
+    },
+  };
+}
+
+/** `transactions.payments[0]` da order, ou `undefined` — leitor comum dos
+ * extratores de cartão abaixo (mesmo caminho que `extrairQrCode` percorre). */
+function primeiroPagamentoDaOrder(
+  order: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | undefined {
+  if (!order || typeof order !== "object") return undefined;
+  const transacoes = order.transactions as Record<string, unknown> | undefined;
+  const pagamentos = transacoes?.payments as unknown[] | undefined;
+  const pagamento = pagamentos?.[0];
+  return pagamento && typeof pagamento === "object"
+    ? pagamento as Record<string, unknown>
+    : undefined;
+}
+
+/**
+ * O TIPO do meio de pagamento da order: "credit_card", "debit_card",
+ * "bank_transfer" (PIX)… `null` quando a order não diz. É o que separa, no
+ * webhook e na reconciliação, a recusa de CARTÃO (libera a vaga — o cliente
+ * tenta de novo) da recusa de PIX (cancela o pedido, como sempre).
+ */
+export function tipoDoPagamentoDaOrder(
+  order: Record<string, unknown> | null | undefined,
+): string | null {
+  const metodo = primeiroPagamentoDaOrder(order)?.payment_method as
+    | Record<string, unknown>
+    | undefined;
+  return typeof metodo?.type === "string" ? metodo.type : null;
+}
+
+/** `true` quando a order é de cartão (crédito ou débito). */
+export function orderEhDeCartao(order: Record<string, unknown> | null | undefined): boolean {
+  return tipoDeCartaoValido(tipoDoPagamentoDaOrder(order));
+}
+
+/**
+ * A recusa desta order LIBERA a vaga da cobrança (`liberar_cobranca_do_pedido`)
+ * em vez de chegar a `confirmar_pagamento`? A RPC, no ramo 'recusado',
+ * CANCELA o pedido e devolve o estoque — certo para PIX, errado para cartão,
+ * em que a recusa é o começo da próxima tentativa (spec, decisão 3).
+ *
+ * Duas portas, só em desfecho SEM dinheiro ('recusado' ou 'expirado'):
+ *
+ * 1. Order de CARTÃO — recusada, cancelada ou expirada (o desafio 3DS que
+ *    ninguém concluiu, por exemplo).
+ * 2. Order CANCELADA (`status: "canceled"`), de qualquer tipo. Quem cancela
+ *    order neste app é o próprio app: `criar-pagamento` cancela o PIX em
+ *    aberto quando o cliente troca para cartão. A notificação desse
+ *    cancelamento pode chegar ANTES de a própria `criar-pagamento` liberar a
+ *    vaga — se ela caísse em `confirmar_pagamento('recusado')`, o pedido
+ *    morreria no meio da troca. Liberar é inofensivo nos dois casos: a RPC só
+ *    solta a vaga se ela ainda for desta cobrança e o pedido ainda estiver
+ *    'aguardando', e o pg_cron continua expirando a reserva no prazo.
+ *
+ * PIX recusado (`failed`) ou expirado continua exatamente como antes.
+ */
+export function recusaLiberaAVaga(
+  order: Record<string, unknown> | null | undefined,
+  statusMapeado: string | null,
+): boolean {
+  if (statusMapeado !== "recusado" && statusMapeado !== "expirado") return false;
+  if (orderEhDeCartao(order)) return true;
+  return orderCancelada(order);
+}
+
+/**
+ * URL do desafio 3-D Secure, quando o banco pediu um
+ * (`transactions.payments[0].payment_method.transaction_security.url`, com a
+ * order em `action_required`). Só `https://` — a tela abre isto num iframe, e
+ * um valor que não seja URL segura vira `null`, nunca um iframe com lixo.
+ * Order fora de `action_required` também devolve `null`: um desafio já
+ * resolvido não pode ser reaberto.
+ */
+export function extrairDesafio3ds(
+  order: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!order || typeof order !== "object" || order.status !== "action_required") return null;
+  const metodo = primeiroPagamentoDaOrder(order)?.payment_method as
+    | Record<string, unknown>
+    | undefined;
+  const seguranca = metodo?.transaction_security as Record<string, unknown> | undefined;
+  const url = seguranca?.url;
+  return typeof url === "string" && /^https:\/\/\S+$/.test(url) ? url : null;
+}
+
+/** Frase padrão da recusa — também a de todo motivo que o mapa não conhece. */
+export const MOTIVO_RECUSA_PADRAO = "Pagamento recusado. Tente outro cartão ou pague com PIX.";
+
+/** Frase da recusa por dado do cartão (também usada para o 400 do MP). */
+export const MOTIVO_RECUSA_DADOS_DO_CARTAO = "Confira os dados do cartão e tente de novo.";
+
+// `Map`, não objeto literal: o detalhe vem do MP (dado de fora) e indexar
+// objeto por ele é o `security/detect-object-injection` que a catraca reprova
+// — mesmo motivo do ROTULO_PAGAMENTO em `_shared/pedido.ts`.
+const MOTIVOS_DE_RECUSA = new Map<string, string>([
+  ["bad_filled_card_data", MOTIVO_RECUSA_DADOS_DO_CARTAO],
+  ["insufficient_amount", "Saldo ou limite insuficiente neste cartão."],
+  ["card_insufficient_amount", "Saldo ou limite insuficiente neste cartão."],
+  ["amount_limit_exceeded", "Saldo ou limite insuficiente neste cartão."],
+  ["rejected_by_issuer", "O banco emissor recusou o pagamento."],
+  ["high_risk", "Pagamento recusado por segurança. Tente outro cartão ou pague com PIX."],
+  ["required_call_for_authorize", "Seu banco pede autorização: ligue para ele e tente de novo."],
+  ["card_disabled", "Cartão desabilitado. Fale com o seu banco."],
+  ["max_attempts_exceeded", "Limite de tentativas atingido para este cartão. Use outro cartão."],
+  ["invalid_installments", "Esse parcelamento não está disponível para este cartão."],
+  ["3ds_challenge_expired", "A autenticação do banco não foi concluída."],
+  ["cc_rejected_3ds_challenge", "A autenticação do banco não foi concluída."],
+  ["invalid_card_token", "Os dados do cartão expiraram. Digite de novo."],
+]);
+
+/**
+ * O motivo da recusa em português de gente, a partir do `status_detail` do
+ * PAGAMENTO (`transactions.payments[0]` — onde o MP põe o motivo; a raiz
+ * costuma dizer só "failed") e, se ele não for conhecido, do da raiz.
+ * Desconhecido devolve a frase padrão, que sempre oferece uma saída (outro
+ * cartão ou PIX) — nunca o código cru do MP.
+ */
+export function motivoDaRecusa(order: Record<string, unknown> | null | undefined): string {
+  const detalhes = [
+    primeiroPagamentoDaOrder(order)?.status_detail,
+    order && typeof order === "object" ? order.status_detail : undefined,
+  ];
+  for (const detalhe of detalhes) {
+    if (typeof detalhe === "string" && MOTIVOS_DE_RECUSA.has(detalhe)) {
+      return MOTIVOS_DE_RECUSA.get(detalhe) as string;
+    }
+  }
+  return MOTIVO_RECUSA_PADRAO;
+}
+
+/**
+ * O motivo a partir do CORPO DE ERRO de uma criação recusada (HTTP 402). A
+ * Orders API devolve a order recusada dentro de `data`; o motivo pode vir
+ * também em `errors[].details[]`, no formato "<id do pagamento>:
+ * <status_detail>". Tenta `data` primeiro e, sem motivo conhecido lá, o
+ * sufixo dos `details` — os dois são leitura defensiva de um formato que
+ * este repositório ainda não mediu contra a API real; o que não casar cai na
+ * frase padrão. Nada disso volta ao cliente além da frase traduzida.
+ */
+export function motivoDaRecusaDoErro(corpoDoErro: unknown): string {
+  if (!corpoDoErro || typeof corpoDoErro !== "object") return MOTIVO_RECUSA_PADRAO;
+  const corpo = corpoDoErro as Record<string, unknown>;
+  const data = corpo.data && typeof corpo.data === "object"
+    ? corpo.data as Record<string, unknown>
+    : null;
+  const peloData = motivoDaRecusa(data);
+  if (peloData !== MOTIVO_RECUSA_PADRAO) return peloData;
+
+  const erros = Array.isArray(corpo.errors) ? corpo.errors : [];
+  for (const erro of erros) {
+    const detalhes = (erro as Record<string, unknown> | null)?.details;
+    if (!Array.isArray(detalhes)) continue;
+    for (const detalhe of detalhes) {
+      if (typeof detalhe !== "string") continue;
+      const sufixo = detalhe.slice(detalhe.lastIndexOf(":") + 1).trim();
+      if (MOTIVOS_DE_RECUSA.has(sufixo)) return MOTIVOS_DE_RECUSA.get(sufixo) as string;
+    }
+  }
+  return MOTIVO_RECUSA_PADRAO;
 }
 
 /**
@@ -448,23 +751,123 @@ export function montarCorpoPixOrders(args: {
 
 type ResultadoOrder =
   | { ok: true; order: Record<string, unknown> }
-  | { ok: false; erro: string; status: number };
+  | {
+    ok: false;
+    erro: string;
+    status: number;
+    // Fase 3.5 (cartão): o corpo de erro do MP, já parseado quando é JSON —
+    // para quem CHAMA decidir no servidor (a recusa de cartão volta como
+    // HTTP 402 com a order recusada dentro). NUNCA vai para a resposta ao
+    // cliente: carrega detalhe de conta e, no cartão, do pagador. Ausente
+    // quando o corpo não era JSON (ou quando nem houve resposta HTTP).
+    corpoDoErro?: Record<string, unknown>;
+  };
 
 /**
- * `criarOrder` — faz `POST {base}/v1/orders`, o caminho novo para PIX.
+ * Resumo do corpo de erro do MP SEM dado pessoal — só códigos e status. É o
+ * que vai para o log quando quem chama pede `corpoNoLog: false` (cartão): o
+ * corpo inteiro da recusa traz a order com o pagador (e-mail, CPF), que não
+ * pode parar no log da função.
+ */
+function resumoSemDadoPessoal(corpo: Record<string, unknown> | undefined): string {
+  if (!corpo) return "(corpo não-JSON)";
+  const erros = Array.isArray(corpo.errors) ? corpo.errors : [];
+  const codigos = erros
+    .map((e) => (e && typeof e === "object" ? (e as Record<string, unknown>).code : undefined))
+    .filter((c) => typeof c === "string");
+  const data = corpo.data && typeof corpo.data === "object"
+    ? corpo.data as Record<string, unknown>
+    : undefined;
+  const pagamento = primeiroPagamentoDaOrder(data);
+  return JSON.stringify({
+    codigos,
+    status: typeof data?.status === "string" ? data.status : undefined,
+    status_detail: typeof data?.status_detail === "string" ? data.status_detail : undefined,
+    pagamento_status_detail: typeof pagamento?.status_detail === "string"
+      ? pagamento.status_detail
+      : undefined,
+  });
+}
+
+/**
+ * Miolo comum de `criarOrder`, `consultarOrder` e `cancelarOrder` — as três
+ * mandam a requisição de jeitos diferentes e leem a resposta do MESMO jeito
+ * (mesma lição do `interpretarRespostaDePagamento` clássico, mais abaixo:
+ * duas leituras da mesma resposta divergem em silêncio). Nunca rejeita. O
+ * `rotulo` mantém as linhas de log de cada chamador exatamente como eram
+ * ("mercadopago: orders recusou", "mercadopago: orders (consulta) recusou").
+ */
+async function interpretarRespostaDeOrder(
+  resposta: Response,
+  opcoes: { rotulo: string; mensagemDeFalha: string; corpoNoLog: boolean },
+): Promise<ResultadoOrder> {
+  if (!resposta.ok) {
+    // O corpo do erro do MP vai para o log da função, NUNCA para o cliente:
+    // ele carrega detalhe de credencial e de conta.
+    const detalhe = await resposta.text().catch(() => "");
+    let corpoDoErro: Record<string, unknown> | undefined;
+    try {
+      const parseado = JSON.parse(detalhe);
+      if (parseado && typeof parseado === "object") corpoDoErro = parseado;
+    } catch {
+      corpoDoErro = undefined;
+    }
+    console.error(
+      `mercadopago: ${opcoes.rotulo} recusou`,
+      resposta.status,
+      opcoes.corpoNoLog ? detalhe : resumoSemDadoPessoal(corpoDoErro),
+    );
+    return {
+      ok: false,
+      erro: opcoes.mensagemDeFalha,
+      status: resposta.status,
+      ...(corpoDoErro ? { corpoDoErro } : {}),
+    };
+  }
+
+  // A leitura do corpo mora no MESMO try que trata resposta ilegível: um 2xx
+  // com corpo HTML, vazio ou "null" faria json() rejeitar — mesma regra do
+  // interpretarRespostaDePagamento clássico, abaixo.
+  let json: Record<string, unknown> | null;
+  try {
+    json = await resposta.json();
+  } catch (_err) {
+    console.error(`mercadopago: ${opcoes.rotulo} 2xx com corpo ilegível`, resposta.status);
+    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
+  }
+
+  if (json?.id === undefined || json?.id === null) {
+    console.error(
+      `mercadopago: ${opcoes.rotulo} 2xx sem id`,
+      resposta.status,
+      opcoes.corpoNoLog ? JSON.stringify(json) : "(corpo omitido: pode ter dado do pagador)",
+    );
+    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
+  }
+
+  return { ok: true, order: json };
+}
+
+/**
+ * `criarOrder` — faz `POST {base}/v1/orders`: o PIX e, desde a Fase 3.5, o
+ * cartão (o `criarPagamento` clássico de cartão, código morto desde a Fase
+ * 3, foi removido quando o cartão veio para cá).
  *
- * Mesmo cuidado do `criarPagamento` clássico: `X-Idempotency-Key` para um
- * retry do nosso lado não cobrar o cliente duas vezes, `fetch` por
- * parâmetro para o teste não tocar rede, corpo do erro do MP só no log
- * (carrega detalhe de credencial e de conta), e nenhum caminho rejeita —
- * até um 2xx com corpo ilegível ou sem `id` volta como `{ ok: false }`.
+ * `X-Idempotency-Key` para um retry do nosso lado não cobrar o cliente duas
+ * vezes, `fetch` por parâmetro para o teste não tocar rede, corpo do erro do
+ * MP só no log (carrega detalhe de credencial e de conta), e nenhum caminho
+ * rejeita — até um 2xx com corpo ilegível ou sem `id` volta como
+ * `{ ok: false }`.
  *
- * Ao contrário de `criarPagamento`, que já devolve os campos extraídos
- * (id, status, qrCode…), `criarOrder` devolve a `order` inteira, já
- * parseada: a extração do QR (formato aninhado, ver extrairQrCode) e do
- * status (par status + status_detail, ver mapearStatusOrder) são passos
+ * Devolve a `order` inteira, já parseada: a extração do QR (formato
+ * aninhado, ver extrairQrCode), do status (par status + status_detail, ver
+ * mapearStatusOrder) e do desafio 3DS (extrairDesafio3ds) são passos
  * separados de propósito, para quem chama poder usar cada um sem depender
  * dos outros.
+ *
+ * `corpoNoLog: false` (cartão): o corpo da recusa traz a order com o pagador
+ * — o log recebe só o resumo sem dado pessoal (`resumoSemDadoPessoal`). O
+ * default mantém o log do PIX exatamente como era.
  */
 export async function criarOrder(args: {
   token: string;
@@ -476,6 +879,7 @@ export async function criarOrder(args: {
   // passa — cai no TEMPO_LIMITE_MS. O parâmetro existe para o teste provar o
   // aborto sem esperar os 15s.
   tempoLimiteMs?: number;
+  corpoNoLog?: boolean;
 }): Promise<ResultadoOrder> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
@@ -502,31 +906,65 @@ export async function criarOrder(args: {
     return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
   }
 
-  if (!resposta.ok) {
-    // O corpo do erro do MP vai para o log da função, NUNCA para o cliente:
-    // ele carrega detalhe de credencial e de conta.
-    const detalhe = await resposta.text().catch(() => "");
-    console.error("mercadopago: orders recusou", resposta.status, detalhe);
-    return { ok: false, erro: "Não foi possível gerar a cobrança.", status: resposta.status };
-  }
+  return interpretarRespostaDeOrder(resposta, {
+    rotulo: "orders",
+    mensagemDeFalha: "Não foi possível gerar a cobrança.",
+    corpoNoLog: args.corpoNoLog !== false,
+  });
+}
 
-  // A leitura do corpo mora no MESMO try que trata resposta ilegível: um 2xx
-  // com corpo HTML, vazio ou "null" faria json() rejeitar — mesma regra do
-  // interpretarRespostaDePagamento clássico, acima.
-  let json: Record<string, unknown> | null;
+/**
+ * `cancelarOrder` — `POST {base}/v1/orders/{id}/cancel` (Fase 3.5). Único uso
+ * hoje: `criar-pagamento` cancela o PIX em aberto quando o cliente troca para
+ * cartão, para nunca existirem duas cobranças vivas para o mesmo pedido. O
+ * MP só cancela order que ainda não capturou dinheiro — PIX já pago devolve
+ * erro, e quem chama trata isso como "não deu para trocar agora".
+ *
+ * Mesmo contrato de `criarOrder`: nunca rejeita, corpo do erro só no log,
+ * `X-Idempotency-Key` (é escrita — um retry não pode virar duas operações).
+ * O id vai codificado no caminho: ele sai do banco, mas caminho montado com
+ * dado nunca vai cru.
+ */
+export async function cancelarOrder(args: {
+  token: string;
+  orderId: string;
+  chaveIdempotencia: string;
+  fetchImpl?: typeof fetch;
+  baseUrl?: string;
+  tempoLimiteMs?: number;
+}): Promise<ResultadoOrder> {
+  const f = args.fetchImpl ?? fetch;
+  const base = args.baseUrl ?? BASE_URL_PADRAO;
+
+  let resposta: Response;
   try {
-    json = await resposta.json();
+    resposta = await fetchComTempo(
+      f,
+      `${base}/v1/orders/${encodeURIComponent(args.orderId)}/cancel`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${args.token}`,
+          "X-Idempotency-Key": args.chaveIdempotencia,
+        },
+      },
+      args.tempoLimiteMs,
+    );
   } catch (_err) {
-    console.error("mercadopago: orders 2xx com corpo ilegível", resposta.status);
-    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
+    return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
   }
 
-  if (json?.id === undefined || json?.id === null) {
-    console.error("mercadopago: orders 2xx sem id", resposta.status, JSON.stringify(json));
-    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
-  }
+  return interpretarRespostaDeOrder(resposta, {
+    rotulo: "orders (cancelamento)",
+    mensagemDeFalha: "Não foi possível cancelar a cobrança.",
+    corpoNoLog: false,
+  });
+}
 
-  return { ok: true, order: json };
+/** A order voltou cancelada? O MP escreve `canceled`; `cancelled` (grafia
+ * britânica, a do vocabulário clássico) também conta, por defesa. */
+export function orderCancelada(order: Record<string, unknown> | null | undefined): boolean {
+  return order?.status === "canceled" || order?.status === "cancelled";
 }
 
 /**
@@ -578,30 +1016,11 @@ export async function consultarOrder(args: {
     return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
   }
 
-  if (!resposta.ok) {
-    const detalhe = await resposta.text().catch(() => "");
-    console.error("mercadopago: orders (consulta) recusou", resposta.status, detalhe);
-    return { ok: false, erro: "Não foi possível consultar a cobrança.", status: resposta.status };
-  }
-
-  let json: Record<string, unknown> | null;
-  try {
-    json = await resposta.json();
-  } catch (_err) {
-    console.error("mercadopago: orders (consulta) 2xx com corpo ilegível", resposta.status);
-    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
-  }
-
-  if (json?.id === undefined || json?.id === null) {
-    console.error(
-      "mercadopago: orders (consulta) 2xx sem id",
-      resposta.status,
-      JSON.stringify(json),
-    );
-    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
-  }
-
-  return { ok: true, order: json };
+  return interpretarRespostaDeOrder(resposta, {
+    rotulo: "orders (consulta)",
+    mensagemDeFalha: "Não foi possível consultar a cobrança.",
+    corpoNoLog: true,
+  });
 }
 
 /**
@@ -770,9 +1189,9 @@ type ResultadoPagamento =
       // Adicionado na Task 4 (Fase 3): a webhook-mercadopago precisa saber A
       // QUAL PEDIDO a confirmação pertence, e o corpo do webhook não serve
       // para isso — qualquer um pode forjar um POST. A resposta do MP, do
-      // outro lado, veio autenticada pelo token do gateway. `criarPagamento`
-      // grava este mesmo valor (montarCorpoPix/montarCorpoCartao, acima) na
-      // criação; aqui é onde ele volta.
+      // outro lado, veio autenticada pelo token do gateway. A criação grava
+      // este mesmo valor (`external_reference`, montado pelos construtores de
+      // corpo acima); aqui é onde ele volta.
       externalReference?: string;
       // Valor cobrado, na grafia da resposta clássica do MP
       // (`transaction_amount`). A webhook-mercadopago e a
@@ -794,43 +1213,6 @@ type ResultadoPagamento =
     }
   | { ok: false; erro: string; status: number };
 
-export async function criarPagamento(args: {
-  token: string;
-  corpo: Record<string, unknown>;
-  chaveIdempotencia: string;
-  fetchImpl?: typeof fetch;
-  baseUrl?: string;
-  // P-4 (laudo 01/09): ver criarOrder.
-  tempoLimiteMs?: number;
-}): Promise<ResultadoPagamento> {
-  const f = args.fetchImpl ?? fetch;
-  const base = args.baseUrl ?? BASE_URL_PADRAO;
-
-  let resposta: Response;
-  try {
-    resposta = await fetchComTempo(
-      f,
-      `${base}/v1/payments`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${args.token}`,
-          "Content-Type": "application/json",
-          // Sem isso, um retry do nosso lado cobra o cliente duas vezes.
-          "X-Idempotency-Key": args.chaveIdempotencia,
-        },
-        body: JSON.stringify(args.corpo),
-      },
-      args.tempoLimiteMs,
-    );
-  } catch (_err) {
-    // status 0 = nem chegou a haver resposta HTTP.
-    return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
-  }
-
-  return interpretarRespostaDePagamento(resposta, "Não foi possível gerar a cobrança.");
-}
-
 /**
  * `consultarPagamento` — reconsulta uma cobrança JÁ criada (CHECKOUT-050).
  *
@@ -842,9 +1224,9 @@ export async function criarPagamento(args: {
  * sem corpo e SEM `X-Idempotency-Key`: não é escrita, então não tem o que
  * proteger de duplicar.
  *
- * Devolve a MESMA união de `criarPagamento`, e obedece às mesmas regras:
- * nunca rejeita, a leitura do corpo fica dentro do try, e o corpo do erro do
- * MP vai só para o log.
+ * Devolve `ResultadoPagamento` e obedece às regras de sempre: nunca
+ * rejeita, a leitura do corpo fica dentro do try, e o corpo do erro do MP
+ * vai só para o log.
  */
 export async function consultarPagamento(args: {
   token: string;
@@ -876,12 +1258,11 @@ export async function consultarPagamento(args: {
 }
 
 /**
- * Miolo comum entre `criarPagamento` e `consultarPagamento`: as duas mandam
- * a requisição de um jeito diferente (POST com corpo e idempotência vs. GET
- * puro), mas leem a resposta do MESMO jeito. Duplicar essa leitura é como
- * este repositório chegou a ter a regra de frete grátis em sete lugares
- * (#53) — aqui a divergência marcaria uma reconsulta como bem-sucedida
- * quando a criação teria recusado o mesmo corpo, ou vice-versa.
+ * Leitura da resposta CLÁSSICA (`/v1/payments`). Nasceu como miolo comum de
+ * `criarPagamento` e `consultarPagamento`; desde a Fase 3.5 (26/09/2026) a
+ * criação clássica não existe mais (o cartão foi para a Orders API) e o
+ * único chamador é `consultarPagamento` — a leitura continua separada para
+ * não misturar requisição e interpretação, igual à `interpretarRespostaDeOrder`.
  */
 async function interpretarRespostaDePagamento(
   resposta: Response,
@@ -897,9 +1278,8 @@ async function interpretarRespostaDePagamento(
 
   // A leitura do corpo mora no MESMO try que trata resposta ilegível: um
   // 2xx com corpo HTML, vazio ou "null" faria json() rejeitar, e a rejeição
-  // escaparia esta função inteira. A Task 2 não tem try/catch externo em
-  // volta de criarPagamento/consultarPagamento — nenhum caminho aqui pode
-  // rejeitar.
+  // escaparia esta função inteira. Quem chama `consultarPagamento` não tem
+  // try/catch externo em volta — nenhum caminho aqui pode rejeitar.
   let json: Record<string, unknown> | null;
   try {
     json = await resposta.json();

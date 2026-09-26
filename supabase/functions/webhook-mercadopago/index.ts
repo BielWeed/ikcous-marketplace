@@ -85,6 +85,7 @@ import {
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
+  recusaLiberaAVaga,
   TOLERANCIA_DE_VALOR,
 } from "../_shared/mercadopago.ts";
 import {
@@ -1286,6 +1287,12 @@ async function handler(
   // passo novo (`registrarDesfechoDoEstorno`) ler `status`/`status_detail`/
   // `refunds[]`/`transaction_amount_refunded` SEM um segundo GET.
   let corpoConsultado: Record<string, unknown> | null = null;
+  // Fase 3.5 (cartão): a recusa desta order LIBERA a vaga em vez de chegar a
+  // `confirmar_pagamento` — ver `recusaLiberaAVaga` (_shared/mercadopago.ts)
+  // e o passo logo depois do `pareceUuid`, mais abaixo. Só a rota `order`
+  // liga isto; a rota `payment` tem a sua própria trava (bloco `payment`
+  // perto da RPC).
+  let liberarAVaga = false;
 
   if (rota === "payment") {
     const consulta = await consultarPagamento({
@@ -1341,13 +1348,18 @@ async function handler(
     const statusRaiz = String(order.status ?? "");
     const statusDetailRaiz = String(order.status_detail ?? "");
     const statusBanco = mapearStatusOrder(statusRaiz, statusDetailRaiz);
+    liberarAVaga = recusaLiberaAVaga(order, statusBanco);
 
     // `confirmar_pagamento` (20260810000000_confirmar_pagamento_guarda_
     // status.sql) não conhece 'expirado' — chamá-la com esse status cairia
     // no RETURN 'ignorado' final, indistinguível no log de todos os outros
     // caminhos de "ignorado" (status desconhecido, external_reference
     // inválido...). Filtra ANTES da RPC, com rótulo e log próprios.
-    if (statusBanco === "expirado") {
+    //
+    // Fase 3.5: o cartão expirado (desafio 3DS que ninguém concluiu) NÃO
+    // para aqui — ele segue até o passo de liberar a vaga, depois do
+    // `pareceUuid`. O PIX expirado continua exatamente como antes.
+    if (statusBanco === "expirado" && !liberarAVaga) {
       console.warn("webhook-mercadopago: order expirada, ignorada sem chamar a RPC", dataIdStr);
       return json({ ok: true, ignorado: "order expirada" }, 200);
     }
@@ -1390,6 +1402,44 @@ async function handler(
     return json({ ok: true, ignorado: "external_reference inválido" }, 200);
   }
   const orderId = externalReference as string;
+
+  // CARTÃO RECUSADO NÃO MATA O PEDIDO (Fase 3.5, spec decisão 3). O ramo
+  // 'recusado' de `confirmar_pagamento` CANCELA o pedido e devolve o estoque
+  // — certo para PIX, errado para cartão, em que a recusa é o começo da
+  // próxima tentativa (outro cartão ou PIX, na mesma reserva de 30 min).
+  // Aqui a recusa (ou a expiração) de uma order de cartão — e o
+  // cancelamento de qualquer order, que neste app é a própria
+  // `criar-pagamento` trocando PIX por cartão — só LIBERA a vaga:
+  // `liberar_cobranca_do_pedido` solta `gateway_payment_id` SE ele ainda for
+  // esta order e o pedido ainda estiver 'aguardando'. Idempotente por
+  // construção: o reenvio do MP encontra a vaga já solta e devolve false.
+  //
+  // `p_gateway_payment_id` é o `order.id` da resposta AUTENTICADA do MP,
+  // igual ao `p_payment_id` da `confirmar_pagamento` — nunca o do corpo.
+  // Erro de banco devolve 500: o evento fica na fila do MP e volta.
+  if (liberarAVaga) {
+    let liberou: boolean;
+    try {
+      const { data, error: erroLiberar } = await supabase.rpc("liberar_cobranca_do_pedido", {
+        p_order_id: orderId,
+        p_gateway_payment_id: idParaRpc,
+      });
+      if (erroLiberar) throw erroLiberar;
+      liberou = data === true;
+    } catch (erro) {
+      console.error(
+        "webhook-mercadopago: liberar_cobranca_do_pedido falhou — evento mantido na fila do MP",
+        orderId,
+        erro,
+      );
+      return json({ error: "Erro ao liberar a cobrança." }, 500);
+    }
+    console.log(
+      "webhook-mercadopago: recusa de cartão (ou order cancelada) — vaga da cobrança liberada, pedido segue aguardando",
+      { orderId, idOrder: idParaRpc, status: statusBrutoParaLog, liberou },
+    );
+    return json({ ok: true, resultado: liberou ? "cobranca_liberada" : "nada_a_liberar" }, 200);
+  }
 
   // PASSO NOVO (T5): gatilhos lidos do objeto CONSULTADO, nunca do corpo do
   // webhook. Fora disso o passo não roda (0 leituras extras) — ver o
@@ -1496,9 +1546,14 @@ async function handler(
   // perguntar ao MP por ELE (`consultarOrder`, já existe neste arquivo),
   // reconstruindo o elo inteiro ("a cobrança que registramos está paga") e
   // devolvendo à (d) o seu valor de prova, ao custo de uma chamada HTTP.
-  // 🔒 GATILHO para deixar de ser opcional: religar cartão (Fase 3.5,
-  // `criar-pagamento/index.ts:688`, hoje desligado por `metodo !== "pix"`)
+  // 🔒 GATILHO para deixar de ser opcional: religar cartão (Fase 3.5)
   // ou qualquer relaxamento da trava de uma-cobrança-por-pedido.
+  // ⚠️ O GATILHO FOI ATINGIDO em 26/09/2026: a Fase 3.5 religou o cartão E
+  // relaxou a trava (a vaga é liberada numa recusa/troca). A metade de
+  // RECUSA desta rota já foi fechada (bloco "RECUSA PELA ROTA `payment`",
+  // acima: descarta, a rota `order` decide). A metade de 'pago'/'estornado'
+  // continua como descrita aqui — perguntar ao MP pelo `ORD…` gravado é
+  // decisão pendente, levada ao revisor da Fase 3.5, não feita de carona.
   //
   // Só entra quando o valor gravado NÃO tem forma de id clássico
   // (`idEhClassico`, `_shared/mercadopago.ts`): se os dois lados já falam a
@@ -1532,6 +1587,30 @@ async function handler(
       erroLeituraPedido,
     );
     return json({ error: "Erro ao consultar o pedido." }, 500);
+  }
+
+  // RECUSA PELA ROTA `payment` DE UMA COBRANÇA DA ORDERS API (Fase 3.5): o
+  // pagamento clássico que o MP notifica por dentro de uma order (cartão
+  // recusado, PIX cancelado na troca para cartão) chegaria aqui como
+  // 'recusado' — e a substituição do id pelo gravado no banco, logo abaixo,
+  // faria `confirmar_pagamento('recusado')` CANCELAR o pedido que a
+  // recusa de cartão devia deixar vivo. A rota `order` é quem decide essas
+  // recusas (libera a vaga do cartão, confirma a do PIX); esta aqui
+  // descarta com 200. Só fica de fora quem ainda fala a língua clássica: o
+  // valor gravado com forma de id clássico (PIX legado), que segue o caminho
+  // de sempre. Vaga vazia também é descartada — a RPC devolveria
+  // 'divergente' sem escrever nada, com um log de "dinheiro sem registro"
+  // que seria alarme falso para uma recusa.
+  if (rota === "payment" && statusMapeado === "recusado") {
+    const idGravado = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
+    const gravadoEhClassico = typeof idGravado === "string" && idGravado.length > 0 && idEhClassico(idGravado);
+    if (!gravadoEhClassico) {
+      console.log(
+        "webhook-mercadopago: recusa pela rota `payment` de cobrança da Orders API — decidida pela rota `order`, ignorada aqui",
+        { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco: idGravado ?? null },
+      );
+      return json({ ok: true, ignorado: "recusa decidida pela rota order" }, 200);
+    }
   }
 
   // CONFERÊNCIA DE VALOR (laudo 31/08, achado A3): o valor que o MP APROVOU

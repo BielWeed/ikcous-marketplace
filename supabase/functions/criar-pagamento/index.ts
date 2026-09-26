@@ -26,8 +26,32 @@
  * O QUE ELA NÃO FAZ
  *
  * Não confirma pagamento. Nunca. Quem escreve 'pago' é o webhook (Fase 3), e é
- * por isso que esta função grava só `gateway_payment_id` e devolve o que o
- * Brick precisa desenhar.
+ * por isso que esta função grava só `gateway_payment_id` (e, desde a Fase
+ * 3.5, `metodo_online`/`parcelas`) e devolve o que a tela precisa desenhar.
+ * Nem o cartão aprovado na hora muda isso: a resposta diz "pago" para a tela
+ * seguir, e quem grava é o webhook/reconciliação (`confirmar_pagamento`).
+ *
+ * CARTÃO (Fase 3.5, 26/09/2026 — spec `2026-09-26-cartao-online-design.md`)
+ *
+ * Crédito e débito pela MESMA Orders API do PIX (`montarCorpoCartaoOrders`):
+ * o Card Payment Brick tokeniza no navegador e só o token passa por aqui.
+ * Três regras novas, todas nesta função:
+ *
+ * 1. A loja liga cada forma (`config_pagamento_cartao`) — desligada, ausente
+ *    ou ilegível, o cartão não é cobrado (409 recuperável: o cliente escolhe
+ *    PIX).
+ * 2. Recusa de cartão NÃO mata o pedido: `liberar_cobranca_do_pedido` solta a
+ *    vaga (ou só conta a tentativa, quando a recusa veio na hora) e a
+ *    resposta é 200 `recusado` com o motivo — o cliente tenta outro cartão ou
+ *    PIX dentro da mesma reserva de 30 min.
+ * 3. A chave de idempotência passa a ser POR TENTATIVA
+ *    (`chaveDeIdempotencia`): reusar a do pedido depois de uma recusa faria o
+ *    MP devolver a cobrança morta em vez de criar a nova.
+ *
+ * Com a vaga ocupada (`gateway_payment_id` gravado), o que decide é a
+ * cobrança que está lá — ver o bloco "reconsultar" do handler: paga devolve
+ * 'pago'; cartão morto é liberado; PIX aberto é CANCELADO no MP antes de
+ * virar cartão; cartão em análise nunca ganha uma segunda cobrança.
  *
  * MIGRAÇÃO PARA A ORDERS API (CHECKOUT-070, Tarefa 2 de 4) — NÃO VAI SOZINHA
  *
@@ -50,18 +74,30 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  cancelarOrder,
   consultarOrder,
   consultarPagamento,
   criarOrder,
-  criarPagamento,
   extrairDataExpiracaoOrder,
+  extrairDesafio3ds,
   extrairQrCode,
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
+  metodoDeCartaoValido,
   minutosDaExpiracaoPix,
-  montarCorpoCartao,
+  montarCorpoCartaoOrders,
   montarCorpoPixOrders,
+  MOTIVO_RECUSA_DADOS_DO_CARTAO,
+  motivoDaRecusa,
+  motivoDaRecusaDoErro,
+  normalizarDocumento,
+  orderCancelada,
+  orderEhDeCartao,
+  parcelasValidas,
+  tipoDeCartaoValido,
+  tipoDoPagamentoDaOrder,
+  tokenDeCartaoValido,
 } from "../_shared/mercadopago.ts";
 // PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
 // reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
@@ -249,9 +285,183 @@ export function emailDoToken(authorization: string | null): string | null {
   // tipo "a@" — e um e-mail esquisito vira 400 do MP onde antes ia o
   // fallback. Formato mínimo com ponto no domínio.
   const email = payload?.email;
-  return typeof email === "string" && /^\S+@\S+\.\S+$/.test(email)
-    ? email
-    : null;
+  return emailValido(email) ? email : null;
+}
+
+/** Formato mínimo de e-mail (com ponto no domínio) — a MESMA regra que
+ * `emailDoToken` já usava, agora também para o e-mail do corpo do cartão. */
+function emailValido(email: unknown): email is string {
+  return typeof email === "string" && /^\S+@\S+\.\S+$/.test(email);
+}
+
+/** As colunas do pedido que esta função lê — UMA lista para a leitura
+ * inicial e para a releitura depois de liberar a vaga (Fase 3.5): duas
+ * listas divergiriam, e a releitura decidiria com um pedido pela metade. */
+const COLUNAS_DO_PEDIDO =
+  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento";
+
+async function sha256Hex(texto: string): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto));
+  return Array.from(new Uint8Array(bytes))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * A chave de idempotência (`X-Idempotency-Key`) da cobrança — POR TENTATIVA
+ * (Fase 3.5, spec decisão 3).
+ *
+ * Até o cartão, a chave era sempre o id do pedido: um pedido tinha UMA
+ * cobrança na vida. Agora a vaga pode ser liberada (cartão recusado, PIX
+ * cancelado na troca para cartão) e o pedido ganha uma nova — e o MP, ao ver
+ * a MESMA chave, devolveria a cobrança MORTA em vez de criar a nova.
+ * `tentativas_de_pagamento` (somada por `liberar_cobranca_do_pedido`) muda a
+ * chave a cada vaga liberada.
+ *
+ * - PIX: `<pedido>` na tentativa 0 — BYTE A BYTE a chave de antes, então um
+ *   retry de um PIX criado antes deste deploy converge na mesma cobrança —
+ *   e `<pedido>:<n>` depois.
+ * - Cartão: `<pedido>:c<n>:<12 hex do sha256 do token>`. O hash do token
+ *   (nunca o token) separa dois cartões na MESMA tentativa (a recusa
+ *   imediata só conta a tentativa se a RPC responder) e faz o retry do MESMO
+ *   token convergir na mesma order. 36 + 2 + dígitos + 1 + 12 ≤ 64, o teto
+ *   do MP.
+ *
+ * `tentativas` fora de inteiro ≥ 0 (coluna ausente, lixo) vale 0 — a chave
+ * de antes, nunca um erro que trave o pagamento.
+ */
+export async function chaveDeIdempotencia(
+  pedido: { id: string; tentativas_de_pagamento?: unknown },
+  metodo: "pix" | "cartao",
+  token?: string,
+): Promise<string> {
+  const bruto = Number(pedido.tentativas_de_pagamento);
+  const tentativas = Number.isInteger(bruto) && bruto >= 0 ? bruto : 0;
+  const id = String(pedido.id);
+  if (metodo === "pix") return tentativas === 0 ? id : `${id}:${tentativas}`;
+  const hash = await sha256Hex(String(token ?? ""));
+  return `${id}:c${tentativas}:${hash.slice(0, 12)}`;
+}
+
+export type DadosDoCartao = {
+  token: string;
+  paymentMethodId: string;
+  paymentTypeId: "credit_card" | "debit_card";
+  parcelas: number;
+  documento: { type: "CPF" | "CNPJ"; number: string };
+  email: string | null;
+};
+
+/**
+ * Valida o corpo do CARTÃO antes de tocar o banco ou o MP:
+ * `{token, paymentMethodId, paymentTypeId, parcelas, documento, email?}`.
+ * As regras de formato são as MESMAS de `montarCorpoCartaoOrders` (importadas
+ * de `_shared/mercadopago.ts`, nunca uma segunda regex aqui).
+ *
+ * Débito sem `parcelas` vale 1 (débito não parcela, e o Brick pode nem
+ * mandar); crédito exige. Toda recusa é recuperável: o cliente corrige o
+ * dado (ou o Brick gera um token novo) e tenta de novo — as mensagens dizem
+ * O QUE corrigir, sem ecoar o valor recebido.
+ */
+export function validarCorpoDoCartao(
+  body: Record<string, unknown>,
+): { ok: true; dados: DadosDoCartao } | { ok: false; erro: string } {
+  if (!tokenDeCartaoValido(body.token) || !metodoDeCartaoValido(body.paymentMethodId)) {
+    return { ok: false, erro: "Dados do cartão incompletos. Digite o cartão de novo." };
+  }
+  if (!tipoDeCartaoValido(body.paymentTypeId)) {
+    return { ok: false, erro: "Escolha crédito ou débito para pagar com cartão." };
+  }
+  const debito = body.paymentTypeId === "debit_card";
+  // Número, ou string só de dígitos (1-2) — tolerância para um front que
+  // serialize o número como texto; qualquer outra coisa recusa.
+  const parcelasBrutas = typeof body.parcelas === "string" && /^\d{1,2}$/.test(body.parcelas)
+    ? Number(body.parcelas)
+    : body.parcelas;
+  let parcelas: number;
+  if (debito && (parcelasBrutas === undefined || parcelasBrutas === null)) {
+    parcelas = 1;
+  } else if (parcelasValidas(parcelasBrutas)) {
+    parcelas = debito ? 1 : parcelasBrutas;
+  } else {
+    return { ok: false, erro: "Número de parcelas inválido." };
+  }
+  const documento = normalizarDocumento(body.documento);
+  if (!documento) {
+    return { ok: false, erro: "Informe um CPF ou CNPJ válido do titular do cartão." };
+  }
+  if (body.email !== undefined && body.email !== null && body.email !== "" && !emailValido(body.email)) {
+    return { ok: false, erro: "E-mail inválido." };
+  }
+  return {
+    ok: true,
+    dados: {
+      token: body.token,
+      paymentMethodId: body.paymentMethodId,
+      paymentTypeId: body.paymentTypeId,
+      parcelas,
+      documento,
+      email: emailValido(body.email) ? body.email : null,
+    },
+  };
+}
+
+/**
+ * O que a loja liga no cartão (`config_pagamento_cartao`, linha `id = 1`,
+ * lida com o client de service role). `null` = cartão indisponível: linha
+ * ausente, erro de leitura ou exceção — fechado, nunca "liga por padrão"
+ * (a linha nasce desligada; ver a decisão 7 da spec). `parcelas_max` fora de
+ * 1..12 vale 1: o teto mais seguro, não um palpite generoso.
+ */
+async function lerConfigDoCartao(
+  supabase: ReturnType<typeof createClient>,
+): Promise<{ credito: boolean; debito: boolean; parcelasMax: number } | null> {
+  try {
+    const { data, error } = await supabase
+      .from("config_pagamento_cartao")
+      .select("credito, debito, parcelas_max")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) {
+      console.error("criar-pagamento: falha ao ler config_pagamento_cartao", error);
+      return null;
+    }
+    if (!data) return null;
+    const maximo = Number(data.parcelas_max);
+    return {
+      credito: data.credito === true,
+      debito: data.debito === true,
+      parcelasMax: Number.isInteger(maximo) && maximo >= 1 && maximo <= 12 ? maximo : 1,
+    };
+  } catch (erro) {
+    console.error("criar-pagamento: exceção ao ler config_pagamento_cartao", erro);
+    return null;
+  }
+}
+
+/**
+ * `liberar_cobranca_do_pedido` (RPC, só service role): com `idGateway`, solta
+ * a vaga SE ela ainda for dessa cobrança e o pedido ainda estiver
+ * 'aguardando' (e soma a tentativa); com `null`, só soma a tentativa — a
+ * recusa imediata que nunca ocupou a vaga. Nunca lança: `{ok:false}` é falha
+ * de banco, e cada chamador decide o que ela significa.
+ */
+async function liberarCobranca(
+  supabase: ReturnType<typeof createClient>,
+  orderId: string,
+  idGateway: string | null,
+): Promise<{ ok: true; liberou: boolean } | { ok: false }> {
+  try {
+    const { data, error } = await supabase.rpc("liberar_cobranca_do_pedido", {
+      p_order_id: orderId,
+      p_gateway_payment_id: idGateway,
+    });
+    if (error) throw error;
+    return { ok: true, liberou: data === true };
+  } catch (erro) {
+    console.error("criar-pagamento: liberar_cobranca_do_pedido falhou", orderId, idGateway, erro);
+    return { ok: false };
+  }
 }
 
 /**
@@ -286,6 +496,20 @@ async function handler(
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
+  // Pagamento online exige conta — ver o comentário grande no ponto onde o
+  // PIX aplica esta regra, mais abaixo. Uma resposta só, usada também pelo
+  // cartão (Fase 3.5), que precisa da trava ANTES de mexer na vaga.
+  const respostaExigeConta = () =>
+    json(
+      {
+        error:
+          "Pagar pelo site exige conta. Entre ou crie uma conta para continuar.",
+        code: "PAGAMENTO_ONLINE_EXIGE_CONTA",
+        terminal: true,
+      },
+      403,
+    );
+
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -294,18 +518,23 @@ async function handler(
   }
 
   if (!pareceUuid(body.orderId)) return json({ error: "Pedido inválido." }, 400);
-  // Fase 3 entrega SÓ PIX. O cartão continua desligado no Brick (Task 8), mas
-  // a recusa tem de ser aqui também: a tela é do cliente, e o caminho de
-  // cartão tem defeito conhecido — depois da primeira recusa o pedido fica
-  // impagável até expirar (herança nº 2 da Fase 2). Cartão é a Fase 3.5.
-  // CHECKOUT-050 (#194), correção da revisão (a rodada anterior marcou isto
-  // terminal por engano): NÃO é permanente. "Tentar de novo" remonta o
-  // Brick, e é justamente lá que o cliente escolhe PIX — o próprio retry
-  // TROCA de método, que é a saída que a própria mensagem sugere. Marcar
-  // terminal prendia o cliente numa caixa que já tinha desmontado o
-  // formulário onde ele faria essa troca.
-  if (body.metodo !== "pix") {
-    return json({ error: "No momento aceitamos apenas PIX." }, 400);
+  // Fase 3.5 (26/09/2026): PIX ou cartão. Até aqui o cartão era recusado
+  // nesta linha ("No momento aceitamos apenas PIX.") por causa da herança nº
+  // 2 da Fase 2 — depois da primeira recusa o pedido ficava impagável até
+  // expirar. `liberar_cobranca_do_pedido` fechou essa herança (ver o topo do
+  // arquivo). Forma desconhecida continua recuperável: "Tentar de novo"
+  // remonta a escolha de forma, e o próprio retry troca de método.
+  const metodo = body.metodo;
+  if (metodo !== "pix" && metodo !== "cartao") {
+    return json({ error: "Forma de pagamento inválida." }, 400);
+  }
+  // Corpo do cartão validado ANTES de qualquer leitura de banco ou chamada
+  // ao MP — dado malformado não gasta pedido, config nem gateway.
+  let dadosCartao: DadosDoCartao | null = null;
+  if (metodo === "cartao") {
+    const validacaoCartao = validarCorpoDoCartao(body);
+    if (!validacaoCartao.ok) return json({ error: validacaoCartao.erro }, 400);
+    dadosCartao = validacaoCartao.dados;
   }
 
   // PEDIDO-07 (auditoria de 26/08/2026): este createClient PRECISA ficar
@@ -374,11 +603,15 @@ async function handler(
     return json({ error: "Pagamento indisponível.", terminal: true }, 503);
   }
 
-  const { data: pedido, error } = await supabase
+  // `let`, não `const` (Fase 3.5): quando a vaga ocupada é liberada, o
+  // pedido é RELIDO (tentativas novas) e o resto do handler cobra a partir
+  // da releitura.
+  const { data: pedidoLido, error } = await supabase
     .from("marketplace_orders")
-    .select("id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data")
+    .select(COLUNAS_DO_PEDIDO)
     .eq("id", body.orderId)
     .maybeSingle();
+  let pedido = pedidoLido;
 
   // CHECKOUT-050 (#194), achado da revisão: `error` truthy é FALHA DE
   // LEITURA — statement timeout, pool esgotado, fetch caindo — nunca
@@ -423,6 +656,31 @@ async function handler(
     return json({ error: decisao.motivo, terminal: true }, 409);
   }
 
+  // Portão do CARTÃO (Fase 3.5), ANTES de qualquer coisa na vaga: se o
+  // pedido tem um PIX aberto e o cliente pede cartão, o PIX é CANCELADO no MP
+  // mais abaixo — cancelar e só DEPOIS descobrir que o cartão não podia ser
+  // cobrado deixaria o cliente sem cobrança nenhuma na mão.
+  //
+  // 1. Convidado não paga online (P6) — a mesma trava que o PIX aplica na
+  //    criação, aqui adiantada porque o cartão mexe na vaga antes de criar.
+  // 2. A loja precisa ter ligado ESTA forma (crédito ou débito). Linha
+  //    ausente, erro de leitura ou forma desligada: 409 recuperável — o
+  //    cliente continua podendo pagar com PIX; nada foi tocado.
+  // 3. Crédito acima do teto de parcelas da loja: 400 recuperável — o Brick
+  //    já limita, isto é a defesa do servidor.
+  if (dadosCartao) {
+    if (pedido.user_id === null) return respostaExigeConta();
+    const configCartao = await lerConfigDoCartao(supabase);
+    const formaLigada = configCartao !== null &&
+      (dadosCartao.paymentTypeId === "credit_card" ? configCartao.credito : configCartao.debito);
+    if (!formaLigada) {
+      return json({ error: "Esta forma de pagamento não está disponível nesta loja." }, 409);
+    }
+    if (dadosCartao.parcelas > configCartao.parcelasMax) {
+      return json({ error: "Esse parcelamento não está disponível nesta loja." }, 400);
+    }
+  }
+
   if (decisao.acao === "reconsultar") {
     // Aqui é onde a tela recupera o MESMO QR sem criar uma segunda cobrança
     // — nenhum UPDATE, porque nada mudou no pedido, só a consulta. MEDIDO em
@@ -430,8 +688,16 @@ async function handler(
     // idêntico ao da criação, então este ramo basta. (Dizia "o QR só existe
     // na resposta da CRIAÇÃO" — era suposição, e a medição a derrubou.)
     //
-    // Tarefa 2 (CHECKOUT-070): só PIX chega aqui (cartão já foi recusado
-    // acima, antes da leitura do pedido).
+    // Fase 3.5: o cartão também chega aqui. O que decide é a COBRANÇA QUE
+    // OCUPA A VAGA, lida no MP (nunca o que o pedido "acha" que ela é):
+    //   (a) paga → 'pago', sem cobrança nova;
+    //   (b) cartão recusado/cancelado/expirado → libera a vaga e cria a nova;
+    //   (c) pedido de cartão com PIX aberto → cancela o PIX no MP, libera e
+    //       cria o cartão (cancelamento negado → 409 recuperável);
+    //   (d) cartão em análise/3DS e pedido de cartão → devolve o estado atual
+    //       (com o desafio 3DS, se houver) — NUNCA uma segunda cobrança;
+    //   (e) PIX aberto e pedido de PIX → o MESMO QR, como sempre;
+    //   (f) cartão em análise e pedido de PIX → 409 recuperável.
     //
     // Correção pós-revisão (BLOQUEIO 3, achado de revisão da Tarefa 3):
     // discrimina pela FORMA do `gateway_payment_id` (`idEhClassico`,
@@ -462,6 +728,17 @@ async function handler(
       });
       if (!classico.ok) return json({ error: classico.erro }, 502);
 
+      // Fase 3.5: cobrança clássica é sempre PIX legado — e ela não se
+      // cancela pela Orders API. Pedido de CARTÃO com um PIX legado ainda
+      // não pago na vaga não troca de forma (nunca duas cobranças vivas); a
+      // resposta com QR de PIX também não serve para a tela do cartão. Na
+      // prática inalcançável (id clássico é de antes de agosto/2026, e a
+      // reserva vive 30 min), mas fechado, não aberto.
+      const statusClassico = mapearStatus(classico.status) ?? classico.status;
+      if (metodo === "cartao" && statusClassico !== "pago") {
+        return json({ error: "Não foi possível trocar para cartão agora. Tente de novo em instantes." }, 409);
+      }
+
       return json(
         {
           paymentId: classico.id,
@@ -476,7 +753,7 @@ async function handler(
           // vocabulário clássico — `?? classico.status` é só a rede de
           // segurança para um status que nem esse mapa conhece (nunca um
           // palpite: o front trata como desconhecido e recusa fechado).
-          statusPagamento: mapearStatus(classico.status) ?? classico.status,
+          statusPagamento: statusClassico,
           expiraEm: pedido.expires_at,
           qrCode: classico.qrCode,
           qrCodeBase64: classico.qrCodeBase64,
@@ -496,37 +773,158 @@ async function handler(
     });
     if (!r.ok) return json({ error: r.erro }, 502);
 
-    const extraido = extrairQrCode(r.order);
-    const statusObjeto = r.order as Record<string, unknown>;
-    return json(
-      {
-        paymentId: extraido?.orderId ?? idGatewayReconsulta,
-        // CHECKOUT-080 (#213): traduzido para o conjunto fechado que este
-        // banco já usa ('aguardando'/'pago'/'recusado'/'expirado'/
-        // 'estornado' — mapearStatusOrder, `_shared/mercadopago.ts`), não
-        // mais para o vocabulário clássico do MP. Igual ao ramo de criação,
-        // abaixo. Se a cobrança existente foi recusada, o cliente vê
-        // 'recusado' e PagamentoOnline.tsx decide o que mostrar. Par
-        // desconhecido devolve o par CRU "status:status_detail" por
-        // padrão — igual a hoje — o que NÃO bate em nenhum valor do
-        // conjunto fechado, e o front trata como terminal: é o desfecho
-        // certo para um status que o MP inventou depois desta migração.
-        statusPagamento:
-          mapearStatusOrder(
-            String(statusObjeto.status ?? ""),
-            String(statusObjeto.status_detail ?? ""),
-          ) ?? `${String(statusObjeto.status ?? "")}:${String(statusObjeto.status_detail ?? "")}`,
-        // O prazo sai da LINHA DO BANCO, igual ao ramo de criação.
-        expiraEm: pedido.expires_at,
-        // AUSÊNCIA (order legível, sem QR ainda) não é ERRO — extrairQrCode
-        // distingue os dois; aqui só se converte null em undefined para não
-        // serializar `null` explícito onde o front espera campo ausente.
-        qrCode: extraido?.qrCode ?? undefined,
-        qrCodeBase64: extraido?.qrCodeBase64 ?? undefined,
-        ticketUrl: extraido?.ticketUrl ?? undefined,
-      },
-      200,
+    const orderNaVaga = r.order as Record<string, unknown>;
+    const statusNaVaga = mapearStatusOrder(
+      String(orderNaVaga.status ?? ""),
+      String(orderNaVaga.status_detail ?? ""),
     );
+    const statusCruNaVaga = `${String(orderNaVaga.status ?? "")}:${String(orderNaVaga.status_detail ?? "")}`;
+    const tipoNaVaga = tipoDoPagamentoDaOrder(orderNaVaga);
+    // PIX = `bank_transfer`, o tipo que o próprio `montarCorpoPixOrders`
+    // manda e o MP devolve. Tipo ausente NÃO é tratado como PIX: no pedido
+    // de cartão isso fecha (409), nunca cancela às cegas.
+    const pixNaVaga = tipoNaVaga === "bank_transfer";
+    const cobrancaMorta = statusNaVaga === "recusado" || statusNaVaga === "expirado";
+
+    if (orderEhDeCartao(orderNaVaga)) {
+      // (b) Cartão recusado, cancelado ou expirado (desafio 3DS abandonado):
+      // a vaga é liberada logo abaixo e a nova cobrança segue — seja PIX ou
+      // outro cartão. É a herança nº 2 da Fase 2 fechada: recusa não trava
+      // o pedido até expirar.
+      if (!cobrancaMorta) {
+        const paymentIdNaVaga = String(orderNaVaga.id ?? idGatewayReconsulta);
+        // (a) Já pago: nada a cobrar de novo — a tela segue; quem grava
+        // 'pago' no banco é o webhook/reconciliação.
+        if (statusNaVaga === "pago") {
+          return json(
+            { paymentId: paymentIdNaVaga, statusPagamento: "pago", expiraEm: pedido.expires_at },
+            200,
+          );
+        }
+        // (f) Pedido de PIX com um cartão ainda em análise/3DS: criar o PIX
+        // abriria a porta para o cliente pagar DUAS vezes. Recuperável: o
+        // desfecho do cartão chega em minutos (aprovado vira (a); recusado
+        // vira (b)).
+        if (metodo === "pix" && (statusNaVaga === "aguardando" || statusNaVaga === null)) {
+          return json({ error: "Há um pagamento com cartão em análise para este pedido." }, 409);
+        }
+        // (d) Pedido de cartão com um cartão já em análise/3DS: o estado
+        // atual, com o desafio se o banco pediu — NUNCA uma segunda
+        // cobrança, mesmo que o Brick tenha mandado um token novo. Par
+        // desconhecido devolve o par cru, igual à reconsulta do PIX.
+        const urlDesafioNaVaga = extrairDesafio3ds(orderNaVaga);
+        const desafio3dsNaVaga = urlDesafioNaVaga ? { url: urlDesafioNaVaga } : undefined;
+        return json(
+          {
+            paymentId: paymentIdNaVaga,
+            statusPagamento: statusNaVaga ?? statusCruNaVaga,
+            expiraEm: pedido.expires_at,
+            desafio3ds: desafio3dsNaVaga,
+          },
+          200,
+        );
+      }
+    } else if (metodo === "cartao" && statusNaVaga !== "pago") {
+      // (c) Pedido de CARTÃO com um PIX (ou algo que não é cartão) na vaga.
+      // Só se mexe no que se reconhece como PIX: cobrança de tipo
+      // desconhecido fica como está (409 recuperável), nunca é cancelada às
+      // cegas. PIX já morto (recusado/expirado/cancelado) só precisa ser
+      // liberado; PIX aberto é CANCELADO no MP antes — duas cobranças vivas
+      // para o mesmo pedido é o cliente pagando duas vezes.
+      if (!pixNaVaga) {
+        console.warn(
+          "criar-pagamento: vaga com cobrança de tipo desconhecido — troca para cartão recusada",
+          idGatewayReconsulta,
+          tipoNaVaga,
+        );
+        return json({ error: "Não foi possível trocar para cartão agora. Tente de novo em instantes." }, 409);
+      }
+      if (!cobrancaMorta) {
+        const cancelamento = await cancelarOrder({
+          token: mpToken,
+          orderId: idGatewayReconsulta,
+          chaveIdempotencia: `cancelar:${idGatewayReconsulta}`,
+          fetchImpl: deps.fetchImpl,
+        });
+        // Cancelamento negado (o PIX foi pago no meio do caminho, rede,
+        // 5xx) ou resposta que não diz "cancelada": a vaga fica como está.
+        // O próximo "Tentar de novo" relê a vaga — se o PIX foi pago, cai no
+        // ramo (a)/(e) e o cliente vê 'pago'.
+        if (!cancelamento.ok || !orderCancelada(cancelamento.order)) {
+          console.warn(
+            "criar-pagamento: MP não cancelou o PIX na troca para cartão",
+            idGatewayReconsulta,
+            cancelamento.ok ? String(cancelamento.order.status ?? "") : cancelamento.status,
+          );
+          return json({ error: "Não foi possível trocar para cartão agora. Tente de novo em instantes." }, 409);
+        }
+      }
+    } else {
+      // (e) Pedido de PIX com PIX na vaga — ou (a) PIX já pago, para
+      // qualquer forma pedida: o comportamento de sempre, o MESMO QR.
+      const extraido = extrairQrCode(orderNaVaga);
+      return json(
+        {
+          paymentId: extraido?.orderId ?? idGatewayReconsulta,
+          // CHECKOUT-080 (#213): traduzido para o conjunto fechado que este
+          // banco já usa ('aguardando'/'pago'/'recusado'/'expirado'/
+          // 'estornado' — mapearStatusOrder, `_shared/mercadopago.ts`), não
+          // mais para o vocabulário clássico do MP. Igual ao ramo de criação,
+          // abaixo. Se a cobrança existente foi recusada, o cliente vê
+          // 'recusado' e PagamentoOnline.tsx decide o que mostrar. Par
+          // desconhecido devolve o par CRU "status:status_detail" por
+          // padrão — igual a hoje — o que NÃO bate em nenhum valor do
+          // conjunto fechado, e o front trata como terminal: é o desfecho
+          // certo para um status que o MP inventou depois desta migração.
+          statusPagamento: statusNaVaga ?? statusCruNaVaga,
+          // O prazo sai da LINHA DO BANCO, igual ao ramo de criação.
+          expiraEm: pedido.expires_at,
+          // AUSÊNCIA (order legível, sem QR ainda) não é ERRO — extrairQrCode
+          // distingue os dois; aqui só se converte null em undefined para não
+          // serializar `null` explícito onde o front espera campo ausente.
+          qrCode: extraido?.qrCode ?? undefined,
+          qrCodeBase64: extraido?.qrCodeBase64 ?? undefined,
+          ticketUrl: extraido?.ticketUrl ?? undefined,
+        },
+        200,
+      );
+    }
+
+    // Daqui para baixo só chegam (b) e (c): a cobrança da vaga está morta
+    // (ou acabou de ser cancelada) e a vaga é LIBERADA para a nova. Um
+    // convidado nunca chega aqui para cobrar: o cartão parou no portão lá em
+    // cima, e o PIX para na trava de criação logo abaixo — mas a liberação
+    // em si é inofensiva (a RPC só solta a vaga desta cobrança morta).
+    const liberacao = await liberarCobranca(supabase, pedido.id, idGatewayReconsulta);
+    if (!liberacao.ok) {
+      // Falha de banco: nada foi cobrado ainda, e o próximo retry reencontra
+      // a cobrança morta (ou cancelada) e tenta liberar de novo.
+      return json({ error: "Não foi possível liberar a cobrança anterior. Tente de novo em instantes." }, 503);
+    }
+
+    // RELEITURA: a vaga pode ter sido liberada por OUTRA porta ao mesmo tempo
+    // (o webhook da própria recusa, uma segunda aba) — `liberou: false` não
+    // é erro. Quem decide o próximo passo é o estado REAL, pela MESMA
+    // `podeCobrar` do começo: vaga livre → cria com a tentativa nova; vaga
+    // ocupada de novo → a corrida já gerou outra cobrança; pedido que deixou
+    // de estar 'aguardando' → recusa definitiva, como sempre.
+    const { data: pedidoRelido, error: erroReleitura } = await supabase
+      .from("marketplace_orders")
+      .select(COLUNAS_DO_PEDIDO)
+      .eq("id", pedido.id)
+      .maybeSingle();
+    if (erroReleitura || !pedidoRelido) {
+      console.error("criar-pagamento: falha ao reler o pedido depois de liberar a vaga", pedido.id, erroReleitura);
+      return json({ error: "Não foi possível verificar o pedido." }, 503);
+    }
+    const decisaoDepoisDeLiberar = podeCobrar(pedidoRelido, new Date());
+    if (decisaoDepoisDeLiberar.acao === "recusar") {
+      return json({ error: decisaoDepoisDeLiberar.motivo, terminal: true }, 409);
+    }
+    if (decisaoDepoisDeLiberar.acao === "reconsultar") {
+      return json({ error: "Este pedido já tem uma cobrança gerada." }, 409);
+    }
+    pedido = pedidoRelido;
   }
 
   // Pagamento online exige conta — decisão do Gabriel, 16/08/2026: quem paga
@@ -540,21 +938,13 @@ async function handler(
   // logado, e esta é a trava que vale de verdade.
   //
   // SÓ bloqueia CRIAÇÃO — nunca a RECONSULTA: o `if (decisao.acao ===
-  // "reconsultar")` acima já devolveu antes de chegar aqui. Sem essa ordem,
+  // "reconsultar")` acima já devolveu antes de chegar aqui (só passa por
+  // ele, desde a Fase 3.5, quem acabou de liberar a vaga para CRIAR — e
+  // esse caminho precisa mesmo desta trava). Sem essa ordem,
   // um convidado com o QR na tela ANTES desta mudança que recarregasse a
   // página DEPOIS dela perderia acesso a um PIX que já pode ter pago — o
   // dinheiro entraria e nem o cliente nem a loja teriam como saber pela tela.
-  if (pedido.user_id === null) {
-    return json(
-      {
-        error:
-          "Pagar pelo site exige conta. Entre ou crie uma conta para continuar.",
-        code: "PAGAMENTO_ONLINE_EXIGE_CONTA",
-        terminal: true,
-      },
-      403,
-    );
-  }
+  if (pedido.user_id === null) return respostaExigeConta();
 
   // decisao.acao === "criar" a partir daqui.
   // LAUDO 31/08 (menor E5): o e-mail da sessão entra na corrente antes do
@@ -565,67 +955,93 @@ async function handler(
     emailDoToken(req.headers.get("Authorization")) ??
     "sem-email@ikcous.com.br";
 
-  // Os quatro valores que os dois caminhos (PIX/Orders novo, cartão/clássico
-  // morto) precisam produzir para a gravação e a resposta abaixo, que são
-  // IGUAIS nos dois — só a CHAMADA ao gateway diverge.
+  // Os valores que os dois caminhos (PIX e cartão, os dois pela Orders API)
+  // precisam produzir para a gravação e a resposta abaixo, que são IGUAIS
+  // nos dois — só a CHAMADA ao gateway diverge.
   let idGateway: string;
   let statusCru: string;
   let qrCode: string | undefined;
   let qrCodeBase64: string | undefined;
   let ticketUrl: string | undefined;
   // Realinhamento de expires_at (decisão do dono, 14/08/2026) — só o PIX
-  // preenche isto (a Orders API é quem manda date_of_expiration; o clássico
-  // de cartão nunca teve esse campo). `undefined` = não mexe em expires_at,
-  // que é o comportamento de hoje.
+  // preenche isto (o prazo do QR é do PIX; o cartão não tem QR que vença).
+  // `undefined` = não mexe em expires_at, que é o comportamento de hoje.
   let expiresAtNovo: string | undefined;
+  // Fase 3.5: o desafio 3DS que o banco pediu (só cartão) e as duas colunas
+  // que a gravação da vaga passa a carimbar — `metodo_online` diz ao
+  // painel/e-mail QUAL forma online foi, `parcelas` o parcelamento do crédito.
+  let desafio3ds: { url: string } | undefined;
+  let metodoOnline: "pix" | "credito" | "debito";
+  let parcelasGravadas: number | null;
 
-  if (body.metodo === "pix") {
-    // BLOQUEIO 1 da revisão (CHECKOUT-070): a detecção de ambiente pelo
-    // PREFIXO do MP_ACCESS_TOKEN ("TEST-") era NÃO-DISCRIMINANTE — medido
-    // contra o painel do MP que a aplicação criada escolhendo "API de
-    // Orders" dá um Access Token de TESTE com prefixo "APP_USR" (75 chars),
-    // igual ao de produção. A heurística por prefixo era `false` em TODO
-    // ambiente da Orders API, e o e-mail real do cliente sempre ia para o
-    // MP em sandbox → 400 invalid_email_for_sandbox → 502 sem `terminal` →
-    // "Tentar de novo" que erra igual, para sempre. Nenhum PIX de teste
-    // ficava criável.
-    //
-    // Ambiente é CONFIGURAÇÃO, não dedução do formato da credencial —
-    // nenhum formato de credencial do MP carrega isso de forma confiável.
-    // MP_SANDBOX_PAYER_EMAIL é explícita e opcional: presente, usa esse
-    // e-mail como pagador (sandbox); ausente, usa o e-mail real do cliente
-    // (produção). Quem configura declara o ambiente, ninguém adivinha.
-    // `|| undefined` (não `??`): achado da revisão — a MESMA variável era
-    // lida com duas semânticas de vazio a 5 linhas de distância. Aqui era
-    // truthy ("" contava como AUSENTE, não ligava 'APRO'); em `email:` logo
-    // abaixo era nullish ("" contava como PRESENTE, `?? String(email)` não
-    // trocava por nada) — e o resultado era `payer.email: ""`, o e-mail REAL
-    // do cliente descartado em toda venda PIX. Realista porque, mesmo
-    // documentada (DEPLOYMENT.md §5.2), quem quiser DESLIGAR o sandbox pelo
-    // painel do Supabase pode limpar o campo em vez de apagar o secret — e
-    // limpar produz "". Com `|| undefined` as duas leituras concordam: "" é
-    // ausente, igual a nunca ter sido definida.
-    // `.trim()`: achado da revisão seguinte, mesma família — "   ", "\t" e
-    // "email@testuser.com\n" são todos truthy e sobreviviam ao `|| undefined`
-    // de cima. O e-mail real do cliente era descartado do mesmo jeito, só
-    // que o lixo (não uma string vazia) ia para `payer.email`.
-    const emailPagadorSandbox = Deno.env.get("MP_SANDBOX_PAYER_EMAIL")?.trim() || undefined;
-    // 'APRO' é o valor mágico que a doc oficial de teste de PIX exige
-    // (checkout-api-orders/integration-test/pix, context7, 13/08/2026) para
-    // a order de TESTE responder como esperado. montarCorpoPixOrders já
-    // aceita `nome` desde a Tarefa 1 — só ninguém ligava o parâmetro.
-    const nomePagadorSandbox = emailPagadorSandbox ? "APRO" : undefined;
-    if (emailPagadorSandbox) {
-      // ANOTADO 1 da revisão: sem log, ligar esta variável num deploy de
-      // PRODUÇÃO troca o e-mail do cliente em SILÊNCIO — nada quebra alto,
-      // só fica errado (e-mail real nunca chega ao MP, 'APRO' vira o
-      // primeiro nome nos registros do gateway). O gatilho real é o
-      // primeiro clone que copiar env de um deploy de desenvolvimento.
-      console.warn(
-        `criar-pagamento: MP_SANDBOX_PAYER_EMAIL definida — e-mail do pagador substituído por "${emailPagadorSandbox}" (ambiente de sandbox).`,
-      );
-    }
+  // 401/403 do POST /v1/orders (incidente 25/09/2026, "invalid access
+  // token"): o MP recusou a CREDENCIAL da loja, não este pedido. Mesma escala
+  // de conserto do D1 lá em cima — token revogado ou sem permissão se
+  // resolve no cadastro do lojista, em horas ou dias, e "Tentar de novo"
+  // dentro dos 30 min da reserva só bate na mesma recusa. `terminal: true`
+  // tira o cliente do loop. A frase é fixa: o corpo do MP (conta, detalhe da
+  // credencial) continua só no log de criarOrder. Vale igual para PIX e
+  // cartão (uma resposta só, as duas chamam daqui).
+  const respostaCredencialRecusada = (status: number) => {
+    console.error(
+      `criar-pagamento: Mercado Pago recusou a credencial da loja (status: ${status}, origem: ${credenciaisMp.origem})`,
+    );
+    return json({ error: MENSAGEM_CREDENCIAL_RECUSADA, terminal: true }, 503);
+  };
 
+  // BLOQUEIO 1 da revisão (CHECKOUT-070): a detecção de ambiente pelo
+  // PREFIXO do MP_ACCESS_TOKEN ("TEST-") era NÃO-DISCRIMINANTE — medido
+  // contra o painel do MP que a aplicação criada escolhendo "API de
+  // Orders" dá um Access Token de TESTE com prefixo "APP_USR" (75 chars),
+  // igual ao de produção. A heurística por prefixo era `false` em TODO
+  // ambiente da Orders API, e o e-mail real do cliente sempre ia para o
+  // MP em sandbox → 400 invalid_email_for_sandbox → 502 sem `terminal` →
+  // "Tentar de novo" que erra igual, para sempre. Nenhum PIX de teste
+  // ficava criável.
+  //
+  // Ambiente é CONFIGURAÇÃO, não dedução do formato da credencial —
+  // nenhum formato de credencial do MP carrega isso de forma confiável.
+  // MP_SANDBOX_PAYER_EMAIL é explícita e opcional: presente, usa esse
+  // e-mail como pagador (sandbox); ausente, usa o e-mail real do cliente
+  // (produção). Quem configura declara o ambiente, ninguém adivinha.
+  // `|| undefined` (não `??`): achado da revisão — a MESMA variável era
+  // lida com duas semânticas de vazio a 5 linhas de distância. Aqui era
+  // truthy ("" contava como AUSENTE, não ligava 'APRO'); em `email:` logo
+  // abaixo era nullish ("" contava como PRESENTE, `?? String(email)` não
+  // trocava por nada) — e o resultado era `payer.email: ""`, o e-mail REAL
+  // do cliente descartado em toda venda PIX. Realista porque, mesmo
+  // documentada (DEPLOYMENT.md §5.2), quem quiser DESLIGAR o sandbox pelo
+  // painel do Supabase pode limpar o campo em vez de apagar o secret — e
+  // limpar produz "". Com `|| undefined` as duas leituras concordam: "" é
+  // ausente, igual a nunca ter sido definida.
+  // `.trim()`: achado da revisão seguinte, mesma família — "   ", "\t" e
+  // "email@testuser.com\n" são todos truthy e sobreviviam ao `|| undefined`
+  // de cima. O e-mail real do cliente era descartado do mesmo jeito, só
+  // que o lixo (não uma string vazia) ia para `payer.email`.
+  const emailPagadorSandbox = Deno.env.get("MP_SANDBOX_PAYER_EMAIL")?.trim() || undefined;
+  // 'APRO' é o valor mágico que a doc oficial de teste de PIX exige
+  // (checkout-api-orders/integration-test/pix, context7, 13/08/2026) para
+  // a order de TESTE responder como esperado. montarCorpoPixOrders já
+  // aceita `nome` desde a Tarefa 1 — só ninguém ligava o parâmetro.
+  //
+  // Fase 3.5: o e-mail de sandbox vale para o CARTÃO também (a regra do
+  // e-mail de teste é da Orders API, não do PIX); o 'APRO' em `first_name`
+  // fica só no PIX — no cartão, o desfecho de teste é escolhido pelo nome do
+  // TITULAR digitado no formulário do Brick, e forçar o pagador aqui
+  // misturaria as duas coisas.
+  const nomePagadorSandbox = emailPagadorSandbox ? "APRO" : undefined;
+  if (emailPagadorSandbox) {
+    // ANOTADO 1 da revisão: sem log, ligar esta variável num deploy de
+    // PRODUÇÃO troca o e-mail do cliente em SILÊNCIO — nada quebra alto,
+    // só fica errado (e-mail real nunca chega ao MP, 'APRO' vira o
+    // primeiro nome nos registros do gateway). O gatilho real é o
+    // primeiro clone que copiar env de um deploy de desenvolvimento.
+    console.warn(
+      `criar-pagamento: MP_SANDBOX_PAYER_EMAIL definida — e-mail do pagador substituído por "${emailPagadorSandbox}" (ambiente de sandbox).`,
+    );
+  }
+
+  if (metodo === "pix") {
     // "PT30M": mínimo aceito pelo MP, e o valor que casa com a reserva de
     // estoque de 30 minutos (20260807000000_reserva_com_expiracao.sql) — ver
     // o comentário grande de montarCorpoPixOrders. `deps.expiracaoPix` só
@@ -666,27 +1082,19 @@ async function handler(
     const r = await criarOrder({
       token: mpToken,
       corpo,
-      // O id do pedido como chave: um retry do front sobre o MESMO pedido
-      // não cria uma segunda cobrança no MP.
-      chaveIdempotencia: String(pedido.id),
+      // Chave POR TENTATIVA (Fase 3.5, `chaveDeIdempotencia`): na tentativa
+      // 0 é o id do pedido, byte a byte a de sempre — um retry do front
+      // sobre o MESMO pedido não cria uma segunda cobrança no MP; depois de
+      // uma vaga liberada, a chave muda e o MP cria a cobrança nova em vez
+      // de devolver a morta.
+      chaveIdempotencia: await chaveDeIdempotencia(pedido, "pix"),
       fetchImpl: deps.fetchImpl,
     });
     if (!r.ok) {
-      // 401/403 do POST /v1/orders (incidente 25/09/2026, "invalid access
-      // token"): o MP recusou a CREDENCIAL da loja, não este pedido. Mesma
-      // escala de conserto do D1 lá em cima — token revogado ou sem
-      // permissão se resolve no cadastro do lojista, em horas ou dias, e
-      // "Tentar de novo" dentro dos 30 min do PIX só bate na mesma recusa.
-      // `terminal: true` tira o cliente do loop. A frase é fixa: o corpo do
-      // MP (conta, detalhe da credencial) continua só no log de criarOrder.
+      // 401/403: credencial da loja (`respostaCredencialRecusada`, acima).
       // Qualquer outro status (0 = rede, 5xx, 4xx de corpo) segue 502
       // recuperável, como sempre foi.
-      if (r.status === 401 || r.status === 403) {
-        console.error(
-          `criar-pagamento: Mercado Pago recusou a credencial da loja (status: ${r.status}, origem: ${credenciaisMp.origem})`,
-        );
-        return json({ error: MENSAGEM_CREDENCIAL_RECUSADA, terminal: true }, 503);
-      }
+      if (r.status === 401 || r.status === 403) return respostaCredencialRecusada(r.status);
       return json({ error: r.erro }, 502);
     }
 
@@ -765,57 +1173,116 @@ async function handler(
           `valor recebido: ${JSON.stringify(dataExpiracaoBruta)}`,
       );
     }
+    metodoOnline = "pix";
+    // `null` de propósito: se uma tentativa anterior de CRÉDITO ocupou e
+    // soltou a vaga, as parcelas dela não podem sobrar grudadas num PIX.
+    parcelasGravadas = null;
   } else {
-    // Cartão: caminho CLÁSSICO, código morto hoje — `body.metodo !== "pix"`
-    // já recusa com 400 lá em cima, antes da leitura do pedido, então este
-    // ramo nunca executa em produção. Mantido de propósito (Tarefa 2 migra
-    // SÓ o caminho PIX, que é o alcançável, e cartão é a Fase 3.5 — ver o
-    // comentário da checagem `body.metodo !== "pix"` acima). NÃO é porque
-    // `webhook-mercadopago`/`reconciliar-pagamentos` (Tasks 3-4) dependam de
-    // `montarCorpoCartao`/`criarPagamento` clássicos: conferido em 13/08/2026,
-    // os dois importam só `consultarPagamento`, `mapearStatus` e
-    // `validarAssinatura` de `_shared/mercadopago.ts` — nenhum toca cartão.
-    // Hoje o único chamador vivo de `montarCorpoCartao`/`criarPagamento` é
-    // este ramo e os testes deles em `mercadopago_test.ts`; a limpeza deste
-    // ramo fica para depois da Fase 3.5, não das Tasks 3-4.
-    const corpo = montarCorpoCartao({
-      orderId: pedido.id,
-      valor: Number(pedido.total),
-      descricao: descricaoDoPedido(pedido.id),
-      email: String(email),
-      token: String(body.token),
-      parcelas: Number(body.parcelas ?? 1),
-      metodo: String(body.paymentMethodId),
-      emissor: body.issuerId ? String(body.issuerId) : undefined,
-      documento: body.documento as { type: string; number: string } | undefined,
-    });
+    // CARTÃO (Fase 3.5) — Orders API, a MESMA do PIX. `dadosCartao` já foi
+    // validado no começo do handler e o portão (conta, forma ligada, teto de
+    // parcelas) já passou antes de a vaga ser tocada.
+    const dados = dadosCartao as DadosDoCartao;
 
-    const r = await criarPagamento({
+    // Recusa de cartão: a vaga nunca foi ocupada por esta cobrança — a RPC
+    // só CONTA a tentativa (`p_gateway_payment_id` null), e a resposta é
+    // 200 com o motivo: não é erro do sistema, é o banco dizendo não, e o
+    // cliente segue com outro cartão ou PIX na MESMA reserva. NUNCA chega a
+    // `confirmar_pagamento`, cujo ramo 'recusado' cancela o pedido e devolve
+    // o estoque. Falha da RPC não muda a resposta: a recusa é verdade de
+    // qualquer jeito, e a próxima tentativa tem token novo (chave nova).
+    const respostaRecusaDoCartao = async (motivo: string) => {
+      await liberarCobranca(supabase, pedido.id, null);
+      return json(
+        {
+          paymentId: null,
+          statusPagamento: "recusado",
+          motivoRecusa: motivo,
+          podeTentarDeNovo: true,
+          expiraEm: pedido.expires_at,
+        },
+        200,
+      );
+    };
+
+    // E-mail do pagador: o primeiro VÁLIDO da mesma corrente do PIX — um
+    // `customer_data.email` torto não pode travar o cartão no construtor
+    // (que valida o formato); o fallback genérico fecha a corrente.
+    const emailDoCartao = [
+      dados.email,
+      (pedido.customer_data as Record<string, unknown> | null)?.email,
+      emailDoToken(req.headers.get("Authorization")),
+    ].find(emailValido) ?? "sem-email@ikcous.com.br";
+
+    let corpo: Record<string, unknown>;
+    try {
+      corpo = montarCorpoCartaoOrders({
+        orderId: pedido.id,
+        valor: Number(pedido.total),
+        email: emailPagadorSandbox ?? emailDoCartao,
+        documento: dados.documento,
+        token: dados.token,
+        paymentMethodId: dados.paymentMethodId,
+        paymentTypeId: dados.paymentTypeId,
+        parcelas: dados.parcelas,
+      });
+    } catch (err) {
+      // Só o que sobra depois da validação do corpo: total do pedido
+      // imprestável (≤ 0, não numérico) ou e-mail de sandbox malformado —
+      // configuração/dado do servidor, não do cliente. A mensagem do
+      // construtor nunca carrega token, CPF ou e-mail. Nada foi cobrado.
+      console.error(
+        "criar-pagamento: montarCorpoCartaoOrders rejeitou",
+        err instanceof Error ? err.message : "erro desconhecido",
+      );
+      return json({ error: "Não foi possível gerar a cobrança." }, 502);
+    }
+
+    const r = await criarOrder({
       token: mpToken,
       corpo,
-      chaveIdempotencia: String(pedido.id),
+      chaveIdempotencia: await chaveDeIdempotencia(pedido, "cartao", dados.token),
       fetchImpl: deps.fetchImpl,
+      // O corpo da recusa traz o pagador (e-mail, CPF): no log, só o resumo.
+      corpoNoLog: false,
     });
-    if (!r.ok) return json({ error: r.erro }, 502);
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 403) return respostaCredencialRecusada(r.status);
+      // 402: o MP processou e RECUSOU o pagamento (a order recusada vem no
+      // corpo do erro, com o motivo).
+      if (r.status === 402) return await respostaRecusaDoCartao(motivoDaRecusaDoErro(r.corpoDoErro));
+      // 400: o MP recusou o DADO do cartão (token vencido/já usado, campo
+      // que ele não aceitou) — para o cliente, a mesma saída: conferir o
+      // cartão e tentar de novo, com um token novo.
+      if (r.status === 400) return await respostaRecusaDoCartao(MOTIVO_RECUSA_DADOS_DO_CARTAO);
+      // Rede, 5xx, outro 4xx: nada foi cobrado com certeza — 502
+      // recuperável, e a chave de idempotência protege o retry do MESMO
+      // token contra cobrança dupla.
+      return json({ error: r.erro }, 502);
+    }
 
-    idGateway = r.id;
-    // Achado da revisão da CHECKOUT-080 (#213): antes desta correção este
-    // ramo atribuía `r.status` CRU (vocabulário clássico do MP) direto a
-    // `statusCru` — que vira `statusPagamento` na resposta lá embaixo. O
-    // ramo é INALCANÇÁVEL hoje (`body.metodo !== "pix"` recusa com 400 antes
-    // da leitura do pedido, então `else` nunca executa em produção), mas
-    // fica mantido de propósito para quando o cartão for religado (Fase
-    // 3.5) — e nesse dia um "approved" cru não bateria em nenhum valor do
-    // conjunto fechado que PagamentoOnline.tsx conhece, virando terminal
-    // para um cartão que o MP acabou de aprovar e cobrar. `mapearStatus` é o
-    // MESMO tradutor já aplicado ao ramo clássico irmão (reconsulta, acima)
-    // — `?? r.status` é só a rede de segurança para um status que nem esse
-    // mapa conhece (nunca um palpite: o front trata como desconhecido e
-    // recusa fechado).
-    statusCru = mapearStatus(r.status) ?? r.status;
-    qrCode = r.qrCode;
-    qrCodeBase64 = r.qrCodeBase64;
-    ticketUrl = r.ticketUrl;
+    const orderCartao = r.order as Record<string, unknown>;
+    const statusCartao = mapearStatusOrder(
+      String(orderCartao.status ?? ""),
+      String(orderCartao.status_detail ?? ""),
+    );
+    // Order criada, mas já recusada (`failed`) — ou, por defesa, cancelada/
+    // expirada na própria criação: mesma recusa do 402. A vaga não é
+    // ocupada por uma cobrança morta.
+    if (statusCartao === "recusado" || statusCartao === "expirado") {
+      return await respostaRecusaDoCartao(motivoDaRecusa(orderCartao));
+    }
+
+    // Aprovado na hora, em análise ou esperando o desafio 3DS: a vaga é
+    // OCUPADA por esta order (gravação logo abaixo, a mesma do PIX). Quem
+    // escreve 'pago' continua sendo o webhook/reconciliação. Par
+    // desconhecido vira 'aguardando', pelo mesmo motivo do PIX: a cobrança
+    // EXISTE, e a verdade chega pelo webhook.
+    idGateway = String(orderCartao.id);
+    statusCru = statusCartao ?? "aguardando";
+    const urlDesafio = extrairDesafio3ds(orderCartao);
+    desafio3ds = urlDesafio ? { url: urlDesafio } : undefined;
+    metodoOnline = dados.paymentTypeId === "credit_card" ? "credito" : "debito";
+    parcelasGravadas = dados.paymentTypeId === "credit_card" ? dados.parcelas : 1;
   }
 
   // Grava a cobrança. O WHERE repete a condição de podeCobrar porque entre a
@@ -827,8 +1294,14 @@ async function handler(
   // 14/08/2026, ver expiracaoRealinhavel acima) aprovou o valor do MP — sem
   // isto, TODO pedido teria a coluna tocada, mesmo quando o comportamento
   // certo é deixá-la como está.
+  //
+  // Fase 3.5: `metodo_online` ('pix' | 'credito' | 'debito') e `parcelas`
+  // entram na MESMA gravação atômica da vaga — nunca num UPDATE separado que
+  // pudesse gravar a forma de uma cobrança que perdeu a corrida.
   const valoresUpdate: Record<string, unknown> = {
     gateway_payment_id: idGateway,
+    metodo_online: metodoOnline,
+    parcelas: parcelasGravadas,
     updated_at: new Date().toISOString(),
   };
   if (expiresAtNovo) valoresUpdate.expires_at = expiresAtNovo;
@@ -890,6 +1363,10 @@ async function handler(
       qrCode,
       qrCodeBase64,
       ticketUrl,
+      // Só cartão, só quando o banco pediu o desafio 3-D Secure: a tela abre
+      // a URL num iframe e espera a confirmação pelo webhook. Ausente no PIX
+      // (`undefined` some do JSON).
+      desafio3ds,
     },
     200,
   );
