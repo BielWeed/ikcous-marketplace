@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
+import { valorDevolverAgora } from "@/lib/valor-devolver-agora";
 import type { CanalDaVenda, Order } from "@/types";
 import { AlertTriangle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -402,8 +403,11 @@ export function AlertasCancelados({
                         #{pedido.id.slice(-6).toUpperCase()}
                       </span>
                       <span className="block truncate text-[9px] font-bold uppercase text-zinc-500">
+                        {/* Achado 1 (rodada 2): o valor que FALTA devolver,
+                            não o total do pedido — descontado o que uma
+                            devolução deste pedido já devolveu por fora. */}
                         {pedido.customer?.name || "Cliente"} · R${" "}
-                        {(pedido.total || 0).toLocaleString("pt-BR", {
+                        {valorDevolverAgora(pedido).toLocaleString("pt-BR", {
                           minimumFractionDigits: 2,
                         })}
                       </span>

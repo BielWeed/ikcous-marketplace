@@ -102,6 +102,7 @@ function linhaRealtimeDePagamentoConfirmado(
     shipping_label_id: null,
     shipping_label_url: null,
     stock_returned_at: null,
+    estorno_manual_registrado_em: null,
     total_amount: null,
     user_id: "user-1",
     vendedor_id: null,

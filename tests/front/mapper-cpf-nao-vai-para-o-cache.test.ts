@@ -47,6 +47,7 @@ const PEDIDO_BASE: OrderRow = {
   shipping_label_url: null,
   status: "pending",
   stock_returned_at: null,
+  estorno_manual_registrado_em: null,
   subtotal: 100,
   total: 120,
   total_amount: null,

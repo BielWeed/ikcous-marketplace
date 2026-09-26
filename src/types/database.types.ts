@@ -1120,6 +1120,7 @@ export type Database = {
           customer_name: string;
           customer_phone: string | null;
           discount: number | null;
+          estorno_manual_registrado_em: string | null;
           expires_at: string | null;
           gateway_payment_id: string | null;
           id: string;
@@ -1163,6 +1164,7 @@ export type Database = {
           customer_name: string;
           customer_phone?: string | null;
           discount?: number | null;
+          estorno_manual_registrado_em?: string | null;
           expires_at?: string | null;
           gateway_payment_id?: string | null;
           id?: string;
@@ -1206,6 +1208,7 @@ export type Database = {
           customer_name?: string;
           customer_phone?: string | null;
           discount?: number | null;
+          estorno_manual_registrado_em?: string | null;
           expires_at?: string | null;
           gateway_payment_id?: string | null;
           id?: string;
