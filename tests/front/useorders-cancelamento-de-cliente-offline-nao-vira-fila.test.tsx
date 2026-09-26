@@ -20,6 +20,8 @@ import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Order } from "@/types";
+
 const rpcMock = vi.hoisted(() => vi.fn());
 const toasts = vi.hoisted(() => ({
   warning: vi.fn(),
@@ -30,7 +32,35 @@ const toasts = vi.hoisted(() => ({
 }));
 const exposto = vi.hoisted(() => ({
   updateOrderStatus: null as null | ((...args: unknown[]) => Promise<unknown>),
+  // Achado 2, rodada 6 (revisão do achado 1 da rodada 5): expor `orders`
+  // também — sem isto, o teste só provava que a PROMISE rejeita, nunca que
+  // NENHUM update otimista rodou. Com `useOrders(false, false)` e cache
+  // vazio, `orders` já nasce `[]`; testar contra um array vazio não
+  // distingue "o guard rodou antes do otimista" de "o otimista rodou, mas
+  // não achou o pedido para mudar" — os dois cenários dão `[]` do mesmo
+  // jeito. Só um pedido SEMEADO no cache prova a ordem certa.
+  orders: [] as Order[],
 }));
+
+/** Mesma fixture de `cancelar-enviado-otimista-marca-que-precisa-devolver.
+ * test.tsx` — só o `status` muda por chamada. */
+function pedidoFake(status: Order["status"]): Order {
+  return {
+    id: "pedido-1",
+    customer: { name: "Cliente Teste", whatsapp: "34999999999" },
+    items: [],
+    subtotal: 100,
+    shipping: 0,
+    discount: 0,
+    total: 100,
+    paymentMethod: "pix",
+    status,
+    paymentStatus: "pago",
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+    cancelledAfterShipping: false,
+  };
+}
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -71,6 +101,7 @@ function Alvo({ isAdmin }: { isAdmin: boolean }) {
     exposto.updateOrderStatus = hook.updateOrderStatus as unknown as (
       ...args: unknown[]
     ) => Promise<unknown>;
+    exposto.orders = hook.orders;
   });
   return null;
 }
@@ -109,24 +140,60 @@ describe("useOrders — cancelamento de cliente offline não vira fila (achado 1
     vi.restoreAllMocks();
   });
 
-  it("offline: o cancelamento do CLIENTE rejeita na hora, sem chamar a RPC e sem entrar na fila", async () => {
+  it("offline: o cancelamento do CLIENTE rejeita na hora, sem chamar a RPC, sem entrar na fila E sem update otimista", async () => {
+    // Achado 2, rodada 6: sem um pedido SEMEADO no cache, `orders` nasce
+    // `[]` de qualquer jeito — provar que o array continua `[]` depois não
+    // distingue "o guard bloqueou antes do otimista" de "o otimista rodou,
+    // mas não achou nada para mudar". Só com um pedido de verdade em
+    // `orders` dá pra provar que o STATUS dele nunca vira "cancelled".
+    localStorage.setItem(
+      "ikcous_orders_cache_cliente-1",
+      JSON.stringify([pedidoFake("pending")]),
+    );
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     await act(async () => {
       raiz.render(<Alvo isAdmin={false} />);
     });
 
-    await expect(
-      exposto.updateOrderStatus!("pedido-1", "cancelled"),
-    ).rejects.toThrow("Sem conexão com a internet");
+    // `act` (não só `await expect(...).rejects`) é o que importa aqui: sem
+    // envolver a chamada, o `setOrders` do update otimista (se rodasse)
+    // aconteceria fora do React, e o efeito de `Alvo` que copia `hook.orders`
+    // para `exposto.orders` só flusharia DEPOIS desta função já ter lido o
+    // valor antigo — a asserção do update otimista, mais abaixo, passaria
+    // por acidente mesmo com o bug presente (medido: aconteceu na mutação de
+    // prova antes deste ajuste).
+    let erroCapturado: unknown;
+    await act(async () => {
+      try {
+        await exposto.updateOrderStatus!("pedido-1", "cancelled");
+      } catch (erro) {
+        erroCapturado = erro;
+      }
+    });
+    expect(erroCapturado).toBeInstanceOf(Error);
+    expect((erroCapturado as Error).message).toContain(
+      "Sem conexão com a internet",
+    );
 
     expect(rpcMock).not.toHaveBeenCalled();
     expect(localStorage.getItem("orders_offline_updates_queue")).toBeNull();
+    // Achado 3, rodada 6: a frase não pode afirmar que o pedido "continua
+    // reservado" — este erro dispara para QUALQUER cancelamento de cliente
+    // offline, inclusive de um pedido já `processing`/`shipping`, onde
+    // "reservado" não faz sentido nenhum.
     expect(toasts.warning).toHaveBeenCalledWith(
-      "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+      "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
     );
     // Achado 1: nenhum segundo toast — o erro já tem o seu próprio, o
     // catch genérico de updateOrderStatus não pode dobrar o aviso.
     expect(toasts.error).not.toHaveBeenCalled();
+    // Achado 2, rodada 6: a prova que faltava — o pedido semeado continua
+    // "pending" em `orders`. Se o update otimista tivesse rodado antes da
+    // checagem de rede, isto seria "cancelled" mesmo com a RPC nunca tendo
+    // sido chamada.
+    expect(exposto.orders.find((o) => o.id === "pedido-1")?.status).toBe(
+      "pending",
+    );
   });
 
   it("controle: ONLINE, o mesmo cancelamento do cliente segue para a RPC normalmente", async () => {

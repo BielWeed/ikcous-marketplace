@@ -124,11 +124,20 @@ export class ErroStatusEsperadoDesconhecido extends Error {
  * (o pedido ficaria "cancelado" na tela e `pending` no banco até alguém
  * notar). Recusar ANTES de entrar na fila evita as duas: nenhum update
  * otimista roda, porque este erro é lançado antes dele.
+ *
+ * Achado 3, rodada 6: a frase original ("...o pedido continua reservado")
+ * só faz sentido para um pedido AINDA aguardando pagamento (a reserva de 30
+ * min do checkout) — mas este erro dispara para QUALQUER cancelamento de
+ * cliente offline, inclusive de um pedido já `processing`/`shipping` (a
+ * partir de `OrderDetailsView`, que também chama `updateOrderStatus`). Um
+ * pedido em preparo ou já enviado não está "reservado" — a frase nova não
+ * afirma nada sobre o estado do pedido, só que a tentativa de cancelar não
+ * saiu.
  */
 export class ErroCancelamentoOfflineRecusado extends Error {
   constructor() {
     super(
-      "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+      "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
     );
     this.name = "ErroCancelamentoOfflineRecusado";
   }
@@ -2655,8 +2664,11 @@ export function useOrders(
           !navigator.onLine
         ) {
           if (!silent) {
+            // Achado 3, rodada 6: mesma frase de `ErroCancelamentoOfflineRecusado`
+            // (acima) — o toast e o erro contam a mesma causa para a mesma
+            // pessoa, nunca dois textos diferentes.
             toast.warning(
-              "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+              "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
             );
           }
           throw new ErroCancelamentoOfflineRecusado();

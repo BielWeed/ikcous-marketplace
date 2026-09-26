@@ -173,9 +173,16 @@ vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
 }));
 
-vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ createOrder, updateOrderStatus }),
-}));
+// Achado 1, rodada 6: `mensagemAmigavelErroAtualizacaoStatus` fica com a
+// implementação REAL (via `importOriginal`) — só `useOrders` é trocado pelo
+// dublê. É ela quem `handleCancelarPedidoESairDoPagamento` chama quando a
+// guarda P0001 barra a gravação (ver o teste da guarda, abaixo) — sem isto,
+// a chamada seria `undefined(...)` e o teste quebraria por TypeError, não
+// pela asserção.
+vi.mock("@/hooks/useOrders", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/hooks/useOrders")>();
+  return { ...real, useOrders: () => ({ createOrder, updateOrderStatus }) };
+});
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
@@ -189,13 +196,21 @@ vi.mock("@/hooks/useConfigDoCartao", () => ({
   useConfigDoCartao: () => mockConfigDoCartao,
 }));
 
+// Achado 1, rodada 6: mutável — nenhum teste existente até aqui CLICA em
+// "Cancelar pedido" (só confere presença/ausência do botão), então o padrão
+// "cancelled" preserva o comportamento de todos eles; o teste da guarda
+// P0001 (abaixo) sobrescreve para "pending".
+let mockStatusAposCancelar = "cancelled";
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({
         eq: () => ({
           single: () =>
-            Promise.resolve({ data: { status: "cancelled" }, error: null }),
+            Promise.resolve({
+              data: { status: mockStatusAposCancelar },
+              error: null,
+            }),
         }),
       }),
     }),
@@ -256,6 +271,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     onNavigate.mockClear();
     pagamentoOnlineProps.length = 0;
     mockWhatsappNumber = undefined;
+    mockStatusAposCancelar = "cancelled";
     mockCart = [
       {
         product: {
@@ -1100,5 +1116,63 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
       "Você não precisa fazer nada agora",
     );
     expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
+  });
+
+  // Achado 1, rodada 6 da revisão de risco pré-publicação (26/09/2026,
+  // migration 80 — outra frente): a RPC do servidor agora recusa, com
+  // P0001, o cancelamento de um pedido cujo cartão pode estar em
+  // confirmação — essa recusa É A PROVA de que "Cancelar pedido" bateria na
+  // mesma parede de novo, então o botão precisa sumir. MAS não pode ser via
+  // `pedidoTemCobrancaIncerta` (achado 1, rodada 3): esse marcador também
+  // esconderia "Pagar com PIX", que o servidor ACEITA no caso da URL de
+  // desafio 3DS inválida (achado 3 opcional, rodada 5) — daí o cenário
+  // escolhido aqui ser um `semCobranca` (não um `cartaoEmAnalise`).
+  it("achado 1, rodada 6: a guarda P0001 do servidor esconde 'Cancelar pedido' — mas 'Pagar com PIX' continua (o servidor aceita PIX mesmo com a guarda ligada)", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+          sinal?: "cartaoEmAnalise" | "semCobranca",
+        ) => void
+      )(
+        "Não foi possível abrir a confirmação do seu banco.",
+        "recuperavel",
+        "semCobranca",
+      );
+    });
+
+    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeDefined();
+    const botaoCancelar = botaoPorTexto(
+      hospedeiro,
+      "Cancelar pedido e voltar ao carrinho",
+    );
+    expect(botaoCancelar).toBeDefined();
+
+    const mensagemDaGuarda =
+      "Este pedido tem uma cobrança no cartão em confirmação com o banco. Aguarde a confirmação ou fale com a loja antes de cancelar.";
+    const erroDaGuarda = new Error(mensagemDaGuarda) as Error & {
+      code: string;
+    };
+    erroDaGuarda.code = "P0001";
+    updateOrderStatus.mockRejectedValueOnce(erroDaGuarda);
+    mockStatusAposCancelar = "pending";
+
+    await act(async () => {
+      botaoCancelar!.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toContain(mensagemDaGuarda);
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+    // A prova central do achado: PIX continua oferecido — a guarda não é
+    // `pedidoTemCobrancaIncerta`, que também mataria este botão.
+    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeDefined();
   });
 });

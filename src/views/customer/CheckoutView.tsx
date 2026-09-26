@@ -174,8 +174,11 @@ const MENSAGEM_CARTAO_EM_ANALISE_409 =
 // capturado ainda) e `processed` (capturado); nos dois casos "pode ter sido
 // cobrado" é verdade, então NUNCA oferece PIX nem "Cancelar pedido" aqui —
 // os dois arriscam dinheiro sobre uma cobrança que pode já existir. Mesma
-// função de RESERVA que `MENSAGEM_CARTAO_EM_ANALISE_409`: a edge ainda não
-// manda `cartaoEmAnalise` para este caso (fica para a rodada dela).
+// função de RESERVA que `MENSAGEM_CARTAO_EM_ANALISE_409`, acima: a edge JÁ
+// manda `cartaoEmAnalise` para este caso (a partir do commit `bf15876f` da
+// edge — corrigido no addendum da rodada 6, o comentário aqui dizia o
+// contrário) — esta constante só entra em jogo como reserva para uma loja
+// ainda rodando uma edge anterior a esse commit.
 const MENSAGEM_CARTAO_TALVEZ_COBRADO_409 =
   "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.";
 
@@ -1152,6 +1155,23 @@ export function CheckoutView({
   const [isCancelandoPedido, setIsCancelandoPedido] = useState(false);
   const isCancelandoPedidoRef = useRef(false);
   const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
+  // Achado 1, rodada 6 da revisão de risco pré-publicação (26/09/2026,
+  // migration 80 — outra frente): a própria RPC já recusou este pedido com
+  // P0001 dizendo que o cartão pode estar em confirmação — isso É a prova de
+  // que "Cancelar pedido" bateria na mesma recusa de novo. DIFERENTE de
+  // `pedidoTemCobrancaIncerta` (acima): aquele também esconde "Pagar com
+  // PIX", que o servidor ACEITA mesmo com essa guarda ligada (o caso da URL
+  // de desafio 3DS inválida, achado 3 opcional da rodada 5). Este marcador
+  // só esconde o botão de cancelar — nada mais. Sem `useEffect` de reset por
+  // `orderId`: mesmo raciocínio já registrado no comentário de
+  // `pedidoTemCobrancaIncerta` (a mutação da rodada 4 provou que esse
+  // caminho nunca é alcançado nesta função) — `useState(false)` já nasce
+  // limpo a cada mount/pedido novo, sem precisar de um efeito para provar o
+  // óbvio uma segunda vez.
+  const [
+    cancelamentoBloqueadoPelaGuardaDoCartao,
+    setCancelamentoBloqueadoPelaGuardaDoCartao,
+  ] = useState(false);
   // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
   // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
   // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
@@ -2716,10 +2736,12 @@ export function CheckoutView({
     setErroCancelamento(null);
     try {
       if (isOffline) {
-        // Sem rede o ramo offline de useOrders só empilha e resolve — não
-        // vale nem tentar a RPC. Mensagem específica em vez do genérico.
+        // Sem rede, `updateOrderStatus` (useOrders.ts) já rejeita sozinho
+        // para o cliente (achado 1, rodada 5) — mas checar aqui evita até a
+        // viagem até lá. Mesma frase de `ErroCancelamentoOfflineRecusado`
+        // (achado 3, rodada 6): mesma causa, mesmo texto, os dois lugares.
         setErroCancelamento(
-          "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+          "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
         );
         return;
       }
@@ -2770,6 +2792,15 @@ export function CheckoutView({
           erroRpc !== null &&
           typeof erroRpc === "object" &&
           (erroRpc as { code?: unknown }).code === "P0001";
+        // Achado 1, rodada 6: a própria recusa da guarda já É a prova de que
+        // o cartão pode estar vivo — "Cancelar pedido" bateria na mesma
+        // recusa de novo. Ver o comentário grande em
+        // `cancelamentoBloqueadoPelaGuardaDoCartao`, acima: NUNCA
+        // `pedidoTemCobrancaIncerta` aqui, que também esconderia "Pagar com
+        // PIX".
+        if (guardaBarrouComMensagemPropria) {
+          setCancelamentoBloqueadoPelaGuardaDoCartao(true);
+        }
         // Precedente ADMIN-010 (#94): só não segue em frente quando a
         // gravação não é confirmada — nunca leva o cliente ao carrinho como
         // se o cancelamento tivesse dado certo.
@@ -3024,7 +3055,13 @@ export function CheckoutView({
                 terminal comum), nem "Tentar de novo" aparece (categoria
                 terminal) nem "Cancelar pedido" (marcador ligado): a caixa
                 ficava sem NENHUM botão. "Falar com a loja" evita o beco sem
-                saída. */}
+                saída.
+                Achado 1, rodada 6: `cancelamentoBloqueadoPelaGuardaDoCartao`
+                (acima) esconde SÓ este botão — a mensagem de
+                `erroCancelamento`, logo abaixo, já mostra o texto da própria
+                guarda ("...fale com a loja antes de cancelar"); "Tentar de
+                novo"/"Pagar com PIX" do bloco de `erroPagamento` continuam
+                do jeito que já estavam, sem depender deste marcador. */}
             {pedidoTemCobrancaIncerta ? (
               erroPagamento.categoria === "terminal" &&
               lojaTemWhatsappNoCheckout && (
@@ -3036,7 +3073,7 @@ export function CheckoutView({
                   Falar com a loja
                 </Button>
               )
-            ) : user ? (
+            ) : cancelamentoBloqueadoPelaGuardaDoCartao ? null : user ? (
               <Button
                 onClick={handleCancelarPedidoESairDoPagamento}
                 disabled={isCancelandoPedido}

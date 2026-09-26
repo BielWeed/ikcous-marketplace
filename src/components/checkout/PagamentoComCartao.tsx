@@ -614,9 +614,16 @@ export function PagamentoComCartao({
       onPronto: () => setFormularioPronto(true),
       onFalhaDeMontagem: () =>
         // `semCobranca`: o Brick nem chegou a montar (SDK que não carregou,
-        // chave pública ausente, `create()` que falhou, COEP bloqueando o
-        // iframe) — nenhum POST de cartão foi feito. Seguro oferecer PIX
-        // (achado B1, rodada 2 da revisão de risco pré-publicação).
+        // chave pública ausente, `create()` que falhou) — nenhum POST de
+        // cartão foi feito. Seguro oferecer PIX (achado B1, rodada 2 da
+        // revisão de risco pré-publicação).
+        //
+        // Addendum, rodada 6 (rehearsal de integração, 26/09/2026): esta
+        // lista já citou "COEP bloqueando o iframe" como uma das causas —
+        // o COEP saiu do app (branch `fix/coep-sai-do-app`), então essa
+        // causa específica não existe mais aqui. O teste do Brick contra o
+        // Mercado Pago de verdade continua no runbook, não numa suíte deste
+        // repositório.
         onErroRef.current(
           "Não foi possível carregar o pagamento.",
           "recuperavel",

@@ -587,9 +587,16 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
     expect(hospedeiro.textContent).not.toContain(
       "Não foi possível confirmar o cancelamento",
     );
-    expect(hospedeiro.textContent).toContain(
-      "Cancelar pedido e voltar ao carrinho",
-    );
+    // Achado 1, rodada 6: a PRÓPRIA recusa da guarda já prova que o cartão
+    // pode estar vivo — bater "Cancelar pedido" de novo só repete a mesma
+    // recusa. O botão some (mas o texto da guarda, acima, já diz "fale com
+    // a loja" — o cliente não fica sem informação).
+    expect(
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Cancelar pedido e voltar ao carrinho",
+      ),
+    ).toBeUndefined();
   });
 
   it("pedido já não-pendente, mas a releitura confirma 'cancelled' (expirado pelo pg_cron antes do clique): não tenta creditar estoque de novo — só devolve ao carrinho", async () => {
