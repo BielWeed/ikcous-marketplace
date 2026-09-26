@@ -366,12 +366,18 @@ jobs:
     # Distingue AUSENTE (o banco não tem) de INALCANÇÁVEL (tem, mas nenhum
     # papel da origem alcança) — defeitos de correção diferente.
     #
-    # PRECONDIÇÃO: o secret DATABASE_URL do repo (leitura de catálogo; mesmo
-    # valor do .env da máquina). Enquanto não existir, o script sai 0 com um
-    # ::warning:: visível no log — detector inerte é dívida declarada, não
-    # vermelho que o time aprende a ignorar (regra deste arquivo). A lógica
-    # em si já é coberta sem banco por tests/db_check_objetos_do_codigo_test.ts
-    # (caso da view sumida semeado), que roda no job Testes.
+    # PRECONDIÇÃO: o secret DATABASE_URL do repo tem de apontar para a LOJA
+    # (cafkrminfnokvgjqtkle), de preferência com um role só de leitura. Este
+    # job agora RECUSA um banco de outro projeto (PROJETO_REF_ESPERADO abaixo):
+    # em 19/09/2026 o secret apontava para o SANDBOX e o script não notava —
+    # imprimia "TODAS as referências existem" enquanto a loja estava sem as
+    # migrations 72-74. Se o log virar vermelho com "::error::...BANCO
+    # ERRADO...", o dono precisa corrigir o secret, não o código.
+    # Enquanto não existir DATABASE_URL, o script sai 0 com um ::warning::
+    # visível no log — detector inerte é dívida declarada, não vermelho que o
+    # time aprende a ignorar (regra deste arquivo). A lógica em si já é
+    # coberta sem banco por tests/db_check_objetos_do_codigo_test.ts (caso da
+    # view sumida semeado), que roda no job Testes.
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -383,4 +389,5 @@ jobs:
       - name: Confere objetos usados pelo código contra o catálogo do banco
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PROJETO_REF_ESPERADO: cafkrminfnokvgjqtkle
         run: node scripts/db-check-objetos-do-codigo.mjs

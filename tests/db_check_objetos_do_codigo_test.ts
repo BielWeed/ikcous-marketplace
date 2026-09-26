@@ -25,8 +25,10 @@ import {
  */
 import {
   avaliar,
+  conferirProjeto,
   extrairDeConteudo,
   formatar,
+  refDoProjeto,
 } from "../scripts/db-check-objetos-do-codigo.mjs";
 
 const CATÁLOGO = () => ({
@@ -232,4 +234,58 @@ Deno.test("edge function consulta com service_role alcança o que src não alcan
   assertEquals(r.ok.length, 1);
   assert(r.inalcançaveis[0].onde.startsWith("src/"));
   assert(r.ok[0].onde.includes("functions"));
+});
+
+/**
+ * refDoProjeto / conferirProjeto — trava contra o defeito medido: o secret
+ * DATABASE_URL do CI apontava para o projeto SANDBOX, não a loja
+ * (cafkrminfnokvgjqtkle), e o script nunca conferia. O log só mostra o host
+ * do pooler compartilhado (aws-0-us-west-2.pooler.supabase.com — IGUAL para
+ * qualquer projeto); o ref mora no host direto `db.<ref>.supabase.co` ou no
+ * usuário do pooler `postgres.<ref>`.
+ *
+ * Refs FICTÍCIOS nos testes de extração (não o ref real da loja) — a única
+ * exceção é a asserção sobre a string do ci.yml, que precisa ser o ref real
+ * para provar que o guard-rail está de fato ligado lá.
+ */
+const REF_FICTICIO = "abcdefghijklmnopqrst";
+
+Deno.test("refDoProjeto — pooler compartilhado: ref vem do usuário postgres.<ref>", () => {
+  const url = `postgres://postgres.${REF_FICTICIO}@aws-0-us-west-2.pooler.supabase.com:6543/postgres`;
+  assertEquals(refDoProjeto(url), REF_FICTICIO);
+});
+
+Deno.test("refDoProjeto — host direto db.<ref>.supabase.co", () => {
+  const url = `postgres://postgres@db.${REF_FICTICIO}.supabase.co:5432/postgres`;
+  assertEquals(refDoProjeto(url), REF_FICTICIO);
+});
+
+Deno.test("refDoProjeto — URL válida mas sem host/usuário reconhecível: null (não é erro, é 'não sei dizer')", () => {
+  const url = "postgres://postgres@localhost:5432/postgres";
+  assertEquals(refDoProjeto(url), null);
+});
+
+Deno.test("refDoProjeto — URL malformada não lança: null", () => {
+  assertEquals(refDoProjeto("isto-nao-e-uma-url"), null);
+  assertEquals(refDoProjeto(""), null);
+});
+
+Deno.test("conferirProjeto — ref igual ao esperado: ok", () => {
+  const r = conferirProjeto(REF_FICTICIO, REF_FICTICIO);
+  assertEquals(r.ok, true);
+});
+
+Deno.test("conferirProjeto — ref de outro projeto: reprova ANTES de qualquer query, com ::error::", () => {
+  const r = conferirProjeto("outroprojetoxxxxxxxx", REF_FICTICIO);
+  assertEquals(r.ok, false);
+  assertStringIncludes(r.mensagem, "::error::");
+  assertStringIncludes(r.mensagem, REF_FICTICIO);
+  assertStringIncludes(r.mensagem, "outroprojetoxxxxxxxx");
+});
+
+Deno.test("conferirProjeto — ref não identificado (null): reprova com ::error::, não confunde com 'igual'", () => {
+  const r = conferirProjeto(null, REF_FICTICIO);
+  assertEquals(r.ok, false);
+  assertStringIncludes(r.mensagem, "::error::");
+  assertStringIncludes(r.mensagem, "não identificado");
 });

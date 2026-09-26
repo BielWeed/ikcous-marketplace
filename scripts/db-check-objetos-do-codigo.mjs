@@ -202,6 +202,50 @@ export function avaliar(referencias, catalogo) {
   return { ausentes, inalcançaveis, ok };
 }
 
+/**
+ * Extrai o ref (20 caracteres) do projeto Supabase a partir da connection
+ * string — do host DIRETO `db.<ref>.supabase.co` ou do usuário do POOLER
+ * compartilhado `postgres.<ref>` (decodeURIComponent, pois o usuário pode vir
+ * percent-encoded). `null` quando não dá para saber — inclusive URL
+ * malformada — NUNCA lança. Exportada para teste.
+ *
+ * POR QUE ISTO EXISTE: o log de conexão só imprime o host do pooler
+ * compartilhado (`aws-0-us-west-2.pooler.supabase.com`), que é IGUAL para
+ * qualquer projeto Supabase — o ref mora no usuário, não no host. Foi assim
+ * que o secret DATABASE_URL do CI apontar para o projeto SANDBOX em vez da
+ * loja (cafkrminfnokvgjqtkle) passou despercebido: o log parecia normal.
+ */
+export function refDoProjeto(connectionString) {
+  try {
+    const url = new URL(connectionString);
+    const doHostDireto = /^db\.([a-z0-9]{20})\.supabase\.co$/.exec(
+      url.hostname,
+    );
+    if (doHostDireto) return doHostDireto[1];
+    const usuario = decodeURIComponent(url.username ?? "");
+    const doUsuarioDoPooler = /^postgres\.([a-z0-9]{20})$/.exec(usuario);
+    if (doUsuarioDoPooler) return doUsuarioDoPooler[1];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decisão PURA do guard-rail (BANCO-080 seguinte): compara o ref detectado
+ * com o esperado (env PROJETO_REF_ESPERADO). Não lê env, não conecta, não
+ * chama process.exit — main() decide a saída a partir de `ok`. Exportada
+ * para teste (importar main() direto é impraticável: abre conexão real).
+ */
+export function conferirProjeto(ref, esperado) {
+  if (ref === esperado) return { ok: true, mensagem: "" };
+  const achado = ref ?? "não identificado";
+  return {
+    ok: false,
+    mensagem: `::error::DATABASE_URL aponta para o projeto ${achado}, mas o esperado é ${esperado} — este detector compararia o código com o BANCO ERRADO (a mesma classe de falha que deixou vw_produtos_admin sumida sem reprovar o PR, #139). Aponte o secret DATABASE_URL para o projeto certo antes de rodar de novo.`,
+  };
+}
+
 /** Consulta o catálogo real + privilégios por papel. */
 export async function lerCatalogo(connectionString) {
   const { Client } = require("pg");
@@ -324,9 +368,24 @@ async function main() {
     );
     process.exit(0);
   }
-  console.log(
-    `Conectado em ${new URL(url).hostname} — só leitura de catálogo.`,
-  );
+  const host = new URL(url).hostname;
+  const ref = refDoProjeto(url);
+  console.log(`Conectado em ${host} (projeto ${ref ?? "não identificado"})`);
+
+  // Guard-rail: só roda quando PROJETO_REF_ESPERADO está setado (CI da loja),
+  // para não quebrar o uso local nem o efêmero (objetos-do-codigo-efemero.cjs
+  // importa as funções puras deste arquivo, mas NUNCA chama este main()).
+  // Reprova ANTES de qualquer query — comparar código com o BANCO ERRADO é
+  // pior que não comparar (o caso real: secret apontando para o sandbox).
+  const esperado = process.env.PROJETO_REF_ESPERADO;
+  if (esperado) {
+    const conferencia = conferirProjeto(ref, esperado);
+    if (!conferencia.ok) {
+      console.error(conferencia.mensagem);
+      process.exit(1);
+    }
+  }
+
   const { referencias, dinamicas } = extrairDoRepo();
   const catalogo = await lerCatalogo(url);
   if (!catalogo.bucketsAcessivel) {
