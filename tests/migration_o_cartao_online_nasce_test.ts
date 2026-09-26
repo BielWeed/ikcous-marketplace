@@ -109,6 +109,12 @@ Deno.test("achado 7 (rodada 2): o carimbo do estorno cobre TODO caminho para 'es
     !corpo.includes("SECURITY DEFINER"),
     "o gatilho não deveria elevar privilégio — só escreve na própria linha",
   );
+  // Baixa prioridade da rodada 3: REVOKE por hábito (mesma disciplina de
+  // devolucao_avisa_o_cliente em 20261175000000).
+  assertStringIncludes(
+    m,
+    "REVOKE ALL ON FUNCTION public.marca_estorno_direto_do_pedido() FROM PUBLIC, anon, authenticated;",
+  );
 });
 
 Deno.test("liberar_cobranca_do_pedido: só service role, com as três guardas", () => {

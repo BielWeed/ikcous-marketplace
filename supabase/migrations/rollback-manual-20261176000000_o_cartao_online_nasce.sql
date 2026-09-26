@@ -27,6 +27,18 @@
 -- grava mais o carimbo e 77 cai de volta para o updated_at (degradação
 -- silenciosa de dado, não erro de SQL — mas a guarda bloqueia mesmo assim,
 -- pela mesma ordem 78 -> 77 -> 76 -> 75).
+--
+-- BAIXA PRIORIDADE, mas registrado (revisão 26/09/2026, rodada 3): reverter
+-- ESTA migration (76) com a 75 (devoluções) ainda viva também REABRE o
+-- achado 1 — registrar_estorno_manual volta ao corpo de 20261072000000, sem
+-- o desconto de `v_ja_manual` (reembolso manual de devolução já concluída
+-- do mesmo pedido). "Já devolvi" voltaria a pagar o TOTAL cheio por cima do
+-- que uma devolução já devolveu por fora — o mesmo buraco de duas saídas
+-- pelo mesmo dinheiro que o achado 1 fechou. A guarda de ordem acima não
+-- verifica isto (75 não é revertida por ESTE arquivo, e não há erro de SQL
+-- nenhum nesse cenário) — é degradação de REGRA, não de schema, e por isso
+-- só documentada aqui: quem reverte por engano com 75 viva não recebe erro,
+-- recebe silêncio.
 -- ============================================================================
 
 DO $$

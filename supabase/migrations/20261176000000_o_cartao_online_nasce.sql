@@ -231,9 +231,12 @@ ALTER TABLE public.marketplace_orders
   ADD COLUMN IF NOT EXISTS estorno_manual_registrado_em timestamptz;
 
 COMMENT ON COLUMN public.marketplace_orders.estorno_manual_registrado_em IS
-  'Quando registrar_estorno_manual marcou payment_status = ''estornado'' '
-  '(achado F, 26/09/2026). NULL em pedido estornado manualmente ANTES desta '
-  'migration — o Financeiro cai para updated_at nesse caso legado.';
+  'Quando o pedido virou payment_status = ''estornado'' pela primeira vez '
+  '(achado F, 26/09/2026) — por registrar_estorno_manual OU por qualquer '
+  'outro caminho (o gatilho tr_marca_estorno_direto_do_pedido, achado 7, '
+  'cobre confirmar_pagamento e qualquer UPDATE futuro). NULL em pedido '
+  'estornado manualmente ANTES desta migration — o Financeiro cai para '
+  'updated_at nesse caso legado.';
 
 -- CREATE OR REPLACE de uma função nascida em 20261072000000: mesmo padrão de
 -- devolver_estoque (20261060000000) — a versão viva é sempre a da migration
@@ -331,6 +334,12 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+-- Mesma disciplina de devolucao_avisa_o_cliente (20261175000000): função de
+-- gatilho não precisa de EXECUTE de ninguém além do próprio mecanismo de
+-- trigger — REVOKE por hábito, não porque um SELECT direto valesse alguma
+-- coisa (o tipo `trigger` de retorno já recusa chamada fora de gatilho).
+REVOKE ALL ON FUNCTION public.marca_estorno_direto_do_pedido() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS tr_marca_estorno_direto_do_pedido ON public.marketplace_orders;
 CREATE TRIGGER tr_marca_estorno_direto_do_pedido
