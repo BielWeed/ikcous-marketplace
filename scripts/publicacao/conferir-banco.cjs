@@ -146,6 +146,21 @@
  *    trocado por `projeto: loja` (o texto antigo sobrevivia como instrução
  *    obsoleta) + nota de que disparar pela API com `projeto_ref` depois
  *    do merge da rodada 2 dá 422 (o input não existe mais).
+ *
+ * REVISÃO DE RISCO DA RODADA 4 (26/09/2026) — "passa" para produção, com um
+ * achado de código: `4a-definer-alcancavel-pelo-leitor.sql` (item 3 acima)
+ * só olhava o schema `public` — o revisor provou que uma função `SECURITY
+ * DEFINER` concedida a `PUBLIC` em QUALQUER OUTRO schema (ex.: um schema de
+ * extensão) TAMBÉM escreve quando o papel de leitura a chama. A consulta
+ * passou a varrer todo schema (menos `pg_catalog`/`information_schema`,
+ * sistema do próprio Postgres) e a projetar `schema.função`, em vez de só
+ * o nome. Ganhou também uma linha sentinela para "o papel não existe neste
+ * projeto" (`to_regrole(...) IS NULL`) — sem ela, "0 linhas" seria ambíguo
+ * entre "nada alcançável" (bom) e "não dava pra saber" (o resultado não
+ * provava nada). Os dois outros achados da rodada foram fora de código:
+ * `queue: max` nos dois workflows (validado contra o schema oficial do
+ * GitHub Actions) e a fusão com o branch que trouxe a migration 80/81 e o
+ * fix irmão de `projeto_ref` em `aplicar-migrations.yml`.
  */
 /* eslint-disable security/detect-object-injection --
  * As "chaves" indexadas neste arquivo nunca vêm de entrada externa sem

@@ -49,6 +49,19 @@
  *    SHA-256 pinado (`conferirHashDoLedger`) como segunda checagem,
  *    independente da contagem de statements.
  *
+ * RODADA 4 (26/09/2026) — re-revisão "passa" para rodar em produção. Achado
+ * #2 (o único de código; achado #1 era só o merge de outro branch, sem
+ * teste próprio deste arquivo — ver `docs/runbooks/...md`):
+ *
+ * `4a-definer-alcancavel-pelo-leitor.sql` só olhava o schema `public` — o
+ * revisor provou (cenário E do `q4a.cjs`) que uma função `SECURITY
+ * DEFINER` concedida a `PUBLIC` em QUALQUER OUTRO schema também escreve
+ * quando chamada pelo papel de leitura. A consulta agora varre todo schema
+ * (menos `pg_catalog`/`information_schema`) e projeta `schema.função`, e
+ * ganhou uma linha sentinela para "o papel não existe neste projeto" — sem
+ * ela, "0 linhas" seria ambíguo entre "nada alcançável" e "não dava pra
+ * saber".
+ *
  * O QUE ESTES TESTES MEDEM (visão geral):
  * - O workflow, do jeito que está no arquivo: só dispara à mão, nenhum
  *   `node -e` inline, `consulta` bate com os arquivos do disco, `projeto`
@@ -397,7 +410,7 @@ Deno.test("dividirEmStatements/contarStatements — o lexer, inclusive P1-P8", a
   );
 
   await t.step(
-    "4a-definer-alcancavel-pelo-leitor.sql confere SECURITY DEFINER contra o papel certo, com to_regrole (rodada 3)",
+    "4a-definer-alcancavel-pelo-leitor.sql confere SECURITY DEFINER em QUALQUER schema, com sentinela de papel ausente (rodada 4)",
     async () => {
       const sql = await Deno.readTextFile(
         `${CONSULTAS_DIR}/4a-definer-alcancavel-pelo-leitor.sql`,
@@ -409,9 +422,37 @@ Deno.test("dividirEmStatements/contarStatements — o lexer, inclusive P1-P8", a
         "to_regrole('supabase_read_only_user')",
         "sem to_regrole, a consulta ERRA (em vez de ficar muda) se o papel não existir",
       );
-      // Só o nome da função — nada de assinatura, corpo ou schema de outro
-      // lugar que pareça mais informação do que "está alcançável ou não".
-      assertStringIncludes(sql, "SELECT p.proname");
+      // Rodada 4: não pode mais filtrar só `public` — uma definer alcançável
+      // em QUALQUER OUTRO schema também escreve (achado E do revisor).
+      assert(
+        !/pronamespace\s*=\s*'public'/.test(sql),
+        "a consulta não pode mais filtrar só o schema public",
+      );
+      assertStringIncludes(
+        sql,
+        "pg_catalog",
+        "precisa excluir pg_catalog explicitamente ao olhar todos os schemas",
+      );
+      assertStringIncludes(
+        sql,
+        "information_schema",
+        "precisa excluir information_schema explicitamente ao olhar todos os schemas",
+      );
+      // Rodada 4: sentinela — "0 linhas" não pode significar a mesma coisa
+      // quando o papel não existe e quando ele existe e nada é alcançável.
+      assertStringIncludes(
+        sql,
+        "AUSENTE",
+        "precisa de uma linha sentinela distinguindo 'papel ausente' de 'nada alcançável'",
+      );
+      assertStringIncludes(
+        sql,
+        "IS NULL",
+        "a sentinela precisa disparar quando to_regrole(...) vier NULL",
+      );
+      // Combina schema + nome — não é mais só o nome cru da função, porque
+      // agora o mesmo nome pode existir em dois schemas diferentes.
+      assertStringIncludes(sql, "pronamespace::regnamespace || '.' || proname");
     },
   );
 });

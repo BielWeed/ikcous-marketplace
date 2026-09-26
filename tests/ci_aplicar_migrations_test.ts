@@ -1,21 +1,26 @@
 // @ts-nocheck
 /**
- * Teste MÍNIMO para o achado #1 da revisão de risco da rodada 2 do
- * conferir-banco-da-loja: `.github/workflows/aplicar-migrations.yml` tinha
- * o MESMO defeito de `projeto_ref` como texto livre indo direto para o
- * path da URL, com um token válido para todos os projetos da conta.
+ * Testes para `.github/workflows/aplicar-migrations.yml`, reunindo os
+ * achados de duas frentes que mexeram nesse mesmo arquivo e se juntaram no
+ * merge de `claude/pensive-mendel-b1fnuu` (26/09/2026):
  *
- * Este arquivo NÃO tenta cobrir o workflow inteiro (isso mora em outro
- * branch, `fix/ci-banco-confere-projeto`, que mexe num comentário perto da
- * linha ~115 — este arquivo não toca essa área). Cobre só:
- *
- * 1. O input `projeto_ref` (texto livre) sumiu; entrou `projeto`, `choice`
- *    fechado em loja/sandbox.
- * 2. O trecho de resolução do ref — extraído do PRÓPRIO arquivo entre os
- *    marcadores `RESOLVE_REF_INICIO`/`RESOLVE_REF_FIM`, não copiado — recusa
- *    qualquer `PROJETO` que não seja exatamente "loja" ou "sandbox",
- *    inclusive os dois payloads que a revisão provou contra um stub:
- *    "<ref>/restart#" e "x/../outroref.../database/query#".
+ * 1. Achado #1 da revisão de risco da rodada 2 do conferir-banco-da-loja:
+ *    `projeto_ref` como texto livre ia direto para o path da URL, com um
+ *    token válido para todos os projetos da conta. O input `projeto_ref`
+ *    sumiu; entrou `projeto`, `choice` fechado em loja/sandbox. O trecho de
+ *    resolução do ref — extraído do PRÓPRIO arquivo entre os marcadores
+ *    `RESOLVE_REF_INICIO`/`RESOLVE_REF_FIM`, não copiado — recusa qualquer
+ *    `PROJETO` que não seja exatamente "loja" ou "sandbox", inclusive os
+ *    dois payloads que a revisão provou contra um stub: "<ref>/restart#" e
+ *    "x/../outroref.../database/query#".
+ * 2. Achado de `fix/ci-banco-confere-projeto` (branch `734d4a51`, hoje
+ *    reunido neste mesmo arquivo pelo merge): o `node -e "…"` do step
+ *    "Prova, apply e verificação" já tinha rodado com crase solta dentro de
+ *    um comentário (`` `is_admin()` ``/`` `postgres` ``), e o bash tentou
+ *    rodar isso como substituição de comando — "command substitution:
+ *    syntax error" / "postgres: command not found" no log, nenhuma
+ *    migration aplicada. O teste de baixo conta crase ou `$` NÃO escapado
+ *    (`` \` ``/`\$`) dentro do argumento do `node -e` inteiro.
  *
  * Extraído e não copiado: copiado, o teste continuaria passando enquanto o
  * arquivo real apodrecesse (mesmo raciocínio de

@@ -56,6 +56,9 @@ Correspondência com os passos deste runbook:
 - **§1.2** — `consulta = 1b-conferir-marcadores`.
 - **§1.3** — `gravar_ledger = 75-78`, `confirmar = GRAVAR`. Depois de gravar, o job imprime as
   linhas de `supabase_migrations.schema_migrations` para 72–78 (leitura, à parte do `INSERT`).
+  **`gravar_ledger` só tem as faixas 72-74 e 75-78** — o `INSERT` do ledger da **80** (§1.4) e de
+  qualquer migration além da 78 (79, 81, 82...) **não é coberto pela ferramenta**: continua manual,
+  com o `INSERT` do próprio runbook (ex.: o do fim do §1.4).
 - **Backup** (checklist do §0) — `consulta = backups`: imprime a hora do último backup, o
   status, se o PITR está ligado e o total — nada que pareça segredo.
 
@@ -64,10 +67,13 @@ dentro de `customer_data.address` (janela 23/09–26/09/2026) que decide se uma 
 necessária — nenhum CPF sai na saída, só contagens.
 
 O `consulta = 4a-definer-alcancavel-pelo-leitor` é uma checagem de segurança avulsa (rodada 3 da
-revisão de risco): lista, só pelo nome, toda função `SECURITY DEFINER` em `public` que o papel
+revisão de risco, ampliada na rodada 4): lista, como `schema.função`, toda função `SECURITY
+DEFINER` em QUALQUER schema (menos `pg_catalog`/`information_schema`) que o papel
 `supabase_read_only_user` consegue executar — o papel não ter grant de escrita numa tabela não
-impede uma função dessas de escrever por dentro. Esperado: 0 linhas. Rode manualmente depois de
-criar qualquer função `SECURITY DEFINER` nova.
+impede uma função dessas de escrever por dentro, **em nenhum schema, não só `public`**. Esperado:
+0 linhas; se vier a linha "(supabase_read_only_user AUSENTE — resultado não vale)", o papel não
+existe neste projeto e o resultado não prova nada — rode de novo depois de confirmar o papel certo.
+Rode manualmente depois de criar qualquer função `SECURITY DEFINER` nova, em qualquer schema.
 
 ## A ordem, e o que acontece se ela for trocada
 
@@ -332,7 +338,7 @@ o §1.1/§1.2 confirmarem que 75 e 76 estão de pé (ela lê `metodo_online` e `
    20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
    ```
 
-3. Deixe `projeto_ref` **no padrão**, que é o projeto da loja.
+3. Deixe `projeto` em `loja` (default).
 
 Esta migration tem um **preflight** (`B1_BASELINE_DIVERGENT`, `DO $preflight_20261180$` no topo
 do arquivo) que recusa ANTES de qualquer `CREATE` se `marketplace_orders.metodo_online` ou
