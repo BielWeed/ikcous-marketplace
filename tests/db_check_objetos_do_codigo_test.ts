@@ -242,11 +242,16 @@ Deno.test("edge function consulta com service_role alcança o que src não alcan
  * (cafkrminfnokvgjqtkle), e o script nunca conferia. O log só mostra o host
  * do pooler compartilhado (aws-0-us-west-2.pooler.supabase.com — IGUAL para
  * qualquer projeto); o ref mora no host direto `db.<ref>.supabase.co` ou no
- * usuário do pooler `postgres.<ref>`.
+ * usuário do pooler `<role>.<ref>` — QUALQUER role, não só `postgres`
+ * (Supavisor aceita um role de leitura como `leitor_catalogo.<ref>`; uma
+ * regra que exigisse o literal `postgres.` devolveria `null` para esse role
+ * e ficaria vermelha para sempre).
  *
- * Refs FICTÍCIOS nos testes de extração (não o ref real da loja) — a única
- * exceção é a asserção sobre a string do ci.yml, que precisa ser o ref real
- * para provar que o guard-rail está de fato ligado lá.
+ * Refs FICTÍCIOS em TODOS os casos deste arquivo — só testa as funções puras
+ * `refDoProjeto`/`conferirProjeto`, importadas isoladas, nunca através de
+ * `main()`. A fiação de verdade (o `ci.yml` passar PROJETO_REF_ESPERADO com o
+ * ref REAL da loja, e o processo `node scripts/...` recusar antes de
+ * conectar) é coberta à parte, em tests/ci_objetos_do_codigo_test.ts.
  */
 const REF_FICTICIO = "abcdefghijklmnopqrst";
 
@@ -258,6 +263,23 @@ Deno.test("refDoProjeto — pooler compartilhado: ref vem do usuário postgres.<
 Deno.test("refDoProjeto — host direto db.<ref>.supabase.co", () => {
   const url = `postgres://postgres@db.${REF_FICTICIO}.supabase.co:5432/postgres`;
   assertEquals(refDoProjeto(url), REF_FICTICIO);
+});
+
+Deno.test("refDoProjeto — pooler com ROLE DE LEITURA (não é 'postgres'): o achado real da revisão", () => {
+  // O ci.yml deste commit recomenda um role só-de-leitura para o secret
+  // DATABASE_URL. No Supavisor o usuário do pooler é <role>.<ref> para
+  // QUALQUER role — uma regex presa ao literal "postgres." devolveria null
+  // aqui e o guard ficaria vermelho para sempre com esse role.
+  const url = `postgres://leitor_catalogo.${REF_FICTICIO}@aws-0-us-west-2.pooler.supabase.com:6543/postgres`;
+  assertEquals(refDoProjeto(url), REF_FICTICIO);
+});
+
+Deno.test("refDoProjeto — host com SUFIXO depois do domínio real (db.<ref>.supabase.co.evil.net): null", () => {
+  // `$` no fim do padrão do host direto já cobre isto, mas o caso fica
+  // explícito: um host forjado com o domínio verdadeiro NO MEIO não pode
+  // colar o ref de ninguém.
+  const url = `postgres://postgres@db.${REF_FICTICIO}.supabase.co.evil.net:5432/postgres`;
+  assertEquals(refDoProjeto(url), null);
 });
 
 Deno.test("refDoProjeto — URL válida mas sem host/usuário reconhecível: null (não é erro, é 'não sei dizer')", () => {

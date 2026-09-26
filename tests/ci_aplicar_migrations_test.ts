@@ -3,17 +3,21 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 /**
  * .github/workflows/aplicar-migrations.yml — o passo "Prova, apply e
  * verificação" roda um `node -e "…"` DENTRO de um `run: |` do bash. O
- * argumento do `-e` é uma string bash entre ASPAS DUPLAS: qualquer backtick
- * (`` ` ``) que sobre SEM escapar dentro dela vira início de substituição de
- * comando para o bash — não para o node. Foi o que aconteceu de verdade: um
- * comentário com `` `is_admin()` `` e `` `postgres` `` (crases de destaque,
- * não de template literal) produziu "command substitution: syntax error" e
- * "postgres: command not found" no log do workflow, sem nenhuma migration
- * ter rodado.
+ * argumento do `-e` é uma string bash entre ASPAS DUPLAS: dois caracteres
+ * soltos (sem `\` antes) mudam de sentido para o bash em vez do node —
+ *   - backtick (`` ` ``) vira início de substituição de comando;
+ *   - `$` vira início de expansão de variável (`${x}` sai VAZIO em silêncio
+ *     se `x` não for uma env var do shell — defeito que não aparece como
+ *     erro, só como SQL/JS truncado).
+ * Foi o backtick que aconteceu de verdade: um comentário com
+ * `` `is_admin()` `` e `` `postgres` `` (crases de destaque, não de template
+ * literal) produziu "command substitution: syntax error" e "postgres:
+ * command not found" no log do workflow, sem nenhuma migration ter rodado.
  *
- * As crases DE TEMPLATE LITERAL do próprio JS (as `` \` `` que abrem os
- * `sql('...', \`select ...\`)`) estão corretamente ESCAPADAS para o bash — é
- * isso que este teste distingue: conta só a crase que NÃO tem `\` logo antes.
+ * As crases e os `$` DE TEMPLATE LITERAL do próprio JS (as `` \` `` que abrem
+ * os `sql('...', \`select ...\`)`, e o `\$` do regex de nome de arquivo) estão
+ * corretamente ESCAPADOS para o bash — é isso que este teste distingue: conta
+ * só o caractere que NÃO tem `\` logo antes.
  */
 import {
   assert,
@@ -60,34 +64,40 @@ function argumentoDoNodeE(blocoRun: string): string {
   return linhas.slice(iAbre + 1, iFecha).join("\n");
 }
 
-/** Conta backtick que NÃO está escapado (`` \` ``) — dentro de uma string bash
- * com aspas duplas, é exatamente esse backtick que o shell tenta rodar como
- * substituição de comando. Exportada só para os casos deste teste. */
-function backticksNaoEscapados(texto: string): number {
-  const m = texto.match(/(?<!\\)`/g);
+/** Conta backtick ou `$` que NÃO está escapado (`` \` ``/`\$`) — dentro de uma
+ * string bash com aspas duplas, são exatamente esses dois caracteres que o
+ * shell interpreta no lugar do node (substituição de comando e expansão de
+ * variável). Função local, não exportada — usada só pelos casos deste
+ * arquivo de teste. */
+function crasesOuCifraoNaoEscapados(texto: string): number {
+  const m = texto.match(/(?<!\\)[`$]/g);
   return m ? m.length : 0;
 }
 
-Deno.test("backticksNaoEscapados distingue crase escapada de crase solta", () => {
-  assertEquals(backticksNaoEscapados(String.raw`sql(\`select 1\`)`), 0);
+Deno.test("crasesOuCifraoNaoEscapados distingue escapado de solto (crase e $)", () => {
+  assertEquals(crasesOuCifraoNaoEscapados(String.raw`sql(\`select 1\`)`), 0);
+  assertEquals(crasesOuCifraoNaoEscapados(String.raw`\.sql\$`), 0);
   // 4 crases soltas: as duas de `is_admin()` e as duas de `postgres` — o
   // defeito real medido (linha 115 da versão quebrada do workflow).
   assertEquals(
-    backticksNaoEscapados("gate `is_admin()` nega o role `postgres`"),
+    crasesOuCifraoNaoEscapados("gate `is_admin()` nega o role `postgres`"),
     4,
   );
+  // `$` solto: ${x} viraria expansão de variável do bash, não do JS.
+  assertEquals(crasesOuCifraoNaoEscapados("template ${x} solto"), 1);
 });
 
-Deno.test("o node -e do step 'Prova, apply e verificação' não tem backtick sem escapar para o bash", async () => {
+Deno.test("o node -e do step 'Prova, apply e verificação' não tem crase nem $ sem escapar para o bash", async () => {
   const yaml = await Deno.readTextFile(WORKFLOW);
   const bloco = blocoRunDoStep(yaml, "Prova, apply e verificação");
   const argumento = argumentoDoNodeE(bloco);
-  const total = backticksNaoEscapados(argumento);
+  const total = crasesOuCifraoNaoEscapados(argumento);
   assertEquals(
     total,
     0,
-    'backtick sem escapar dentro do node -e "...": o bash vai tentar rodar ' +
+    'crase ou $ sem escapar dentro do node -e "...": o bash vai tentar rodar ' +
       'como comando ("command substitution: syntax error" / ' +
-      '"postgres: command not found" no log do workflow)',
+      '"postgres: command not found") ou expandir uma variável inexistente ' +
+      "em silêncio (SQL/JS truncado) no log do workflow",
   );
 });

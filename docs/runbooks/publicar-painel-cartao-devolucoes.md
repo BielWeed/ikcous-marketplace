@@ -118,7 +118,7 @@ O cabeçalho de cada migration diz "COMO APLICAR: `node scripts/db-apply.cjs`". 
 - o projeto de destino fica explícito.
 
 Além disso, `DATABASE_URL` já apontou para o projeto errado: a passagem de 19/09/2026 registra o
-segredo do repositório apontando para outro projeto. A partir deste commit, o job "Código x banco
+segredo do repositório apontando para outro projeto. Desde 26/09/2026, o job "Código x banco
 (objetos usados)" do `ci.yml` fica VERMELHO enquanto esse secret continuar apontando para o
 sandbox, em vez de silenciosamente comparar o código com o banco errado.
 

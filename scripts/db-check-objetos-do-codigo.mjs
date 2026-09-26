@@ -205,7 +205,7 @@ export function avaliar(referencias, catalogo) {
 /**
  * Extrai o ref (20 caracteres) do projeto Supabase a partir da connection
  * string — do host DIRETO `db.<ref>.supabase.co` ou do usuário do POOLER
- * compartilhado `postgres.<ref>` (decodeURIComponent, pois o usuário pode vir
+ * compartilhado `<role>.<ref>` (decodeURIComponent, pois o usuário pode vir
  * percent-encoded). `null` quando não dá para saber — inclusive URL
  * malformada — NUNCA lança. Exportada para teste.
  *
@@ -214,6 +214,14 @@ export function avaliar(referencias, catalogo) {
  * qualquer projeto Supabase — o ref mora no usuário, não no host. Foi assim
  * que o secret DATABASE_URL do CI apontar para o projeto SANDBOX em vez da
  * loja (cafkrminfnokvgjqtkle) passou despercebido: o log parecia normal.
+ *
+ * O usuário do pooler (Supavisor) NÃO é sempre `postgres`: é `<role>.<ref>`
+ * para QUALQUER role, inclusive o role só-de-leitura que este mesmo commit
+ * recomenda no comentário do ci.yml (ex.: `leitor_catalogo.<ref>`). Uma
+ * regra que só aceitasse o literal `postgres.` devolveria `null` para esse
+ * role — vermelho permanente que empurra o dono a colocar a senha do
+ * `postgres` no CI. Por isso o padrão exigido é só "termina em `.<ref>`",
+ * não "começa com postgres.".
  */
 export function refDoProjeto(connectionString) {
   try {
@@ -223,7 +231,7 @@ export function refDoProjeto(connectionString) {
     );
     if (doHostDireto) return doHostDireto[1];
     const usuario = decodeURIComponent(url.username ?? "");
-    const doUsuarioDoPooler = /^postgres\.([a-z0-9]{20})$/.exec(usuario);
+    const doUsuarioDoPooler = /\.([a-z0-9]{20})$/.exec(usuario);
     if (doUsuarioDoPooler) return doUsuarioDoPooler[1];
     return null;
   } catch {
@@ -370,7 +378,9 @@ async function main() {
   }
   const host = new URL(url).hostname;
   const ref = refDoProjeto(url);
-  console.log(`Conectado em ${host} (projeto ${ref ?? "não identificado"})`);
+  // "Alvo", não "Conectado": nenhuma conexão foi aberta ainda — no caminho de
+  // recusa (abaixo) NENHUMA será.
+  console.log(`Alvo: ${host} (projeto ${ref ?? "não identificado"})`);
 
   // Guard-rail: só roda quando PROJETO_REF_ESPERADO está setado (CI da loja),
   // para não quebrar o uso local nem o efêmero (objetos-do-codigo-efemero.cjs
