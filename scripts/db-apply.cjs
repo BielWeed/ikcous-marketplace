@@ -2216,6 +2216,20 @@ const VERIFICACOES = {
       esperado: ["AND o.status NOT IN ('cancelled', 'returned')"],
     },
   ],
+  // CANCELAR_DEVOLUCAO BARRA A COMPRA EM VOO (achado A1 da revisão de risco
+  // pré-publicação de 26/09/2026 sobre a etiqueta reversa do Melhor Envio).
+  // Sem os dois marcadores, a função voltaria a deixar cancelar uma
+  // devolução com a etiqueta reversa sendo comprada (ou já paga) no Melhor
+  // Envio, sem avisar o lojista — o mesmo buraco de dinheiro da 20261175000000.
+  "20261179000000_cancelar_devolucao_barra_compra_em_voo.sql": [
+    {
+      funcao: "cancelar_devolucao",
+      esperado: [
+        "IF v_d.me_reverse_id IS NOT NULL AND v_d.codigo_postagem IS NULL THEN",
+        "PERFORM public.devolucao__registrar_evento(\n      p_id, 'cancelada', 'cancelada', 'sistema',",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

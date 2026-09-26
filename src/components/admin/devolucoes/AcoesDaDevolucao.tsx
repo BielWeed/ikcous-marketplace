@@ -342,9 +342,11 @@ export function AcoesDaDevolucao({
           {acoes.includes("gerar_etiqueta") && (
             <div className="space-y-2 rounded-xl border border-white/5 bg-zinc-950/40 p-3">
               <p className="text-xs leading-relaxed text-zinc-400">
-                O pedido saiu por etiqueta do Melhor Envio: gere o código de
-                postagem reversa. O cliente leva o pacote a uma agência dos
-                Correios com ele.
+                {detalhe.codigo_postagem
+                  ? // Achado A2: código já existe, só falta a DC-e (R6) — a
+                    // edge trata este caminho sem cobrar de novo.
+                    "O código de postagem já saiu, mas a declaração de conteúdo (DC-e) não veio do Melhor Envio ainda. Busque de novo: não gera compra nova."
+                  : "O pedido saiu por etiqueta do Melhor Envio: gere o código de postagem reversa. O cliente leva o pacote a uma agência dos Correios com ele."}
               </p>
               <button
                 type="button"
@@ -353,7 +355,9 @@ export function AcoesDaDevolucao({
                 className={cn(BOTAO_PRINCIPAL, "w-full")}
               >
                 {girando("etiqueta") ?? <Tag className="size-4" />}
-                Gerar código de postagem
+                {detalhe.codigo_postagem
+                  ? "Buscar DC-e / conferir código"
+                  : "Gerar código de postagem"}
               </button>
             </div>
           )}

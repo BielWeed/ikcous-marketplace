@@ -561,13 +561,21 @@ export function acoesDoLojista(d: {
   status: StatusDevolucao;
   metodo_retorno: MetodoDevolucao;
   codigo_postagem?: string | null;
+  etiqueta_url?: string | null;
 }): AcaoDoLojista[] {
   switch (d.status) {
     case "solicitada":
       return ["aprovar", "recusar"];
     case "aprovada": {
       const acoes: AcaoDoLojista[] = [];
-      if (d.metodo_retorno === "etiqueta_reversa" && !d.codigo_postagem) {
+      // Achado A2 (revisão de risco de 26/09/2026): sem o código, é "gerar";
+      // com o código mas sem o link da DC-e (R6 — a geração pode falhar
+      // depois do pagamento), a ação continua ali como "buscar de novo" — a
+      // edge já trata isso sem comprar de novo. Só some com os dois prontos.
+      if (
+        d.metodo_retorno === "etiqueta_reversa" &&
+        (!d.codigo_postagem || !d.etiqueta_url)
+      ) {
         acoes.push("gerar_etiqueta");
       }
       // Quem entrega na loja não fica "a caminho": chega no balcão.
@@ -673,6 +681,7 @@ export function instrucaoParaOCliente(
     | "tipo"
     | "metodo_retorno"
     | "codigo_postagem"
+    | "etiqueta_url"
     | "codigo_rastreio"
     | "coleta_em"
     | "resolucao_final"
@@ -695,10 +704,18 @@ export function instrucaoParaOCliente(
           return d.coleta_em
             ? `A loja vai buscar o produto no endereço do pedido em ${formatarDataHora(d.coleta_em)}.`
             : "A loja vai combinar com você o dia e o horário da coleta no endereço do pedido.";
-        case "etiqueta_reversa":
-          return d.codigo_postagem
+        case "etiqueta_reversa": {
+          if (!d.codigo_postagem) {
+            return "A loja está gerando o código de postagem dos Correios. Ele aparece aqui assim que ficar pronto.";
+          }
+          // Achado A2 (revisão de risco de 26/09/2026): o código pode sair
+          // ANTES da declaração de conteúdo (DC-e — R6). Sem `etiqueta_url`
+          // o botão "Etiqueta" não existe (DevolucaoDoPedidoCard.tsx) — a
+          // frase não pode prometê-lo enquanto isso.
+          return d.etiqueta_url
             ? "Imprima a declaração de conteúdo (botão Etiqueta) e leve o pacote a uma agência dos Correios em até 7 dias, informando o código de postagem abaixo — ele também é o rastreio da devolução. Depois de postar, toque em “Já postei”."
-            : "A loja está gerando o código de postagem dos Correios. Ele aparece aqui assim que ficar pronto.";
+            : "A loja está preparando a declaração de conteúdo (DC-e), obrigatória para postar. Ela aparece aqui como um botão “Etiqueta” assim que ficar pronta — vale a pena esperar antes de ir aos Correios com o código abaixo.";
+        }
         default:
           return d.tipo === "troca"
             ? "Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui."
@@ -1183,6 +1200,12 @@ export function lerRespostaEtiquetaReversa(
       etiqueta_url: texto(campo(v, "etiqueta_url")),
       ja_existia: campo(v, "already") === true,
       validade_ate: texto(campo(v, "validade_ate")),
+      // Achado A2 (revisão de risco de 26/09/2026): estes três campos
+      // (R6/R8 + o aviso novo de A1) já saíam da edge, mas o leitor os
+      // descartava — o painel só via o toast de sucesso.
+      expirado: campo(v, "expirado") === true,
+      dcePendente: campo(v, "dce_pendente") === true,
+      aviso: texto(campo(v, "aviso")),
     },
   };
 }

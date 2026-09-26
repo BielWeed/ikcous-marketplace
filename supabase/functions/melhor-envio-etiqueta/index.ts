@@ -530,22 +530,27 @@ async function gravarEvento(
  * (DELETE /api/v2/me/cart/{id}). Usada quando esta geração NÃO vai
  * acontecer: o item não pode ficar no carrinho — se o lojista "comprar o
  * carrinho" no site do ME, pagaria por ele sem querer (revisor, item 4).
- * Falha suave: se o DELETE não sair, a etiqueta não-paga expira sozinha no
- * carrinho do ME; o erro original importa mais.
+ * Falha suave para quem chama (nunca derruba a resposta): se o DELETE não
+ * sair, a etiqueta não-paga expira sozinha no carrinho do ME. Mas a chamada
+ * DEVOLVE se saiu (achado A4 da revisão de risco de 26/09/2026) — antes o
+ * retorno era `void` e a frase da reversa dizia "o envio saiu do carrinho"
+ * mesmo quando o DELETE tinha falhado.
  */
 async function removerDoCarrinho(
     buscar: typeof fetch,
     baseUrl: string,
     headersME: Record<string, string>,
     labelId: string,
-): Promise<void> {
+): Promise<boolean> {
     try {
-        await buscarComTempo(buscar, `${baseUrl}/api/v2/me/cart/${labelId}`, {
+        const resposta = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/cart/${labelId}`, {
             method: 'DELETE',
             headers: headersME,
         })
+        return resposta.ok
     } catch (err) {
         console.error('[melhor-envio-etiqueta] Falha ao remover item do carrinho do ME (suave):', err)
+        return false
     }
 }
 
@@ -830,7 +835,11 @@ function avisoDeCodigoVencido(validadeAte: string): string {
 /**
  * Corpo de sucesso com o código de postagem. Nunca é um `ok: true` mudo:
  *   * sem o link da DC-e → `dce_pendente: true` + `aviso` (R6);
- *   * validade conhecida → `validade_ate` + `expirado`; vencido → `aviso` (R8).
+ *   * validade conhecida → `validade_ate` + `expirado`; vencido → `aviso` (R8);
+ *   * devolução não mais 'aprovada' na hora de gravar o código → `aviso`
+ *     mandando o lojista cancelar o envio reverso no Melhor Envio (achado A1
+ *     da revisão de risco de 26/09/2026 — a etiqueta acabou de sair paga para
+ *     uma devolução que já não está mais em pé).
  */
 function corpoComCodigoDePostagem(dados: {
     already: boolean
@@ -838,8 +847,10 @@ function corpoComCodigoDePostagem(dados: {
     etiquetaUrl: string | null
     meId: string
     validade: { validade_ate: string; expirado: boolean } | null
+    avisoDevolucaoMudou?: string | null
 }): Record<string, unknown> {
     const avisos: string[] = []
+    if (dados.avisoDevolucaoMudou) avisos.push(dados.avisoDevolucaoMudou)
     if (!dados.etiquetaUrl) avisos.push(AVISO_DCE_PENDENTE)
     if (dados.validade?.expirado) avisos.push(avisoDeCodigoVencido(dados.validade.validade_ate))
     return {
@@ -923,18 +934,31 @@ function respostaReversaEmAndamento(): Response {
     )
 }
 
-/** Solta a reserva/vínculo — condicional ao valor que ESTA chamada gravou. */
-async function liberarVinculoReverso(ctx: ContextoReversa, valorAtual: string): Promise<void> {
-    try {
-        const { error } = await ctx.supabase
-            .from('devolucoes')
-            .update({ me_reverse_id: null })
-            .eq('id', ctx.devolucaoId)
-            .eq('me_reverse_id', valorAtual)
-        if (error) console.error('[melhor-envio-etiqueta] reversa: falha ao liberar a reserva:', error?.code ?? error?.message ?? 'erro')
-    } catch (err) {
-        console.error('[melhor-envio-etiqueta] reversa: exceção ao liberar a reserva:', sanitizarDadosPessoaisDoTexto(String(err)))
+/**
+ * Solta a reserva/vínculo — condicional ao valor que ESTA chamada gravou.
+ * Achado A3 da revisão de risco de 26/09/2026: uma falha aqui, depois de uma
+ * recusa DEFINIDA do Melhor Envio, deixava a devolução presa a um envio que
+ * já saiu do carrinho — sem dinheiro em jogo, mas sem saída (toda chamada
+ * seguinte respondia como se o pagamento ainda estivesse pendente no ME).
+ * UMA retentativa (a falha mais comum aqui é uma queda de conexão passageira
+ * com o Postgres, não um erro permanente); devolve se soltou, para quem
+ * chama decidir entre a resposta de sempre e um erro honesto.
+ */
+async function liberarVinculoReverso(ctx: ContextoReversa, valorAtual: string): Promise<boolean> {
+    for (let tentativa = 1; tentativa <= 2; tentativa++) {
+        try {
+            const { error } = await ctx.supabase
+                .from('devolucoes')
+                .update({ me_reverse_id: null })
+                .eq('id', ctx.devolucaoId)
+                .eq('me_reverse_id', valorAtual)
+            if (!error) return true
+            console.error('[melhor-envio-etiqueta] reversa: falha ao liberar a reserva:', error?.code ?? error?.message ?? 'erro', `(tentativa ${tentativa})`)
+        } catch (err) {
+            console.error('[melhor-envio-etiqueta] reversa: exceção ao liberar a reserva:', sanitizarDadosPessoaisDoTexto(String(err)), `(tentativa ${tentativa})`)
+        }
     }
+    return false
 }
 
 /** Código de postagem do envio reverso (falha suave: null). */
@@ -1085,6 +1109,23 @@ function respostaReversaIndeterminada(meId: string, pagoConfirmado: boolean): Re
     return respostaJson({ error: mensagem, resgate: true, me_reverse_id: meId }, 502)
 }
 
+/**
+ * Achado A3: o Melhor Envio já recusou a compra de forma DEFINIDA (nada foi
+ * pago), mas `liberarVinculoReverso` falhou nas duas tentativas — a
+ * devolução fica vinculada a um envio morto. Sem dinheiro em jogo (não há
+ * segunda compra: `gerar_devolucao_reversa` só GERA/CONSULTA um envio já
+ * vinculado), mas travada até alguém limpar `me_reverse_id` no banco. A
+ * resposta é honesta em vez de repetir a frase de sempre.
+ */
+function respostaFalhaAoSoltarVinculo(meId: string): Response {
+    return respostaJson(
+        {
+            error: `O Melhor Envio recusou a compra do envio reverso (id ${meId}) — nada foi pago —, mas não consegui soltar o vínculo desta devolução com ele agora. Tente cancelar de novo em instantes.`,
+        },
+        502,
+    )
+}
+
 /** Evento da devolução (falha de log NUNCA derruba a resposta). */
 async function gravarEventoDaDevolucao(ctx: ContextoReversa, status: string): Promise<void> {
     try {
@@ -1113,7 +1154,7 @@ async function concluirComCodigoDePostagem(
     meId: string,
     codigo: string,
     etiquetaUrl: string | null,
-    extras: { already: boolean },
+    extras: { already: boolean; avisoDevolucaoMudou?: string | null },
 ): Promise<Response> {
     const { data: gravadas, error } = await ctx.supabase
         .from('devolucoes')
@@ -1138,7 +1179,16 @@ async function concluirComCodigoDePostagem(
     if (gravouAgora) await gravarEventoDaDevolucao(ctx, String(devolucao.status))
     const geradoEm = gravouAgora ? new Date().toISOString() : await lerMomentoDaGeracaoDoCodigo(ctx)
     const validade = validadeDoCodigoDePostagem(geradoEm, Date.now())
-    return respostaJson(corpoComCodigoDePostagem({ already: extras.already, codigo, etiquetaUrl, meId, validade }))
+    return respostaJson(
+        corpoComCodigoDePostagem({
+            already: extras.already,
+            codigo,
+            etiquetaUrl,
+            meId,
+            validade,
+            avisoDevolucaoMudou: extras.avisoDevolucaoMudou,
+        }),
+    )
 }
 
 /**
@@ -1426,7 +1476,7 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
             // indeterminados — o vínculo fica.
             if (checkoutResponse.status < 400 || checkoutResponse.status >= 500) return respostaReversaIndeterminada(meId, false)
             await removerDoCarrinho(buscar, baseUrl, headersME, meId)
-            await liberarVinculoReverso(ctx, meId)
+            if (!(await liberarVinculoReverso(ctx, meId))) return respostaFalhaAoSoltarVinculo(meId)
             return respostaJson({ error: mensagemDoErroDaReversa(checkoutResponse.status, ETAPA_PAGAMENTO_DA_REVERSA, motivo) }, 502)
         }
         // R2: 2xx só solta o vínculo com um status CONHECIDO de não pago; corpo
@@ -1444,10 +1494,15 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
             return respostaReversaIndeterminada(meId, false)
         }
         if (checkout.tipo === 'recusado') {
-            await removerDoCarrinho(buscar, baseUrl, headersME, meId)
-            await liberarVinculoReverso(ctx, meId)
+            // Achado A4: a frase só afirma que o envio "saiu do carrinho" quando
+            // o DELETE realmente respondeu ok — antes disso era dado como certo.
+            const removeuDoCarrinho = await removerDoCarrinho(buscar, baseUrl, headersME, meId)
+            if (!(await liberarVinculoReverso(ctx, meId))) return respostaFalhaAoSoltarVinculo(meId)
+            const fraseDoCarrinho = removeuDoCarrinho
+                ? 'o envio saiu do carrinho'
+                : 'não consegui confirmar que o envio saiu do carrinho do Melhor Envio — confira lá antes de comprar de novo'
             return respostaJson(
-                { error: `O Melhor Envio não fechou a compra do envio reverso (status "${checkout.status}") — nada foi pago, o envio saiu do carrinho e o código de postagem não foi gerado. Confira o saldo da sua conta no Melhor Envio e tente de novo.` },
+                { error: `O Melhor Envio não fechou a compra do envio reverso (status "${checkout.status}") — nada foi pago, ${fraseDoCarrinho} e o código de postagem não foi gerado. Confira o saldo da sua conta no Melhor Envio e tente de novo.` },
                 502,
             )
         }
@@ -1469,8 +1524,20 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
         if (!codigo) return respostaCodigoPendente(ctx, meId, 'pago_sem_codigo')
         const etiquetaUrl = await buscarLinkDaDeclaracao(ctx, meId)
 
+        // Achado A1: o checkout levou tempo real de rede no Melhor Envio — relê
+        // a devolução ANTES de gravar o código. Se ela não estiver mais
+        // 'aprovada' (o guard novo de `cancelar_devolucao` fecha a maior parte
+        // desta janela, mas não sobra motivo para confiar cegamente aqui), a
+        // etiqueta acabou de ser PAGA para uma devolução que já não está mais
+        // em pé — a resposta segue 200 (o código existe de verdade), só com um
+        // aviso mandando o lojista cancelar o envio reverso no Melhor Envio.
+        const { data: relidaAposCheckout } = await lerDevolucaoParaReversa(ctx)
+        const avisoDevolucaoMudou = relidaAposCheckout && relidaAposCheckout.status !== 'aprovada'
+            ? `Atenção: esta devolução não está mais aprovada (status atual: "${String(relidaAposCheckout.status)}"), mas o envio reverso ${meId} já foi PAGO no Melhor Envio agora. Cancele esse envio reverso no Melhor Envio.`
+            : null
+
         // 12. Grava e registra (a validade sai do evento gravado agora — R8).
-        return await concluirComCodigoDePostagem(ctx, devolucao, meId, codigo, etiquetaUrl, { already: false })
+        return await concluirComCodigoDePostagem(ctx, devolucao, meId, codigo, etiquetaUrl, { already: false, avisoDevolucaoMudou })
     } catch (err) {
         console.error('[melhor-envio-etiqueta] reversa: falha indeterminada após o vínculo:', sanitizarDadosPessoaisDoTexto(String(err)))
         return respostaReversaIndeterminada(meId, pagoConfirmado)

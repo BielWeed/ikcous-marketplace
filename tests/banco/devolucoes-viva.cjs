@@ -2515,6 +2515,10 @@ const O_A2_09 = "3eeeeeee-0000-0000-0000-000000000024";
 const I_A2_09 = "3fffffff-0000-0000-0000-000000000024";
 const O_A4_01 = "3eeeeeee-0000-0000-0000-000000000025";
 const I_A4_01 = "3fffffff-0000-0000-0000-000000000025";
+const O_A1_CANCELA = "3eeeeeee-0000-0000-0000-000000000026";
+const I_A1_CANCELA = "3fffffff-0000-0000-0000-000000000026";
+const O_A1_SEM_REVERSA = "3eeeeeee-0000-0000-0000-000000000027";
+const I_A1_SEM_REVERSA = "3fffffff-0000-0000-0000-000000000027";
 
 PROVAS.push({
   nome: "(A2-02) devolução PARCIAL manual (>180 dias, 1 de 2 itens de 50) -> reativa -> cancela: estorno de 50, não do total",
@@ -2868,6 +2872,175 @@ PROVAS.push({
       [O_A4_01],
     );
     assert.equal(jaDevolvi.rows[0].r.payment_status, "estornado");
+  },
+});
+
+PROVAS.push({
+  nome: "(A1 · 20261179000000) cancelar_devolucao recusa com a compra do envio reverso EM VOO; com o código já emitido, cancela e avisa o lojista",
+  corpo: async (cliente) => {
+    // Pedido nacional saído por etiqueta do Melhor Envio — mesmo desenho do
+    // O_NACIONAL de semear() (shipping_option_id melhor-envio-1), com
+    // shipping_label_id próprio: pedidoCustom() não grava essa coluna.
+    await pedidoCustom(cliente, O_A1_CANCELA, {
+      userId: U_CLIENTE,
+      customerData: {
+        whatsapp: "5534999990000",
+        shipping_option_id: "melhor-envio-1",
+      },
+      total: 90,
+      subtotal: 90,
+      shipping: 0,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-A1-CANCELA",
+      itemId: I_A1_CANCELA,
+      productId: P_VESTIDO,
+      variantId: V_VESTIDO_P,
+      nome: "Vestido de Prova",
+      qtd: 1,
+      preco: 90,
+      entregueHaDias: 2,
+    });
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET shipping_label_id = $1 WHERE id = $2",
+      ["ME-PROVA-A1-CANCELA", O_A1_CANCELA],
+    );
+
+    await logar(cliente, U_CLIENTE);
+    const d = await solicitar(
+      cliente,
+      O_A1_CANCELA,
+      [{ order_item_id: I_A1_CANCELA, quantidade: 1 }],
+      "nao_gostei",
+      "reembolso",
+      "etiqueta_reversa",
+    );
+    await logar(cliente, U_ADMIN);
+    await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_decidir($1::uuid, true) AS r",
+      [d.id],
+    );
+
+    // Simula o VÍNCULO que a edge `melhor-envio-etiqueta` grava (service
+    // role, fora do PostgREST) ANTES do checkout — a "compra em voo".
+    const ME_REVERSO_DA_PROVA = "me-reverso-prova-a1";
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [ME_REVERSO_DA_PROVA, d.id],
+    );
+
+    // 1. EM VOO (me_reverse_id gravado, código ainda não): cancelar é
+    //    RECUSADO — sem isto, o checkout que está rodando no Melhor Envio
+    //    pagaria uma etiqueta para uma devolução já cancelada.
+    await logar(cliente, U_CLIENTE);
+    await assert.rejects(
+      () =>
+        rpc(cliente, "SELECT public.cancelar_devolucao($1::uuid) AS r", [d.id]),
+      /gerado no Melhor Envio/,
+      "mutante A1_sem_guard_em_voo: sem o guard novo, a devolução cancela com a compra em voo",
+    );
+    const aindaAprovada = await valorUnico(
+      cliente,
+      "SELECT status FROM public.devolucoes WHERE id = $1",
+      [d.id],
+    );
+    assert.equal(aindaAprovada, "aprovada");
+
+    // 2. Código de postagem JÁ EMITIDO (etiqueta paga): agora cancelar é
+    //    PERMITIDO — dinheiro já gasto, nada a bloquear — mas grava um
+    //    evento PRÓPRIO (ator 'sistema') avisando o lojista a cancelar o
+    //    envio reverso no Melhor Envio. `devolucao_detalhe` (RPC já viva)
+    //    devolve esse evento dentro de `eventos`, sem migration nem front
+    //    novos — é o que o painel (DetalheDaDevolucao.tsx) já renderiza.
+    await logar(cliente, U_ADMIN);
+    await cliente.query(
+      "UPDATE public.devolucoes SET codigo_postagem = $1 WHERE id = $2",
+      ["PD123456789BR", d.id],
+    );
+
+    await logar(cliente, U_CLIENTE);
+    const cancelada = await rpc(
+      cliente,
+      "SELECT public.cancelar_devolucao($1::uuid) AS r",
+      [d.id],
+    );
+    assert.equal(cancelada.status, "cancelada");
+
+    const eventos = (
+      await cliente.query(
+        "SELECT nota, ator FROM public.devolucao_eventos WHERE devolucao_id = $1 ORDER BY created_at, id",
+        [d.id],
+      )
+    ).rows;
+    const avisoAoLojista = eventos.find(
+      (e) =>
+        e.ator === "sistema" &&
+        typeof e.nota === "string" &&
+        e.nota.includes("Melhor Envio") &&
+        e.nota.includes(ME_REVERSO_DA_PROVA),
+    );
+    assert.ok(
+      avisoAoLojista,
+      `mutante A1_sem_aviso_ao_lojista: esperava um evento (ator sistema) citando Melhor Envio e "${ME_REVERSO_DA_PROVA}" — eventos vistos: ${JSON.stringify(eventos)}`,
+    );
+    // O evento do CLIENTE (o cancelamento em si) continua existindo, sem o
+    // texto do Melhor Envio dentro dele — o aviso ao lojista nunca vaza
+    // para a nota que o cliente também pode ler.
+    const eventoDoCliente = eventos.find(
+      (e) => e.ator === "cliente" && e.nota === null,
+    );
+    assert.ok(
+      eventoDoCliente,
+      "o evento de cancelamento do cliente continua sem nota do Melhor Envio dentro dele",
+    );
+
+    // 3. Devolução SEM etiqueta reversa nenhuma (o caminho de sempre) — em
+    //    pedido PRÓPRIO desta prova, para não depender do estado que outra
+    //    prova já deixou em O_BALCAO — continua cancelando normalmente, sem
+    //    evento extra.
+    await pedidoCustom(cliente, O_A1_SEM_REVERSA, {
+      userId: U_CLIENTE,
+      total: 40,
+      subtotal: 40,
+      shipping: 0,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-A1-SEM-REVERSA",
+      itemId: I_A1_SEM_REVERSA,
+      productId: P_CAMISA,
+      qtd: 1,
+      preco: 40,
+      entregueHaDias: 2,
+    });
+    await logar(cliente, U_CLIENTE);
+    const semReversa = await solicitar(
+      cliente,
+      O_A1_SEM_REVERSA,
+      [{ order_item_id: I_A1_SEM_REVERSA, quantidade: 1 }],
+      "nao_gostei",
+      "reembolso",
+      "entrega_na_loja",
+    );
+    const canceladaSemReversa = await rpc(
+      cliente,
+      "SELECT public.cancelar_devolucao($1::uuid) AS r",
+      [semReversa.id],
+    );
+    assert.equal(canceladaSemReversa.status, "cancelada");
+    const eventosSemReversa = (
+      await cliente.query(
+        "SELECT ator FROM public.devolucao_eventos WHERE devolucao_id = $1",
+        [semReversa.id],
+      )
+    ).rows;
+    assert.equal(
+      eventosSemReversa.filter((e) => e.ator === "sistema").length,
+      0,
+      "sem me_reverse_id/codigo_postagem, não há aviso de Melhor Envio nenhum a gravar",
+    );
   },
 });
 

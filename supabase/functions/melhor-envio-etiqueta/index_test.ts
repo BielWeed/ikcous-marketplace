@@ -1833,6 +1833,12 @@ function clienteFalsoDevolucao(cfg: {
     erroEmProdutos?: boolean
     /** R8: a linha do evento que registrou a geração do código (created_at). */
     eventoDoCodigo?: any
+    /** Achado A1: o que muda na linha logo DEPOIS do vínculo gravar (ex.: o
+     * cliente cancela ENQUANTO o checkout está rodando no Melhor Envio). */
+    mudancaAposVinculo?: Record<string, any>
+    /** Achado A3: quantas das primeiras tentativas de `liberarVinculoReverso`
+     * respondem erro (1 = falha na 1ª, sucesso no retry; 2 = falha nas duas). */
+    erroNaLiberacao?: number
 } = {}) {
     const registro = {
         operacoes: [] as string[],
@@ -1888,6 +1894,11 @@ function clienteFalsoDevolucao(cfg: {
             }
             if (valores.me_reverse_id === null) {
                 registro.liberacoes.push(copia)
+                // Achado A3: as N primeiras tentativas desta liberação (a
+                // função agora tenta até 2x) respondem erro de conexão.
+                if (cfg.erroNaLiberacao !== undefined && registro.liberacoes.length <= cfg.erroNaLiberacao) {
+                    return Promise.resolve({ data: null, error: { code: '08006', message: 'connection failure' } })
+                }
                 if (filtrosEqCasam(no.filtros)) linha.me_reverse_id = null
                 return Promise.resolve({ data: null, error: null })
             }
@@ -1908,6 +1919,7 @@ function clienteFalsoDevolucao(cfg: {
             }
             if (!filtrosEqCasam(no.filtros)) return Promise.resolve({ data: [], error: null })
             linha.me_reverse_id = valores.me_reverse_id
+            Object.assign(linha, cfg.mudancaAposVinculo ?? {})
             return Promise.resolve({ data: [{ id: DEVOLUCAO_ID }], error: null })
         }
         if (no.tabela === 'devolucoes') {
@@ -1958,6 +1970,8 @@ function buscarMeReversoFalso(op: {
     codigo?: string | null
     /** R6: 'falha' derruba a DACE e o print público (a DC-e não vem). */
     dce?: 'ok' | 'falha'
+    /** Achado A4: 'erro' faz o DELETE do carrinho responder um HTTP de falha. */
+    removerDoCarrinho?: 'ok' | 'erro'
 } = {}) {
     const registro = {
         chamadas: [] as string[],
@@ -1998,6 +2012,7 @@ function buscarMeReversoFalso(op: {
         }
         if (url.includes('/api/v2/me/cart/') && metodo === 'DELETE') {
             registro.remocoes++
+            if (op.removerDoCarrinho === 'erro') return json({ message: 'Falha ao remover' }, 500)
             return json({})
         }
         if (url.endsWith('/api/v2/me/shipment/checkout')) {
@@ -2715,5 +2730,99 @@ Deno.test("gerar_devolucao_reversa - R8: código já salvo — validade conta do
         assertEquals(r2.corpo.validade_ate, new Date(Date.parse(geradoHa2Dias) + 7 * umDia).toISOString())
         assertEquals(r2.corpo.expirado, false)
         assertEquals(r2.corpo.aviso, undefined)
+    })
+})
+
+// ── achado A1 (revisão de risco pré-publicação, 26/09/2026) ─────────────────
+
+Deno.test("gerar_devolucao_reversa - achado A1: a devolução deixou de estar 'aprovada' DURANTE o checkout — o código sai e é gravado (dinheiro já gasto no Melhor Envio), mas a resposta avisa o lojista para cancelar o envio reverso por lá", async () => {
+    await comEnvAdmin(async () => {
+        // `mudancaAposVinculo` simula o cliente cancelando (ou a loja mudando o
+        // status por outro caminho) bem depois do vínculo já ter sido gravado —
+        // a janela que sobra depois do guard novo de `cancelar_devolucao`
+        // (migration 20261179000000): o checkout já saiu para o Melhor Envio e
+        // não tem mais volta.
+        const supa = clienteFalsoDevolucao({ mudancaAposVinculo: { status: 'cancelada' } })
+        const me = buscarMeReversoFalso()
+        const { res, corpo } = await rodarReversa(supa, me)
+        // O dinheiro já saiu: a resposta segue 200 com o código de verdade —
+        // nunca um erro que faria o painel achar que nada foi pago.
+        assertEquals(res.status, 200)
+        assertEquals(corpo.ok, true)
+        assertEquals(corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(me.registro.checkouts, 1)
+        assertEquals(supa.registro.gravacoesDeCodigo.length, 1)
+        // O aviso é para o LOJISTA agir — cita o Melhor Envio e o novo status.
+        assertEquals(String(corpo.aviso).includes('Melhor Envio'), true)
+        assertEquals(String(corpo.aviso).includes('"cancelada"'), true)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado A1: devolução continua 'aprovada' depois do checkout — sem aviso nenhum (não inventa alarme)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const { res, corpo } = await rodarReversa(supa, buscarMeReversoFalso())
+        assertEquals(res.status, 200)
+        assertEquals(corpo.aviso, undefined)
+    })
+})
+
+// ── achado A3 (revisão de risco pré-publicação, 26/09/2026) ─────────────────
+
+Deno.test("gerar_devolucao_reversa - achado A3: a liberação do vínculo falha na 1ª tentativa e é retomada com sucesso na 2ª — resposta igual à de sempre, devolução não fica presa", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNaLiberacao: 1 })
+        const me = buscarMeReversoFalso({ checkout: 'erro-4xx' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(String(corpo.error).includes('não consegui soltar'), false)
+        assertEquals(supa.registro.liberacoes.length, 2)
+        assertEquals(temFiltro(supa.registro.liberacoes[1].filtros, 'eq', 'me_reverse_id', ME_REVERSO), true)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado A3: checkout recusado de forma DEFINIDA e a liberação do vínculo falha nas DUAS tentativas — resposta honesta em vez da frase de sempre; a devolução fica vinculada até nova tentativa", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNaLiberacao: 2 })
+        const me = buscarMeReversoFalso({ checkout: 'erro-4xx' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(String(corpo.error).includes('não consegui soltar o vínculo'), true)
+        // Diz que nada foi pago (a recusa É definitiva) — só o vínculo que não soltou.
+        assertEquals(String(corpo.error).toLowerCase().includes('nada foi pago'), true)
+        assertEquals(String(corpo.error).includes(ME_REVERSO), true)
+        assertEquals(supa.registro.liberacoes.length, 2)
+        // O item ainda saiu do carrinho do ME — só o NOSSO vínculo não soltou.
+        assertEquals(me.registro.remocoes, 1)
+    })
+})
+
+// ── achado A4 (revisão de risco pré-publicação, 26/09/2026) ─────────────────
+
+Deno.test("gerar_devolucao_reversa - achado A4: checkout recusado (200 pending/blocked/canceled) e o DELETE do carrinho falha — a frase NÃO afirma que o envio saiu do carrinho", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ checkout: 'pendente', removerDoCarrinho: 'erro' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(me.registro.remocoes, 1)
+        const erro = String(corpo.error)
+        // A frase antiga (falsa aqui) afirmava a remoção como fato consumado,
+        // sem condicional nenhuma antes dela.
+        assertEquals(erro.includes('nada foi pago, o envio saiu do carrinho'), false)
+        assertEquals(erro.toLowerCase().includes('não consegui confirmar'), true)
+        assertEquals(erro.toLowerCase().includes('nada foi pago'), true)
+        // O vínculo solta normalmente — A4 é só sobre a FRASE, não sobre travar.
+        assertEquals(supa.registro.liberacoes.length, 1)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado A4: checkout recusado e o DELETE do carrinho SAI — a frase continua afirmando que o envio saiu do carrinho", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ checkout: 'bloqueado', removerDoCarrinho: 'ok' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(String(corpo.error).includes('o envio saiu do carrinho'), true)
     })
 })
