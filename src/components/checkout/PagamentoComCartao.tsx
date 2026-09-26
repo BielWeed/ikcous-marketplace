@@ -13,7 +13,10 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { CategoriaErroPagamento } from "./PagamentoOnline";
+import type {
+  CategoriaErroPagamento,
+  SinalDeErroPagamento,
+} from "./PagamentoOnline";
 import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
@@ -66,6 +69,10 @@ export type ResultadoDoCartao =
       readonly tipo: "erro";
       readonly mensagem: string;
       readonly categoria: CategoriaErroPagamento;
+      // B1 (rodada 2 da revisão de risco pré-publicação, 26/09/2026): ver
+      // `SinalDeErroPagamento`. Ausente = falha fechada, o CheckoutView não
+      // oferece PIX nem some com "Cancelar pedido".
+      readonly sinal?: SinalDeErroPagamento;
     };
 
 type EtapaDoCartao =
@@ -75,6 +82,19 @@ type EtapaDoCartao =
 
 const MOTIVO_PADRAO_DA_RECUSA =
   "O banco recusou este cartão. Tente outro cartão ou pague com PIX.";
+
+/**
+ * B2 da revisão de risco pré-publicação (26/09/2026): a tela "em análise"
+ * (sem desafio, `processing` no MP — antifraude/emissor decidindo) ficava
+ * sem saída até a reserva de 30 minutos morrer sozinha. A maioria das
+ * decisões sai em segundos; quem cai numa revisão manual mais longa não
+ * pode ficar preso. Curto o bastante para sobrar tempo de pagar o PIX
+ * dentro da MESMA reserva; longo o bastante para não competir com uma
+ * aprovação normal do banco. Seguro por construção: a edge responde 409
+ * enquanto o cartão segue `processing` (achado B3, tratado no CheckoutView),
+ * nunca cria uma segunda cobrança.
+ */
+export const MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE = 3;
 
 /**
  * Domínios do Mercado Pago que podem hospedar o desafio 3-D Secure e mandar
@@ -256,12 +276,54 @@ export function classificarRespostaCartao(
       return { tipo: "desafio", url: r.desafio3ds.url };
     }
     // O banco pediu o desafio, mas a URL não é do Mercado Pago — não abrimos
-    // endereço desconhecido dentro do checkout.
+    // endereço desconhecido dentro do checkout. `semCobranca`: a vaga fica em
+    // `action_required`/`created`, que `criar-pagamento` CANCELA antes de
+    // criar o PIX se o cliente pedir — seguro oferecer PIX aqui (achado B1,
+    // rodada 2 da revisão de risco pré-publicação).
+    //
+    // ACHADO 3 (opcional, rodada 5 — addendum, NÃO CORRIGIDO, documentado de
+    // propósito): diferente das outras duas origens de `semCobranca` (falha
+    // de validação local em `montarCorpoDoCartao` e falha de montagem do
+    // Brick, `onFalhaDeMontagem`) — nas quais NUNCA existiu POST de cartão,
+    // logo NUNCA existe vaga `action_required` no servidor —, este caso É
+    // diferente: o POST de cartão já aconteceu e a edge respondeu
+    // `aguardando` com uma vaga de verdade. Pedir PIX daqui não é um "criar
+    // do zero": é um CANCELAR-a-vaga-e-criar-o-PIX, uma operação composta.
+    // Se a RESPOSTA desse POST de PIX se perder (rede caindo depois de
+    // enviado — o mesmo 502 ambíguo que já cobre o cartão), não sabemos se
+    // o servidor cancelou a vaga e criou o PIX, só cancelou, ou não fez
+    // nada — e `CheckoutView` já trocou `metodoDoPedido` para "pix" no
+    // clique (o botão "Pagar com PIX" da caixa vermelha, condicionado a
+    // `erroPagamento.semCobranca`, é um `setMetodoDoPedido("pix")` direto,
+    // fora da cadeia `onTrocarParaPix(cartaoAindaVivo)` do achado 2 da
+    // rodada 4) — a regra "sem sinal + modo cartão é incerto" não alcança
+    // mais este erro, e "Cancelar pedido" pode reaparecer sobre uma vaga
+    // que talvez ainda exista.
+    //
+    // POR QUE NÃO CORRIGIDO AGORA: a correção certa (separar "pode oferecer
+    // PIX" de "pode cancelar depois de oferecer") exige um sinal NOVO e
+    // DISTINTO de `semCobranca` — só para ESTE branch, não para os outros
+    // dois — porque marcar `pedidoTemCobrancaIncerta` para TODO `semCobranca`
+    // bloquearia "Cancelar pedido" também nos dois casos onde nunca existiu
+    // vaga nenhuma (falso positivo, UX pior sem ganho de segurança). Isso
+    // pede: (1) alargar `SinalDeErroPagamento` com o sinal novo; (2)
+    // `CheckoutView.onErro` guardar essa distinção num campo novo de
+    // `erroPagamento` (hoje só tem `semCobranca`/`cartaoEmAnalise`
+    // booleanos); (3) o `onClick` do botão "Pagar com PIX" da caixa
+    // vermelha (hoje um `setMetodoDoPedido("pix")` cru) ler esse campo e
+    // chamar `setPedidoTemCobrancaIncerta(true)` só quando ele for
+    // verdadeiro; (4) testes que provem os TRÊS casos de `semCobranca`
+    // separadamente, para não voltar a bloquear cancelar nos dois que não
+    // precisam. Superfície comparável ao achado 2 da rodada 4 (que também
+    // tocou 3 arquivos) — não é um ajuste de uma linha, e a janela desta
+    // rodada não cobre isso com o mesmo rigor de teste-primeiro que o resto
+    // do arquivo tem. Fica para uma rodada dedicada.
     return {
       tipo: "erro",
       mensagem:
         "Não foi possível abrir a confirmação do seu banco. Tente de novo ou pague com PIX.",
       categoria: "recuperavel",
+      sinal: "semCobranca",
     };
   }
 
@@ -299,10 +361,21 @@ export function classificarRespostaCartao(
       categoria: "terminal",
     };
   }
+  // Achado 3, rodada 4 da revisão de risco pré-publicação (26/09/2026): um
+  // status desconhecido ou ausente num 200 NÃO é o mesmo que "morto" — a
+  // edge devolve o status CRU de um cartão vivo que ela ainda não sabe
+  // mapear (branch (d), `criar-pagamento/index.ts`). Tratar como terminal
+  // fechava a tela sem saída nenhuma (nem "Cancelar pedido", porque este
+  // erro nem carrega o sinal `cartaoEmAnalise` que esconderia o botão — a
+  // tela ficava com "Cancelar pedido" como ÚNICA ação sobre um cartão que
+  // podia estar vivo). `sinal: "cartaoEmAnalise"` joga para a caixa âmbar
+  // com "Tentar de novo" — seguro, porque a nova tentativa converge pela
+  // MESMA branch (d): nunca uma segunda cobrança.
   return {
     tipo: "erro",
     mensagem: "Não foi possível confirmar o pagamento.",
-    categoria: "terminal",
+    categoria: "recuperavel",
+    sinal: "cartaoEmAnalise",
   };
 }
 
@@ -328,10 +401,13 @@ export async function enviarPagamentoComCartao({
 }): Promise<ResultadoDoCartao> {
   const montagem = montarCorpoDoCartao({ orderId, dados, adicionais, config });
   if (!montagem.ok) {
+    // `semCobranca`: a validação é LOCAL — nenhum POST chegou à edge (achado
+    // B1, rodada 2 da revisão de risco pré-publicação). Seguro oferecer PIX.
     return {
       tipo: "erro",
       mensagem: montagem.mensagem,
       categoria: "recuperavel",
+      sinal: "semCobranca",
     };
   }
   try {
@@ -339,10 +415,18 @@ export async function enviarPagamentoComCartao({
   } catch (err: any) {
     // Mesmas fontes curadas do PIX (ver o catch de `dispararPagamentoPix`):
     // `criarPagamento` só lança texto da nossa edge ou o literal padrão.
+    //
+    // SEM `sinal: "semCobranca"` aqui de propósito (achado B1, rodada 2): um
+    // POST de cartão JÁ chegou à edge — um 502 ambíguo pode significar que o
+    // Mercado Pago aprovou e a resposta se perdeu (reproduzido: duas
+    // cobranças vivas quando o front oferecia PIX cegamente aqui). Só
+    // `cartaoEmAnalise`, quando a edge confirma isso explicitamente no corpo
+    // do erro — nunca PIX nem "Cancelar pedido" nesse caso.
     return {
       tipo: "erro",
       mensagem: err?.message ?? "Não foi possível gerar a cobrança.",
       categoria: err?.terminal === true ? "terminal" : "recuperavel",
+      sinal: err?.cartaoEmAnalise === true ? "cartaoEmAnalise" : undefined,
     };
   }
 }
@@ -466,8 +550,25 @@ export function PagamentoComCartao({
   valor: number;
   config: ConfigDoCartao;
   emailDoPagador?: string | null;
-  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
-  onPagarComPix: () => void;
+  // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
+  onErro: (
+    msg: string,
+    categoria: CategoriaErroPagamento,
+    sinal?: SinalDeErroPagamento,
+  ) => void;
+  // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
+  // `cartaoAindaVivo` diz ao CheckoutView se a cobrança de cartão pode
+  // AINDA existir no momento da troca — antes de qualquer erro do PIX
+  // acontecer. Sem isso, o marcador `pedidoTemCobrancaIncerta` só nascia
+  // dentro de `onErro`, e a troca em si (`metodoDoPedido` já vira "pix" NA
+  // HORA do clique) escapava da regra "sem sinal em modo cartão é incerto":
+  // se o pedido de PIX seguinte falhasse sem corpo (rede caiu), a tela já
+  // não estava mais em modo cartão, e "Cancelar pedido" reaparecia sobre um
+  // cartão que podia ter sido aprovado (desafio 3DS, "confirmando com o
+  // banco" ou "em análise" — as três telas de onde dá pra chamar isto com o
+  // cartão vivo). Só a tela "recusado" chama com `false`: o banco já
+  // respondeu que o cartão morreu.
+  onPagarComPix: (cartaoAindaVivo: boolean) => void;
 }) {
   // Mesma escolha do PIX: só `criarPagamento`, sem realtime — quem vê o
   // pedido virar pago é o CheckoutView.
@@ -512,9 +613,22 @@ export function PagamentoComCartao({
       emailDoPagador,
       onPronto: () => setFormularioPronto(true),
       onFalhaDeMontagem: () =>
+        // `semCobranca`: o Brick nem chegou a montar (SDK que não carregou,
+        // chave pública ausente, `create()` que falhou, COEP bloqueando o
+        // iframe) — nenhum POST de cartão foi feito. Seguro oferecer PIX
+        // (achado B1, rodada 2 da revisão de risco pré-publicação).
+        //
+        // Rodada 7 (corrige o addendum da rodada 6): aquele addendum tirou
+        // "COEP bloqueando o iframe" da lista dizendo que "o COEP saiu do
+        // app" — falso NESTA branch: o COEP sai com a branch
+        // `fix/coep-sai-do-app`, ainda não mesclada aqui. A causa volta pra
+        // lista até esse merge acontecer. O teste do Brick contra o Mercado
+        // Pago de verdade continua no runbook, não numa suíte deste
+        // repositório.
         onErroRef.current(
           "Não foi possível carregar o pagamento.",
           "recuperavel",
+          "semCobranca",
         ),
       onEnviar: async (dados, adicionais) => {
         const resultado = await enviarPagamentoComCartao({
@@ -526,7 +640,15 @@ export function PagamentoComCartao({
         });
         if (!montadoRef.current) return;
         if (resultado.tipo === "erro") {
-          onErroRef.current(resultado.mensagem, resultado.categoria);
+          if (resultado.sinal) {
+            onErroRef.current(
+              resultado.mensagem,
+              resultado.categoria,
+              resultado.sinal,
+            );
+          } else {
+            onErroRef.current(resultado.mensagem, resultado.categoria);
+          }
           // Relança para o Brick sair do "processando" — engolir prende o
           // botão.
           throw new Error(resultado.mensagem);
@@ -569,6 +691,32 @@ export function PagamentoComCartao({
     setTentativa((n) => n + 1);
     setEtapa({ tipo: "formulario" });
   };
+
+  // B2: depois de alguns minutos "em análise", oferece PIX como saída (ver o
+  // comentário de MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE, acima). Mesmo
+  // padrão do relógio do prazo do PIX (`PagamentoOnline.tsx`): um `setInterval`
+  // que só reage ao relógio, nunca decide nada sozinho — quem aprova continua
+  // sendo o banco/webhook. Estado, não ref: o valor entra na conta de
+  // `pixDisponivelNaAnalise` durante o RENDER, e ref não pode ser lida ali
+  // (react-hooks/refs — "Cannot access ref value during render").
+  const emAnalise = etapa.tipo === "em-analise";
+  const [inicioDaAnalise, setInicioDaAnalise] = useState<number | null>(null);
+  const [agoraNaAnalise, setAgoraNaAnalise] = useState(() => Date.now());
+  useEffect(() => {
+    if (!emAnalise) {
+      setInicioDaAnalise(null);
+      return;
+    }
+    const agora = Date.now();
+    setInicioDaAnalise(agora);
+    setAgoraNaAnalise(agora);
+    const id = setInterval(() => setAgoraNaAnalise(Date.now()), 10_000);
+    return () => clearInterval(id);
+  }, [emAnalise]);
+  const pixDisponivelNaAnalise =
+    inicioDaAnalise !== null &&
+    agoraNaAnalise - inicioDaAnalise >=
+      MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE * 60_000;
 
   const valorConhecido = Number.isFinite(valor) && valor > 0;
 
@@ -616,7 +764,9 @@ export function PagamentoComCartao({
               </button>
               <button
                 type="button"
-                onClick={onPagarComPix}
+                // O banco já respondeu que este cartão morreu — nunca fica
+                // "vivo" depois de uma recusa definitiva.
+                onClick={() => onPagarComPix(false)}
                 className="flex min-h-12 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900 active:bg-zinc-50"
               >
                 Pagar com PIX
@@ -633,11 +783,28 @@ export function PagamentoComCartao({
         )}
 
         {etapa.tipo === "em-analise" && (
-          <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800">
-            <Clock aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-            Pagamento em análise pelo banco. Você será avisado quando for
-            aprovado.
-          </p>
+          <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="flex items-start gap-2 text-sm font-medium text-amber-800">
+              <Clock aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+              Pagamento em análise pelo banco. Você será avisado quando for
+              aprovado.
+            </p>
+            {/* B2: só depois de alguns minutos — ver
+                MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE. Antes disso a
+                maioria das análises já teria decidido, e oferecer PIX cedo
+                demais competiria com uma aprovação normal. */}
+            {pixDisponivelNaAnalise && (
+              <button
+                type="button"
+                // Em análise pelo emissor/antifraude: o cartão AINDA pode ser
+                // aprovado.
+                onClick={() => onPagarComPix(true)}
+                className="flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900"
+              >
+                Pagar com PIX
+              </button>
+            )}
+          </div>
         )}
 
         {etapa.tipo === "confirmando-desafio" && (
@@ -651,24 +818,25 @@ export function PagamentoComCartao({
             </p>
             <p className="text-xs text-zinc-500">
               A confirmação aparece nesta tela. Se o banco não aprovar, você
-              pode tentar outro cartão ou pagar com PIX.
+              pode pagar com PIX.
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={tentarOutroCartao}
-                className="flex min-h-11 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-              >
-                Tentar outro cartão
-              </button>
-              <button
-                type="button"
-                onClick={onPagarComPix}
-                className="flex min-h-11 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-              >
-                Pagar com PIX
-              </button>
-            </div>
+            {/* B2, rodada 2 da revisão de risco pré-publicação (26/09/2026):
+                "Tentar outro cartão" saiu — com o cartão ainda em
+                `action_required`, a edge NUNCA cria uma segunda cobrança
+                (branch (d) de `criar-pagamento/index.ts`): um cartão novo só
+                recebia de volta o MESMO desafio, sem trocar nada de verdade.
+                "Pagar com PIX" continua sendo a única saída real: a edge
+                cancela o cartão em `action_required`/`created` antes de criar
+                o PIX, ou responde 409 `cartaoEmAnalise` se não conseguir. */}
+            <button
+              type="button"
+              // O desafio 3DS acabou de ser concluído; o webhook ainda pode
+              // aprovar o cartão a qualquer momento.
+              onClick={() => onPagarComPix(true)}
+              className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+            >
+              Pagar com PIX
+            </button>
           </div>
         )}
       </div>
@@ -699,6 +867,28 @@ export function PagamentoComCartao({
             credentialless=""
             className="h-[560px] max-h-[75dvh] w-full rounded-xl border border-zinc-200"
           />
+          {/* B2 da revisão de risco pré-publicação (26/09/2026): antes desta
+              correção, o desafio 3DS não tinha saída — só o iframe. Quem
+              abandona o SMS do banco (ou nunca recebe) ficava preso até a
+              reserva de 30 min morrer. "Pagar com PIX" pede o MESMO
+              {orderId, metodo: "pix"} de sempre: a edge já cancela o cartão
+              em action_required/created antes de criar o PIX
+              (criar-pagamento/index.ts).
+              SEM "Tentar outro cartão" (rodada 2 da revisão): com o cartão em
+              `action_required`, um cartão novo bate na branch (d) da edge e
+              recebe de volta o MESMO desafio — nunca troca nada de verdade. */}
+          <p className="text-xs text-zinc-500">
+            Não conseguiu concluir com o banco? Você pode pagar com PIX.
+          </p>
+          <button
+            type="button"
+            // O desafio ainda está aberto — o cartão está vivo, esperando o
+            // banco.
+            onClick={() => onPagarComPix(true)}
+            className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+          >
+            Pagar com PIX
+          </button>
         </div>
       )}
 
