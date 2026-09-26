@@ -17,14 +17,30 @@
 -- bucket `devolucoes` e os arquivos dele FICAM (apagar foto de cliente é
 -- decisão do dono, fora de rollback de schema).
 --
--- GUARDA DE ORDEM (achado R): reverta 78 -> 77 -> 76 antes desta (75). O
--- Financeiro (fin__movimentos/fin_dre) e o CRM/Início (crm_visao,
--- painel_inicio) leem a tabela `devolucoes` direto — revertendo esta
--- migration primeiro, as duas quebram com 42P01 (relation does not exist).
+-- GUARDA DE ORDEM (achado R, revisão de risco round 2 acrescentou o 1º
+-- item): reverta 80 -> 78 -> 77 -> 76 antes desta (75). O Financeiro
+-- (fin__movimentos/fin_dre) e o CRM/Início (crm_visao, painel_inicio) leem a
+-- tabela `devolucoes` direto — revertendo esta migration primeiro, as duas
+-- quebram com 42P01 (relation does not exist). A 80
+-- (20261180000000_cliente_nao_cancela_com_cartao_vivo.sql) REDEFINE
+-- update_order_status_atomic SEM tocar `devolucoes` — nenhum erro apareceria
+-- se este arquivo restaurasse o corpo da 75 por baixo dela: a guarda de
+-- cartão vivo simplesmente desapareceria, em silêncio, e o cliente voltaria
+-- a poder cancelar um pedido com cobrança de cartão viva. Por isso a checagem
+-- não é "o objeto existe?" (a função sempre existe) — é "o CORPO atual ainda
+-- tem a guarda da 80?", lida de `pg_get_functiondef`.
 -- ============================================================================
 
 DO $$
+DECLARE
+  v_corpo_atual text;
 BEGIN
+  v_corpo_atual := pg_get_functiondef(
+    'public.update_order_status_atomic(uuid,text,text,boolean)'::regprocedure
+  );
+  IF v_corpo_atual LIKE '%verificando:%' THEN
+    RAISE EXCEPTION 'reverta 80 (cliente_nao_cancela_com_cartao_vivo) antes de reverter esta migration (75) — update_order_status_atomic ainda tem a guarda de cartão vivo da 80; restaurar o corpo da 75 por baixo dela apagaria essa guarda em silêncio, sem erro nenhum.';
+  END IF;
   IF to_regprocedure('public.painel_inicio()') IS NOT NULL
      OR to_regprocedure('public.crm_visao(date, date)') IS NOT NULL THEN
     RAISE EXCEPTION 'reverta 78 (o_crm_e_o_inicio_leem_a_loja) antes de reverter esta migration (75).';

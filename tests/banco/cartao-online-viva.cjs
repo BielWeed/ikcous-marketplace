@@ -19,6 +19,22 @@
  *       registrar_estorno_manual — também carimba estorno_manual_registrado_em
  *       pelo gatilho novo, e uma edição qualquer POSTERIOR do pedido não
  *       empurra esse carimbo (a mesma razão do achado F, por outra porta).
+ *   (e) achado independente de risco (dinheiro, 26/09/2026) — migration
+ *       20261180000000_cliente_nao_cancela_com_cartao_vivo.sql:
+ *       update_order_status_atomic recusa o CLIENTE (nunca o admin) quando o
+ *       pedido está 'aguardando' com uma cobrança de cartão em jogo (vaga
+ *       gravada com metodo_online credito/debito, OU o sentinela
+ *       `verificando:`); PIX 'aguardando' e admin continuam cancelando como
+ *       antes. Casos A/B/C/D/G do laudo de revisão da rodada 2 (Round 2,
+ *       `prova-rev80.cjs`), portados para a suíte viva do CI. O caso E (vaga
+ *       E metodo_online NULL) é um GAP CONHECIDO, documentado no próprio
+ *       teste: com o edge HOJE em produção (fe045939), o 502 ambíguo de
+ *       `criar-pagamento` na corrida de idempotência não grava nada na vaga
+ *       (nem id, nem sentinela) — a guarda não tem o que ler, e o cliente
+ *       cancela. Só fecha quando a edge de `fix/cartao-edge-achados`
+ *       (021b8720+) publicar, porque é ELA quem passa a gravar o sentinela
+ *       `verificando:` nesse 502 ambíguo (ver o cabeçalho da migration
+ *       20261180000000 para a citação exata).
  *
  * USO: node tests/banco/cartao-online-viva.cjs (depois de provisionar.cjs e
  * aplicar-migrations.cjs, como no rpc-ci.yml)
@@ -36,6 +52,15 @@ const U_CLIENTE = "41111111-1111-1111-1111-111111111111";
 const U_ADMIN = "42222222-2222-2222-2222-222222222222";
 const O_AGUARDANDO = "4ccccccc-0000-0000-0000-000000000001";
 const O_PAGO = "4ccccccc-0000-0000-0000-000000000002";
+
+// (e) update_order_status_atomic / 20261180000000 — pedidos próprios, para
+// não perturbar a sequência que (b)/(c)/(d) já esperam em O_AGUARDANDO/O_PAGO.
+const O_CARTAO_CREDITO = "4ccccccc-0000-0000-0000-00000000000a";
+const O_CARTAO_DEBITO = "4ccccccc-0000-0000-0000-00000000000b";
+const O_SENTINELA = "4ccccccc-0000-0000-0000-00000000000c";
+const O_PIX_AGUARDANDO = "4ccccccc-0000-0000-0000-00000000000d";
+const O_GAP_502_AMBIGUO = "4ccccccc-0000-0000-0000-00000000000e";
+const O_ADMIN_CARTAO = "4ccccccc-0000-0000-0000-00000000000f";
 
 async function logar(cliente, userId) {
   await cliente.query("SELECT set_config('app.rpc.user_id', $1, false)", [
@@ -302,6 +327,130 @@ PROVAS.push({
     assert.equal(resultado.rows[0].r, "ja_estornado");
   },
 });
+
+const MENSAGEM_CARTAO_VIVO = /cobrança no cartão em confirmação com o banco/;
+
+async function criarPedidoParaCancelamento(cliente, id, { metodo, vaga }) {
+  await cliente.query(
+    `INSERT INTO public.marketplace_orders
+       (id, user_id, customer_name, customer_data, total, subtotal, status, canal,
+        payment_method, payment_status, expires_at, metodo_online, gateway_payment_id)
+     VALUES ($1, $2, 'Cliente Cartão', '{}'::jsonb, 80, 80, 'pending', 'online',
+             'online', 'aguardando', now() + interval '30 minutes', $3, $4)`,
+    [id, U_CLIENTE, metodo, vaga],
+  );
+}
+
+async function cancelarComo(cliente, userId, id) {
+  await logar(cliente, userId);
+  return cliente.query(
+    "SELECT public.update_order_status_atomic($1::uuid, 'cancelled', NULL, false) AS r",
+    [id],
+  );
+}
+
+PROVAS.push({
+  nome: "(e) update_order_status_atomic (20261180000000) recusa o cliente com cartão vivo; PIX e admin continuam",
+  corpo: async (cliente) => {
+    for (const [id, email, meta] of [
+      [U_CLIENTE, "cliente-cancela@cartao.teste", "{}"],
+      [U_ADMIN, "admin-cancela@cartao.teste", '{"role":"admin"}'],
+    ]) {
+      await cliente.query(
+        `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1, $2, $3::jsonb)
+         ON CONFLICT (id) DO NOTHING`,
+        [id, email, meta],
+      );
+    }
+
+    // A: crédito com id real na vaga — a cobrança pode ser aprovada a
+    // qualquer momento (3DS/antifraude). O cliente NÃO cancela.
+    await criarPedidoParaCancelamento(cliente, O_CARTAO_CREDITO, {
+      metodo: "credito",
+      vaga: "ORD-CANCELA-CREDITO",
+    });
+    await assert.rejects(
+      () => cancelarComo(cliente, U_CLIENTE, O_CARTAO_CREDITO),
+      MENSAGEM_CARTAO_VIVO,
+    );
+    assert.equal(
+      (await linhaDoPedido(cliente, O_CARTAO_CREDITO)).gateway_payment_id,
+      "ORD-CANCELA-CREDITO",
+      "a vaga do crédito não pode ter sido tocada pela recusa",
+    );
+
+    // B: débito — mesma guarda, mesma recusa.
+    await criarPedidoParaCancelamento(cliente, O_CARTAO_DEBITO, {
+      metodo: "debito",
+      vaga: "ORD-CANCELA-DEBITO",
+    });
+    await assert.rejects(
+      () => cancelarComo(cliente, U_CLIENTE, O_CARTAO_DEBITO),
+      MENSAGEM_CARTAO_VIVO,
+    );
+
+    // C: sentinela de verificação (metodo_online NULL — a adoção é quem
+    // grava a forma, nunca o próprio sentinela). Também recusa: a cobrança
+    // da tentativa anterior pode estar aprovada por baixo.
+    await criarPedidoParaCancelamento(cliente, O_SENTINELA, {
+      metodo: null,
+      vaga: "verificando:ORD-CANCELA-SENTINELA:c0:1790000000000",
+    });
+    await assert.rejects(
+      () => cancelarComo(cliente, U_CLIENTE, O_SENTINELA),
+      MENSAGEM_CARTAO_VIVO,
+    );
+
+    // D: PIX aguardando — nada muda, o cliente cancela como sempre.
+    await criarPedidoParaCancelamento(cliente, O_PIX_AGUARDANDO, {
+      metodo: "pix",
+      vaga: "ORD-CANCELA-PIX",
+    });
+    await cancelarComo(cliente, U_CLIENTE, O_PIX_AGUARDANDO);
+    assert.equal(
+      (await estadoDoPedidoAposCancelar(cliente, O_PIX_AGUARDANDO)).status,
+      "cancelled",
+    );
+
+    // E — GAP CONHECIDO (ver o cabeçalho deste arquivo e o cabeçalho da
+    // 20261180000000): vaga E metodo_online NULL é o estado que o 502
+    // ambíguo de criar-pagamento deixa HOJE em produção (fe045939, antes de
+    // fix/cartao-edge-achados publicar). A guarda não tem o que ler — o
+    // cliente CANCELA. Isto não é uma falha desta migration: é o motivo
+    // documentado pelo qual "ligar o cartão" também exige aquela edge (ver
+    // docs/runbooks/publicar-painel-cartao-devolucoes.md, §6).
+    await criarPedidoParaCancelamento(cliente, O_GAP_502_AMBIGUO, {
+      metodo: null,
+      vaga: null,
+    });
+    await cancelarComo(cliente, U_CLIENTE, O_GAP_502_AMBIGUO);
+    assert.equal(
+      (await estadoDoPedidoAposCancelar(cliente, O_GAP_502_AMBIGUO)).status,
+      "cancelled",
+      "GAP CONHECIDO: sem a edge de fix/cartao-edge-achados a vaga fica NULL e a guarda não alcança este caso",
+    );
+
+    // G: ADMIN cancela um pedido com cartão vivo — a guarda mora só no ramo
+    // do cliente; a reconciliação do painel depende disto continuar assim.
+    await criarPedidoParaCancelamento(cliente, O_ADMIN_CARTAO, {
+      metodo: "credito",
+      vaga: "ORD-CANCELA-ADMIN",
+    });
+    await cancelarComo(cliente, U_ADMIN, O_ADMIN_CARTAO);
+    assert.equal(
+      (await estadoDoPedidoAposCancelar(cliente, O_ADMIN_CARTAO)).status,
+      "cancelled",
+    );
+  },
+});
+
+async function estadoDoPedidoAposCancelar(cliente, id) {
+  const r = await cliente.query(
+    "SELECT status FROM public.marketplace_orders WHERE id = $1",
+    [id],
+  );
+  return r.rows[0];
+}
 
 async function main() {
   const url = lerDatabaseUrlEfemera();

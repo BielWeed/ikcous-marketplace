@@ -9,16 +9,37 @@
 -- pago), com o texto de confirmação "não pago" enquanto `payment_status`
 -- segue 'aguardando'. Essa é a MESMA descrição que vale para um PIX nunca
 -- pago — mas também vale para um pedido de CARTÃO em análise: a caixa âmbar
--- do checkout ("cartão em análise"/502 ambíguo da Orders API) guarda a flag
--- "esta cobrança pode estar viva" só no `useState` da tela de pagamento do
--- checkout. Sair para "Meus pedidos", ou só recarregar, perde a flag — nada
--- no banco lembrava que aquele pedido tinha uma cobrança em jogo.
+-- do checkout ("cartão em análise") guarda a flag "esta cobrança pode estar
+-- viva" só no `useState` da tela de pagamento do checkout. Sair para "Meus
+-- pedidos", ou só recarregar, perde a flag — nada no banco lembrava que
+-- aquele pedido tinha uma cobrança em jogo.
 -- CENÁRIO: cliente cai na caixa âmbar → vai para "Meus pedidos" → o pedido
 -- está 'pending', o botão aparece, o texto diz "não pago" → cliente cancela
 -- → `update_order_status_atomic` devolve o estoque → minutos depois o banco
 -- aprova a cobrança → o webhook grava `payment_status = 'pago_apos_expirar'`
 -- (Política P1, HONRAR) → dinheiro fora do fluxo, mercadoria já vendida a
 -- outro cliente.
+--
+-- RESSALVA (revisão de risco, round 2, 26/09/2026 — prova E1/E2 em
+-- tests/banco/cartao-online-viva.cjs, caso (e)): a caixa âmbar "cartão em
+-- análise" cobre DOIS estados de banco diferentes, e esta migration só
+-- fecha UM deles com o edge que está em produção hoje (`fe045939`):
+--   - Cobrança REALMENTE em análise (aprovação/3DS pendente, sem colisão de
+--     idempotência): `criar-pagamento` já grava `gateway_payment_id` (id de
+--     verdade) e `metodo_online` na MESMA transação que ocupa a vaga — a
+--     guarda desta migration JÁ FECHA esse caso, com o edge de hoje.
+--   - O 502 AMBÍGUO da Orders API (dois cliques, retry de rede — a corrida
+--     de idempotência que `respostaCartaoEmVerificacao` existe para
+--     resolver): com o edge de `fe045939`, essa resposta NÃO grava nada na
+--     vaga (`gateway_payment_id`/`metodo_online` ficam NULL) — a guarda
+--     desta migration NÃO TEM O QUE LER, e o cliente cancela normalmente
+--     (gap conhecido, caso E do teste citado acima). Isto só fecha quando a
+--     edge de `fix/cartao-edge-achados` (commit `021b8720` em diante)
+--     publicar — é ELA quem passa a gravar o SENTINELA `verificando:` na
+--     vaga nesse 502 ambíguo, e a partir daí a condição `(b)` desta guarda
+--     (abaixo) alcança o caso. **Ligar o cartão exige as duas coisas**: esta
+--     migration aplicada E aquela edge publicada (runbook
+--     docs/runbooks/publicar-painel-cartao-devolucoes.md, §6).
 --
 -- O QUE ESTA MIGRATION FAZ: redefine `public.update_order_status_atomic`
 -- (CORPO ATUAL vindo de `20261175000000_a_devolucao_nasce_no_pedido.sql`,

@@ -356,11 +356,15 @@ Não precisa mexer em banco.
    anterior.
 3. **Functions**: rode o `publicar-functions.yml` a partir do commit anotado no §0, com as
    mesmas cinco do §2. As versões antigas não leem nada das migrations novas.
-4. **Banco**: rode **sempre 78 → 77 → 76 → 75** e pare onde o problema acabar. Execute pelo
-   `psql` com a string de conexão do projeto da loja. **Confira o host antes**, porque o
-   workflow não aceita `rollback-manual-*` e o `db-apply` gravaria o rollback no ledger.
+4. **Banco**: rode **sempre 80 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A 80 só
+   entra na fila se já tiver sido aplicada** (é publicada à parte das 75–78, achado
+   independente de risco de 26/09/2026 — cliente não cancela pedido com cartão vivo); se não
+   estava, comece direto em 78. Execute pelo `psql` com a string de conexão do projeto da
+   loja. **Confira o host antes**, porque o workflow não aceita `rollback-manual-*` e o
+   `db-apply` gravaria o rollback no ledger.
 
    ```bash
+   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
@@ -369,11 +373,18 @@ Não precisa mexer em banco.
 
 **Guardas que recusam a ordem errada** (um `DO` com `RAISE EXCEPTION`, antes de qualquer
 `DROP`):
+- a 80 não tem guarda de ordem própria (é sempre a primeira a reverter, se estiver aplicada);
 - a 77 recusa se `painel_inicio()`/`crm_visao` existirem;
 - a 76 recusa se 78 ou 77 existirem;
-- a 75 recusa se 78, 77 ou 76 existirem, pelo objeto `config_pagamento_cartao`.
+- a 75 recusa se 78, 77 ou 76 existirem (pelo objeto `config_pagamento_cartao`), **e recusa
+  primeiro de todos se o CORPO ATUAL de `update_order_status_atomic` ainda tiver a guarda da
+  80** (lido de `pg_get_functiondef`, procurando `verificando:`) — a 80 só redefine essa
+  função, não cria objeto novo nenhum, então "o objeto existe?" não bastava para detectá-la;
+  reverter a 75 por baixo da 80 sem essa checagem apagaria a guarda de cartão vivo em
+  silêncio, sem erro nenhum.
 
-Recusa com `-1` não deixa nada pela metade. A 78 não tem guarda, porque é a primeira da fila.
+Recusa com `-1` não deixa nada pela metade. A 78 não tem guarda, porque é a primeira da fila
+das 75–78 (a 80, quando aplicada, vem antes dela).
 
 Antes da 77 e da 75, **exporte os dados**, porque o rollback apaga:
 
@@ -389,6 +400,7 @@ psql "$CONEXAO_DA_LOJA" -c "\copy public.devolucao_eventos TO 'devolucao_eventos
 
 | Migration | Apagado | Fica, de propósito |
 | --- | --- | --- |
+| 80 | Nada é apagado — só redefine `update_order_status_atomic`, que volta ao corpo exato da 75 (comprovado byte a byte). | A guarda de cartão vivo desaparece: o cliente volta a poder cancelar pedido com cobrança de cartão possivelmente aprovável. |
 | 78 | Só funções de leitura. | Nada. |
 | 77 | Lançamentos, contas, categorias, sessões de caixa e a linha de `assinatura_da_loja`. Ao reaplicar, o hub precisa sincronizar de novo. | Pedidos, estornos e devoluções, que o Financeiro só lia. |
 | 76 | `config_pagamento_cartao`, as RPCs, o gatilho do estorno e as CHECKs. `registrar_estorno_manual` volta ao corpo de `20261072000000`. | As **colunas** `tentativas_de_pagamento`, `metodo_online`, `parcelas` e `estorno_manual_registrado_em`, que guardam como cada pedido foi pago. |
@@ -405,6 +417,19 @@ vale para a loja inteira, porque preview e produção leem a mesma linha. Durant
 cartão aparece para todo cliente, então faça em horário sem movimento.
 
 **Preparar**
+- [ ] A migration **20261180000000** (`cliente_nao_cancela_com_cartao_vivo`, achado
+  independente de risco de 26/09/2026) está aplicada. Sem ela, o cliente pode cancelar um
+  pedido cuja cobrança de cartão ainda pode ser aprovada pelo banco — o estoque volta, e se o
+  banco aprovar depois, o dinheiro sai do fluxo (`pago_apos_expirar`). Confira com
+  `SELECT pg_get_functiondef('public.update_order_status_atomic(uuid,text,text,boolean)'::regprocedure) LIKE '%verificando:%'`
+  (`true` = aplicada).
+- [ ] A **edge de `fix/cartao-edge-achados`** (021b8720 em diante) está publicada. A guarda da
+  80 só fecha o cenário do 502 ambíguo (corrida de idempotência em `criar-pagamento`) se essa
+  edge estiver no ar — é ela quem passa a gravar o sentinela `verificando:` na vaga nesse 502;
+  sem ela, a vaga fica com `gateway_payment_id`/`metodo_online` NULL e a guarda não tem o que
+  ler (gap documentado no cabeçalho da 20261180000000 e no teste
+  `tests/banco/cartao-online-viva.cjs`, caso E). Confira o commit publicado em
+  `publicar-functions.yml` antes de ligar o cartão.
 - [ ] O §4 está completo, e o PIX pelo app está ligado. O painel trava o cartão sem o PIX,
   porque os dois usam a mesma credencial.
 - [ ] **Cartão de teste só aprova com credencial de TESTE** do Mercado Pago
