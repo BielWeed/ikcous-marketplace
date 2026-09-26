@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleCheck, CircleOff } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -139,10 +139,18 @@ export function FormasDePagamentoSection({
           Duplicar o switch permitiria "ligar" sem chave nenhuma. */}
       <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 px-4 py-3">
         <span className="flex min-w-0 items-center gap-2.5">
+          {/* CheckCircle2/XCircle, não CircleCheck/CircleOff: mesmo
+              significado (ligado/desligado), mas os dois primeiros já
+              chegam ao bundle por outro caminho (CheckCircle2 em
+              MercadoPagoSection.tsx, no MESMO chunk do admin; XCircle em
+              13 arquivos do app) — importar um ícone NUNCA visto antes
+              soma o SVG inteiro dele ao vendor-lucide compartilhado; um já
+              presente não soma nada. Medido no re-review de tamanho do
+              commit 277ec288: ~111 B de brotli só destes dois ícones. */}
           {pixLigado ? (
-            <CircleCheck className="size-4 shrink-0 text-emerald-400" />
+            <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
           ) : (
-            <CircleOff className="size-4 shrink-0 text-zinc-500" />
+            <XCircle className="size-4 shrink-0 text-zinc-500" />
           )}
           <span className="min-w-0">
             <span className="block truncate text-[11px] font-bold text-zinc-200">
