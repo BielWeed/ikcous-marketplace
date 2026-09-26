@@ -16,6 +16,13 @@
 // webpack, sem medida de tempo) e o TETO (800 kB, decisão D8; abaixar ou
 // subir o teto é outro PR, com número medido no CI, e quebra este teste de
 // propósito).
+//
+// 26/09/2026 — decisão do dono ("dividir o portão", depois "Painel 450 ·
+// cliente 550"): o teto único de 800 kB virou DOIS, classificados pelo grafo
+// real do Rollup (`scripts/portaoDividido.ts`): o JS que qualquer visitante
+// pode baixar (cliente, 550 kB) e o JS que só existe atrás do `is_admin`
+// (painel, 450 kB). A forma da medida continua a mesma: por arquivo, sem
+// webpack, sem medida de tempo.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -36,13 +43,14 @@ function entrada(ancora: string): string {
 }
 
 describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
-  it("a entrada de JS mede por arquivo (webpack: false) e sem medida de tempo", () => {
-    const trechoJs = entrada("assets/*.js");
-    expect(trechoJs).toContain('limit: "800 kB"');
-    expect(trechoJs).toContain("webpack: false");
-    // A medida de tempo roda o bundle em Chrome headless — quebra em runner
-    // sem Chrome e não é o que o portão protege.
-    expect(trechoJs).toContain("running: false");
+  it("as entradas de JS (cliente e painel) medem por arquivo e sem medida de tempo", () => {
+    for (const ancora of ["cliente.map(", "painel.map("]) {
+      const trechoJs = entrada(ancora);
+      expect(trechoJs, ancora).toContain("webpack: false");
+      // A medida de tempo roda o bundle em Chrome headless — quebra em runner
+      // sem Chrome e não é o que o portão protege.
+      expect(trechoJs, ancora).toContain("running: false");
+    }
   });
 
   it("a entrada de CSS continua medindo por arquivo com o teto de 100 kB", () => {
@@ -51,9 +59,11 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("o teto de JS segue 800 kB — decisão D8 do dono: medir melhor, não afrouxar", () => {
-    // Se algum PR precisar mexer no teto, que seja explícito AQUI: mudar o
+  it("os tetos de JS são os que o dono fixou: cliente 550 kB, painel 450 kB", () => {
+    // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito.
-    expect(configTexto).toContain('limit: "800 kB"');
+    expect(entrada("cliente.map(")).toContain('limit: "550 kB"');
+    expect(entrada("painel.map(")).toContain('limit: "450 kB"');
+    expect(configTexto).not.toContain('limit: "800 kB"');
   });
 });
