@@ -275,10 +275,23 @@ export const MAPA_STATUS_ORDER: Record<string, string> = {
  * Combinação desconhecida devolve `null`, nunca um palpite — mesma regra
  * herdada do mapearStatus clássico. Leitor fino de MAPA_STATUS_ORDER, acima.
  *
- * A ÚNICA regra fora da tabela: `status === "failed"` é recusa com qualquer
- * `status_detail` (Fase 3.5 — ver o comentário do fim de MAPA_STATUS_ORDER).
- * Não é palpite: `failed` é estado TERMINAL documentado da order, sem
- * dinheiro capturado; o detalhe só diz o motivo.
+ * REGRAS fora da tabela — `status` sozinho decide, qualquer `status_detail`
+ * (Fase 3.5, e adendo 2 da 8ª rodada de risco, 26/09/2026, para as duas de
+ * baixo): os três são estados TERMINAIS documentados da Orders API, sem
+ * dinheiro NOVO capturável — o detalhe só diz o motivo, nunca muda o
+ * desfecho:
+ *   - `"failed"` → 'recusado' (já existia, Fase 3.5).
+ *   - `"canceled"`/`"cancelled"` → 'recusado' (achado do adendo 2: só a
+ *     tabela cobria `"canceled:canceled"` — um detalhe novo, como
+ *     `"canceled_transaction"`/`"canceled_by_api"` (medido por WebSearch
+ *     contra a doc do MP, domínios mercadopago.* bloqueados para fetch
+ *     direto neste ambiente — UNVERIFIED contra a API real), caía em `null`
+ *     e a vaga ficava "em análise" para sempre, mesmo com a order já
+ *     cancelada. A Orders API só cancela order em `action_required`/
+ *     `created` — SEM dinheiro capturado ainda, em qualquer detalhe.
+ *   - `"expired"` → 'expirado' (achado do adendo 2, mesma lacuna): a doc do
+ *     MP descreve `expired` como "uma order cancelada sem pagamento
+ *     aprovado ou pendente" — terminal por definição, qualquer detalhe.
  */
 export function mapearStatusOrder(
   status: string,
@@ -287,7 +300,9 @@ export function mapearStatusOrder(
   if (typeof status !== "string" || typeof statusDetail !== "string") return null;
   const mapeado = MAPA_STATUS_ORDER[`${status}:${statusDetail}`];
   if (mapeado) return mapeado;
-  return status === "failed" ? "recusado" : null;
+  if (status === "failed" || status === "canceled" || status === "cancelled") return "recusado";
+  if (status === "expired") return "expirado";
+  return null;
 }
 
 // ─── Cartão pela Orders API (Fase 3.5, 26/09/2026) ─────────────────────────
@@ -480,6 +495,14 @@ export function tipoDoPagamentoDaOrder(
  * cartão de verdade, e o comprovante/Financeiro contavam a venda como PIX.
  * Fonte única para não duplicar a leitura de `payment_method.installments` no
  * dia em que outro chamador precisar do mesmo dado.
+ *
+ * Menor (4ª revisão de risco, 26/09/2026): antes aceitava QUALQUER inteiro —
+ * a CHECK de `parcelas` no banco só aceita 1..12 (`parcelasValidas`, acima,
+ * é a MESMA regra), e um valor fora da faixa (a Orders API nunca prometeu o
+ * teto; um bug do lado dela também não pode virar 500 daqui) rejeitava a
+ * ADOÇÃO inteira — a cobrança aprovada ficava sem registro por causa de uma
+ * coluna cosmética. Fora da faixa vira `null` (desconhecido), nunca quebra
+ * quem chama.
  */
 export function parcelasDaOrder(
   order: Record<string, unknown> | null | undefined,
@@ -488,9 +511,7 @@ export function parcelasDaOrder(
     | Record<string, unknown>
     | undefined;
   const installments = metodo?.installments;
-  return typeof installments === "number" && Number.isInteger(installments)
-    ? installments
-    : null;
+  return parcelasValidas(installments) ? installments : null;
 }
 
 /** `true` quando a order é de cartão (crédito ou débito). */
@@ -718,6 +739,89 @@ export const PREFIXO_VAGA_EM_VERIFICACAO = "verificando:";
 
 export function vagaEmVerificacao(idGateway: unknown): boolean {
   return typeof idGateway === "string" && idGateway.startsWith(PREFIXO_VAGA_EM_VERIFICACAO);
+}
+
+/**
+ * Margem de tolerância a relógio DIVERGENTE entre esta function e o MP —
+ * usada em TRÊS lugares que precisam da MESMA folga (achado B1, 5ª revisão
+ * de risco, 26/09/2026, e sua extensão à criação ambígua na 6ª rodada):
+ *   1. `begin_date`/`end_date` de `buscarOrdersDoPedido`, abaixo — a janela
+ *      da busca não pode ficar mais estreita que o relógio real por causa de
+ *      um desvio de alguns segundos/minutos entre os dois relógios;
+ *   2. a comparação em `resolverSentinela` entre o LIMITE INFERIOR gravado no
+ *      sentinela e a data de criação de uma order MORTA encontrada — sem
+ *      folga, um relógio do MP um pouco atrasado faria uma order de VERDADE
+ *      da tentativa atual parecer "criada antes do limite" e nunca liberar.
+ * 2 minutos: folga generosa contra desvio de relógio, mas OBRIGATORIAMENTE
+ * menor que o tempo entre duas tentativas de pagamento de verdade (o cliente
+ * digita o cartão, erra, tenta de novo — nunca em menos de alguns segundos,
+ * mas a folga não pode chegar perto do tempo de uma reserva inteira, 30 min,
+ * sob pena de aceitar uma order de uma tentativa BEM anterior como se fosse
+ * da atual — o mesmo buraco que o Ponto B1 fecha).
+ */
+export const MARGEM_RELOGIO_BUSCA_MS = 2 * 60_000;
+
+/**
+ * BLOQUEIO da 7ª rodada de risco (26/09/2026): `resolverSentinela`, abaixo,
+ * usava `MARGEM_RELOGIO_BUSCA_MS` (2 min) PARA TRÁS na comparação de
+ * liberação (`criadaEm >= limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS`) — a
+ * margem apontava na direção ERRADA. `limiteInferiorMs` é o instante em que
+ * a vaga foi LIBERADA para a tentativa atual (`limiteInferiorDaTentativa`,
+ * `criar-pagamento/index.ts`) — e a order da tentativa ANTERIOR (a que
+ * acabou de morrer e CAUSAR essa liberação) é, por construção, criada
+ * segundos ANTES desse instante, nunca depois. Uma margem PARA TRÁS de 2 min
+ * inclui quase sempre essa order antiga na janela — exatamente o cenário
+ * Q3 que B1 deveria fechar (achado R6-Q3 do 6º revisor, com relógio
+ * realista: c0 criada ~1s antes da liberação).
+ *
+ * A margem certa aponta PARA A FRENTE: só conta como "desta tentativa" uma
+ * order de cartão criada DEPOIS de `limiteInferiorMs + MARGEM_LIBERAR_
+ * APOS_LIMITE_MS` — o cliente precisa reabrir o formulário e digitar o
+ * cartão de novo (o Brick nunca reusa token), o que leva bem mais que
+ * alguns segundos; um valor entre 10 e 30s cobre um retry automático
+ * plausível sem confundir com a order da tentativa anterior. 15s: dentro
+ * dessa faixa, com folga para o pior caso de latência de rede entre esta
+ * function e o MP. Uma order da tentativa AMBÍGUA criada DENTRO dessa
+ * margem nunca conta — a vaga fica presa até `expires_at` (o lado seguro:
+ * "não libera" nunca cobra duas vezes; "libera cedo demais" já cobrou).
+ * `MARGEM_RELOGIO_BUSCA_MS` continua só para a janela de busca
+ * (`begin_date`/`end_date`, abaixo) — não decide liberação.
+ */
+export const MARGEM_LIBERAR_APOS_LIMITE_MS = 15_000;
+
+/**
+ * Monta o SENTINELA com o LIMITE INFERIOR embutido (achado B1, 5ª revisão de
+ * risco, 26/09/2026): `<prefixo><chave>:<limiteInferiorMs>` — o prefixo e a
+ * chave continuam exatamente como antes (`vagaEmVerificacao` só olha o
+ * prefixo; `idEhClassico`/comparações de igualdade não olham o MEIO da
+ * string), então todo detector e toda comparação por igualdade já existentes
+ * continuam funcionando sem mudança. O sufixo NOVO é o instante (epoch ms)
+ * a partir do qual uma order de cartão DESTA tentativa pode ter sido criada
+ * — `resolverSentinela`/`limiteInferiorDoSentinela`, abaixo, é quem lê de
+ * volta. Nunca leva `:` a mais que os dois já esperados (um da chave —
+ * `<pedido>:c<n>` — um deste sufixo), então `limiteInferiorDoSentinela`
+ * sempre acha o número no ÚLTIMO pedaço.
+ */
+export function montarSentinela(chave: string, limiteInferiorMs: number): string {
+  return `${PREFIXO_VAGA_EM_VERIFICACAO}${chave}:${limiteInferiorMs}`;
+}
+
+/**
+ * Lê de volta o LIMITE INFERIOR gravado por `montarSentinela` (achado B1).
+ * `null` quando `idGateway` não é sequer um sentinela, OU quando é um
+ * sentinela no formato ANTIGO (gravado antes desta rodada — pré-existentes
+ * em produção quando isto ligar), sem o sufixo `:<ms>` — pela MESMA regra de
+ * segurança do resto deste arquivo, `null` é "não sei", nunca um palpite:
+ * `resolverSentinela` trata `null` como "nunca libera por data", exatamente
+ * como trata uma order sem `date_created` legível.
+ */
+export function limiteInferiorDoSentinela(idGateway: unknown): number | null {
+  if (!vagaEmVerificacao(idGateway)) return null;
+  const resto = (idGateway as string).slice(PREFIXO_VAGA_EM_VERIFICACAO.length);
+  const partes = resto.split(":");
+  if (partes.length < 3) return null; // formato antigo, sem o sufixo — UNVERIFIED em produção
+  const ms = Number(partes[partes.length - 1]);
+  return Number.isFinite(ms) && ms > 0 ? ms : null;
 }
 
 /**
@@ -1154,6 +1258,262 @@ export async function consultarOrder(args: {
     mensagemDeFalha: "Não foi possível consultar a cobrança.",
     corpoNoLog: args.corpoNoLog !== false,
   });
+}
+
+/**
+ * `buscarOrdersDoPedido` — GET /v1/orders?external_reference=<pedido>&
+ * begin_date=<criação>&end_date=<agora> (Ponto 1, 4ª revisão de risco,
+ * 26/09/2026, achado do 4º revisor de risco).
+ *
+ * POR QUE ISTO EXISTE: resolver um SENTINELA (`vagaEmVerificacao`, acima) por
+ * FATO — a Orders API sabe dizer se a cobrança da tentativa anterior existe e
+ * o que ela virou — em vez de um teto fixo de relógio
+ * (`MINUTOS_SENTINELA_PRESO`, removido de `criar-pagamento/index.ts`): o
+ * revisor mediu dois cenários (Q1: cartão `processing`, que pode levar dias
+ * em análise antifraude; Q2: webhook atrasado/reenviado) em que o relógio
+ * soltava a vaga com a cobrança da tentativa anterior ainda VIVA, e o PIX
+ * criado por cima virava uma SEGUNDA cobrança capturada para o mesmo pedido.
+ *
+ * NÃO VERIFICADO CONTRA A API REAL (o proxy de rede deste ambiente bloqueia
+ * mercadopago.*, e a doc pública também não estava alcançável daqui — ver
+ * AGENTS.md/mapa de risco): os NOMES exatos dos parâmetros de busca, a
+ * paginação, e o atraso de indexação entre a Orders API criar/mudar uma
+ * order e ela aparecer nesta busca. A referência usada (achado do revisor) é
+ * https://www.mercadopago.com.br/developers/en/reference/online-payments/
+ * checkout-api/search-order/get — que documenta `external_reference`,
+ * `begin_date` e `end_date` como parâmetros de query, mas não confirma o
+ * NOME do campo que carrega a lista de orders na resposta. Por segurança,
+ * esta função aceita os dois nomes mais comuns entre endpoints de busca do
+ * MP (`results`, o do `/v1/payments/search` clássico; `elements`, usado por
+ * outros recursos) e também um array na RAIZ — qualquer OUTRO formato
+ * (corpo sem lista reconhecível, corpo não-JSON, HTTP não-2xx, erro de rede)
+ * volta como `{ ok: false }`, NUNCA como lista vazia: quem chama
+ * (`resolverSentinela`, abaixo, e os dois chamadores em `criar-pagamento/
+ * index.ts` e `webhook-mercadopago/index.ts`) trata falha e "nada
+ * encontrado" como coisas DIFERENTES — nenhuma das duas libera a vaga.
+ *
+ * Nunca rejeita — mesmo contrato de `criarOrder`/`consultarOrder`. O corpo
+ * de erro (e a lista de orders, que pode trazer cartão com e-mail/CPF do
+ * pagador) nunca vai para o log cru — só o resumo sem dado pessoal.
+ *
+ * B2 (5ª revisão de risco, 26/09/2026): a lista devolvida é filtrada por
+ * `external_reference === pedidoId` NESTA function, antes de qualquer
+ * chamador ver uma única order — `external_reference` no filtro de query é
+ * o lado do SERVIDOR do MP, que o próprio corretor da doc marca como não
+ * verificado; se o MP ignorar o filtro (ou usar outro nome de campo por
+ * baixo), uma order de OUTRO pedido — inclusive uma cobrança APROVADA e
+ * órfã de um pedido morto (casos A1/R2) — voltaria na lista e seria tratada
+ * como se fosse DESTE pedido. Sem este filtro, `resolverSentinela` (abaixo)
+ * podia gravar/adotar a vaga com o id de uma order que nunca teve nada a ver
+ * com este pedido.
+ *
+ * B1 (5ª revisão de risco, 26/09/2026): `begin_date`/`end_date` sempre em
+ * ISO normalizado (`new Date(x).toISOString()`) — o PostgREST devolve
+ * `created_at` cru, com microssegundos e `+00:00`, formato que a doc da
+ * busca (exemplo com `.000Z`) não confirma que a Orders API aceita
+ * (UNVERIFIED). `end_date` ganha `MARGEM_RELOGIO_BUSCA_MS` de folga PARA A
+ * FRENTE (o relógio do MP pode estar adiantado; uma order criada
+ * "agora mesmo" não pode ficar de fora só por um desvio de segundos) e
+ * `begin_date` a MESMA folga PARA TRÁS (o relógio do MP pode estar
+ * atrasado; uma order criada um instante antes do que este servidor acha
+ * que é `pedido.created_at` não pode sair da janela).
+ */
+export async function buscarOrdersDoPedido(args: {
+  token: string;
+  pedidoId: string;
+  // ISO — geralmente `pedido.created_at`: o começo da janela de busca.
+  // `undefined`/inválido é aceito pela Orders API do jeito que a doc
+  // encontrada não deixa claro (UNVERIFIED); mandar mesmo assim é mais
+  // seguro que omitir, se o parâmetro for obrigatório de verdade. Ilegível
+  // (`Date.parse` não entende) vai CRU mesmo assim, pela mesma razão.
+  desde: string;
+  fetchImpl?: typeof fetch;
+  baseUrl?: string;
+  tempoLimiteMs?: number;
+}): Promise<{ ok: true; orders: Record<string, unknown>[] } | { ok: false }> {
+  const f = args.fetchImpl ?? fetch;
+  const base = args.baseUrl ?? BASE_URL_PADRAO;
+  const desdeMs = Date.parse(args.desde);
+  const beginDate = Number.isFinite(desdeMs)
+    ? new Date(desdeMs - MARGEM_RELOGIO_BUSCA_MS).toISOString()
+    : args.desde;
+  const endDate = new Date(Date.now() + MARGEM_RELOGIO_BUSCA_MS).toISOString();
+  const params = new URLSearchParams({
+    external_reference: args.pedidoId,
+    begin_date: beginDate,
+    end_date: endDate,
+  });
+
+  let resposta: Response;
+  try {
+    resposta = await fetchComTempo(
+      f,
+      `${base}/v1/orders?${params.toString()}`,
+      { method: "GET", headers: { Authorization: `Bearer ${args.token}` } },
+      args.tempoLimiteMs,
+    );
+  } catch (_err) {
+    // Nit (5ª revisão de risco, 26/09/2026): sem isto, "busca fora do ar"
+    // (rede, timeout) e "nada encontrado" eram indistinguíveis no log — só o
+    // texto do erro, nunca o corpo (que aqui não existe: é uma exceção de
+    // rede, não uma resposta do MP).
+    console.error(
+      "mercadopago: busca de orders do pedido falhou (rede/timeout) — distinto de 'nada encontrado'",
+      { pedidoId: args.pedidoId, erro: String(_err) },
+    );
+    return { ok: false };
+  }
+
+  if (!resposta.ok) {
+    console.error("mercadopago: busca de orders do pedido recusou", resposta.status);
+    return { ok: false };
+  }
+
+  let json: unknown;
+  try {
+    json = await resposta.json();
+  } catch (_err) {
+    console.error("mercadopago: busca de orders 2xx com corpo ilegível", resposta.status);
+    return { ok: false };
+  }
+
+  const corpo = json && typeof json === "object" ? json as Record<string, unknown> : null;
+  const lista = Array.isArray(corpo?.results)
+    ? corpo.results
+    : Array.isArray(corpo?.elements)
+      ? corpo.elements
+      : Array.isArray(json)
+        ? json
+        : null;
+  if (!lista) {
+    console.error("mercadopago: busca de orders com corpo sem lista reconhecível (results/elements)");
+    return { ok: false };
+  }
+
+  return {
+    ok: true,
+    orders: lista.filter((o): o is Record<string, unknown> => {
+      if (!o || typeof o !== "object") return false;
+      // B2: nunca confia cegamente no filtro do lado do servidor.
+      return String((o as Record<string, unknown>).external_reference ?? "") === args.pedidoId;
+    }),
+  };
+}
+
+/**
+ * Os três status NÃO-terminais documentados da Orders API — a order ainda
+ * pode virar aprovada, recusada, cancelada ou expirada. `mapearStatusOrder`
+ * já traduz os três (com o `status_detail` certo) para 'aguardando' — esta
+ * lista existe porque `resolverSentinela`, abaixo, precisa decidir "ainda
+ * viva" SEM o `status_detail` (a busca de orders pode não devolver o mesmo
+ * nível de detalhe que `GET /v1/orders/{id}` devolve — UNVERIFIED, mesma
+ * ressalva de `buscarOrdersDoPedido`), só pelo `status` da RAIZ.
+ */
+const STATUS_ORDER_VIVOS = new Set(["created", "processing", "action_required"]);
+
+/**
+ * Os status TERMINAIS, documentados, em que a Orders API garante que NENHUM
+ * dinheiro novo pode ser capturado por aquela order — o oposto de
+ * `STATUS_ORDER_VIVOS`. `resolverSentinela`, abaixo, só libera quando TODA
+ * order de cartão encontrada está aqui — nunca por eliminação (um status que
+ * este arquivo não conhece NUNCA conta como morto: pode ser uma variação de
+ * `processed` que este comentário não previu, e liberar às cegas reabriria
+ * exatamente o buraco que este Ponto fecha).
+ */
+const STATUS_ORDER_MORTOS = new Set(["failed", "canceled", "cancelled", "expired", "refunded", "charged_back"]);
+
+/**
+ * A data de CRIAÇÃO da order, em milissegundos — campo raiz `date_created`
+ * (nome documentado pela Payments API clássica, já lido por este repositório
+ * em `refund.date_created`, `_shared/estorno.ts`) ou `created_date` (grafia
+ * alternativa cogitada para a Orders API — UNVERIFIED, mesma ressalva de
+ * `buscarOrdersDoPedido`). Sem nenhum dos dois campos, ou com um valor que
+ * `Date.parse` não entende, devolve `null` — nunca uma data inventada:
+ * `resolverSentinela`, abaixo, trata `null` como "não dá para confiar",
+ * nunca libera a vaga por causa desta order.
+ */
+function dataDeCriacaoDaOrderMs(order: Record<string, unknown>): number | null {
+  const bruto = typeof order.date_created === "string"
+    ? order.date_created
+    : typeof order.created_date === "string"
+      ? order.created_date
+      : null;
+  if (bruto === null) return null;
+  const ms = Date.parse(bruto);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Decide o que fazer com um SENTINELA a partir das orders devolvidas por
+ * `buscarOrdersDoPedido` (Ponto 1, 4ª revisão de risco, 26/09/2026; B1, 5ª
+ * revisão, 26/09/2026) — filtra para CARTÃO (`orderEhDeCartao`; a busca por
+ * `external_reference` também devolve o PIX do mesmo pedido, que não
+ * interessa aqui) e decide:
+ *
+ *   - alguma `status === "processed"` OU ainda VIVA (`STATUS_ORDER_VIVOS`,
+ *     acima) → `{ acao: "gravar", order }` — grava o id de verdade na vaga
+ *     e deixa a reconsulta por id (`GET /v1/orders/{id}` →
+ *     `mapearStatusOrder`, o caminho que já existe nos ramos (a)/(d)/(f) de
+ *     `criar-pagamento/index.ts`) decidir o desfecho fino. Achado do
+ *     comentário "Adopt only on a fully known state" (6ª rodada, achados de
+ *     risco): `processed` sozinho já foi tratado como ADOÇÃO direta — mas
+ *     `processed:partially_refunded`, por exemplo, é `processed` na raiz e
+ *     NÃO é dinheiro limpo. Decidir por `status` sozinho aqui só para
+ *     escolher QUAL order rastrear nunca foi o problema; o problema era
+ *     pular direto para "aprovado" sem o PAR completo. Agora só um caminho
+ *     decide aprovação: a reconsulta por id, que já exige o par exato;
+ *   - TODAS reconhecidamente mortas (`STATUS_ORDER_MORTOS`, acima) → só
+ *     `{ acao: "liberar" }` se pelo menos uma delas tiver `date_created`
+ *     (ou `created_date`) legível e criada DEPOIS do limite inferior, com
+ *     margem PARA A FRENTE (`> limiteInferiorMs + MARGEM_LIBERAR_APOS_
+ *     LIMITE_MS` — BLOQUEIO da 7ª revisão de risco, 26/09/2026: a margem
+ *     era PARA TRÁS antes disso, e a order da tentativa ANTERIOR — a que
+ *     causou a liberação que fixa `limiteInferiorMs` — nasce sempre
+ *     SEGUNDOS ANTES desse instante, nunca depois; uma margem para trás a
+ *     incluía quase sempre, o oposto do que B1 promete). Fecha B1 (5ª
+ *     revisão de risco, 26/09/2026, cenário Q3): uma lista PARCIALMENTE
+ *     indexada pode conter só a order MORTA de uma tentativa ANTERIOR (já
+ *     resolvida, "todas mortas" bate por essa lista incompleta) enquanto a
+ *     order da tentativa ATUAL (ainda viva no MP) não apareceu ainda por
+ *     atraso de indexação — soltar aqui libera a vaga com a cobrança da
+ *     tentativa atual ainda em aberto, e o PIX criado por cima vira uma
+ *     SEGUNDA cobrança quando ela aprovar depois. `limiteInferiorMs === null`
+ *     (sentinela sem o sufixo novo, ou sem sentinela — `resolverSentinela`
+ *     não deveria ser chamado sem um, mas por segurança) NUNCA libera: sem
+ *     limite conhecido, não dá para confiar que a lista cobre a tentativa
+ *     atual;
+ *   - qualquer outra combinação (alguma order com `status` que este arquivo
+ *     não reconhece nem como capturado/vivo nem como morto) →
+ *     `{ acao: "gravar", order }` com a PRIMEIRA delas: nunca libera sobre
+ *     um status desconhecido, e o par cru chega ao cliente pelo mesmo
+ *     caminho "par desconhecido" que uma reconsulta normal já devolve.
+ *
+ * Lista VAZIA (nenhuma order de CARTÃO encontrada) devolve `null` — NUNCA
+ * `{ acao: "liberar" }`: "nada encontrado ainda" (atraso de indexação, por
+ * exemplo) não é o mesmo fato que "encontrei e está morta". Quem chama trata
+ * `null` exatamente como uma busca que falhou — nunca libera às cegas. O
+ * mesmo vale quando "todas mortas" bate mas nenhuma está dentro da janela.
+ */
+export function resolverSentinela(
+  orders: Record<string, unknown>[],
+  limiteInferiorMs: number | null,
+): { acao: "gravar"; order: Record<string, unknown> } | { acao: "liberar" } | null {
+  const cartao = orders.filter((o) => orderEhDeCartao(o));
+  if (cartao.length === 0) return null;
+  const aprovada = cartao.find((o) => String(o.status ?? "") === "processed");
+  const viva = aprovada ?? cartao.find((o) => STATUS_ORDER_VIVOS.has(String(o.status ?? "")));
+  if (viva) return { acao: "gravar", order: viva };
+  const todasMortas = cartao.every((o) => STATUS_ORDER_MORTOS.has(String(o.status ?? "")));
+  if (!todasMortas) return { acao: "gravar", order: cartao[0] };
+  if (limiteInferiorMs === null) return null;
+  // BLOQUEIO (7ª revisão de risco, 26/09/2026): margem PARA A FRENTE — ver
+  // `MARGEM_LIBERAR_APOS_LIMITE_MS`, acima, para o motivo de NUNCA subtrair
+  // aqui.
+  const algumaDentroDaJanela = cartao.some((o) => {
+    const criadaEm = dataDeCriacaoDaOrderMs(o);
+    return criadaEm !== null && criadaEm > limiteInferiorMs + MARGEM_LIBERAR_APOS_LIMITE_MS;
+  });
+  return algumaDentroDaJanela ? { acao: "liberar" } : null;
 }
 
 /**

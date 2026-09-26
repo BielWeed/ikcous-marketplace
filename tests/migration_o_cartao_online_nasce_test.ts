@@ -4,7 +4,8 @@
 // tarefa 2). A prova VIVA mora em tests/banco/cartao-online-viva.cjs.
 //
 // Riscos amarrados: cartão nascendo LIGADO em loja que nunca testou o Brick
-// sob o COEP do app; liberar_cobranca_do_pedido executável por cliente (ele
+// em produção (o COEP do app, suspeito de barrá-lo, saiu em 26/09/2026);
+// liberar_cobranca_do_pedido executável por cliente (ele
 // soltaria a cobrança de um pedido e pagaria duas vezes); liberar sem as
 // guardas (soltar cobrança já paga, ou a cobrança NOVA por resposta atrasada
 // da antiga); rollback que derruba o histórico de como o pedido foi pago.

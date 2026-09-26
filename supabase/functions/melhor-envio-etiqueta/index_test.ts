@@ -510,7 +510,7 @@ const CONTA_ME_FELIZ = {
  * (reivindicação gravada? liberação com os dois filtros? evento de qual
  * etapa?).
  */
-function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any } = {}) {
+function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any; enderecoConta?: any } = {}) {
     const registro = {
         reivindicacoes: [] as Array<{ valores: any; filtros: any[] }>,
         liberacoes: [] as Array<{ valores: any; filtros: any[] }>,
@@ -536,6 +536,18 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
         }
         if (no.tabela === 'produtos') {
             return Promise.resolve({ data: configuracao.produtosDb ?? [{ id: 'p1', nome: 'Caneca', preco_venda: 10 }], error: null })
+        }
+        // user_addresses — fallback de `buscarEnderecoDaConta` (achado
+        // 26/09/2026). `enderecoConta` ausente simula pedido sem linha (ou
+        // sem address_id nenhum); presente, mas com `id`/`user_id` que não
+        // batem com os filtros da chamada, simula endereço de OUTRO usuário
+        // (dono explícito) — a MESMA linha só volta quando os DOIS filtros
+        // (`id`, `user_id`) casam, igual ao `.eq().eq()` real.
+        if (no.tabela === 'user_addresses') {
+            const linha = configuracao.enderecoConta ?? null
+            if (!linha) return Promise.resolve({ data: null, error: null })
+            const bate = no.filtros.every((f: any) => f.metodo !== 'eq' || linha[f.coluna] === f.valor)
+            return Promise.resolve({ data: bate ? linha : null, error: null })
         }
         // marketplace_orders
         if (no.acao === 'update') {
@@ -1459,6 +1471,384 @@ Deno.test("handler - pedido já etiquetado sem CPF continua devolvendo `already`
     })
 })
 
+// ── gerar_etiqueta: fallback do endereço de CONTA (achado 26/09/2026) ──────
+// Cliente logado nunca grava o retrato do endereço em `customer_data` (o
+// front manda `address_id`, não `address_data`, quando há conta) —
+// `extrairEnderecoDoPedido` sempre recusa nesse caso; sem o fallback abaixo,
+// TODO pedido nacional (P6: convidado não paga online) recusava a etiqueta
+// com "endereço incompleto", mesmo pago e com endereço de conta válido.
+
+const ENDERECO_DA_CONTA = {
+    id: 'addr-1',
+    user_id: 'user-1',
+    cep: '01310-100',
+    street: 'Av. Paulista',
+    number: '1000',
+    complement: 'Ap 12',
+    neighborhood: 'Bela Vista',
+    city: 'São Paulo',
+    state: 'SP',
+}
+
+Deno.test("handler - cliente logado sem endereço em customer_data usa user_addresses via address_id", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoLogado = {
+            ...PEDIDO_FELIZ,
+            // Sem `address`/`addressData`/cep-na-raiz nenhum — o retrato real
+            // de quem tem conta (useOrders.ts: addressData é null quando
+            // `user` existe e não há CPF a gravar).
+            customer_data: { shipping_option_id: 'melhor-envio-1', cpf: '52998224725' },
+            address_id: 'addr-1',
+            user_id: 'user-1',
+        }
+        const supa = clienteFalso({ pedido: pedidoLogado, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.postal_code, '01310100')
+        assertEquals(me.registro.ultimoTo?.address, 'Av. Paulista')
+        assertEquals(me.registro.ultimoTo?.city, 'São Paulo')
+    })
+})
+
+Deno.test("handler - address_id de OUTRO usuário não empresta o endereço (dono explícito, service role sem RLS)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoLogado = {
+            ...PEDIDO_FELIZ,
+            customer_data: { shipping_option_id: 'melhor-envio-1', cpf: '52998224725' },
+            address_id: 'addr-1',
+            user_id: 'user-1',
+        }
+        // A linha existe, mas pertence a OUTRO usuário — o filtro
+        // `.eq('user_id', pedido.user_id)` não pode casar com ela.
+        const enderecoDeOutroUsuario = { ...ENDERECO_DA_CONTA, user_id: 'outro-user' }
+        const supa = clienteFalso({ pedido: pedidoLogado, enderecoConta: enderecoDeOutroUsuario })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).toLowerCase().includes('endereço completo'), true)
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+Deno.test("handler - convidado (ou pedido antigo) com endereço completo em customer_data ignora user_addresses (precedência preservada)", async () => {
+    await comEnvAdmin(async () => {
+        // 2ª rodada da revisão de risco (item B): o pedido AQUI TEM
+        // `address_id`/`user_id` de conta válidos, com uma linha de
+        // user_addresses DIFERENTE (São Paulo) configurada — não é só "sem
+        // address_id" (nesse caso um mutante que troca a ORDEM das duas
+        // fontes passava batido, porque `buscarEnderecoDaConta` devolvia
+        // null de qualquer jeito por falta de `address_id`). Com os dois
+        // vínculos presentes, só a ORDEM certa (snapshot de customer_data
+        // ANTES da conta) faz o teste bater em Monte Carmelo — inverter a
+        // ordem faria vencer São Paulo, da conta.
+        const pedido = { ...PEDIDO_FELIZ, address_id: 'addr-1', user_id: 'user-1' }
+        const supa = clienteFalso({ pedido, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.city, 'Monte Carmelo')
+        assertEquals(me.registro.ultimoTo?.postal_code, '38500000')
+    })
+})
+
+Deno.test("handler - customer_data.address só com {cpf} (janela 23-26/09, migration 20261172) usa user_addresses", async () => {
+    await comEnvAdmin(async () => {
+        // Formato exato que create_marketplace_order_v23/v24 gravam para o
+        // cliente logado nesta janela: `address` é o `p_address_data` inteiro
+        // MENOS o cpf — que, quando só sobrava `{cpf}`, vira `{}` e some (SQL
+        // NULL). Este teste cobre o caso em que ainda sobra um objeto não
+        // vazio (ex.: reaplicação/edge anterior) contendo só `cpf` — sem CEP
+        // nem rua, `extrairEnderecoDoPedido` recusa do mesmo jeito.
+        const pedidoJanela = {
+            ...PEDIDO_FELIZ,
+            customer_data: {
+                shipping_option_id: 'melhor-envio-1',
+                cpf: '52998224725',
+                address: { cpf: '52998224725' },
+            },
+            address_id: 'addr-1',
+            user_id: 'user-1',
+        }
+        const supa = clienteFalso({ pedido: pedidoJanela, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.city, 'São Paulo')
+        assertEquals(me.registro.ultimoTo?.postal_code, '01310100')
+    })
+})
+
+Deno.test("handler - janela de versão descasada (front manda {cpf} em address, banco AINDA sem a migration 20261172 espalhar o cpf pra raiz): acha o endereço da conta e para em precisa_cpf, sem gastar rede", async () => {
+    await comEnvAdmin(async () => {
+        // Item B (2ª rodada): a forma REAL da janela 23-26/09 não é
+        // "customer_data.cpf na raiz E address.cpf duplicado" (o teste
+        // anterior já cobre isso) — é o banco RODANDO A RPC ANTIGA (sem a
+        // 20261172) recebendo o front NOVO: a RPC velha grava
+        // `p_address_data` INTEIRO em `customer_data.address`, sem separar
+        // o cpf pra raiz. `cpfDoDestinatario` só lê a RAIZ (contrato
+        // cpf.ts) — o endereço da conta tem que ser achado (prova que o
+        // fallback não depende do CPF) e a rota para no portão de CPF, sem
+        // nenhuma chamada ao Melhor Envio.
+        const pedido = {
+            ...PEDIDO_FELIZ,
+            customer_data: { shipping_option_id: 'melhor-envio-1', address: { cpf: '52998224725' } },
+            address_id: 'addr-1',
+            user_id: 'user-1',
+        }
+        const supa = clienteFalso({ pedido, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(corpo.precisa_cpf, true)
+        assertEquals(me.registro.carrinho, 0)
+        assertEquals(me.registro.chamadasMe, 0)
+    })
+})
+
+// ── gerar_etiqueta: endereço da conta MUDOU depois da compra (item A, 2ª
+// rodada da revisão de risco) ────────────────────────────────────────────
+// A cliente paga o frete para o CEP da conta NO INSTANTE da compra
+// (`customer_data.destination_cep` — a RPC grava o CEP de entrega/cotação,
+// nos dois meios de pagamento, sempre). Se ela edita "Casa" depois — só
+// TROCA o CEP, sem criar um endereço novo — `buscarEnderecoDaConta` lê a
+// linha ATUAL, e etiquetar "sem querer" manda o pacote pro endereço NOVO
+// com o saldo do lojista. Só entra em jogo no ramo do FALLBACK (a cliente
+// tem conta); o snapshot de convidado nunca muda depois de gravado.
+
+const PEDIDO_LOGADO_COM_DESTINO = {
+    ...PEDIDO_FELIZ,
+    customer_data: {
+        shipping_option_id: 'melhor-envio-1',
+        cpf: '52998224725',
+        destination_cep: '01310100', // o CEP que a cliente pagou (== ENDERECO_DA_CONTA na compra)
+    },
+    address_id: 'addr-1',
+    user_id: 'user-1',
+}
+
+Deno.test("handler - endereço da conta mudou de CEP depois da compra: 409 com endereco_mudou, zero chamadas ao Melhor Envio", async () => {
+    await comEnvAdmin(async () => {
+        const enderecoEditado = {
+            ...ENDERECO_DA_CONTA,
+            cep: '69005-070',
+            street: 'Av. Eduardo Ribeiro',
+            number: '5',
+            neighborhood: 'Centro',
+            city: 'Manaus',
+            state: 'AM',
+        }
+        const supa = clienteFalso({ pedido: PEDIDO_LOGADO_COM_DESTINO, enderecoConta: enderecoEditado })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 409)
+        const corpo = await res.json()
+        assertEquals(corpo.endereco_mudou, true)
+        // só os CEPs na mensagem — nunca rua/bairro/nome da linha nova.
+        assertEquals(String(corpo.error).includes('01310-100'), true)
+        assertEquals(String(corpo.error).includes('69005-070'), true)
+        assertEquals(String(corpo.error).includes('Eduardo Ribeiro'), false)
+        assertEquals(String(corpo.error).includes('Manaus'), false)
+        // Item 2 (3ª rodada): sem botão de confirmação nesta rodada, a
+        // mensagem TEM que dar as duas saídas de verdade — senão o lojista
+        // fica preso num 409 sem próximo passo.
+        assertEquals(String(corpo.error).toLowerCase().includes('corrigir o endereço'), true)
+        assertEquals(String(corpo.error).toLowerCase().includes('site do melhor envio'), true)
+        assertEquals(me.registro.carrinho, 0)
+        assertEquals(me.registro.chamadasMe, 0)
+    })
+})
+
+Deno.test("handler - endereço da conta com o MESMO CEP da compra: segue normal (sem 409)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_LOGADO_COM_DESTINO, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.postal_code, '01310100')
+    })
+})
+
+Deno.test("handler - destination_cep MASCARADO (com hífen) batendo com o CEP da conta: 200, sem falso 409 (item 3, 3ª rodada)", async () => {
+    await comEnvAdmin(async () => {
+        // `customer_data.destination_cep` pode chegar com máscara — o mesmo
+        // código já limpa (`.replace(/\D/g, '')`) antes de comparar com
+        // `endereco.cep` (sempre só dígitos). '01310-100' tem 9 caracteres
+        // (o hífen); sem a limpeza, NUNCA bateria em length com os 8 dígitos
+        // de `endereco.cep` — mas note que isso SOZINHO não prova o mutante
+        // que remove o `.replace`: quando os dois CEPs são IGUAIS, o guard
+        // `cepPago.length === 8` já barra a comparação de qualquer jeito
+        // (9 !== 8), então este caso dá 200 COM ou SEM o `.replace` — é
+        // o teste seguinte (CEP DIFERENTE mascarado) que de fato derruba
+        // o mutante, porque aí a ausência da limpeza faz o 409 de verdade
+        // sumir (ver comentário lá).
+        const pedidoComMascara = {
+            ...PEDIDO_LOGADO_COM_DESTINO,
+            customer_data: { ...PEDIDO_LOGADO_COM_DESTINO.customer_data, destination_cep: '01310-100' },
+        }
+        const supa = clienteFalso({ pedido: pedidoComMascara, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.postal_code, '01310100')
+    })
+})
+
+Deno.test("handler - destination_cep MASCARADO e CEP da conta DIFERENTE: 409 mesmo assim (item 3, 3ª rodada — este É o teste que derruba o mutante que remove o .replace)", async () => {
+    await comEnvAdmin(async () => {
+        // Sem o `.replace(/\D/g, '')`, `cepPago` fica com 9 caracteres
+        // ('01310-100', hífen incluso) — o guard `cepPago.length === 8`
+        // barra a comparação inteira e o 409 real (CEP genuinamente
+        // diferente) desaparece: o pedido segue para o endereço NOVO sem
+        // avisar ninguém, o pior desfecho possível deste portão. Com a
+        // limpeza, `cepPago` vira '01310100' (8 dígitos), compara contra
+        // o CEP de Manaus e acerta o 409.
+        const enderecoEditado = {
+            ...ENDERECO_DA_CONTA,
+            cep: '69005-070',
+            street: 'Av. Eduardo Ribeiro',
+            number: '5',
+            neighborhood: 'Centro',
+            city: 'Manaus',
+            state: 'AM',
+        }
+        const pedidoComMascara = {
+            ...PEDIDO_LOGADO_COM_DESTINO,
+            customer_data: { ...PEDIDO_LOGADO_COM_DESTINO.customer_data, destination_cep: '01310-100' },
+        }
+        const supa = clienteFalso({ pedido: pedidoComMascara, enderecoConta: enderecoEditado })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 409)
+        const corpo = await res.json()
+        assertEquals(corpo.endereco_mudou, true)
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+Deno.test("handler - endereço achado no snapshot de customer_data (convidado/pedido antigo): destination_cep divergente NÃO dispara 409 (o CEP mudo só vale pro fallback de conta)", async () => {
+    await comEnvAdmin(async () => {
+        // PEDIDO_FELIZ tem endereço COMPLETO na raiz (Monte Carmelo) — a
+        // extração nunca cai no fallback, então um destination_cep
+        // divergente (aqui, do endereço de SP) não pode barrar o pedido.
+        const pedido = { ...PEDIDO_FELIZ, customer_data: { ...PEDIDO_FELIZ.customer_data, destination_cep: '01310100' } }
+        const supa = clienteFalso({ pedido, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.city, 'Monte Carmelo')
+    })
+})
+
+// ── gerar_etiqueta: endereço apagado da conta × erro de leitura do banco
+// (item C, 2ª rodada da revisão de risco) — as duas viravam a MESMA
+// mensagem genérica de "endereço incompleto"; a de erro de banco não
+// deixava rastro nenhum no log. ─────────────────────────────────────────
+
+Deno.test("handler - endereço da conta foi APAGADO depois da compra (coluna address_id null, MAS customer_data.address_id confirma que existiu): mensagem própria, não a genérica de 'incompleto'", async () => {
+    await comEnvAdmin(async () => {
+        // Item 4 (3ª rodada): `customer_data.address_id` é o RETRATO gravado
+        // pela RPC no instante da compra (`create_marketplace_order_v23`/
+        // `_v24`, migrations 20261172 e 20261174: `jsonb_build_object
+        // ('address_id', p_address_id, ...)`) — sobrevive ao `ON DELETE SET
+        // NULL` da COLUNA real (o FK só zera a coluna, nunca o jsonb já
+        // gravado). É essa confirmação que prova que um endereço de VERDADE
+        // existiu antes, não só a coluna null (que também é o estado de um
+        // pedido que nunca teve endereço de conta nenhum).
+        const pedido = {
+            ...PEDIDO_FELIZ,
+            customer_data: { shipping_option_id: 'melhor-envio-1', cpf: '52998224725', address_id: 'addr-1' },
+            address_id: null,
+            user_id: 'user-1',
+        }
+        const supa = clienteFalso({ pedido, enderecoConta: null })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).toLowerCase().includes('apagado'), true)
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+Deno.test("handler - address_id da coluna e do retrato de customer_data AUSENTES os dois: mensagem GENÉRICA de 'endereço incompleto', não a de 'apagado' (não há prova de que um endereço existiu)", async () => {
+    await comEnvAdmin(async () => {
+        // Sem `customer_data.address_id`, a coluna null não prova nada — pode
+        // ser um pedido que nunca teve endereço de conta (dado incompleto de
+        // verdade). Afirmar "apagado" aqui seria inventar uma causa.
+        const pedido = {
+            ...PEDIDO_FELIZ,
+            customer_data: { shipping_option_id: 'melhor-envio-1', cpf: '52998224725' },
+            address_id: null,
+            user_id: 'user-1',
+        }
+        const supa = clienteFalso({ pedido, enderecoConta: null })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).toLowerCase().includes('apagado'), false)
+        assertEquals(String(corpo.error).toLowerCase().includes('endereço completo'), true)
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+Deno.test("handler - erro de BANCO ao ler user_addresses (timeout/conexão): 500 'tente de novo', loga só o código, NUNCA a mensagem crua do driver", async () => {
+    await comEnvAdmin(async () => {
+        const pedido = {
+            ...PEDIDO_FELIZ,
+            customer_data: { shipping_option_id: 'melhor-envio-1', cpf: '52998224725' },
+            address_id: 'addr-1',
+            user_id: 'user-1',
+        }
+        const base = clienteFalso({ pedido })
+        const clienteComBancoQuebrado = {
+            from(tabela: string) {
+                if (tabela !== 'user_addresses') return base.cliente.from(tabela)
+                const api: any = {
+                    select: () => api,
+                    eq: () => api,
+                    maybeSingle: () => api,
+                    then: (ok: any, ko: any) =>
+                        Promise.resolve({
+                            data: null,
+                            error: { code: '57014', message: 'canceling statement due to statement timeout — endereço da linha X vazou aqui se alguém logasse a mensagem inteira' },
+                        }).then(ok, ko),
+                }
+                return api
+            },
+        }
+        const me = buscarMeFalso()
+        let res!: Response
+        const linhas = await comConsoleErrorCapturado(async () => {
+            res = await comAdminFalso(() =>
+                handler(requisicaoGerar(), { supabase: clienteComBancoQuebrado, buscar: me.buscar }))
+        })
+        assertEquals(res.status, 500)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).toLowerCase().includes('tente de novo'), true)
+        const logJuntado = linhas.join('\n')
+        assertEquals(logJuntado.includes('57014'), true)
+        assertEquals(logJuntado.toLowerCase().includes('vazou'), false)
+        assertEquals(logJuntado.toLowerCase().includes('timeout'), false)
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
 // ── ACTION: definir_cpf_destinatario ────────────────────────────────────────
 
 function requisicaoDefinirCpf(cpf: unknown, orderId = 'pedido-2', extra: Record<string, unknown> = {}): Request {
@@ -1558,13 +1948,20 @@ Deno.test("definir_cpf_destinatario - sucesso grava o CPF preservando as OUTRAS 
         const colunas = filtros.map((f: any) => f.coluna)
         assertEquals(colunas.includes('id'), true)
         assertEquals(colunas.includes('shipping_label_id'), true)
+        // PRIVACIDADE (4ª rodada — voltou a ser SÓ o CPF, nunca o objeto
+        // inteiro): a trava por objeto inteiro (`.eq('customer_data',
+        // JSON.stringify(...))`) da 3ª rodada colocava telefone/CEP/endereço
+        // na URL do PATCH — que fica nos logs de API do Supabase (regra da
+        // casa: nunca CPF em log, e isso vazava bem mais que CPF). Sem CPF
+        // anterior nenhum, o filtro é só `IS NULL` — zero exposição.
         const filtroCpfAnterior = filtros.find((f: any) => f.coluna === 'customer_data->>cpf')
         assertEquals(filtroCpfAnterior?.metodo, 'is')
         assertEquals(filtroCpfAnterior?.valor, null)
+        assertEquals(colunas.includes('customer_data'), false)
     })
 })
 
-Deno.test("definir_cpf_destinatario - CPF anterior presente usa filtro eq (não is) contra o valor antigo (update condicional cobre também troca de CPF)", async () => {
+Deno.test("definir_cpf_destinatario - CPF anterior presente usa filtro eq (não is) contra o valor antigo (update condicional cobre também troca de CPF) — piso de exposição sem migration", async () => {
     await comEnvAdmin(async () => {
         const pedidoComCpfAntigo = {
             ...PEDIDO_PARA_DEFINIR_CPF,
@@ -1574,9 +1971,39 @@ Deno.test("definir_cpf_destinatario - CPF anterior presente usa filtro eq (não 
         const res = await comAdminFalso(() =>
             handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
         assertEquals(res.status, 200)
-        const filtroCpfAnterior = supa.registro.cpfAtualizacoes[0].filtros.find((f: any) => f.coluna === 'customer_data->>cpf')
+        const filtros = supa.registro.cpfAtualizacoes[0].filtros
+        const filtroCpfAnterior = filtros.find((f: any) => f.coluna === 'customer_data->>cpf')
         assertEquals(filtroCpfAnterior?.metodo, 'eq')
         assertEquals(filtroCpfAnterior?.valor, '11144477735')
+        // Só o CPF ANTERIOR (já sabido, já válido no banco) pode ir no
+        // filtro — nunca o objeto inteiro nem o CPF NOVO.
+        assertEquals(filtros.map((f: any) => f.coluna).includes('customer_data'), false)
+    })
+})
+
+Deno.test("definir_cpf_destinatario - PRIVACIDADE: o filtro condicional nunca leva telefone, endereço ou CEP (só o CPF anterior, quando existe)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoComDadosSensiveis = {
+            ...PEDIDO_PARA_DEFINIR_CPF,
+            customer_data: {
+                cep: '38500-000',
+                whatsapp: '34999999999',
+                address: { street: 'Rua Sigilosa da Cliente', number: '42', cpf: '11144477735' },
+                cpf: '11144477735',
+            },
+        }
+        const supa = clienteFalso({ pedido: pedidoComDadosSensiveis })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+        const filtros = supa.registro.cpfAtualizacoes[0].filtros
+        assertEquals(filtros.map((f: any) => f.coluna).includes('customer_data'), false)
+        const textoDosFiltros = JSON.stringify(filtros)
+        for (const dadoSensivel of ['38500-000', '34999999999', 'Rua Sigilosa', 'Sigilosa', '42']) {
+            assertEquals(textoDosFiltros.includes(dadoSensivel), false, `dado sensível vazou no filtro: ${dadoSensivel}`)
+        }
+        // O CPF NOVO nunca precisa ir no filtro (só o corpo do UPDATE).
+        assertEquals(textoDosFiltros.includes('52998224725'), false)
     })
 })
 
@@ -1591,9 +2018,82 @@ Deno.test("definir_cpf_destinatario - update condicional sem bater linha (corrid
     })
 })
 
-// ── log 'cart sem id' sanitiza o CPF (achado da revisão Opus, aadbf4c) ────
+// ── definir_cpf_destinatario: limpeza de `address.cpf` NA ESCRITA (4ª
+// rodada — substitui a trava por objeto inteiro + retry da 3ª rodada, que
+// vazava telefone/CEP/endereço na URL do PATCH) ────────────────────────
+// A trava otimista por objeto inteiro (`eq_objeto`) resolvia o "lost
+// update" do addendum da 3ª rodada (scratchpad/edge_lost_update.cjs), mas
+// criava um problema PIOR: `.eq('customer_data', JSON.stringify(...))`
+// bota o `customer_data` INTEIRO — CPF (inclusive `address.cpf` da janela
+// 23-26/09), telefone, CEP e endereço de convidado — na URL do PATCH, que
+// fica nos logs de API do Supabase (regra da casa: nunca CPF em log).
+// Decisão do dono: voltar ao filtro simples por `customer_data->>cpf` (só
+// expõe o CPF ANTERIOR, e só quando ele já existia — o piso sem migration;
+// investigado e sem alternativa de exposição zero: `marketplace_orders`
+// não tem gatilho de `updated_at` em UPDATE comum, e criar um exige
+// migration, fora do escopo) — SEM o retry, que só existia por causa da
+// trava por objeto. No lugar da trava, a ESCRITA agora tira `address.cpf`
+// de forma INCONDICIONAL, sempre — não importa se a leitura estava
+// desatualizada, o `address.cpf` NUNCA pode voltar pro banco. Mesma regra
+// das migrations 20261172/20261182: `address` sem `cpf`; se sobrar `{}`,
+// vira JSON `null` (não `{}` — `{}` é truthy em JS e venceria o endereço de
+// verdade na cadeia `||` do mapper do front).
 
-Deno.test("handler - cart sem id: o log de erro NUNCA imprime o CPF cru (mascarado ou não) que o ME ecoou na resposta", async () => {
+Deno.test("definir_cpf_destinatario - address só tinha o cpf: a escrita tira a chave e vira JSON null (converge com a limpeza da migration 20261182, mesmo com leitura desatualizada)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoComCpfNoEndereco = {
+            ...PEDIDO_PARA_DEFINIR_CPF,
+            customer_data: { whatsapp: '34999999999', address: { cpf: '52998224700' } },
+        }
+        const supa = clienteFalso({ pedido: pedidoComCpfNoEndereco })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+        const gravado = supa.registro.cpfAtualizacoes[0].valores.customer_data
+        assertEquals(gravado.address, null)
+        assertEquals(gravado.cpf, '52998224725')
+        // O CPF antigo preso no endereço NUNCA sobrevive à escrita.
+        assertEquals(JSON.stringify(gravado).includes('52998224700'), false)
+    })
+})
+
+Deno.test("definir_cpf_destinatario - address com OUTRAS chaves além do cpf: tira só o cpf, preserva o resto (não zera à toa)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoComEnderecoEcpf = {
+            ...PEDIDO_PARA_DEFINIR_CPF,
+            customer_data: { whatsapp: '34999999999', address: { street: 'Av. Paulista', cpf: '52998224700' } },
+        }
+        const supa = clienteFalso({ pedido: pedidoComEnderecoEcpf })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+        const gravado = supa.registro.cpfAtualizacoes[0].valores.customer_data
+        assertEquals(gravado.address, { street: 'Av. Paulista' })
+    })
+})
+
+Deno.test("definir_cpf_destinatario - pedido SEM chave `address` nenhuma (formato legado): não inventa a chave — só o cpf muda", async () => {
+    await comEnvAdmin(async () => {
+        // PEDIDO_PARA_DEFINIR_CPF é o formato legado (pedido de antes do
+        // checkout gravar CPF) — nunca teve `address` estruturado.
+        const supa = clienteFalso({ pedido: PEDIDO_PARA_DEFINIR_CPF })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+        const gravado = supa.registro.cpfAtualizacoes[0].valores.customer_data
+        assertEquals('address' in gravado, false)
+    })
+})
+
+// ── log 'cart sem id' (achado da revisão Opus, aadbf4c; ENDURECIDO na 2ª
+// rodada da revisão de risco, item D): a versão antiga sanitizava só o CPF
+// (`sanitizarCpfDoTexto`) e imprimia o CORPO inteiro que o ME ecoou —
+// nome, endereço e telefone do destinatário passavam batido pro console
+// (achado: o ME pode devolver 201 sem `id` ecoando o `to` inteiro, não só
+// o objeto `errors` de validação). Agora o log só lista as CHAVES de
+// primeiro nível do corpo — nenhum valor, sanitizado ou não.
+
+Deno.test("handler - cart sem id: o log só lista as CHAVES do corpo — nenhum valor (CPF, nome, endereço, telefone) aparece, sanitizado ou não", async () => {
     await comEnvAdmin(async () => {
         const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
         const me = buscarMeFalso({ cartSemId: true })
@@ -1606,23 +2106,32 @@ Deno.test("handler - cart sem id: o log de erro NUNCA imprime o CPF cru (mascara
         assertEquals(linhaDoCart !== undefined, true)
         assertEquals(String(linhaDoCart).includes('529.982.247-25'), false)
         assertEquals(String(linhaDoCart).includes('52998224725'), false)
-        assertEquals(String(linhaDoCart).includes('[cpf]'), true)
+        // Payload padrão do fake ME é `{ errors: {...} }` — só a chave
+        // `errors` pode aparecer; o CONTEÚDO (a mensagem com o CPF) não.
+        assertEquals(String(linhaDoCart).includes('errors'), true)
+        assertEquals(String(linhaDoCart).includes('já está em uso'), false)
     })
 })
 
-Deno.test("handler - cart sem id: CPF que cruza a fronteira do corte de 500 caracteres não vaza pedaço nenhum (sanitiza ANTES de cortar)", async () => {
+Deno.test("handler - cart sem id ecoando o `to` inteiro (nome, endereço, telefone, CPF): NENHUM valor vaza — só as chaves de primeiro nível", async () => {
     await comEnvAdmin(async () => {
+        // Formato real observado pela revisão de risco (2ª rodada): sem
+        // `id`, o carrinho pode ecoar o `to` INTEIRO de volta — é o payload
+        // que motivou o endurecimento deste log (antes: só o CPF saía
+        // como `[cpf]`; nome/rua/telefone continuavam de corpo inteiro).
         const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
-        // Preenchimento calculado para o CPF cair ATRAVESSANDO o caractere
-        // 500 do JSON.stringify: `{"pad":"` (8) + 478 'A' (posições 8-485) +
-        // `","cpf":"` (9, posições 486-494) + CPF (11, posições 495-505) —
-        // o corte em 500 cairia no MEIO do CPF (dígito de índice 5). É
-        // exatamente o caso que "cortar primeiro, sanitizar depois" deixava
-        // vazar um pedaço de dígitos (2ª rodada da revisão Opus, aadbf4c).
-        const preenchimento = 'A'.repeat(478)
         const me = buscarMeFalso({
             cartSemId: true,
-            cartSemIdPayload: { pad: preenchimento, cpf: '52998224725' },
+            cartSemIdPayload: {
+                to: {
+                    name: 'Maria Souza',
+                    address: 'Av. Paulista',
+                    number: '1000',
+                    phone: '34999990000',
+                    postal_code: '01310100',
+                    document: '52998224725',
+                },
+            },
         })
         const linhas = await comConsoleErrorCapturado(async () => {
             const res = await comAdminFalso(() =>
@@ -1631,10 +2140,174 @@ Deno.test("handler - cart sem id: CPF que cruza a fronteira do corte de 500 cara
         })
         const linhaDoCart = linhas.find((l) => l.includes('cart sem id'))
         assertEquals(linhaDoCart !== undefined, true)
-        // Nenhuma corrida de 4+ dígitos pode sobrar — nem o CPF inteiro, nem
-        // um pedaço cortado dele.
-        assertEquals(/\d{4,}/.test(String(linhaDoCart)), false)
-        assertEquals(String(linhaDoCart).includes('[cpf]'), true)
+        for (const pii of ['Maria Souza', 'Av. Paulista', '34999990000', '52998224725', '01310100']) {
+            assertEquals(String(linhaDoCart).includes(pii), false, `PII vazou no log: ${pii}`)
+        }
+        // Só a chave de primeiro nível (`to`) pode aparecer — prova que o
+        // log não é mudo, só não carrega valor nenhum.
+        assertEquals(String(linhaDoCart).includes('to'), true)
+    })
+})
+
+// ── logs de erro HTTP do ME (/me, cart, checkout, generate, print) usam
+// `motivoDoProvedor` (item 1, 3ª rodada da revisão de risco) ───────────────
+// Achado: um 4xx do ME pode ecoar o CORPO que a function mandou — inclusive
+// o `to` inteiro (nome, rua, número, CEP do destinatário) — dentro de um
+// campo qualquer da resposta de validação. `sanitizarCpfDoTexto` só tirava
+// o CPF; o resto do corpo (JSON inteiro, sem limite de tamanho) ia direto
+// pro console. `motivoDoProvedor` (já usado pela reversa) só extrai
+// `errors`/`error`/`message` — nunca visita campos irmãos — e ainda sanitiza
+// e-mail/telefone/CPF, cortando em 300 caracteres.
+
+Deno.test("handler - cart HTTP (4xx) ecoando o `to` num campo irmão de `errors`: o log usa motivoDoProvedor — nome e rua NUNCA aparecem", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const base = buscarMeFalso()
+        const buscar = (async (input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me/cart') && String(init?.method) === 'POST') {
+                const enviado = JSON.parse(String(init?.body || '{}'))
+                return new Response(
+                    JSON.stringify({
+                        message: 'The given data was invalid.',
+                        errors: { 'to.phone': ['O telefone é inválido.'] },
+                        data: { to: enviado.to },
+                    }),
+                    { status: 422, headers: { 'Content-Type': 'application/json' } },
+                )
+            }
+            return base.buscar(input, init)
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 502)
+        })
+        const linha = linhas.find((l) => l.includes('cart HTTP')) ?? ''
+        assertEquals(linha.includes('Maria Souza'), false)
+        assertEquals(linha.includes('Rua Antiga'), false)
+        assertEquals(linha.includes('38500000'), false)
+        // O motivo de verdade (a única coisa que importa pro lojista)
+        // continua saindo — o log não fica mudo.
+        assertEquals(linha.includes('telefone'), true)
+    })
+})
+
+Deno.test("handler - /me HTTP (4xx) com campo irmão de `message`: o log usa motivoDoProvedor — só a mensagem, nunca o corpo cru", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const buscar = (async (input: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me')) {
+                return new Response(
+                    JSON.stringify({ message: 'Token revogado.', outro_campo: 'nao-pode-vazar-isto-aqui' }),
+                    { status: 401, headers: { 'Content-Type': 'application/json' } },
+                )
+            }
+            return new Response(JSON.stringify({ message: 'fora do roteiro' }), { status: 404 })
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 502)
+        })
+        const linha = linhas.find((l) => l.includes('/me HTTP')) ?? ''
+        assertEquals(linha.includes('Token revogado'), true)
+        assertEquals(linha.includes('nao-pode-vazar-isto-aqui'), false)
+    })
+})
+
+Deno.test("handler - checkout HTTP (4xx) com campo irmão de `errors`: o log usa motivoDoProvedor — nunca o corpo cru", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const base = buscarMeFalso()
+        const buscar = (async (input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me/shipment/checkout')) {
+                return new Response(
+                    JSON.stringify({ errors: { saldo: ['Saldo insuficiente.'] }, conta: 'nao-pode-vazar-isto-aqui' }),
+                    { status: 422, headers: { 'Content-Type': 'application/json' } },
+                )
+            }
+            return base.buscar(input, init)
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+        })
+        const linha = linhas.find((l) => l.includes('checkout HTTP')) ?? ''
+        assertEquals(linha.includes('Saldo insuficiente'), true)
+        assertEquals(linha.includes('nao-pode-vazar-isto-aqui'), false)
+    })
+})
+
+Deno.test("handler - generate HTTP (4xx) com campo irmão de `errors`: o log usa motivoDoProvedor — nunca o corpo cru", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const base = buscarMeFalso()
+        const buscar = (async (input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me/shipment/generate')) {
+                return new Response(
+                    JSON.stringify({ errors: { envio: ['Envio não está pago.'] }, destinatario: 'nao-pode-vazar-isto-aqui' }),
+                    { status: 422, headers: { 'Content-Type': 'application/json' } },
+                )
+            }
+            return base.buscar(input, init)
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+        })
+        const linha = linhas.find((l) => l.includes('generate HTTP')) ?? ''
+        assertEquals(linha.includes('Envio não está pago'), true)
+        assertEquals(linha.includes('nao-pode-vazar-isto-aqui'), false)
+    })
+})
+
+Deno.test("handler - print HTTP (4xx, falha suave) com campo irmão de `errors`: o log usa motivoDoProvedor — nunca o corpo cru", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const base = buscarMeFalso()
+        const buscar = (async (input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me/shipment/print')) {
+                return new Response(
+                    JSON.stringify({ errors: { pdf: ['PDF ainda não disponível.'] }, destinatario: 'nao-pode-vazar-isto-aqui' }),
+                    { status: 422, headers: { 'Content-Type': 'application/json' } },
+                )
+            }
+            return base.buscar(input, init)
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            // Print é falha SUAVE — a etiqueta sai (200), só sem o link.
+            assertEquals(res.status, 200)
+        })
+        const linha = linhas.find((l) => l.includes('print HTTP')) ?? ''
+        assertEquals(linha.includes('PDF ainda não disponível'), true)
+        assertEquals(linha.includes('nao-pode-vazar-isto-aqui'), false)
+    })
+})
+
+Deno.test("handler - tracking HTTP (4xx, ação consultar_rastreio) com campo irmão de `errors`: o log usa motivoDoProvedor — nunca o corpo cru, sem limite de tamanho (item 2, 4ª rodada)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoEtiquetado = { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID }
+        const supa = clienteFalso({ pedido: pedidoEtiquetado })
+        const buscar = (async (input: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me/shipment/tracking')) {
+                return new Response(
+                    JSON.stringify({ errors: { orders: ['Etiqueta não encontrada.'] }, destinatario: 'nao-pode-vazar-isto-aqui' }),
+                    { status: 422, headers: { 'Content-Type': 'application/json' } },
+                )
+            }
+            return new Response(JSON.stringify({ message: 'fora do roteiro' }), { status: 404 })
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar('consultar_rastreio'), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 502)
+        })
+        const linha = linhas.find((l) => l.includes('tracking HTTP')) ?? ''
+        assertEquals(linha.includes('Etiqueta não encontrada'), true)
+        assertEquals(linha.includes('nao-pode-vazar-isto-aqui'), false)
     })
 })
 

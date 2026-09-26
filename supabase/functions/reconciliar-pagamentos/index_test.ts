@@ -650,6 +650,15 @@ Deno.test("candidato novo (ULID de order) nunca chama /v1/payments/ — vai dire
 // de verdade — `idEhClassico` também não reconhece — e cada ciclo (a cada
 // 10 min) gastava uma chamada ao MP que SEMPRE falhava (400
 // `invalid_path_param`), sem o candidato nunca sair da fila.
+//
+// Também fecha a 2ª metade do cenário Q4b (B2, 5ª revisão de risco,
+// 26/09/2026, `criar-pagamento/index_test.ts`, teste "B2, Q4"): o filtro por
+// `external_reference` em `buscarOrdersDoPedido` já impede a order APROVADA
+// de OUTRO pedido de ser gravada na vaga — a vaga fica um SENTINELA, nunca o
+// id órfão. Este teste prova que, MESMO se algo escapasse essa 1ª barreira,
+// `reconciliar-pagamentos` ainda IGNORA qualquer vaga em sentinela — nunca
+// chama `confirmar_pagamento` para ela, então nunca confirmaria este pedido
+// com a cobrança de outro.
 Deno.test("candidato com o SENTINELA na vaga ('verificando:...') -> ignorado, NUNCA chama o MP (Achado S5/N3)", async () => {
   const registro = { chamadasConfirmar: [], chamouCandidatos: false };
   const sentinela = `verificando:${UUID_PEDIDO_1}:c0`;
