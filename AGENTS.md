@@ -278,8 +278,11 @@ checkout/pagamento · service worker · qualquer assinatura consumida por outro 
 Desde 26/09/2026 (PR #666) entram também: RPCs de devolução/reembolso e `fin_*` (dinheiro),
 todo gatilho em `marketplace_orders` (o `tr_marca_estorno_direto_do_pedido` roda dentro de
 todo UPDATE que vira `estornado`, inclusive o de `confirmar_pagamento`), `vercel.json`
-(CSP/COEP — o Brick e o desafio 3DS são iframes
-do Mercado Pago) e `scripts/portaoDividido.ts` (a fronteira decide o que a cliente baixa).
+(CSP — o Brick e o desafio 3DS são iframes do Mercado Pago; o COEP
+`credentialless` que ficou aqui foi removido em 26/09/2026, decisão do dono, por travar o
+Brick sem prova de que o Mercado Pago serve os iframes de Secure Fields com COEP +
+`Cross-Origin-Resource-Policy: cross-origin`) e `scripts/portaoDividido.ts` (a fronteira
+decide o que a cliente baixa).
 **Ligar crédito/débito em `config_pagamento_cartao` é decisão de dinheiro do Gabriel**, depois
 do teste do runbook — nunca efeito colateral de deploy.
 Os erros mais caros daqui foram triviais de escrever (`BEGIN`/`COMMIT` numa migration

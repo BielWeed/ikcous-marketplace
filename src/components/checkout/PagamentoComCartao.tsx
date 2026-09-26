@@ -683,10 +683,13 @@ export function PagamentoComCartao({
             Seu banco pediu uma confirmação de segurança. Siga as instruções
             abaixo para concluir o pagamento.
           </p>
-          {/* credentialless: o app envia COEP credentialless, e nada garante
-              que a página do desafio (Mercado Pago/banco) responda com
-              COEP/CORP — sem o atributo o quadro seria barrado (mesmo caso do
-              mapa da "Sobre a Loja"). NÃO provado contra o 3DS real. */}
+          {/* credentialless: mantido mesmo sem o COEP do app (removido do
+              vercel.json em 26/09/2026 — decisão do dono, travava o Card
+              Payment Brick). Sem o COEP do app não há mais risco de o quadro
+              ser barrado por causa dele; o atributo fica porque é inofensivo
+              aqui (o desafio do banco não depende de cookie nosso) e trocar
+              agora, sem provar o 3DS real, é risco que este ajuste não pediu
+              para correr. */}
           <iframe
             title="Autenticação do seu banco"
             src={etapa.url}

@@ -419,12 +419,11 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   app. Parcelas: comece em 1x ou no teto que a loja decidir.
 
 **Testar, com o DevTools aberto na aba Console**
-- [ ] **COEP**: o app envia `Cross-Origin-Embedder-Policy: credentialless` (`vercel.json`), e
-  o Brick cria iframes do Mercado Pago sem o atributo `credentialless`. Com o formulário do
-  cartão aberto, o Console **não pode** ter bloqueio de `Cross-Origin-Embedder-Policy`/
-  `ERR_BLOCKED_BY_RESPONSE`, nem `Refused to frame` (CSP `frame-src`). Campos vazios ou
-  cinzas = barrado. **Barrado: não ligue.** A decisão sobre o COEP sobe ao dono
-  ([spec do cartão](../superpowers/specs/2026-09-26-cartao-online-design.md), decisão 7).
+- [ ] **O Brick carrega**: com o formulário do cartão aberto, o Console **não pode** ter
+  `ERR_BLOCKED_BY_RESPONSE` nem `Refused to frame` (CSP `frame-src`). Campos vazios ou
+  cinzas = barrado. **Barrado: não ligue.** (O `COEP: credentialless` que travava o Brick
+  foi removido do `vercel.json` em 26/09/2026 — decisão do dono; ver
+  [spec do cartão](../superpowers/specs/2026-09-26-cartao-online-design.md), decisão 7.)
 - [ ] **Aprovado**:
   1. Pague com o cartão de teste, titular `APRO`.
   2. A tela diz "Pagamento aprovado — confirmando o pedido".

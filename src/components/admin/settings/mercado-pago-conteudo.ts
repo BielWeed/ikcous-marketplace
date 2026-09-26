@@ -204,8 +204,8 @@ export const RECADO_DE_SEGURANCA =
 /**
  * Textos do bloco "Cartão pelo app" (FormasDePagamentoCard.tsx). Fatos da
  * spec `2026-09-26-cartao-online-design.md`: nasce desligado (decisão 7 — o
- * Brick monta iframes do Mercado Pago que não foram provados sob o COEP do
- * app; a lojista liga depois de um pedido de teste), débito é o que o
+ * Brick monta iframes do Mercado Pago que ainda não foram provados em
+ * produção; a lojista liga depois de um pedido de teste), débito é o que o
  * Mercado Pago liberar para a conta (decisão 5 — no Brasil, hoje, em geral
  * só Elo) e os juros do parcelamento são do comprador (decisão 6).
  */
