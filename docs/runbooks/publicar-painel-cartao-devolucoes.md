@@ -452,6 +452,10 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   3. Concluído, o webhook confirma.
   4. Abandonado com troca para PIX, a order `action_required` é cancelada no MP e o PIX nasce.
   5. O `expires_at` do pedido foi estendido, até 40 min.
+
+  Se o desafio não concluir no Chrome, o primeiro suspeito é o atributo `credentialless` do
+  iframe (`PagamentoComCartao.tsx`). Tire o atributo e repita o teste antes de desistir do
+  cartão.
 - [ ] **Em análise** (titular `CONT`): a tela diz que aguarda o banco. Pedir PIX nesse estado dá
   409 recuperável, sem uma segunda cobrança.
 - [ ] **Idempotência**:
