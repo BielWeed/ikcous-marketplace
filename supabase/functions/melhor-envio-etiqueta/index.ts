@@ -243,34 +243,49 @@ export function extrairEnderecoDoPedido(
  * não tem RLS — sem este filtro, um `address_id` de OUTRO usuário (dado
  * corrompido, FK solta de pedido antigo) vazaria o endereço de outra pessoa
  * na etiqueta. Sem `addressId` ou sem `userId` (convidado, ou pedido sem
- * endereço de conta), devolve null direto — não gasta round-trip.
+ * endereço de conta), devolve endereço `null` sem erro — não gasta round-trip.
+ *
+ * ERRO DE BANCO ≠ "não achou" (2ª rodada da revisão de risco, item C): antes
+ * um `error` do PostgREST (timeout, conexão) virava `null` calado, igual a
+ * uma linha ausente — o pedido recusava com a MESMA mensagem de "endereço
+ * incompleto" e não sobrava rastro nenhum pra saber que foi o BANCO que
+ * falhou. `erroBanco` carrega só o `code` (nunca `message` — alguns drivers
+ * ecoam dado da linha na mensagem de erro) para o chamador logar e responder
+ * diferente (500, não 400).
  */
 export async function buscarEnderecoDaConta(
     supabase: any,
     addressId: unknown,
     userId: unknown,
-): Promise<{ cep: string; street: string; number: string; complement: string; district: string; city: string; state: string } | null> {
-    if (!addressId || !userId) return null
+): Promise<{
+    endereco: { cep: string; street: string; number: string; complement: string; district: string; city: string; state: string } | null
+    erroBanco: string | null
+}> {
+    if (!addressId || !userId) return { endereco: null, erroBanco: null }
     const { data, error } = await supabase
         .from('user_addresses')
         .select('cep, street, number, complement, neighborhood, city, state')
         .eq('id', addressId)
         .eq('user_id', userId)
         .maybeSingle()
-    if (error || !data) return null
+    if (error) return { endereco: null, erroBanco: String(error?.code || 'SEM_CODIGO') }
+    if (!data) return { endereco: null, erroBanco: null }
     const cep = String(data.cep || '').replace(/\D/g, '')
     const street = String(data.street || '')
     const number = String(data.number || '')
     const city = String(data.city || '')
-    if (cep.length !== 8 || !city || !street || !number) return null
+    if (cep.length !== 8 || !city || !street || !number) return { endereco: null, erroBanco: null }
     return {
-        cep,
-        street,
-        number,
-        complement: String(data.complement || ''),
-        district: String(data.neighborhood || ''),
-        city,
-        state: String(data.state || ''),
+        endereco: {
+            cep,
+            street,
+            number,
+            complement: String(data.complement || ''),
+            district: String(data.neighborhood || ''),
+            city,
+            state: String(data.state || ''),
+        },
+        erroBanco: null,
     }
 }
 
@@ -1951,9 +1966,58 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         // é sempre cliente com conta) recusava aqui.
         let endereco = extrairEnderecoDoPedido(customerData)
         if (!endereco) {
-            endereco = await buscarEnderecoDaConta(supabaseClient, pedido.address_id, pedido.user_id)
+            const contaResultado = await buscarEnderecoDaConta(supabaseClient, pedido.address_id, pedido.user_id)
+            if (contaResultado.erroBanco) {
+                // 2ª rodada da revisão de risco, item C: erro de BANCO (timeout,
+                // conexão) NUNCA pode virar a mesma mensagem de "endereço
+                // incompleto" — o lojista tentaria de novo lendo a ficha,
+                // achando que o DADO está faltando, quando o banco é quem
+                // falhou. Só o código do erro vai pro log (nunca a mensagem
+                // inteira: alguns drivers ecoam valor de coluna nela).
+                console.error('[melhor-envio-etiqueta] falha ao ler o endereço da conta:', contaResultado.erroBanco)
+                return new Response(
+                    JSON.stringify({ error: 'Não foi possível confirmar o endereço da cliente agora. Tente de novo.' }),
+                    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+            endereco = contaResultado.endereco
+            if (endereco) {
+                // Item A: o CEP que a cliente PAGOU (customer_data.destination_cep
+                // — a RPC grava o CEP de entrega/cotação no instante da compra,
+                // sempre, nos dois meios de pagamento) pode não ser mais o CEP
+                // da linha ATUAL de user_addresses — a cliente editou "Casa"
+                // DEPOIS de comprar. Etiquetar sem avisar manda o pacote pro
+                // endereço NOVO, cobrando o frete e reservando produto para um
+                // destino que a compra nunca previu. 409 pede confirmação
+                // humana antes de gastar o saldo do lojista — só os CEPs vão
+                // na mensagem, nunca rua/bairro/nome (podem ser de outra
+                // edição, sem relação com a compra original).
+                const cepPago = String((customerData as Record<string, any>)?.destination_cep || '').replace(/\D/g, '')
+                if (cepPago.length === 8 && cepPago !== endereco.cep) {
+                    const comHifen = (c: string) => `${c.slice(0, 5)}-${c.slice(5)}`
+                    return new Response(
+                        JSON.stringify({
+                            error: `O endereço da conta da cliente mudou de CEP depois da compra (era ${comHifen(cepPago)}, agora ${comHifen(endereco.cep)}). Confirme com a cliente antes de gerar a etiqueta.`,
+                            endereco_mudou: true,
+                        }),
+                        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                    )
+                }
+            }
         }
         if (!endereco) {
+            // Item C: endereço APAGADO da conta depois da compra (FK
+            // ON DELETE SET NULL zera `address_id`) ganha mensagem própria —
+            // "endereço incompleto" manda o lojista procurar rua/número que
+            // nunca vão aparecer, quando o problema é que a linha sumiu.
+            if (pedido.user_id && !pedido.address_id) {
+                return new Response(
+                    JSON.stringify({
+                        error: 'O endereço usado na compra foi apagado da conta da cliente. Peça um endereço para ela e cadastre um novo antes de gerar a etiqueta.',
+                    }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
             return new Response(
                 JSON.stringify({
                     error: 'O pedido não tem endereço completo (CEP, rua, número e cidade). Sem isso a transportadora não entrega — nenhum dado do endereço é enviado incompleto.',
@@ -2089,11 +2153,19 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         const cartData = await cartResponse.json()
         const labelId = cartData?.id
         if (!labelId) {
-            // Sanitiza ANTES de cortar em 500 caracteres — cortar primeiro
-            // podia partir um CPF ao meio na fronteira do corte, deixando um
-            // pedaço de dígitos que a regex de 11 não reconhece mais (achado
-            // da 2ª rodada da revisão Opus sobre o commit aadbf4c).
-            console.error('[melhor-envio-etiqueta] cart sem id:', sanitizarCpfDoTexto(JSON.stringify(cartData)).slice(0, 500))
+            // 2ª rodada da revisão de risco, item D: sem `id`, o carrinho do
+            // ME pode ecoar o CORPO INTEIRO que a function mandou — nome,
+            // endereço e telefone do destinatário, não só o CPF. A versão
+            // anterior sanitizava só o CPF (`sanitizarCpfDoTexto`) e imprimia
+            // o resto de corpo inteiro (achado: PII em log, alcançável hoje).
+            // Log só das CHAVES de primeiro nível — nenhum valor, sanitizado
+            // ou não; não há mais nada pra cortar em 500 caracteres.
+            const chavesDoCorpo =
+                cartData && typeof cartData === 'object' && !Array.isArray(cartData) ? Object.keys(cartData) : []
+            console.error(
+                '[melhor-envio-etiqueta] cart sem id, chaves do corpo:',
+                chavesDoCorpo.length > 0 ? chavesDoCorpo.join(', ') : '(vazio ou não é objeto)',
+            )
             return new Response(
                 JSON.stringify({ error: 'O Melhor Envio não devolveu o id da etiqueta. Tente novamente.' }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
