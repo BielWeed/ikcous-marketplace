@@ -150,11 +150,18 @@
     "(PR #666, painel/cartão/devoluções): 'eslint warnings 457 / teto 458 — baixou -1'.",
     "No mesmo run o Biome acusou 17 (teto 15): os 2 erros eram do PR (template",
     "literal sem interpolação em duas provas vivas de tests/banco/), consertados no",
-    "mesmo commit que abaixa este teto."
+    "mesmo commit que abaixa este teto.",
+    "",
+    "26/09/2026 — warnings de eslint de 457 para 453. Medido no CI, run 36246178775",
+    "(PR #666, head 5a9d7ba7): 'eslint warnings 453 / teto 457 — baixou -4 — abaixe o",
+    "teto'. A queda VEIO do PR: as rodadas 2 e 3 das edges do cartão (457 → 454 → 453)",
+    "entraram com 0 warning novo e levaram velhos junto nos arquivos que reescreveram.",
+    "Biome ficou 15/1. Baixado",
+    "SÓ DEPOIS do CI, como as quedas anteriores."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 457
+    "warnings": 453
   },
   "biome": {
     "errors": 15,
