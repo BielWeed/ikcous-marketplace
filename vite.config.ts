@@ -6,6 +6,7 @@ import { defineConfig, loadEnv } from "vite";
 import type { UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
+import { portaoDividido } from "./scripts/portaoDividido";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
 // Endereço público de CADA loja — MESMO corpo de `resolverEnderecoPublico`
 // em middleware.ts (docstring completa lá). Duplicado, não importado: um
@@ -147,6 +148,15 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       ...(isDev ? [inspectAttr()] : []),
       react(),
       VitePWA(pwaOptions),
+      // Portão de tamanho DIVIDIDO (decisão do dono, 26/09/2026): classifica
+      // cliente x painel a partir do grafo real do Rollup e grava fora da
+      // entrega, para `.size-limit.cjs` medir os dois orçamentos separados.
+      // Só em build (o hook `generateBundle` não dispara em `vite dev`, mas
+      // `apply: "build"` deixa a intenção explícita, no mesmo espírito do
+      // `isDev`/`ANALYZE` acima).
+      ...(command === "build"
+        ? [portaoDividido({ root, outDir: identity.outDir })]
+        : []),
     ],
     resolve: {
       alias: [

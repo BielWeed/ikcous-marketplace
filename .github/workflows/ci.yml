@@ -20,6 +20,18 @@
 #                                    + vitest front 498 arquivos 278,35 s =
 #                                    88% do job — o número que motivou o
 #                                    shard; repita esta medição se mexer)
+# Medido em 26/09/2026, depois do portão de tamanho DIVIDIDO (decisão do dono,
+# respondendo "o portão soma TODO o JS num teto só — como resolver?"): o "515 kB
+# de 800 kB" da linha de 30/07 acima somava cliente E painel juntos. Hoje
+# `npm run size` mede QUATRO budgets independentes (`.size-limit.cjs`,
+# `scripts/portaoDividido.ts` classifica pelo grafo real do Rollup):
+#   cliente (o que qualquer visitante baixa)         <= 800 kB (número herdado)
+#   painel (só depois do `is_admin` do servidor)     <= 350 kB (novo)
+#   CSS                                              <= 100 kB (sem mudança)
+#   leitor de código de barras (glue + wasm, C2.5)   <= 400 kB (sem mudança)
+# Medido no fixture build desta mudança: cliente 474,97 kB, painel 402,44 kB
+# (estourou 52,44 kB — dívida herdada do painel, não desta mudança; ver o
+# relatório da tarefa tooling/portao-dividido), CSS 29,48 kB, leitor 331,65 kB.
 #
 # `npm run lint` cru sai com 1 e sempre sairá enquanto houver dívida antiga.
 # Quem entra no CI é a catraca, que compara com `.lint-baseline.json`.

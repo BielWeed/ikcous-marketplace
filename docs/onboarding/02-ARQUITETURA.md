@@ -17,7 +17,7 @@ Todo `arquivo:linha` abaixo foi conferido abrindo o arquivo em 30/07/2026. O que
 | `middleware.ts` | **Vercel Edge Middleware, não Next.js.** Único código server-side que roda **na Vercel** — não existe `api/` e o `vercel.json` não declara `functions`; as 3 edge functions Deno rodam no Supabase. Em `/product-detail`, se o user-agent é crawler (`:10-13`), busca o produto direto na tabela `produtos` com a chave anon (`:23`) e devolve HTML só com meta tags OG (`:56-83`). Todo o resto passa (`:99-103`). |
 | `vercel.json` | Rewrite SPA total (`:6-11`), `no-store` em `sw.js`/`version.json`/`index.html` (`:12-21`), `immutable` de 1 ano em `/assets/*` (`:22-30`), CSP longa com hash inline fixo (`:36`). |
 | `knip.json` | 12 linhas, e **duas escondem código morto do CI** — ver [§4.3](#43-shared-brain-e-state-worker--nunca-foram-ligados). |
-| `.size-limit.json` | Dois budgets por glob: `dist/assets/*.js` em 800 kB, `*.css` em 100 kB (`:3-9`). |
+| `.size-limit.json` | Dois budgets por glob: `dist/assets/*.js` em 800 kB, `*.css` em 100 kB (`:3-9`). **Desatualizado — o arquivo já era `.size-limit.cjs` antes desta nota, e em 26/09/2026 (decisão do dono, "dividir o portão") o budget de JS virou DOIS: cliente (o que qualquer visitante baixa) <= 800 kB e painel (só depois do `is_admin`) <= 350 kB, classificados pelo grafo real do Rollup em `scripts/portaoDividido.ts` — não por glob de nome de arquivo.** |
 | 11 arquivos `.env*` | O Vite lê 4. Detalhado em [`03-SETUP-AMBIENTE.md`](03-SETUP-AMBIENTE.md). |
 | 39 `.png` soltos, `dist/`, `hint-report/`, `test-results/`, `scratch/` | Sujeira local, toda ignorada (`.gitignore:14, 46, 47, 50, 55`). O `dist/` de 30/07 06:48 é útil como evidência de quais chunks o build produz de fato. |
 

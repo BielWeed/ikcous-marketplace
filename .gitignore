@@ -163,5 +163,14 @@ rollback-*.sql
 # próprio em estado.json — trabalho em andamento de uma sessão, não entrega.
 .worktrees/
 
+# Classificação cliente/painel do portão de tamanho (decisão do dono,
+# 26/09/2026 — "dividir o portão"). `scripts/portaoDividido.ts` grava isto a
+# cada `npm run build`, fora de `dist`/`dist-test` de propósito: não é
+# entrega (scripts/buildStore.mjs valida a entrega e não conhece este
+# arquivo), e o nome de cada chunk já carrega o hash do build — versionar
+# geraria conflito de merge por nada. `.size-limit.cjs` falha fechado se
+# faltar ou ficar desatualizado frente ao disco.
+/.portao-tamanho/
+
 .vercel
 .env*
