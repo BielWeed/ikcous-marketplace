@@ -255,15 +255,37 @@ Deno.test("achado 4 (rodada 4): a RPC nunca usa LIKE contra a nota — só strpo
   assert(!/nota\s+LIKE/i.test(corpo), "a RPC voltou a usar LIKE contra a nota");
 });
 
-Deno.test("achado 1c (rodada 4): pagamento INDETERMINADO recusa por padrão, mas aceita liberar com p_conferi_no_melhor_envio = true; o marcador CONFIRMADO nunca aceita esse parâmetro", () => {
+Deno.test("achado 1 (rodada 5, dinheiro — negar por padrão): QUALQUER me_reverse_id REAL exige p_conferi_no_melhor_envio = true, com ou sem marcador indeterminado; o marcador CONFIRMADO nunca aceita esse parâmetro", () => {
   const ini = m.indexOf(
     "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
   );
   const fim = m.indexOf("$$;", ini);
   const corpo = m.slice(ini, fim + 3);
+  // Achado 1 (rodada 5): o guard da rodada 4 só recusava quando o marcador
+  // INDETERMINADO existia — um vínculo REAL sem NENHUM marcador (achado G5
+  // do scratchpad rev79/ataque4.cjs) passava direto. Agora QUALQUER id REAL
+  // (a fase de reserva continua isenta) exige o parâmetro, com ou sem
+  // marcador nenhum.
   assertStringIncludes(
     corpo,
-    "IF NOT p_conferi_no_melhor_envio AND EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'Pagamento indeterminado do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
+    "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND NOT p_conferi_no_melhor_envio THEN",
+  );
+  // O marcador indeterminado (quando existe) virou só INFORMAÇÃO na
+  // mensagem — não decide mais sozinho se a RPC recusa (achado 3, rodada 5:
+  // a âncora também mudou de texto, ver
+  // tests/marcador_pagamento_reverso_contrato_test.ts).
+  assertStringIncludes(
+    corpo,
+    "strpos(nota, 'Pagamento do envio reverso ' || v_d.me_reverse_id || ' em verificação;')",
+  );
+  assertStringIncludes(
+    corpo,
+    "Há registro de pagamento indeterminado para este envio reverso",
+  );
+  // Sem marcador NENHUM, a mensagem também recusa (é o achado G5 fechado).
+  assertStringIncludes(
+    corpo,
+    "Não há nenhum registro de pagamento para este envio reverso",
   );
   // O guard do marcador CONFIRMADO não cita p_conferi_no_melhor_envio em
   // lugar nenhum — não tem exceção possível.
@@ -272,6 +294,30 @@ Deno.test("achado 1c (rodada 4): pagamento INDETERMINADO recusa por padrão, mas
     corpo.indexOf("strpos(nota, 'confirmou o pagamento") + 400,
   );
   assert(!guardConfirmado.includes("p_conferi_no_melhor_envio"));
+});
+
+Deno.test("achado 1 (rodada 5): o guard 'negar por padrão' vem DEPOIS do guard do marcador CONFIRMADO e ANTES do UPDATE que solta o vínculo", () => {
+  const ini = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
+  );
+  const fim = m.indexOf("$$;", ini);
+  const corpo = m.slice(ini, fim + 3);
+  const posConfirmado = corpo.indexOf("strpos(nota, 'confirmou o pagamento");
+  const posNegarPorPadrao = corpo.indexOf(
+    "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND NOT p_conferi_no_melhor_envio THEN",
+  );
+  const posUpdate = corpo.indexOf(
+    "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
+  );
+  assert(posConfirmado >= 0 && posNegarPorPadrao >= 0 && posUpdate >= 0);
+  assert(
+    posConfirmado < posNegarPorPadrao,
+    "o guard do marcador confirmado tem que vir ANTES do guard de negar por padrão",
+  );
+  assert(
+    posNegarPorPadrao < posUpdate,
+    "o guard de negar por padrão tem que vir ANTES do UPDATE que solta o vínculo",
+  );
 });
 
 Deno.test("achado N-a (rodada 3): a nota do evento distingue RESERVA (prefixo reservando:) de vínculo REAL — nunca chama uma reserva de 'envio reverso (id reservando:...)'", () => {

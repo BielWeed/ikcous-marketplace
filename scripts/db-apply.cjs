@@ -2245,7 +2245,10 @@ const VERIFICACOES = {
         "IF NOT public.is_admin() OR auth.uid() IS NULL THEN",
         "IF v_d.codigo_postagem IS NOT NULL THEN",
         "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
-        "IF NOT p_conferi_no_melhor_envio AND EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'Pagamento indeterminado do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
+        // Achado 1 (rodada 5, "negar por padrão"): substitui o guard antigo,
+        // que só recusava com o marcador indeterminado presente.
+        "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND NOT p_conferi_no_melhor_envio THEN",
+        "strpos(nota, 'Pagamento do envio reverso ' || v_d.me_reverse_id || ' em verificação;')",
         "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
         "WHEN v_d.me_reverse_id LIKE 'reservando:%' THEN",
       ],

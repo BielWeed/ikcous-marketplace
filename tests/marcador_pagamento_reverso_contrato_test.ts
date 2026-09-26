@@ -3,6 +3,15 @@
 // de risco pré-publicação (rodada 4, scratchpad rev79/ataque3.cjs). O
 // marcador de pagamento (achado R5, rodada 3) vive em DOIS lugares que
 // precisam concordar byte a byte:
+//
+// Achado 3 (rodada 5, G7 do scratchpad rev79/ataque4.cjs): o texto do
+// marcador INDETERMINADO mudou de "Pagamento indeterminado do envio reverso
+// <id>;" para "Pagamento do envio reverso <id> em verificação;" — o texto
+// antigo dava uma instrução dirigida à LOJA, mas `devolucao_eventos` também
+// libera o DONO por RLS (o cliente lê essa nota). A âncora deste marcador
+// agora é PREFIXO + id + SUFIXO (o id não fica mais colado num ";" — vem
+// seguido de " em verificação;"), diferente do marcador confirmado (que
+// continua PREFIXO + id + ";").
 //   * `supabase/functions/melhor-envio-etiqueta/index.ts` GRAVA a nota, com
 //     `notaPagamentoConfirmadoReverso`/`notaPagamentoIndeterminadoReverso`;
 //   * `supabase/migrations/20261179000000_...sql` PROCURA a nota, com
@@ -41,7 +50,10 @@ const migration = Deno.readTextFileSync(
 // tempo, tudo bem — o teste é sobre os dois lados NUNCA divergirem, não
 // sobre o texto exato ser este para sempre.
 const ANCORA_CONFIRMADO = "confirmou o pagamento do envio reverso ";
-const ANCORA_INDETERMINADO = "Pagamento indeterminado do envio reverso ";
+// Achado 3 (rodada 5): o id, aqui, não fica colado num ";" — vem seguido de
+// " em verificação;". Prefixo e sufixo são as duas pontas ESTÁVEIS da frase.
+const ANCORA_INDETERMINADO_PREFIXO = "Pagamento do envio reverso ";
+const ANCORA_INDETERMINADO_SUFIXO = " em verificação;";
 
 Deno.test("marcador de pagamento CONFIRMADO: a âncora da edge e o strpos da RPC citam a MESMA frase", () => {
   // A edge grava: `O Melhor Envio ${ANCORA_CONFIRMADO}${meId}; ...`
@@ -57,20 +69,31 @@ Deno.test("marcador de pagamento CONFIRMADO: a âncora da edge e o strpos da RPC
 });
 
 Deno.test("marcador de pagamento INDETERMINADO: a âncora da edge e o strpos da RPC citam a MESMA frase", () => {
-  // A edge grava: `${ANCORA_INDETERMINADO}${meId}; o Melhor Envio não confirmou...`
+  // A edge grava: `${ANCORA_INDETERMINADO_PREFIXO}${meId}${ANCORA_INDETERMINADO_SUFIXO} o Melhor Envio não confirmou...`
   assertStringIncludes(
     edge,
-    "Pagamento indeterminado do envio reverso ${meId}; o Melhor Envio não confirmou",
+    "Pagamento do envio reverso ${meId} em verificação; o Melhor Envio não confirmou",
   );
   assertStringIncludes(
     migration,
-    `strpos(nota, '${ANCORA_INDETERMINADO}' || v_d.me_reverse_id || ';')`,
+    `strpos(nota, '${ANCORA_INDETERMINADO_PREFIXO}' || v_d.me_reverse_id || '${ANCORA_INDETERMINADO_SUFIXO}')`,
   );
 });
 
 Deno.test("as duas âncoras são DISTINTAS entre si (senão o guard confirmado e o indeterminado colidiriam)", () => {
-  assert(!ANCORA_CONFIRMADO.includes(ANCORA_INDETERMINADO));
-  assert(!ANCORA_INDETERMINADO.includes(ANCORA_CONFIRMADO));
+  assert(!ANCORA_CONFIRMADO.includes(ANCORA_INDETERMINADO_PREFIXO));
+  assert(!ANCORA_INDETERMINADO_PREFIXO.includes(ANCORA_CONFIRMADO));
+});
+
+Deno.test("achado 3 (rodada 5, G7): o marcador indeterminado NÃO carrega mais instrução dirigida à loja (texto neutro, seguro para o dono ler por RLS)", () => {
+  assert(
+    !edge.includes("convém conferir em Meus envios"),
+    "o texto antigo, dirigido à loja, não pode voltar a aparecer no marcador indeterminado",
+  );
+  assert(
+    !edge.includes("antes de liberar o vínculo manualmente"),
+    "instrução de admin não pode ficar visível ao cliente pela nota do marcador indeterminado",
+  );
 });
 
 Deno.test("achado 4 (F5 do scratchpad): a RPC usa strpos (substring literal), NUNCA LIKE, para não deixar '_'/'%' do próprio id virar curinga", () => {

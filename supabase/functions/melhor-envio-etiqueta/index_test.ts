@@ -1771,9 +1771,12 @@ const NOTA_CODIGO_GERADO = 'Código de postagem dos Correios gerado (válido por
 // porque o arquivo não importa nada de index.ts (só dynamic import do handler).
 const NOTA_PAGAMENTO_CONFIRMADO_REVERSO = (meId: string) =>
     `O Melhor Envio confirmou o pagamento do envio reverso ${meId}; o código de postagem ainda está sendo gerado.`
-// Achado 1c (rodada 4): mesmo texto de `notaPagamentoIndeterminadoReverso` (index.ts).
+// Achado 1c (rodada 4) + 3 (rodada 5, G7): mesmo texto de
+// `notaPagamentoIndeterminadoReverso` (index.ts) — a rodada 5 trocou o texto
+// por um NEUTRO (sem instrução dirigida à loja), porque o dono da devolução
+// também lê esta nota por RLS.
 const NOTA_PAGAMENTO_INDETERMINADO_REVERSO = (meId: string) =>
-    `Pagamento indeterminado do envio reverso ${meId}; o Melhor Envio não confirmou nem recusou o checkout — convém conferir em Meus envios, na conta do Melhor Envio, antes de liberar o vínculo manualmente.`
+    `Pagamento do envio reverso ${meId} em verificação; o Melhor Envio não confirmou nem recusou o checkout ainda.`
 
 const DEVOLUCAO_APROVADA = {
     id: DEVOLUCAO_ID,
@@ -1857,6 +1860,9 @@ function clienteFalsoDevolucao(cfg: {
     /** Achado 1 (rodada 4, E4/E5): a gravação do marcador de pagamento
      * CONFIRMADO falha (as 2 tentativas da função de verdade). */
     erroNoMarcador?: boolean
+    /** Achado H2 (rodada 5): a gravação do marcador de pagamento
+     * INDETERMINADO falha (as 2 tentativas — mesma retentativa do confirmado). */
+    erroNoIndeterminado?: boolean
 } = {}) {
     const registro = {
         operacoes: [] as string[],
@@ -1888,6 +1894,11 @@ function clienteFalsoDevolucao(cfg: {
                 // função de verdade tenta 2x; a flag falha as duas (não conta
                 // tentativa, só barra qualquer INSERT com essa nota).
                 if (cfg.erroNoMarcador && String(no.valores?.nota ?? '').includes('confirmou o pagamento')) {
+                    return Promise.resolve({ data: null, error: { code: '08006', message: 'connection failure' } })
+                }
+                // Achado H2 (rodada 5): mesma simulação, para o marcador
+                // INDETERMINADO — prova que ele também tenta 2x agora.
+                if (cfg.erroNoIndeterminado && String(no.valores?.nota ?? '').includes('em verificação')) {
                     return Promise.resolve({ data: null, error: { code: '08006', message: 'connection failure' } })
                 }
                 registro.eventos.push(no.valores)
@@ -2010,7 +2021,10 @@ function buscarMeReversoFalso(op: {
     checkout?:
         | 'pago' | 'pendente' | 'bloqueado' | 'cancelado' | 'erro-4xx' | 'erro-5xx' | 'excecao'
         | '200-vazio' | '200-message' | '200-nao-json' | '200-outro-formato' | '200-pago-sem-id'
-    gerar?: 'ok' | 'erro' | 'erro-4xx'
+    /** Achado H1 (rodada 5): 'excecao' faz o generate LANÇAR (ex.: timeout),
+     * diferente de 'erro' (responde HTTP 500 normalmente) — é o caminho que
+     * cai no `catch` de `gerarDevolucaoReversa`, não em `respostaCodigoPendente`. */
+    gerar?: 'ok' | 'erro' | 'erro-4xx' | 'excecao'
     codigo?: string | null
     /** R6: 'falha' derruba a DACE e o print público (a DC-e não vem). */
     dce?: 'ok' | 'falha'
@@ -2076,6 +2090,7 @@ function buscarMeReversoFalso(op: {
         if (url.endsWith('/api/v2/me/shipment/generate')) {
             registro.geracoes++
             registro.corposOrders.push(JSON.parse(String(init?.body || '{}')))
+            if (op.gerar === 'excecao') throw new Error('AbortError: tempo esgotado simulado')
             if (op.gerar === 'erro') return json({ message: 'Falha ao gerar' }, 500)
             // envio não pago: o ME recusa gerar (e gerar nunca cobra)
             if (op.gerar === 'erro-4xx') return json({ message: 'Envio não está pago.' }, 422)
@@ -3210,6 +3225,72 @@ Deno.test("gerar_devolucao_reversa - achado 1a: 2ª chamada (caminho vinculado) 
         assertEquals(supa2.registro.eventos.length, 1)
         assertEquals(supa2.registro.eventos[0].nota, NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO))
         assertEquals(String(corpo.error).includes('não ficou registrado no banco'), false)
+    })
+})
+
+// ── achados 1/2/3/4 (revisão de risco, rodada 5 — "negar por padrão" na RPC,
+// H1/H2 na edge, texto neutro do marcador indeterminado, ruído no 200) ──────
+// scratchpad rev79/ataque4.cjs + fn8/, testes REVISOR79r4 (H1-H6).
+
+Deno.test("gerar_devolucao_reversa - achado H1 (rodada 5): pagamento confirmado, marcador falha 2x, EXCEÇÃO no generate (não HTTP 500) -> 502 AVISA que o pagamento não ficou registrado", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNoMarcador: true })
+        const me = buscarMeReversoFalso({ gerar: 'excecao' })
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 502)
+            // Achado (rodada 5, H1): antes, `marcadorGravado` era `const` só
+            // dentro do `try` — o `catch` (onde a exceção do generate cai)
+            // não tinha como saber que o marcador tinha falhado, e o aviso
+            // nunca aparecia aqui. `marcadorGravado` agora sobrevive ao catch.
+            assertEquals(String(corpo.error).includes('FOI CONFIRMADO'), true)
+            assertEquals(String(corpo.error).includes('não ficou registrado no banco'), true)
+        })
+        // As DUAS tentativas (retry) aparecem no log — nunca falha silenciosa.
+        assertEquals(linhas.filter((l) => l.includes('falha ao gravar o marcador de pagamento confirmado')).length, 2)
+        assertEquals(supa.registro.eventos.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado H2 (rodada 5): a gravação do marcador de pagamento INDETERMINADO também tenta 2x agora (antes era uma tentativa só)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNoIndeterminado: true })
+        const me = buscarMeReversoFalso({ checkout: 'erro-5xx' })
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const { res } = await rodarReversa(supa, me)
+            assertEquals(res.status, 502)
+        })
+        assertEquals(linhas.filter((l) => l.includes('falha ao gravar o marcador de pagamento indeterminado')).length, 2)
+        assertEquals(supa.registro.eventos.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado 3 (rodada 5, G7): o marcador INDETERMINADO grava texto NEUTRO — sem instrução dirigida à loja que o dono da devolução (RLS) também leria", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ checkout: 'erro-5xx' })
+        await rodarReversa(supa, me)
+        assertEquals(supa.registro.eventos.length, 1)
+        const nota = String(supa.registro.eventos[0].nota)
+        assertEquals(nota, NOTA_PAGAMENTO_INDETERMINADO_REVERSO(ME_REVERSO))
+        assertEquals(nota.includes('convém conferir'), false)
+        assertEquals(nota.includes('liberar o vínculo manualmente'), false)
+        assertEquals(nota.includes('em verificação'), true)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado 4 (rodada 5): a resposta 200 (caminho vinculado, código já existe) NÃO carrega mais o aviso de marcador-não-gravado — a RPC de liberar já recusa sozinha com o código escrito", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNoMarcador: true, devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
+        const me = buscarMeReversoFalso({ gerar: 'ok', codigo: CODIGO_POSTAGEM })
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 200)
+            assertEquals(String(corpo.aviso ?? '').includes('não ficou registrado no banco'), false)
+        })
+        // A tentativa de gravar o marcador aconteceu (e falhou 2x) — só não
+        // aparece mais NA RESPOSTA (achado 4: era ruído aqui).
+        assertEquals(linhas.filter((l) => l.includes('falha ao gravar o marcador de pagamento confirmado')).length, 2)
     })
 })
 

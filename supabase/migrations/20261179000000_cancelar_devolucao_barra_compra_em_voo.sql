@@ -150,7 +150,39 @@
 --      (`tests/marcador_pagamento_reverso_contrato_test.ts`) que lê o texto
 --      de `index.ts` e desta migration e confere que as duas âncoras batem.
 --
--- O QUE ESTA MIGRATION FAZ, NA ORDEM (já com as rodadas 2-4 aplicadas):
+-- RODADA 5 (revisão independente sobre o resultado da rodada 4 — achados 1
+-- (dinheiro, "negar por padrão") e 3 (texto do marcador indeterminado visível
+-- ao cliente), scratchpad rev79/ataque4.cjs + fn8/; os achados 2, 4 e 5 da
+-- mesma rodada são só edge/runbook, index.ts e docs/runbooks/ — nada muda
+-- aqui por causa deles):
+--   1. O guard da rodada 4 (achado 1c) só recusava soltar o vínculo quando o
+--      marcador INDETERMINADO existia — um vínculo REAL sem NENHUM marcador
+--      (edge derrubada no meio do caminho, um link de produção gravado antes
+--      de esta proteção nascer, ou qualquer outra falha que nunca chegou a
+--      gravar nada) não caía em guard nenhum e saía solto sem pedir
+--      confirmação (achado G5 do scratchpad: `ataque4.cjs` prova um vínculo
+--      real com zero eventos 'sistema' liberado sem
+--      `p_conferi_no_melhor_envio`). CORREÇÃO: o guard vira "negar por
+--      padrão" — para QUALQUER `me_reverse_id` REAL (`NOT LIKE
+--      'reservando:%'`, mesma isenção de sempre para a fase de reserva —
+--      achados R1/N-a intactos), a RPC agora EXIGE
+--      `p_conferi_no_melhor_envio = true`, com ou sem marcador nenhum. O
+--      marcador indeterminado deixa de decidir sozinho e vira só informação
+--      na MENSAGEM da recusa (avisa que há um registro de pagamento
+--      indeterminado, se houver). O marcador CONFIRMADO continua recusando
+--      sem NENHUMA exceção possível (achado R5, rodada 3 — intocado).
+--   3. O texto do marcador indeterminado (`notaPagamentoIndeterminadoReverso`,
+--      index.ts) mudou de "Pagamento indeterminado do envio reverso ..." para
+--      "Pagamento do envio reverso ... em verificação;" — achado G7 do
+--      scratchpad: o texto antigo carregava uma instrução ("convém conferir
+--      ... antes de liberar o vínculo manualmente") dirigida à LOJA, mas
+--      `devolucao_eventos` também libera o DONO por RLS (mesmo motivo do
+--      achado R2, rodada 2) — o cliente lia uma instrução de admin sem
+--      sentido nenhum para ele. O `strpos` desta RPC muda junto (a âncora é o
+--      contrato com `tests/marcador_pagamento_reverso_contrato_test.ts`,
+--      achado 4 da rodada 4).
+--
+-- O QUE ESTA MIGRATION FAZ, NA ORDEM (já com as rodadas 2-5 aplicadas):
 --   1. Redefine `public.cancelar_devolucao(p_id uuid)` (MESMA assinatura da
 --      20261175000000 — grants de lá continuam valendo, Postgres não perde
 --      privilégio num CREATE OR REPLACE que não muda a assinatura): mantém
@@ -191,10 +223,14 @@
 --      e o caminho é cancelar direto no Melhor Envio), se o pagamento já
 --      tiver sido CONFIRMADO no Melhor Envio para este `me_reverse_id`
 --      (achado R5, rodada 3 — marcador gravado pela edge, SEM exceção
---      possível pelo 2º argumento) OU se o pagamento estiver INDETERMINADO
---      (achado 1c, rodada 4 — marcador diferente, aceita liberar só com
---      `p_conferi_no_melhor_envio = true`); solta `me_reverse_id` (reserva OU
---      id real, tanto faz) e grava um evento 'sistema' com texto neutro
+--      possível pelo 2º argumento) OU, achado 1 (rodada 5, "negar por
+--      padrão"), sempre que `me_reverse_id` for um id REAL (não uma reserva)
+--      e `p_conferi_no_melhor_envio` não vier `true` — com ou sem marcador
+--      INDETERMINADO gravado (a rodada 4 só recusava quando esse marcador
+--      existia; a rodada 5 fechou o buraco de um vínculo real SEM marcador
+--      nenhum sair solto de graça — achado G5 do scratchpad); solta
+--      `me_reverse_id` (reserva OU id real, tanto faz) e grava um evento
+--      'sistema' com texto neutro
 --      contando o que foi liberado (achado N-a: o texto distingue reserva de
 --      vínculo real). Não mexe em `status`, `codigo_postagem` nem em nada
 --      além do vínculo — é estritamente a "saída" para um vínculo preso,
@@ -250,31 +286,39 @@
 --      cancela e `devolucao_eventos` ganha uma linha nova com `ator =
 --      'sistema'`, `nota` citando "Melhor Envio" e o `me_reverse_id`, em
 --      texto NEUTRO (sem imperativo dirigido a alguém).
---   5. `SELECT public.admin_devolucao_liberar_vinculo_reverso('<id>')`
---      autenticado como admin, numa devolução com `me_reverse_id` preenchido
---      e `codigo_postagem` NULL: solta o vínculo (`me_reverse_id` volta a
---      NULL) e grava o evento 'sistema' correspondente. Chamado por quem não
---      é admin: `42501`. Sem vínculo: `22023`. Com código já emitido:
+--   5. Achado 1 (rodada 5, "negar por padrão"): `SELECT
+--      public.admin_devolucao_liberar_vinculo_reverso('<id>')` (SEM o 2º
+--      argumento), autenticado como admin, numa devolução com
+--      `me_reverse_id` REAL preenchido e `codigo_postagem` NULL, agora
+--      RECUSA sempre com `22023` — com ou sem marcador nenhum gravado (antes
+--      da rodada 5, sem marcador algum o vínculo saía solto direto, achado G5
+--      do scratchpad). Só `SELECT
+--      public.admin_devolucao_liberar_vinculo_reverso('<id>', true)` solta
+--      (`me_reverse_id` volta a NULL, evento 'sistema' gravado) — e só quando
+--      não houver marcador CONFIRMADO (ver abaixo). Uma RESERVA
+--      (`me_reverse_id` = 'reservando:...') continua soltando SEM o 2º
+--      argumento, sem mudança nenhuma (achados R1/N-a). Chamado por quem não
+--      é admin: `42501`. Sem vínculo nenhum: `22023`. Com código já emitido:
 --      `22023` (nada para destravar). Achado R5 (rodada 3): com um evento
 --      'sistema' de pagamento CONFIRMADO gravado para o `me_reverse_id`
---      atual (a edge grava um assim que o checkout paga), a RPC também
---      recusa com `22023` — nada é solto, o vínculo continua como estava, e
---      NENHUM segundo argumento contorna isso. Achado 1c (rodada 4): com um
---      evento 'sistema' de pagamento INDETERMINADO gravado (checkout 5xx ou
---      exceção), a RPC recusa com `22023` a menos que
---      `p_conferi_no_melhor_envio` venha `true` — `SELECT
---      public.admin_devolucao_liberar_vinculo_reverso('<id>', true)` solta
---      normalmente. Achado 3 (rodada 4): `SET ROLE service_role` (ou
---      `postgres`) SEM uma sessão de verdade (sem `auth.uid()`) recebe
---      `42501`, mesmo sendo admin pelo `is_admin()` baseline — só uma
---      sessão autenticada de fato libera. Chamar HOJE (antes do código
---      chegar): confira o envio em "Meus envios" na conta do Melhor Envio
---      da loja ANTES de chamar esta RPC — se já foi pago, não solte (a RPC
---      recusa sozinha se o marcador chegou a ser gravado, mas a checagem
---      manual continua sendo a primeira linha de defesa); se ainda está no
---      carrinho sem pagar, remova-o de lá primeiro. Ver o procedimento
---      completo no runbook (`docs/runbooks/publicar-painel-cartao-devolucoes.md`,
---      §7.6).
+--      atual (a edge grava um assim que o checkout paga), a RPC recusa com
+--      `22023` MESMO com `p_conferi_no_melhor_envio = true` — nada é solto, o
+--      vínculo continua como estava, e NENHUM segundo argumento contorna
+--      isso. Achado 1c (rodada 4) + 1 (rodada 5): com um evento 'sistema' de
+--      pagamento INDETERMINADO gravado (checkout 5xx ou exceção), a mensagem
+--      de recusa avisa que há esse registro — mas a exigência do 2º
+--      argumento é a MESMA, com ou sem esse marcador. Achado 3 (rodada 4):
+--      `SET ROLE service_role` (ou `postgres`) SEM uma sessão de verdade
+--      (sem `auth.uid()`) recebe `42501`, mesmo sendo admin pelo
+--      `is_admin()` baseline — só uma sessão autenticada de fato libera.
+--      Chamar SEMPRE (antes de passar `true`, não só "antes do código
+--      chegar"): confira o envio em "Meus envios" na conta do Melhor Envio
+--      da loja ANTES de chamar esta RPC com o 2º argumento — se já foi pago,
+--      não solte (a RPC recusa sozinha se o marcador CONFIRMADO chegou a ser
+--      gravado, mas a checagem manual continua sendo a primeira linha de
+--      defesa); se ainda está no carrinho sem pagar, remova-o de lá
+--      primeiro. Ver o procedimento completo no runbook
+--      (`docs/runbooks/publicar-painel-cartao-devolucoes.md`, §7.6).
 --
 -- ROLLBACK: `rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql`
 -- restaura o corpo de `cancelar_devolucao` da 20261175000000 byte a byte
@@ -396,13 +440,29 @@ BEGIN
     RAISE EXCEPTION 'O Melhor Envio já confirmou o pagamento deste envio reverso — aguarde o código de postagem chegar ou cancele o envio direto no Melhor Envio antes de liberar o vínculo aqui.'
       USING ERRCODE = '22023';
   END IF;
-  -- Achado 1c (rodada 4): checkout 5xx/exceção é AMBÍGUO (o Melhor Envio pode
-  -- ter debitado com a resposta perdida) — marcador DIFERENTE do confirmado.
-  -- Este SIM aceita `p_conferi_no_melhor_envio = true`: um admin que já abriu
-  -- "Meus envios" e viu que não foi pago pode liberar mesmo assim.
-  IF NOT p_conferi_no_melhor_envio AND EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'Pagamento indeterminado do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN
-    RAISE EXCEPTION 'O Melhor Envio deu uma resposta indeterminada ao pagamento deste envio reverso — confira "Meus envios" na conta do Melhor Envio antes de liberar; chame de novo com p_conferi_no_melhor_envio = true depois de conferir que não foi pago.'
-      USING ERRCODE = '22023';
+  -- Achado 1 (rodada 5, dinheiro — "negar por padrão"): o guard da rodada 4
+  -- só recusava quando o marcador INDETERMINADO existia — mas um vínculo
+  -- REAL sem NENHUM marcador (edge derrubada no meio do caminho, um link de
+  -- produção gravado antes de esta proteção nascer, ou qualquer outra falha
+  -- que nunca chegou a gravar nada) não caía em guard nenhum e saía solto
+  -- sem pedir confirmação (achado G5 do scratchpad `ataque4.cjs`: vínculo
+  -- real, zero eventos 'sistema', liberado sem `p_conferi_no_melhor_envio`).
+  -- CORREÇÃO: para QUALQUER `me_reverse_id` REAL (a fase de reserva continua
+  -- isenta — achados R1/N-a intactos), a RPC agora EXIGE
+  -- `p_conferi_no_melhor_envio = true` sempre, com ou sem marcador. O
+  -- marcador indeterminado deixa de decidir sozinho e vira só informação na
+  -- MENSAGEM da recusa (avisa que há um registro de pagamento indeterminado,
+  -- quando existir); sem marcador nenhum, a mensagem diz isso também. O
+  -- marcador CONFIRMADO (guard acima) continua recusando sem NENHUMA
+  -- exceção — inalterado pela rodada 5.
+  IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND NOT p_conferi_no_melhor_envio THEN
+    IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'Pagamento do envio reverso ' || v_d.me_reverse_id || ' em verificação;') > 0) THEN
+      RAISE EXCEPTION 'Há registro de pagamento indeterminado para este envio reverso no Melhor Envio — confira "Meus envios" na conta do Melhor Envio antes de liberar; chame de novo com p_conferi_no_melhor_envio = true depois de conferir que não foi pago.'
+        USING ERRCODE = '22023';
+    ELSE
+      RAISE EXCEPTION 'Não há nenhum registro de pagamento para este envio reverso no banco — confira "Meus envios" na conta do Melhor Envio antes de liberar; chame de novo com p_conferi_no_melhor_envio = true depois de conferir que não foi pago.'
+        USING ERRCODE = '22023';
+    END IF;
   END IF;
   UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;
   -- Texto neutro pelo mesmo motivo do evento de cancelar_devolucao (achado

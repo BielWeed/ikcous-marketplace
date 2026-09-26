@@ -3248,11 +3248,39 @@ PROVAS.push({
       "mutante R1_rpc_sem_gate_admin: só admin pode liberar o vínculo preso",
     );
 
-    // Admin libera de verdade: me_reverse_id volta a NULL, evento gravado.
+    // Achado 1 (rodada 5, dinheiro — "negar por padrão", G5 do scratchpad
+    // rev79/ataque4.cjs): SEM o 2º argumento, um vínculo REAL sem NENHUM
+    // marcador (o cenário mais comum de "edge morreu no meio do caminho", ou
+    // um link de produção anterior a esta proteção) agora RECUSA — antes da
+    // rodada 5 soltava direto, sem pedir confirmação nenhuma.
     await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [dLiberar.id],
+        ),
+      /Não há nenhum registro de pagamento/,
+      "mutante G5_negar_por_padrao: vínculo real SEM marcador nenhum não pode ser solto sem p_conferi_no_melhor_envio = true",
+    );
+    const meReverseAindaPresoSemMarcador = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dLiberar.id],
+    );
+    assert.equal(
+      meReverseAindaPresoSemMarcador,
+      ME_REVERSO_PRESO,
+      "a recusa acima não pode ter mexido em nada",
+    );
+
+    // Admin libera de verdade, com p_conferi_no_melhor_envio = true (já olhou
+    // "Meus envios" e não achou nada pago): me_reverse_id volta a NULL,
+    // evento gravado.
     const liberado = await rpc(
       cliente,
-      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, true) AS r",
       [dLiberar.id],
     );
     assert.equal(liberado.me_reverse_id_liberado, ME_REVERSO_PRESO);
@@ -3389,12 +3417,35 @@ PROVAS.push({
     );
     assert.equal(meReverseAindaPreso, ME_REVERSO_PAGO);
 
+    // Achado 1 (rodada 5, G3 do scratchpad, segunda metade): o marcador
+    // CONFIRMADO recusa MESMO com p_conferi_no_melhor_envio = true — dinheiro
+    // confirmado não se destrava por auto-declaração, sem NENHUMA exceção.
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, true) AS r",
+          [dPago.id],
+        ),
+      /já confirmou o pagamento/,
+      "mutante R5_confirmado_aceita_flag: o marcador CONFIRMADO não pode aceitar p_conferi_no_melhor_envio nunca",
+    );
+    const meReverseAindaPresoComFlag = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dPago.id],
+    );
+    assert.equal(meReverseAindaPresoComFlag, ME_REVERSO_PAGO);
+
     // Precisão do guard: o marcador de pagamento gravado ACIMA (para
     // ME_REVERSO_PAGO) continua na trilha de eventos desta MESMA devolução —
     // mas o vínculo já foi TROCADO para um id NOVO, sem marcador nenhum
     // gravado para ele. O LIKE tem que casar só com o me_reverse_id de HOJE;
     // se casasse com QUALQUER marcador de pagamento da devolução (guard
-    // amplo demais), a liberação abaixo seria recusada à toa.
+    // amplo demais), a liberação abaixo seria recusada à toa mesmo com
+    // p_conferi_no_melhor_envio = true (achado 1, rodada 5: id real SEM
+    // marcador próprio exige o 2º argumento, mas não pode cair no guard do
+    // marcador CONFIRMADO de um id que já não é mais este).
     const ME_REVERSO_TROCADO = "me-reverso-trocado-r5";
     await cliente.query(
       "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
@@ -3402,7 +3453,7 @@ PROVAS.push({
     );
     const liberadoAposTroca = await rpc(
       cliente,
-      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, true) AS r",
       [dPago.id],
     );
     assert.equal(
@@ -3435,10 +3486,13 @@ PROVAS.push({
     );
     assert.ok(!eventoDaReserva.nota.includes("reservando:"));
 
-    // Achado 1c (rodada 4): pagamento INDETERMINADO (checkout 5xx/exceção)
-    // recusa por padrão — marcador DIFERENTE do confirmado — mas libera com
-    // p_conferi_no_melhor_envio = true, depois de um admin já ter olhado
-    // "Meus envios" na conta do Melhor Envio.
+    // Achado 1c (rodada 4) + 1 (rodada 5, "negar por padrão"): pagamento
+    // INDETERMINADO recusa por padrão — o texto do marcador mudou (achado 3,
+    // rodada 5, G7: neutro, sem instrução dirigida à loja, porque o dono
+    // também lê esta nota por RLS) e a exigência do 2º argumento agora é a
+    // MESMA de qualquer vínculo real, mas a mensagem de recusa AVISA que há
+    // esse registro. Libera com p_conferi_no_melhor_envio = true, depois de
+    // um admin já ter olhado "Meus envios" na conta do Melhor Envio.
     const ME_REVERSO_INDETERMINADO = "me-reverso-indeterminado-r79r4";
     await cliente.query(
       "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
@@ -3449,7 +3503,7 @@ PROVAS.push({
        VALUES ($1, 'aprovada', 'aprovada', 'sistema', $2)`,
       [
         dPago.id,
-        `Pagamento indeterminado do envio reverso ${ME_REVERSO_INDETERMINADO}; o Melhor Envio não confirmou nem recusou o checkout — convém conferir em Meus envios, na conta do Melhor Envio, antes de liberar o vínculo manualmente.`,
+        `Pagamento do envio reverso ${ME_REVERSO_INDETERMINADO} em verificação; o Melhor Envio não confirmou nem recusou o checkout ainda.`,
       ],
     );
     await logar(cliente, U_ADMIN);
@@ -3460,7 +3514,7 @@ PROVAS.push({
           "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
           [dPago.id],
         ),
-      /indeterminada/,
+      /registro de pagamento indeterminado/,
       "mutante 1c_indeterminado_libera_direto: sem confirmar que já olhou o Melhor Envio, a RPC não pode soltar um vínculo com pagamento indeterminado",
     );
     const meReverseAindaPresoIndet = await valorUnico(

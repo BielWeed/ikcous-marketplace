@@ -537,7 +537,28 @@ recusa por padrão, mas libera com o novo argumento `p_conferi_no_melhor_envio =
 de um admin ter conferido "Meus envios"; (3) a RPC agora também exige `auth.uid() IS NOT NULL`,
 fechando o atalho de `service_role`/`postgres`; (4) o guard trocou `LIKE` por `strpos` (substring
 literal, sem curinga) e ganhou um teste (`tests/marcador_pagamento_reverso_contrato_test.ts`) que
-amarra o texto da edge ao texto da RPC. Ver §7.6 atualizado.
+amarra o texto da edge ao texto da RPC.
+
+**Rodada 5 (achados 1/2/3/4/5, scratchpad rev79/ataque4.cjs + fn8/)**: a revisão seguinte achou
+que o guard do marcador indeterminado (rodada 4) só recusava soltar o vínculo QUANDO esse marcador
+existia — um vínculo REAL sem NENHUM marcador (edge derrubada no meio do caminho, ou qualquer link
+de produção anterior a esta proteção nascer) passava direto, SEM pedir confirmação nenhuma (achado
+G5, dinheiro). Correção: a RPC agora "nega por padrão" — para QUALQUER `me_reverse_id` REAL (a
+fase de reserva continua isenta), `p_conferi_no_melhor_envio = true` é OBRIGATÓRIO, com ou sem
+marcador; o marcador indeterminado virou só informação na mensagem de recusa. Achado 3 (G7): o
+texto do marcador indeterminado também mudou para NEUTRO (o dono da devolução lê essa nota por
+RLS, mesmo motivo do achado R2) — a âncora do `strpos` mudou junto. Achados 2/4 (edge, sem mudança
+de SQL): a exceção do `generate` depois do pagamento confirmado agora avisa corretamente se o
+marcador falhou (antes o aviso se perdia), o marcador indeterminado também ganhou a retentativa de
+2x, e o aviso de marcador-não-gravado saiu da resposta 200 (ruído: o código já escrito basta para
+a RPC recusar sozinha). Ver §7.6 atualizado.
+
+**Achado 5 (rodada 5) — publicação da function em conjunto com `fix/etiqueta-le-endereco-da-conta`:**
+a edge `melhor-envio-etiqueta` só pode ser publicada a partir de um commit que contenha ESTA
+branch (`fix/devolucao-pos-revisao`) **E** a branch `fix/etiqueta-le-endereco-da-conta` (a etiqueta
+nacional lendo o endereço da conta, não do pedido). Publicar a partir de uma branch sozinha
+apagaria a correção da outra — as duas mexem no mesmo arquivo `index.ts`. O coordenador faz o
+merge das duas ANTES de publicar; não publique esta function isolada.
 
 ### 7.0 Antes de aplicar
 
@@ -570,7 +591,7 @@ migration; isso é o único jeito de checar 79 sem tocar em pedido de cliente ne
 ```sql
 SELECT checagem, valor, esperado, COALESCE(valor = esperado, false) AS ok FROM (VALUES
   ('79 cancelar_devolucao: corpo novo',          (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'cancelar_devolucao' AND pronamespace = 'public'::regnamespace), '74fd42d04f8ea55257a0aec73bfcabc1'),
-  ('79 admin_devolucao_liberar_vinculo_reverso: corpo', (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), '83a620da726bee13c21578daec6909f3'),
+  ('79 admin_devolucao_liberar_vinculo_reverso: corpo', (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), 'afc1ee0b56b07bef717e29396eddc8d5'),
   ('79 as duas SECURITY DEFINER',                 (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND prosecdef), '2'),
   ('79 as duas com search_path fixo',             (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND proconfig @> ARRAY['search_path=public']), '2'),
   ('rpc nova tem só UM overload (rodada 4: o DROP limpou o de 1 argumento)', (SELECT count(*)::text FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), '1'),
@@ -583,20 +604,19 @@ ORDER BY ok, checagem;
 
 (O md5 de `cancelar_devolucao` e o `45c56a39cc29f31ec5ff904f1929737e` do §7.0 foram conferidos em
 26/09/2026 (rodada 2) e continuam valendo — nenhuma rodada seguinte tocou o corpo desta função. O
-md5 de `admin_devolucao_liberar_vinculo_reverso` mudou de novo na rodada 4 (achados 1c/3/4: o
-segundo guard do marcador indeterminado, o `auth.uid() IS NOT NULL` e a troca de `LIKE` por
-`strpos`) — o valor acima já é o da rodada 4. Recompute-o de novo se o conteúdo do arquivo mudar
-antes de publicar.)
+md5 de `admin_devolucao_liberar_vinculo_reverso` mudou de novo na rodada 5 (achado 1: o guard do
+marcador indeterminado virou o guard "negar por padrão", exigindo `p_conferi_no_melhor_envio`
+sempre para um id real; achado 3: a âncora do `strpos` mudou de texto) — o valor acima já é o da
+rodada 5. Recompute-o de novo se o conteúdo do arquivo mudar antes de publicar.)
 
 ### 7.3 Marcadores — o filtro do §1.2 precisa alargar
 
-O script do §1.2 filtra `Object.keys(VERIFICACOES)` por `/^2026117[5-8]/` — a 79 não entra nesse
-padrão. Troque por `/^(2026117[5-8]|20261179)/` antes de gerar `conferir-marcadores.sql` desta
-vez. O total sobe de **32 para 41 marcadores** (mais 9, os da 79: 3 em `cancelar_devolucao`
-(rodada 2, sem mudança) e 6 em `admin_devolucao_liberar_vinculo_reverso` — os 3 da rodada 2, mais
-2 da rodada 3 (o guard do marcador de pagamento confirmado, achado R5, e a nota que distingue
-reserva de vínculo real, achado N-a), mais 1 da rodada 4 (o guard do marcador de pagamento
-INDETERMINADO, achado 1c) — confira que a query devolve 41 linhas, todas `ok = true`.
+O script do §1.2 filtra `Object.keys(VERIFICACOES)` por `/^2026117[5-8]/` — nem a 79 (esta
+migration) nem a 80 (`fix/cancelar-com-cartao-vivo`, publicada junto) entram nesse padrão. Troque
+por `/^(2026117[5-9]|20261180)/` antes de gerar `conferir-marcadores.sql` desta vez, para cobrir
+75–78, a 79 e a 80 de uma vez. **Não fixe aqui quantas linhas o total deveria ter** — a lista de
+marcadores muda a cada rodada de revisão dos dois lados (79 e 80); rode a consulta e confira
+`ok = true` em TODAS as linhas que ela devolver.
 
 ### 7.4 Ledger
 
@@ -606,11 +626,12 @@ INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
 ON CONFLICT (version) DO NOTHING;
 ```
 
-### 7.5 Rollback — 79 ANTES de 78
+### 7.5 Rollback — 79 ANTES de 78 (e DEPOIS de 80)
 
-Se 79 estiver aplicada e for preciso desfazer o PR inteiro (§5), rode o rollback dela **antes**
-de tocar em 78/77/76/75 — ela redefine uma função que mora na 75 e cria uma RPC que só faz
-sentido com a tabela `devolucoes` (75) no ar:
+A ordem GLOBAL de rollback (§5, ajustada pela branch `fix/cancelar-com-cartao-vivo` para incluir a
+80) é **80 → 79 → 78 → 77 → 76 → 75**. Se 79 estiver aplicada e for preciso desfazer o PR inteiro,
+rode o rollback dela depois do de 80 e **antes** de tocar em 78/77/76/75 — ela redefine uma função
+que mora na 75 e cria uma RPC que só faz sentido com a tabela `devolucoes` (75) no ar:
 
 ```bash
 psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql
@@ -620,16 +641,22 @@ Depois disso, a ordem do §5 (78 → 77 → 76 → 75) continua igual. Se só 79
 problema é isolado nela), o rollback acima sozinho já basta — `cancelar_devolucao` volta ao corpo
 da 75 e `admin_devolucao_liberar_vinculo_reverso` é derrubada; nada em 75–78 é tocado.
 
-**Por que a ORDEM importa (N-a/N-c, rodada 3):** a GUARDA DE ORDEM que o rollback da 75 já tem
+**Por que a ORDEM importa (N-a/N-c, rodada 3) — e as DUAS guardas que agora cobrem os dois
+sentidos:** a GUARDA DE ORDEM que o rollback da 75 tinha originalmente
 (`rollback-manual-20261175000000_...sql`, bloco `DO $$ ... RAISE EXCEPTION 'reverta 78/77/76 antes
-desta (75)' ... $$`) foi escrita ANTES de a 79 existir — ela não sabe nada sobre
-`admin_devolucao_liberar_vinculo_reverso`. Se alguém reverter a 75 com a 79 ainda aplicada (pulando
-o passo acima), essa guarda NÃO barra: o rollback da 75 derruba `public.devolucoes` sem `CASCADE`
-(um `DROP TABLE` simples não enxerga o corpo de uma função plpgsql como dependência de catálogo),
-e `admin_devolucao_liberar_vinculo_reverso` sobrevive — ORFÃ, apontando para uma tabela que não
-existe mais, falhando com `42P01` (relation does not exist) na primeira chamada seguinte. Rodar o
-rollback da 79 primeiro é o que evita essa órfã; não há proteção automática contra a ordem errada
-além desta instrução.
+desta (75)' ... $$`) foi escrita ANTES de a 79 existir — sozinha, ela não sabia nada sobre
+`admin_devolucao_liberar_vinculo_reverso`. Revertendo a 75 com a 79 ainda aplicada, essa guarda não
+barrava: o rollback da 75 derruba `public.devolucoes` sem `CASCADE` (um `DROP TABLE` simples não
+enxerga o corpo de uma função plpgsql como dependência de catálogo), e
+`admin_devolucao_liberar_vinculo_reverso` sobrevivia — ÓRFÃ, apontando para uma tabela que não
+existe mais, falhando com `42P01` (relation does not exist) na primeira chamada seguinte. **Isso
+já não depende só desta instrução:** o rollback da 75 (branch `fix/cancelar-com-cartao-vivo`,
+migration 80) agora recusa por si só, checando `admin_devolucao_liberar_vinculo_reverso` por NOME
+em `pg_proc` — reverter 75 com a 79 viva não passa mais batido; e o rollback da 79 (achado do
+addendum, rodada 4) recusa cedo com `to_regclass('public.devolucoes') IS NULL` — reverter 79 sem a
+75 no ar também não passa batido. As duas guardas cobrem a ordem errada nos dois sentidos; a
+instrução acima (80 → 79 → 78 → 77 → 76 → 75) continua sendo o caminho feliz, sem depender de
+decorar a ordem de cabeça.
 
 ### 7.6 Usar `admin_devolucao_liberar_vinculo_reverso` em produção (achados R5/1/3)
 
@@ -639,22 +666,33 @@ código de postagem por tempo demais (edge que morreu entre a reserva e o víncu
 falhou nas duas tentativas apesar da degradação automática — achado R3 —, ou Sandbox do Melhor
 Envio, que nunca gera o código da reversa).
 
-**QUANDO usar — confira ANTES de chamar:**
+**QUANDO usar — confira ANTES de chamar, SEMPRE (achado 1, rodada 5, "negar por padrão"):**
+
+Desde a rodada 5, a RPC exige `p_conferi_no_melhor_envio = true` para QUALQUER `me_reverse_id`
+REAL (não uma reserva) — com ou sem marcador algum gravado. Isso fecha o achado G5 (um vínculo
+real sem NENHUM marcador saía solto sem pedir confirmação nenhuma), mas também quer dizer que a
+checagem manual em "Meus envios" deixou de ser condicional a existir um marcador indeterminado: é
+SEMPRE o primeiro passo, nunca uma formalidade para "destravar" o parâmetro.
 
 1. Abra "Meus envios" na conta do Melhor Envio da loja e procure o `me_reverse_id` da devolução
    (`SELECT me_reverse_id FROM public.devolucoes WHERE id = '<id-da-devolucao>'`).
-2. **Se o envio aparece como PAGO** (mesmo sem código de rastreio ainda): NÃO chame a RPC. Ela
-   mesma recusa com `22023` quando o marcador de pagamento confirmado (achado R5) foi gravado —
-   mas esse marcador só existe se a edge chegou a rodar até o checkout responder; se o pagamento
-   foi confirmado por outro caminho (ex.: um checkout manual feito direto no Melhor Envio, fora da
-   edge, ou um vínculo criado ANTES de a function nova estar no ar — ver o aviso no início do §7),
-   o marcador pode faltar e a RPC soltaria um vínculo pago sem avisar. A checagem manual no "Meus
-   envios" é a primeira linha de defesa, não a RPC.
-3. **Se o checkout ficou INDETERMINADO** (achado 1c, rodada 4 — o Melhor Envio respondeu 5xx ou
-   a chamada deu exceção, sem confirmar nem recusar o pagamento): a RPC recusa por padrão com
-   `22023` (marcador de "pagamento indeterminado"). Só depois de confirmar em "Meus envios" que o
-   envio NÃO foi pago, chame de novo passando `p_conferi_no_melhor_envio = true` — sem essa
-   confirmação manual, não force esse parâmetro.
+2. **Se o envio aparece como PAGO** (mesmo sem código de rastreio ainda): NÃO chame a RPC. Se o
+   marcador de pagamento confirmado (achado R5) foi gravado, a RPC recusa com `22023` MESMO com
+   `p_conferi_no_melhor_envio = true` — sem exceção possível. Mas esse marcador só existe se a edge
+   chegou a rodar até o checkout responder; se o pagamento foi confirmado por outro caminho (ex.:
+   um checkout manual feito direto no Melhor Envio, fora da edge, ou um vínculo criado ANTES de a
+   function nova estar no ar — ver o aviso no início do §7), o marcador pode faltar — e como a RPC
+   agora SEMPRE aceita `p_conferi_no_melhor_envio = true` para liberar um id real sem marcador
+   nenhum, ela soltaria esse vínculo pago se você mandar essa confirmação sem ter checado de
+   verdade. A checagem manual em "Meus envios" é a ÚNICA linha de defesa nesse caso — a RPC não tem
+   como saber sozinha.
+3. **Se o checkout ficou INDETERMINADO** (achado 1c, rodada 4 — 5xx ou exceção, sem confirmar nem
+   recusar o pagamento) **ou se não há registro de pagamento nenhum** (achado 1, rodada 5 — nem
+   confirmado nem indeterminado; o caso mais comum de "edge que morreu no meio do caminho"): a RPC
+   recusa por padrão com `22023` nos dois casos — a mensagem diz qual dos dois é (cita o marcador
+   indeterminado quando ele existe; diz que não há registro nenhum quando não existe). Só depois de
+   confirmar em "Meus envios" que o envio NÃO foi pago, chame de novo passando
+   `p_conferi_no_melhor_envio = true`.
 4. **Se o envio ainda está no CARRINHO sem pagamento** (ex.: o checkout nunca rodou, ou rodou e foi
    recusado sem o retry conseguir soltar o vínculo): remova o item do carrinho no Melhor Envio
    ANTES de liberar aqui — a RPC só apaga o vínculo no NOSSO banco, nunca mexe no carrinho do
@@ -685,18 +723,23 @@ conexão de superusuário ou tendo o papel de service_role. O jeito de chamar de
    ```
 
 3. Com `$TOKEN` na variável, chame a RPC por REST (troque `{SUPABASE_URL}` e `{ANON_KEY}` — a
-   chave pública do projeto, a mesma que `VITE_SUPABASE_PUBLISHABLE_KEY`):
+   chave pública do projeto, a mesma que `VITE_SUPABASE_PUBLISHABLE_KEY`). Achado 1 (rodada 5): para
+   um `me_reverse_id` REAL, `p_conferi_no_melhor_envio: true` já é OBRIGATÓRIO desde a primeira
+   chamada — só depois de ter conferido "Meus envios" (passo 1 acima). Chamar sem o parâmetro só
+   funciona para soltar uma RESERVA (`reservando:...`), o que normalmente já se resolve sozinho na
+   próxima tentativa da edge, sem precisar desta RPC:
 
    ```bash
    curl -X POST "{SUPABASE_URL}/rest/v1/rpc/admin_devolucao_liberar_vinculo_reverso" \
      -H "apikey: {ANON_KEY}" \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     -d '{"p_id": "<id-da-devolucao>"}'
+     -d '{"p_id": "<id-da-devolucao>", "p_conferi_no_melhor_envio": true}'
    ```
 
-   (Achado 1c: se a recusa for por pagamento INDETERMINADO e "Meus envios" já confirmou que não
-   foi pago, repita com `-d '{"p_id": "<id-da-devolucao>", "p_conferi_no_melhor_envio": true}'`.)
+   Se a recusa vier mesmo assim com `22023` e a mensagem citar "já confirmou o pagamento", é o
+   marcador CONFIRMADO — não insista, não há `p_conferi_no_melhor_envio` que contorne isso (achado
+   R5); volte ao passo 2 acima.
 
 4. A resposta de sucesso é `{ id, me_reverse_id_liberado }`. Confira o evento novo em
    `devolucao_eventos` (ator `'sistema'`) para ver o texto gravado — ele também é visível ao
