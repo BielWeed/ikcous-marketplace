@@ -16,11 +16,14 @@ import { describe, expect, it } from "vitest";
  * branco no painel, no comprovante e em "Meus pedidos".
  *
  * A CURA: a migration move o CPF para `customer_data.cpf` (raiz) e deixa
- * `customer_data.address` como SQL `null` (nunca `{}` — `null` também é
- * `typeof === "object"`, mas é FALSY, então cai para a próxima fonte da
- * cadeia). Este teste prova a FORMA DEPOIS da migration: com `address: null`
- * e `cpf` na raiz, o mapper volta a mostrar o endereço do JOIN — e prova, em
- * contraste, que a forma ANTES (o defeito) realmente ficava em branco.
+ * `customer_data.address` como JSON `null` (`{"address": null}`, nunca
+ * `{}` — `null` também é `typeof === "object"`, mas é FALSY, então cai para
+ * a próxima fonte da cadeia). Este teste NÃO prova a migration em si (essa
+ * prova é ao vivo, contra Postgres, ver o relatório da tarefa) — ele prova o
+ * MAPPER: dado um pedido já na FORMA que a migration produz (`address:
+ * null` + `cpf` na raiz), `mapOrderFromDB` volta a mostrar o endereço do
+ * JOIN — e prova, em contraste, que a forma ANTES (o defeito) realmente
+ * fazia o mapper mostrar o endereço em branco.
  */
 
 type OrderRow = Database["public"]["Tables"]["marketplace_orders"]["Row"];
@@ -107,7 +110,7 @@ describe("mapOrderFromDB — pedido da janela do bug do CPF (migration 202611820
     expect(pedido.customer.cep).toBe("");
   });
 
-  it("DEPOIS da migration: address vira null e o cpf sobe para a raiz -- o mapper volta a mostrar o endereço do JOIN", () => {
+  it("na FORMA que a migration produz (address: null, cpf na raiz): o mapper volta a mostrar o endereço do JOIN", () => {
     const pedido = mapOrderFromDB({
       ...PEDIDO_BASE,
       address: enderecoDoJoin,
@@ -131,7 +134,7 @@ describe("mapOrderFromDB — pedido da janela do bug do CPF (migration 202611820
     expect("cpf" in pedido.customer).toBe(false);
   });
 
-  it("DEPOIS da migration, quando o pedido foi APENAS limpo (cpf inválido/local/retirada): sem cpf na raiz, o JOIN também vence", () => {
+  it("na FORMA de um pedido só limpo (cpf inválido/local/retirada): sem cpf na raiz, o JOIN também vence", () => {
     const pedido = mapOrderFromDB({
       ...PEDIDO_BASE,
       address: enderecoDoJoin,
