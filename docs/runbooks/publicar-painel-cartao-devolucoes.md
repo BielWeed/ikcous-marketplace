@@ -299,25 +299,55 @@ ON CONFLICT (version) DO NOTHING;
 3. Preencha `functions` com:
 
 ```text
-criar-pagamento, webhook-mercadopago, reconciliar-pagamentos, melhor-envio-etiqueta, send-order-confirmation
+criar-pagamento, webhook-mercadopago, reconciliar-pagamentos, estornar-pagamento, melhor-envio-etiqueta, send-order-confirmation
 ```
 
 | Function | Por que sobe |
 | --- | --- |
-| `criar-pagamento` | Cartão pela Orders API, idempotência por tentativa, recusa que libera a vaga, 3DS. Lê `tentativas_de_pagamento` e `config_pagamento_cartao` (76). |
-| `webhook-mercadopago` | Recusa ou cancelamento de cartão chamam `liberar_cobranca_do_pedido` (76). Notificação sobre cobrança órfã não aplica pago nem estornado (achado A3). Comprovante com `metodo_online`. |
-| `reconciliar-pagamentos` | A mesma liberação da vaga e o mesmo comprovante. |
+| `criar-pagamento` | Cartão pela Orders API, idempotência por tentativa, recusa que libera a vaga, 3DS. Lê `tentativas_de_pagamento` e `config_pagamento_cartao` (76). Usa `_shared/webpush.ts` (achado #3 abaixo). |
+| `webhook-mercadopago` | Recusa ou cancelamento de cartão chamam `liberar_cobranca_do_pedido` (76). Notificação sobre cobrança órfã não aplica pago nem estornado (achado A3). Comprovante com `metodo_online`. Usa `_shared/estorno.ts` e `mapearStatusOrder` (achados #1/#2 abaixo). |
+| `reconciliar-pagamentos` | A mesma liberação da vaga e o mesmo comprovante. Usa `_shared/estorno.ts` e `mapearStatusOrder` (achados #1/#2 abaixo). |
+| `estornar-pagamento` | Achado #1 abaixo — `_shared/estorno.ts` mudou (`corpoNoLog: false`). |
 | `melhor-envio-etiqueta` | Ação `gerar_devolucao_reversa`, que lê e grava `devolucoes`/`devolucao_eventos` (75). |
 | `send-order-confirmation` | Importa `_shared/comprovante.ts`, que agora seleciona `metodo_online`. **Publicada antes da 76, a leitura do pedido falha.** |
 
-`estornar-pagamento` e `credenciais-mercado-pago` **não** precisam subir. Das peças de
-`_shared/mercadopago.ts`, elas só usam `fetchComTempo`, `consultarOrder`, `idEhClassico` e
-`BASE_URL_PADRAO`, e as quatro estão idênticas às da base. Por isso não use o apelido
-`cobranca`, que publicaria as cinco do Mercado Pago.
+`credenciais-mercado-pago` **não** precisa subir: de `_shared/mercadopago.ts` só usa
+`fetchComTempo` e `BASE_URL_PADRAO`, inalterados nesta branch (confirmado pela checagem abaixo).
+
+**Checagem de publicação da branch do cartão online — CORRIGIDA na 9ª rodada (26/09/2026)**: a
+checagem anterior (mesma rodada) usava `git diff 08c0f7aa..HEAD -- .../estorno.ts` — diff de DOIS
+PONTOS a partir de `08c0f7aa`, um commit DESTA MESMA branch. Isso compara a árvore de `08c0f7aa`
+(que já tem a mudança) com a de `HEAD` (que também tem, sem diferença): o diff mentia "nada mudou"
+para qualquer mudança que `08c0f7aa` já tivesse introduzido. O método certo é diff de TRÊS PONTOS a
+partir da base REAL da branch (`fe045939`, o commit antes de qualquer trabalho do cartão online):
+```
+git diff fe045939...fix/cartao-edge-achados --stat -- supabase/functions/_shared
+```
+Resultado, arquivo por arquivo:
+1. **`_shared/estorno.ts`** (+5 linhas, commit `08c0f7aa`): `consultarTransacaoDaOrder` ganhou
+   `corpoNoLog: false` — a order consultada ali pode ser de CARTÃO (payer com e-mail e CPF do
+   titular), e o log de erro parou de gravar o corpo cru. `grep -rl "_shared/estorno"
+   supabase/functions/*/index.ts` — três consumidores: `estornar-pagamento`,
+   `reconciliar-pagamentos`, `webhook-mercadopago`. Os dois últimos já estavam na lista;
+   **`estornar-pagamento` entra agora**.
+2. **`_shared/mercadopago.ts`** (rodada 8): `mapearStatusOrder` generaliza
+   `canceled`/`cancelled`/`expired` para qualquer `status_detail`. `grep -rl mapearStatusOrder
+   supabase/functions/*/index.ts` — três consumidores: `criar-pagamento`, `webhook-mercadopago`,
+   `reconciliar-pagamentos`. As três já na lista — nenhuma function nova por causa deste arquivo.
+3. **`_shared/webpush.ts`** (rodada 6): ganhou `dispararSemEsperarCliente`, uma função NOVA e
+   ADITIVA — não muda nenhum export existente. `grep -rn dispararSemEsperarCliente
+   supabase/functions/*/index.ts` mostra que só `criar-pagamento` a chama (já na lista). Os outros
+   seis importadores de `webpush.ts` (`notify-new-order`, `reconciliar-pagamentos`,
+   `send-order-confirmation`, `send-otp-email`, `send-push`, `webhook-mercadopago`) não usam a
+   função nova — comportamento deles intacto, não entram por causa deste arquivo.
+
+Conclusão: a lista de publicação conjunta desta branch é `criar-pagamento`, `webhook-mercadopago`,
+`reconciliar-pagamentos` e `estornar-pagamento` — as quatro já na tabela acima, pelos achados #1
+(`_shared/estorno.ts`) e #2 (`_shared/mercadopago.ts`).
 
 O workflow publica uma function por vez e nunca passa `--no-verify-jwt`: quem manda é
 `supabase/config.toml`. No fim, ele grava `supabase functions list` no resumo do job. Confira que
-as cinco aparecem com a data de agora.
+as seis aparecem com a data de agora.
 
 ## 3. Front
 
@@ -473,6 +503,27 @@ O cartão só liga quando **todos** os itens abaixo passarem num pedido de teste
 vale para a loja inteira, porque preview e produção leem a mesma linha. Durante o teste, o
 cartão aparece para todo cliente, então faça em horário sem movimento.
 
+**O que muda no PIX (achado B, revisão de risco da migration 80, 26/09/2026 — registro, sem
+código de cartão envolvido)**: `podeCobrar` (`criar-pagamento/index.ts`) passou a recusar,
+terminal, qualquer pedido com `status = 'cancelled'` — inclusive PIX, que já está em produção.
+Antes desta correção, o PIX de um pedido que o CLIENTE cancelou (`update_order_status_atomic`,
+`status='cancelled'`, `payment_status` continua `'aguardando'`) seguia "cobrável": reabrir o QR ou
+pedir PIX de novo devolvia o mesmo QR de sempre, mesmo com o pedido cancelado. Depois desta
+correção, essa mesma chamada devolve 409 terminal "Este pedido foi cancelado." — o comportamento
+CERTO (um pedido cancelado não deveria continuar pagável), mas é uma MUDANÇA de comportamento em
+produção, independente de o cartão estar ligado ou não — vale para QUALQUER publicação desta
+`criar-pagamento` daqui pra frente, não só para quando o cartão for ligado.
+
+**Correção (revisão independente, 26/09/2026)**: o alcance real é mais estreito do que "impede
+qualquer tentativa de pagamento seguinte" — esta edge só deixa de MOSTRAR e de CRIAR um QR novo
+para um pedido cancelado. `update_order_status_atomic` (a RPC que o cancelamento do cliente chama)
+é uma gravação SÓ NO BANCO — ela não cancela a order PIX no Mercado Pago. Um QR antigo, já copiado
+pelo cliente antes de cancelar, continua válido no banco emissor e pode ser pago mesmo depois do
+cancelamento; esse pagamento chega pelo webhook e vira `pago_apos_expirar` (Política P1), com push
+ao admin — não é bloqueado, nem devia ser (é dinheiro de verdade entrando). No deploy, confira que
+"Cancelar pedido" tira o botão de gerar/reabrir o QR na tela, mas não assuma que um QR já copiado
+parou de funcionar no banco do cliente.
+
 **Preparar**
 - [ ] A migration **20261180000000** (`cliente_nao_cancela_com_cartao_vivo`, achado
   independente de risco de 26/09/2026) está aplicada. Sem ela, o cliente pode cancelar um
@@ -549,14 +600,64 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   2. No painel do MP, só pode existir **uma** order com esse `external_reference` por
      tentativa, porque a chave é `<pedido>:c<n>`, sem o token.
   3. Os logs da `criar-pagamento` não podem ter `cartao_orfao`.
+  4. **Resíduo aceito (achado #2, 8ª rodada de risco)**: se a MESMA chamada que troca de forma
+     (PIX→cartão, cartão morto→cartão novo, sentinela liberado→cartão novo) tiver a criação do
+     cartão NOVO falhando de novo (rede/timeout/5xx), a vaga fica presa até `expires_at` — a order
+     nova nasce milissegundos depois do limite que a PRÓPRIA chamada acabou de gravar, dentro da
+     margem de 15s, e nunca libera sozinha. Sem dinheiro em jogo (é o cliente da PRÓPRIA chamada) e
+     raro (exige duas falhas seguidas). Se aparecer no teste, confirme que é ISTO antes de tratar
+     como bug novo.
 - [ ] **Débito**, se ligado: o Brick mostra só o que o MP aceita para a conta. Na Orders API do
   Brasil, isso é débito Elo.
 - [ ] Todos os eventos acima têm `200` nos logs do `webhook-mercadopago`.
 
 **Comportamentos do Mercado Pago a confirmar no sandbox** (escritos no código sem prova contra
 a API real):
-- [ ] A mesma `X-Idempotency-Key` com token diferente devolve a MESMA order. É a premissa do
-  achado A1.
+- [ ] **Busca de orders** (`GET /v1/orders?external_reference=...&begin_date=...&end_date=...`,
+  usada para resolver o sentinela — achados B1/B2, 5ª revisão de risco). Meça no sandbox, com
+  uma order de cartão de teste, ANTES de qualquer outro item deste checklist:
+  - o nome do campo da lista na resposta (`results`, `elements`, ou outro);
+  - se cada order traz `external_reference`, `status`/`status_detail` na raiz, um campo de data
+    de CRIAÇÃO (anote o nome exato — `date_created`, `created_date`, ou outro) e
+    `transactions.payments[].payment_method.type`;
+  - **`external_reference` em TODA order da lista, sem exceção**: o filtro do cliente (B2, 5ª
+    revisão) descarta qualquer order sem esse campo batendo com o pedido — se o MP omitir ou
+    truncar `external_reference` em algum caso (ex.: order antiga, criada antes de o app
+    começar a mandá-lo), o filtro descarta a lista inteira, a busca nunca encontra nada, e a
+    liberação do sentinela nunca resolve;
+  - o formato de data que `begin_date`/`end_date` aceitam;
+  - o atraso de indexação entre criar (ou mudar o status de) uma order e ela aparecer nesta
+    busca.
+
+  Se qualquer um desses vier diferente do que o código espera, **o cartão fica DESLIGADO**. Sem
+  a busca confiável, a liberação da vaga degrada, em silêncio, para "PIX bloqueado até
+  `expires_at`" — inclusive no caso mais comum, a recusa cuja resposta se perdeu (S1 da 3ª
+  rodada de achados de risco).
+- [ ] **Desvio de relógio entre o `date_created` do MP e o relógio desta function** (achado #6, 8ª
+  rodada de risco): meça a diferença entre o instante em que uma order de teste é criada (medido
+  por ESTE servidor, `Date.now()` logo após o POST responder) e o `date_created` que a Orders API
+  devolve para ela. `MARGEM_LIBERAR_APOS_LIMITE_MS` (15s, `resolverSentinela`) depende deste
+  desvio ser pequeno — se o relógio do MP correr atrasado por mais de ~15s, uma order NOVA
+  (legítima) pode parecer "criada antes do limite" e nunca liberar; se correr adiantado, o
+  problema é o oposto (o achado B1 original: uma order da tentativa ANTERIOR parece "depois" do
+  limite e libera errado). Se o desvio medido for maior que uma fração pequena da margem, ela
+  precisa subir.
+- [ ] **Idempotência da Orders API, corrigida na 7ª rodada** (a frase anterior aqui estava
+  errada): a mesma `X-Idempotency-Key` com CORPO diferente (token novo a cada tentativa, por
+  exemplo) devolve `409 idempotency_key_already_used`, NÃO a mesma order — é esse 409 que vira
+  sentinela (`verificando:<pedido>:c<n>:<limiteInferiorMs>`). Só com o CORPO idêntico o MP faz
+  replay e devolve a MESMA order — é o que permite o retry de cartão sobre o sentinela DA MESMA
+  tentativa repetir o POST com a mesma chave sem duplicar a cobrança (item 2, 7ª rodada). Confirme
+  os dois casos no sandbox antes de ligar; é a premissa do achado A1.
+- [ ] **A Orders API valida o CORPO antes ou depois de olhar a idempotência?** (achado #3, 8ª
+  rodada de risco — UNVERIFIED, o código assume o pior caso por precaução). No sandbox: crie uma
+  order de cartão de teste com uma chave de idempotência `K`; repita o POST com a MESMA chave `K`,
+  corpo DIFERENTE, mas com um dado INVÁLIDO de propósito (token de cartão malformado). Se a
+  resposta for `409 idempotency_key_already_used` (a idempotência venceu, o corpo nem foi
+  validado), o código está mais conservador do que precisa — soltar a vaga só em 201/402 nunca
+  perde a c0. Se a resposta for `400` (o corpo foi validado primeiro, ANTES de olhar a chave), o
+  código já está certo em NUNCA soltar a vaga com um 400 sobre um sentinela — é exatamente o caso
+  que motivou a correção (a c0 pode estar viva por baixo do 400, achado R7-V).
 - [ ] Os códigos de 400 que culpam o dado do cartão são `invalid_card_token`,
   `card_token_not_found` e `bad_filled_card_data`. A lista não foi conferida na doc do MP
   (`erro400EhDeDadoDoCartao`). Qualquer outro 400 vira 502.

@@ -95,8 +95,40 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
    (byte a byte a chave de antes) e `<pedido>:<n>` depois; cartão `<pedido>:c<n>`, **sem o
    token** — no MP real, duas abas ou o retry de resposta perdida batem no MESMO 409
    `idempotency_key_already_used` (chave repetida, corpo diferente a cada token novo), e a vaga
-   recebe o SENTINELA `verificando:<pedido>:c<n>` até o webhook ADOTAR a cobrança aprovada ou o
-   teto de `sentinelaExpirado` liberar (nenhuma cobrança apareceu); nunca duas cobranças vivas.
+   recebe o SENTINELA `verificando:<pedido>:c<n>:<limiteInferiorMs>` — o sufixo (epoch ms,
+   `montarSentinela`) é o limite inferior gravado uma única vez, no nascimento do sentinela;
+   achado da 6ª rodada de risco: a PRÓPRIA criação terminando em rede/timeout/5xx TAMBÉM ocupa a
+   vaga assim, não só o 409 — até o webhook ADOTAR a cobrança (só pelo PAR `status:status_detail`
+   reconsultado por id decide aprovação; `resolverSentinela` nunca decide "pago" sozinho, nem por
+   `status` isolado) ou `resolverVagaEmVerificacao`/`resolverSentinela` (`_shared/mercadopago.ts`)
+   liberarem. Liberar exige DOIS fatos, não um: (B2, 5ª revisão) a busca de orders de cartão do
+   pedido é refiltrada por `external_reference` NO CLIENTE — o filtro do lado do MP não é
+   confiável, e uma order de OUTRO pedido nunca é adotada; (B1, corrigido na 7ª rodada — a margem
+   da 6ª apontava para trás e quase sempre liberava errado) TODAS as orders encontradas mortas **e**
+   pelo menos uma criada DEPOIS do limite inferior do sentinela por uma margem PARA A FRENTE
+   (`MARGEM_LIBERAR_APOS_LIMITE_MS`, 15s): a order da tentativa ANTERIOR nasce SEGUNDOS ANTES desse
+   limite (é a própria liberação dela que o grava), então uma margem para trás sempre a incluiria;
+   a order AMBÍGUA nasce DEPOIS, quando o cliente redigita outro cartão — **ressalva da 8ª rodada
+   (achado #2, documentação)**: essa frase não vale quando a LIBERAÇÃO e a criação do cartão NOVO
+   acontecem na MESMA chamada (troca PIX→cartão, cartão morto→cartão novo, sentinela liberado→
+   cartão novo) — a order nova nasce só milissegundos DEPOIS do limite (a mesma chamada que acabou
+   de gravá-lo), dentro da margem de 15s, e uma order ambígua NESSA chamada nunca libera sozinha
+   (fica presa até `expires_at`). Resíduo aceito pelo revisor: sem dinheiro em jogo (a vaga só
+   afeta o PRÓPRIO cliente que acabou de tentar); **correção da 9ª rodada (achado #3, texto)**: NÃO
+   exige duas falhas seguidas — UMA única criação ambígua na troca já basta, DESDE QUE essa MESMA
+   order ambígua acabe MORTA (recusada/cancelada/expirada) depois. Enquanto ela segue viva (ou
+   desconhecida para o MP), `resolverSentinela` a encontra e adota normalmente — só quando ela
+   morre é que a lista fica sem nenhuma order fora da margem, e a vaga fica presa até `expires_at`.
+   Uma lista PARCIALMENTE indexada, que só mostra a order
+   morta de uma tentativa ANTERIOR (sempre antes do limite), nunca libera. Nunca por um teto fixo
+   de relógio; o único prazo que ainda libera por tempo é a
+   própria reserva (`expires_at`), e uma aprovação tardia sobre isso vira `pago_apos_expirar`
+   (P1), nunca uma segunda cobrança; **ressalva honesta**: a busca contra a Orders API está
+   UNVERIFIED em produção (nome do campo da lista, nomes de parâmetro, formato de data, atraso de
+   indexação — ver o comentário de `buscarOrdersDoPedido` e o checklist de medição no
+   [runbook de publicação](docs/runbooks/publicar-painel-cartao-devolucoes.md) §6), então a
+   garantia "nunca duas cobranças vivas" depende de essa busca não relatar como morta uma order
+   que ainda está viva — divergindo, o cartão fica desligado.
    **Cartão recusado não cancela o pedido**: `liberar_cobranca_do_pedido` (só
    service role; não toca `payment_status` nem estoque) solta a vaga (`gateway_payment_id`) se ela ainda for daquela cobrança e o
    pedido seguir `aguardando`, soma `tentativas_de_pagamento`, e o cliente tenta outro cartão
