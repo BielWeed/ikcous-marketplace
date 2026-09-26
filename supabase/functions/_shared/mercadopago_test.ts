@@ -37,6 +37,7 @@ import {
   normalizarDocumento,
   orderCancelada,
   orderEhDeCartao,
+  parcelasDaOrder,
   recusaLiberaAVaga,
   TEMPO_LIMITE_MS,
   tipoDoPagamentoDaOrder,
@@ -1433,6 +1434,29 @@ Deno.test("tipoDoPagamentoDaOrder lê transactions.payments[0].payment_method.ty
   assertEquals(orderEhDeCartao(ordem("debit_card")), true);
   assertEquals(orderEhDeCartao(ordem("bank_transfer")), false);
   assertEquals(orderEhDeCartao(ordem()), false);
+});
+
+// Achado S3 (3ª revisão de risco, 26/09/2026): parcelasDaOrder — a ADOÇÃO da
+// vaga (`webhook-mercadopago/index.ts`) passou a gravar `parcelas` a partir
+// deste leitor, em vez de deixar a coluna NULL para uma cobrança de cartão
+// de verdade.
+Deno.test("parcelasDaOrder lê transactions.payments[0].payment_method.installments — null quando ausente, não-inteiro, ou a order não é objeto", () => {
+  const ordem = (installments?: unknown) => ({
+    id: "ORD1",
+    transactions: {
+      payments: [{
+        id: "PAY1",
+        payment_method: installments === undefined ? { id: "x" } : { id: "x", installments },
+      }],
+    },
+  });
+  assertEquals(parcelasDaOrder(ordem(6)), 6);
+  assertEquals(parcelasDaOrder(ordem(1)), 1);
+  assertEquals(parcelasDaOrder(ordem()), null);
+  assertEquals(parcelasDaOrder(ordem("6")), null, "string não é o formato que a Orders API manda — nunca converte por palpite");
+  assertEquals(parcelasDaOrder(ordem(1.5)), null, "parcela fracionária não existe — não-inteiro é tratado como ausente");
+  assertEquals(parcelasDaOrder({ id: "ORD1" }), null);
+  assertEquals(parcelasDaOrder(null), null);
 });
 
 Deno.test("extrairDesafio3ds: devolve a URL https só com a order em action_required", () => {

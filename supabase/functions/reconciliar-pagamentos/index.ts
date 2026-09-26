@@ -70,6 +70,7 @@ import {
   mapearStatusOrder,
   recusaLiberaAVaga,
   TOLERANCIA_DE_VALOR,
+  vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { readKey } from "../_shared/webpush.ts";
 // Tarefa mp-2 (15/09/2026): a chave do Mercado Pago pode ser a do LOJISTA
@@ -565,6 +566,24 @@ async function handler(
       // Mesma regra do webhook (`recusaLiberaAVaga`, _shared/mercadopago.ts).
       // Só a Orders API liga isto: o candidato clássico é PIX legado.
       let liberarAVaga = false;
+
+      // Achado S5/N3 (3ª revisão de risco, 26/09/2026): a vaga pode estar
+      // com o SENTINELA (`verificando:...`, Achado B2) em vez de um id de
+      // order de verdade — nem `idEhClassico` nem `consultarOrder`
+      // reconhecem isso, e cada ciclo (a cada 10 min) gastava uma chamada ao
+      // MP que SEMPRE falha (400 `invalid_path_param`), sem nunca sair da
+      // fila. Quem resolve o sentinela é a ADOÇÃO do `webhook-mercadopago`
+      // (quando a cobrança aparece aprovada) ou o teto de `sentinelaExpirado`
+      // em `criar-pagamento` (quando o próprio cliente volta a mexer no
+      // pedido) — nenhum dos dois passa por aqui. Sem push (ver "SEM PUSH
+      // AQUI" no cabeçalho deste arquivo): o aviso ao admin já sai uma única
+      // vez, na ESCRITA do sentinela (`criar-pagamento/index.ts`), que é o
+      // ponto mais barato e mais confiável — avisar de novo aqui a cada
+      // ciclo duplicaria o mesmo aviso sem trava de duplicidade.
+      if (vagaEmVerificacao(candidato.gateway_payment_id)) {
+        ignorados++;
+        continue;
+      }
 
       if (idEhClassico(candidato.gateway_payment_id)) {
         // Candidato LEGADO, criado antes da migração para a Orders API — vai

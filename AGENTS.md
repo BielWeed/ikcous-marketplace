@@ -93,8 +93,11 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
    Orders API (o desafio abre em iframe; quem confirma continua sendo o webhook).
    **Idempotência POR TENTATIVA** (`chaveDeIdempotencia`): PIX `<pedido>` na tentativa 0
    (byte a byte a chave de antes) e `<pedido>:<n>` depois; cartão `<pedido>:c<n>`, **sem o
-   token** — duas abas ou o retry de resposta perdida convergem na MESMA order, nunca em duas
-   cobranças. **Cartão recusado não cancela o pedido**: `liberar_cobranca_do_pedido` (só
+   token** — no MP real, duas abas ou o retry de resposta perdida batem no MESMO 409
+   `idempotency_key_already_used` (chave repetida, corpo diferente a cada token novo), e a vaga
+   recebe o SENTINELA `verificando:<pedido>:c<n>` até o webhook ADOTAR a cobrança aprovada ou o
+   teto de `sentinelaExpirado` liberar (nenhuma cobrança apareceu); nunca duas cobranças vivas.
+   **Cartão recusado não cancela o pedido**: `liberar_cobranca_do_pedido` (só
    service role; não toca `payment_status` nem estoque) solta a vaga (`gateway_payment_id`) se ela ainda for daquela cobrança e o
    pedido seguir `aguardando`, soma `tentativas_de_pagamento`, e o cliente tenta outro cartão
    ou PIX na mesma reserva — `confirmar_pagamento('recusado')` só vale para PIX. Cartão em

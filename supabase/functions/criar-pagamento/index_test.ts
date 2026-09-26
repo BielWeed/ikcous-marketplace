@@ -19,8 +19,10 @@ import {
   handler,
   MENSAGEM_CREDENCIAL_RECUSADA,
   MINUTOS_DESAFIO_3DS,
+  MINUTOS_SENTINELA_PRESO,
   pareceUuid,
   podeCobrar,
+  sentinelaExpirado,
   subDoToken,
   validarCorpoDoCartao,
 } from "./index.ts";
@@ -538,6 +540,25 @@ Deno.test("expiracaoParaDesafio3ds: tentativa depois que o teto absoluto já pas
 Deno.test("expiracaoParaDesafio3ds: sem pedidoCriadoEm (defensivo) -> cai no comportamento de antes, sem teto absoluto", () => {
   const r = expiracaoParaDesafio3ds(null, AGORA);
   assertEquals(r?.toISOString(), new Date(AGORA.getTime() + MINUTOS_DESAFIO_3DS * 60_000).toISOString());
+});
+
+// --- sentinelaExpirado: teto do sentinela "verificando:..." (Achado S1,
+// 3ª revisão de risco, 26/09/2026) ------------------------------------------
+
+Deno.test("sentinelaExpirado: dentro do teto -> false; além do teto -> true", () => {
+  const agora = new Date("2026-08-06T12:00:00.000Z");
+  const dentro = new Date(agora.getTime() - (MINUTOS_SENTINELA_PRESO * 60_000 - 1000)).toISOString();
+  const alem = new Date(agora.getTime() - (MINUTOS_SENTINELA_PRESO * 60_000 + 1000)).toISOString();
+  assertEquals(sentinelaExpirado(dentro, agora), false);
+  assertEquals(sentinelaExpirado(alem, agora), true);
+});
+
+Deno.test("sentinelaExpirado: ilegível (ausente, não-parseável) nunca conta como expirado — sem saber HÁ QUANTO TEMPO, a decisão segura é continuar esperando o webhook", () => {
+  const agora = new Date("2026-08-06T12:00:00.000Z");
+  assertEquals(sentinelaExpirado(null, agora), false);
+  assertEquals(sentinelaExpirado(undefined, agora), false);
+  assertEquals(sentinelaExpirado("não é uma data", agora), false);
+  assertEquals(sentinelaExpirado(42, agora), false);
 });
 
 Deno.test("donoConfere: pedido de usuário logado exige o mesmo usuário", () => {
@@ -2275,6 +2296,16 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "contra cobrança duplicada num novo retry",
     ],
     [
+      // Achado N4 (3ª revisão de risco, 26/09/2026): a gravação do sentinela
+      // (`respostaCartaoEmVerificacao`) passou a checar `error` do UPDATE —
+      // falha de banco (timeout, deadlock) não pode virar "já tem cobrança"
+      // com a vaga ainda NULL de verdade.
+      "Não foi possível confirmar a cobrança. Tente de novo em instantes.",
+      "falha de BANCO ao gravar o sentinela; nada foi gravado, e o retry " +
+        "repete a MESMA chave de idempotência (o MP ainda devolve o mesmo " +
+        "409, mas desta vez a gravação tem chance de funcionar)",
+    ],
+    [
       // Tarefa 2 (CHECKOUT-070): montarCorpoPixOrders LANÇA se a expiração
       // faltar ou for inválida. Aqui ela nasce de uma constante controlada
       // por ESTE arquivo ("PT30M") — um throw só acontece por bug de
@@ -2420,10 +2451,20 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // 37, não mais 36: Achado R2 (2ª revisão de risco, 26/09/2026) — perder a
   // vaga para um PIX concorrente que não dá para cancelar (já pago, ou o
   // cancelamento falha) com um cartão JÁ APROVADO na mão ganhou um ponto de
-  // retorno próprio, "Seu cartão foi cobrado; a loja vai conferir e
+  // retorno próprio, "Seu cartão pode ter sido cobrado; a loja vai conferir e
   // confirmar o pedido em breve." — já leva `terminal: true` (um retry não
   // pode criar uma segunda cobrança), não precisou de entrada na lista.
-  assertEquals(achados, 37);
+  //
+  // 39, não mais 37: Achado S1 (3ª revisão de risco, 26/09/2026) — o
+  // sentinela PRESO DEMAIS (`sentinelaExpirado`) cai na liberação comum, mas
+  // enquanto ele está fresco um PIX pedido sobre ele ganhou um ponto de
+  // retorno próprio com "Há um pagamento com cartão em análise para este
+  // pedido." (MESMO identificador do ramo (f), já conhecido — mais uma
+  // ocorrência, não uma entrada nova). Achado N4, no mesmo commit — a
+  // gravação do sentinela ganhou um ponto de retorno NOVO para erro de
+  // banco, "Não foi possível confirmar a cobrança. Tente de novo em
+  // instantes." (entrada nova na lista, acima). +1 +1 = 39.
+  assertEquals(achados, 39);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper
@@ -3124,7 +3165,7 @@ Deno.test("handler cartão: perdeu a corrida da vaga de VERDADE, occupante ileg�
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 409);
-  assertEquals(corpo.error, "Seu cartão foi cobrado; a loja vai conferir e confirmar o pedido em breve.");
+  assertEquals(corpo.error, "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.");
   assertEquals(corpo.terminal, true);
   assertEquals(avisouAdmin, 1);
   assertEquals(chamadasRpc.length, 0);
@@ -3139,6 +3180,16 @@ Deno.test("handler cartão: perdeu a vaga para um PIX concorrente AINDA ABERTO, 
   // cancelava o PIX para abrir um cartão NOVO — dobrando a cobrança de quem
   // já pagou. Com a correção, a PRÓPRIA chamada que descobre o PIX ainda
   // aberto cancela e adota — o cartão já aprovado, nunca um segundo.
+  //
+  // Achado S2 (3ª revisão de risco, 26/09/2026, R3-H1): o fixture do PIX
+  // ocupante usava `created:waiting_transfer` — par que NUNCA acontece no MP
+  // real (`MAPA_STATUS_ORDER` não o conhece). O PIX recém-criado real vem
+  // `action_required:waiting_transfer` (doc do MP e `_shared/mercadopago.ts:
+  // 242-243`) — com o par antigo, esta adoção nunca rodava de verdade contra
+  // o MP: `statusBrutoOcupante === "created"` era sempre falso, e todo PIX
+  // concorrente caía no `else` (409 terminal + aviso ao admin), mesmo com o
+  // PIX ainda pagável. Trocado pelo par real; a decisão agora é por
+  // `mapearStatusOrder(...) === "aguardando"`.
   const idPix = "ORDTST01PIXCONCORRENTE000000";
   const { supabase, chamadasRpc, registro } = cenarioCartao({
     gravado: null,
@@ -3147,7 +3198,7 @@ Deno.test("handler cartão: perdeu a vaga para um PIX concorrente AINDA ABERTO, 
   });
   const mp = fetchMP({
     criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
-    consultar: { status: 200, corpo: orderDePix("created", "waiting_transfer", idPix) },
+    consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer", idPix) },
     cancelar: { status: 200, corpo: orderDePix("canceled", "canceled", idPix) },
   });
   let avisouAdmin = 0;
@@ -3187,11 +3238,11 @@ Deno.test("handler cartão: perdeu a vaga para um PIX concorrente, mas o MP não
   });
   const mp = fetchMP({
     criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
-    consultar: { status: 200, corpo: orderDePix("created", "waiting_transfer", idPix) },
+    consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer", idPix) },
     // O MP recusa o cancelamento (o PIX foi pago no instante entre a
     // reconsulta e o cancelamento, por exemplo) — a resposta não confirma
     // "cancelada".
-    cancelar: { status: 200, corpo: orderDePix("created", "waiting_transfer", idPix) },
+    cancelar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer", idPix) },
   });
   let avisouAdmin = 0;
 
@@ -3205,7 +3256,7 @@ Deno.test("handler cartão: perdeu a vaga para um PIX concorrente, mas o MP não
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 409);
-  assertEquals(corpo.error, "Seu cartão foi cobrado; a loja vai conferir e confirmar o pedido em breve.");
+  assertEquals(corpo.error, "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.");
   assertEquals(corpo.terminal, true);
   assertEquals(avisouAdmin, 1);
   assertEquals(chamadasRpc.length, 0);
@@ -4140,12 +4191,27 @@ function bancoComEstado(
               filtros.push({ coluna, valor });
               return encadeador;
             },
-            select(_cols: string) {
+            select(cols: string) {
               return {
                 maybeSingle: async () => {
                   if (filtros.every((f) => bateFiltro(f.coluna, f.valor))) {
                     Object.assign(linha, valores);
-                    return { data: { id: linha.id, expires_at: linha.expires_at }, error: null };
+                    // Achado N5 (3ª revisão de risco, 26/09/2026): devolvia
+                    // só `{id, expires_at}`, FIXO — qualquer coluna nova que
+                    // a produção passasse a pedir no `.select(...)` do UPDATE
+                    // (ex.: `payment_status`, que o Achado R1 já lê) chegava
+                    // `undefined` aqui, e um teste de corrida com esse campo
+                    // caía no ramo errado por engano, sem avisar ninguém.
+                    // Projeta pelas colunas REALMENTE pedidas, como o
+                    // PostgREST real devolve. `Object.entries` + `filter`
+                    // (não indexação por variável, `security/detect-object-
+                    // injection` da catraca) — mesmo padrão de
+                    // `projetarColunas`, no topo deste arquivo.
+                    const colunasPedidas = new Set(cols.split(",").map((c) => c.trim()));
+                    const projetado = Object.fromEntries(
+                      Object.entries(linha).filter(([chave]) => colunasPedidas.has(chave)),
+                    );
+                    return { data: projetado, error: null };
                   }
                   return { data: null, error: null };
                 },
@@ -4299,13 +4365,22 @@ Deno.test("CARTÃO (corrida real, Achado B2/H1): MP aprova mas a resposta se per
   // O cliente desiste do cartão e tenta PIX na MESMA reserva — Achado B2:
   // não pode proceder enquanto o cartão ambíguo ainda pode cair aprovado
   // (dobraria a cobrança quando o webhook adotar depois).
+  //
+  // Achado S1 (3ª revisão de risco, 26/09/2026): ANTES desta correção a
+  // resposta era 200 "aguardando" sem QR — o front (PagamentoOnline.tsx)
+  // trataria isso como "Não foi possível gerar o QR code do PIX", categoria
+  // RECUPERÁVEL, e o cliente entraria num loop de "Tentar de novo" que
+  // nunca funciona (a vaga nunca é reconsultada de verdade para um
+  // sentinela). O 409 explícito, com a MESMA mensagem do ramo (f) de cartão
+  // em análise, é o desfecho certo — e o sentinela está FRESCO
+  // (`sentinelaExpirado` só solta depois de `MINUTOS_SENTINELA_PRESO`).
   const rPix = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: mp.fn,
   });
   const corpoPix = await rPix.json();
-  assertEquals(rPix.status, 200);
-  assertEquals(corpoPix.statusPagamento, "aguardando");
+  assertEquals(rPix.status, 409);
+  assertEquals(corpoPix.error, "Há um pagamento com cartão em análise para este pedido.");
   assertEquals(mp.orders.some((o) => o.transactions.payments[0].payment_method.type === "bank_transfer"), false, "nenhum PIX chega a ser criado no MP");
 });
 
@@ -4407,6 +4482,189 @@ Deno.test("handler cartão: recusa (402) + liberar_cobranca falhando PERSISTENTE
   const c3 = await r3.json();
   assertEquals(r3.status, 200);
   assertEquals(c3.statusPagamento, "aguardando");
+});
+
+// Achado S1 (3ª revisão de risco, 26/09/2026, R3-H2 do harness do 3º
+// revisor): antes desta correção o sentinela só saía pela mão do webhook
+// (uma cobrança aprovada aparecer e ser ADOTADA) — uma recusa cuja resposta
+// se perdeu (nenhuma cobrança aprovada existe em lugar NENHUM) deixava o
+// pedido preso no sentinela até a reserva morrer, e um PIX pedido sobre essa
+// vaga voltava 200 sem QR (o front mostraria "Não foi possível gerar o QR
+// code do PIX" em loop de "Tentar de novo", nunca "em análise"). Prova as
+// DUAS metades do fechamento: o 409 explícito para o PIX enquanto o
+// sentinela está fresco, e a liberação quando ele fica velho demais.
+Deno.test("handler cartão (Achado S1, R3-H2): recusa com resposta perdida vira sentinela; PIX sobre o sentinela FRESCO recebe 409 explícito (nunca 200 sem QR); sentinela VELHO libera e o PIX cria normalmente", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const porChave = new Map<string, { corpo: string; order: Record<string, unknown> | null }>();
+  let perderPrimeira = true;
+  const fn = async (_url: string, init?: RequestInit) => {
+    const chave = (init?.headers as Record<string, string>)["X-Idempotency-Key"];
+    const corpoTexto = String(init?.body);
+    const corpo = JSON.parse(corpoTexto);
+    const tipo = (corpo.transactions.payments[0].payment_method as Record<string, unknown>).type;
+    const pix = tipo === "bank_transfer";
+    const jaExistente = porChave.get(chave);
+    if (jaExistente && jaExistente.corpo !== corpoTexto) {
+      return new Response(
+        JSON.stringify({ errors: [{ code: "idempotency_key_already_used", message: "reused" }] }),
+        { status: 409 },
+      );
+    }
+    if (!jaExistente) {
+      const o = pix
+        ? {
+            id: `ORDTSTPIXR3H2${String(porChave.size + 1).padStart(15, "0")}`,
+            status: "action_required",
+            status_detail: "waiting_transfer",
+            external_reference: corpo.external_reference,
+            total_amount: corpo.total_amount,
+            transactions: {
+              payments: [{
+                id: "PAYPIX",
+                payment_method: { id: "pix", type: "bank_transfer", qr_code: "QR", qr_code_base64: "QRB64" },
+              }],
+            },
+          }
+        : null;
+      porChave.set(chave, { corpo: corpoTexto, order: o });
+    }
+    if (!pix) {
+      if (perderPrimeira) {
+        perderPrimeira = false;
+        throw new DOMException("aborted", "AbortError");
+      }
+      return new Response(
+        JSON.stringify({ errors: [{ code: "failed", details: ["PAY:cc_rejected_other_reason"] }] }),
+        { status: 402 },
+      );
+    }
+    return new Response(JSON.stringify(porChave.get(chave)!.order), { status: 201 });
+  };
+
+  // 1ª tentativa: a resposta (402) se perde antes de chegar -> 502
+  // recuperável, nada gravado, tentativa não avança.
+  const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  assertEquals(r1.status, 502);
+  assertEquals(db.linha.gateway_payment_id, null);
+
+  // 2ª tentativa: MESMA chave (tentativa não avançou), corpo DIFERENTE
+  // (token novo do Brick) -> 409 idempotency_key_already_used -> sentinela.
+  const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  const c2 = await r2.json();
+  assertEquals(r2.status, 200);
+  assertEquals(c2.statusPagamento, "aguardando");
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
+  assertEquals(
+    (Date.now() - new Date(db.linha.updated_at as string).getTime()) < 1000,
+    true,
+    "sentinela recém-gravado — o carimbo é de agora",
+  );
+
+  // (S1, metade 1) PIX sobre o sentinela FRESCO: 409 explícito, nunca 200
+  // sem QR. Nenhuma cobrança nova é criada no MP (a checagem acontece antes
+  // de tocar `deps.fetchImpl` — a única chamada até aqui foi a do cartão).
+  const rPix1 = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  const cPix1 = await rPix1.json();
+  assertEquals(rPix1.status, 409);
+  assertEquals(cPix1.error, "Há um pagamento com cartão em análise para este pedido.");
+  assertEquals(cPix1.qrCode, undefined);
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true, "vaga intacta — nada foi liberado");
+
+  // (S1, metade 2) Sentinela VELHO (mais que MINUTOS_SENTINELA_PRESO):
+  // tratado como morto — a PRÓXIMA tentativa de PIX libera a vaga e cria a
+  // cobrança normalmente, sem depender do webhook (que nunca vai adotar,
+  // porque nenhuma cobrança aprovada existe).
+  db.linha.updated_at = new Date(Date.now() - (MINUTOS_SENTINELA_PRESO * 60_000 + 5000)).toISOString();
+  const rPix2 = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  const cPix2 = await rPix2.json();
+  assertEquals(rPix2.status, 200);
+  assertEquals(cPix2.statusPagamento, "aguardando");
+  assertEquals(typeof cPix2.qrCode, "string", "sentinela liberado -> PIX cria e devolve QR de verdade");
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), false);
+  assertEquals(db.linha.tentativas_de_pagamento, 1, "a liberação do sentinela soma a tentativa, igual a uma recusa comum");
+});
+
+// Achado S3 (3ª revisão de risco, 26/09/2026, R3-H6 do harness do 3º
+// revisor): o SENTINELA não pode gravar `metodo_online`/`parcelas` a partir
+// do corpo do RETRY — a cobrança da tentativa ANTERIOR (que pode estar
+// aprovada por baixo) pode ter sido uma forma/parcelamento DIFERENTE do
+// retry que gravou o sentinela.
+Deno.test("handler cartão (Achado S3, R3-H6): a cobrança aprovada foi crédito 6x, o retry que virou sentinela foi débito -> sentinela NÃO grava metodo_online/parcelas do retry", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpComEstado({ perderResposta: 1 });
+
+  // 1ª chamada (crédito 6x): aprovada no MP, mas a resposta se perde.
+  const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO, parcelas: 6 }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: mp.fn,
+  });
+  assertEquals(r1.status, 502);
+
+  // 2ª chamada (débito, token novo): MESMA chave, corpo diferente -> 409 ->
+  // sentinela. Antes da correção, o sentinela gravava metodo_online:'debito'
+  // e parcelas:1 — a forma do RETRY, não da cobrança aprovada (crédito 6x).
+  const r2 = await handler(
+    requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO, paymentTypeId: "debit_card", paymentMethodId: "debelo" }), montarToken(DONO_LOGADO)),
+    { supabase: db, fetchImpl: mp.fn },
+  );
+  const c2 = await r2.json();
+  assertEquals(r2.status, 200);
+  assertEquals(c2.statusPagamento, "aguardando");
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
+  assertEquals(mp.orders.filter((o) => o.status === "processed").length, 1, "a cobrança de crédito 6x FOI aprovada no MP");
+  // A prova que importa: o sentinela não inventa a forma do pagamento a
+  // partir do retry — quem grava a forma de verdade é a ADOÇÃO do webhook,
+  // quando ele reconsultar a cobrança aprovada.
+  assertEquals(db.linha.metodo_online, undefined);
+  assertEquals(db.linha.parcelas, undefined);
+});
+
+// Achado S3 (3ª revisão de risco, 26/09/2026, R3-H7 do harness do 3º
+// revisor): o webhook pode ADOTAR a vaga NULL (e confirmar 'pago') ANTES do
+// UPDATE da PRÓPRIA `criar-pagamento` — a Orders API pode notificar em
+// milissegundos. A resposta a quem PAGOU não pode ser "Este pedido já tem
+// uma cobrança gerada." (409 recuperável, mentira) nem, no retry seguinte,
+// "Este pedido não está aguardando pagamento." (409 terminal) — as duas
+// escondem que o pagamento foi um SUCESSO.
+Deno.test("handler cartão (Achado S3, R3-H7): o webhook adota a vaga NULL e confirma 'pago' ANTES do UPDATE da própria chamada -> 200 com o status da MESMA order, não 409", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  // `aoCriar` simula o webhook correndo EM PARALELO: assim que o MP cria a
+  // order (a resposta ainda não voltou para `criar-pagamento`), o "webhook"
+  // já adotou a vaga e confirmou 'pago' — o UPDATE desta própria chamada,
+  // mais abaixo, vai perder a corrida (`.is("gateway_payment_id", null)` não
+  // bate mais).
+  const mp = mpComEstado({
+    aoCriar: (o) => {
+      db.linha.gateway_payment_id = o.id;
+      db.linha.payment_status = "pago";
+    },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO, parcelas: 6 }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  // A prova que importa: quem PAGOU recebe 200 com o status desta MESMA
+  // order — nunca o 409 recuperável que a corrida perdida produzia antes.
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.paymentId, mp.orders[0].id);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(db.linha.gateway_payment_id, mp.orders[0].id);
 });
 
 Deno.test("PIX (corrida real, controle): duas abas no mesmo pedido -> UMA única order (comportamento de sempre — PIX já convergia, sem mudança nesta tarefa)", async () => {

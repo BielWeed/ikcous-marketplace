@@ -86,7 +86,9 @@ import {
   mapearStatus,
   mapearStatusOrder,
   orderEhDeCartao,
+  parcelasDaOrder,
   recusaLiberaAVaga,
+  tipoDoPagamentoDaOrder,
   TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
@@ -1333,10 +1335,17 @@ async function handler(
     // `transaction_amount_refunded` moram nele, não nos campos já tipados.
     corpoConsultado = (consulta as Record<string, unknown>).corpo as Record<string, unknown> | undefined ?? null;
   } else {
+    // N1 (3ª revisão de risco, 26/09/2026): a order desta notificação PODE
+    // ser de cartão (payer com e-mail e CPF do titular) — não dá para saber
+    // antes de consultar, então `corpoNoLog: false` protege as duas formas
+    // (o log de erro do PIX já não tinha dado sensível para esconder, e
+    // continua sem ter — só passa a receber o mesmo resumo sem dado
+    // pessoal que o cartão já usa nos outros pontos desta function).
     const consulta = await consultarOrder({
       token: credenciaisMp.token,
       orderId: dataIdStr,
       fetchImpl: deps.fetchImpl,
+      corpoNoLog: false,
     });
 
     if (!consulta.ok) {
@@ -1468,6 +1477,38 @@ async function handler(
       });
       if (erroLiberar) throw erroLiberar;
       liberou = data === true;
+
+      // Achado S1 (3ª revisão de risco, 26/09/2026): esta recusa/cancelamento
+      // pode não bater com o que está NA VAGA — a Orders API respondeu 409
+      // `idempotency_key_already_used` a um RETRY desta mesma tentativa
+      // (token novo, mesma chave), e `criar-pagamento` gravou um SENTINELA
+      // (`verificando:<pedido>:c<n>`, Achado B2) em vez do id desta order.
+      // Sem este segundo passo, a recusa de verdade (nenhuma cobrança
+      // aprovada existe) não soltava NADA — o pedido ficava preso até a
+      // reserva morrer, mesmo com o motivo já conhecido (ver o comentário
+      // grande de `sentinelaExpirado`, `criar-pagamento/index.ts`, para o
+      // outro lado deste fechamento: o teto de tempo, quando NENHUMA
+      // notificação de recusa chega a existir). Só tenta se a primeira
+      // tentativa não bateu, e só com o valor REAL da vaga — nunca
+      // inventado: se ela guarda uma cobrança de verdade (ou outro
+      // sentinela), a RPC recusa de novo e nada muda.
+      if (!liberou) {
+        const { data: linhaComSentinela, error: erroLeituraSentinela } = await supabase
+          .from("marketplace_orders")
+          .select("gateway_payment_id")
+          .eq("id", orderId)
+          .maybeSingle();
+        if (erroLeituraSentinela) throw erroLeituraSentinela;
+        const idNaVaga = (linhaComSentinela as Record<string, unknown> | null)?.gateway_payment_id;
+        if (typeof idNaVaga === "string" && vagaEmVerificacao(idNaVaga)) {
+          const { data: liberouSentinela, error: erroLiberarSentinela } = await supabase.rpc(
+            "liberar_cobranca_do_pedido",
+            { p_order_id: orderId, p_gateway_payment_id: idNaVaga },
+          );
+          if (erroLiberarSentinela) throw erroLiberarSentinela;
+          liberou = liberouSentinela === true;
+        }
+      }
     } catch (erro) {
       console.error(
         "webhook-mercadopago: liberar_cobranca_do_pedido falhou — evento mantido na fila do MP",
@@ -1520,11 +1561,26 @@ async function handler(
     //    não): reconsulta a ORDER GRAVADA e só confia nela se ELA MESMA
     //    mostrar o MESMO gatilho de estorno — nunca no que a notificação
     //    disse sobre outra cobrança.
-    const { data: linhaParaEstorno } = await supabase
+    // Achado S4 (3ª revisão de risco, 26/09/2026): esta leitura ignorava
+    // `error` — uma falha de banco (statement timeout, pool esgotado) fazia
+    // `linhaParaEstorno` virar `null` do MESMO jeito que "pedido sem essa
+    // cobrança gravada", e um estorno LEGÍTIMO da cobrança GRAVADA caía no
+    // ramo `estornado_orfao` abaixo: nunca registrava no ledger, e o pedido
+    // só virava 'estornado' pela RPC lá embaixo — sem `valor_estornado` nem
+    // razão. 500 aqui, como o resto do arquivo já faz para toda falha de
+    // leitura: o MP reenvia, e a notificação não se perde.
+    const { data: linhaParaEstorno, error: erroLeituraParaEstorno } = await supabase
       .from("marketplace_orders")
       .select("gateway_payment_id")
       .eq("id", orderId)
       .maybeSingle();
+    if (erroLeituraParaEstorno) {
+      console.error(
+        "webhook-mercadopago: falha ao ler a cobrança gravada antes de registrar um estorno — evento mantido na fila do MP",
+        { orderId, erro: erroLeituraParaEstorno },
+      );
+      return json({ error: "Erro ao verificar a cobrança gravada." }, 500);
+    }
     const idGravadoParaEstorno = (linhaParaEstorno as Record<string, unknown> | null)?.gateway_payment_id;
     const idGravadoParaEstornoStr =
       typeof idGravadoParaEstorno === "string" && idGravadoParaEstorno.length > 0 ? idGravadoParaEstorno : null;
@@ -1803,9 +1859,30 @@ async function handler(
     const idGravadoAtualStr = typeof idGravadoAtual === "string" ? idGravadoAtual : null;
     const vagaAdotavel = idGravadoAtualStr === null || vagaEmVerificacao(idGravadoAtualStr);
     if (vagaAdotavel) {
+      // Achado S3 (3ª revisão de risco, 26/09/2026): a ADOÇÃO só gravava
+      // `gateway_payment_id` — `metodo_online`/`parcelas` ficavam NULL (vaga
+      // NULL) ou com o valor do RETRY que gravou o sentinela (vaga
+      // sentinela, nunca a forma da cobrança que de fato foi aprovada — ver
+      // o fechamento simétrico em `respostaCartaoEmVerificacao`,
+      // `criar-pagamento/index.ts`, que parou de gravar essas duas colunas
+      // no sentinela por este MESMO motivo). O comprovante e o Financeiro
+      // liam isso e contavam a venda como PIX. `corpoConsultado` já É a
+      // order RECONSULTADA desta notificação (`rota === "order"`, acima) —
+      // lê a forma de verdade dela, nunca do corpo do webhook.
+      const tipoCartaoAdotado = tipoDoPagamentoDaOrder(corpoConsultado);
+      const metodoOnlineAdotado = tipoCartaoAdotado === "credit_card"
+        ? "credito"
+        : tipoCartaoAdotado === "debit_card"
+          ? "debito"
+          : null;
       let queryAdocao = supabase
         .from("marketplace_orders")
-        .update({ gateway_payment_id: idParaRpc, updated_at: new Date().toISOString() })
+        .update({
+          gateway_payment_id: idParaRpc,
+          metodo_online: metodoOnlineAdotado,
+          parcelas: parcelasDaOrder(corpoConsultado),
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", orderId);
       queryAdocao = idGravadoAtualStr === null
         ? queryAdocao.is("gateway_payment_id", null)
@@ -1824,6 +1901,39 @@ async function handler(
           "webhook-mercadopago: não foi possível adotar a vaga (ocupada entre a leitura e a tentativa) — segue para confirmar_pagamento normalmente",
           { orderId, idOrder: idParaRpc },
         );
+        // Achado S5 (3ª revisão de risco, 26/09/2026): quem ganhou a corrida
+        // pode ter sido OUTRA cobrança aprovada (não a `confirmar_pagamento`
+        // desta MESMA order, que a RPC abaixo trata sozinha) — sem reler, o
+        // pedido seguia com dinheiro de duas cobranças aprovadas e nenhum
+        // aviso além do `console.warn` acima. Mesmo aviso do `cartao_
+        // divergente` logo abaixo, para o admin conferir e devolver.
+        const { data: linhaAposCorrida } = await supabase
+          .from("marketplace_orders")
+          .select("gateway_payment_id")
+          .eq("id", orderId)
+          .maybeSingle();
+        const idNaVagaAposCorrida = (linhaAposCorrida as Record<string, unknown> | null)
+          ?.gateway_payment_id;
+        if (
+          typeof idNaVagaAposCorrida === "string" &&
+          idNaVagaAposCorrida.length > 0 &&
+          idNaVagaAposCorrida !== idParaRpc &&
+          !vagaEmVerificacao(idNaVagaAposCorrida)
+        ) {
+          console.error(
+            "webhook-mercadopago: cartao_divergente — order aprovada perdeu a corrida da adoção para OUTRA cobrança gravada — possível cobrança duplicada",
+            { orderId, idOrder: idParaRpc, idGravadoNaVaga: idNaVagaAposCorrida },
+          );
+          const avisoDivergenteAposCorrida = {
+            title: "Cobrança de cartão duplicada?",
+            body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago`,
+            url: "/admin-orders",
+          };
+          await comTempoLimite(
+            (deps.enviarPush ?? disparoPushReal)({ supabase, aviso: avisoDivergenteAposCorrida }),
+            5000,
+          );
+        }
       }
     } else if (idGravadoAtualStr !== idParaRpc) {
       // A vaga já tem OUTRA cobrança de verdade (não vazia, não sentinela, e
@@ -1853,6 +1963,23 @@ async function handler(
       idGravadoNoBanco.length > 0 &&
       !idEhClassico(idGravadoNoBanco)
     ) {
+      // Achado N3 (3ª revisão de risco, 26/09/2026): a vaga pode estar com o
+      // SENTINELA (`verificando:...`, Achado B2) em vez de um id de order de
+      // verdade — reconsultar isso pela Orders API SEMPRE falha (não é um id
+      // que ela reconhece), e o 500 de "não conseguiu confirmar antes de
+      // aplicar", mais abaixo, fazia o MP reenviar a MESMA notificação
+      // clássica em loop (W6). A rota `payment` não tem como resolver o
+      // sentinela por si só (não fala da cobrança de cartão que o ocupa) —
+      // quem resolve é a ADOÇÃO da rota `order` (acima) ou o teto de
+      // `sentinelaExpirado` em `criar-pagamento`. Aqui só ignora, sem
+      // reenviar: reenviar não muda nada até um dos dois caminhos rodar.
+      if (vagaEmVerificacao(idGravadoNoBanco)) {
+        console.warn(
+          "webhook-mercadopago: rota `payment` sobre um pedido com a vaga em verificação (sentinela) — ignorado, sem reconsultar",
+          { orderId, idGravadoNoBanco },
+        );
+        return json({ ok: true, ignorado: "vaga em verificação" }, 200);
+      }
       console.warn(
         "webhook-mercadopago: gateway_payment_id gravado não é um id clássico — a rota `payment` do MP devolveu um id que nunca bateria com o valor gravado (cobrança criada pela Orders API, painel provavelmente inscrito no tópico clássico). Enviando à RPC o valor GRAVADO NO BANCO, não o que o MP devolveu.",
         { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco },

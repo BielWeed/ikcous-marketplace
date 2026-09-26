@@ -468,6 +468,31 @@ export function tipoDoPagamentoDaOrder(
   return typeof metodo?.type === "string" ? metodo.type : null;
 }
 
+/**
+ * As parcelas do PAGAMENTO da order — `transactions.payments[0].payment_
+ * method.installments`, o MESMO campo que `montarCorpoCartaoOrders` manda na
+ * criação (débito sempre 1). `null` quando a order não é de cartão ou o campo
+ * não veio (a Orders API não promete ecoar tudo que recebeu de volta).
+ *
+ * Achado S3 (3ª revisão de risco, 26/09/2026): a ADOÇÃO da vaga
+ * (`webhook-mercadopago/index.ts`, Achado B2) lia só `gateway_payment_id` da
+ * cobrança aprovada — `metodo_online` e `parcelas` ficavam NULL mesmo para um
+ * cartão de verdade, e o comprovante/Financeiro contavam a venda como PIX.
+ * Fonte única para não duplicar a leitura de `payment_method.installments` no
+ * dia em que outro chamador precisar do mesmo dado.
+ */
+export function parcelasDaOrder(
+  order: Record<string, unknown> | null | undefined,
+): number | null {
+  const metodo = primeiroPagamentoDaOrder(order)?.payment_method as
+    | Record<string, unknown>
+    | undefined;
+  const installments = metodo?.installments;
+  return typeof installments === "number" && Number.isInteger(installments)
+    ? installments
+    : null;
+}
+
 /** `true` quando a order é de cartão (crédito ou débito). */
 export function orderEhDeCartao(order: Record<string, unknown> | null | undefined): boolean {
   return tipoDeCartaoValido(tipoDoPagamentoDaOrder(order));

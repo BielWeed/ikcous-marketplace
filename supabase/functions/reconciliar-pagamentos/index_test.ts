@@ -645,6 +645,31 @@ Deno.test("candidato novo (ULID de order) nunca chama /v1/payments/ — vai dire
   assertEquals(urlsChamadas.every((u) => !u.includes("/v1/payments/")), true);
 });
 
+// Achado S5/N3 (3ª revisão de risco, 26/09/2026): um candidato cuja vaga
+// guarda o SENTINELA (`verificando:...`, Achado B2) nunca é um id de order
+// de verdade — `idEhClassico` também não reconhece — e cada ciclo (a cada
+// 10 min) gastava uma chamada ao MP que SEMPRE falhava (400
+// `invalid_path_param`), sem o candidato nunca sair da fila.
+Deno.test("candidato com o SENTINELA na vaga ('verificando:...') -> ignorado, NUNCA chama o MP (Achado S5/N3)", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const sentinela = `verificando:${UUID_PEDIDO_1}:c0`;
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: sentinela }];
+  const supabase = clienteFalso({ candidatos, registro });
+  const fetchImpl = async (url: string) => {
+    throw new Error(`fetch inesperado nos testes — o sentinela NUNCA deveria chegar ao MP: ${url}`);
+  };
+  const req = requisicaoComSegredo(SEGREDO);
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.verificados, 1);
+  assertEquals(corpo.ignorados, 1);
+  assertEquals(corpo.falhas, 0);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
 Deno.test("candidato legado pago (approved) é confirmado como pago_apos_expirar, sem tocar a Orders API", async () => {
   const registro = { chamadasConfirmar: [], chamouCandidatos: false };
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: "555" }];
