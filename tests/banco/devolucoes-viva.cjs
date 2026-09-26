@@ -3275,6 +3275,34 @@ PROVAS.push({
       "a recusa acima não pode ter mexido em nada",
     );
 
+    // Achado 2 (rodada 6a, scratchpad rev79/ataque5.cjs, G8): um NULL
+    // EXPLÍCITO em `p_conferi_no_melhor_envio` (PostgREST aceita
+    // `{"p_conferi_no_melhor_envio": null}` no corpo JSON — diferente de
+    // OMITIR o parâmetro, que usaria o DEFAULT `false`) tem que recusar IGUAL
+    // a `false` — `NOT NULL` é `NULL` em SQL, e um `IF` com condição `NULL`
+    // nunca entra no corpo, então `AND NOT p_conferi_no_melhor_envio` deixava
+    // esse caso passar batido e soltar o vínculo sem confirmação nenhuma.
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, $2) AS r",
+          [dLiberar.id, null],
+        ),
+      /Não há nenhum registro de pagamento/,
+      "mutante G8_null_explicito: p_conferi_no_melhor_envio = NULL explícito não pode se comportar como true",
+    );
+    const meReverseAindaPresoComNull = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dLiberar.id],
+    );
+    assert.equal(
+      meReverseAindaPresoComNull,
+      ME_REVERSO_PRESO,
+      "a recusa com NULL explícito não pode ter mexido em nada",
+    );
+
     // Admin libera de verdade, com p_conferi_no_melhor_envio = true (já olhou
     // "Meus envios" e não achou nada pago): me_reverse_id volta a NULL,
     // evento gravado.

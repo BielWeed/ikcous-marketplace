@@ -2285,7 +2285,9 @@ const VERIFICACOES = {
         "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
         // Achado 1 (rodada 5, "negar por padrão"): substitui o guard antigo,
         // que só recusava com o marcador indeterminado presente.
-        "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND NOT p_conferi_no_melhor_envio THEN",
+        // Achado 2 (rodada 6a, G8): `IS NOT TRUE` — `NOT p_conferi_no_melhor_envio`
+        // deixava um NULL explícito passar batido (NOT NULL é NULL, não TRUE).
+        "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND p_conferi_no_melhor_envio IS NOT TRUE THEN",
         "strpos(nota, 'Pagamento do envio reverso ' || v_d.me_reverse_id || ' em verificação;')",
         "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
         "WHEN v_d.me_reverse_id LIKE 'reservando:%' THEN",

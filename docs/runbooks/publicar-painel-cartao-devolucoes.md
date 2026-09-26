@@ -291,6 +291,39 @@ INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
 ON CONFLICT (version) DO NOTHING;
 ```
 
+### 1.5 A 81 — já aplicada em produção (achado LGPD, alto)
+
+A `20261181000000_pedido_por_whatsapp_fecha_para_anon.sql` **já foi aplicada em produção em
+26/09/2026 às 19:34** — este runbook só está registrando o fato, não instruindo a aplicar. O
+achado (auditoria de LGPD): `get_orders_by_whatsapp_v3` continuava executável por `anon` e por
+`authenticated` com GRANT PRÓPRIO (sobrevivente ao `REVOKE ... FROM PUBLIC` de uma migration mais
+antiga), sem exigir OTP nem limitar tentativa — bastava telefone + e-mail da vítima e um sufixo de
+4+ caracteres do id do pedido ou do código de rastreio para ler `customer_data` cru (com CPF
+desde a 72). A migration:
+1. Revoga `EXECUTE` de `get_orders_by_whatsapp_v3` de `PUBLIC`, `anon` e `authenticated` (nenhum
+   caller legítimo restava — ver o cabeçalho do arquivo).
+2. Redefine `get_orders_by_otp_v1` (o caminho de convidado que continua em uso) para tirar `cpf`
+   de `customer_data` — raiz e dentro de `address`, quando `address` é objeto.
+
+**Independente de 75–80**: não tem preflight nem guarda referenciando `devolucoes`,
+`config_pagamento_cartao` nem nenhum outro objeto daquelas migrations — só mexe em
+`get_orders_by_otp_v1` e no ACL de `get_orders_by_whatsapp_v3` (conferido lendo o arquivo: zero
+menção a tabelas/funções de 75–80). Por isso ela **não tem posição fixa na fila de rollback do
+§5** — pode reverter a qualquer momento, sem depender de 79/80 estarem ou não aplicadas.
+
+**Rollback**: `rollback-manual-20261181000000_pedido_por_whatsapp_fecha_para_anon.sql` — devolve
+`get_orders_by_otp_v1` ao corpo anterior (byte a byte) e o `GRANT EXECUTE` de
+`get_orders_by_whatsapp_v3` para `anon`/`authenticated`. ⚠️ **Rodar este rollback REABRE o
+vazamento de LGPD** — só rode se a 81 em si for a causa de um problema, nunca por rotina.
+
+Ledger (se ainda não estiver registrado):
+
+```sql
+INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
+  ('20261181000000', 'pedido_por_whatsapp_fecha_para_anon')
+ON CONFLICT (version) DO NOTHING;
+```
+
 ## 2. Publicar as functions — só depois do §1 conferido
 
 1. Abra GitHub → Actions → **"Publicar edge functions (Supabase)"** → *Run workflow*, no branch
@@ -433,16 +466,22 @@ Não precisa mexer em banco.
    mesmas cinco do §2. As versões antigas não leem nada das migrations novas.
 4. **Banco**: rode **sempre 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A 80
    e a 79 só entram na fila se já tiverem sido aplicadas** — as duas são publicadas à parte das
-   75–78, em frentes independentes. **A 79 (`cancelar_devolucao_barra_compra_em_voo`) é dona da
-   frente `fix/devolucao-pos-revisao` — o procedimento completo dela (comando, guardas,
-   ledger) está no §7.5 daquele runbook; aqui só a ORDEM RELATIVA importa: ela vem depois da
-   80 e antes da 78.** Se nenhuma das duas estava aplicada, comece direto em 78. Execute pelo
-   `psql` com a string de conexão do projeto da loja. **Confira o host antes**, porque o
+   75–78, em frentes independentes. **A 79 (`cancelar_devolucao_barra_compra_em_voo`) — o
+   procedimento completo dela (comando, guardas, ledger) está no §7.5 deste mesmo runbook; aqui
+   só a ORDEM RELATIVA importa: ela vem depois da 80 e antes da 78.** Se nenhuma das duas estava
+   aplicada, comece direto em 78. **A 81 (`pedido_por_whatsapp_fecha_para_anon`, LGPD, já
+   aplicada em produção em 26/09/2026 19:34) é INDEPENDENTE de 75–80** — não referencia nem
+   depende de nenhum objeto que elas criam (só `get_orders_by_otp_v1` e o ACL de
+   `get_orders_by_whatsapp_v3`) — então revertê-la, se precisar, não tem posição fixa nesta
+   fila; ver o aviso sobre reabrir o vazamento de LGPD antes de rodar o rollback dela. Execute
+   pelo `psql` com a string de conexão do projeto da loja. **Confira o host antes**, porque o
    workflow não aceita `rollback-manual-*` e o `db-apply` gravaria o rollback no ledger.
 
    ```bash
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
-   # 79, se aplicada: arquivo e comando exatos no §7.5 do runbook de fix/devolucao-pos-revisao
+   # 79, se aplicada: arquivo e comando exatos no §7.5 (mesmo runbook)
+   # 81, se precisar reverter (LGPD — reabre o vazamento; ver acima): arquivo
+   # rollback-manual-20261181000000_pedido_por_whatsapp_fecha_para_anon.sql, independente da ordem abaixo
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
@@ -450,8 +489,8 @@ Não precisa mexer em banco.
    ```
 
 **Guardas que recusam a ordem errada** (um `DO` com `RAISE EXCEPTION`, antes de qualquer
-`DROP`) — só as que este runbook é dono (75, 76, 77, 80; a guarda da 79 é descrita no §7.5 da
-outra frente, não repetida aqui):
+`DROP`) — 75, 76, 77 e 80 (a guarda da 79 é descrita no §7.5, não repetida aqui; a 81 não tem
+guarda de ordem — é independente das demais, sem referenciar nenhum objeto criado por 75–80):
 - a 80 não tem guarda de ordem própria (é sempre a primeira a reverter, se estiver aplicada), e
   seu ROLLBACK tem guarda própria do lado de baixo: recusa se `public.devolucoes` já não
   existir (a 75 já revertida por baixo dela deixaria `update_order_status_atomic` quebrada
@@ -486,8 +525,9 @@ psql "$CONEXAO_DA_LOJA" -c "\copy public.devolucao_eventos TO 'devolucao_eventos
 
 | Migration | Apagado | Fica, de propósito |
 | --- | --- | --- |
+| 81 | Nada é apagado — `get_orders_by_otp_v1` volta ao corpo anterior e `get_orders_by_whatsapp_v3` recebe de volta o GRANT para `anon`/`authenticated`. Independente de 75–80 (sem posição fixa na fila). | ⚠️ REABRE o achado LGPD: convidado sem OTP volta a ler `customer_data` (com CPF) de qualquer pedido só com telefone + e-mail + 4 caracteres do id/rastreio. Só reverta se ELA for a causa do problema. |
 | 80 | Nada é apagado — só redefine `update_order_status_atomic`, que volta ao corpo exato da 75 (comprovado byte a byte). | A guarda de cartão vivo desaparece: o cliente volta a poder cancelar pedido com cobrança de cartão possivelmente aprovável. |
-| 79 | Ver §7.5 do runbook de `fix/devolucao-pos-revisao` — dona da migration, mantém a tabela lá (o conteúdo exato mudou entre rodadas daquela frente; duplicar aqui é o que ficou desatualizado numa revisão anterior deste runbook). | Ver §7.5. |
+| 79 | Ver §7.5 (mesma seção deste runbook) — o conteúdo exato muda a cada rodada de revisão daquela migration; duplicar aqui é o que ficou desatualizado numa revisão anterior deste runbook. | Ver §7.5. |
 | 78 | Só funções de leitura. | Nada. |
 | 77 | Lançamentos, contas, categorias, sessões de caixa e a linha de `assinatura_da_loja`. Ao reaplicar, o hub precisa sincronizar de novo. | Pedidos, estornos e devoluções, que o Financeiro só lia. |
 | 76 | `config_pagamento_cartao`, as RPCs, o gatilho do estorno e as CHECKs. `registrar_estorno_manual` volta ao corpo de `20261072000000`. | As **colunas** `tentativas_de_pagamento`, `metodo_online`, `parcelas` e `estorno_manual_registrado_em`, que guardam como cada pedido foi pago. |
@@ -787,7 +827,7 @@ migration; isso é o único jeito de checar 79 sem tocar em pedido de cliente ne
 ```sql
 SELECT checagem, valor, esperado, COALESCE(valor = esperado, false) AS ok FROM (VALUES
   ('79 cancelar_devolucao: corpo novo',          (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'cancelar_devolucao' AND pronamespace = 'public'::regnamespace), '74fd42d04f8ea55257a0aec73bfcabc1'),
-  ('79 admin_devolucao_liberar_vinculo_reverso: corpo', (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), 'afc1ee0b56b07bef717e29396eddc8d5'),
+  ('79 admin_devolucao_liberar_vinculo_reverso: corpo', (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), '83144be5ac2bc52f07f02274023a83ab'),
   ('79 as duas SECURITY DEFINER',                 (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND prosecdef), '2'),
   ('79 as duas com search_path fixo',             (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND proconfig @> ARRAY['search_path=public']), '2'),
   ('rpc nova tem só UM overload (rodada 4: o DROP limpou o de 1 argumento)', (SELECT count(*)::text FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), '1'),
@@ -802,17 +842,19 @@ ORDER BY ok, checagem;
 26/09/2026 (rodada 2) e continuam valendo — nenhuma rodada seguinte tocou o corpo desta função. O
 md5 de `admin_devolucao_liberar_vinculo_reverso` mudou de novo na rodada 5 (achado 1: o guard do
 marcador indeterminado virou o guard "negar por padrão", exigindo `p_conferi_no_melhor_envio`
-sempre para um id real; achado 3: a âncora do `strpos` mudou de texto) — o valor acima já é o da
-rodada 5. Recompute-o de novo se o conteúdo do arquivo mudar antes de publicar.)
+sempre para um id real; achado 3: a âncora do `strpos` mudou de texto) e outra vez na rodada 6a
+(achado 2, dinheiro: `NOT p_conferi_no_melhor_envio` virou `p_conferi_no_melhor_envio IS NOT
+TRUE` — um `NULL` explícito não podia mais se comportar como `true`) — o valor acima já é o da
+rodada 6a. Recompute-o de novo se o conteúdo do arquivo mudar antes de publicar.)
 
 ### 7.3 Marcadores — o filtro do §1.2 precisa alargar
 
-O script do §1.2 filtra `Object.keys(VERIFICACOES)` por `/^2026117[5-8]/` — nem a 79 (esta
-migration) nem a 80 (`fix/cancelar-com-cartao-vivo`, publicada junto) entram nesse padrão. Troque
-por `/^(2026117[5-9]|20261180)/` antes de gerar `conferir-marcadores.sql` desta vez, para cobrir
-75–78, a 79 e a 80 de uma vez. **Não fixe aqui quantas linhas o total deveria ter** — a lista de
-marcadores muda a cada rodada de revisão dos dois lados (79 e 80); rode a consulta e confira
-`ok = true` em TODAS as linhas que ela devolver.
+O script do §1.2 já filtra `Object.keys(VERIFICACOES)` por `/^(2026117[5-8]|20261180)/` (75–78 e
+a 80) — mas a 79 (esta migration) não entra nesse padrão. Troque por
+`/^(2026117[5-8]|20261179|20261180)/` antes de gerar `conferir-marcadores.sql` desta vez, para
+cobrir 75–78, a 79 e a 80 de uma vez. **Não fixe aqui quantas linhas o total deveria ter** — a
+lista de marcadores muda a cada rodada de revisão de qualquer uma das três; rode a consulta e
+confira `ok = true` em TODAS as linhas que ela devolver.
 
 ### 7.4 Ledger
 

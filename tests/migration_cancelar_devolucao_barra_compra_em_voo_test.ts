@@ -268,7 +268,7 @@ Deno.test("achado 1 (rodada 5, dinheiro — negar por padrão): QUALQUER me_reve
   // marcador nenhum.
   assertStringIncludes(
     corpo,
-    "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND NOT p_conferi_no_melhor_envio THEN",
+    "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND p_conferi_no_melhor_envio IS NOT TRUE THEN",
   );
   // O marcador indeterminado (quando existe) virou só INFORMAÇÃO na
   // mensagem — não decide mais sozinho se a RPC recusa (achado 3, rodada 5:
@@ -304,7 +304,7 @@ Deno.test("achado 1 (rodada 5): o guard 'negar por padrão' vem DEPOIS do guard 
   const corpo = m.slice(ini, fim + 3);
   const posConfirmado = corpo.indexOf("strpos(nota, 'confirmou o pagamento");
   const posNegarPorPadrao = corpo.indexOf(
-    "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND NOT p_conferi_no_melhor_envio THEN",
+    "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND p_conferi_no_melhor_envio IS NOT TRUE THEN",
   );
   const posUpdate = corpo.indexOf(
     "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
@@ -317,6 +317,26 @@ Deno.test("achado 1 (rodada 5): o guard 'negar por padrão' vem DEPOIS do guard 
   assert(
     posNegarPorPadrao < posUpdate,
     "o guard de negar por padrão tem que vir ANTES do UPDATE que solta o vínculo",
+  );
+});
+
+Deno.test("achado 2 (rodada 6a, scratchpad rev79/ataque5.cjs, G8): o guard usa IS NOT TRUE, nunca NOT <parâmetro> — um NULL explícito não pode passar batido", () => {
+  const ini = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
+  );
+  const fim = m.indexOf("$$;", ini);
+  const corpo = m.slice(ini, fim + 3);
+  // Achado 2 (rodada 6a): `NOT p_conferi_no_melhor_envio` em SQL é `NULL`
+  // quando o parâmetro chega `NULL` explícito (PostgREST aceita
+  // `{"p_conferi_no_melhor_envio": null}` no corpo JSON — diferente de OMITIR
+  // o parâmetro, que usaria o DEFAULT) — e um `IF` com condição `NULL` nunca
+  // entra no corpo, soltando o vínculo do mesmo jeito que o achado G5 que a
+  // rodada 5 fechou. `IS NOT TRUE` trata `NULL` igual a `false`: nenhum dos
+  // dois libera sem confirmação de verdade.
+  assertStringIncludes(corpo, "p_conferi_no_melhor_envio IS NOT TRUE");
+  assert(
+    !/NOT\s+p_conferi_no_melhor_envio\b/.test(corpo),
+    "o padrão vulnerável a NULL (NOT p_conferi_no_melhor_envio) não pode voltar a aparecer",
   );
 });
 

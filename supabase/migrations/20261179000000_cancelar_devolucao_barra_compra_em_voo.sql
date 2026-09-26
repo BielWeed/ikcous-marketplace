@@ -182,7 +182,20 @@
 --      contrato com `tests/marcador_pagamento_reverso_contrato_test.ts`,
 --      achado 4 da rodada 4).
 --
--- O QUE ESTA MIGRATION FAZ, NA ORDEM (já com as rodadas 2-5 aplicadas):
+-- RODADA 6a (revisão independente sobre o resultado da rodada 5 — achado 2,
+-- scratchpad rev79/ataque5.cjs, G8):
+--   2. O guard "negar por padrão" (rodada 5) escrevia `AND NOT
+--      p_conferi_no_melhor_envio` — em SQL, `NOT NULL` é `NULL`, não `TRUE`,
+--      e um `IF` com condição `NULL` nunca entra no corpo. Um `NULL`
+--      EXPLÍCITO (`p_conferi_no_melhor_envio: null` no corpo JSON de uma
+--      chamada PostgREST — diferente de simplesmente omitir o parâmetro, que
+--      usaria o `DEFAULT false`) passava pelo guard e soltava o vínculo sem
+--      confirmação nenhuma, do mesmo jeito que o achado G5 da rodada 5 que
+--      esta rodada corrigiu. CORREÇÃO: `p_conferi_no_melhor_envio IS NOT
+--      TRUE` — só `true` de verdade não recusa; `false` e `NULL` recusam
+--      igual.
+--
+-- O QUE ESTA MIGRATION FAZ, NA ORDEM (já com as rodadas 2-6a aplicadas):
 --   1. Redefine `public.cancelar_devolucao(p_id uuid)` (MESMA assinatura da
 --      20261175000000 — grants de lá continuam valendo, Postgres não perde
 --      privilégio num CREATE OR REPLACE que não muda a assinatura): mantém
@@ -455,7 +468,17 @@ BEGIN
   -- quando existir); sem marcador nenhum, a mensagem diz isso também. O
   -- marcador CONFIRMADO (guard acima) continua recusando sem NENHUMA
   -- exceção — inalterado pela rodada 5.
-  IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND NOT p_conferi_no_melhor_envio THEN
+  --
+  -- Achado 2 (rodada 6a, scratchpad rev79/ataque5.cjs, G8): `NOT
+  -- p_conferi_no_melhor_envio` deixa passar um `NULL` EXPLÍCITO — em SQL,
+  -- `NOT NULL` é `NULL` (não `TRUE`), e um `IF` com condição `NULL` nunca
+  -- entra no corpo, então a RPC soltava o vínculo do mesmo jeito que com
+  -- `false`. Isso é alcançável de fora: PostgREST aceita `{"p_id": "...",
+  -- "p_conferi_no_melhor_envio": null}` no corpo JSON e passa `NULL` pra
+  -- valer (o `DEFAULT false` só vale quando o parâmetro nem aparece na
+  -- chamada). CORREÇÃO: `IS NOT TRUE` — únicos que NÃO recusam são `true` de
+  -- verdade; `false` e `NULL` recusam igual.
+  IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND p_conferi_no_melhor_envio IS NOT TRUE THEN
     IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'Pagamento do envio reverso ' || v_d.me_reverse_id || ' em verificação;') > 0) THEN
       RAISE EXCEPTION 'Há registro de pagamento indeterminado para este envio reverso no Melhor Envio — confira "Meus envios" na conta do Melhor Envio antes de liberar; chame de novo com p_conferi_no_melhor_envio = true depois de conferir que não foi pago.'
         USING ERRCODE = '22023';
