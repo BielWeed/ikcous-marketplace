@@ -17,18 +17,30 @@
 -- bucket `devolucoes` e os arquivos dele FICAM (apagar foto de cliente é
 -- decisão do dono, fora de rollback de schema).
 --
--- GUARDA DE ORDEM (achado R, revisão de risco round 2 acrescentou o 1º
--- item): reverta 80 -> 78 -> 77 -> 76 antes desta (75). O Financeiro
--- (fin__movimentos/fin_dre) e o CRM/Início (crm_visao, painel_inicio) leem a
--- tabela `devolucoes` direto — revertendo esta migration primeiro, as duas
--- quebram com 42P01 (relation does not exist). A 80
--- (20261180000000_cliente_nao_cancela_com_cartao_vivo.sql) REDEFINE
--- update_order_status_atomic SEM tocar `devolucoes` — nenhum erro apareceria
--- se este arquivo restaurasse o corpo da 75 por baixo dela: a guarda de
--- cartão vivo simplesmente desapareceria, em silêncio, e o cliente voltaria
--- a poder cancelar um pedido com cobrança de cartão viva. Por isso a checagem
--- não é "o objeto existe?" (a função sempre existe) — é "o CORPO atual ainda
--- tem a guarda da 80?", lida de `pg_get_functiondef`.
+-- GUARDA DE ORDEM (achado R, revisão de risco round 2 acrescentou o item da
+-- 80; addendum do ensaio de integração acrescentou o item da 79): reverta
+-- 80 -> 79 -> 78 -> 77 -> 76 antes desta (75), cada uma só se estiver
+-- aplicada. O Financeiro (fin__movimentos/fin_dre) e o CRM/Início
+-- (crm_visao, painel_inicio) leem a tabela `devolucoes` direto — revertendo
+-- esta migration primeiro, as duas quebram com 42P01 (relation does not
+-- exist). A 80 (20261180000000_cliente_nao_cancela_com_cartao_vivo.sql)
+-- REDEFINE update_order_status_atomic SEM tocar `devolucoes` — nenhum erro
+-- apareceria se este arquivo restaurasse o corpo da 75 por baixo dela: a
+-- guarda de cartão vivo simplesmente desapareceria, em silêncio, e o
+-- cliente voltaria a poder cancelar um pedido com cobrança de cartão viva.
+-- Por isso a checagem não é "o objeto existe?" (a função sempre existe) — é
+-- "o CORPO atual ainda tem a guarda da 80?", lida de `pg_get_functiondef`. A
+-- 79 (20261179000000_cancelar_devolucao_barra_compra_em_voo.sql, outra
+-- frente — commit 5e052876) redefine `cancelar_devolucao` e cria
+-- `admin_devolucao_liberar_vinculo_reverso`, as duas lendo `devolucoes`/
+-- `devolucao_eventos` — revertendo esta (75) por baixo da 79, as duas
+-- quebram do mesmo jeito que o Financeiro/CRM quebram. A checagem usa
+-- `to_regproc` (só o NOME, sem assinatura) em vez de `to_regprocedure`
+-- (nome + tipos dos argumentos): a 79 ainda pode mudar de rodada de revisão
+-- na outra frente, e uma checagem por assinatura fixa pararia de proteger
+-- se o parâmetro mudasse de nome ou tipo sem essa guarda acompanhar — por
+-- nome, ela continua pegando a função enquanto ela existir, não importa a
+-- assinatura exata.
 -- ============================================================================
 
 DO $$
@@ -40,6 +52,9 @@ BEGIN
   );
   IF v_corpo_atual LIKE '%verificando:%' THEN
     RAISE EXCEPTION 'reverta 80 (cliente_nao_cancela_com_cartao_vivo) antes de reverter esta migration (75) — update_order_status_atomic ainda tem a guarda de cartão vivo da 80; restaurar o corpo da 75 por baixo dela apagaria essa guarda em silêncio, sem erro nenhum.';
+  END IF;
+  IF to_regproc('public.admin_devolucao_liberar_vinculo_reverso') IS NOT NULL THEN
+    RAISE EXCEPTION 'reverta 79 (cancelar_devolucao_barra_compra_em_voo) antes de reverter esta migration (75) — admin_devolucao_liberar_vinculo_reverso e a cancelar_devolucao redefinida pela 79 leem devolucoes/devolucao_eventos.';
   END IF;
   IF to_regprocedure('public.painel_inicio()') IS NOT NULL
      OR to_regprocedure('public.crm_visao(date, date)') IS NOT NULL THEN

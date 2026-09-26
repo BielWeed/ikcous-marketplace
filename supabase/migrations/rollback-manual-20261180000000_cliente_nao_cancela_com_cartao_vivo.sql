@@ -10,12 +10,28 @@
 -- CREATE OR REPLACE preserva a ACL vigente).
 --
 -- Nenhuma migration depois da 20261180000000 depende da guarda nova — sem
--- guarda de ordem contra reversão.
+-- guarda de ordem contra QUEM VEM DEPOIS. Mas o corpo que este arquivo
+-- RESTAURA (o da 75) lê `public.devolucoes` no ledger do estorno — addendum
+-- do ensaio de integração (round 3): se a 75 já foi revertida (ou nunca foi
+-- aplicada nesta base) quando alguém tentar reverter a 80, restaurar esse
+-- corpo aqui deixaria `update_order_status_atomic` QUEBRADA para qualquer
+-- cancelamento (a mesma classe de defeito que o preflight da própria
+-- 20261180000000 existe para evitar do lado do APPLY — aqui é o mesmo
+-- cuidado do lado do ROLLBACK). Por isso a guarda abaixo, ANTES do
+-- `CREATE`.
 --
 -- Executar via `psql -1 -f` (nunca pelo db-apply, que registraria este
 -- rollback no ledger de migrations como se fosse uma migration nova). Sem
 -- BEGIN/COMMIT de nível superior neste arquivo — regra da casa.
 -- ============================================================================
+
+DO $$
+BEGIN
+  IF to_regclass('public.devolucoes') IS NULL THEN
+    RAISE EXCEPTION 'a tabela public.devolucoes não existe — a 20261175000000 já foi revertida (ou nunca foi aplicada) nesta base. O corpo que este arquivo restaura lê devolucoes no ledger do estorno; reaplique a 75 antes de reverter a 80, ou não reverta a 80 agora.';
+  END IF;
+END
+$$;
 
 CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
     p_order_id uuid,

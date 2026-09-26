@@ -192,3 +192,62 @@ Deno.test("a migration declara a ordem de aplicação (depois de 75-78, independ
   assertStringIncludes(migration, "depois de 75–78");
   assertStringIncludes(migration, "independente da 79");
 });
+
+// Achado 1 da revisão de risco, round 3 (26/09/2026): B1_BASELINE_DIVERGENT —
+// aplicar esta migration direto sobre um banco sem 75/76 criava uma função
+// QUEBRADA em silêncio (CREATE OR REPLACE não valida identificador nenhum em
+// tempo de criação). O preflight abaixo é o que impede isso; a prova VIVA
+// (banco em 74 recusa, em 78 aplica, com 80 reaplica) mora em
+// tests/banco/cartao-online-viva.cjs — aqui só o texto do preflight.
+Deno.test("o preflight vem ANTES do CREATE e recusa com B1_BASELINE_DIVERGENT", () => {
+  // "DO $preflight_20261180$ DECLARE" (normalizado) só existe no BLOCO de
+  // verdade — o cabeçalho também cita "`DO $preflight_20261180$`" em prosa
+  // (entre crases, sem "DECLARE" logo depois), e um indexOf ingênuo acharia
+  // essa menção primeiro, sempre ANTES do CREATE de qualquer jeito — o que
+  // faria este teste "passar" mesmo se o bloco de verdade sumisse.
+  const inicioPreflight = m.indexOf("DO $preflight_20261180$ DECLARE");
+  const inicioCreate = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.update_order_status_atomic(",
+  );
+  assert(
+    inicioPreflight >= 0,
+    "bloco $preflight_20261180$ (de verdade, com DECLARE) não encontrado",
+  );
+  assert(
+    inicioPreflight < inicioCreate,
+    "o preflight precisa vir ANTES do CREATE OR REPLACE FUNCTION",
+  );
+
+  assertStringIncludes(m, "column_name = 'metodo_online'");
+  assertStringIncludes(m, "to_regclass('public.devolucoes') IS NULL");
+  assertStringIncludes(m, "B1_BASELINE_DIVERGENT");
+  // Os dois hashes aceitos: o corpo que a 75 deixa (vivo até a 78) e o
+  // corpo que esta própria migration deixa (reaplicação idempotente).
+  assertStringIncludes(m, "8bda9131ed0a7929ef5aa13df84238e3");
+  assertStringIncludes(m, "ed2f7fd3e0177c027720049b2fe55d3b");
+  assertStringIncludes(m, "md5(replace(prosrc, E'\\r', ''))");
+});
+
+Deno.test("o preflight não abre nem fecha transação (é um DO block, não BEGIN/COMMIT)", () => {
+  // "DO $preflight_20261180$\nDECLARE" só existe no BLOCO de verdade — o
+  // cabeçalho também cita "`DO $preflight_20261180$`" em prosa (entre
+  // crases, sem `\nDECLARE` depois), e um indexOf ingênuo acharia essa
+  // menção primeiro.
+  const marcadorAbertura = "DO $preflight_20261180$\nDECLARE";
+  const marcadorFechamento = "END $preflight_20261180$;";
+  const inicioPreflight = migration.indexOf(marcadorAbertura);
+  const fimPreflight = migration.indexOf(marcadorFechamento, inicioPreflight);
+  assert(inicioPreflight >= 0, "bloco real do preflight não encontrado");
+  assert(
+    fimPreflight > inicioPreflight,
+    "fechamento do preflight não encontrado",
+  );
+  const trechoPreflight = migration.slice(
+    inicioPreflight,
+    fimPreflight + marcadorFechamento.length,
+  );
+  assertEquals(
+    detectarTransacaoExplicita(removerRuido(trechoPreflight)).achados,
+    [],
+  );
+});

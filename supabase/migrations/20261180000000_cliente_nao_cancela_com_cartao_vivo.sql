@@ -20,25 +20,28 @@
 -- (Política P1, HONRAR) → dinheiro fora do fluxo, mercadoria já vendida a
 -- outro cliente.
 --
--- RESSALVA (revisão de risco, round 2, 26/09/2026 — prova E1/E2 em
+-- RESSALVA (revisão de risco, rounds 2 e 3, 26/09/2026 — prova em
 -- tests/banco/cartao-online-viva.cjs, caso (e)): a caixa âmbar "cartão em
--- análise" cobre DOIS estados de banco diferentes, e esta migration só
--- fecha UM deles com o edge que está em produção hoje (`fe045939`):
---   - Cobrança REALMENTE em análise (aprovação/3DS pendente, sem colisão de
---     idempotência): `criar-pagamento` já grava `gateway_payment_id` (id de
---     verdade) e `metodo_online` na MESMA transação que ocupa a vaga — a
---     guarda desta migration JÁ FECHA esse caso, com o edge de hoje.
---   - O 502 AMBÍGUO da Orders API (dois cliques, retry de rede — a corrida
---     de idempotência que `respostaCartaoEmVerificacao` existe para
---     resolver): com o edge de `fe045939`, essa resposta NÃO grava nada na
---     vaga (`gateway_payment_id`/`metodo_online` ficam NULL) — a guarda
---     desta migration NÃO TEM O QUE LER, e o cliente cancela normalmente
---     (gap conhecido, caso E do teste citado acima). Isto só fecha quando a
---     edge de `fix/cartao-edge-achados` (commit `021b8720` em diante)
---     publicar — é ELA quem passa a gravar o SENTINELA `verificando:` na
---     vaga nesse 502 ambíguo, e a partir daí a condição `(b)` desta guarda
---     (abaixo) alcança o caso. **Ligar o cartão exige as duas coisas**: esta
---     migration aplicada E aquela edge publicada (runbook
+-- análise" cobre estados de banco diferentes, e esta migration não fecha
+-- TODOS com o edge que está em produção hoje (`fe045939`):
+--   - Cobrança REALMENTE em análise (aprovação/3DS pendente) OU o 409
+--     `idempotency_key_already_used` (retry com o MESMO token — a corrida de
+--     idempotência que `respostaCartaoEmVerificacao` resolve,
+--     `criar-pagamento/index.ts:1598-1607`): nos DOIS casos `criar-pagamento`
+--     já grava a vaga na MESMA transação (id real + `metodo_online`, ou o
+--     SENTINELA `verificando:`) — a guarda desta migration JÁ FECHA os dois,
+--     com o edge de hoje (caso C do teste citado prova o segundo).
+--   - O verdadeiro gap: falha de REDE/timeout/5xx na CRIAÇÃO da cobrança
+--     (`criar-pagamento/index.ts:1742-1745`, `!r.ok`) — hoje isso responde
+--     502 SEM tocar a vaga (nada foi cobrado com certeza, mas o MP pode ter
+--     processado a order antes de a resposta se perder) — a guarda desta
+--     migration NÃO TEM O QUE LER, e o cliente cancela normalmente (gap
+--     conhecido, caso E do teste citado). Só fecha quando a edge de
+--     `fix/cartao-edge-achados` publicar (`respostaCartaoAmbiguoNaCriacao`,
+--     commit `bf15876f`) — é ELA quem passa a gravar o SENTINELA
+--     `verificando:` nesse 502 de criação, e a partir daí a condição `(b)`
+--     desta guarda (abaixo) alcança o caso. **Ligar o cartão exige as duas
+--     coisas**: esta migration aplicada E aquela edge publicada (runbook
 --     docs/runbooks/publicar-painel-cartao-devolucoes.md, §6).
 --
 -- O QUE ESTA MIGRATION FAZ: redefine `public.update_order_status_atomic`
@@ -98,6 +101,29 @@
 -- IDEMPOTÊNCIA: `CREATE OR REPLACE FUNCTION` — reaplicar o arquivo produz o
 -- mesmo corpo, sempre.
 --
+-- PRÉ-VOO / B1_BASELINE_DIVERGENT (achado 1 da revisão de risco, round 3,
+-- 26/09/2026 — mesmo padrão da `20261172000000_o_cpf_do_destinatario_mora_
+-- no_pedido.sql`): esta migration SÓ faz sentido em cima do que 75 e 76
+-- deixaram — a Seção 11 que ela copia lê `metodo_online`/`gateway_payment_id`
+-- (coluna nascida na 76) e `public.devolucoes` (tabela nascida na 75) no
+-- ledger do estorno. `CREATE OR REPLACE FUNCTION` NÃO valida identificador
+-- nenhum em tempo de criação — plpgsql só resolve nomes na PRIMEIRA CHAMADA.
+-- Provado ao vivo (Postgres 17 efêmero): aplicar este arquivo direto sobre
+-- um banco parado na `20261174000000` (sem 75 nem 76) TERMINA COM SUCESSO, e
+-- só quebra no primeiro clique em "Cancelar Pedido" ou "Avançar" de
+-- QUALQUER pedido, com `column "metodo_online" does not exist` — e o
+-- rollback desta migration NÃO conserta, porque ele restaura o corpo da 75,
+-- que TAMBÉM lê `devolucoes`. Por isso o `DO $preflight_20261180$` logo
+-- abaixo, ANTES de qualquer `CREATE`, recusa com `B1_BASELINE_DIVERGENT`
+-- se: (a) a coluna `metodo_online` não existir (falta a 76); (b)
+-- `public.devolucoes` não existir (falta a 75); ou (c) o corpo VIVO de
+-- `update_order_status_atomic` não bater, por `md5(replace(prosrc, E'\r',
+-- ''))`, nem com o que a 75 deixa (`8bda9131ed0a7929ef5aa13df84238e3`,
+-- vivo sem mudança até a 78) nem com o que ESTA migration deixa
+-- (`ed2f7fd3e0177c027720049b2fe55d3b`, reaplicação idempotente) — os dois
+-- hashes foram medidos contra um catálogo do zero (75→78 e 75→80) no mesmo
+-- Postgres efêmero, normalizando CRLF antes de hashear.
+--
 -- FORA DO ESCOPO: mirror da guarda em OrderDetailsView.tsx. O `Order` que a
 -- tela do cliente lê (mapOrderFromDB/useOrders.ts) não carrega
 -- `metodo_online` nem `gateway_payment_id` hoje (varredura em `src/`: 0
@@ -108,13 +134,31 @@
 -- (useOrders.ts) já toasta a mensagem do banco para QUALQUER erro P0001 —
 -- sem mudança nenhuma no hook nem no componente.
 --
+-- OBRIGAÇÃO PARA QUEM REDEFINIR ESTA FUNÇÃO NO FUTURO (nit da revisão,
+-- round 3): se uma migration depois desta voltar a redefinir
+-- `update_order_status_atomic`, ela precisa OU manter o literal
+-- `verificando:` no corpo (é o que `rollback-manual-20261175000000_a_
+-- devolucao_nasce_no_pedido.sql` procura para recusar reverter a 75 com
+-- esta guarda ainda viva), OU atualizar aquele `LIKE` se o marcador mudar
+-- de nome. E o ROLLBACK dessa migration futura precisa da SUA PRÓPRIA
+-- guarda de ordem (o mesmo desenho desta seção e da guarda que esta tarefa
+-- acrescentou ao rollback da 75) — sem isso, reverter essa migration futura
+-- por baixo de uma migration ainda mais nova apagaria a guarda dela em
+-- silêncio, do mesmo jeito que reverter a 75 por baixo da 80 apagava esta.
+--
 -- ORDEM DE APLICAÇÃO: depois de 75–78 (20261175000000…20261178000000, já
 -- aplicadas); independente da 79 — número já tomado por outra frente, não
 -- reaplicar nem esperar por ela.
 --
--- COMO APLICAR: `node scripts/db-apply.cjs
--- 20261180000000_cliente_nao_cancela_com_cartao_vivo.sql` (sem BEGIN/COMMIT
--- de nível superior neste arquivo — regra da casa).
+-- COMO APLICAR: pelo workflow `aplicar-migrations.yml` (Actions → Run
+-- workflow), `migracoes = 20261180000000_cliente_nao_cancela_com_cartao_
+-- vivo.sql`, `projeto_ref` no default (o projeto da loja) — NUNCA
+-- `scripts/db-apply.cjs` direto (o runbook de publicação,
+-- docs/runbooks/publicar-painel-cartao-devolucoes.md, exige o workflow, que
+-- roda a PROVA `BEGIN; <arquivo>; ROLLBACK;` antes do apply de verdade —
+-- ver §1.4 daquele runbook). Sem `BEGIN`/`COMMIT` de nível superior neste
+-- arquivo (regra da casa) — quem abre a transação é o workflow/o
+-- `db-apply.cjs` quando usado localmente para depuração.
 --
 -- FICHA DE VERIFICAÇÃO:
 --   1. `SELECT pg_get_functiondef('public.update_order_status_atomic(uuid,text,text,boolean)'::regprocedure)`
@@ -127,11 +171,42 @@
 --      normalmente.
 --   4. Pedido 'pending', `payment_status` 'aguardando', `metodo_online =
 --      'pix'`: o cliente cancela normalmente (comportamento de hoje).
+--   5. Aplicar direto num banco sem a 75/76: `B1_BASELINE_DIVERGENT`, nada
+--      gravado (o preflight recusa antes do `CREATE`).
 --
 -- ROLLBACK MANUAL:
 -- rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
 -- restaura, byte a byte, o corpo que a 20261175000000 deixou (a guarda nova
 -- sai; nada mais muda).
+
+DO $preflight_20261180$
+DECLARE
+  v_hash text;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'marketplace_orders'
+       AND column_name = 'metodo_online'
+  ) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.marketplace_orders.metodo_online não existe — aplique antes a 20261176000000_o_cartao_online_nasce.sql.';
+  END IF;
+
+  IF to_regclass('public.devolucoes') IS NULL THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.devolucoes não existe — aplique antes a 20261175000000_a_devolucao_nasce_no_pedido.sql.';
+  END IF;
+
+  SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
+    FROM pg_proc
+   WHERE oid = to_regprocedure('public.update_order_status_atomic(uuid,text,text,boolean)');
+
+  IF v_hash IS NULL OR v_hash NOT IN (
+    '8bda9131ed0a7929ef5aa13df84238e3', -- corpo que a 75 deixa, vivo sem mudança até a 78
+    'ed2f7fd3e0177c027720049b2fe55d3b'  -- corpo que ESTA migration (80) deixa — reaplicação idempotente
+  ) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo de update_order_status_atomic (hash %) não é o que a 20261175000000 deixou nem o que esta migration (80) deixa — aplique 75..78 em ordem antes da 80, ou capture e revise.', COALESCE(v_hash, 'ausente');
+  END IF;
+END $preflight_20261180$;
 
 CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
     p_order_id uuid,

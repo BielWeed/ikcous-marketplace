@@ -25,16 +25,23 @@
  *       pedido está 'aguardando' com uma cobrança de cartão em jogo (vaga
  *       gravada com metodo_online credito/debito, OU o sentinela
  *       `verificando:`); PIX 'aguardando' e admin continuam cancelando como
- *       antes. Casos A/B/C/D/G do laudo de revisão da rodada 2 (Round 2,
- *       `prova-rev80.cjs`), portados para a suíte viva do CI. O caso E (vaga
- *       E metodo_online NULL) é um GAP CONHECIDO, documentado no próprio
- *       teste: com o edge HOJE em produção (fe045939), o 502 ambíguo de
- *       `criar-pagamento` na corrida de idempotência não grava nada na vaga
- *       (nem id, nem sentinela) — a guarda não tem o que ler, e o cliente
- *       cancela. Só fecha quando a edge de `fix/cartao-edge-achados`
- *       (021b8720+) publicar, porque é ELA quem passa a gravar o sentinela
- *       `verificando:` nesse 502 ambíguo (ver o cabeçalho da migration
- *       20261180000000 para a citação exata).
+ *       antes; pedido já PAGO segue o ledger do estorno automático de sempre.
+ *       Casos A/B/C/D/F/G do laudo de revisão (rodadas 2 e 3, `prova-
+ *       rev80.cjs`), portados para a suíte viva do CI. O caso E (vaga E
+ *       metodo_online NULL) é um GAP CONHECIDO, documentado no próprio
+ *       teste — e NÃO é o 409 de idempotência (esse já é coberto hoje: o 409
+ *       `idempotency_key_already_used`, corrida de retry com o MESMO token,
+ *       já grava o sentinela `verificando:` na hora, em `fe045945`/`fe045939`
+ *       — `criar-pagamento/index.ts:1598-1607`, `respostaCartaoEmVerificacao`
+ *       — e o caso C acima prova que a guarda alcança). O gap real é a falha
+ *       de REDE/timeout/5xx na CRIAÇÃO da cobrança (`criar-pagamento/
+ *       index.ts:1742-1745`, `!r.ok`): hoje isso responde 502 SEM tocar a
+ *       vaga — nada foi cobrado com certeza, mas o MP pode ter processado a
+ *       order antes de a resposta se perder — e a guarda não tem o que ler.
+ *       Só fecha quando a edge de `fix/cartao-edge-achados` publicar
+ *       (`respostaCartaoAmbiguoNaCriacao`, commit `bf15876f`), porque é ELA
+ *       quem passa a gravar o sentinela `verificando:` nesse 502 de criação
+ *       (ver o cabeçalho da migration 20261180000000 para a citação exata).
  *
  * USO: node tests/banco/cartao-online-viva.cjs (depois de provisionar.cjs e
  * aplicar-migrations.cjs, como no rpc-ci.yml)
@@ -61,6 +68,7 @@ const O_SENTINELA = "4ccccccc-0000-0000-0000-00000000000c";
 const O_PIX_AGUARDANDO = "4ccccccc-0000-0000-0000-00000000000d";
 const O_GAP_502_AMBIGUO = "4ccccccc-0000-0000-0000-00000000000e";
 const O_ADMIN_CARTAO = "4ccccccc-0000-0000-0000-00000000000f";
+const O_PAGO_CREDITO = "4ccccccc-0000-0000-0000-000000000010";
 
 async function logar(cliente, userId) {
   await cliente.query("SELECT set_config('app.rpc.user_id', $1, false)", [
@@ -330,14 +338,18 @@ PROVAS.push({
 
 const MENSAGEM_CARTAO_VIVO = /cobrança no cartão em confirmação com o banco/;
 
-async function criarPedidoParaCancelamento(cliente, id, { metodo, vaga }) {
+async function criarPedidoParaCancelamento(
+  cliente,
+  id,
+  { metodo, vaga, paymentStatus = "aguardando", paidAt = null },
+) {
   await cliente.query(
     `INSERT INTO public.marketplace_orders
        (id, user_id, customer_name, customer_data, total, subtotal, status, canal,
-        payment_method, payment_status, expires_at, metodo_online, gateway_payment_id)
+        payment_method, payment_status, expires_at, metodo_online, gateway_payment_id, paid_at)
      VALUES ($1, $2, 'Cliente Cartão', '{}'::jsonb, 80, 80, 'pending', 'online',
-             'online', 'aguardando', now() + interval '30 minutes', $3, $4)`,
-    [id, U_CLIENTE, metodo, vaga],
+             'online', $5, now() + interval '30 minutes', $3, $4, $6)`,
+    [id, U_CLIENTE, metodo, vaga, paymentStatus, paidAt],
   );
 }
 
@@ -347,6 +359,23 @@ async function cancelarComo(cliente, userId, id) {
     "SELECT public.update_order_status_atomic($1::uuid, 'cancelled', NULL, false) AS r",
     [id],
   );
+}
+
+// (nit A/B/C da revisão, rodada 3): a recusa precisa sair com code P0001 —
+// é o ÚNICO código que `mensagemAmigavelErroAtualizacaoStatus`
+// (src/hooks/useOrders.ts) repassa ao cliente tal como veio do banco; um
+// ERRCODE diferente faria o front mostrar o genérico "Não foi possível
+// atualizar..." em vez desta mensagem (ver o cabeçalho da 20261180000000).
+async function assertRecusaCartaoVivo(promessa) {
+  await assert.rejects(promessa, (erro) => {
+    assert.equal(
+      erro.code,
+      "P0001",
+      "front só repassa a mensagem quando o SQLSTATE é P0001",
+    );
+    assert.match(erro.message, MENSAGEM_CARTAO_VIVO);
+    return true;
+  });
 }
 
 PROVAS.push({
@@ -369,9 +398,8 @@ PROVAS.push({
       metodo: "credito",
       vaga: "ORD-CANCELA-CREDITO",
     });
-    await assert.rejects(
-      () => cancelarComo(cliente, U_CLIENTE, O_CARTAO_CREDITO),
-      MENSAGEM_CARTAO_VIVO,
+    await assertRecusaCartaoVivo(
+      cancelarComo(cliente, U_CLIENTE, O_CARTAO_CREDITO),
     );
     assert.equal(
       (await linhaDoPedido(cliente, O_CARTAO_CREDITO)).gateway_payment_id,
@@ -384,22 +412,21 @@ PROVAS.push({
       metodo: "debito",
       vaga: "ORD-CANCELA-DEBITO",
     });
-    await assert.rejects(
-      () => cancelarComo(cliente, U_CLIENTE, O_CARTAO_DEBITO),
-      MENSAGEM_CARTAO_VIVO,
+    await assertRecusaCartaoVivo(
+      cancelarComo(cliente, U_CLIENTE, O_CARTAO_DEBITO),
     );
 
     // C: sentinela de verificação (metodo_online NULL — a adoção é quem
     // grava a forma, nunca o próprio sentinela). Também recusa: a cobrança
-    // da tentativa anterior pode estar aprovada por baixo.
+    // da tentativa anterior pode estar aprovada por baixo. Este é o 409
+    // idempotency_key_already_used (retry com o MESMO token) — JÁ coberto
+    // hoje (fe045939): a distinção com o gap real do caso E está no
+    // cabeçalho deste arquivo.
     await criarPedidoParaCancelamento(cliente, O_SENTINELA, {
       metodo: null,
       vaga: "verificando:ORD-CANCELA-SENTINELA:c0:1790000000000",
     });
-    await assert.rejects(
-      () => cancelarComo(cliente, U_CLIENTE, O_SENTINELA),
-      MENSAGEM_CARTAO_VIVO,
-    );
+    await assertRecusaCartaoVivo(cancelarComo(cliente, U_CLIENTE, O_SENTINELA));
 
     // D: PIX aguardando — nada muda, o cliente cancela como sempre.
     await criarPedidoParaCancelamento(cliente, O_PIX_AGUARDANDO, {
@@ -413,12 +440,14 @@ PROVAS.push({
     );
 
     // E — GAP CONHECIDO (ver o cabeçalho deste arquivo e o cabeçalho da
-    // 20261180000000): vaga E metodo_online NULL é o estado que o 502
-    // ambíguo de criar-pagamento deixa HOJE em produção (fe045939, antes de
-    // fix/cartao-edge-achados publicar). A guarda não tem o que ler — o
-    // cliente CANCELA. Isto não é uma falha desta migration: é o motivo
-    // documentado pelo qual "ligar o cartão" também exige aquela edge (ver
-    // docs/runbooks/publicar-painel-cartao-devolucoes.md, §6).
+    // 20261180000000): vaga E metodo_online NULL é o estado que uma falha de
+    // REDE/timeout/5xx na CRIAÇÃO da cobrança deixa HOJE em produção
+    // (fe045939, `criar-pagamento/index.ts:1742-1745`, antes de
+    // fix/cartao-edge-achados publicar) — NÃO o 409 de idempotência (esse já
+    // grava o sentinela hoje, ver o caso C acima). A guarda não tem o que
+    // ler — o cliente CANCELA. Isto não é uma falha desta migration: é o
+    // motivo documentado pelo qual "ligar o cartão" também exige aquela edge
+    // (ver docs/runbooks/publicar-painel-cartao-devolucoes.md, §6).
     await criarPedidoParaCancelamento(cliente, O_GAP_502_AMBIGUO, {
       metodo: null,
       vaga: null,
@@ -428,6 +457,35 @@ PROVAS.push({
       (await estadoDoPedidoAposCancelar(cliente, O_GAP_502_AMBIGUO)).status,
       "cancelled",
       "GAP CONHECIDO: sem a edge de fix/cartao-edge-achados a vaga fica NULL e a guarda não alcança este caso",
+    );
+
+    // F (achado da revisão, rodada 3 — mutante M1 sobrevivia aqui: trocar
+    // `v_payment_status = 'aguardando'` por `v_payment_status IS NOT NULL`
+    // faria esta guarda travar TAMBÉM um pedido já pago, e nenhuma prova
+    // viva cobria esse caso ainda). Pedido de CRÉDITO já PAGO, não enviado:
+    // a guarda nova não se aplica (só olha 'aguardando'), o cliente cancela
+    // normalmente e o ledger do estorno automático (Seção 11 da 175) abre a
+    // linha em order_refunds — comportamento de hoje, intocado pela 80.
+    await criarPedidoParaCancelamento(cliente, O_PAGO_CREDITO, {
+      metodo: "credito",
+      vaga: "ORD-CANCELA-PAGO",
+      paymentStatus: "pago",
+      paidAt: new Date().toISOString(),
+    });
+    await cancelarComo(cliente, U_CLIENTE, O_PAGO_CREDITO);
+    const estadoPago = await estadoDoPedidoAposCancelar(
+      cliente,
+      O_PAGO_CREDITO,
+    );
+    assert.equal(estadoPago.status, "cancelled");
+    const refundsPago = await cliente.query(
+      "SELECT count(*)::int AS n FROM public.order_refunds WHERE order_id = $1",
+      [O_PAGO_CREDITO],
+    );
+    assert.equal(
+      refundsPago.rows[0].n,
+      1,
+      "cartão já pago e cancelado antes do envio abre UMA linha no ledger do estorno, igual a qualquer outra forma de pagamento",
     );
 
     // G: ADMIN cancela um pedido com cartão vivo — a guarda mora só no ramo
