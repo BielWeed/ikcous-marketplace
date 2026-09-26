@@ -2024,6 +2024,25 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // A DEVOLUÇÃO NASCE NO PEDIDO (26/09/2026, migration 20261175000000):
+  // marcadores que somem se a regra for tirada — tipo decidido no servidor,
+  // foto só da própria pasta, reembolso com trava de saldo e reestoque único.
+  "20261175000000_a_devolucao_nasce_no_pedido.sql": [
+    {
+      funcao: "solicitar_devolucao",
+      esperado: [
+        "OR split_part(v_foto, '/', 1) <> v_uid::text",
+        "RAISE EXCEPTION 'Fora do prazo de arrependimento a loja aceita troca ou vale-troca.' USING ERRCODE = '22023';",
+      ],
+    },
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        "IF v_reestocar AND v_di.reestocado_em IS NULL THEN",
+        "v_disponivel := v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo;",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
