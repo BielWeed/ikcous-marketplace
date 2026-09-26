@@ -25,8 +25,10 @@ import {
  */
 import {
   avaliar,
+  conferirProjeto,
   extrairDeConteudo,
   formatar,
+  refDoProjeto,
 } from "../scripts/db-check-objetos-do-codigo.mjs";
 
 const CATÁLOGO = () => ({
@@ -232,4 +234,80 @@ Deno.test("edge function consulta com service_role alcança o que src não alcan
   assertEquals(r.ok.length, 1);
   assert(r.inalcançaveis[0].onde.startsWith("src/"));
   assert(r.ok[0].onde.includes("functions"));
+});
+
+/**
+ * refDoProjeto / conferirProjeto — trava contra o defeito medido: o secret
+ * DATABASE_URL do CI apontava para o projeto SANDBOX, não a loja
+ * (cafkrminfnokvgjqtkle), e o script nunca conferia. O log só mostra o host
+ * do pooler compartilhado (aws-0-us-west-2.pooler.supabase.com — IGUAL para
+ * qualquer projeto); o ref mora no host direto `db.<ref>.supabase.co` ou no
+ * usuário do pooler `<role>.<ref>` — QUALQUER role, não só `postgres`
+ * (Supavisor aceita um role de leitura como `leitor_catalogo.<ref>`; uma
+ * regra que exigisse o literal `postgres.` devolveria `null` para esse role
+ * e ficaria vermelha para sempre).
+ *
+ * Refs FICTÍCIOS em TODOS os casos deste arquivo — só testa as funções puras
+ * `refDoProjeto`/`conferirProjeto`, importadas isoladas, nunca através de
+ * `main()`. A fiação de verdade (o `ci.yml` passar PROJETO_REF_ESPERADO com o
+ * ref REAL da loja, e o processo `node scripts/...` recusar antes de
+ * conectar) é coberta à parte, em tests/ci_objetos_do_codigo_test.ts.
+ */
+const REF_FICTICIO = "abcdefghijklmnopqrst";
+
+Deno.test("refDoProjeto — pooler compartilhado: ref vem do usuário postgres.<ref>", () => {
+  const url = `postgres://postgres.${REF_FICTICIO}@aws-0-us-west-2.pooler.supabase.com:6543/postgres`;
+  assertEquals(refDoProjeto(url), REF_FICTICIO);
+});
+
+Deno.test("refDoProjeto — host direto db.<ref>.supabase.co", () => {
+  const url = `postgres://postgres@db.${REF_FICTICIO}.supabase.co:5432/postgres`;
+  assertEquals(refDoProjeto(url), REF_FICTICIO);
+});
+
+Deno.test("refDoProjeto — pooler com ROLE DE LEITURA (não é 'postgres'): o achado real da revisão", () => {
+  // O ci.yml deste commit recomenda um role só-de-leitura para o secret
+  // DATABASE_URL. No Supavisor o usuário do pooler é <role>.<ref> para
+  // QUALQUER role — uma regex presa ao literal "postgres." devolveria null
+  // aqui e o guard ficaria vermelho para sempre com esse role.
+  const url = `postgres://leitor_catalogo.${REF_FICTICIO}@aws-0-us-west-2.pooler.supabase.com:6543/postgres`;
+  assertEquals(refDoProjeto(url), REF_FICTICIO);
+});
+
+Deno.test("refDoProjeto — host com SUFIXO depois do domínio real (db.<ref>.supabase.co.evil.net): null", () => {
+  // `$` no fim do padrão do host direto já cobre isto, mas o caso fica
+  // explícito: um host forjado com o domínio verdadeiro NO MEIO não pode
+  // colar o ref de ninguém.
+  const url = `postgres://postgres@db.${REF_FICTICIO}.supabase.co.evil.net:5432/postgres`;
+  assertEquals(refDoProjeto(url), null);
+});
+
+Deno.test("refDoProjeto — URL válida mas sem host/usuário reconhecível: null (não é erro, é 'não sei dizer')", () => {
+  const url = "postgres://postgres@localhost:5432/postgres";
+  assertEquals(refDoProjeto(url), null);
+});
+
+Deno.test("refDoProjeto — URL malformada não lança: null", () => {
+  assertEquals(refDoProjeto("isto-nao-e-uma-url"), null);
+  assertEquals(refDoProjeto(""), null);
+});
+
+Deno.test("conferirProjeto — ref igual ao esperado: ok", () => {
+  const r = conferirProjeto(REF_FICTICIO, REF_FICTICIO);
+  assertEquals(r.ok, true);
+});
+
+Deno.test("conferirProjeto — ref de outro projeto: reprova ANTES de qualquer query, com ::error::", () => {
+  const r = conferirProjeto("outroprojetoxxxxxxxx", REF_FICTICIO);
+  assertEquals(r.ok, false);
+  assertStringIncludes(r.mensagem, "::error::");
+  assertStringIncludes(r.mensagem, REF_FICTICIO);
+  assertStringIncludes(r.mensagem, "outroprojetoxxxxxxxx");
+});
+
+Deno.test("conferirProjeto — ref não identificado (null): reprova com ::error::, não confunde com 'igual'", () => {
+  const r = conferirProjeto(null, REF_FICTICIO);
+  assertEquals(r.ok, false);
+  assertStringIncludes(r.mensagem, "::error::");
+  assertStringIncludes(r.mensagem, "não identificado");
 });

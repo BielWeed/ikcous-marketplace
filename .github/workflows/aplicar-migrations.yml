@@ -112,7 +112,7 @@ jobs:
                     exists (select 1 from information_schema.columns where table_name='produtos' and column_name='codigo_barras') as col_codigo\`);
                 console.log('VERIFICAÇÃO:', verificacao);
                 // (A execução de fumaca das RPCs fica de fora DE PROPÓSITO: o
-                // gate `is_admin()` delas nega o role `postgres` da API de
+                // gate is_admin() delas nega o role postgres da API de
                 // gestão — o RAISE é o próprio gate provando que a função
                 // está instalada; quem executa como admin é o app.)
               }
