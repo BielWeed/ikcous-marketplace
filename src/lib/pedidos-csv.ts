@@ -4,8 +4,11 @@ import {
 } from "@/components/admin/orders/OrderStatusBadge";
 import type { Order as Pedido } from "@/types";
 
+// "online" = cobrado pelo site no checkout (Mercado Pago). Hoje só PIX está
+// ligado nesse caminho; "pix" continua sendo o PIX combinado fora do site.
 const PAYMENT_METHOD_LABELS = new Map([
   ["pix", "PIX Instantâneo"],
+  ["online", "PIX pelo site"],
   ["card", "Crédito Seguro"],
   ["cash", "Dinheiro"],
 ]);
