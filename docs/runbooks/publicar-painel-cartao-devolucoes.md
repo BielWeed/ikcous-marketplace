@@ -254,37 +254,55 @@ Se registrar e depois reverter (§5), apague as linhas das versões revertidas.
 3. Preencha `functions` com:
 
 ```text
-criar-pagamento, webhook-mercadopago, reconciliar-pagamentos, melhor-envio-etiqueta, send-order-confirmation
+criar-pagamento, webhook-mercadopago, reconciliar-pagamentos, estornar-pagamento, melhor-envio-etiqueta, send-order-confirmation
 ```
 
 | Function | Por que sobe |
 | --- | --- |
-| `criar-pagamento` | Cartão pela Orders API, idempotência por tentativa, recusa que libera a vaga, 3DS. Lê `tentativas_de_pagamento` e `config_pagamento_cartao` (76). |
-| `webhook-mercadopago` | Recusa ou cancelamento de cartão chamam `liberar_cobranca_do_pedido` (76). Notificação sobre cobrança órfã não aplica pago nem estornado (achado A3). Comprovante com `metodo_online`. |
-| `reconciliar-pagamentos` | A mesma liberação da vaga e o mesmo comprovante. |
+| `criar-pagamento` | Cartão pela Orders API, idempotência por tentativa, recusa que libera a vaga, 3DS. Lê `tentativas_de_pagamento` e `config_pagamento_cartao` (76). Usa `_shared/webpush.ts` (achado #3 abaixo). |
+| `webhook-mercadopago` | Recusa ou cancelamento de cartão chamam `liberar_cobranca_do_pedido` (76). Notificação sobre cobrança órfã não aplica pago nem estornado (achado A3). Comprovante com `metodo_online`. Usa `_shared/estorno.ts` e `mapearStatusOrder` (achados #1/#2 abaixo). |
+| `reconciliar-pagamentos` | A mesma liberação da vaga e o mesmo comprovante. Usa `_shared/estorno.ts` e `mapearStatusOrder` (achados #1/#2 abaixo). |
+| `estornar-pagamento` | Achado #1 abaixo — `_shared/estorno.ts` mudou (`corpoNoLog: false`). |
 | `melhor-envio-etiqueta` | Ação `gerar_devolucao_reversa`, que lê e grava `devolucoes`/`devolucao_eventos` (75). |
 | `send-order-confirmation` | Importa `_shared/comprovante.ts`, que agora seleciona `metodo_online`. **Publicada antes da 76, a leitura do pedido falha.** |
 
-`estornar-pagamento` e `credenciais-mercado-pago` **não** precisam subir. Das peças de
-`_shared/mercadopago.ts`, elas só usam `fetchComTempo`, `consultarOrder`, `idEhClassico` e
-`BASE_URL_PADRAO`, e as quatro estão idênticas às da base. Por isso não use o apelido
-`cobranca`, que publicaria as cinco do Mercado Pago.
+`credenciais-mercado-pago` **não** precisa subir: de `_shared/mercadopago.ts` só usa
+`fetchComTempo` e `BASE_URL_PADRAO`, inalterados nesta branch (confirmado pela checagem abaixo).
 
-Checagem da 9ª rodada de risco do cartão (26/09/2026): esta branch só tocou UMA peça de
-`_shared/mercadopago.ts` além da já coberta acima — `mapearStatusOrder` (generaliza
-`canceled`/`cancelled`/`expired` para qualquer `status_detail`, adendo 2 da 8ª rodada). `grep -rl
-mapearStatusOrder supabase/functions/*/index.ts` confirma os únicos três consumidores:
-`criar-pagamento`, `webhook-mercadopago` (por `mapearStatusOrder` dentro de `_shared/mercadopago.ts`
-mesmo, indireto) e `reconciliar-pagamentos` — as TRÊS já estão na lista de publicação acima (a
-segunda linha da tabela já cobre `reconciliar-pagamentos` pela liberação da vaga/comprovante; a
-generalização do status é um motivo A MAIS para a mesma linha, não uma function nova). `estornar-
-pagamento` só importa `fetchComTempo` daqui — não muda com esta branch, e a exclusão acima continua
-valendo. (Não confundir com `_shared/estorno.ts` — arquivo DIFERENTE, que esta branch não toca; se
-uma tarefa futura mexer nele, refaça esta checagem com `grep -rl estorno supabase/functions/*/index.ts`.)
+**Checagem de publicação da branch do cartão online — CORRIGIDA na 9ª rodada (26/09/2026)**: a
+checagem anterior (mesma rodada) usava `git diff 08c0f7aa..HEAD -- .../estorno.ts` — diff de DOIS
+PONTOS a partir de `08c0f7aa`, um commit DESTA MESMA branch. Isso compara a árvore de `08c0f7aa`
+(que já tem a mudança) com a de `HEAD` (que também tem, sem diferença): o diff mentia "nada mudou"
+para qualquer mudança que `08c0f7aa` já tivesse introduzido. O método certo é diff de TRÊS PONTOS a
+partir da base REAL da branch (`fe045939`, o commit antes de qualquer trabalho do cartão online):
+```
+git diff fe045939...fix/cartao-edge-achados --stat -- supabase/functions/_shared
+```
+Resultado, arquivo por arquivo:
+1. **`_shared/estorno.ts`** (+5 linhas, commit `08c0f7aa`): `consultarTransacaoDaOrder` ganhou
+   `corpoNoLog: false` — a order consultada ali pode ser de CARTÃO (payer com e-mail e CPF do
+   titular), e o log de erro parou de gravar o corpo cru. `grep -rl "_shared/estorno"
+   supabase/functions/*/index.ts` — três consumidores: `estornar-pagamento`,
+   `reconciliar-pagamentos`, `webhook-mercadopago`. Os dois últimos já estavam na lista;
+   **`estornar-pagamento` entra agora**.
+2. **`_shared/mercadopago.ts`** (rodada 8): `mapearStatusOrder` generaliza
+   `canceled`/`cancelled`/`expired` para qualquer `status_detail`. `grep -rl mapearStatusOrder
+   supabase/functions/*/index.ts` — três consumidores: `criar-pagamento`, `webhook-mercadopago`,
+   `reconciliar-pagamentos`. As três já na lista — nenhuma function nova por causa deste arquivo.
+3. **`_shared/webpush.ts`** (rodada 6): ganhou `dispararSemEsperarCliente`, uma função NOVA e
+   ADITIVA — não muda nenhum export existente. `grep -rn dispararSemEsperarCliente
+   supabase/functions/*/index.ts` mostra que só `criar-pagamento` a chama (já na lista). Os outros
+   seis importadores de `webpush.ts` (`notify-new-order`, `reconciliar-pagamentos`,
+   `send-order-confirmation`, `send-otp-email`, `send-push`, `webhook-mercadopago`) não usam a
+   função nova — comportamento deles intacto, não entram por causa deste arquivo.
+
+Conclusão: a lista de publicação conjunta desta branch é `criar-pagamento`, `webhook-mercadopago`,
+`reconciliar-pagamentos` e `estornar-pagamento` — as quatro já na tabela acima, pelos achados #1
+(`_shared/estorno.ts`) e #2 (`_shared/mercadopago.ts`).
 
 O workflow publica uma function por vez e nunca passa `--no-verify-jwt`: quem manda é
 `supabase/config.toml`. No fim, ele grava `supabase functions list` no resumo do job. Confira que
-as cinco aparecem com a data de agora.
+as seis aparecem com a data de agora.
 
 ## 3. Front
 
@@ -425,9 +443,17 @@ pedir PIX de novo devolvia o mesmo QR de sempre, mesmo com o pedido cancelado. D
 correção, essa mesma chamada devolve 409 terminal "Este pedido foi cancelado." — o comportamento
 CERTO (um pedido cancelado não deveria continuar pagável), mas é uma MUDANÇA de comportamento em
 produção, independente de o cartão estar ligado ou não — vale para QUALQUER publicação desta
-`criar-pagamento` daqui pra frente, não só para quando o cartão for ligado. No deploy, confira que
-"Cancelar pedido" num PIX aberto realmente impede qualquer tentativa de pagamento seguinte (QR
-antigo ou novo), em vez de só sumir da tela do cliente.
+`criar-pagamento` daqui pra frente, não só para quando o cartão for ligado.
+
+**Correção (revisão independente, 26/09/2026)**: o alcance real é mais estreito do que "impede
+qualquer tentativa de pagamento seguinte" — esta edge só deixa de MOSTRAR e de CRIAR um QR novo
+para um pedido cancelado. `update_order_status_atomic` (a RPC que o cancelamento do cliente chama)
+é uma gravação SÓ NO BANCO — ela não cancela a order PIX no Mercado Pago. Um QR antigo, já copiado
+pelo cliente antes de cancelar, continua válido no banco emissor e pode ser pago mesmo depois do
+cancelamento; esse pagamento chega pelo webhook e vira `pago_apos_expirar` (Política P1), com push
+ao admin — não é bloqueado, nem devia ser (é dinheiro de verdade entrando). No deploy, confira que
+"Cancelar pedido" tira o botão de gerar/reabrir o QR na tela, mas não assuma que um QR já copiado
+parou de funcionar no banco do cliente.
 
 **Preparar**
 - [ ] O §4 está completo, e o PIX pelo app está ligado. O painel trava o cartão sem o PIX,
