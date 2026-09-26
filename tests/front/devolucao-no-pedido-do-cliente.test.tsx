@@ -322,4 +322,52 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
       hospedeiro.querySelector('[data-testid="devolucao-indisponivel"]'),
     ).toBeNull();
   });
+
+  // Achado 2 (rodada 6c, revisão de risco): `devolucao_detalhe` NÃO é
+  // admin-only — o dono da devolução também lê (RLS de `devolucoes` dá
+  // SELECT ao dono, e a RPC aceita `v_d.user_id = auth.uid() OR
+  // is_admin()`), então `me_reverse_id` chega ao objeto parseado do CLIENTE
+  // também desde a migration 75 (achado 1, rodada 6b, só passou a ENTRAR no
+  // tipo/leitor). Isso não é o achado — o id sozinho não dá acesso a nada no
+  // Melhor Envio. O que este teste prende é que o CARTÃO do cliente
+  // (`DevolucaoDoPedidoCard`, via `useDevolucaoCliente`) nunca RENDERIZA
+  // esse id — a ação de destravar o vínculo preso é só do painel do lojista
+  // (`AcoesDaDevolucao`, `podeLiberarVinculoReverso`).
+  it("achado 2 (rodada 6c): o cartão do cliente NUNCA mostra o me_reverse_id, mesmo com um vínculo real preso (mesma condição que liberaria o painel)", async () => {
+    respostas.set(
+      "devolucao_elegibilidade",
+      elegibilidade({
+        pode: false,
+        motivo_bloqueio:
+          "Já existe uma devolução em andamento para este pedido.",
+      }),
+    );
+    respostas.set("devolucoes_do_pedido", [
+      {
+        id: "d-1",
+        protocolo: "DV260926-ABCDE",
+        status: "aprovada",
+        tipo: "arrependimento",
+        resolucao_desejada: "reembolso",
+        metodo_retorno: "etiqueta_reversa",
+        valor_itens: 100,
+        created_at: "2026-09-26T10:00:00Z",
+      },
+    ]);
+    const ID_QUE_NAO_PODE_APARECER = "me-rev-nao-deve-aparecer-na-tela";
+    respostas.set("devolucao_detalhe", {
+      ...DETALHE,
+      metodo_retorno: "etiqueta_reversa",
+      codigo_postagem: null,
+      me_reverse_id: ID_QUE_NAO_PODE_APARECER,
+    });
+    await renderizar();
+
+    const cartao = hospedeiro.querySelector('[data-testid="cartao-devolucao"]');
+    expect(cartao).not.toBeNull();
+    expect(hospedeiro.textContent).not.toContain(ID_QUE_NAO_PODE_APARECER);
+    expect(
+      hospedeiro.querySelector('[data-testid="liberar-vinculo-reverso"]'),
+    ).toBeNull();
+  });
 });

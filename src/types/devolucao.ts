@@ -188,12 +188,17 @@ export interface DevolucaoDetalhe {
   codigo_rastreio: string | null;
   codigo_postagem: string | null;
   /**
-   * Achado 1 (rodada 6b, revisão de risco): a admin já podia ler esta
-   * coluna por `devolucao_detalhe` (`to_jsonb` da linha inteira) — só o
-   * leitor do front descartava. Passa a entrar no tipo para a ação de
-   * destravar um vínculo real preso (`podeLiberarVinculoReverso`); pode ser
-   * um id real do Melhor Envio OU um token de reserva
-   * (`reservando:<epoch>:<uuid>`) — quem decide se algo aparece na tela é
+   * Achado 1 (rodada 6b, revisão de risco): `devolucao_detalhe` (75) já
+   * devolvia esta coluna por `to_jsonb` da linha inteira — para o DONO da
+   * devolução (RLS de `devolucoes` dá SELECT a ele) OU para o admin (`v_d
+   * .user_id = auth.uid() OR is_admin()`); NÃO é admin-only, e o cliente já
+   * recebe este campo desde a 75. Só o leitor do front descartava. Passa a
+   * entrar no tipo para a ação de destravar um vínculo real preso
+   * (`podeLiberarVinculoReverso`, usada só pelo painel do lojista — achado
+   * 2, rodada 6c: o cartão do cliente nunca renderiza este campo, embora o
+   * receba); pode ser um id real do Melhor Envio OU um token de reserva
+   * (`reservando:<epoch>:<uuid>`) — o id sozinho não dá acesso a nada no
+   * Melhor Envio, e quem decide se algo aparece na tela é
    * `podeLiberarVinculoReverso`, nunca a presença sozinha deste campo.
    */
   me_reverse_id: string | null;

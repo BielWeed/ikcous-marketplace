@@ -959,13 +959,22 @@ front só para decidir visibilidade):
    (não é possível liberar sem passar por essa confirmação).
 4. O botão chama a RPC com `p_conferi_no_melhor_envio: true` sempre (o painel nunca chama com
    `false` ou omitindo o parâmetro) — a RPC ainda recusa sozinha, sem exceção nenhuma, se um
-   marcador de pagamento CONFIRMADO existir (achado R5). Qualquer recusa (`22023`: confirmado,
-   indeterminado, ou sem registro nenhum) aparece num toast de erro com a MESMA frase que a RPC
+   marcador de pagamento CONFIRMADO existir (achado R5). Achado 3 (rodada 6c): como o painel
+   SEMPRE manda `true`, as recusas que ele de fato alcança são só cinco — `22023` confirmado
+   (achado R5), `22023` sem vínculo ou `22023` código já emitido (as duas últimas são CORRIDAS: o
+   estado mudou no banco entre abrir a ficha e clicar), `42501` (sessão perdeu admin no meio do
+   caminho) e `P0002` (a devolução sumiu). "Indeterminado" e "sem registro" (achado 1, rodada 5)
+   só acontecem SEM esse parâmetro — inalcançáveis pelo painel, só pelo `curl` da seção "via REST"
+   abaixo. Qualquer uma dessas cinco recusas aparece num toast de erro com a MESMA frase que a RPC
    devolveu — o painel nunca troca o texto por uma mensagem genérica, para o motivo nunca ficar
    escondido.
 5. Com sucesso, um toast confirma e a ficha relê: o bloco amarelo some (o vínculo não está mais
    preso) e a devolução volta a poder ser cancelada pelo cliente ou seguir para gerar um código
-   novo.
+   novo. Achado 1 (rodada 6c, DINHEIRO): a confirmação (a caixa marcada) é amarrada ao
+   `me_reverse_id` da tela E reseta depois de QUALQUER resultado (sucesso ou recusa) — **não é
+   possível liberar sem passar por essa confirmação de novo**, nem reaproveitar uma confirmação
+   antiga se a MESMA ficha ganhar um vínculo novo por baixo (ex.: "Gerar código de postagem"
+   comprando de novo com o checkout indeterminado, sem a tela remontar).
 
 Testes: `tests/front/devolucao-liberar-vinculo-reverso.test.tsx` (visibilidade nos dois sentidos,
 botão só habilita depois da confirmação, chamada com `p_conferi_no_melhor_envio: true`, as três

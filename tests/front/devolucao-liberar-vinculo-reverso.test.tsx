@@ -10,8 +10,25 @@
 // painel. Este arquivo prova a ação nova em `AcoesDaDevolucao`: aparece só
 // na condição certa, exige a confirmação explícita ANTES de habilitar o
 // botão, chama a RPC com `p_conferi_no_melhor_envio: true` (nunca por baixo
-// dos panos) e mostra a mensagem de recusa da RPC (22023 — confirmado,
-// indeterminado ou sem registro nenhum) sem esconder o motivo.
+// dos panos) e mostra a mensagem de recusa da RPC sem esconder o motivo.
+//
+// Achado 1 (rodada 6c, revisão de risco, DINHEIRO — scratchpad rev79/ta4f/):
+// a confirmação (`useState(false)` solto, sem amarra a NADA) sobrevivia a
+// uma releitura da MESMA ficha (o `key` do componente é `id:status` — não
+// muda quando só `me_reverse_id` troca). Sequência A → B: o lojista marca a
+// caixa e libera o vínculo A; "Gerar código de postagem" compra um vínculo B
+// NOVO na mesma devolução com o checkout indeterminado (502 com `resgate`,
+// a ficha relê sem remontar); o bloco reaparece para B com a caixa JÁ
+// marcada e o botão JÁ habilitado — um clique liberaria B sem ninguém ter
+// conferido "Meus envios" para ELE. Os testes marcados "(rodada 6c)" abaixo
+// provam a amarra ao id e o reset depois de qualquer resultado (sucesso ou
+// erro). Achado 3 (rodada 6c, detalhe): os testes de recusa da RPC usam só
+// os erros que o PAINEL de fato alcança — ele sempre manda
+// `p_conferi_no_melhor_envio: true`, então "indeterminado" e "sem registro"
+// (que só acontecem SEM esse parâmetro, pelo `curl` do runbook) não são
+// alcançáveis por aqui; as corridas reais são "sem vínculo" e "código já
+// emitido" (o estado mudou no banco entre abrir a ficha e clicar), fora
+// `42501`/`P0002`.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -184,7 +201,7 @@ function checkboxConferi(): HTMLInputElement | undefined {
   );
 }
 
-describe("painel de devoluções — liberar vínculo reverso preso (achado 1, rodada 6b)", () => {
+describe("painel de devoluções — liberar vínculo reverso preso (achado 1, rodadas 6b/6c)", () => {
   it("aparece só com aprovada + etiqueta reversa + link REAL + sem código", async () => {
     await abrirFicha();
     expect(botao(NOME_BOTAO)).toBeTruthy();
@@ -289,23 +306,26 @@ describe("painel de devoluções — liberar vínculo reverso preso (achado 1, r
     );
   });
 
-  it("sem registro de pagamento nenhum: a RPC recusa (22023) e o toast mostra o motivo", async () => {
-    rpc.mockImplementation((nome: string) => {
-      if (nome === "admin_devolucao_liberar_vinculo_reverso") {
-        return Promise.resolve({
-          data: null,
-          error: {
-            code: "22023",
-            message:
-              'Não há nenhum registro de pagamento para este envio reverso no banco — confira "Meus envios" na conta do Melhor Envio antes de liberar; chame de novo com p_conferi_no_melhor_envio = true depois de conferir que não foi pago.',
-          },
-        });
-      }
-      return Promise.resolve({
-        data: respostas.get(nome) ?? null,
-        error: null,
-      });
-    });
+  // Achado 3 (rodada 6c): o painel SEMPRE manda `p_conferi_no_melhor_envio:
+  // true` — "indeterminado" e "sem registro" (achado 1, rodada 5) só
+  // acontecem quando esse parâmetro NÃO é `true`, então não são alcançáveis
+  // por aqui (só pelo `curl` do runbook, sem o parâmetro). As recusas reais
+  // possíveis pelo painel são: confirmado (acima), sem vínculo e código já
+  // emitido (corridas — o estado mudou no banco entre abrir a ficha e
+  // clicar), 42501 e P0002.
+  it("corrida: o vínculo já foi solto por outro caminho quando a RPC roda (22023 'não está vinculada') — o toast mostra o motivo", async () => {
+    rpc.mockImplementation((nome: string) =>
+      nome === "admin_devolucao_liberar_vinculo_reverso"
+        ? Promise.resolve({
+            data: null,
+            error: {
+              code: "22023",
+              message:
+                "Esta devolução não está vinculada a nenhum envio reverso no Melhor Envio.",
+            },
+          })
+        : Promise.resolve({ data: respostas.get(nome) ?? null, error: null }),
+    );
     await abrirFicha();
     await act(async () => {
       checkboxConferi()?.click();
@@ -314,21 +334,89 @@ describe("painel de devoluções — liberar vínculo reverso preso (achado 1, r
     await clicar(botao(NOME_BOTAO));
 
     expect(toast.error).toHaveBeenCalledWith(
-      expect.stringContaining("Não há nenhum registro de pagamento"),
+      expect.stringContaining("não está vinculada"),
     );
   });
 
-  it("marcador INDETERMINADO: a RPC recusa (22023) e o toast mostra o motivo", async () => {
+  it("corrida: o código de postagem já saiu por outro caminho quando a RPC roda (22023) — o toast mostra o motivo", async () => {
+    rpc.mockImplementation((nome: string) =>
+      nome === "admin_devolucao_liberar_vinculo_reverso"
+        ? Promise.resolve({
+            data: null,
+            error: {
+              code: "22023",
+              message:
+                "O código de postagem já foi emitido — não há vínculo preso para liberar; cancele o envio reverso direto no Melhor Envio, se for o caso.",
+            },
+          })
+        : Promise.resolve({ data: respostas.get(nome) ?? null, error: null }),
+    );
+    await abrirFicha();
+    await act(async () => {
+      checkboxConferi()?.click();
+    });
+    await drenar();
+    await clicar(botao(NOME_BOTAO));
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("código de postagem já foi emitido"),
+    );
+  });
+
+  it("42501: sessão perdeu admin no meio do caminho — o toast mostra 'Acesso negado.'", async () => {
+    rpc.mockImplementation((nome: string) =>
+      nome === "admin_devolucao_liberar_vinculo_reverso"
+        ? Promise.resolve({
+            data: null,
+            error: { code: "42501", message: "Acesso negado." },
+          })
+        : Promise.resolve({ data: respostas.get(nome) ?? null, error: null }),
+    );
+    await abrirFicha();
+    await act(async () => {
+      checkboxConferi()?.click();
+    });
+    await drenar();
+    await clicar(botao(NOME_BOTAO));
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("Acesso negado"),
+    );
+  });
+
+  it("P0002: a devolução sumiu entre abrir a ficha e clicar — o toast mostra o motivo", async () => {
+    rpc.mockImplementation((nome: string) =>
+      nome === "admin_devolucao_liberar_vinculo_reverso"
+        ? Promise.resolve({
+            data: null,
+            error: { code: "P0002", message: "Devolução não encontrada." },
+          })
+        : Promise.resolve({ data: respostas.get(nome) ?? null, error: null }),
+    );
+    await abrirFicha();
+    await act(async () => {
+      checkboxConferi()?.click();
+    });
+    await drenar();
+    await clicar(botao(NOME_BOTAO));
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("Devolução não encontrada"),
+    );
+  });
+
+  // Achado 1 (rodada 6c, DINHEIRO): a reprodução do revisor
+  // (scratchpad rev79/ta4f/tests/front/revisor-6b-checkbox.test.tsx).
+  it("achado 1 (rodada 6c): liberar o vínculo A não deixa a confirmação marcada para um vínculo B novo que aparece na MESMA ficha", async () => {
+    respostas.set("admin_devolucao_liberar_vinculo_reverso", {
+      id: "d-preso",
+      me_reverse_id_liberado: "me-rev-preso-1",
+    });
     rpc.mockImplementation((nome: string) => {
       if (nome === "admin_devolucao_liberar_vinculo_reverso") {
-        return Promise.resolve({
-          data: null,
-          error: {
-            code: "22023",
-            message:
-              'Há registro de pagamento indeterminado para este envio reverso no Melhor Envio — confira "Meus envios" na conta do Melhor Envio antes de liberar; chame de novo com p_conferi_no_melhor_envio = true depois de conferir que não foi pago.',
-          },
-        });
+        // A releitura seguinte já reflete o vínculo A solto.
+        respostas.set("devolucao_detalhe", detalheDe({ me_reverse_id: null }));
+        return Promise.resolve({ data: respostas.get(nome), error: null });
       }
       return Promise.resolve({
         data: respostas.get(nome) ?? null,
@@ -341,10 +429,64 @@ describe("painel de devoluções — liberar vínculo reverso preso (achado 1, r
     });
     await drenar();
     await clicar(botao(NOME_BOTAO));
+    expect(botao(NOME_BOTAO)).toBeFalsy(); // A liberado: a ação some.
 
-    expect(toast.error).toHaveBeenCalledWith(
-      expect.stringContaining("Há registro de pagamento indeterminado"),
+    // O lojista gera de novo; a edge compra um vínculo B NOVO na MESMA
+    // devolução e o checkout fica INDETERMINADO (502 com `resgate`) — a
+    // ficha relê sem remontar (o `key` do componente é `id:status`, que não
+    // muda aqui).
+    invoke.mockImplementation(() => {
+      respostas.set(
+        "devolucao_detalhe",
+        detalheDe({ me_reverse_id: "me-rev-NOVO-B" }),
+      );
+      return Promise.resolve({
+        data: null,
+        error: {
+          context: {
+            json: async () => ({
+              error:
+                "O pagamento do envio reverso (id me-rev-NOVO-B) ficou em estado INDETERMINADO no Melhor Envio — pode ter sido pago ou não.",
+              resgate: true,
+              me_reverse_id: "me-rev-NOVO-B",
+            }),
+          },
+        },
+      });
+    });
+    await clicar(botao("Gerar código de postagem"));
+
+    // O bloco reaparece para B...
+    expect(hospedeiro.textContent).toContain("me-rev-NOVO-B");
+    // ...mas SEM a confirmação de A sobrevivendo: caixa desmarcada, botão
+    // desabilitado — precisa conferir "Meus envios" de novo, para B.
+    expect(checkboxConferi()?.checked).toBe(false);
+    expect(botao(NOME_BOTAO)?.disabled).toBe(true);
+  });
+
+  it("achado 1 (rodada 6c): depois de uma recusa da RPC, a confirmação reseta — precisa marcar de novo antes de tentar outra vez", async () => {
+    rpc.mockImplementation((nome: string) =>
+      nome === "admin_devolucao_liberar_vinculo_reverso"
+        ? Promise.resolve({
+            data: null,
+            error: {
+              code: "22023",
+              message:
+                "O Melhor Envio já confirmou o pagamento deste envio reverso — aguarde o código de postagem chegar ou cancele o envio direto no Melhor Envio antes de liberar o vínculo aqui.",
+            },
+          })
+        : Promise.resolve({ data: respostas.get(nome) ?? null, error: null }),
     );
+    await abrirFicha();
+    await act(async () => {
+      checkboxConferi()?.click();
+    });
+    await drenar();
+    await clicar(botao(NOME_BOTAO));
+
+    expect(toast.error).toHaveBeenCalled();
+    expect(checkboxConferi()?.checked).toBe(false);
+    expect(botao(NOME_BOTAO)?.disabled).toBe(true);
   });
 
   it("sucesso: toast avisa, a ficha relê e a ação some (vínculo já não está mais preso)", async () => {
