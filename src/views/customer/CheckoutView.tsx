@@ -1109,6 +1109,23 @@ export function CheckoutView({
     cartaoEmAnalise: boolean;
     semCobranca: boolean;
   } | null>(null);
+  // Achado 1 (BLOQUEANTE, rodada 3 da revisão de risco pré-publicação,
+  // 26/09/2026): `cartaoEmAnalise` acima é julgado POR ERRO — a sequência que
+  // quebra isso: (1) um 502 ambíguo do POST de cartão (o Mercado Pago pode
+  // ter aprovado, a resposta se perdeu); (2) o cliente toca "Tentar de novo";
+  // (3) a segunda tentativa falha numa validação LOCAL, marcada
+  // `semCobranca` corretamente — mas SÓ para ESTE erro; (4) "Pagar com PIX"
+  // reaparece, e a edge antiga cria o PIX na vaga vazia: duas cobranças
+  // vivas. Este marcador é POR PEDIDO: uma vez `true`, nenhum erro seguinte —
+  // nem um `semCobranca` legítimo — desmarca. Só reseta num pedido NOVO (o
+  // efeito abaixo, por `orderId`); o pedido virar pago/expirado nem chega a
+  // ler este estado (a função retorna mais acima, em `PagamentoConfirmadoView`
+  // / `PagamentoForaDoPrazoView`).
+  const [pedidoTemCobrancaIncerta, setPedidoTemCobrancaIncerta] =
+    useState(false);
+  useEffect(() => {
+    setPedidoTemCobrancaIncerta(false);
+  }, [orderId]);
   // CHECKOUT-070 (#197): saída para pagamento falho. `isCancelandoPedido`
   // trava o botão contra clique repetido (cancelar duas vezes bateria na
   // guarda de status da RPC, mas evitar a segunda viagem de rede evita até
@@ -2812,15 +2829,25 @@ export function CheckoutView({
               </p>
             </div>
             {erroPagamento.categoria !== "terminal" && (
-              <Button
-                onClick={() => {
-                  setErroPagamento(null);
-                  setErroCancelamento(null);
-                }}
-                className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
-              >
-                Tentar de novo
-              </Button>
+              <>
+                {/* Achado 2, rodada 3 da revisão de risco pré-publicação: um
+                    POST de cartão sem corpo de resposta (rede caiu, 502)
+                    cai aqui — não sabemos se o Mercado Pago aprovou. O
+                    aviso deixa claro que "Tentar de novo" é a única ação
+                    que resolve, sem prometer um prazo que não existe. */}
+                <p className="text-xs text-amber-700">
+                  Se nada mudar em alguns minutos, toque em Tentar de novo.
+                </p>
+                <Button
+                  onClick={() => {
+                    setErroPagamento(null);
+                    setErroCancelamento(null);
+                  }}
+                  className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+                >
+                  Tentar de novo
+                </Button>
+              </>
             )}
           </div>
         ) : erroPagamento ? (
@@ -2848,17 +2875,22 @@ export function CheckoutView({
               </Button>
             )}
             {/* B1 da revisão de risco pré-publicação (26/09/2026), corrigido
-                na rodada 2: "Pagar com PIX" só quando `semCobranca` vier
-                marcado (Brick que não montou, validação local, ou a URL de
-                desafio fora do Mercado Pago) — nunca em erro terminal, nunca
-                com `cartaoEmAnalise` (esses dois já vão para a caixa âmbar
-                acima). A rodada 1 oferecia o botão para QUALQUER erro em modo
-                cartão, inclusive um 502 ambíguo após o cartão já ter sido
-                enviado ao Mercado Pago — reproduzido: duas cobranças vivas. */}
+                na rodada 2 e na rodada 3: "Pagar com PIX" só quando
+                `semCobranca` vier marcado (Brick que não montou, validação
+                local, ou a URL de desafio fora do Mercado Pago) — nunca em
+                erro terminal, nunca com `cartaoEmAnalise`, e nunca se
+                `pedidoTemCobrancaIncerta` (achado 1, rodada 3) já estiver
+                marcado por um erro ANTERIOR deste mesmo pedido: um 502
+                ambíguo seguido de uma falha local segura não pode reabrir o
+                botão — a vaga da cobrança ambígua pode virar aprovada
+                depois. A rodada 1 oferecia o botão para QUALQUER erro em
+                modo cartão, inclusive um 502 ambíguo — reproduzido: duas
+                cobranças vivas. */}
             {metodoDoPedido === "cartao" &&
               erroPagamento.categoria !== "terminal" &&
               erroPagamento.semCobranca &&
-              !erroPagamento.cartaoEmAnalise && (
+              !erroPagamento.cartaoEmAnalise &&
+              !pedidoTemCobrancaIncerta && (
                 <Button
                   onClick={() => {
                     setMetodoDoPedido("pix");
@@ -2874,8 +2906,12 @@ export function CheckoutView({
             {/* CHECKOUT-070 (#197): visível nos dois casos — no terminal é a
                 única ação; no recuperável fica em segundo plano (variant
                 "outline"), sem roubar o destaque de "Tentar de novo". Só
-                para sessão autenticada (ver comentário do handler acima). */}
-            {user ? (
+                para sessão autenticada (ver comentário do handler acima).
+                Achado 1, rodada 3: NUNCA com `pedidoTemCobrancaIncerta` —
+                pelo mesmo motivo do "Pagar com PIX" acima, cancelar um
+                pedido cuja cobrança pode ter ido para o Mercado Pago é
+                dinheiro cobrado por um pedido morto (`pago_apos_expirar`). */}
+            {pedidoTemCobrancaIncerta ? null : user ? (
               <Button
                 onClick={handleCancelarPedidoESairDoPagamento}
                 disabled={isCancelandoPedido}
@@ -2922,7 +2958,33 @@ export function CheckoutView({
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
             onTrocarParaPix={() => setMetodoDoPedido("pix")}
-            onErro={(msg, categoria, sinal) =>
+            onErro={(msg, categoria, sinal) => {
+              // Achados 1 e 2, rodada 3 da revisão de risco pré-publicação
+              // (26/09/2026): um erro do POST de cartão SEM sinal nenhum
+              // (502 ambíguo, rede caindo antes do corpo chegar — o catch
+              // genérico de `enviarPagamentoComCartao`) é tão incerto quanto
+              // `cartaoEmAnalise` explícito: o Mercado Pago pode ter
+              // aprovado sem o front saber. `categoria !== "terminal"` separa
+              // isso dos terminais DEFINITIVOS do cartão (recusado sem nova
+              // tentativa, expirado, estornado) — esses vêm de uma resposta
+              // que a edge realmente enviou (`classificarRespostaCartao`),
+              // sem ambiguidade nenhuma; cancelar um pedido expirado/
+              // estornado continua seguro e não deve virar a caixa âmbar.
+              const cartaoTalvezEmCurso =
+                sinal === "cartaoEmAnalise" ||
+                (sinal === undefined &&
+                  (msg === MENSAGEM_CARTAO_EM_ANALISE_409 ||
+                    msg === MENSAGEM_CARTAO_TALVEZ_COBRADO_409)) ||
+                (metodoDoPedido === "cartao" &&
+                  sinal === undefined &&
+                  categoria !== "terminal");
+              // Achado 1 (BLOQUEANTE): o marcador é POR PEDIDO — uma vez
+              // `true`, fica `true` para sempre neste pedido (ver o
+              // comentário grande de `pedidoTemCobrancaIncerta`, acima).
+              // Nunca desmarcado aqui, mesmo que ESTE erro em particular não
+              // seja incerto.
+              if (cartaoTalvezEmCurso) setPedidoTemCobrancaIncerta(true);
+
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
                 // Mercado Pago não é clara sobre a ordem entre `onSubmit`
@@ -2936,21 +2998,11 @@ export function CheckoutView({
                   : {
                       mensagem: msg,
                       categoria,
-                      // B3: pelo `sinal` que a tela manda (quando existir) OU,
-                      // como reserva, pela mensagem exata — funciona antes e
-                      // depois da edge mandar o sinal. SEM fallback por texto
-                      // para `semCobranca` (achado B1, rodada 2): não há
-                      // frase curada que garanta "nenhum POST de cartão
-                      // chegou à edge" — só o `sinal` explícito conta.
-                      cartaoEmAnalise:
-                        sinal === "cartaoEmAnalise" ||
-                        (sinal === undefined &&
-                          (msg === MENSAGEM_CARTAO_EM_ANALISE_409 ||
-                            msg === MENSAGEM_CARTAO_TALVEZ_COBRADO_409)),
+                      cartaoEmAnalise: cartaoTalvezEmCurso,
                       semCobranca: sinal === "semCobranca",
                     },
-              )
-            }
+              );
+            }}
           />
         )}
       </div>

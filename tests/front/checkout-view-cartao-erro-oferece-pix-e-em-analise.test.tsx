@@ -31,6 +31,20 @@
 // (não é tocada por este teste) e leva à confirmação sozinha se o banco
 // aprovar.
 //
+// RODADA 3 (achado 1, BLOQUEANTE — a rodada 2 julgava `cartaoEmAnalise` por
+// ERRO, não por PEDIDO): a sequência que quebrava isso — (1) 502 ambíguo do
+// POST de cartão; (2) "Tentar de novo"; (3) a segunda tentativa falha numa
+// validação LOCAL, marcada `semCobranca` corretamente PARA ESTE erro; (4)
+// "Pagar com PIX" reaparecia, e a edge antiga criava o PIX na vaga vazia:
+// duas cobranças vivas. Correção: `pedidoTemCobrancaIncerta`, um marcador
+// POR PEDIDO (não por erro) que, uma vez `true`, nunca mais permite "Pagar
+// com PIX" nem "Cancelar pedido" neste pedido — só reseta com um `orderId`
+// novo. Achado 2 (should-fix, mesma rodada): um erro do POST de cartão SEM
+// corpo nenhum (rede caiu antes da resposta chegar) é tão incerto quanto
+// `cartaoEmAnalise` explícito — vai para a caixa âmbar, só com "Tentar de
+// novo" e o aviso "Se nada mudar em alguns minutos, toque em Tentar de
+// novo.".
+//
 // Andaime: MESMO modelo de checkout-view-cancelar-pagamento-falho.test.tsx
 // (PagamentoOnline mocado, expõe `onErro`) somado ao mock de
 // useConfigDoCartao de checkout-view-cartao-online.test.tsx (para chegar em
@@ -331,7 +345,10 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     });
   }
 
-  it("B1: mount failure (sinal 'semCobranca') tem 'Pagar com PIX'; clicar troca o método e limpa o erro", async () => {
+  // Teste (c) da rodada 3: falha de montagem NA PRIMEIRA tentativa — nada
+  // foi postado ainda, o marcador `pedidoTemCobrancaIncerta` está no
+  // padrão (`false`) e "Pagar com PIX" continua oferecido normalmente.
+  it("B1/(c): mount failure na PRIMEIRA tentativa (sinal 'semCobranca') tem 'Pagar com PIX'; clicar troca o método e limpa o erro", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
 
@@ -361,6 +378,65 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
       botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
     ).toBeUndefined();
     expect(pagamentoOnlineProps.at(-1)!.metodo).toBe("pix");
+  });
+
+  // Teste (a) da rodada 3 — achado 1 (BLOQUEANTE): a sequência exata do
+  // relato. Um 502 ambíguo marca o pedido como incerto; "Tentar de novo"
+  // limpa SÓ `erroPagamento`, nunca o marcador; a SEGUNDA tentativa falha
+  // numa validação local (`semCobranca` correto PARA ESTE erro) — mas
+  // "Pagar com PIX" não pode reaparecer, porque a vaga da PRIMEIRA cobrança
+  // ambígua ainda pode virar aprovada.
+  it("(a) 502 ambíguo, depois 'Tentar de novo', depois falha semCobranca: 'Pagar com PIX' NUNCA reaparece neste pedido", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    // 1. 502 ambíguo do POST de cartão (sem sinal) — marca o pedido.
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("Erro de infraestrutura (502).", "recuperavel");
+    });
+    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+
+    // 2. "Tentar de novo" — limpa a caixa de erro, remonta <PagamentoOnline>
+    // (mocado: só mais uma entrada em pagamentoOnlineProps).
+    const tentar = botaoPorTexto(hospedeiro, "Tentar de novo")!;
+    await act(async () => {
+      tentar.click();
+    });
+    expect(hospedeiro.textContent).not.toContain(
+      "Se nada mudar em alguns minutos",
+    );
+
+    // 3. A segunda tentativa falha numa validação LOCAL — sinal
+    // 'semCobranca' correto PARA ESTE erro específico.
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+          sinal?: "cartaoEmAnalise" | "semCobranca",
+        ) => void
+      )(
+        "Confira o CPF ou CNPJ do titular do cartão e tente de novo.",
+        "recuperavel",
+        "semCobranca",
+      );
+    });
+
+    // 4. O marcador do pedido continua de pé: nem PIX nem Cancelar, mesmo
+    // este erro sendo, isoladamente, `semCobranca`.
+    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
   });
 
   // B1, rodada 2 (achado BLOQUEANTE, dinheiro) — Caso A da revisão: a
@@ -422,9 +498,12 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
 
   // Caso B da revisão (rodada 2): um 502 do POST de cartão (sem sinal
   // nenhum) já saiu para o Mercado Pago — não é seguro assumir "sem
-  // cobrança". Falha FECHADA: nada de "Pagar com PIX" aqui, mesmo em modo
-  // cartão e mesmo sendo um erro recuperável comum.
-  it("B1, Caso B: 502 ambíguo do POST de cartão (sem sinal) NÃO oferece 'Pagar com PIX' — só 'Tentar de novo' e 'Cancelar pedido'", async () => {
+  // cobrança". Rodada 3 (achado 2, revisão de risco pré-publicação): esse
+  // erro vai para a caixa ÂMBAR (mesmo tratamento do "cartão em análise") —
+  // só "Tentar de novo", nunca PIX nem Cancelar. A rodada 2 deixava esse
+  // caso na caixa vermelha com "Cancelar pedido" disponível — reproduzido:
+  // cancelar aí e o Mercado Pago aprovar depois vira `pago_apos_expirar`.
+  it("B1, Caso B: 502 ambíguo do POST de cartão (sem sinal) cai na caixa âmbar — só 'Tentar de novo', nunca PIX nem Cancelar", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
 
@@ -438,10 +517,13 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     });
 
     expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
-    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
     expect(
       botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
-    ).toBeDefined();
+    ).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
+    expect(hospedeiro.textContent).toContain(
+      "Se nada mudar em alguns minutos, toque em Tentar de novo.",
+    );
   });
 
   it("B1: em modo PIX, a caixa de erro NÃO ganha o botão 'Pagar com PIX' (já está em PIX)", async () => {
@@ -556,7 +638,14 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
   });
 
-  it("controle: um 409 recuperável comum (sem sinal nenhum) continua oferecendo 'Cancelar pedido', mas NÃO 'Pagar com PIX'", async () => {
+  // Rodada 3 (achado 2): a rodada 2 tinha um "controle" aqui com um erro
+  // recuperável sem sinal — mas esse é EXATAMENTE o Caso B (502 ambíguo)
+  // acima de propósito, não um controle. O controle de verdade agora é um
+  // terminal DEFINITIVO do cartão (recusado sem nova tentativa, expirado,
+  // estornado — vem de `classificarRespostaCartao`, uma resposta que a edge
+  // realmente enviou): sem ambiguidade nenhuma, "Cancelar pedido" continua
+  // certo, porque o pedido está mesmo morto.
+  it("controle: um terminal DEFINITIVO do cartão (sem sinal, mas categoria terminal) continua oferecendo 'Cancelar pedido' — não é ambíguo", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
 
@@ -566,7 +655,10 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
           msg: string,
           categoria: "recuperavel" | "terminal",
         ) => void
-      )("Não foi possível gerar a cobrança.", "recuperavel");
+      )(
+        "O pagamento foi recusado e este pedido não aceita nova tentativa. Faça um pedido novo ou fale com a loja.",
+        "terminal",
+      );
     });
 
     expect(
@@ -575,7 +667,99 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(hospedeiro.textContent).not.toContain(
       "Seu cartão está em análise pelo banco",
     );
-    // B1, rodada 2: sem sinal `semCobranca`, falha fechada — nunca PIX.
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeUndefined();
     expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
+  });
+
+  // Teste (d) da rodada 3: o marcador é POR PEDIDO — reseta com um
+  // `orderId` novo. Em produção `orderId` só nasce uma vez por pedido
+  // (`grep setOrderId` em CheckoutView.tsx: uma chamada só) — o cliente não
+  // reabre o MESMO checkout depois de marcado, porque cancelar já fica
+  // bloqueado de propósito. A prova mais direta é duas sessões de checkout
+  // SEPARADAS (dois `createOrder`, dois ids): o pedido B nasce limpo, ainda
+  // que o pedido A tenha ficado com a cobrança incerta.
+  it("(d) o marcador não vaza entre pedidos: um pedido novo nasce sem a cobrança incerta do pedido anterior", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+
+    // Pedido A: fica com a cobrança incerta (502 ambíguo).
+    await chegarNoPagamentoComCartao(CheckoutView);
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("Erro de infraestrutura (502).", "recuperavel");
+    });
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+
+    // Fecha a sessão do pedido A antes de abrir a do B — dois <CheckoutView>
+    // vivos ao mesmo tempo duplicariam ids no DOM (checkout-name etc.), e
+    // `digitar` acertaria o campo errado.
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+
+    // Pedido B: sessão de checkout NOVA, outro orderId. `onClearCart()` do
+    // pedido A já esvaziou o carrinho e a opção de frete do dublê de
+    // useCart (módulo compartilhado no arquivo inteiro) — sem repor aqui, o
+    // pedido B nasceria com carrinho vazio e sem transportadora, e o campo
+    // de CPF (exigido só "para entrega por transportadora") nunca apareceria.
+    createOrder.mockResolvedValueOnce({ id: "ped-outro-pedido" });
+    mockCart = [
+      {
+        product: {
+          id: "prod-1",
+          name: "Produto Teste",
+          description: "",
+          price: 100,
+          images: [],
+          category: "geral",
+          stock: 10,
+          sold: 0,
+          isActive: true,
+          isBestseller: false,
+          freeShipping: false,
+          createdAt: new Date().toISOString(),
+        },
+        quantity: 1,
+      },
+    ];
+    mockCartTotal = 100;
+    mockShippingFee = 20;
+    mockSelectedShippingOption = {
+      id: "opt-mock-b",
+      name: "Entrega Padrão",
+      price: 20,
+      deliveryDays: 3,
+      provider: "flat_fee",
+    };
+    pagamentoOnlineProps.length = 0;
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    // Erro terminal comum (sem ambiguidade nenhuma) no pedido NOVO:
+    // "Cancelar pedido" tem que estar disponível — se o marcador tivesse
+    // vazado do pedido A, este teste falharia aqui.
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )(
+        "O pagamento foi recusado e este pedido não aceita nova tentativa. Faça um pedido novo ou fale com a loja.",
+        "terminal",
+      );
+    });
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeDefined();
   });
 });
