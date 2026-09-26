@@ -261,15 +261,17 @@ sw.addEventListener("fetch", (event: any) => {
                 const copy = response.clone();
                 // Mesma razão do .catch da revalidação acima: o try/catch
                 // síncrono não alcança a rejeição da promessa do put.
-                caches
-                  .open(CACHE_NAME)
-                  .then((cache) => cache.put(event.request, copy))
-                  .catch((err) =>
-                    console.warn(
-                      "[SW] Failed to cache navigation response:",
-                      err,
+                event.waitUntil(
+                  caches
+                    .open(CACHE_NAME)
+                    .then((cache) => cache.put(event.request, copy))
+                    .catch((err) =>
+                      console.warn(
+                        "[SW] Failed to cache navigation response:",
+                        err,
+                      ),
                     ),
-                  );
+                );
               } catch (e) {
                 console.warn("[SW] Failed to clone navigation response:", e);
               }

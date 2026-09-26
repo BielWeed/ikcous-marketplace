@@ -37,9 +37,29 @@ test("a página visitada carrega sem rede, servida pelo cache do service worker"
     )
     .toBe(1);
 
-  // 2º carregamento: já controlado pelo SW — grava a navegação no cache.
+  // 2º carregamento: confirme que o SW já controla a página antes do reload.
+  await expect
+    .poll(() =>
+      page.evaluate(() => Boolean(navigator.serviceWorker.controller)),
+    )
+    .toBe(true);
   await page.reload();
   await esperarBootLimpo(page);
+  // O cache existir não garante que a navegação já foi gravada nele.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          const nome = (await caches.keys()).find((n) =>
+            n.startsWith("app-cache-"),
+          );
+          if (!nome) return undefined;
+          const cache = await caches.open(nome);
+          return (await cache.match(location.href))?.status;
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe(200);
 
   // Corta a rede de verdade e recarrega: a resposta TEM de vir do cache.
   await context.setOffline(true);
