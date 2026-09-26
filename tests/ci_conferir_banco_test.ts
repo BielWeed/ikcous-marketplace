@@ -6,24 +6,42 @@
  * pré/pós-publicação que antes eram feitas à mão no SQL Editor
  * (docs/runbooks/publicar-painel-cartao-devolucoes.md §0/§1).
  *
- * O QUE ESTES TESTES MEDEM:
+ * RODADA 2 (26/09/2026) — revisão de risco "passa com ressalva". O que
+ * mudou e o que este arquivo passou a medir:
  *
- * 1. O workflow, do jeito que está no arquivo: só dispara à mão
- *    (workflow_dispatch, nunca push/PR), nenhum `node -e` inline (a lição de
- *    aplicar-migrations.yml: crase dentro de `node -e "…"` vira substituição
- *    de comando do bash), a lista `choice` de `consulta` bate com os arquivos
- *    de `scripts/publicacao/consultas/` (mais "backups"), e o job do ledger só
- *    roda com `confirmar == 'GRAVAR'`.
- * 2. `contarStatements`/`dividirEmStatements`: cada arquivo de consulta real
- *    (inclusive os do ledger) tem exatamente 1 statement — é essa contagem
- *    que garante que a API (que só devolve o resultado do ÚLTIMO statement)
- *    nunca devolve outra coisa que não a consulta pedida.
- * 3. `comGuardaSomenteLeitura`: o guard (`BEGIN READ ONLY;`, sem COMMIT) está
- *    na frente de toda consulta de conferência.
- * 4. `main()`, com `fetch` global stubado: o request tem o formato certo (URL,
- *    método, corpo com o guard e `read_only:true` nas consultas; SEM os dois
- *    na gravação do ledger), erro no corpo vira `exit(1)`, e o token NUNCA
- *    aparece em nada que o script imprime.
+ * 1. `PROJETO` é fechado em loja/sandbox (`resolverRef`), nunca mais texto
+ *    livre indo para o path da URL — os dois payloads provados contra um
+ *    stub ("<ref>/restart#", "x/../outroref.../database/query#") têm de
+ *    ser recusados ANTES de qualquer `fetch`.
+ * 2. `rodarLedger` pré-confere o schema da faixa (2a+2b ou 1a+1b) pelo
+ *    caminho só-leitura ANTES do INSERT, e aborta (sem gravar) se vier 0
+ *    linha ou qualquer linha com `ok !== true` (fora a exceção da linha de
+ *    dado ao vivo do 2b).
+ * 3. Toda leitura (consulta e a verificação pós-ledger) vai para
+ *    `POST /database/query/read-only` — sem guard, sem `read_only`. A
+ *    ÚNICA escrita (o INSERT do ledger) continua em
+ *    `POST /database/query`, também sem guard/flag.
+ * 4. `contarStatements` não erra mais nos 4 casos adversariais (P1-P4:
+ *    string `E''` com escape de barra, identificador `x$y$`, comentário
+ *    `--` terminado só por `\r`, dollar-quote com tag não-ASCII).
+ * 5. `resumoDeBackups`: `backups[]` vazio + PITR físico disponível imprime
+ *    a data do PITR em vez de "(nenhum)".
+ *
+ * O QUE ESTES TESTES MEDEM (visão geral):
+ * - O workflow, do jeito que está no arquivo: só dispara à mão, nenhum
+ *   `node -e` inline, `consulta` bate com os arquivos do disco, `projeto`
+ *   é choice loja/sandbox, o ledger só roda com `confirmar == 'GRAVAR'`.
+ * - `resolverRef`: loja/sandbox resolvem certo; qualquer outra coisa
+ *   (inclusive os payloads do stub e chaves de prototype) é recusada.
+ * - `contarStatements`/`dividirEmStatements`: P1-P4 e os casos que já
+ *   funcionavam antes, mais todo arquivo real de
+ *   `scripts/publicacao/consultas/`.
+ * - `conferirAntesDeGravar`: aborta com 0 linha ou `ok !== true`; ignora a
+ *   linha de dado ao vivo do 2b.
+ * - `main()`, com `fetch` global stubado: o request vai para o endpoint
+ *   certo (leitura vs. escrita), erro no corpo vira `exit(1)`, PROJETO
+ *   inválido nunca gera request nenhum, e o token NUNCA aparece em nada
+ *   que o script imprime.
  */
 import { createRequire } from "node:module";
 import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
@@ -40,6 +58,8 @@ const CONSULTAS_DIR = `${RAIZ}/scripts/publicacao/consultas`;
 const SCRIPT = "../scripts/publicacao/conferir-banco.cjs";
 
 const TOKEN_FALSO = "sbp_segredo-de-teste-nunca-pode-aparecer-no-log";
+const REF_LOJA = "cafkrminfnokvgjqtkle";
+const REF_SANDBOX = "lofznuxcvezrhxsgjqyg";
 
 function semComentarios(yaml: string): string {
   return yaml
@@ -112,11 +132,6 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
         "a lista `options` de `consulta` não bate com os arquivos de scripts/publicacao/consultas/",
       );
       assert(opcoes.includes("backups"), "falta a opção `backups`");
-      // Regressão específica: 26/09/2026, a checagem de CPF-no-endereço
-      // (janela 23/09-26/09) entrou depois das 8 consultas originais — sem
-      // isto, um refactor que trocasse a extração da lista de `options`
-      // continuaria "batendo" mesmo perdendo esta entrada, porque o teste
-      // acima compara CONTRA o disco, não contra um valor fixo.
       assert(
         opcoes.includes("3a-cpf-no-endereco"),
         "falta a opção `3a-cpf-no-endereco` (janela 23/09-26/09 do CPF no endereço)",
@@ -124,9 +139,21 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
     },
   );
 
-  await t.step("o projeto_ref por padrão é o da loja", () => {
-    assertStringIncludes(yaml, 'default: "cafkrminfnokvgjqtkle"');
-  });
+  await t.step(
+    "`projeto` é choice fechado loja/sandbox — nunca mais projeto_ref de texto livre (achado #1, rodada 2)",
+    () => {
+      assert(
+        !yaml.includes("projeto_ref:"),
+        "o workflow ainda declara o input projeto_ref (texto livre)",
+      );
+      assertStringIncludes(yaml, "projeto:");
+      assertStringIncludes(
+        yaml,
+        "options:\n          - loja\n          - sandbox",
+      );
+      assertStringIncludes(yaml, "default: loja");
+    },
+  );
 
   await t.step(
     "o job do ledger só roda com gravar_ledger != nao E confirmar == GRAVAR",
@@ -136,6 +163,16 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
       const blocoLedger = yaml.slice(iLedger);
       assertStringIncludes(blocoLedger, "inputs.confirmar == 'GRAVAR'");
       assertStringIncludes(blocoLedger, "inputs.gravar_ledger != 'nao'");
+    },
+  );
+
+  await t.step(
+    "o job do ledger compartilha o grupo de concorrência com aplicar-migrations",
+    () => {
+      const iLedger = yaml.indexOf("\n  ledger:");
+      const blocoLedger = yaml.slice(iLedger);
+      assertStringIncludes(blocoLedger, "group: banco-da-loja");
+      assertStringIncludes(blocoLedger, "cancel-in-progress: false");
     },
   );
 
@@ -155,7 +192,38 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
   });
 });
 
-Deno.test("dividirEmStatements/contarStatements — o guard de 1-statement-só", async (t) => {
+Deno.test("resolverRef — projeto fechado loja/sandbox (achado #1, rodada 2)", () => {
+  const { resolverRef, REFS_POR_PROJETO } = require(SCRIPT);
+
+  assertEquals(resolverRef("loja"), REF_LOJA);
+  assertEquals(resolverRef("sandbox"), REF_SANDBOX);
+  assertEquals(REFS_POR_PROJETO.loja, REF_LOJA);
+  assertEquals(REFS_POR_PROJETO.sandbox, REF_SANDBOX);
+
+  // Os dois payloads provados contra o stub da revisão de risco (guard.cjs
+  // não se aplica aqui — é ref.cjs): nenhum chega a virar ref.
+  for (const malicioso of [
+    "cafkrminfnokvgjqtkle/restart#",
+    "cafkrminfnokvgjqtkle/pause?",
+    "x/../outroprojetoabcdefgh/database/query#",
+    "producao",
+    "",
+    "__proto__",
+    "constructor",
+    "toString",
+    "hasOwnProperty",
+  ]) {
+    let lancou = false;
+    try {
+      resolverRef(malicioso);
+    } catch {
+      lancou = true;
+    }
+    assert(lancou, `resolverRef("${malicioso}") deveria lançar`);
+  }
+});
+
+Deno.test("dividirEmStatements/contarStatements — o lexer, inclusive P1-P4", async (t) => {
   const { contarStatements, dividirEmStatements } = require(SCRIPT);
 
   await t.step("um SELECT simples conta 1", () => {
@@ -178,12 +246,45 @@ Deno.test("dividirEmStatements/contarStatements — o guard de 1-statement-só",
     },
   );
 
-  await t.step("`;` dentro de comentário de linha não conta", () => {
+  await t.step("`;` dentro de comentário de linha (\\n) não conta", () => {
     assertEquals(contarStatements("SELECT 1; -- troque por 2; e 3;\n"), 1);
   });
 
   await t.step("`;` dentro de string simples '...' não conta", () => {
     assertEquals(contarStatements("SELECT 'a;b;c' AS x;"), 1);
+  });
+
+  await t.step(
+    "P1 — string E'' com escape de barra (\\') não engana mais o lexer",
+    () => {
+      const sql =
+        "SELECT E'\\'' AS a; COMMIT; INSERT INTO alvo VALUES (1); SELECT 'x' AS b";
+      assertEquals(contarStatements(sql), 4);
+    },
+  );
+
+  await t.step(
+    "P2 — identificador com $ colado (x$y$) não abre dollar-quote",
+    () => {
+      const sql =
+        "SELECT 1 AS x$y$; COMMIT; INSERT INTO alvo VALUES (2); SELECT 1";
+      assertEquals(contarStatements(sql), 4);
+    },
+  );
+
+  await t.step(
+    "P3 — comentário -- terminado só por \\r fecha do mesmo jeito que \\n",
+    () => {
+      const sql =
+        "SELECT 1 AS a; --nota\rCOMMIT; INSERT INTO alvo VALUES (3); SELECT 1 AS b";
+      assertEquals(contarStatements(sql), 4);
+    },
+  );
+
+  await t.step("P4 — dollar-quote com tag não-ASCII ($é$) fecha certo", () => {
+    const sql =
+      "SELECT $é$ ' $é$ AS a; COMMIT; INSERT INTO alvo VALUES (4); SELECT ' ' AS b";
+    assertEquals(contarStatements(sql), 4);
   });
 
   await t.step(
@@ -214,14 +315,6 @@ Deno.test("dividirEmStatements/contarStatements — o guard de 1-statement-só",
       const sql = await Deno.readTextFile(
         `${CONSULTAS_DIR}/3a-cpf-no-endereco.sql`,
       );
-      // A lista de SELECT só tem colunas de data e count(*)/count(*) FILTER —
-      // nenhuma delas devolve o valor do CPF. Se alguém adicionar uma coluna
-      // que projete `... ->> 'cpf'` FORA de um count/regexp (ex.: para
-      // "conferir visualmente"), este teste tem de acusar.
-      // Cada coluna do SELECT mora numa linha (o estilo deste diretório) —
-      // qualquer linha que toque `->> 'cpf'` tem de estar dentro de um
-      // `count(`/`regexp_replace(` NA MESMA linha; senão é o valor cru
-      // vazando para a saída.
       for (const linha of sql.split("\n")) {
         if (/->>?\s*'cpf'/i.test(linha)) {
           assert(
@@ -235,7 +328,7 @@ Deno.test("dividirEmStatements/contarStatements — o guard de 1-statement-só",
   );
 });
 
-Deno.test("comGuardaSomenteLeitura — o guard read-only por construção", () => {
+Deno.test("comGuardaSomenteLeitura — o guard continua correto, mesmo não sendo mais o caminho quente", () => {
   const { comGuardaSomenteLeitura } = require(SCRIPT);
   const guardada = comGuardaSomenteLeitura("SELECT 1;");
   assertStringIncludes(guardada, "BEGIN READ ONLY;\n");
@@ -250,7 +343,7 @@ Deno.test("comGuardaSomenteLeitura — o guard read-only por construção", () =
   assertStringIncludes(guardada, "SELECT 1;");
 });
 
-Deno.test("extrairLinhas — os dois formatos de resposta da API", () => {
+Deno.test("extrairLinhas — os formatos de resposta da API", () => {
   const { extrairLinhas } = require(SCRIPT);
 
   const achatado = JSON.stringify([{ um: 1, rotulo: "ok" }]);
@@ -263,21 +356,47 @@ Deno.test("extrairLinhas — os dois formatos de resposta da API", () => {
   assertEquals(extrairLinhas(porStatement), [{ um: 1, rotulo: "ok" }]);
 });
 
-Deno.test("resumoDeBackups — só o que a §5 pede, nada de segredo", () => {
+Deno.test("resumoDeBackups — inclusive o PITR sem backup discreto (achado #5, rodada 2)", async (t) => {
   const { resumoDeBackups } = require(SCRIPT);
-  const json = {
-    pitr_enabled: true,
-    backups: [
-      { status: "COMPLETED", inserted_at: "2026-09-20T03:00:00Z" },
-      { status: "COMPLETED", inserted_at: "2026-09-25T03:00:00Z" },
-      { status: "FAILED", inserted_at: "2026-09-24T03:00:00Z" },
-    ],
-  };
-  const resumo = resumoDeBackups(json);
-  assertEquals(resumo.ultimoEm, "2026-09-25T03:00:00Z");
-  assertEquals(resumo.status, "COMPLETED");
-  assertEquals(resumo.pitrHabilitado, true);
-  assertEquals(resumo.total, 3);
+
+  await t.step("backup discreto existe: usa ele", () => {
+    const resumo = resumoDeBackups({
+      pitr_enabled: true,
+      backups: [
+        { status: "COMPLETED", inserted_at: "2026-09-20T03:00:00Z" },
+        { status: "COMPLETED", inserted_at: "2026-09-25T03:00:00Z" },
+        { status: "FAILED", inserted_at: "2026-09-24T03:00:00Z" },
+      ],
+    });
+    assertEquals(resumo.ultimoEm, "2026-09-25T03:00:00Z");
+    assertEquals(resumo.fonte, "backup");
+    assertEquals(resumo.status, "COMPLETED");
+    assertEquals(resumo.pitrHabilitado, true);
+    assertEquals(resumo.total, 3);
+  });
+
+  await t.step(
+    "backups[] vazio + PITR físico disponível: usa a data do PITR",
+    () => {
+      const resumo = resumoDeBackups({
+        pitr_enabled: true,
+        backups: [],
+        physical_backup_data: {
+          earliest_physical_backup_date_unix: 1758700000,
+          latest_physical_backup_date_unix: 1758800000,
+        },
+      });
+      assertEquals(resumo.fonte, "pitr");
+      assertEquals(resumo.ultimoEm, new Date(1758800000 * 1000).toISOString());
+      assertEquals(resumo.pitrHabilitado, true);
+    },
+  );
+
+  await t.step("nem backup nem PITR: nenhum dos dois", () => {
+    const resumo = resumoDeBackups({ pitr_enabled: false, backups: [] });
+    assertEquals(resumo.fonte, "nenhum");
+    assertEquals(resumo.ultimoEm, null);
+  });
 });
 
 /** Captura tudo que o script manda para console.log/error, para a checagem
@@ -331,7 +450,7 @@ function comSaidaCapturada<T>(executar: () => Promise<T>): Promise<{
   })();
 }
 
-const CHAVES = ["SUPABASE_ACCESS_TOKEN", "PROJETO_REF", "CONSULTA", "LEDGER"];
+const CHAVES = ["SUPABASE_ACCESS_TOKEN", "PROJETO", "CONSULTA", "LEDGER"];
 function comEnv<T>(
   pares: Record<string, string | undefined>,
   executar: () => Promise<T>,
@@ -352,255 +471,423 @@ function comEnv<T>(
   })();
 }
 
+/** Stuba `globalThis.fetch`, chama `executar`, e sempre restaura — devolve
+ * as chamadas feitas (url + opts). */
+async function comFetchStubado<T>(
+  respostas: Array<
+    | { ok: true; status?: number; corpo: string }
+    | { ok: false; status: number; corpo: string }
+  >,
+  executar: () => Promise<T>,
+): Promise<{
+  resultado: T;
+  chamadas: Array<{ url: string; opts: RequestInit }>;
+}> {
+  const chamadas: Array<{ url: string; opts: RequestInit }> = [];
+  const fetchOriginal = globalThis.fetch;
+  let n = 0;
+  // @ts-ignore -- stub
+  globalThis.fetch = async (url: string, opts: RequestInit = {}) => {
+    chamadas.push({ url, opts });
+    const r = respostas[Math.min(n, respostas.length - 1)];
+    n++;
+    return { ok: r.ok, status: r.status ?? 200, text: async () => r.corpo };
+  };
+  try {
+    const resultado = await executar();
+    return { resultado, chamadas };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+}
+
 Deno.test("main() — request certo, stubando fetch", async (t) => {
   const { main } = require(SCRIPT);
 
   await t.step(
-    "consulta real: guard + read_only:true na URL certa; sem exit; sem vazar o token",
+    "consulta real: vai para /database/query/read-only, corpo é só {query} SEM guard; sem exit; sem vazar o token",
     async () => {
-      const chamadas: Array<{ url: string; opts: RequestInit }> = [];
-      const fetchOriginal = globalThis.fetch;
-      // @ts-ignore -- stub
-      globalThis.fetch = async (url: string, opts: RequestInit) => {
-        chamadas.push({ url, opts });
-        return {
-          ok: true,
-          status: 200,
-          text: async () => JSON.stringify([{ base_74: 1, t75: null }]),
-        };
-      };
-      try {
-        const { saida } = await comConsoleCapturado(() =>
-          comEnv(
-            {
-              SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
-              PROJETO_REF: "cafkrminfnokvgjqtkle",
-              CONSULTA: "0a-antes-base-e-nada-aplicado",
-            },
-            () => main(),
+      const { chamadas, resultado: _ } = await comFetchStubado(
+        [{ ok: true, corpo: JSON.stringify([{ base_74: 1, t75: null }]) }],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                CONSULTA: "0a-antes-base-e-nada-aplicado",
+              },
+              () => main(),
+            ),
           ),
-        );
-        assertEquals(chamadas.length, 1);
-        assertStringIncludes(
-          chamadas[0].url,
-          "/v1/projects/cafkrminfnokvgjqtkle/database/query",
-        );
-        assertEquals(chamadas[0].opts.method, "POST");
-        const corpo = JSON.parse(String(chamadas[0].opts.body));
-        assertStringIncludes(corpo.query, "BEGIN READ ONLY;\n");
-        assertEquals(corpo.read_only, true);
-        assertStringIncludes(
-          String(chamadas[0].opts.headers.Authorization),
-          `Bearer ${TOKEN_FALSO}`,
-        );
-        assert(!saida.includes(TOKEN_FALSO), "o token vazou na saída");
-        assertStringIncludes(saida, "base_74");
-      } finally {
-        globalThis.fetch = fetchOriginal;
-      }
+      );
+      const { saida } = _;
+      assertEquals(chamadas.length, 1);
+      assertStringIncludes(
+        chamadas[0].url,
+        `/v1/projects/${REF_LOJA}/database/query/read-only`,
+      );
+      assertEquals(chamadas[0].opts.method, "POST");
+      const corpo = JSON.parse(String(chamadas[0].opts.body));
+      assert(
+        !String(corpo.query).includes("BEGIN READ ONLY"),
+        "a consulta não pode mais levar o guard — a barreira é o endpoint dedicado",
+      );
+      assertEquals(
+        corpo.read_only,
+        undefined,
+        "o endpoint dedicado não usa (nem precisa de) read_only",
+      );
+      assertEquals(Object.keys(corpo).sort(), ["query"]);
+      assertStringIncludes(
+        String(chamadas[0].opts.headers.Authorization),
+        `Bearer ${TOKEN_FALSO}`,
+      );
+      assert(!saida.includes(TOKEN_FALSO), "o token vazou na saída");
+      assertStringIncludes(saida, "base_74");
     },
   );
 
   await t.step("erro no corpo -> exit(1), e o token não vaza", async () => {
-    const fetchOriginal = globalThis.fetch;
-    // @ts-ignore -- stub
-    globalThis.fetch = async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ error: "boom", message: "deu ruim" }),
-    });
-    try {
-      const { saida, valor } = await comConsoleCapturado(() =>
-        comEnv(
-          {
-            SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
-            PROJETO_REF: "cafkrminfnokvgjqtkle",
-            CONSULTA: "0a-antes-base-e-nada-aplicado",
-          },
-          () => comSaidaCapturada(() => main()),
-        ),
-      );
-      assertEquals(valor?.retornou, false);
-      assertEquals(valor?.codigoSaida, 1);
-      assert(!saida.includes(TOKEN_FALSO), "o token vazou na saída de erro");
-    } finally {
-      globalThis.fetch = fetchOriginal;
-    }
-  });
-
-  await t.step("HTTP não-2xx -> exit(1)", async () => {
-    const fetchOriginal = globalThis.fetch;
-    // @ts-ignore -- stub
-    globalThis.fetch = async () => ({
-      ok: false,
-      status: 500,
-      text: async () => "erro interno",
-    });
-    try {
-      const { valor } = await comConsoleCapturado(() =>
-        comEnv(
-          {
-            SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
-            PROJETO_REF: "cafkrminfnokvgjqtkle",
-            CONSULTA: "0a-antes-base-e-nada-aplicado",
-          },
-          () => comSaidaCapturada(() => main()),
-        ),
-      );
-      assertEquals(valor?.retornou, false);
-      assertEquals(valor?.codigoSaida, 1);
-    } finally {
-      globalThis.fetch = fetchOriginal;
-    }
-  });
-
-  await t.step(
-    "ledger: grava SEM o guard/read_only, depois confere 72-78 COM o guard",
-    async () => {
-      const chamadas: Array<{ url: string; opts: RequestInit }> = [];
-      const fetchOriginal = globalThis.fetch;
-      let n = 0;
-      // @ts-ignore -- stub
-      globalThis.fetch = async (url: string, opts: RequestInit) => {
-        chamadas.push({ url, opts });
-        n++;
-        if (n === 1) return { ok: true, status: 201, text: async () => "[]" };
-        return {
+    const { resultado } = await comFetchStubado(
+      [
+        {
           ok: true,
-          status: 200,
-          text: async () =>
-            JSON.stringify([{ version: "20261172000000", name: "o_cpf_..." }]),
-        };
-      };
-      try {
-        const { saida } = await comConsoleCapturado(() =>
+          corpo: JSON.stringify({ error: "boom", message: "deu ruim" }),
+        },
+      ],
+      () =>
+        comConsoleCapturado(() =>
           comEnv(
             {
               SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
-              PROJETO_REF: "cafkrminfnokvgjqtkle",
-              LEDGER: "72-74",
+              PROJETO: "loja",
+              CONSULTA: "0a-antes-base-e-nada-aplicado",
             },
-            () => main(),
+            () => comSaidaCapturada(() => main()),
+          ),
+        ),
+    );
+    assertEquals(resultado.valor?.retornou, false);
+    assertEquals(resultado.valor?.codigoSaida, 1);
+    assert(
+      !resultado.saida.includes(TOKEN_FALSO),
+      "o token vazou na saída de erro",
+    );
+  });
+
+  await t.step("HTTP não-2xx -> exit(1)", async () => {
+    const { resultado } = await comFetchStubado(
+      [{ ok: false, status: 500, corpo: "erro interno" }],
+      () =>
+        comConsoleCapturado(() =>
+          comEnv(
+            {
+              SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+              PROJETO: "loja",
+              CONSULTA: "0a-antes-base-e-nada-aplicado",
+            },
+            () => comSaidaCapturada(() => main()),
+          ),
+        ),
+    );
+    assertEquals(resultado.valor?.retornou, false);
+    assertEquals(resultado.valor?.codigoSaida, 1);
+  });
+
+  await t.step(
+    "PROJETO malicioso (payloads da revisão de risco) nunca gera request nenhum — exit(1) antes de qualquer fetch",
+    async () => {
+      for (const projetoMalicioso of [
+        "cafkrminfnokvgjqtkle/restart#",
+        "cafkrminfnokvgjqtkle/pause?",
+        "x/../outroprojetoabcdefgh/database/query#",
+      ]) {
+        const { chamadas, resultado } = await comFetchStubado([], () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: projetoMalicioso,
+                CONSULTA: "0a-antes-base-e-nada-aplicado",
+              },
+              () => comSaidaCapturada(() => main()),
+            ),
           ),
         );
-        assertEquals(chamadas.length, 2);
-        const corpoGravacao = JSON.parse(String(chamadas[0].opts.body));
-        assert(
-          !corpoGravacao.query.includes("BEGIN READ ONLY"),
-          "a gravação do ledger NÃO pode levar o guard read-only",
-        );
         assertEquals(
-          corpoGravacao.read_only,
-          undefined,
-          "a gravação do ledger NÃO pode pedir read_only:true",
+          chamadas.length,
+          0,
+          `"${projetoMalicioso}" não pode gerar NENHUM request`,
         );
-        assertStringIncludes(
-          corpoGravacao.query,
-          "INSERT INTO supabase_migrations",
-        );
-
-        const corpoVerificacao = JSON.parse(String(chamadas[1].opts.body));
-        assertStringIncludes(corpoVerificacao.query, "BEGIN READ ONLY;\n");
-        assertEquals(corpoVerificacao.read_only, true);
-        assertStringIncludes(corpoVerificacao.query, "schema_migrations");
-
-        assert(
-          !saida.includes(TOKEN_FALSO),
-          "o token vazou na saída do ledger",
-        );
-        assertStringIncludes(saida, "20261172000000");
-      } finally {
-        globalThis.fetch = fetchOriginal;
+        assertEquals(resultado.valor?.retornou, false);
+        assertEquals(resultado.valor?.codigoSaida, 1);
       }
     },
   );
 
+  await t.step(
+    "ledger: pré-checagem ok=true em todas as linhas -> grava (endpoint de escrita, sem guard/read_only) e confere 72-78 (endpoint de leitura, sem guard)",
+    async () => {
+      const linhaOk2a = {
+        migration: "20261172000000",
+        funcao: "x",
+        esperado: 1,
+        achado: 1,
+        ok: true,
+      };
+      const linhaOk2b = { item: "fn get_my_cpf", ok: true };
+      const linhaLiveDataFalsa2b = {
+        item: "loja existente com as 3 formas ligadas",
+        ok: false,
+      };
+      const { chamadas, resultado } = await comFetchStubado(
+        [
+          { ok: true, corpo: JSON.stringify([linhaOk2a]) }, // 2a
+          {
+            ok: true,
+            corpo: JSON.stringify([linhaOk2b, linhaLiveDataFalsa2b]),
+          }, // 2b (a linha "ao vivo" é ignorada)
+          { ok: true, status: 201, corpo: "[]" }, // INSERT do ledger
+          {
+            ok: true,
+            corpo: JSON.stringify([
+              { version: "20261172000000", name: "o_cpf_..." },
+            ]),
+          }, // verificação 72-78
+        ],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                LEDGER: "72-74",
+              },
+              () => main(),
+            ),
+          ),
+      );
+      const { saida } = resultado;
+      assertEquals(chamadas.length, 4);
+
+      // 1 e 2: pré-checagem — vão para o endpoint de LEITURA.
+      assertStringIncludes(chamadas[0].url, "/database/query/read-only");
+      assertStringIncludes(chamadas[1].url, "/database/query/read-only");
+
+      // 3: o INSERT — vai para o endpoint de ESCRITA, sem guard/read_only.
+      assertStringIncludes(
+        chamadas[2].url,
+        `/v1/projects/${REF_LOJA}/database/query`,
+      );
+      assert(
+        !chamadas[2].url.includes("read-only"),
+        "o INSERT não pode ir para o endpoint de leitura",
+      );
+      const corpoGravacao = JSON.parse(String(chamadas[2].opts.body));
+      assert(
+        !String(corpoGravacao.query).includes("BEGIN READ ONLY"),
+        "a gravação do ledger NÃO pode levar o guard read-only",
+      );
+      assertEquals(corpoGravacao.read_only, undefined);
+      assertStringIncludes(
+        corpoGravacao.query,
+        "INSERT INTO supabase_migrations",
+      );
+
+      // 4: a verificação pós-gravação — endpoint de LEITURA, sem guard.
+      assertStringIncludes(chamadas[3].url, "/database/query/read-only");
+      const corpoVerificacao = JSON.parse(String(chamadas[3].opts.body));
+      assert(!String(corpoVerificacao.query).includes("BEGIN READ ONLY"));
+      assertStringIncludes(corpoVerificacao.query, "schema_migrations");
+
+      assert(!saida.includes(TOKEN_FALSO), "o token vazou na saída do ledger");
+      assertStringIncludes(saida, "20261172000000");
+    },
+  );
+
+  await t.step(
+    "ledger: pré-checagem com ok=false (fora da exceção) -> ABORTA sem gravar (o INSERT nunca é chamado)",
+    async () => {
+      const linhaFalha = {
+        migration: "20261172000000",
+        funcao: "x",
+        esperado: 1,
+        achado: 0,
+        ok: false,
+      };
+      const { chamadas, resultado } = await comFetchStubado(
+        [{ ok: true, corpo: JSON.stringify([linhaFalha]) }],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                LEDGER: "72-74",
+              },
+              () => comSaidaCapturada(() => main()),
+            ),
+          ),
+      );
+      assertEquals(resultado.valor?.retornou, false);
+      assertEquals(resultado.valor?.codigoSaida, 1);
+      // Só a PRIMEIRA consulta da pré-checagem (2a) rodou — nem a segunda
+      // (2b), nem o INSERT.
+      assertEquals(chamadas.length, 1);
+      assertStringIncludes(chamadas[0].url, "/database/query/read-only");
+    },
+  );
+
+  await t.step(
+    "ledger: pré-checagem com 0 linhas -> ABORTA sem gravar",
+    async () => {
+      const { chamadas, resultado } = await comFetchStubado(
+        [{ ok: true, corpo: "[]" }],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                LEDGER: "75-78",
+              },
+              () => comSaidaCapturada(() => main()),
+            ),
+          ),
+      );
+      assertEquals(resultado.valor?.retornou, false);
+      assertEquals(resultado.valor?.codigoSaida, 1);
+      assertEquals(chamadas.length, 1);
+    },
+  );
+
   await t.step("LEDGER fora de 72-74/75-78 é recusado", async () => {
-    const { valor } = await comConsoleCapturado(() =>
-      comEnv(
-        {
-          SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
-          PROJETO_REF: "cafkrminfnokvgjqtkle",
-          LEDGER: "99-99",
-        },
-        () => comSaidaCapturada(() => main()),
+    const { chamadas, resultado } = await comFetchStubado([], () =>
+      comConsoleCapturado(() =>
+        comEnv(
+          {
+            SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+            PROJETO: "loja",
+            LEDGER: "99-99",
+          },
+          () => comSaidaCapturada(() => main()),
+        ),
       ),
     );
-    assertEquals(valor?.retornou, false);
-    assertEquals(valor?.codigoSaida, 1);
+    assertEquals(resultado.valor?.retornou, false);
+    assertEquals(resultado.valor?.codigoSaida, 1);
+    assertEquals(chamadas.length, 0);
   });
 
   await t.step("CONSULTA desconhecida é recusada", async () => {
-    const { valor } = await comConsoleCapturado(() =>
-      comEnv(
-        {
-          SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
-          PROJETO_REF: "cafkrminfnokvgjqtkle",
-          CONSULTA: "naoexiste",
-        },
-        () => comSaidaCapturada(() => main()),
+    const { chamadas, resultado } = await comFetchStubado([], () =>
+      comConsoleCapturado(() =>
+        comEnv(
+          {
+            SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+            PROJETO: "loja",
+            CONSULTA: "naoexiste",
+          },
+          () => comSaidaCapturada(() => main()),
+        ),
       ),
     );
-    assertEquals(valor?.retornou, false);
-    assertEquals(valor?.codigoSaida, 1);
+    assertEquals(resultado.valor?.retornou, false);
+    assertEquals(resultado.valor?.codigoSaida, 1);
+    assertEquals(chamadas.length, 0);
   });
 
   await t.step("sem SUPABASE_ACCESS_TOKEN é recusado", async () => {
-    const { valor } = await comConsoleCapturado(() =>
-      comEnv({ CONSULTA: "0a-antes-base-e-nada-aplicado" }, () =>
-        comSaidaCapturada(() => main()),
+    const { resultado } = await comFetchStubado([], () =>
+      comConsoleCapturado(() =>
+        comEnv(
+          { PROJETO: "loja", CONSULTA: "0a-antes-base-e-nada-aplicado" },
+          () => comSaidaCapturada(() => main()),
+        ),
       ),
     );
-    assertEquals(valor?.retornou, false);
-    assertEquals(valor?.codigoSaida, 1);
+    assertEquals(resultado.valor?.retornou, false);
+    assertEquals(resultado.valor?.codigoSaida, 1);
+  });
+
+  await t.step("PROJETO ausente usa loja por padrão", async () => {
+    const { chamadas } = await comFetchStubado(
+      [{ ok: true, corpo: JSON.stringify([{ x: 1 }]) }],
+      () =>
+        comConsoleCapturado(() =>
+          comEnv(
+            {
+              SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+              CONSULTA: "0a-antes-base-e-nada-aplicado",
+            },
+            () => main(),
+          ),
+        ),
+    );
+    assertStringIncludes(chamadas[0].url, `/v1/projects/${REF_LOJA}/`);
   });
 
   await t.step(
     "backups: GET, e imprime só hora/status/PITR/total",
     async () => {
-      const chamadas: Array<{ url: string; opts: RequestInit }> = [];
-      const fetchOriginal = globalThis.fetch;
-      // @ts-ignore -- stub
-      globalThis.fetch = async (url: string, opts: RequestInit) => {
-        chamadas.push({ url, opts });
-        return {
-          ok: true,
-          status: 200,
-          text: async () =>
-            JSON.stringify({
+      const { chamadas, resultado } = await comFetchStubado(
+        [
+          {
+            ok: true,
+            corpo: JSON.stringify({
               pitr_enabled: false,
               backups: [
                 { status: "COMPLETED", inserted_at: "2026-09-25T03:00:00Z" },
               ],
             }),
-        };
-      };
-      try {
-        const { saida } = await comConsoleCapturado(() =>
+          },
+        ],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                CONSULTA: "backups",
+              },
+              () => main(),
+            ),
+          ),
+      );
+      const { saida } = resultado;
+      assertEquals(chamadas.length, 1);
+      assertStringIncludes(
+        chamadas[0].url,
+        `/v1/projects/${REF_LOJA}/database/backups`,
+      );
+      assertEquals(chamadas[0].opts?.method ?? "GET", "GET");
+      assertStringIncludes(saida, "2026-09-25T03:00:00Z");
+      assertStringIncludes(saida, "COMPLETED");
+      assert(!saida.includes(TOKEN_FALSO), "o token vazou na saída de backups");
+    },
+  );
+
+  await t.step("backups: sandbox resolve para o ref certo", async () => {
+    const { chamadas } = await comFetchStubado(
+      [
+        {
+          ok: true,
+          corpo: JSON.stringify({ pitr_enabled: false, backups: [] }),
+        },
+      ],
+      () =>
+        comConsoleCapturado(() =>
           comEnv(
             {
               SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
-              PROJETO_REF: "cafkrminfnokvgjqtkle",
+              PROJETO: "sandbox",
               CONSULTA: "backups",
             },
             () => main(),
           ),
-        );
-        assertEquals(chamadas.length, 1);
-        assertStringIncludes(
-          chamadas[0].url,
-          "/v1/projects/cafkrminfnokvgjqtkle/database/backups",
-        );
-        assertEquals(chamadas[0].opts?.method ?? "GET", "GET");
-        assertStringIncludes(saida, "2026-09-25T03:00:00Z");
-        assertStringIncludes(saida, "COMPLETED");
-        assert(
-          !saida.includes(TOKEN_FALSO),
-          "o token vazou na saída de backups",
-        );
-      } finally {
-        globalThis.fetch = fetchOriginal;
-      }
-    },
-  );
+        ),
+    );
+    assertStringIncludes(chamadas[0].url, `/v1/projects/${REF_SANDBOX}/`);
+  });
 });

@@ -19,15 +19,24 @@ on:
         description: "Arquivos em supabase/migrations/ (vírgula, na ordem; vazio = só fingerprint)"
         required: false
         default: ""
-      projeto_ref:
-        description: "Ref do projeto Supabase (default: o projeto da loja)"
+      projeto:
+        description: "Projeto de destino: loja ou sandbox (nunca um ref de texto livre — achado da revisão de risco do conferir-banco-da-loja, rodada 2)"
         required: false
-        default: "cafkrminfnokvgjqtkle"
+        type: choice
+        default: loja
+        options:
+          - loja
+          - sandbox
 
 jobs:
   aplicar:
     name: Aplicar migrations
     runs-on: ubuntu-latest
+    # Mesmo grupo de conferir-banco-da-loja.yml (job `ledger`): nunca aplicar
+    # migration enquanto o ledger está sendo gravado, nem o contrário.
+    concurrency:
+      group: banco-da-loja
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
 
@@ -42,11 +51,26 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           MIGRACOES: ${{ inputs.migracoes }}
-          PROJETO_REF: ${{ inputs.projeto_ref }}
+          PROJETO: ${{ inputs.projeto }}
         run: |
           node -e "
             const fs = require('node:fs');
-            const ref = process.env.PROJETO_REF;
+            // RESOLVE_REF_INICIO — projeto virou choice loja/sandbox (nunca
+            // mais texto livre no path da URL): achado da revisão de risco
+            // do conferir-banco-da-loja, rodada 2 — 'projeto_ref' cru
+            // habilitava '<ref>/restart#' (POST para outro endpoint) e
+            // 'x/../outroref.../database/query#' (a query indo para OUTRO
+            // projeto), com um token válido para toda a conta.
+            const REFS = { loja: 'cafkrminfnokvgjqtkle', sandbox: 'lofznuxcvezrhxsgjqyg' };
+            const projeto = process.env.PROJETO;
+            if (!Object.hasOwn(REFS, projeto)) {
+              console.error('RECUSADO (projeto desconhecido): ' + projeto); process.exit(1);
+            }
+            const ref = REFS[projeto];
+            if (!/^[a-z]{20}\$/.test(ref)) {
+              console.error('RECUSADO (ref inválido): ' + ref); process.exit(1);
+            }
+            // RESOLVE_REF_FIM
             const token = process.env.SUPABASE_ACCESS_TOKEN;
             if (!token) { console.error('SEM SUPABASE_ACCESS_TOKEN'); process.exit(1); }
 

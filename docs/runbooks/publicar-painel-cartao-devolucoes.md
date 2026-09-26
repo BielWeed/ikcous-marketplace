@@ -25,14 +25,25 @@ credencial nova. A lógica mora em
 | Input | O quê |
 | --- | --- |
 | `consulta` | o nome de um arquivo de [`scripts/publicacao/consultas/`](../../scripts/publicacao/consultas/) (sem `.sql`), ou `backups` |
-| `projeto_ref` | default: o projeto da loja |
+| `projeto` | `loja` (default) ou `sandbox` — **nunca um ref de texto livre** (ver nota de risco abaixo) |
 | `gravar_ledger` | `nao` (default), `72-74` ou `75-78` — grava o `INSERT` fixo daquela faixa |
 | `confirmar` | só o job do ledger olha isto; precisa ser exatamente `GRAVAR` |
 
-As consultas de conferência (`consulta`) são **só leitura por construção**: cada uma roda dentro
-de `BEGIN READ ONLY;`, sem `COMMIT`, além de pedir `read_only: true` no request da Management
-API. O job do ledger é o único que escreve, e só com `confirmar = GRAVAR` — sem isso, o job nem
-roda. Correspondência com os passos deste runbook:
+As consultas de conferência (`consulta`) vão para o endpoint dedicado da Management API
+`POST /database/query/read-only`, que roda como `supabase_read_only_user` — um papel do BANCO sem
+grant de escrita, não uma promessa da aplicação. O job do ledger é o único que escreve (o
+`INSERT` fixo da faixa), e só depois de **pré-conferir o schema daquela faixa** pelo mesmo caminho
+só-leitura (2a+2b para 72-74; 1a+1b para 75-78) — se vier alguma linha `ok = false` (fora a linha
+"loja existente com as 3 formas ligadas", que é dado ao vivo), o job aborta sem gravar nada. Além
+disso, `confirmar` precisa ser exatamente `GRAVAR`, senão o job nem roda.
+
+**Nota de risco (26/09/2026, revisão "passa com ressalva"):** a primeira versão deste workflow
+aceitava um `projeto_ref` de texto livre, que ia direto para o path da URL com um token válido
+para todos os projetos da conta — provado que isso permitia mandar a requisição para outro
+endpoint (`.../restart`) ou para OUTRO projeto. Por isso `projeto` agora é uma lista fechada
+(`loja`/`sandbox`), resolvida para o ref dentro do script.
+
+Correspondência com os passos deste runbook:
 
 - **§0** — `consulta = 0a-antes-base-e-nada-aplicado` (a consulta de "base_74/t75.../f78") e
   `consulta = 0b-conferir-corpos-vivos` (os 5 corpos vivos das funções que 75/76 redefinem).

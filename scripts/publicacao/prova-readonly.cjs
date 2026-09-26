@@ -19,6 +19,18 @@
  *   (d) o mesmo vale para um INSERT numa tabela que já existe: falha, e a
  *       tabela continua vazia.
  *
+ * E O QUE ISTO NÃO PROVA — limite medido na rodada 2 da revisão de risco:
+ *   (e) `BEGIN READ ONLY;\nSELECT 1; COMMIT; INSERT ...;` GRAVA. O COMMIT
+ *       fecha a transação read-only, e o INSERT seguinte roda numa
+ *       transação NOVA, implícita, read-write por padrão. O guard sozinho
+ *       não é hermético contra um corpo que embute controle de transação —
+ *       é exatamente por isso que `scripts/publicacao/conferir-banco.cjs`
+ *       não usa mais este guard como barreira principal: a barreira real é
+ *       o papel `supabase_read_only_user` do endpoint dedicado
+ *       `POST /database/query/read-only`, que não tem grant de escrita
+ *       para desfazer com COMMIT nenhum. Este caso (e) é IMPRESSO como
+ *       limite conhecido, não tratado como falha do script de prova.
+ *
  * Também mede um detalhe do `pg` que motiva o design de
  * `conferir-banco.cjs`: `client.query()` com um texto de MAIS DE UM
  * statement devolve um ARRAY de `Result` (um por statement) — só o ÚLTIMO
@@ -156,11 +168,47 @@ async function main() {
     }
   }
 
+  // (e) LIMITE CONHECIDO (rodada 2): um corpo que embute COMMIT desfaz o
+  // guard para o statement seguinte. Isto é ESPERADO — não conta como falha
+  // do guard nos casos (a)-(d), que são o que ele promete (barrar escrita
+  // ISOLADA depois de BEGIN READ ONLY). É por isso que o caminho quente do
+  // script usa o papel `supabase_read_only_user`, não este guard.
+  {
+    const client = new Client(CONEXAO);
+    await client.connect();
+    await client.query("CREATE TABLE IF NOT EXISTS alvo_commit (id int)");
+    try {
+      const r = await client.query(
+        "BEGIN READ ONLY;\nSELECT 1; COMMIT; INSERT INTO alvo_commit (id) VALUES (1);",
+      );
+      const linhas = (
+        await client.query("SELECT count(*)::int AS n FROM alvo_commit;")
+      ).rows[0].n;
+      console.log(
+        `(e) LIMITE CONHECIDO: guard + COMMIT embutido -> ${Array.isArray(r) ? "executou" : "executou"}; linhas em alvo_commit: ${linhas} (esperado: 1, prova de que o guard SOZINHO não é hermético)`,
+      );
+      if (linhas !== 1) {
+        console.log(
+          "(e) AVISO: esperava que este caso adversarial GRAVASSE (para documentar o limite) e não gravou — revisite este comentário, o comportamento do Postgres pode ter mudado.",
+        );
+      }
+    } catch (e) {
+      console.log(
+        "(e) o Postgres local recusou o caso adversarial (não reproduziu o limite):",
+        e.message,
+      );
+    } finally {
+      await client.end();
+    }
+  }
+
   if (falhou) {
     console.error("\nPROVA FALHOU.");
     process.exit(1);
   }
-  console.log("\nPROVA COMPLETA: o guard read-only funciona por construção.");
+  console.log(
+    "\nPROVA COMPLETA: o guard barra escrita ISOLADA (a-d); (e) documenta por que ele não é a barreira principal do script.",
+  );
 }
 
 main().catch((e) => {

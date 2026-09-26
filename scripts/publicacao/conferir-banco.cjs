@@ -9,60 +9,98 @@
  * USO (variáveis de ambiente, o mesmo estilo de aplicar-migrations.yml):
  *   SUPABASE_ACCESS_TOKEN  o segredo do repositório (o mesmo que publica
  *                          as functions e aplica migrations).
- *   PROJETO_REF            ref do projeto (default: cafkrminfnokvgjqtkle).
+ *   PROJETO                "loja" (default) ou "sandbox" — NUNCA um ref cru.
+ *                          Resolvido para o ref de 20 letras por
+ *                          `resolverRef` (ver abaixo, achado da rodada 2).
  *   CONSULTA                nome (sem `.sql`) de um arquivo em
  *                          scripts/publicacao/consultas/, ou "backups".
- *   LEDGER                 "72-74" ou "75-78" — grava o ledger fixo daquela
- *                          faixa e confere 72-78 depois. Mutuamente
- *                          exclusivo com CONSULTA (o workflow só passa um).
+ *   LEDGER                 "72-74" ou "75-78" — pré-confere o schema, grava
+ *                          o ledger fixo daquela faixa e confere 72-78
+ *                          depois. Mutuamente exclusivo com CONSULTA (o
+ *                          workflow só passa um).
  *
  *   node scripts/publicacao/conferir-banco.cjs
  *
- * SOMENTE LEITURA, POR CONSTRUÇÃO — o que a Management API oferece e o que
- * este script usa:
+ * REVISÃO DE RISCO DA RODADA 2 (26/09/2026) — o que mudou e por quê:
  *
- * A Management API do Supabase documenta DUAS formas de restringir escrita
- * em `POST /v1/projects/{ref}/database/query`:
- *   1. um parâmetro opcional `read_only: boolean` no corpo do request
- *      (referência: supabase.com/docs/reference/api/v1-run-a-query);
- *   2. um endpoint dedicado, `POST /v1/projects/{ref}/database/query/read-only`,
- *      que roda como `supabase_read_only_user`, sem privilégio de escrita no
- *      papel do banco (referência:
- *      supabase.com/docs/reference/api/v1-read-only-query).
+ * 1. `projeto_ref` como TEXTO LIVRE ia direto para o path da URL, com um
+ *    token válido para TODOS os projetos da conta. Provado contra um stub:
+ *    "cafkrminfnokvgjqtkle/restart#" batia em POST /restart; e
+ *    "x/../outroprojeto.../database/query#" fazia o INSERT do ledger ir
+ *    para OUTRO projeto. Agora `PROJETO` só aceita "loja"/"sandbox"
+ *    (`resolverRef`, lookup fechado + `Object.hasOwn` + regex
+ *    `/^[a-z]{20}$/` antes de qualquer URL ser montada — o mesmo formato
+ *    que o `openapi.json` da Management API declara para `ref`).
  *
- * Este script manda `read_only: true` no request (usa a opção 1 documentada,
- * no MESMO endpoint que o `aplicar-migrations.yml` já usa, sem introduzir
- * host novo) E, além disso, todo statement de conferência entra dentro de
- * `BEGIN READ ONLY;` (SEM `COMMIT` — a transação nunca é fechada de propósito;
- * o request termina e a conexão da API descarta o que não foi comitado).
- * Este segundo mecanismo é o "por construção": ele foi PROVADO contra um
- * Postgres local (mesmo protocolo SIMPLES que a API usa — uma string com
- * vários statements, mandada de uma vez, sem `values`) que uma escrita
- * depois do guard FALHA na mesma requisição, nunca grava, mesmo sem
- * `ROLLBACK` explícito — script de prova em
- * `scripts/publicacao/prova-readonly.cjs` (rodado localmente, não faz parte
- * do CI: exige um Postgres à mão). O guard não depende de o `read_only`
- * documentado se comportar como esperado; ele é auditável e independente do
- * que a API faz por dentro.
+ * 2. O ledger não conferia o que prometia gravar: `needs: conferir` no
+ *    workflow só exigia que a consulta ESCOLHIDA não desse erro — o
+ *    default `consulta = backups` nem olha o schema. Agora
+ *    `conferirAntesDeGravar` roda as consultas de VERDADE da faixa (2a+2b
+ *    para 72-74; 1a+1b para 75-78) pelo caminho só-leitura ANTES do
+ *    INSERT, e aborta se vier 0 linha ou qualquer linha com `ok !== true`
+ *    (a linha "loja existente com as 3 formas ligadas", de 2b, é dado ao
+ *    vivo que muda legitimamente — ignorada). O `needs: conferir` saiu do
+ *    workflow: ele nunca provava nada sobre a faixa escolhida.
  *
- * Por isso cada arquivo de consulta tem de ser UM SELECT só: o corpo vira
- * `BEGIN READ ONLY;\n<select>`, dois statements por protocolo simples, e a
- * API só devolve o resultado do ÚLTIMO — o SELECT. Um segundo SELECT no
- * mesmo arquivo silenciosamente devolveria o resultado ERRADO (o penúltimo
- * de fato não aparece), então o script recusa (contarStatements) antes de
- * mandar qualquer coisa.
+ * 3. "Só-leitura por construção" não era bem verdade: `contarStatements`
+ *    divergia do lexer do Postgres em 4 casos adversariais (string E'' com
+ *    escape de barra, identificador com `$` colado, comentário `--`
+ *    terminado só por `\r`, tag de dollar-quote não-ASCII) — todos faziam
+ *    o contador ver 1 statement enquanto o Postgres via 4 (com um COMMIT e
+ *    um INSERT de verdade no meio). Os 4 casos foram corrigidos no lexer
+ *    (ele continua útil para pegar erro de autoria — ver abaixo), MAS a
+ *    barreira real agora é OUTRA: toda leitura vai para o endpoint
+ *    dedicado `POST /v1/projects/{ref}/database/query/read-only`, que roda
+ *    como `supabase_read_only_user` — um papel do BANCO sem grant de
+ *    escrita, não uma promessa da aplicação. Mesmo que um arquivo futuro
+ *    engane o contador, o papel não tem INSERT/UPDATE/DDL para conceder.
+ *    Por isso o guard `BEGIN READ ONLY` (ver `comGuardaSomenteLeitura`) NÃO
+ *    é mais usado nas chamadas de leitura: o endpoint é Beta e não
+ *    documenta se aceita múltiplos statements, e arriscar um comportamento
+ *    desconhecido não vale a pena quando o papel já é a barreira. Ele
+ *    continua exportado e testado (prova básica em
+ *    `scripts/publicacao/prova-readonly.cjs`: SELECT funciona,
+ *    CREATE/INSERT isolados são barrados), mas NÃO é uma barreira
+ *    hermética por si só — a suíte adversarial da rodada 2 mediu que
+ *    `BEGIN READ ONLY;\nSELECT 1; COMMIT; INSERT ...;` GRAVA (o COMMIT
+ *    fecha a transação read-only, e o INSERT seguinte roda numa nova
+ *    transação implícita, read-write por padrão). É exatamente esse buraco
+ *    — um COMMIT embutido no meio de um corpo que o contador leu errado
+ *    como 1 statement — que o papel `supabase_read_only_user` fecha de
+ *    verdade: falta de privilégio de escrita não se desfaz com COMMIT.
  *
- * O job do ledger é o único que ESCREVE: ele manda o INSERT fixo do arquivo
- * `ledger-<faixa>.sql` SEM o guard e SEM `read_only` (bullet 6 do design —
- * "WITHOUT the read-only guard"), e só depois disso roda uma conferência
- * comum (guardada) dos números de migration 72–78.
+
+ *    Texto corrigido (a versão anterior deste comentário errava nos dois
+ *    pontos): a Management API (postgres-meta) reduz um corpo com vários
+ *    statements ao resultado do ÚLTIMO NÃO-VAZIO, não ao último statement
+ *    por posição (`res.reverse().find(x => x.rows.length !== 0)` no
+ *    `db.ts` do postgres-meta) — irrelevante para este script, porque cada
+ *    chamada manda exatamente 1 statement, mas a alegação antiga era
+ *    imprecisa. E "só leitura" vem do PAPEL do banco (`supabase_read_only_user`
+ *    no endpoint dedicado), não de o parser deste arquivo estar certo.
+ *
+ * 4. O job do ledger e o `aplicar-migrations.yml` agora compartilham
+ *    `concurrency: group: banco-da-loja` — o ledger não roda enquanto uma
+ *    migration está sendo aplicada (e vice-versa).
+ *
+ * 5. `backups`: se `backups[]` vier vazio mas
+ *    `physical_backup_data.latest_physical_backup_date_unix` existir (PITR
+ *    ligado, sem backup discreto ainda listado), imprime essa data em vez
+ *    de "(nenhum)".
+ *
+ * Sobre o GitHub Environment sugerido pela revisão ("banco-da-loja" com
+ * revisor obrigatório): NÃO foi adicionado — ver a nota grande antes de
+ * `module.exports` no fim deste arquivo.
  */
 /* eslint-disable security/detect-object-injection --
- * As "chaves" indexadas neste arquivo nunca vêm de entrada externa: são
- * posições inteiras (`i`, `j`, `idx`) andando sobre uma string SQL local
- * (dividirEmStatements) ou nomes de coluna que a PRÓPRIA resposta da API
- * declarou em `columns` (extrairLinhas/formatarTabela) — nunca uma chave
- * escolhida por quem chama o script. */
+ * As "chaves" indexadas neste arquivo nunca vêm de entrada externa sem
+ * portão: são posições inteiras (`i`, `j`, `idx`) andando sobre uma string
+ * SQL local (dividirEmStatements), nomes de coluna que a PRÓPRIA resposta
+ * da API declarou (extrairLinhas/formatarTabela), ou `REFS_POR_PROJETO[projeto]`
+ * — que passa por `Object.hasOwn` ANTES do acesso (recusa `__proto__`,
+ * `constructor` etc.) e cujo resultado ainda é validado por regex antes de
+ * qualquer URL ser montada (resolverRef). Nunca uma chave escolhida por
+ * quem chama o script que chegue a um efeito observável sem checagem. */
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -80,6 +118,34 @@ const API_BASE =
   process.env.CONFERIR_BANCO_API_BASE || "https://api.supabase.com";
 const FAIXAS_DE_LEDGER = ["72-74", "75-78"];
 
+/** Os únicos dois projetos que este token alcança (mesmos refs de
+ * `publicar-functions.yml`). Nunca aceitar um terceiro valor aqui: é isso
+ * que fecha a injeção de `projeto_ref` da rodada 2 da revisão. */
+const REFS_POR_PROJETO = {
+  loja: "cafkrminfnokvgjqtkle",
+  sandbox: "lofznuxcvezrhxsgjqyg",
+};
+
+/**
+ * Resolve "loja"/"sandbox" para o ref de 20 letras minúsculas — nunca
+ * aceita texto livre. `Object.hasOwn` recusa `__proto__`/`constructor`/
+ * `toString` antes mesmo de indexar o objeto; a regex depois é defesa em
+ * profundidade (o formato que o próprio `openapi.json` da Management API
+ * declara para `ref`: minLength/maxLength 20, pattern `^[a-z]+$`) — mesmo
+ * que `REFS_POR_PROJETO` seja corrompido no futuro, nenhuma URL chega a
+ * ser montada com algo fora desse formato.
+ */
+function resolverRef(projeto) {
+  if (!Object.hasOwn(REFS_POR_PROJETO, projeto)) {
+    throw new Error(`projeto desconhecido: "${projeto}" (use loja ou sandbox)`);
+  }
+  const ref = REFS_POR_PROJETO[projeto];
+  if (!/^[a-z]{20}$/.test(ref)) {
+    throw new Error(`ref resolvido para "${projeto}" é inválido: "${ref}"`);
+  }
+  return ref;
+}
+
 /** Nomes (sem `.sql`) dos arquivos de consulta que aparecem no menu —
  * os do ledger não entram aqui, eles só são alcançáveis por `LEDGER`. */
 function listarConsultas(dir = CONSULTAS_DIR) {
@@ -93,31 +159,39 @@ function listarConsultas(dir = CONSULTAS_DIR) {
 
 /**
  * Divide um texto SQL nos seus statements de NÍVEL SUPERIOR — um `;` dentro
- * de comentário de linha (`--`), comentário de bloco (`/* *​/`, aninhável),
- * string simples (`'...'`, escapada por duplicação), identificador entre
- * aspas (`"..."`) ou string delimitada (`$tag$...$tag$`, como os
- * `$marcador$...$marcador$` de 1b/2a) NÃO fecha statement nenhum.
+ * de comentário de linha (`--`, terminado por `\n` OU `\r`), comentário de
+ * bloco (`/* *​/`, aninhável), string simples (`'...'`, escapada por
+ * duplicação, ou `E'...'`/`e'...'` com escape de barra), identificador
+ * entre aspas (`"..."`) ou string delimitada (`$tag$...$tag$`, tag Unicode
+ * — `$é$` é uma tag válida — e nunca disparada no MEIO de um identificador,
+ * como em `x$y$`) NÃO fecha statement nenhum.
  *
- * É essa contagem que garante "cada arquivo de consulta é UM SELECT": a API
- * só devolve o resultado do ÚLTIMO statement (protocolo simples, provado em
- * scripts/publicacao/prova-readonly.cjs), então um segundo statement no
- * arquivo faria o script mandar duas coisas e devolver, calado, o resultado
- * errado.
+ * Esta contagem NÃO é mais a barreira de "só leitura" (ver o cabeçalho do
+ * arquivo — isso é o papel `supabase_read_only_user` do endpoint
+ * dedicado). Ela continua útil como checagem de autoria: um arquivo de
+ * consulta com mais de 1 statement por engano é recusado antes de
+ * qualquer chamada de rede.
  */
 function dividirEmStatements(sql) {
   const statements = [];
   let atual = "";
   let i = 0;
   const n = sql.length;
+  // Caractere que, colado ANTES de um `$`, faz parte do MESMO identificador
+  // — nesse caso o `$` não pode abrir dollar-quote (é o caso `x$y$`: um
+  // identificador comum com `$` no meio, não uma string delimitada).
+  const CONTINUA_IDENTIFICADOR = /[\p{L}\p{N}_$]/u;
   while (i < n) {
     const c = sql[i];
 
     if (c === "-" && sql[i + 1] === "-") {
-      const fimDaLinha = sql.indexOf("\n", i);
-      const trecho =
-        fimDaLinha === -1 ? sql.slice(i) : sql.slice(i, fimDaLinha + 1);
-      atual += trecho;
-      i += trecho.length;
+      let fim = i + 2;
+      while (fim < n && sql[fim] !== "\n" && sql[fim] !== "\r") fim++;
+      // Consome até o fim da linha, incluindo UM terminador (\n ou \r) —
+      // Postgres aceita qualquer um dos dois como fim de comentário `--`.
+      const ateAqui = fim < n ? fim + 1 : fim;
+      atual += sql.slice(i, ateAqui);
+      i = ateAqui;
       continue;
     }
 
@@ -143,8 +217,20 @@ function dividirEmStatements(sql) {
     }
 
     if (c === "'") {
+      // `E'...'`/`e'...'`: dentro da string, `\<qualquer coisa>` é um
+      // escape (consome os DOIS caracteres) — sem isto, `E'\''` (uma
+      // string de um caractere, a áspa, escapada por barra) engana o
+      // lexer, que via a áspa escapada como o ÚLTIMO caractere de uma
+      // string e a áspa seguinte (a de fechamento de verdade) como o
+      // INÍCIO de um par `''` — string nunca fechava e engolia o resto do
+      // arquivo, inclusive um `COMMIT; INSERT` de verdade.
+      const ehEString = i > 0 && (sql[i - 1] === "E" || sql[i - 1] === "e");
       let j = i + 1;
       while (j < n) {
+        if (ehEString && sql[j] === "\\") {
+          j += 2;
+          continue;
+        }
         if (sql[j] === "'" && sql[j + 1] === "'") {
           j += 2;
           continue;
@@ -179,15 +265,25 @@ function dividirEmStatements(sql) {
     }
 
     if (c === "$") {
-      // eslint-disable-next-line security/detect-unsafe-regex -- grupo com um quantificador só, sem aninhamento; entrada é um .sql local desta pasta, nunca rede.
-      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i));
-      if (m) {
-        const delimitador = m[0];
-        const fim = sql.indexOf(delimitador, i + delimitador.length);
-        const j = fim === -1 ? n : fim + delimitador.length;
-        atual += sql.slice(i, j);
-        i = j;
-        continue;
+      // Um `$` colado depois de letra/dígito/`_`/`$` é parte do MESMO
+      // identificador (Postgres aceita `$` em identificador comum, só não
+      // como primeiro caractere) — `x$y$` é UM identificador, não uma
+      // string delimitada. Sem esta guarda, o `$y$` no meio era lido como
+      // abertura de dollar-quote, o fechamento nunca era achado, e a
+      // "string" engolia o resto do arquivo inteiro.
+      const anterior = i > 0 ? sql[i - 1] : "";
+      const dentroDeIdentificador = CONTINUA_IDENTIFICADOR.test(anterior);
+      if (!dentroDeIdentificador) {
+        // eslint-disable-next-line security/detect-unsafe-regex -- grupo com um quantificador só, sem aninhamento; entrada é um .sql local desta pasta, nunca rede.
+        const m = /^\$([\p{L}_][\p{L}\p{N}_]*)?\$/u.exec(sql.slice(i));
+        if (m) {
+          const delimitador = m[0];
+          const fim = sql.indexOf(delimitador, i + delimitador.length);
+          const j = fim === -1 ? n : fim + delimitador.length;
+          atual += sql.slice(i, j);
+          i = j;
+          continue;
+        }
       }
     }
 
@@ -208,7 +304,7 @@ function dividirEmStatements(sql) {
 /** Um statement "vazio" (só comentário/espaço) não conta. */
 function semComentarios(sql) {
   return sql
-    .replace(/--[^\n]*/g, "")
+    .replace(/--[^\n\r]*/g, "")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .trim();
 }
@@ -218,19 +314,32 @@ function contarStatements(sql) {
     .length;
 }
 
-/** O guard read-only: BEGIN READ ONLY na frente, sem COMMIT. Ver o
- * cabeçalho do arquivo para a prova e a justificativa. */
+/** O guard: `BEGIN READ ONLY;` na frente, sem COMMIT. Provado
+ * (scripts/publicacao/prova-readonly.cjs) contra os casos SIMPLES: SELECT
+ * funciona, um CREATE/INSERT isolado é barrado. NÃO é uma barreira
+ * hermética contra um corpo que embuta um COMMIT/ROLLBACK/END/`SET
+ * TRANSACTION READ WRITE` no meio (medido na rodada 2: nesse caso o
+ * guard é desfeito e a escrita seguinte roda de verdade) — por isso não é
+ * mais chamado pelo caminho quente deste script (ver o cabeçalho: o
+ * endpoint dedicado com `supabase_read_only_user` é a barreira real
+ * agora). Continua exportado e testado como o que ele É: uma trava de
+ * transação que ajuda contra escrita acidental simples, não contra SQL
+ * adversarial. */
 function comGuardaSomenteLeitura(selectUnico) {
   return `BEGIN READ ONLY;\n${selectUnico}`;
 }
 
 /**
- * A API devolve, hoje, o array de linhas (objetos) do ÚLTIMO statement. Mas
- * a documentação já mudou de formato antes (um resultado `{columns, rows}`
- * POR statement) — então, se um dia a resposta vier nesse formato, este
- * parser pega o ÚLTIMO elemento (que é sempre o nosso SELECT, guard +
- * consulta = 2 statements) e monta os objetos a partir de columns/rows, em
- * vez de quebrar calado.
+ * A Management API (postgres-meta) devolve sempre um array achatado de
+ * linhas (`data || []`, onde `data` já é o `.rows` do resultado reduzido
+ * no servidor — `res.reverse().find(x => x.rows.length !== 0)`: o ÚLTIMO
+ * resultado NÃO-VAZIO entre os statements do corpo, nunca simplesmente "o
+ * último statement por posição"). Como este script manda sempre exatamente
+ * 1 statement (para o endpoint de leitura E para o de escrita), essa
+ * nuance não tem efeito prático aqui — mas o formato "um resultado
+ * `{columns, rows}` por statement" que uma versão antiga deste comentário
+ * alegava nunca foi observado contra o servidor real. Mantido como
+ * fallback defensivo (não around dano), documentado corretamente agora.
  */
 function extrairLinhas(corpoTexto) {
   let parsed;
@@ -281,17 +390,38 @@ function formatarTabela(linhas) {
   ].join("\n");
 }
 
-/** Só o que o design pede — hora do último backup, status, PITR e total.
- * Nada que pareça segredo. */
+/** Só o que o design pede — hora do último backup (ou, na falta de um
+ * backup discreto, a data mais recente de PITR físico), status, PITR e
+ * total. Nada que pareça segredo. */
 function resumoDeBackups(json) {
   const backups = Array.isArray(json.backups) ? [...json.backups] : [];
   backups.sort((a, b) => new Date(b.inserted_at) - new Date(a.inserted_at));
   const ultimo = backups[0];
+  if (ultimo) {
+    return {
+      ultimoEm: ultimo.inserted_at,
+      fonte: "backup",
+      status: ultimo.status,
+      pitrHabilitado: Boolean(json.pitr_enabled),
+      total: backups.length,
+    };
+  }
+  const pitrUnix = json.physical_backup_data?.latest_physical_backup_date_unix;
+  if (typeof pitrUnix === "number") {
+    return {
+      ultimoEm: new Date(pitrUnix * 1000).toISOString(),
+      fonte: "pitr",
+      status: null,
+      pitrHabilitado: Boolean(json.pitr_enabled),
+      total: 0,
+    };
+  }
   return {
-    ultimoEm: ultimo ? ultimo.inserted_at : null,
-    status: ultimo ? ultimo.status : null,
+    ultimoEm: null,
+    fonte: "nenhum",
+    status: null,
     pitrHabilitado: Boolean(json.pitr_enabled),
-    total: backups.length,
+    total: 0,
   };
 }
 
@@ -302,31 +432,58 @@ function escreverResumo(markdown) {
   if (destino) fs.appendFileSync(destino, `${markdown}\n`);
 }
 
-/**
- * Chama `POST /v1/projects/{ref}/database/query`. Falha (lança) em HTTP
- * ≠ 2xx ou erro no corpo — mesmo critério de `aplicar-migrations.yml`.
- * Nunca loga o token: ele só entra no header Authorization.
- */
-async function chamarQuery({ ref, token, query, somenteLeitura }) {
-  const corpoRequest = somenteLeitura ? { query, read_only: true } : { query };
-  const r = await fetch(`${API_BASE}/v1/projects/${ref}/database/query`, {
+/** POST genérico para a Management API. Falha (lança) em HTTP ≠ 2xx ou
+ * erro no corpo — mesmo critério de `aplicar-migrations.yml`. Nunca loga
+ * o token: ele só entra no header Authorization. */
+async function chamarManagementApi(caminho, { token, corpo }) {
+  const r = await fetch(`${API_BASE}${caminho}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(corpoRequest),
+    body: JSON.stringify(corpo),
   });
-  const corpo = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status}: ${corpo.slice(0, 500)}`);
-  if (corpo.includes('"error"') || corpo.includes('"message":"')) {
-    throw new Error(corpo.slice(0, 500));
+  const texto = await r.text();
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${texto.slice(0, 500)}`);
+  if (texto.includes('"error"') || texto.includes('"message":"')) {
+    throw new Error(texto.slice(0, 500));
   }
-  return corpo;
+  return texto;
 }
 
-/** `GET /v1/projects/{ref}/database/backups` — referência:
- * supabase.com/docs/reference/api/v1-list-all-backups. */
+/**
+ * `POST /v1/projects/{ref}/database/query/read-only` — roda como
+ * `supabase_read_only_user` (referência: openapi.json, operationId
+ * `v1-read-only-query`, "[Beta] Run a sql query as supabase_read_only_user",
+ * `x-fga-permissions: [["database_read"]]`). O corpo do endpoint dedicado é
+ * só `{ query }` (schema `V1ReadOnlyQueryBody`: `query` + `parameters`
+ * opcional — SEM `read_only`, que é exclusivo do endpoint de escrita).
+ * Manda a consulta CRUA (sem `BEGIN READ ONLY`): o endpoint é Beta e não
+ * documenta se aceita mais de um statement por corpo, e o papel do banco
+ * já é a barreira — não vale arriscar um comportamento desconhecido.
+ */
+async function chamarLeitura({ ref, token, query }) {
+  return chamarManagementApi(`/v1/projects/${ref}/database/query/read-only`, {
+    token,
+    corpo: { query },
+  });
+}
+
+/** `POST /v1/projects/{ref}/database/query` — o ÚNICO caminho de escrita
+ * deste script (o INSERT fixo do ledger, dentro de `rodarLedger`). Sem
+ * guard, sem `read_only`. */
+async function chamarEscrita({ ref, token, query }) {
+  return chamarManagementApi(`/v1/projects/${ref}/database/query`, {
+    token,
+    corpo: { query },
+  });
+}
+
+/** `GET /v1/projects/{ref}/database/backups` — referência: openapi.json,
+ * operationId `v1-list-all-backups` (schema `V1BackupsResponse_Output`:
+ * `region`, `walg_enabled`, `pitr_enabled`, `backups[]`,
+ * `physical_backup_data`). */
 async function buscarBackups({ ref, token }) {
   const r = await fetch(`${API_BASE}/v1/projects/${ref}/database/backups`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -349,11 +506,10 @@ async function rodarConsulta({ ref, token, consulta }) {
   const total = contarStatements(selectUnico);
   if (total !== 1) {
     throw new Error(
-      `${consulta}.sql tem ${total} statements — a API só devolve o resultado do ÚLTIMO; precisa ser exatamente 1 SELECT`,
+      `${consulta}.sql tem ${total} statements — precisa ser exatamente 1 SELECT`,
     );
   }
-  const query = comGuardaSomenteLeitura(selectUnico);
-  const corpo = await chamarQuery({ ref, token, query, somenteLeitura: true });
+  const corpo = await chamarLeitura({ ref, token, query: selectUnico });
   const linhas = extrairLinhas(corpo);
   const tabela = formatarTabela(linhas);
   escreverResumo(
@@ -364,13 +520,61 @@ async function rodarConsulta({ ref, token, consulta }) {
 async function rodarBackups({ ref, token }) {
   const json = await buscarBackups({ ref, token });
   const resumo = resumoDeBackups(json);
+  const linhaUltimo =
+    resumo.fonte === "pitr"
+      ? `Último ponto de restauração (PITR, sem backup discreto ainda listado): ${resumo.ultimoEm}`
+      : `Último backup: ${resumo.ultimoEm ?? "(nenhum)"}`;
   const texto = [
-    `Último backup: ${resumo.ultimoEm ?? "(nenhum)"}`,
+    linhaUltimo,
     `Status: ${resumo.status ?? "(nenhum)"}`,
     `PITR: ${resumo.pitrHabilitado ? "ligado" : "desligado"}`,
     `Total de backups: ${resumo.total}`,
   ].join("\n");
   escreverResumo(`## Backups — projeto \`${ref}\`\n\n\`\`\`\n${texto}\n\`\`\``);
+}
+
+/** As consultas que REALMENTE conferem o schema de cada faixa do ledger —
+ * fixas, não o que o coordenador escolheu em `consulta` (achado da rodada
+ * 2: `needs: conferir` só provava que ALGUMA consulta rodou sem erro, e o
+ * default `backups` nem olha o schema). */
+const CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER = {
+  "72-74": ["2a-marcadores-72-74", "2b-objetos-72-74"],
+  "75-78": ["1a-conferir-o-que-nasceu", "1b-conferir-marcadores"],
+};
+
+/** "loja existente com as 3 formas ligadas" (2b) é dado AO VIVO da loja —
+ * muda legitimamente conforme o admin liga/desliga forma de pagamento — e
+ * não uma checagem estrutural. Ignorada na pré-checagem do ledger. */
+const IGNORAR_NA_PRE_CHECAGEM_DO_LEDGER = new Set([
+  "loja existente com as 3 formas ligadas",
+]);
+
+/** Roda as consultas fixas da faixa pelo caminho só-leitura e aborta
+ * (lança) se vier 0 linha ou qualquer linha com `ok !== true` (fora as
+ * ignoradas). Chamado ANTES do INSERT em `rodarLedger`. */
+async function conferirAntesDeGravar({ ref, token, faixa }) {
+  const consultasObrigatorias = CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER[faixa];
+  for (const nomeConsulta of consultasObrigatorias) {
+    const arquivo = path.join(CONSULTAS_DIR, `${nomeConsulta}.sql`);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- `nomeConsulta` vem só de CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER, uma lista fixa deste arquivo.
+    const selectUnico = fs.readFileSync(arquivo, "utf8");
+    const corpo = await chamarLeitura({ ref, token, query: selectUnico });
+    const linhas = extrairLinhas(corpo);
+    if (linhas.length === 0) {
+      throw new Error(
+        `pré-checagem do ledger ${faixa} falhou: ${nomeConsulta} devolveu 0 linhas`,
+      );
+    }
+    for (const linha of linhas) {
+      const rotulo = linha.item ?? linha.checagem ?? JSON.stringify(linha);
+      if (IGNORAR_NA_PRE_CHECAGEM_DO_LEDGER.has(rotulo)) continue;
+      if (linha.ok !== true) {
+        throw new Error(
+          `pré-checagem do ledger ${faixa} falhou: ${nomeConsulta} tem "${rotulo}" com ok=${linha.ok}`,
+        );
+      }
+    }
+  }
 }
 
 async function rodarLedger({ ref, token, faixa }) {
@@ -379,8 +583,13 @@ async function rodarLedger({ ref, token, faixa }) {
       `LEDGER inválido: "${faixa}" (esperava uma de: ${FAIXAS_DE_LEDGER.join(", ")})`,
     );
   }
+
+  console.log(`=== PRÉ-CHECAGEM antes de gravar o ledger ${faixa} ===`);
+  await conferirAntesDeGravar({ ref, token, faixa });
+  console.log("Pré-checagem OK: todas as linhas relevantes vieram ok=true.");
+
   const arquivo = path.join(CONSULTAS_DIR, `ledger-${faixa}.sql`);
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- `faixa` já foi conferida contra FAIXAS_DE_LEDGER (lista fixa) duas linhas acima.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- `faixa` já foi conferida contra FAIXAS_DE_LEDGER (lista fixa) acima.
   const insertUnico = fs.readFileSync(arquivo, "utf8");
   const total = contarStatements(insertUnico);
   if (total !== 1) {
@@ -388,23 +597,16 @@ async function rodarLedger({ ref, token, faixa }) {
       `ledger-${faixa}.sql tem ${total} statements — precisa ser exatamente 1 INSERT`,
     );
   }
-  console.log(`=== GRAVANDO ledger ${faixa} (SEM o guard read-only) ===`);
-  // A ÚNICA escrita deste script: sem BEGIN READ ONLY, sem read_only:true —
-  // exatamente o INSERT fixo do arquivo, idempotente por ON CONFLICT DO NOTHING.
-  await chamarQuery({ ref, token, query: insertUnico, somenteLeitura: false });
+  console.log(`=== GRAVANDO ledger ${faixa} (endpoint de escrita) ===`);
+  // A ÚNICA escrita deste script: o INSERT fixo do arquivo, idempotente
+  // por ON CONFLICT DO NOTHING.
+  await chamarEscrita({ ref, token, query: insertUnico });
   console.log(
     `Ledger ${faixa} gravado (ou já estava — ON CONFLICT DO NOTHING).`,
   );
 
-  const verificacao = comGuardaSomenteLeitura(
-    `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20261172000000' AND '20261178999999' ORDER BY version;`,
-  );
-  const corpo = await chamarQuery({
-    ref,
-    token,
-    query: verificacao,
-    somenteLeitura: true,
-  });
+  const verificacao = `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20261172000000' AND '20261178999999' ORDER BY version;`;
+  const corpo = await chamarLeitura({ ref, token, query: verificacao });
   const linhas = extrairLinhas(corpo);
   const tabela = formatarTabela(linhas);
   escreverResumo(
@@ -419,7 +621,16 @@ async function main() {
     process.exit(1);
     return;
   }
-  const ref = process.env.PROJETO_REF || "cafkrminfnokvgjqtkle";
+
+  let ref;
+  try {
+    ref = resolverRef(process.env.PROJETO || "loja");
+  } catch (erro) {
+    console.error("FALHOU:", erro.message);
+    process.exit(1);
+    return;
+  }
+
   const faixaDeLedger = process.env.LEDGER;
   const consulta = process.env.CONSULTA;
 
@@ -446,10 +657,31 @@ if (require.main === module) {
   main();
 }
 
+// Sobre o GitHub Environment "banco-da-loja" com revisor obrigatório
+// (sugestão da revisão da rodada 2): NÃO foi adicionado. Motivo medido, não
+// preferência: quando um workflow referencia um `environment:` que ainda
+// não existe no repositório, o GitHub Actions CRIA um automaticamente, SEM
+// nenhuma regra de proteção, e o job SEGUE RODANDO na hora — não falha
+// fechado. (Vários relatos de bypass exatamente por isso: nome digitado
+// errado ou ambiente nunca criado vira "sem revisor nenhum", em silêncio,
+// e quem olha o YAML acha que há uma trava.) Colocar `environment:
+// banco-da-loja` aqui SEM o dono já ter criado o ambiente manualmente em
+// Settings → Environments (com ele mesmo como revisor obrigatório) daria
+// uma falsa sensação de trava: o primeiro `GRAVAR` rodaria direto, sem
+// aprovação nenhuma, e o YAML pareceria dizer o contrário. Preferi não
+// escrever uma proteção que só funciona depois de um passo manual que este
+// PR não força — a pré-checagem de schema (`conferirAntesDeGravar`) é a
+// trava que já vale a partir deste commit, sem pré-requisito. Se o dono
+// quiser o Environment depois de criar/configurar em Settings →
+// Environments, é um `environment: banco-da-loja` de uma linha no job
+// `ledger`.
+
 // Exportado para tests/ci_conferir_banco_test.ts. O guarda acima existe pelo
 // mesmo motivo do scripts/db-apply.cjs: sem ele, importar o módulo chamaria
 // a Management API de verdade.
 module.exports = {
+  REFS_POR_PROJETO,
+  resolverRef,
   listarConsultas,
   dividirEmStatements,
   contarStatements,
@@ -457,8 +689,11 @@ module.exports = {
   extrairLinhas,
   formatarTabela,
   resumoDeBackups,
-  chamarQuery,
+  chamarManagementApi,
+  chamarLeitura,
+  chamarEscrita,
   buscarBackups,
+  conferirAntesDeGravar,
   main,
   CONSULTAS_DIR,
 };

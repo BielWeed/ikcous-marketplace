@@ -11,20 +11,32 @@
 # SÓ LEITURA, POR CONSTRUÇÃO: a lógica mora em
 # scripts/publicacao/conferir-banco.cjs (NÃO em `node -e "…"` — foi a crase
 # dentro de `node -e` que virou substituição de comando do bash em
-# aplicar-migrations.yml). Toda consulta de conferência entra num
-# `BEGIN READ ONLY;` sem COMMIT, além de pedir `read_only: true` no request —
-# os dois mecanismos documentados pela Management API (ver o cabeçalho do
-# script). O único job que ESCREVE é o `ledger`, e só quando `confirmar`
-# for exatamente `GRAVAR`.
+# aplicar-migrations.yml). Toda consulta de conferência vai para o endpoint
+# dedicado `POST /database/query/read-only`, que roda como
+# `supabase_read_only_user` — um papel do banco sem grant de escrita, a
+# barreira real (ver o cabeçalho do script para a revisão de risco da
+# rodada 2 e por que o guard `BEGIN READ ONLY` sozinho não bastava). O único
+# job que ESCREVE é o `ledger`, e só quando `confirmar` for exatamente
+# `GRAVAR` — e só depois de uma pré-checagem do schema da própria faixa.
+#
+# PROJETO: fechado em "loja"/"sandbox" (nunca um ref de texto livre — a
+# rodada 2 da revisão provou que `projeto_ref` cru habilitava
+# "<ref>/restart#" e "x/../outroref.../database/query#" com o mesmo token,
+# que vale para TODOS os projetos da conta). O ref de 20 letras é resolvido
+# DENTRO do script (`resolverRef`), nunca aqui.
 #
 # CREDENCIAL: o mesmo segredo `SUPABASE_ACCESS_TOKEN` que
 # aplicar-migrations.yml e publicar-functions.yml já usam. Nenhuma
 # credencial nova.
 #
+# CONCORRÊNCIA: o job `ledger` compartilha o grupo `banco-da-loja` com
+# `aplicar-migrations.yml` — o ledger não roda enquanto uma migration está
+# sendo aplicada, e vice-versa.
+#
 # USO: Actions → Run workflow →
 #   consulta      = um arquivo de scripts/publicacao/consultas/ (sem `.sql`),
 #                   ou "backups";
-#   projeto_ref   = default: o projeto da loja;
+#   projeto       = "loja" (default) ou "sandbox";
 #   gravar_ledger = "nao" (default), "72-74" ou "75-78";
 #   confirmar     = só o job do ledger olha isto — precisa ser exatamente
 #                   "GRAVAR" para gravar de verdade.
@@ -52,10 +64,14 @@ on:
           - 2b-objetos-72-74
           - 3a-cpf-no-endereco
           - backups
-      projeto_ref:
-        description: "Ref do projeto Supabase (default: o projeto da loja)"
+      projeto:
+        description: "Projeto de destino: loja ou sandbox (nunca texto livre — achado da rodada 2)"
         required: false
-        default: "cafkrminfnokvgjqtkle"
+        type: choice
+        default: loja
+        options:
+          - loja
+          - sandbox
       gravar_ledger:
         description: "Gravar o ledger de qual faixa? (nao = só conferir, sem gravar)"
         required: false
@@ -96,16 +112,20 @@ jobs:
       - name: Roda a consulta (só leitura)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          PROJETO_REF: ${{ inputs.projeto_ref }}
+          PROJETO: ${{ inputs.projeto }}
           CONSULTA: ${{ inputs.consulta }}
         run: node scripts/publicacao/conferir-banco.cjs
 
   ledger:
     name: Gravar ledger ${{ inputs.gravar_ledger }}
-    needs: conferir
     if: inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Mesmo grupo de aplicar-migrations.yml: nunca gravar o ledger enquanto
+    # uma migration está sendo aplicada (nem o contrário).
+    concurrency:
+      group: banco-da-loja
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
 
@@ -113,9 +133,9 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Grava o ledger fixo da faixa e confere 72-78 (só leitura)
+      - name: Pré-confere o schema da faixa, grava o ledger e confere 72-78 (leitura)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          PROJETO_REF: ${{ inputs.projeto_ref }}
+          PROJETO: ${{ inputs.projeto }}
           LEDGER: ${{ inputs.gravar_ledger }}
         run: node scripts/publicacao/conferir-banco.cjs
