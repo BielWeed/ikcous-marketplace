@@ -34,8 +34,11 @@
    carregar. Nada em `src/` usa `SharedArrayBuffer`/`crossOriginIsolated`, e remover por
    rota não funcionava (SPA: o cabeçalho do primeiro documento carregado vale para a
    sessão inteira). COOP, CSP e os demais cabeçalhos de segurança continuam como estavam.
-   O atributo `credentialless` dos nossos próprios iframes (mapa, desafio 3DS) foi mantido
-   — é inofensivo sem o COEP do app, só muda o iframe para um contexto sem cookies.
+   O atributo `credentialless` dos nossos próprios iframes (mapas, desafio 3DS) foi mantido.
+   Nos mapas ele já rodava assim em produção. No desafio 3DS ele **não está provado**: no
+   Chromium 110+ o quadro nasce num pote de cookies vazio e todo popup aberto de dentro dele
+   sai como `noopener` (Safari e Firefox ignoram o atributo). Por isso o teste 3DS do runbook
+   §6 é feito no Chrome, de preferência Android.
 8. **Tela de sucesso do cartão** (herança #3): aprovado mostra "Pagamento aprovado —
    confirmando o pedido" e segue o mesmo caminho do PIX (tempo real + consulta).
 

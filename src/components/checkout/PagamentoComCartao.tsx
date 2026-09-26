@@ -683,13 +683,14 @@ export function PagamentoComCartao({
             Seu banco pediu uma confirmação de segurança. Siga as instruções
             abaixo para concluir o pagamento.
           </p>
-          {/* credentialless: mantido mesmo sem o COEP do app (removido do
-              vercel.json em 26/09/2026 — decisão do dono, travava o Card
-              Payment Brick). Sem o COEP do app não há mais risco de o quadro
-              ser barrado por causa dele; o atributo fica porque é inofensivo
-              aqui (o desafio do banco não depende de cookie nosso) e trocar
-              agora, sem provar o 3DS real, é risco que este ajuste não pediu
-              para correr. */}
+          {/* credentialless: mantido depois que o COEP saiu do app (26/09/2026,
+              decisão do dono — travava o Card Payment Brick), mas NÃO provado
+              contra o 3DS real. No Chromium 110+ o atributo abre o quadro num
+              pote de cookies vazio e efêmero e faz todo popup aberto de dentro
+              dele sair como noopener; Safari e Firefox o ignoram. Um ACS que
+              dependa de cookie de dispositivo ou de popup pode não concluir o
+              desafio no Chrome. Por isso o teste 3DS do runbook (§6) é no
+              Chrome, de preferência Android. */}
           <iframe
             title="Autenticação do seu banco"
             src={etapa.url}

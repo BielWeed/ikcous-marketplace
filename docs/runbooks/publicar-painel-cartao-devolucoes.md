@@ -419,6 +419,12 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   app. Parcelas: comece em 1x ou no teto que a loja decidir.
 
 **Testar, com o DevTools aberto na aba Console**
+- [ ] **O documento já é o do deploy sem COEP.** No Console, `crossOriginIsolated` tem de dar
+  `false`; na aba Network, a resposta do documento não pode trazer
+  `Cross-Origin-Embedder-Policy`. Se trouxer, o service worker serviu o HTML antigo do cache:
+  aceite a atualização do app ou faça um reload que ignora o cache (Shift+Reload no
+  navegador), confira de novo e só então siga. Sem isso, o Brick pode aparecer barrado por um
+  cabeçalho que já não está no ar.
 - [ ] **O Brick carrega**: com o formulário do cartão aberto, o Console **não pode** ter
   `ERR_BLOCKED_BY_RESPONSE` nem `Refused to frame` (CSP `frame-src`). Campos vazios ou
   cinzas = barrado. **Barrado: não ligue.** (O `COEP: credentialless` que travava o Brick
@@ -438,7 +444,8 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   4. O estoque **não** volta.
 - [ ] **Recusa → PIX na mesma reserva**: depois da recusa, "Pagar com PIX" gera o QR. A chave
   nova é `<pedido>:<n>`.
-- [ ] **3DS**:
+- [ ] **3DS**, feito no **Chrome** (de preferência Android), que é onde o atributo
+  `credentialless` do iframe do desafio age (ver a spec, decisão 7):
   1. Use o cenário de desafio da doc "Integrar 3DS" da Orders API (link na spec).
   2. O desafio abre no iframe. Isso depende do domínio da URL estar no `frame-src` e do
      `postMessage` de conclusão vir de origem do MP.
