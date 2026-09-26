@@ -6,10 +6,9 @@
  *
  * A linha única `config_pagamento_cartao` (id = 1, leitura pública) diz se a
  * loja aceita crédito, débito e em quantas parcelas no máximo. Nasce
- * DESLIGADA (crédito e débito `false`): o app envia `COEP: credentialless` e o
- * Card Payment Brick monta iframes do Mercado Pago que ainda não foram
- * provados sob esse cabeçalho — a lojista liga depois de pagar um pedido de
- * teste.
+ * DESLIGADA (crédito e débito `false`): o Card Payment Brick monta iframes do
+ * Mercado Pago que ainda não foram provados em produção — a lojista liga
+ * depois de pagar um pedido de teste.
  *
  * Tudo aqui FALHA FECHADO: erro de rede, linha ausente ou campo com tipo
  * estranho viram "cartão desligado". Cartão escondido por engano custa uma

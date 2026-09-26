@@ -683,10 +683,16 @@ export function PagamentoComCartao({
             Seu banco pediu uma confirmação de segurança. Siga as instruções
             abaixo para concluir o pagamento.
           </p>
-          {/* credentialless: o app envia COEP credentialless, e nada garante
-              que a página do desafio (Mercado Pago/banco) responda com
-              COEP/CORP — sem o atributo o quadro seria barrado (mesmo caso do
-              mapa da "Sobre a Loja"). NÃO provado contra o 3DS real. */}
+          {/* credentialless: mantido depois que o COEP saiu do app (26/09/2026,
+              decisão do dono — travava o Card Payment Brick), mas NÃO provado
+              contra o 3DS real. No Chromium 110+ o atributo abre o quadro num
+              pote de cookies vazio e efêmero e faz todo popup aberto de dentro
+              dele sair como noopener (fora do Chromium ele não vale). Um ACS
+              que dependa de cookie de dispositivo ou de popup pode não
+              concluir o desafio no Chrome. Por isso o teste 3DS do runbook
+              (§6) é no Chrome, de preferência Android. Fica porque o fluxo foi
+              escrito e testado com ele; se o 3DS do §6 falhar no Chrome, tire
+              este atributo antes de desistir do cartão. */}
           <iframe
             title="Autenticação do seu banco"
             src={etapa.url}

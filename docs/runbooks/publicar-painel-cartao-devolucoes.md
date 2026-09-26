@@ -421,12 +421,17 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   app. Parcelas: comece em 1x ou no teto que a loja decidir.
 
 **Testar, com o DevTools aberto na aba Console**
-- [ ] **COEP**: o app envia `Cross-Origin-Embedder-Policy: credentialless` (`vercel.json`), e
-  o Brick cria iframes do Mercado Pago sem o atributo `credentialless`. Com o formulário do
-  cartão aberto, o Console **não pode** ter bloqueio de `Cross-Origin-Embedder-Policy`/
-  `ERR_BLOCKED_BY_RESPONSE`, nem `Refused to frame` (CSP `frame-src`). Campos vazios ou
-  cinzas = barrado. **Barrado: não ligue.** A decisão sobre o COEP sobe ao dono
-  ([spec do cartão](../superpowers/specs/2026-09-26-cartao-online-design.md), decisão 7).
+- [ ] **O documento já é o do deploy sem COEP.** No Console, `crossOriginIsolated` tem de dar
+  `false`; na aba Network, a resposta do documento não pode trazer
+  `Cross-Origin-Embedder-Policy`. Se trouxer, o service worker serviu o HTML antigo do cache:
+  aceite a atualização do app ou faça um reload que ignora o cache (Shift+Reload no
+  navegador), confira de novo e só então siga. Sem isso, o Brick pode aparecer barrado por um
+  cabeçalho que já não está no ar.
+- [ ] **O Brick carrega**: com o formulário do cartão aberto, o Console **não pode** ter
+  `ERR_BLOCKED_BY_RESPONSE` nem `Refused to frame` (CSP `frame-src`). Campos vazios ou
+  cinzas = barrado. **Barrado: não ligue.** (O `COEP: credentialless` que travava o Brick
+  foi removido do `vercel.json` em 26/09/2026 — decisão do dono; ver
+  [spec do cartão](../superpowers/specs/2026-09-26-cartao-online-design.md), decisão 7.)
 - [ ] **Aprovado**:
   1. Pague com o cartão de teste, titular `APRO`.
   2. A tela diz "Pagamento aprovado — confirmando o pedido".
@@ -441,13 +446,18 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   4. O estoque **não** volta.
 - [ ] **Recusa → PIX na mesma reserva**: depois da recusa, "Pagar com PIX" gera o QR. A chave
   nova é `<pedido>:<n>`.
-- [ ] **3DS**:
+- [ ] **3DS**, feito no **Chrome** (de preferência Android), que é onde o atributo
+  `credentialless` do iframe do desafio age (ver a spec, decisão 7):
   1. Use o cenário de desafio da doc "Integrar 3DS" da Orders API (link na spec).
   2. O desafio abre no iframe. Isso depende do domínio da URL estar no `frame-src` e do
      `postMessage` de conclusão vir de origem do MP.
   3. Concluído, o webhook confirma.
   4. Abandonado com troca para PIX, a order `action_required` é cancelada no MP e o PIX nasce.
   5. O `expires_at` do pedido foi estendido, até 40 min.
+
+  Se o desafio não concluir no Chrome, o primeiro suspeito é o atributo `credentialless` do
+  iframe (`PagamentoComCartao.tsx`). Tire o atributo e repita o teste antes de desistir do
+  cartão.
 - [ ] **Em análise** (titular `CONT`): a tela diz que aguarda o banco. Pedir PIX nesse estado dá
   409 recuperável, sem uma segunda cobrança.
 - [ ] **Idempotência**:
