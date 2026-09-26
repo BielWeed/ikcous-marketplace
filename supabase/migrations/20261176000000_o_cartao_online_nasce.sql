@@ -72,7 +72,12 @@ COMMENT ON TABLE public.config_pagamento_cartao IS
 
 ALTER TABLE public.config_pagamento_cartao ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.config_pagamento_cartao FROM PUBLIC, anon, authenticated;
-GRANT SELECT ON public.config_pagamento_cartao TO anon, authenticated;
+-- Achado L (revisão de 26/09/2026): SELECT na tabela inteira vazava
+-- updated_by (o uuid do admin que mexeu por último) para anon/authenticated.
+-- Checado ANTES de restringir: o checkout (src/lib/config-do-cartao.ts) e a
+-- edge criar-pagamento leem só `credito,debito,parcelas_max` — nunca `*` —
+-- então a concessão por coluna não quebra ninguém.
+GRANT SELECT (id, credito, debito, parcelas_max, updated_at) ON public.config_pagamento_cartao TO anon, authenticated;
 GRANT ALL ON public.config_pagamento_cartao TO service_role;
 
 DROP POLICY IF EXISTS config_pagamento_cartao_publica_select_policy ON public.config_pagamento_cartao;
@@ -208,3 +213,67 @@ COMMENT ON FUNCTION public.liberar_cobranca_do_pedido(uuid, text) IS
 
 REVOKE ALL ON FUNCTION public.liberar_cobranca_do_pedido(uuid, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.liberar_cobranca_do_pedido(uuid, text) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 4. Estorno manual ganha uma data real (achado F da revisão de 26/09/2026)
+-- ---------------------------------------------------------------------------
+-- O Financeiro (20261177000000) precisa datar o "estorno registrado fora do
+-- app" pelo momento em que a loja apertou o botão — hoje usa
+-- marketplace_orders.updated_at, que QUALQUER update posterior do pedido
+-- (reabrir, editar nota, o próprio confirmar_pagamento de outra tentativa)
+-- empurra para a frente. registrar_estorno_manual (20261072000000) não
+-- grava nenhum carimbo próprio, e não existe hoje outra fonte confiável
+-- desse instante (marketplace_order_payment_history é sobre "recebido/
+-- desfeito" na entrega, natureza diferente) — daí a coluna mínima abaixo, no
+-- lugar que já mexe em colunas do pedido (não pode ir na migration do
+-- Financeiro: ela só LÊ marketplace_orders, nunca escreve).
+ALTER TABLE public.marketplace_orders
+  ADD COLUMN IF NOT EXISTS estorno_manual_registrado_em timestamptz;
+
+COMMENT ON COLUMN public.marketplace_orders.estorno_manual_registrado_em IS
+  'Quando registrar_estorno_manual marcou payment_status = ''estornado'' '
+  '(achado F, 26/09/2026). NULL em pedido estornado manualmente ANTES desta '
+  'migration — o Financeiro cai para updated_at nesse caso legado.';
+
+-- CREATE OR REPLACE de uma função nascida em 20261072000000: mesmo padrão de
+-- devolver_estoque (20261060000000) — a versão viva é sempre a da migration
+-- mais recente que a redefine. Corpo idêntico ao original, só grava o
+-- carimbo na PRIMEIRA vez (guarda IS NULL, idempotente por construção).
+CREATE OR REPLACE FUNCTION public.registrar_estorno_manual(p_order_id uuid)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_existe boolean;
+    v_ja_estornado boolean;
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'somente a loja registra o estorno'
+            USING ERRCODE = '42501';
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1 FROM public.marketplace_orders WHERE id = p_order_id
+    ),
+    EXISTS (
+        SELECT 1 FROM public.marketplace_orders
+         WHERE id = p_order_id AND payment_status = 'estornado'
+    )
+    INTO v_existe, v_ja_estornado;
+
+    IF NOT v_existe THEN
+        RAISE EXCEPTION 'pedido nao encontrado' USING ERRCODE = 'P0002';
+    END IF;
+
+    IF NOT v_ja_estornado THEN
+        UPDATE public.marketplace_orders
+           SET payment_status = 'estornado',
+               estorno_manual_registrado_em = COALESCE(estorno_manual_registrado_em, now())
+         WHERE id = p_order_id;
+    END IF;
+
+    RETURN json_build_object('ok'::text, true, 'payment_status'::text, 'estornado');
+END;
+$$;

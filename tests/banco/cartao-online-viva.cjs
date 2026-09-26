@@ -81,10 +81,22 @@ PROVAS.push({
         debito: false,
         parcelas_max: 1,
       });
+      await cliente.query("SAVEPOINT s1");
       await assert.rejects(
         () =>
           cliente.query(
             "UPDATE public.config_pagamento_cartao SET credito = true",
+          ),
+        /permission denied/,
+      );
+      await cliente.query("ROLLBACK TO SAVEPOINT s1");
+      // Achado L (revisão de 26/09/2026): grant por coluna — anon lê
+      // credito/debito/parcelas_max/updated_at, mas não updated_by (o uuid
+      // do admin que mexeu por último não é dado público).
+      await assert.rejects(
+        () =>
+          cliente.query(
+            "SELECT updated_by FROM public.config_pagamento_cartao WHERE id = 1",
           ),
         /permission denied/,
       );
