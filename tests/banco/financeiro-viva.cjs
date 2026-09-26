@@ -586,7 +586,33 @@ PROVAS.push({
   nome: "(D) gaveta desconta o estorno externo (venda em dinheiro cancelada + 'Já devolvi')",
   corpo: async (cliente) => {
     await logar(cliente, U_ADMIN);
+    // Achado 13 (rodada 2): esta abertura chega com o caixa do teste (e) já
+    // FECHADO com contado = 20 — abrir com 0 agora é uma FALTA contra aquele
+    // último fechamento, não uma "primeira abertura". A política do dono diz
+    // que isto é Quebra de caixa DE VERDADE (pesa na DRE), diferente da sobra
+    // de +20 do teste (e), que foi fora_dre por ser a primeira abertura.
+    const resAntes = num(
+      (
+        await rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
+          estado.inicio,
+          estado.hoje,
+        ])
+      ).resultado_financeiro,
+    );
     await rpc(cliente, "SELECT public.fin_caixa_abrir(0) AS r");
+    const resDepois = num(
+      (
+        await rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
+          estado.inicio,
+          estado.hoje,
+        ])
+      ).resultado_financeiro,
+    );
+    assert.equal(
+      num(resDepois - resAntes),
+      -20,
+      "achado 13: falta na abertura CONTRA o último fechamento pesa na DRE — não é fora_dre como a sobra da 1ª abertura",
+    );
     let atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
     assert.equal(
       num(atual.esperado),
@@ -632,6 +658,64 @@ PROVAS.push({
     const fechado = await rpc(
       cliente,
       "SELECT public.fin_caixa_fechar(0, 'sem sobra nem quebra') AS r",
+    );
+    assert.equal(num(fechado.diferenca), 0, "sem quebra fantasma");
+  },
+});
+
+// Mutação da rodada 2 (mutante `caixa_devolucao`, "gap 3" que a rodada 1 não
+// tinha): uma devolução em dinheiro CONCLUÍDA (reembolso manual) tem de
+// descontar do esperado da gaveta — sem isto, a devolução física do produto
+// (dinheiro voltando na mão) some da conferência de caixa. Insert direto em
+// `devolucoes` (em vez do fluxo completo de solicitar_devolucao — já coberto
+// em tests/banco/devolucoes-viva.cjs): o que este teste prova é a LEITURA de
+// fin__caixa_calculo, não o fluxo de criação da devolução.
+PROVAS.push({
+  nome: "(gap 3) gaveta desconta devolução em dinheiro concluída (reembolso manual)",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    await rpc(cliente, "SELECT public.fin_caixa_abrir(0) AS r");
+
+    const O_GAP3 = "5ddddddd-0000-0000-0000-000000000004";
+    await pedido(cliente, O_GAP3, {
+      total: 80,
+      pagamento: "cash",
+      paymentStatus: "recebido_na_entrega",
+      recebidoEm: new Date(),
+      canal: "presencial",
+    });
+    let atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+    assert.equal(num(atual.vendas_dinheiro), 80);
+    assert.equal(num(atual.esperado), 80, "80 entraram na gaveta");
+
+    await cliente.query(
+      `INSERT INTO public.devolucoes (
+         id, protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, resolucao_final,
+         modalidade, metodo_retorno, status, valor_itens, valor_reembolso, reembolso_manual,
+         prazo_ate, politica, concluida_em
+       ) VALUES (
+         gen_random_uuid(), 'DV-GAP3-TESTE', $1, $2, 'arrependimento', 'desisti', 'reembolso', 'reembolso',
+         'local', 'entrega_na_loja', 'concluida', 30, 30, true,
+         current_date + 7, '{}'::jsonb, now()
+       )`,
+      [O_GAP3, U_CLIENTE],
+    );
+
+    atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+    assert.equal(
+      num(atual.devolucoes_dinheiro),
+      30,
+      "achado gap 3: a devolução em dinheiro concluída aparece na gaveta",
+    );
+    assert.equal(
+      num(atual.esperado),
+      50,
+      "achado gap 3 (mutante caixa_devolucao): 80 entraram, 30 voltaram pela devolução — esperado 50, não 80",
+    );
+
+    const fechado = await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar(50, 'bateu') AS r",
     );
     assert.equal(num(fechado.diferenca), 0, "sem quebra fantasma");
   },
@@ -729,6 +813,64 @@ PROVAS.push({
       num((await periodo()) - cmvAntes),
       0,
       "achado K: estoque de volta por inteiro — a mercadoria não custou nada à loja",
+    );
+
+    // Achado 4 (rodada 2): stock_returned_at sozinho NÃO é gatilho de exclusão
+    // — só conta junto com status = 'cancelled'. Simula a política P1 (pago
+    // após expirar, HONRAR): o pedido carimba stock_returned_at (do ciclo de
+    // devolução que rodou antes) mas volta para 'delivered' de verdade, com
+    // mercadoria saindo da loja de novo — tem custo real, tem de continuar no
+    // CMV.
+    const cmvAntesReativado = await periodo();
+    const O_K_REATIVADO = "5ddddddd-0000-0000-0000-000000000005";
+    await pedido(cliente, O_K_REATIVADO, {
+      total: 50,
+      pagamento: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      itens: [{ produto: P_A, qtd: 1, preco: 50 }],
+    });
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET stock_returned_at = now() WHERE id = $1 AND status = 'delivered'",
+      [O_K_REATIVADO],
+    );
+    assert.equal(
+      num((await periodo()) - cmvAntesReativado),
+      20,
+      "achado 4: stock_returned_at sem cancelamento não some do CMV (pedido reativado pela política P1 continua custando)",
+    );
+
+    // Achado 5 (rodada 2): O_K (cancelado, estoque de volta, JÁ excluído da
+    // soma principal) não pode ser descontado DE NOVO por uma devolução
+    // parcial reestocada no mesmo período — senão o mesmo item sai do CMV
+    // duas vezes e come custo de outra venda.
+    const cmvAntesDupla = await periodo();
+    const itemOK = await cliente.query(
+      "SELECT id FROM public.marketplace_order_items WHERE order_id = $1 LIMIT 1",
+      [O_K],
+    );
+    const D_K = "5eeeeeee-0000-0000-0000-000000000001";
+    await cliente.query(
+      `INSERT INTO public.devolucoes (
+         id, protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, resolucao_final,
+         modalidade, metodo_retorno, status, valor_itens, valor_reembolso, reembolso_manual,
+         prazo_ate, politica, concluida_em
+       ) VALUES (
+         $1, 'DV-K-DUPLA', $2, $3, 'arrependimento', 'desisti', 'reembolso', 'reembolso',
+         'local', 'entrega_na_loja', 'concluida', 20, 20, true,
+         current_date + 7, '{}'::jsonb, now()
+       )`,
+      [D_K, O_K, U_CLIENTE],
+    );
+    await cliente.query(
+      `INSERT INTO public.devolucao_itens (devolucao_id, order_item_id, product_id, quantidade, valor_unitario, reestocado_em)
+       VALUES ($1, $2, $3, 1, 50, now())`,
+      [D_K, itemOK.rows[0].id, P_A],
+    );
+    assert.equal(
+      num((await periodo()) - cmvAntesDupla),
+      0,
+      "achado 5: pedido já excluído por inteiro não pode ser descontado de novo pelo cmv_volta",
     );
   },
 });

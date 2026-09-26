@@ -85,6 +85,32 @@ Deno.test("registrar_estorno_manual ganha uma data real do estorno (achado F)", 
   );
 });
 
+Deno.test("achado 7 (rodada 2): o carimbo do estorno cobre TODO caminho para 'estornado', não só o manual", () => {
+  assertStringIncludes(
+    m,
+    "BEFORE UPDATE OF payment_status ON public.marketplace_orders",
+  );
+  assertStringIncludes(
+    m,
+    "WHEN (NEW.payment_status = 'estornado' AND OLD.payment_status IS DISTINCT FROM 'estornado')",
+  );
+  const ini = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.marca_estorno_direto_do_pedido(",
+  );
+  assert(ini >= 0, "marca_estorno_direto_do_pedido não encontrada");
+  const corpo = m.slice(ini, m.indexOf("$$;", ini));
+  assertStringIncludes(
+    corpo,
+    "NEW.estorno_manual_registrado_em := COALESCE(NEW.estorno_manual_registrado_em, now());",
+  );
+  // Gatilho estreito, de propósito: não é SECURITY DEFINER (só escreve em
+  // NEW, não precisa de privilégio nenhum a mais que quem já faz o UPDATE).
+  assert(
+    !corpo.includes("SECURITY DEFINER"),
+    "o gatilho não deveria elevar privilégio — só escreve na própria linha",
+  );
+});
+
 Deno.test("liberar_cobranca_do_pedido: só service role, com as três guardas", () => {
   assertStringIncludes(
     m,
@@ -124,5 +150,14 @@ Deno.test("o rollback derruba RPCs e tabela mas mantém as colunas do pedido", (
   assert(
     !corpo.includes("estorno_manual_registrado_em"),
     "rollback deveria restaurar o corpo ORIGINAL, sem o carimbo do achado F",
+  );
+  // Achado 7: o gatilho é infraestrutura pura — o rollback dropa os dois.
+  assertStringIncludes(
+    r,
+    "DROP TRIGGER IF EXISTS tr_marca_estorno_direto_do_pedido ON public.marketplace_orders;",
+  );
+  assertStringIncludes(
+    r,
+    "DROP FUNCTION IF EXISTS public.marca_estorno_direto_do_pedido();",
   );
 });

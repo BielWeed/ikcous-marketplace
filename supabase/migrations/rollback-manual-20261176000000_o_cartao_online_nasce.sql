@@ -7,21 +7,26 @@
 -- arquivo. Com as edges novas no ar e este rollback aplicado, a recusa de
 -- cartão cairia num RPC inexistente. psql -1 -f — nunca pelo db-apply.
 --
--- Remove as RPCs, a tabela de configuração e as CHECKs das colunas novas.
--- As COLUNAS `tentativas_de_pagamento`, `metodo_online`, `parcelas` e
--- `estorno_manual_registrado_em` (achado F da revisão de 26/09/2026) FICAM:
--- guardam como cada pedido foi pago (mesma régua da rollback-manual-
--- 20261174000000, que não derruba a configuração que o lojista já salvou).
--- `IF EXISTS` em tudo: repetir não dá erro.
+-- Remove as RPCs, o gatilho do achado 7, a tabela de configuração e as
+-- CHECKs das colunas novas. As COLUNAS `tentativas_de_pagamento`,
+-- `metodo_online`, `parcelas` e `estorno_manual_registrado_em` (achado F da
+-- revisão de 26/09/2026) FICAM: guardam como cada pedido foi pago (mesma
+-- régua da rollback-manual-20261174000000, que não derruba a configuração
+-- que o lojista já salvou). `IF EXISTS` em tudo: repetir não dá erro.
 --
--- GUARDA DE ORDEM (achado R): reverta 78 -> 77 antes desta (76). O
+-- GUARDA DE ORDEM (achado R): reverta 78 -> 77 antes desta (76) — o DO
+-- BLOCK abaixo RECUSA (RAISE EXCEPTION) se algum dos dois ainda existir,
+-- pela mesma disciplina de 75 e 77. Além da recusa, fica registrado o
+-- PORQUÊ de a ordem importar aqui mesmo sem um 42P01/42883 esperando: o
 -- Financeiro (fin__forma_do_pedido) e o CRM (crm__vendas) leem
 -- marketplace_orders.metodo_online, que fica — mas registrar_estorno_manual
--- volta ao corpo de 20261072000000 aqui embaixo, e o Financeiro (77) datava
--- o estorno externo por estorno_manual_registrado_em: revertendo 76 antes
--- de 77, o próximo estorno manual não grava mais o carimbo e 77 cai de
--- volta para o updated_at (degradação silenciosa, não erro) — documentado,
--- não bloqueado, porque nada quebra com 42P01/42883.
+-- volta ao corpo de 20261072000000 aqui embaixo, o gatilho do achado 7 some
+-- (nenhum caminho para 'estornado' carimba mais nada), e o Financeiro (77)
+-- datava o estorno externo por estorno_manual_registrado_em: revertendo 76
+-- antes de 77, o próximo estorno (manual ou direto pelo Mercado Pago) não
+-- grava mais o carimbo e 77 cai de volta para o updated_at (degradação
+-- silenciosa de dado, não erro de SQL — mas a guarda bloqueia mesmo assim,
+-- pela mesma ordem 78 -> 77 -> 76 -> 75).
 -- ============================================================================
 
 DO $$
@@ -39,6 +44,12 @@ $$;
 DROP FUNCTION IF EXISTS public.liberar_cobranca_do_pedido(uuid, text);
 DROP FUNCTION IF EXISTS public.salvar_config_pagamento_cartao(boolean, boolean, integer);
 DROP TABLE IF EXISTS public.config_pagamento_cartao;
+
+-- Achado 7 (rodada 2): o gatilho é INFRAESTRUTURA pura (só carimba uma data
+-- que a coluna acima já guarda) — nenhuma linha depende dele existir depois
+-- do rollback, diferente da coluna em si.
+DROP TRIGGER IF EXISTS tr_marca_estorno_direto_do_pedido ON public.marketplace_orders;
+DROP FUNCTION IF EXISTS public.marca_estorno_direto_do_pedido();
 
 ALTER TABLE public.marketplace_orders DROP CONSTRAINT IF EXISTS marketplace_orders_tentativas_de_pagamento_check;
 ALTER TABLE public.marketplace_orders DROP CONSTRAINT IF EXISTS marketplace_orders_metodo_online_check;
