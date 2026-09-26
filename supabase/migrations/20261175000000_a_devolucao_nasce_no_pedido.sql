@@ -64,6 +64,30 @@
 --   M. Sem fallback para `updated_at` na data de entrega (pedido legado sem
 --      histórico vira "fale com a loja", não reabre a janela legal).
 --
+-- SEGUNDA REVISÃO (mesmo dia, rodada 2 — a primeira corrigiu A/B/C/G/H/M/R
+-- mas introduziu 3 buracos novos de dinheiro, achados por uma revisão
+-- independente sobre o resultado):
+--   2. `admin_devolucao_reemitir_reembolso`: manual é FINAL (sem guarda,
+--      reemitia pelo MP em cima de um reembolso já pago por fora — 200 por
+--      uma devolução de 100 — e reembolsava pelo MP pedido de balcão/
+--      dinheiro); ganha a mesma regra de 180 dias e a mesma revalidação do
+--      pedido do achado H (sem a trava de estoque — ver achado 4).
+--   3. `admin_devolucao_concluir` e `admin_devolucao_reemitir_reembolso`
+--      (e `solicitar_estorno`, redefinida aqui — seção 10) descontam
+--      reembolso manual JÁ CONCLUÍDO de OUTRA devolução do mesmo pedido do
+--      saldo disponível.
+--   4. `stock_returned_at` não bloqueia mais a conclusão inteira (a
+--      política P1 — pago após expirar, honrado — reativa pedido expirado
+--      até 'delivered' de verdade, e o carimbo nunca some); só desliga o
+--      reestoque.
+--   6. `devolucao_elegibilidade` rateia o cupom no `valor_unitario` da ficha
+--      do cliente — o mesmo fator que `solicitar_devolucao` já aplicava no
+--      snapshot gravado, senão a ficha prometia o preço cheio.
+--   1. `get_admin_orders_cancelados_recentes` (redefinida aqui — seção 9)
+--      ganha `valor_devolvido_por_devolucao`, para o balde "Devolver agora"
+--      do painel (src/views/admin/AdminOrdersView.tsx) não pedir de novo o
+--      que uma devolução já devolveu por fora.
+--
 -- DADOS EXISTENTES: nenhuma tabela existente é reescrita. A única linha
 -- semeada é a política padrão (id=1, ON CONFLICT DO NOTHING).
 --
@@ -399,6 +423,11 @@ DECLARE
   v_itens jsonb;
   v_disp_total integer;
   v_bloqueio text;
+  -- Achado 6 (revisão 26/09/2026, rodada 2): mesmo rateio do cupom que
+  -- solicitar_devolucao aplica no snapshot — sem isto a ficha do cliente
+  -- prometia o preço cheio (100) e o reembolso de verdade saía pela metade
+  -- (50), porque só o valor_unitario GRAVADO era rateado.
+  v_fator_desconto numeric := 1;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'Entre na sua conta para pedir uma devolução.' USING ERRCODE = '42501';
@@ -407,6 +436,9 @@ BEGIN
   SELECT * INTO v_o FROM public.marketplace_orders WHERE id = p_order_id;
   IF NOT FOUND OR (v_o.user_id IS DISTINCT FROM v_uid AND NOT public.is_admin()) THEN
     RAISE EXCEPTION 'Pedido não encontrado.' USING ERRCODE = 'P0002';
+  END IF;
+  IF v_o.subtotal > 0 THEN
+    v_fator_desconto := GREATEST(LEAST((v_o.subtotal - COALESCE(v_o.discount, 0)) / v_o.subtotal, 1), 0);
   END IF;
 
   SELECT * INTO v_pol FROM public.politica_devolucao WHERE id = 1;
@@ -431,7 +463,7 @@ BEGIN
            'quantidade', x.quantity,
            'ja_devolvida', x.ja,
            'disponivel', GREATEST(x.quantity - x.ja, 0),
-           'valor_unitario', x.price
+           'valor_unitario', round(x.price * v_fator_desconto, 2)
          ) ORDER BY x.created_at, x.id), '[]'::jsonb),
          COALESCE(sum(GREATEST(x.quantity - x.ja, 0)), 0)
     INTO v_itens, v_disp_total
@@ -1020,6 +1052,7 @@ DECLARE
   v_valor numeric(12, 2);
   v_disponivel numeric(12, 2);
   v_em_voo numeric(12, 2);
+  v_ja_manual numeric(12, 2);
   v_pago_pelo_app boolean;
   v_refund_id uuid;
   v_manual boolean := false;
@@ -1058,10 +1091,13 @@ BEGIN
      OR v_o.payment_status NOT IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') THEN
     RAISE EXCEPTION 'Este pedido não tem pagamento registrado para devolver.' USING ERRCODE = '22023';
   END IF;
-  IF v_o.stock_returned_at IS NOT NULL THEN
-    RAISE EXCEPTION 'O estoque deste pedido já voltou à prateleira por outro caminho (cancelamento). Fale com o financeiro antes de concluir.'
-      USING ERRCODE = '22023';
-  END IF;
+  -- Achado 4 (revisão 26/09/2026, rodada 2): stock_returned_at NÃO É só
+  -- "cancelou depois da devolução" — a política P1 (pago após expirar,
+  -- HONRAR) reativa pedido expirado (devolver_estoque já carimbou) até
+  -- 'delivered' de verdade, e esse carimbo nunca some. Recusar a conclusão
+  -- inteira aqui prendia esses pedidos para sempre, sem devolução possível.
+  -- A trava certa é só no REESTOQUE (abaixo, força reestocar=false) — a
+  -- resolução (reembolso/troca/vale) segue normal.
 
   -- Inspeção e reestoque por item (uma vez só por item).
   FOR v_item IN SELECT * FROM jsonb_array_elements(COALESCE(p_itens, '[]'::jsonb)) LOOP
@@ -1074,7 +1110,8 @@ BEGIN
     IF v_condicao IS NULL OR v_condicao NOT IN ('nova', 'usada', 'danificada', 'ausente') THEN
       RAISE EXCEPTION 'Informe a condição de cada item recebido.' USING ERRCODE = '22023';
     END IF;
-    v_reestocar := COALESCE((v_item ->> 'reestocar')::boolean, false) AND v_condicao <> 'ausente';
+    v_reestocar := COALESCE((v_item ->> 'reestocar')::boolean, false) AND v_condicao <> 'ausente'
+                   AND v_o.stock_returned_at IS NULL;
 
     UPDATE public.devolucao_itens SET condicao = v_condicao, reestocar = v_reestocar WHERE id = v_di.id;
 
@@ -1107,11 +1144,19 @@ BEGIN
                        AND v_o.paid_at IS NOT NULL
                        AND now() - v_o.paid_at <= interval '180 days';
 
+    -- Achado 3 (revisão 26/09/2026, rodada 2): reembolso manual JÁ CONCLUÍDO
+    -- de uma OUTRA devolução do mesmo pedido é dinheiro que já saiu — sem
+    -- descontar, uma segunda devolução online (ou reemitida) reabria o
+    -- saldo cheio e pagava duas vezes a mesma fatia.
+    SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual
+      FROM public.devolucoes d
+     WHERE d.order_id = v_o.id AND d.status = 'concluida' AND d.reembolso_manual AND d.id <> v_d.id;
+
     IF v_pago_pelo_app THEN
       -- Mesma trava de saldo da solicitar_estorno: total − já devolvido − em voo.
       SELECT COALESCE(sum(r.amount), 0) INTO v_em_voo FROM public.order_refunds r
        WHERE r.order_id = v_o.id AND r.status IN ('solicitado', 'em_processamento');
-      v_disponivel := v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo;
+      v_disponivel := v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo - v_ja_manual;
     ELSE
       SELECT v_o.total - COALESCE(v_o.valor_estornado, 0) - COALESCE(sum(d.valor_reembolso), 0)
         INTO v_disponivel
@@ -1186,6 +1231,19 @@ $$;
 -- dinheiro ter saído e sem RPC nenhuma para tentar de novo. Reemite sob a
 -- MESMA trava de saldo da conclusão, ou registra manual quando o lojista já
 -- resolveu por fora.
+--
+-- Achados 2 e 3 da revisão de 26/09/2026 (rodada 2), sobre esta MESMA RPC
+-- ainda não aplicada:
+--   2. Manual é TERMINAL — devolução já resolvida por fora (reembolso_manual)
+--      não tinha guarda nenhuma contra reemitir pelo Mercado Pago por cima
+--      (manual 100 + MP 100 = 200 por uma devolução de 100; o mesmo buraco
+--      dava reembolso via MP para pedido de BALCÃO/DINHEIRO, que nunca teve
+--      refund_id). Também falta a MESMA regra de elegibilidade de 180 dias
+--      (v_pago_pelo_app) da conclusão, e a MESMA revalidação do pedido do
+--      achado H (sem a trava de estoque — esta RPC não mexe em estoque, e a
+--      trava travaria a reemissão de um pedido reativado pela P1, achado 4).
+--   3. v_disponivel não descontava reembolso manual de OUTRA devolução do
+--      mesmo pedido — mesmo buraco do achado 3 na conclusão.
 CREATE OR REPLACE FUNCTION public.admin_devolucao_reemitir_reembolso(
   p_devolucao_id uuid,
   p_manual boolean DEFAULT false
@@ -1200,7 +1258,9 @@ DECLARE
   v_o public.marketplace_orders%ROWTYPE;
   v_refund public.order_refunds%ROWTYPE;
   v_em_voo numeric(12, 2);
+  v_ja_manual numeric(12, 2);
   v_disponivel numeric(12, 2);
+  v_pago_pelo_app boolean;
   v_novo_refund_id uuid;
 BEGIN
   IF NOT public.is_admin() THEN
@@ -1216,28 +1276,33 @@ BEGIN
   IF v_d.valor_reembolso IS NULL OR v_d.valor_reembolso <= 0 THEN
     RAISE EXCEPTION 'Esta devolução não tem valor de reembolso.' USING ERRCODE = '22023';
   END IF;
-
-  SELECT * INTO v_o FROM public.marketplace_orders WHERE id = v_d.order_id FOR UPDATE;
-
-  IF v_d.refund_id IS NOT NULL THEN
-    SELECT * INTO v_refund FROM public.order_refunds WHERE id = v_d.refund_id FOR UPDATE;
-    IF FOUND AND v_refund.status <> 'recusado' THEN
-      RAISE EXCEPTION 'O reembolso desta devolução não foi recusado (status atual: %). Nada para reemitir.', v_refund.status
-        USING ERRCODE = '22023';
-    END IF;
-  ELSIF NOT v_d.reembolso_manual THEN
+  -- Achado 2: manual é FINAL. Sem refund_id (nunca passou pelo MP) ou já
+  -- convertida para manual por uma reemissão anterior — nada a reemitir.
+  IF v_d.reembolso_manual THEN
+    RAISE EXCEPTION 'Esta devolução já foi resolvida manualmente (fora do app); não há reembolso para reemitir.'
+      USING ERRCODE = '22023';
+  END IF;
+  IF v_d.refund_id IS NULL THEN
     RAISE EXCEPTION 'Esta devolução não tem um reembolso recusado para reemitir.' USING ERRCODE = '22023';
   END IF;
 
-  -- Mesma trava de saldo da conclusão: total − já devolvido − em voo (menos a
-  -- própria linha recusada, que não compete por saldo com a reemissão dela).
-  SELECT COALESCE(sum(r.amount), 0) INTO v_em_voo FROM public.order_refunds r
-   WHERE r.order_id = v_o.id AND r.status IN ('solicitado', 'em_processamento')
-     AND r.id <> COALESCE(v_d.refund_id, '00000000-0000-0000-0000-000000000000'::uuid);
-  v_disponivel := GREATEST(v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo, 0);
-  IF v_d.valor_reembolso > v_disponivel THEN
-    RAISE EXCEPTION 'O reembolso (R$ %) passa do que ainda pode ser devolvido deste pedido (R$ %).',
-      v_d.valor_reembolso, v_disponivel USING ERRCODE = '22023';
+  SELECT * INTO v_o FROM public.marketplace_orders WHERE id = v_d.order_id FOR UPDATE;
+
+  -- Achado 2 (revalida como o achado H, sem a trava de estoque — esta RPC
+  -- não reestoca nada, então stock_returned_at não é assunto dela).
+  IF v_o.status <> 'delivered' THEN
+    RAISE EXCEPTION 'O pedido desta devolução não está mais entregue (status atual: %). Fale com o financeiro antes de reemitir.',
+      v_o.status USING ERRCODE = '22023';
+  END IF;
+  IF v_o.payment_status IS NULL
+     OR v_o.payment_status NOT IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') THEN
+    RAISE EXCEPTION 'Este pedido não tem pagamento registrado para devolver.' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_refund FROM public.order_refunds WHERE id = v_d.refund_id FOR UPDATE;
+  IF NOT FOUND OR v_refund.status <> 'recusado' THEN
+    RAISE EXCEPTION 'O reembolso desta devolução não foi recusado (status atual: %). Nada para reemitir.',
+      COALESCE(v_refund.status, 'desconhecido') USING ERRCODE = '22023';
   END IF;
 
   IF p_manual THEN
@@ -1247,6 +1312,37 @@ BEGIN
     PERFORM public.devolucao__registrar_evento(p_devolucao_id, 'concluida', 'concluida', 'loja',
       'Reembolso reemitido manualmente (fora do app) após recusa pelo Mercado Pago.');
     RETURN jsonb_build_object('id', p_devolucao_id, 'reembolso_manual', true, 'refund_id', NULL);
+  END IF;
+
+  -- Achado 2: mesma regra de elegibilidade de 180 dias da conclusão — o
+  -- executor recusaria de novo, e a linha 'recusado' ficaria para sempre
+  -- sem caminho de refazer se insistíssemos no MP aqui.
+  v_pago_pelo_app := v_o.payment_method = 'online'
+                     AND v_o.payment_status IN ('pago', 'pago_apos_expirar')
+                     AND v_o.gateway_payment_id IS NOT NULL
+                     AND v_o.paid_at IS NOT NULL
+                     AND now() - v_o.paid_at <= interval '180 days';
+  IF NOT v_pago_pelo_app THEN
+    RAISE EXCEPTION 'Este pedido não é mais elegível para reembolso pelo Mercado Pago (prazo de 180 dias ou forma de pagamento). Reemita como manual (p_manual = true).'
+      USING ERRCODE = '22023';
+  END IF;
+
+  -- Achado 3: desconta reembolso manual JÁ CONCLUÍDO de OUTRA devolução do
+  -- mesmo pedido — mesma trava da conclusão.
+  SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual
+    FROM public.devolucoes d
+   WHERE d.order_id = v_o.id AND d.status = 'concluida' AND d.reembolso_manual AND d.id <> v_d.id;
+
+  -- Mesma trava de saldo da conclusão: total − já devolvido − em voo (menos a
+  -- própria linha recusada, que não compete por saldo com a reemissão dela)
+  -- − reembolso manual de outra devolução do mesmo pedido.
+  SELECT COALESCE(sum(r.amount), 0) INTO v_em_voo FROM public.order_refunds r
+   WHERE r.order_id = v_o.id AND r.status IN ('solicitado', 'em_processamento')
+     AND r.id <> v_d.refund_id;
+  v_disponivel := GREATEST(v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo - v_ja_manual, 0);
+  IF v_d.valor_reembolso > v_disponivel THEN
+    RAISE EXCEPTION 'O reembolso (R$ %) passa do que ainda pode ser devolvido deste pedido (R$ %).',
+      v_d.valor_reembolso, v_disponivel USING ERRCODE = '22023';
   END IF;
 
   INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
@@ -1531,3 +1627,252 @@ DROP TRIGGER IF EXISTS tr_devolucao_avisa_o_cliente ON public.devolucoes;
 CREATE TRIGGER tr_devolucao_avisa_o_cliente
 AFTER UPDATE OF status ON public.devolucoes
 FOR EACH ROW EXECUTE FUNCTION public.devolucao_avisa_o_cliente();
+
+-- ---------------------------------------------------------------------------
+-- 9. get_admin_orders_cancelados_recentes ganha o valor já devolvido pela
+--    devolução (achado 1 da revisão de 26/09/2026, rodada 2)
+-- ---------------------------------------------------------------------------
+-- O balde "Devolver agora" (src/views/admin/AdminOrdersView.tsx,
+-- baldeDeEstorno) decide só por payment_status — não sabia que uma devolução
+-- deste pedido já tinha devolvido dinheiro pelo caminho dela (reembolso
+-- manual concluído). Redefinição de função nascida em 20261164000000: mesmo
+-- padrão de devolver_estoque (20261060000000) — corpo idêntico ao original,
+-- só a coluna nova no JSON de saída (mesmo formato aditivo dos outros achados
+-- desta revisão).
+CREATE OR REPLACE FUNCTION public.get_admin_orders_cancelados_recentes(p_dias integer DEFAULT 90::integer, p_page integer DEFAULT 0::integer, p_page_size integer DEFAULT 200)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+DECLARE
+    v_total_count BIGINT;
+    v_fora_da_janela BIGINT;
+    v_data JSONB;
+    v_offset INTEGER;
+BEGIN
+    -- Authorization check (mesmo gate da get_admin_orders_paged).
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Acesso negado: privilégios de administrador necessários.';
+    END IF;
+
+    v_offset := p_page * p_page_size;
+
+    -- Contagem, numa passada só: dentro da janela (é o total que o laço do
+    -- front persegue) e fora dela (o número que impede o recorte de
+    -- mentir). p_dias NULL = sem janela: dentro = todos, fora = 0.
+    SELECT
+        COUNT(*) FILTER (
+          WHERE p_dias IS NULL
+             OR cancelado_em >= now() - make_interval(days => p_dias)
+        ),
+        COUNT(*) FILTER (
+          WHERE p_dias IS NOT NULL
+            AND cancelado_em < now() - make_interval(days => p_dias)
+        )
+      INTO v_total_count, v_fora_da_janela
+      FROM (
+        SELECT o.id,
+               COALESCE(h.cancelado_em, o.updated_at) AS cancelado_em
+          FROM public.marketplace_orders o
+          LEFT JOIN LATERAL (
+            SELECT MAX(hi.created_at) AS cancelado_em
+              FROM public.marketplace_order_history hi
+             WHERE hi.order_id = o.id
+               AND hi.new_status = 'cancelled'
+          ) h ON TRUE
+         WHERE o.status = 'cancelled'
+      ) c;
+
+    -- Linhas enxutas: as 23 colunas que o mapper e o painel leem, mais a
+    -- coluna nova do achado 1 (rodada 2), na ordem de atenção do
+    -- cancelamento (mais recente primeiro). Nenhum item, nenhum endereço.
+    SELECT COALESCE(
+        jsonb_agg(t),
+        '[]'::JSONB
+    ) INTO v_data
+    FROM (
+        SELECT jsonb_build_object(
+            'id', c.id,
+            'user_id', c.user_id,
+            'customer_name', c.customer_name,
+            'customer_data', c.customer_data,
+            'total', c.total,
+            'subtotal', c.subtotal,
+            'shipping', c.shipping,
+            'discount', c.discount,
+            'payment_method', c.payment_method,
+            'payment_status', c.payment_status,
+            'status', c.status,
+            'notes', c.notes,
+            'coupon_code', c.coupon_code,
+            'tracking_code', c.tracking_code,
+            'cancelled_after_shipping', c.cancelled_after_shipping,
+            'returned_to_seller_at', c.returned_to_seller_at,
+            'pagamento_recebido_em', c.pagamento_recebido_em,
+            'pagamento_recebido_por', c.pagamento_recebido_por,
+            'canal', c.canal,
+            'vendedor_id', c.vendedor_id,
+            'created_at', c.created_at,
+            'updated_at', c.updated_at,
+            'cancelado_em', c.cancelado_em,
+            'valor_devolvido_por_devolucao', c.valor_devolvido_por_devolucao
+        ) AS t
+        FROM (
+            SELECT o.id,
+                   o.user_id,
+                   o.customer_name,
+                   o.customer_data,
+                   o.total,
+                   o.subtotal,
+                   o.shipping,
+                   o.discount,
+                   o.payment_method,
+                   o.payment_status,
+                   o.status,
+                   o.notes,
+                   o.coupon_code,
+                   o.tracking_code,
+                   o.cancelled_after_shipping,
+                   o.returned_to_seller_at,
+                   o.pagamento_recebido_em,
+                   o.pagamento_recebido_por,
+                   o.canal,
+                   o.vendedor_id,
+                   o.created_at,
+                   o.updated_at,
+                   COALESCE(h.cancelado_em, o.updated_at) AS cancelado_em,
+                   COALESCE((SELECT sum(d.valor_reembolso) FROM public.devolucoes d
+                              WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0)
+                     AS valor_devolvido_por_devolucao
+              FROM public.marketplace_orders o
+              LEFT JOIN LATERAL (
+                SELECT MAX(hi.created_at) AS cancelado_em
+                  FROM public.marketplace_order_history hi
+                 WHERE hi.order_id = o.id
+                   AND hi.new_status = 'cancelled'
+              ) h ON TRUE
+             WHERE o.status = 'cancelled'
+               AND (p_dias IS NULL OR COALESCE(h.cancelado_em, o.updated_at) >= now() - make_interval(days => p_dias))
+             ORDER BY COALESCE(h.cancelado_em, o.updated_at) DESC, o.created_at DESC
+             LIMIT p_page_size
+            OFFSET v_offset
+        ) c
+    ) t;
+
+    RETURN jsonb_build_object(
+        'data', v_data,
+        'total_count', v_total_count,
+        'fora_da_janela', v_fora_da_janela
+    );
+END;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 10. solicitar_estorno desconta o reembolso manual de devolução já
+--     concluída (achado 3 da revisão de 26/09/2026, rodada 2)
+-- ---------------------------------------------------------------------------
+-- Redefinição de função nascida em 2026110000000 (antes de devoluções
+-- existirem): o saldo disponível para o botão "Devolver dinheiro" do lojista
+-- não sabia que uma devolução deste MESMO pedido já tinha reembolsado parte
+-- (ou tudo) por fora do ledger — mesmo buraco do achado 3 na conclusão da
+-- devolução e na reemissão, aqui do lado do estorno "clássico" (pedido
+-- cancelado antes do envio). Corpo idêntico ao original, só a subtração nova.
+CREATE OR REPLACE FUNCTION public.solicitar_estorno(
+    p_order_id uuid,
+    p_amount numeric,
+    p_motivo text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_status TEXT;
+    v_payment_status TEXT;
+    v_paid_at TIMESTAMPTZ;
+    v_total NUMERIC;
+    v_cancelled_after_shipping BOOLEAN;
+    v_returned_at TIMESTAMPTZ;
+    v_valor_estornado NUMERIC;
+    v_em_curso NUMERIC;
+    v_ja_manual NUMERIC;
+    v_saldo NUMERIC;
+    v_refund_id UUID;
+BEGIN
+    -- So' a loja pede devolucao pelo painel. ERRCODE 42501 para o front
+    -- distinguir "nao e' a loja" de qualquer outro erro.
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Somente a loja pede a devolução pelo painel.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    SELECT status, payment_status, paid_at, total,
+           cancelled_after_shipping, returned_to_seller_at, valor_estornado
+      INTO v_status, v_payment_status, v_paid_at, v_total,
+           v_cancelled_after_shipping, v_returned_at, v_valor_estornado
+      FROM public.marketplace_orders
+     WHERE id = p_order_id
+       FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Pedido não encontrado.';
+    END IF;
+
+    -- Dinheiro que nao entrou nao se devolve. IS NULL explicito porque
+    -- `NULL NOT IN (...)` avaliaria para NULL e o IF nao dispararia.
+    IF v_payment_status IS NULL
+       OR v_payment_status NOT IN ('pago', 'pago_apos_expirar') THEN
+        RAISE EXCEPTION 'Este pedido não está pago: não há dinheiro do Mercado Pago para devolver.'
+            USING ERRCODE = 'P0001';
+    END IF;
+
+    -- Regra 24/08: o estorno manual so' existe para pedido CANCELADO. Pedir
+    -- devolucao de pedido vivo e' trocar o dinheiro sem desfazer a venda.
+    IF v_status IS DISTINCT FROM 'cancelled' THEN
+        RAISE EXCEPTION 'Cancele o pedido antes de devolver o dinheiro.';
+    END IF;
+
+    -- Regra 24/08, lado do enviado: produto que SAIU so' gera devolucao
+    -- depois de VOLTAR a mao do lojista. O FATO vem de returned_to_seller_at
+    -- (gravado por confirmar_retorno_do_produto), nunca deduzido de status.
+    IF v_cancelled_after_shipping AND v_returned_at IS NULL THEN
+        RAISE EXCEPTION 'A devolução espera o produto: ele ainda não voltou para a loja.'
+            USING ERRCODE = 'P0001';
+    END IF;
+
+    -- Saldo disponivel = total pago - ja confirmado (valor_estornado) -
+    -- pendencias em andamento (solicitado/em_processamento) - reembolso
+    -- manual de devolução já concluída do mesmo pedido (achado 3, rodada 2).
+    -- Linhas falhou/recusado NAO reservam saldo: sao pedidos mortos.
+    SELECT COALESCE(SUM(amount), 0) INTO v_em_curso
+      FROM public.order_refunds
+     WHERE order_id = p_order_id
+       AND status IN ('solicitado', 'em_processamento');
+
+    SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual
+      FROM public.devolucoes d
+     WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;
+
+    v_saldo := v_total - v_valor_estornado - v_em_curso - v_ja_manual;
+
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RAISE EXCEPTION 'O valor a devolver tem de ser maior que zero.';
+    END IF;
+
+    IF p_amount > v_saldo THEN
+        RAISE EXCEPTION 'O valor pedido (R$ %) é maior que o valor disponível para devolver (R$ %).',
+            to_char(p_amount, 'FM999G999D00'), to_char(v_saldo, 'FM999G999D00')
+            USING ERRCODE = 'P0001';
+    END IF;
+
+    -- A linha nasce AQUI, pedida pela loja. status default 'solicitado':
+    -- quem executa e' a edge do clique (Task 3) ou o cron (Task 4).
+    INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por)
+    VALUES (p_order_id, p_amount, NULLIF(trim(COALESCE(p_motivo, '')), ''), 'lojista')
+    RETURNING id INTO v_refund_id;
+
+    RETURN jsonb_build_object('refund_id', v_refund_id, 'amount', p_amount);
+END;
+$$;

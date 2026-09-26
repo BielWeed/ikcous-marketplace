@@ -211,6 +211,15 @@ export interface Order {
   retiradaNaLoja?: boolean;
   /** O endereço da loja no momento da compra (retrato, aparado). */
   enderecoDeRetirada?: string | null;
+  /**
+   * Achado 1 da revisão de risco de 26/09/2026 (rodada 2): soma dos
+   * reembolsos de devoluções JÁ CONCLUÍDAS com `reembolso_manual = true`
+   * deste pedido — dinheiro que já saiu da loja pelo caminho da devolução,
+   * antes de qualquer "Já devolvi" do balde de estorno. Vem de
+   * `get_admin_orders_cancelados_recentes` (redefinida em 20261175000000).
+   * Opcional pelo mesmo motivo dos campos acima (cache antigo sem o mapper).
+   */
+  valorDevolvidoPorDevolucao?: number;
 }
 
 export interface Review {

@@ -47,6 +47,7 @@ import { mapOrderFromDB } from "@/lib/mappers";
 import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { valorDevolverAgora } from "@/lib/valor-devolver-agora";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type {
   CanalDaVenda,
@@ -215,6 +216,10 @@ export function baldeDeEstorno(pedido: Order): BaldeDeEstorno {
   if (pedido.cancelledAfterShipping && !pedido.returnedToSellerAt) {
     return "esperando_o_produto";
   }
+  // Achado 1 (rodada 2): nada resta para devolver — uma devolução deste
+  // pedido já devolveu tudo por fora (reembolso manual concluído). O pedido
+  // some do balde de dinheiro sem precisar de nenhum clique.
+  if (valorDevolverAgora(pedido) <= 0) return null;
   return "devolver_agora";
 }
 

@@ -105,6 +105,9 @@ function pedidoFake(overrides: {
   paymentStatus: PaymentStatus | null;
   cancelledAfterShipping?: boolean;
   returnedToSellerAt?: string | null;
+  // Achado 1 da revisão de 26/09/2026 (rodada 2): quanto uma devolução deste
+  // pedido já devolveu por fora (reembolso manual concluído).
+  valorDevolvidoPorDevolucao?: number;
 }): Order {
   return {
     id: overrides.id,
@@ -129,6 +132,7 @@ function pedidoFake(overrides: {
     updatedAt: new Date(0).toISOString(),
     cancelledAfterShipping: overrides.cancelledAfterShipping ?? false,
     returnedToSellerAt: overrides.returnedToSellerAt ?? null,
+    valorDevolvidoPorDevolucao: overrides.valorDevolvidoPorDevolucao,
   };
 }
 
@@ -278,6 +282,55 @@ describe("baldeDeEstorno — a lista é derivada, nunca gravada", () => {
       cancelledAfterShipping: false,
     });
     expect(baldeDeEstorno(pedido)).toBe("devolver_agora");
+  });
+
+  // Achado 1 da revisão de 26/09/2026 (rodada 2): venda de balcão em
+  // dinheiro, devolução JÁ CONCLUÍDA com reembolso manual pelo valor
+  // inteiro — o "Já devolvi" pediria de novo o mesmo dinheiro que a
+  // devolução já devolveu. `baldeDeEstorno` esconde o pedido inteiro.
+  it("devolução já devolveu TUDO por fora: NÃO aparece em lugar nenhum", async () => {
+    const { baldeDeEstorno } = await import("@/views/admin/AdminOrdersView");
+    const pedido = pedidoFake({
+      id: "p8",
+      status: "cancelled",
+      paymentStatus: "recebido_na_entrega",
+      cancelledAfterShipping: false,
+      valorDevolvidoPorDevolucao: 100,
+    });
+    expect(baldeDeEstorno(pedido)).toBeNull();
+  });
+
+  it("devolução devolveu só PARTE por fora: continua 'devolver_agora' (falta o resto)", async () => {
+    const { baldeDeEstorno } = await import("@/views/admin/AdminOrdersView");
+    const pedido = pedidoFake({
+      id: "p9",
+      status: "cancelled",
+      paymentStatus: "recebido_na_entrega",
+      cancelledAfterShipping: false,
+      valorDevolvidoPorDevolucao: 40,
+    });
+    expect(baldeDeEstorno(pedido)).toBe("devolver_agora");
+  });
+});
+
+describe("valorDevolverAgora — o valor que falta, não o total do pedido", () => {
+  it("sem devolução: o valor que falta é o total inteiro", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(valorDevolverAgora({ total: 100 })).toBe(100);
+  });
+
+  it("devolução parcial: desconta o que já saiu por ela", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(
+      valorDevolverAgora({ total: 100, valorDevolvidoPorDevolucao: 40 }),
+    ).toBe(60);
+  });
+
+  it("devolução cobre tudo (ou passa): nunca fica negativo", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(
+      valorDevolverAgora({ total: 100, valorDevolvidoPorDevolucao: 150 }),
+    ).toBe(0);
   });
 });
 
@@ -469,6 +522,32 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
       (b) => b.textContent?.trim() === "O produto voltou",
     );
     expect(botao).toBeUndefined();
+  });
+
+  // Achado 1 (rodada 2): a lista mostrava o TOTAL do pedido, mesmo com uma
+  // devolução já tendo devolvido parte por fora — o cartão tem de mostrar o
+  // que FALTA, não o total, senão a lojista devolve o pedido inteiro de novo.
+  it("devolução parcial já concluída: 'Devolver agora' mostra o valor que falta, não o total", async () => {
+    mockPedidosCancelados = [
+      pedidoFake({
+        id: "ped-parcial",
+        status: "cancelled",
+        paymentStatus: "recebido_na_entrega",
+        cancelledAfterShipping: false,
+        valorDevolvidoPorDevolucao: 40,
+      }),
+    ];
+    mockTotalOrders = 1;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
+    });
+    await expandirAlertas(hospedeiro);
+
+    expect(hospedeiro.textContent).toContain("Devolver agora");
+    expect(hospedeiro.textContent).toContain("60,00");
+    expect(hospedeiro.textContent).not.toContain("100,00");
   });
 
   it("clicar em 'O produto voltou' chama confirmarRetornoDoProduto com o id do pedido certo", async () => {

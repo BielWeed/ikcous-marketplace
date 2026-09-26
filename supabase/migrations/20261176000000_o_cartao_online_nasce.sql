@@ -239,6 +239,14 @@ COMMENT ON COLUMN public.marketplace_orders.estorno_manual_registrado_em IS
 -- devolver_estoque (20261060000000) — a versão viva é sempre a da migration
 -- mais recente que a redefine. Corpo idêntico ao original, só grava o
 -- carimbo na PRIMEIRA vez (guarda IS NULL, idempotente por construção).
+-- Achado 1 (revisão de 26/09/2026, rodada 2): "Já devolvi" olhava só
+-- payment_status — o balde "Devolver agora" do front (AdminOrdersView)
+-- também olhava só isso, então um pedido cuja devolução JÁ concluiu com
+-- reembolso manual (dinheiro que já saiu por aquele caminho) continuava
+-- aparecendo pelo total CHEIO, e clicar aqui registrava uma SEGUNDA saída do
+-- mesmo dinheiro (drawer negativo, DRE com dedução em dobro). Refuse quando
+-- não sobra nada — o mesmo cálculo que o Financeiro (77) e a conclusão da
+-- devolução (75) usam.
 CREATE OR REPLACE FUNCTION public.registrar_estorno_manual(p_order_id uuid)
 RETURNS json
 LANGUAGE plpgsql
@@ -248,6 +256,9 @@ AS $$
 DECLARE
     v_existe boolean;
     v_ja_estornado boolean;
+    v_total numeric;
+    v_valor_estornado numeric;
+    v_ja_manual numeric;
 BEGIN
     IF NOT public.is_admin() THEN
         RAISE EXCEPTION 'somente a loja registra o estorno'
@@ -268,6 +279,17 @@ BEGIN
     END IF;
 
     IF NOT v_ja_estornado THEN
+        SELECT total, COALESCE(valor_estornado, 0) INTO v_total, v_valor_estornado
+          FROM public.marketplace_orders WHERE id = p_order_id;
+        SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual
+          FROM public.devolucoes d
+         WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;
+
+        IF v_total - v_valor_estornado - v_ja_manual <= 0 THEN
+            RAISE EXCEPTION 'Este pedido não tem mais nada a devolver: o valor já saiu por outro caminho (devolução ou estorno).'
+                USING ERRCODE = '22023';
+        END IF;
+
         UPDATE public.marketplace_orders
            SET payment_status = 'estornado',
                estorno_manual_registrado_em = COALESCE(estorno_manual_registrado_em, now())
@@ -277,3 +299,49 @@ BEGIN
     RETURN json_build_object('ok'::text, true, 'payment_status'::text, 'estornado');
 END;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- 5. O carimbo do achado F cobre TODO caminho para 'estornado', não só o
+--    manual (achado 7 da revisão de 26/09/2026, rodada 2)
+-- ---------------------------------------------------------------------------
+-- A coluna da Seção 4 só nascia carimbada por registrar_estorno_manual — mas
+-- payment_status também vira 'estornado' DIRETO por confirmar_pagamento
+-- (20260901000000, ramo p_status = 'estornado', o Mercado Pago avisando por
+-- fora do ledger de order_refunds), sem passar por nenhuma RPC desta
+-- migration. Sem um carimbo confiável TAMBÉM nesse caminho, o MESMO buraco
+-- do achado F reaparece por outra porta: fin__movimentos cai no updated_at,
+-- que qualquer edição futura do pedido empurra para a frente.
+--
+-- Por que gatilho, e não mais uma RPC alterada: confirmar_pagamento tem TRÊS
+-- cópias vivas (20260808000000, 20260810000000, 20260901000000 — a última é
+-- que vale, CREATE OR REPLACE sucessivo) e reescrevê-la aqui só para acender
+-- um carimbo duplicaria o corpo inteiro de uma função que não é desta
+-- frente. O gatilho fica ESTREITO de propósito: só a COLUNA payment_status
+-- (`UPDATE OF`), só a TRANSIÇÃO para 'estornado' (WHEN), e só quando ninguém
+-- carimbou antes (COALESCE em cima do valor que a própria instrução já
+-- atribuiu a NEW — a mesma UPDATE de registrar_estorno_manual que grava as
+-- duas colunas juntas não é pisada por ele: o BEFORE vê o valor que o SET já
+-- decidiu, e o COALESCE mantém).
+CREATE OR REPLACE FUNCTION public.marca_estorno_direto_do_pedido()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.estorno_manual_registrado_em := COALESCE(NEW.estorno_manual_registrado_em, now());
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tr_marca_estorno_direto_do_pedido ON public.marketplace_orders;
+CREATE TRIGGER tr_marca_estorno_direto_do_pedido
+  BEFORE UPDATE OF payment_status ON public.marketplace_orders
+  FOR EACH ROW
+  WHEN (NEW.payment_status = 'estornado' AND OLD.payment_status IS DISTINCT FROM 'estornado')
+  EXECUTE FUNCTION public.marca_estorno_direto_do_pedido();
+
+COMMENT ON FUNCTION public.marca_estorno_direto_do_pedido() IS
+  'Achado 7 (26/09/2026, rodada 2): estende o carimbo do achado F a QUALQUER '
+  'caminho que vire payment_status=''estornado'' — não só '
+  'registrar_estorno_manual. Sem SECURITY DEFINER: só escreve em NEW, não lê '
+  'nada além do próprio pedido, e roda sempre dentro de um UPDATE que quem '
+  'chamou já tinha permissão de fazer.';

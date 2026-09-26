@@ -14,6 +14,11 @@
  *       tentativa; sem id, só conta quando a vaga está vazia.
  *   (d) liberar_cobranca_do_pedido é do service role: authenticated não
  *       executa.
+ *   (7) achado 7 da revisão de 26/09/2026 (rodada 2): confirmar_pagamento
+ *       ('estornado') — o caminho DIRETO do Mercado Pago, fora de
+ *       registrar_estorno_manual — também carimba estorno_manual_registrado_em
+ *       pelo gatilho novo, e uma edição qualquer POSTERIOR do pedido não
+ *       empurra esse carimbo (a mesma razão do achado F, por outra porta).
  *
  * USO: node tests/banco/cartao-online-viva.cjs (depois de provisionar.cjs e
  * aplicar-migrations.cjs, como no rpc-ci.yml)
@@ -229,6 +234,72 @@ PROVAS.push({
     } finally {
       await cliente.query("ROLLBACK");
     }
+  },
+});
+
+PROVAS.push({
+  nome: "(7) confirmar_pagamento('estornado') carimba o mesmo campo que registrar_estorno_manual",
+  corpo: async (cliente) => {
+    const antes = (
+      await cliente.query(
+        "SELECT estorno_manual_registrado_em FROM public.marketplace_orders WHERE id = $1",
+        [O_PAGO],
+      )
+    ).rows[0];
+    assert.equal(
+      antes.estorno_manual_registrado_em,
+      null,
+      "O_PAGO ainda não foi estornado por nenhum caminho",
+    );
+
+    // O caminho DIRETO (gateway avisando por fora do ledger de order_refunds
+    // — nunca passa por registrar_estorno_manual): mesmo assim o gatilho do
+    // achado 7 carimba.
+    await cliente.query(
+      "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'estornado') AS r",
+      [O_PAGO, "ORD-CARTAO-2"],
+    );
+    const depois = (
+      await cliente.query(
+        "SELECT payment_status, estorno_manual_registrado_em FROM public.marketplace_orders WHERE id = $1",
+        [O_PAGO],
+      )
+    ).rows[0];
+    assert.equal(depois.payment_status, "estornado");
+    assert.notEqual(
+      depois.estorno_manual_registrado_em,
+      null,
+      "achado 7: o gatilho carimba mesmo sem passar por registrar_estorno_manual",
+    );
+
+    // A MESMA razão do achado F, por outra porta: uma edição qualquer
+    // POSTERIOR do pedido (aqui, uma coluna que nem é payment_status) não
+    // pode empurrar o carimbo — o gatilho é `UPDATE OF payment_status`, e
+    // dentro dele só grava na PRIMEIRA vez (COALESCE).
+    const carimbo1 = depois.estorno_manual_registrado_em;
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET notes = 'nota qualquer, sem relação com o estorno' WHERE id = $1",
+      [O_PAGO],
+    );
+    const outraVolta = (
+      await cliente.query(
+        "SELECT estorno_manual_registrado_em FROM public.marketplace_orders WHERE id = $1",
+        [O_PAGO],
+      )
+    ).rows[0];
+    assert.equal(
+      outraVolta.estorno_manual_registrado_em.getTime(),
+      carimbo1.getTime(),
+      "uma edição qualquer depois não pode empurrar o carimbo do estorno",
+    );
+
+    // Chamar de novo com o mesmo payment_id: 'ja_estornado', e o carimbo
+    // continua o mesmo (não regrava).
+    const resultado = await cliente.query(
+      "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'estornado') AS r",
+      [O_PAGO, "ORD-CARTAO-2"],
+    );
+    assert.equal(resultado.rows[0].r, "ja_estornado");
   },
 });
 
