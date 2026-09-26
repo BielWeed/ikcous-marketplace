@@ -510,7 +510,7 @@ const CONTA_ME_FELIZ = {
  * (reivindicação gravada? liberação com os dois filtros? evento de qual
  * etapa?).
  */
-function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any } = {}) {
+function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any; enderecoConta?: any } = {}) {
     const registro = {
         reivindicacoes: [] as Array<{ valores: any; filtros: any[] }>,
         liberacoes: [] as Array<{ valores: any; filtros: any[] }>,
@@ -536,6 +536,18 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
         }
         if (no.tabela === 'produtos') {
             return Promise.resolve({ data: configuracao.produtosDb ?? [{ id: 'p1', nome: 'Caneca', preco_venda: 10 }], error: null })
+        }
+        // user_addresses — fallback de `buscarEnderecoDaConta` (achado
+        // 26/09/2026). `enderecoConta` ausente simula pedido sem linha (ou
+        // sem address_id nenhum); presente, mas com `id`/`user_id` que não
+        // batem com os filtros da chamada, simula endereço de OUTRO usuário
+        // (dono explícito) — a MESMA linha só volta quando os DOIS filtros
+        // (`id`, `user_id`) casam, igual ao `.eq().eq()` real.
+        if (no.tabela === 'user_addresses') {
+            const linha = configuracao.enderecoConta ?? null
+            if (!linha) return Promise.resolve({ data: null, error: null })
+            const bate = no.filtros.every((f: any) => f.metodo !== 'eq' || linha[f.coluna] === f.valor)
+            return Promise.resolve({ data: bate ? linha : null, error: null })
         }
         // marketplace_orders
         if (no.acao === 'update') {
@@ -1456,6 +1468,113 @@ Deno.test("handler - pedido já etiquetado sem CPF continua devolvendo `already`
         const corpo = await res.json()
         assertEquals(corpo.already, true)
         assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+// ── gerar_etiqueta: fallback do endereço de CONTA (achado 26/09/2026) ──────
+// Cliente logado nunca grava o retrato do endereço em `customer_data` (o
+// front manda `address_id`, não `address_data`, quando há conta) —
+// `extrairEnderecoDoPedido` sempre recusa nesse caso; sem o fallback abaixo,
+// TODO pedido nacional (P6: convidado não paga online) recusava a etiqueta
+// com "endereço incompleto", mesmo pago e com endereço de conta válido.
+
+const ENDERECO_DA_CONTA = {
+    id: 'addr-1',
+    user_id: 'user-1',
+    cep: '01310-100',
+    street: 'Av. Paulista',
+    number: '1000',
+    complement: 'Ap 12',
+    neighborhood: 'Bela Vista',
+    city: 'São Paulo',
+    state: 'SP',
+}
+
+Deno.test("handler - cliente logado sem endereço em customer_data usa user_addresses via address_id", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoLogado = {
+            ...PEDIDO_FELIZ,
+            // Sem `address`/`addressData`/cep-na-raiz nenhum — o retrato real
+            // de quem tem conta (useOrders.ts: addressData é null quando
+            // `user` existe e não há CPF a gravar).
+            customer_data: { shipping_option_id: 'melhor-envio-1', cpf: '52998224725' },
+            address_id: 'addr-1',
+            user_id: 'user-1',
+        }
+        const supa = clienteFalso({ pedido: pedidoLogado, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.postal_code, '01310100')
+        assertEquals(me.registro.ultimoTo?.address, 'Av. Paulista')
+        assertEquals(me.registro.ultimoTo?.city, 'São Paulo')
+    })
+})
+
+Deno.test("handler - address_id de OUTRO usuário não empresta o endereço (dono explícito, service role sem RLS)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoLogado = {
+            ...PEDIDO_FELIZ,
+            customer_data: { shipping_option_id: 'melhor-envio-1', cpf: '52998224725' },
+            address_id: 'addr-1',
+            user_id: 'user-1',
+        }
+        // A linha existe, mas pertence a OUTRO usuário — o filtro
+        // `.eq('user_id', pedido.user_id)` não pode casar com ela.
+        const enderecoDeOutroUsuario = { ...ENDERECO_DA_CONTA, user_id: 'outro-user' }
+        const supa = clienteFalso({ pedido: pedidoLogado, enderecoConta: enderecoDeOutroUsuario })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).toLowerCase().includes('endereço completo'), true)
+        assertEquals(me.registro.carrinho, 0)
+    })
+})
+
+Deno.test("handler - convidado (ou pedido antigo) com endereço completo em customer_data ignora user_addresses (precedência preservada)", async () => {
+    await comEnvAdmin(async () => {
+        // PEDIDO_FELIZ já tem o endereço completo na raiz de customer_data
+        // (Monte Carmelo/MG) e NENHUM address_id — simula convidado ou
+        // pedido anterior à migration 20261172. Mesmo com uma linha de
+        // conta configurada (outro endereço), ela não pode vencer.
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.city, 'Monte Carmelo')
+        assertEquals(me.registro.ultimoTo?.postal_code, '38500000')
+    })
+})
+
+Deno.test("handler - customer_data.address só com {cpf} (janela 23-26/09, migration 20261172) usa user_addresses", async () => {
+    await comEnvAdmin(async () => {
+        // Formato exato que create_marketplace_order_v23/v24 gravam para o
+        // cliente logado nesta janela: `address` é o `p_address_data` inteiro
+        // MENOS o cpf — que, quando só sobrava `{cpf}`, vira `{}` e some (SQL
+        // NULL). Este teste cobre o caso em que ainda sobra um objeto não
+        // vazio (ex.: reaplicação/edge anterior) contendo só `cpf` — sem CEP
+        // nem rua, `extrairEnderecoDoPedido` recusa do mesmo jeito.
+        const pedidoJanela = {
+            ...PEDIDO_FELIZ,
+            customer_data: {
+                shipping_option_id: 'melhor-envio-1',
+                cpf: '52998224725',
+                address: { cpf: '52998224725' },
+            },
+            address_id: 'addr-1',
+            user_id: 'user-1',
+        }
+        const supa = clienteFalso({ pedido: pedidoJanela, enderecoConta: ENDERECO_DA_CONTA })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoTo?.city, 'São Paulo')
+        assertEquals(me.registro.ultimoTo?.postal_code, '01310100')
     })
 })
 

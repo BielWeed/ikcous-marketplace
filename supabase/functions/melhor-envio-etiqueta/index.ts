@@ -197,6 +197,18 @@ export function extrairServiceIdDaOpcao(optionId: unknown): string | null {
  * CEP e cidade. Rua sem número vai com aviso? NÃO — recusa também: a
  * transportadora não entrega pacote sem número; melhor parar antes de gastar
  * saldo do lojista numa etiqueta que os Correios devolveriam.
+ *
+ * ATENÇÃO — isto NÃO é a fonte completa do endereço (achado 26/09/2026):
+ * cliente LOGADO nunca grava o retrato em `customer_data` (o front manda
+ * `p_address_id`, não `p_address_data`, quando há conta — `useOrders.ts`).
+ * `customer_data.address` fica `null` (sempre, para logado) ou, na janela
+ * 23–26/09 da migration 20261172, só `{cpf}`. Nos dois casos esta função
+ * devolve null CORRETAMENTE — mas o chamador (`gerar_etiqueta`) TEM de
+ * completar com `buscarEnderecoDaConta` (abaixo) antes de recusar o pedido,
+ * senão nenhum pedido de cliente com conta (== todo pedido nacional, P6:
+ * convidado não paga online) nunca gera etiqueta. O mapper do painel já
+ * cobre isso com o JOIN `row.address`; aqui a mesma verdade vem de uma
+ * segunda consulta, porque a function não faz JOIN no SELECT do pedido.
  */
 export function extrairEnderecoDoPedido(
     customerData: Record<string, any> | null | undefined,
@@ -216,6 +228,49 @@ export function extrairEnderecoDoPedido(
         district: String(fonte.neighborhood || cd.neighborhood || ''),
         city,
         state: String(fonte.state || cd.state || ''),
+    }
+}
+
+/**
+ * Fallback de conta (achado 26/09/2026): o endereço de quem tem conta mora
+ * em `user_addresses`, referenciado por `marketplace_orders.address_id` —
+ * NUNCA em `customer_data` (ver o aviso em `extrairEnderecoDoPedido` acima).
+ * Só chamada quando a extração de `customer_data` já devolveu null; a
+ * precedência (snapshot completo em `customer_data` vence, senão a conta)
+ * mora no CHAMADOR, não aqui.
+ *
+ * Dono explícito (`eq('user_id', ...)`): a function usa SERVICE ROLE, que
+ * não tem RLS — sem este filtro, um `address_id` de OUTRO usuário (dado
+ * corrompido, FK solta de pedido antigo) vazaria o endereço de outra pessoa
+ * na etiqueta. Sem `addressId` ou sem `userId` (convidado, ou pedido sem
+ * endereço de conta), devolve null direto — não gasta round-trip.
+ */
+export async function buscarEnderecoDaConta(
+    supabase: any,
+    addressId: unknown,
+    userId: unknown,
+): Promise<{ cep: string; street: string; number: string; complement: string; district: string; city: string; state: string } | null> {
+    if (!addressId || !userId) return null
+    const { data, error } = await supabase
+        .from('user_addresses')
+        .select('cep, street, number, complement, neighborhood, city, state')
+        .eq('id', addressId)
+        .eq('user_id', userId)
+        .maybeSingle()
+    if (error || !data) return null
+    const cep = String(data.cep || '').replace(/\D/g, '')
+    const street = String(data.street || '')
+    const number = String(data.number || '')
+    const city = String(data.city || '')
+    if (cep.length !== 8 || !city || !street || !number) return null
+    return {
+        cep,
+        street,
+        number,
+        complement: String(data.complement || ''),
+        district: String(data.neighborhood || ''),
+        city,
+        state: String(data.state || ''),
     }
 }
 
@@ -1789,9 +1844,12 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
         // 1. O pedido, com o que a etiqueta precisa (inclui o estado de
         //    pagamento para o portão e a URL da etiqueta para o `already`).
+        //    `address_id` e `user_id` (achado 26/09/2026): sem eles o
+        //    fallback de `buscarEnderecoDaConta` não teria como achar nem
+        //    provar o dono do endereço de quem tem conta.
         const { data: pedido, error: pedidoError } = await supabaseClient
             .from('marketplace_orders')
-            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, customer_name, customer_data, shipping, shipping_cost')
+            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, customer_name, customer_data, shipping, shipping_cost, address_id, user_id')
             .eq('id', orderId)
             .maybeSingle()
 
@@ -1887,7 +1945,14 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         // subtotal, como sempre foi).
         const semSeguro = opcaoDoCheckout?.semSeguro === true
 
-        const endereco = extrairEnderecoDoPedido(customerData)
+        // Cliente LOGADO nunca grava o retrato em `customer_data` (ver o
+        // aviso em `extrairEnderecoDoPedido`) — sem este fallback, TODO
+        // pedido nacional (P6: convidado não paga online, então transportadora
+        // é sempre cliente com conta) recusava aqui.
+        let endereco = extrairEnderecoDoPedido(customerData)
+        if (!endereco) {
+            endereco = await buscarEnderecoDaConta(supabaseClient, pedido.address_id, pedido.user_id)
+        }
         if (!endereco) {
             return new Response(
                 JSON.stringify({
