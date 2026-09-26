@@ -13,6 +13,97 @@ e ao painel do Supabase. Regras de fundo: [AGENTS.md](../../AGENTS.md); function
 **O cartão sai DESLIGADO** (`config_pagamento_cartao`: crédito e débito `false`). Publicar este
 PR não oferece cartão a ninguém. Ligar é o passo 6, separado, depois do teste.
 
+### Atalho: o workflow "Conferir banco da loja", em vez de colar no SQL Editor
+
+Desde 26/09/2026, as consultas dos §0/§1 abaixo e o `INSERT` do §1.3 também rodam pelo workflow
+[`conferir-banco-da-loja.yml`](../../.github/workflows/conferir-banco-da-loja.yml) (Actions → Run
+workflow), sem copiar SQL no painel do Supabase. Ele é **workflow_dispatch só** e usa o mesmo
+segredo `SUPABASE_ACCESS_TOKEN` que já publica functions e aplica migrations — nenhuma
+credencial nova. A lógica mora em
+[`scripts/publicacao/conferir-banco.cjs`](../../scripts/publicacao/conferir-banco.cjs).
+
+| Input | O quê |
+| --- | --- |
+| `consulta` | o nome de um arquivo de [`scripts/publicacao/consultas/`](../../scripts/publicacao/consultas/) (sem `.sql`), ou `backups` |
+| `projeto` | `loja` (default) ou `sandbox` — **nunca um ref de texto livre** (ver nota de risco abaixo) |
+| `gravar_ledger` | `nao` (default), `72-74` ou `75-78` — grava o `INSERT` fixo daquela faixa |
+| `confirmar` | só o job do ledger olha isto; precisa ser exatamente `GRAVAR` |
+
+As consultas de conferência (`consulta`) vão para o endpoint dedicado da Management API
+`POST /database/query/read-only`, que roda como `supabase_read_only_user` — um papel do BANCO sem
+grant de escrita, não uma promessa da aplicação (esse papel **não** cobre uma função
+`SECURITY DEFINER` executável por `PUBLIC` que escreve — ver `consulta = 4a-...` abaixo). O job do
+ledger é o único que escreve (o `INSERT` fixo da faixa), e só depois de **pré-conferir o schema
+daquela faixa** pelo mesmo caminho só-leitura (2a+2b para 72-74; 1a+1b para 75-78) — se vier
+alguma linha `ok = false` (fora as linhas de dado ao vivo: "loja existente com as 3 formas
+ligadas", "75 política padrão" e "76 cartão nasce desligado" — essas mudam legitimamente com o
+tempo e com decisão do dono, não são checagem estrutural), o job aborta sem gravar nada. Além
+disso, `confirmar` precisa ser exatamente `GRAVAR`, senão o job nem roda.
+
+**Nota de risco (26/09/2026, revisão "passa com ressalva"):** a primeira versão deste workflow
+aceitava um `projeto_ref` de texto livre, que ia direto para o path da URL com um token válido
+para todos os projetos da conta — provado que isso permitia mandar a requisição para outro
+endpoint (`.../restart`) ou para OUTRO projeto. Por isso `projeto` agora é uma lista fechada
+(`loja`/`sandbox`), resolvida para o ref dentro do script. Os dois workflows (este e
+`aplicar-migrations.yml`) usam `concurrency` com `queue: max`, não o default: sem isso, disparar
+uma segunda vez enquanto a primeira roda CANCELA a pendente em vez de esperar a vez.
+
+Correspondência com os passos deste runbook:
+
+- **§0** — `consulta = 0a-antes-base-e-nada-aplicado` (a consulta de "base_74/t75.../f78") e
+  `consulta = 0b-conferir-corpos-vivos` (os 5 corpos vivos das funções que 75/76 redefinem).
+- **§1.1** — `consulta = 1a-conferir-o-que-nasceu`.
+- **§1.2** — `consulta = 1b-conferir-marcadores`.
+- **§1.3** — `gravar_ledger = 75-78`, `confirmar = GRAVAR`. Depois de gravar, o job imprime as
+  linhas de `supabase_migrations.schema_migrations` para 72–78 (leitura, à parte do `INSERT`).
+  **`gravar_ledger` só tem as faixas 72-74 e 75-78** — o `INSERT` do ledger da **80** (§1.4) e de
+  qualquer migration além da 78 (79, 81, 82...) **não é coberto pela ferramenta**: continua manual,
+  com o `INSERT` do próprio runbook (ex.: o do fim do §1.4).
+- **§1.4** — `consulta = 5a-antes-da-79-e-80`: alternativa ao SQL Editor para conferir, ANTES de
+  rodar a migration, se o preflight dela (`DO $preflight_20261180$`) vai passar (mesmos hashes,
+  mesma checagem de `metodo_online`/`devolucoes`) — ver o parágrafo próprio abaixo.
+- **Backup** (checklist do §0) — `consulta = backups`: imprime a hora do último backup, o
+  status, se o PITR está ligado e o total — nada que pareça segredo.
+
+O `consulta = 3a-cpf-no-endereco` também está na lista: é a contagem de pedidos com CPF gravado
+dentro de `customer_data.address` (janela 23/09–26/09/2026) que decide se uma limpeza é
+necessária — nenhum CPF sai na saída, só contagens. Rode ANTES e DEPOIS de aplicar a migration
+`20261182000000` (o_cpf_da_janela_sai_do_endereco, quando ela chegar a esta árvore): a contagem de
+`pedidos_com_cpf_no_endereco` tem de cair para as linhas que a migration deliberadamente NÃO
+tocou (CPF sem 11 dígitos, opção de frete que não recebe CPF na raiz etc.) — se sobrar alguma
+linha que deveria ter sido movida, é sinal de que o WHERE da migration divergiu do desta consulta.
+
+O `consulta = 4a-definer-alcancavel-pelo-leitor` é uma checagem de segurança avulsa (rodada 3 da
+revisão de risco, ampliada na rodada 4): lista, como `schema.função`, toda função `SECURITY
+DEFINER` em QUALQUER schema (menos `pg_catalog`/`information_schema`) que o papel
+`supabase_read_only_user` consegue executar e que PODE escrever (VOLATILE, sem ser função de
+gatilho — rodada 5, achado do revisor: sem essas duas guardas a consulta lista 7 falsos
+positivos contra o schema do zero, entre eles 5 funções de gatilho e uma STABLE) — o papel não
+ter grant de escrita numa tabela não impede uma função dessas de escrever por dentro, **em
+nenhum schema, não só `public`**. **Não é mais "Esperado: 0 linhas"** — revise cada linha; exceção
+CONHECIDA E ACEITA: `public.get_segmented_push_count` (VOLATILE, mas só faz `SELECT count(*)`
+atrás de um gate `is_admin()` — alcançável só porque ninguém revogou o EXECUTE default de PUBLIC
+dela, não porque escreva). `public.devolver_cupons_de_pedidos_mortos` **não pode aparecer** numa
+loja de verdade (a migration `20260901000000` já faz `REVOKE ALL ... FROM PUBLIC, anon,
+authenticated` nela) — se aparecer em produção, é achado de verdade, não ruído; só é esperado
+aparecer num Postgres local incompleto, onde o `CREATE EXTENSION pg_cron` da mesma migration
+falhou antes de chegar a esse `REVOKE` (documentado, não é o caso deste runbook, que já provisiona
+o pg_cron por stub). Se vier a linha "(supabase_read_only_user AUSENTE — resultado não vale)", o
+papel não existe neste projeto e o resultado não prova nada — rode de novo depois de confirmar o
+papel certo. Rode manualmente depois de criar qualquer função `SECURITY DEFINER` nova, em
+qualquer schema.
+
+O `consulta = 5a-antes-da-79-e-80` confere, ANTES do primeiro `CREATE`, se o banco está no estado
+que a 79 (`cancelar_devolucao_barra_compra_em_voo`, frente `fix/devolucao-pos-revisao` — runbook
+§7.0 daquela frente) e a 80 (`20261180000000_cliente_nao_cancela_com_cartao_vivo.sql`, esta
+frente) esperam encontrar: o corpo de `cancelar_devolucao` ainda é o baseline que a 79 vai
+substituir, `admin_devolucao_liberar_vinculo_reverso` ainda não existe (79 não aplicada),
+`marketplace_orders.metodo_online` e `public.devolucoes` existem, e o corpo de
+`update_order_status_atomic` bate com um dos dois hashes que o `DO $preflight_20261180$` da 80
+aceita. Esperado ANTES de aplicar 79 e 80: todas as linhas `ok = true`; depois de aplicar a 80, a
+linha do marcador `verificando:` vira `ok = false` de propósito — é o aviso de que a 80 já foi
+aplicada, não uma regressão.
+
 ## A ordem, e o que acontece se ela for trocada
 
 | Passo | O quê | Se pular ou inverter |
@@ -135,7 +226,10 @@ sandbox, em vez de silenciosamente comparar o código com o banco errado.
       20261175000000_a_devolucao_nasce_no_pedido.sql,20261176000000_o_cartao_online_nasce.sql,20261177000000_o_financeiro_da_loja_nasce.sql,20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
       ```
 
-   3. Deixe `projeto_ref` **no padrão**, que é o projeto da loja.
+   3. Deixe `projeto` em `loja` (default). **Desde a rodada 2 da revisão de risco (26/09/2026)
+      o input mudou de `projeto_ref` (texto livre) para `projeto` (`loja`/`sandbox`, fechado)** —
+      disparar pela API do GitHub passando `projeto_ref` depois desse merge dá `422` (o input não
+      existe mais neste workflow).
 
    A ordem importa porque cada migration lê a anterior:
    - `registrar_estorno_manual` (76) lê `devolucoes` (75);
@@ -266,6 +360,11 @@ A `20261180000000_cliente_nao_cancela_com_cartao_vivo.sql` é publicada À PARTE
 do §1 — mesmo procedimento (workflow, nunca `db-apply.cjs` direto), mas em outro run, DEPOIS de
 o §1.1/§1.2 confirmarem que 75 e 76 estão de pé (ela lê `metodo_online` e `devolucoes`).
 
+Em vez de colar o `SELECT` do preflight no SQL Editor para conferir com antecedência se ele vai
+passar, rode `consulta = 5a-antes-da-79-e-80` pelo Atalho — ele reproduz os MESMOS hashes e as
+MESMAS checagens do `DO $preflight_20261180$` abaixo (e também confere o baseline da 79, de outra
+frente — ver o runbook `fix/devolucao-pos-revisao`, §7.0).
+
 1. Abra *Run workflow* de novo, no branch do SHA anotado.
 2. Preencha `migracoes`:
 
@@ -273,7 +372,7 @@ o §1.1/§1.2 confirmarem que 75 e 76 estão de pé (ela lê `metodo_online` e `
    20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
    ```
 
-3. Deixe `projeto_ref` **no padrão**, que é o projeto da loja.
+3. Deixe `projeto` em `loja` (default).
 
 Esta migration tem um **preflight** (`B1_BASELINE_DIVERGENT`, `DO $preflight_20261180$` no topo
 do arquivo) que recusa ANTES de qualquer `CREATE` se `marketplace_orders.metodo_online` ou
