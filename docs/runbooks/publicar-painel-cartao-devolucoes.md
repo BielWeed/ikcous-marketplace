@@ -270,6 +270,18 @@ criar-pagamento, webhook-mercadopago, reconciliar-pagamentos, melhor-envio-etiqu
 `BASE_URL_PADRAO`, e as quatro estão idênticas às da base. Por isso não use o apelido
 `cobranca`, que publicaria as cinco do Mercado Pago.
 
+Checagem da 9ª rodada de risco do cartão (26/09/2026): esta branch só tocou UMA peça de
+`_shared/mercadopago.ts` além da já coberta acima — `mapearStatusOrder` (generaliza
+`canceled`/`cancelled`/`expired` para qualquer `status_detail`, adendo 2 da 8ª rodada). `grep -rl
+mapearStatusOrder supabase/functions/*/index.ts` confirma os únicos três consumidores:
+`criar-pagamento`, `webhook-mercadopago` (por `mapearStatusOrder` dentro de `_shared/mercadopago.ts`
+mesmo, indireto) e `reconciliar-pagamentos` — as TRÊS já estão na lista de publicação acima (a
+segunda linha da tabela já cobre `reconciliar-pagamentos` pela liberação da vaga/comprovante; a
+generalização do status é um motivo A MAIS para a mesma linha, não uma function nova). `estornar-
+pagamento` só importa `fetchComTempo` daqui — não muda com esta branch, e a exclusão acima continua
+valendo. (Não confundir com `_shared/estorno.ts` — arquivo DIFERENTE, que esta branch não toca; se
+uma tarefa futura mexer nele, refaça esta checagem com `grep -rl estorno supabase/functions/*/index.ts`.)
+
 O workflow publica uma function por vez e nunca passa `--no-verify-jwt`: quem manda é
 `supabase/config.toml`. No fim, ele grava `supabase functions list` no resumo do job. Confira que
 as cinco aparecem com a data de agora.
@@ -403,6 +415,19 @@ idempotentes. Rollback seguido de reaplicação foi provado em Postgres 17 efêm
 O cartão só liga quando **todos** os itens abaixo passarem num pedido de teste. O interruptor
 vale para a loja inteira, porque preview e produção leem a mesma linha. Durante o teste, o
 cartão aparece para todo cliente, então faça em horário sem movimento.
+
+**O que muda no PIX (achado B, revisão de risco da migration 80, 26/09/2026 — registro, sem
+código de cartão envolvido)**: `podeCobrar` (`criar-pagamento/index.ts`) passou a recusar,
+terminal, qualquer pedido com `status = 'cancelled'` — inclusive PIX, que já está em produção.
+Antes desta correção, o PIX de um pedido que o CLIENTE cancelou (`update_order_status_atomic`,
+`status='cancelled'`, `payment_status` continua `'aguardando'`) seguia "cobrável": reabrir o QR ou
+pedir PIX de novo devolvia o mesmo QR de sempre, mesmo com o pedido cancelado. Depois desta
+correção, essa mesma chamada devolve 409 terminal "Este pedido foi cancelado." — o comportamento
+CERTO (um pedido cancelado não deveria continuar pagável), mas é uma MUDANÇA de comportamento em
+produção, independente de o cartão estar ligado ou não — vale para QUALQUER publicação desta
+`criar-pagamento` daqui pra frente, não só para quando o cartão for ligado. No deploy, confira que
+"Cancelar pedido" num PIX aberto realmente impede qualquer tentativa de pagamento seguinte (QR
+antigo ou novo), em vez de só sumir da tela do cliente.
 
 **Preparar**
 - [ ] O §4 está completo, e o PIX pelo app está ligado. O painel trava o cartão sem o PIX,

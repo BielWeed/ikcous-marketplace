@@ -2534,7 +2534,15 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // nova). O ramo irmão (`action_required`/`created`) reaproveita o `json(...)`
   // já existente de "O prazo para pagar este pedido acabou." (só ganhou mais
   // uma condição no `if`) — nenhum ponto de retorno novo ali. 46 + 1 = 47.
-  assertEquals(achados, 47);
+  //
+  // 48, não mais 47: achado #4 (nit, revisão de risco da 9ª rodada, 26/09/
+  // 2026, prova R8-3b). O ramo `action_required`/`created` de `pedidoJaMorto`
+  // passou a distinguir cancelamento de expiração na MENSAGEM — "Este pedido
+  // foi cancelado." é um literal NOVO (já leva `terminal: true`, não precisa
+  // de entrada em `recuperaveisConhecidas`); "O prazo para pagar este pedido
+  // acabou." continua a mesma ocorrência de sempre para a expiração pelo
+  // relógio. 47 + 1 = 48.
+  assertEquals(achados, 48);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -2980,8 +2988,14 @@ Deno.test("handler cartão (achado A, migration 80, prova W): cliente CANCELA en
         `[${statusMp}] a gravação ACONTECEU (o dinheiro foi capturado/pode capturar, não some do registro)`,
       );
     } else {
-      assertEquals(r.status, 409, `[${statusMp}] 3DS num pedido já cancelado -> 409 terminal, mesmo texto de 'prazo acabou'`);
+      assertEquals(r.status, 409, `[${statusMp}] 3DS num pedido já cancelado -> 409 terminal`);
       assertEquals(c.terminal, true, `[${statusMp}] terminal`);
+      // R8-3b / achado #4 (nit, revisão de risco da 9ª rodada, 26/09/2026):
+      // é um CANCELAMENTO do cliente, não uma expiração pelo relógio — a
+      // mensagem certa é "Este pedido foi cancelado.", nunca "O prazo para
+      // pagar este pedido acabou." (essa fica só para quem realmente
+      // expirou).
+      assertEquals(c.error, "Este pedido foi cancelado.", `[${statusMp}] mensagem certa para cancelamento, não expiração`);
       assertEquals(
         (mp.orders[0] as { status: string }).status,
         "canceled",
@@ -3082,6 +3096,70 @@ Deno.test("handler (achado B, migration 80, prova X): PIX cancelado pelo cliente
   assertEquals(resposta.status, 409);
   assertEquals(corpo.error, "Este pedido foi cancelado.");
   assertEquals(corpo.terminal, true);
+});
+
+// R8-4 (resto do achado #4, revisão de risco da 9ª rodada, 26/09/2026): a
+// resolução do sentinela PERDE a corrida para a adoção do webhook (o
+// `.update()` que grava o id real não bate — outra chamada já mudou a vaga)
+// — a releitura que segue só lia `gateway_payment_id`, nunca `metodo_online`.
+// Um PIX cuja reconsulta por id (do cartão que o webhook ACABOU de adotar)
+// falha saía sem `cartaoEmAnalise`, mesmo com o banco já mostrando
+// `metodo_online: 'credito'` e a order `processing`.
+Deno.test("R8-4: sentinela perde a corrida para a adoção do webhook -> a releitura sincroniza metodo_online, e a flag aparece mesmo assim", async () => {
+  const limiteMs = Date.now() - 60_000;
+  const sentinela = `verificando:${UUID}:c0:${limiteMs}`;
+  const idOrderCartao = "ORDTST0R84CARTAOVIVO0000001";
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({
+      user_id: DONO_LOGADO,
+      gateway_payment_id: sentinela,
+      metodo_online: null,
+      created_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    }),
+    // A gravação que tentaria resolver o sentinela para o id real PERDE a
+    // corrida — devolve null, como se outra chamada (o webhook) já tivesse
+    // mudado a vaga.
+    gravado: null,
+    // A releitura que segue: o webhook JÁ adotou o cartão (id real +
+    // metodo_online), pouco antes desta chamada tentar gravar o mesmo.
+    releitura: { gateway_payment_id: idOrderCartao, metodo_online: "credito" },
+  });
+  const fn = async (url: string, init?: RequestInit) => {
+    if ((init?.method ?? "GET") === "GET" && /\/v1\/orders\?/.test(url)) {
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              id: idOrderCartao,
+              status: "processing",
+              status_detail: "in_review",
+              external_reference: UUID,
+              date_created: new Date().toISOString(),
+              transactions: { payments: [{ payment_method: { type: "credit_card" } }] },
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.endsWith(`/v1/orders/${idOrderCartao}`)) {
+      return new Response(JSON.stringify({ errors: [{ code: "internal_error" }] }), { status: 500 });
+    }
+    throw new Error(`fetch inesperado no teste R8-4: ${url}`);
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(
+    corpo.cartaoEmAnalise,
+    true,
+    "a releitura sincronizou metodo_online='credito' — a flag não pode depender do valor ANTIGO em memória",
+  );
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper
@@ -3920,7 +3998,14 @@ Deno.test("handler cartão: desafio 3DS gravado, mas o pedido JÁ NÃO estava 'a
 
 Deno.test("handler cartão: order APROVADA (processed) gravada num pedido que já não estava 'aguardando' -> HONRA (P1) — NUNCA cancela dinheiro já capturado (controle negativo do Achado R1)", async () => {
   const { supabase } = cenarioCartao({
-    gravado: { id: UUID, expires_at: "2099-01-01T00:00:00.000Z", payment_status: "expirado" },
+    // `status: "cancelled"` (achado #1, revisão de risco da 9ª rodada,
+    // 26/09/2026): o `expirar_pedidos_vencidos` REAL grava os DOIS —
+    // `payment_status = 'expirado'` E `status = 'cancelled'` — não só o
+    // primeiro. Sem isto, este teste nunca provava a distinção entre
+    // "expirou pelo relógio" (P1 honra em silêncio) e "o cliente cancelou"
+    // (achado A, 8ª rodada: avisa o admin) — os dois cenários pareciam
+    // idênticos aqui.
+    gravado: { id: UUID, expires_at: "2099-01-01T00:00:00.000Z", payment_status: "expirado", status: "cancelled" },
   });
   const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
 
@@ -5037,7 +5122,14 @@ Deno.test("CARTÃO (corrida real, Achado A1-P1): pg_cron expira o pedido ENQUANT
   const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
   const mp = mpComEstado({
     aoCriar: () => {
+      // `status: "cancelled"` (achado #1, revisão de risco da 9ª rodada,
+      // 26/09/2026): `expirar_pedidos_vencidos` REAL grava os DOIS —
+      // `payment_status = 'expirado'` E `status = 'cancelled'`, não só o
+      // primeiro. Sem isto o teste nunca provava a distinção do achado A
+      // (8ª rodada): expiração pelo relógio HONRA em silêncio (P1);
+      // cancelamento EXPLÍCITO do cliente avisa o admin.
       db.linha.payment_status = "expirado";
+      db.linha.status = "cancelled";
     },
   });
 

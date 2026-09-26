@@ -114,8 +114,12 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
    cartão novo) — a order nova nasce só milissegundos DEPOIS do limite (a mesma chamada que acabou
    de gravá-lo), dentro da margem de 15s, e uma order ambígua NESSA chamada nunca libera sozinha
    (fica presa até `expires_at`). Resíduo aceito pelo revisor: sem dinheiro em jogo (a vaga só
-   afeta o PRÓPRIO cliente que acabou de tentar), e raro (exige a MESMA chamada falhar de novo,
-   logo depois de já ter liberado uma vez). Uma lista PARCIALMENTE indexada, que só mostra a order
+   afeta o PRÓPRIO cliente que acabou de tentar); **correção da 9ª rodada (achado #3, texto)**: NÃO
+   exige duas falhas seguidas — UMA única criação ambígua na troca já basta, DESDE QUE essa MESMA
+   order ambígua acabe MORTA (recusada/cancelada/expirada) depois. Enquanto ela segue viva (ou
+   desconhecida para o MP), `resolverSentinela` a encontra e adota normalmente — só quando ela
+   morre é que a lista fica sem nenhuma order fora da margem, e a vaga fica presa até `expires_at`.
+   Uma lista PARCIALMENTE indexada, que só mostra a order
    morta de uma tentativa ANTERIOR (sempre antes do limite), nunca libera. Nunca por um teto fixo
    de relógio; o único prazo que ainda libera por tempo é a
    própria reserva (`expires_at`), e uma aprovação tardia sobre isso vira `pago_apos_expirar`

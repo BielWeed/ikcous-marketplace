@@ -1197,14 +1197,25 @@ async function handler(
           } else {
             // Perdeu a corrida (o webhook resolveu ao mesmo tempo, por
             // exemplo) — relê o estado REAL, mesmo padrão do resto do
-            // handler: nunca inventa causa.
+            // handler: nunca inventa causa. `metodo_online` (resto do
+            // achado #4, 8ª rodada de risco, revisão de risco da 9ª rodada,
+            // 26/09/2026, prova R8-4): o VENCEDOR da corrida (o webhook)
+            // grava o método/parcelas de verdade — sem reler aqui, `pedido.
+            // metodo_online` continuava o valor de ANTES de resolver (quase
+            // sempre `null`), e uma reconsulta por id que falhasse logo
+            // abaixo (`consultarOrder`) saía sem `cartaoEmAnalise` mesmo com
+            // um cartão vivo recém-adotado na vaga.
             const { data: relido } = await supabase
               .from("marketplace_orders")
-              .select("gateway_payment_id")
+              .select("gateway_payment_id, metodo_online")
               .eq("id", pedido.id)
               .maybeSingle();
-            const idRelido = (relido as Record<string, unknown> | null)?.gateway_payment_id;
-            if (typeof idRelido === "string") idGatewayReconsulta = idRelido;
+            const relidoObj = relido as Record<string, unknown> | null;
+            if (relidoObj) {
+              const idRelido = relidoObj.gateway_payment_id;
+              if (typeof idRelido === "string") idGatewayReconsulta = idRelido;
+              pedido = { ...pedido, metodo_online: relidoObj.metodo_online };
+            }
           }
         }
         sentinelaNaVaga = vagaEmVerificacao(idGatewayReconsulta);
@@ -2378,8 +2389,25 @@ async function handler(
   // cancelamento — `update_order_status_atomic` grava `status = 'cancelled'`
   // sem mexer em `payment_status` (fica 'aguardando'). `pedidoJaMorto` junta
   // os dois sinais.
+  //
+  // BLOQUEIO (achado #1, revisão de risco da 9ª rodada, 26/09/2026, prova
+  // R8-3a): `pedidoCancelado`, abaixo, exige `payment_status === "aguardando"`
+  // JUNTO de `status === "cancelled"` — sem isso, o `expirar_pedidos_
+  // vencidos` REAL (que grava os DOIS, `payment_status = 'expirado'` E
+  // `status = 'cancelled'`, nunca só o primeiro) batia aqui igualzinho a um
+  // cancelamento de verdade: o cliente que só teve a reserva expirada pelo
+  // relógio (cartão aprovado por baixo) recebia "Seu cartão pode ter sido
+  // cobrado" (409) em vez do 'pago' de sempre (Política P1), e o admin
+  // levava um push falso de "cobrança sem registro" — a vaga TINHA
+  // registro, só que a reserva morreu de vez enquanto o MP processava.
+  // `payment_status` só fica 'aguardando' quando é o CLIENTE cancelando —
+  // toda outra saída de 'aguardando' (inclusive a expiração) já muda esse
+  // campo também.
+  const pedidoCancelado = Boolean(
+    gravado && gravado.status === "cancelled" && gravado.payment_status === "aguardando",
+  );
   const pedidoJaMorto = Boolean(
-    gravado && metodo === "cartao" && (gravado.payment_status !== "aguardando" || gravado.status === "cancelled"),
+    gravado && metodo === "cartao" && (gravado.payment_status !== "aguardando" || pedidoCancelado),
   );
   if (pedidoJaMorto && (statusBrutoDaOrderCriada === "action_required" || statusBrutoDaOrderCriada === "created")) {
     console.warn(
@@ -2408,22 +2436,32 @@ async function handler(
         { orderId: pedido.id, idOrder: idGateway },
       );
     }
+    // Achado #4 (nit, revisão de risco da 9ª rodada, 26/09/2026, prova
+    // R8-3b): a mensagem distingue as duas causas — "cancelado" é verdade
+    // só quando o CLIENTE cancelou; a expiração pelo relógio mantém a
+    // mensagem de sempre. Nunca chave aninhada (o teste de enumeração por
+    // regex não entende objeto aninhado), por isso os dois `json(...)`
+    // aparecem separados.
+    if (pedidoCancelado) {
+      return json({ error: "Este pedido foi cancelado.", terminal: true }, 409);
+    }
     return json({ error: "O prazo para pagar este pedido acabou.", terminal: true }, 409);
   }
   // Achado A (revisão de risco da migration 80, 26/09/2026 — prova W),
   // continuação: SÓ para um CANCELAMENTO explícito do cliente
-  // (`gravado.status === "cancelled"`) — NUNCA para a mera expiração de
-  // `payment_status` sozinha, que a Política P1 já manda HONRAR em
-  // silêncio, sem avisar ninguém (controle negativo do Achado R1: "order
-  // APROVADA (processed) gravada num pedido que já não estava 'aguardando'
-  // -> HONRA (P1)"). `processed`/`processing`: a Orders API não cancela mais
-  // nenhum dos dois — dinheiro CAPTURADO (ou podendo capturar) numa reserva
-  // que o cliente já cancelou e cujo estoque já voltou. Sem como desfazer
-  // por aqui (mesma regra que `cancelavel`, mais abaixo, já usa para a
-  // corrida da vaga perdida): avisa o admin, mesma categoria de
-  // `cartao_orfao` — a loja decide manualmente (reembolso, ou repõe o
-  // pedido).
-  if (metodo === "cartao" && gravado?.status === "cancelled") {
+  // (`pedidoCancelado`, achado #1 da 9ª rodada — NUNCA `gravado.status ===
+  // "cancelled"` sozinho, que também é verdade para uma reserva apenas
+  // EXPIRADA) — NUNCA para a mera expiração de `payment_status`, que a
+  // Política P1 já manda HONRAR em silêncio, sem avisar ninguém (controle
+  // negativo do Achado R1: "order APROVADA (processed) gravada num pedido
+  // que já não estava 'aguardando' -> HONRA (P1)"). `processed`/
+  // `processing`: a Orders API não cancela mais nenhum dos dois — dinheiro
+  // CAPTURADO (ou podendo capturar) numa reserva que o cliente já cancelou
+  // e cujo estoque já voltou. Sem como desfazer por aqui (mesma regra que
+  // `cancelavel`, mais abaixo, já usa para a corrida da vaga perdida): avisa
+  // o admin, mesma categoria de `cartao_orfao` — a loja decide manualmente
+  // (reembolso, ou repõe o pedido).
+  if (metodo === "cartao" && pedidoCancelado) {
     console.error(
       "criar-pagamento: cobrança de cartão gravada num pedido que o cliente CANCELOU durante a criação — dinheiro pode ter sido capturado",
       { orderId: pedido.id, idOrder: idGateway, status: statusBrutoDaOrderCriada },
