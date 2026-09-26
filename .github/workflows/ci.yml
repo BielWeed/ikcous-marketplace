@@ -378,10 +378,10 @@ jobs:
     # corrigir o secret, não o código.
     #
     # Depois de o secret apontar para a loja, este job AINDA PODE ficar
-    # vermelho de verdade: se o código já referenciar objeto de uma migration
-    # que existe no repo mas não foi aplicada na loja (ex.: 79-82, a caminho),
-    # o detector vai reportar AUSENTE até o workflow "Aplicar migrations"
-    # rodar — esse vermelho é o job funcionando, não um defeito dele.
+    # vermelho de verdade: se o código já referenciar objeto de QUALQUER
+    # migration que existe no repo mas ainda não foi aplicada na loja, o
+    # detector vai reportar AUSENTE até o workflow "Aplicar migrations" rodar
+    # essa migration — esse vermelho é o job funcionando, não um defeito dele.
     #
     # Enquanto não existir DATABASE_URL, o script sai 0 com um ::warning::
     # visível no log — detector inerte é dívida declarada, não vermelho que o
