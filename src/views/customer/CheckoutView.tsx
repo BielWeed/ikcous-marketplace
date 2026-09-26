@@ -3057,11 +3057,21 @@ export function CheckoutView({
                 ficava sem NENHUM botão. "Falar com a loja" evita o beco sem
                 saída.
                 Achado 1, rodada 6: `cancelamentoBloqueadoPelaGuardaDoCartao`
-                (acima) esconde SÓ este botão — a mensagem de
-                `erroCancelamento`, logo abaixo, já mostra o texto da própria
-                guarda ("...fale com a loja antes de cancelar"); "Tentar de
-                novo"/"Pagar com PIX" do bloco de `erroPagamento` continuam
-                do jeito que já estavam, sem depender deste marcador. */}
+                (acima) esconde SÓ este botão — "Tentar de novo"/"Pagar com
+                PIX" do bloco de `erroPagamento` continuam do jeito que já
+                estavam, sem depender deste marcador.
+                Achado 1, rodada 7 (revisão de risco, cenário real medido: o
+                relógio do prazo vence — 409 TERMINAL "O prazo para pagar
+                este pedido acabou." — ANTES do pg_cron rodar, então
+                `payment_status` ainda é `aguardando` quando o cliente clica
+                em cancelar): terminal esconde "Tentar de novo", não é
+                `semCobranca` então não esconde "Pagar com PIX" por si só,
+                MAS este marcador também está ligado — as três saídas juntas
+                deixavam a caixa SEM NENHUM BOTÃO. A mensagem de
+                `erroCancelamento`, logo abaixo, já diz "fale com a loja
+                antes de cancelar" — "Falar com a loja" cumpre a própria
+                promessa do texto, em vez de deixar a pessoa lendo uma
+                instrução sem como agir. */}
             {pedidoTemCobrancaIncerta ? (
               erroPagamento.categoria === "terminal" &&
               lojaTemWhatsappNoCheckout && (
@@ -3073,7 +3083,17 @@ export function CheckoutView({
                   Falar com a loja
                 </Button>
               )
-            ) : cancelamentoBloqueadoPelaGuardaDoCartao ? null : user ? (
+            ) : cancelamentoBloqueadoPelaGuardaDoCartao ? (
+              lojaTemWhatsappNoCheckout && (
+                <Button
+                  onClick={handleFalarComALojaSobreCartao}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Falar com a loja
+                </Button>
+              )
+            ) : user ? (
               <Button
                 onClick={handleCancelarPedidoESairDoPagamento}
                 disabled={isCancelandoPedido}

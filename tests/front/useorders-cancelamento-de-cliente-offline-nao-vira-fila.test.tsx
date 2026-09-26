@@ -155,6 +155,16 @@ describe("useOrders — cancelamento de cliente offline não vira fila (achado 1
       raiz.render(<Alvo isAdmin={false} />);
     });
 
+    // Achado 2, rodada 7: confere a semeadura ANTES de chamar
+    // `updateOrderStatus` — se a hidratação do cache mudar de forma (nome da
+    // chave, formato do JSON, o `useState` inicial parar de ler
+    // `localStorage`), esta asserção falha aqui, com uma mensagem que aponta
+    // pro problema certo ("o seed nunca chegou"), em vez de falhar lá
+    // embaixo parecendo que o guard não rodou.
+    expect(exposto.orders.find((o) => o.id === "pedido-1")?.status).toBe(
+      "pending",
+    );
+
     // `act` (não só `await expect(...).rejects`) é o que importa aqui: sem
     // envolver a chamada, o `setOrders` do update otimista (se rodasse)
     // aconteceria fora do React, e o efeito de `Alvo` que copia `hook.orders`

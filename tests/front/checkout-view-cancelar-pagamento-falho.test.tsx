@@ -35,12 +35,17 @@ vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
 }));
 
+// Achado 1, rodada 7: mutável — `undefined` por padrão (a maioria dos
+// testes deste arquivo não depende de WhatsApp), sobrescrito só no teste do
+// beco sem saída.
+let mockWhatsappNumber: string | undefined;
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
       shippingCoverage: "local",
       originCep: "38500-000",
       enableCoupons: false,
+      whatsappNumber: mockWhatsappNumber,
     },
     isLoaded: true,
   }),
@@ -260,6 +265,7 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
     mockIsOffline = false;
     mockStatusAposCancelar = "cancelled";
     mockErroLeituraStatus = null;
+    mockWhatsappNumber = undefined;
     mockCart = [
       {
         product: {
@@ -597,6 +603,82 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
         "Cancelar pedido e voltar ao carrinho",
       ),
     ).toBeUndefined();
+    // Achado 1, rodada 7: SEM WhatsApp configurado (`mockWhatsappNumber`
+    // não foi setado neste teste), "Falar com a loja" não aparece — beco
+    // sem saída de verdade, mas não um regresso: ver o teste seguinte, que
+    // prova a mesma sequência COM WhatsApp configurado.
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Falar com a loja"),
+    ).toBeUndefined();
+  });
+
+  it("achado 1, rodada 7 da revisão de risco pré-publicação: terminal (prazo acabou) + guarda P0001 -> 'Falar com a loja' aparece, nunca 'Cancelar pedido' — cenário real medido (o relógio vence antes do pg_cron rodar)", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    mockWhatsappNumber = "34999998888";
+
+    await act(async () => {
+      pagamentoOnlineOnErro[0](
+        "O prazo para pagar este pedido acabou. Faça um pedido novo para tentar de novo.",
+        "terminal",
+      );
+    });
+
+    // Antes de cancelar: terminal sem sinal de cobrança incerta ainda
+    // oferece "Cancelar pedido" como única ação.
+    expect(
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Cancelar pedido e voltar ao carrinho",
+      ),
+    ).toBeDefined();
+
+    const mensagemDaGuarda =
+      "Este pedido tem uma cobrança no cartão em confirmação com o banco. Aguarde a confirmação ou fale com a loja antes de cancelar.";
+    const erroDaGuarda = new Error(mensagemDaGuarda) as Error & {
+      code: string;
+    };
+    erroDaGuarda.code = "P0001";
+    updateOrderStatus.mockRejectedValueOnce(erroDaGuarda);
+    // O relógio venceu (409 terminal), mas o pg_cron ainda não passou —
+    // `payment_status` continua `aguardando`, e é isso que faz a guarda
+    // nova recusar o cancelamento com P0001.
+    mockStatusAposCancelar = "pending";
+
+    const botaoCancelar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Cancelar pedido e voltar ao carrinho",
+    )!;
+
+    await act(async () => {
+      botaoCancelar.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toContain(mensagemDaGuarda);
+    expect(
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Cancelar pedido e voltar ao carrinho",
+      ),
+    ).toBeUndefined();
+    const falarComALoja = localizarBotaoPorTexto(
+      hospedeiro,
+      "Falar com a loja",
+    );
+    expect(falarComALoja).toBeDefined();
+
+    const openSpy = vi.fn();
+    vi.stubGlobal("open", openSpy);
+    await act(async () => {
+      falarComALoja!.click();
+    });
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const url = openSpy.mock.calls[0][0] as string;
+    expect(url).toContain("https://wa.me/5534999998888");
+    expect(openSpy).toHaveBeenCalledWith(url, "_blank", "noopener,noreferrer");
   });
 
   it("pedido já não-pendente, mas a releitura confirma 'cancelled' (expirado pelo pg_cron antes do clique): não tenta creditar estoque de novo — só devolve ao carrinho", async () => {
