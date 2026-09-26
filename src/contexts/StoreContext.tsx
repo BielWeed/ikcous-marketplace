@@ -8,6 +8,7 @@ import { useSyncListener } from "@/hooks/useDataVault";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { DataVault } from "@/lib/dataVault";
 import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -33,8 +34,24 @@ import { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 export { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 
 interface UpdateConfigOptions {
-  readonly isCurrent: () => boolean;
+  // Já tratado como opcional na implementação (`options?.isCurrent`, com
+  // guarda `isCurrent &&` antes de chamar) — só nunca tinha sido declarado
+  // assim. Sem o `?`, qualquer chamador que precisasse mandar `silent`/
+  // `silentSuccess` sem `isCurrent` (ex.: FormasDePagamentoCard, anotação 3
+  // da revisão Opus do commit 085282c3) era forçado a inventar um `isCurrent`
+  // que não tem função nenhuma ali.
+  readonly isCurrent?: () => boolean;
   readonly silent?: boolean;
+  /**
+   * FORMAS DE PAGAMENTO POR LOJA (revisão Opus do commit 085282c3, anotação
+   * 3): INDEPENDENTE de `silent` — `silent` cala TUDO (sucesso e erro);
+   * `silentSuccess` cala só o "Configurações salvas" genérico, para um
+   * chamador que já mostra o PRÓPRIO toast de sucesso mais específico
+   * (ex.: "Pix ligado") sem duplicar. Os toasts de ERRO (RPC recusada,
+   * write não confirmado) continuam saindo daqui — é aqui que mora o
+   * acesso à mensagem crua da RPC, que o chamador não tem.
+   */
+  readonly silentSuccess?: boolean;
 }
 
 interface StoreContextType {
@@ -139,6 +156,13 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   ["national_discount_type", "texto"],
   ["national_discount_value", "numeric"],
   ["national_benefit_scope", "texto"],
+  // 20261174000000: formas de pagamento por loja (pix/card/cash na
+  // entrega) — sem entrada aqui `updateConfig` gravaria a coluna mas o
+  // comparador de "gravou mesmo?" acusaria falha (coluna desconhecida
+  // nunca confirma). "texto_array": mesma comparação sensível a ORDEM de
+  // `enabled_shipping_methods` (o servidor preserva a ordem que o front
+  // manda — nunca reordena).
+  ["formas_pagamento_entrega", "texto_array"],
 ]);
 
 // Normaliza um valor de `home_sections` para comparação POR VALOR: ordena
@@ -467,7 +491,7 @@ export function StoreProvider({
   const configIgual = useCallback(
     (a: StoreConfig, b: StoreConfig): boolean =>
       Object.keys(a).every((k) => {
-        if (k === "enabledShippingMethods") {
+        if (k === "enabledShippingMethods" || k === "formasPagamentoEntrega") {
           const arrA = a[k] || [];
           const arrB = b[k] || [];
           if (arrA.length !== arrB.length) return false;
@@ -634,6 +658,17 @@ export function StoreProvider({
         "national_benefit_scope",
         "nationalBenefitScope",
         espelho.alcance,
+      ),
+      // 20261174000000: ausente/inválido no dado lido (loja sem a coluna
+      // ainda, ou linha corrompida) cai no default — as três formas, MESMO
+      // comportamento de hoje. `formasPagamentoNaEntregaValidas` é a
+      // fonte única dessa normalização (compartilhada com o checkout).
+      formasPagamentoEntrega: formasPagamentoNaEntregaValidas(
+        getVal(
+          "formas_pagamento_entrega",
+          "formasPagamentoEntrega",
+          defaultStoreConfig.formasPagamentoEntrega,
+        ),
       ),
     };
   }, []);
@@ -837,6 +872,7 @@ export function StoreProvider({
       // Captura o contrato antes da rede: mutar options não troca o destinatário.
       const isCurrent = options?.isCurrent;
       const silent = options?.silent === true;
+      const silentSuccess = options?.silentSuccess === true;
       let invalidated = false;
       const current = () => {
         if (invalidated) return false;
@@ -949,6 +985,15 @@ export function StoreProvider({
           dbUpdates.national_discount_value = updates.nationalDiscountValue;
         if (updates.nationalBenefitScope !== undefined)
           dbUpdates.national_benefit_scope = updates.nationalBenefitScope;
+        // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
+        // 20261174000000): a lojista liga/desliga pix/cartão/dinheiro na
+        // entrega. Chave omitida => `upsert_store_config` preserva o valor
+        // atual (padrão "partial update" de toda a função); mandar SEMPRE
+        // que a chamadora passar a lista (mesmo vazia) é o que permite
+        // AdminSettingsView gravar "desligou a última", que o trigger do
+        // banco (store_config_exige_forma_de_pagamento) então recusa.
+        if (updates.formasPagamentoEntrega !== undefined)
+          dbUpdates.formas_pagamento_entrega = updates.formasPagamentoEntrega;
 
         if (!current()) return false;
         const { data, error } = await (supabase.rpc as any)(
@@ -1050,13 +1095,31 @@ export function StoreProvider({
           } as StoreConfig),
         );
         if (!current()) return false;
-        if (!silent) toast.success("Configurações salvas");
+        if (!silent && !silentSuccess) toast.success("Configurações salvas");
         return true;
       } catch (err) {
         if (!current()) return false;
         console.error("[StoreContext] Update error:", err);
-        if (!silent && current())
-          toast.error("Erro ao salvar as configurações");
+        if (!silent && current()) {
+          // FORMAS DE PAGAMENTO POR LOJA (revisão Opus do commit 085282c3,
+          // anotação 4): o trigger `store_config_exige_forma_de_pagamento`
+          // recusa com este texto CRU (sem prosa — o mesmo marcador que a
+          // edge credenciais-mercado-pago já traduz do lado dela) quando o
+          // `pixLigado` em memória do painel está STALE — a lojista
+          // desligou o PIX pelo app por outra aba/sessão ENTRE abrir o
+          // card de formas de pagamento e tentar desligar a última forma
+          // na entrega. O genérico "Erro ao salvar" não diz o que fazer;
+          // isto diz.
+          const mensagemCrua =
+            err && typeof err === "object" && "message" in err
+              ? (err as { message?: unknown }).message
+              : undefined;
+          toast.error(
+            mensagemCrua === "LOJA_SEM_FORMA_DE_PAGAMENTO"
+              ? "Ligue ao menos uma forma de pagamento — o PIX pelo app está desligado"
+              : "Erro ao salvar as configurações",
+          );
+        }
         return false;
       }
     },

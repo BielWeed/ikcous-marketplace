@@ -346,6 +346,20 @@ export interface StoreConfig {
     productIds?: string[];
     isCustom?: boolean;
   }[];
+  /**
+   * Formas de pagamento NA ENTREGA/RETIRADA que a loja aceita (migration
+   * 20261174000000, coluna `store_config.formas_pagamento_entrega`).
+   * "online" (PIX pelo app) não entra aqui — continua em `pagamentoOnline`,
+   * lido pela ficha da loja (`pagamentoOnlineLigado()`), nunca por este
+   * campo. NÃO OPCIONAL: ausente/inválido no dado lido é tratado como as
+   * três (`["pix","card","cash"]`) por quem lê — mesma régua de
+   * `nationalShippingStrategy` (loja velha, sem a coluna, não muda de
+   * comportamento sozinha). Ordem CANÔNICA sempre pix, card, cash — o
+   * servidor preserva a ordem que o front manda (StoreContext,
+   * `TIPO_DAS_COLUNAS_STORE_CONFIG`, "texto_array": comparação sensível a
+   * ordem).
+   */
+  formasPagamentoEntrega: ("pix" | "card" | "cash")[];
 }
 
 /** As 5 estratégias de `store_config.national_shipping_strategy` — mesmos nomes do CHECK da migration 20261171000000. */

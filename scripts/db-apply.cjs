@@ -1994,6 +1994,36 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration 20261174000000):
+  // lojista liga/desliga pix/card/cash na entrega por loja; forma_de_
+  // pagamento_aceita vira a fonte única do invariante, chamada logo no
+  // começo de v23/v24 (B3: depois da idempotência, antes da posse do
+  // endereço); upsert_store_config ganha o par v_has_.../v_... com o fix do
+  // B1 (candidato do INSERT usa o valor ATUAL da linha, não um array fixo,
+  // para a trigger BEFORE INSERT não recusar um salvamento não relacionado
+  // numa loja que já vende só pelo app).
+  "20261174000000_formas_de_pagamento_por_loja.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        "IF NOT public.forma_de_pagamento_aceita(p_payment_method) THEN\n        RAISE EXCEPTION 'Esta forma de pagamento não está disponível nesta loja. Escolha outra.';",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "IF NOT public.forma_de_pagamento_aceita(p_payment_method) THEN\n        RAISE EXCEPTION 'Esta forma de pagamento não está disponível nesta loja. Escolha outra.';",
+      ],
+    },
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        "v_has_formas_pagamento := config_json ? 'formas_pagamento_entrega'\n    AND config_json->'formas_pagamento_entrega' IS NOT NULL\n    AND jsonb_typeof(config_json->'formas_pagamento_entrega') = 'array';",
+        "IF v_has_formas_pagamento THEN\n    SELECT COALESCE(array_agg(x), '{}'::text[]) INTO v_formas_pagamento\n    FROM jsonb_array_elements_text(config_json->'formas_pagamento_entrega') x;\n  ELSE\n    SELECT formas_pagamento_entrega INTO v_formas_pagamento\n      FROM public.store_config WHERE id = 1;\n    v_formas_pagamento := COALESCE(v_formas_pagamento, ARRAY['pix','card','cash']::text[]);\n  END IF;",
+        "formas_pagamento_entrega = CASE WHEN v_has_formas_pagamento\n      THEN v_formas_pagamento\n      ELSE store_config.formas_pagamento_entrega END,",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

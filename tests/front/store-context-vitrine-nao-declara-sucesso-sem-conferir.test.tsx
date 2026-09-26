@@ -115,7 +115,10 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-type UpdateConfigFn = (updates: Record<string, unknown>) => Promise<boolean>;
+type UpdateConfigFn = (
+  updates: Record<string, unknown>,
+  options?: Record<string, unknown>,
+) => Promise<boolean>;
 
 function Capturador({ onReady }: { onReady: (fn: UpdateConfigFn) => void }) {
   const { updateConfig } = useStore();
@@ -266,6 +269,77 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
     expect(resultado).toBe(true);
     const { toast } = await import("sonner");
     expect(toast.success).toHaveBeenCalled();
+  });
+
+  // ANOTAÇÃO 3 da revisão Opus do commit 085282c3 (achado no card "Formas
+  // de pagamento", src/components/admin/settings/FormasDePagamentoCard.tsx):
+  // cada switch mostrava DOIS toasts de sucesso — o genérico "Configurações
+  // salvas" daqui de dentro, e o específico do card ("Pix ligado" etc). A
+  // opção nova `silentSuccess` é INDEPENDENTE de `silent` (que já existia e
+  // silencia TUDO, inclusive erro): ela cala só o toast de sucesso GENÉRICO,
+  // deixando os toasts de erro (write-não-confirmado, RPC recusada) intactos
+  // — o card assume só a mensagem de SUCESSO, o resto continua saindo daqui.
+  it("ANOTAÇÃO 3 — silentSuccess:true não mostra 'Configurações salvas', mas o resultado e a gravação continuam normais", async () => {
+    const linha = linhaConfigBase();
+    linha.free_shipping_min = 400;
+    rpcResultado.data = linha;
+    rpcResultado.error = null;
+
+    let resultado: boolean | undefined;
+    await act(async () => {
+      resultado = await updateConfigRef.current!(
+        { freeShippingMin: 400 },
+        { silentSuccess: true },
+      );
+    });
+
+    expect(resultado).toBe(true);
+    const { toast } = await import("sonner");
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(dataVaultPut).toHaveBeenCalled();
+  });
+
+  it("ANOTAÇÃO 3 — sem silentSuccess (chamador de sempre), 'Configurações salvas' continua saindo normalmente", async () => {
+    const linha = linhaConfigBase();
+    linha.free_shipping_min = 400;
+    rpcResultado.data = linha;
+    rpcResultado.error = null;
+
+    await act(async () => {
+      await updateConfigRef.current!({ freeShippingMin: 400 });
+    });
+
+    const { toast } = await import("sonner");
+    expect(toast.success).toHaveBeenCalledWith("Configurações salvas");
+  });
+
+  // ANOTAÇÃO 4 da mesma revisão: o trigger do banco
+  // (store_config_exige_forma_de_pagamento) recusa com a mensagem crua
+  // 'LOJA_SEM_FORMA_DE_PAGAMENTO' quando o pixLigado que a tela tinha em
+  // memória está STALE (a lojista desligou o PIX pelo app por outra aba
+  // ENTRE abrir o card e desligar a última forma na entrega). O genérico
+  // "Erro ao salvar as configurações" não diz o que fazer; a mensagem
+  // específica sim.
+  it("ANOTAÇÃO 4 — RPC recusa com LOJA_SEM_FORMA_DE_PAGAMENTO -> toast específico, NÃO o genérico", async () => {
+    rpcResultado.data = null;
+    rpcResultado.error = { message: "LOJA_SEM_FORMA_DE_PAGAMENTO" };
+
+    let resultado: boolean | undefined;
+    await act(async () => {
+      resultado = await updateConfigRef.current!({
+        formasPagamentoEntrega: [],
+      });
+    });
+
+    expect(resultado).toBe(false);
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalledWith(
+      "Ligue ao menos uma forma de pagamento — o PIX pelo app está desligado",
+    );
+    expect(toast.error).not.toHaveBeenCalledWith(
+      "Erro ao salvar as configurações",
+    );
   });
 
   it("tipo numeric: banco devolve valor diferente do enviado — falha fechado", async () => {
@@ -715,6 +789,9 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
       nationalDiscountType: "percentual",
       nationalDiscountValue: 10,
       nationalBenefitScope: "todas",
+      // 20261174000000: formas de pagamento por loja (pix/card/cash na
+      // entrega) — a coluna existe e o updateConfig tem o `if` dela.
+      formasPagamentoEntrega: ["pix", "card"],
     };
 
     await act(async () => {

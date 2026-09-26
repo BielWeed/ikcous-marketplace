@@ -65,6 +65,7 @@ export type AcaoDeRecusa =
   | "escolher_variacao"
   | "trocar_endereco"
   | "trocar_entrega"
+  | "trocar_pagamento"
   | "remover_cupom"
   | "entrar_na_conta"
   | "tentar_de_novo"
@@ -245,6 +246,40 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
     padrao:
       /^Envio por transportadora exige pagamento antecipado\. Pague com PIX no app para finalizar este envio\.$/,
     acao: "trocar_entrega",
+  },
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026 — migration 20261174000000): a
+  // loja pode desligar uma forma "na entrega" (ou o PIX pelo app) ENTRE a
+  // tela filtrar as opções e o clique chegar ao banco. A RPC recusa com o
+  // TEXTO puro (sem prefixo de código, ao contrário de
+  // FRETE_COTACAO_DESATUALIZADA — que tem tratamento PRÓPRIO em
+  // CheckoutView.tsx, fora daqui).
+  //
+  // 🔴 CORRIGIDO DUAS VEZES. A revisão Opus do commit 085282c3 (anotação 1)
+  // trocou `trocar_entrega` (volta ao CARRINHO, botão "Ver outras formas de
+  // entrega" — que nem fala de pagamento) por `tentar_de_novo`. O RE-review
+  // do commit 3c90059d BLOQUEOU essa segunda versão: P0001 COM `message` é
+  // texto que a RPC escreveu por nome — a regra do cabeçalho deste arquivo
+  // proíbe isso virar `tentar_de_novo` sem ser uma das DUAS exceções já
+  // documentadas lá (nenhuma cobre este caso), e o portão
+  // `recusa-e-toast-nao-divergem.test.ts` existe exatamente para pegar essa
+  // terceira exceção informal — só não pegou na hora porque a frase estava
+  // ausente do corpus dele, e um `it.each` só cobra o que está na lista.
+  //
+  // A ação certa é `trocar_pagamento`: um destino PRÓPRIO, não um dos dois
+  // já existentes. Ele mapeia para o MESMO `so_fechar` de `tentar_de_novo`
+  // em CheckoutView.tsx (fecha o painel, mantém a pessoa no checkout, onde
+  // `refresh({ onlyConfig: true })` já recarregou a config e o efeito de
+  // fallback `primeiraFormaDePagamentoDisponivel` já trocou o método
+  // sozinho) — então o COMPORTAMENTO na tela não muda nada. O que muda é
+  // que o código para de FINGIR, para o resto da base e para este próprio
+  // arquivo, que o banco não escreveu um texto nomeado: o rótulo do botão
+  // (`ROTULO_DA_ACAO`, `SaidaDaRecusa.tsx`) fica "Escolher outra forma de
+  // pagamento", não "Tentar de novo" — e a regra do cabeçalho continua
+  // fechada sem precisar de uma terceira exceção não escrita.
+  {
+    padrao:
+      /^Esta forma de pagamento não está disponível nesta loja\. Escolha outra\.$/,
+    acao: "trocar_pagamento",
   },
   {
     padrao: /^Endereço inválido ou não pertence ao usuário\.$/,

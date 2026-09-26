@@ -3,6 +3,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowUpRight,
+  Banknote,
   ChevronDown,
   Clock,
   CreditCard,
@@ -20,6 +21,7 @@ import { Suspense, lazy, memo, useCallback, useEffect, useState } from "react";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePagamentoCard";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import {
   type ConfigDoProvedor,
@@ -35,6 +37,7 @@ import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { pagamentoOnlineLigado } from "@/lib/flags";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -333,15 +336,30 @@ function SecaoColapsavel({
   subtitulo,
   icone: Icone,
   comPendencia = false,
+  abrirGatilho,
   children,
 }: {
   readonly titulo: string;
   readonly subtitulo?: string;
   readonly icone: React.ElementType;
   readonly comPendencia?: boolean;
+  /**
+   * FORMAS DE PAGAMENTO POR LOJA (25/09/2026): incrementa de FORA (um botão
+   * de outra seção — "Formas de pagamento" abrindo "Mercado Pago", sem
+   * duplicar o switch que exige credencial) para forçar esta seção a abrir.
+   * Efeito colateral, não estado controlado: continua sendo a própria seção
+   * quem manda no clique normal do cabeçalho (fechar continua funcionando).
+   */
+  readonly abrirGatilho?: number;
   readonly children: React.ReactNode;
 }) {
   const [aberta, setAberta] = useState(false);
+
+  useEffect(() => {
+    if (abrirGatilho !== undefined && abrirGatilho > 0) setAberta(true);
+    // Só reage a um NOVO pedido de abrir (gatilho subiu) — nunca ao
+    // clique/pendência internos, que já têm o próprio caminho acima.
+  }, [abrirGatilho]);
 
   return (
     <div className="rounded-3xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl">
@@ -566,7 +584,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   active,
   onSetDirty,
 }: Readonly<AdminSettingsViewProps>) {
-  const { config, isLoaded } = useStore();
+  const { config, isLoaded, updateConfig } = useStore();
   const isOffline = useOnlineStatus();
   const [showHelpModal, setShowHelpModal] = useState(false);
   // A seção de Transportadoras reporta se tem alteração não salva; enquanto
@@ -579,6 +597,16 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // sumir num clique no cabeçalho da seção.
   const [pagamentosPendente, setPagamentosPendente] = useState(false);
 
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): mesma trava, seção PRÓPRIA
+  // (cada switch salva sozinho — a pendência aqui é só "uma gravação está
+  // em voo", pelo mesmo motivo que a trava existe: fechar no meio de um
+  // salvamento em curso não pode desmontar o componente por baixo dele).
+  const [formasPagamentoPendente, setFormasPagamentoPendente] = useState(false);
+  // Contador que só CRESCE: o botão "Configurar credenciais" da seção nova
+  // incrementa para abrir a seção Mercado Pago de fora (SecaoColapsavel
+  // continua dona do próprio fechar).
+  const [abrirMercadoPagoGatilho, setAbrirMercadoPagoGatilho] = useState(0);
+
   // Espelha a soma das pendências para o App (onSetDirty = setIsAdminDirty):
   // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
   // — mesmo contrato da tela de Frete (AdminShippingView). Identidade e
@@ -587,8 +615,18 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // AdminAboutStoreView agora.
   useEffect(() => {
     if (active !== false)
-      onSetDirty?.(transportadorasPendentes || pagamentosPendente);
-  }, [active, transportadorasPendentes, pagamentosPendente, onSetDirty]);
+      onSetDirty?.(
+        transportadorasPendentes ||
+          pagamentosPendente ||
+          formasPagamentoPendente,
+      );
+  }, [
+    active,
+    transportadorasPendentes,
+    pagamentosPendente,
+    formasPagamentoPendente,
+    onSetDirty,
+  ]);
 
   // Reset helper modals when tab becomes inactive
   useEffect(() => {
@@ -626,6 +664,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       ? "ok"
       : "alerta";
   const rotuloDoPix = ROTULO_DO_PIX.get(nivelDoPix) ?? "";
+
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): ausente/inválido cai nas 3
+  // (mesma regra de tratamento de config velha/corrompida que o resto do
+  // app usa — loja de ontem não muda de comportamento sozinha).
+  const formasNaEntrega = formasPagamentoNaEntregaValidas(
+    config.formasPagamentoEntrega,
+  );
 
   // RELEASE 1.5.7 v2 (EMENDA R2, R2-5): quem está ligado vem da MESMA edge
   // que a seção de Transportadoras usa (`ler_configuracao_frete`) — nunca
@@ -930,11 +975,36 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 era a mesma tela contando dois estados do dinheiro. Nascida
                 FECHADA como as demais: ajuste feito uma vez. */}
             <GrupoDeAjustes titulo="Pagamentos">
+              {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
+                  20261174000000): ANTES do Mercado Pago (pedido explícito do
+                  brief) — a lojista decide primeiro O QUE aceita na
+                  entrega/retirada, e só depois mexe nas credenciais do
+                  pagamento pelo app. Nascida FECHADA como as demais. */}
+              <SecaoColapsavel
+                titulo="Formas de pagamento"
+                subtitulo={`${formasNaEntrega.length} na entrega${pixLigado ? " + app" : ""}`}
+                icone={Banknote}
+                comPendencia={formasPagamentoPendente}
+              >
+                <FormasDePagamentoSection
+                  formasNaEntrega={formasNaEntrega}
+                  pixLigado={pixLigado}
+                  pixChaveOk={pixChaveOk}
+                  isOffline={isOffline}
+                  updateConfig={updateConfig}
+                  onDirtyMudou={setFormasPagamentoPendente}
+                  onAbrirMercadoPago={() =>
+                    setAbrirMercadoPagoGatilho((n) => n + 1)
+                  }
+                />
+              </SecaoColapsavel>
+
               <SecaoColapsavel
                 titulo="Mercado Pago"
                 subtitulo="Chaves do seu Mercado Pago no app"
                 icone={CreditCard}
                 comPendencia={pagamentosPendente}
+                abrirGatilho={abrirMercadoPagoGatilho}
               >
                 <Suspense
                   fallback={

@@ -76,6 +76,11 @@ export const defaultStoreConfig: StoreConfig = {
     { id: "offers", title: "Ofertas Imperdíveis", active: true },
     { id: "bestsellers", title: "Destaques em Alta", active: true },
   ],
+  // Formas de pagamento por loja (migration 20261174000000): loja nova
+  // nasce com as três ligadas — MESMO default da coluna no banco
+  // (`ARRAY['pix','card','cash']`). Nenhuma loja muda de comportamento
+  // sozinha.
+  formasPagamentoEntrega: ["pix", "card", "cash"],
 };
 
 // Devolve a cor da loja quando ela EXISTE, senão `null` (quem consome fica

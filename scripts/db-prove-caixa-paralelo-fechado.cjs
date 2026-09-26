@@ -296,10 +296,14 @@ async function main() {
     console.log("\n=== 4. O caminho vivo (v23 e v24) não regrediu ===");
     await trocarPara(client, "authenticated");
     await definirClaims(client, userId);
+    // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration 20261174000000):
+    // era 'whatsapp' — nunca um payment_method válido. O invariante novo
+    // (forma_de_pagamento_aceita) recusaria com FORMA_DE_PAGAMENTO_DESLIGADA.
+    // 'pix' é aceito por padrão (formas_pagamento_entrega nasce com as 3).
     const v23Depois = await tentar(
       client,
       `SELECT public.create_marketplace_order_v23(
-         $1::jsonb, $2::numeric, 0, 'whatsapp', NULL, NULL,
+         $1::jsonb, $2::numeric, 0, 'pix', NULL, NULL,
          'Prova caixa paralelo v23', '5534999999999', 'ROLLBACK - prova',
          NULL, NULL, NULL)`,
       [itens, total],
@@ -311,10 +315,12 @@ async function main() {
       v23Depois.negado ? v23Depois.mensagem : "criado",
     );
 
+    // Mesmo motivo do v23Depois acima: 'whatsapp' não é payment_method
+    // válido, e o invariante novo recusaria. 'pix' é aceito por padrão.
     const v24Depois = await tentar(
       client,
       `SELECT public.create_marketplace_order_v24(
-         $1::jsonb, $2::numeric, 0, 'whatsapp', NULL, NULL,
+         $1::jsonb, $2::numeric, 0, 'pix', NULL, NULL,
          'Prova caixa paralelo v24', '5534999999999', 'ROLLBACK - prova',
          NULL, NULL, NULL)`,
       [itens, total],

@@ -175,9 +175,13 @@ async function criarPedido(client, sub, produto, freteFixo) {
     claims(sub, false),
   ]);
   const subtotal = Number(produto.preco_venda) * 1;
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration 20261174000000):
+  // era 'whatsapp' — nunca um payment_method válido. O invariante novo
+  // (forma_de_pagamento_aceita) recusaria com FORMA_DE_PAGAMENTO_DESLIGADA.
+  // 'pix' é aceito por padrão (formas_pagamento_entrega nasce com as 3).
   const { rows } = await client.query(
     `SELECT public.create_marketplace_order_v23(
-       $1::jsonb, $2::numeric, $3::numeric, 'whatsapp', NULL, NULL,
+       $1::jsonb, $2::numeric, $3::numeric, 'pix', NULL, NULL,
        'Prova PEDIDO-010', '5534999999999', 'ROLLBACK - teste',
        NULL, NULL, NULL) AS id`,
     [

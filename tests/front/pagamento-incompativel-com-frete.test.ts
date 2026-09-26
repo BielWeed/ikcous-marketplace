@@ -1,4 +1,8 @@
-import { pagamentoIncompativelComFrete } from "@/lib/guarda-de-frete";
+import {
+  formaDePagamentoDesligadaNaLoja,
+  pagamentoIncompativelComFrete,
+  primeiraFormaDePagamentoDisponivel,
+} from "@/lib/guarda-de-frete";
 // REGRA DO FRETE × PAGAMENTO (dono, 21/09/2026): o checkout deixava fechar
 // compra com PIX/cartão/dinheiro NA ENTREGA para frete de TRANSPORTADORA
 // (Melhor Envio/Frenet) de outra cidade — a transportadora não é a loja
@@ -196,5 +200,120 @@ describe("pagamentoIncompativelComFrete — transportadora exige antecipado", ()
         pagamentoOnlineLigado: false,
       }),
     ).toBe(false);
+  });
+});
+
+// FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o segundo eixo de travamento do
+// Finalizar — a loja desligou UMA forma "na entrega" (pix/card/cash) que
+// não é mais selecionável, mas o estado (`paymentMethod`) ainda aponta para
+// ela (corrida entre a tela filtrar as opções e o clique chegar ao banco, ou
+// estado velho de sessão). "online" nunca entra aqui — é inteiramente da
+// guarda irmã (`pagamentoIncompativelComFrete`, acima).
+describe("formaDePagamentoDesligadaNaLoja — a loja desligou a forma selecionada", () => {
+  it("pix selecionado, mas a loja só aceita card/cash -> TRAVADO", () => {
+    expect(
+      formaDePagamentoDesligadaNaLoja({
+        paymentMethod: "pix",
+        formasNaEntrega: ["card", "cash"],
+      }),
+    ).toBe(true);
+  });
+
+  it("pix selecionado e a loja aceita pix -> LIVRE", () => {
+    expect(
+      formaDePagamentoDesligadaNaLoja({
+        paymentMethod: "pix",
+        formasNaEntrega: ["pix", "card", "cash"],
+      }),
+    ).toBe(false);
+  });
+
+  it("a loja desligou TODAS as formas na entrega ([]) -> qualquer uma delas TRAVA", () => {
+    for (const metodo of ["pix", "card", "cash"] as const) {
+      expect(
+        formaDePagamentoDesligadaNaLoja({
+          paymentMethod: metodo,
+          formasNaEntrega: [],
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it("'online' NUNCA trava por aqui — mesmo com formasNaEntrega vazia, é a guarda irmã quem decide", () => {
+    expect(
+      formaDePagamentoDesligadaNaLoja({
+        paymentMethod: "online",
+        formasNaEntrega: [],
+      }),
+    ).toBe(false);
+  });
+});
+
+// A ORDEM DE FALLBACK quando o método selecionado deixa de estar disponível
+// (checkout, brief 25/09/2026): online primeiro quando logado e ligado —
+// senão a primeira das formas na entrega ainda disponíveis, na ordem em que
+// a loja as tem (pix, card, cash é a ordem canônica que o servidor
+// preserva). `null` quando NENHUMA das duas existe: convidado numa loja só
+// "online" (mostra o aviso de login) ou loja genuinamente sem forma nenhuma
+// (o invariante do banco já deveria impedir — defesa em profundidade).
+describe("primeiraFormaDePagamentoDisponivel — a ordem do fallback", () => {
+  it("logado + online ligado -> 'online', mesmo com pix/card/cash também disponíveis", () => {
+    expect(
+      primeiraFormaDePagamentoDisponivel({
+        formasNaEntrega: ["pix", "card", "cash"],
+        pagamentoOnlineLigado: true,
+        logado: true,
+      }),
+    ).toBe("online");
+  });
+
+  it("logado + online DESLIGADO -> primeira das formas na entrega", () => {
+    expect(
+      primeiraFormaDePagamentoDisponivel({
+        formasNaEntrega: ["card", "cash"],
+        pagamentoOnlineLigado: false,
+        logado: true,
+      }),
+    ).toBe("card");
+  });
+
+  it("CONVIDADO nunca recebe 'online', mesmo com a flag ligada (online exige conta)", () => {
+    expect(
+      primeiraFormaDePagamentoDisponivel({
+        formasNaEntrega: ["cash"],
+        pagamentoOnlineLigado: true,
+        logado: false,
+      }),
+    ).toBe("cash");
+  });
+
+  it("convidado numa loja SÓ 'online' (formasNaEntrega vazia) -> null (mostra o aviso de login, nunca 'online')", () => {
+    expect(
+      primeiraFormaDePagamentoDisponivel({
+        formasNaEntrega: [],
+        pagamentoOnlineLigado: true,
+        logado: false,
+      }),
+    ).toBe(null);
+  });
+
+  it("logado, online desligado, formasNaEntrega vazia -> null (loja sem forma nenhuma; o invariante do banco já deveria impedir)", () => {
+    expect(
+      primeiraFormaDePagamentoDisponivel({
+        formasNaEntrega: [],
+        pagamentoOnlineLigado: false,
+        logado: true,
+      }),
+    ).toBe(null);
+  });
+
+  it("respeita a ORDEM da lista (o servidor preserva a ordem que o front manda)", () => {
+    expect(
+      primeiraFormaDePagamentoDisponivel({
+        formasNaEntrega: ["cash", "pix"],
+        pagamentoOnlineLigado: false,
+        logado: true,
+      }),
+    ).toBe("cash");
   });
 });

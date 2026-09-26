@@ -68,6 +68,14 @@
 //   C30 (25/09/2026): `GET /users/me` do MP responde 200 SEM `live_mode` (é
 //       o real: o endpoint não devolve esse campo) -> `ambiente` fica null e
 //       a mensagem NÃO afirma "de teste" nem "de produção"
+//   C31 formas de pagamento por loja (25/09/2026, B2): desligar_pix numa loja
+//       SEM nenhuma forma "na entrega" -> a trigger do invariante recusa
+//       (LOJA_SEM_FORMA_DE_PAGAMENTO) e a edge devolve 409 com recado
+//       amigável, NUNCA o 500 genérico; o PIX continua aceso
+//   C32 formas de pagamento por loja (25/09/2026, B2): salvar com credencial
+//       NOVA (desliga o PIX no mesmo update, mp-8) numa loja SEM nenhuma
+//       forma "na entrega" -> mesma recusa, 409 com recado ESPECÍFICO de
+//       troca de chave (mp-8 não relaxa: a credencial nova NÃO é gravada)
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 // ── Costura de REDE para a porta de admin (verifyIsAdmin monta os PRÓPRIOS
@@ -201,7 +209,18 @@ function prepararEnv(extra: Record<string, string> = {}): () => void {
  * ponto do roteiro, não desde o primeiro `salvar`).
  */
 function supabaseFalso(
-    opcoes: { falhaNaLoja?: boolean; lojaSemLinha?: boolean } = {},
+    opcoes: {
+        falhaNaLoja?: boolean;
+        lojaSemLinha?: boolean;
+        /**
+         * C31/C32 (formas de pagamento por loja, 25/09/2026): simula a
+         * trigger `store_config_exige_forma_de_pagamento`
+         * (migration 20261174000000) recusando o UPDATE — mesma forma de
+         * `falhaNaLoja`, mensagem diferente. As duas nunca coexistem: cada
+         * teste liga uma ou outra.
+         */
+        falhaSemFormaDePagamento?: boolean;
+    } = {},
 ) {
     const estado = {
         valor: null as string | null,
@@ -253,6 +272,8 @@ function supabaseFalso(
             estado.updatesLoja.push(linha);
             const recusa = (opcoes.falhaNaLoja || estado.falhaNaLojaAgora)
                 ? { message: "DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA" }
+                : opcoes.falhaSemFormaDePagamento
+                ? { message: "LOJA_SEM_FORMA_DE_PAGAMENTO" }
                 : null;
             const zeroLinha = opcoes.lojaSemLinha || estado.lojaSemLinhaAgora;
             if (!recusa && !zeroLinha) Object.assign(estado.loja, linha);
@@ -916,6 +937,75 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             const corpoDivergente = await respostaDivergente.json();
             assertEquals(corpoDivergente.pix_ligado, false);
             assertEquals(corpoDivergente.public_key_na_loja, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C31 — desligar_pix numa loja sem forma na entrega -> 409 amigável, PIX continua aceso", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso({
+            falhaSemFormaDePagamento: true,
+        });
+        // A loja já vendia só pelo app (PIX aceso, nenhuma forma na
+        // entrega) — é EXATAMENTE o estado que a trigger protege.
+        estado.loja.pagamento_online = true;
+        try {
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "desligar_pix" }), {
+                    supabase: cliente,
+                })
+            );
+            assertEquals(resposta.status, 409);
+            const corpo = await resposta.json();
+            assertEquals(
+                corpo.erro,
+                "Ligue ao menos uma forma de pagamento na entrega antes de desligar o PIX pelo app.",
+            );
+            // Nunca o recado genérico "tente de novo" — a lojista precisa
+            // saber O QUE fazer, não tentar de novo (tentar de novo dá o
+            // MESMO erro).
+            assertEquals(corpo.erro.includes("tente de novo"), false);
+            // A recusa da trigger impede a mutação simulada (Object.assign)
+            // — o PIX continua aceso, exatamente como estava.
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(estado.updatesLoja.length, 1);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C32 — salvar credencial nova numa loja sem forma na entrega -> 409 com recado de troca de chave, mp-8 nao relaxa", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso({
+            falhaSemFormaDePagamento: true,
+        });
+        // PIX já aceso (mesmo cenário de C31): é a troca de credencial que
+        // aciona mp-8 (desligarPix = trocou credencial && pagamento_online
+        // atual) e por isso esbarra no invariante.
+        estado.loja.pagamento_online = true;
+        try {
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        access_token: TOKEN_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            assertEquals(resposta.status, 409);
+            const corpo = await resposta.json();
+            assertEquals(
+                corpo.erro,
+                "Ligue ao menos uma forma de pagamento na entrega antes de trocar as chaves do Mercado Pago.",
+            );
+            // mp-8 não relaxa: a credencial NOVA não fica gravada em lugar
+            // nenhum (nem app_settings, nem a Public Key na ficha).
+            assertEquals(estado.upserts.length, 0);
+            assertEquals(estado.loja.mp_public_key, null);
+            assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO), false);
         } finally {
             desfazerEnv();
         }

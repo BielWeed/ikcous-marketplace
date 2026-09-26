@@ -36,6 +36,11 @@ const ROTULO_DA_ACAO: Record<AcaoDeRecusa, string> = {
   escolher_variacao: "Escolher a opção",
   trocar_endereco: "Escolher outro endereço",
   trocar_entrega: "Ver outras formas de entrega",
+  // Re-review do commit 3c90059d: rótulo PRÓPRIO para a recusa de forma de
+  // pagamento desligada — nem "Ver outras formas de entrega" (fala de
+  // entrega, não de pagamento) nem "Tentar de novo" (esconderia que o banco
+  // escreveu um texto nomeado). Ver `recusaDoPedido.ts`.
+  trocar_pagamento: "Escolher outra forma de pagamento",
   remover_cupom: "Tirar o cupom",
   // Item 3c (12/09/2026): duas das seis recusas do portão de convidado só
   // se resolvem entrando na conta — mesmo rótulo já usado no aviso de

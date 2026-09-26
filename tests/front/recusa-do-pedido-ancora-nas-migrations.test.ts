@@ -75,6 +75,10 @@ const FRASES_DO_BANCO = [
   // irmã em recusaDoPedido.ts (trocar_entrega) morre calada se a frase
   // sumir ou for reescrita no SQL.
   "Envio por transportadora exige pagamento antecipado. Pague com PIX no app para finalizar este envio.",
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026 — migration 20261174000000): a
+  // regra irmã em recusaDoPedido.ts (trocar_entrega) morre calada se a
+  // frase sumir ou for reescrita no SQL.
+  "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
 ];
 
 const sql = Object.values(MIGRATIONS).join("\n");
