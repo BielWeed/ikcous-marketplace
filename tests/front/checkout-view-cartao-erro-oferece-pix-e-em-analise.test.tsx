@@ -910,6 +910,10 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(decodeURIComponent(url)).toContain(
       "ped-999".slice(-6).toUpperCase(),
     );
+    // Achado 2, rodada 5 (addendum): sem "noopener,noreferrer" a aba nova
+    // do wa.me herda `window.opener` — o destino poderia navegar esta aba
+    // por baixo (reverse tabnabbing).
+    expect(openSpy).toHaveBeenCalledWith(url, "_blank", "noopener,noreferrer");
   });
 
   // Sem WhatsApp configurado, o N7 continua sem NENHUM botão — o achado 4
@@ -1043,6 +1047,16 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
 
     expect(hospedeiro.textContent).toContain(
       "Você não precisa fazer nada agora",
+    );
+    // Achado 1, rodada 5 (addendum): a frase não pode prometer que trocar de
+    // cartão muda o resultado — enquanto o primeiro cartão está vivo, um
+    // cartão diferente cai na MESMA branch (d) da edge e recebe o MESMO "em
+    // análise". A frase nova só explica o que o botão faz, sem previsão.
+    expect(hospedeiro.textContent).toContain(
+      '"Tentar de novo" confere com o banco de novo',
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "use só se quiser tentar outro cartão",
     );
     expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
   });

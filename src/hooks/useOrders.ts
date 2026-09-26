@@ -105,6 +105,36 @@ export class ErroStatusEsperadoDesconhecido extends Error {
 }
 
 /**
+ * Achado 1, rodada 5 da revisão de risco pré-publicação (26/09/2026,
+ * migration 80 — outra frente, `fix/cancelar-com-cartao-vivo`): a fila
+ * offline logo abaixo (`if (typeof navigator !== "undefined" &&
+ * !navigator.onLine)`, dentro de `updateOrderStatus`) foi escrita para o
+ * ADMIN — o comentário no chamador de CheckoutView já dizia isso antes desta
+ * correção. Para o CLIENTE cancelando o PRÓPRIO pedido, enfileirar sem rede
+ * tem duas falhas que se somam: (1) o update OTIMISTA roda ANTES da checagem
+ * de offline, então a tela já pinta "cancelado" no clique, sem esperar o
+ * servidor; (2) a migration 80 ensina `update_order_status_atomic` a
+ * recusar esse cancelamento com P0001 quando o cartão pode estar em
+ * confirmação com o banco — e essa recusa NUNCA seria reconhecida por
+ * `erroDeSincronizacaoEhTerminal` (ela só conhece as recusas ANTIGAS), então
+ * o item voltaria para a fila a cada reconexão, para sempre, enquanto a tela
+ * já mentia "cancelado" desde o primeiro clique. Opção descartada: marcar a
+ * mensagem nova como terminal em `erroDeSincronizacaoEhTerminal` — isso para
+ * de reenfileirar, mas não desfaz a mentira já pintada pelo update otimista
+ * (o pedido ficaria "cancelado" na tela e `pending` no banco até alguém
+ * notar). Recusar ANTES de entrar na fila evita as duas: nenhum update
+ * otimista roda, porque este erro é lançado antes dele.
+ */
+export class ErroCancelamentoOfflineRecusado extends Error {
+  constructor() {
+    super(
+      "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+    );
+    this.name = "ErroCancelamentoOfflineRecusado";
+  }
+}
+
+/**
  * `Map` sobre `statusConfig` (OrderStatusBadge.tsx) — mesma técnica de
  * `paymentStatusConfigByKey`, no mesmo arquivo: a chave vem de uma união
  * fechada (`OrderStatus`) e o `Record` de origem já é exaustivo por
@@ -2609,6 +2639,29 @@ export function useOrders(
         // Validation logic extracted for clarity
         validateStatusUpdate(order, isAdmin, status, silent);
 
+        // Achado 1, rodada 5: cancelamento de CLIENTE offline nunca vira
+        // fila — ver o comentário grande em `ErroCancelamentoOfflineRecusado`,
+        // acima. `validateStatusUpdate` já garante `status === "cancelled"`
+        // para `!isAdmin` (lança antes de chegar aqui, senão); a checagem
+        // abaixo é redundante de propósito — nomeia exatamente a condição
+        // que este achado descreve, em vez de depender de uma garantia
+        // implícita de outra função. Roda ANTES do update otimista (a
+        // "Optimistic update" mais abaixo): nenhuma mentira chega a ser
+        // pintada na tela.
+        if (
+          !isAdmin &&
+          status === "cancelled" &&
+          typeof navigator !== "undefined" &&
+          !navigator.onLine
+        ) {
+          if (!silent) {
+            toast.warning(
+              "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+            );
+          }
+          throw new ErroCancelamentoOfflineRecusado();
+        }
+
         // L-9 front (08/09/2026): a lojista está com a ficha aberta
         // mostrando um status que o servidor já não tem mais — o cliente
         // cancelou entre a leitura que preencheu a tela e o clique em
@@ -2830,10 +2883,16 @@ export function useOrders(
         // conteúdo de antes), mas `cachedAdminOrders = originalCache`
         // apagava a SWR cache. Por isso os três erros pulam a reversão
         // inteira, não só a de `orders`.
+        //
+        // Achado 1, rodada 5: `ErroCancelamentoOfflineRecusado` entra no
+        // mesmo grupo pelo MESMO motivo — lançado antes do update otimista,
+        // `originalCache` ainda é `null` neste ponto, e já disparou seu
+        // próprio `toast.warning` na hora de nascer (acima).
         const erroJaTratado =
           err instanceof ErroPedidoMudou ||
           err instanceof ErroReleituraDeStatusFalhou ||
-          err instanceof ErroStatusEsperadoDesconhecido;
+          err instanceof ErroStatusEsperadoDesconhecido ||
+          err instanceof ErroCancelamentoOfflineRecusado;
         if (!erroJaTratado) {
           cachedAdminOrders = originalCache;
           setOrders(originalOrders);

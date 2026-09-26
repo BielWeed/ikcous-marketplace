@@ -280,6 +280,44 @@ export function classificarRespostaCartao(
     // `action_required`/`created`, que `criar-pagamento` CANCELA antes de
     // criar o PIX se o cliente pedir — seguro oferecer PIX aqui (achado B1,
     // rodada 2 da revisão de risco pré-publicação).
+    //
+    // ACHADO 3 (opcional, rodada 5 — addendum, NÃO CORRIGIDO, documentado de
+    // propósito): diferente das outras duas origens de `semCobranca` (falha
+    // de validação local em `montarCorpoDoCartao` e falha de montagem do
+    // Brick, `onFalhaDeMontagem`) — nas quais NUNCA existiu POST de cartão,
+    // logo NUNCA existe vaga `action_required` no servidor —, este caso É
+    // diferente: o POST de cartão já aconteceu e a edge respondeu
+    // `aguardando` com uma vaga de verdade. Pedir PIX daqui não é um "criar
+    // do zero": é um CANCELAR-a-vaga-e-criar-o-PIX, uma operação composta.
+    // Se a RESPOSTA desse POST de PIX se perder (rede caindo depois de
+    // enviado — o mesmo 502 ambíguo que já cobre o cartão), não sabemos se
+    // o servidor cancelou a vaga e criou o PIX, só cancelou, ou não fez
+    // nada — e `CheckoutView` já trocou `metodoDoPedido` para "pix" no
+    // clique (o botão "Pagar com PIX" da caixa vermelha, condicionado a
+    // `erroPagamento.semCobranca`, é um `setMetodoDoPedido("pix")` direto,
+    // fora da cadeia `onTrocarParaPix(cartaoAindaVivo)` do achado 2 da
+    // rodada 4) — a regra "sem sinal + modo cartão é incerto" não alcança
+    // mais este erro, e "Cancelar pedido" pode reaparecer sobre uma vaga
+    // que talvez ainda exista.
+    //
+    // POR QUE NÃO CORRIGIDO AGORA: a correção certa (separar "pode oferecer
+    // PIX" de "pode cancelar depois de oferecer") exige um sinal NOVO e
+    // DISTINTO de `semCobranca` — só para ESTE branch, não para os outros
+    // dois — porque marcar `pedidoTemCobrancaIncerta` para TODO `semCobranca`
+    // bloquearia "Cancelar pedido" também nos dois casos onde nunca existiu
+    // vaga nenhuma (falso positivo, UX pior sem ganho de segurança). Isso
+    // pede: (1) alargar `SinalDeErroPagamento` com o sinal novo; (2)
+    // `CheckoutView.onErro` guardar essa distinção num campo novo de
+    // `erroPagamento` (hoje só tem `semCobranca`/`cartaoEmAnalise`
+    // booleanos); (3) o `onClick` do botão "Pagar com PIX" da caixa
+    // vermelha (hoje um `setMetodoDoPedido("pix")` cru) ler esse campo e
+    // chamar `setPedidoTemCobrancaIncerta(true)` só quando ele for
+    // verdadeiro; (4) testes que provem os TRÊS casos de `semCobranca`
+    // separadamente, para não voltar a bloquear cancelar nos dois que não
+    // precisam. Superfície comparável ao achado 2 da rodada 4 (que também
+    // tocou 3 arquivos) — não é um ajuste de uma linha, e a janela desta
+    // rodada não cobre isso com o mesmo rigor de teste-primeiro que o resto
+    // do arquivo tem. Fica para uma rodada dedicada.
     return {
       tipo: "erro",
       mensagem:

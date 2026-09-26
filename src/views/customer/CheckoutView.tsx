@@ -29,7 +29,11 @@ import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
+import {
+  mensagemAmigavelErroAtualizacaoStatus,
+  mensagemAmigavelErroPedido,
+  useOrders,
+} from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   criarGerenciadorDeChave,
@@ -2720,6 +2724,16 @@ export function CheckoutView({
         return;
       }
 
+      // Achado 2, rodada 5 da revisão de risco pré-publicação (26/09/2026):
+      // a migration 80 (outra frente) ensina `update_order_status_atomic` a
+      // recusar, com P0001, o cancelamento de um pedido cujo cartão ainda
+      // pode estar em confirmação com o banco — texto específico e honesto
+      // ("Aguarde a confirmação ou fale com a loja antes de cancelar").
+      // Sem guardar este erro, o `console.error` abaixo o jogava fora e a
+      // releitura (que confirma `pending`, porque a guarda barrou a
+      // gravação) caía direto no genérico "Tente novamente" — escondendo do
+      // cliente exatamente a explicação que a guarda deu.
+      let erroRpc: unknown;
       try {
         // MESMA rpc que a reconciliação da #180 (PR #198) já ensinou a
         // gravar payment_status — não existe, e não deve existir, outro
@@ -2727,11 +2741,14 @@ export function CheckoutView({
         // 2500ms do useOrders someria antes do cliente ler; o erro fica no
         // banner fixo abaixo, como erroCancelamento.
         await updateOrderStatus(orderId, "cancelled", undefined, true);
-      } catch (erroRpc) {
+      } catch (erro) {
         // Não decide aqui: a RPC pode recusar com a MESMA mensagem P0001
         // por dois motivos opostos (pg_cron já cancelou vs. lojista
-        // adiantou). Quem decide é a releitura logo abaixo.
-        console.error("Erro ao chamar RPC de cancelamento:", erroRpc);
+        // adiantou), ou pela nova guarda do cartão. Quem decide é a
+        // releitura logo abaixo — `erroRpc` só alimenta a MENSAGEM do caso
+        // em que a releitura confirma que nada mudou (segue `pending`).
+        console.error("Erro ao chamar RPC de cancelamento:", erro);
+        erroRpc = erro;
       }
 
       const { data, error: erroLeitura } = await supabase
@@ -2743,13 +2760,25 @@ export function CheckoutView({
       const statusFinal = data?.status;
       if (erroLeitura || statusFinal !== "cancelled") {
         console.error("Cancelamento não confirmado:", erroLeitura);
+        // A releitura confirmando `pending` (nem cancelado, nem adiantado)
+        // é o retrato exato de uma guarda P0001 que recusou a gravação —
+        // `mensagemAmigavelErroAtualizacaoStatus` já sabe repassar o texto
+        // da RPC nesse caso (e cai no genérico sozinha se não for P0001).
+        const guardaBarrouComMensagemPropria =
+          !erroLeitura &&
+          statusFinal === "pending" &&
+          erroRpc !== null &&
+          typeof erroRpc === "object" &&
+          (erroRpc as { code?: unknown }).code === "P0001";
         // Precedente ADMIN-010 (#94): só não segue em frente quando a
         // gravação não é confirmada — nunca leva o cliente ao carrinho como
         // se o cancelamento tivesse dado certo.
         setErroCancelamento(
           statusFinal && statusFinal !== "pending"
             ? "Este pedido não está mais pendente — o lojista já deve ter começado a prepará-lo. Fale com a loja se ainda quiser cancelar."
-            : "Não foi possível confirmar o cancelamento. Tente novamente.",
+            : guardaBarrouComMensagemPropria
+              ? mensagemAmigavelErroAtualizacaoStatus(erroRpc)
+              : "Não foi possível confirmar o cancelamento. Tente novamente.",
         );
         return;
       }
@@ -2788,7 +2817,14 @@ export function CheckoutView({
     if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
     const mensagem = `Olá! Meu pedido #${orderId.slice(-6).toUpperCase()} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
-    globalThis.open(url, "_blank");
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
   if (aguardandoPagamento && orderId) {
@@ -2893,12 +2929,21 @@ export function CheckoutView({
                     o cartão de NOVO (o Brick remonta do zero) — sem isto, a
                     caixa parecia exigir digitar o cartão outra vez só para
                     "conferir", quando a verificação periódica e o tempo
-                    real já cobrem isso sozinhos. */}
+                    real já cobrem isso sozinhos.
+                    Achado 1, rodada 5 (addendum): a frase antiga dizia "use
+                    só se quiser tentar outro cartão" — mas enquanto o
+                    PRIMEIRO cartão ainda está vivo (em análise, branch (d) da
+                    edge), um cartão DIFERENTE cai na mesma branch e recebe o
+                    MESMO status "em análise". Prometer que trocar de cartão
+                    muda o resultado é falso nesse caso — a frase agora não
+                    promete nada sobre o resultado, só explica o que o botão
+                    faz. */}
                 {metodoDoPedido === "cartao" && (
                   <p className="text-xs text-amber-700">
                     Você não precisa fazer nada agora: esta tela muda sozinha
-                    quando o banco decidir. "Tentar de novo" aqui pede o cartão
-                    de novo — use só se quiser tentar outro cartão.
+                    quando o banco decidir. "Tentar de novo" confere com o banco
+                    de novo; se o cartão ainda estiver em análise, a resposta
+                    será a mesma.
                   </p>
                 )}
                 <Button
@@ -4891,7 +4936,14 @@ function SuccessView({
     }
     const mensagem = `Olá! Quero acompanhar o meu pedido #${orderId.slice(-6).toUpperCase()}.`;
     const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
-    globalThis.open(url, "_blank");
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -5076,7 +5128,14 @@ function PagamentoForaDoPrazoView({
     }
     const mensagem = `Olá! Paguei o pedido #${orderId.slice(-6).toUpperCase()}, mas o prazo de reserva venceu. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
-    globalThis.open(url, "_blank");
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (

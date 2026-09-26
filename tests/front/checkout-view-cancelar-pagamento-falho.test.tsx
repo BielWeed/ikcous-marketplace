@@ -158,9 +158,14 @@ vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
 }));
 
-vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ createOrder, updateOrderStatus }),
-}));
+// Achado 2, rodada 5: `mensagemAmigavelErroAtualizacaoStatus` fica com a
+// implementação REAL (via `importOriginal`) — só `useOrders` é trocado pelo
+// dublê. É ela quem decide se o texto cru da guarda P0001 (migration 80)
+// passa direto para a tela ou vira o genérico.
+vi.mock("@/hooks/useOrders", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/hooks/useOrders")>();
+  return { ...real, useOrders: () => ({ createOrder, updateOrderStatus }) };
+});
 
 // BLOQUEIO 1 da revisão do #197: o sinal de rede que já existe no
 // repositório (mesmo hook usado por ShippingCalculator) — mutável para
@@ -536,6 +541,52 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
       "Não foi possível confirmar o cancelamento",
     );
     // Continua na tela de aguardar pagamento — não desaparece nem finge êxito.
+    expect(hospedeiro.textContent).toContain(
+      "Cancelar pedido e voltar ao carrinho",
+    );
+  });
+
+  it("achado 2, rodada 5 da revisão de risco pré-publicação (migration 80): a guarda P0001 do cartão em confirmação repassa o TEXTO DELA, não o genérico", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    const mensagemDaGuarda =
+      "Este pedido tem uma cobrança no cartão em confirmação com o banco. Aguarde a confirmação ou fale com a loja antes de cancelar.";
+    const erroDaGuarda = new Error(mensagemDaGuarda) as Error & {
+      code: string;
+    };
+    erroDaGuarda.code = "P0001";
+    updateOrderStatus.mockRejectedValueOnce(erroDaGuarda);
+    // A guarda nova barra a gravação — o pedido segue 'pending' na
+    // releitura, igual à "falha genérica" acima. A diferença é o CÓDIGO
+    // (P0001) e o TEXTO (a frase da guarda, não uma falha de rede muda).
+    mockStatusAposCancelar = "pending";
+
+    await act(async () => {
+      pagamentoOnlineOnErro[0](
+        "Este pagamento foi recusado e não pode ser tentado novamente.",
+        "terminal",
+      );
+    });
+
+    const botaoCancelar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Cancelar pedido e voltar ao carrinho",
+    )!;
+
+    await act(async () => {
+      botaoCancelar.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(onNavigate).not.toHaveBeenCalledWith("cart");
+    expect(addToCart).not.toHaveBeenCalled();
+    // A frase da guarda chega à tela — não o genérico "Tente novamente".
+    expect(hospedeiro.textContent).toContain(mensagemDaGuarda);
+    expect(hospedeiro.textContent).not.toContain(
+      "Não foi possível confirmar o cancelamento",
+    );
     expect(hospedeiro.textContent).toContain(
       "Cancelar pedido e voltar ao carrinho",
     );
