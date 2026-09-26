@@ -331,10 +331,28 @@ describe("classificarRespostaCartao — o que a tela faz com a resposta 200", ()
     });
   });
 
-  it("expirado, estornado, desconhecido e AUSENTE nunca viram sucesso silencioso", () => {
+  it("expirado e estornado nunca viram sucesso silencioso — terminais DEFINITIVOS, sem sinal", () => {
+    for (const statusPagamento of ["expirado", "estornado"]) {
+      const r = classificarRespostaCartao({
+        ...base,
+        statusPagamento: statusPagamento as string,
+      });
+      expect(r.tipo).toBe("erro");
+      expect(r.tipo === "erro" && r.categoria).toBe("terminal");
+      expect(r.tipo === "erro" && r.sinal).toBeUndefined();
+    }
+  });
+
+  // Achado 3, rodada 4 da revisão de risco pré-publicação (26/09/2026): um
+  // status desconhecido ou AUSENTE num 200 nunca vira sucesso silencioso —
+  // mas também não é "morto" como expirado/estornado: a edge devolve o
+  // status CRU de um cartão que ela ainda não sabe mapear, e esse cartão
+  // pode estar VIVO (branch (d), `criar-pagamento/index.ts`). Por isso virou
+  // recuperável com o sinal `cartaoEmAnalise` (caixa âmbar, "Tentar de
+  // novo") em vez de terminal sem sinal nenhum (tela morta, só "Cancelar
+  // pedido" sobre um cartão que podia estar vivo).
+  it("status desconhecido ou AUSENTE não é terminal morto — recuperável com sinal 'cartaoEmAnalise' (o cartão pode estar vivo)", () => {
     for (const statusPagamento of [
-      "expirado",
-      "estornado",
       "in_process:pending_review_manual",
       undefined,
     ]) {
@@ -343,7 +361,8 @@ describe("classificarRespostaCartao — o que a tela faz com a resposta 200", ()
         statusPagamento: statusPagamento as string,
       });
       expect(r.tipo).toBe("erro");
-      expect(r.tipo === "erro" && r.categoria).toBe("terminal");
+      expect(r.tipo === "erro" && r.categoria).toBe("recuperavel");
+      expect(r.tipo === "erro" && r.sinal).toBe("cartaoEmAnalise");
     }
   });
 });
@@ -841,6 +860,10 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     });
 
     expect(onTrocarParaPix).toHaveBeenCalledTimes(1);
+    // Achado 2, rodada 4 da revisão de risco pré-publicação: o banco já
+    // respondeu que este cartão morreu (recusa definitiva) — o pedido NUNCA
+    // nasce incerto por causa desta troca.
+    expect(onTrocarParaPix).toHaveBeenCalledWith(false);
     expect(criarPagamento).toHaveBeenLastCalledWith({
       orderId: "ped-12345678",
       metodo: "pix",
@@ -1070,6 +1093,9 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     });
 
     expect(onTrocarParaPix).toHaveBeenCalledTimes(1);
+    // Achado 2, rodada 4 da revisão de risco pré-publicação: o desafio 3DS
+    // ainda está aberto quando o cliente troca — o cartão pode estar vivo.
+    expect(onTrocarParaPix).toHaveBeenCalledWith(true);
     expect(criarPagamento).toHaveBeenLastCalledWith({
       orderId: "ped-12345678",
       metodo: "pix",
@@ -1093,7 +1119,7 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
       expiraEm: "x",
       desafio3ds: { url },
     });
-    await renderCartao();
+    const { onTrocarParaPix } = await renderCartao();
     await enviarCartao(create);
 
     await act(async () => {
@@ -1111,11 +1137,17 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
         (b) => b.textContent === "Tentar outro cartão",
       ),
     ).toBeUndefined();
-    expect(
-      [...hospedeiro.querySelectorAll("button")].find(
-        (b) => b.textContent === "Pagar com PIX",
-      ),
-    ).toBeDefined();
+    const pix = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Pagar com PIX",
+    );
+    expect(pix).toBeDefined();
+
+    // Achado 2, rodada 4 da revisão de risco pré-publicação: o webhook ainda
+    // pode aprovar o cartão a qualquer momento — o cartão está vivo.
+    await act(async () => {
+      pix!.click();
+    });
+    expect(onTrocarParaPix).toHaveBeenCalledWith(true);
   });
 
   // B2, cenário 2: cartão em análise sem desafio (`processing`) — o banco
@@ -1140,7 +1172,7 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
         statusPagamento: "aguardando",
         expiraEm: "x",
       });
-      await renderCartao();
+      const { onTrocarParaPix } = await renderCartao();
       await enviarCartao(create);
 
       expect(hospedeiro.textContent).toContain(
@@ -1158,11 +1190,17 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
         );
       });
 
-      expect(
-        [...hospedeiro.querySelectorAll("button")].find(
-          (b) => b.textContent === "Pagar com PIX",
-        ),
-      ).toBeDefined();
+      const pix = [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent === "Pagar com PIX",
+      );
+      expect(pix).toBeDefined();
+
+      // Achado 2, rodada 4 da revisão de risco pré-publicação: em análise
+      // pelo emissor/antifraude, o cartão AINDA pode ser aprovado.
+      await act(async () => {
+        pix!.click();
+      });
+      expect(onTrocarParaPix).toHaveBeenCalledWith(true);
     });
   });
 });

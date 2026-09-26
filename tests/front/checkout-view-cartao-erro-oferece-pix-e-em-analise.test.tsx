@@ -65,12 +65,18 @@ vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
 }));
 
+// Achado 4, rodada 4: `whatsappNumber` mutável — `undefined` por padrão (a
+// maioria dos testes já verifica que a saída de WhatsApp NÃO aparece sem
+// configuração), sobrescrito só nos testes que precisam da loja com
+// WhatsApp.
+let mockWhatsappNumber: string | undefined;
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
       shippingCoverage: "local",
       originCep: "38500-000",
       enableCoupons: false,
+      whatsappNumber: mockWhatsappNumber,
     },
     isLoaded: true,
   }),
@@ -249,6 +255,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     updateOrderStatus.mockResolvedValue(undefined);
     onNavigate.mockClear();
     pagamentoOnlineProps.length = 0;
+    mockWhatsappNumber = undefined;
     mockCart = [
       {
         product: {
@@ -671,14 +678,20 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
   });
 
-  // Teste (d) da rodada 3: o marcador é POR PEDIDO — reseta com um
-  // `orderId` novo. Em produção `orderId` só nasce uma vez por pedido
-  // (`grep setOrderId` em CheckoutView.tsx: uma chamada só) — o cliente não
-  // reabre o MESMO checkout depois de marcado, porque cancelar já fica
-  // bloqueado de propósito. A prova mais direta é duas sessões de checkout
-  // SEPARADAS (dois `createOrder`, dois ids): o pedido B nasce limpo, ainda
-  // que o pedido A tenha ficado com a cobrança incerta.
-  it("(d) o marcador não vaza entre pedidos: um pedido novo nasce sem a cobrança incerta do pedido anterior", async () => {
+  // Teste (d), renomeado na rodada 4 (achado 6, menor): este teste prova
+  // ISOLAMENTO ENTRE SESSÕES de checkout — dois `<CheckoutView>` distintos
+  // (dois `createOrder`, dois `orderId`) — não a transição de `orderId`
+  // DENTRO de um mount só. `orderId` só nasce uma vez por pedido nesta
+  // função (`grep setOrderId` em CheckoutView.tsx: uma chamada só), e não há
+  // caminho de UI para reabrir o MESMO `<CheckoutView>` num segundo pedido
+  // depois deste marcador travar "Cancelar pedido" — por isso o
+  // `useEffect(() => setPedidoTemCobrancaIncerta(false), [orderId])` no
+  // componente é, hoje, morto: nenhum teste alcança essa transição, e uma
+  // mutação que o remova continua passando aqui (comprovado na revisão da
+  // rodada 4). O que ESTE teste garante é mais simples e ainda vale: o
+  // marcador é `useState` local do componente, nunca um cache por módulo —
+  // uma sessão de checkout não pode contaminar a próxima.
+  it("(d) isolamento entre sessões de checkout: um <CheckoutView> novo nasce sem a cobrança incerta de uma sessão anterior", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
     // Pedido A: fica com a cobrança incerta (502 ambíguo).
@@ -761,5 +774,317 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(
       botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
     ).toBeDefined();
+  });
+
+  // RODADA 4 — achado 2 (dinheiro): trocar para PIX com o cartão AINDA vivo
+  // (desafio 3DS, "confirmando com o banco" ou "em análise"), seguido de um
+  // erro do PIX SEM sinal (rede caiu), não podia deixar "Cancelar pedido"
+  // reaparecer — `metodoDoPedido` já virou "pix" antes do erro chegar, fora
+  // do alcance da regra "sem sinal em modo cartão é incerto". Correção:
+  // `onTrocarParaPix` liga `pedidoTemCobrancaIncerta` ANTES da troca, quando
+  // quem chamou diz que o cartão pode estar vivo.
+  it("R2: desafio 3DS -> Pagar com PIX (cartão vivo) -> erro sem sinal no PIX -> 'Cancelar pedido' NUNCA aparece", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    // PagamentoComCartao chamaria onPagarComPix(true) na tela de desafio —
+    // aqui simulamos o mesmo aviso que PagamentoOnline repassa.
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onTrocarParaPix as (
+          cartaoAindaVivo: boolean,
+        ) => void
+      )(true);
+    });
+    expect(pagamentoOnlineProps.at(-1)!.metodo).toBe("pix");
+
+    // O pedido de PIX falha sem corpo nenhum — rede caiu antes da resposta.
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("Não foi possível gerar a cobrança.", "recuperavel");
+    });
+
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
+  });
+
+  // Controle do R2: a tela "recusado" chama com o cartão MORTO (o banco já
+  // respondeu) — nesse caso a troca para PIX NÃO pode marcar o pedido, e
+  // "Cancelar pedido" continua disponível se o PIX falhar depois.
+  it("controle do R2: recusado (cartão morto) -> Pagar com PIX -> erro sem sinal no PIX -> 'Cancelar pedido' CONTINUA aparecendo", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onTrocarParaPix as (
+          cartaoAindaVivo: boolean,
+        ) => void
+      )(false);
+    });
+    expect(pagamentoOnlineProps.at(-1)!.metodo).toBe("pix");
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("Não foi possível gerar a cobrança.", "recuperavel");
+    });
+
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeDefined();
+  });
+
+  // RODADA 4 — achado 3: o primeiro erro do cartão já é um status
+  // desconhecido/ausente num 200 — `classificarRespostaCartao` manda o
+  // sinal `cartaoEmAnalise` (o cartão pode estar VIVO, só não sabemos
+  // mapear o status), então a tela vai para a caixa âmbar com "Tentar de
+  // novo", nunca "Cancelar pedido" sobre um cartão que pode ter sido
+  // aprovado.
+  it("R3: primeiro erro do cartão = status desconhecido (sinal 'cartaoEmAnalise') -> caixa âmbar, nunca 'Cancelar pedido'", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+          sinal?: "cartaoEmAnalise" | "semCobranca",
+        ) => void
+      )(
+        "Não foi possível confirmar o pagamento.",
+        "recuperavel",
+        "cartaoEmAnalise",
+      );
+    });
+
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
+  });
+
+  // RODADA 4 — achado 4: a caixa N7 (terminal, cartão pode ter sido
+  // cobrado) ficava sem NENHUM botão. Com a loja configurada com WhatsApp,
+  // "Falar com a loja" abre o wa.me certo, com o pedido na mensagem.
+  it("achado 4: N7 com WhatsApp configurado oferece 'Falar com a loja', que abre o wa.me com o pedido na mensagem", async () => {
+    mockWhatsappNumber = "34999998888";
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )(
+        "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.",
+        "terminal",
+      );
+    });
+
+    const falarComALoja = botaoPorTexto(hospedeiro, "Falar com a loja");
+    expect(falarComALoja).toBeDefined();
+
+    const openSpy = vi.fn();
+    vi.stubGlobal("open", openSpy);
+    await act(async () => {
+      falarComALoja!.click();
+    });
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const url = openSpy.mock.calls[0][0] as string;
+    expect(url).toContain("https://wa.me/5534999998888");
+    expect(decodeURIComponent(url)).toContain(
+      "ped-999".slice(-6).toUpperCase(),
+    );
+  });
+
+  // Sem WhatsApp configurado, o N7 continua sem NENHUM botão — o achado 4
+  // não inventa um contato que a loja não tem.
+  it("achado 4, controle: N7 SEM WhatsApp configurado continua sem nenhum botão", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )(
+        "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.",
+        "terminal",
+      );
+    });
+
+    expect(botaoPorTexto(hospedeiro, "Falar com a loja")).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeUndefined();
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+  });
+
+  // RODADA 4 — achado 4, o outro beco sem saída (R4 da revisão): um erro
+  // ambíguo (marca o pedido) seguido de um erro terminal comum — nem
+  // "Tentar de novo" (categoria terminal) nem "Cancelar pedido" (marcador
+  // ligado) apareciam. Com WhatsApp configurado, "Falar com a loja" evita a
+  // tela vazia.
+  it("achado 4: terminal DEPOIS de um erro ambíguo, com WhatsApp configurado, oferece 'Falar com a loja'", async () => {
+    mockWhatsappNumber = "34999998888";
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    // 1. Erro ambíguo — marca o pedido.
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("Falha ao falar com o gateway.", "recuperavel");
+    });
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Tentar de novo")!.click();
+    });
+
+    // 2. Erro terminal comum (sem sinal) — o marcador continua de pé.
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("O prazo para pagar este pedido acabou.", "terminal");
+    });
+
+    expect(hospedeiro.textContent).toContain(
+      "O prazo para pagar este pedido acabou.",
+    );
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeUndefined();
+    const falarComALoja = botaoPorTexto(hospedeiro, "Falar com a loja");
+    expect(falarComALoja).toBeDefined();
+
+    const openSpy = vi.fn();
+    vi.stubGlobal("open", openSpy);
+    await act(async () => {
+      falarComALoja!.click();
+    });
+    expect(openSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // Mesmo beco, mas SEM WhatsApp configurado: fica documentado que a tela
+  // fica mesmo sem botão nenhum além do texto — não é uma regressão nova, é
+  // o limite do achado 4 (só WhatsApp; "Ver meus pedidos" ainda não, porque
+  // aquela tela ainda deixa cancelar até a correção do lado dela).
+  it("achado 4, controle: terminal DEPOIS de um erro ambíguo, SEM WhatsApp configurado, fica sem nenhum botão", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("Falha ao falar com o gateway.", "recuperavel");
+    });
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Tentar de novo")!.click();
+    });
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("O prazo para pagar este pedido acabou.", "terminal");
+    });
+
+    expect(botaoPorTexto(hospedeiro, "Falar com a loja")).toBeUndefined();
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeUndefined();
+  });
+
+  // RODADA 4 — achado 4, explicação no modo cartão: "Tentar de novo" na
+  // caixa âmbar remonta o Brick (pede o cartão de NOVO) — sem aviso, parecia
+  // que era preciso digitar tudo de novo só para "conferir", quando a
+  // verificação periódica já cobre isso sozinha.
+  it("achado 4: caixa âmbar em modo cartão explica que a tela muda sozinha, sem forçar redigitar o cartão", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+    expect(pagamentoOnlineProps.at(-1)!.metodo).toBe("cartao");
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("Erro de infraestrutura (502).", "recuperavel");
+    });
+
+    expect(hospedeiro.textContent).toContain(
+      "Você não precisa fazer nada agora",
+    );
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
+  });
+
+  // Em modo PIX, a explicação de "redigitar o cartão" não faz sentido — a
+  // caixa âmbar (mesmo cenário, agora com sinal explícito para chegar lá
+  // depois da troca) não deve mostrá-la.
+  it("achado 4, controle: caixa âmbar em modo PIX NÃO mostra a explicação de redigitar o cartão", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onTrocarParaPix as (
+          cartaoAindaVivo: boolean,
+        ) => void
+      )(true);
+    });
+    expect(pagamentoOnlineProps.at(-1)!.metodo).toBe("pix");
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+          sinal?: "cartaoEmAnalise" | "semCobranca",
+        ) => void
+      )(
+        "Há um pagamento com cartão em análise para este pedido.",
+        "recuperavel",
+        "cartaoEmAnalise",
+      );
+    });
+
+    // Confirma que chegou mesmo na caixa âmbar (senão a ausência do aviso
+    // não provaria nada).
+    expect(hospedeiro.textContent).toContain(
+      "Seu cartão está em análise pelo banco",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "Você não precisa fazer nada agora",
+    );
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
   });
 });

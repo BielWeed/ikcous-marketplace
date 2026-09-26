@@ -342,12 +342,15 @@ export function PagamentoOnline({
   metodo?: MetodoOnline;
   configDoCartao?: ConfigDoCartao | null;
   emailDoPagador?: string | null;
-  onTrocarParaPix?: () => void;
+  // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
+  // repassa se o cartão ainda podia estar vivo NO MOMENTO da troca — ver o
+  // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
+  onTrocarParaPix?: (cartaoAindaVivo: boolean) => void;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
-  const pagarComPix = () => {
+  const pagarComPix = (cartaoAindaVivo: boolean) => {
     setTrocouParaPix(true);
-    onTrocarParaPix?.();
+    onTrocarParaPix?.(cartaoAindaVivo);
   };
 
   if (metodo === "cartao" && !trocouParaPix) {
@@ -364,7 +367,8 @@ export function PagamentoOnline({
       );
     }
     // A loja desligou o cartão entre a escolha e a tela de pagamento (ou a
-    // config sumiu). Não cria PIX por conta própria: o cliente escolhe.
+    // config sumiu) — nenhum cartão chegou a ser submetido, então nunca há
+    // cobrança em curso.
     return (
       <div className="mx-auto w-full max-w-md space-y-3 rounded-2xl border border-zinc-100 bg-white p-4 text-center sm:p-6">
         <p className="text-sm text-zinc-700">
@@ -372,7 +376,7 @@ export function PagamentoOnline({
         </p>
         <button
           type="button"
-          onClick={pagarComPix}
+          onClick={() => pagarComPix(false)}
           className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
         >
           Pagar com PIX

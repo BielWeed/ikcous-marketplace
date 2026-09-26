@@ -1117,10 +1117,24 @@ export function CheckoutView({
   // `semCobranca` corretamente — mas SÓ para ESTE erro; (4) "Pagar com PIX"
   // reaparece, e a edge antiga cria o PIX na vaga vazia: duas cobranças
   // vivas. Este marcador é POR PEDIDO: uma vez `true`, nenhum erro seguinte —
-  // nem um `semCobranca` legítimo — desmarca. Só reseta num pedido NOVO (o
-  // efeito abaixo, por `orderId`); o pedido virar pago/expirado nem chega a
-  // ler este estado (a função retorna mais acima, em `PagamentoConfirmadoView`
-  // / `PagamentoForaDoPrazoView`).
+  // nem um `semCobranca` legítimo — desmarca.
+  //
+  // Achado 6 (menor, rodada 4): este comentário chegou a prometer que o
+  // efeito abaixo "reseta num pedido novo" — mas `orderId` só é atribuído
+  // UMA vez por pedido nesta função (`grep setOrderId`: uma chamada só), e
+  // não há caminho de UI para reaproveitar o MESMO `<CheckoutView>` montado
+  // num segundo pedido depois deste marcador travar "Cancelar pedido" (essa
+  // é justamente a intenção: sem saída fácil de volta ao formulário). O
+  // efeito é escrito por completude/defesa (se algum dia existir um caminho
+  // de `orderId` mudar sem desmontar, ele já reseta certo) — mas hoje é
+  // MORTO: nenhum teste alcança a transição de `orderId` dentro de UM mount
+  // só, e um teste que remova este efeito continua passando (prova: mutação
+  // "sem reset" na rodada 4 — os mesmos 10 testes, incluindo o de isolamento
+  // entre pedidos, seguem verdes). Mantido mesmo assim (custo zero, nunca
+  // erra) — ver `tests/front/checkout-view-cartao-erro-oferece-pix-e-em-
+  // analise.test.tsx`, teste "(d)", que prova ISOLAMENTO ENTRE SESSÕES de
+  // checkout (dois `<CheckoutView>` distintos), não a transição de `orderId`
+  // dentro de um mount só.
   const [pedidoTemCobrancaIncerta, setPedidoTemCobrancaIncerta] =
     useState(false);
   useEffect(() => {
@@ -2755,6 +2769,28 @@ export function CheckoutView({
     }
   };
 
+  // Achado 4, rodada 4 da revisão de risco pré-publicação (26/09/2026): a
+  // caixa âmbar terminal (N7 — "pode ter sido cobrado") e a caixa vermelha
+  // terminal DEPOIS de um erro ambíguo (achado 1) não tinham NENHUM botão —
+  // um beco sem saída de verdade. Mesmo mecanismo já usado em
+  // `SuccessView`/`PagamentoForaDoPrazoView` (wa.me com DDI 55 prefixado
+  // para número de 10 ou 11 dígitos), não um novo. Ainda NÃO oferece "Ver
+  // meus pedidos": aquela tela ainda deixa cancelar um pedido com cartão
+  // incerto até a correção do lado dela (outra frente, `OrderDetailsView`).
+  const numeroLimpoDoCheckout = (config.whatsappNumber || "").replace(
+    /\D/g,
+    "",
+  );
+  const lojaTemWhatsappNoCheckout = lojaTemWhatsapp(config.whatsappNumber);
+  const handleFalarComALojaSobreCartao = () => {
+    if (!lojaTemWhatsappNoCheckout) return;
+    let phone = numeroLimpoDoCheckout;
+    if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
+    const mensagem = `Olá! Meu pedido #${orderId.slice(-6).toUpperCase()} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
+    globalThis.open(url, "_blank");
+  };
+
   if (aguardandoPagamento && orderId) {
     // CHECKOUT-090: pagamento confirmado — troca o QR (e o aviso de reserva
     // de 30 minutos, que é justamente a frase que faz o cliente achar que
@@ -2828,7 +2864,22 @@ export function CheckoutView({
                   : "Seu cartão está em análise pelo banco. Aguarde a resposta; você será avisado aqui."}
               </p>
             </div>
-            {erroPagamento.categoria !== "terminal" && (
+            {erroPagamento.categoria === "terminal" ? (
+              // Achado 4, rodada 4 da revisão de risco pré-publicação
+              // (26/09/2026): o N7 ficava sem NENHUM botão — um beco sem
+              // saída de verdade, mesmo sabendo que a loja "vai conferir e
+              // confirmar em breve". "Falar com a loja" dá um jeito honesto
+              // de acelerar isso, quando a loja tem WhatsApp configurado.
+              lojaTemWhatsappNoCheckout && (
+                <Button
+                  onClick={handleFalarComALojaSobreCartao}
+                  variant="outline"
+                  className="w-full rounded-xl border-amber-300 text-amber-900 hover:bg-amber-100"
+                >
+                  Falar com a loja
+                </Button>
+              )
+            ) : (
               <>
                 {/* Achado 2, rodada 3 da revisão de risco pré-publicação: um
                     POST de cartão sem corpo de resposta (rede caiu, 502)
@@ -2838,6 +2889,18 @@ export function CheckoutView({
                 <p className="text-xs text-amber-700">
                   Se nada mudar em alguns minutos, toque em Tentar de novo.
                 </p>
+                {/* Achado 4, rodada 4: em modo cartão, "Tentar de novo" pede
+                    o cartão de NOVO (o Brick remonta do zero) — sem isto, a
+                    caixa parecia exigir digitar o cartão outra vez só para
+                    "conferir", quando a verificação periódica e o tempo
+                    real já cobrem isso sozinhos. */}
+                {metodoDoPedido === "cartao" && (
+                  <p className="text-xs text-amber-700">
+                    Você não precisa fazer nada agora: esta tela muda sozinha
+                    quando o banco decidir. "Tentar de novo" aqui pede o cartão
+                    de novo — use só se quiser tentar outro cartão.
+                  </p>
+                )}
                 <Button
                   onClick={() => {
                     setErroPagamento(null);
@@ -2910,8 +2973,25 @@ export function CheckoutView({
                 Achado 1, rodada 3: NUNCA com `pedidoTemCobrancaIncerta` —
                 pelo mesmo motivo do "Pagar com PIX" acima, cancelar um
                 pedido cuja cobrança pode ter ido para o Mercado Pago é
-                dinheiro cobrado por um pedido morto (`pago_apos_expirar`). */}
-            {pedidoTemCobrancaIncerta ? null : user ? (
+                dinheiro cobrado por um pedido morto (`pago_apos_expirar`).
+                Achado 4, rodada 4: quando o erro atual é TERMINAL (a
+                sequência do achado 1 — um erro ambíguo seguido de um erro
+                terminal comum), nem "Tentar de novo" aparece (categoria
+                terminal) nem "Cancelar pedido" (marcador ligado): a caixa
+                ficava sem NENHUM botão. "Falar com a loja" evita o beco sem
+                saída. */}
+            {pedidoTemCobrancaIncerta ? (
+              erroPagamento.categoria === "terminal" &&
+              lojaTemWhatsappNoCheckout && (
+                <Button
+                  onClick={handleFalarComALojaSobreCartao}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Falar com a loja
+                </Button>
+              )
+            ) : user ? (
               <Button
                 onClick={handleCancelarPedidoESairDoPagamento}
                 disabled={isCancelandoPedido}
@@ -2957,7 +3037,19 @@ export function CheckoutView({
             emailDoPagador={user?.email ?? null}
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
-            onTrocarParaPix={() => setMetodoDoPedido("pix")}
+            //
+            // Achado 2, rodada 4 da revisão de risco pré-publicação
+            // (26/09/2026): a troca acontece ANTES de qualquer erro — se o
+            // cartão ainda podia estar vivo (desafio 3DS, "confirmando com o
+            // banco", "em análise"), o pedido já nasce incerto NA HORA da
+            // troca. Sem isto, o primeiro erro do PIX (rede caiu, sem sinal)
+            // chegava com `metodoDoPedido` já em "pix" — fora do alcance da
+            // regra "sem sinal em modo cartão é incerto" — e "Cancelar
+            // pedido" reaparecia sobre um cartão que podia ter sido aprovado.
+            onTrocarParaPix={(cartaoAindaVivo) => {
+              if (cartaoAindaVivo) setPedidoTemCobrancaIncerta(true);
+              setMetodoDoPedido("pix");
+            }}
             onErro={(msg, categoria, sinal) => {
               // Achados 1 e 2, rodada 3 da revisão de risco pré-publicação
               // (26/09/2026): um erro do POST de cartão SEM sinal nenhum

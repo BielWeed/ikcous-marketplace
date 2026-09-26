@@ -323,10 +323,21 @@ export function classificarRespostaCartao(
       categoria: "terminal",
     };
   }
+  // Achado 3, rodada 4 da revisão de risco pré-publicação (26/09/2026): um
+  // status desconhecido ou ausente num 200 NÃO é o mesmo que "morto" — a
+  // edge devolve o status CRU de um cartão vivo que ela ainda não sabe
+  // mapear (branch (d), `criar-pagamento/index.ts`). Tratar como terminal
+  // fechava a tela sem saída nenhuma (nem "Cancelar pedido", porque este
+  // erro nem carrega o sinal `cartaoEmAnalise` que esconderia o botão — a
+  // tela ficava com "Cancelar pedido" como ÚNICA ação sobre um cartão que
+  // podia estar vivo). `sinal: "cartaoEmAnalise"` joga para a caixa âmbar
+  // com "Tentar de novo" — seguro, porque a nova tentativa converge pela
+  // MESMA branch (d): nunca uma segunda cobrança.
   return {
     tipo: "erro",
     mensagem: "Não foi possível confirmar o pagamento.",
-    categoria: "terminal",
+    categoria: "recuperavel",
+    sinal: "cartaoEmAnalise",
   };
 }
 
@@ -507,7 +518,19 @@ export function PagamentoComCartao({
     categoria: CategoriaErroPagamento,
     sinal?: SinalDeErroPagamento,
   ) => void;
-  onPagarComPix: () => void;
+  // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
+  // `cartaoAindaVivo` diz ao CheckoutView se a cobrança de cartão pode
+  // AINDA existir no momento da troca — antes de qualquer erro do PIX
+  // acontecer. Sem isso, o marcador `pedidoTemCobrancaIncerta` só nascia
+  // dentro de `onErro`, e a troca em si (`metodoDoPedido` já vira "pix" NA
+  // HORA do clique) escapava da regra "sem sinal em modo cartão é incerto":
+  // se o pedido de PIX seguinte falhasse sem corpo (rede caiu), a tela já
+  // não estava mais em modo cartão, e "Cancelar pedido" reaparecia sobre um
+  // cartão que podia ter sido aprovado (desafio 3DS, "confirmando com o
+  // banco" ou "em análise" — as três telas de onde dá pra chamar isto com o
+  // cartão vivo). Só a tela "recusado" chama com `false`: o banco já
+  // respondeu que o cartão morreu.
+  onPagarComPix: (cartaoAindaVivo: boolean) => void;
 }) {
   // Mesma escolha do PIX: só `criarPagamento`, sem realtime — quem vê o
   // pedido virar pago é o CheckoutView.
@@ -695,7 +718,9 @@ export function PagamentoComCartao({
               </button>
               <button
                 type="button"
-                onClick={onPagarComPix}
+                // O banco já respondeu que este cartão morreu — nunca fica
+                // "vivo" depois de uma recusa definitiva.
+                onClick={() => onPagarComPix(false)}
                 className="flex min-h-12 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900 active:bg-zinc-50"
               >
                 Pagar com PIX
@@ -725,7 +750,9 @@ export function PagamentoComCartao({
             {pixDisponivelNaAnalise && (
               <button
                 type="button"
-                onClick={onPagarComPix}
+                // Em análise pelo emissor/antifraude: o cartão AINDA pode ser
+                // aprovado.
+                onClick={() => onPagarComPix(true)}
                 className="flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900"
               >
                 Pagar com PIX
@@ -757,7 +784,9 @@ export function PagamentoComCartao({
                 o PIX, ou responde 409 `cartaoEmAnalise` se não conseguir. */}
             <button
               type="button"
-              onClick={onPagarComPix}
+              // O desafio 3DS acabou de ser concluído; o webhook ainda pode
+              // aprovar o cartão a qualquer momento.
+              onClick={() => onPagarComPix(true)}
               className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
             >
               Pagar com PIX
@@ -801,7 +830,9 @@ export function PagamentoComCartao({
           </p>
           <button
             type="button"
-            onClick={onPagarComPix}
+            // O desafio ainda está aberto — o cartão está vivo, esperando o
+            // banco.
+            onClick={() => onPagarComPix(true)}
             className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
           >
             Pagar com PIX
