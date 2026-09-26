@@ -2937,13 +2937,28 @@ export function CheckoutView({
               // saída de verdade, mesmo sabendo que a loja "vai conferir e
               // confirmar em breve". "Falar com a loja" dá um jeito honesto
               // de acelerar isso, quando a loja tem WhatsApp configurado.
-              lojaTemWhatsappNoCheckout && (
+              //
+              // Achado 1, rodada 8: SEM WhatsApp configurado, o beco
+              // continuava de pé — "Ver meus pedidos" fecha o último caso.
+              // Seguro com a migration 80 no ar (condição para ligar o
+              // cartão): a tela de pedidos não oferece nada que cobra, e
+              // cancelar por lá esbarra na MESMA guarda P0001 com a mesma
+              // mensagem.
+              lojaTemWhatsappNoCheckout ? (
                 <Button
                   onClick={handleFalarComALojaSobreCartao}
                   variant="outline"
                   className="w-full rounded-xl border-amber-300 text-amber-900 hover:bg-amber-100"
                 >
                   Falar com a loja
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl border-amber-300 text-amber-900 hover:bg-amber-100"
+                >
+                  Ver meus pedidos
                 </Button>
               )
             ) : (
@@ -3071,10 +3086,16 @@ export function CheckoutView({
                 `erroCancelamento`, logo abaixo, já diz "fale com a loja
                 antes de cancelar" — "Falar com a loja" cumpre a própria
                 promessa do texto, em vez de deixar a pessoa lendo uma
-                instrução sem como agir. */}
+                instrução sem como agir.
+                Achado 1, rodada 8: SEM WhatsApp configurado, os dois becos
+                acima (este e o de `cancelamentoBloqueadoPelaGuardaDoCartao`,
+                abaixo) continuavam de pé. "Ver meus pedidos" fecha os dois —
+                seguro com a migration 80 no ar (condição para ligar o
+                cartão): a tela de pedidos não oferece nada que cobra, e
+                cancelar por lá esbarra na MESMA guarda P0001. */}
             {pedidoTemCobrancaIncerta ? (
               erroPagamento.categoria === "terminal" &&
-              lojaTemWhatsappNoCheckout && (
+              (lojaTemWhatsappNoCheckout ? (
                 <Button
                   onClick={handleFalarComALojaSobreCartao}
                   variant="outline"
@@ -3082,15 +3103,31 @@ export function CheckoutView({
                 >
                   Falar com a loja
                 </Button>
-              )
+              ) : (
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Ver meus pedidos
+                </Button>
+              ))
             ) : cancelamentoBloqueadoPelaGuardaDoCartao ? (
-              lojaTemWhatsappNoCheckout && (
+              lojaTemWhatsappNoCheckout ? (
                 <Button
                   onClick={handleFalarComALojaSobreCartao}
                   variant="outline"
                   className="w-full rounded-xl"
                 >
                   Falar com a loja
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Ver meus pedidos
                 </Button>
               )
             ) : user ? (

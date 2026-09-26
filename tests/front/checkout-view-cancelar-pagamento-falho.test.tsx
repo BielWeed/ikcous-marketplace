@@ -604,12 +604,23 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
       ),
     ).toBeUndefined();
     // Achado 1, rodada 7: SEM WhatsApp configurado (`mockWhatsappNumber`
-    // não foi setado neste teste), "Falar com a loja" não aparece — beco
-    // sem saída de verdade, mas não um regresso: ver o teste seguinte, que
-    // prova a mesma sequência COM WhatsApp configurado.
+    // não foi setado neste teste), "Falar com a loja" não aparece — ver o
+    // teste seguinte, que prova a mesma sequência COM WhatsApp configurado.
     expect(
       localizarBotaoPorTexto(hospedeiro, "Falar com a loja"),
     ).toBeUndefined();
+    // Achado 1, rodada 8: SEM WhatsApp, "Ver meus pedidos" fecha o beco —
+    // seguro com a migration 80 no ar (a tela de pedidos não oferece nada
+    // que cobra, e cancelar por lá esbarra na MESMA guarda).
+    const verMeusPedidos = localizarBotaoPorTexto(
+      hospedeiro,
+      "Ver meus pedidos",
+    );
+    expect(verMeusPedidos).toBeDefined();
+    await act(async () => {
+      verMeusPedidos!.click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("orders");
   });
 
   it("achado 1, rodada 7 da revisão de risco pré-publicação: terminal (prazo acabou) + guarda P0001 -> 'Falar com a loja' aparece, nunca 'Cancelar pedido' — cenário real medido (o relógio vence antes do pg_cron rodar)", async () => {

@@ -934,7 +934,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
 
   // Sem WhatsApp configurado, o N7 continua sem NENHUM botão — o achado 4
   // não inventa um contato que a loja não tem.
-  it("achado 4, controle: N7 SEM WhatsApp configurado continua sem nenhum botão", async () => {
+  it("achado 4, controle: N7 SEM WhatsApp configurado continua sem 'Falar com a loja' — mas 'Ver meus pedidos' fecha o beco (achado 1, rodada 8)", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
 
@@ -955,6 +955,12 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(
       botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
     ).toBeUndefined();
+    const verMeusPedidos = botaoPorTexto(hospedeiro, "Ver meus pedidos");
+    expect(verMeusPedidos).toBeDefined();
+    await act(async () => {
+      verMeusPedidos!.click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("orders");
   });
 
   // RODADA 4 — achado 4, o outro beco sem saída (R4 da revisão): um erro
@@ -1012,7 +1018,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
   // fica mesmo sem botão nenhum além do texto — não é uma regressão nova, é
   // o limite do achado 4 (só WhatsApp; "Ver meus pedidos" ainda não, porque
   // aquela tela ainda deixa cancelar até a correção do lado dela).
-  it("achado 4, controle: terminal DEPOIS de um erro ambíguo, SEM WhatsApp configurado, fica sem nenhum botão", async () => {
+  it("achado 4, controle: terminal DEPOIS de um erro ambíguo, SEM WhatsApp configurado, fecha em 'Ver meus pedidos' (achado 1, rodada 8)", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
 
@@ -1041,6 +1047,12 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
       botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
     ).toBeUndefined();
     expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeUndefined();
+    const verMeusPedidos = botaoPorTexto(hospedeiro, "Ver meus pedidos");
+    expect(verMeusPedidos).toBeDefined();
+    await act(async () => {
+      verMeusPedidos!.click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("orders");
   });
 
   // RODADA 4 — achado 4, explicação no modo cartão: "Tentar de novo" na
