@@ -2043,6 +2043,17 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O CARTÃO ONLINE NASCE (26/09/2026, migration 20261176000000): a vaga só é
+  // solta se a cobrança ainda for a gravada e o pedido seguir aguardando.
+  "20261176000000_o_cartao_online_nasce.sql": [
+    {
+      funcao: "liberar_cobranca_do_pedido",
+      esperado: [
+        "AND gateway_payment_id = p_gateway_payment_id",
+        "tentativas_de_pagamento = tentativas_de_pagamento + 1,",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

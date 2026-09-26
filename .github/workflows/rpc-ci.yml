@@ -95,3 +95,5 @@ jobs:
         run: node tests/banco/invariantes-dinheiro.cjs
       - name: Prova viva das devoluções
         run: node tests/banco/devolucoes-viva.cjs
+      - name: Prova viva do cartão online
+        run: node tests/banco/cartao-online-viva.cjs

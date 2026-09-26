@@ -1,0 +1,94 @@
+// @ts-nocheck
+// O CARTÃO ONLINE NASCE — prova offline do par 20261176000000 + rollback
+// (plano docs/superpowers/plans/2026-09-26-painel-cartao-e-devolucoes.md,
+// tarefa 2). A prova VIVA mora em tests/banco/cartao-online-viva.cjs.
+//
+// Riscos amarrados: cartão nascendo LIGADO em loja que nunca testou o Brick
+// sob o COEP do app; liberar_cobranca_do_pedido executável por cliente (ele
+// soltaria a cobrança de um pedido e pagaria duas vezes); liberar sem as
+// guardas (soltar cobrança já paga, ou a cobrança NOVA por resposta atrasada
+// da antiga); rollback que derruba o histórico de como o pedido foi pago.
+import { createRequire } from "node:module";
+import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.177.0/testing/asserts.ts";
+
+const require = createRequire(import.meta.url);
+const {
+  avaliarFase0,
+  detectarTransacaoExplicita,
+  removerRuido,
+} = require("../scripts/db-prove-rollback.cjs");
+
+const DIR = fromFileUrl(new URL(".", import.meta.url));
+const NOME = "20261176000000_o_cartao_online_nasce.sql";
+const migration = Deno.readTextFileSync(`${DIR}../supabase/migrations/${NOME}`);
+const rollback = Deno.readTextFileSync(
+  `${DIR}../supabase/migrations/rollback-manual-${NOME}`,
+);
+const norm = (s) => s.replace(/\s+/g, " ").trim();
+const m = norm(migration);
+const r = norm(rollback);
+
+Deno.test("avaliarFase0 não recusa o par e nenhum dos dois controla transação", () => {
+  const res = avaliarFase0({
+    sqlMigration: migration,
+    sqlRollback: rollback,
+    temRollback: true,
+  });
+  assertEquals(
+    res.recusado,
+    false,
+    `motivos: ${(res.motivos || []).join("; ")}`,
+  );
+  assertEquals(detectarTransacaoExplicita(removerRuido(migration)).achados, []);
+  assertEquals(detectarTransacaoExplicita(removerRuido(rollback)).achados, []);
+});
+
+Deno.test("cartão nasce DESLIGADO e a configuração só é escrita pela RPC de admin", () => {
+  assertStringIncludes(m, "credito boolean NOT NULL DEFAULT false,");
+  assertStringIncludes(m, "debito boolean NOT NULL DEFAULT false,");
+  assertStringIncludes(
+    m,
+    "ALTER TABLE public.config_pagamento_cartao ENABLE ROW LEVEL SECURITY;",
+  );
+  assertStringIncludes(
+    m,
+    "REVOKE ALL ON public.config_pagamento_cartao FROM PUBLIC, anon, authenticated;",
+  );
+  assertStringIncludes(
+    m,
+    "GRANT SELECT ON public.config_pagamento_cartao TO anon, authenticated;",
+  );
+  assertStringIncludes(m, "IF NOT public.is_admin() THEN");
+});
+
+Deno.test("liberar_cobranca_do_pedido: só service role, com as três guardas", () => {
+  assertStringIncludes(
+    m,
+    "REVOKE ALL ON FUNCTION public.liberar_cobranca_do_pedido(uuid, text) FROM PUBLIC, anon, authenticated;",
+  );
+  assertStringIncludes(
+    m,
+    "GRANT EXECUTE ON FUNCTION public.liberar_cobranca_do_pedido(uuid, text) TO service_role;",
+  );
+  assertStringIncludes(
+    m,
+    "AND gateway_payment_id = p_gateway_payment_id AND payment_status = 'aguardando' AND paid_at IS NULL",
+  );
+  assertStringIncludes(m, "SECURITY DEFINER SET search_path = public");
+});
+
+Deno.test("o rollback derruba RPCs e tabela mas mantém as colunas do pedido", () => {
+  assertStringIncludes(
+    r,
+    "DROP FUNCTION IF EXISTS public.liberar_cobranca_do_pedido(uuid, text);",
+  );
+  assertStringIncludes(
+    r,
+    "DROP TABLE IF EXISTS public.config_pagamento_cartao;",
+  );
+  assertEquals(/DROP COLUMN/i.test(rollback), false);
+});
