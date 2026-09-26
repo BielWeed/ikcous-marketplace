@@ -195,6 +195,30 @@ export function classificarFalha(erro: unknown) {
 }
 
 /**
+ * Achado R5 (2ª revisão de risco, 26/09/2026): o aviso de push ao admin
+ * (cartão órfão, estorno suspeito, cobrança divergente) era `await`ado
+ * inline, sem teto — um push service lento (ou os VAPID/Deno.env carregando
+ * de novo a cada chamada) prendia a RESPOSTA HTTP do webhook/criar-pagamento
+ * pelo tempo que o envio levasse, sem limite. `comTempoLimite` corre a
+ * promessa contra um `setTimeout`: quem chama nunca espera mais que `ms`,
+ * mesmo que o push ainda esteja em voo (ele termina sozinho, e os erros que
+ * `disparoPushReal`/`alertarAdmin*Real` já engolem em `try/catch` continuam
+ * engolidos — isto só limita o TEMPO de espera, não muda o que acontece
+ * depois). Em teste, o stub de `enviarPush`/`alertarAdmin*` resolve quase
+ * instantaneamente — bem abaixo do teto — então a suíte continua observando
+ * o efeito synchronously depois do `await handler(...)`.
+ */
+export async function comTempoLimite<T>(
+  promessa: Promise<T>,
+  ms: number,
+): Promise<T | undefined> {
+  return await Promise.race([
+    promessa,
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), ms)),
+  ]);
+}
+
+/**
  * Agrupa as falhas por motivo. Uma lista de 200 linhas repetindo
  * "push service respondeu 401" não ajuda ninguém; "401 em 200 dispositivos"
  * ajuda, e cabe no toast.

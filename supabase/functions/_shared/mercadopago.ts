@@ -652,6 +652,50 @@ export function erro400EhDeDadoDoCartao(corpoDoErro: unknown): boolean {
 }
 
 /**
+ * Achado B2 (2ª revisão de risco, 26/09/2026): a Orders API documenta a
+ * semântica REAL de `X-Idempotency-Key` — a MESMA chave com um corpo
+ * DIFERENTE dentro de 24h devolve HTTP 409 com o código
+ * `idempotency_key_already_used` (`_shared/estorno.ts:395` já trata esse
+ * código no fluxo de estorno; aqui é a MESMA constante do vocabulário do MP,
+ * não uma segunda regra divergente). O harness da suite original assumia —
+ * sem citar fonte — que a MESMA chave sempre devolvia a mesma resposta
+ * (replay), inclusive com corpo diferente; a doc NÃO promete isso, e a 2ª
+ * revisão de risco mediu contra essa semântica documentada.
+ *
+ * Isto NUNCA aparece para o PIX (mesma chave, MESMO corpo em todo retry —
+ * `payer`/`documento` vêm sempre do mesmo pedido) — só o CARTÃO, cujo corpo
+ * inclui um TOKEN novo a cada tentativa do Brick (retry do front nunca reusa
+ * token). Ver `respostaCartaoEmVerificacao`, `criar-pagamento/index.ts`, para
+ * o que a function faz com isto.
+ */
+export function idempotencyKeyJaUsado(corpoDoErro: unknown): boolean {
+  if (!corpoDoErro || typeof corpoDoErro !== "object") return false;
+  const erros = Array.isArray((corpoDoErro as Record<string, unknown>).errors)
+    ? (corpoDoErro as Record<string, unknown>).errors as unknown[]
+    : [];
+  return erros.some((erro) => (erro as Record<string, unknown> | null)?.code === "idempotency_key_already_used");
+}
+
+/**
+ * Prefixo do SENTINELA que `criar-pagamento` grava na vaga (`gateway_
+ * payment_id`) quando o MP responde 409 `idempotency_key_already_used`
+ * (`idempotencyKeyJaUsado`, acima) — a cobrança da tentativa ANTERIOR pode
+ * estar aprovada, sem id para reconsultar (Achado B2, 2ª revisão de risco,
+ * 26/09/2026; ver o comentário grande de `respostaCartaoEmVerificacao`,
+ * `criar-pagamento/index.ts`). Mora aqui, não em `criar-pagamento/index.ts`,
+ * porque `webhook-mercadopago/index.ts` PRECISA reconhecer o MESMO
+ * sentinela para ADOTAR a vaga quando a cobrança aparecer aprovada — duas
+ * function distintas (cada uma chama `serve()` no import, então uma nunca
+ * importa a outra) não podem cada uma ter a sua PRÓPRIA cópia do prefixo,
+ * sob pena de divergirem em silêncio (a doença do #53 de novo).
+ */
+export const PREFIXO_VAGA_EM_VERIFICACAO = "verificando:";
+
+export function vagaEmVerificacao(idGateway: unknown): boolean {
+  return typeof idGateway === "string" && idGateway.startsWith(PREFIXO_VAGA_EM_VERIFICACAO);
+}
+
+/**
  * Monta o corpo de `POST /v1/orders` para PIX — o caminho que a Orders API
  * atende (a `/v1/payments` clássica devolve 500 para payment_method_id
  * "pix" hoje; ver montarCorpoPix acima, que continua existindo porque as
@@ -1049,6 +1093,18 @@ export async function consultarOrder(args: {
   baseUrl?: string;
   // P-4 (laudo 01/09): ver criarOrder.
   tempoLimiteMs?: number;
+  // Achado R6 (2ª revisão de risco, 26/09/2026): até esta correção o corpo
+  // do erro (ou o 2xx sem id) SEMPRE ia cru para o log — inofensivo enquanto
+  // só o PIX chamava esta função (a order de PIX não carrega CPF do titular).
+  // Desde a Fase 3.5 o CARTÃO também chama `consultarOrder` (a reconsulta da
+  // vaga ocupada, e — Achados A3/B1 — a reconsulta da cobrança GRAVADA antes
+  // de aplicar um status/estorno): uma order de cartão carrega e-mail e CPF
+  // do titular (`montarCorpoCartaoOrders`), e logar o corpo cru vazaria os
+  // dois num erro de rede comum. Default `true` — byte a byte o
+  // comportamento de antes para quem já chamava sem passar nada (o PIX, e as
+  // reconsultas de vaga que também podem ser PIX); os chamadores NOVOS de
+  // cartão passam `corpoNoLog: false` explicitamente.
+  corpoNoLog?: boolean;
 }): Promise<ResultadoOrder> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
@@ -1071,7 +1127,7 @@ export async function consultarOrder(args: {
   return interpretarRespostaDeOrder(resposta, {
     rotulo: "orders (consulta)",
     mensagemDeFalha: "Não foi possível consultar a cobrança.",
-    corpoNoLog: true,
+    corpoNoLog: args.corpoNoLog !== false,
   });
 }
 
