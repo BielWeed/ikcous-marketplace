@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Package,
   RefreshCw,
+  RotateCcw,
   ShoppingBag,
   Star,
   TriangleAlert,
@@ -33,6 +34,11 @@ const APARENCIA: Record<
     cor: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
     rotulo: "Pedido",
   },
+  devolucao: {
+    Icone: RotateCcw,
+    cor: "border-violet-500/20 bg-violet-500/10 text-violet-400",
+    rotulo: "Devolução",
+  },
   pergunta: {
     Icone: MessageSquare,
     cor: "border-sky-500/20 bg-sky-500/10 text-sky-400",
@@ -53,6 +59,7 @@ const APARENCIA: Record<
 /** Como cada fonte que caiu e chamada no recado de falha parcial. */
 const NOME_DA_FONTE = new Map<TipoDeAviso, string>([
   ["pedido", "pedidos"],
+  ["devolucao", "devoluções"],
   ["pergunta", "perguntas"],
   ["avaliacao", "avaliações"],
   ["estoque", "produtos"],

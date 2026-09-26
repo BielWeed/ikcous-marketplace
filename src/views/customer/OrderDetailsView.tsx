@@ -1,8 +1,11 @@
 import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
+import { DevolucaoDoPedidoCard } from "@/components/devolucao/DevolucaoDoPedidoCard";
+import { SolicitarDevolucaoSheet } from "@/components/devolucao/SolicitarDevolucaoSheet";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
+import { useDevolucaoCliente } from "@/hooks/useDevolucaoCliente";
 import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
 import { useOrders } from "@/hooks/useOrders";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
@@ -36,6 +39,7 @@ import {
   MapPin,
   MessageCircle,
   Package,
+  RotateCcw,
   Star,
   Truck,
   XCircle,
@@ -553,6 +557,16 @@ export function OrderDetailsView({
     mostrarDevolucao,
   );
 
+  // Devolução/troca de produto ENTREGUE (plano 2026-09-26, seção
+  // "Devoluções") — outro assunto que a devolução de DINHEIRO de pedido
+  // cancelado logo acima (`useDevolucaoDoPedidoCliente`, ledger
+  // `order_refunds`). Só pedido `delivered` e só com sessão: as RPCs
+  // exigem `auth.uid()` dono do pedido, e o convidado que rastreou por OTP
+  // não tem. Mesma regra do hook de cima: chamado sempre, ligado por flag.
+  const podeUsarDevolucao = order?.status === "delivered" && !!user;
+  const devolucaoDoProduto = useDevolucaoCliente(orderId, podeUsarDevolucao);
+  const [pedindoDevolucao, setPedindoDevolucao] = useState(false);
+
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center space-y-4 bg-zinc-50/30">
@@ -1006,6 +1020,25 @@ export function OrderDetailsView({
           </motion.div>
         )}
 
+        {/* Devolução/troca em andamento (ou a última) deste pedido: status,
+            protocolo, o que a loja escreveu e a próxima ação do cliente. */}
+        {podeUsarDevolucao && devolucaoDoProduto.atual && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }}
+          >
+            <DevolucaoDoPedidoCard
+              atual={devolucaoDoProduto.atual}
+              anteriores={devolucaoDoProduto.devolucoes.slice(1)}
+              enderecoDaLoja={config.storeAddress ?? null}
+              horarioDaLoja={config.businessHours ?? null}
+              onCancelar={devolucaoDoProduto.cancelar}
+              onInformarEnvio={devolucaoDoProduto.informarEnvio}
+            />
+          </motion.div>
+        )}
+
         {/* Cartão "Itens do pedido" */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1239,6 +1272,51 @@ export function OrderDetailsView({
             <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
           </button>
 
+          {/* Devolução ou troca (CDC art. 49 e Decreto 7.962/2013: o cliente
+              desiste pelo MESMO canal da compra). A linha só existe quando o
+              servidor diz que pode (`devolucao_elegibilidade.pode`); quando
+              não pode e ainda não há devolução, o motivo aparece discreto —
+              "por que não tenho o botão?" tem resposta na própria tela. */}
+          {podeUsarDevolucao && devolucaoDoProduto.elegibilidade?.pode && (
+            <button
+              type="button"
+              data-testid="acao-solicitar-devolucao"
+              onClick={() => {
+                haptic.light();
+                setPedindoDevolucao(true);
+              }}
+              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100"
+            >
+              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+                <RotateCcw className="size-4" />
+              </span>
+              Solicitar devolução ou troca
+              <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
+            </button>
+          )}
+          {podeUsarDevolucao &&
+            devolucaoDoProduto.elegibilidade &&
+            !devolucaoDoProduto.elegibilidade.pode &&
+            devolucaoDoProduto.elegibilidade.motivo_bloqueio &&
+            devolucaoDoProduto.devolucoes.length === 0 && (
+              <div
+                data-testid="devolucao-indisponivel"
+                className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 last:border-b-0"
+              >
+                <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-400">
+                  <RotateCcw className="size-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-zinc-500">
+                    Devolução ou troca
+                  </span>
+                  <span className="block text-xs leading-snug text-zinc-500">
+                    {devolucaoDoProduto.elegibilidade.motivo_bloqueio}
+                  </span>
+                </span>
+              </div>
+            )}
+
           {/* Exige sessão: o convidado chega nesta tela pelo fallback de
               sessionStorage do loadOrder, e update_order_status_atomic passou a
               recusar chamador sem auth.uid() (PEDIDO-010, #115). Sem esta
@@ -1266,6 +1344,22 @@ export function OrderDetailsView({
             )}
         </motion.div>
       </div>
+
+      {/* Montada enquanto houver elegibilidade (não só enquanto `pode`): ao
+          confirmar, a releitura derruba o `pode` e a folha precisa continuar
+          no ar para mostrar o protocolo. */}
+      {podeUsarDevolucao && user && devolucaoDoProduto.elegibilidade && (
+        <SolicitarDevolucaoSheet
+          aberto={pedindoDevolucao}
+          onAbertoMudou={setPedindoDevolucao}
+          elegibilidade={devolucaoDoProduto.elegibilidade}
+          userId={user.id}
+          enderecoDaLoja={config.storeAddress ?? null}
+          horarioDaLoja={config.businessHours ?? null}
+          solicitar={devolucaoDoProduto.solicitar}
+          enviarFoto={devolucaoDoProduto.enviarFoto}
+        />
+      )}
 
       {reviewingItem &&
         typeof document !== "undefined" &&

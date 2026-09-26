@@ -12,6 +12,7 @@ import {
   Layers,
   Palette,
   RefreshCw,
+  RotateCcw,
   Store,
   Truck,
   Wallet,
@@ -23,6 +24,7 @@ import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePagamentoCard";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
+import { PoliticaDeDevolucaoSection } from "@/components/admin/settings/PoliticaDeDevolucaoSection";
 import {
   type ConfigDoProvedor,
   NOME_DO_PROVEDOR,
@@ -602,6 +604,10 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // em voo", pelo mesmo motivo que a trava existe: fechar no meio de um
   // salvamento em curso não pode desmontar o componente por baixo dele).
   const [formasPagamentoPendente, setFormasPagamentoPendente] = useState(false);
+  // Devoluções (plano 2026-09-26): mesma trava — política editada e não
+  // salva não some num clique no cabeçalho da seção.
+  const [politicaDevolucaoPendente, setPoliticaDevolucaoPendente] =
+    useState(false);
   // Contador que só CRESCE: o botão "Configurar credenciais" da seção nova
   // incrementa para abrir a seção Mercado Pago de fora (SecaoColapsavel
   // continua dona do próprio fechar).
@@ -618,13 +624,15 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       onSetDirty?.(
         transportadorasPendentes ||
           pagamentosPendente ||
-          formasPagamentoPendente,
+          formasPagamentoPendente ||
+          politicaDevolucaoPendente,
       );
   }, [
     active,
     transportadorasPendentes,
     pagamentosPendente,
     formasPagamentoPendente,
+    politicaDevolucaoPendente,
     onSetDirty,
   ]);
 
@@ -1037,6 +1045,24 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     }}
                   />
                 </Suspense>
+              </SecaoColapsavel>
+            </GrupoDeAjustes>
+
+            {/* ── Pós-venda (plano 2026-09-26, seção "Devoluções"; P3 do
+                AGENTS.md): a política de trocas e devoluções de CADA loja —
+                prazos (com os mínimos da lei), formas de devolver e o texto
+                que o cliente lê. Nascida FECHADA como as demais. */}
+            <GrupoDeAjustes titulo="Pós-venda">
+              <SecaoColapsavel
+                titulo="Trocas e devoluções"
+                subtitulo="Prazos, formas de devolver e a política da loja"
+                icone={RotateCcw}
+                comPendencia={politicaDevolucaoPendente}
+              >
+                <PoliticaDeDevolucaoSection
+                  isOffline={isOffline}
+                  onDirtyMudou={setPoliticaDevolucaoPendente}
+                />
               </SecaoColapsavel>
             </GrupoDeAjustes>
 
