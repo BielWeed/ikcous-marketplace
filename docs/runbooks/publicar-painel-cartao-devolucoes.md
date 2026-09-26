@@ -467,6 +467,11 @@ a API real):
   - se cada order traz `external_reference`, `status`/`status_detail` na raiz, um campo de data
     de CRIAÇÃO (anote o nome exato — `date_created`, `created_date`, ou outro) e
     `transactions.payments[].payment_method.type`;
+  - **`external_reference` em TODA order da lista, sem exceção**: o filtro do cliente (B2, 5ª
+    revisão) descarta qualquer order sem esse campo batendo com o pedido — se o MP omitir ou
+    truncar `external_reference` em algum caso (ex.: order antiga, criada antes de o app
+    começar a mandá-lo), o filtro descarta a lista inteira, a busca nunca encontra nada, e a
+    liberação do sentinela nunca resolve;
   - o formato de data que `begin_date`/`end_date` aceitam;
   - o atraso de indexação entre criar (ou mudar o status de) uma order e ela aparecer nesta
     busca.
@@ -475,8 +480,13 @@ a API real):
   a busca confiável, a liberação da vaga degrada, em silêncio, para "PIX bloqueado até
   `expires_at`" — inclusive no caso mais comum, a recusa cuja resposta se perdeu (S1 da 3ª
   rodada de achados de risco).
-- [ ] A mesma `X-Idempotency-Key` com token diferente devolve a MESMA order. É a premissa do
-  achado A1.
+- [ ] **Idempotência da Orders API, corrigida na 7ª rodada** (a frase anterior aqui estava
+  errada): a mesma `X-Idempotency-Key` com CORPO diferente (token novo a cada tentativa, por
+  exemplo) devolve `409 idempotency_key_already_used`, NÃO a mesma order — é esse 409 que vira
+  sentinela (`verificando:<pedido>:c<n>:<limiteInferiorMs>`). Só com o CORPO idêntico o MP faz
+  replay e devolve a MESMA order — é o que permite o retry de cartão sobre o sentinela DA MESMA
+  tentativa repetir o POST com a mesma chave sem duplicar a cobrança (item 2, 7ª rodada). Confirme
+  os dois casos no sandbox antes de ligar; é a premissa do achado A1.
 - [ ] Os códigos de 400 que culpam o dado do cartão são `invalid_card_token`,
   `card_token_not_found` e `bad_filled_card_data`. A lista não foi conferida na doc do MP
   (`erro400EhDeDadoDoCartao`). Qualquer outro 400 vira 502.

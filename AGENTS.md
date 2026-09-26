@@ -103,10 +103,14 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
    `status` isolado) ou `resolverVagaEmVerificacao`/`resolverSentinela` (`_shared/mercadopago.ts`)
    liberarem. Liberar exige DOIS fatos, não um: (B2, 5ª revisão) a busca de orders de cartão do
    pedido é refiltrada por `external_reference` NO CLIENTE — o filtro do lado do MP não é
-   confiável, e uma order de OUTRO pedido nunca é adotada; (B1, 5ª revisão) TODAS as orders
-   encontradas mortas **e** pelo menos uma criada DENTRO da janela do limite inferior do sentinela
-   — uma lista PARCIALMENTE indexada, que só mostra a order morta de uma tentativa ANTERIOR,
-   nunca libera. Nunca por um teto fixo de relógio; o único prazo que ainda libera por tempo é a
+   confiável, e uma order de OUTRO pedido nunca é adotada; (B1, corrigido na 7ª rodada — a margem
+   da 6ª apontava para trás e quase sempre liberava errado) TODAS as orders encontradas mortas **e**
+   pelo menos uma criada DEPOIS do limite inferior do sentinela por uma margem PARA A FRENTE
+   (`MARGEM_LIBERAR_APOS_LIMITE_MS`, 15s): a order da tentativa ANTERIOR nasce SEGUNDOS ANTES desse
+   limite (é a própria liberação dela que o grava), então uma margem para trás sempre a incluiria;
+   a order AMBÍGUA nasce DEPOIS, quando o cliente redigita outro cartão. Uma lista PARCIALMENTE
+   indexada, que só mostra a order morta de uma tentativa ANTERIOR (sempre antes do limite), nunca
+   libera. Nunca por um teto fixo de relógio; o único prazo que ainda libera por tempo é a
    própria reserva (`expires_at`), e uma aprovação tardia sobre isso vira `pago_apos_expirar`
    (P1), nunca uma segunda cobrança; **ressalva honesta**: a busca contra a Orders API está
    UNVERIFIED em produção (nome do campo da lista, nomes de parâmetro, formato de data, atraso de

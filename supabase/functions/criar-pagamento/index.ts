@@ -392,9 +392,14 @@ function emailValido(email: unknown): email is string {
  * (achado B1, 5ª revisão de risco, 26/09/2026): `limiteInferiorDaTentativa`,
  * abaixo, precisa do último instante conhecido em que a vaga esteve livre —
  * a MESMA coluna que `liberar_cobranca_do_pedido` grava com `now()` toda vez
- * que solta a vaga (20261176000000_o_cartao_online_nasce.sql:183/196). */
+ * que solta a vaga (20261176000000_o_cartao_online_nasce.sql:183/196).
+ * `metodo_online` (achado da 7ª revisão de risco, 26/09/2026): a reconsulta
+ * da vaga (ramo comum a PIX e cartão) precisa saber SE a cobrança que já
+ * está gravada é de cartão antes de decidir se `cartaoEmAnalise` entra na
+ * resposta de uma falha — ver o comentário grande no `!r.ok` de
+ * `consultarOrder`, mais abaixo. */
 const COLUNAS_DO_PEDIDO =
-  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento, created_at, updated_at";
+  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento, created_at, updated_at, metodo_online";
 
 /**
  * O LIMITE INFERIOR (epoch ms) que vai gravado no sentinela — achado B1, 5ª
@@ -1013,6 +1018,18 @@ async function handler(
     }
   }
 
+  // Achado da 7ª rodada de risco (26/09/2026, item R6-P5): o valor que a
+  // gravação da vaga (o sentinela, ou a cobrança final) tem que ENCONTRAR
+  // para poder escrever — `null` no fluxo normal ("criar" desde o início, ou
+  // a vaga acabou de ser liberada aqui embaixo); a STRING do sentinela
+  // quando este pedido está RETENTANDO a criação de cartão sobre um
+  // sentinela da PRÓPRIA tentativa atual (não resolvido pela busca — ver o
+  // ramo abaixo). Sem isto, um cartão retry cuja 1ª chamada nunca chegou ao
+  // MP (rede antes do MP, ou um 429) ficava preso em "aguardando" até
+  // `expires_at`, mesmo sem NENHUMA order no MP — a busca do Ponto 1/B1
+  // nunca encontra nada para resolver, porque não existe order nenhuma.
+  let vagaEsperadaNaGravacao: string | null = null;
+
   if (decisao.acao === "reconsultar") {
     // Aqui é onde a tela recupera o MESMO QR sem criar uma segunda cobrança
     // — nenhum UPDATE, porque nada mudou no pedido, só a consulta. MEDIDO em
@@ -1141,12 +1158,26 @@ async function handler(
       // order de cartão encontrada ainda): não muda nada — `sentinelaNaVaga`
       // continua `true`, `sentinelaResolvidoParaLiberar` continua `false`.
 
+      // Achado da 7ª rodada de risco (26/09/2026, item R6-P5): um PIX pedido
+      // sobre um cartão AINDA em verificação nunca pode virar um 200 sem QR,
+      // e continua bloqueado — mas um CARTÃO NOVO (o cliente digitou o
+      // cartão de novo, um retry de verdade) não pode ficar preso em
+      // "aguardando" para sempre só porque a busca não resolveu: se a 1ª
+      // tentativa desta MESMA chave nunca chegou ao MP (rede antes de sair
+      // desta function, ou um 4xx definitivo que a Orders API respondeu sem
+      // criar nada — Achado da 7ª rodada, `!r.ok` mais abaixo), NADA vai
+      // aparecer na busca do Ponto 1/B1 — a vaga ficaria presa até
+      // `expires_at` à toa. Retenta a CRIAÇÃO com a MESMA chave de
+      // idempotência (`chaveDeIdempotencia` não muda: `tentativas_de_
+      // pagamento` só avança quando a vaga é liberada, e ela não foi) —
+      // `vagaEsperadaNaGravacao` troca o WHERE de "vaga livre" (`.is(null)`)
+      // por "ainda é ESTE sentinela" (`.eq(sentinela)`) em toda gravação da
+      // criação, mais abaixo. O MP decide sozinho o resto: corpo IGUAL ao da
+      // tentativa perdida → devolve a mesma order (replay); corpo DIFERENTE
+      // (token novo, o caso comum) → 409 `idempotency_key_already_used`
+      // (mantém o MESMO sentinela, resposta "aguardando" de sempre); nunca
+      // tentou → cria de verdade.
       if (sentinelaNaVaga && !sentinelaResolvidoParaLiberar) {
-        // Não resolvido: mesma resposta de segurança de sempre para um
-        // sentinela vivo — um PIX pedido sobre um cartão AINDA em
-        // verificação nunca pode virar um 200 sem QR (o front trataria isso
-        // como "recuperável, tente de novo" para sempre), e um cartão novo
-        // abriria uma SEGUNDA cobrança ambígua.
         if (metodo === "pix") {
           // Achado B3 (revisão do checkout front, 26/09/2026): `cartaoEmAnalise`
           // diz ao FRONT que este 409 não é "erro recuperável comum" — é uma
@@ -1159,10 +1190,7 @@ async function handler(
             409,
           );
         }
-        return json(
-          { paymentId: null, statusPagamento: "aguardando", expiraEm: pedido.expires_at },
-          200,
-        );
+        vagaEsperadaNaGravacao = idGatewayReconsulta;
       }
     }
 
@@ -1231,16 +1259,25 @@ async function handler(
       fetchImpl: deps.fetchImpl,
       corpoNoLog: false,
     });
-    // Achado da 6ª rodada (revisão do checkout front, 26/09/2026):
-    // `idGatewayReconsulta` já é um id REAL de order (passou pelo `if
-    // (sentinelaNaVaga)`/`idEhClassico`, acima) — pode ser cartão OU PIX, mas
-    // esta falha (rede/timeout/5xx) não deixa nem SABER qual dos dois é, e
-    // muito menos se está morto. `cartaoEmAnalise: true` aqui é conservador
-    // de propósito: melhor o front não oferecer "Cancelar pedido" para um
-    // PIX ambíguo do que oferecer para um cartão ambíguo (o caso que o
-    // revisor reproduziu — o cliente cancelava com o cartão ainda
-    // `processing`, e o banco aprovava depois).
-    if (!r.ok) return json({ error: r.erro, cartaoEmAnalise: true }, 502);
+    // Achado da 6ª rodada (revisão do checkout front, 26/09/2026), ESCOPO
+    // corrigido na 7ª (achado R6-P5b do 6º revisor): `idGatewayReconsulta` já
+    // é um id REAL de order (passou pelo `if (sentinelaNaVaga)`/`idEhClassico`,
+    // acima), e esta falha (rede/timeout/5xx) não deixa SABER se ela está
+    // morta — mas `pedido.metodo_online` (gravado na criação, `COLUNAS_DO_
+    // PEDIDO`) já diz se é cartão OU PIX, sem precisar da reconsulta. Antes,
+    // a flag ia para QUALQUER falha aqui — um cliente SÓ-PIX (cartão
+    // desligado) via "Seu cartão está em análise" e perdia "Cancelar
+    // pedido" para uma reconsulta de PIX que nem tem cartão nenhum. Só
+    // credito/debito levam a flag.
+    if (!r.ok) {
+      // Sem chaves aninhadas no literal — o teste "cartaoEmAnalise: true
+      // aparece só..." (mais abaixo no arquivo de teste) enumera por regex
+      // todo `json({...}, status)` e não entende objeto aninhado.
+      if (pedido.metodo_online === "credito" || pedido.metodo_online === "debito") {
+        return json({ error: r.erro, cartaoEmAnalise: true }, 502);
+      }
+      return json({ error: r.erro }, 502);
+    }
 
     const orderNaVaga = r.order as Record<string, unknown>;
     const statusNaVaga = mapearStatusOrder(
@@ -1409,6 +1446,16 @@ async function handler(
     }
     } // fecha `if (!sentinelaNaVaga)` (Achado S1)
 
+    // Achado da 7ª rodada de risco (26/09/2026, item R6-P5):
+    // `vagaEsperadaNaGravacao !== null` significa que a `if` acima (sentinela
+    // NÃO resolvido, metodo === "cartao") optou por RETENTAR a criação sobre
+    // o PRÓPRIO sentinela, em vez de liberar — pular a liberação inteira (a
+    // vaga não está morta; só não foi possível confirmar o que ela é) e
+    // seguir direto para "decisao.acao === 'criar' a partir daqui", abaixo,
+    // com a MESMA `pedido` (nada mudou nela) e a chave de idempotência
+    // continuando a mesma (`tentativas_de_pagamento` só avança quando a vaga
+    // É liberada de verdade).
+    if (vagaEsperadaNaGravacao === null) {
     // Daqui para baixo chegam (b), (c) e o sentinela RESOLVIDO PARA LIBERAR
     // (Ponto 1, 4ª revisão de risco, 26/09/2026): a cobrança da vaga está
     // morta (recusada/cancelada/expirada) — para o sentinela, "morta" quer
@@ -1449,6 +1496,7 @@ async function handler(
       return json({ error: "Este pedido já tem uma cobrança gerada." }, 409);
     }
     pedido = pedidoRelido;
+    } // fecha `if (vagaEsperadaNaGravacao === null)`
   }
 
   // Pagamento online exige conta — decisão do Gabriel, 16/08/2026: quem paga
@@ -1715,15 +1763,21 @@ async function handler(
     // parcelas) já passou antes de a vaga ser tocada.
     const dados = dadosCartao as DadosDoCartao;
 
-    // Recusa de cartão: a vaga nunca foi ocupada por esta cobrança — a RPC
-    // só CONTA a tentativa (`p_gateway_payment_id` null), e a resposta é
-    // 200 com o motivo: não é erro do sistema, é o banco dizendo não, e o
-    // cliente segue com outro cartão ou PIX na MESMA reserva. NUNCA chega a
-    // `confirmar_pagamento`, cujo ramo 'recusado' cancela o pedido e devolve
-    // o estoque. Falha da RPC não muda a resposta: a recusa é verdade de
-    // qualquer jeito, e a próxima tentativa tem token novo (chave nova).
+    // Recusa de cartão: a vaga nunca foi ocupada por ESTA cobrança — a RPC
+    // solta pelo valor que REALMENTE está na vaga agora
+    // (`vagaEsperadaNaGravacao`: `null` no fluxo normal; o SENTINELA quando
+    // isto é um retry sobre ele, achado da 7ª rodada — `liberar_cobranca_do_
+    // pedido` só soma a tentativa quando o valor bate, então soltar com
+    // `null` de propósito numa vaga que ainda guarda o sentinela nunca
+    // avançaria a tentativa, e o sentinela ficaria preso mesmo com a recusa
+    // CONFIRMADA agora). A resposta é 200 com o motivo: não é erro do
+    // sistema, é o banco dizendo não, e o cliente segue com outro cartão ou
+    // PIX na MESMA reserva. NUNCA chega a `confirmar_pagamento`, cujo ramo
+    // 'recusado' cancela o pedido e devolve o estoque. Falha da RPC não muda
+    // a resposta: a recusa é verdade de qualquer jeito, e a próxima
+    // tentativa tem token novo (chave nova).
     const respostaRecusaDoCartao = async (motivo: string) => {
-      await liberarCobranca(supabase, pedido.id, null);
+      await liberarCobranca(supabase, pedido.id, vagaEsperadaNaGravacao);
       return json(
         {
           paymentId: null,
@@ -1771,14 +1825,24 @@ async function handler(
       // cobrança da tentativa ANTERIOR que pode estar aprovada por baixo. A
       // ADOÇÃO (`webhook-mercadopago/index.ts`) grava os dois de verdade,
       // lidos da order RECONSULTADA, quando resolve o sentinela.
-      const { data: ocupou, error: erroOcuparSentinela } = await supabase
+      // Achado da 7ª rodada de risco (26/09/2026): o WHERE segue
+      // `vagaEsperadaNaGravacao` — `.is(null)` no fluxo normal (409 de
+      // idempotência sobre uma vaga LIVRE); `.eq(sentinela anterior)` quando
+      // isto é um RETRY sobre o PRÓPRIO sentinela (a chave/o limite inferior
+      // não mudam — `sentinela` recalculado aqui é BYTE A BYTE o mesmo já
+      // gravado — então este UPDATE é um refresh idempotente de
+      // `updated_at`, nunca uma gravação nova).
+      let queryOcuparSentinela = supabase
         .from("marketplace_orders")
         .update({
           gateway_payment_id: sentinela,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", pedido.id)
-        .is("gateway_payment_id", null)
+        .eq("id", pedido.id);
+      queryOcuparSentinela = vagaEsperadaNaGravacao === null
+        ? queryOcuparSentinela.is("gateway_payment_id", null)
+        : queryOcuparSentinela.eq("gateway_payment_id", vagaEsperadaNaGravacao);
+      const { data: ocupou, error: erroOcuparSentinela } = await queryOcuparSentinela
         .select("id")
         .maybeSingle();
       // Achado N4 (3ª revisão de risco, 26/09/2026): esta gravação ignorava
@@ -1813,10 +1877,19 @@ async function handler(
           .select("payment_status, gateway_payment_id")
           .eq("id", pedido.id)
           .maybeSingle();
+        // Achado da 7ª rodada de risco (26/09/2026): `ocuparVagaComSentinela`
+        // só é chamada de dentro do fluxo de CARTÃO (409 idempotência ou
+        // criação ambígua) — a cobrança da tentativa anterior PODE existir e
+        // estar aprovada por baixo, nos dois casos. `cartaoEmAnalise: true`
+        // aqui, ao contrário do reconsult genérico acima, não precisa de
+        // `metodo_online`: já sabemos que é cartão.
         if (atual?.payment_status === "expirado") {
-          return { ok: false, resposta: json({ error: "O prazo para pagar este pedido acabou.", terminal: true }, 409) };
+          return {
+            ok: false,
+            resposta: json({ error: "O prazo para pagar este pedido acabou.", terminal: true, cartaoEmAnalise: true }, 409),
+          };
         }
-        return { ok: false, resposta: json({ error: "Este pedido já tem uma cobrança gerada." }, 409) };
+        return { ok: false, resposta: json({ error: "Este pedido já tem uma cobrança gerada.", cartaoEmAnalise: true }, 409) };
       }
       // Achado S5 (3ª revisão de risco, 26/09/2026): sem migration para
       // avisar quando um PEDIDO expira ainda com o sentinela na vaga (o
@@ -1970,18 +2043,27 @@ async function handler(
         // certa é liberar a tentativa (como uma recusa imediata), não
         // "aguarde verificação". Falha da RPC não muda a resposta (mesma
         // regra de `respostaRecusaDoCartao`): o bug de integração é verdade
-        // de qualquer jeito.
-        await liberarCobranca(supabase, pedido.id, null);
+        // de qualquer jeito. `vagaEsperadaNaGravacao`: mesma razão de
+        // `respostaRecusaDoCartao`, achado da 7ª rodada de risco.
+        await liberarCobranca(supabase, pedido.id, vagaEsperadaNaGravacao);
         return json({ error: r.erro }, 502);
       }
-      // Rede, 5xx, outro 4xx: nada foi cobrado com certeza — mas o MP PODE
-      // ter processado a order antes de a resposta se perder (achado da 6ª
-      // rodada de risco, 26/09/2026): ocupa a vaga com um SENTINELA
-      // (`respostaCartaoAmbiguoNaCriacao`, acima) em vez de deixá-la vazia —
-      // uma vaga vazia deixava um PIX pedido logo depois criar uma SEGUNDA
-      // cobrança viva. A chave de idempotência protege o PRÓPRIO cartão
-      // contra cobrança dupla; o sentinela protege o PIX/outro cartão.
-      return await respostaCartaoAmbiguoNaCriacao(r.erro);
+      // Achado R6-P5 (7ª revisão de risco, 26/09/2026): só REDE (status 0) e
+      // 5xx são AMBÍGUOS — a Orders API pode ter processado a order antes de
+      // a resposta se perder (achado da 6ª rodada, `respostaCartaoAmbiguo
+      // NaCriacao`, acima), então ocupa a vaga com um SENTINELA em vez de
+      // deixá-la vazia. Um 4xx DEFINITIVO que sobra até aqui (429
+      // `too_many_requests`, 404, 422, um 409 sem o código de idempotência,
+      // ...) significa que a Orders API respondeu DE VERDADE e recusou a
+      // REQUISIÇÃO inteira — nunca criou nada, não é ambíguo, e tratá-lo
+      // como sentinela prendia um retry LEGÍTIMO (o cliente digitando o
+      // cartão de novo) atrás de "cartão em análise" até `expires_at`,
+      // mesmo com ZERO orders no MP (o 6º revisor mediu isso: rede que falha
+      // ANTES de chegar ao MP e um 429 tratados do mesmo jeito).
+      if (r.status === 0 || r.status >= 500) {
+        return await respostaCartaoAmbiguoNaCriacao(r.erro);
+      }
+      return json({ error: r.erro }, 502);
     }
 
     const orderCartao = r.order as Record<string, unknown>;
@@ -2089,8 +2171,15 @@ async function handler(
   if (metodo !== "cartao") {
     updateDaVaga = updateDaVaga.eq("payment_status", "aguardando");
   }
+  // Achado da 7ª rodada de risco (26/09/2026): o WHERE da vaga segue
+  // `vagaEsperadaNaGravacao` — `.is(null)` no fluxo normal; `.eq(sentinela)`
+  // quando esta criação é um RETRY sobre o PRÓPRIO sentinela (a vaga não
+  // está livre, está OCUPADA por ele, e é exatamente essa ocupação que
+  // autoriza a troca pelo id real).
+  updateDaVaga = vagaEsperadaNaGravacao === null
+    ? updateDaVaga.is("gateway_payment_id", null)
+    : updateDaVaga.eq("gateway_payment_id", vagaEsperadaNaGravacao);
   const { data: gravado, error: erroUpdate } = await updateDaVaga
-    .is("gateway_payment_id", null)
     // `expires_at` além de `id`: a resposta abaixo precisa do prazo
     // EFETIVAMENTE gravado, não do que `pedido` (lido ANTES deste UPDATE)
     // guardava em memória — sem isto a tela mostraria "Vence às HH:MM" do
@@ -2155,11 +2244,29 @@ async function handler(
     // duas chamam o MP com a mesma chave de idempotência, a primeira grava —
     // e a segunda não pode dizer "acabou o prazo" com o prazo intacto. Reler
     // o estado real distingue os dois.
-    const { data: atual } = await supabase
+    // Achado da 7ª rodada de risco (26/09/2026): `error` desta releitura
+    // ficava ignorado — o efeito já era seguro (`atual` vira `undefined`, e
+    // os `?.` abaixo tratam como "não sei", igual ao resto do arquivo), mas
+    // o log não distinguia "banco falhou" de "reservou e é null de verdade".
+    const { data: atual, error: erroReleituraAposCorrida } = await supabase
       .from("marketplace_orders")
       .select("payment_status, gateway_payment_id")
       .eq("id", pedido.id)
       .maybeSingle();
+    if (erroReleituraAposCorrida) {
+      console.error(
+        "criar-pagamento: falha ao reler o pedido depois de perder a corrida da vaga",
+        { orderId: pedido.id, erro: erroReleituraAposCorrida },
+      );
+    }
+    // Achado da 7ª rodada de risco (26/09/2026): rastreia se, depois desta
+    // corrida, ainda pode existir uma cobrança de CARTÃO sem desfecho — só
+    // quando `metodo === "cartao"` E (a releitura falhou — não dá para saber
+    // o que está na vaga — OU a nossa order perdida NÃO foi cancelada no MP,
+    // mais abaixo). Quando o cancelamento tem sucesso, a ambiguidade do
+    // CARTÃO se fecha ali mesmo — mesmo que a vaga segure um PIX de outra
+    // aba, este cliente não tem mais cartão pendente nenhum.
+    let cartaoAmbiguoAposCorrida = metodo === "cartao" && Boolean(erroReleituraAposCorrida);
 
     // Achado A1 (3): perdeu a corrida da vaga. `atual.gateway_payment_id ===
     // idGateway` significa que a cobrança que ficou gravada é ESTA MESMA
@@ -2191,6 +2298,10 @@ async function handler(
           );
           const alertarAdmin = deps.alertarAdminCartaoOrfao ?? alertarAdminCartaoOrfaoReal;
           await comTempoLimite(alertarAdmin({ supabase, orderId: pedido.id, idOrderOrfa: idGateway }), 5000);
+          // Achado da 7ª rodada de risco (26/09/2026): o MP não confirmou o
+          // cancelamento — a order pode ainda virar aprovada, e a vaga
+          // (ocupada por outra cobrança) não tem onde registrar isso.
+          cartaoAmbiguoAposCorrida = true;
         }
       } else {
         // Aprovada (ou em qualquer estado que o MP não cancela mais): não dá
@@ -2342,21 +2453,36 @@ async function handler(
       );
     }
 
+    // Achado da 7ª rodada de risco (26/09/2026): os três pontos de retorno
+    // abaixo levam `cartaoEmAnalise: true` quando `cartaoAmbiguoAposCorrida`
+    // (definido acima) diz que uma cobrança de CARTÃO desta chamada ainda
+    // pode existir sem desfecho — nunca por linha aninhada no literal (o
+    // teste de enumeração por regex não entende objeto aninhado), por isso
+    // os dois ramos aparecem separados.
     if (atual?.payment_status === "expirado") {
       // Definitivo, mesma categoria dos três ramos de podeCobrar acima: o
       // pedido já está 'expirado', e qualquer nova tentativa cai no ramo 1
       // de podeCobrar (payment_status !== 'aguardando') e é recusada de
       // novo, para sempre.
+      if (cartaoAmbiguoAposCorrida) {
+        return json({ error: "O prazo para pagar este pedido acabou.", terminal: true, cartaoEmAnalise: true }, 409);
+      }
       return json({ error: "O prazo para pagar este pedido acabou.", terminal: true }, 409);
     }
     if (atual?.gateway_payment_id !== null && atual?.gateway_payment_id !== undefined) {
       // Recuperável: a OUTRA chamada concorrente já gravou a cobrança —
       // nova tentativa converge pelo caminho `reconsultar`, sem `terminal`.
+      if (cartaoAmbiguoAposCorrida) {
+        return json({ error: "Este pedido já tem uma cobrança gerada.", cartaoEmAnalise: true }, 409);
+      }
       return json({ error: "Este pedido já tem uma cobrança gerada." }, 409);
     }
     // Estado que a releitura não explicou (ex.: ela também falhou) — sem
     // inventar causa. Recuperável: sem causa conhecida, tentar de novo é
     // razoável, e a chave de idempotência protege contra cobrança duplicada.
+    if (cartaoAmbiguoAposCorrida) {
+      return json({ error: "Não foi possível confirmar a cobrança.", cartaoEmAnalise: true }, 409);
+    }
     return json({ error: "Não foi possível confirmar a cobrança." }, 409);
   }
 

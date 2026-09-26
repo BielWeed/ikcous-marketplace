@@ -4501,16 +4501,18 @@ Deno.test("cartão — Q2b: cancelamento ATRASADO de um PIX ANTIGO (troca PIX→
   });
 });
 
-// Q3-webhook (B1, 5ª revisão de risco, 26/09/2026): a MESMA lista PARCIAL do
-// cenário Q3 (`criar-pagamento/index_test.ts`) — só a order MORTA de uma
-// tentativa ANTERIOR (c0) está indexada; a da tentativa ATUAL (c1, ainda em
-// análise no MP) não apareceu ainda — mas chegando pelo FALLBACK do webhook
-// (a recusa atrasada da PRÓPRIA c0). Antes de B1, "todas as orders
-// ENCONTRADAS estão mortas" bastava para o fallback soltar a vaga —
-// `cobranca_liberada` — mesmo a lista sendo incompleta. Com B1, a order
-// encontrada (c0) foi criada ANTES do limite inferior da tentativa c1: o
-// fallback NUNCA solta com essa lista.
-Deno.test("cartão — Q3-webhook (B1): recusa ATRASADA de c0 chega pelo fallback, mas a busca só mostra c0 (de uma tentativa ANTERIOR, fora da janela) -> 'nada_a_liberar', sentinela de c1 intacto", async () => {
+// Q3-webhook (B1, 5ª revisão de risco, 26/09/2026; relógio REALISTA — BLOQUEIO
+// da 7ª rodada, 26/09/2026): a MESMA lista PARCIAL do cenário Q3
+// (`criar-pagamento/index_test.ts`) — só a order MORTA de uma tentativa
+// ANTERIOR (c0) está indexada; a da tentativa ATUAL (c1, ainda em análise no
+// MP) não apareceu ainda — mas chegando pelo FALLBACK do webhook (a recusa
+// atrasada da PRÓPRIA c0). Antes de B1, "todas as orders ENCONTRADAS estão
+// mortas" bastava para o fallback soltar a vaga — `cobranca_liberada` —
+// mesmo a lista sendo incompleta. c0 é criada só ~1s ANTES do limite —o caso
+// REAL: é a MORTE de c0 que causa a liberação que fixa o limite. Uma margem
+// de 10 minutos (como a 6ª rodada testava) nunca reproduz o bug — só uma
+// margem de segundos, o BLOQUEIO que a 7ª rodada mediu (R6-Q3-webhook).
+Deno.test("cartão — Q3-webhook (B1): recusa ATRASADA de c0 (criada ~1s ANTES do limite) chega pelo fallback, mas a busca só mostra c0 -> 'nada_a_liberar', sentinela de c1 intacto", async () => {
   ambienteDoWebhook();
   const registro = { chamadasRpc: [], chamadasLiberar: [] };
   const limiteInferiorC1Ms = Date.now();
@@ -4522,9 +4524,9 @@ Deno.test("cartão — Q3-webhook (B1): recusa ATRASADA de c0 chega pelo fallbac
   const req = await requisicaoAssinada(ID_ORDER_CARTAO_MP, { corpoExtra: { type: "order" } });
   const ordemC0RecusadaAtrasada = {
     ...orderDoMp("failed", "cc_rejected_other_reason", "credit_card"),
-    // Criada BEM antes do limite inferior da tentativa c1 — é da tentativa
-    // ANTERIOR (c0), já indexada; c1 ainda não apareceu na busca.
-    date_created: new Date(limiteInferiorC1Ms - 10 * 60_000).toISOString(),
+    // ~1s ANTES do limite inferior da tentativa c1 — o caso comum, não um
+    // valor de minutos que nunca acontece de verdade.
+    date_created: new Date(limiteInferiorC1Ms - 1_000).toISOString(),
   };
   const fetchImpl = async (url: string) =>
     url.includes("/v1/orders?")

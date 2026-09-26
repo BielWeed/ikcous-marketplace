@@ -28,6 +28,7 @@ import {
   MAPA_STATUS_ORDER,
   mapearStatus,
   mapearStatusOrder,
+  MARGEM_LIBERAR_APOS_LIMITE_MS,
   MARGEM_RELOGIO_BUSCA_MS,
   minutosDaExpiracaoPix,
   montarCorpoCartaoOrders,
@@ -1723,9 +1724,14 @@ Deno.test("recusaLiberaAVaga: cartão recusado/cancelado/expirado libera; PIX re
 // risco, 26/09/2026; B1, 5ª revisão, 26/09/2026) --------------------------
 
 const AGORA_MS = Date.parse("2026-09-26T12:10:00.000Z");
-/** Dentro da janela por padrão — os testes que precisam de uma order FORA da
- * janela (Q3) passam `dateCreated` explicitamente. */
-const DATE_CREATED_PADRAO = new Date(AGORA_MS).toISOString();
+/** Dentro da janela por padrão — relógio REALISTA (BLOQUEIO da 7ª revisão de
+ * risco, 26/09/2026): a margem de liberação é PARA A FRENTE
+ * (`MARGEM_LIBERAR_APOS_LIMITE_MS`), então uma order "desta tentativa" só
+ * conta se foi criada BEM depois do limite inferior — 60s é um retry humano
+ * plausível (reabrir o formulário, digitar o cartão de novo). Os testes que
+ * precisam de uma order FORA da janela (Q3, a order da tentativa ANTERIOR)
+ * passam `dateCreated` explicitamente, ANTES do limite. */
+const DATE_CREATED_PADRAO = new Date(AGORA_MS + 60_000).toISOString();
 
 /** Uma order mínima, no formato que `buscarOrdersDoPedido` devolveria. */
 function ordemMinima(
@@ -1803,51 +1809,80 @@ Deno.test("resolverSentinela: status DESCONHECIDO (nem aprovado, nem vivo, nem r
   assertEquals(resolverSentinela([morta, desconhecida], AGORA_MS).acao, "gravar");
 });
 
-// --- B1 (5ª revisão de risco, 26/09/2026): "liberar" só com uma order MORTA
-// criada DENTRO da janela (>= limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS) —
-// nunca por uma lista PARCIALMENTE indexada que só mostra uma order MORTA de
-// uma tentativa ANTERIOR (cenário Q3 do 5º revisor). -----------------------
+// --- B1 (5ª revisão de risco, 26/09/2026), margem CORRIGIDA na 7ª revisão
+// (BLOQUEIO, 26/09/2026): "liberar" só com uma order MORTA criada DEPOIS do
+// limite inferior, com margem PARA A FRENTE (`> limiteInferiorMs +
+// MARGEM_LIBERAR_APOS_LIMITE_MS`) — nunca por uma lista PARCIALMENTE
+// indexada que só mostra a order MORTA de uma tentativa ANTERIOR (cenário
+// Q3). Relógio REALISTA em todos os testes abaixo: a order da tentativa
+// ANTERIOR nasce segundos ANTES do limite (é ela quem, ao morrer, causa a
+// liberação que FIXA o limite); a order da tentativa ATUAL só pode nascer
+// depois que o cliente reabre o formulário e digita o cartão de novo —
+// nunca em menos de segundos. -----------------------------------------
 
-Deno.test("resolverSentinela (B1, Q3): lista com SÓ a order morta de uma tentativa ANTERIOR (criada antes do limite inferior) -> null, NUNCA libera", () => {
-  const limiteInferiorMs = AGORA_MS; // início da tentativa atual (c1)
+Deno.test("resolverSentinela (B1, Q3): a order MORTA de uma tentativa ANTERIOR, criada ~1s ANTES do limite (relógio realista) -> NUNCA libera", () => {
+  const limiteInferiorMs = AGORA_MS; // instante em que a vaga foi liberada para a tentativa atual (c1)
   const c0Morta = ordemMinima(
     "failed",
     "credit_card",
     "ORD-C0",
-    new Date(limiteInferiorMs - 5 * 60_000).toISOString(), // criada 5 min ANTES — tentativa c0
+    new Date(limiteInferiorMs - 1_000).toISOString(), // c0: ~1s ANTES da liberação — o caso comum
   );
   // c1 (a tentativa atual) ainda não apareceu na busca — lista incompleta.
   assertEquals(resolverSentinela([c0Morta], limiteInferiorMs), null);
 });
 
-Deno.test("resolverSentinela (B1): a order morta DENTRO da janela libera normalmente", () => {
+Deno.test("resolverSentinela (B1): a order MORTA da tentativa ATUAL, criada 60s DEPOIS do limite (retry humano plausível) -> libera normalmente", () => {
   const limiteInferiorMs = AGORA_MS;
   const c1Morta = ordemMinima(
     "failed",
     "credit_card",
     "ORD-C1",
-    new Date(limiteInferiorMs + 60_000).toISOString(), // criada DEPOIS do limite — é da tentativa atual
+    new Date(limiteInferiorMs + 60_000).toISOString(), // c1: 60s DEPOIS do limite — é da tentativa atual
   );
   assertEquals(resolverSentinela([c1Morta], limiteInferiorMs), { acao: "liberar" });
 });
 
-Deno.test("resolverSentinela (B1): a margem de relógio (MARGEM_RELOGIO_BUSCA_MS) cobre um desvio pequeno, mas não substitui a janela inteira", () => {
+Deno.test("resolverSentinela (B1, BLOQUEIO 7ª rodada): a margem é PARA A FRENTE — uma order criada POUCO antes do limite (o caso comum, c0) NUNCA libera, mesmo dentro da folga de relógio", () => {
+  const limiteInferiorMs = AGORA_MS;
+  // Antes do BLOQUEIO, uma margem PARA TRÁS de 2 min incluía isto — o
+  // próprio bug que a 7ª revisão mediu (R6-Q3): c0 nasce só ~1s antes.
+  const poucoAntes = ordemMinima(
+    "failed",
+    "credit_card",
+    "ORD-C0-1S-ANTES",
+    new Date(limiteInferiorMs - 1_000).toISOString(),
+  );
+  assertEquals(resolverSentinela([poucoAntes], limiteInferiorMs), null);
+
+  // Mesmo bem antes (3DS abandonado há minutos) — continua não liberando,
+  // pela mesma regra (nunca foi o caso que quebrava; fica de controle).
+  const bemAntes = ordemMinima(
+    "failed",
+    "credit_card",
+    "ORD-C0-3MIN-ANTES",
+    new Date(limiteInferiorMs - 3 * 60_000).toISOString(),
+  );
+  assertEquals(resolverSentinela([bemAntes], limiteInferiorMs), null);
+});
+
+Deno.test("resolverSentinela (B1): MARGEM_LIBERAR_APOS_LIMITE_MS — dentro da margem (logo depois do limite) NUNCA libera; passada a margem, libera", () => {
   const limiteInferiorMs = AGORA_MS;
   const dentroDaMargem = ordemMinima(
     "failed",
     "credit_card",
-    "ORD-MARGEM",
-    new Date(limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS / 2).toISOString(),
+    "ORD-DENTRO-DA-MARGEM",
+    new Date(limiteInferiorMs + MARGEM_LIBERAR_APOS_LIMITE_MS / 2).toISOString(),
   );
-  assertEquals(resolverSentinela([dentroDaMargem], limiteInferiorMs), { acao: "liberar" });
+  assertEquals(resolverSentinela([dentroDaMargem], limiteInferiorMs), null);
 
-  const bemAntesDaMargem = ordemMinima(
+  const passouAMargem = ordemMinima(
     "failed",
     "credit_card",
-    "ORD-FORA",
-    new Date(limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS - 60_000).toISOString(),
+    "ORD-PASSOU-A-MARGEM",
+    new Date(limiteInferiorMs + MARGEM_LIBERAR_APOS_LIMITE_MS + 1_000).toISOString(),
   );
-  assertEquals(resolverSentinela([bemAntesDaMargem], limiteInferiorMs), null);
+  assertEquals(resolverSentinela([passouAMargem], limiteInferiorMs), { acao: "liberar" });
 });
 
 Deno.test("resolverSentinela (B1): limiteInferiorMs null (sentinela sem o sufixo novo) -> NUNCA libera, mesmo com todas mortas", () => {

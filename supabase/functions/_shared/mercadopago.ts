@@ -747,6 +747,34 @@ export function vagaEmVerificacao(idGateway: unknown): boolean {
 export const MARGEM_RELOGIO_BUSCA_MS = 2 * 60_000;
 
 /**
+ * BLOQUEIO da 7ª rodada de risco (26/09/2026): `resolverSentinela`, abaixo,
+ * usava `MARGEM_RELOGIO_BUSCA_MS` (2 min) PARA TRÁS na comparação de
+ * liberação (`criadaEm >= limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS`) — a
+ * margem apontava na direção ERRADA. `limiteInferiorMs` é o instante em que
+ * a vaga foi LIBERADA para a tentativa atual (`limiteInferiorDaTentativa`,
+ * `criar-pagamento/index.ts`) — e a order da tentativa ANTERIOR (a que
+ * acabou de morrer e CAUSAR essa liberação) é, por construção, criada
+ * segundos ANTES desse instante, nunca depois. Uma margem PARA TRÁS de 2 min
+ * inclui quase sempre essa order antiga na janela — exatamente o cenário
+ * Q3 que B1 deveria fechar (achado R6-Q3 do 6º revisor, com relógio
+ * realista: c0 criada ~1s antes da liberação).
+ *
+ * A margem certa aponta PARA A FRENTE: só conta como "desta tentativa" uma
+ * order de cartão criada DEPOIS de `limiteInferiorMs + MARGEM_LIBERAR_
+ * APOS_LIMITE_MS` — o cliente precisa reabrir o formulário e digitar o
+ * cartão de novo (o Brick nunca reusa token), o que leva bem mais que
+ * alguns segundos; um valor entre 10 e 30s cobre um retry automático
+ * plausível sem confundir com a order da tentativa anterior. 15s: dentro
+ * dessa faixa, com folga para o pior caso de latência de rede entre esta
+ * function e o MP. Uma order da tentativa AMBÍGUA criada DENTRO dessa
+ * margem nunca conta — a vaga fica presa até `expires_at` (o lado seguro:
+ * "não libera" nunca cobra duas vezes; "libera cedo demais" já cobrou).
+ * `MARGEM_RELOGIO_BUSCA_MS` continua só para a janela de busca
+ * (`begin_date`/`end_date`, abaixo) — não decide liberação.
+ */
+export const MARGEM_LIBERAR_APOS_LIMITE_MS = 15_000;
+
+/**
  * Monta o SENTINELA com o LIMITE INFERIOR embutido (achado B1, 5ª revisão de
  * risco, 26/09/2026): `<prefixo><chave>:<limiteInferiorMs>` — o prefixo e a
  * chave continuam exatamente como antes (`vagaEmVerificacao` só olha o
@@ -1421,15 +1449,20 @@ function dataDeCriacaoDaOrderMs(order: Record<string, unknown>): number | null {
  *     decide aprovação: a reconsulta por id, que já exige o par exato;
  *   - TODAS reconhecidamente mortas (`STATUS_ORDER_MORTOS`, acima) → só
  *     `{ acao: "liberar" }` se pelo menos uma delas tiver `date_created`
- *     (ou `created_date`) legível e DENTRO da janela (`>=
- *     limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS`) — acha B1 (5ª revisão de
- *     risco, 26/09/2026, cenário Q3): uma lista PARCIALMENTE indexada pode
- *     conter só a order MORTA de uma tentativa ANTERIOR (já resolvida,
- *     "todas mortas" bate por essa lista incompleta) enquanto a order da
- *     tentativa ATUAL (ainda viva no MP) não apareceu ainda por atraso de
- *     indexação — soltar aqui libera a vaga com a cobrança da tentativa
- *     atual ainda em aberto, e o PIX criado por cima vira uma SEGUNDA
- *     cobrança quando ela aprovar depois. `limiteInferiorMs === null`
+ *     (ou `created_date`) legível e criada DEPOIS do limite inferior, com
+ *     margem PARA A FRENTE (`> limiteInferiorMs + MARGEM_LIBERAR_APOS_
+ *     LIMITE_MS` — BLOQUEIO da 7ª revisão de risco, 26/09/2026: a margem
+ *     era PARA TRÁS antes disso, e a order da tentativa ANTERIOR — a que
+ *     causou a liberação que fixa `limiteInferiorMs` — nasce sempre
+ *     SEGUNDOS ANTES desse instante, nunca depois; uma margem para trás a
+ *     incluía quase sempre, o oposto do que B1 promete). Fecha B1 (5ª
+ *     revisão de risco, 26/09/2026, cenário Q3): uma lista PARCIALMENTE
+ *     indexada pode conter só a order MORTA de uma tentativa ANTERIOR (já
+ *     resolvida, "todas mortas" bate por essa lista incompleta) enquanto a
+ *     order da tentativa ATUAL (ainda viva no MP) não apareceu ainda por
+ *     atraso de indexação — soltar aqui libera a vaga com a cobrança da
+ *     tentativa atual ainda em aberto, e o PIX criado por cima vira uma
+ *     SEGUNDA cobrança quando ela aprovar depois. `limiteInferiorMs === null`
  *     (sentinela sem o sufixo novo, ou sem sentinela — `resolverSentinela`
  *     não deveria ser chamado sem um, mas por segurança) NUNCA libera: sem
  *     limite conhecido, não dá para confiar que a lista cobre a tentativa
@@ -1458,9 +1491,12 @@ export function resolverSentinela(
   const todasMortas = cartao.every((o) => STATUS_ORDER_MORTOS.has(String(o.status ?? "")));
   if (!todasMortas) return { acao: "gravar", order: cartao[0] };
   if (limiteInferiorMs === null) return null;
+  // BLOQUEIO (7ª revisão de risco, 26/09/2026): margem PARA A FRENTE — ver
+  // `MARGEM_LIBERAR_APOS_LIMITE_MS`, acima, para o motivo de NUNCA subtrair
+  // aqui.
   const algumaDentroDaJanela = cartao.some((o) => {
     const criadaEm = dataDeCriacaoDaOrderMs(o);
-    return criadaEm !== null && criadaEm >= limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS;
+    return criadaEm !== null && criadaEm > limiteInferiorMs + MARGEM_LIBERAR_APOS_LIMITE_MS;
   });
   return algumaDentroDaJanela ? { acao: "liberar" } : null;
 }
