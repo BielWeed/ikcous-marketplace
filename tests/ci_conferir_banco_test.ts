@@ -93,7 +93,21 @@ const require = createRequire(import.meta.url);
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
 const WORKFLOW = `${RAIZ}/.github/workflows/conferir-banco-da-loja.yml`;
 const CONSULTAS_DIR = `${RAIZ}/scripts/publicacao/consultas`;
+const MIGRATIONS_DIR = `${RAIZ}/supabase/migrations`;
 const SCRIPT = "../scripts/publicacao/conferir-banco.cjs";
+
+// A 20261182000000 (o_cpf_da_janela_sai_do_endereco) ainda não está nesta
+// árvore (mora em fix/cpf-sai-do-endereco, outra frente) — a guarda de WHERE
+// de 3a-cpf-no-endereco.sql contra ela precisa saber disso ANTES de
+// registrar o teste (Deno.test não aceita `ignore` assíncrono).
+const MIGRACAO_82 = `${MIGRATIONS_DIR}/20261182000000_o_cpf_da_janela_sai_do_endereco.sql`;
+let MIGRACAO_82_EXISTE = false;
+try {
+  await Deno.stat(MIGRACAO_82);
+  MIGRACAO_82_EXISTE = true;
+} catch {
+  MIGRACAO_82_EXISTE = false;
+}
 
 const TOKEN_FALSO = "sbp_segredo-de-teste-nunca-pode-aparecer-no-log";
 const REF_LOJA = "cafkrminfnokvgjqtkle";
@@ -177,6 +191,10 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
       assert(
         opcoes.includes("4a-definer-alcancavel-pelo-leitor"),
         "falta a opção `4a-definer-alcancavel-pelo-leitor` (achado #3, rodada 3)",
+      );
+      assert(
+        opcoes.includes("5a-antes-da-79-e-80"),
+        "falta a opção `5a-antes-da-79-e-80` (pré-voo da 79/80)",
       );
     },
   );
@@ -410,6 +428,50 @@ Deno.test("dividirEmStatements/contarStatements — o lexer, inclusive P1-P8", a
   );
 
   await t.step(
+    "3a-cpf-no-endereco.sql: a lista do SELECT só tem agregados (e a data de agrupamento) — nunca customer_data cru",
+    async () => {
+      const sql = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/3a-cpf-no-endereco.sql`,
+      );
+      const inicio = sql.indexOf("SELECT\n") + "SELECT\n".length;
+      const fim = sql.indexOf("\nFROM public.marketplace_orders");
+      assert(inicio > 0 && fim > inicio, "não achei a lista do SELECT de 3a");
+      const listaDeColunas = sql.slice(inicio, fim);
+      // Separa por vírgula NO NÍVEL 0 de parênteses — uma coluna como
+      // `so_apaga_por_opcao_de_frete` tem vírgula DENTRO do FILTER (...) e
+      // quebra em várias linhas; splitar por "\n" ingenuamente cortaria essa
+      // coluna ao meio.
+      const colunas: string[] = [];
+      let atual = "";
+      let profundidade = 0;
+      for (const ch of listaDeColunas) {
+        if (ch === "(") profundidade++;
+        if (ch === ")") profundidade--;
+        if (ch === "," && profundidade === 0) {
+          colunas.push(atual);
+          atual = "";
+        } else {
+          atual += ch;
+        }
+      }
+      if (atual.trim()) colunas.push(atual);
+      assertEquals(colunas.length, 13, "3a deveria ter 13 colunas no SELECT");
+      for (const coluna of colunas) {
+        const c = coluna.trim();
+        assert(
+          /^\(o\.created_at AT TIME ZONE/.test(c) ||
+            /^count\(|^min\(|^max\(/.test(c),
+          `coluna fora do padrão agregado/data de agrupamento: ${c.slice(0, 80)}`,
+        );
+      }
+      assert(
+        !/\bAS\s+customer_data\b/i.test(sql),
+        "customer_data não pode ser projetado cru na saída",
+      );
+    },
+  );
+
+  await t.step(
     "4a-definer-alcancavel-pelo-leitor.sql confere SECURITY DEFINER em QUALQUER schema, com sentinela de papel ausente (rodada 4)",
     async () => {
       const sql = await Deno.readTextFile(
@@ -453,8 +515,157 @@ Deno.test("dividirEmStatements/contarStatements — o lexer, inclusive P1-P8", a
       // Combina schema + nome — não é mais só o nome cru da função, porque
       // agora o mesmo nome pode existir em dois schemas diferentes.
       assertStringIncludes(sql, "pronamespace::regnamespace || '.' || proname");
+      // Rodada 5 (achado do revisor, 26/09/2026): sem estas duas guardas a
+      // consulta lista 7 falsos positivos contra o schema do zero (5
+      // funções de gatilho + `forma_de_pagamento_aceita`, STABLE) — provado
+      // num Postgres efêmero. `provolatile`/`prorettype` tiram esse ruído
+      // sem esconder uma definer VOLATILE de verdade.
+      assertStringIncludes(
+        sql,
+        "provolatile = 'v'",
+        "sem filtrar por VOLATILE, função STABLE/IMMUTABLE (que o Postgres recusa escrever) vira falso positivo",
+      );
+      assertStringIncludes(
+        sql,
+        "prorettype NOT IN ('trigger'::regtype, 'event_trigger'::regtype)",
+        "sem excluir RETURNS trigger, toda função de gatilho vira falso positivo (EXECUTE direto nem é uma chamada válida para ela)",
+      );
     },
   );
+});
+
+Deno.test("5a-antes-da-79-e-80.sql — os hashes embutidos batem com o que a árvore REALMENTE tem (guarda md5)", async (t) => {
+  const { createHash } = require("node:crypto");
+
+  /** prosrc é o texto EXATO entre os delimitadores `$$` de uma função
+   * `AS $$ ... $$` — inclusive a quebra de linha logo depois do "AS $$" e
+   * a que vem antes do "$$;" de fechamento (confirmado contra o hash
+   * `8bda9131ed0a7929ef5aa13df84238e3` que o preflight da 80 já cita para
+   * o corpo que a 75 deixa). */
+  function extrairCorpoDeFuncao(
+    sqlMigracao: string,
+    marcadorCreate: string,
+  ): string {
+    const inicioCreate = sqlMigracao.indexOf(marcadorCreate);
+    assert(inicioCreate >= 0, `não achei "${marcadorCreate}" na migration`);
+    const asIdx = sqlMigracao.indexOf("AS $$", inicioCreate);
+    assert(asIdx >= 0, `não achei "AS $$" depois de "${marcadorCreate}"`);
+    const inicioCorpo = asIdx + "AS $$".length;
+    const fimCorpo = sqlMigracao.indexOf("\n$$;", inicioCorpo);
+    assert(fimCorpo >= 0, "não achei o fechamento $$; do corpo");
+    return sqlMigracao.slice(inicioCorpo, fimCorpo + 1);
+  }
+
+  function md5Normalizado(corpo: string): string {
+    return createHash("md5").update(corpo.replace(/\r/g, "")).digest("hex");
+  }
+
+  await t.step(
+    "cancelar_devolucao: o hash em 5a é o md5 REAL do corpo que a 20261175000000 deixa NESTA árvore " +
+      "(escolha: computado do arquivo local, não só copiado do runbook §7.0 externo — dá para verificar sem sair da árvore, e bate com o valor que o runbook cita)",
+    async () => {
+      const sql75 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261175000000_a_devolucao_nasce_no_pedido.sql`,
+      );
+      const corpo = extrairCorpoDeFuncao(
+        sql75,
+        "CREATE OR REPLACE FUNCTION public.cancelar_devolucao(p_id uuid)",
+      );
+      const hash = md5Normalizado(corpo);
+      assertEquals(
+        hash,
+        "45c56a39cc29f31ec5ff904f1929737e",
+        "o corpo de cancelar_devolucao na 75 mudou nesta árvore — recalcule o valor de 5a e do runbook §7.0",
+      );
+
+      const sql5a = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/5a-antes-da-79-e-80.sql`,
+      );
+      assertStringIncludes(sql5a, hash);
+    },
+  );
+
+  await t.step(
+    "update_order_status_atomic: os hashes que 5a aceita são os MESMOS dois que o preflight da 80 aceita",
+    async () => {
+      const sql80 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261180000000_cliente_nao_cancela_com_cartao_vivo.sql`,
+      );
+      const inicioPreflight = sql80.indexOf("DO $preflight_20261180$");
+      const fimPreflight = sql80.indexOf(
+        "$preflight_20261180$;",
+        inicioPreflight + 1,
+      );
+      assert(
+        inicioPreflight >= 0 && fimPreflight > inicioPreflight,
+        "não achei o bloco DO $preflight_20261180$ na 80",
+      );
+      const bloco = sql80.slice(inicioPreflight, fimPreflight);
+      const hashes = [...bloco.matchAll(/'([0-9a-f]{32})'/g)].map((m) => m[1]);
+      assertEquals(
+        hashes.length,
+        2,
+        "o preflight da 80 deveria citar exatamente 2 hashes md5 (o da 75 e o dela própria)",
+      );
+
+      const sql5a = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/5a-antes-da-79-e-80.sql`,
+      );
+      for (const hash of hashes) {
+        assertStringIncludes(
+          sql5a,
+          hash,
+          `5a não cita o hash ${hash} que o preflight da 80 aceita`,
+        );
+      }
+
+      // O 2º hash do preflight é, de fato, o que a PRÓPRIA 80 deixa no
+      // corpo dela (comentado assim no arquivo: "corpo que ESTA migration
+      // (80) deixa — reaplicação idempotente").
+      const corpo80 = extrairCorpoDeFuncao(
+        sql80,
+        "CREATE OR REPLACE FUNCTION public.update_order_status_atomic(",
+      );
+      assertEquals(md5Normalizado(corpo80), hashes[1]);
+    },
+  );
+});
+
+Deno.test({
+  name: MIGRACAO_82_EXISTE
+    ? "3a-cpf-no-endereco.sql — o WHERE bate com a CTE `alvo` da migration 82 (normalizando espaço em branco)"
+    : "3a-cpf-no-endereco.sql — guarda de WHERE contra a migration 82 (IGNORADO: 20261182000000_o_cpf_da_janela_sai_do_endereco.sql ainda não está nesta árvore — mora em fix/cpf-sai-do-endereco, outra frente em andamento; ver a prova manual contra `git show 86df9432:...` no relatório da tarefa)",
+  ignore: !MIGRACAO_82_EXISTE,
+  fn: async () => {
+    function normalizar(s: string): string {
+      return s.replace(/\s+/g, " ").trim();
+    }
+
+    const sqlMigracao = await Deno.readTextFile(MIGRACAO_82);
+    const inicioAlvo = sqlMigracao.indexOf("alvo AS (");
+    assert(inicioAlvo >= 0, "não achei a CTE `alvo` na migration 82");
+    const blocoAlvo = sqlMigracao.slice(inicioAlvo, inicioAlvo + 2000);
+    const mMigracao = blocoAlvo.match(
+      /FROM\s+public\.marketplace_orders\s+o\s+(WHERE[\s\S]*?)\s*FOR UPDATE OF o/,
+    );
+    assert(mMigracao, "não achei o WHERE da CTE `alvo` na migration 82");
+    const whereMigracao = normalizar(mMigracao[1]);
+
+    const sql3a = await Deno.readTextFile(
+      `${CONSULTAS_DIR}/3a-cpf-no-endereco.sql`,
+    );
+    const mConsulta = sql3a.match(
+      /FROM public\.marketplace_orders o\s*(WHERE[\s\S]*?)\s*GROUP BY/,
+    );
+    assert(mConsulta, "não achei o WHERE de 3a-cpf-no-endereco.sql");
+    const whereConsulta = normalizar(mConsulta[1]);
+
+    assertEquals(
+      whereConsulta,
+      whereMigracao,
+      "o WHERE de 3a tem de alcançar EXATAMENTE o mesmo conjunto de linhas que a CTE `alvo` da 82 vai tocar",
+    );
+  },
 });
 
 Deno.test("ehCaractereDeIdentificador — a regra real do Postgres (rodada 3)", () => {

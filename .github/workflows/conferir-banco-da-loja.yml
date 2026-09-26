@@ -64,6 +64,7 @@ on:
           - 2b-objetos-72-74
           - 3a-cpf-no-endereco
           - 4a-definer-alcancavel-pelo-leitor
+          - 5a-antes-da-79-e-80
           - backups
       projeto:
         description: "Projeto de destino: loja ou sandbox (nunca texto livre — achado da rodada 2)"

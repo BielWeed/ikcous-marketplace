@@ -59,21 +59,50 @@ Correspondência com os passos deste runbook:
   **`gravar_ledger` só tem as faixas 72-74 e 75-78** — o `INSERT` do ledger da **80** (§1.4) e de
   qualquer migration além da 78 (79, 81, 82...) **não é coberto pela ferramenta**: continua manual,
   com o `INSERT` do próprio runbook (ex.: o do fim do §1.4).
+- **§1.4** — `consulta = 5a-antes-da-79-e-80`: alternativa ao SQL Editor para conferir, ANTES de
+  rodar a migration, se o preflight dela (`DO $preflight_20261180$`) vai passar (mesmos hashes,
+  mesma checagem de `metodo_online`/`devolucoes`) — ver o parágrafo próprio abaixo.
 - **Backup** (checklist do §0) — `consulta = backups`: imprime a hora do último backup, o
   status, se o PITR está ligado e o total — nada que pareça segredo.
 
 O `consulta = 3a-cpf-no-endereco` também está na lista: é a contagem de pedidos com CPF gravado
 dentro de `customer_data.address` (janela 23/09–26/09/2026) que decide se uma limpeza é
-necessária — nenhum CPF sai na saída, só contagens.
+necessária — nenhum CPF sai na saída, só contagens. Rode ANTES e DEPOIS de aplicar a migration
+`20261182000000` (o_cpf_da_janela_sai_do_endereco, quando ela chegar a esta árvore): a contagem de
+`pedidos_com_cpf_no_endereco` tem de cair para as linhas que a migration deliberadamente NÃO
+tocou (CPF sem 11 dígitos, opção de frete que não recebe CPF na raiz etc.) — se sobrar alguma
+linha que deveria ter sido movida, é sinal de que o WHERE da migration divergiu do desta consulta.
 
 O `consulta = 4a-definer-alcancavel-pelo-leitor` é uma checagem de segurança avulsa (rodada 3 da
 revisão de risco, ampliada na rodada 4): lista, como `schema.função`, toda função `SECURITY
 DEFINER` em QUALQUER schema (menos `pg_catalog`/`information_schema`) que o papel
-`supabase_read_only_user` consegue executar — o papel não ter grant de escrita numa tabela não
-impede uma função dessas de escrever por dentro, **em nenhum schema, não só `public`**. Esperado:
-0 linhas; se vier a linha "(supabase_read_only_user AUSENTE — resultado não vale)", o papel não
-existe neste projeto e o resultado não prova nada — rode de novo depois de confirmar o papel certo.
-Rode manualmente depois de criar qualquer função `SECURITY DEFINER` nova, em qualquer schema.
+`supabase_read_only_user` consegue executar e que PODE escrever (VOLATILE, sem ser função de
+gatilho — rodada 5, achado do revisor: sem essas duas guardas a consulta lista 7 falsos
+positivos contra o schema do zero, entre eles 5 funções de gatilho e uma STABLE) — o papel não
+ter grant de escrita numa tabela não impede uma função dessas de escrever por dentro, **em
+nenhum schema, não só `public`**. **Não é mais "Esperado: 0 linhas"** — revise cada linha; exceção
+CONHECIDA E ACEITA: `public.get_segmented_push_count` (VOLATILE, mas só faz `SELECT count(*)`
+atrás de um gate `is_admin()` — alcançável só porque ninguém revogou o EXECUTE default de PUBLIC
+dela, não porque escreva). `public.devolver_cupons_de_pedidos_mortos` **não pode aparecer** numa
+loja de verdade (a migration `20260901000000` já faz `REVOKE ALL ... FROM PUBLIC, anon,
+authenticated` nela) — se aparecer em produção, é achado de verdade, não ruído; só é esperado
+aparecer num Postgres local incompleto, onde o `CREATE EXTENSION pg_cron` da mesma migration
+falhou antes de chegar a esse `REVOKE` (documentado, não é o caso deste runbook, que já provisiona
+o pg_cron por stub). Se vier a linha "(supabase_read_only_user AUSENTE — resultado não vale)", o
+papel não existe neste projeto e o resultado não prova nada — rode de novo depois de confirmar o
+papel certo. Rode manualmente depois de criar qualquer função `SECURITY DEFINER` nova, em
+qualquer schema.
+
+O `consulta = 5a-antes-da-79-e-80` confere, ANTES do primeiro `CREATE`, se o banco está no estado
+que a 79 (`cancelar_devolucao_barra_compra_em_voo`, frente `fix/devolucao-pos-revisao` — runbook
+§7.0 daquela frente) e a 80 (`20261180000000_cliente_nao_cancela_com_cartao_vivo.sql`, esta
+frente) esperam encontrar: o corpo de `cancelar_devolucao` ainda é o baseline que a 79 vai
+substituir, `admin_devolucao_liberar_vinculo_reverso` ainda não existe (79 não aplicada),
+`marketplace_orders.metodo_online` e `public.devolucoes` existem, e o corpo de
+`update_order_status_atomic` bate com um dos dois hashes que o `DO $preflight_20261180$` da 80
+aceita. Esperado ANTES de aplicar 79 e 80: todas as linhas `ok = true`; depois de aplicar a 80, a
+linha do marcador `verificando:` vira `ok = false` de propósito — é o aviso de que a 80 já foi
+aplicada, não uma regressão.
 
 ## A ordem, e o que acontece se ela for trocada
 
@@ -330,6 +359,11 @@ Se registrar e depois reverter (§5), apague as linhas das versões revertidas.
 A `20261180000000_cliente_nao_cancela_com_cartao_vivo.sql` é publicada À PARTE das 4 migrations
 do §1 — mesmo procedimento (workflow, nunca `db-apply.cjs` direto), mas em outro run, DEPOIS de
 o §1.1/§1.2 confirmarem que 75 e 76 estão de pé (ela lê `metodo_online` e `devolucoes`).
+
+Em vez de colar o `SELECT` do preflight no SQL Editor para conferir com antecedência se ele vai
+passar, rode `consulta = 5a-antes-da-79-e-80` pelo Atalho — ele reproduz os MESMOS hashes e as
+MESMAS checagens do `DO $preflight_20261180$` abaixo (e também confere o baseline da 79, de outra
+frente — ver o runbook `fix/devolucao-pos-revisao`, §7.0).
 
 1. Abra *Run workflow* de novo, no branch do SHA anotado.
 2. Preencha `migracoes`:
