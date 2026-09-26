@@ -517,11 +517,16 @@ export function rotuloDoStatus(status: string): string {
   }
 }
 
-/** Formas que o lançamento manual oferece (mesmo vocabulário dos pedidos). */
+/**
+ * Formas que o lançamento manual oferece — exatamente o CHECK de
+ * fin_lancamentos.forma_pagamento (migration 20261177000000). O vocabulário
+ * dos pedidos (cash/card) NÃO passa nesse CHECK.
+ */
 export const FORMAS_DO_LANCAMENTO: readonly string[] = [
   "pix",
-  "cash",
-  "card",
+  "dinheiro",
+  "credito",
+  "debito",
   "boleto",
   "transferencia",
   "outro",

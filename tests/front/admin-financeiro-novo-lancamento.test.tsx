@@ -239,7 +239,7 @@ describe("Financeiro — Novo lançamento", () => {
     await digitar("fin-lanc-descricao", "Sucata de papelão");
     await escolher("fin-lanc-categoria", "cat-sucata");
     await escolher("fin-lanc-conta", CONTA_CAIXA_DA_LOJA);
-    await escolher("fin-lanc-forma", "cash");
+    await escolher("fin-lanc-forma", "dinheiro");
     await clicar(botao("Salvar lançamento"));
 
     expect(rpcFalso).toHaveBeenCalledWith("fin_lancamento_salvar", {
@@ -249,7 +249,7 @@ describe("Financeiro — Novo lançamento", () => {
         conta_id: CONTA_CAIXA_DA_LOJA,
         categoria_id: "cat-sucata",
         descricao: "Sucata de papelão",
-        forma_pagamento: "cash",
+        forma_pagamento: "dinheiro",
         data_competencia: HOJE,
         status: "realizado",
         data_realizacao: HOJE,
