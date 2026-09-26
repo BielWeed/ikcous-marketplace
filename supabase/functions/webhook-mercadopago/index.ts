@@ -84,6 +84,7 @@ import {
   consultarPagamento,
   extrairValorDaOrder,
   idEhClassico,
+  limiteInferiorDoSentinela,
   mapearStatus,
   mapearStatusOrder,
   orderEhDeCartao,
@@ -1531,18 +1532,38 @@ async function handler(
           // (Achado B1/S4) pede exatamente essa string para uma leitura
           // DIFERENTE; misturar as duas faria a injeção de falha de teste
           // desse achado enxergar chamada errada.
-          const { data: linhaComCriacao } = await supabase
+          //
+          // Nit (5ª revisão de risco, 26/09/2026): `error` desta leitura
+          // ignorado ANTES — o efeito já era seguro (`created_at` vai vazio,
+          // `desde` vira "" na busca, que segue tentando com uma janela mais
+          // larga), mas ficava difícil distinguir no log "leitura falhou" de
+          // "created_at está mesmo ausente". O desfecho não muda: sem
+          // `created_at`, a busca (que ainda pode funcionar com `begin_date`
+          // cru) decide, e o sentinela NUNCA solta às cegas.
+          const { data: linhaComCriacao, error: erroLeituraCriacao } = await supabase
             .from("marketplace_orders")
             .select("created_at")
             .eq("id", orderId)
             .maybeSingle();
+          if (erroLeituraCriacao) {
+            console.error(
+              "webhook-mercadopago: falha ao ler created_at do pedido para a busca do Ponto 2 — segue sem 'desde'; sentinela NUNCA solta às cegas",
+              { orderId, erro: erroLeituraCriacao },
+            );
+          }
           const busca = await buscarOrdersDoPedido({
             token: credenciaisMp.token,
             pedidoId: orderId,
             desde: String((linhaComCriacao as Record<string, unknown> | null)?.created_at ?? ""),
             fetchImpl: deps.fetchImpl,
           });
-          const resolucao = busca.ok ? resolverSentinela(busca.orders) : null;
+          // B1 (5ª revisão de risco, 26/09/2026): o LIMITE INFERIOR vem do
+          // PRÓPRIO sentinela (gravado uma vez, na escrita — `montarSentinela`,
+          // `_shared/mercadopago.ts`) — a MESMA regra do Ponto 1
+          // (`resolverVagaEmVerificacao`, `criar-pagamento/index.ts`), nunca
+          // recalculada aqui.
+          const limiteInferiorMs = limiteInferiorDoSentinela(idNaVaga);
+          const resolucao = busca.ok ? resolverSentinela(busca.orders, limiteInferiorMs) : null;
           if (resolucao?.acao === "liberar") {
             const { data: liberouSentinela, error: erroLiberarSentinela } = await supabase.rpc(
               "liberar_cobranca_do_pedido",

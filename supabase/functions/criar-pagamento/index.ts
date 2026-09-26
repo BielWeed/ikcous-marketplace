@@ -85,12 +85,14 @@ import {
   extrairQrCode,
   idEhClassico,
   idempotencyKeyJaUsado,
+  limiteInferiorDoSentinela,
   mapearStatus,
   mapearStatusOrder,
   metodoDeCartaoValido,
   minutosDaExpiracaoPix,
   montarCorpoCartaoOrders,
   montarCorpoPixOrders,
+  montarSentinela,
   MOTIVO_RECUSA_DADOS_DO_CARTAO,
   motivoDaRecusa,
   motivoDaRecusaDoErro,
@@ -99,7 +101,6 @@ import {
   orderEhDeCartao,
   parcelasDaOrder,
   parcelasValidas,
-  PREFIXO_VAGA_EM_VERIFICACAO,
   resolverSentinela,
   tipoDeCartaoValido,
   tipoDoPagamentoDaOrder,
@@ -387,9 +388,32 @@ function emailValido(email: unknown): email is string {
  * de `expiracaoParaDesafio3ds`, abaixo, precisa da CRIAÇÃO do pedido — nunca
  * do instante da tentativa atual; é também o `desde` que `resolverVagaEm
  * Verificacao`, abaixo, manda para `buscarOrdersDoPedido` (Ponto 1, 4ª
- * revisão de risco, 26/09/2026) — mesma coluna, dois usos. */
+ * revisão de risco, 26/09/2026) — mesma coluna, dois usos. `updated_at`
+ * (achado B1, 5ª revisão de risco, 26/09/2026): `limiteInferiorDaTentativa`,
+ * abaixo, precisa do último instante conhecido em que a vaga esteve livre —
+ * a MESMA coluna que `liberar_cobranca_do_pedido` grava com `now()` toda vez
+ * que solta a vaga (20261176000000_o_cartao_online_nasce.sql:183/196). */
 const COLUNAS_DO_PEDIDO =
-  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento, created_at";
+  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento, created_at, updated_at";
+
+/**
+ * O LIMITE INFERIOR (epoch ms) que vai gravado no sentinela — achado B1, 5ª
+ * revisão de risco, 26/09/2026. Uma order de CARTÃO desta tentativa só pode
+ * ter sido criada DEPOIS do último instante em que a vaga esteve livre: para
+ * a tentativa `n > 0`, isso é `updated_at` (a RPC `liberar_cobranca_do_
+ * pedido` grava `now()` ali toda vez que solta a vaga — a tentativa seguinte
+ * só existe DEPOIS disso); para a tentativa 0 (nunca houve liberação), é
+ * `created_at`. Sem NENHUM dos dois (teste com um dublê incompleto, nunca em
+ * produção — as duas colunas são NOT NULL), cai para `Date.now()`: mais
+ * ESTREITO que o correto, nunca mais largo — errar para o lado de NUNCA
+ * liberar é seguro; errar para o lado de liberar demais é o buraco que B1
+ * fecha.
+ */
+function limiteInferiorDaTentativa(pedido: { updated_at?: unknown; created_at?: unknown }): number {
+  const bruto = pedido.updated_at ?? pedido.created_at;
+  const ms = typeof bruto === "string" ? Date.parse(bruto) : NaN;
+  return Number.isFinite(ms) ? ms : Date.now();
+}
 
 /**
  * Resolve um SENTINELA (`vagaEmVerificacao`) por FATO, nunca por relógio
@@ -410,16 +434,21 @@ const COLUNAS_DO_PEDIDO =
  *     sentinela) e trata como qualquer cartão reconsultado por id (os ramos
  *     (a)/(d)/(f), mais abaixo, já sabem);
  *   - `{ ok: true, order: null }` — todas as orders de cartão encontradas
- *     estão mortas (recusada/cancelada/expirada): a vaga pode ser liberada;
- *   - `{ ok: false }` — a busca falhou, o corpo veio ilegível, ou NENHUMA
- *     order de cartão foi encontrada ainda (pode ser atraso de indexação
- *     entre a Orders API e esta busca — UNVERIFIED, ver o comentário grande
- *     de `buscarOrdersDoPedido`): o sentinela NUNCA é liberado por isto —
- *     continua ocupando a vaga, exatamente como antes de qualquer notícia
- *     chegar. O ÚNICO teto de tempo que continua valendo é a própria
- *     RESERVA (`pedido.expires_at`) — e esse teto já fecha a porta antes de
- *     `podeCobrar`, no topo do handler, sequer deixar chegar aqui; uma
- *     aprovação que só aparece DEPOIS disso é resolvida pela ADOÇÃO do
+ *     estão mortas (recusada/cancelada/expirada) E pelo menos uma foi criada
+ *     dentro da janela do LIMITE INFERIOR gravado no sentinela (achado B1,
+ *     5ª revisão de risco, 26/09/2026 — `resolverSentinela`,
+ *     `_shared/mercadopago.ts`, decide isso): a vaga pode ser liberada;
+ *   - `{ ok: false }` — a busca falhou, o corpo veio ilegível, NENHUMA order
+ *     de cartão foi encontrada ainda (pode ser atraso de indexação entre a
+ *     Orders API e esta busca — UNVERIFIED, ver o comentário grande de
+ *     `buscarOrdersDoPedido`), OU a lista só mostra orders mortas de fora da
+ *     janela (Q3 do 5º revisor: uma lista PARCIALMENTE indexada, com só a
+ *     order MORTA de uma tentativa ANTERIOR): o sentinela NUNCA é liberado
+ *     por isto — continua ocupando a vaga, exatamente como antes de
+ *     qualquer notícia chegar. O ÚNICO teto de tempo que continua valendo é
+ *     a própria RESERVA (`pedido.expires_at`) — e esse teto já fecha a porta
+ *     antes de `podeCobrar`, no topo do handler, sequer deixar chegar aqui;
+ *     uma aprovação que só aparece DEPOIS disso é resolvida pela ADOÇÃO do
  *     webhook (Achado B2) + o ramo `pago_apos_expirar` (P1) de
  *     `confirmar_pagamento`, nunca por este handler.
  */
@@ -427,6 +456,12 @@ async function resolverVagaEmVerificacao(args: {
   token: string;
   pedidoId: string;
   desde: string;
+  // O sentinela ATUALMENTE na vaga — `limiteInferiorDoSentinela`
+  // (`_shared/mercadopago.ts`) lê dele o limite inferior gravado na hora da
+  // escrita (achado B1). NUNCA recalculado aqui: o limite é fixado no
+  // INSTANTE em que o sentinela nasce (`ocuparVagaComSentinela`, abaixo),
+  // não a cada reconsulta.
+  idSentinela: string;
   fetchImpl?: typeof fetch;
 }): Promise<{ ok: true; order: Record<string, unknown> | null } | { ok: false }> {
   const busca = await buscarOrdersDoPedido({
@@ -436,7 +471,8 @@ async function resolverVagaEmVerificacao(args: {
     fetchImpl: args.fetchImpl,
   });
   if (!busca.ok) return { ok: false };
-  const resolucao = resolverSentinela(busca.orders);
+  const limiteInferiorMs = limiteInferiorDoSentinela(args.idSentinela);
+  const resolucao = resolverSentinela(busca.orders, limiteInferiorMs);
   if (resolucao === null) return { ok: false };
   if (resolucao.acao === "liberar") return { ok: true, order: null };
   return { ok: true, order: resolucao.order };
@@ -1042,6 +1078,7 @@ async function handler(
         token: mpToken,
         pedidoId: pedido.id,
         desde: String(pedido.created_at ?? ""),
+        idSentinela: idGatewayReconsulta,
         fetchImpl: deps.fetchImpl,
       });
       if (resolucao.ok && resolucao.order === null) {
@@ -1194,7 +1231,16 @@ async function handler(
       fetchImpl: deps.fetchImpl,
       corpoNoLog: false,
     });
-    if (!r.ok) return json({ error: r.erro }, 502);
+    // Achado da 6ª rodada (revisão do checkout front, 26/09/2026):
+    // `idGatewayReconsulta` já é um id REAL de order (passou pelo `if
+    // (sentinelaNaVaga)`/`idEhClassico`, acima) — pode ser cartão OU PIX, mas
+    // esta falha (rede/timeout/5xx) não deixa nem SABER qual dos dois é, e
+    // muito menos se está morto. `cartaoEmAnalise: true` aqui é conservador
+    // de propósito: melhor o front não oferecer "Cancelar pedido" para um
+    // PIX ambíguo do que oferecer para um cartão ambíguo (o caso que o
+    // revisor reproduziu — o cliente cancelava com o cartão ainda
+    // `processing`, e o banco aprovava depois).
+    if (!r.ok) return json({ error: r.erro, cartaoEmAnalise: true }, 502);
 
     const orderNaVaga = r.order as Record<string, unknown>;
     const statusNaVaga = mapearStatusOrder(
@@ -1690,21 +1736,35 @@ async function handler(
       );
     };
 
-    // Achado B2 (2ª revisão de risco, 26/09/2026): a Orders API respondeu 409
-    // `idempotency_key_already_used` — a MESMA chave, um corpo DIFERENTE (o
-    // Brick nunca reusa token). A cobrança da tentativa ANTERIOR (cuja
-    // resposta esta function nunca viu) PODE estar aprovada — não dá para
-    // saber sem um id para reconsultar, e não existe endpoint "consulta pela
-    // chave" na Orders API. Ocupa a vaga com o SENTINELA
-    // (`vagaEmVerificacao`, acima) em vez de um id de verdade: bloqueia
-    // cartão novo E PIX nesta reserva até o WEBHOOK resolver a ambiguidade
-    // (adotando a cobrança, se ela aparecer aprovada — Achado B2,
-    // `webhook-mercadopago/index.ts`) ou a reserva expirar. A resposta ao
-    // cliente é a MESMA que um cartão em análise já usa (`statusPagamento:
-    // "aguardando"`, sem `desafio3ds`) — `PagamentoComCartao.tsx` já trata
-    // isso como "em análise pelo banco", sem oferecer novo cartão nem PIX.
-    const respostaCartaoEmVerificacao = async () => {
-      const sentinela = `${PREFIXO_VAGA_EM_VERIFICACAO}${await chaveDeIdempotencia(pedido, "cartao")}`;
+    // Ocupa a vaga com um SENTINELA — MESMA gravação por trás de DOIS motivos
+    // de chegar aqui (fatorado na 6ª rodada de achados de risco, 26/09/2026,
+    // para não repetir a MESMA regra em dois lugares — lição #53):
+    //   1. Achado B2 (2ª revisão de risco) — a Orders API respondeu 409
+    //      `idempotency_key_already_used` a um RETRY (`respostaCartaoEm
+    //      Verificacao`, abaixo): a MESMA chave, um corpo DIFERENTE (o Brick
+    //      nunca reusa token). A cobrança da tentativa ANTERIOR (cuja
+    //      resposta esta function nunca viu) PODE estar aprovada — não dá
+    //      para saber sem um id para reconsultar, e não existe endpoint
+    //      "consulta pela chave" na Orders API.
+    //   2. Achado da 6ª rodada — a PRÓPRIA chamada de criação terminou em
+    //      rede/timeout/5xx (`respostaCartaoAmbiguoNaCriacao`, abaixo): o MP
+    //      pode ter processado a order antes de a resposta se perder, e
+    //      também não existe id nenhum para reconsultar.
+    // Nos dois, ocupar a vaga com o SENTINELA (`vagaEmVerificacao`, acima)
+    // bloqueia cartão novo E PIX nesta reserva até o WEBHOOK resolver a
+    // ambiguidade (adotando a cobrança, se ela aparecer aprovada — Achado
+    // B2, `webhook-mercadopago/index.ts`) ou a busca do Ponto 1/B1 liberar,
+    // ou a reserva expirar.
+    const ocuparVagaComSentinela = async (
+      motivoLog: string,
+    ): Promise<{ ok: true } | { ok: false; resposta: Response }> => {
+      const chave = await chaveDeIdempotencia(pedido, "cartao");
+      // Achado B1 (5ª revisão de risco, 26/09/2026): o LIMITE INFERIOR vai
+      // gravado JUNTO do sentinela, uma única vez, no instante em que ele
+      // nasce — é o que permite a `resolverVagaEmVerificacao` distinguir,
+      // depois, uma order MORTA desta tentativa de uma order MORTA de uma
+      // tentativa BEM anterior (cenário Q3 do 5º revisor).
+      const sentinela = montarSentinela(chave, limiteInferiorDaTentativa(pedido));
       // Achado S3 (3ª revisão de risco, 26/09/2026): o sentinela NÃO grava
       // `metodo_online`/`parcelas` — os dois viriam do corpo deste RETRY
       // (token novo, muitas vezes forma/parcelamento diferentes), nunca da
@@ -1732,12 +1792,15 @@ async function handler(
       if (erroOcuparSentinela) {
         console.error(
           "criar-pagamento: falha ao gravar o sentinela de verificação — nada gravado, cobrança da tentativa anterior pode estar aprovada sem registro",
-          { orderId: pedido.id, erro: erroOcuparSentinela },
+          { orderId: pedido.id, motivo: motivoLog, erro: erroOcuparSentinela },
         );
-        return json({ error: "Não foi possível confirmar a cobrança. Tente de novo em instantes." }, 503);
+        return {
+          ok: false,
+          resposta: json({ error: "Não foi possível confirmar a cobrança. Tente de novo em instantes." }, 503),
+        };
       }
       console.error(
-        "criar-pagamento: cartao_em_verificacao — 409 idempotency_key_already_used (chave repetida com corpo diferente); a cobrança da tentativa anterior PODE ter sido aprovada",
+        `criar-pagamento: cartao_em_verificacao — ${motivoLog}; a cobrança da tentativa anterior PODE ter sido aprovada`,
         { orderId: pedido.id, vagaOcupada: Boolean(ocupou) },
       );
       if (!ocupou) {
@@ -1751,9 +1814,9 @@ async function handler(
           .eq("id", pedido.id)
           .maybeSingle();
         if (atual?.payment_status === "expirado") {
-          return json({ error: "O prazo para pagar este pedido acabou.", terminal: true }, 409);
+          return { ok: false, resposta: json({ error: "O prazo para pagar este pedido acabou.", terminal: true }, 409) };
         }
-        return json({ error: "Este pedido já tem uma cobrança gerada." }, 409);
+        return { ok: false, resposta: json({ error: "Este pedido já tem uma cobrança gerada." }, 409) };
       }
       // Achado S5 (3ª revisão de risco, 26/09/2026): sem migration para
       // avisar quando um PEDIDO expira ainda com o sentinela na vaga (o
@@ -1794,10 +1857,40 @@ async function handler(
       // `comTempoLimite` e cai nela byte a byte quando `waitUntil` não
       // existe.
       await dispararSemEsperarCliente(avisoSentinela, 5000);
+      return { ok: true };
+    };
+
+    // A resposta ao cliente é a MESMA que um cartão em análise já usa
+    // (`statusPagamento: "aguardando"`, sem `desafio3ds`) —
+    // `PagamentoComCartao.tsx` já trata isso como "em análise pelo banco",
+    // sem oferecer novo cartão nem PIX.
+    const respostaCartaoEmVerificacao = async () => {
+      const resultado = await ocuparVagaComSentinela(
+        "409 idempotency_key_already_used (chave repetida com corpo diferente)",
+      );
+      if (!resultado.ok) return resultado.resposta;
       return json(
         { paymentId: null, statusPagamento: "aguardando", expiraEm: pedido.expires_at },
         200,
       );
+    };
+
+    // Achado da 6ª rodada de achados de risco (26/09/2026, revisão do
+    // checkout front): a criação em si (rede, timeout ou 5xx — ver o `!r.ok`
+    // mais abaixo) respondia 502 SEM tocar a vaga, como se nada tivesse sido
+    // cobrado. O MP pode ter processado a order antes de a resposta se
+    // perder — o revisor reproduziu duas cobranças VIVAS ao mesmo tempo
+    // (`credit_card:processed` + `bank_transfer:action_required`) quando um
+    // PIX era pedido logo depois, na vaga que ficou vazia à toa. `cartao
+    // EmAnalise: true` avisa o front para NUNCA oferecer PIX nem "Cancelar
+    // pedido" enquanto a ambiguidade não se resolve — o MESMO contrato que
+    // os outros 409 de "cartão em análise" já usam.
+    const respostaCartaoAmbiguoNaCriacao = async (erroOriginal: string) => {
+      const resultado = await ocuparVagaComSentinela(
+        "falha ao falar com o gateway na criação (rede/timeout/5xx) — resposta nunca confirmada",
+      );
+      if (!resultado.ok) return resultado.resposta;
+      return json({ error: erroOriginal, cartaoEmAnalise: true }, 502);
     };
 
     // E-mail do pagador: o primeiro VÁLIDO da mesma corrente do PIX — um
@@ -1881,10 +1974,14 @@ async function handler(
         await liberarCobranca(supabase, pedido.id, null);
         return json({ error: r.erro }, 502);
       }
-      // Rede, 5xx, outro 4xx: nada foi cobrado com certeza — 502
-      // recuperável, e a chave de idempotência protege o retry do MESMO
-      // token contra cobrança dupla.
-      return json({ error: r.erro }, 502);
+      // Rede, 5xx, outro 4xx: nada foi cobrado com certeza — mas o MP PODE
+      // ter processado a order antes de a resposta se perder (achado da 6ª
+      // rodada de risco, 26/09/2026): ocupa a vaga com um SENTINELA
+      // (`respostaCartaoAmbiguoNaCriacao`, acima) em vez de deixá-la vazia —
+      // uma vaga vazia deixava um PIX pedido logo depois criar uma SEGUNDA
+      // cobrança viva. A chave de idempotência protege o PRÓPRIO cartão
+      // contra cobrança dupla; o sentinela protege o PIX/outro cartão.
+      return await respostaCartaoAmbiguoNaCriacao(r.erro);
     }
 
     const orderCartao = r.order as Record<string, unknown>;
@@ -2208,11 +2305,15 @@ async function handler(
         // CAPTURADO), mas `statusBrutoDaOrderCriada` também chega aqui como
         // `processing` (em análise pelo emissor/antifraude, sem captura
         // ainda). "pode ter sido cobrado" é verdade nos dois casos, sem
-        // prometer o que ainda não aconteceu.
+        // prometer o que ainda não aconteceu. `cartaoEmAnalise: true`
+        // (achado da 6ª rodada de risco, 26/09/2026): o cartão pode ter sido
+        // cobrado e a vaga não tem o registro — o front não pode oferecer
+        // PIX nem "Cancelar pedido" aqui, mesmo sendo `terminal`.
         return json(
           {
             error: "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.",
             terminal: true,
+            cartaoEmAnalise: true,
           },
           409,
         );

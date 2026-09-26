@@ -24,13 +24,16 @@ import {
   extrairQrCode,
   formatarExpiracao,
   idEhClassico,
+  limiteInferiorDoSentinela,
   MAPA_STATUS_ORDER,
   mapearStatus,
   mapearStatusOrder,
+  MARGEM_RELOGIO_BUSCA_MS,
   minutosDaExpiracaoPix,
   montarCorpoCartaoOrders,
   montarCorpoPix,
   montarCorpoPixOrders,
+  montarSentinela,
   MOTIVO_RECUSA_DADOS_DO_CARTAO,
   MOTIVO_RECUSA_PADRAO,
   motivoDaRecusa,
@@ -894,11 +897,31 @@ Deno.test("buscarOrdersDoPedido: GET com external_reference/begin_date/end_date 
   assertEquals(headers["X-Idempotency-Key"], undefined);
   assertStringIncludes(capturada!.url, "/v1/orders?");
   assertStringIncludes(capturada!.url, "external_reference=3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b");
-  assertStringIncludes(capturada!.url, "begin_date=2026-09-26T12%3A00%3A00.000Z");
+  // B1 (5ª revisão de risco, 26/09/2026): `begin_date` normalizado em ISO e
+  // com MARGEM_RELOGIO_BUSCA_MS (2 min) de folga PARA TRÁS — nunca o
+  // `desde` cru sem margem.
+  assertStringIncludes(capturada!.url, "begin_date=2026-09-26T11%3A58%3A00.000Z");
+  const endDateBruto = new URL(capturada!.url).searchParams.get("end_date")!;
+  assertEquals(
+    Math.abs(Date.parse(endDateBruto) - (Date.now() + MARGEM_RELOGIO_BUSCA_MS)) < 2000,
+    true,
+    "end_date com a MESMA margem, para a FRENTE de agora",
+  );
+});
+
+Deno.test("buscarOrdersDoPedido: begin_date ilegível vai CRU (mais seguro que omitir um parâmetro talvez obrigatório)", async () => {
+  let capturada: string | null = null;
+  const fetchStub = ((url: string) => {
+    capturada = url;
+    return Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+  }) as unknown as typeof fetch;
+  await buscarOrdersDoPedido({ token: "t", pedidoId: "p", desde: "não é data nenhuma", fetchImpl: fetchStub });
+  const beginDate = new URL(capturada!).searchParams.get("begin_date");
+  assertEquals(beginDate, "não é data nenhuma");
 });
 
 Deno.test("buscarOrdersDoPedido: aceita 'results' OU 'elements' como o campo da lista (nome exato não confirmado contra a API real)", async () => {
-  const ordem = { id: "ORD1" };
+  const ordem = { id: "ORD1", external_reference: "p" };
   const comResults = (() =>
     Promise.resolve(new Response(JSON.stringify({ results: [ordem] }), { status: 200 }))) as unknown as typeof fetch;
   const comElements = (() =>
@@ -908,6 +931,23 @@ Deno.test("buscarOrdersDoPedido: aceita 'results' OU 'elements' como o campo da 
   const r2 = await buscarOrdersDoPedido({ token: "t", pedidoId: "p", desde: "d", fetchImpl: comElements });
   assertEquals(r1, { ok: true, orders: [ordem] });
   assertEquals(r2, { ok: true, orders: [ordem] });
+});
+
+// B2 (5ª revisão de risco, 26/09/2026): a lista devolvida pode trazer order
+// de OUTRO pedido (o filtro `external_reference` da query é do lado do
+// SERVIDOR do MP, não verificado) — `buscarOrdersDoPedido` filtra de novo,
+// no CLIENTE, antes de devolver.
+Deno.test("buscarOrdersDoPedido: filtra por external_reference === pedidoId — order de OUTRO pedido (ou sem external_reference) nunca aparece na lista devolvida", async () => {
+  const daquele = { id: "ORD-DESTE", external_reference: "pedido-A" };
+  const deOutro = { id: "ORD-DE-OUTRO", external_reference: "pedido-B" };
+  const semReferencia = { id: "ORD-ORFA" };
+  const fetchStub = (() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ results: [daquele, deOutro, semReferencia] }), { status: 200 }),
+    )) as unknown as typeof fetch;
+
+  const r = await buscarOrdersDoPedido({ token: "t", pedidoId: "pedido-A", desde: "d", fetchImpl: fetchStub });
+  assertEquals(r, { ok: true, orders: [daquele] });
 });
 
 Deno.test("buscarOrdersDoPedido: HTTP não-2xx, corpo ilegível, corpo sem lista reconhecível, ou rede caída -> ok:false — NUNCA lista vazia (falha e 'nada encontrado' são fatos diferentes)", async () => {
@@ -1680,73 +1720,167 @@ Deno.test("recusaLiberaAVaga: cartão recusado/cancelado/expirado libera; PIX re
 });
 
 // --- resolverSentinela: decide o sentinela por FATO (Ponto 1, 4ª revisão de
-// risco, 26/09/2026) -----------------------------------------------------
+// risco, 26/09/2026; B1, 5ª revisão, 26/09/2026) --------------------------
+
+const AGORA_MS = Date.parse("2026-09-26T12:10:00.000Z");
+/** Dentro da janela por padrão — os testes que precisam de uma order FORA da
+ * janela (Q3) passam `dateCreated` explicitamente. */
+const DATE_CREATED_PADRAO = new Date(AGORA_MS).toISOString();
 
 /** Uma order mínima, no formato que `buscarOrdersDoPedido` devolveria. */
-function ordemMinima(status: string, tipo = "credit_card", id = "ORD1"): Record<string, unknown> {
+function ordemMinima(
+  status: string,
+  tipo = "credit_card",
+  id = "ORD1",
+  dateCreated: string | null = DATE_CREATED_PADRAO,
+): Record<string, unknown> {
   return {
     id,
     status,
     status_detail: `${status}_detail`,
+    ...(dateCreated !== null ? { date_created: dateCreated } : {}),
     transactions: { payments: [{ id: "PAY1", payment_method: { id: "x", type: tipo } }] },
   };
 }
 
 Deno.test("resolverSentinela: lista vazia (nenhuma order de cartão encontrada) -> null, NUNCA 'liberar' — busca sem resultado não é o mesmo fato que 'encontrei e está morta'", () => {
-  assertEquals(resolverSentinela([]), null);
+  assertEquals(resolverSentinela([], AGORA_MS), null);
   // Só PIX na resposta (a busca por external_reference também devolve o PIX
   // do mesmo pedido) -> continua null, não "liberar".
-  assertEquals(resolverSentinela([ordemMinima("action_required", "bank_transfer")]), null);
+  assertEquals(resolverSentinela([ordemMinima("action_required", "bank_transfer")], AGORA_MS), null);
 });
 
-Deno.test("resolverSentinela: uma order de cartão PROCESSED -> adotar, mesmo com status_detail que este arquivo não conhece (não depende do PAR exato)", () => {
-  assertEquals(resolverSentinela([ordemMinima("processed")]), {
-    acao: "adotar",
+Deno.test("resolverSentinela: uma order de cartão PROCESSED -> gravar (Achado 'adopt only on a fully known state', 6ª rodada: processed sozinho não decide mais aprovação — só a reconsulta por id decide), mesmo com status_detail que este arquivo não conhece", () => {
+  assertEquals(resolverSentinela([ordemMinima("processed")], AGORA_MS), {
+    acao: "gravar",
     order: ordemMinima("processed"),
   });
   const processedDetalheEstranho = { ...ordemMinima("processed"), status_detail: "algo_novo_do_mp" };
-  assertEquals(resolverSentinela([processedDetalheEstranho]), {
-    acao: "adotar",
+  assertEquals(resolverSentinela([processedDetalheEstranho], AGORA_MS), {
+    acao: "gravar",
     order: processedDetalheEstranho,
   });
 });
 
 Deno.test("resolverSentinela: nenhuma aprovada, mas uma viva (created/processing/action_required) -> gravar", () => {
   for (const status of ["created", "processing", "action_required"]) {
-    assertEquals(resolverSentinela([ordemMinima(status)]), {
+    assertEquals(resolverSentinela([ordemMinima(status)], AGORA_MS), {
       acao: "gravar",
       order: ordemMinima(status),
     });
   }
 });
 
-Deno.test("resolverSentinela: TODAS reconhecidamente mortas (failed/canceled/expired/refunded/charged_back) -> liberar", () => {
+Deno.test("resolverSentinela: TODAS reconhecidamente mortas (failed/canceled/expired/refunded/charged_back) E dentro da janela -> liberar", () => {
   for (const status of ["failed", "canceled", "cancelled", "expired", "refunded", "charged_back"]) {
-    assertEquals(resolverSentinela([ordemMinima(status)]), { acao: "liberar" }, status);
+    assertEquals(resolverSentinela([ordemMinima(status)], AGORA_MS), { acao: "liberar" }, status);
   }
   // Mais de uma, todas mortas -> ainda libera.
   assertEquals(
-    resolverSentinela([ordemMinima("failed", "credit_card", "ORD1"), ordemMinima("expired", "credit_card", "ORD2")]),
+    resolverSentinela(
+      [ordemMinima("failed", "credit_card", "ORD1"), ordemMinima("expired", "credit_card", "ORD2")],
+      AGORA_MS,
+    ),
     { acao: "liberar" },
   );
 });
 
-Deno.test("resolverSentinela: aprovada tem prioridade sobre viva e morta, quando as três aparecem juntas", () => {
+Deno.test("resolverSentinela: processed/viva tem prioridade sobre morta, quando as duas aparecem juntas", () => {
   const aprovada = ordemMinima("processed", "credit_card", "ORD-APROVADA");
   const viva = ordemMinima("processing", "credit_card", "ORD-VIVA");
   const morta = ordemMinima("failed", "credit_card", "ORD-MORTA");
-  assertEquals(resolverSentinela([morta, viva, aprovada]), { acao: "adotar", order: aprovada });
+  assertEquals(resolverSentinela([morta, viva, aprovada], AGORA_MS), { acao: "gravar", order: aprovada });
 });
 
 Deno.test("resolverSentinela: status DESCONHECIDO (nem aprovado, nem vivo, nem reconhecidamente morto) -> gravar (nunca libera às cegas)", () => {
   const desconhecida = ordemMinima("algo_que_o_mp_pode_inventar_depois");
-  assertEquals(resolverSentinela([desconhecida]), { acao: "gravar", order: desconhecida });
+  assertEquals(resolverSentinela([desconhecida], AGORA_MS), { acao: "gravar", order: desconhecida });
   // Uma morta reconhecida + uma desconhecida -> ainda "gravar" (não é
   // "TODAS mortas" enquanto sobrar uma que este arquivo não sabe classificar)
   // — qual das duas volta no `order` não importa aqui; o que importa é NUNCA
   // "liberar".
   const morta = ordemMinima("failed", "credit_card", "ORD-MORTA");
-  assertEquals(resolverSentinela([morta, desconhecida]).acao, "gravar");
+  assertEquals(resolverSentinela([morta, desconhecida], AGORA_MS).acao, "gravar");
+});
+
+// --- B1 (5ª revisão de risco, 26/09/2026): "liberar" só com uma order MORTA
+// criada DENTRO da janela (>= limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS) —
+// nunca por uma lista PARCIALMENTE indexada que só mostra uma order MORTA de
+// uma tentativa ANTERIOR (cenário Q3 do 5º revisor). -----------------------
+
+Deno.test("resolverSentinela (B1, Q3): lista com SÓ a order morta de uma tentativa ANTERIOR (criada antes do limite inferior) -> null, NUNCA libera", () => {
+  const limiteInferiorMs = AGORA_MS; // início da tentativa atual (c1)
+  const c0Morta = ordemMinima(
+    "failed",
+    "credit_card",
+    "ORD-C0",
+    new Date(limiteInferiorMs - 5 * 60_000).toISOString(), // criada 5 min ANTES — tentativa c0
+  );
+  // c1 (a tentativa atual) ainda não apareceu na busca — lista incompleta.
+  assertEquals(resolverSentinela([c0Morta], limiteInferiorMs), null);
+});
+
+Deno.test("resolverSentinela (B1): a order morta DENTRO da janela libera normalmente", () => {
+  const limiteInferiorMs = AGORA_MS;
+  const c1Morta = ordemMinima(
+    "failed",
+    "credit_card",
+    "ORD-C1",
+    new Date(limiteInferiorMs + 60_000).toISOString(), // criada DEPOIS do limite — é da tentativa atual
+  );
+  assertEquals(resolverSentinela([c1Morta], limiteInferiorMs), { acao: "liberar" });
+});
+
+Deno.test("resolverSentinela (B1): a margem de relógio (MARGEM_RELOGIO_BUSCA_MS) cobre um desvio pequeno, mas não substitui a janela inteira", () => {
+  const limiteInferiorMs = AGORA_MS;
+  const dentroDaMargem = ordemMinima(
+    "failed",
+    "credit_card",
+    "ORD-MARGEM",
+    new Date(limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS / 2).toISOString(),
+  );
+  assertEquals(resolverSentinela([dentroDaMargem], limiteInferiorMs), { acao: "liberar" });
+
+  const bemAntesDaMargem = ordemMinima(
+    "failed",
+    "credit_card",
+    "ORD-FORA",
+    new Date(limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS - 60_000).toISOString(),
+  );
+  assertEquals(resolverSentinela([bemAntesDaMargem], limiteInferiorMs), null);
+});
+
+Deno.test("resolverSentinela (B1): limiteInferiorMs null (sentinela sem o sufixo novo) -> NUNCA libera, mesmo com todas mortas", () => {
+  assertEquals(resolverSentinela([ordemMinima("failed")], null), null);
+});
+
+Deno.test("resolverSentinela (B1): order morta sem date_created/created_date legível não conta para a janela -> não libera sozinha", () => {
+  const semData = ordemMinima("failed", "credit_card", "ORD-SEM-DATA", null);
+  assertEquals(resolverSentinela([semData], AGORA_MS), null);
+  const dataIlegivel = { ...ordemMinima("failed", "credit_card", "ORD-DATA-RUIM"), date_created: "não é data" };
+  assertEquals(resolverSentinela([dataIlegivel], AGORA_MS), null);
+  // created_date (grafia alternativa) também é aceita.
+  const comCreatedDate = ordemMinima("failed", "credit_card", "ORD-CREATED-DATE", null);
+  comCreatedDate.created_date = new Date(AGORA_MS + 60_000).toISOString();
+  assertEquals(resolverSentinela([comCreatedDate], AGORA_MS), { acao: "liberar" });
+});
+
+// --- montarSentinela / limiteInferiorDoSentinela: o formato NOVO do
+// sentinela (B1, 5ª revisão de risco, 26/09/2026) --------------------------
+
+Deno.test("montarSentinela/limiteInferiorDoSentinela: grava e lê de volta o MESMO limite inferior; o prefixo/chave continuam intactos", () => {
+  const sentinela = montarSentinela("3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b:c1", 1758891234567);
+  assertEquals(sentinela, "verificando:3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b:c1:1758891234567");
+  assertEquals(limiteInferiorDoSentinela(sentinela), 1758891234567);
+});
+
+Deno.test("limiteInferiorDoSentinela: não-sentinela, sentinela no formato ANTIGO (sem o sufixo) e sufixo ilegível -> null (fail-closed, nunca um palpite)", () => {
+  assertEquals(limiteInferiorDoSentinela(null), null);
+  assertEquals(limiteInferiorDoSentinela(undefined), null);
+  assertEquals(limiteInferiorDoSentinela("ORDTST0000000000000000001"), null);
+  // Formato pré-B1 — pode existir em produção quando isto ligar.
+  assertEquals(limiteInferiorDoSentinela("verificando:3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b:c0"), null);
+  assertEquals(limiteInferiorDoSentinela("verificando:3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b:c0:lixo"), null);
 });
 
 Deno.test("orderCancelada aceita 'canceled' (grafia do MP) e 'cancelled'; nada mais", () => {

@@ -2265,6 +2265,23 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "no pedido, retry é seguro",
     ],
     [
+      // Achado da 6ª rodada de risco (26/09/2026): a criação em rede/timeout/
+      // 5xx passou a OCUPAR a vaga com um sentinela (`respostaCartaoAmbiguo
+      // NaCriacao`) em vez de deixá-la vazia — mas a MENSAGEM devolvida ao
+      // cliente continua sendo `r.erro`, só que passado como parâmetro
+      // (`erroOriginal`) para não repetir o corpo do `ocuparVagaComSentinela`
+      // duas vezes. Categoria idêntica a "r.erro": o MP não confirmou, e o
+      // sentinela protege contra cobrança dupla (não é mais "nada foi
+      // gravado", mas o retry do MESMO cartão continua seguro pela chave de
+      // idempotência — o que muda é que agora um PIX/outro cartão pedidos
+      // NESTA reserva ficam bloqueados até a busca resolver, em vez de
+      // criarem uma segunda cobrança).
+      "erroOriginal",
+      "a criação terminou em rede/timeout/5xx sem confirmar se a order foi " +
+        "processada; a vaga foi ocupada por um sentinela (não mais vazia), " +
+        "e cartaoEmAnalise: true impede o front de oferecer PIX/cancelar",
+    ],
+    [
       // BLOQUEIO 3 da revisão (CHECKOUT-070): o fallback para o endpoint
       // clássico (consultarPagamento) quando consultarOrder devolve 404 (id
       // legado, criado antes desta migração). Mesma categoria de "r.erro"
@@ -2469,40 +2486,64 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   assertEquals(achados, 40);
 });
 
-// Achado B3 (revisão do checkout front, 26/09/2026): a tela do checkout
-// (outro agente) decide se pode oferecer "Cancelar pedido" olhando o campo
-// `cartaoEmAnalise` — cancelar um pedido com um cartão ainda em análise, e o
-// banco aprovar depois, cobra o cliente por um pedido já cancelado. O
-// contrato só vale se o campo aparecer em CADA 409 que significa "cartão
-// ainda em análise, sem desfecho" e em NENHUM outro — este teste prova as
-// duas metades por RASTREAMENTO DE FONTE (mesmo mecanismo do teste
-// "achados", acima), não por cenário a cenário, para pegar um 409 novo com o
-// mesmo texto que esqueça o campo.
-Deno.test("cartaoEmAnalise: true aparece SÓ nos dois 409 de 'cartão em análise' — ausente em todo o resto", async () => {
+// Achado B3 (revisão do checkout front, 26/09/2026) ampliado na 6ª rodada
+// (revisão do checkout front, 26/09/2026): a tela do checkout (outro agente)
+// decide se pode oferecer "Cancelar pedido"/PIX olhando o campo
+// `cartaoEmAnalise` — o contrato é "um cartão pode existir, num estado que
+// esta function não comprovou morto; nunca ofereça PIX, nunca ofereça
+// cancelar". Cinco pontos de retorno cumprem essa condição hoje:
+//   1-2. os dois 409 de "cartão em análise" originais (sentinela não
+//        resolvido; cartão `processing`/cancelamento negado);
+//   3. a reconsulta da vaga (`consultarOrder`) que falha (502) — a vaga já é
+//      um id real, mas esta function não sabe se é cartão nem se está morto;
+//   4. a criação ambígua — rede/timeout/5xx (502) — o MP pode ter processado
+//      a order antes de a resposta se perder;
+//   5. o N7 terminal, "Seu cartão pode ter sido cobrado…" (409) — perdeu a
+//      corrida da vaga com uma cobrança aprovada (ou irreversível) na mão.
+// Este teste prova as DUAS metades por RASTREAMENTO DE FONTE (mesmo
+// mecanismo do teste "achados", acima), não por cenário a cenário, para
+// pegar um json(...) novo com a flag fora do contrato, ou um dos cinco que
+// perca a flag.
+Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cartão pode existir num estado não comprovadamente morto", async () => {
   const fonte = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   const regexJson = /json\(\s*\{([^{}]*)\}\s*,\s*(\d{3})\s*,?\s*\)/g;
   let comOFlag = 0;
-  let flagForaDeLugar = 0;
+
+  // identificador do `error:` (literal ou variável) -> status esperado,
+  // para cada um dos cinco pontos de retorno que TEM que levar a flag.
+  const comFlagEsperada = new Map<string, number>([
+    ["Há um pagamento com cartão em análise para este pedido.", 409], // 1 e 2
+    ["r.erro", 502], // 3 — reconsulta da vaga (`consultarOrder`) falhou
+    ["erroOriginal", 502], // 4 — criação ambígua (respostaCartaoAmbiguoNaCriacao)
+    ["Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.", 409], // 5 — N7
+  ]);
 
   for (const m of fonte.matchAll(regexJson)) {
     const objeto = m[1];
     const status = Number(m[2]);
     const temFlag = /cartaoEmAnalise:\s*true/.test(objeto);
-    const eMensagemDeAnalise = objeto.includes("Há um pagamento com cartão em análise para este pedido.");
-    if (temFlag) comOFlag++;
-    if (temFlag && !(status === 409 && eMensagemDeAnalise)) flagForaDeLugar++;
-    if (eMensagemDeAnalise) {
+    const literal = objeto.match(/error:\s*"([^"]*)"/);
+    const identificador = literal?.[1] ?? objeto.match(/error:\s*([\w.]+)/)?.[1];
+
+    if (identificador === "Há um pagamento com cartão em análise para este pedido.") {
       assertEquals(status, 409, `"${objeto.trim()}" deveria ser 409`);
-      assertEquals(
-        temFlag,
-        true,
-        `"${objeto.trim()}" é a mensagem de cartão em análise mas não leva cartaoEmAnalise: true`,
-      );
+      assertEquals(temFlag, true, `"${objeto.trim()}" é cartão em análise mas não leva cartaoEmAnalise: true`);
     }
+
+    if (!temFlag) continue;
+    comOFlag++;
+    assertEquals(
+      identificador ? comFlagEsperada.get(identificador) : undefined,
+      status,
+      `"${objeto.trim()}" leva cartaoEmAnalise: true fora dos cinco pontos de retorno esperados (ou com status errado)`,
+    );
   }
 
-  assertEquals(comOFlag, 2, "o campo tem que aparecer em exatamente dois pontos de retorno (o sentinela não resolvido e o cartão `processing`/cancelamento negado)");
-  assertEquals(flagForaDeLugar, 0, "o campo vazou para um json(...) que não é a mensagem de cartão em análise");
+  assertEquals(
+    comOFlag,
+    5,
+    "o campo tem que aparecer em exatamente cinco pontos de retorno — ver a lista no comentário acima",
+  );
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper
@@ -3448,13 +3489,19 @@ Deno.test("handler cartão: recusa com a RPC de liberar FALHANDO -> a resposta c
 
 for (
   const caso of [
-    { status: 401, esperado: 503, terminal: true },
-    { status: 403, esperado: 503, terminal: true },
-    { status: 500, esperado: 502, terminal: undefined },
-    { status: 0, esperado: 502, terminal: undefined },
+    { status: 401, esperado: 503, terminal: true, ocupaVaga: false },
+    { status: 403, esperado: 503, terminal: true, ocupaVaga: false },
+    // Achado da 6ª rodada de risco (26/09/2026): rede/timeout (status 0) e
+    // 5xx passaram a OCUPAR a vaga com um sentinela em vez de deixá-la vazia
+    // — o MP pode ter processado a order antes de a resposta se perder. A
+    // credencial recusada (401/403) NÃO passa por aqui: `respostaCredencial
+    // Recusada` responde ANTES de qualquer chamada à Orders API acontecer de
+    // verdade ter cobrado algo (a credencial nem autenticou).
+    { status: 500, esperado: 502, terminal: undefined, ocupaVaga: true },
+    { status: 0, esperado: 502, terminal: undefined, ocupaVaga: true },
   ]
 ) {
-  Deno.test(`handler cartão: POST /v1/orders com status ${caso.status} -> ${caso.esperado} ${caso.terminal ? "TERMINAL (credencial)" : "recuperável"}, sem liberar nem ocupar a vaga`, async () => {
+  Deno.test(`handler cartão: POST /v1/orders com status ${caso.status} -> ${caso.esperado} ${caso.terminal ? "TERMINAL (credencial)" : "recuperável"}${caso.ocupaVaga ? ", OCUPA a vaga com sentinela (cartaoEmAnalise: true)" : ", sem liberar nem ocupar a vaga"}`, async () => {
     const { supabase, registro, chamadasRpc } = cenarioCartao();
     const fetchImpl = caso.status === 0
       ? async () => {
@@ -3472,7 +3519,13 @@ for (
     assertEquals(corpo.terminal, caso.terminal);
     if (caso.terminal) assertEquals(corpo.error, MENSAGEM_CREDENCIAL_RECUSADA);
     assertEquals(chamadasRpc.length, 0);
-    assertEquals(registro.chamadasUpdate, 0);
+    if (caso.ocupaVaga) {
+      assertEquals(corpo.cartaoEmAnalise, true);
+      assertEquals(registro.chamadasUpdate, 1, "a vaga foi ocupada por um sentinela (ambiguidade da criação)");
+    } else {
+      assertEquals(corpo.cartaoEmAnalise, undefined);
+      assertEquals(registro.chamadasUpdate, 0);
+    }
   });
 }
 
@@ -4369,7 +4422,7 @@ Deno.test("CARTÃO (corrida real, Achado A1a): duas abas com TOKENS DIFERENTES n
 // (`idempotency_key_already_used`, `mpComEstado`, acima) diz o oposto: MESMA
 // chave + corpo DIFERENTE (o Brick nunca reusa token) é 409, não replay. Este
 // teste substitui o antigo, com o desfecho CERTO.
-Deno.test("CARTÃO (corrida real, Achado B2/H1): MP aprova mas a resposta se perde (timeout); retry com token NOVO -> 409 'idempotency_key_already_used', vaga em VERIFICAÇÃO (nunca 'pago' sem confirmação), PIX bloqueado", async () => {
+Deno.test("CARTÃO (corrida real, Achado B2/H1 + 6ª rodada): MP aprova mas a resposta se perde (timeout) -> a 1ª chamada JÁ ocupa a vaga com sentinela (cartaoEmAnalise: true); o retry fica bloqueado sem tentar o MP de novo (nunca 'pago' sem confirmação); PIX bloqueado", async () => {
   const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
   const mp = mpComEstado({ perderResposta: 1 });
 
@@ -4377,9 +4430,28 @@ Deno.test("CARTÃO (corrida real, Achado B2/H1): MP aprova mas a resposta se per
     supabase: db,
     fetchImpl: mp.fn,
   });
+  const corpo1 = await r1.json();
   assertEquals(r1.status, 502, "1ª chamada: a resposta se perde (timeout) mesmo com o MP tendo aprovado por baixo");
-  assertEquals(db.linha.gateway_payment_id, null, "nada foi gravado na 1ª — o 502 aconteceu antes do UPDATE");
+  // Achado da 6ª rodada de risco (26/09/2026, revisão do checkout front): a
+  // 1ª chamada NÃO deixa mais a vaga vazia — o MP pode ter processado a
+  // order antes de a resposta se perder, e uma vaga vazia deixava um PIX
+  // pedido em seguida virar uma SEGUNDA cobrança viva (o cenário que o
+  // revisor reproduziu). `cartaoEmAnalise: true` avisa o front.
+  assertEquals(corpo1.cartaoEmAnalise, true);
+  assertEquals(
+    db.linha.gateway_payment_id?.startsWith("verificando:"),
+    true,
+    "a 1ª chamada já ocupa a vaga com um sentinela — nunca mais fica vazia",
+  );
 
+  // Achado da 6ª rodada: o RETRY (token novo) nem chega a chamar o MP de
+  // novo — a vaga já está em verificação DESDE a 1ª chamada, e a busca
+  // (Ponto 1) FALHA contra este `fetchImpl` (não sabe responder `GET /v1/
+  // orders?...`), então o sentinela não é resolvido e o retry recebe a
+  // MESMA resposta segura de sempre para um cartão ainda em verificação —
+  // sem gastar uma segunda chamada de criação (que bateria 409
+  // `idempotency_key_already_used` no MP real, o cenário original do Achado
+  // B2, agora fechado uma etapa antes).
   const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: mp.fn,
@@ -4589,17 +4661,23 @@ Deno.test("handler cartão (Achado S1 + Ponto 1): recusa com resposta perdida vi
     return new Response(JSON.stringify(porChave.get(chave)!.order), { status: 201 });
   };
 
-  // 1ª tentativa: a resposta (402) se perde antes de chegar -> 502
-  // recuperável, nada gravado, tentativa não avança.
+  // 1ª tentativa: a resposta (402) se perde antes de chegar (rede/timeout)
+  // -> 502 recuperável, tentativa não avança. Achado da 6ª rodada de risco
+  // (26/09/2026): a vaga NÃO fica mais vazia — a criação ambígua já ocupa a
+  // vaga com um sentinela nesta MESMA chamada, com `cartaoEmAnalise: true`.
   const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: fn,
   });
+  const c1 = await r1.json();
   assertEquals(r1.status, 502);
-  assertEquals(db.linha.gateway_payment_id, null);
+  assertEquals(c1.cartaoEmAnalise, true);
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
 
-  // 2ª tentativa: MESMA chave (tentativa não avançou), corpo DIFERENTE
-  // (token novo do Brick) -> 409 idempotency_key_already_used -> sentinela.
+  // 2ª tentativa (token novo do Brick): a vaga JÁ está em verificação desde
+  // a 1ª chamada — bloqueada no topo do handler, sem sequer tentar o MP de
+  // novo (a busca do Ponto 1 falha contra este `fetchImpl`, que não sabe
+  // responder GET, então o sentinela não é resolvido).
   const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: fn,
@@ -4658,6 +4736,12 @@ Deno.test("handler cartão (Ponto 1): sentinela + busca encontra a cobrança AIN
   const idOrderViva = "ORDTST0PONTO1VIVA000000000001";
   const ordemViva = orderDeCartao("processing", "in_process", { id: idOrderViva });
   let perdeuPrimeira = true;
+  // Achado da 6ª rodada de risco (26/09/2026): a 1ª chamada (rede/timeout) já
+  // ocupa a vaga com um sentinela — a busca (`/v1/orders?...`) SÓ passa a
+  // achar a order viva a partir do ponto em que o teste liga
+  // `buscaHabilitada`, para manter a mesma sequência narrativa de antes
+  // (sentinela intacto no retry; resolvido só no PIX seguinte).
+  let buscaHabilitada = false;
   const fn = async (url: string, init?: RequestInit) => {
     if (init?.method === "POST" && url.endsWith("/v1/orders")) {
       if (perdeuPrimeira) {
@@ -4670,7 +4754,7 @@ Deno.test("handler cartão (Ponto 1): sentinela + busca encontra a cobrança AIN
       );
     }
     if (url.includes("/v1/orders?")) {
-      return new Response(JSON.stringify({ results: [ordemViva] }), { status: 200 });
+      return new Response(JSON.stringify({ results: buscaHabilitada ? [ordemViva] : [] }), { status: 200 });
     }
     if (url.endsWith(`/v1/orders/${idOrderViva}`)) {
       return new Response(JSON.stringify(ordemViva), { status: 200 });
@@ -4682,9 +4766,15 @@ Deno.test("handler cartão (Ponto 1): sentinela + busca encontra a cobrança AIN
     supabase: db,
     fetchImpl: fn,
   });
-  assertEquals(r1.status, 502, "resposta perdida -> 502 recuperável, nada gravado");
-  assertEquals(db.linha.gateway_payment_id, null);
+  const c1 = await r1.json();
+  assertEquals(r1.status, 502, "resposta perdida -> 502 recuperável");
+  assertEquals(c1.cartaoEmAnalise, true, "achado da 6ª rodada: a criação ambígua já avisa o front");
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true, "achado da 6ª rodada: a 1ª chamada já ocupa a vaga com um sentinela");
 
+  // 2ª chamada: a vaga já está em verificação desde a 1ª — a busca ainda não
+  // acha nada (`buscaHabilitada` false), então o sentinela não é resolvido e
+  // o retry recebe a mesma resposta segura de sempre, sem gastar uma segunda
+  // chamada de criação.
   const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: fn,
@@ -4692,14 +4782,16 @@ Deno.test("handler cartão (Ponto 1): sentinela + busca encontra a cobrança AIN
   const c2 = await r2.json();
   assertEquals(r2.status, 200);
   assertEquals(c2.statusPagamento, "aguardando");
-  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true, "sentinela gravado pelo 409");
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true, "sentinela intacto — a busca ainda não achou nada");
 
-  // PIX sobre o sentinela: a busca encontra a MESMA cobrança ainda viva ->
-  // grava o id REAL na vaga (Achado S3: junto de metodo_online/parcelas,
-  // lidos da order ENCONTRADA) e cai no ramo (f) de sempre: 409 explícito,
-  // `cartaoEmAnalise: true`, NUNCA libera — a prova exata que fecha Q1 (o
-  // cartão em análise nunca perde a vaga para um PIX enquanto está vivo,
-  // mesmo que o relógio tenha passado do antigo teto fixo).
+  // PIX sobre o sentinela: a busca (agora habilitada) encontra a MESMA
+  // cobrança ainda viva -> grava o id REAL na vaga (Achado S3: junto de
+  // metodo_online/parcelas, lidos da order ENCONTRADA) e cai no ramo (f) de
+  // sempre: 409 explícito, `cartaoEmAnalise: true`, NUNCA libera — a prova
+  // exata que fecha Q1 (o cartão em análise nunca perde a vaga para um PIX
+  // enquanto está vivo, mesmo que o relógio tenha passado do antigo teto
+  // fixo).
+  buscaHabilitada = true;
   const rPix = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: fn,
@@ -4719,8 +4811,22 @@ Deno.test("handler cartão (Ponto 1): sentinela + busca encontra a cobrança AIN
 Deno.test("handler cartão (Ponto 1): sentinela + busca encontra a cobrança MORTA (recusada) -> libera a vaga; PIX cria normalmente", async () => {
   const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
   const idOrderMorta = "ORDTST0PONTO1MORTA00000000001";
-  const ordemMorta = orderDeCartao("failed", "cc_rejected_other_reason", { id: idOrderMorta });
+  // B1 (5ª revisão de risco, 26/09/2026): "liberar" agora exige uma order
+  // MORTA criada DENTRO da janela do limite inferior gravado no sentinela —
+  // `date_created` "agora" cai bem dentro da margem de 2 min
+  // (MARGEM_RELOGIO_BUSCA_MS), mesmo que o sentinela seja gravado alguns ms
+  // depois de esta linha rodar.
+  const ordemMorta = {
+    ...orderDeCartao("failed", "cc_rejected_other_reason", { id: idOrderMorta }),
+    date_created: new Date().toISOString(),
+  };
   let perdeuPrimeira = true;
+  // Achado da 6ª rodada de risco (26/09/2026): a 1ª chamada (rede/timeout) já
+  // ocupa a vaga com um sentinela — a busca (`/v1/orders?...`) SÓ passa a
+  // achar a order morta a partir do ponto em que o teste liga
+  // `buscaHabilitada`, para manter a MESMA sequência narrativa de antes
+  // (sentinela intacto no retry; liberado só no PIX seguinte).
+  let buscaHabilitada = false;
   const fn = async (url: string, init?: RequestInit) => {
     if (init?.method === "POST" && url.endsWith("/v1/orders")) {
       const corpo = JSON.parse(String(init.body));
@@ -4741,18 +4847,26 @@ Deno.test("handler cartão (Ponto 1): sentinela + busca encontra a cobrança MOR
       );
     }
     if (url.includes("/v1/orders?")) {
-      return new Response(JSON.stringify({ results: [ordemMorta] }), { status: 200 });
+      return new Response(JSON.stringify({ results: buscaHabilitada ? [ordemMorta] : [] }), { status: 200 });
     }
     throw new Error(`fetch inesperado no teste Ponto 1 (morta): ${init?.method} ${url}`);
   };
 
+  // Achado da 6ª rodada de risco (26/09/2026): a 1ª chamada (resposta
+  // perdida — rede/timeout) já ocupa a vaga com um sentinela, em vez de
+  // deixá-la vazia.
   const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: fn,
   });
+  const c1 = await r1.json();
   assertEquals(r1.status, 502);
-  assertEquals(db.linha.gateway_payment_id, null);
+  assertEquals(c1.cartaoEmAnalise, true);
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
 
+  // 2ª tentativa: a vaga já está em verificação desde a 1ª chamada — a
+  // busca ainda não acha nada (`buscaHabilitada` false), então o sentinela
+  // não é resolvido e o retry recebe a mesma resposta segura de sempre.
   const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: fn,
@@ -4762,8 +4876,10 @@ Deno.test("handler cartão (Ponto 1): sentinela + busca encontra a cobrança MOR
   assertEquals(c2.statusPagamento, "aguardando");
   assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
 
-  // PIX: a busca confirma que a ÚNICA order de cartão do pedido está morta
-  // -> libera a vaga por FATO (nunca por relógio) e cria o PIX pedido.
+  // PIX: a busca (agora habilitada) confirma que a ÚNICA order de cartão do
+  // pedido está morta E dentro da janela (B1) -> libera a vaga por FATO
+  // (nunca por relógio) e cria o PIX pedido.
+  buscaHabilitada = true;
   const rPix = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: fn,
@@ -4774,6 +4890,119 @@ Deno.test("handler cartão (Ponto 1): sentinela + busca encontra a cobrança MOR
   assertEquals(typeof cPix.qrCode, "string", "sentinela liberado -> PIX cria e devolve QR de verdade");
   assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), false);
   assertEquals(db.linha.tentativas_de_pagamento, 1, "a liberação do sentinela soma a tentativa, igual a uma recusa comum");
+});
+
+// B1 (5ª revisão de risco, 26/09/2026), cenário Q3 do 5º revisor: atraso de
+// indexação PARCIAL — a order MORTA de uma tentativa ANTERIOR (c0) já está
+// indexada, mas a order da tentativa ATUAL (c1, ainda em análise no MP,
+// resposta perdida por esta function) ainda NÃO apareceu na busca. Antes de
+// B1, "todas as orders ENCONTRADAS estão mortas" bastava para liberar — com
+// essa lista incompleta, a vaga soltava, o PIX era criado, e quando c1
+// aprovava depois (ela é REAL, só não indexada ainda) o pedido ficava com
+// DUAS cobranças vivas. B1 exige que pelo menos uma order MORTA encontrada
+// tenha sido criada DENTRO da janela do limite inferior do sentinela — c0,
+// de uma tentativa anterior, nunca bate essa condição para a tentativa c1.
+Deno.test("handler cartão (B1, Q3): busca com atraso de indexação PARCIAL (só a order MORTA de uma tentativa ANTERIOR aparece) -> NUNCA libera; PIX continua bloqueado, nenhuma segunda cobrança", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const idOrderC0 = "ORDTST0Q3C0MORTA0000000000001";
+  // c0: já morta, criada e indexada MUITO antes da tentativa atual (c1) —
+  // bem fora da margem de 2 min (MARGEM_RELOGIO_BUSCA_MS).
+  const ordemC0 = {
+    ...orderDeCartao("failed", "cc_rejected_other_reason", { id: idOrderC0 }),
+    date_created: new Date(Date.now() - 10 * 60_000).toISOString(),
+  };
+  let chamadasCriacao = 0;
+  const fn = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      chamadasCriacao++;
+      const corpo = JSON.parse(String(init.body));
+      const tipo = (corpo.transactions.payments[0].payment_method as Record<string, unknown>).type;
+      if (tipo === "bank_transfer") {
+        throw new Error("Q3: nenhum PIX deveria chegar a ser criado — a vaga nunca deveria liberar");
+      }
+      // A tentativa c1 (a única de cartão desta chamada): resposta perdida
+      // (rede/timeout) — a MESMA ambiguidade que a 6ª rodada fecha
+      // ocupando a vaga em vez de deixá-la vazia.
+      throw new DOMException("abortado", "AbortError");
+    }
+    if (url.includes("/v1/orders?")) {
+      // Q3: a busca só vê c0 (indexada); c1 (a tentativa ATUAL) ainda NÃO
+      // apareceu — atraso de indexação parcial.
+      return new Response(JSON.stringify({ results: [ordemC0] }), { status: 200 });
+    }
+    throw new Error(`fetch inesperado no teste Q3: ${init?.method} ${url}`);
+  };
+
+  // c1: rede/timeout -> a 1ª chamada já ocupa a vaga com um sentinela.
+  const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  assertEquals(r1.status, 502);
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
+
+  // O cliente pede PIX: SEM B1, a busca via só c0 morta -> "todas mortas" ->
+  // liberava -> criava o PIX -> duas cobranças quando c1 aprovasse depois.
+  // COM B1, c0 foi criada ANTES do limite inferior desta tentativa -> a
+  // lista incompleta NUNCA libera.
+  const rPix = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  const cPix = await rPix.json();
+  assertEquals(rPix.status, 409, "B1 fecha Q3: a lista parcial (só c0, de fora da janela) NUNCA libera");
+  assertEquals(cPix.cartaoEmAnalise, true);
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true, "vaga intacta");
+  assertEquals(chamadasCriacao, 1, "nenhuma segunda cobrança (PIX) chegou a ser criada no MP");
+});
+
+// B2 (5ª revisão de risco, 26/09/2026), cenário Q4 do 5º revisor: a busca do
+// MP devolve, por engano (o filtro do lado do servidor não é verificado),
+// uma order APROVADA de OUTRO pedido — sem o filtro por `external_reference`
+// em `buscarOrdersDoPedido`, essa order órfã seria adotada, e a RECONSULTA
+// por id (ramo (a)) responderia 'pago' para ESTE cliente com a cobrança de
+// OUTRO pedido.
+Deno.test("handler cartão (B2, Q4): a busca devolve a order APROVADA de OUTRO pedido -> filtrada por external_reference, NUNCA adotada; vaga continua bloqueada", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const OUTRO_PEDIDO = "9e8d7c6b-5a49-4382-9716-a5b4c3d2e1f0";
+  const idOrderOrfaDeOutroPedido = "ORDTST0OUTROPEDIDOORFA0000001";
+  const ordemDeOutroPedido = {
+    ...orderDeCartao("processed", "accredited", { id: idOrderOrfaDeOutroPedido }),
+    external_reference: OUTRO_PEDIDO, // NÃO é o pedido desta requisição (UUID)
+    date_created: new Date().toISOString(),
+  };
+  const fn = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      throw new DOMException("abortado", "AbortError"); // c1 sempre ambígua
+    }
+    if (url.includes("/v1/orders?")) {
+      // O SERVIDOR do MP, aqui, devolve também a order de OUTRO pedido
+      // (achado B2: o filtro do lado dele não é verificado) —
+      // `buscarOrdersDoPedido` tem que filtrar de novo, no cliente.
+      return new Response(JSON.stringify({ results: [ordemDeOutroPedido] }), { status: 200 });
+    }
+    throw new Error(`fetch inesperado no teste Q4: ${init?.method} ${url}`);
+  };
+
+  const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  assertEquals(r1.status, 502);
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
+
+  const rPix = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  const cPix = await rPix.json();
+  // B2 fecha Q4: sem o filtro, isto seria 200 "pago" com o id da order ÓRFÃ
+  // de OUTRO pedido. Com o filtro, a lista chega VAZIA a `resolverSentinela`
+  // (nenhuma order É deste pedido) -> null -> sentinela mantido -> 409.
+  assertEquals(rPix.status, 409, "B2 fecha Q4: a order de OUTRO pedido nunca é adotada");
+  assertEquals(cPix.cartaoEmAnalise, true);
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
+  assertEquals(db.linha.gateway_payment_id === idOrderOrfaDeOutroPedido, false);
 });
 
 // Q1 (4ª revisão de risco, 26/09/2026, harness ponta a ponta do 4º revisor):
@@ -4790,6 +5019,12 @@ Deno.test("Q1 — cartão em análise (processing) + sentinela: PIX repetido NUN
   const ordemCartao = () => orderDeCartao(statusAtual[0], statusAtual[1], { id: idOrderCartao });
   let perdeuPrimeira = true;
   const chamadasDeCriacao: string[] = [];
+  // Achado da 6ª rodada de risco (26/09/2026): a 1ª chamada (rede/timeout) já
+  // ocupa a vaga com um sentinela — a busca (`/v1/orders?...`) SÓ passa a
+  // achar a order viva a partir do início do loop de PIX, para manter a
+  // MESMA sequência narrativa de antes (sentinela intacto no retry;
+  // resolvido só quando o cliente insiste em PIX).
+  let buscaHabilitada = false;
   const fn = async (url: string, init?: RequestInit) => {
     if (init?.method === "POST" && url.endsWith("/v1/orders")) {
       const corpo = JSON.parse(String(init.body));
@@ -4805,7 +5040,7 @@ Deno.test("Q1 — cartão em análise (processing) + sentinela: PIX repetido NUN
       );
     }
     if (url.includes("/v1/orders?")) {
-      return new Response(JSON.stringify({ results: [ordemCartao()] }), { status: 200 });
+      return new Response(JSON.stringify({ results: buscaHabilitada ? [ordemCartao()] : [] }), { status: 200 });
     }
     if (url.endsWith(`/v1/orders/${idOrderCartao}`)) {
       return new Response(JSON.stringify(ordemCartao()), { status: 200 });
@@ -4817,8 +5052,14 @@ Deno.test("Q1 — cartão em análise (processing) + sentinela: PIX repetido NUN
     supabase: db,
     fetchImpl: fn,
   });
+  const c1 = await r1.json();
   assertEquals(r1.status, 502);
+  assertEquals(c1.cartaoEmAnalise, true);
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
 
+  // 2ª chamada: a vaga já está em verificação desde a 1ª — a busca ainda não
+  // acha nada, então o retry recebe a mesma resposta segura de sempre, sem
+  // gastar uma segunda chamada de criação.
   const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: fn,
@@ -4828,6 +5069,7 @@ Deno.test("Q1 — cartão em análise (processing) + sentinela: PIX repetido NUN
 
   // O cliente insiste em PIX três vezes (simulando o tempo passando, inútil
   // agora) enquanto o cartão segue `processing` — NUNCA cria um PIX novo.
+  buscaHabilitada = true;
   for (let i = 0; i < 3; i++) {
     db.linha.updated_at = new Date(Date.now() - (i + 1) * 60 * 60_000).toISOString();
     const rPix = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {

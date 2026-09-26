@@ -17,7 +17,7 @@ import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 // mp-10: prova que a porta barata do handler e `avaliarAssinatura` usam a
 // MESMA regra de parse (ver o teste "camposDaAssinatura vem do módulo
 // compartilhado" mais abaixo) — não duas cópias que pudessem divergir.
-import { camposDaAssinatura } from "../_shared/mercadopago.ts";
+import { camposDaAssinatura, montarSentinela } from "../_shared/mercadopago.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes MP-W1..MP-W3 do fim deste arquivo. Desde a tarefa
 // mp-6 o fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a
@@ -4368,14 +4368,20 @@ Deno.test("cartão — reenvio da MESMA recusa (vaga já solta, RPC devolve fals
 Deno.test("cartão — Achado S1 (W5): recusa de order AMBÍGUA sobre um pedido com o SENTINELA na vaga -> a 1ª tentativa de liberar (pelo id do MP) não bate, a BUSCA confirma que está morta, o FALLBACK libera pela chave do sentinela", async () => {
   ambienteDoWebhook();
   const registro = { chamadasRpc: [], chamadasLiberar: [] };
-  const sentinela = `verificando:${UUID_PEDIDO}:c0`;
+  // B1 (5ª revisão de risco, 26/09/2026): o sentinela leva o LIMITE INFERIOR
+  // embutido — aqui, "5 min atrás", para a order recusada (criada "agora")
+  // cair dentro da janela.
+  const sentinela = montarSentinela(`${UUID_PEDIDO}:c0`, Date.now() - 5 * 60_000);
   const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinela };
   // 1ª chamada (pelo id do MP, ID_ORDER_CARTAO_MP): não bate com o
   // sentinela -> false. 2ª chamada (o fallback, pela chave do sentinela) ->
   // true.
   const supabase = clienteFalso({ pedido, registro, liberarResultados: [false, true] });
   const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
-  const ordemRecusada = orderDoMp("failed", "cc_rejected_other_reason", "credit_card");
+  const ordemRecusada = {
+    ...orderDoMp("failed", "cc_rejected_other_reason", "credit_card"),
+    date_created: new Date().toISOString(),
+  };
   const fetchImpl = async (url: string) =>
     url.includes("/v1/orders?")
       ? new Response(JSON.stringify({ results: [ordemRecusada] }), { status: 200 })
@@ -4493,6 +4499,48 @@ Deno.test("cartão — Q2b: cancelamento ATRASADO de um PIX ANTIGO (troca PIX→
     p_order_id: UUID_PEDIDO,
     p_gateway_payment_id: idPixAntigo,
   });
+});
+
+// Q3-webhook (B1, 5ª revisão de risco, 26/09/2026): a MESMA lista PARCIAL do
+// cenário Q3 (`criar-pagamento/index_test.ts`) — só a order MORTA de uma
+// tentativa ANTERIOR (c0) está indexada; a da tentativa ATUAL (c1, ainda em
+// análise no MP) não apareceu ainda — mas chegando pelo FALLBACK do webhook
+// (a recusa atrasada da PRÓPRIA c0). Antes de B1, "todas as orders
+// ENCONTRADAS estão mortas" bastava para o fallback soltar a vaga —
+// `cobranca_liberada` — mesmo a lista sendo incompleta. Com B1, a order
+// encontrada (c0) foi criada ANTES do limite inferior da tentativa c1: o
+// fallback NUNCA solta com essa lista.
+Deno.test("cartão — Q3-webhook (B1): recusa ATRASADA de c0 chega pelo fallback, mas a busca só mostra c0 (de uma tentativa ANTERIOR, fora da janela) -> 'nada_a_liberar', sentinela de c1 intacto", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const limiteInferiorC1Ms = Date.now();
+  const sentinelaC1 = montarSentinela(`${UUID_PEDIDO}:c1`, limiteInferiorC1Ms);
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinelaC1 };
+  // Só a 1ª tentativa de liberar (pelo id do MP, que é o de c0 — nunca bate
+  // com o sentinela de c1) — o fallback não deve conseguir soltar.
+  const supabase = clienteFalso({ pedido, registro, liberarResultados: [false] });
+  const req = await requisicaoAssinada(ID_ORDER_CARTAO_MP, { corpoExtra: { type: "order" } });
+  const ordemC0RecusadaAtrasada = {
+    ...orderDoMp("failed", "cc_rejected_other_reason", "credit_card"),
+    // Criada BEM antes do limite inferior da tentativa c1 — é da tentativa
+    // ANTERIOR (c0), já indexada; c1 ainda não apareceu na busca.
+    date_created: new Date(limiteInferiorC1Ms - 10 * 60_000).toISOString(),
+  };
+  const fetchImpl = async (url: string) =>
+    url.includes("/v1/orders?")
+      ? new Response(JSON.stringify({ results: [ordemC0RecusadaAtrasada] }), { status: 200 })
+      : new Response(JSON.stringify(ordemC0RecusadaAtrasada), { status: 200 });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(
+    corpo,
+    { ok: true, resultado: "nada_a_liberar" },
+    "B1 fecha Q3-webhook: a lista parcial (só c0, de fora da janela) NUNCA solta o sentinela de c1",
+  );
+  assertEquals(registro.chamadasRpc.length, 0, "confirmar_pagamento cancelaria o pedido");
+  assertEquals(registro.chamadasLiberar.length, 1, "só a 1ª tentativa (pelo id do MP) — o fallback não solta");
 });
 
 // Ponto 2 (4ª revisão de risco, 26/09/2026): a busca pode FALHAR (rede fora

@@ -95,15 +95,25 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
    (byte a byte a chave de antes) e `<pedido>:<n>` depois; cartão `<pedido>:c<n>`, **sem o
    token** — no MP real, duas abas ou o retry de resposta perdida batem no MESMO 409
    `idempotency_key_already_used` (chave repetida, corpo diferente a cada token novo), e a vaga
-   recebe o SENTINELA `verificando:<pedido>:c<n>` até o webhook ADOTAR a cobrança aprovada ou
-   `resolverVagaEmVerificacao`/`resolverSentinela` (`_shared/mercadopago.ts`, busca as orders de
-   cartão do pedido na Orders API) confirmarem que TODAS morreram — nunca por um teto fixo de
-   relógio; o único prazo que ainda libera por tempo é a própria reserva (`expires_at`), e uma
-   aprovação tardia sobre isso vira `pago_apos_expirar` (P1), nunca uma segunda cobrança; **ressalva
-   honesta**: a busca contra a Orders API está UNVERIFIED em produção (nomes de parâmetro,
-   paginação, atraso de indexação — ver o comentário de `buscarOrdersDoPedido`), então a garantia
-   "nunca duas cobranças vivas" depende de essa busca não relatar como morta uma order que ainda
-   está viva.
+   recebe o SENTINELA `verificando:<pedido>:c<n>:<limiteInferiorMs>` — o sufixo (epoch ms,
+   `montarSentinela`) é o limite inferior gravado uma única vez, no nascimento do sentinela;
+   achado da 6ª rodada de risco: a PRÓPRIA criação terminando em rede/timeout/5xx TAMBÉM ocupa a
+   vaga assim, não só o 409 — até o webhook ADOTAR a cobrança (só pelo PAR `status:status_detail`
+   reconsultado por id decide aprovação; `resolverSentinela` nunca decide "pago" sozinho, nem por
+   `status` isolado) ou `resolverVagaEmVerificacao`/`resolverSentinela` (`_shared/mercadopago.ts`)
+   liberarem. Liberar exige DOIS fatos, não um: (B2, 5ª revisão) a busca de orders de cartão do
+   pedido é refiltrada por `external_reference` NO CLIENTE — o filtro do lado do MP não é
+   confiável, e uma order de OUTRO pedido nunca é adotada; (B1, 5ª revisão) TODAS as orders
+   encontradas mortas **e** pelo menos uma criada DENTRO da janela do limite inferior do sentinela
+   — uma lista PARCIALMENTE indexada, que só mostra a order morta de uma tentativa ANTERIOR,
+   nunca libera. Nunca por um teto fixo de relógio; o único prazo que ainda libera por tempo é a
+   própria reserva (`expires_at`), e uma aprovação tardia sobre isso vira `pago_apos_expirar`
+   (P1), nunca uma segunda cobrança; **ressalva honesta**: a busca contra a Orders API está
+   UNVERIFIED em produção (nome do campo da lista, nomes de parâmetro, formato de data, atraso de
+   indexação — ver o comentário de `buscarOrdersDoPedido` e o checklist de medição no
+   [runbook de publicação](docs/runbooks/publicar-painel-cartao-devolucoes.md) §6), então a
+   garantia "nunca duas cobranças vivas" depende de essa busca não relatar como morta uma order
+   que ainda está viva — divergindo, o cartão fica desligado.
    **Cartão recusado não cancela o pedido**: `liberar_cobranca_do_pedido` (só
    service role; não toca `payment_status` nem estoque) solta a vaga (`gateway_payment_id`) se ela ainda for daquela cobrança e o
    pedido seguir `aguardando`, soma `tentativas_de_pagamento`, e o cliente tenta outro cartão

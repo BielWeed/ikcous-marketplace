@@ -460,6 +460,21 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
 
 **Comportamentos do Mercado Pago a confirmar no sandbox** (escritos no código sem prova contra
 a API real):
+- [ ] **Busca de orders** (`GET /v1/orders?external_reference=...&begin_date=...&end_date=...`,
+  usada para resolver o sentinela — achados B1/B2, 5ª revisão de risco). Meça no sandbox, com
+  uma order de cartão de teste, ANTES de qualquer outro item deste checklist:
+  - o nome do campo da lista na resposta (`results`, `elements`, ou outro);
+  - se cada order traz `external_reference`, `status`/`status_detail` na raiz, um campo de data
+    de CRIAÇÃO (anote o nome exato — `date_created`, `created_date`, ou outro) e
+    `transactions.payments[].payment_method.type`;
+  - o formato de data que `begin_date`/`end_date` aceitam;
+  - o atraso de indexação entre criar (ou mudar o status de) uma order e ela aparecer nesta
+    busca.
+
+  Se qualquer um desses vier diferente do que o código espera, **o cartão fica DESLIGADO**. Sem
+  a busca confiável, a liberação da vaga degrada, em silêncio, para "PIX bloqueado até
+  `expires_at`" — inclusive no caso mais comum, a recusa cuja resposta se perdeu (S1 da 3ª
+  rodada de achados de risco).
 - [ ] A mesma `X-Idempotency-Key` com token diferente devolve a MESMA order. É a premissa do
   achado A1.
 - [ ] Os códigos de 400 que culpam o dado do cartão são `invalid_card_token`,

@@ -727,6 +727,61 @@ export function vagaEmVerificacao(idGateway: unknown): boolean {
 }
 
 /**
+ * Margem de tolerância a relógio DIVERGENTE entre esta function e o MP —
+ * usada em TRÊS lugares que precisam da MESMA folga (achado B1, 5ª revisão
+ * de risco, 26/09/2026, e sua extensão à criação ambígua na 6ª rodada):
+ *   1. `begin_date`/`end_date` de `buscarOrdersDoPedido`, abaixo — a janela
+ *      da busca não pode ficar mais estreita que o relógio real por causa de
+ *      um desvio de alguns segundos/minutos entre os dois relógios;
+ *   2. a comparação em `resolverSentinela` entre o LIMITE INFERIOR gravado no
+ *      sentinela e a data de criação de uma order MORTA encontrada — sem
+ *      folga, um relógio do MP um pouco atrasado faria uma order de VERDADE
+ *      da tentativa atual parecer "criada antes do limite" e nunca liberar.
+ * 2 minutos: folga generosa contra desvio de relógio, mas OBRIGATORIAMENTE
+ * menor que o tempo entre duas tentativas de pagamento de verdade (o cliente
+ * digita o cartão, erra, tenta de novo — nunca em menos de alguns segundos,
+ * mas a folga não pode chegar perto do tempo de uma reserva inteira, 30 min,
+ * sob pena de aceitar uma order de uma tentativa BEM anterior como se fosse
+ * da atual — o mesmo buraco que o Ponto B1 fecha).
+ */
+export const MARGEM_RELOGIO_BUSCA_MS = 2 * 60_000;
+
+/**
+ * Monta o SENTINELA com o LIMITE INFERIOR embutido (achado B1, 5ª revisão de
+ * risco, 26/09/2026): `<prefixo><chave>:<limiteInferiorMs>` — o prefixo e a
+ * chave continuam exatamente como antes (`vagaEmVerificacao` só olha o
+ * prefixo; `idEhClassico`/comparações de igualdade não olham o MEIO da
+ * string), então todo detector e toda comparação por igualdade já existentes
+ * continuam funcionando sem mudança. O sufixo NOVO é o instante (epoch ms)
+ * a partir do qual uma order de cartão DESTA tentativa pode ter sido criada
+ * — `resolverSentinela`/`limiteInferiorDoSentinela`, abaixo, é quem lê de
+ * volta. Nunca leva `:` a mais que os dois já esperados (um da chave —
+ * `<pedido>:c<n>` — um deste sufixo), então `limiteInferiorDoSentinela`
+ * sempre acha o número no ÚLTIMO pedaço.
+ */
+export function montarSentinela(chave: string, limiteInferiorMs: number): string {
+  return `${PREFIXO_VAGA_EM_VERIFICACAO}${chave}:${limiteInferiorMs}`;
+}
+
+/**
+ * Lê de volta o LIMITE INFERIOR gravado por `montarSentinela` (achado B1).
+ * `null` quando `idGateway` não é sequer um sentinela, OU quando é um
+ * sentinela no formato ANTIGO (gravado antes desta rodada — pré-existentes
+ * em produção quando isto ligar), sem o sufixo `:<ms>` — pela MESMA regra de
+ * segurança do resto deste arquivo, `null` é "não sei", nunca um palpite:
+ * `resolverSentinela` trata `null` como "nunca libera por data", exatamente
+ * como trata uma order sem `date_created` legível.
+ */
+export function limiteInferiorDoSentinela(idGateway: unknown): number | null {
+  if (!vagaEmVerificacao(idGateway)) return null;
+  const resto = (idGateway as string).slice(PREFIXO_VAGA_EM_VERIFICACAO.length);
+  const partes = resto.split(":");
+  if (partes.length < 3) return null; // formato antigo, sem o sufixo — UNVERIFIED em produção
+  const ms = Number(partes[partes.length - 1]);
+  return Number.isFinite(ms) && ms > 0 ? ms : null;
+}
+
+/**
  * Monta o corpo de `POST /v1/orders` para PIX — o caminho que a Orders API
  * atende (a `/v1/payments` clássica devolve 500 para payment_method_id
  * "pix" hoje; ver montarCorpoPix acima, que continua existindo porque as
@@ -1197,6 +1252,28 @@ export async function consultarOrder(args: {
  * Nunca rejeita — mesmo contrato de `criarOrder`/`consultarOrder`. O corpo
  * de erro (e a lista de orders, que pode trazer cartão com e-mail/CPF do
  * pagador) nunca vai para o log cru — só o resumo sem dado pessoal.
+ *
+ * B2 (5ª revisão de risco, 26/09/2026): a lista devolvida é filtrada por
+ * `external_reference === pedidoId` NESTA function, antes de qualquer
+ * chamador ver uma única order — `external_reference` no filtro de query é
+ * o lado do SERVIDOR do MP, que o próprio corretor da doc marca como não
+ * verificado; se o MP ignorar o filtro (ou usar outro nome de campo por
+ * baixo), uma order de OUTRO pedido — inclusive uma cobrança APROVADA e
+ * órfã de um pedido morto (casos A1/R2) — voltaria na lista e seria tratada
+ * como se fosse DESTE pedido. Sem este filtro, `resolverSentinela` (abaixo)
+ * podia gravar/adotar a vaga com o id de uma order que nunca teve nada a ver
+ * com este pedido.
+ *
+ * B1 (5ª revisão de risco, 26/09/2026): `begin_date`/`end_date` sempre em
+ * ISO normalizado (`new Date(x).toISOString()`) — o PostgREST devolve
+ * `created_at` cru, com microssegundos e `+00:00`, formato que a doc da
+ * busca (exemplo com `.000Z`) não confirma que a Orders API aceita
+ * (UNVERIFIED). `end_date` ganha `MARGEM_RELOGIO_BUSCA_MS` de folga PARA A
+ * FRENTE (o relógio do MP pode estar adiantado; uma order criada
+ * "agora mesmo" não pode ficar de fora só por um desvio de segundos) e
+ * `begin_date` a MESMA folga PARA TRÁS (o relógio do MP pode estar
+ * atrasado; uma order criada um instante antes do que este servidor acha
+ * que é `pedido.created_at` não pode sair da janela).
  */
 export async function buscarOrdersDoPedido(args: {
   token: string;
@@ -1204,7 +1281,8 @@ export async function buscarOrdersDoPedido(args: {
   // ISO — geralmente `pedido.created_at`: o começo da janela de busca.
   // `undefined`/inválido é aceito pela Orders API do jeito que a doc
   // encontrada não deixa claro (UNVERIFIED); mandar mesmo assim é mais
-  // seguro que omitir, se o parâmetro for obrigatório de verdade.
+  // seguro que omitir, se o parâmetro for obrigatório de verdade. Ilegível
+  // (`Date.parse` não entende) vai CRU mesmo assim, pela mesma razão.
   desde: string;
   fetchImpl?: typeof fetch;
   baseUrl?: string;
@@ -1212,10 +1290,15 @@ export async function buscarOrdersDoPedido(args: {
 }): Promise<{ ok: true; orders: Record<string, unknown>[] } | { ok: false }> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
+  const desdeMs = Date.parse(args.desde);
+  const beginDate = Number.isFinite(desdeMs)
+    ? new Date(desdeMs - MARGEM_RELOGIO_BUSCA_MS).toISOString()
+    : args.desde;
+  const endDate = new Date(Date.now() + MARGEM_RELOGIO_BUSCA_MS).toISOString();
   const params = new URLSearchParams({
     external_reference: args.pedidoId,
-    begin_date: args.desde,
-    end_date: new Date().toISOString(),
+    begin_date: beginDate,
+    end_date: endDate,
   });
 
   let resposta: Response;
@@ -1227,6 +1310,14 @@ export async function buscarOrdersDoPedido(args: {
       args.tempoLimiteMs,
     );
   } catch (_err) {
+    // Nit (5ª revisão de risco, 26/09/2026): sem isto, "busca fora do ar"
+    // (rede, timeout) e "nada encontrado" eram indistinguíveis no log — só o
+    // texto do erro, nunca o corpo (que aqui não existe: é uma exceção de
+    // rede, não uma resposta do MP).
+    console.error(
+      "mercadopago: busca de orders do pedido falhou (rede/timeout) — distinto de 'nada encontrado'",
+      { pedidoId: args.pedidoId, erro: String(_err) },
+    );
     return { ok: false };
   }
 
@@ -1258,7 +1349,11 @@ export async function buscarOrdersDoPedido(args: {
 
   return {
     ok: true,
-    orders: lista.filter((o): o is Record<string, unknown> => Boolean(o) && typeof o === "object"),
+    orders: lista.filter((o): o is Record<string, unknown> => {
+      if (!o || typeof o !== "object") return false;
+      // B2: nunca confia cegamente no filtro do lado do servidor.
+      return String((o as Record<string, unknown>).external_reference ?? "") === args.pedidoId;
+    }),
   };
 }
 
@@ -1285,28 +1380,62 @@ const STATUS_ORDER_VIVOS = new Set(["created", "processing", "action_required"])
 const STATUS_ORDER_MORTOS = new Set(["failed", "canceled", "cancelled", "expired", "refunded", "charged_back"]);
 
 /**
+ * A data de CRIAÇÃO da order, em milissegundos — campo raiz `date_created`
+ * (nome documentado pela Payments API clássica, já lido por este repositório
+ * em `refund.date_created`, `_shared/estorno.ts`) ou `created_date` (grafia
+ * alternativa cogitada para a Orders API — UNVERIFIED, mesma ressalva de
+ * `buscarOrdersDoPedido`). Sem nenhum dos dois campos, ou com um valor que
+ * `Date.parse` não entende, devolve `null` — nunca uma data inventada:
+ * `resolverSentinela`, abaixo, trata `null` como "não dá para confiar",
+ * nunca libera a vaga por causa desta order.
+ */
+function dataDeCriacaoDaOrderMs(order: Record<string, unknown>): number | null {
+  const bruto = typeof order.date_created === "string"
+    ? order.date_created
+    : typeof order.created_date === "string"
+      ? order.created_date
+      : null;
+  if (bruto === null) return null;
+  const ms = Date.parse(bruto);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
  * Decide o que fazer com um SENTINELA a partir das orders devolvidas por
- * `buscarOrdersDoPedido` (Ponto 1, 4ª revisão de risco, 26/09/2026) — filtra
- * para CARTÃO (`orderEhDeCartao`; a busca por `external_reference` também
- * devolve o PIX do mesmo pedido, que não interessa aqui) e decide:
+ * `buscarOrdersDoPedido` (Ponto 1, 4ª revisão de risco, 26/09/2026; B1, 5ª
+ * revisão, 26/09/2026) — filtra para CARTÃO (`orderEhDeCartao`; a busca por
+ * `external_reference` também devolve o PIX do mesmo pedido, que não
+ * interessa aqui) e decide:
  *
- *   - alguma `status === "processed"` → `{ acao: "adotar", order }` — a
- *     cobrança da tentativa anterior existe e foi CAPTURADA. Decide pelo
- *     `status` sozinho, não por `mapearStatusOrder(status, status_detail)`
- *     (que exige o PAR exato `processed:accredited"): a busca pode não
- *     devolver o `status_detail` no mesmo formato de `GET /v1/orders/{id}`
- *     (UNVERIFIED, ver `buscarOrdersDoPedido`) — dinheiro capturado com um
- *     detalhe que este arquivo não reconhece ainda é dinheiro capturado, e
- *     tratar isso como "não sei" cairia por eliminação em `liberar` (o
- *     buraco que este Ponto existe para fechar);
- *   - nenhuma capturada, mas alguma ainda VIVA (`STATUS_ORDER_VIVOS`, acima)
- *     → `{ acao: "gravar", order }` — grava o id de verdade na vaga; os
- *     ramos (d)/(f) de `criar-pagamento/index.ts` cuidam dela como cuidam de
- *     qualquer cartão vivo reconsultado por id;
- *   - TODAS reconhecidamente mortas (`STATUS_ORDER_MORTOS`, acima) →
- *     `{ acao: "liberar" }`;
+ *   - alguma `status === "processed"` OU ainda VIVA (`STATUS_ORDER_VIVOS`,
+ *     acima) → `{ acao: "gravar", order }` — grava o id de verdade na vaga
+ *     e deixa a reconsulta por id (`GET /v1/orders/{id}` →
+ *     `mapearStatusOrder`, o caminho que já existe nos ramos (a)/(d)/(f) de
+ *     `criar-pagamento/index.ts`) decidir o desfecho fino. Achado do
+ *     comentário "Adopt only on a fully known state" (6ª rodada, achados de
+ *     risco): `processed` sozinho já foi tratado como ADOÇÃO direta — mas
+ *     `processed:partially_refunded`, por exemplo, é `processed` na raiz e
+ *     NÃO é dinheiro limpo. Decidir por `status` sozinho aqui só para
+ *     escolher QUAL order rastrear nunca foi o problema; o problema era
+ *     pular direto para "aprovado" sem o PAR completo. Agora só um caminho
+ *     decide aprovação: a reconsulta por id, que já exige o par exato;
+ *   - TODAS reconhecidamente mortas (`STATUS_ORDER_MORTOS`, acima) → só
+ *     `{ acao: "liberar" }` se pelo menos uma delas tiver `date_created`
+ *     (ou `created_date`) legível e DENTRO da janela (`>=
+ *     limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS`) — acha B1 (5ª revisão de
+ *     risco, 26/09/2026, cenário Q3): uma lista PARCIALMENTE indexada pode
+ *     conter só a order MORTA de uma tentativa ANTERIOR (já resolvida,
+ *     "todas mortas" bate por essa lista incompleta) enquanto a order da
+ *     tentativa ATUAL (ainda viva no MP) não apareceu ainda por atraso de
+ *     indexação — soltar aqui libera a vaga com a cobrança da tentativa
+ *     atual ainda em aberto, e o PIX criado por cima vira uma SEGUNDA
+ *     cobrança quando ela aprovar depois. `limiteInferiorMs === null`
+ *     (sentinela sem o sufixo novo, ou sem sentinela — `resolverSentinela`
+ *     não deveria ser chamado sem um, mas por segurança) NUNCA libera: sem
+ *     limite conhecido, não dá para confiar que a lista cobre a tentativa
+ *     atual;
  *   - qualquer outra combinação (alguma order com `status` que este arquivo
- *     não reconhece nem como capturado, nem vivo, nem morto) →
+ *     não reconhece nem como capturado/vivo nem como morto) →
  *     `{ acao: "gravar", order }` com a PRIMEIRA delas: nunca libera sobre
  *     um status desconhecido, e o par cru chega ao cliente pelo mesmo
  *     caminho "par desconhecido" que uma reconsulta normal já devolve.
@@ -1314,20 +1443,26 @@ const STATUS_ORDER_MORTOS = new Set(["failed", "canceled", "cancelled", "expired
  * Lista VAZIA (nenhuma order de CARTÃO encontrada) devolve `null` — NUNCA
  * `{ acao: "liberar" }`: "nada encontrado ainda" (atraso de indexação, por
  * exemplo) não é o mesmo fato que "encontrei e está morta". Quem chama trata
- * `null` exatamente como uma busca que falhou — nunca libera às cegas.
+ * `null` exatamente como uma busca que falhou — nunca libera às cegas. O
+ * mesmo vale quando "todas mortas" bate mas nenhuma está dentro da janela.
  */
 export function resolverSentinela(
   orders: Record<string, unknown>[],
-): { acao: "adotar" | "gravar"; order: Record<string, unknown> } | { acao: "liberar" } | null {
+  limiteInferiorMs: number | null,
+): { acao: "gravar"; order: Record<string, unknown> } | { acao: "liberar" } | null {
   const cartao = orders.filter((o) => orderEhDeCartao(o));
   if (cartao.length === 0) return null;
   const aprovada = cartao.find((o) => String(o.status ?? "") === "processed");
-  if (aprovada) return { acao: "adotar", order: aprovada };
-  const viva = cartao.find((o) => STATUS_ORDER_VIVOS.has(String(o.status ?? "")));
+  const viva = aprovada ?? cartao.find((o) => STATUS_ORDER_VIVOS.has(String(o.status ?? "")));
   if (viva) return { acao: "gravar", order: viva };
   const todasMortas = cartao.every((o) => STATUS_ORDER_MORTOS.has(String(o.status ?? "")));
-  if (todasMortas) return { acao: "liberar" };
-  return { acao: "gravar", order: cartao[0] };
+  if (!todasMortas) return { acao: "gravar", order: cartao[0] };
+  if (limiteInferiorMs === null) return null;
+  const algumaDentroDaJanela = cartao.some((o) => {
+    const criadaEm = dataDeCriacaoDaOrderMs(o);
+    return criadaEm !== null && criadaEm >= limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS;
+  });
+  return algumaDentroDaJanela ? { acao: "liberar" } : null;
 }
 
 /**
