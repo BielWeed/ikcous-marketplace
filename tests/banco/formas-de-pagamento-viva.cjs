@@ -20,15 +20,15 @@
  *       DO UPDATE), com lista vazia + online ligado, e payload que NÃO manda
  *       o campo — não pode ser travado pelo disparo BEFORE INSERT do
  *       candidato fantasma.
- *   (5) create_marketplace_order_v23: forma desligada recusa com o texto
- *       exato; forma ligada passa; pagamento online com online ligado é
- *       aceito.
+ *   (5) create_marketplace_order_v23 E _v24 (as duas RPCs — mesma
+ *       assinatura, mesmo 0-bis): forma desligada recusa com o texto exato;
+ *       forma ligada passa; pagamento online com online ligado é aceito.
  *   (6) padrão (as três formas ligadas, nada mexido): pix/card/cash na
  *       entrega continuam se comportando como antes da migration.
- *   (7) ROLLBACK MANUAL: aplica, observa o comportamento antigo voltar
- *       (qualquer forma aceita, trigger ausente, coluna permanece), e
- *       REAPLICA a migration (idempotência) — deixa o banco no estado
- *       migrado para qualquer passo de CI que rode depois deste.
+ *   (7) ROLLBACK MANUAL: aplica, observa o comportamento antigo voltar em
+ *       AMBAS as RPCs (qualquer forma aceita, trigger ausente, coluna
+ *       permanece), e REAPLICA a migration (idempotência) — deixa o banco
+ *       no estado migrado para qualquer passo de CI que rode depois deste.
  *
  * USO: node tests/banco/formas-de-pagamento-viva.cjs
  * (mesma DATABASE_URL efêmera do job — ver tests/banco/efemero.cjs)
@@ -76,6 +76,13 @@ const P_PADRAO = "cccccccc-0000-0000-0000-000000000001";
 const P_LIGADA = "cccccccc-0000-0000-0000-000000000002";
 const P_ONLINE = "cccccccc-0000-0000-0000-000000000003";
 const P_ROLLBACK = "cccccccc-0000-0000-0000-000000000004";
+// Mesmo trio da v23, em produtos PRÓPRIOS (v24 é a RPC do pagamento
+// antecipado — a mesma checagem 0-bis, mas nunca compartilha fixture de
+// produto com a v23, para as duas provas não colidirem em estoque).
+const P_PADRAO_V24 = "cccccccc-0000-0000-0000-000000000005";
+const P_LIGADA_V24 = "cccccccc-0000-0000-0000-000000000006";
+const P_ONLINE_V24 = "cccccccc-0000-0000-0000-000000000007";
+const P_ROLLBACK_V24 = "cccccccc-0000-0000-0000-000000000008";
 
 // ids de store_config usados só para provar coluna/CHECK/trigger sem tocar
 // na loja id=1 (a que as RPCs de pedido leem de verdade).
@@ -144,13 +151,15 @@ async function garantirAdmin(cliente) {
   );
 }
 
-// Pedido pela v23 (pagamento na entrega OU online) via local-delivery — o
-// mesmo desenho de criarPedido em invariantes-dinheiro.cjs, com o produto e
-// o meio de pagamento como parâmetro (é o que cada prova aqui varia).
-async function criarPedidoV23(cliente, { produtoId, metodo, total }) {
+// Pedido via local-delivery — o mesmo desenho de criarPedido/
+// criarPedidoComFrete em invariantes-dinheiro.cjs, com a RPC (v23 ou v24 —
+// as duas têm a MESMA assinatura de 13 parâmetros na migration, confirmado
+// em `grep -n "CREATE OR REPLACE FUNCTION public.create_marketplace_order_v2"`),
+// o produto e o meio de pagamento como parâmetro (é o que cada prova varia).
+async function criarPedido(cliente, { rpc, produtoId, metodo, total }) {
   const itens = [{ product_id: produtoId, variant_id: null, quantity: 1 }];
   const resultado = await cliente.query(
-    `SELECT public.create_marketplace_order_v23(
+    `SELECT public.${rpc}(
         $1::jsonb, $2::numeric, $3::numeric, $4::text, $5::uuid,
         $6::text, $7::text, $8::text, $9::text, $10::jsonb,
         $11::text, $12::text, $13::uuid
@@ -173,6 +182,11 @@ async function criarPedidoV23(cliente, { produtoId, metodo, total }) {
   );
   return resultado.rows[0].id;
 }
+
+const criarPedidoV23 = (cliente, args) =>
+  criarPedido(cliente, { ...args, rpc: "create_marketplace_order_v23" });
+const criarPedidoV24 = (cliente, args) =>
+  criarPedido(cliente, { ...args, rpc: "create_marketplace_order_v24" });
 
 const ehUuid = (valor) => /^[0-9a-f-]{36}$/i.test(valor);
 
@@ -353,8 +367,11 @@ PROVAS.push({
   },
 });
 
-// (5) create_marketplace_order_v23: forma desligada recusa; forma ligada
-// passa; online com pagamento_online ligado é aceito.
+// (5) create_marketplace_order_v23 E _v24: forma desligada recusa; forma
+// ligada passa; online com pagamento_online ligado é aceito. O 0-bis é o
+// MESMO bloco copiado nas duas RPCs (mesmo texto de erro, mesma posição) —
+// provar as duas é o que o despacho original pedia e o script só cobria
+// a v23.
 PROVAS.push({
   nome: "(5) create_marketplace_order_v23: recusa forma desligada, aceita forma ligada, aceita online quando online está ligado",
   corpo: async (cliente) => {
@@ -413,6 +430,78 @@ PROVAS.push({
   },
 });
 
+// (5-v24) A MESMA prova de cima, contra create_marketplace_order_v24 — a
+// RPC do pagamento antecipado. O 0-bis dela é uma cópia byte a byte do da
+// v23 (mesma posição, depois da idempotência e antes do passo 1), então o
+// roteiro é idêntico: só troca a RPC e os produtos (fixture própria, para
+// não competir por estoque com a prova (5) acima).
+PROVAS.push({
+  nome: "(5-v24) create_marketplace_order_v24: recusa forma desligada, aceita forma ligada, aceita online quando online está ligado",
+  corpo: async (cliente) => {
+    await logar(cliente, U_CLIENTE);
+    await garantirCliente(cliente);
+    await criarProduto(
+      cliente,
+      P_PADRAO_V24,
+      "Produto Prova Formas Desligada v24",
+    );
+    await criarProduto(
+      cliente,
+      P_LIGADA_V24,
+      "Produto Prova Formas Ligada v24",
+    );
+    await criarProduto(
+      cliente,
+      P_ONLINE_V24,
+      "Produto Prova Formas Online v24",
+    );
+
+    await configurarLoja(cliente, { formas: ["card", "cash"], online: false });
+    await assert.rejects(
+      () =>
+        criarPedidoV24(cliente, {
+          produtoId: P_PADRAO_V24,
+          metodo: "pix",
+          total: "30.00",
+        }),
+      (erro) => {
+        assert.equal(
+          erro.message,
+          MENSAGEM_FORMA_DESLIGADA,
+          "a mensagem tem de ser EXATAMENTE o texto amigável, sem prefixo de código (v24)",
+        );
+        return true;
+      },
+      "v24: pix desligado na loja deve recusar o pedido",
+    );
+
+    await configurarLoja(cliente, {
+      formas: ["pix", "card", "cash"],
+      online: false,
+    });
+    const pedidoLigado = await criarPedidoV24(cliente, {
+      produtoId: P_LIGADA_V24,
+      metodo: "pix",
+      total: "30.00",
+    });
+    assert.ok(
+      ehUuid(pedidoLigado),
+      "v24: pix ligado deve deixar o pedido nascer",
+    );
+
+    await configurarLoja(cliente, { formas: [], online: true });
+    const pedidoOnline = await criarPedidoV24(cliente, {
+      produtoId: P_ONLINE_V24,
+      metodo: "online",
+      total: "30.00",
+    });
+    assert.ok(
+      ehUuid(pedidoOnline),
+      "v24: pagamento online com pagamento_online ligado deve deixar o pedido nascer",
+    );
+  },
+});
+
 // (6) Padrão: as três formas ligadas, nada mexido — comportamento idêntico
 // ao de antes da migration para pix, card e cash na entrega.
 PROVAS.push({
@@ -449,10 +538,12 @@ PROVAS.push({
   corpo: async (cliente) => {
     await logar(cliente, U_CLIENTE);
     await criarProduto(cliente, P_ROLLBACK, "Produto Prova Rollback");
+    await criarProduto(cliente, P_ROLLBACK_V24, "Produto Prova Rollback v24");
 
     // Sanidade ANTES do rollback: um método forjado (fora de pix/card/cash/
     // online) é recusado pela fonte única — prova que a checagem está
     // realmente ativa antes de provar que ela some depois do rollback.
+    // Nas DUAS RPCs — o 0-bis é a mesma cópia nas duas.
     await configurarLoja(cliente, {
       formas: ["pix", "card", "cash"],
       online: false,
@@ -468,7 +559,20 @@ PROVAS.push({
         assert.equal(erro.message, MENSAGEM_FORMA_DESLIGADA);
         return true;
       },
-      "ANTES do rollback: método desconhecido deve ser recusado",
+      "ANTES do rollback: método desconhecido deve ser recusado (v23)",
+    );
+    await assert.rejects(
+      () =>
+        criarPedidoV24(cliente, {
+          produtoId: P_ROLLBACK_V24,
+          metodo: "boleto-forjado",
+          total: "30.00",
+        }),
+      (erro) => {
+        assert.equal(erro.message, MENSAGEM_FORMA_DESLIGADA);
+        return true;
+      },
+      "ANTES do rollback: método desconhecido deve ser recusado (v24)",
     );
 
     // Aplica o rollback manual — um único statement multi-comando na mesma
@@ -520,7 +624,10 @@ PROVAS.push({
     );
 
     // Comportamento antigo: qualquer método, mesmo forjado, é aceito de
-    // volta — não há mais checagem de forma de pagamento nenhuma.
+    // volta — não há mais checagem de forma de pagamento nenhuma. Nas DUAS
+    // RPCs: o rollback restaura os DOIS corpos (v23 e v24) para o que a
+    // 20261172000000 deixou, sem a checagem de forma de pagamento em
+    // nenhuma delas.
     await configurarLoja(cliente, { formas: [], online: false });
     const pedidoAntigo = await criarPedidoV23(cliente, {
       produtoId: P_ROLLBACK,
@@ -529,7 +636,16 @@ PROVAS.push({
     });
     assert.ok(
       ehUuid(pedidoAntigo),
-      "DEPOIS do rollback: qualquer método de pagamento volta a ser aceito",
+      "DEPOIS do rollback: qualquer método de pagamento volta a ser aceito (v23)",
+    );
+    const pedidoAntigoV24 = await criarPedidoV24(cliente, {
+      produtoId: P_ROLLBACK_V24,
+      metodo: "boleto-forjado",
+      total: "30.00",
+    });
+    assert.ok(
+      ehUuid(pedidoAntigoV24),
+      "DEPOIS do rollback: qualquer método de pagamento volta a ser aceito (v24)",
     );
 
     // Reaplica a migration original — prova a IDEMPOTÊNCIA (o preflight
@@ -551,8 +667,8 @@ PROVAS.push({
     );
 
     // Restaura id=1 para um estado válido (3 formas ligadas) — deixa o
-    // banco no mesmo padrão que as provas (5)/(6) e qualquer passo de CI
-    // seguinte esperam.
+    // banco no mesmo padrão que as provas (5)/(5-v24)/(6) e qualquer passo
+    // de CI seguinte esperam.
     await configurarLoja(cliente, {
       formas: ["pix", "card", "cash"],
       online: false,
@@ -568,7 +684,20 @@ PROVAS.push({
         assert.equal(erro.message, MENSAGEM_FORMA_DESLIGADA);
         return true;
       },
-      "depois de reaplicar a migration, o método forjado volta a ser recusado",
+      "depois de reaplicar a migration, o método forjado volta a ser recusado (v23)",
+    );
+    await assert.rejects(
+      () =>
+        criarPedidoV24(cliente, {
+          produtoId: P_ROLLBACK_V24,
+          metodo: "boleto-forjado",
+          total: "30.00",
+        }),
+      (erro) => {
+        assert.equal(erro.message, MENSAGEM_FORMA_DESLIGADA);
+        return true;
+      },
+      "depois de reaplicar a migration, o método forjado volta a ser recusado (v24)",
     );
   },
 });
