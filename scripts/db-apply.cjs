@@ -2069,6 +2069,14 @@ const VERIFICACOES = {
       esperado: ["WHERE s.id = v_l.caixa_sessao_id AND s.status = 'fechado'"],
     },
   ],
+  // O CRM E O INÍCIO LEEM A LOJA (26/09/2026, migration 20261178000000): só
+  // venda com dinheiro reconhecido e pedido vivo entra no CRM.
+  "20261178000000_o_crm_e_o_inicio_leem_a_loja.sql": [
+    {
+      funcao: "crm__vendas",
+      esperado: ["AND o.status NOT IN ('cancelled', 'returned')"],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

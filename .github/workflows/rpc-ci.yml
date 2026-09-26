@@ -91,11 +91,17 @@ jobs:
         run: node tests/banco/provisionar.cjs
       - name: Aplica as migrations do zero
         run: node tests/banco/aplicar-migrations.cjs supabase/migrations
+      # Provas vivas de 26/09 (devoluções, cartão, Financeiro, CRM/Início):
+      # cada uma num CLONE do banco recém-migrado (rodar-isolado.cjs) — as do
+      # Financeiro e do CRM medem totais da loja e não podem enxergar as
+      # fixtures de outra prova. Ficam ANTES das que escrevem no banco base.
+      - name: Prova viva das devoluções
+        run: node tests/banco/rodar-isolado.cjs tests/banco/devolucoes-viva.cjs
+      - name: Prova viva do cartão online
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cartao-online-viva.cjs
+      - name: Prova viva do Financeiro
+        run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
+      - name: Prova viva do CRM e do Início
+        run: node tests/banco/rodar-isolado.cjs tests/banco/crm-inicio-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs
-      - name: Prova viva das devoluções
-        run: node tests/banco/devolucoes-viva.cjs
-      - name: Prova viva do cartão online
-        run: node tests/banco/cartao-online-viva.cjs
-      - name: Prova viva do Financeiro
-        run: node tests/banco/financeiro-viva.cjs
