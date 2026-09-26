@@ -347,6 +347,9 @@ const VIEW_COMPONENTS = {
   "admin-product-form": AdminArea,
   "admin-orders": AdminArea,
   "admin-pdv": AdminArea,
+  "admin-crm": AdminArea,
+  "admin-financeiro": AdminArea,
+  "admin-devolucoes": AdminArea,
   "admin-coupons": AdminArea,
   "admin-coupon-form": AdminArea,
   "admin-banners": AdminArea,
@@ -415,6 +418,9 @@ const getNavigationDirection = (
     "admin-notifications": 0.3,
     "admin-orders": 1,
     "admin-pdv": 1.2,
+    "admin-crm": 0.1,
+    "admin-financeiro": 0.2,
+    "admin-devolucoes": 1.1,
     "admin-reviews": 1.4,
     "admin-qa": 1.6,
     "admin-products": 2,
@@ -1612,6 +1618,9 @@ const AppContent = () => {
           "admin-user-detail",
           "admin-push",
           "admin-pdv",
+          "admin-crm",
+          "admin-financeiro",
+          "admin-devolucoes",
           "admin-banners",
           "admin-carousels",
           "admin-coupons",
@@ -1681,7 +1690,9 @@ const AppContent = () => {
           } else if (
             currView === "admin-push" ||
             currView === "admin-banners" ||
-            currView === "admin-pdv"
+            currView === "admin-pdv" ||
+            currView === "admin-crm" ||
+            currView === "admin-financeiro"
           ) {
             // Mesmo pai de `paiDaTelaDoAdmin("admin-pdv", ...)` — o
             // checklist (nova-tela.md:39) avisa que já existem casos onde o
@@ -1702,7 +1713,11 @@ const AppContent = () => {
               "",
               "/admin-settings",
             );
-          } else if (currView === "admin-reviews" || currView === "admin-qa") {
+          } else if (
+            currView === "admin-reviews" ||
+            currView === "admin-qa" ||
+            currView === "admin-devolucoes"
+          ) {
             targetView = "admin-orders";
             globalThis.history.replaceState(
               { view: "admin-orders" },
@@ -2397,6 +2412,9 @@ const AppContent = () => {
       "admin-product-form",
       "admin-orders",
       "admin-pdv",
+      "admin-crm",
+      "admin-financeiro",
+      "admin-devolucoes",
       "admin-coupons",
       "admin-coupon-form",
       "admin-banners",

@@ -26,7 +26,6 @@ import { haptic } from "@/utils/haptic";
 import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity,
   ArrowLeft,
   Bell,
   Layers,
@@ -37,6 +36,7 @@ import {
   ScanBarcode,
   Settings,
   ShoppingBag,
+  Store,
   Users,
 } from "lucide-react";
 import React from "react";
@@ -517,7 +517,7 @@ export function AdminLayout({
   }, [currentView]);
 
   const navItems = [
-    { icon: Activity, label: "Geral", view: "admin-dashboard" },
+    { icon: Store, label: "Início", view: "admin-dashboard" },
     { icon: Package, label: "Pedidos", view: "admin-orders" },
     { icon: ShoppingBag, label: "Produtos", view: "admin-products" },
     { icon: Users, label: "Clientes", view: "admin-customers" },
