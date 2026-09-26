@@ -1766,6 +1766,11 @@ const CODIGO_POSTAGEM = '2073849152'
 const LINK_DCE = 'https://me-prod.s3.amazonaws.com/dace/reversa.pdf'
 const EMAIL_CLIENTE = 'cliente@exemplo.com.br'
 const NOTA_CODIGO_GERADO = 'Código de postagem dos Correios gerado (válido por 7 dias)'
+// Achado R5 (rodada 3): mesmo texto de `notaPagamentoConfirmadoReverso`
+// (index.ts) — duplicado aqui de propósito, como `NOTA_CODIGO_GERADO` acima,
+// porque o arquivo não importa nada de index.ts (só dynamic import do handler).
+const NOTA_PAGAMENTO_CONFIRMADO_REVERSO = (meId: string) =>
+    `O Melhor Envio confirmou o pagamento do envio reverso ${meId}; o código de postagem ainda está sendo gerado.`
 
 const DEVOLUCAO_APROVADA = {
     id: DEVOLUCAO_ID,
@@ -1839,6 +1844,13 @@ function clienteFalsoDevolucao(cfg: {
     /** Achado A3: quantas das primeiras tentativas de `liberarVinculoReverso`
      * respondem erro (1 = falha na 1ª, sucesso no retry; 2 = falha nas duas). */
     erroNaLiberacao?: number
+    /** Achado R5 (rodada 3): por padrão a gravação do CÓDIGO sempre "acerta"
+     * (data: [{id}]), ignorando os filtros — bom o bastante para o resto da
+     * suíte, mas incapaz de simular "0 linhas porque o vínculo mudou embaixo
+     * do pé" (o próprio bug do achado R5). Ligar isto faz a gravação checar
+     * `filtrosEqCasam` de verdade, como o Postgres faria com um UPDATE ...
+     * WHERE — só então 0 linhas vira um resultado possível. */
+    gravacaoRespeitaFiltros?: boolean
 } = {}) {
     const registro = {
         operacoes: [] as string[],
@@ -1884,6 +1896,13 @@ function clienteFalsoDevolucao(cfg: {
             const valores = no.valores || {}
             if ('codigo_postagem' in valores) {
                 registro.gravacoesDeCodigo.push(copia)
+                // Achado R5: com a flag ligada, 0 linhas é um resultado real
+                // quando os filtros (id + me_reverse_id) não casam mais com a
+                // linha ATUAL — o vínculo mudou (ou sumiu) entre o checkout
+                // pago e esta gravação.
+                if (cfg.gravacaoRespeitaFiltros && !filtrosEqCasam(no.filtros)) {
+                    return Promise.resolve({ data: [], error: null })
+                }
                 if (linha) Object.assign(linha, valores)
                 return Promise.resolve({ data: [{ id: DEVOLUCAO_ID }], error: null })
             }
@@ -2253,13 +2272,24 @@ Deno.test("gerar_devolucao_reversa - caminho feliz: reserva, POST /cart/reverse 
         assertEquals(temFiltro(supa.registro.gravacoesDeCodigo[0].filtros, 'eq', 'me_reverse_id', ME_REVERSO), true)
 
         // evento da devolução (NUNCA order_shipping_events, cujo CHECK não conhece a reversa)
-        assertEquals(supa.registro.eventos, [{
-            devolucao_id: DEVOLUCAO_ID,
-            de_status: 'aprovada',
-            para_status: 'aprovada',
-            ator: 'sistema',
-            nota: NOTA_CODIGO_GERADO,
-        }])
+        // Achado R5 (rodada 3): o checkout pago grava o MARCADOR antes do
+        // código existir — o primeiro evento da lista, sempre.
+        assertEquals(supa.registro.eventos, [
+            {
+                devolucao_id: DEVOLUCAO_ID,
+                de_status: 'aprovada',
+                para_status: 'aprovada',
+                ator: 'sistema',
+                nota: NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO),
+            },
+            {
+                devolucao_id: DEVOLUCAO_ID,
+                de_status: 'aprovada',
+                para_status: 'aprovada',
+                ator: 'sistema',
+                nota: NOTA_CODIGO_GERADO,
+            },
+        ])
         assertEquals(supa.registro.operacoes.includes('insert order_shipping_events'), false)
         assertEquals(supa.registro.escritasNoPedido, 0)
 
@@ -2453,7 +2483,10 @@ Deno.test("gerar_devolucao_reversa - gerado mas o ME ainda não devolveu o códi
         assertEquals(corpo.situacao, 'pago_sem_codigo')
         assertEquals(supa.registro.liberacoes.length, 0)
         assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
-        assertEquals(supa.registro.eventos.length, 0)
+        // Achado R5 (rodada 3): o checkout já pagou antes deste ponto — o
+        // marcador de pagamento confirmado já foi gravado, mesmo sem código.
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].nota, NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO))
     })
 })
 
@@ -2923,11 +2956,131 @@ Deno.test("gerar_devolucao_reversa - achado N2: a devolução deixou de estar ap
     })
 })
 
-Deno.test("gerar_devolucao_reversa - achado N2: devolução continua aprovada — nenhum evento 'sistema' extra é gravado", async () => {
+Deno.test("gerar_devolucao_reversa - achado N2: devolução continua aprovada — nenhum evento 'sistema' extra ALÉM do marcador de pagamento (R5) e do de sempre", async () => {
     await comEnvAdmin(async () => {
         const supa = clienteFalsoDevolucao()
         const { res } = await rodarReversa(supa, buscarMeReversoFalso())
         assertEquals(res.status, 200)
-        assertEquals(supa.registro.eventos.filter((e: any) => e.ator === 'sistema').length, 1) // só o NOTA_CODIGO_GERADO de sempre
+        // Achado R5 (rodada 3): o marcador de pagamento confirmado some a
+        // conta de 1 para 2 — o de N2 (aviso de status mudado) NÃO deveria
+        // aparecer aqui, porque a devolução não mudou de status.
+        assertEquals(supa.registro.eventos.filter((e: any) => e.ator === 'sistema').length, 2)
+        assertEquals(supa.registro.eventos[0].nota, NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO))
+        assertEquals(supa.registro.eventos[1].nota, NOTA_CODIGO_GERADO)
+    })
+})
+
+// ── achado R5 (revisão de risco, rodada 3, DINHEIRO) ────────────────────────
+// admin_devolucao_liberar_vinculo_reverso podia soltar um vínculo já PAGO
+// (20261179000000) porque nada no banco registrava o pagamento antes do
+// código voltar — a gravação do código então batia 0 linhas SEM ERRO e a
+// resposta virava `ok: true` sem nada salvo (T10 do scratchpad da revisão). A
+// prova de que a RPC recusa mora em tests/banco/devolucoes-viva.cjs (RPC de
+// verdade); aqui fica a ponta da EDGE: mesmo que algo solte o vínculo entre o
+// checkout pago e a gravação do código, a resposta nunca pode ser `ok: true`.
+
+Deno.test("gerar_devolucao_reversa - achado R5: o marcador de pagamento confirmado é gravado assim que o checkout paga, ANTES da geração e da leitura do código", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ gerar: 'erro' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        // A geração falhou DEPOIS do pagamento — o marcador já tem que estar
+        // gravado, mesmo sem código nenhum ter saído.
+        assertEquals(res.status, 502)
+        assertEquals(corpo.situacao, 'geracao_falhou')
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0], {
+            devolucao_id: DEVOLUCAO_ID,
+            de_status: 'aprovada',
+            para_status: 'aprovada',
+            ator: 'sistema',
+            nota: NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO),
+        })
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado R5: checkout recusado (nada pago) NÃO grava o marcador de pagamento — só o checkout que PAGA grava", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ checkout: 'pendente' })
+        const { res } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(supa.registro.eventos.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado R5: o vínculo foi trocado/solto ENTRE o checkout pago e a gravação do código (ex.: admin_devolucao_liberar_vinculo_reverso rodando no meio) — nunca responde ok:true sem o código estar salvo em lugar nenhum", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({
+            gravacaoRespeitaFiltros: true,
+            // Simula a RPC soltando/trocando o vínculo depois do checkout
+            // pago: quando a gravação do código chega, o filtro
+            // `me_reverse_id = ME_REVERSO` não bate mais.
+            mudancaAposVinculo: { me_reverse_id: 'outro-envio-reverso-999' },
+        })
+        const me = buscarMeReversoFalso()
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 409)
+            // NUNCA ok: true — o código pode ter sido gerado de verdade no
+            // Melhor Envio, mas não está salvo em lugar nenhum no banco.
+            assertEquals(corpo.ok, undefined)
+            assertEquals(corpo.resgate, true)
+            assertEquals(corpo.me_reverse_id, ME_REVERSO)
+            assertEquals(corpo.codigo_postagem, CODIGO_POSTAGEM)
+            const erro = String(corpo.error)
+            assertEquals(erro.includes(CODIGO_POSTAGEM), true)
+            assertEquals(erro.includes(ME_REVERSO), true)
+            assertEquals(erro.toLowerCase().includes('não gere de novo'), true)
+            // A tentativa de gravar aconteceu (e não bateu nenhuma linha) —
+            // não é que a edge nunca tentou salvar.
+            assertEquals(supa.registro.gravacoesDeCodigo.length, 1)
+        })
+        assertEquals(linhas.some((l) => l.includes('vínculo mudou ou sumiu')), true)
+    })
+})
+
+// ── R3 residual (revisão de risco, rodada 3) ────────────────────────────────
+// A rodada 2 (achado R3) já fazia `liberarVinculoReverso` tentar 2x e
+// degradar o vínculo morto para reserva vencida quando as duas falhassem, mas
+// `respostaFalhaAoSoltarVinculo` recebia só o `meId` — perdendo o status (ou
+// HTTP) que o Melhor Envio deu para a recusa e o resultado do
+// `removerDoCarrinho` do PRÓPRIO chamador (um dos dois pontos de chamada nem
+// capturava esse resultado). Reproduzido: checkout 200 "pending", DELETE 500,
+// liberação falha 2x — a mensagem dizia só "nada foi pago… a próxima
+// tentativa já deve destravar sozinha", sem o status nem "confira lá antes de
+// comprar de novo".
+
+Deno.test("gerar_devolucao_reversa - R3 residual: checkout recusado (200 pending) com DELETE do carrinho falhando e a liberação falhando 2x — a mensagem carrega o status E o aviso de conferir o carrinho", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNaLiberacao: 2 })
+        const me = buscarMeReversoFalso({ checkout: 'pendente', removerDoCarrinho: 'erro' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        const erro = String(corpo.error).toLowerCase()
+        assertEquals(erro.includes('não consegui soltar o vínculo'), true)
+        assertEquals(erro.includes('nada foi pago'), true)
+        // O status que o Melhor Envio deu para a recusa (antes ficava de fora).
+        assertEquals(erro.includes('pending'), true)
+        // O aviso de conferir o carrinho antes de comprar de novo (antes
+        // ficava de fora quando o DELETE também tinha falhado).
+        assertEquals(erro.includes('confira lá antes de comprar de novo'), true)
+        assertEquals(me.registro.remocoes, 1)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - R3 residual: checkout 4xx com DELETE do carrinho OK e a liberação falhando 2x — a mensagem carrega o status HTTP e não afirma 'confira antes de comprar de novo' à toa", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNaLiberacao: 2 })
+        const me = buscarMeReversoFalso({ checkout: 'erro-4xx', removerDoCarrinho: 'ok' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        const erro = String(corpo.error).toLowerCase()
+        assertEquals(erro.includes('não consegui soltar o vínculo'), true)
+        assertEquals(erro.includes('nada foi pago'), true)
+        // status HTTP 422 (o fake de checkout erro-4xx responde 422)
+        assertEquals(erro.includes('422'), true)
+        assertEquals(erro.includes('o envio saiu do carrinho'), true)
+        assertEquals(erro.includes('confira lá antes de comprar de novo'), false)
     })
 })

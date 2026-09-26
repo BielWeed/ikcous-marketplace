@@ -1140,20 +1140,34 @@ async function degradarParaReservaVencida(ctx: ContextoReversa, meId: string): P
 }
 
 /**
- * Achado A3 (rodada 1) + R3 (rodada 2): o Melhor Envio já recusou a compra de
- * forma DEFINIDA (nada foi pago), mas `liberarVinculoReverso` falhou nas
- * duas tentativas. A frase da rodada 1 ("tente cancelar de novo") mandava a
- * pessoa ERRADA fazer a coisa ERRADA — quem chama aqui é o LOJISTA gerando o
- * código, não tem o que "cancelar", e a próxima tentativa só respondia
- * `pagamento_pendente_no_me` mandando pagar por um envio que já tinha sido
- * retirado do carrinho. Agora a frase diz o que é verdade (nada foi pago) e
- * `degradarParaReservaVencida` já tentou destravar sozinho — a mensagem
- * reflete essa tentativa em vez de prometer "instantes" sem saber se deu certo.
+ * Achado A3 (rodada 1) + R3 (rodada 2) + R3 residual (rodada 3): o Melhor
+ * Envio já recusou a compra de forma DEFINIDA (nada foi pago), mas
+ * `liberarVinculoReverso` falhou nas duas tentativas. A frase da rodada 1
+ * ("tente cancelar de novo") mandava a pessoa ERRADA fazer a coisa ERRADA —
+ * quem chama aqui é o LOJISTA gerando o código, não tem o que "cancelar", e a
+ * próxima tentativa só respondia `pagamento_pendente_no_me` mandando pagar
+ * por um envio que já tinha sido retirado do carrinho. Agora a frase diz o
+ * que é verdade (nada foi pago) e `degradarParaReservaVencida` já tentou
+ * destravar sozinho — a mensagem reflete essa tentativa em vez de prometer
+ * "instantes" sem saber se deu certo.
+ *
+ * RODADA 3 (R3 residual): a rodada 2 chamava esta função só com `meId`,
+ * perdendo DOIS fatos que os dois chamadores já tinham em mãos — o status (ou
+ * código HTTP) que o Melhor Envio deu para a recusa, e se o `removerDoCarrinho`
+ * daquele mesmo chamador tinha realmente confirmado a saída do carrinho.
+ * Reproduzido: checkout 200 `pending`, DELETE 500, liberação falha duas vezes
+ * → a mensagem dizia só "nada foi pago… a próxima tentativa já deve destravar
+ * sozinha", sem o status nem "confira lá antes de comprar de novo" — o
+ * próximo clique podia abrir um carrinho novo e um checkout novo enquanto o
+ * antigo ainda podia estar pendente no Melhor Envio.
  */
-function respostaFalhaAoSoltarVinculo(meId: string): Response {
+function respostaFalhaAoSoltarVinculo(meId: string, motivoDaRecusa: string, removeuDoCarrinho: boolean): Response {
+    const fraseDoCarrinho = removeuDoCarrinho
+        ? 'o envio saiu do carrinho'
+        : 'não consegui confirmar que o envio saiu do carrinho do Melhor Envio — confira lá antes de comprar de novo'
     return respostaJson(
         {
-            error: `O Melhor Envio recusou a compra do envio reverso (id ${meId}) — nada foi pago. Não consegui soltar o vínculo desta devolução com ele agora, mas a próxima tentativa de gerar o código já deve destravar sozinha. Se continuar preso depois disso, um admin pode liberar o vínculo manualmente.`,
+            error: `O Melhor Envio recusou a compra do envio reverso (id ${meId}, ${motivoDaRecusa}) — nada foi pago, ${fraseDoCarrinho}. Não consegui soltar o vínculo desta devolução com ele agora, mas a próxima tentativa de gerar o código já deve destravar sozinha. Se continuar preso depois disso, um admin pode liberar o vínculo manualmente.`,
         },
         502,
     )
@@ -1200,6 +1214,43 @@ async function gravarAvisoDeStatusMudado(ctx: ContextoReversa, statusAtual: stri
 }
 
 /**
+ * Achado R5 (revisão de risco, rodada 3, dinheiro): a partir do momento em
+ * que o checkout confirma o pagamento (`pagoConfirmado = true`) e antes de o
+ * código de postagem voltar, o banco não tinha NENHUM registro de que o
+ * dinheiro já saiu — só `codigo_postagem`, gravado no fim do fluxo, prova
+ * isso. Nessa janela, `admin_devolucao_liberar_vinculo_reverso`
+ * (20261179000000) não tinha como distinguir um vínculo PAGO esperando o
+ * código de um vínculo morto: soltava os dois do mesmo jeito, e a gravação do
+ * código lá na frente batia 0 linhas SEM ERRO (o `me_reverse_id` não bate
+ * mais) — a próxima chamada comprava um SEGUNDO envio reverso (cenário T10 do
+ * scratchpad da revisão). Este evento é o MARCADOR que aquela RPC passa a
+ * exigir ausente antes de soltar um vínculo. O TEXTO é o contrato entre esta
+ * função e o guard da RPC (o `LIKE` de lá casa com a frase "confirmou o
+ * pagamento do envio reverso <id>;" abaixo) — mudar um lado sem o outro
+ * quebra a proteção em silêncio. Falha de gravação NUNCA derruba a resposta:
+ * na pior das hipóteses a proteção nova falta, exatamente como antes desta
+ * correção.
+ */
+function notaPagamentoConfirmadoReverso(meId: string): string {
+    return `O Melhor Envio confirmou o pagamento do envio reverso ${meId}; o código de postagem ainda está sendo gerado.`
+}
+
+async function gravarPagamentoConfirmadoReverso(ctx: ContextoReversa, status: string, meId: string): Promise<void> {
+    try {
+        const { error } = await ctx.supabase.from('devolucao_eventos').insert({
+            devolucao_id: ctx.devolucaoId,
+            de_status: status,
+            para_status: status,
+            ator: 'sistema',
+            nota: notaPagamentoConfirmadoReverso(meId),
+        })
+        if (error) console.error('[melhor-envio-etiqueta] reversa: falha ao gravar o marcador de pagamento confirmado:', error?.code ?? error?.message ?? 'erro')
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: exceção ao gravar o marcador de pagamento confirmado:', sanitizarDadosPessoaisDoTexto(String(err)))
+    }
+}
+
+/**
  * Grava código + link na devolução (update condicional ao vínculo e a
  * código ainda vazio — duas chamadas simultâneas não duplicam o evento) e
  * registra o evento na primeira gravação. A validade (R8) conta do evento:
@@ -1233,6 +1284,41 @@ async function concluirComCodigoDePostagem(
         )
     }
     const gravouAgora = Array.isArray(gravadas) && gravadas.length === 1
+    if (!gravouAgora) {
+        // Achado R5 (rodada 3, dinheiro): 0 linhas sem erro tinha SÓ UMA
+        // leitura até aqui — "outra chamada já gravou o mesmo código"
+        // (idempotente, inofensivo). Mas o filtro é `me_reverse_id = meId AND
+        // codigo_postagem IS NULL`: 0 linhas TAMBÉM acontece quando o vínculo
+        // foi TROCADO ou SOLTO embaixo do pé entre o checkout (já pago) e
+        // esta gravação — o pior caso sendo
+        // `admin_devolucao_liberar_vinculo_reverso` liberando um vínculo que
+        // acabava de ser pago (o guard novo daquela RPC fecha a janela
+        // principal, mas esta releitura é a última linha de defesa: sem ela,
+        // a resposta abaixo seria `ok: true` com um código que não está salvo
+        // em lugar nenhum, e o próximo "Gerar" compraria um SEGUNDO envio).
+        // Relê para distinguir: só o caminho idempotente de verdade (o
+        // vínculo AINDA é este `meId` e o código JÁ está gravado) segue para
+        // a resposta de sucesso normal; qualquer outra coisa — releitura
+        // falhou, vínculo mudou, ou nem o código nem o vínculo batem — vira
+        // erro honesto, nunca `ok: true`.
+        const { data: relidaAposFalha, error: erroDaReleitura } = await lerDevolucaoParaReversa(ctx)
+        const linkAindaEValido = !erroDaReleitura && relidaAposFalha && relidaAposFalha.me_reverse_id === meId && !!relidaAposFalha.codigo_postagem
+        if (!linkAindaEValido) {
+            console.error(
+                '[melhor-envio-etiqueta] reversa: código pago não foi salvo — vínculo mudou ou sumiu:',
+                erroDaReleitura?.code ?? erroDaReleitura?.message ?? `me_reverse_id agora é ${relidaAposFalha?.me_reverse_id ?? '(devolução não encontrada)'}`,
+            )
+            return respostaJson(
+                {
+                    error: `O Melhor Envio confirmou o pagamento e gerou o código de postagem ${codigo} para o envio reverso ${meId}, mas o vínculo desta devolução com esse envio foi solto antes de eu conseguir salvar o código (provavelmente por uma liberação manual). Esse código pertence ao envio ${meId} — NÃO gere de novo; um admin precisa restaurar o vínculo ou tratar esse código manualmente antes de continuar.`,
+                    resgate: true,
+                    me_reverse_id: meId,
+                    codigo_postagem: codigo,
+                },
+                409,
+            )
+        }
+    }
     if (gravouAgora) await gravarEventoDaDevolucao(ctx, String(devolucao.status))
     // Achado A1 edge + N2: só na gravação DE VERDADE (nunca numa releitura
     // idempotente) — senão duplicaria o evento a cada nova consulta.
@@ -1299,12 +1385,18 @@ async function tratarVinculoNaoConfirmado(
     await liberarVinculoReverso(ctx, reserva)
     if (releituraFalhou) await liberarVinculoReverso(ctx, meId)
 
+    // Achado N-d (rodada 3): as duas frases abaixo terminavam em "confira lá
+    // antes de tentar de novo" e SEMPRE entravam numa sentença que também
+    // termina mandando tentar de novo ("e nada foi pago"/"Tente novamente.")
+    // — duas instruções de "tentar de novo" coladas, a segunda truncando a
+    // primeira. "confira lá" sozinho já é suficiente; a instrução de tentar
+    // de novo fica só na sentença que envolve a frase.
     const fraseNovaSentenca = removeuDoCarrinho
         ? 'O envio reverso foi retirado do carrinho do Melhor Envio'
-        : 'Não consegui confirmar que o envio reverso saiu do carrinho do Melhor Envio — confira lá antes de tentar de novo'
+        : 'Não consegui confirmar que o envio reverso saiu do carrinho do Melhor Envio — confira lá'
     const fraseComPronome = removeuDoCarrinho
         ? 'ele foi retirado do carrinho do Melhor Envio'
-        : 'não consegui confirmar que ele saiu do carrinho do Melhor Envio — confira lá antes de tentar de novo'
+        : 'não consegui confirmar que ele saiu do carrinho do Melhor Envio — confira lá'
 
     if (!releituraFalhou && relida && relida.status !== 'aprovada') {
         return respostaJson(
@@ -1549,10 +1641,14 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
             // com a resposta perdida) e qualquer outro código fora de 2xx são
             // indeterminados — o vínculo fica.
             if (checkoutResponse.status < 400 || checkoutResponse.status >= 500) return respostaReversaIndeterminada(meId, false)
-            await removerDoCarrinho(buscar, baseUrl, headersME, meId)
+            // R3 residual (rodada 3): o resultado do DELETE era descartado
+            // aqui — só o ramo "recusado" (abaixo) capturava. Se
+            // `liberarVinculoReverso` também falhar, `respostaFalhaAoSoltarVinculo`
+            // precisa saber se o carrinho realmente esvaziou.
+            const removeuDoCarrinho = await removerDoCarrinho(buscar, baseUrl, headersME, meId)
             if (!(await liberarVinculoReverso(ctx, meId))) {
                 await degradarParaReservaVencida(ctx, meId)
-                return respostaFalhaAoSoltarVinculo(meId)
+                return respostaFalhaAoSoltarVinculo(meId, `status HTTP ${checkoutResponse.status}`, removeuDoCarrinho)
             }
             return respostaJson({ error: mensagemDoErroDaReversa(checkoutResponse.status, ETAPA_PAGAMENTO_DA_REVERSA, motivo) }, 502)
         }
@@ -1576,7 +1672,7 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
             const removeuDoCarrinho = await removerDoCarrinho(buscar, baseUrl, headersME, meId)
             if (!(await liberarVinculoReverso(ctx, meId))) {
                 await degradarParaReservaVencida(ctx, meId)
-                return respostaFalhaAoSoltarVinculo(meId)
+                return respostaFalhaAoSoltarVinculo(meId, `status "${checkout.status}"`, removeuDoCarrinho)
             }
             const fraseDoCarrinho = removeuDoCarrinho
                 ? 'o envio saiu do carrinho'
@@ -1587,6 +1683,11 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
             )
         }
         pagoConfirmado = true
+        // Achado R5: grava o marcador de pagamento confirmado ANTES de
+        // seguir — se a geração ou a leitura do código falharem daqui pra
+        // frente (respostaCodigoPendente etc.), o vínculo já fica protegido
+        // contra uma liberação manual precoce.
+        await gravarPagamentoConfirmadoReverso(ctx, String(devolucao.status), meId)
 
         // 10. Geração — obrigatória para o código existir.
         const gerarResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/generate`, {

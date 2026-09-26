@@ -193,6 +193,57 @@ Deno.test("RPC nova (achado R1): admin_devolucao_liberar_vinculo_reverso — adm
   );
 });
 
+Deno.test("achado R5 (rodada 3, dinheiro): a RPC recusa soltar um vínculo com pagamento CONFIRMADO — guard checa o marcador de devolucao_eventos ANTES do UPDATE", () => {
+  const ini = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid)",
+  );
+  assert(ini >= 0);
+  const fim = m.indexOf("$$;", ini);
+  const corpo = m.slice(ini, fim + 3);
+  // O texto do LIKE é o CONTRATO com `notaPagamentoConfirmadoReverso`
+  // (index.ts) — mudar um lado sem o outro quebra a proteção em silêncio.
+  assertStringIncludes(
+    corpo,
+    "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND nota LIKE '%confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';%') THEN",
+  );
+  assertStringIncludes(
+    corpo,
+    "O Melhor Envio já confirmou o pagamento deste envio reverso — aguarde o código de postagem chegar ou cancele o envio direto no Melhor Envio antes de liberar o vínculo aqui.",
+  );
+  // A ordem importa: o guard do marcador de pago vem ANTES do UPDATE que
+  // solta o vínculo — senão a checagem não impede nada.
+  const posGuardPago = corpo.indexOf("nota LIKE '%confirmou o pagamento");
+  const posUpdate = corpo.indexOf(
+    "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
+  );
+  assert(posGuardPago >= 0 && posUpdate >= 0);
+  assert(
+    posGuardPago < posUpdate,
+    "o guard do marcador de pago tem que vir ANTES do UPDATE que solta o vínculo",
+  );
+});
+
+Deno.test("achado N-a (rodada 3): a nota do evento distingue RESERVA (prefixo reservando:) de vínculo REAL — nunca chama uma reserva de 'envio reverso (id reservando:...)'", () => {
+  const ini = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid)",
+  );
+  const fim = m.indexOf("$$;", ini);
+  const corpo = m.slice(ini, fim + 3);
+  assertStringIncludes(
+    corpo,
+    "WHEN v_d.me_reverse_id LIKE 'reservando:%' THEN",
+  );
+  assertStringIncludes(
+    corpo,
+    "Uma reserva em andamento desta devolução com o Melhor Envio foi liberada manualmente pela loja.",
+  );
+  // O ramo do vínculo REAL continua com o texto da rodada 2, citando o id.
+  assertStringIncludes(
+    corpo,
+    "'O vínculo desta devolução com um envio reverso no Melhor Envio (id ' || v_d.me_reverse_id || ') foi liberado manualmente pela loja.",
+  );
+});
+
 Deno.test("o rollback restaura o corpo de cancelar_devolucao da 20261175000000 BYTE A BYTE e derruba a RPC nova", () => {
   const original = extrairCancelarDevolucao(norm(migrationBase));
   const restaurado = extrairCancelarDevolucao(r);

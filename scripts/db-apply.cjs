@@ -2222,6 +2222,9 @@ const VERIFICACOES = {
   // (a fase de reserva não pode travar o cliente para sempre — Sandbox do
   // Melhor Envio nunca gera o código da reversa) e a RPC nova dá à loja uma
   // saída para um vínculo preso sem código.
+  // RODADA 3 (achados R5/N-a): a RPC nova também recusa soltar um vínculo com
+  // pagamento CONFIRMADO no Melhor Envio (marcador gravado pela edge — achado
+  // R5, dinheiro) e a nota distingue reserva de vínculo real (achado N-a).
   "20261179000000_cancelar_devolucao_barra_compra_em_voo.sql": [
     {
       funcao: "cancelar_devolucao",
@@ -2236,7 +2239,9 @@ const VERIFICACOES = {
       esperado: [
         "IF NOT public.is_admin() THEN",
         "IF v_d.codigo_postagem IS NOT NULL THEN",
+        "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND nota LIKE '%confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';%') THEN",
         "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
+        "WHEN v_d.me_reverse_id LIKE 'reservando:%' THEN",
       ],
     },
   ],

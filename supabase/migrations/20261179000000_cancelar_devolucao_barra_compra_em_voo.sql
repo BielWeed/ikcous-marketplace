@@ -70,7 +70,42 @@
 --       `||` em Postgres devolve NULL inteiro, e a nota do evento nasce
 --       NULL, sem avisar nada. CORREÇÃO: `COALESCE`.
 --
--- O QUE ESTA MIGRATION FAZ, NA ORDEM (já com a rodada 2 aplicada):
+-- RODADA 3 (revisão independente sobre o resultado da rodada 2 — achado R5,
+-- de DINHEIRO, e N-a, scratchpad rev79/):
+--   R5. `admin_devolucao_liberar_vinculo_reverso` (a "saída" da rodada 2) não
+--       tinha como distinguir um vínculo REAL morto (o caso que ela foi
+--       criada para destravar) de um vínculo que acabou de ser PAGO no
+--       Melhor Envio, mas cujo código de postagem ainda não voltou — o
+--       checkout paga (`pagoConfirmado = true` na edge) ANTES de o código
+--       existir, e até a rodada 2 nada no banco registrava esse fato.
+--       Chamar a RPC nessa janela soltava um vínculo PAGO do mesmo jeito que
+--       um morto: a gravação do código, lá na frente, filtra por
+--       `me_reverse_id = <id solto>` e bate 0 linhas SEM ERRO — a edge
+--       tratava isso como "já gravado por outra chamada" e respondia 200
+--       `ok: true` com o código, sem ele estar salvo em lugar nenhum. O
+--       próximo "Gerar" comprava um SEGUNDO envio reverso (prova de duas
+--       conexões concorrentes, cenário T10 do scratchpad). CORREÇÃO em duas
+--       pontas:
+--         (a) a edge grava um evento 'sistema' — o MARCADOR — assim que
+--             `pagoConfirmado` vira true (`gravarPagamentoConfirmadoReverso`,
+--             index.ts), e esta RPC passa a RECUSAR soltar o vínculo quando
+--             esse marcador existir para o `me_reverse_id` atual (o texto do
+--             `LIKE` é o contrato entre as duas pontas — comentado no corpo
+--             da função);
+--         (b) `concluirComCodigoDePostagem` (index.ts) para de tratar "0
+--             linhas, sem erro" como sinônimo de "já gravado": relê a
+--             devolução, e só segue pelo caminho feliz se o vínculo ainda for
+--             o mesmo id — senão responde erro honesto (nunca `ok: true`)
+--             dizendo que o código já existe, pertence a outro vínculo, e não
+--             deve ser gerado de novo.
+--   N-a. A nota gravada pela RPC também soltava RESERVAS ativas
+--       (`reservando:<epoch>:<uuid>`, ainda dentro dos 10 min) chamando-as de
+--       "envio reverso no Melhor Envio (id reservando:...)" — confuso (não é
+--       um id do Melhor Envio) apesar de SEGURO soltar (a edge relê o status
+--       antes de vincular e desfaz sozinha se a reserva sumiu no meio do
+--       caminho). CORREÇÃO: a nota distingue os dois casos.
+--
+-- O QUE ESTA MIGRATION FAZ, NA ORDEM (já com as rodadas 2 e 3 aplicadas):
 --   1. Redefine `public.cancelar_devolucao(p_id uuid)` (MESMA assinatura da
 --      20261175000000 — grants de lá continuam valendo, Postgres não perde
 --      privilégio num CREATE OR REPLACE que não muda a assinatura): mantém
@@ -102,11 +137,15 @@
 --      fora do escopo desta correção (ver relatório da tarefa).
 --   3. Cria `public.admin_devolucao_liberar_vinculo_reverso(p_id uuid)`
 --      (nova, achado R1): só admin; trava a linha (`FOR UPDATE`); recusa se
---      não houver vínculo (`me_reverse_id IS NULL`) ou se o código já tiver
+--      não houver vínculo (`me_reverse_id IS NULL`), se o código já tiver
 --      saído (nesse caso não há nada para "destravar" — a etiqueta já existe
---      e o caminho é cancelar direto no Melhor Envio); solta
---      `me_reverse_id` (reserva OU id real, tanto faz) e grava um evento
---      'sistema' com texto neutro contando o que foi liberado. Não mexe em
+--      e o caminho é cancelar direto no Melhor Envio) OU (achado R5, rodada
+--      3) se o pagamento já tiver sido CONFIRMADO no Melhor Envio para este
+--      `me_reverse_id` (marcador gravado pela edge) — nesse caso o dinheiro
+--      já saiu e soltar o vínculo abriria a porta para uma segunda compra;
+--      solta `me_reverse_id` (reserva OU id real, tanto faz) e grava um
+--      evento 'sistema' com texto neutro contando o que foi liberado (achado
+--      N-a: o texto distingue reserva de vínculo real). Não mexe em
 --      `status`, `codigo_postagem` nem em nada além do vínculo — é
 --      estritamente a "saída" para um vínculo preso, nada mais.
 --
@@ -159,7 +198,22 @@
 --      e `codigo_postagem` NULL: solta o vínculo (`me_reverse_id` volta a
 --      NULL) e grava o evento 'sistema' correspondente. Chamado por quem não
 --      é admin: `42501`. Sem vínculo: `22023`. Com código já emitido:
---      `22023` (nada para destravar).
+--      `22023` (nada para destravar). Achado R5 (rodada 3): com um evento
+--      'sistema' de pagamento confirmado gravado para o `me_reverse_id`
+--      atual (a edge grava um assim que o checkout paga), a RPC também
+--      recusa com `22023` — nada é solto, o vínculo continua como estava.
+--      Chamar HOJE (antes do código chegar): confira o envio em "Meus
+--      envios" na conta do Melhor Envio da loja ANTES de chamar esta RPC —
+--      se já foi pago, não solte (a RPC recusa sozinha se o marcador
+--      chegou a ser gravado, mas a checagem manual continua sendo a
+--      primeira linha de defesa); se ainda está no carrinho sem pagar,
+--      remova-o de lá primeiro. Autenticado: chame como o PRÓPRIO admin
+--      logado no painel (sessão com JWT de `authenticated` cujo perfil passa
+--      em `is_admin()`) — uma sessão sem JWT (ex.: psql direto como
+--      `postgres`, ou o SQL Editor do Supabase sem `SET request.jwt.claims`)
+--      não autentica como admin nenhum e recebe `42501`; ver o procedimento
+--      no runbook (`docs/runbooks/publicar-painel-cartao-devolucoes.md`,
+--      §7.6).
 --
 -- ROLLBACK: `rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql`
 -- restaura o corpo de `cancelar_devolucao` da 20261175000000 byte a byte
@@ -246,12 +300,38 @@ BEGIN
     RAISE EXCEPTION 'O código de postagem já foi emitido — não há vínculo preso para liberar; cancele o envio reverso direto no Melhor Envio, se for o caso.'
       USING ERRCODE = '22023';
   END IF;
+  -- Achado R5 (rodada 3, dinheiro): o pagamento pode já ter sido CONFIRMADO
+  -- no Melhor Envio sem o código de postagem ter voltado ainda — a janela
+  -- real entre o checkout (paga) e a gravação do código, que é a única prova
+  -- no banco de que foi pago. Sem este guard a RPC soltava esse vínculo do
+  -- mesmo jeito que um morto: a gravação do código lá na frente batia 0
+  -- linhas SEM erro (o `me_reverse_id` não bate mais) e a edge respondia 200
+  -- `ok: true` sem nada salvo — o próximo "Gerar" comprava um SEGUNDO envio
+  -- (T10 do scratchpad da revisão). O marcador é um evento 'sistema' que a
+  -- própria edge grava assim que `pagoConfirmado` vira true
+  -- (`gravarPagamentoConfirmadoReverso`, index.ts) — o texto do LIKE abaixo É
+  -- O CONTRATO com aquela função: mudar um lado sem atualizar o outro quebra
+  -- esta proteção em silêncio.
+  IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND nota LIKE '%confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';%') THEN
+    RAISE EXCEPTION 'O Melhor Envio já confirmou o pagamento deste envio reverso — aguarde o código de postagem chegar ou cancele o envio direto no Melhor Envio antes de liberar o vínculo aqui.'
+      USING ERRCODE = '22023';
+  END IF;
   UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;
   -- Texto neutro pelo mesmo motivo do evento de cancelar_devolucao (achado
-  -- R2): o dono da devolução também pode ler esta nota.
+  -- R2): o dono da devolução também pode ler esta nota. Achado N-a (rodada
+  -- 3): esta RPC também pode soltar uma RESERVA ativa (prefixo
+  -- 'reservando:', ainda não vencida) — seguro (a edge relê o status antes de
+  -- vincular e desfaz sozinha se a reserva sumiu), mas chamar isso de "envio
+  -- reverso (id reservando:...)" confundia quem lesse; a nota agora distingue
+  -- os dois casos.
   PERFORM public.devolucao__registrar_evento(
     p_id, v_d.status, v_d.status, 'sistema',
-    'O vínculo desta devolução com um envio reverso no Melhor Envio (id ' || v_d.me_reverse_id || ') foi liberado manualmente pela loja. Convém conferir se esse envio precisa ser cancelado por lá.'
+    CASE
+      WHEN v_d.me_reverse_id LIKE 'reservando:%' THEN
+        'Uma reserva em andamento desta devolução com o Melhor Envio foi liberada manualmente pela loja.'
+      ELSE
+        'O vínculo desta devolução com um envio reverso no Melhor Envio (id ' || v_d.me_reverse_id || ') foi liberado manualmente pela loja. Convém conferir se esse envio precisa ser cancelado por lá.'
+    END
   );
   RETURN jsonb_build_object('id', p_id, 'me_reverse_id_liberado', v_d.me_reverse_id);
 END;
