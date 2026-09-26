@@ -12,6 +12,7 @@ import {
   lerRespostaEtiquetaReversa,
   lerResultadoConclusao,
   lerResultadoDeStatus,
+  lerResultadoLiberacaoVinculo,
   mensagemDoErro,
   totalAbertas,
 } from "@/lib/devolucao";
@@ -234,7 +235,8 @@ export type AcaoEmVoo =
   | "registrar"
   | "etiqueta"
   | "concluir"
-  | "reprovar";
+  | "reprovar"
+  | "liberar_vinculo";
 
 export interface FichaDaDevolucao {
   detalhe: DevolucaoDetalhe | null;
@@ -252,6 +254,16 @@ export interface FichaDaDevolucao {
   marcarEmTransito: (codigo: string) => Promise<boolean>;
   marcarRecebida: () => Promise<boolean>;
   gerarEtiquetaReversa: () => Promise<boolean>;
+  /**
+   * Achado 1 (rodada 6b, revisão de risco): a "saída" de painel para um
+   * vínculo real preso sem código de postagem —
+   * `admin_devolucao_liberar_vinculo_reverso` (20261179000000). SEMPRE com
+   * `p_conferi_no_melhor_envio: true` — a RPC nega por padrão para qualquer
+   * id real, então quem chama aqui já passou pela confirmação explícita no
+   * componente (o "Conferi em Meus envios..."); a RPC ainda recusa sozinha
+   * se um marcador de pagamento CONFIRMADO existir (sem exceção possível).
+   */
+  liberarVinculoReverso: () => Promise<boolean>;
   concluir: (args: {
     resolucao: ResolucaoDevolucao;
     itens: InspecaoDoItem[];
@@ -523,6 +535,31 @@ export function useDevolucaoAdmin(
     }
   }, [id, carregar]);
 
+  const liberarVinculoReverso = useCallback(async () => {
+    if (!id) return false;
+    // Achado 1 (rodada 6b): SEMPRE `true` — quem chegou até aqui já marcou
+    // a confirmação explícita no componente. A RPC nega por padrão qualquer
+    // id real sem esse parâmetro (achado 1, rodada 5) e continua recusando
+    // sozinha, sem exceção nenhuma, se o marcador de pagamento CONFIRMADO
+    // existir (achado R5, rodada 3) — a mensagem dela chega ao toast como
+    // veio, sem esconder o motivo.
+    const r = await executar(
+      "liberar_vinculo",
+      () =>
+        supabase.rpc("admin_devolucao_liberar_vinculo_reverso", {
+          p_id: id,
+          p_conferi_no_melhor_envio: true,
+        }),
+      lerResultadoLiberacaoVinculo,
+    );
+    if (r) {
+      toast.success(
+        "Vínculo liberado. A devolução pode ser cancelada, ou uma nova etiqueta pode ser gerada.",
+      );
+    }
+    return r !== null;
+  }, [id, executar]);
+
   const concluir = useCallback(
     async ({
       resolucao,
@@ -605,6 +642,7 @@ export function useDevolucaoAdmin(
     marcarEmTransito,
     marcarRecebida,
     gerarEtiquetaReversa,
+    liberarVinculoReverso,
     concluir,
     reprovar,
   };
