@@ -577,19 +577,30 @@ async function removerDoCarrinho(
 //     método etiqueta_reversa). Uma chamada só passa; re-clique/aba paralela
 //     recebe 409 ou o resultado já pronto;
 //   * a reserva vira o id do envio reverso no ME (update condicional à
-//     PRÓPRIA reserva) ANTES do checkout — o checkout só roda com o vínculo
-//     gravado;
+//     PRÓPRIA reserva E a status aprovada + método etiqueta_reversa) ANTES do
+//     checkout — o checkout só roda com o vínculo gravado. Se o cliente
+//     cancelou/informou o envio no meio (0 linhas), o item sai do carrinho,
+//     a reserva é solta e a resposta diz o status novo (R1). Erro no update
+//     relê a linha antes de tirar o item: vínculo gravado segue (R3);
 //   * falha DEFINIDA (carrinho recusado/sem id/estourado, checkout 4xx ou
-//     200 sem `paid`): libera a reserva (e tira o item do carrinho quando ele
-//     existe) — nada foi pago, o lojista tenta de novo;
-//   * checkout 5xx ou exceção pós-vínculo: INDETERMINADO (mesma regra da ida,
-//     revisor A′/B do PR #423) — vínculo MANTIDO, carrinho intacto, resposta
-//     manda conferir a conta do ME. Liberar aqui abriria a compra dupla;
-//   * devolução VINCULADA sem código salvo: nova chamada só CONSULTA o código
-//     (tracking), nunca compra de novo;
+//     2xx com status CONHECIDO de não pago — pending/blocked/canceled):
+//     libera a reserva (e tira o item do carrinho quando ele existe) — nada
+//     foi pago, o lojista tenta de novo;
+//   * checkout 5xx, 2xx sem confirmação legível (vazio, `{message}`, corpo
+//     não-JSON, formato desconhecido — R2) ou exceção pós-vínculo:
+//     INDETERMINADO (mesma regra da ida, revisor A′/B do PR #423) — vínculo
+//     MANTIDO, carrinho intacto, resposta manda conferir a conta do ME.
+//     Liberar aqui abriria a compra dupla;
+//   * devolução VINCULADA sem código salvo: nova chamada só GERA (generate
+//     não cobra; envio não pago volta 4xx) e CONSULTA o código, nunca compra
+//     de novo — e a resposta separa "pago, código ainda não saiu" de "pode
+//     estar pendente de pagamento no carrinho do ME" (R4);
 //   * reserva sem vínculo há mais de 10 min (a função morreu entre a reserva
 //     e o vínculo — nesse trecho nada foi pago) pode ser retomada, com update
 //     condicional à reserva antiga.
+// Nunca `ok: true` mudo: sem a DC-e volta `dce_pendente` + `aviso` (R6); a
+// validade do código (7 dias) conta do evento que registrou a geração, e
+// vencida volta `expirado` + `aviso` para reemitir no ME (R8).
 // Nada de CPF, e-mail, telefone ou token em log: texto do ME passa por
 // `sanitizarDadosPessoaisDoTexto` antes de log e de resposta.
 // ============================================================================
@@ -683,6 +694,54 @@ export function normalizarCodigoDePostagem(data: unknown, meId: string): string 
     return typeof codigo === 'string' && codigo.trim() ? codigo.trim() : null
 }
 
+/**
+ * Status de compra do ME que são "NÃO pago" com certeza (a doc do checkout:
+ * saldo insuficiente volta `pending`/`blocked` com token de pagamento;
+ * `canceled` é compra desfeita). Só estes soltam o vínculo num 200.
+ */
+const STATUS_DE_COMPRA_NAO_PAGA = new Set(['pending', 'blocked', 'canceled'])
+
+export type DesfechoDoCheckoutReverso =
+    | { tipo: 'pago' }
+    | { tipo: 'recusado'; status: string }
+    | { tipo: 'indeterminado' }
+
+/**
+ * Lê o corpo de um checkout 2xx da REVERSA (R2 da revisão de risco). A ida
+ * usa `normalizarCheckout`, que trata QUALQUER 200 sem `paid` como recusa —
+ * aqui isso soltaria o vínculo de um envio que pode ter sido pago (corpo
+ * vazio, `{message}`, formato novo da API, página de gateway com 200).
+ * Regra: `pago` só com `purchase.status === 'paid'` E `purchase.id`;
+ * `recusado` só com um status CONHECIDO de não pago; todo o resto é
+ * `indeterminado` — o vínculo fica e o lojista confere a conta do ME.
+ */
+export function classificarCheckoutDaReversa(dados: unknown): DesfechoDoCheckoutReverso {
+    const raiz: any = dados && typeof dados === 'object' && !Array.isArray(dados) ? dados : null
+    const purchase = raiz?.purchase
+    if (!purchase || typeof purchase !== 'object') return { tipo: 'indeterminado' }
+    const status = typeof purchase.status === 'string' ? purchase.status.trim().toLowerCase() : ''
+    if (status === 'paid') return purchase.id ? { tipo: 'pago' } : { tipo: 'indeterminado' }
+    if (STATUS_DE_COMPRA_NAO_PAGA.has(status)) return { tipo: 'recusado', status }
+    return { tipo: 'indeterminado' }
+}
+
+/**
+ * Validade do código de postagem (R8): 7 dias a partir da GERAÇÃO — e a
+ * geração é o `created_at` do evento `NOTA_CODIGO_DE_POSTAGEM_GERADO` da
+ * devolução. Data ausente ou ilegível devolve null: sem data, a validade
+ * não é inventada.
+ */
+export function validadeDoCodigoDePostagem(
+    geradoEm: unknown,
+    agoraMs: number,
+): { validade_ate: string; expirado: boolean } | null {
+    if (typeof geradoEm !== 'string') return null
+    const inicio = Date.parse(geradoEm)
+    if (!Number.isFinite(inicio)) return null
+    const fim = inicio + VALIDADE_DO_CODIGO_DE_POSTAGEM_MS
+    return { validade_ate: new Date(fim).toISOString(), expirado: agoraMs > fim }
+}
+
 function respostaJson(corpo: Record<string, unknown>, status = 200): Response {
     return new Response(JSON.stringify(corpo), {
         status,
@@ -725,9 +784,20 @@ function motivoDoProvedor(texto: string): string {
     return sanitizarDadosPessoaisDoTexto(bruto.replace(/\s+/g, ' ').slice(0, 2000)).trim().slice(0, 300)
 }
 
-function mensagemDoErroDaReversa(status: number, etapa: string, motivo: string): string {
-    if (status === 401 || status === 429 || status >= 500) return mensagemDoErroHttp(status, etapa)
-    const base = `O Melhor Envio recusou ${etapa} (erro ${status}).`
+/**
+ * Etapa da reversa nas duas regências que as frases pedem: "recusou A
+ * criação" e "erro 502 NA criação" (antes saía "erro 502 em a criação").
+ */
+type EtapaDaReversa = { objeto: string; local: string }
+const ETAPA_CRIACAO_DA_REVERSA: EtapaDaReversa = { objeto: 'a criação do envio reverso', local: 'na criação do envio reverso' }
+const ETAPA_PAGAMENTO_DA_REVERSA: EtapaDaReversa = { objeto: 'o pagamento do envio reverso', local: 'no pagamento do envio reverso' }
+
+function mensagemDoErroDaReversa(status: number, etapa: EtapaDaReversa, motivo: string): string {
+    if (status === 401 || status === 429) return mensagemDoErroHttp(status, etapa.objeto)
+    if (status >= 500) {
+        return `O Melhor Envio respondeu erro ${status} ${etapa.local}. Tente novamente; se persistir, confira o status da sua conta no Melhor Envio.`
+    }
+    const base = `O Melhor Envio recusou ${etapa.objeto} (erro ${status}).`
     return motivo ? `${base} Motivo informado: ${motivo}` : base
 }
 
@@ -750,14 +820,100 @@ async function lerDevolucaoParaReversa(ctx: ContextoReversa): Promise<{ data: an
         .maybeSingle()
 }
 
-function resultadoReversoExistente(devolucao: Record<string, any>): Record<string, unknown> {
+const AVISO_DCE_PENDENTE = 'O código de postagem saiu, mas a DC-e (a declaração que o cliente imprime e leva junto com o pacote) não veio do Melhor Envio agora. Tente de novo aqui em instantes para buscá-la, ou baixe-a em Meus envios, na sua conta do Melhor Envio.'
+
+function avisoDeCodigoVencido(validadeAte: string): string {
+    const dia = new Date(validadeAte).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    return `O código de postagem venceu em ${dia} (vale 7 dias a partir da geração). Reemita o código em Meus envios, na sua conta do Melhor Envio, e passe o código novo ao cliente.`
+}
+
+/**
+ * Corpo de sucesso com o código de postagem. Nunca é um `ok: true` mudo:
+ *   * sem o link da DC-e → `dce_pendente: true` + `aviso` (R6);
+ *   * validade conhecida → `validade_ate` + `expirado`; vencido → `aviso` (R8).
+ */
+function corpoComCodigoDePostagem(dados: {
+    already: boolean
+    codigo: string
+    etiquetaUrl: string | null
+    meId: string
+    validade: { validade_ate: string; expirado: boolean } | null
+}): Record<string, unknown> {
+    const avisos: string[] = []
+    if (!dados.etiquetaUrl) avisos.push(AVISO_DCE_PENDENTE)
+    if (dados.validade?.expirado) avisos.push(avisoDeCodigoVencido(dados.validade.validade_ate))
     return {
         ok: true,
-        already: true,
-        codigo_postagem: devolucao.codigo_postagem,
-        etiqueta_url: devolucao.etiqueta_url ?? null,
-        me_reverse_id: devolucao.me_reverse_id,
+        already: dados.already,
+        codigo_postagem: dados.codigo,
+        etiqueta_url: dados.etiquetaUrl,
+        me_reverse_id: dados.meId,
+        ...(dados.validade ? { validade_ate: dados.validade.validade_ate, expirado: dados.validade.expirado } : {}),
+        ...(dados.etiquetaUrl ? {} : { dce_pendente: true }),
+        ...(avisos.length > 0 ? { aviso: avisos.join(' ') } : {}),
     }
+}
+
+/**
+ * Momento da geração do código (R8): o `created_at` do evento que a
+ * gravação do código registrou (`NOTA_CODIGO_DE_POSTAGEM_GERADO`). Falha
+ * suave: null (sem data, sem validade — nunca uma validade inventada).
+ */
+async function lerMomentoDaGeracaoDoCodigo(ctx: ContextoReversa): Promise<string | null> {
+    try {
+        const { data, error } = await ctx.supabase
+            .from('devolucao_eventos')
+            .select('created_at')
+            .eq('devolucao_id', ctx.devolucaoId)
+            .eq('nota', NOTA_CODIGO_DE_POSTAGEM_GERADO)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        if (error) {
+            console.error('[melhor-envio-etiqueta] reversa: falha ao ler o evento da geração do código:', error?.code ?? error?.message ?? 'erro')
+            return null
+        }
+        return typeof data?.created_at === 'string' ? data.created_at : null
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: exceção ao ler o evento da geração do código:', sanitizarDadosPessoaisDoTexto(String(err)))
+        return null
+    }
+}
+
+/**
+ * Grava o link da DC-e buscado DEPOIS do código (R6) — condicional ao
+ * vínculo e a `etiqueta_url IS NULL`: nunca pisa num link que outra chamada
+ * gravou. Falha suave (o link volta na resposta do mesmo jeito).
+ */
+async function gravarLinkDaDeclaracao(ctx: ContextoReversa, meId: string, link: string): Promise<void> {
+    try {
+        const { error } = await ctx.supabase
+            .from('devolucoes')
+            .update({ etiqueta_url: link })
+            .eq('id', ctx.devolucaoId)
+            .eq('me_reverse_id', meId)
+            .is('etiqueta_url', null)
+        if (error) console.error('[melhor-envio-etiqueta] reversa: falha ao gravar o link da DC-e:', error?.code ?? error?.message ?? 'erro')
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: exceção ao gravar o link da DC-e:', sanitizarDadosPessoaisDoTexto(String(err)))
+    }
+}
+
+/**
+ * Devolução que JÁ tem código salvo (idempotência): devolve o que está no
+ * banco, sem compra nem geração nova. Sem o link da DC-e, tenta de novo
+ * (só leitura no ME) e grava o que vier (R6); a validade sai do evento da
+ * geração (R8).
+ */
+async function responderReversoExistente(ctx: ContextoReversa, devolucao: Record<string, any>): Promise<Response> {
+    const meId = String(devolucao.me_reverse_id)
+    let etiquetaUrl = linkHttps(devolucao.etiqueta_url)
+    if (!etiquetaUrl) {
+        etiquetaUrl = await buscarLinkDaDeclaracao(ctx, meId)
+        if (etiquetaUrl) await gravarLinkDaDeclaracao(ctx, meId, etiquetaUrl)
+    }
+    const validade = validadeDoCodigoDePostagem(await lerMomentoDaGeracaoDoCodigo(ctx), Date.now())
+    return respostaJson(corpoComCodigoDePostagem({ already: true, codigo: devolucao.codigo_postagem, etiquetaUrl, meId, validade }))
 }
 
 function respostaReversaEmAndamento(): Response {
@@ -841,15 +997,79 @@ async function buscarLinkDaDeclaracao(ctx: ContextoReversa, meId: string): Promi
 }
 
 /**
- * Envio reverso vinculado (pago, ou em dúvida) sem código de postagem ainda.
- * Nova chamada é SEGURA: só consulta o código, nunca compra de novo.
+ * Por que o envio reverso vinculado ainda não tem código (vai na resposta
+ * como `situacao`, e cada uma tem a sua frase):
+ *   * `geracao_falhou` — checkout PAGO agora, generate falhou;
+ *   * `pago_sem_codigo` — pago e gerado (checkout pago agora, ou o generate
+ *     aceitou: o ME só gera envio pago), o código ainda não apareceu;
+ *   * `pagamento_pendente_no_me` — o generate RECUSOU (4xx): o envio pode
+ *     estar no carrinho do ME esperando pagamento (R4);
+ *   * `sem_confirmacao` — o generate não respondeu (5xx/timeout): não dá
+ *     para dizer qual dos dois.
  */
-function respostaCodigoPendente(ctx: ContextoReversa, meId: string, geracaoFalhou: boolean): Response {
+type SituacaoSemCodigo = 'geracao_falhou' | 'pago_sem_codigo' | 'pagamento_pendente_no_me' | 'sem_confirmacao'
+
+/**
+ * Envio reverso vinculado sem código de postagem ainda. Nova chamada é
+ * SEGURA: só gera (não cobra) e consulta o código, nunca compra de novo.
+ */
+function respostaCodigoPendente(ctx: ContextoReversa, meId: string, situacao: SituacaoSemCodigo, motivo = ''): Response {
     const sandbox = ctx.isSandbox ? AVISO_SANDBOX_REVERSA : ''
-    const mensagem = geracaoFalhou
-        ? `O envio reverso foi PAGO no Melhor Envio (id ${meId}), mas a geração do código de postagem falhou. Gere o código em Meus envios, na sua conta do Melhor Envio; depois, tentar de novo aqui só busca o código, sem compra nova.${sandbox}`
-        : `O envio reverso já existe no Melhor Envio (id ${meId}), mas o código de postagem dos Correios ainda não apareceu. Confira em Meus envios > Envios postados, coluna Rastreio; tentar de novo aqui só consulta o código, sem compra nova.${sandbox}`
-    return respostaJson({ error: mensagem, resgate: true, pendente: true, me_reverse_id: meId }, 502)
+    const semCompraNova = 'tentar de novo aqui só gera e consulta o código, sem compra nova'
+    let mensagem: string
+    if (situacao === 'geracao_falhou') {
+        mensagem = `O envio reverso foi PAGO no Melhor Envio (id ${meId}), mas a geração do código de postagem falhou. Gere o código em Meus envios, na sua conta do Melhor Envio; depois, ${semCompraNova}.${sandbox}`
+    } else if (situacao === 'pago_sem_codigo') {
+        mensagem = `O envio reverso (id ${meId}) está pago e gerado no Melhor Envio, mas o código de postagem dos Correios ainda não apareceu. Confira em Meus envios > Envios postados, coluna Rastreio; ${semCompraNova}.${sandbox}`
+    } else if (situacao === 'pagamento_pendente_no_me') {
+        const porque = motivo ? ` Motivo informado: ${motivo}` : ''
+        mensagem = `O Melhor Envio não gerou o envio reverso (id ${meId}): ele pode estar PENDENTE DE PAGAMENTO no carrinho da sua conta do Melhor Envio — a compra não foi confirmada aqui.${porque} Confira o carrinho de lá: se o envio estiver lá, pague por lá e depois ${semCompraNova}.${sandbox}`
+    } else {
+        mensagem = `O envio reverso já existe no Melhor Envio (id ${meId}), mas não consegui gerar nem ler o código de postagem agora. Confira em Meus envios, na sua conta do Melhor Envio; ${semCompraNova}.${sandbox}`
+    }
+    return respostaJson({ error: mensagem, resgate: true, pendente: true, situacao, me_reverse_id: meId }, 502)
+}
+
+/**
+ * `POST /shipment/generate` de um envio reverso JÁ vinculado (R4). Gerar
+ * NÃO cobra: envio pago gera (ou já estava gerado); envio NÃO pago volta
+ * 4xx — ou 2xx com a entrada do envio em `status: false`. 401/408/429,
+ * 5xx e exceção não dizem nada sobre o pagamento (`sem_resposta`).
+ */
+async function gerarEnvioReversoVinculado(
+    ctx: ContextoReversa,
+    meId: string,
+): Promise<{ desfecho: 'gerado' | 'recusado' | 'sem_resposta'; motivo: string }> {
+    try {
+        const resposta = await buscarComTempo(ctx.buscar, `${ctx.baseUrl}/api/v2/me/shipment/generate`, {
+            method: 'POST',
+            headers: ctx.headersME,
+            body: JSON.stringify({ orders: [meId] }),
+        })
+        const texto = await resposta.text().catch(() => '')
+        if (resposta.ok) {
+            let dados: unknown = null
+            try {
+                dados = JSON.parse(texto)
+            } catch {
+                dados = null
+            }
+            const entrada: any = new Map(Object.entries(dados && typeof dados === 'object' ? dados : {})).get(meId)
+            if (entrada && typeof entrada === 'object' && entrada.status === false) {
+                const motivo = motivoDoProvedor(JSON.stringify({ message: entrada.message ?? '' }))
+                console.error('[melhor-envio-etiqueta] reversa generate recusado na entrada do envio:', motivo)
+                return { desfecho: 'recusado', motivo }
+            }
+            return { desfecho: 'gerado', motivo: '' }
+        }
+        const motivo = motivoDoProvedor(texto)
+        console.error('[melhor-envio-etiqueta] reversa generate HTTP', resposta.status, motivo)
+        const recusa = resposta.status >= 400 && resposta.status < 500 && ![401, 408, 429].includes(resposta.status)
+        return recusa ? { desfecho: 'recusado', motivo } : { desfecho: 'sem_resposta', motivo: '' }
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: generate do envio vinculado falhou (suave):', sanitizarDadosPessoaisDoTexto(String(err)))
+        return { desfecho: 'sem_resposta', motivo: '' }
+    }
 }
 
 /**
@@ -884,7 +1104,8 @@ async function gravarEventoDaDevolucao(ctx: ContextoReversa, status: string): Pr
 /**
  * Grava código + link na devolução (update condicional ao vínculo e a
  * código ainda vazio — duas chamadas simultâneas não duplicam o evento) e
- * registra o evento na primeira gravação.
+ * registra o evento na primeira gravação. A validade (R8) conta do evento:
+ * gravado agora, conta de agora; senão, do evento que já está no banco.
  */
 async function concluirComCodigoDePostagem(
     ctx: ContextoReversa,
@@ -892,7 +1113,7 @@ async function concluirComCodigoDePostagem(
     meId: string,
     codigo: string,
     etiquetaUrl: string | null,
-    extras: { already: boolean; validadeAte?: string },
+    extras: { already: boolean },
 ): Promise<Response> {
     const { data: gravadas, error } = await ctx.supabase
         .from('devolucoes')
@@ -913,17 +1134,70 @@ async function concluirComCodigoDePostagem(
             500,
         )
     }
-    if (Array.isArray(gravadas) && gravadas.length === 1) {
-        await gravarEventoDaDevolucao(ctx, String(devolucao.status))
+    const gravouAgora = Array.isArray(gravadas) && gravadas.length === 1
+    if (gravouAgora) await gravarEventoDaDevolucao(ctx, String(devolucao.status))
+    const geradoEm = gravouAgora ? new Date().toISOString() : await lerMomentoDaGeracaoDoCodigo(ctx)
+    const validade = validadeDoCodigoDePostagem(geradoEm, Date.now())
+    return respostaJson(corpoComCodigoDePostagem({ already: extras.already, codigo, etiquetaUrl, meId, validade }))
+}
+
+/**
+ * O vínculo (reserva → id do ME) NÃO voltou confirmado: 0 linhas (a
+ * devolução mudou entre a reserva e aqui — R1) ou erro do banco, que PODE ter
+ * gravado mesmo assim (R3). Relê a linha ANTES de mexer no carrinho:
+ *   * `me_reverse_id` já é o id do ME → o vínculo entrou: devolve null e o
+ *     chamador segue para o checkout (tirar o item do carrinho aqui deixaria
+ *     a devolução presa a um envio apagado);
+ *   * qualquer outra coisa → o checkout NUNCA roda: tira o item do carrinho
+ *     do ME e solta a reserva. Se nem a releitura respondeu, solta TAMBÉM o
+ *     id do ME (cada liberação condicional ao próprio valor) — o item já
+ *     saiu do carrinho e nenhum checkout rodou para ele: nada foi pago.
+ */
+async function tratarVinculoNaoConfirmado(
+    ctx: ContextoReversa,
+    reserva: string,
+    meId: string,
+    vinculoError: any,
+): Promise<Response | null> {
+    if (vinculoError) console.error('[melhor-envio-etiqueta] reversa: falha ao vincular o envio:', vinculoError?.code ?? vinculoError?.message ?? 'erro')
+    let relida: any = null
+    let releituraFalhou = false
+    try {
+        const { data, error } = await lerDevolucaoParaReversa(ctx)
+        if (error) {
+            releituraFalhou = true
+            console.error('[melhor-envio-etiqueta] reversa: falha ao reler a devolução depois do vínculo:', error?.code ?? error?.message ?? 'erro')
+        }
+        relida = data ?? null
+    } catch (err) {
+        releituraFalhou = true
+        console.error('[melhor-envio-etiqueta] reversa: exceção ao reler a devolução depois do vínculo:', sanitizarDadosPessoaisDoTexto(String(err)))
     }
-    return respostaJson({
-        ok: true,
-        already: extras.already,
-        codigo_postagem: codigo,
-        etiqueta_url: etiquetaUrl,
-        me_reverse_id: meId,
-        ...(extras.validadeAte ? { validade_ate: extras.validadeAte } : {}),
-    })
+    if (!releituraFalhou && relida?.me_reverse_id === meId) {
+        console.error('[melhor-envio-etiqueta] reversa: o vínculo respondeu erro mas foi gravado — segue para o checkout')
+        return null
+    }
+
+    await removerDoCarrinho(ctx.buscar, ctx.baseUrl, ctx.headersME, meId)
+    await liberarVinculoReverso(ctx, reserva)
+    if (releituraFalhou) await liberarVinculoReverso(ctx, meId)
+
+    if (!releituraFalhou && relida && relida.status !== 'aprovada') {
+        return respostaJson(
+            { error: `A devolução mudou de status enquanto o código de postagem era gerado (status atual: "${String(relida.status)}" — por exemplo, o cliente cancelou ou informou o envio). O envio reverso foi retirado do carrinho do Melhor Envio e nada foi pago.` },
+            409,
+        )
+    }
+    if (!releituraFalhou && relida && relida.metodo_retorno !== 'etiqueta_reversa') {
+        return respostaJson(
+            { error: `O método de devolução mudou enquanto o código de postagem era gerado (agora: "${String(relida.metodo_retorno)}"). O envio reverso foi retirado do carrinho do Melhor Envio e nada foi pago.` },
+            409,
+        )
+    }
+    return respostaJson(
+        { error: 'Não consegui registrar o envio reverso na devolução — ele foi retirado do carrinho do Melhor Envio e nada foi pago. Tente novamente.' },
+        500,
+    )
 }
 
 async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
@@ -944,13 +1218,23 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
         )
     }
 
-    // 2. IDEMPOTÊNCIA: código pronto volta como está; vínculo sem código só
-    //    consulta; reserva de outra chamada (recente) espera.
+    // 2. IDEMPOTÊNCIA: código pronto volta como está (R6: sem a DC-e, busca
+    //    de novo; R8: com a validade do evento); vínculo sem código só GERA
+    //    (não cobra) e consulta; reserva de outra chamada (recente) espera.
     const vinculo = classificarVinculoReverso(devolucao.me_reverse_id, Date.now())
     if (vinculo.tipo === 'vinculado') {
-        if (devolucao.codigo_postagem) return respostaJson(resultadoReversoExistente(devolucao))
+        if (devolucao.codigo_postagem) return await responderReversoExistente(ctx, devolucao)
+        // R4: generate ANTES do tracking — pago e ainda não gerado, o código
+        // só nasce assim; e a resposta dele separa "pago, código ainda não
+        // saiu" de "pode estar pendente de pagamento no carrinho do ME".
+        const geracao = await gerarEnvioReversoVinculado(ctx, vinculo.meId)
         const codigo = await lerCodigoDePostagem(ctx, vinculo.meId)
-        if (!codigo) return respostaCodigoPendente(ctx, vinculo.meId, false)
+        if (!codigo) {
+            const situacao: SituacaoSemCodigo = geracao.desfecho === 'gerado'
+                ? 'pago_sem_codigo'
+                : geracao.desfecho === 'recusado' ? 'pagamento_pendente_no_me' : 'sem_confirmacao'
+            return respostaCodigoPendente(ctx, vinculo.meId, situacao, geracao.motivo)
+        }
         const etiquetaUrl = linkHttps(devolucao.etiqueta_url) ?? await buscarLinkDaDeclaracao(ctx, vinculo.meId)
         return await concluirComCodigoDePostagem(ctx, devolucao, vinculo.meId, codigo, etiquetaUrl, { already: true })
     }
@@ -1015,7 +1299,13 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
             .from('produtos')
             .select('id, nome, preco_venda, peso_kg, largura_cm, altura_cm, comprimento_cm')
             .in('id', productIds)
-        if (produtosError) console.error('[melhor-envio-etiqueta] reversa: falha ao ler medidas (segue com fallbacks):', produtosError?.code ?? 'erro')
+        // R5: falha de LEITURA não é produto sem medição — seguir com os
+        // fallbacks (0.3 kg / 15 cm) compraria o envio com medida inventada.
+        // Para ANTES da reserva; nada foi chamado no ME.
+        if (produtosError) {
+            console.error('[melhor-envio-etiqueta] reversa: falha ao ler as medidas dos produtos:', produtosError?.code ?? produtosError?.message ?? 'erro')
+            return respostaJson({ error: 'Não consegui ler as medidas dos produtos da devolução agora (nada foi reservado nem pago). Tente de novo em instantes.' }, 500)
+        }
         produtosDb = produtos || []
     }
     const pacote = montarPacoteDaDevolucao(itensDevolvidos, produtosDb)
@@ -1043,7 +1333,7 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
         // Perdeu a corrida (ou a devolução mudou): relê e responde o estado real.
         const { data: relida } = await lerDevolucaoParaReversa(ctx)
         if (relida?.codigo_postagem && classificarVinculoReverso(relida.me_reverse_id, Date.now()).tipo === 'vinculado') {
-            return respostaJson(resultadoReversoExistente(relida))
+            return await responderReversoExistente(ctx, relida)
         }
         if (relida && relida.status !== 'aprovada') {
             return respostaJson(
@@ -1080,10 +1370,12 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
         )
     }
     if (!carrinho.ok) {
-        const motivo = motivoDoProvedor(await carrinho.text())
+        // R7: o corpo pode quebrar na leitura — o motivo vira '' e a reserva
+        // é solta do mesmo jeito (uma exceção aqui subia com a reserva presa).
+        const motivo = motivoDoProvedor(await carrinho.text().catch(() => ''))
         console.error('[melhor-envio-etiqueta] reversa cart HTTP', carrinho.status, motivo)
         await liberarVinculoReverso(ctx, reserva)
-        return respostaJson({ error: mensagemDoErroDaReversa(carrinho.status, 'a criação do envio reverso', motivo) }, 502)
+        return respostaJson({ error: mensagemDoErroDaReversa(carrinho.status, ETAPA_CRIACAO_DA_REVERSA, motivo) }, 502)
     }
     let dadosDoCarrinho: any = null
     try {
@@ -1099,20 +1391,22 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
     }
 
     // 8. VÍNCULO: a reserva vira o id do envio reverso — ANTES do checkout.
+    //    Condicional à PRÓPRIA reserva E ao estado da devolução (R1): entre a
+    //    reserva e aqui o cliente pode cancelar (→ cancelada) ou informar o
+    //    envio (→ em_transito); aí nada é vinculado e o checkout nunca roda.
     const { data: vinculadas, error: vinculoError } = await supabase
         .from('devolucoes')
         .update({ me_reverse_id: meId })
         .eq('id', devolucaoId)
         .eq('me_reverse_id', reserva)
+        .eq('status', 'aprovada')
+        .eq('metodo_retorno', 'etiqueta_reversa')
         .select('id')
     if (vinculoError || !Array.isArray(vinculadas) || vinculadas.length !== 1) {
-        if (vinculoError) console.error('[melhor-envio-etiqueta] reversa: falha ao vincular o envio:', vinculoError?.code ?? vinculoError?.message ?? 'erro')
-        await removerDoCarrinho(buscar, baseUrl, headersME, meId)
-        await liberarVinculoReverso(ctx, reserva)
-        return respostaJson(
-            { error: 'Não consegui registrar o envio reverso na devolução — ele foi retirado do carrinho do Melhor Envio e nada foi pago. Tente novamente.' },
-            500,
-        )
+        const recusa = await tratarVinculoNaoConfirmado(ctx, reserva, meId, vinculoError)
+        if (recusa) return recusa
+        // null: a releitura mostrou o vínculo GRAVADO apesar do erro (R3) —
+        // segue para o checkout com o vínculo no banco, como no caminho normal.
     }
 
     // 9–12 sob guarda própria: daqui em diante a ambiguidade de dinheiro é real.
@@ -1125,18 +1419,37 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
             body: JSON.stringify({ orders: [meId] }),
         })
         if (!checkoutResponse.ok) {
-            const motivo = motivoDoProvedor(await checkoutResponse.text())
+            const motivo = motivoDoProvedor(await checkoutResponse.text().catch(() => ''))
             console.error('[melhor-envio-etiqueta] reversa checkout HTTP', checkoutResponse.status, motivo)
-            if (checkoutResponse.status >= 500) return respostaReversaIndeterminada(meId, false)
+            // R2: só 4xx é recusa DEFINIDA. 5xx (o gateway pode ter debitado
+            // com a resposta perdida) e qualquer outro código fora de 2xx são
+            // indeterminados — o vínculo fica.
+            if (checkoutResponse.status < 400 || checkoutResponse.status >= 500) return respostaReversaIndeterminada(meId, false)
             await removerDoCarrinho(buscar, baseUrl, headersME, meId)
             await liberarVinculoReverso(ctx, meId)
-            return respostaJson({ error: mensagemDoErroDaReversa(checkoutResponse.status, 'o pagamento do envio reverso', motivo) }, 502)
+            return respostaJson({ error: mensagemDoErroDaReversa(checkoutResponse.status, ETAPA_PAGAMENTO_DA_REVERSA, motivo) }, 502)
         }
-        const checkout = normalizarCheckout(await checkoutResponse.json())
-        if (!checkout.pago) {
+        // R2: 2xx só solta o vínculo com um status CONHECIDO de não pago; corpo
+        // ilegível, vazio, `{message}` ou formato desconhecido é INDETERMINADO.
+        const textoDoCheckout = await checkoutResponse.text()
+        let dadosDoCheckout: unknown = null
+        try {
+            dadosDoCheckout = JSON.parse(textoDoCheckout)
+        } catch {
+            dadosDoCheckout = null
+        }
+        const checkout = classificarCheckoutDaReversa(dadosDoCheckout)
+        if (checkout.tipo === 'indeterminado') {
+            console.error('[melhor-envio-etiqueta] reversa checkout 2xx sem confirmação legível:', checkoutResponse.status, motivoDoProvedor(textoDoCheckout) || '(sem mensagem)')
+            return respostaReversaIndeterminada(meId, false)
+        }
+        if (checkout.tipo === 'recusado') {
             await removerDoCarrinho(buscar, baseUrl, headersME, meId)
             await liberarVinculoReverso(ctx, meId)
-            return respostaJson({ error: checkout.erro || 'O Melhor Envio não confirmou a compra do envio reverso.' }, 502)
+            return respostaJson(
+                { error: `O Melhor Envio não fechou a compra do envio reverso (status "${checkout.status}") — nada foi pago, o envio saiu do carrinho e o código de postagem não foi gerado. Confira o saldo da sua conta no Melhor Envio e tente de novo.` },
+                502,
+            )
         }
         pagoConfirmado = true
 
@@ -1147,20 +1460,17 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
             body: JSON.stringify({ orders: [meId] }),
         })
         if (!gerarResponse.ok) {
-            console.error('[melhor-envio-etiqueta] reversa generate HTTP', gerarResponse.status, motivoDoProvedor(await gerarResponse.text()))
-            return respostaCodigoPendente(ctx, meId, true)
+            console.error('[melhor-envio-etiqueta] reversa generate HTTP', gerarResponse.status, motivoDoProvedor(await gerarResponse.text().catch(() => '')))
+            return respostaCodigoPendente(ctx, meId, 'geracao_falhou')
         }
 
         // 11. Código de postagem + DC-e.
         const codigo = await lerCodigoDePostagem(ctx, meId)
-        if (!codigo) return respostaCodigoPendente(ctx, meId, false)
+        if (!codigo) return respostaCodigoPendente(ctx, meId, 'pago_sem_codigo')
         const etiquetaUrl = await buscarLinkDaDeclaracao(ctx, meId)
 
-        // 12. Grava e registra.
-        return await concluirComCodigoDePostagem(ctx, devolucao, meId, codigo, etiquetaUrl, {
-            already: false,
-            validadeAte: new Date(Date.now() + VALIDADE_DO_CODIGO_DE_POSTAGEM_MS).toISOString(),
-        })
+        // 12. Grava e registra (a validade sai do evento gravado agora — R8).
+        return await concluirComCodigoDePostagem(ctx, devolucao, meId, codigo, etiquetaUrl, { already: false })
     } catch (err) {
         console.error('[melhor-envio-etiqueta] reversa: falha indeterminada após o vínculo:', sanitizarDadosPessoaisDoTexto(String(err)))
         return respostaReversaIndeterminada(meId, pagoConfirmado)

@@ -58,6 +58,8 @@ const {
     erroDeServicoParaEtiqueta,
     normalizarServicoEscolhidoPeloLojista,
     classificarVinculoReverso,
+    classificarCheckoutDaReversa,
+    validadeDoCodigoDePostagem,
     montarPacoteDaDevolucao,
     normalizarCodigoDePostagem,
     servicoDaDevolucaoReversa,
@@ -1720,6 +1722,41 @@ Deno.test("reversa - código de postagem é o `tracking` do envio; o `melhorenvi
     assertEquals(normalizarCodigoDePostagem(null, id), null)
 })
 
+Deno.test("reversa - R2: checkout só é recusa DEFINIDA com status CONHECIDO de não pago; qualquer outro corpo de 200 é INDETERMINADO", () => {
+    assertEquals(classificarCheckoutDaReversa({ purchase: { id: 'pur-1', status: 'paid' } }), { tipo: 'pago' })
+    for (const status of ['pending', 'blocked', 'canceled', 'PENDING']) {
+        assertEquals(classificarCheckoutDaReversa({ purchase: { id: 'pur-1', status } }), { tipo: 'recusado', status: status.toLowerCase() })
+    }
+    // ANTES: tudo isto virava "não pagou" e soltava o vínculo — mas um 200 sem
+    // confirmação legível não é o ME dizendo que a compra não fechou.
+    const ilegiveis = [
+        null,
+        undefined,
+        '<html>ok</html>',
+        [],
+        {},
+        { message: 'Your request is being processed.' },
+        { purchase: {} },
+        { purchase: null },
+        { purchase: { id: 'pur-1', status: 'processing' } },
+        { purchase: { status: 'paid' } }, // pago sem id: formato estranho, não é recusa
+        { data: [{ id: 'pur-1', status: 'paid' }] },
+    ]
+    for (const corpo of ilegiveis) {
+        assertEquals(classificarCheckoutDaReversa(corpo), { tipo: 'indeterminado' })
+    }
+})
+
+Deno.test("reversa - R8: validade do código = data do evento da geração + 7 dias; expirado depois disso; data ilegível não inventa validade", () => {
+    const geradoEm = '2026-09-01T12:00:00.000Z'
+    const antesDeVencer = Date.parse('2026-09-08T11:59:59.000Z')
+    const depoisDeVencer = Date.parse('2026-09-08T12:00:01.000Z')
+    assertEquals(validadeDoCodigoDePostagem(geradoEm, antesDeVencer), { validade_ate: '2026-09-08T12:00:00.000Z', expirado: false })
+    assertEquals(validadeDoCodigoDePostagem(geradoEm, depoisDeVencer), { validade_ate: '2026-09-08T12:00:00.000Z', expirado: true })
+    assertEquals(validadeDoCodigoDePostagem(null, depoisDeVencer), null)
+    assertEquals(validadeDoCodigoDePostagem('não é data', depoisDeVencer), null)
+})
+
 // ── dublês do handler ──────────────────────────────────────────────────────
 
 const DEVOLUCAO_ID = '11111111-2222-4333-8444-555555555555'
@@ -1766,9 +1803,17 @@ const PRODUTOS_DEVOLVIDOS = [
 /**
  * Supabase falso da devolução: mesma cadeia do `clienteFalso`, com assentos
  * para cada escrita em `devolucoes` (reserva, vínculo com o id do ME,
- * liberação, gravação do código) e para os eventos da devolução.
- * `devolucaoRelida` é o que a SEGUNDA leitura da devolução devolve (a
- * releitura depois de uma reserva perdida).
+ * liberação, gravação do código, gravação só do link da DC-e) e para os
+ * eventos da devolução.
+ *
+ * A LINHA da devolução tem estado (`linha`): a reserva grava o token, o
+ * vínculo só pega se TODOS os filtros `eq` casam com a linha naquele
+ * instante (é o que o Postgres faz com um UPDATE ... WHERE), a liberação
+ * zera quando o filtro casa. É isso que permite simular o cliente
+ * cancelando ENTRE a reserva e o vínculo (`mudancaAposReserva`).
+ *
+ * `devolucaoRelida` (legado) força o que a SEGUNDA leitura devolve;
+ * sem ela, as releituras devolvem a linha no estado atual.
  */
 function clienteFalsoDevolucao(cfg: {
     devolucao?: any
@@ -1778,6 +1823,16 @@ function clienteFalsoDevolucao(cfg: {
     credentials?: any
     linhasReservadas?: any[]
     linhasVinculadas?: any[]
+    /** R1: o que muda na linha logo DEPOIS da reserva (ex.: o cliente cancela). */
+    mudancaAposReserva?: Record<string, any>
+    /** R3: o UPDATE do vínculo responde erro — e, em 'gravou', a escrita entrou mesmo assim. */
+    erroNoVinculo?: 'gravou' | 'nao-gravou'
+    /** R3: toda leitura da devolução depois da primeira falha. */
+    erroNaReleitura?: boolean
+    /** R5: a leitura das medidas dos produtos falha. */
+    erroEmProdutos?: boolean
+    /** R8: a linha do evento que registrou a geração do código (created_at). */
+    eventoDoCodigo?: any
 } = {}) {
     const registro = {
         operacoes: [] as string[],
@@ -1786,9 +1841,16 @@ function clienteFalsoDevolucao(cfg: {
         vinculos: [] as Array<{ valores: any; filtros: any[] }>,
         liberacoes: [] as Array<{ valores: any; filtros: any[] }>,
         gravacoesDeCodigo: [] as Array<{ valores: any; filtros: any[] }>,
+        gravacoesDeLink: [] as Array<{ valores: any; filtros: any[] }>,
+        leiturasDeEvento: [] as Array<{ filtros: any[]; ordem: any }>,
         eventos: [] as any[],
         escritasNoPedido: 0,
     }
+    const inicial = cfg.devolucao === undefined ? DEVOLUCAO_APROVADA : cfg.devolucao
+    const linha: any = inicial ? { ...inicial } : null
+    const valorNaLinha = (coluna: string) => new Map(Object.entries(linha ?? {})).get(coluna)
+    const filtrosEqCasam = (filtros: any[]) =>
+        linha !== null && filtros.filter((f: any) => f.metodo === 'eq').every((f: any) => valorNaLinha(f.coluna) === f.valor)
     const resolver = (no: any): Promise<any> => {
         registro.operacoes.push(`${no.acao ?? 'select'} ${no.tabela}`)
         const copia = { valores: no.valores, filtros: [...no.filtros] }
@@ -1796,11 +1858,18 @@ function clienteFalsoDevolucao(cfg: {
             return Promise.resolve({ data: { credentials: cfg.credentials ?? { token: 'token-me-de-teste', sandbox: true } }, error: null })
         }
         if (no.tabela === 'devolucao_eventos') {
-            registro.eventos.push(no.valores)
-            return Promise.resolve({ data: null, error: null })
+            if (no.acao === 'insert') {
+                registro.eventos.push(no.valores)
+                return Promise.resolve({ data: null, error: null })
+            }
+            registro.leiturasDeEvento.push({ filtros: [...no.filtros], ordem: no.ordem ?? null })
+            return Promise.resolve({ data: cfg.eventoDoCodigo ?? null, error: null })
         }
         if (no.tabela === 'devolucao_itens') return Promise.resolve({ data: cfg.itens ?? ITENS_DEVOLVIDOS, error: null })
-        if (no.tabela === 'produtos') return Promise.resolve({ data: PRODUTOS_DEVOLVIDOS, error: null })
+        if (no.tabela === 'produtos') {
+            if (cfg.erroEmProdutos) return Promise.resolve({ data: null, error: { code: '57014', message: 'statement timeout' } })
+            return Promise.resolve({ data: PRODUTOS_DEVOLVIDOS, error: null })
+        }
         if (no.tabela === 'marketplace_orders') {
             if (no.acao) registro.escritasNoPedido++
             return Promise.resolve({ data: cfg.pedido === undefined ? PEDIDO_DA_DEVOLUCAO : cfg.pedido, error: null })
@@ -1809,23 +1878,46 @@ function clienteFalsoDevolucao(cfg: {
             const valores = no.valores || {}
             if ('codigo_postagem' in valores) {
                 registro.gravacoesDeCodigo.push(copia)
+                if (linha) Object.assign(linha, valores)
+                return Promise.resolve({ data: [{ id: DEVOLUCAO_ID }], error: null })
+            }
+            if ('etiqueta_url' in valores) {
+                registro.gravacoesDeLink.push(copia)
+                if (linha) Object.assign(linha, valores)
                 return Promise.resolve({ data: [{ id: DEVOLUCAO_ID }], error: null })
             }
             if (valores.me_reverse_id === null) {
                 registro.liberacoes.push(copia)
+                if (filtrosEqCasam(no.filtros)) linha.me_reverse_id = null
                 return Promise.resolve({ data: null, error: null })
             }
             if (String(valores.me_reverse_id).startsWith('reservando:')) {
                 registro.reservas.push(copia)
-                return Promise.resolve({ data: cfg.linhasReservadas ?? [{ id: DEVOLUCAO_ID }], error: null })
+                const reservadas = cfg.linhasReservadas ?? [{ id: DEVOLUCAO_ID }]
+                if (linha && reservadas.length === 1) {
+                    linha.me_reverse_id = valores.me_reverse_id
+                    Object.assign(linha, cfg.mudancaAposReserva ?? {})
+                }
+                return Promise.resolve({ data: reservadas, error: null })
             }
             registro.vinculos.push(copia)
-            return Promise.resolve({ data: cfg.linhasVinculadas ?? [{ id: DEVOLUCAO_ID }], error: null })
+            if (cfg.linhasVinculadas !== undefined) return Promise.resolve({ data: cfg.linhasVinculadas, error: null })
+            if (cfg.erroNoVinculo) {
+                if (cfg.erroNoVinculo === 'gravou' && linha) linha.me_reverse_id = valores.me_reverse_id
+                return Promise.resolve({ data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } })
+            }
+            if (!filtrosEqCasam(no.filtros)) return Promise.resolve({ data: [], error: null })
+            linha.me_reverse_id = valores.me_reverse_id
+            return Promise.resolve({ data: [{ id: DEVOLUCAO_ID }], error: null })
         }
         if (no.tabela === 'devolucoes') {
             registro.leiturasDevolucao++
-            const primeira = cfg.devolucao === undefined ? DEVOLUCAO_APROVADA : cfg.devolucao
-            const dado = registro.leiturasDevolucao > 1 && cfg.devolucaoRelida !== undefined ? cfg.devolucaoRelida : primeira
+            if (registro.leiturasDevolucao > 1 && cfg.erroNaReleitura) {
+                return Promise.resolve({ data: null, error: { code: '08006', message: 'connection failure' } })
+            }
+            const dado = registro.leiturasDevolucao > 1 && cfg.devolucaoRelida !== undefined
+                ? cfg.devolucaoRelida
+                : (linha ? { ...linha } : null)
             return Promise.resolve({ data: dado, error: null })
         }
         return Promise.resolve({ data: null, error: null })
@@ -1840,6 +1932,8 @@ function clienteFalsoDevolucao(cfg: {
                 eq(coluna: string, valor: any) { no.filtros.push({ metodo: 'eq', coluna, valor }); return api },
                 is(coluna: string, valor: any) { no.filtros.push({ metodo: 'is', coluna, valor }); return api },
                 in(coluna: string, valores: any) { no.filtros.push({ metodo: 'in', coluna, valores }); return api },
+                order(coluna: string, opcoes?: any) { no.ordem = { coluna, ...(opcoes ?? {}) }; return api },
+                limit(_n: number) { return api },
                 maybeSingle() { return api },
                 single() { return api },
                 then(resolveu: any, rejeitou: any) { return resolver(no).then(resolveu, rejeitou) },
@@ -1856,10 +1950,14 @@ function clienteFalsoDevolucao(cfg: {
  * checkout chamado? item removido?).
  */
 function buscarMeReversoFalso(op: {
-    reverso?: 'ok' | 'erro-422' | 'excecao' | 'sem-id'
-    checkout?: 'pago' | 'pendente' | 'erro-5xx' | 'excecao'
-    gerar?: 'ok' | 'erro'
+    reverso?: 'ok' | 'erro-422' | 'excecao' | 'sem-id' | 'erro-5xx' | 'erro-corpo-ilegivel'
+    checkout?:
+        | 'pago' | 'pendente' | 'bloqueado' | 'cancelado' | 'erro-4xx' | 'erro-5xx' | 'excecao'
+        | '200-vazio' | '200-message' | '200-nao-json' | '200-outro-formato' | '200-pago-sem-id'
+    gerar?: 'ok' | 'erro' | 'erro-4xx'
     codigo?: string | null
+    /** R6: 'falha' derruba a DACE e o print público (a DC-e não vem). */
+    dce?: 'ok' | 'falha'
 } = {}) {
     const registro = {
         chamadas: [] as string[],
@@ -1867,6 +1965,7 @@ function buscarMeReversoFalso(op: {
         corposOrders: [] as any[],
         remocoes: 0,
         checkouts: 0,
+        geracoes: 0,
     }
     const json = (corpo: unknown, status = 200) =>
         new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json' } })
@@ -1877,6 +1976,12 @@ function buscarMeReversoFalso(op: {
         if (url.endsWith('/api/v2/me/cart/reverse') && metodo === 'POST') {
             registro.corpoReverso = JSON.parse(String(init?.body || '{}'))
             if (op.reverso === 'excecao') throw new Error('AbortError: tempo esgotado simulado')
+            if (op.reverso === 'erro-5xx') return new Response('<html>502 Bad Gateway</html>', { status: 502 })
+            if (op.reverso === 'erro-corpo-ilegivel') {
+                // a resposta chega (422), mas o corpo quebra no meio da leitura
+                const corpoQuebrado = new ReadableStream({ start(controle) { controle.error(new Error('conexão cortada lendo o corpo')) } })
+                return new Response(corpoQuebrado, { status: 422 })
+            }
             if (op.reverso === 'erro-422') {
                 // o ME ecoa o que recebeu — e-mail e celular de quem devolve
                 return json({
@@ -1900,19 +2005,33 @@ function buscarMeReversoFalso(op: {
             registro.corposOrders.push(JSON.parse(String(init?.body || '{}')))
             if (op.checkout === 'excecao') throw new Error('AbortError: tempo esgotado simulado')
             if (op.checkout === 'erro-5xx') return json({ error: 'Bad gateway' }, 502)
-            return json({ purchase: { id: 'pur-rev-1', status: op.checkout === 'pendente' ? 'pending' : 'paid' } })
+            if (op.checkout === 'erro-4xx') return json({ message: 'Saldo insuficiente para a compra.' }, 422)
+            if (op.checkout === '200-vazio') return json({})
+            if (op.checkout === '200-message') return json({ message: 'Your request is being processed.' })
+            if (op.checkout === '200-nao-json') return new Response('<html>ok</html>', { status: 200 })
+            if (op.checkout === '200-outro-formato') return json({ data: [{ id: 'pur-rev-1', status: 'paid' }] })
+            if (op.checkout === '200-pago-sem-id') return json({ purchase: { status: 'paid' } })
+            const statusDaCompra = new Map([['pendente', 'pending'], ['bloqueado', 'blocked'], ['cancelado', 'canceled']]).get(String(op.checkout)) ?? 'paid'
+            return json({ purchase: { id: 'pur-rev-1', status: statusDaCompra } })
         }
         if (url.endsWith('/api/v2/me/shipment/generate')) {
+            registro.geracoes++
             registro.corposOrders.push(JSON.parse(String(init?.body || '{}')))
             if (op.gerar === 'erro') return json({ message: 'Falha ao gerar' }, 500)
+            // envio não pago: o ME recusa gerar (e gerar nunca cobra)
+            if (op.gerar === 'erro-4xx') return json({ message: 'Envio não está pago.' }, 422)
             return json({ [ME_REVERSO]: { status: true, message: 'Envio gerado com sucesso' } })
         }
         if (url.endsWith('/api/v2/me/shipment/tracking')) {
             const codigo = op.codigo === undefined ? CODIGO_POSTAGEM : op.codigo
             return json({ [ME_REVERSO]: { id: ME_REVERSO, status: 'generated', tracking: codigo, melhorenvio_tracking: 'ME26INTERNOBR' } })
         }
-        if (url.includes('/api/v2/me/imprimir/dace/pdf/')) return json({ pdf: LINK_DCE })
-        if (url.endsWith('/api/v2/me/shipment/print')) return json({ url: 'https://sandbox.melhorenvio.com.br/imprimir/x' })
+        if (url.includes('/api/v2/me/imprimir/dace/pdf/')) {
+            return op.dce === 'falha' ? json({ message: 'DC-e ainda em processamento' }, 500) : json({ pdf: LINK_DCE })
+        }
+        if (url.endsWith('/api/v2/me/shipment/print')) {
+            return op.dce === 'falha' ? json({ message: 'Falha' }, 500) : json({ url: 'https://sandbox.melhorenvio.com.br/imprimir/x' })
+        }
         return json({ message: 'url fora do roteiro' }, 404)
     }) as any
     return { buscar, registro }
@@ -2179,6 +2298,46 @@ Deno.test("gerar_devolucao_reversa - ME recusa o carrinho reverso (422): reserva
     })
 })
 
+Deno.test("gerar_devolucao_reversa - carrinho reverso 5xx: reserva LIBERADA, checkout nunca; a frase diz 'na criação do envio reverso' (não 'em a criação')", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ reverso: 'erro-5xx' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(String(corpo.error).includes('erro 502 na criação do envio reverso'), true)
+        assertEquals(String(corpo.error).includes('em a criação'), false)
+        assertEquals(me.registro.checkouts, 0)
+        assertEquals(supa.registro.liberacoes.length, 1)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - R7: carrinho reverso recusado com corpo que quebra na leitura: a reserva é LIBERADA mesmo assim (nada de exceção subindo com a reserva presa), checkout nunca", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ reverso: 'erro-corpo-ilegivel' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(String(corpo.error).includes('envio reverso'), true)
+        assertEquals(me.registro.checkouts, 0)
+        assertEquals(supa.registro.liberacoes.length, 1)
+        const token = supa.registro.reservas[0].valores.me_reverse_id
+        assertEquals(temFiltro(supa.registro.liberacoes[0].filtros, 'eq', 'me_reverse_id', token), true)
+        assertEquals(supa.registro.vinculos.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - R5: falha ao ler as medidas dos produtos: 500 'tente de novo' ANTES da reserva — nunca compra com a medida padrão", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroEmProdutos: true })
+        const me = buscarMeReversoFalso()
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 500)
+        assertEquals(String(corpo.error).toLowerCase().includes('tente de novo'), true)
+        assertEquals(supa.registro.reservas.length, 0)
+        assertEquals(me.registro.chamadas, [])
+    })
+})
+
 Deno.test("gerar_devolucao_reversa - carrinho reverso estoura (timeout) ou volta sem id: reserva LIBERADA, checkout nunca chamado", async () => {
     await comEnvAdmin(async () => {
         for (const reverso of ['excecao', 'sem-id'] as const) {
@@ -2193,18 +2352,43 @@ Deno.test("gerar_devolucao_reversa - carrinho reverso estoura (timeout) ou volta
     })
 })
 
-Deno.test("gerar_devolucao_reversa - checkout recusado (200 com status pending): item sai do carrinho e o vínculo é LIBERADO (dá para tentar de novo)", async () => {
+Deno.test("gerar_devolucao_reversa - checkout recusado de forma DEFINIDA (HTTP 4xx, ou 200 com status pending/blocked/canceled): item sai do carrinho, vínculo LIBERADO, e o texto fala do envio reverso — não da 'etiqueta' da ida", async () => {
     await comEnvAdmin(async () => {
-        const supa = clienteFalsoDevolucao()
-        const me = buscarMeReversoFalso({ checkout: 'pendente' })
-        const { res, corpo } = await rodarReversa(supa, me)
-        assertEquals(res.status, 502)
-        assertEquals(corpo.resgate, undefined)
-        assertEquals(me.registro.remocoes, 1)
-        assertEquals(supa.registro.liberacoes.length, 1)
-        assertEquals(temFiltro(supa.registro.liberacoes[0].filtros, 'eq', 'me_reverse_id', ME_REVERSO), true)
-        assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
-        assertEquals(supa.registro.eventos.length, 0)
+        for (const checkout of ['pendente', 'bloqueado', 'cancelado', 'erro-4xx'] as const) {
+            const supa = clienteFalsoDevolucao()
+            const me = buscarMeReversoFalso({ checkout })
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 502)
+            assertEquals(corpo.resgate, undefined)
+            assertEquals(me.registro.remocoes, 1)
+            assertEquals(me.registro.geracoes, 0)
+            assertEquals(supa.registro.liberacoes.length, 1)
+            assertEquals(temFiltro(supa.registro.liberacoes[0].filtros, 'eq', 'me_reverse_id', ME_REVERSO), true)
+            assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+            assertEquals(supa.registro.eventos.length, 0)
+            const erro = String(corpo.error)
+            assertEquals(erro.includes('envio reverso'), true)
+            assertEquals(erro.toLowerCase().includes('etiqueta'), false)
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - R2: checkout 200 SEM confirmação legível ({}, {message}, corpo não-JSON, outro formato, pago sem id): INDETERMINADO — vínculo MANTIDO, carrinho intacto, resgate, nada gerado", async () => {
+    await comEnvAdmin(async () => {
+        for (const checkout of ['200-vazio', '200-message', '200-nao-json', '200-outro-formato', '200-pago-sem-id'] as const) {
+            const supa = clienteFalsoDevolucao()
+            const me = buscarMeReversoFalso({ checkout })
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 502)
+            assertEquals(corpo.resgate, true)
+            assertEquals(corpo.me_reverse_id, ME_REVERSO)
+            assertEquals(String(corpo.error).includes('INDETERMINADO'), true)
+            assertEquals(String(corpo.error).includes('conta do Melhor Envio'), true)
+            assertEquals(supa.registro.liberacoes.length, 0)
+            assertEquals(me.registro.remocoes, 0)
+            assertEquals(me.registro.geracoes, 0)
+            assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+        }
     })
 })
 
@@ -2234,6 +2418,7 @@ Deno.test("gerar_devolucao_reversa - pago mas a geração falhou: vínculo MANTI
         assertEquals(corpo.resgate, true)
         assertEquals(corpo.me_reverse_id, ME_REVERSO)
         assertEquals(String(corpo.error).includes('PAGO'), true)
+        assertEquals(corpo.situacao, 'geracao_falhou')
         // credencial de teste é sandbox: a mensagem avisa que lá não sai código
         assertEquals(String(corpo.error).includes('Sandbox'), true)
         assertEquals(supa.registro.liberacoes.length, 0)
@@ -2250,6 +2435,7 @@ Deno.test("gerar_devolucao_reversa - gerado mas o ME ainda não devolveu o códi
         assertEquals(res.status, 502)
         assertEquals(corpo.pendente, true)
         assertEquals(corpo.resgate, true)
+        assertEquals(corpo.situacao, 'pago_sem_codigo')
         assertEquals(supa.registro.liberacoes.length, 0)
         assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
         assertEquals(supa.registro.eventos.length, 0)
@@ -2279,6 +2465,73 @@ Deno.test("gerar_devolucao_reversa - reserva perdida (0 linhas): relê — já c
     })
 })
 
+Deno.test("gerar_devolucao_reversa - R1: cliente cancela (ou informa o envio) ENTRE a reserva e o vínculo: o vínculo condicional ao status não pega, checkout NUNCA, item sai do carrinho, reserva liberada e a mensagem diz que a devolução mudou e nada foi pago", async () => {
+    await comEnvAdmin(async () => {
+        for (const status of ['cancelada', 'em_transito']) {
+            const supa = clienteFalsoDevolucao({ mudancaAposReserva: { status } })
+            const me = buscarMeReversoFalso()
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(me.registro.checkouts, 0)
+            assertEquals(res.status, 409)
+            assertEquals(String(corpo.error).includes(`"${status}"`), true)
+            assertEquals(String(corpo.error).toLowerCase().includes('nada foi pago'), true)
+            assertEquals(corpo.resgate, undefined)
+            // o vínculo é condicional à reserva, ao status e ao método
+            const filtros = supa.registro.vinculos[0].filtros
+            assertEquals(temFiltro(filtros, 'eq', 'status', 'aprovada'), true)
+            assertEquals(temFiltro(filtros, 'eq', 'metodo_retorno', 'etiqueta_reversa'), true)
+            // item fora do carrinho do ME, reserva solta (condicional à PRÓPRIA reserva)
+            assertEquals(me.registro.remocoes, 1)
+            const token = supa.registro.reservas[0].valores.me_reverse_id
+            assertEquals(supa.registro.liberacoes.length, 1)
+            assertEquals(temFiltro(supa.registro.liberacoes[0].filtros, 'eq', 'me_reverse_id', token), true)
+            assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+            assertEquals(supa.registro.eventos.length, 0)
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - R3: o UPDATE do vínculo responde ERRO mas GRAVOU: relê, vê o id do ME e segue para o checkout — nada sai do carrinho, nada é liberado", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNoVinculo: 'gravou' })
+        const me = buscarMeReversoFalso()
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 200)
+        assertEquals(corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(me.registro.checkouts, 1)
+        assertEquals(me.registro.remocoes, 0)
+        assertEquals(supa.registro.liberacoes.length, 0)
+        assertEquals(supa.registro.gravacoesDeCodigo.length, 1)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - R3: vínculo com erro que NÃO gravou: item sai do carrinho, reserva liberada, checkout nunca; se nem a releitura responde, solta a reserva E o id (nada foi pago)", async () => {
+    await comEnvAdmin(async () => {
+        const supa1 = clienteFalsoDevolucao({ erroNoVinculo: 'nao-gravou' })
+        const me1 = buscarMeReversoFalso()
+        const r1 = await rodarReversa(supa1, me1)
+        assertEquals(r1.res.status, 500)
+        assertEquals(String(r1.corpo.error).includes('nada foi pago'), true)
+        assertEquals(me1.registro.checkouts, 0)
+        assertEquals(me1.registro.remocoes, 1)
+        assertEquals(supa1.registro.liberacoes.length, 1)
+
+        // releitura também falha: não dá para saber se o vínculo entrou — o
+        // item sai do carrinho (nada foi pago) e as DUAS formas do vínculo
+        // são soltas, cada uma condicional ao próprio valor
+        const supa2 = clienteFalsoDevolucao({ erroNoVinculo: 'gravou', erroNaReleitura: true })
+        const me2 = buscarMeReversoFalso()
+        const r2 = await rodarReversa(supa2, me2)
+        assertEquals(r2.res.status, 500)
+        assertEquals(me2.registro.checkouts, 0)
+        assertEquals(me2.registro.remocoes, 1)
+        const token = supa2.registro.reservas[0].valores.me_reverse_id
+        const soltas = supa2.registro.liberacoes.map((l) => l.filtros.find((f: any) => f.coluna === 'me_reverse_id')?.valor)
+        assertEquals(soltas.includes(token), true)
+        assertEquals(soltas.includes(ME_REVERSO), true)
+    })
+})
+
 Deno.test("gerar_devolucao_reversa - reserva recente de outra chamada: 409 sem reservar; reserva VENCIDA (> 10 min) é retomada com filtro na reserva antiga", async () => {
     await comEnvAdmin(async () => {
         const recente = `reservando:${Date.now() - 5_000}:outra-chamada`
@@ -2300,7 +2553,7 @@ Deno.test("gerar_devolucao_reversa - reserva recente de outra chamada: 409 sem r
     })
 })
 
-Deno.test("gerar_devolucao_reversa - vinculada ao ME sem código salvo: SÓ consulta o código (sem carrinho/checkout/generate), grava e registra o evento", async () => {
+Deno.test("gerar_devolucao_reversa - R4: vinculada ao ME sem código salvo: GERA (não cobra) e consulta o código — sem carrinho nem checkout; grava, registra o evento e devolve a validade", async () => {
     await comEnvAdmin(async () => {
         const supa = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
         const me = buscarMeReversoFalso()
@@ -2310,26 +2563,157 @@ Deno.test("gerar_devolucao_reversa - vinculada ao ME sem código salvo: SÓ cons
         assertEquals(corpo.already, true)
         assertEquals(corpo.codigo_postagem, CODIGO_POSTAGEM)
         assertEquals(me.registro.chamadas, [
+            'POST /api/v2/me/shipment/generate',
             'POST /api/v2/me/shipment/tracking',
             `GET /api/v2/me/imprimir/dace/pdf/${ME_REVERSO}`,
         ])
+        assertEquals(me.registro.corposOrders, [{ orders: [ME_REVERSO] }])
+        assertEquals(me.registro.checkouts, 0)
         assertEquals(supa.registro.reservas.length, 0)
         assertEquals(supa.registro.gravacoesDeCodigo.length, 1)
         assertEquals(supa.registro.eventos.length, 1)
         assertEquals(supa.registro.eventos[0].nota, NOTA_CODIGO_GERADO)
+        // R8: o evento nasceu agora — a validade conta daqui
+        const diasDeValidade = (Date.parse(corpo.validade_ate) - Date.now()) / 86_400_000
+        assertEquals(diasDeValidade > 6.99 && diasDeValidade <= 7, true)
+        assertEquals(corpo.expirado, false)
     })
 })
 
-Deno.test("gerar_devolucao_reversa - vinculada ao ME e o código ainda não saiu: 502 pendente, nenhuma compra nova, nada gravado", async () => {
+Deno.test("gerar_devolucao_reversa - R4: vinculada e o código não saiu: a mensagem distingue 'pago, código ainda não gerado' (generate ok) de 'pode estar pendente de pagamento no carrinho do ME' (generate 4xx); nenhuma compra nova, nada gravado", async () => {
+    await comEnvAdmin(async () => {
+        // generate OK: o envio está pago (o ME só gera envio pago)
+        const supa1 = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
+        const me1 = buscarMeReversoFalso({ codigo: null })
+        const r1 = await rodarReversa(supa1, me1)
+        assertEquals(r1.res.status, 502)
+        assertEquals(r1.corpo.pendente, true)
+        assertEquals(r1.corpo.resgate, true)
+        assertEquals(r1.corpo.me_reverse_id, ME_REVERSO)
+        assertEquals(r1.corpo.situacao, 'pago_sem_codigo')
+        assertEquals(String(r1.corpo.error).includes('está pago e gerado'), true)
+        assertEquals(String(r1.corpo.error).includes('PENDENTE DE PAGAMENTO'), false)
+        assertEquals(me1.registro.chamadas, ['POST /api/v2/me/shipment/generate', 'POST /api/v2/me/shipment/tracking'])
+        assertEquals(me1.registro.checkouts, 0)
+        assertEquals(supa1.registro.gravacoesDeCodigo.length, 0)
+        assertEquals(supa1.registro.eventos.length, 0)
+
+        // generate 4xx: o envio pode NÃO estar pago — está no carrinho do ME
+        const supa2 = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
+        const me2 = buscarMeReversoFalso({ gerar: 'erro-4xx', codigo: null })
+        const r2 = await rodarReversa(supa2, me2)
+        assertEquals(r2.res.status, 502)
+        assertEquals(r2.corpo.pendente, true)
+        assertEquals(r2.corpo.resgate, true)
+        assertEquals(r2.corpo.situacao, 'pagamento_pendente_no_me')
+        assertEquals(String(r2.corpo.error).includes('PENDENTE DE PAGAMENTO'), true)
+        assertEquals(String(r2.corpo.error).includes('carrinho'), true)
+        assertEquals(String(r2.corpo.error).includes('está pago e gerado'), false)
+        // o motivo do ME vai junto (sanitizado)
+        assertEquals(String(r2.corpo.error).includes('Motivo informado: Envio não está pago.'), true)
+        assertEquals(me2.registro.chamadas, ['POST /api/v2/me/shipment/generate', 'POST /api/v2/me/shipment/tracking'])
+        assertEquals(me2.registro.checkouts, 0)
+        assertEquals(me2.registro.remocoes, 0)
+        assertEquals(supa2.registro.liberacoes.length, 0)
+        assertEquals(supa2.registro.gravacoesDeCodigo.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - R4: generate 4xx mas o código JÁ existia no ME (envio gerado antes): o código é aproveitado, gravado e devolvido", async () => {
     await comEnvAdmin(async () => {
         const supa = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
-        const me = buscarMeReversoFalso({ codigo: null })
+        const me = buscarMeReversoFalso({ gerar: 'erro-4xx' })
         const { res, corpo } = await rodarReversa(supa, me)
-        assertEquals(res.status, 502)
-        assertEquals(corpo.pendente, true)
-        assertEquals(corpo.me_reverse_id, ME_REVERSO)
-        assertEquals(me.registro.chamadas, ['POST /api/v2/me/shipment/tracking'])
+        assertEquals(res.status, 200)
+        assertEquals(corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(me.registro.checkouts, 0)
+        assertEquals(supa.registro.gravacoesDeCodigo.length, 1)
+    })
+})
+
+// ── DC-e (R6) e validade do código (R8) ────────────────────────────────────
+
+Deno.test("gerar_devolucao_reversa - R6: código saiu mas a DC-e não veio (DACE e print falham): ok, porém NÃO silencioso — aviso + dce_pendente", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ dce: 'falha' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 200)
+        assertEquals(corpo.ok, true)
+        assertEquals(corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(corpo.etiqueta_url, null)
+        assertEquals(corpo.dce_pendente, true)
+        assertEquals(typeof corpo.aviso, 'string')
+        assertEquals(String(corpo.aviso).includes('DC-e'), true)
+        // com a DC-e presente, nada de aviso nem pendência
+        const supaOk = clienteFalsoDevolucao()
+        const { corpo: corpoOk } = await rodarReversa(supaOk, buscarMeReversoFalso())
+        assertEquals(corpoOk.dce_pendente, undefined)
+        assertEquals(corpoOk.aviso, undefined)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - R6: código JÁ salvo sem o link da DC-e: busca a DC-e de novo e grava condicionado a etiqueta_url IS NULL — sem carrinho, checkout, generate ou tracking", async () => {
+    await comEnvAdmin(async () => {
+        const semLink = { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO, codigo_postagem: CODIGO_POSTAGEM, etiqueta_url: null }
+        const supa = clienteFalsoDevolucao({ devolucao: semLink })
+        const me = buscarMeReversoFalso()
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 200)
+        assertEquals(corpo.already, true)
+        assertEquals(corpo.etiqueta_url, LINK_DCE)
+        assertEquals(corpo.dce_pendente, undefined)
+        assertEquals(me.registro.chamadas, [`GET /api/v2/me/imprimir/dace/pdf/${ME_REVERSO}`])
+        assertEquals(supa.registro.gravacoesDeLink.length, 1)
+        const gravacao = supa.registro.gravacoesDeLink[0]
+        assertEquals(gravacao.valores, { etiqueta_url: LINK_DCE })
+        assertEquals(temFiltro(gravacao.filtros, 'eq', 'id', DEVOLUCAO_ID), true)
+        assertEquals(temFiltro(gravacao.filtros, 'eq', 'me_reverse_id', ME_REVERSO), true)
+        assertEquals(temFiltro(gravacao.filtros, 'is', 'etiqueta_url', null), true)
         assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
         assertEquals(supa.registro.eventos.length, 0)
+
+        // a DC-e continua sem vir: devolve o código com aviso + dce_pendente, nada gravado
+        const supa2 = clienteFalsoDevolucao({ devolucao: semLink })
+        const me2 = buscarMeReversoFalso({ dce: 'falha' })
+        const r2 = await rodarReversa(supa2, me2)
+        assertEquals(r2.res.status, 200)
+        assertEquals(r2.corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(r2.corpo.etiqueta_url, null)
+        assertEquals(r2.corpo.dce_pendente, true)
+        assertEquals(String(r2.corpo.aviso).includes('DC-e'), true)
+        assertEquals(supa2.registro.gravacoesDeLink.length, 0)
+        assertEquals(me2.registro.checkouts, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - R8: código já salvo — validade conta do EVENTO que registrou a geração; passados 7 dias volta expirado + aviso para reemitir no Melhor Envio", async () => {
+    await comEnvAdmin(async () => {
+        const pronta = { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO, codigo_postagem: CODIGO_POSTAGEM, etiqueta_url: LINK_DCE }
+        const umDia = 86_400_000
+
+        const geradoHa8Dias = new Date(Date.now() - 8 * umDia).toISOString()
+        const supa1 = clienteFalsoDevolucao({ devolucao: pronta, eventoDoCodigo: { created_at: geradoHa8Dias } })
+        const me1 = buscarMeReversoFalso()
+        const r1 = await rodarReversa(supa1, me1)
+        assertEquals(r1.res.status, 200)
+        assertEquals(r1.corpo.already, true)
+        assertEquals(r1.corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(r1.corpo.validade_ate, new Date(Date.parse(geradoHa8Dias) + 7 * umDia).toISOString())
+        assertEquals(r1.corpo.expirado, true)
+        assertEquals(String(r1.corpo.aviso).includes('Melhor Envio'), true)
+        assertEquals(String(r1.corpo.aviso).toLowerCase().includes('venceu'), true)
+        assertEquals(me1.registro.chamadas, [])
+        // a leitura é do evento CERTO: esta devolução + a nota da geração do código
+        const leitura = supa1.registro.leiturasDeEvento[0]
+        assertEquals(temFiltro(leitura.filtros, 'eq', 'devolucao_id', DEVOLUCAO_ID), true)
+        assertEquals(temFiltro(leitura.filtros, 'eq', 'nota', NOTA_CODIGO_GERADO), true)
+
+        const geradoHa2Dias = new Date(Date.now() - 2 * umDia).toISOString()
+        const supa2 = clienteFalsoDevolucao({ devolucao: pronta, eventoDoCodigo: { created_at: geradoHa2Dias } })
+        const r2 = await rodarReversa(supa2, buscarMeReversoFalso())
+        assertEquals(r2.corpo.validade_ate, new Date(Date.parse(geradoHa2Dias) + 7 * umDia).toISOString())
+        assertEquals(r2.corpo.expirado, false)
+        assertEquals(r2.corpo.aviso, undefined)
     })
 })
