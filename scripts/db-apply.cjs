@@ -2050,7 +2050,10 @@ const VERIFICACOES = {
       funcao: "liberar_cobranca_do_pedido",
       esperado: [
         "AND gateway_payment_id = p_gateway_payment_id",
-        "tentativas_de_pagamento = tentativas_de_pagamento + 1,",
+        {
+          texto: "tentativas_de_pagamento = tentativas_de_pagamento + 1,",
+          vezes: 2,
+        },
       ],
     },
   ],
