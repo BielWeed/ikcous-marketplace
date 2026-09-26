@@ -83,6 +83,7 @@ import {
   extrairDesafio3ds,
   extrairQrCode,
   idEhClassico,
+  idempotencyKeyJaUsado,
   mapearStatus,
   mapearStatusOrder,
   metodoDeCartaoValido,
@@ -96,9 +97,11 @@ import {
   orderCancelada,
   orderEhDeCartao,
   parcelasValidas,
+  PREFIXO_VAGA_EM_VERIFICACAO,
   tipoDeCartaoValido,
   tipoDoPagamentoDaOrder,
   tokenDeCartaoValido,
+  vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 // PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
 // reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
@@ -111,7 +114,13 @@ import {
 // para avisar o admin de 'pago'/'pago_apos_expirar' — ver
 // `alertarAdminCartaoOrfaoReal`, mais abaixo, para o motivo de não importar o
 // orquestrador de lá em vez de montar de novo aqui.
-import { carregarChavesVapid, enviarParaInscritos, readKey, resumir } from "../_shared/webpush.ts";
+import {
+  carregarChavesVapid,
+  comTempoLimite,
+  enviarParaInscritos,
+  readKey,
+  resumir,
+} from "../_shared/webpush.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 // Tarefa mp-2 (15/09/2026): a chave do Mercado Pago pode ser a do LOJISTA
 // (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
@@ -161,17 +170,36 @@ export const MINUTOS_DESAFIO_3DS = 40;
  *
  * Só ESTENDE, nunca encolhe: se o `expires_at` atual do pedido já vai além
  * do teto de `MINUTOS_DESAFIO_3DS` a partir de agora, devolve `null` — quem
- * chama mantém o valor de hoje. Roda UMA VEZ só, no momento em que a order
- * é criada (a reconsulta de uma vaga já ocupada não grava nada em
- * `expires_at` — só a criação passa por aqui), então o teto não compõe a
- * cada nova chamada: `MINUTOS_DESAFIO_3DS` é o teto de VERDADE desta
- * extensão, não um incremento que se soma sozinho.
+ * chama mantém o valor de hoje.
+ *
+ * Achado R4 (2ª revisão de risco, 26/09/2026): o comentário acima ("roda UMA
+ * VEZ só... o teto não compõe a cada nova chamada") só era verdade enquanto
+ * se olhava UMA tentativa. Um cartão recusado/abandonado no desafio libera a
+ * vaga (ver o ramo (f) da reconsulta, acima) e o cliente pode tentar de novo
+ * com outro cartão — cada tentativa nova que também volta com desafio 3DS
+ * chama esta função de novo, e cada chamada somava `MINUTOS_DESAFIO_3DS` a
+ * partir de "agora": um cliente insistindo (ou um script automatizando
+ * tentativas) empurrava `expires_at` para sempre mais longe, prendendo
+ * estoque por um tempo sem teto real. `pedidoCriadoEm` fecha isso: a
+ * extensão nunca passa de `MINUTOS_DESAFIO_3DS` minutos depois da CRIAÇÃO do
+ * PEDIDO (não da tentativa) — o mesmo orçamento de "o banco emissor promete
+ * responder em ~40 min", só que contado uma única vez, na origem, e não
+ * reiniciado a cada retry. `null`/inválido (defensivo — não deveria
+ * acontecer, `created_at` é `NOT NULL` na tabela) cai para o comportamento de
+ * antes, sem teto absoluto.
  */
 export function expiracaoParaDesafio3ds(
   expiresAtAtual: string | null,
   agora: Date,
+  pedidoCriadoEm?: string | null,
 ): Date | null {
-  const novo = new Date(agora.getTime() + MINUTOS_DESAFIO_3DS * 60_000);
+  const porAgora = new Date(agora.getTime() + MINUTOS_DESAFIO_3DS * 60_000);
+  const criadoEm = pedidoCriadoEm ? new Date(pedidoCriadoEm) : null;
+  const tetoAbsoluto =
+    criadoEm && !Number.isNaN(criadoEm.getTime())
+      ? new Date(criadoEm.getTime() + MINUTOS_DESAFIO_3DS * 60_000)
+      : null;
+  const novo = tetoAbsoluto && tetoAbsoluto.getTime() < porAgora.getTime() ? tetoAbsoluto : porAgora;
   if (!expiresAtAtual) return novo;
   const atual = new Date(expiresAtAtual);
   if (Number.isNaN(atual.getTime())) return novo;
@@ -350,9 +378,12 @@ function emailValido(email: unknown): email is string {
 
 /** As colunas do pedido que esta função lê — UMA lista para a leitura
  * inicial e para a releitura depois de liberar a vaga (Fase 3.5): duas
- * listas divergiriam, e a releitura decidiria com um pedido pela metade. */
+ * listas divergiriam, e a releitura decidiria com um pedido pela metade.
+ * `created_at` (Achado R4, 2ª revisão de risco, 26/09/2026): o teto absoluto
+ * de `expiracaoParaDesafio3ds`, abaixo, precisa da CRIAÇÃO do pedido — nunca
+ * do instante da tentativa atual. */
 const COLUNAS_DO_PEDIDO =
-  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento";
+  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento, created_at";
 
 /**
  * A chave de idempotência (`X-Idempotency-Key`) da cobrança — POR TENTATIVA
@@ -384,16 +415,30 @@ const COLUNAS_DO_PEDIDO =
  *   chave nova, e portanto uma SEGUNDA cobrança pelo mesmo cartão.
  *
  *   Sem o hash, a chave passa a ser IGUAL à do PIX (por tentativa, não por
- *   token): duas abas na mesma tentativa convergem na MESMA order no MP —
- *   nunca duas cobranças vivas — e o retry de uma resposta perdida também
- *   converge na cobrança que já foi aprovada, em vez de criar outra. O custo
- *   aceito (spec decisão 3 já previa isto para a recusa): se a PRIMEIRA
- *   chamada da tentativa foi recusada, a idempotência do MP devolve a MESMA
- *   recusa para a segunda aba — ela conta a tentativa nela mesma
- *   (`liberar_cobranca_do_pedido` com `p_gateway_payment_id: null`) e segue
- *   para a tentativa seguinte, com chave nova. Duas recusas idênticas custam
- *   uma chamada a mais ao MP; duas aprovações custariam o cartão do cliente
- *   cobrado duas vezes — a troca vale.
+ *   token): duas abas na mesma tentativa disputam a MESMA chave no MP —
+ *   nunca duas cobranças vivas. O que a chave SOZINHA garante depende do
+ *   CORPO da segunda chamada:
+ *   - MESMO corpo (duas abas com o MESMO token, ou um duplo submit real): a
+ *     Orders API devolve a resposta em CACHE da primeira chamada — replay
+ *     de verdade, sem processar de novo.
+ *   - Corpo DIFERENTE (o caso comum: o Brick nunca reusa token, então um
+ *     RETRY depois de uma resposta perdida manda um token NOVO com a MESMA
+ *     chave): a doc da Orders API promete 409
+ *     `idempotency_key_already_used` — achado da 2ª revisão de risco
+ *     (26/09/2026) que corrigiu a suposição original desta função (achada
+ *     por medição indireta, nunca por doc citada) de que a MESMA chave
+ *     sempre devolvia a cobrança em cache, corpo qualquer. `criarOrder`
+ *     nunca lançava esse 409 como recusa — o handler (`respostaCartaoEm
+ *     Verificacao`, mais abaixo) trata esse código à parte: a cobrança da
+ *     PRIMEIRA chamada PODE estar aprovada, sem id para reconsultar, e a
+ *     saída é ocupar a vaga com um SENTINELA até o webhook resolver a
+ *     ambiguidade (Achado B2) — nunca criar uma segunda cobrança.
+ *   Recusa (402/400 de dado do cartão) continua exatamente como a spec
+ *   decisão 3 previa: a idempotência devolve a MESMA recusa para a segunda
+ *   aba, ela conta a tentativa nela mesma (`liberar_cobranca_do_pedido` com
+ *   `p_gateway_payment_id: null`) e segue para a tentativa seguinte, com
+ *   chave nova — isso NÃO depende da ressalva acima, porque a Orders API
+ *   processa e responde (402/400), nunca fica ambígua.
  *
  * `tentativas` fora de inteiro ≥ 0 (coluna ausente, lixo) vale 0 — a chave
  * de antes, nunca um erro que trave o pagamento.
@@ -522,17 +567,31 @@ async function liberarCobranca(
   orderId: string,
   idGateway: string | null,
 ): Promise<{ ok: true; liberou: boolean } | { ok: false }> {
-  try {
-    const { data, error } = await supabase.rpc("liberar_cobranca_do_pedido", {
-      p_order_id: orderId,
-      p_gateway_payment_id: idGateway,
-    });
-    if (error) throw error;
-    return { ok: true, liberou: data === true };
-  } catch (erro) {
-    console.error("criar-pagamento: liberar_cobranca_do_pedido falhou", orderId, idGateway, erro);
-    return { ok: false };
+  // Achado R3 (2ª revisão de risco, 26/09/2026): uma falha de banco aqui
+  // (timeout, deadlock passageiro) deixa `tentativas_de_pagamento` PARADA —
+  // e a PRÓXIMA cobrança de cartão reusaria a MESMA chave de idempotência,
+  // batendo numa `idempotency_key_already_used` que não precisava acontecer.
+  // UMA retentativa imediata (sem espera: um soluço passageiro de conexão
+  // já passou no tempo desta própria chamada) reduz a janela sem precisar
+  // mexer na RPC (migration, fora do escopo desta correção) — não elimina
+  // o risco de uma falha PERSISTENTE, mas cobre o caso comum.
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    try {
+      const { data, error } = await supabase.rpc("liberar_cobranca_do_pedido", {
+        p_order_id: orderId,
+        p_gateway_payment_id: idGateway,
+      });
+      if (error) throw error;
+      return { ok: true, liberou: data === true };
+    } catch (erro) {
+      if (tentativa === 1) {
+        console.error("criar-pagamento: liberar_cobranca_do_pedido falhou (2 tentativas)", orderId, idGateway, erro);
+        return { ok: false };
+      }
+      console.warn("criar-pagamento: liberar_cobranca_do_pedido falhou, tentando mais uma vez", orderId, idGateway, erro);
+    }
   }
+  return { ok: false };
 }
 
 /**
@@ -887,6 +946,23 @@ async function handler(
     // taxonomia de erro — e poupa a chamada à Orders API para todo pedido
     // legado, que nunca vai ser reconhecido por ela.
     const idGatewayReconsulta = String(pedido.gateway_payment_id);
+
+    // Achado B2 (2ª revisão de risco, 26/09/2026): a vaga pode estar ocupada
+    // por um SENTINELA (`vagaEmVerificacao`, acima) — um cartão cuja
+    // resposta do MP veio 409 `idempotency_key_already_used`. Não é um id de
+    // verdade: não existe endpoint para reconsultar "por chave de
+    // idempotência" na Orders API, então nem tenta — só o WEBHOOK, quando a
+    // cobrança de fato resolver, sabe a verdade (ele ADOTA a vaga vazia).
+    // QUALQUER forma pedida aqui — cartão novo OU PIX — devolve o MESMO
+    // "aguardando" sem tocar o MP: um cartão novo abriria uma SEGUNDA
+    // cobrança ambígua; um PIX pagaria por fora enquanto a primeira ainda
+    // pode cair aprovada.
+    if (vagaEmVerificacao(idGatewayReconsulta)) {
+      return json(
+        { paymentId: null, statusPagamento: "aguardando", expiraEm: pedido.expires_at },
+        200,
+      );
+    }
 
     if (idEhClassico(idGatewayReconsulta)) {
       // Pedido criado ANTES da migração para a Orders API — vai DIRETO para
@@ -1423,6 +1499,58 @@ async function handler(
       );
     };
 
+    // Achado B2 (2ª revisão de risco, 26/09/2026): a Orders API respondeu 409
+    // `idempotency_key_already_used` — a MESMA chave, um corpo DIFERENTE (o
+    // Brick nunca reusa token). A cobrança da tentativa ANTERIOR (cuja
+    // resposta esta function nunca viu) PODE estar aprovada — não dá para
+    // saber sem um id para reconsultar, e não existe endpoint "consulta pela
+    // chave" na Orders API. Ocupa a vaga com o SENTINELA
+    // (`vagaEmVerificacao`, acima) em vez de um id de verdade: bloqueia
+    // cartão novo E PIX nesta reserva até o WEBHOOK resolver a ambiguidade
+    // (adotando a cobrança, se ela aparecer aprovada — Achado B2,
+    // `webhook-mercadopago/index.ts`) ou a reserva expirar. A resposta ao
+    // cliente é a MESMA que um cartão em análise já usa (`statusPagamento:
+    // "aguardando"`, sem `desafio3ds`) — `PagamentoComCartao.tsx` já trata
+    // isso como "em análise pelo banco", sem oferecer novo cartão nem PIX.
+    const respostaCartaoEmVerificacao = async () => {
+      const sentinela = `${PREFIXO_VAGA_EM_VERIFICACAO}${await chaveDeIdempotencia(pedido, "cartao")}`;
+      const { data: ocupou } = await supabase
+        .from("marketplace_orders")
+        .update({
+          gateway_payment_id: sentinela,
+          metodo_online: dados.paymentTypeId === "credit_card" ? "credito" : "debito",
+          parcelas: dados.paymentTypeId === "credit_card" ? dados.parcelas : 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", pedido.id)
+        .is("gateway_payment_id", null)
+        .select("id")
+        .maybeSingle();
+      console.error(
+        "criar-pagamento: cartao_em_verificacao — 409 idempotency_key_already_used (chave repetida com corpo diferente); a cobrança da tentativa anterior PODE ter sido aprovada",
+        { orderId: pedido.id, vagaOcupada: Boolean(ocupou) },
+      );
+      if (!ocupou) {
+        // A vaga já não está livre — outra chamada concorrente resolveu
+        // isto primeiro (adotou uma cobrança, ou já marcou a MESMA
+        // verificação). Relê o estado real, mesmo padrão do resto do
+        // handler: nunca inventa causa.
+        const { data: atual } = await supabase
+          .from("marketplace_orders")
+          .select("payment_status, gateway_payment_id")
+          .eq("id", pedido.id)
+          .maybeSingle();
+        if (atual?.payment_status === "expirado") {
+          return json({ error: "O prazo para pagar este pedido acabou.", terminal: true }, 409);
+        }
+        return json({ error: "Este pedido já tem uma cobrança gerada." }, 409);
+      }
+      return json(
+        { paymentId: null, statusPagamento: "aguardando", expiraEm: pedido.expires_at },
+        200,
+      );
+    };
+
     // E-mail do pagador: o primeiro VÁLIDO da mesma corrente do PIX — um
     // `customer_data.email` torto não pode travar o cartão no construtor
     // (que valida o formato); o fallback genérico fecha a corrente.
@@ -1466,6 +1594,11 @@ async function handler(
     });
     if (!r.ok) {
       if (r.status === 401 || r.status === 403) return respostaCredencialRecusada(r.status);
+      // 409 (Achado B2, 2ª revisão de risco, 26/09/2026): ver o comentário
+      // grande de `respostaCartaoEmVerificacao`, acima.
+      if (r.status === 409 && idempotencyKeyJaUsado(r.corpoDoErro)) {
+        return await respostaCartaoEmVerificacao();
+      }
       // 402: o MP processou e RECUSOU o pagamento (a order recusada vem no
       // corpo do erro, com o motivo).
       if (r.status === 402) return await respostaRecusaDoCartao(motivoDaRecusaDoErro(r.corpoDoErro));
@@ -1485,6 +1618,18 @@ async function handler(
         if (erro400EhDeDadoDoCartao(r.corpoDoErro)) {
           return await respostaRecusaDoCartao(MOTIVO_RECUSA_DADOS_DO_CARTAO);
         }
+        // Achado R3 (2ª revisão de risco, 26/09/2026): um 400 que NÃO é
+        // sobre o cartão ainda CONSOME a chave de idempotência no MP (a doc
+        // não promete "só sucesso/402 conta" — um 400 pode ficar em cache do
+        // mesmo jeito). Sem avançar a tentativa, o PRÓXIMO cartão (token
+        // novo, MESMA chave) bateria num 409 à toa. Diferente do Achado B2:
+        // um 400 NÃO é ambíguo (a Orders API recusou a REQUISIÇÃO inteira —
+        // não existe order para o webhook adotar depois), então a saída
+        // certa é liberar a tentativa (como uma recusa imediata), não
+        // "aguarde verificação". Falha da RPC não muda a resposta (mesma
+        // regra de `respostaRecusaDoCartao`): o bug de integração é verdade
+        // de qualquer jeito.
+        await liberarCobranca(supabase, pedido.id, null);
         return json({ error: r.erro }, 502);
       }
       // Rede, 5xx, outro 4xx: nada foi cobrado com certeza — 502
@@ -1524,7 +1669,11 @@ async function handler(
     // de `expiracaoParaDesafio3ds`, acima, para a fonte do teto e por que
     // corre só aqui, uma vez.
     if (desafio3ds) {
-      const prazoDoDesafio = expiracaoParaDesafio3ds(pedido.expires_at as string | null, new Date());
+      const prazoDoDesafio = expiracaoParaDesafio3ds(
+        pedido.expires_at as string | null,
+        new Date(),
+        pedido.created_at as string | null,
+      );
       if (prazoDoDesafio) expiresAtNovo = prazoDoDesafio.toISOString();
     }
     metodoOnline = dados.paymentTypeId === "credit_card" ? "credito" : "debito";
@@ -1599,9 +1748,57 @@ async function handler(
     // `expires_at` além de `id`: a resposta abaixo precisa do prazo
     // EFETIVAMENTE gravado, não do que `pedido` (lido ANTES deste UPDATE)
     // guardava em memória — sem isto a tela mostraria "Vence às HH:MM" do
-    // prazo ANTIGO mesmo com o banco já realinhado ao novo.
-    .select("id, expires_at")
+    // prazo ANTIGO mesmo com o banco já realinhado ao novo. `payment_status`
+    // (Achado R1, 2ª revisão de risco, 26/09/2026): só o CARTÃO precisa dele
+    // — ver o bloco logo abaixo.
+    .select("id, expires_at, payment_status")
     .maybeSingle();
+
+  // Achado R1 (2ª revisão de risco, 26/09/2026): o WHERE do cartão (acima)
+  // não filtra por `payment_status` de propósito (Achado A1 (2), Política
+  // P1) — mas isso também gravava um desafio 3DS (`action_required`/
+  // `created`, NENHUM dinheiro capturado ainda) num pedido que já estava
+  // 'expirado'/'cancelled' quando o UPDATE rodou: a reserva já foi devolvida
+  // ao estoque, o cliente já saiu da tela, e a order fica presa viva no MP —
+  // sem ninguém para completar o desafio, e cancelável de graça (nada foi
+  // cobrado). P1 existe para HONRAR dinheiro que JÁ ENTROU — não para
+  // reservar uma vaga para um desafio que nunca vai ser respondido. Diferença
+  // do que decide: `statusBrutoDaOrderCriada` — `processed` (aprovado,
+  // IRREVERSÍVEL, dinheiro capturado) sempre grava e HONRA (P1, sem mudança);
+  // `action_required`/`created` (REVERSÍVEL, nada capturado) só grava se o
+  // pedido REALMENTE estava 'aguardando' no instante do UPDATE — se não
+  // estava, desfaz: cancela a order no MP (o cliente nunca vai completá-la
+  // mesmo) e devolve o MESMO 409 terminal que `podeCobrar` já devolve para
+  // todo pedido fora de 'aguardando'.
+  if (
+    gravado &&
+    metodo === "cartao" &&
+    gravado.payment_status !== "aguardando" &&
+    (statusBrutoDaOrderCriada === "action_required" || statusBrutoDaOrderCriada === "created")
+  ) {
+    console.warn(
+      "criar-pagamento: desafio 3DS gravado num pedido que já não estava 'aguardando' — cancelando a order (nada foi capturado) e recusando",
+      { orderId: pedido.id, idOrder: idGateway, paymentStatusNaGravacao: gravado.payment_status },
+    );
+    const cancelamentoPorExpiracao = await cancelarOrder({
+      token: mpToken,
+      orderId: idGateway,
+      chaveIdempotencia: `cancelar:${idGateway}`,
+      fetchImpl: deps.fetchImpl,
+    });
+    if (!cancelamentoPorExpiracao.ok || !orderCancelada(cancelamentoPorExpiracao.order)) {
+      // O MP não cancelou (raro: rede, 5xx, ou a order avançou entre a
+      // gravação e agora) — nada capturado ainda, mas sem cancelamento
+      // confirmado a vaga fica ocupada por uma order que ninguém vai
+      // completar. Loga para o admin investigar; a resposta ao cliente
+      // continua a mesma (o pedido morreu de qualquer jeito).
+      console.error(
+        "criar-pagamento: MP não cancelou o desafio 3DS de um pedido já morto",
+        { orderId: pedido.id, idOrder: idGateway },
+      );
+    }
+    return json({ error: "O prazo para pagar este pedido acabou.", terminal: true }, 409);
+  }
 
   if (erroUpdate || !gravado) {
     console.error("criar-pagamento: cobrança criada mas não gravada", idGateway, erroUpdate);
@@ -1647,18 +1844,105 @@ async function handler(
             { orderId: pedido.id, idOrderOrfa: idGateway },
           );
           const alertarAdmin = deps.alertarAdminCartaoOrfao ?? alertarAdminCartaoOrfaoReal;
-          await alertarAdmin({ supabase, orderId: pedido.id, idOrderOrfa: idGateway });
+          await comTempoLimite(alertarAdmin({ supabase, orderId: pedido.id, idOrderOrfa: idGateway }), 5000);
         }
       } else {
-        // Aprovada (ou em qualquer estado que o MP não cancela mais): não
-        // dá para desfazer por aqui — dinheiro cobrado de verdade, sem
-        // registro. Aviso ao admin, nunca silêncio.
+        // Aprovada (ou em qualquer estado que o MP não cancela mais): não dá
+        // para desfazer o CARTÃO por aqui — dinheiro cobrado de verdade, sem
+        // registro.
+        //
+        // Achado R2 (2ª revisão de risco, 26/09/2026): antes deste ajuste a
+        // resposta caía direto no 409 recuperável logo abaixo ("Este pedido
+        // já tem uma cobrança gerada") — e um "Tentar de novo" reconsultava a
+        // vaga, via o ramo (c) da reconsulta (acima), achava o PIX que ganhou
+        // a corrida, CANCELAVA e criava um cartão NOVO. Quem já tinha o
+        // cartão aprovado (dinheiro capturado, IRREVERSÍVEL) acabava com uma
+        // SEGUNDA cobrança se as duas caíssem aprovadas. Se a vaga ainda
+        // segura um PIX ABERTO (não pago), a manobra certa é a INVERSA da
+        // (c): cancela o PIX e ADOTA o cartão que já está aprovado na vaga —
+        // nunca cria uma cobrança nova. PIX já pago (ou qualquer coisa no
+        // meio do caminho que impeça o cancelamento) não tem como desfazer
+        // por aqui: dinheiro dos dois lados, resposta TERMINAL explícita — um
+        // retry não pode tentar de novo, só o admin decide à mão.
+        const idOcupante =
+          typeof atual?.gateway_payment_id === "string" && atual.gateway_payment_id.length > 0
+            ? atual.gateway_payment_id
+            : null;
+        let vagaAdotada: { id: string; expires_at: string } | null = null;
+        if (idOcupante && !idEhClassico(idOcupante) && !vagaEmVerificacao(idOcupante)) {
+          const consultaOcupante = await consultarOrder({
+            token: mpToken,
+            orderId: idOcupante,
+            fetchImpl: deps.fetchImpl,
+          });
+          if (consultaOcupante.ok) {
+            const ordemOcupante = consultaOcupante.order as Record<string, unknown>;
+            const statusBrutoOcupante = String(ordemOcupante.status ?? "");
+            const pixOcupanteAberto =
+              tipoDoPagamentoDaOrder(ordemOcupante) === "bank_transfer" &&
+              statusBrutoOcupante === "created";
+            if (pixOcupanteAberto) {
+              const cancelamentoDoPix = await cancelarOrder({
+                token: mpToken,
+                orderId: idOcupante,
+                chaveIdempotencia: `cancelar:${idOcupante}`,
+                fetchImpl: deps.fetchImpl,
+              });
+              if (cancelamentoDoPix.ok && orderCancelada(cancelamentoDoPix.order)) {
+                const { data: adotado } = await supabase
+                  .from("marketplace_orders")
+                  .update({
+                    gateway_payment_id: idGateway,
+                    // `dados` (o cast local de `dadosCartao`) só existe DENTRO
+                    // do ramo de criação do cartão, lá em cima — aqui, no
+                    // fallback de "não gravado", só `dadosCartao` (declarado
+                    // no topo do handler) continua no escopo.
+                    metodo_online: dadosCartao.paymentTypeId === "credit_card" ? "credito" : "debito",
+                    parcelas: dadosCartao.paymentTypeId === "credit_card" ? dadosCartao.parcelas : 1,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", pedido.id)
+                  .eq("gateway_payment_id", idOcupante)
+                  .select("id, expires_at")
+                  .maybeSingle();
+                vagaAdotada = adotado ?? null;
+              } else {
+                console.warn(
+                  "criar-pagamento: MP não cancelou o PIX concorrente para adotar o cartão já aprovado (Achado R2)",
+                  { orderId: pedido.id, idPixOcupante: idOcupante },
+                );
+              }
+            }
+          }
+        }
+        if (vagaAdotada) {
+          console.warn(
+            "criar-pagamento: cartao_orfao evitado — PIX concorrente ainda aberto foi cancelado e a vaga foi trocada pelo cartão já aprovado (Achado R2)",
+            { orderId: pedido.id, idOrderAprovado: idGateway, idPixCancelado: idOcupante },
+          );
+          return json(
+            {
+              paymentId: idGateway,
+              statusPagamento: statusCru,
+              expiraEm: vagaAdotada.expires_at,
+              desafio3ds: undefined,
+            },
+            200,
+          );
+        }
         console.error(
           "criar-pagamento: cartao_orfao — cobrança aprovada (ou irreversível) sem registro no pedido, perdeu a corrida da vaga",
           { orderId: pedido.id, idOrderOrfa: idGateway, status: statusBrutoDaOrderCriada },
         );
         const alertarAdmin = deps.alertarAdminCartaoOrfao ?? alertarAdminCartaoOrfaoReal;
-        await alertarAdmin({ supabase, orderId: pedido.id, idOrderOrfa: idGateway });
+        await comTempoLimite(alertarAdmin({ supabase, orderId: pedido.id, idOrderOrfa: idGateway }), 5000);
+        return json(
+          {
+            error: "Seu cartão foi cobrado; a loja vai conferir e confirmar o pedido em breve.",
+            terminal: true,
+          },
+          409,
+        );
       }
     }
 

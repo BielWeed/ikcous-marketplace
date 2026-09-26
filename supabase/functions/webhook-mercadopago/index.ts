@@ -85,11 +85,14 @@ import {
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
+  orderEhDeCartao,
   recusaLiberaAVaga,
   TOLERANCIA_DE_VALOR,
+  vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import {
   carregarChavesVapid,
+  comTempoLimite,
   corsHeaders,
   enviarParaInscritos,
   readKey,
@@ -1293,6 +1296,12 @@ async function handler(
   // liga isto; a rota `payment` tem a sua própria trava (bloco `payment`
   // perto da RPC).
   let liberarAVaga = false;
+  // Achado B2 (2ª revisão de risco, 26/09/2026): só a rota `order` sabe pela
+  // FORMA da resposta se a cobrança é de cartão (`orderEhDeCartao`) — usado
+  // mais abaixo para decidir se vale a pena tentar ADOTAR uma vaga vazia (ou
+  // com o sentinela "verificando:" que `criar-pagamento` grava num 409
+  // `idempotency_key_already_used`, Achado B2 em `criar-pagamento/index.ts`).
+  let ordemDeCartaoNaNotificacao = false;
 
   if (rota === "payment") {
     const consulta = await consultarPagamento({
@@ -1349,6 +1358,7 @@ async function handler(
     const statusDetailRaiz = String(order.status_detail ?? "");
     const statusBanco = mapearStatusOrder(statusRaiz, statusDetailRaiz);
     liberarAVaga = recusaLiberaAVaga(order, statusBanco);
+    ordemDeCartaoNaNotificacao = orderEhDeCartao(order);
 
     // Hardening (item não-verificável do laudo do revisor-risco, 26/09/2026):
     // se o GET da order falhar em trazer `payment_method.type` legível
@@ -1485,15 +1495,93 @@ async function handler(
     statusDoEstorno === "charged_back";
 
   if (gatilhoDeEstorno && corpoConsultado) {
-    try {
-      await registrarDesfechoDoEstorno({ supabase, orderId, rota, corpo: corpoConsultado });
-    } catch (erro) {
+    // Achado B1 (2ª revisão de risco, 26/09/2026): este passo lia status/
+    // status_detail/refunds do objeto CONSULTADO desta notificação — que
+    // pode ser uma ORDER ÓRFÃ (Achado A1: cartão aprovado no MP, nunca
+    // gravado porque outra tentativa ganhou a vaga) com o MESMO
+    // `external_reference` do pedido (as duas orders vêm da MESMA
+    // `criar-pagamento`). Reembolsar a ÓRFÃ no painel do MP registrava esse
+    // reembolso no ledger do pedido REAL e `concluir_estorno`
+    // (2026110000100_concluir_estorno.sql:118-125) virava o pedido PAGO em
+    // 'estornado' — dinheiro que o cliente pagou e a loja já recebeu,
+    // cancelado por um estorno que aconteceu em OUTRA cobrança. Roda ANTES
+    // do guard do Achado A3 (mais abaixo — aquele só protege a chamada a
+    // `confirmar_pagamento`, nunca chega a rodar para este passo) e nas DUAS
+    // rotas — a órfã pode ser notificada tanto por `order` quanto, se o
+    // painel do MP estiver inscrito no tópico clássico, por `payment`.
+    //
+    // Só registra quando o objeto CONSULTADO É a cobrança GRAVADA:
+    //  - `idParaRpc` já É `order.id` na rota `order` — compara direto, sem
+    //    chamada nova ao MP.
+    //  - Rota `payment`: o pagamento clássico não tem "order.id" comparável.
+    //    Gravado CLÁSSICO e IGUAL ao id notificado (legado, single-charge-
+    //    per-pedido de antes da Orders API): mesma cobrança, sem reconsulta —
+    //    comportamento de antes, byte a byte. Gravado diferente (clássico ou
+    //    não): reconsulta a ORDER GRAVADA e só confia nela se ELA MESMA
+    //    mostrar o MESMO gatilho de estorno — nunca no que a notificação
+    //    disse sobre outra cobrança.
+    const { data: linhaParaEstorno } = await supabase
+      .from("marketplace_orders")
+      .select("gateway_payment_id")
+      .eq("id", orderId)
+      .maybeSingle();
+    const idGravadoParaEstorno = (linhaParaEstorno as Record<string, unknown> | null)?.gateway_payment_id;
+    const idGravadoParaEstornoStr =
+      typeof idGravadoParaEstorno === "string" && idGravadoParaEstorno.length > 0 ? idGravadoParaEstorno : null;
+
+    let corpoConfiavelParaEstorno: Record<string, unknown> | null = null;
+    if (idGravadoParaEstornoStr !== null && idGravadoParaEstornoStr === idParaRpc) {
+      corpoConfiavelParaEstorno = corpoConsultado;
+    } else if (rota === "payment" && idGravadoParaEstornoStr && !idEhClassico(idGravadoParaEstornoStr)) {
+      const consultaGravadaParaEstorno = await consultarOrder({
+        token: credenciaisMp.token,
+        orderId: idGravadoParaEstornoStr,
+        fetchImpl: deps.fetchImpl,
+        corpoNoLog: false,
+      });
+      if (!consultaGravadaParaEstorno.ok) {
+        console.error(
+          "webhook-mercadopago: não foi possível confirmar a cobrança GRAVADA antes de registrar um estorno — evento mantido na fila do MP",
+          { orderId, idGravado: idGravadoParaEstornoStr, status: consultaGravadaParaEstorno.status },
+        );
+        return json({ error: consultaGravadaParaEstorno.erro }, 500);
+      }
+      const ordemGravadaParaEstorno = consultaGravadaParaEstorno.order as Record<string, unknown>;
+      const statusGravado = typeof ordemGravadaParaEstorno.status === "string" ? ordemGravadaParaEstorno.status : "";
+      const statusDetailGravado = typeof ordemGravadaParaEstorno.status_detail === "string"
+        ? ordemGravadaParaEstorno.status_detail
+        : "";
+      const gatilhoNaGravada = statusGravado === "refunded" ||
+        statusDetailGravado === "partially_refunded" ||
+        statusGravado === "charged_back";
+      corpoConfiavelParaEstorno = gatilhoNaGravada ? ordemGravadaParaEstorno : null;
+    }
+
+    if (!corpoConfiavelParaEstorno) {
       console.error(
-        "webhook-mercadopago: registrarDesfechoDoEstorno falhou — evento mantido na fila do MP",
-        orderId,
-        erro,
+        "webhook-mercadopago: estorno_orfao — a notificação é sobre uma cobrança DIFERENTE da gravada, e a gravada não confirma o mesmo estorno — ledger do pedido NÃO tocado",
+        { orderId, idNotificado: idParaRpc, idGravado: idGravadoParaEstornoStr },
       );
-      return json({ error: "Erro ao registrar o desfecho do estorno." }, 500);
+      const avisoEstornoOrfao = {
+        title: "Estorno de cobrança sem registro",
+        body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago antes de mexer neste pedido`,
+        url: "/admin-orders",
+      };
+      await comTempoLimite(
+        (deps.enviarPush ?? disparoPushReal)({ supabase, aviso: avisoEstornoOrfao }),
+        5000,
+      );
+    } else {
+      try {
+        await registrarDesfechoDoEstorno({ supabase, orderId, rota, corpo: corpoConfiavelParaEstorno });
+      } catch (erro) {
+        console.error(
+          "webhook-mercadopago: registrarDesfechoDoEstorno falhou — evento mantido na fila do MP",
+          orderId,
+          erro,
+        );
+        return json({ error: "Erro ao registrar o desfecho do estorno." }, 500);
+      }
     }
   }
 
@@ -1696,6 +1784,68 @@ async function handler(
     );
   }
 
+  // Achado B2 (2ª revisão de risco, 26/09/2026) — ADOÇÃO: uma cobrança de
+  // CARTÃO pode ficar "ambígua" do lado de `criar-pagamento` — a Orders API
+  // respondeu 409 `idempotency_key_already_used` a um retry (token novo,
+  // MESMA chave) e a vaga do pedido ficou vazia (NULL) ou com um SENTINELA
+  // ("verificando:...", `vagaEmVerificacao`) sem NUNCA saber se a cobrança
+  // da tentativa anterior foi aprovada. Quando ESTA notificação diz que ela
+  // FOI aprovada e a vaga ainda está livre/em verificação, ADOTA: um UPDATE
+  // condicional (a MESMA disciplina de sempre — grava só se a condição
+  // bater) troca o NULL/sentinela pelo id de verdade, e só então a RPC
+  // `confirmar_pagamento` (mais abaixo) encontra o que precisa para
+  // confirmar. Sem isto, o cliente ficava preso em "aguardando" pelo resto
+  // da reserva (`criar-pagamento` devolvia "aguardando" sem parar,
+  // Achado B2) mesmo com o cartão JÁ aprovado — ninguém jamais gravava a
+  // vaga para a RPC achar.
+  if (rota === "order" && ordemDeCartaoNaNotificacao && statusMapeado === "pago") {
+    const idGravadoAtual = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
+    const idGravadoAtualStr = typeof idGravadoAtual === "string" ? idGravadoAtual : null;
+    const vagaAdotavel = idGravadoAtualStr === null || vagaEmVerificacao(idGravadoAtualStr);
+    if (vagaAdotavel) {
+      let queryAdocao = supabase
+        .from("marketplace_orders")
+        .update({ gateway_payment_id: idParaRpc, updated_at: new Date().toISOString() })
+        .eq("id", orderId);
+      queryAdocao = idGravadoAtualStr === null
+        ? queryAdocao.is("gateway_payment_id", null)
+        : queryAdocao.eq("gateway_payment_id", idGravadoAtualStr);
+      const { data: adotado } = await queryAdocao.select("id").maybeSingle();
+      if (adotado) {
+        console.warn(
+          "webhook-mercadopago: cartao_adotado — cobrança aprovada ligada a uma vaga que estava vazia/em verificação (Achado B2)",
+          { orderId, idOrder: idParaRpc, idGravadoAntes: idGravadoAtualStr },
+        );
+      } else {
+        // Perdeu a corrida para OUTRA adoção/confirmação concorrente — segue
+        // para `confirmar_pagamento` normalmente; a guarda (d) da RPC decide
+        // com o estado REAL (idempotente, mesmo padrão do resto do arquivo).
+        console.warn(
+          "webhook-mercadopago: não foi possível adotar a vaga (ocupada entre a leitura e a tentativa) — segue para confirmar_pagamento normalmente",
+          { orderId, idOrder: idParaRpc },
+        );
+      }
+    } else if (idGravadoAtualStr !== idParaRpc) {
+      // A vaga já tem OUTRA cobrança de verdade (não vazia, não sentinela, e
+      // diferente desta) — esta order aprovada é uma DIVERGÊNCIA de verdade:
+      // duas cobranças aprovadas para o mesmo pedido (ex.: o cliente pagou
+      // com um segundo cartão numa tentativa nova enquanto a ambígua também
+      // caiu aprovada). A RPC abaixo recusa com 'divergente' (nunca
+      // sobrescreve a vaga real) — o dinheiro da SEGUNDA cobrança fica sem
+      // dono, e o admin precisa saber para conferir e devolver.
+      console.error(
+        "webhook-mercadopago: cartao_divergente — order aprovada, mas a vaga já tem OUTRA cobrança gravada — possível cobrança duplicada",
+        { orderId, idOrder: idParaRpc, idGravadoNaVaga: idGravadoAtualStr },
+      );
+      const avisoDivergente = {
+        title: "Cobrança de cartão duplicada?",
+        body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago`,
+        url: "/admin-orders",
+      };
+      await comTempoLimite((deps.enviarPush ?? disparoPushReal)({ supabase, aviso: avisoDivergente }), 5000);
+    }
+  }
+
   if (rota === "payment") {
     const idGravadoNoBanco = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
     if (
@@ -1728,10 +1878,14 @@ async function handler(
       // verificação que já rodou, e o dinheiro fica onde a página do MP já
       // mostra (o painel do lojista resolve manualmente).
       if (statusMapeado === "pago" || statusMapeado === "estornado") {
+        // Achado R6 (2ª revisão de risco, 26/09/2026): `corpoNoLog: false` —
+        // a cobrança gravada pode ser de CARTÃO (payer com e-mail e CPF do
+        // titular); sem isto, um 4xx/5xx aqui logaria o corpo cru.
         const consultaGravado = await consultarOrder({
           token: credenciaisMp.token,
           orderId: idGravadoNoBanco,
           fetchImpl: deps.fetchImpl,
+          corpoNoLog: false,
         });
         if (!consultaGravado.ok) {
           console.error(
