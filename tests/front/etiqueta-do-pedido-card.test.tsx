@@ -390,6 +390,54 @@ describe("EtiquetaDoPedidoCard", () => {
     );
   });
 
+  it("409 desconhecido (endereço da conta mudou de CEP — endereco_mudou: true, SEM resgate nem precisa_cpf): mensagem aparece e a tela continua na confirmação, não trata como resgate", async () => {
+    // 2ª rodada da revisão de risco (item A): a edge devolve um 409 NOVO
+    // (endereço da conta mudou depois da compra) que não é `resgate` nem
+    // `precisa_cpf`. `mensagemDeErroInvocacao` já é agnóstica ao STATUS —
+    // só olha o corpo (`error`/`resgate`/`precisa_cpf`) — então este card
+    // não precisou de nenhuma mudança de código: este teste prova que o
+    // 409 desconhecido cai no MESMO ramo do 400 comum (mensagem persiste,
+    // continua em "Confirmar e gerar", nunca vira "emitida").
+    const mensagemEnderecoMudou =
+      "O endereço da conta da cliente mudou de CEP depois da compra (era 01310-100, agora 69005-070). Confirme com a cliente antes de gerar a etiqueta.";
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: {
+        name: "FunctionsHttpError",
+        context: new Response(
+          JSON.stringify({
+            error: mensagemEnderecoMudou,
+            endereco_mudou: true,
+          }),
+          { status: 409 },
+        ),
+      },
+    });
+    await abrirCard();
+
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(
+      hospedeiro.querySelector('[data-testid="erro-etiqueta"]')?.textContent,
+    ).toBe(mensagemEnderecoMudou);
+    // Continua na confirmação — NÃO é resgate (não tem `shipping_label_id`
+    // pra cair sozinho em "emitida") e não é o portão de CPF.
+    expect(botao("Confirmar e gerar")).toBeTruthy();
+    expect(
+      hospedeiro.querySelector('[data-testid="codigo-rastreio"]'),
+    ).toBeNull();
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(mensagemEnderecoMudou);
+  });
+
   it("resgate: refaz a leitura do pedido (cai em emitida) e NUNCA reapresenta 'Confirmar e gerar'", async () => {
     const mensagemResgate =
       "Já existe uma geração de etiqueta em andamento para este pedido.";
