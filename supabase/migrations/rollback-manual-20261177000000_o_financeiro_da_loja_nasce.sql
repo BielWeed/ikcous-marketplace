@@ -11,7 +11,21 @@
 -- DADOS: APAGA os lançamentos manuais, contas, categorias e sessões de caixa
 -- do lojista, e a linha de assinatura que o projeto de cobrança gravou.
 -- Exportar antes (fin_extrato por período) se houver uso real.
+--
+-- GUARDA DE ORDEM (achado R): reverta 78 antes desta (77). O CRM/Início
+-- (crm_visao, painel_inicio) chama fin__movimentos/fin__saldos/fin_dre —
+-- revertendo o Financeiro primeiro, as duas RPCs de 78 quebram com 42883
+-- (function does not exist).
 -- ============================================================================
+
+DO $$
+BEGIN
+  IF to_regprocedure('public.painel_inicio()') IS NOT NULL
+     OR to_regprocedure('public.crm_visao(date, date)') IS NOT NULL THEN
+    RAISE EXCEPTION 'reverta 78 (o_crm_e_o_inicio_leem_a_loja) antes de reverter esta migration (77).';
+  END IF;
+END
+$$;
 
 DROP FUNCTION IF EXISTS public.fin_caixa_historico(integer);
 DROP FUNCTION IF EXISTS public.fin_caixa_fechar(numeric, text);

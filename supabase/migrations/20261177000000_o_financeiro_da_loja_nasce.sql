@@ -40,6 +40,21 @@
 --      fin_caixa_movimentar, fin_caixa_fechar, fin_caixa_historico,
 --      assinatura_da_loja_ler.
 --
+-- REVISÃO DE RISCO (26/09/2026, achados aplicados nesta mesma migration,
+-- ainda não aplicada em produção):
+--   D. A gaveta (`fin__caixa_calculo`) agora desconta o estorno feito fora do
+--      app (venda em dinheiro cancelada + "Já devolvi") pela mesma data real
+--      que `fin__saldos` já usava — antes só contava a entrada, nunca a
+--      saída, e o esperado ficava inflado pelo valor total da venda.
+--   E. O ajuste da ABERTURA do caixa (contado × sistema) vai para categorias
+--      `fora_dre` novas — não é lucro nem despesa, é troco/falta que já
+--      existia fora do fluxo. A Quebra/Sobra do FECHAMENTO continua igual.
+--   F. O estorno feito fora do app é datado por `estorno_manual_registrado_em`
+--      (carimbo novo em `marketplace_orders`, 20261176000000), não mais por
+--      `updated_at` (qualquer edição do pedido empurrava a data).
+--   K. O CMV exclui pedido com `stock_returned_at` preenchido — cancelamento
+--      que já devolveu tudo à prateleira não custou mercadoria nenhuma.
+--
 -- DADOS EXISTENTES: nenhuma tabela existente é reescrita. Sementes: 3 contas e
 -- as categorias de sistema (ON CONFLICT DO NOTHING — não sobrescrevem o que o
 -- lojista renomeou).
@@ -57,7 +72,9 @@
 --
 -- FICHA DE VERIFICAÇÃO:
 --   1. SELECT id, nome, tipo FROM public.fin_contas ORDER BY ordem;  -- 3 linhas
---   2. SELECT count(*) FROM public.fin_categorias WHERE sistema;     -- 20
+--   2. SELECT count(*) FROM public.fin_categorias WHERE sistema;     -- 22
+--      (20 da semente original + 2 do achado E da revisão: ajuste de saldo
+--      na abertura do caixa, fora da DRE)
 --   3. SELECT relrowsecurity FROM pg_class WHERE relname LIKE 'fin\_%'
 --        OR relname = 'assinatura_da_loja';                          -- todos true
 --
@@ -224,6 +241,13 @@ INSERT INTO public.fin_categorias (id, nome, natureza, grupo_dre, ordem, sistema
   ('f2000000-0000-4000-8000-000000000003', 'Rendimentos e juros recebidos', 'receita', 'financeiro', 3, true),
   ('f2000000-0000-4000-8000-000000000004', 'Aporte do dono', 'receita', 'fora_dre', 4, true),
   ('f2000000-0000-4000-8000-000000000005', 'Sobra de caixa', 'receita', 'financeiro', 5, true),
+  -- Achado E: o ajuste da ABERTURA do caixa (contado x sistema) é fora da
+  -- DRE — troco trazido de casa não é lucro, falta na abertura não é
+  -- despesa; é dinheiro que já estava (ou faltava) fora do fluxo da loja. A
+  -- Quebra/Sobra "de verdade" continua em grupo `financeiro`: só a do
+  -- FECHAMENTO (achado real de caixa) entra no resultado.
+  ('f2000000-0000-4000-8000-000000000006', 'Ajuste de saldo na abertura do caixa (sobra)', 'receita', 'fora_dre', 6, true),
+  ('f2000000-0000-4000-8000-000000000007', 'Ajuste de saldo na abertura do caixa (falta)', 'despesa', 'fora_dre', 7, true),
   ('f2000000-0000-4000-8000-000000000010', 'Devoluções e estornos', 'despesa', 'deducao', 10, true),
   ('f2000000-0000-4000-8000-000000000011', 'Impostos sobre vendas (DAS/Simples)', 'despesa', 'deducao', 11, true),
   ('f2000000-0000-4000-8000-000000000012', 'Taxas de cartão e Mercado Pago', 'despesa', 'custo_variavel', 12, true),
@@ -331,14 +355,20 @@ AS $$
         OR r.status IN ('solicitado', 'em_processamento')
     UNION ALL
     -- Estornado fora do app (registrar_estorno_manual / MP direto): o que o
-    -- ledger não cobriu saiu por fora.
+    -- ledger não cobriu saiu por fora. Achado F: NÃO usa updated_at — QUALQUER
+    -- update posterior do pedido empurraria a data do estorno para a frente.
+    -- estorno_manual_registrado_em (20261176000000) é o carimbo do instante
+    -- real; pedido estornado manualmente ANTES daquela migration cai para o
+    -- updated_at (degradação documentada, sem fonte melhor disponível).
     SELECT 'estorno_externo:' || v.id::text, 'estorno_externo', 'saida', 'realizado',
-           (v.total - COALESCE(v.valor_estornado, 0))::numeric, public.fin__dia(v.updated_at),
+           (v.total - COALESCE(v.valor_estornado, 0))::numeric,
+           public.fin__dia(COALESCE(v.estorno_manual_registrado_em, v.updated_at)),
            public.fin__conta_da_forma(v.payment_method), NULL::uuid,
            'f2000000-0000-4000-8000-000000000010'::uuid,
            'Estorno registrado fora do app · pedido #' || upper(left(v.id::text, 8)),
            public.fin__forma_do_pedido(v.payment_method, v.metodo_online),
-           v.id, NULL::date, public.fin__dia(v.updated_at), false, v.canal, NULL::uuid, NULL::smallint, NULL::smallint
+           v.id, NULL::date, public.fin__dia(COALESCE(v.estorno_manual_registrado_em, v.updated_at)),
+           false, v.canal, NULL::uuid, NULL::smallint, NULL::smallint
       FROM vendas v
      WHERE v.payment_status = 'estornado' AND v.total - COALESCE(v.valor_estornado, 0) > 0
     UNION ALL
@@ -398,6 +428,7 @@ DECLARE
   v_fim timestamptz;
   v_vendas numeric := 0;
   v_devolucoes numeric := 0;
+  v_estornos_externos numeric := 0;
   v_entradas numeric := 0;
   v_saidas numeric := 0;
 BEGIN
@@ -407,6 +438,13 @@ BEGIN
 
   -- Só a conta de sistema recebe as vendas em dinheiro derivadas.
   IF v_s.conta_id = 'f1000000-0000-4000-8000-000000000001'::uuid THEN
+    -- 'estornado' continua contado aqui, de propósito: o dinheiro ENTROU na
+    -- gaveta quando a venda foi recebida — é isso que 'recebido_na_entrega'
+    -- registrou, e o status mudar depois não desfaz o fato. O que faltava
+    -- (achado D) era descontar a SAÍDA desse mesmo dinheiro quando a loja
+    -- devolve na mão (registrar_estorno_manual): sem isto, vendas contava
+    -- os 100 que entraram, ninguém descontava os 100 que saíram de volta, e
+    -- o esperado ficava 100 acima da gaveta de verdade.
     SELECT COALESCE(sum(o.total), 0) INTO v_vendas
       FROM public.marketplace_orders o
      WHERE o.payment_method = 'cash'
@@ -416,6 +454,18 @@ BEGIN
       FROM public.devolucoes d JOIN public.marketplace_orders o ON o.id = d.order_id
      WHERE d.status = 'concluida' AND d.reembolso_manual AND o.payment_method = 'cash'
        AND d.concluida_em >= v_s.aberto_em AND d.concluida_em <= v_fim;
+    -- Achado D+F: a SAÍDA do estorno feito fora do app (registrar_estorno_
+    -- manual), pela mesma conta e a mesma data real que fin__saldos já usa
+    -- (77:335-343) — a mesma que a venda usou ENTRA acima, a devolução dela
+    -- SAI aqui. Dinheiro que entrou e voltou na mesma sessão (ou numa
+    -- sessão anterior já fechada, e volta nesta) some do esperado nos dois
+    -- casos — nunca conta como sobra de dinheiro que já saiu da loja.
+    SELECT COALESCE(sum(o.total - COALESCE(o.valor_estornado, 0)), 0) INTO v_estornos_externos
+      FROM public.marketplace_orders o
+     WHERE o.payment_method = 'cash' AND o.payment_status = 'estornado'
+       AND o.total - COALESCE(o.valor_estornado, 0) > 0
+       AND COALESCE(o.estorno_manual_registrado_em, o.updated_at) >= v_s.aberto_em
+       AND COALESCE(o.estorno_manual_registrado_em, o.updated_at) <= v_fim;
   END IF;
 
   SELECT COALESCE(sum(CASE
@@ -433,9 +483,10 @@ BEGIN
   RETURN jsonb_build_object(
     'vendas_dinheiro', v_vendas,
     'devolucoes_dinheiro', v_devolucoes,
+    'estornos_externos_dinheiro', v_estornos_externos,
     'entradas_manuais', v_entradas,
     'saidas_manuais', v_saidas,
-    'esperado', v_s.valor_abertura + v_vendas - v_devolucoes + v_entradas - v_saidas
+    'esperado', v_s.valor_abertura + v_vendas - v_devolucoes - v_estornos_externos + v_entradas - v_saidas
   );
 END;
 $$;
@@ -661,12 +712,20 @@ BEGIN
     (SELECT COALESCE(sum(CASE WHEN tipo = 'entrada' THEN valor ELSE -valor END), 0)
        FROM manuais WHERE grupo_dre = 'financeiro'),
     -- CMV estimado pelo custo ATUAL do produto (o app não guarda custo
-    -- histórico), menos o que voltou para a prateleira por devolução no período.
+    -- histórico), menos o que voltou para a prateleira por devolução no
+    -- período. Achado K: pedido com `stock_returned_at` preenchido (o
+    -- cancelamento já devolveu TUDO à prateleira — devolver_estoque) sai do
+    -- CMV inteiro: a mercadoria nunca custou de verdade, só a receita/dedução
+    -- ficam (a "venda" continua contada e o estorno a neutraliza — regra
+    -- inalterada). Devolução PARCIAL (nem toda a venda voltou) continua
+    -- descontada abaixo, por item, do mesmo jeito que já era.
     (SELECT COALESCE(sum(oi.quantity * COALESCE(p.custo, 0)), 0)
        FROM mov m
+       JOIN public.marketplace_orders o2 ON o2.id = m.pedido_id
        JOIN public.marketplace_order_items oi ON oi.order_id = m.pedido_id
        LEFT JOIN public.produtos p ON p.id = oi.product_id
-      WHERE m.origem IN ('venda_online', 'venda_balcao', 'venda_entrega')),
+      WHERE m.origem IN ('venda_online', 'venda_balcao', 'venda_entrega')
+        AND o2.stock_returned_at IS NULL),
     (SELECT COALESCE(sum(di.quantidade * COALESCE(p.custo, 0)), 0)
        FROM public.devolucao_itens di
        LEFT JOIN public.produtos p ON p.id = di.product_id
@@ -1092,7 +1151,12 @@ BEGIN
   END IF;
 
   -- O que foi contado manda: a diferença para o saldo do sistema vira ajuste,
-  -- para a conta Caixa refletir a gaveta de verdade.
+  -- para a conta Caixa refletir a gaveta de verdade. Achado E: este ajuste é
+  -- da ABERTURA (troco trazido de casa, ou falta antes de vender qualquer
+  -- coisa) — vai para `fora_dre` (categorias 006/007), NUNCA para
+  -- Sobra/Quebra de caixa (`financeiro`, que entra no lucro líquido). A
+  -- Quebra/Sobra de FECHAMENTO, essa sim um resultado real do dia, continua
+  -- em fin_caixa_fechar sem mudança nenhuma.
   SELECT s.saldo INTO v_saldo FROM public.fin__saldos() s WHERE s.conta_id = v_conta.id;
   IF round(v_valor - COALESCE(v_saldo, 0), 2) <> 0 THEN
     INSERT INTO public.fin_lancamentos (
@@ -1101,8 +1165,8 @@ BEGIN
     ) VALUES (
       CASE WHEN v_valor > COALESCE(v_saldo, 0) THEN 'entrada' ELSE 'saida' END,
       'realizado', abs(round(v_valor - COALESCE(v_saldo, 0), 2)), v_conta.id,
-      CASE WHEN v_valor > COALESCE(v_saldo, 0) THEN 'f2000000-0000-4000-8000-000000000005'::uuid
-           ELSE 'f2000000-0000-4000-8000-000000000031'::uuid END,
+      CASE WHEN v_valor > COALESCE(v_saldo, 0) THEN 'f2000000-0000-4000-8000-000000000006'::uuid
+           ELSE 'f2000000-0000-4000-8000-000000000007'::uuid END,
       'Ajuste na abertura do caixa (contado x sistema)', 'dinheiro',
       public.fin__hoje(), public.fin__hoje(), public.fin__hoje(), 'ajuste_caixa', auth.uid()
     );

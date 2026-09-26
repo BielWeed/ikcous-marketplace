@@ -519,10 +519,19 @@ PROVAS.push({
         Number(dre.resultado_financeiro),
     );
     assert.equal(num(dre.lucro_liquido), identidade);
+    // Achado E (revisão de 26/09/2026): o ajuste da ABERTURA (+20, contado x
+    // sistema) vai para categoria `fora_dre` — não é lucro, é troco que já
+    // existia fora do fluxo da loja. Só a Quebra do FECHAMENTO (-5, um
+    // resultado real do dia) pesa no resultado_financeiro.
     assert.equal(
       num(dre.resultado_financeiro),
-      15,
-      "sobra de 20 na abertura − quebra de 5 no fechamento",
+      -5,
+      "só a quebra de 5 no fechamento pesa; a sobra de 20 na abertura é fora_dre",
+    );
+    assert.equal(
+      linhas["Ajuste de saldo na abertura do caixa (sobra)"],
+      undefined,
+      "achado E: o ajuste de abertura não aparece nas linhas da DRE",
     );
 
     const resumo = await rpc(cliente, "SELECT public.fin_resumo($1, $2) AS r", [
@@ -566,6 +575,190 @@ PROVAS.push({
     } finally {
       await cliente.query("ROLLBACK");
     }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Achados da revisão de risco de 26/09/2026 (migrations 75/76/77 nunca
+// aplicadas em produção — corrigidas em vez de remendadas por cima).
+// ---------------------------------------------------------------------------
+PROVAS.push({
+  nome: "(D) gaveta desconta o estorno externo (venda em dinheiro cancelada + 'Já devolvi')",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    await rpc(cliente, "SELECT public.fin_caixa_abrir(0) AS r");
+    let atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+    assert.equal(
+      num(atual.esperado),
+      0,
+      "caixa recém-aberto, sem venda nenhuma",
+    );
+
+    const O_D = "5ddddddd-0000-0000-0000-000000000001";
+    await pedido(cliente, O_D, {
+      total: 100,
+      pagamento: "cash",
+      paymentStatus: "recebido_na_entrega",
+      recebidoEm: new Date(),
+      canal: "presencial",
+    });
+    atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+    assert.equal(num(atual.vendas_dinheiro), 100);
+    assert.equal(num(atual.esperado), 100, "100 entraram na gaveta");
+
+    // Pedido cancelado + "Já devolvi" (registrar_estorno_manual): o mesmo
+    // dinheiro sai da gaveta pela mesma via.
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
+      [O_D],
+    );
+    await rpc(
+      cliente,
+      "SELECT public.registrar_estorno_manual($1::uuid) AS r",
+      [O_D],
+    );
+    atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+    assert.equal(
+      num(atual.estornos_externos_dinheiro),
+      100,
+      "achado D: o estorno externo agora aparece na gaveta",
+    );
+    assert.equal(
+      num(atual.esperado),
+      0,
+      "achado D: 100 entraram e 100 saíram — a gaveta esperada volta a 0, não fica em 100",
+    );
+
+    const fechado = await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar(0, 'sem sobra nem quebra') AS r",
+    );
+    assert.equal(num(fechado.diferenca), 0, "sem quebra fantasma");
+  },
+});
+
+PROVAS.push({
+  nome: "(F) estorno_manual_registrado_em data o estorno externo — não o updated_at, que qualquer edição move",
+  corpo: async (cliente) => {
+    const O_F = "5ddddddd-0000-0000-0000-000000000002";
+    const antigo = new Date(Date.now() - 40 * 86_400_000);
+    await pedido(cliente, O_F, {
+      total: 60,
+      pagamento: "online",
+      paymentStatus: "pago",
+      paidAt: antigo,
+      status: "cancelled",
+    });
+    // Uma edição qualquer do pedido DEPOIS do estorno: se a data viesse de
+    // updated_at, isto empurraria o movimento para hoje.
+    await logar(cliente, U_ADMIN);
+    await rpc(
+      cliente,
+      "SELECT public.registrar_estorno_manual($1::uuid) AS r",
+      [O_F],
+    );
+    const registradoEm = (
+      await cliente.query(
+        "SELECT estorno_manual_registrado_em FROM public.marketplace_orders WHERE id = $1",
+        [O_F],
+      )
+    ).rows[0].estorno_manual_registrado_em;
+    assert.ok(registradoEm, "o carimbo nasce no registro do estorno");
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET customer_name = 'Nome corrigido' WHERE id = $1",
+      [O_F],
+    );
+    const mov = (
+      await cliente.query(
+        "SELECT data FROM public.fin__movimentos(NULL, NULL) WHERE id = $1",
+        [`estorno_externo:${O_F}`],
+      )
+    ).rows[0];
+    // fin__dia() de novo (não .toISOString() no lado do JS): o carimbo é
+    // comparado no mesmo fuso que a função usa (America/Sao_Paulo), sem
+    // risco de virar o dia perto da meia-noite UTC.
+    const dataEsperada = (
+      await cliente.query("SELECT public.fin__dia($1::timestamptz) AS d", [
+        registradoEm,
+      ])
+    ).rows[0].d;
+    assert.equal(
+      mov.data.toISOString().slice(0, 10),
+      dataEsperada.toISOString().slice(0, 10),
+      "achado F: a data é a do carimbo do estorno, não a de uma edição posterior do pedido",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(K) CMV exclui pedido cujo estoque já voltou inteiro (stock_returned_at)",
+  corpo: async (cliente) => {
+    // Delta, não total absoluto: o período [estado.inicio, estado.hoje] já
+    // carrega CMV de pedidos de PROVAS anteriores (a mesma régua da prova
+    // (f)(g)) — o que importa aqui é o quanto O_K muda o número.
+    const periodo = async () =>
+      num(
+        (
+          await rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
+            estado.inicio,
+            estado.hoje,
+          ])
+        ).cmv,
+      );
+    const cmvAntes = await periodo();
+
+    const O_K = "5ddddddd-0000-0000-0000-000000000003";
+    await pedido(cliente, O_K, {
+      total: 50,
+      pagamento: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      itens: [{ produto: P_A, qtd: 1, preco: 50 }],
+    });
+    assert.equal(
+      num((await periodo()) - cmvAntes),
+      20,
+      "O_K entra no CMV: 1 x 20 (custo do Produto A)",
+    );
+
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET status = 'cancelled', stock_returned_at = now() WHERE id = $1",
+      [O_K],
+    );
+    assert.equal(
+      num((await periodo()) - cmvAntes),
+      0,
+      "achado K: estoque de volta por inteiro — a mercadoria não custou nada à loja",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(gap 4) fin_dre recusa período invertido ou maior que 400 dias",
+  corpo: async (cliente) => {
+    await assert.rejects(
+      () =>
+        rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
+          estado.hoje,
+          estado.inicio,
+        ]),
+      /Período inválido/,
+      "fim antes do início",
+    );
+    const longeDemais = new Date(
+      new Date(estado.inicio).getTime() - 401 * 86_400_000,
+    )
+      .toISOString()
+      .slice(0, 10);
+    await assert.rejects(
+      () =>
+        rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
+          longeDemais,
+          estado.hoje,
+        ]),
+      /Período inválido/,
+      "mais de 400 dias",
+    );
   },
 });
 
