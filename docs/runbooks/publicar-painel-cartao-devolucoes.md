@@ -118,7 +118,9 @@ O cabeçalho de cada migration diz "COMO APLICAR: `node scripts/db-apply.cjs`". 
 - o projeto de destino fica explícito.
 
 Além disso, `DATABASE_URL` já apontou para o projeto errado: a passagem de 19/09/2026 registra o
-segredo do repositório apontando para outro projeto.
+segredo do repositório apontando para outro projeto. Desde 26/09/2026, o job "Código x banco
+(objetos usados)" do `ci.yml` fica VERMELHO enquanto esse secret continuar apontando para o
+sandbox, em vez de silenciosamente comparar o código com o banco errado.
 
 1. *(Opcional, recomendado)* Faça um ensaio:
    1. Abra GitHub → Actions → **"Aplicar migrations (Supabase)"** → *Run workflow*.
@@ -201,7 +203,7 @@ node - <<'JS' > conferir-marcadores.sql
 const { VERIFICACOES } = require("./scripts/db-apply.cjs");
 const q = (s) => "'" + s + "'";
 const linhas = [];
-for (const arquivo of Object.keys(VERIFICACOES).filter((a) => /^2026117[5-8]/.test(a)).sort()) {
+for (const arquivo of Object.keys(VERIFICACOES).filter((a) => /^(2026117[5-8]|20261180)/.test(a)).sort()) {
   for (const c of [].concat(VERIFICACOES[arquivo])) {
     for (const bruto of c.esperado) {
       const m = typeof bruto === "string" ? { texto: bruto } : bruto;
@@ -223,12 +225,21 @@ SELECT migration, funcao, vezes AS esperado,
 JS
 ```
 
-Cole o `conferir-marcadores.sql` no SQL Editor. No commit `1af39ee1` (26/09/2026) o mapa tem **32
-marcadores**, e todos precisam dar `ok = true`. A contagem é exata, como no `db-apply`:
+Cole o `conferir-marcadores.sql` no SQL Editor. O filtro acima cobre 75–78 e a 80 (§1.4, **se
+aplicada**) — **não conte marcadores de cabeça**: rode a consulta e confira que TODA linha do
+resultado dá `ok = true`, seja qual for o total (o número exato muda a cada revisão de qualquer
+uma das migrations; hard-codar uma contagem aqui é exatamente o que ficou errado numa rodada
+anterior deste runbook). Nos dois sentidos:
 - `achado` menor que `esperado` quer dizer que parte do trecho sumiu;
 - `achado` maior que `esperado` quer dizer que a função mudou de um jeito que ninguém previu.
 
 Nos dois casos a situação pede olho humano antes do passo 2.
+
+**A 79 (`cancelar_devolucao_barra_compra_em_voo`) NÃO entra neste filtro** — ela é de outra
+frente (`fix/devolucao-pos-revisao`) e tem o próprio procedimento de conferência, no §7.3 do
+runbook daquela frente. Se a 79 estiver aplicada, confira os marcadores dela lá, não aqui —
+duplicar a lista aqui é como a contagem hard-coded acima ficou errada quando a 79 ganhou um
+overload novo na rodada 4 dela.
 
 ### 1.3 Ledger (decisão do dono)
 
@@ -244,7 +255,41 @@ INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
 ON CONFLICT (version) DO NOTHING;
 ```
 
+**A linha da 79 não entra neste `INSERT`** — o ledger dela é registrado pelo §7.4 do runbook da
+frente `fix/devolucao-pos-revisao`, que é quem publica e mantém aquela migration.
+
 Se registrar e depois reverter (§5), apague as linhas das versões revertidas.
+
+### 1.4 Aplicar a 80 (achado independente de risco, 26/09/2026)
+
+A `20261180000000_cliente_nao_cancela_com_cartao_vivo.sql` é publicada À PARTE das 4 migrations
+do §1 — mesmo procedimento (workflow, nunca `db-apply.cjs` direto), mas em outro run, DEPOIS de
+o §1.1/§1.2 confirmarem que 75 e 76 estão de pé (ela lê `metodo_online` e `devolucoes`).
+
+1. Abra *Run workflow* de novo, no branch do SHA anotado.
+2. Preencha `migracoes`:
+
+   ```text
+   20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
+   ```
+
+3. Deixe `projeto_ref` **no padrão**, que é o projeto da loja.
+
+Esta migration tem um **preflight** (`B1_BASELINE_DIVERGENT`, `DO $preflight_20261180$` no topo
+do arquivo) que recusa ANTES de qualquer `CREATE` se `marketplace_orders.metodo_online` ou
+`public.devolucoes` não existirem, ou se o corpo vivo de `update_order_status_atomic` não bater
+com o que a 75 deixou nem com o que ela própria deixa — aplicar fora de ordem (ex.: direto sobre
+um banco parado na 74) sai com esse erro e **nada é gravado**, em vez de criar uma função quebrada
+silenciosamente (o que aconteceria sem o preflight — provado em Postgres 17 efêmero, ver o
+cabeçalho do arquivo).
+
+Depois de aplicar, acrescente ao ledger do §1.3:
+
+```sql
+INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
+  ('20261180000000', 'cliente_nao_cancela_com_cartao_vivo')
+ON CONFLICT (version) DO NOTHING;
+```
 
 ## 2. Publicar as functions — só depois do §1 conferido
 
@@ -254,25 +299,55 @@ Se registrar e depois reverter (§5), apague as linhas das versões revertidas.
 3. Preencha `functions` com:
 
 ```text
-criar-pagamento, webhook-mercadopago, reconciliar-pagamentos, melhor-envio-etiqueta, send-order-confirmation
+criar-pagamento, webhook-mercadopago, reconciliar-pagamentos, estornar-pagamento, melhor-envio-etiqueta, send-order-confirmation
 ```
 
 | Function | Por que sobe |
 | --- | --- |
-| `criar-pagamento` | Cartão pela Orders API, idempotência por tentativa, recusa que libera a vaga, 3DS. Lê `tentativas_de_pagamento` e `config_pagamento_cartao` (76). |
-| `webhook-mercadopago` | Recusa ou cancelamento de cartão chamam `liberar_cobranca_do_pedido` (76). Notificação sobre cobrança órfã não aplica pago nem estornado (achado A3). Comprovante com `metodo_online`. |
-| `reconciliar-pagamentos` | A mesma liberação da vaga e o mesmo comprovante. |
+| `criar-pagamento` | Cartão pela Orders API, idempotência por tentativa, recusa que libera a vaga, 3DS. Lê `tentativas_de_pagamento` e `config_pagamento_cartao` (76). Usa `_shared/webpush.ts` (achado #3 abaixo). |
+| `webhook-mercadopago` | Recusa ou cancelamento de cartão chamam `liberar_cobranca_do_pedido` (76). Notificação sobre cobrança órfã não aplica pago nem estornado (achado A3). Comprovante com `metodo_online`. Usa `_shared/estorno.ts` e `mapearStatusOrder` (achados #1/#2 abaixo). |
+| `reconciliar-pagamentos` | A mesma liberação da vaga e o mesmo comprovante. Usa `_shared/estorno.ts` e `mapearStatusOrder` (achados #1/#2 abaixo). |
+| `estornar-pagamento` | Achado #1 abaixo — `_shared/estorno.ts` mudou (`corpoNoLog: false`). |
 | `melhor-envio-etiqueta` | Ação `gerar_devolucao_reversa`, que lê e grava `devolucoes`/`devolucao_eventos` (75). |
 | `send-order-confirmation` | Importa `_shared/comprovante.ts`, que agora seleciona `metodo_online`. **Publicada antes da 76, a leitura do pedido falha.** |
 
-`estornar-pagamento` e `credenciais-mercado-pago` **não** precisam subir. Das peças de
-`_shared/mercadopago.ts`, elas só usam `fetchComTempo`, `consultarOrder`, `idEhClassico` e
-`BASE_URL_PADRAO`, e as quatro estão idênticas às da base. Por isso não use o apelido
-`cobranca`, que publicaria as cinco do Mercado Pago.
+`credenciais-mercado-pago` **não** precisa subir: de `_shared/mercadopago.ts` só usa
+`fetchComTempo` e `BASE_URL_PADRAO`, inalterados nesta branch (confirmado pela checagem abaixo).
+
+**Checagem de publicação da branch do cartão online — CORRIGIDA na 9ª rodada (26/09/2026)**: a
+checagem anterior (mesma rodada) usava `git diff 08c0f7aa..HEAD -- .../estorno.ts` — diff de DOIS
+PONTOS a partir de `08c0f7aa`, um commit DESTA MESMA branch. Isso compara a árvore de `08c0f7aa`
+(que já tem a mudança) com a de `HEAD` (que também tem, sem diferença): o diff mentia "nada mudou"
+para qualquer mudança que `08c0f7aa` já tivesse introduzido. O método certo é diff de TRÊS PONTOS a
+partir da base REAL da branch (`fe045939`, o commit antes de qualquer trabalho do cartão online):
+```
+git diff fe045939...fix/cartao-edge-achados --stat -- supabase/functions/_shared
+```
+Resultado, arquivo por arquivo:
+1. **`_shared/estorno.ts`** (+5 linhas, commit `08c0f7aa`): `consultarTransacaoDaOrder` ganhou
+   `corpoNoLog: false` — a order consultada ali pode ser de CARTÃO (payer com e-mail e CPF do
+   titular), e o log de erro parou de gravar o corpo cru. `grep -rl "_shared/estorno"
+   supabase/functions/*/index.ts` — três consumidores: `estornar-pagamento`,
+   `reconciliar-pagamentos`, `webhook-mercadopago`. Os dois últimos já estavam na lista;
+   **`estornar-pagamento` entra agora**.
+2. **`_shared/mercadopago.ts`** (rodada 8): `mapearStatusOrder` generaliza
+   `canceled`/`cancelled`/`expired` para qualquer `status_detail`. `grep -rl mapearStatusOrder
+   supabase/functions/*/index.ts` — três consumidores: `criar-pagamento`, `webhook-mercadopago`,
+   `reconciliar-pagamentos`. As três já na lista — nenhuma function nova por causa deste arquivo.
+3. **`_shared/webpush.ts`** (rodada 6): ganhou `dispararSemEsperarCliente`, uma função NOVA e
+   ADITIVA — não muda nenhum export existente. `grep -rn dispararSemEsperarCliente
+   supabase/functions/*/index.ts` mostra que só `criar-pagamento` a chama (já na lista). Os outros
+   seis importadores de `webpush.ts` (`notify-new-order`, `reconciliar-pagamentos`,
+   `send-order-confirmation`, `send-otp-email`, `send-push`, `webhook-mercadopago`) não usam a
+   função nova — comportamento deles intacto, não entram por causa deste arquivo.
+
+Conclusão: a lista de publicação conjunta desta branch é `criar-pagamento`, `webhook-mercadopago`,
+`reconciliar-pagamentos` e `estornar-pagamento` — as quatro já na tabela acima, pelos achados #1
+(`_shared/estorno.ts`) e #2 (`_shared/mercadopago.ts`).
 
 O workflow publica uma function por vez e nunca passa `--no-verify-jwt`: quem manda é
 `supabase/config.toml`. No fim, ele grava `supabase functions list` no resumo do job. Confira que
-as cinco aparecem com a data de agora.
+as seis aparecem com a data de agora.
 
 ## 3. Front
 
@@ -356,11 +431,18 @@ Não precisa mexer em banco.
    anterior.
 3. **Functions**: rode o `publicar-functions.yml` a partir do commit anotado no §0, com as
    mesmas cinco do §2. As versões antigas não leem nada das migrations novas.
-4. **Banco**: rode **sempre 78 → 77 → 76 → 75** e pare onde o problema acabar. Execute pelo
+4. **Banco**: rode **sempre 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A 80
+   e a 79 só entram na fila se já tiverem sido aplicadas** — as duas são publicadas à parte das
+   75–78, em frentes independentes. **A 79 (`cancelar_devolucao_barra_compra_em_voo`) é dona da
+   frente `fix/devolucao-pos-revisao` — o procedimento completo dela (comando, guardas,
+   ledger) está no §7.5 daquele runbook; aqui só a ORDEM RELATIVA importa: ela vem depois da
+   80 e antes da 78.** Se nenhuma das duas estava aplicada, comece direto em 78. Execute pelo
    `psql` com a string de conexão do projeto da loja. **Confira o host antes**, porque o
    workflow não aceita `rollback-manual-*` e o `db-apply` gravaria o rollback no ledger.
 
    ```bash
+   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
+   # 79, se aplicada: arquivo e comando exatos no §7.5 do runbook de fix/devolucao-pos-revisao
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
@@ -368,12 +450,27 @@ Não precisa mexer em banco.
    ```
 
 **Guardas que recusam a ordem errada** (um `DO` com `RAISE EXCEPTION`, antes de qualquer
-`DROP`):
+`DROP`) — só as que este runbook é dono (75, 76, 77, 80; a guarda da 79 é descrita no §7.5 da
+outra frente, não repetida aqui):
+- a 80 não tem guarda de ordem própria (é sempre a primeira a reverter, se estiver aplicada), e
+  seu ROLLBACK tem guarda própria do lado de baixo: recusa se `public.devolucoes` já não
+  existir (a 75 já revertida por baixo dela deixaria `update_order_status_atomic` quebrada
+  para qualquer cancelamento);
 - a 77 recusa se `painel_inicio()`/`crm_visao` existirem;
 - a 76 recusa se 78 ou 77 existirem;
-- a 75 recusa se 78, 77 ou 76 existirem, pelo objeto `config_pagamento_cartao`.
+- a 75 recusa, nesta ordem: se o CORPO ATUAL de `update_order_status_atomic` ainda tiver a
+  guarda da 80 (lido de `pg_get_functiondef`, procurando `verificando:` — a 80 só redefine
+  essa função, não cria objeto novo nenhum, então "o objeto existe?" não bastava para
+  detectá-la); senão, se `admin_devolucao_liberar_vinculo_reverso` existir (a 79 — checado por
+  `EXISTS` sobre `pg_proc.proname`, não por `to_regproc`/`to_regprocedure`: o nome sozinho pode
+  ter mais de um overload — a rodada 4 da 79 criou um segundo, `(uuid, boolean)`, ao lado do
+  `(uuid)` original — e tanto `to_regproc` quanto uma assinatura fixa dariam falso negativo
+  nesse caso); senão, se 78, 77 ou 76 existirem (pelo objeto `config_pagamento_cartao`).
+  Reverter a 75 por baixo da 80 ou da 79 sem essas checagens quebraria a guarda de cartão vivo,
+  ou as RPCs de devolução da 79, em silêncio, sem erro nenhum.
 
-Recusa com `-1` não deixa nada pela metade. A 78 não tem guarda, porque é a primeira da fila.
+Recusa com `-1` não deixa nada pela metade. A 78 não tem guarda, porque é a primeira da fila
+das 75–78 (a 80 e a 79, quando aplicadas, vêm antes dela).
 
 Antes da 77 e da 75, **exporte os dados**, porque o rollback apaga:
 
@@ -389,6 +486,8 @@ psql "$CONEXAO_DA_LOJA" -c "\copy public.devolucao_eventos TO 'devolucao_eventos
 
 | Migration | Apagado | Fica, de propósito |
 | --- | --- | --- |
+| 80 | Nada é apagado — só redefine `update_order_status_atomic`, que volta ao corpo exato da 75 (comprovado byte a byte). | A guarda de cartão vivo desaparece: o cliente volta a poder cancelar pedido com cobrança de cartão possivelmente aprovável. |
+| 79 | Ver §7.5 do runbook de `fix/devolucao-pos-revisao` — dona da migration, mantém a tabela lá (o conteúdo exato mudou entre rodadas daquela frente; duplicar aqui é o que ficou desatualizado numa revisão anterior deste runbook). | Ver §7.5. |
 | 78 | Só funções de leitura. | Nada. |
 | 77 | Lançamentos, contas, categorias, sessões de caixa e a linha de `assinatura_da_loja`. Ao reaplicar, o hub precisa sincronizar de novo. | Pedidos, estornos e devoluções, que o Financeiro só lia. |
 | 76 | `config_pagamento_cartao`, as RPCs, o gatilho do estorno e as CHECKs. `registrar_estorno_manual` volta ao corpo de `20261072000000`. | As **colunas** `tentativas_de_pagamento`, `metodo_online`, `parcelas` e `estorno_manual_registrado_em`, que guardam como cada pedido foi pago. |
@@ -404,7 +503,44 @@ O cartão só liga quando **todos** os itens abaixo passarem num pedido de teste
 vale para a loja inteira, porque preview e produção leem a mesma linha. Durante o teste, o
 cartão aparece para todo cliente, então faça em horário sem movimento.
 
+**O que muda no PIX (achado B, revisão de risco da migration 80, 26/09/2026 — registro, sem
+código de cartão envolvido)**: `podeCobrar` (`criar-pagamento/index.ts`) passou a recusar,
+terminal, qualquer pedido com `status = 'cancelled'` — inclusive PIX, que já está em produção.
+Antes desta correção, o PIX de um pedido que o CLIENTE cancelou (`update_order_status_atomic`,
+`status='cancelled'`, `payment_status` continua `'aguardando'`) seguia "cobrável": reabrir o QR ou
+pedir PIX de novo devolvia o mesmo QR de sempre, mesmo com o pedido cancelado. Depois desta
+correção, essa mesma chamada devolve 409 terminal "Este pedido foi cancelado." — o comportamento
+CERTO (um pedido cancelado não deveria continuar pagável), mas é uma MUDANÇA de comportamento em
+produção, independente de o cartão estar ligado ou não — vale para QUALQUER publicação desta
+`criar-pagamento` daqui pra frente, não só para quando o cartão for ligado.
+
+**Correção (revisão independente, 26/09/2026)**: o alcance real é mais estreito do que "impede
+qualquer tentativa de pagamento seguinte" — esta edge só deixa de MOSTRAR e de CRIAR um QR novo
+para um pedido cancelado. `update_order_status_atomic` (a RPC que o cancelamento do cliente chama)
+é uma gravação SÓ NO BANCO — ela não cancela a order PIX no Mercado Pago. Um QR antigo, já copiado
+pelo cliente antes de cancelar, continua válido no banco emissor e pode ser pago mesmo depois do
+cancelamento; esse pagamento chega pelo webhook e vira `pago_apos_expirar` (Política P1), com push
+ao admin — não é bloqueado, nem devia ser (é dinheiro de verdade entrando). No deploy, confira que
+"Cancelar pedido" tira o botão de gerar/reabrir o QR na tela, mas não assuma que um QR já copiado
+parou de funcionar no banco do cliente.
+
 **Preparar**
+- [ ] A migration **20261180000000** (`cliente_nao_cancela_com_cartao_vivo`, achado
+  independente de risco de 26/09/2026) está aplicada. Sem ela, o cliente pode cancelar um
+  pedido cuja cobrança de cartão ainda pode ser aprovada pelo banco — o estoque volta, e se o
+  banco aprovar depois, o dinheiro sai do fluxo (`pago_apos_expirar`). Confira com
+  `SELECT pg_get_functiondef('public.update_order_status_atomic(uuid,text,text,boolean)'::regprocedure) LIKE '%verificando:%'`
+  (`true` = aplicada).
+- [ ] A **edge de `fix/cartao-edge-achados`** (021b8720 em diante) está publicada. O 409
+  `idempotency_key_already_used` (retry com o MESMO token) JÁ grava o sentinela `verificando:`
+  hoje (`fe045939`, `criar-pagamento/index.ts:1598-1607`) — não é esse o gap. A guarda da 80 só
+  fecha o cenário de falha de REDE/timeout/5xx na CRIAÇÃO da cobrança (`criar-pagamento/
+  index.ts:1742-1745`, resposta 502 sem tocar a vaga) se essa edge estiver no ar — é ela quem
+  passa a gravar o sentinela `verificando:` nesse 502 de criação
+  (`respostaCartaoAmbiguoNaCriacao`, commit `bf15876f`); sem ela, a vaga fica com
+  `gateway_payment_id`/`metodo_online` NULL e a guarda não tem o que ler (gap documentado no
+  cabeçalho da 20261180000000 e no teste `tests/banco/cartao-online-viva.cjs`, caso E). Confira
+  o commit publicado em `publicar-functions.yml` antes de ligar o cartão.
 - [ ] O §4 está completo, e o PIX pelo app está ligado. O painel trava o cartão sem o PIX,
   porque os dois usam a mesma credencial.
 - [ ] **Cartão de teste só aprova com credencial de TESTE** do Mercado Pago
@@ -419,12 +555,17 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   app. Parcelas: comece em 1x ou no teto que a loja decidir.
 
 **Testar, com o DevTools aberto na aba Console**
-- [ ] **COEP**: o app envia `Cross-Origin-Embedder-Policy: credentialless` (`vercel.json`), e
-  o Brick cria iframes do Mercado Pago sem o atributo `credentialless`. Com o formulário do
-  cartão aberto, o Console **não pode** ter bloqueio de `Cross-Origin-Embedder-Policy`/
-  `ERR_BLOCKED_BY_RESPONSE`, nem `Refused to frame` (CSP `frame-src`). Campos vazios ou
-  cinzas = barrado. **Barrado: não ligue.** A decisão sobre o COEP sobe ao dono
-  ([spec do cartão](../superpowers/specs/2026-09-26-cartao-online-design.md), decisão 7).
+- [ ] **O documento já é o do deploy sem COEP.** No Console, `crossOriginIsolated` tem de dar
+  `false`; na aba Network, a resposta do documento não pode trazer
+  `Cross-Origin-Embedder-Policy`. Se trouxer, o service worker serviu o HTML antigo do cache:
+  aceite a atualização do app ou faça um reload que ignora o cache (Shift+Reload no
+  navegador), confira de novo e só então siga. Sem isso, o Brick pode aparecer barrado por um
+  cabeçalho que já não está no ar.
+- [ ] **O Brick carrega**: com o formulário do cartão aberto, o Console **não pode** ter
+  `ERR_BLOCKED_BY_RESPONSE` nem `Refused to frame` (CSP `frame-src`). Campos vazios ou
+  cinzas = barrado. **Barrado: não ligue.** (O `COEP: credentialless` que travava o Brick
+  foi removido do `vercel.json` em 26/09/2026 — decisão do dono; ver
+  [spec do cartão](../superpowers/specs/2026-09-26-cartao-online-design.md), decisão 7.)
 - [ ] **Aprovado**:
   1. Pague com o cartão de teste, titular `APRO`.
   2. A tela diz "Pagamento aprovado — confirmando o pedido".
@@ -439,13 +580,18 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   4. O estoque **não** volta.
 - [ ] **Recusa → PIX na mesma reserva**: depois da recusa, "Pagar com PIX" gera o QR. A chave
   nova é `<pedido>:<n>`.
-- [ ] **3DS**:
+- [ ] **3DS**, feito no **Chrome** (de preferência Android), que é onde o atributo
+  `credentialless` do iframe do desafio age (ver a spec, decisão 7):
   1. Use o cenário de desafio da doc "Integrar 3DS" da Orders API (link na spec).
   2. O desafio abre no iframe. Isso depende do domínio da URL estar no `frame-src` e do
      `postMessage` de conclusão vir de origem do MP.
   3. Concluído, o webhook confirma.
   4. Abandonado com troca para PIX, a order `action_required` é cancelada no MP e o PIX nasce.
   5. O `expires_at` do pedido foi estendido, até 40 min.
+
+  Se o desafio não concluir no Chrome, o primeiro suspeito é o atributo `credentialless` do
+  iframe (`PagamentoComCartao.tsx`). Tire o atributo e repita o teste antes de desistir do
+  cartão.
 - [ ] **Em análise** (titular `CONT`): a tela diz que aguarda o banco. Pedir PIX nesse estado dá
   409 recuperável, sem uma segunda cobrança.
 - [ ] **Idempotência**:
@@ -454,14 +600,64 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   2. No painel do MP, só pode existir **uma** order com esse `external_reference` por
      tentativa, porque a chave é `<pedido>:c<n>`, sem o token.
   3. Os logs da `criar-pagamento` não podem ter `cartao_orfao`.
+  4. **Resíduo aceito (achado #2, 8ª rodada de risco)**: se a MESMA chamada que troca de forma
+     (PIX→cartão, cartão morto→cartão novo, sentinela liberado→cartão novo) tiver a criação do
+     cartão NOVO falhando de novo (rede/timeout/5xx), a vaga fica presa até `expires_at` — a order
+     nova nasce milissegundos depois do limite que a PRÓPRIA chamada acabou de gravar, dentro da
+     margem de 15s, e nunca libera sozinha. Sem dinheiro em jogo (é o cliente da PRÓPRIA chamada) e
+     raro (exige duas falhas seguidas). Se aparecer no teste, confirme que é ISTO antes de tratar
+     como bug novo.
 - [ ] **Débito**, se ligado: o Brick mostra só o que o MP aceita para a conta. Na Orders API do
   Brasil, isso é débito Elo.
 - [ ] Todos os eventos acima têm `200` nos logs do `webhook-mercadopago`.
 
 **Comportamentos do Mercado Pago a confirmar no sandbox** (escritos no código sem prova contra
 a API real):
-- [ ] A mesma `X-Idempotency-Key` com token diferente devolve a MESMA order. É a premissa do
-  achado A1.
+- [ ] **Busca de orders** (`GET /v1/orders?external_reference=...&begin_date=...&end_date=...`,
+  usada para resolver o sentinela — achados B1/B2, 5ª revisão de risco). Meça no sandbox, com
+  uma order de cartão de teste, ANTES de qualquer outro item deste checklist:
+  - o nome do campo da lista na resposta (`results`, `elements`, ou outro);
+  - se cada order traz `external_reference`, `status`/`status_detail` na raiz, um campo de data
+    de CRIAÇÃO (anote o nome exato — `date_created`, `created_date`, ou outro) e
+    `transactions.payments[].payment_method.type`;
+  - **`external_reference` em TODA order da lista, sem exceção**: o filtro do cliente (B2, 5ª
+    revisão) descarta qualquer order sem esse campo batendo com o pedido — se o MP omitir ou
+    truncar `external_reference` em algum caso (ex.: order antiga, criada antes de o app
+    começar a mandá-lo), o filtro descarta a lista inteira, a busca nunca encontra nada, e a
+    liberação do sentinela nunca resolve;
+  - o formato de data que `begin_date`/`end_date` aceitam;
+  - o atraso de indexação entre criar (ou mudar o status de) uma order e ela aparecer nesta
+    busca.
+
+  Se qualquer um desses vier diferente do que o código espera, **o cartão fica DESLIGADO**. Sem
+  a busca confiável, a liberação da vaga degrada, em silêncio, para "PIX bloqueado até
+  `expires_at`" — inclusive no caso mais comum, a recusa cuja resposta se perdeu (S1 da 3ª
+  rodada de achados de risco).
+- [ ] **Desvio de relógio entre o `date_created` do MP e o relógio desta function** (achado #6, 8ª
+  rodada de risco): meça a diferença entre o instante em que uma order de teste é criada (medido
+  por ESTE servidor, `Date.now()` logo após o POST responder) e o `date_created` que a Orders API
+  devolve para ela. `MARGEM_LIBERAR_APOS_LIMITE_MS` (15s, `resolverSentinela`) depende deste
+  desvio ser pequeno — se o relógio do MP correr atrasado por mais de ~15s, uma order NOVA
+  (legítima) pode parecer "criada antes do limite" e nunca liberar; se correr adiantado, o
+  problema é o oposto (o achado B1 original: uma order da tentativa ANTERIOR parece "depois" do
+  limite e libera errado). Se o desvio medido for maior que uma fração pequena da margem, ela
+  precisa subir.
+- [ ] **Idempotência da Orders API, corrigida na 7ª rodada** (a frase anterior aqui estava
+  errada): a mesma `X-Idempotency-Key` com CORPO diferente (token novo a cada tentativa, por
+  exemplo) devolve `409 idempotency_key_already_used`, NÃO a mesma order — é esse 409 que vira
+  sentinela (`verificando:<pedido>:c<n>:<limiteInferiorMs>`). Só com o CORPO idêntico o MP faz
+  replay e devolve a MESMA order — é o que permite o retry de cartão sobre o sentinela DA MESMA
+  tentativa repetir o POST com a mesma chave sem duplicar a cobrança (item 2, 7ª rodada). Confirme
+  os dois casos no sandbox antes de ligar; é a premissa do achado A1.
+- [ ] **A Orders API valida o CORPO antes ou depois de olhar a idempotência?** (achado #3, 8ª
+  rodada de risco — UNVERIFIED, o código assume o pior caso por precaução). No sandbox: crie uma
+  order de cartão de teste com uma chave de idempotência `K`; repita o POST com a MESMA chave `K`,
+  corpo DIFERENTE, mas com um dado INVÁLIDO de propósito (token de cartão malformado). Se a
+  resposta for `409 idempotency_key_already_used` (a idempotência venceu, o corpo nem foi
+  validado), o código está mais conservador do que precisa — soltar a vaga só em 201/402 nunca
+  perde a c0. Se a resposta for `400` (o corpo foi validado primeiro, ANTES de olhar a chave), o
+  código já está certo em NUNCA soltar a vaga com um 400 sobre um sentinela — é exatamente o caso
+  que motivou a correção (a c0 pode estar viva por baixo do 400, achado R7-V).
 - [ ] Os códigos de 400 que culpam o dado do cartão são `invalid_card_token`,
   `card_token_not_found` e `bad_filled_card_data`. A lista não foi conferida na doc do MP
   (`erro400EhDeDadoDoCartao`). Qualquer outro 400 vira 502.

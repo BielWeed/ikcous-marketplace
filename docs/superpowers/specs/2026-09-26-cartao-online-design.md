@@ -23,10 +23,22 @@
 6. **Parcelas**: o Brick calcula; o lojista escolhe o teto (1–12). Juros de parcelamento são
    do comprador (padrão do Mercado Pago); a conferência de valor (±R$ 0,05) compara o
    `total_amount` pedido — o que o MP recebeu com juros não entra nela.
-7. **Nasce desligado** (crédito e débito `false`): o app envia `COEP: credentialless` e o
-   Brick monta iframes seguros de domínio do Mercado Pago que não pudemos provar sob esse
-   cabeçalho neste ambiente. O lojista liga depois de pagar um pedido de teste no preview.
-   Se o iframe for barrado, a decisão sobre o COEP sobe ao dono.
+7. **Nasce desligado** (crédito e débito `false`): o Brick monta iframes seguros de domínio
+   do Mercado Pago que não pudemos provar em produção. O lojista liga depois de pagar um
+   pedido de teste no preview.
+   **Atualização 26/09/2026 (decisão do dono, Gabriel):** o `COEP: credentialless` do
+   `vercel.json` foi removido. Sob `credentialless`, iframe cross-origin só escapa do
+   bloqueio se o documento embutido responder com COEP + `Cross-Origin-Resource-Policy:
+   cross-origin`; não há evidência de que o Mercado Pago sirva os iframes de Secure
+   Fields do Brick assim, e o cabeçalho é o principal suspeito por trás do Brick não
+   carregar. Nada em `src/` usa `SharedArrayBuffer`/`crossOriginIsolated`, e remover por
+   rota não funcionava (SPA: o cabeçalho do primeiro documento carregado vale para a
+   sessão inteira). COOP, CSP e os demais cabeçalhos de segurança continuam como estavam.
+   O atributo `credentialless` dos nossos próprios iframes (mapas, desafio 3DS) foi mantido.
+   Nos mapas ele já rodava assim em produção. No desafio 3DS ele **não está provado**: no
+   Chromium 110+ o quadro nasce num pote de cookies vazio e todo popup aberto de dentro dele
+   sai como `noopener` (Safari e Firefox ignoram o atributo). Por isso o teste 3DS do runbook
+   §6 é feito no Chrome, de preferência Android.
 8. **Tela de sucesso do cartão** (herança #3): aprovado mostra "Pagamento aprovado —
    confirmando o pedido" e segue o mesmo caminho do PIX (tempo real + consulta).
 

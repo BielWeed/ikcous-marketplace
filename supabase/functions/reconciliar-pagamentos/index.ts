@@ -573,13 +573,15 @@ async function handler(
       // reconhecem isso, e cada ciclo (a cada 10 min) gastava uma chamada ao
       // MP que SEMPRE falha (400 `invalid_path_param`), sem nunca sair da
       // fila. Quem resolve o sentinela é a ADOÇÃO do `webhook-mercadopago`
-      // (quando a cobrança aparece aprovada) ou o teto de `sentinelaExpirado`
-      // em `criar-pagamento` (quando o próprio cliente volta a mexer no
-      // pedido) — nenhum dos dois passa por aqui. Sem push (ver "SEM PUSH
-      // AQUI" no cabeçalho deste arquivo): o aviso ao admin já sai uma única
-      // vez, na ESCRITA do sentinela (`criar-pagamento/index.ts`), que é o
-      // ponto mais barato e mais confiável — avisar de novo aqui a cada
-      // ciclo duplicaria o mesmo aviso sem trava de duplicidade.
+      // (quando a cobrança aparece aprovada) ou `resolverVagaEmVerificacao`
+      // em `criar-pagamento` (busca as orders de cartão na Orders API, Ponto
+      // 1 da 4ª revisão de risco, 26/09/2026 — quando o próprio cliente
+      // volta a mexer no pedido) — nenhum dos dois passa por aqui. Sem push
+      // (ver "SEM PUSH AQUI" no cabeçalho deste arquivo): o aviso ao admin já
+      // sai uma única vez, na ESCRITA do sentinela (`criar-pagamento/
+      // index.ts`), que é o ponto mais barato e mais confiável — avisar de
+      // novo aqui a cada ciclo duplicaria o mesmo aviso sem trava de
+      // duplicidade.
       if (vagaEmVerificacao(candidato.gateway_payment_id)) {
         ignorados++;
         continue;
@@ -611,10 +613,18 @@ async function handler(
       } else {
         // Candidato NOVO — `gateway_payment_id` é um id de ORDER (prefixo
         // ORD/ORDTST) desde a Tarefa 2.
+        //
+        // N1 (3ª/4ª revisão de risco, 26/09/2026): este candidato PODE ser
+        // de CARTÃO (payer com e-mail e CPF do titular, ver `_shared/
+        // mercadopago.ts`) — `corpoNoLog: false` troca o corpo cru por um
+        // resumo sem dado pessoal no log de erro, mesma proteção que
+        // `criar-pagamento`/`webhook-mercadopago` já aplicam nos pontos que
+        // podem reconsultar uma order de cartão.
         const consultaOrder = await consultarOrder({
           token: mpToken,
           orderId: candidato.gateway_payment_id,
           fetchImpl: deps.fetchImpl,
+          corpoNoLog: false,
         });
 
         if (!consultaOrder.ok) {

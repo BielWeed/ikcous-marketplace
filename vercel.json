@@ -56,10 +56,6 @@
           "value": "camera=(self), microphone=(), geolocation=(), interest-cohort=()"
         },
         {
-          "key": "Cross-Origin-Embedder-Policy",
-          "value": "credentialless"
-        },
-        {
           "key": "Cross-Origin-Resource-Policy",
           "value": "same-origin"
         },

@@ -105,6 +105,45 @@ export class ErroStatusEsperadoDesconhecido extends Error {
 }
 
 /**
+ * Achado 1, rodada 5 da revisão de risco pré-publicação (26/09/2026,
+ * migration 80 — outra frente, `fix/cancelar-com-cartao-vivo`): a fila
+ * offline logo abaixo (`if (typeof navigator !== "undefined" &&
+ * !navigator.onLine)`, dentro de `updateOrderStatus`) foi escrita para o
+ * ADMIN — o comentário no chamador de CheckoutView já dizia isso antes desta
+ * correção. Para o CLIENTE cancelando o PRÓPRIO pedido, enfileirar sem rede
+ * tem duas falhas que se somam: (1) o update OTIMISTA roda ANTES da checagem
+ * de offline, então a tela já pinta "cancelado" no clique, sem esperar o
+ * servidor; (2) a migration 80 ensina `update_order_status_atomic` a
+ * recusar esse cancelamento com P0001 quando o cartão pode estar em
+ * confirmação com o banco — e essa recusa NUNCA seria reconhecida por
+ * `erroDeSincronizacaoEhTerminal` (ela só conhece as recusas ANTIGAS), então
+ * o item voltaria para a fila a cada reconexão, para sempre, enquanto a tela
+ * já mentia "cancelado" desde o primeiro clique. Opção descartada: marcar a
+ * mensagem nova como terminal em `erroDeSincronizacaoEhTerminal` — isso para
+ * de reenfileirar, mas não desfaz a mentira já pintada pelo update otimista
+ * (o pedido ficaria "cancelado" na tela e `pending` no banco até alguém
+ * notar). Recusar ANTES de entrar na fila evita as duas: nenhum update
+ * otimista roda, porque este erro é lançado antes dele.
+ *
+ * Achado 3, rodada 6: a frase original ("...o pedido continua reservado")
+ * só faz sentido para um pedido AINDA aguardando pagamento (a reserva de 30
+ * min do checkout) — mas este erro dispara para QUALQUER cancelamento de
+ * cliente offline, inclusive de um pedido já `processing`/`shipping` (a
+ * partir de `OrderDetailsView`, que também chama `updateOrderStatus`). Um
+ * pedido em preparo ou já enviado não está "reservado" — a frase nova não
+ * afirma nada sobre o estado do pedido, só que a tentativa de cancelar não
+ * saiu.
+ */
+export class ErroCancelamentoOfflineRecusado extends Error {
+  constructor() {
+    super(
+      "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
+    );
+    this.name = "ErroCancelamentoOfflineRecusado";
+  }
+}
+
+/**
  * `Map` sobre `statusConfig` (OrderStatusBadge.tsx) — mesma técnica de
  * `paymentStatusConfigByKey`, no mesmo arquivo: a chave vem de uma união
  * fechada (`OrderStatus`) e o `Record` de origem já é exaustivo por
@@ -2609,6 +2648,32 @@ export function useOrders(
         // Validation logic extracted for clarity
         validateStatusUpdate(order, isAdmin, status, silent);
 
+        // Achado 1, rodada 5: cancelamento de CLIENTE offline nunca vira
+        // fila — ver o comentário grande em `ErroCancelamentoOfflineRecusado`,
+        // acima. `validateStatusUpdate` já garante `status === "cancelled"`
+        // para `!isAdmin` (lança antes de chegar aqui, senão); a checagem
+        // abaixo é redundante de propósito — nomeia exatamente a condição
+        // que este achado descreve, em vez de depender de uma garantia
+        // implícita de outra função. Roda ANTES do update otimista (a
+        // "Optimistic update" mais abaixo): nenhuma mentira chega a ser
+        // pintada na tela.
+        if (
+          !isAdmin &&
+          status === "cancelled" &&
+          typeof navigator !== "undefined" &&
+          !navigator.onLine
+        ) {
+          if (!silent) {
+            // Achado 3, rodada 6: mesma frase de `ErroCancelamentoOfflineRecusado`
+            // (acima) — o toast e o erro contam a mesma causa para a mesma
+            // pessoa, nunca dois textos diferentes.
+            toast.warning(
+              "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
+            );
+          }
+          throw new ErroCancelamentoOfflineRecusado();
+        }
+
         // L-9 front (08/09/2026): a lojista está com a ficha aberta
         // mostrando um status que o servidor já não tem mais — o cliente
         // cancelou entre a leitura que preencheu a tela e o clique em
@@ -2830,10 +2895,16 @@ export function useOrders(
         // conteúdo de antes), mas `cachedAdminOrders = originalCache`
         // apagava a SWR cache. Por isso os três erros pulam a reversão
         // inteira, não só a de `orders`.
+        //
+        // Achado 1, rodada 5: `ErroCancelamentoOfflineRecusado` entra no
+        // mesmo grupo pelo MESMO motivo — lançado antes do update otimista,
+        // `originalCache` ainda é `null` neste ponto, e já disparou seu
+        // próprio `toast.warning` na hora de nascer (acima).
         const erroJaTratado =
           err instanceof ErroPedidoMudou ||
           err instanceof ErroReleituraDeStatusFalhou ||
-          err instanceof ErroStatusEsperadoDesconhecido;
+          err instanceof ErroStatusEsperadoDesconhecido ||
+          err instanceof ErroCancelamentoOfflineRecusado;
         if (!erroJaTratado) {
           cachedAdminOrders = originalCache;
           setOrders(originalOrders);
@@ -3316,26 +3387,41 @@ export function useOrders(
         // function antiga ainda no ar, ou corpo ilegível) — de propósito
         // SEM reconstruir a categoria a partir de texto nesse caso.
         let terminal = false;
+        // B3 da revisão de risco pré-publicação (26/09/2026): o 409 "Há um
+        // pagamento com cartão em análise para este pedido." (criar-pagamento
+        // /index.ts) carrega `cartaoEmAnalise: true` — sem ele, o CheckoutView
+        // só teria a MENSAGEM para decidir se pode oferecer "Cancelar
+        // pedido", e cancelar um pedido com o cartão ainda em análise é
+        // dinheiro cobrado por um pedido morto se o banco aprovar depois.
+        // MESMA regra estrita do `terminal`: só `true` booleano conta, falha
+        // fechada em qualquer outra coisa (campo ausente, string "true").
+        let cartaoEmAnalise = false;
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
           if (typeof corpo?.terminal === "boolean") terminal = corpo.terminal;
+          if (typeof corpo?.cartaoEmAnalise === "boolean") {
+            cartaoEmAnalise = corpo.cartaoEmAnalise;
+          }
         } catch {
           // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
           // o texto cru de um erro de infraestrutura para o cliente.
         }
-        throw Object.assign(new Error(mensagem), { terminal });
+        throw Object.assign(new Error(mensagem), { terminal, cartaoEmAnalise });
       }
       if (data?.error) {
         // Mesma regra estrita do ramo `error` acima: só `true` literal vira
-        // terminal. `Boolean(...)` aceitaria "false" (string), 1, `{}` — este
-        // ramo é inalcançável hoje (o supabase-js v2 sempre preenche `error`
-        // numa resposta não-2xx), mas duas leituras do mesmo campo lado a
-        // lado é convite para elas divergirem.
+        // terminal/cartaoEmAnalise. `Boolean(...)` aceitaria "false" (string),
+        // 1, `{}` — este ramo é inalcançável hoje (o supabase-js v2 sempre
+        // preenche `error` numa resposta não-2xx), mas duas leituras do mesmo
+        // campo lado a lado é convite para elas divergirem.
         throw Object.assign(new Error(data.error), {
           terminal:
             typeof (data as any).terminal === "boolean" &&
             (data as any).terminal,
+          cartaoEmAnalise:
+            typeof (data as any).cartaoEmAnalise === "boolean" &&
+            (data as any).cartaoEmAnalise,
         });
       }
       return data as RespostaCriarPagamento;

@@ -429,6 +429,35 @@ describe("dispararPagamentoPix", () => {
     );
     expect(onPix).not.toHaveBeenCalled();
   });
+
+  // B4 da revisão de risco pré-publicação (26/09/2026): o cliente pede PIX
+  // com o cartão JÁ aprovado (ex.: saiu do desafio 3DS e tocou "Pagar com
+  // PIX" antes do webhook confirmar) — a edge devolve `pago` sem QR (não há
+  // cobrança PIX para mostrar) e o erro "Não foi possível gerar o QR code do
+  // PIX." aparecia por engano, mesmo com o dinheiro já garantido. Diferente
+  // do teste "sem QR" acima (`statusPagamento: 'aguardando'`), aqui o status
+  // já é 'pago': `onConfirmado` avisa a tela para mostrar a confirmação, não
+  // o erro — e nunca onPix, porque não existe QR nenhum para desenhar.
+  it("statusPagamento 'pago' SEM QR chama onConfirmado, não onErro nem onPix", async () => {
+    const { dispararPagamentoPix } = await importarLimpo();
+    const onErro = vi.fn();
+    const onPix = vi.fn();
+    const onConfirmado = vi.fn();
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "pago",
+      expiraEm: "2026-09-25T12:00:00.000Z",
+    });
+
+    dispararPagamentoPix(
+      opcoesPadrao({ criarPagamento, onErro, onPix, onConfirmado }),
+    );
+    await esperarMicrotarefas();
+
+    expect(onConfirmado).toHaveBeenCalledTimes(1);
+    expect(onErro).not.toHaveBeenCalled();
+    expect(onPix).not.toHaveBeenCalled();
+  });
 });
 
 // Revisão da rodada de correção 1: remover o `jaMontou` (para o StrictMode
@@ -597,5 +626,53 @@ describe("PagamentoOnline - link para o ticket_url", () => {
       hospedeiro.querySelector("img[alt='QR code do PIX']"),
     ).not.toBeNull();
     expect(hospedeiro.textContent).toContain("Copiar código PIX");
+  });
+});
+
+// B4 da revisão de risco pré-publicação (26/09/2026), render de verdade: o
+// cliente pediu PIX com o cartão já aprovado (edge devolve 'pago' sem QR).
+// Antes da correção, esta tela mostrava "Não foi possível gerar o QR code
+// do PIX." — um erro falso para um pagamento que já entrou.
+describe("PagamentoOnline - PIX pedido com o cartão já aprovado (B4)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    vi.restoreAllMocks();
+  });
+
+  it("statusPagamento 'pago' sem QR mostra 'Pagamento confirmado', nunca o erro de QR", async () => {
+    const onErro = vi.fn();
+    criarPagamento.mockReset().mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "pago",
+      expiraEm: "2026-09-25T12:00:00.000Z",
+    });
+
+    await act(async () => {
+      raiz.render(
+        <PagamentoOnline orderId="ped-1" valor={100} onErro={onErro} />,
+      );
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(onErro).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("Pagamento confirmado");
+    expect(hospedeiro.textContent).not.toContain(
+      "Não foi possível gerar o QR code do PIX.",
+    );
+    expect(hospedeiro.querySelector("img[alt='QR code do PIX']")).toBeNull();
   });
 });

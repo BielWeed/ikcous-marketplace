@@ -49,8 +49,14 @@ describe("frame-src permite o destino real do embed do mapa, e só ele", () => {
     expect(frameSrcDaCsp(linha!)).toEqual(FRAME_SRC_APROVADO);
   });
 
-  it("COEP credentialless continua de pé: o embed só carrega com o atributo credentialless no iframe", () => {
+  // Guarda: COEP removido em 26/09/2026 (decisão do dono) por travar o Card
+  // Payment Brick sem prova de que o Mercado Pago serve os iframes de Secure
+  // Fields com COEP + Cross-Origin-Resource-Policy: cross-origin. O atributo
+  // credentialless nos iframes do mapa continua (é inofensivo sem o COEP do
+  // app, só muda o iframe para um contexto sem cookies) — ver
+  // sobre-a-loja-iframe-credentialless.test.tsx.
+  it("COEP não volta sem decisão documentada do dono", () => {
     const cabecalhos = hospedagem.cabecalhosDeFuncao(vercel);
-    expect(cabecalhos["Cross-Origin-Embedder-Policy"]).toBe("credentialless");
+    expect(cabecalhos["Cross-Origin-Embedder-Policy"]).toBeUndefined();
   });
 });
