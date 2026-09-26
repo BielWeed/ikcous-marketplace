@@ -299,12 +299,6 @@ const FavoritesView = lazyWithPreload(() =>
   })),
 );
 
-const DebugPanel = React.lazy(() =>
-  import("@/components/debug/DebugPanel").then((m) => ({
-    default: m.DebugPanel,
-  })),
-);
-
 // F1 (glm-perf-1paint-0309): os três usos de framer-motion que viviam no
 // corpo do App (wrapper das abas, troca de view secundária e barra de
 // progresso de rota) moram agora no módulo abaixo — fora do gráfico estático
@@ -652,7 +646,6 @@ const AppContent = () => {
   }, [adminStatus]);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isHeaderDocked, setIsHeaderDocked] = useState(false);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
@@ -2975,13 +2968,6 @@ const AppContent = () => {
             </React.Suspense>
           </>
         )}
-
-      <React.Suspense fallback={null}>
-        <DebugPanel
-          isOpen={isDebugOpen}
-          onClose={() => setIsDebugOpen(false)}
-        />
-      </React.Suspense>
 
       <AlertDialog
         open={!!pendingNavigation}
