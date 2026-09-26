@@ -68,6 +68,7 @@ import {
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
+  recusaLiberaAVaga,
   TOLERANCIA_DE_VALOR,
 } from "../_shared/mercadopago.ts";
 import { readKey } from "../_shared/webpush.ts";
@@ -511,6 +512,10 @@ async function handler(
   let confirmados = 0;
   let ignorados = 0;
   let falhas = 0;
+  // Fase 3.5 (cartão): quantos dos `ignorados` foram recusas de cartão cuja
+  // vaga a reconciliação LIBEROU (a RPC devolveu true) — SUBCONJUNTO de
+  // `ignorados`, informativo: a invariante lá embaixo não muda.
+  let cobrancasLiberadas = 0;
 
   // Cada candidato dentro do seu próprio try: a reconciliação existe
   // exatamente para pegar o que já falhou uma vez (o webhook não confirmou),
@@ -554,6 +559,12 @@ async function handler(
       // undefined quando o corpo não trouxe número. A conferência contra o
       // total do pedido fica logo abaixo do filtro de 'expirado'.
       let valorAprovado: number | undefined;
+      // Fase 3.5: recusa/expiração de order de CARTÃO (ou order cancelada —
+      // a troca PIX -> cartão da criar-pagamento) só LIBERA a vaga, nunca
+      // chega a `confirmar_pagamento('recusado')`, que cancelaria o pedido.
+      // Mesma regra do webhook (`recusaLiberaAVaga`, _shared/mercadopago.ts).
+      // Só a Orders API liga isto: o candidato clássico é PIX legado.
+      let liberarAVaga = false;
 
       if (idEhClassico(candidato.gateway_payment_id)) {
         // Candidato LEGADO, criado antes da migração para a Orders API — vai
@@ -610,6 +621,7 @@ async function handler(
         statusMapeado = mapearStatusOrder(statusRaiz, statusDetailRaiz);
         statusBrutoParaLog = `${statusRaiz}:${statusDetailRaiz}`;
         valorAprovado = extrairValorDaOrder(order);
+        liberarAVaga = recusaLiberaAVaga(order, statusMapeado);
       }
 
       // Usa o status que o MP DEVOLVEU, nunca inventa um. Status
@@ -622,6 +634,33 @@ async function handler(
           "reconciliar-pagamentos: status desconhecido do MP",
           candidato.order_id,
           statusBrutoParaLog,
+        );
+        ignorados++;
+        continue;
+      }
+
+      // CARTÃO RECUSADO NÃO MATA O PEDIDO (Fase 3.5) — o webhook que perdeu
+      // a recusa é recuperado aqui do MESMO jeito: libera a vaga desta
+      // cobrança (a RPC só solta se ela ainda for a gravada e o pedido ainda
+      // estiver 'aguardando'; pedido já expirado devolve false). Conta em
+      // `ignorados` (não confirmou, não falhou) — a invariante continua
+      // fechando. Erro da RPC sobe para o catch e vira `falhas`, e o
+      // candidato volta no próximo ciclo.
+      if (liberarAVaga) {
+        const { data: liberou, error: erroLiberar } = await supabase.rpc(
+          "liberar_cobranca_do_pedido",
+          {
+            p_order_id: candidato.order_id,
+            p_gateway_payment_id: candidato.gateway_payment_id,
+          },
+        );
+        if (erroLiberar) throw erroLiberar;
+        if (liberou === true) cobrancasLiberadas++;
+        console.log(
+          "reconciliar-pagamentos: recusa de cartão (ou order cancelada) — vaga liberada, não confirma 'recusado'",
+          candidato.order_id,
+          statusBrutoParaLog,
+          liberou === true,
         );
         ignorados++;
         continue;
@@ -1055,8 +1094,10 @@ async function handler(
   // INVARIANTE (não quebrar): confirmados + ignorados + falhas === verificados.
   // Todo `continue` e todo fim de iteração do loop acima incrementa
   // exatamente um dos três — inclusive o status que o MP devolve fora do
-  // mapa (ignorados), o 404 nos dois endpoints (falhas) e a order 'expirado'
-  // que a Tarefa 4 passou a filtrar ANTES da RPC (ignorados, sem chamá-la).
+  // mapa (ignorados), o 404 nos dois endpoints (falhas), a order 'expirado'
+  // que a Tarefa 4 passou a filtrar ANTES da RPC (ignorados, sem chamá-la) e
+  // a recusa de cartão cuja vaga foi liberada (ignorados — `cobrancasLiberadas`
+  // é só o subconjunto que a RPC de fato soltou, fora da soma).
   // Sem essa invariante o corpo não é auditável sem abrir o log: um
   // candidato "sumiria" do total.
   return json(
@@ -1066,6 +1107,7 @@ async function handler(
       confirmados,
       ignorados,
       falhas,
+      cobrancasLiberadas,
       estornos: {
         vistos: refundsVistos,
         concluidos: refundsConcluidos,

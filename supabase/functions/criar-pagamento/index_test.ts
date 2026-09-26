@@ -10,6 +10,7 @@
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  chaveDeIdempotencia,
   descricaoDoPedido,
   donoConfere,
   emailDoToken,
@@ -19,6 +20,7 @@ import {
   pareceUuid,
   podeCobrar,
   subDoToken,
+  validarCorpoDoCartao,
 } from "./index.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes do fim deste arquivo — fixture escrito à mão não
@@ -104,10 +106,48 @@ function clienteFalso(opts: {
   // que ainda roda pelas chaves da plataforma, que é o que todos os testes
   // anteriores a esta tarefa exercitam.
   registroMp?: Record<string, unknown> | null;
+  // Fase 3.5 (cartão): a linha `id = 1` de `config_pagamento_cartao`.
+  // Default AUSENTE — a loja que nunca ligou o cartão, que é como a linha
+  // nasce. `erroConfigCartao` simula falha de leitura dessa tabela.
+  configCartao?: Record<string, unknown> | null;
+  erroConfigCartao?: Record<string, unknown> | null;
+  leiturasConfigCartao?: Array<{ colunas: string; filtro: [string, unknown] }>;
+  // `rpc("liberar_cobranca_do_pedido")`: registra nome + argumentos de TODA
+  // rpc chamada (uma rpc inesperada — `confirmar_pagamento`, por exemplo —
+  // aparece aqui e a asserção do teste acusa). `resultadoLiberar` é o
+  // boolean que a RPC devolve (default true); `erroLiberar` simula falha.
+  chamadasRpc?: Array<{ nome: string; args: Record<string, unknown> }>;
+  resultadoLiberar?: boolean;
+  erroLiberar?: Record<string, unknown> | null;
 }) {
   let chamadasSelect = 0;
   return {
+    rpc: async (nome: string, args: Record<string, unknown>) => {
+      opts.chamadasRpc?.push({ nome, args });
+      if (nome !== "liberar_cobranca_do_pedido") {
+        throw new Error(`rpc inesperada nos testes da criar-pagamento: ${nome}`);
+      }
+      if (opts.erroLiberar) return { data: null, error: opts.erroLiberar };
+      return { data: opts.resultadoLiberar ?? true, error: null };
+    },
     from(tabela: string) {
+      if (tabela === "config_pagamento_cartao") {
+        return {
+          select(colunas: string) {
+            return {
+              eq(coluna: string, valor: unknown) {
+                opts.leiturasConfigCartao?.push({ colunas, filtro: [coluna, valor] });
+                return {
+                  maybeSingle: async () =>
+                    opts.erroConfigCartao
+                      ? { data: null, error: opts.erroConfigCartao }
+                      : { data: projetarColunas(opts.configCartao ?? null, colunas), error: null },
+                };
+              },
+            };
+          },
+        };
+      }
       // Tabela PRÓPRIA no dublê, e não a cadeia de marketplace_orders
       // abaixo: a leitura das credenciais gastaria a PRIMEIRA `select()`
       // (a que carrega `erroLeitura` e o fixture do pedido), e todo teste
@@ -1954,37 +1994,44 @@ Deno.test("handler: pedido expirado com cobrança existente recusa, não reconsu
   assertEquals(registro.chamadasUpdate, 0);
 });
 
-// --- handler: Task 7 da Fase 3 — cartão fica recusado desde a edge function
+// --- handler: forma de pagamento (Fase 3.5 religou o cartão) ---------------
+//
+// Até a Fase 3.5 o cartão era recusado aqui ("No momento aceitamos apenas
+// PIX.") por causa da herança nº 2 da Fase 2. Os testes do cartão de verdade
+// estão no fim deste arquivo; aqui fica o que sobrou da trava: forma que não
+// é PIX nem cartão continua recusada ANTES de tocar banco ou gateway, e
+// continua RECUPERÁVEL (CHECKOUT-050, #194: "Tentar de novo" remonta a
+// escolha de forma, e o próprio retry troca de método).
 
-Deno.test("handler: metodo 'cartao' devolve 400 e NÃO chama o Mercado Pago", async () => {
-  // A Fase 3 entrega só PIX. O caminho de cartão tem defeito conhecido
-  // (herança nº 2 da Fase 2): depois da primeira recusa o pedido fica
-  // impagável até expirar. A recusa tem que acontecer aqui, antes de
-  // qualquer chamada ao gateway — não só no Brick (Task 8).
-  const pedido = pedidoBase();
-  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+/** Supabase que ESTOURA em qualquer uso — prova que um caminho nem chegou a
+ * tocar o banco (nem para resolver credenciais). */
+const supabaseIntocavel = {
+  from(tabela: string) {
+    throw new Error(`o banco não devia ser tocado (from ${tabela})`);
+  },
+  rpc(nome: string) {
+    throw new Error(`o banco não devia ser tocado (rpc ${nome})`);
+  },
+};
+
+Deno.test("handler: forma de pagamento desconhecida devolve 400 recuperável, sem tocar banco nem Mercado Pago", async () => {
   let chamadasFetch = 0;
   const fetchImpl = async (_url: string, _init?: RequestInit) => {
     chamadasFetch++;
-    return new Response(JSON.stringify({ id: 1, status: "pending" }), { status: 201 });
+    return new Response(JSON.stringify({ id: "ORD1" }), { status: 201 });
   };
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "cartao" }), {
-    supabase,
-    fetchImpl,
-  });
-  const corpo = await resposta.json();
-
-  assertEquals(resposta.status, 400);
-  assertEquals(corpo.error, "No momento aceitamos apenas PIX.");
-  // A prova que importa: não é só o código HTTP, é o contador do MP em zero.
+  for (const metodo of ["boleto", "", undefined, "CARTAO", "Pix"]) {
+    const resposta = await handler(requisicao({ orderId: UUID, metodo }), {
+      supabase: supabaseIntocavel,
+      fetchImpl,
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 400, String(metodo));
+    assertEquals(corpo.error, "Forma de pagamento inválida.");
+    assertEquals(corpo.terminal, undefined);
+  }
   assertEquals(chamadasFetch, 0);
-  // CHECKOUT-050 (#194), correção da revisão: NÃO é terminal. "Tentar de
-  // novo" remonta o Brick, e é justamente lá que o cliente escolhe PIX — o
-  // próprio retry troca de método e destrava. Marcar terminal prendia o
-  // cliente numa caixa que já tinha desmontado o formulário onde ele faria
-  // essa troca.
-  assertEquals(corpo.terminal, undefined);
 });
 
 Deno.test("handler: consulta ao Mercado Pago falhando devolve 502, sem confirmar nada com 200", async () => {
@@ -2102,9 +2149,43 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "postgrest-js; retry é seguro assim que o banco responder",
     ],
     [
-      "No momento aceitamos apenas PIX.",
-      "'Tentar de novo' remonta o Brick, e é lá que o cliente escolhe PIX " +
-        "— o próprio retry troca de método e destrava",
+      // Fase 3.5: substitui "No momento aceitamos apenas PIX." (o cartão foi
+      // religado); a categoria é a mesma de antes.
+      "Forma de pagamento inválida.",
+      "'Tentar de novo' remonta a escolha de forma — o próprio retry troca " +
+        "de método e destrava; nada do pedido foi tocado",
+    ],
+    [
+      "validacaoCartao.erro",
+      "dado do cartão malformado (token, bandeira, tipo, parcelas, CPF/CNPJ, " +
+        "e-mail): o cliente corrige ou o Brick gera um token novo; recusado " +
+        "antes de tocar banco ou gateway",
+    ],
+    [
+      "Esta forma de pagamento não está disponível nesta loja.",
+      "a loja não ligou crédito/débito (ou a config não pôde ser lida): o " +
+        "cliente paga com PIX, que continua disponível; nada foi tocado",
+    ],
+    [
+      "Esse parcelamento não está disponível nesta loja.",
+      "parcelas acima do teto da loja: o cliente escolhe menos parcelas; " +
+        "nada foi tocado",
+    ],
+    [
+      "Não foi possível trocar para cartão agora. Tente de novo em instantes.",
+      "o MP não cancelou o PIX aberto (pago no meio do caminho, rede, 5xx) " +
+        "ou a vaga tem cobrança que não se reconhece; a vaga fica intacta e " +
+        "o próximo retry relê o estado real (se o PIX foi pago, vira 'pago')",
+    ],
+    [
+      "Há um pagamento com cartão em análise para este pedido.",
+      "o desfecho do cartão chega em minutos pelo webhook: aprovado, o " +
+        "retry devolve 'pago'; recusado, a vaga é liberada e o PIX sai",
+    ],
+    [
+      "Não foi possível liberar a cobrança anterior. Tente de novo em instantes.",
+      "falha de banco na RPC liberar_cobranca_do_pedido; nada foi cobrado, " +
+        "e o retry reencontra a cobrança morta e tenta liberar de novo",
     ],
     [
       "r.erro",
@@ -2236,7 +2317,23 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // 401/403 (credencial da loja) ganhou retorno próprio, `json({ error:
   // MENSAGEM_CREDENCIAL_RECUSADA, terminal: true }, 503)`, antes do
   // `r.erro` recuperável do ramo PIX. Já leva `terminal: true` no literal.
-  assertEquals(achados, 20);
+  //
+  // 32, não mais 20: Fase 3.5 (cartão pela Orders API, 26/09/2026).
+  // Saíram "No momento aceitamos apenas PIX." e o `r.erro` do ramo clássico
+  // morto de cartão; entraram "Forma de pagamento inválida." e o `r.erro` do
+  // ramo NOVO de cartão (as duas trocas empatam), e doze pontos novos: a
+  // validação do corpo do cartão (`validacaoCartao.erro`), forma desligada,
+  // parcelamento acima do teto, os três "Não foi possível trocar para
+  // cartão agora…" (vaga clássica, tipo desconhecido, cancelamento negado),
+  // cartão em análise num pedido de PIX, falha ao liberar a vaga, e os três
+  // da releitura depois de liberar ("Não foi possível verificar o pedido.",
+  // `decisaoDepoisDeLiberar.motivo` terminal, "Este pedido já tem uma
+  // cobrança gerada."), mais o catch do construtor do corpo do cartão ("Não
+  // foi possível gerar a cobrança."). A 403 de conta e a 503 de credencial
+  // viraram UMA chamada cada (`respostaExigeConta`/
+  // `respostaCredencialRecusada`), usadas por PIX e cartão — mesma contagem.
+  // 12 + 20 = 32.
+  assertEquals(achados, 32);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper
@@ -2370,4 +2467,1208 @@ Deno.test("handler: chave do lojista cadastrada + cofre (MP_CHAVES_ENCRYPTION_KE
   assertEquals(corpo.error, "Pagamento indisponível.");
   assertEquals(corpo.terminal, true);
   assertEquals(capturado.chamadas, 0);
+});
+
+// ═══ Fase 3.5 (26/09/2026): CARTÃO pela Orders API ══════════════════════════
+//
+// Contrato: docs/superpowers/plans/2026-09-26-painel-cartao-e-devolucoes.md,
+// seção "Cartão online". O que erra caro, e o que cada bloco abaixo prende:
+//   - cobrar duas vezes o mesmo pedido (vaga ocupada por cartão em análise,
+//     PIX aberto na troca para cartão, chave de idempotência reusada);
+//   - matar o pedido numa recusa de cartão (a recusa NUNCA pode chegar a
+//     `confirmar_pagamento`, cujo ramo 'recusado' cancela e devolve estoque);
+//   - cobrar com a forma desligada pela loja;
+//   - vazar token, CPF ou e-mail em log ou resposta.
+
+const TOKEN_CARTAO = "ff8080814c11e237014c1ff593b57b4d";
+const OUTRO_TOKEN_CARTAO = "aa8080814c11e237014c1ff593b57b99";
+const CPF_TITULAR = "12345678909";
+const ORDER_CARTAO = "ORDTST01CARTAO0000000000000A";
+const ORDER_PIX_NA_VAGA = "ORDTST01PIXNAVAGA00000000000";
+const ORDER_CARTAO_NA_VAGA = "ORDTST01CARTAONAVAGA0000000";
+const CONFIG_CARTAO_LIGADO = { credito: true, debito: true, parcelas_max: 12 };
+const URL_DESAFIO = "https://www.mercadopago.com.br/3ds/challenge/ORDTST01";
+
+function corpoCartao(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    orderId: UUID,
+    metodo: "cartao",
+    token: TOKEN_CARTAO,
+    paymentMethodId: "master",
+    paymentTypeId: "credit_card",
+    parcelas: 3,
+    documento: { type: "CPF", number: CPF_TITULAR },
+    ...extra,
+  };
+}
+
+/** Uma order de CARTÃO no formato da Orders API (payment_method.type). */
+function orderDeCartao(
+  status: string,
+  statusDetail: string,
+  extra: { id?: string; tipo?: string; detalhePagamento?: string; url3ds?: string } = {},
+): Record<string, unknown> {
+  return {
+    id: extra.id ?? ORDER_CARTAO,
+    status,
+    status_detail: statusDetail,
+    external_reference: UUID,
+    total_amount: "100.00",
+    transactions: {
+      payments: [
+        {
+          id: "PAY01CARTAO",
+          status,
+          status_detail: extra.detalhePagamento ?? statusDetail,
+          amount: "100.00",
+          payment_method: {
+            id: "master",
+            type: extra.tipo ?? "credit_card",
+            installments: 3,
+            ...(extra.url3ds ? { transaction_security: { url: extra.url3ds, type: "challenge" } } : {}),
+          },
+        },
+      ],
+    },
+  };
+}
+
+/** Uma order de PIX (bank_transfer) no formato da Orders API. */
+function orderDePix(status: string, statusDetail: string, id = ORDER_PIX_NA_VAGA): Record<string, unknown> {
+  return {
+    id,
+    status,
+    status_detail: statusDetail,
+    external_reference: UUID,
+    transactions: {
+      payments: [
+        {
+          id: "PAY01PIX",
+          payment_method: {
+            id: "pix",
+            type: "bank_transfer",
+            qr_code: "QRCODE-DA-VAGA",
+            qr_code_base64: "QRBASE64-DA-VAGA",
+          },
+        },
+      ],
+    },
+  };
+}
+
+type ChamadaMP = {
+  url: string;
+  method?: string;
+  corpo?: Record<string, unknown>;
+  headers?: Record<string, string>;
+};
+
+/** `fetch` do MP roteado pelo que a function faz: POST /v1/orders (criar),
+ * GET /v1/orders/{id} (consultar), POST /v1/orders/{id}/cancel (cancelar).
+ * Rota sem resposta configurada ESTOURA — um teste nunca passa por uma
+ * chamada que não previu (ex.: uma segunda cobrança). */
+function fetchMP(rotas: {
+  criar?: { status: number; corpo: unknown };
+  consultar?: { status: number; corpo: unknown };
+  cancelar?: { status: number; corpo: unknown };
+}) {
+  const chamadas: ChamadaMP[] = [];
+  const fn = async (url: string, init?: RequestInit) => {
+    chamadas.push({
+      url,
+      method: init?.method,
+      corpo: init?.body ? JSON.parse(String(init.body)) : undefined,
+      headers: init?.headers as Record<string, string> | undefined,
+    });
+    const rota = url.endsWith("/cancel")
+      ? rotas.cancelar
+      : init?.method === "POST"
+        ? rotas.criar
+        : rotas.consultar;
+    if (!rota) throw new Error(`fetch inesperado nos testes do cartão: ${init?.method} ${url}`);
+    return new Response(JSON.stringify(rota.corpo), { status: rota.status });
+  };
+  const criacoes = () => chamadas.filter((c) => c.method === "POST" && !c.url.endsWith("/cancel"));
+  const cancelamentos = () => chamadas.filter((c) => c.url.endsWith("/cancel"));
+  return { fn, chamadas, criacoes, cancelamentos };
+}
+
+/** Cenário pronto: pedido do dono logado, cartão ligado, gravação da vaga
+ * bem-sucedida — cada teste sobrescreve só o que prova. */
+function cenarioCartao(opts: {
+  pedido?: Record<string, unknown>;
+  releitura?: Record<string, unknown> | null;
+  gravado?: Record<string, unknown> | null;
+  configCartao?: Record<string, unknown> | null;
+  erroConfigCartao?: Record<string, unknown> | null;
+  resultadoLiberar?: boolean;
+  erroLiberar?: Record<string, unknown> | null;
+} = {}) {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  const registro: {
+    chamadasUpdate: number;
+    filtrosUpdate?: Array<[string, unknown]>;
+    valoresUpdate?: Record<string, unknown>;
+  } = { chamadasUpdate: 0 };
+  const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
+  const leiturasConfigCartao: Array<{ colunas: string; filtro: [string, unknown] }> = [];
+  const supabase = clienteFalso({
+    pedido: opts.pedido ?? pedidoBase({ user_id: DONO_LOGADO }),
+    releitura: opts.releitura,
+    gravado: opts.gravado === undefined ? { id: UUID, expires_at: "2099-01-01T00:00:00.000Z" } : opts.gravado,
+    registro,
+    configCartao: opts.configCartao === undefined ? CONFIG_CARTAO_LIGADO : opts.configCartao,
+    erroConfigCartao: opts.erroConfigCartao,
+    chamadasRpc,
+    leiturasConfigCartao,
+    resultadoLiberar: opts.resultadoLiberar,
+    erroLiberar: opts.erroLiberar,
+  });
+  return { supabase, registro, chamadasRpc, leiturasConfigCartao };
+}
+
+const liberacoes = (chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }>) =>
+  chamadasRpc.filter((c) => c.nome === "liberar_cobranca_do_pedido").map((c) => c.args);
+
+async function hash12(token: string): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+}
+
+// --- chaveDeIdempotencia -----------------------------------------------------
+
+Deno.test("chaveDeIdempotencia (PIX): tentativa 0 é o id do pedido BYTE A BYTE — a chave de antes do cartão; depois, <pedido>:<n>", async () => {
+  assertEquals(await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "pix"), UUID);
+  // Coluna ausente/lixo vale 0 — nunca um erro que trave o PIX.
+  assertEquals(await chaveDeIdempotencia({ id: UUID }, "pix"), UUID);
+  assertEquals(await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: null }, "pix"), UUID);
+  assertEquals(await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: -1 }, "pix"), UUID);
+  assertEquals(await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 1.5 }, "pix"), UUID);
+  assertEquals(await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 1 }, "pix"), `${UUID}:1`);
+  assertEquals(await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 7 }, "pix"), `${UUID}:7`);
+});
+
+Deno.test("chaveDeIdempotencia (cartão): <pedido>:c<n>:<12 hex do sha256 do token>, ≤ 64 chars, sem o token cru", async () => {
+  const chave0 = await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "cartao", TOKEN_CARTAO);
+  assertEquals(chave0, `${UUID}:c0:${await hash12(TOKEN_CARTAO)}`);
+  assertEquals(/^[0-9a-f-]{36}:c\d+:[0-9a-f]{12}$/.test(chave0), true);
+  assertEquals(chave0.length <= 64, true);
+  assertEquals(chave0.includes(TOKEN_CARTAO), false);
+
+  // Mesmo token, mesma tentativa: MESMA chave (o retry converge).
+  assertEquals(
+    await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "cartao", TOKEN_CARTAO),
+    chave0,
+  );
+  // Outro cartão na mesma tentativa, ou mesma tentativa + 1: chave NOVA.
+  const outroToken = await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "cartao", OUTRO_TOKEN_CARTAO);
+  assertEquals(outroToken === chave0, false);
+  const tentativa12 = await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 12 }, "cartao", TOKEN_CARTAO);
+  assertEquals(tentativa12, `${UUID}:c12:${await hash12(TOKEN_CARTAO)}`);
+  assertEquals(tentativa12.length <= 64, true);
+  // Nunca colide com a chave do PIX do mesmo pedido/tentativa.
+  assertEquals(chave0 === (await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "pix")), false);
+});
+
+Deno.test("handler PIX: tentativa 0 manda X-Idempotency-Key = id do pedido (igual a antes); tentativa 2 manda <id>:2, e a vaga grava metodo_online 'pix' e parcelas null", async () => {
+  for (const [tentativas, esperada] of [[0, UUID], [2, `${UUID}:2`]] as const) {
+    const { supabase, registro } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: tentativas }),
+    });
+    let chave: string | undefined;
+    const base = fetchFalsoMP({});
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      chave = (init?.headers as Record<string, string>)["X-Idempotency-Key"];
+      return base(url, init);
+    };
+
+    const resposta = await handler(
+      requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+      { supabase, fetchImpl },
+    );
+
+    assertEquals(resposta.status, 200);
+    assertEquals(chave, esperada);
+    assertEquals(registro.valoresUpdate?.metodo_online, "pix");
+    assertEquals(registro.valoresUpdate?.parcelas, null);
+  }
+});
+
+// --- validação do corpo do cartão -------------------------------------------
+
+for (
+  const caso of [
+    { nome: "sem token", extra: { token: undefined }, erro: "Dados do cartão incompletos. Digite o cartão de novo." },
+    { nome: "token com caractere estranho", extra: { token: "ff8080814c11e237;drop table" }, erro: "Dados do cartão incompletos. Digite o cartão de novo." },
+    { nome: "paymentMethodId inválido", extra: { paymentMethodId: "Master Card" }, erro: "Dados do cartão incompletos. Digite o cartão de novo." },
+    { nome: "paymentTypeId que não é cartão", extra: { paymentTypeId: "bank_transfer" }, erro: "Escolha crédito ou débito para pagar com cartão." },
+    { nome: "crédito sem parcelas", extra: { parcelas: undefined }, erro: "Número de parcelas inválido." },
+    { nome: "parcelas 0", extra: { parcelas: 0 }, erro: "Número de parcelas inválido." },
+    { nome: "parcelas 13", extra: { parcelas: 13 }, erro: "Número de parcelas inválido." },
+    { nome: "parcelas fracionária", extra: { parcelas: 2.5 }, erro: "Número de parcelas inválido." },
+    { nome: "sem documento", extra: { documento: undefined }, erro: "Informe um CPF ou CNPJ válido do titular do cartão." },
+    { nome: "CPF curto", extra: { documento: { type: "CPF", number: "123" } }, erro: "Informe um CPF ou CNPJ válido do titular do cartão." },
+    { nome: "e-mail torto", extra: { email: "nao-e-email" }, erro: "E-mail inválido." },
+  ]
+) {
+  Deno.test(`handler cartão: ${caso.nome} -> 400 recuperável com mensagem clara, sem tocar banco nem Mercado Pago`, async () => {
+    let chamadasFetch = 0;
+    const fetchImpl = async () => {
+      chamadasFetch++;
+      return new Response("{}", { status: 201 });
+    };
+    const resposta = await handler(
+      requisicao(corpoCartao(caso.extra), montarToken(DONO_LOGADO)),
+      { supabase: supabaseIntocavel, fetchImpl },
+    );
+    const texto = await resposta.text();
+    const corpo = JSON.parse(texto);
+
+    assertEquals(resposta.status, 400);
+    assertEquals(corpo.error, caso.erro);
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(chamadasFetch, 0);
+    // A mensagem nunca ecoa o valor recebido.
+    assertEquals(texto.includes(TOKEN_CARTAO), false);
+    assertEquals(texto.includes(CPF_TITULAR), false);
+  });
+}
+
+Deno.test("validarCorpoDoCartao: débito sem parcelas vale 1; débito com 6 vale 1; parcelas em string de dígitos é aceita; CPF mascarado vira dígitos", () => {
+  const debitoSem = validarCorpoDoCartao(corpoCartao({ paymentTypeId: "debit_card", parcelas: undefined }));
+  assertEquals(debitoSem.ok && debitoSem.dados.parcelas, 1);
+  const debitoSeis = validarCorpoDoCartao(corpoCartao({ paymentTypeId: "debit_card", parcelas: 6 }));
+  assertEquals(debitoSeis.ok && debitoSeis.dados.parcelas, 1);
+  const textual = validarCorpoDoCartao(corpoCartao({ parcelas: "4" }));
+  assertEquals(textual.ok && textual.dados.parcelas, 4);
+  const mascarado = validarCorpoDoCartao(corpoCartao({ documento: { type: "CPF", number: "123.456.789-09" } }));
+  assertEquals(mascarado.ok && mascarado.dados.documento, { type: "CPF", number: CPF_TITULAR });
+  const semEmail = validarCorpoDoCartao(corpoCartao());
+  assertEquals(semEmail.ok && semEmail.dados.email, null);
+});
+
+// --- portão: conta, forma ligada, teto de parcelas ---------------------------
+
+Deno.test("handler cartão: convidado (user_id null) -> 403 terminal ANTES de ler a config e sem tocar o MP", async () => {
+  const { supabase, leiturasConfigCartao, chamadasRpc } = cenarioCartao({ pedido: pedidoBase() });
+  const mp = fetchMP({});
+
+  const resposta = await handler(requisicao(corpoCartao()), { supabase, fetchImpl: mp.fn });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 403);
+  assertEquals(corpo.code, "PAGAMENTO_ONLINE_EXIGE_CONTA");
+  assertEquals(corpo.terminal, true);
+  assertEquals(leiturasConfigCartao.length, 0);
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(chamadasRpc.length, 0);
+});
+
+for (
+  const caso of [
+    { nome: "crédito desligado", config: { credito: false, debito: true, parcelas_max: 12 }, tipo: "credit_card" },
+    { nome: "débito desligado", config: { credito: true, debito: false, parcelas_max: 12 }, tipo: "debit_card" },
+    { nome: "linha de config ausente", config: null, tipo: "credit_card" },
+  ]
+) {
+  Deno.test(`handler cartão: ${caso.nome} -> 409 recuperável 'Esta forma de pagamento não está disponível nesta loja.', sem tocar o MP nem a vaga`, async () => {
+    const { supabase, registro, chamadasRpc, leiturasConfigCartao } = cenarioCartao({ configCartao: caso.config });
+    const mp = fetchMP({});
+
+    const resposta = await handler(
+      requisicao(corpoCartao({ paymentTypeId: caso.tipo }), montarToken(DONO_LOGADO)),
+      { supabase, fetchImpl: mp.fn },
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409);
+    assertEquals(corpo.error, "Esta forma de pagamento não está disponível nesta loja.");
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(mp.chamadas.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+    assertEquals(chamadasRpc.length, 0);
+    // A leitura aponta para a linha certa, com as colunas do contrato.
+    assertEquals(leiturasConfigCartao, [{ colunas: "credito, debito, parcelas_max", filtro: ["id", 1] }]);
+  });
+}
+
+Deno.test("handler cartão: falha ao LER a config -> fechado (409 indisponível), nunca 'liga por padrão'", async () => {
+  const { supabase } = cenarioCartao({ erroConfigCartao: { message: "timeout" } });
+  const mp = fetchMP({});
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  assertEquals(resposta.status, 409);
+  assertEquals((await resposta.json()).error, "Esta forma de pagamento não está disponível nesta loja.");
+  assertEquals(mp.chamadas.length, 0);
+});
+
+Deno.test("handler cartão: parcelas acima do teto da loja -> 400 recuperável; no teto exato passa", async () => {
+  const acima = cenarioCartao({ configCartao: { credito: true, debito: true, parcelas_max: 3 } });
+  const mpAcima = fetchMP({});
+  const respostaAcima = await handler(
+    requisicao(corpoCartao({ parcelas: 4 }), montarToken(DONO_LOGADO)),
+    { supabase: acima.supabase, fetchImpl: mpAcima.fn },
+  );
+  const corpoAcima = await respostaAcima.json();
+  assertEquals(respostaAcima.status, 400);
+  assertEquals(corpoAcima.error, "Esse parcelamento não está disponível nesta loja.");
+  assertEquals(corpoAcima.terminal, undefined);
+  assertEquals(mpAcima.chamadas.length, 0);
+
+  // Controle positivo: 3 parcelas com teto 3 cobra normalmente.
+  const noTeto = cenarioCartao({ configCartao: { credito: true, debito: true, parcelas_max: 3 } });
+  const mpNoTeto = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+  const respostaNoTeto = await handler(
+    requisicao(corpoCartao({ parcelas: 3 }), montarToken(DONO_LOGADO)),
+    { supabase: noTeto.supabase, fetchImpl: mpNoTeto.fn },
+  );
+  assertEquals(respostaNoTeto.status, 200);
+  assertEquals(mpNoTeto.criacoes().length, 1);
+});
+
+Deno.test("handler cartão: débito com loja de teto 1 e 6 parcelas pedidas passa (débito não parcela) e vai com installments 1", async () => {
+  const { supabase, registro } = cenarioCartao({ configCartao: { credito: false, debito: true, parcelas_max: 1 } });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process", { tipo: "debit_card" }) } });
+
+  const resposta = await handler(
+    requisicao(
+      corpoCartao({ paymentTypeId: "debit_card", paymentMethodId: "debelo", parcelas: 6 }),
+      montarToken(DONO_LOGADO),
+    ),
+    { supabase, fetchImpl: mp.fn },
+  );
+
+  assertEquals(resposta.status, 200);
+  const pagamento = (mp.criacoes()[0].corpo?.transactions as { payments: Array<Record<string, unknown>> })
+    .payments[0];
+  assertEquals((pagamento.payment_method as Record<string, unknown>).installments, 1);
+  assertEquals((pagamento.payment_method as Record<string, unknown>).type, "debit_card");
+  assertEquals(registro.valoresUpdate?.metodo_online, "debito");
+  assertEquals(registro.valoresUpdate?.parcelas, 1);
+});
+
+// --- criação: aprovado, 3DS, em análise --------------------------------------
+
+Deno.test("handler cartão: aprovado na hora (processed:accredited) -> 200 'pago', ocupa a vaga com o id da ORDER + metodo_online/parcelas, e NÃO chama confirmar_pagamento", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao();
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.paymentId, ORDER_CARTAO);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.expiraEm, "2099-01-01T00:00:00.000Z");
+  assertEquals(corpo.desafio3ds, undefined);
+  assertEquals(corpo.qrCode, undefined);
+
+  // A vaga: mesma gravação condicional do PIX, agora com a forma.
+  assertEquals(registro.chamadasUpdate, 1);
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, ORDER_CARTAO);
+  assertEquals(registro.valoresUpdate?.metodo_online, "credito");
+  assertEquals(registro.valoresUpdate?.parcelas, 3);
+  assertEquals("expires_at" in (registro.valoresUpdate ?? {}), false);
+  assertEquals(registro.filtrosUpdate, [
+    ["id", UUID],
+    ["payment_status", "aguardando"],
+    ["gateway_payment_id", null],
+  ]);
+  // Confirmação é do webhook/reconciliação — nenhuma rpc aqui.
+  assertEquals(chamadasRpc.length, 0);
+
+  // O corpo mandado ao MP: Orders de cartão, com a chave POR TENTATIVA.
+  assertEquals(mp.criacoes().length, 1);
+  const enviado = mp.criacoes()[0];
+  assertEquals(enviado.url.endsWith("/v1/orders"), true);
+  assertEquals(enviado.corpo?.external_reference, UUID);
+  assertEquals(enviado.corpo?.total_amount, "100.00");
+  assertEquals(enviado.corpo?.capture_mode, "automatic_async");
+  assertEquals(enviado.corpo?.config, {
+    online: { transaction_security: { validation: "on_fraud_risk", liability_shift: "required" } },
+  });
+  assertEquals((enviado.corpo?.payer as Record<string, unknown>).identification, {
+    type: "CPF",
+    number: CPF_TITULAR,
+  });
+  assertEquals(enviado.headers?.["X-Idempotency-Key"], `${UUID}:c0:${await hash12(TOKEN_CARTAO)}`);
+});
+
+Deno.test("handler cartão: desafio 3DS (action_required:pending_challenge) -> 200 'aguardando' + desafio3ds.url, com a vaga ocupada", async () => {
+  const { supabase, registro } = cenarioCartao();
+  const mp = fetchMP({
+    criar: {
+      status: 201,
+      corpo: orderDeCartao("action_required", "pending_challenge", { url3ds: URL_DESAFIO }),
+    },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "aguardando");
+  assertEquals(corpo.desafio3ds, { url: URL_DESAFIO });
+  assertEquals(corpo.paymentId, ORDER_CARTAO);
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, ORDER_CARTAO);
+});
+
+Deno.test("handler cartão: em análise (processing:in_review) -> 200 'aguardando' SEM desafio3ds, com a vaga ocupada", async () => {
+  const { supabase, registro } = cenarioCartao();
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_review") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "aguardando");
+  assertEquals("desafio3ds" in corpo, false);
+  assertEquals(registro.chamadasUpdate, 1);
+});
+
+Deno.test("handler cartão: aprovado mas a vaga foi perdida na corrida (UPDATE sem linha, releitura 'expirado') -> 409 terminal de prazo, sem liberar nada", async () => {
+  const { supabase, chamadasRpc } = cenarioCartao({
+    gravado: null,
+    releitura: { payment_status: "expirado", gateway_payment_id: null },
+  });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.error, "O prazo para pagar este pedido acabou.");
+  assertEquals(corpo.terminal, true);
+  assertEquals(chamadasRpc.length, 0);
+});
+
+// --- criação: recusas ----------------------------------------------------------
+
+Deno.test("handler cartão: HTTP 402 (recusado pelo banco) -> 200 'recusado' com o motivo, CONTA a tentativa (liberar sem id) e NÃO ocupa a vaga", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao();
+  const mp = fetchMP({
+    criar: {
+      status: 402,
+      corpo: {
+        errors: [{ code: "failed", message: "The following transactions failed" }],
+        data: orderDeCartao("failed", "failed", { detalhePagamento: "rejected_by_issuer" }),
+      },
+    },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo, {
+    paymentId: null,
+    statusPagamento: "recusado",
+    motivoRecusa: "O banco emissor recusou o pagamento.",
+    podeTentarDeNovo: true,
+    expiraEm: "2099-01-01T00:00:00.000Z",
+  });
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: null }]);
+  // A prova que importa: a recusa não chega a confirmar_pagamento (que
+  // cancelaria o pedido) — a ÚNICA rpc é a de liberar.
+  assertEquals(chamadasRpc.map((c) => c.nome), ["liberar_cobranca_do_pedido"]);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler cartão: order criada já 'failed' (201) -> 200 'recusado' com o motivo do pagamento, conta a tentativa, não ocupa a vaga", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao();
+  const mp = fetchMP({
+    criar: { status: 201, corpo: orderDeCartao("failed", "failed", { detalhePagamento: "high_risk" }) },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "recusado");
+  assertEquals(corpo.motivoRecusa, "Pagamento recusado por segurança. Tente outro cartão ou pague com PIX.");
+  assertEquals(corpo.podeTentarDeNovo, true);
+  assertEquals(corpo.paymentId, null);
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: null }]);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler cartão: HTTP 400 do MP (dado do cartão) -> 200 'recusado' com 'Confira os dados do cartão e tente de novo.'", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao();
+  const mp = fetchMP({ criar: { status: 400, corpo: { errors: [{ code: "invalid_card_token" }] } } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "recusado");
+  assertEquals(corpo.motivoRecusa, "Confira os dados do cartão e tente de novo.");
+  assertEquals(corpo.podeTentarDeNovo, true);
+  assertEquals(liberacoes(chamadasRpc).length, 1);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler cartão: recusa com a RPC de liberar FALHANDO -> a resposta continua 200 'recusado' (a recusa é verdade de qualquer jeito)", async () => {
+  const { supabase } = cenarioCartao({ erroLiberar: { message: "deadlock" } });
+  const mp = fetchMP({ criar: { status: 402, corpo: { errors: [{ code: "failed" }] } } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "recusado");
+  // Motivo desconhecido no corpo: a frase padrão, sempre com saída.
+  assertEquals(corpo.motivoRecusa, "Pagamento recusado. Tente outro cartão ou pague com PIX.");
+});
+
+for (
+  const caso of [
+    { status: 401, esperado: 503, terminal: true },
+    { status: 403, esperado: 503, terminal: true },
+    { status: 500, esperado: 502, terminal: undefined },
+    { status: 0, esperado: 502, terminal: undefined },
+  ]
+) {
+  Deno.test(`handler cartão: POST /v1/orders com status ${caso.status} -> ${caso.esperado} ${caso.terminal ? "TERMINAL (credencial)" : "recuperável"}, sem liberar nem ocupar a vaga`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao();
+    const fetchImpl = caso.status === 0
+      ? async () => {
+        throw new TypeError("network error");
+      }
+      : fetchMP({ criar: { status: caso.status, corpo: { message: "detalhe do MP" } } }).fn;
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, caso.esperado);
+    assertEquals(corpo.terminal, caso.terminal);
+    if (caso.terminal) assertEquals(corpo.error, MENSAGEM_CREDENCIAL_RECUSADA);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
+
+Deno.test("handler cartão: token, CPF e e-mail NUNCA aparecem em log nem na resposta — nem na recusa 402 cujo corpo traz o pagador", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, customer_data: { email: "titular@exemplo.com" } }),
+  });
+  const mp = fetchMP({
+    criar: {
+      status: 402,
+      corpo: {
+        errors: [{ code: "failed" }],
+        data: {
+          ...orderDeCartao("failed", "failed", { detalhePagamento: "card_disabled" }),
+          payer: { email: "titular@exemplo.com", identification: { type: "CPF", number: CPF_TITULAR } },
+        },
+      },
+    },
+  });
+  const logados: unknown[] = [];
+  const originais = { error: console.error, warn: console.warn, log: console.log };
+  console.error = (...a: unknown[]) => logados.push(a);
+  console.warn = (...a: unknown[]) => logados.push(a);
+  console.log = (...a: unknown[]) => logados.push(a);
+  let texto: string;
+  try {
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    texto = await resposta.text();
+  } finally {
+    console.error = originais.error;
+    console.warn = originais.warn;
+    console.log = originais.log;
+  }
+
+  const tudo = JSON.stringify(logados) + texto;
+  assertEquals(tudo.includes(TOKEN_CARTAO), false);
+  assertEquals(tudo.includes(CPF_TITULAR), false);
+  assertEquals(tudo.includes("titular@exemplo.com"), false);
+  assertEquals(JSON.parse(texto).motivoRecusa, "Cartão desabilitado. Fale com o seu banco.");
+});
+
+Deno.test("handler cartão: e-mail do pagador — o do corpo vence; customer_data torto é pulado; sandbox troca pelo de teste SEM 'APRO' em first_name", async () => {
+  // O do corpo vence o do pedido.
+  const a = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, customer_data: { email: "pedido@exemplo.com" } }),
+  });
+  const mpA = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+  await handler(requisicao(corpoCartao({ email: "corpo@exemplo.com" }), montarToken(DONO_LOGADO)), {
+    supabase: a.supabase,
+    fetchImpl: mpA.fn,
+  });
+  assertEquals((mpA.criacoes()[0].corpo?.payer as Record<string, unknown>).email, "corpo@exemplo.com");
+
+  // customer_data com e-mail torto não trava o cartão: cai no próximo.
+  const b = cenarioCartao({ pedido: pedidoBase({ user_id: DONO_LOGADO, customer_data: { email: "torto" } }) });
+  const mpB = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+  const respostaB = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: b.supabase,
+    fetchImpl: mpB.fn,
+  });
+  assertEquals(respostaB.status, 200);
+  assertEquals((mpB.criacoes()[0].corpo?.payer as Record<string, unknown>).email, "sem-email@ikcous.com.br");
+
+  // Sandbox: e-mail de teste, sem forçar first_name.
+  const c = cenarioCartao();
+  Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "comprador@testuser.com");
+  const aviso = console.warn;
+  console.warn = () => {};
+  try {
+    const mpC = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+    await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase: c.supabase, fetchImpl: mpC.fn });
+    const payer = mpC.criacoes()[0].corpo?.payer as Record<string, unknown>;
+    assertEquals(payer.email, "comprador@testuser.com");
+    assertEquals("first_name" in payer, false);
+  } finally {
+    console.warn = aviso;
+    Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+});
+
+Deno.test("handler cartão: tentativa 2 no pedido -> chave <pedido>:c2:<hash>; OUTRO token na mesma tentativa -> chave diferente", async () => {
+  const chaves: string[] = [];
+  for (const token of [TOKEN_CARTAO, OUTRO_TOKEN_CARTAO]) {
+    const { supabase } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 2 }),
+    });
+    const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+    await handler(requisicao(corpoCartao({ token }), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn });
+    chaves.push(String(mp.criacoes()[0].headers?.["X-Idempotency-Key"]));
+  }
+  assertEquals(chaves[0], `${UUID}:c2:${await hash12(TOKEN_CARTAO)}`);
+  assertEquals(chaves[1], `${UUID}:c2:${await hash12(OUTRO_TOKEN_CARTAO)}`);
+  assertEquals(chaves[0] === chaves[1], false);
+});
+
+// --- vaga ocupada: (a) a (f) --------------------------------------------------
+
+Deno.test("vaga (a): cartão JÁ PAGO na vaga + novo pedido de cartão -> 200 'pago', sem cobrança nova, sem liberar, sem UPDATE", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("processed", "accredited", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo, {
+    paymentId: ORDER_CARTAO_NA_VAGA,
+    statusPagamento: "pago",
+    expiraEm: "2099-01-01T00:00:00.000Z",
+  });
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(mp.cancelamentos().length, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("vaga (a): PIX JÁ PAGO na vaga + pedido de CARTÃO -> 200 'pago' (resposta do PIX de sempre), sem cancelar nem cobrar", async () => {
+  const { supabase, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+  });
+  const mp = fetchMP({ consultar: { status: 200, corpo: orderDePix("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.paymentId, ORDER_PIX_NA_VAGA);
+  assertEquals(mp.cancelamentos().length, 0);
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(chamadasRpc.length, 0);
+});
+
+for (
+  const morta of [
+    { nome: "recusado (failed)", status: "failed", detalhe: "rejected_by_issuer" },
+    { nome: "cancelado", status: "canceled", detalhe: "canceled" },
+    { nome: "expirado (3DS abandonado)", status: "expired", detalhe: "expired" },
+  ]
+) {
+  Deno.test(`vaga (b): cartão ${morta.nome} na vaga + novo cartão -> libera a vaga DAQUELA cobrança, relê, e cobra com a chave da tentativa NOVA`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, tentativas_de_pagamento: 0 }),
+      releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: orderDeCartao(morta.status, morta.detalhe, { id: ORDER_CARTAO_NA_VAGA }) },
+      criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
+    });
+
+    const resposta = await handler(
+      requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)),
+      { supabase, fetchImpl: mp.fn },
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.statusPagamento, "pago");
+    assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: ORDER_CARTAO_NA_VAGA }]);
+    assertEquals(chamadasRpc.some((c) => c.nome === "confirmar_pagamento"), false);
+    assertEquals(mp.cancelamentos().length, 0);
+    assertEquals(mp.criacoes().length, 1);
+    // A chave vem da RELEITURA (tentativa 1), não do pedido lido antes.
+    assertEquals(
+      mp.criacoes()[0].headers?.["X-Idempotency-Key"],
+      `${UUID}:c1:${await hash12(OUTRO_TOKEN_CARTAO)}`,
+    );
+    assertEquals(registro.valoresUpdate?.gateway_payment_id, ORDER_CARTAO);
+  });
+}
+
+Deno.test("vaga (b): cartão recusado na vaga + pedido de PIX -> libera, relê e cria o PIX com a chave <pedido>:1 (nunca a chave morta)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+  });
+  let chavePix: string | undefined;
+  const consulta = orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA });
+  const basePix = fetchFalsoMP({});
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    if (init?.method !== "POST") return new Response(JSON.stringify(consulta), { status: 200 });
+    chavePix = (init?.headers as Record<string, string>)["X-Idempotency-Key"];
+    return basePix(url, init);
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.qrCode, "QRCODE-PADRAO");
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: ORDER_CARTAO_NA_VAGA }]);
+  assertEquals(chavePix, `${UUID}:1`);
+  assertEquals(registro.valoresUpdate?.metodo_online, "pix");
+});
+
+Deno.test("vaga (c): PIX ABERTO na vaga + pedido de cartão -> CANCELA o PIX no MP, libera a vaga DELE e cobra o cartão", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") },
+    cancelar: { status: 200, corpo: orderDePix("canceled", "canceled") },
+    criar: { status: 201, corpo: orderDeCartao("action_required", "pending_challenge", { url3ds: URL_DESAFIO }) },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "aguardando");
+  assertEquals(corpo.desafio3ds, { url: URL_DESAFIO });
+  // Ordem que importa: consulta -> cancela -> cria.
+  assertEquals(mp.chamadas.map((c) => `${c.method} ${c.url.replace("https://api.mercadopago.com", "")}`), [
+    `GET /v1/orders/${ORDER_PIX_NA_VAGA}`,
+    `POST /v1/orders/${ORDER_PIX_NA_VAGA}/cancel`,
+    "POST /v1/orders",
+  ]);
+  assertEquals(mp.cancelamentos()[0].headers?.["X-Idempotency-Key"], `cancelar:${ORDER_PIX_NA_VAGA}`);
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: ORDER_PIX_NA_VAGA }]);
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, ORDER_CARTAO);
+  assertEquals(registro.valoresUpdate?.metodo_online, "credito");
+});
+
+for (
+  const falha of [
+    { nome: "MP recusa o cancelamento (PIX pago no meio do caminho)", cancelar: { status: 409, corpo: { errors: [{ code: "cannot_cancel" }] } } },
+    { nome: "MP responde 200 mas a order NÃO está cancelada", cancelar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") } },
+    { nome: "MP fora do ar (500)", cancelar: { status: 500, corpo: {} } },
+  ]
+) {
+  Deno.test(`vaga (c): ${falha.nome} -> 409 recuperável 'Não foi possível trocar para cartão agora…', sem liberar e sem cobrar o cartão`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") },
+      cancelar: falha.cancelar,
+    });
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409);
+    assertEquals(corpo.error, "Não foi possível trocar para cartão agora. Tente de novo em instantes.");
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
+
+Deno.test("vaga (c): PIX já EXPIRADO na vaga + pedido de cartão -> não precisa cancelar: só libera e cobra", async () => {
+  const { supabase, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDePix("expired", "expired") },
+    criar: { status: 201, corpo: orderDeCartao("processing", "in_process") },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.cancelamentos().length, 0);
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: ORDER_PIX_NA_VAGA }]);
+  assertEquals(mp.criacoes().length, 1);
+});
+
+Deno.test("vaga (c): cobrança de TIPO DESCONHECIDO na vaga + pedido de cartão -> 409 recuperável, e ela NUNCA é cancelada às cegas", async () => {
+  const { supabase, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "ORDTST01SEMTIPO" }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: { id: "ORDTST01SEMTIPO", status: "action_required", status_detail: "waiting_payment" } },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 409);
+  assertEquals((await resposta.json()).error, "Não foi possível trocar para cartão agora. Tente de novo em instantes.");
+  assertEquals(mp.cancelamentos().length, 0);
+  assertEquals(chamadasRpc.length, 0);
+});
+
+Deno.test("vaga (d): cartão em 3DS na vaga + NOVO cartão (token novo) -> devolve o estado atual com o MESMO desafio, NUNCA uma segunda cobrança", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+  });
+  const mp = fetchMP({
+    consultar: {
+      status: 200,
+      corpo: orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA, url3ds: URL_DESAFIO }),
+    },
+  });
+
+  const resposta = await handler(
+    requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo, {
+    paymentId: ORDER_CARTAO_NA_VAGA,
+    statusPagamento: "aguardando",
+    expiraEm: "2099-01-01T00:00:00.000Z",
+    desafio3ds: { url: URL_DESAFIO },
+  });
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("vaga (d): cartão em análise (processing:in_process) na vaga + novo cartão -> 'aguardando' sem desafio; par desconhecido devolve o par cru", async () => {
+  const analise = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+  });
+  const mpAnalise = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("processing", "in_process", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+  const r1 = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: analise.supabase,
+    fetchImpl: mpAnalise.fn,
+  });
+  const c1 = await r1.json();
+  assertEquals(c1.statusPagamento, "aguardando");
+  assertEquals("desafio3ds" in c1, false);
+  assertEquals(mpAnalise.criacoes().length, 0);
+
+  const novo = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+  });
+  const mpNovo = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("um_status_novo", "um_detalhe", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+  const r2 = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: novo.supabase,
+    fetchImpl: mpNovo.fn,
+  });
+  assertEquals((await r2.json()).statusPagamento, "um_status_novo:um_detalhe");
+  assertEquals(mpNovo.criacoes().length, 0);
+});
+
+Deno.test("vaga (e): PIX aberto na vaga + pedido de PIX -> o MESMO QR de sempre, sem cancelar, sem liberar, sem UPDATE", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+  });
+  const mp = fetchMP({ consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") } });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "aguardando");
+  assertEquals(corpo.qrCode, "QRCODE-DA-VAGA");
+  assertEquals(mp.chamadas.length, 1);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("vaga (e): PIX RECUSADO na vaga + pedido de PIX -> continua como antes ('recusado', sem liberar) — a regra nova é só do cartão", async () => {
+  const { supabase, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+  });
+  const mp = fetchMP({ consultar: { status: 200, corpo: orderDePix("failed", "failed") } });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals((await resposta.json()).statusPagamento, "recusado");
+  assertEquals(chamadasRpc.length, 0);
+});
+
+for (
+  const emVoo of [
+    { nome: "em análise", status: "processing", detalhe: "in_process" },
+    { nome: "no desafio 3DS", status: "action_required", detalhe: "pending_challenge" },
+  ]
+) {
+  Deno.test(`vaga (f): cartão ${emVoo.nome} na vaga + pedido de PIX -> 409 recuperável, sem criar PIX nem liberar`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: orderDeCartao(emVoo.status, emVoo.detalhe, { id: ORDER_CARTAO_NA_VAGA }) },
+    });
+
+    const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409);
+    assertEquals(corpo.error, "Há um pagamento com cartão em análise para este pedido.");
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
+
+Deno.test("vaga (f): cartão JÁ PAGO na vaga + pedido de PIX -> 200 'pago', nunca um PIX por cima", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("processed", "accredited", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals((await resposta.json()).statusPagamento, "pago");
+  assertEquals(mp.criacoes().length, 0);
+});
+
+// --- liberar a vaga: falhas e corridas --------------------------------------
+
+Deno.test("liberar a vaga FALHA (erro de banco) -> 503 recuperável, sem cobrar nada", async () => {
+  const { supabase, registro } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+    erroLiberar: { message: "connection reset" },
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo.error, "Não foi possível liberar a cobrança anterior. Tente de novo em instantes.");
+  assertEquals(corpo.terminal, undefined);
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("liberar devolve false e a RELEITURA mostra a vaga ocupada por outra cobrança (corrida) -> 409 recuperável, sem cobrar", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "ORDTST01OUTRAABA", tentativas_de_pagamento: 1 }),
+    resultadoLiberar: false,
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.error, "Este pedido já tem uma cobrança gerada.");
+  assertEquals(corpo.terminal, undefined);
+  assertEquals(mp.criacoes().length, 0);
+});
+
+Deno.test("RELEITURA depois de liberar mostra o pedido 'expirado' -> 409 TERMINAL, sem cobrar", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, payment_status: "expirado", gateway_payment_id: null }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("expired", "expired", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.error, "Este pedido não está aguardando pagamento.");
+  assertEquals(corpo.terminal, true);
+  assertEquals(mp.criacoes().length, 0);
+});
+
+Deno.test("RELEITURA depois de liberar FALHA (erro de banco) -> 503 recuperável 'Não foi possível verificar o pedido.'", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
+  const base = clienteFalso({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+    gravado: { id: UUID },
+    configCartao: CONFIG_CARTAO_LIGADO,
+    chamadasRpc,
+  });
+  // A 2ª leitura de marketplace_orders (a releitura) falha.
+  let leiturasPedido = 0;
+  const supabase = {
+    rpc: base.rpc,
+    from(tabela: string) {
+      const alvo = base.from(tabela);
+      if (tabela !== "marketplace_orders") return alvo;
+      return {
+        ...alvo,
+        select(colunas: string) {
+          leiturasPedido++;
+          if (leiturasPedido === 2) {
+            return {
+              eq: () => ({ maybeSingle: async () => ({ data: null, error: { message: "timeout" } }) }),
+            };
+          }
+          return alvo.select(colunas);
+        },
+      };
+    },
+  };
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo.error, "Não foi possível verificar o pedido.");
+  assertEquals(liberacoes(chamadasRpc).length, 1);
+  assertEquals(mp.criacoes().length, 0);
+});
+
+Deno.test("vaga com id CLÁSSICO (PIX legado) + pedido de cartão: não pago -> 409 recuperável sem tocar a Orders API; pago -> 200 'pago'", async () => {
+  const pendente = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "112233445566" }),
+  });
+  const urls: string[] = [];
+  const respostaPendente = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: pendente.supabase,
+    fetchImpl: async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ id: 112233445566, status: "pending" }), { status: 200 });
+    },
+  });
+  assertEquals(respostaPendente.status, 409);
+  assertEquals(
+    (await respostaPendente.json()).error,
+    "Não foi possível trocar para cartão agora. Tente de novo em instantes.",
+  );
+  assertEquals(urls.length, 1);
+  assertEquals(urls[0].includes("/v1/payments/112233445566"), true);
+  assertEquals(pendente.chamadasRpc.length, 0);
+
+  const pago = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "112233445566" }),
+  });
+  const respostaPaga = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: pago.supabase,
+    fetchImpl: async () => new Response(JSON.stringify({ id: 112233445566, status: "approved" }), { status: 200 }),
+  });
+  assertEquals(respostaPaga.status, 200);
+  assertEquals((await respostaPaga.json()).statusPagamento, "pago");
 });
