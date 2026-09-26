@@ -1948,20 +1948,20 @@ Deno.test("definir_cpf_destinatario - sucesso grava o CPF preservando as OUTRAS 
         const colunas = filtros.map((f: any) => f.coluna)
         assertEquals(colunas.includes('id'), true)
         assertEquals(colunas.includes('shipping_label_id'), true)
-        // TRAVA OTIMISTA (addendum, 3ª rodada): o filtro condicional não é
-        // mais só `customer_data->>cpf` (só via o CPF) — é o OBJETO INTEIRO
-        // que foi lido, serializado explicitamente com `JSON.stringify`
-        // (supabase-js NÃO serializa objeto sozinho em `.eq()` — vira
-        // "[object Object]" sem isso). Qualquer mudança em QUALQUER chave
-        // de `customer_data` entre a leitura e a escrita derruba a condição,
-        // não só uma troca de CPF concorrente.
-        const filtroObjeto = filtros.find((f: any) => f.coluna === 'customer_data')
-        assertEquals(filtroObjeto?.metodo, 'eq')
-        assertEquals(JSON.parse(filtroObjeto.valor), { cep: '38500-000', whatsapp: '34999999999' })
+        // PRIVACIDADE (4ª rodada — voltou a ser SÓ o CPF, nunca o objeto
+        // inteiro): a trava por objeto inteiro (`.eq('customer_data',
+        // JSON.stringify(...))`) da 3ª rodada colocava telefone/CEP/endereço
+        // na URL do PATCH — que fica nos logs de API do Supabase (regra da
+        // casa: nunca CPF em log, e isso vazava bem mais que CPF). Sem CPF
+        // anterior nenhum, o filtro é só `IS NULL` — zero exposição.
+        const filtroCpfAnterior = filtros.find((f: any) => f.coluna === 'customer_data->>cpf')
+        assertEquals(filtroCpfAnterior?.metodo, 'is')
+        assertEquals(filtroCpfAnterior?.valor, null)
+        assertEquals(colunas.includes('customer_data'), false)
     })
 })
 
-Deno.test("definir_cpf_destinatario - filtro otimista serializa o OBJETO INTEIRO lido (inclusive quando já tinha CPF antes) — não só a chave cpf", async () => {
+Deno.test("definir_cpf_destinatario - CPF anterior presente usa filtro eq (não is) contra o valor antigo (update condicional cobre também troca de CPF) — piso de exposição sem migration", async () => {
     await comEnvAdmin(async () => {
         const pedidoComCpfAntigo = {
             ...PEDIDO_PARA_DEFINIR_CPF,
@@ -1971,9 +1971,39 @@ Deno.test("definir_cpf_destinatario - filtro otimista serializa o OBJETO INTEIRO
         const res = await comAdminFalso(() =>
             handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
         assertEquals(res.status, 200)
-        const filtroObjeto = supa.registro.cpfAtualizacoes[0].filtros.find((f: any) => f.coluna === 'customer_data')
-        assertEquals(filtroObjeto?.metodo, 'eq')
-        assertEquals(JSON.parse(filtroObjeto.valor), { cep: '38500-000', whatsapp: '34999999999', cpf: '11144477735' })
+        const filtros = supa.registro.cpfAtualizacoes[0].filtros
+        const filtroCpfAnterior = filtros.find((f: any) => f.coluna === 'customer_data->>cpf')
+        assertEquals(filtroCpfAnterior?.metodo, 'eq')
+        assertEquals(filtroCpfAnterior?.valor, '11144477735')
+        // Só o CPF ANTERIOR (já sabido, já válido no banco) pode ir no
+        // filtro — nunca o objeto inteiro nem o CPF NOVO.
+        assertEquals(filtros.map((f: any) => f.coluna).includes('customer_data'), false)
+    })
+})
+
+Deno.test("definir_cpf_destinatario - PRIVACIDADE: o filtro condicional nunca leva telefone, endereço ou CEP (só o CPF anterior, quando existe)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoComDadosSensiveis = {
+            ...PEDIDO_PARA_DEFINIR_CPF,
+            customer_data: {
+                cep: '38500-000',
+                whatsapp: '34999999999',
+                address: { street: 'Rua Sigilosa da Cliente', number: '42', cpf: '11144477735' },
+                cpf: '11144477735',
+            },
+        }
+        const supa = clienteFalso({ pedido: pedidoComDadosSensiveis })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+        const filtros = supa.registro.cpfAtualizacoes[0].filtros
+        assertEquals(filtros.map((f: any) => f.coluna).includes('customer_data'), false)
+        const textoDosFiltros = JSON.stringify(filtros)
+        for (const dadoSensivel of ['38500-000', '34999999999', 'Rua Sigilosa', 'Sigilosa', '42']) {
+            assertEquals(textoDosFiltros.includes(dadoSensivel), false, `dado sensível vazou no filtro: ${dadoSensivel}`)
+        }
+        // O CPF NOVO nunca precisa ir no filtro (só o corpo do UPDATE).
+        assertEquals(textoDosFiltros.includes('52998224725'), false)
     })
 })
 
@@ -1988,108 +2018,70 @@ Deno.test("definir_cpf_destinatario - update condicional sem bater linha (corrid
     })
 })
 
-// ── definir_cpf_destinatario: TRAVA OTIMISTA contra "lost update" (addendum
-// da 3ª rodada da revisão de risco, achado da migration 20261182 — o CPF
-// da janela sai do endereço) ────────────────────────────────────────────
-// Achado (prova: scratchpad/edge_lost_update.cjs): o filtro condicional de
-// antes só olhava `customer_data->>cpf` (o CPF em si) — mas a escrita grava
-// `{...customerDataAtual, cpf}`, o OBJETO INTEIRO que foi lido no início.
-// Se ALGO MAIS dentro de `customer_data` mudar entre a leitura e a escrita
-// (prova real: uma migration de limpeza rodando no meio — casos c04/c10 do
-// script) SEM tocar o `cpf`, o filtro velho não via nada de errado, e a
-// escrita REESCREVIA o objeto com o dado ANTIGO por cima — desfazendo a
-// limpeza. Fila de teste: clientes falsos ESTATEFUL (o `clienteFalso`
-// genérico devolve sempre a MESMA linha, não dá pra simular a corrida).
+// ── definir_cpf_destinatario: limpeza de `address.cpf` NA ESCRITA (4ª
+// rodada — substitui a trava por objeto inteiro + retry da 3ª rodada, que
+// vazava telefone/CEP/endereço na URL do PATCH) ────────────────────────
+// A trava otimista por objeto inteiro (`eq_objeto`) resolvia o "lost
+// update" do addendum da 3ª rodada (scratchpad/edge_lost_update.cjs), mas
+// criava um problema PIOR: `.eq('customer_data', JSON.stringify(...))`
+// bota o `customer_data` INTEIRO — CPF (inclusive `address.cpf` da janela
+// 23-26/09), telefone, CEP e endereço de convidado — na URL do PATCH, que
+// fica nos logs de API do Supabase (regra da casa: nunca CPF em log).
+// Decisão do dono: voltar ao filtro simples por `customer_data->>cpf` (só
+// expõe o CPF ANTERIOR, e só quando ele já existia — o piso sem migration;
+// investigado e sem alternativa de exposição zero: `marketplace_orders`
+// não tem gatilho de `updated_at` em UPDATE comum, e criar um exige
+// migration, fora do escopo) — SEM o retry, que só existia por causa da
+// trava por objeto. No lugar da trava, a ESCRITA agora tira `address.cpf`
+// de forma INCONDICIONAL, sempre — não importa se a leitura estava
+// desatualizada, o `address.cpf` NUNCA pode voltar pro banco. Mesma regra
+// das migrations 20261172/20261182: `address` sem `cpf`; se sobrar `{}`,
+// vira JSON `null` (não `{}` — `{}` é truthy em JS e venceria o endereço de
+// verdade na cadeia `||` do mapper do front).
 
-/** Client falso stateful: 1ª leitura devolve `customerDataLidoInicial`
- * (o estado ANTES da corrida); 1º update SEMPRE falha (0 linhas) — simula
- * `customer_data` tendo mudado por fora. Se `comRetrySucesso`, a 2ª leitura
- * (do retry) devolve `customerDataAposCorrida` (o estado REAL, pós-migration)
- * e o 2º update bate; senão o 2º update TAMBÉM falha (corrida persistente). */
-function clienteFalsoComCorrida(cfg: {
-    customerDataLidoInicial: Record<string, any>
-    customerDataAposCorrida?: Record<string, any>
-    comRetrySucesso: boolean
-    pedidoBase?: Record<string, any>
-}) {
-    const registro = { selects: 0, updates: 0, filtrosPorUpdate: [] as any[][], valoresPorUpdate: [] as any[] }
-    const base = cfg.pedidoBase ?? { id: 'pedido-2', status: 'processing', shipping_label_id: null }
-    const cliente = {
-        from(tabela: string) {
-            if (tabela !== 'marketplace_orders') {
-                throw new Error(`clienteFalsoComCorrida só cobre marketplace_orders (recebeu ${tabela})`)
-            }
-            const filtrosDesteComando: any[] = []
-            let valoresDoUpdate: any = null
-            const api: any = {
-                select: () => api,
-                update: (valores: any) => { valoresDoUpdate = valores; return api },
-                eq: (coluna: string, valor: any) => { filtrosDesteComando.push({ metodo: 'eq', coluna, valor }); return api },
-                is: (coluna: string, valor: any) => { filtrosDesteComando.push({ metodo: 'is', coluna, valor }); return api },
-                maybeSingle: () => api,
-                then(resolve: any, rejeita: any) {
-                    if (valoresDoUpdate) {
-                        registro.updates++
-                        registro.filtrosPorUpdate.push(filtrosDesteComando)
-                        registro.valoresPorUpdate.push(valoresDoUpdate)
-                        const bate = registro.updates === 1 ? false : cfg.comRetrySucesso
-                        return Promise.resolve({ data: bate ? [{ id: base.id }] : [], error: null }).then(resolve, rejeita)
-                    }
-                    registro.selects++
-                    const customerData = registro.selects === 1 ? cfg.customerDataLidoInicial : (cfg.customerDataAposCorrida ?? cfg.customerDataLidoInicial)
-                    return Promise.resolve({ data: { ...base, customer_data: customerData }, error: null }).then(resolve, rejeita)
-                },
-            }
-            return api
-        },
-    }
-    return { cliente, registro }
-}
-
-Deno.test("definir_cpf_destinatario - customer_data mudou por fora (ex.: migration de limpeza) entre a leitura e a escrita: 1ª tentativa falha, RETRY relê e reaplica SÓ o cpf sobre o objeto FRESCO — nunca ressuscita a chave removida", async () => {
+Deno.test("definir_cpf_destinatario - address só tinha o cpf: a escrita tira a chave e vira JSON null (converge com a limpeza da migration 20261182, mesmo com leitura desatualizada)", async () => {
     await comEnvAdmin(async () => {
-        // Estado que a edge LÊ primeiro (ainda tem `address.cpf`, sobra da
-        // janela 23-26/09) — é este objeto que NÃO pode voltar pro banco.
-        const customerDataVelho = { whatsapp: '34999999999', address: { cpf: '52998224700' } }
-        // Estado REAL depois da "migration" ter rodado no meio tempo — a
-        // limpeza já tirou o cpf de dentro do endereço.
-        const customerDataFresco = { whatsapp: '34999999999', address: {} }
-        const { cliente, registro } = clienteFalsoComCorrida({
-            customerDataLidoInicial: customerDataVelho,
-            customerDataAposCorrida: customerDataFresco,
-            comRetrySucesso: true,
-        })
-        const res = await comAdminFalso(() => handler(requisicaoDefinirCpf('52998224725'), { supabase: cliente }))
+        const pedidoComCpfNoEndereco = {
+            ...PEDIDO_PARA_DEFINIR_CPF,
+            customer_data: { whatsapp: '34999999999', address: { cpf: '52998224700' } },
+        }
+        const supa = clienteFalso({ pedido: pedidoComCpfNoEndereco })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
         assertEquals(res.status, 200)
-        const corpo = await res.json()
-        assertEquals(corpo.success, true)
-        assertEquals(registro.selects, 2) // leitura inicial + 1 retry, nunca mais
-        assertEquals(registro.updates, 2) // 1ª tentativa (falha) + retry (bate)
-        // A 2ª tentativa filtrou pelo objeto FRESCO (sem `address.cpf`) —
-        // não pelo velho, que já não existe mais no banco.
-        const filtroObjeto2 = registro.filtrosPorUpdate[1].find((f: any) => f.coluna === 'customer_data')
-        assertEquals(JSON.parse(filtroObjeto2.valor), customerDataFresco)
-        // O valor GRAVADO é o objeto fresco + cpf novo — `address.cpf`
-        // velho (52998224700) NUNCA ressuscita.
-        const gravado = registro.valoresPorUpdate[1].customer_data
-        assertEquals(gravado, { whatsapp: '34999999999', address: {}, cpf: '52998224725' })
+        const gravado = supa.registro.cpfAtualizacoes[0].valores.customer_data
+        assertEquals(gravado.address, null)
+        assertEquals(gravado.cpf, '52998224725')
+        // O CPF antigo preso no endereço NUNCA sobrevive à escrita.
         assertEquals(JSON.stringify(gravado).includes('52998224700'), false)
     })
 })
 
-Deno.test("definir_cpf_destinatario - customer_data continua mudando mesmo depois do retry: 409 'pedido mudou' — nunca escreve o objeto velho por cima", async () => {
+Deno.test("definir_cpf_destinatario - address com OUTRAS chaves além do cpf: tira só o cpf, preserva o resto (não zera à toa)", async () => {
     await comEnvAdmin(async () => {
-        const customerDataVelho = { whatsapp: '34999999999', address: { cpf: '52998224700' } }
-        const { cliente, registro } = clienteFalsoComCorrida({
-            customerDataLidoInicial: customerDataVelho,
-            comRetrySucesso: false, // corrida persistente — o 2º update também falha
-        })
-        const res = await comAdminFalso(() => handler(requisicaoDefinirCpf('52998224725'), { supabase: cliente }))
-        assertEquals(res.status, 409)
-        const corpo = await res.json()
-        assertEquals(String(corpo.error).toLowerCase().includes('mudou'), true)
-        assertEquals(registro.selects, 2)
-        assertEquals(registro.updates, 2) // tenta 1 vez + 1 retry, NUNCA mais que isso
+        const pedidoComEnderecoEcpf = {
+            ...PEDIDO_PARA_DEFINIR_CPF,
+            customer_data: { whatsapp: '34999999999', address: { street: 'Av. Paulista', cpf: '52998224700' } },
+        }
+        const supa = clienteFalso({ pedido: pedidoComEnderecoEcpf })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+        const gravado = supa.registro.cpfAtualizacoes[0].valores.customer_data
+        assertEquals(gravado.address, { street: 'Av. Paulista' })
+    })
+})
+
+Deno.test("definir_cpf_destinatario - pedido SEM chave `address` nenhuma (formato legado): não inventa a chave — só o cpf muda", async () => {
+    await comEnvAdmin(async () => {
+        // PEDIDO_PARA_DEFINIR_CPF é o formato legado (pedido de antes do
+        // checkout gravar CPF) — nunca teve `address` estruturado.
+        const supa = clienteFalso({ pedido: PEDIDO_PARA_DEFINIR_CPF })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoDefinirCpf('52998224725'), { supabase: supa.cliente }))
+        assertEquals(res.status, 200)
+        const gravado = supa.registro.cpfAtualizacoes[0].valores.customer_data
+        assertEquals('address' in gravado, false)
     })
 })
 
@@ -2290,6 +2282,31 @@ Deno.test("handler - print HTTP (4xx, falha suave) com campo irmão de `errors`:
         })
         const linha = linhas.find((l) => l.includes('print HTTP')) ?? ''
         assertEquals(linha.includes('PDF ainda não disponível'), true)
+        assertEquals(linha.includes('nao-pode-vazar-isto-aqui'), false)
+    })
+})
+
+Deno.test("handler - tracking HTTP (4xx, ação consultar_rastreio) com campo irmão de `errors`: o log usa motivoDoProvedor — nunca o corpo cru, sem limite de tamanho (item 2, 4ª rodada)", async () => {
+    await comEnvAdmin(async () => {
+        const pedidoEtiquetado = { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID }
+        const supa = clienteFalso({ pedido: pedidoEtiquetado })
+        const buscar = (async (input: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me/shipment/tracking')) {
+                return new Response(
+                    JSON.stringify({ errors: { orders: ['Etiqueta não encontrada.'] }, destinatario: 'nao-pode-vazar-isto-aqui' }),
+                    { status: 422, headers: { 'Content-Type': 'application/json' } },
+                )
+            }
+            return new Response(JSON.stringify({ message: 'fora do roteiro' }), { status: 404 })
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() =>
+                handler(requisicaoGerar('consultar_rastreio'), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 502)
+        })
+        const linha = linhas.find((l) => l.includes('tracking HTTP')) ?? ''
+        assertEquals(linha.includes('Etiqueta não encontrada'), true)
         assertEquals(linha.includes('nao-pode-vazar-isto-aqui'), false)
     })
 })

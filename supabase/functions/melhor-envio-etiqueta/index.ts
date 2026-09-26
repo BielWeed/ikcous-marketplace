@@ -68,7 +68,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
-import { cpfDoDestinatario, cpfValido, sanitizarCpfDoTexto, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
+import { cpfDoDestinatario, cpfValido, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -1628,118 +1628,110 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 )
             }
 
-            // Lê o pedido e confere os dois portões (etiqueta já emitida /
-            // status morto) — extraído em função porque a TRAVA OTIMISTA
-            // abaixo (addendum da 3ª rodada da revisão de risco) pode
-            // precisar reler e reconferir tudo de novo num RETRY.
-            const lerPedidoParaCpf = async (): Promise<
-                { ok: true; customerData: Record<string, any> } | { ok: false; resposta: Response }
-            > => {
-                const { data: pedidoLido, error: erroLeitura } = await supabaseClient
-                    .from('marketplace_orders')
-                    .select('id, status, shipping_label_id, customer_data')
-                    .eq('id', orderId)
-                    .maybeSingle()
+            const { data: pedidoAtual, error: pedidoAtualError } = await supabaseClient
+                .from('marketplace_orders')
+                .select('id, status, shipping_label_id, customer_data')
+                .eq('id', orderId)
+                .maybeSingle()
 
-                if (erroLeitura || !pedidoLido) {
-                    return {
-                        ok: false,
-                        resposta: new Response(
-                            JSON.stringify({ error: 'Pedido não encontrado.' }),
-                            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                        ),
-                    }
-                }
-                // Etiqueta já emitida: o CPF que foi para o Melhor Envio na
-                // compra não muda mais retroativamente — não faz sentido
-                // reescrever o banco depois do fato.
-                if (pedidoLido.shipping_label_id) {
-                    return {
-                        ok: false,
-                        resposta: new Response(
-                            JSON.stringify({ error: 'Este pedido já tem etiqueta emitida — o CPF não pode mais ser alterado.' }),
-                            { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                        ),
-                    }
-                }
-                const statusLido = String(pedidoLido.status || '').toLowerCase()
-                if (['cancelled', 'delivered', 'returned'].includes(statusLido)) {
-                    return {
-                        ok: false,
-                        resposta: new Response(
-                            JSON.stringify({ error: `Pedido com status "${statusLido}" não recebe alteração de CPF.` }),
-                            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                        ),
-                    }
-                }
-                return { ok: true, customerData: pedidoLido.customer_data || {} }
+            if (pedidoAtualError || !pedidoAtual) {
+                return new Response(
+                    JSON.stringify({ error: 'Pedido não encontrado.' }),
+                    { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
             }
 
-            const primeiraLeitura = await lerPedidoParaCpf()
-            if (!primeiraLeitura.ok) return primeiraLeitura.resposta
+            // Etiqueta já emitida: o CPF que foi para o Melhor Envio na compra
+            // não muda mais retroativamente — não faz sentido reescrever o
+            // banco depois do fato.
+            if (pedidoAtual.shipping_label_id) {
+                return new Response(
+                    JSON.stringify({ error: 'Este pedido já tem etiqueta emitida — o CPF não pode mais ser alterado.' }),
+                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
 
-            // TRAVA OTIMISTA (achado do addendum, 3ª rodada — "lost update"
-            // provado por scratchpad/edge_lost_update.cjs): o filtro
-            // condicional de antes só olhava `customer_data->>cpf` (o CPF em
-            // si), mas a escrita grava `{...customerDataLido, cpf}` — o
-            // OBJETO INTEIRO lido no início. Se QUALQUER OUTRA chave de
-            // `customer_data` mudar entre a leitura e a escrita SEM tocar o
-            // `cpf` (prova real: uma migration de limpeza tirando
-            // `address.cpf` rodando no meio tempo — casos c04/c10 do
-            // script), o filtro velho não via nada de errado e a escrita
-            // REESCREVIA o objeto com o dado ANTIGO por cima, desfazendo a
-            // limpeza — um "lost update" clássico. Filtrar pelo OBJETO
-            // INTEIRO fecha o buraco: qualquer mudança em qualquer chave
-            // derruba a condição, não só uma troca de CPF concorrente.
+            const statusAtual = String(pedidoAtual.status || '').toLowerCase()
+            if (['cancelled', 'delivered', 'returned'].includes(statusAtual)) {
+                return new Response(
+                    JSON.stringify({ error: `Pedido com status "${statusAtual}" não recebe alteração de CPF.` }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            const customerDataAtual = pedidoAtual.customer_data || {}
+            const cpfAnterior = typeof customerDataAtual.cpf === 'string' ? customerDataAtual.cpf : null
+
+            // LIMPEZA DO ENDEREÇO NA ESCRITA (4ª rodada — substitui a trava
+            // otimista por objeto inteiro da 3ª rodada, revertida abaixo por
+            // motivo de privacidade: ver o filtro logo depois). O addendum da
+            // 3ª rodada (scratchpad/edge_lost_update.cjs) provou que uma
+            // leitura desatualizada podia reintroduzir `address.cpf` (sobra
+            // da janela 23-26/09) de volta no banco depois de uma limpeza
+            // concorrente. Em vez de travar a ESCRITA pelo objeto inteiro
+            // (o que resolvia isso mas vazava telefone/CEP/endereço na URL
+            // do PATCH — ver comentário do filtro), a escrita agora tira
+            // `address.cpf` de forma INCONDICIONAL, sempre — não importa se
+            // `customerDataAtual` está desatualizado, o CPF preso no
+            // endereço NUNCA volta a ser gravado. Mesma regra das migrations
+            // 20261172/20261182: `address` sem `cpf`; se sobrar `{}`, vira
+            // JSON `null` (não `{}` — `{}` é truthy em JS e venceria o
+            // endereço de verdade na cadeia `||` do mapper do front). Só
+            // mexe na chave se ela EXISTIR e for objeto — nunca inventa
+            // `address` num pedido do formato legado (o que esta action
+            // também atende) que nunca teve endereço estruturado.
+            const enderecoAtual = customerDataAtual.address
+            const customerDataSemCpfNoEndereco =
+                'address' in customerDataAtual && enderecoAtual !== null && typeof enderecoAtual === 'object' && !Array.isArray(enderecoAtual)
+                    ? (() => {
+                        const { cpf: _cpfSaiDoEndereco, ...resto } = enderecoAtual as Record<string, any>
+                        return { ...customerDataAtual, address: Object.keys(resto).length === 0 ? null : resto }
+                    })()
+                    : customerDataAtual
+
+            // UPDATE CONDICIONAL contra corrida: só grava se o pedido AINDA
+            // não tem etiqueta E o CPF anterior é exatamente o que este
+            // pedido de escrita leu — outra aba/clique que gravou no meio
+            // tempo faz esta linha não bater e devolve 0 linhas (o front
+            // manda recarregar). O front NUNCA reescreve `customer_data`
+            // inteiro por conta própria (PII + corrida); só esta action, no
+            // servidor, com validação e filtro condicional.
             //
-            // `JSON.stringify` aqui não é estilo — é OBRIGATÓRIO: o
-            // `eq()` do postgrest-js (`PostgrestFilterBuilder`) monta o
-            // filtro com interpolação de template literal
-            // (`` `eq.${value}` ``) — um objeto JS vira o texto literal
-            // "[object Object]", nunca o JSON dele. Sem serializar à mão, a
-            // comparação NUNCA bateria e todo UPDATE devolveria 0 linhas.
-            // Do lado do Postgres, `jsonb = jsonb` é comparação ESTRUTURAL
-            // (a ordem das chaves no texto não importa), então comparar
-            // contra o texto serializado aqui é seguro mesmo que o Postgres
-            // guarde numa ordem diferente internamente.
-            const gravarCpfComTravaOtimista = (customerDataBase: Record<string, any>) =>
-                supabaseClient
-                    .from('marketplace_orders')
-                    .update({ customer_data: { ...customerDataBase, cpf: cpfLimpo } })
-                    .eq('id', orderId)
-                    .is('shipping_label_id', null)
-                    .eq('customer_data', JSON.stringify(customerDataBase))
-                    .select('id')
+            // PRIVACIDADE (4ª rodada): filtrar pelo OBJETO INTEIRO
+            // (`.eq('customer_data', JSON.stringify(...))`, como a 3ª rodada
+            // fazia) bota telefone, CEP e endereço de convidado na URL do
+            // PATCH — que fica nos logs de API do Supabase (regra da casa:
+            // nunca CPF em log; isso vazava bem mais que CPF). Filtrar só
+            // por `customer_data->>cpf` expõe, no MÁXIMO, o CPF ANTERIOR — e
+            // só quando ele já existia (`.is(..., null)` quando não há CPF
+            // nenhum: exposição zero). Investigado um jeito de não expor nem
+            // isso (trava por `updated_at`/coluna de versão): não há
+            // gatilho nenhum bumping `updated_at` em UPDATE comum nesta
+            // tabela (só `cart_items` tem `set_updated_at`), e criar um exige
+            // migration — fora do escopo aqui. Este é o piso sem migration.
+            let atualizacao = supabaseClient
+                .from('marketplace_orders')
+                .update({ customer_data: { ...customerDataSemCpfNoEndereco, cpf: cpfLimpo } })
+                .eq('id', orderId)
+                .is('shipping_label_id', null)
+            atualizacao = cpfAnterior === null
+                ? atualizacao.is('customer_data->>cpf', null)
+                : atualizacao.eq('customer_data->>cpf', cpfAnterior)
 
-            let { data: linhasAtualizadas, error: updateError } = await gravarCpfComTravaOtimista(primeiraLeitura.customerData)
-
-            if (!updateError && (!Array.isArray(linhasAtualizadas) || linhasAtualizadas.length !== 1)) {
-                // 0 linhas SEM erro: `customer_data` mudou por fora entre a
-                // leitura e a escrita. RETRY ÚNICO — relê tudo de novo
-                // (inclusive os portões de etiqueta/status: a corrida pode
-                // ter sido isso) e reaplica SÓ a chave `cpf` em cima do
-                // objeto FRESCO. NUNCA reusa o objeto velho: é exatamente
-                // isso que ressuscitaria o dado que a corrida acabou de tirar.
-                const segundaLeitura = await lerPedidoParaCpf()
-                if (!segundaLeitura.ok) return segundaLeitura.resposta
-                const retry = await gravarCpfComTravaOtimista(segundaLeitura.customerData)
-                linhasAtualizadas = retry.data
-                updateError = retry.error
-                if (!updateError && (!Array.isArray(linhasAtualizadas) || linhasAtualizadas.length !== 1)) {
-                    // Corrida PERSISTENTE mesmo depois do retry — desiste
-                    // (nunca um 3º round) e manda o lojista recarregar.
-                    return new Response(
-                        JSON.stringify({ error: 'O pedido mudou enquanto você salvava — recarregue e tente de novo.' }),
-                        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                    )
-                }
-            }
+            const { data: linhasAtualizadas, error: updateError } = await atualizacao.select('id')
 
             if (updateError) {
                 console.error('[melhor-envio-etiqueta] Falha ao gravar CPF do destinatário:', updateError)
                 return new Response(
                     JSON.stringify({ error: 'Não foi possível salvar o CPF agora. Tente novamente em instantes.' }),
                     { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            if (!Array.isArray(linhasAtualizadas) || linhasAtualizadas.length !== 1) {
+                return new Response(
+                    JSON.stringify({ error: 'O pedido mudou enquanto você salvava — recarregue e tente de novo.' }),
+                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
                 )
             }
 
@@ -1859,7 +1851,13 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
             if (!response.ok) {
                 const detalhe = await response.text()
-                console.error('[melhor-envio-etiqueta] tracking HTTP', response.status, sanitizarCpfDoTexto(detalhe))
+                // Item 2 (4ª rodada): mesma troca das outras 5 chamadas HTTP
+                // ao ME (achado da 3ª rodada, item 1) — `sanitizarCpfDoTexto`
+                // só tira CPF, sem limite de tamanho; `motivoDoProvedor` (já
+                // usado pela reversa, linha ~1019) só extrai
+                // `errors`/`error`/`message`, sanitiza e-mail/telefone/CPF e
+                // corta em 300.
+                console.error('[melhor-envio-etiqueta] tracking HTTP', response.status, motivoDoProvedor(detalhe))
                 await gravarEvento(supabaseClient, {
                     order_id: orderId,
                     event_type: 'erro',
