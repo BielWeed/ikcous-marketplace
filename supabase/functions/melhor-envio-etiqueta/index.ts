@@ -54,12 +54,21 @@
 //   POST /api/v2/me/shipment/generate — gera a etiqueta ({ orders: [id] })
 //   POST /api/v2/me/shipment/print    — link de impressão ({ url })
 //   POST /api/v2/me/shipment/tracking — código de rastreio ({ tracking })
+//
+// DEVOLUÇÃO (action `gerar_devolucao_reversa`, plano 2026-09-26 tarefa 7):
+//   POST /api/v2/me/cart/reverse      — logística reversa dos Correios no
+//                                       carrinho (doc "Inserir Logística
+//                                       Reversa no carrinho"), depois o MESMO
+//                                       checkout/generate da ida
+//   GET  /api/v2/me/imprimir/dace/pdf/{id} — link da DC-e (DACE) que o
+//                                       cliente imprime e leva junto
+//   Ver o bloco "LOGÍSTICA REVERSA" mais abaixo.
 // ============================================================================
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
-import { cpfDoDestinatario, cpfValido, sanitizarCpfDoTexto } from "./cpf.ts"
+import { cpfDoDestinatario, cpfValido, sanitizarCpfDoTexto, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -540,6 +549,624 @@ async function removerDoCarrinho(
     }
 }
 
+// ============================================================================
+// LOGÍSTICA REVERSA — action `gerar_devolucao_reversa` (devolução nacional
+// quando a IDA saiu por etiqueta do Melhor Envio; spec
+// docs/superpowers/specs/2026-09-26-devolucoes-design.md).
+//
+// O QUE A DOC OFICIAL DIZ (docs.melhorenvio.com.br, lida em 26/09/2026):
+//   * rota própria `POST /api/v2/me/cart/reverse` — não é a flag
+//     `options.reverse` do carrinho comum;
+//   * só Correios: `service` 1 (PAC) ou 2 (SEDEX); UM volume (`package`);
+//   * envio original feito pelo ME: basta `order_id` (id do envio de ida),
+//     `new_sender_mail`, `new_sender_phone`, `insurance_value` e `package`
+//     (sem from/to/products — o ME já tem os dados; nenhum CPF sai daqui);
+//   * DC-e: "informe a chave … ou deixe em branco para que a API comunique a
+//     DCe à SEFAZ" — deixamos em branco (a loja não emite DC-e própria);
+//   * depois, o MESMO checkout e o MESMO generate da ida: "será necessário
+//     solicitar a geração da etiqueta para obter o código, mesmo que não haja
+//     posterior impressão";
+//   * o Sandbox NÃO gera o código de devolução (só insere e paga).
+// Da central de ajuda do ME: o código de postagem "também é o seu código de
+// rastreio" (coluna Rastreio) e vale 7 DIAS a partir da geração; a DC-e é
+// obrigatória, impressa, junto do pacote.
+//
+// DINHEIRO (mesmas travas da ida, adaptadas):
+//   * RESERVA antes de qualquer chamada: `me_reverse_id` NULL → 'reservando:
+//     <epoch_ms>:<uuid>' com update condicional (id + status aprovada +
+//     método etiqueta_reversa). Uma chamada só passa; re-clique/aba paralela
+//     recebe 409 ou o resultado já pronto;
+//   * a reserva vira o id do envio reverso no ME (update condicional à
+//     PRÓPRIA reserva) ANTES do checkout — o checkout só roda com o vínculo
+//     gravado;
+//   * falha DEFINIDA (carrinho recusado/sem id/estourado, checkout 4xx ou
+//     200 sem `paid`): libera a reserva (e tira o item do carrinho quando ele
+//     existe) — nada foi pago, o lojista tenta de novo;
+//   * checkout 5xx ou exceção pós-vínculo: INDETERMINADO (mesma regra da ida,
+//     revisor A′/B do PR #423) — vínculo MANTIDO, carrinho intacto, resposta
+//     manda conferir a conta do ME. Liberar aqui abriria a compra dupla;
+//   * devolução VINCULADA sem código salvo: nova chamada só CONSULTA o código
+//     (tracking), nunca compra de novo;
+//   * reserva sem vínculo há mais de 10 min (a função morreu entre a reserva
+//     e o vínculo — nesse trecho nada foi pago) pode ser retomada, com update
+//     condicional à reserva antiga.
+// Nada de CPF, e-mail, telefone ou token em log: texto do ME passa por
+// `sanitizarDadosPessoaisDoTexto` antes de log e de resposta.
+// ============================================================================
+
+const REGEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function ehUuid(valor: unknown): valor is string {
+    return typeof valor === 'string' && REGEX_UUID.test(valor)
+}
+
+const PREFIXO_RESERVA_REVERSA = 'reservando:'
+const RESERVA_REVERSA_VENCE_EM_MS = 10 * 60 * 1000
+const VALIDADE_DO_CODIGO_DE_POSTAGEM_MS = 7 * 24 * 60 * 60 * 1000
+const NOTA_CODIGO_DE_POSTAGEM_GERADO = 'Código de postagem dos Correios gerado (válido por 7 dias)'
+
+/**
+ * Serviço dos Correios da devolução: o MESMO da ida quando a ida foi PAC (1)
+ * ou SEDEX (2) — com ou sem `-ss`, captura completa (nunca prefixo: '12' não
+ * é '1'); qualquer outra coisa (outra transportadora na ida, opção ausente)
+ * cai no PAC, porque a reversa só existe nos Correios.
+ */
+export function servicoDaDevolucaoReversa(shippingOptionId: unknown): 1 | 2 {
+    return analisarOpcaoMelhorEnvio(shippingOptionId)?.id === '2' ? 2 : 1
+}
+
+/**
+ * O pacote ÚNICO da devolução (a reversa dos Correios é de um volume só), a
+ * partir dos itens DEVOLVIDOS e das medições do banco — pelo MESMO helper da
+ * ida (`montarProdutosEVolumes`: fallbacks 0.3 kg / 15 cm, peso da linha =
+ * unitário × quantidade). Agrega no mesmo grau de aproximação da ida (que
+ * declara a medida de UMA unidade por linha): peso somado e a MAIOR largura,
+ * altura e comprimento. Não é medição da caixa real — declarar a mais
+ * travaria a reversa no limite dos Correios (100 cm por lado) sem ganho; a
+ * diferença de conferência métrica o ME cobra depois, como na ida.
+ */
+export function montarPacoteDaDevolucao(
+    itens: Array<Record<string, any>>,
+    produtosDb: Array<Record<string, any>>,
+): { weight: number; width: number; height: number; length: number } | null {
+    const linhas = (itens || []).map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantidade,
+        price: item.valor_unitario,
+    }))
+    const { volumes } = montarProdutosEVolumes(linhas, produtosDb || [])
+    if (volumes.length === 0) return null
+    let peso = 0
+    let largura = 0
+    let altura = 0
+    let comprimento = 0
+    for (const volume of volumes) {
+        peso += Number(volume.weight)
+        largura = Math.max(largura, Number(volume.width))
+        altura = Math.max(altura, Number(volume.height))
+        comprimento = Math.max(comprimento, Number(volume.length))
+    }
+    return { weight: Number(peso.toFixed(3)), width: largura, height: altura, length: comprimento }
+}
+
+export type VinculoReverso =
+    | { tipo: 'livre' }
+    | { tipo: 'reservado'; vencido: boolean }
+    | { tipo: 'vinculado'; meId: string }
+
+/**
+ * Lê `devolucoes.me_reverse_id`: vazio (livre), reserva desta função
+ * (`reservando:<epoch_ms>:<uuid>`, vencida depois de 10 min) ou o id do
+ * envio reverso no ME. Reserva sem carimbo legível NUNCA vence — na dúvida,
+ * não se toma a reserva de outra chamada.
+ */
+export function classificarVinculoReverso(valor: unknown, agoraMs: number): VinculoReverso {
+    if (valor === null || valor === undefined || valor === '') return { tipo: 'livre' }
+    const texto = String(valor)
+    if (!texto.startsWith(PREFIXO_RESERVA_REVERSA)) return { tipo: 'vinculado', meId: texto }
+    const marcadaEm = Number(texto.slice(PREFIXO_RESERVA_REVERSA.length).split(':')[0])
+    const vencido = Number.isFinite(marcadaEm) && marcadaEm > 0 && agoraMs - marcadaEm > RESERVA_REVERSA_VENCE_EM_MS
+    return { tipo: 'reservado', vencido }
+}
+
+/**
+ * O código de postagem na resposta do POST /shipment/tracking (objeto
+ * chaveado pelo id do envio). SÓ o campo `tracking` — é o que o painel do ME
+ * mostra na coluna Rastreio, que a central de ajuda chama de código de
+ * postagem da reversa. O `melhorenvio_tracking` (código interno do ME) NÃO
+ * serve no balcão dos Correios e nunca é usado aqui.
+ */
+export function normalizarCodigoDePostagem(data: unknown, meId: string): string | null {
+    const objeto = data && typeof data === 'object' ? data : {}
+    const entrada: any = new Map(Object.entries(objeto)).get(meId)
+    const codigo = entrada && typeof entrada === 'object' ? entrada.tracking : null
+    return typeof codigo === 'string' && codigo.trim() ? codigo.trim() : null
+}
+
+function respostaJson(corpo: Record<string, unknown>, status = 200): Response {
+    return new Response(JSON.stringify(corpo), {
+        status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+}
+
+/**
+ * O motivo que o ME deu, legível para o painel: as mensagens de
+ * `errors`/`error`/`message` do JSON (validação do Laravel), sem CPF, e-mail
+ * nem telefone — sanitiza ANTES do corte final de 300 (lição do `cart sem
+ * id`). O teto de 2000 antes da sanitização só limita o custo das regex: um
+ * dado pessoal partido ali fica muito além dos 300 que sobrevivem. Página
+ * HTML de gateway não vira mensagem.
+ */
+function motivoDoProvedor(texto: string): string {
+    const mensagens: string[] = []
+    const coletar = (valor: unknown, profundidade: number): void => {
+        if (profundidade > 4 || mensagens.length >= 6) return
+        if (typeof valor === 'string') {
+            if (valor.trim()) mensagens.push(valor.trim())
+            return
+        }
+        if (Array.isArray(valor)) {
+            for (const item of valor) coletar(item, profundidade + 1)
+            return
+        }
+        if (valor && typeof valor === 'object') {
+            for (const item of Object.values(valor)) coletar(item, profundidade + 1)
+        }
+    }
+    let bruto = ''
+    try {
+        const dados = JSON.parse(texto)
+        coletar(dados?.errors ?? dados?.error ?? dados?.message ?? null, 0)
+        bruto = mensagens.join(' ')
+    } catch {
+        bruto = String(texto || '').trim().startsWith('<') ? '' : String(texto || '')
+    }
+    return sanitizarDadosPessoaisDoTexto(bruto.replace(/\s+/g, ' ').slice(0, 2000)).trim().slice(0, 300)
+}
+
+function mensagemDoErroDaReversa(status: number, etapa: string, motivo: string): string {
+    if (status === 401 || status === 429 || status >= 500) return mensagemDoErroHttp(status, etapa)
+    const base = `O Melhor Envio recusou ${etapa} (erro ${status}).`
+    return motivo ? `${base} Motivo informado: ${motivo}` : base
+}
+
+type ContextoReversa = {
+    supabase: any
+    buscar: typeof fetch
+    baseUrl: string
+    headersME: Record<string, string>
+    isSandbox: boolean
+    devolucaoId: string
+}
+
+const AVISO_SANDBOX_REVERSA = ' Atenção: no Sandbox do Melhor Envio a logística reversa não gera o código de postagem — só em produção.'
+
+async function lerDevolucaoParaReversa(ctx: ContextoReversa): Promise<{ data: any; error: any }> {
+    return await ctx.supabase
+        .from('devolucoes')
+        .select('id, order_id, status, metodo_retorno, valor_itens, me_reverse_id, codigo_postagem, etiqueta_url')
+        .eq('id', ctx.devolucaoId)
+        .maybeSingle()
+}
+
+function resultadoReversoExistente(devolucao: Record<string, any>): Record<string, unknown> {
+    return {
+        ok: true,
+        already: true,
+        codigo_postagem: devolucao.codigo_postagem,
+        etiqueta_url: devolucao.etiqueta_url ?? null,
+        me_reverse_id: devolucao.me_reverse_id,
+    }
+}
+
+function respostaReversaEmAndamento(): Response {
+    return respostaJson(
+        { error: 'Já existe uma geração do código de postagem em andamento para esta devolução. Aguarde alguns instantes e recarregue.' },
+        409,
+    )
+}
+
+/** Solta a reserva/vínculo — condicional ao valor que ESTA chamada gravou. */
+async function liberarVinculoReverso(ctx: ContextoReversa, valorAtual: string): Promise<void> {
+    try {
+        const { error } = await ctx.supabase
+            .from('devolucoes')
+            .update({ me_reverse_id: null })
+            .eq('id', ctx.devolucaoId)
+            .eq('me_reverse_id', valorAtual)
+        if (error) console.error('[melhor-envio-etiqueta] reversa: falha ao liberar a reserva:', error?.code ?? error?.message ?? 'erro')
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: exceção ao liberar a reserva:', sanitizarDadosPessoaisDoTexto(String(err)))
+    }
+}
+
+/** Código de postagem do envio reverso (falha suave: null). */
+async function lerCodigoDePostagem(ctx: ContextoReversa, meId: string): Promise<string | null> {
+    try {
+        const resposta = await buscarComTempo(ctx.buscar, `${ctx.baseUrl}/api/v2/me/shipment/tracking`, {
+            method: 'POST',
+            headers: ctx.headersME,
+            body: JSON.stringify({ orders: [meId] }),
+        })
+        if (!resposta.ok) {
+            console.error('[melhor-envio-etiqueta] reversa tracking HTTP', resposta.status, motivoDoProvedor(await resposta.text()))
+            return null
+        }
+        return normalizarCodigoDePostagem(await resposta.json(), meId)
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: consulta do código falhou (suave):', sanitizarDadosPessoaisDoTexto(String(err)))
+        return null
+    }
+}
+
+function linkHttps(valor: unknown): string | null {
+    return typeof valor === 'string' && /^https:\/\//i.test(valor) ? valor : null
+}
+
+/**
+ * Link da DC-e que o cliente imprime (falha suave: null). Primeiro a DACE em
+ * PDF (doc "Impressão de DACE"); se não vier, o link PÚBLICO de impressão do
+ * envio (`mode: public` — quem devolve não tem login no ME do lojista).
+ */
+async function buscarLinkDaDeclaracao(ctx: ContextoReversa, meId: string): Promise<string | null> {
+    const idNaUrl = encodeURIComponent(meId)
+    try {
+        const resposta = await buscarComTempo(ctx.buscar, `${ctx.baseUrl}/api/v2/me/imprimir/dace/pdf/${idNaUrl}`, {
+            method: 'GET',
+            headers: ctx.headersME,
+        })
+        if (resposta.ok) {
+            const dados = await resposta.json()
+            const link = linkHttps(dados?.pdf) ?? linkHttps(dados?.url)
+            if (link) return link
+        } else {
+            console.error('[melhor-envio-etiqueta] reversa DACE HTTP', resposta.status, motivoDoProvedor(await resposta.text()))
+        }
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: DACE falhou (suave):', sanitizarDadosPessoaisDoTexto(String(err)))
+    }
+    try {
+        const resposta = await buscarComTempo(ctx.buscar, `${ctx.baseUrl}/api/v2/me/shipment/print`, {
+            method: 'POST',
+            headers: ctx.headersME,
+            body: JSON.stringify({ orders: [meId], mode: 'public' }),
+        })
+        if (resposta.ok) return linkHttps((await resposta.json())?.url)
+        console.error('[melhor-envio-etiqueta] reversa print HTTP', resposta.status, motivoDoProvedor(await resposta.text()))
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: print falhou (suave):', sanitizarDadosPessoaisDoTexto(String(err)))
+    }
+    return null
+}
+
+/**
+ * Envio reverso vinculado (pago, ou em dúvida) sem código de postagem ainda.
+ * Nova chamada é SEGURA: só consulta o código, nunca compra de novo.
+ */
+function respostaCodigoPendente(ctx: ContextoReversa, meId: string, geracaoFalhou: boolean): Response {
+    const sandbox = ctx.isSandbox ? AVISO_SANDBOX_REVERSA : ''
+    const mensagem = geracaoFalhou
+        ? `O envio reverso foi PAGO no Melhor Envio (id ${meId}), mas a geração do código de postagem falhou. Gere o código em Meus envios, na sua conta do Melhor Envio; depois, tentar de novo aqui só busca o código, sem compra nova.${sandbox}`
+        : `O envio reverso já existe no Melhor Envio (id ${meId}), mas o código de postagem dos Correios ainda não apareceu. Confira em Meus envios > Envios postados, coluna Rastreio; tentar de novo aqui só consulta o código, sem compra nova.${sandbox}`
+    return respostaJson({ error: mensagem, resgate: true, pendente: true, me_reverse_id: meId }, 502)
+}
+
+/**
+ * Checkout 5xx ou exceção depois do vínculo: o ME pode ter cobrado com a
+ * resposta perdida. Vínculo e carrinho ficam como estão (revisor A′/B, PR
+ * #423) — se não foi pago, o item continua no carrinho do ME e o lojista
+ * pode pagar e gerar por lá; a próxima chamada aqui só busca o código.
+ */
+function respostaReversaIndeterminada(meId: string, pagoConfirmado: boolean): Response {
+    const mensagem = pagoConfirmado
+        ? `O pagamento do envio reverso (id ${meId}) FOI CONFIRMADO no Melhor Envio, mas a finalização falhou. Confira em Meus envios na sua conta do Melhor Envio e gere o código por lá se preciso; tentar de novo aqui só busca o código, sem compra nova.`
+        : `O pagamento do envio reverso (id ${meId}) ficou em estado INDETERMINADO no Melhor Envio — pode ter sido pago ou não. Confira a sua conta do Melhor Envio antes de qualquer coisa: se não foi pago, o envio continua no carrinho de lá. A devolução segue vinculada a este envio e nenhuma compra nova sai daqui.`
+    return respostaJson({ error: mensagem, resgate: true, me_reverse_id: meId }, 502)
+}
+
+/** Evento da devolução (falha de log NUNCA derruba a resposta). */
+async function gravarEventoDaDevolucao(ctx: ContextoReversa, status: string): Promise<void> {
+    try {
+        const { error } = await ctx.supabase.from('devolucao_eventos').insert({
+            devolucao_id: ctx.devolucaoId,
+            de_status: status,
+            para_status: status,
+            ator: 'sistema',
+            nota: NOTA_CODIGO_DE_POSTAGEM_GERADO,
+        })
+        if (error) console.error('[melhor-envio-etiqueta] reversa: falha ao gravar evento da devolução:', error?.code ?? error?.message ?? 'erro')
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: exceção ao gravar evento da devolução:', sanitizarDadosPessoaisDoTexto(String(err)))
+    }
+}
+
+/**
+ * Grava código + link na devolução (update condicional ao vínculo e a
+ * código ainda vazio — duas chamadas simultâneas não duplicam o evento) e
+ * registra o evento na primeira gravação.
+ */
+async function concluirComCodigoDePostagem(
+    ctx: ContextoReversa,
+    devolucao: Record<string, any>,
+    meId: string,
+    codigo: string,
+    etiquetaUrl: string | null,
+    extras: { already: boolean; validadeAte?: string },
+): Promise<Response> {
+    const { data: gravadas, error } = await ctx.supabase
+        .from('devolucoes')
+        .update({ codigo_postagem: codigo, etiqueta_url: etiquetaUrl })
+        .eq('id', ctx.devolucaoId)
+        .eq('me_reverse_id', meId)
+        .is('codigo_postagem', null)
+        .select('id')
+    if (error) {
+        console.error('[melhor-envio-etiqueta] reversa: falha ao gravar o código na devolução:', error?.code ?? error?.message ?? 'erro')
+        return respostaJson(
+            {
+                error: `O código de postagem dos Correios saiu (${codigo}), mas não consegui salvá-lo na devolução. Anote o código; tentar de novo aqui busca e salva o mesmo código, sem compra nova.`,
+                resgate: true,
+                me_reverse_id: meId,
+                codigo_postagem: codigo,
+            },
+            500,
+        )
+    }
+    if (Array.isArray(gravadas) && gravadas.length === 1) {
+        await gravarEventoDaDevolucao(ctx, String(devolucao.status))
+    }
+    return respostaJson({
+        ok: true,
+        already: extras.already,
+        codigo_postagem: codigo,
+        etiqueta_url: etiquetaUrl,
+        me_reverse_id: meId,
+        ...(extras.validadeAte ? { validade_ate: extras.validadeAte } : {}),
+    })
+}
+
+async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
+    const { supabase, buscar, baseUrl, headersME, devolucaoId } = ctx
+
+    // 1. A devolução.
+    const { data: devolucao, error: devolucaoError } = await lerDevolucaoParaReversa(ctx)
+    if (devolucaoError) {
+        console.error('[melhor-envio-etiqueta] reversa: falha ao ler a devolução:', devolucaoError?.code ?? devolucaoError?.message ?? 'erro')
+        return respostaJson({ error: 'Não consegui ler a devolução agora. Tente novamente em instantes.' }, 500)
+    }
+    if (!devolucao) return respostaJson({ error: 'Devolução não encontrada.' }, 404)
+
+    if (devolucao.metodo_retorno !== 'etiqueta_reversa') {
+        return respostaJson(
+            { error: 'Esta devolução não foi combinada por etiqueta reversa — não há código de postagem para gerar.' },
+            400,
+        )
+    }
+
+    // 2. IDEMPOTÊNCIA: código pronto volta como está; vínculo sem código só
+    //    consulta; reserva de outra chamada (recente) espera.
+    const vinculo = classificarVinculoReverso(devolucao.me_reverse_id, Date.now())
+    if (vinculo.tipo === 'vinculado') {
+        if (devolucao.codigo_postagem) return respostaJson(resultadoReversoExistente(devolucao))
+        const codigo = await lerCodigoDePostagem(ctx, vinculo.meId)
+        if (!codigo) return respostaCodigoPendente(ctx, vinculo.meId, false)
+        const etiquetaUrl = linkHttps(devolucao.etiqueta_url) ?? await buscarLinkDaDeclaracao(ctx, vinculo.meId)
+        return await concluirComCodigoDePostagem(ctx, devolucao, vinculo.meId, codigo, etiquetaUrl, { already: true })
+    }
+    if (vinculo.tipo === 'reservado' && !vinculo.vencido) return respostaReversaEmAndamento()
+
+    if (devolucao.status !== 'aprovada') {
+        return respostaJson(
+            { error: `Só devolução aprovada gera o código de postagem (status atual: "${String(devolucao.status)}").` },
+            409,
+        )
+    }
+
+    // 3. O pedido: a reversa do ME exige o envio de IDA feito por ele.
+    const { data: pedido, error: pedidoError } = await supabase
+        .from('marketplace_orders')
+        .select('id, shipping_label_id, customer_data')
+        .eq('id', devolucao.order_id)
+        .maybeSingle()
+    if (pedidoError || !pedido) {
+        if (pedidoError) console.error('[melhor-envio-etiqueta] reversa: falha ao ler o pedido:', pedidoError?.code ?? pedidoError?.message ?? 'erro')
+        return respostaJson({ error: 'Pedido da devolução não encontrado.' }, 404)
+    }
+    if (!ehUuid(pedido.shipping_label_id)) {
+        return respostaJson({ error: 'Este pedido não saiu por etiqueta do Melhor Envio; use envio pelo cliente.' }, 409)
+    }
+
+    // 4. Contato de quem devolve — o ME exige os dois (os Correios mandam o
+    //    código por e-mail). Nunca vão para log.
+    const customerData = pedido.customer_data || {}
+    const emailCliente = typeof customerData.email === 'string' ? customerData.email.trim() : ''
+    let celularCliente = String(customerData.whatsapp || customerData.phone || '').replace(/\D/g, '')
+    if ((celularCliente.length === 12 || celularCliente.length === 13) && celularCliente.startsWith('55')) {
+        celularCliente = celularCliente.slice(2)
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailCliente)) {
+        return respostaJson(
+            { error: 'O pedido não tem um e-mail válido do cliente — o Melhor Envio exige o e-mail de quem devolve (é por ele que os Correios mandam o código). Use envio pelo cliente.' },
+            400,
+        )
+    }
+    if (celularCliente.length !== 10 && celularCliente.length !== 11) {
+        return respostaJson(
+            { error: 'O pedido não tem um celular válido do cliente — o Melhor Envio exige o celular de quem devolve. Use envio pelo cliente.' },
+            400,
+        )
+    }
+
+    // 5. Itens devolvidos + medições do banco → o pacote único.
+    const { data: itens, error: itensError } = await supabase
+        .from('devolucao_itens')
+        .select('product_id, quantidade, valor_unitario')
+        .eq('devolucao_id', devolucaoId)
+    if (itensError) {
+        console.error('[melhor-envio-etiqueta] reversa: falha ao ler os itens:', itensError?.code ?? itensError?.message ?? 'erro')
+        return respostaJson({ error: 'Não consegui ler os itens da devolução agora. Tente novamente em instantes.' }, 500)
+    }
+    const itensDevolvidos = Array.isArray(itens) ? itens : []
+    const productIds = [...new Set(itensDevolvidos.map((item: any) => item.product_id).filter(Boolean))]
+    let produtosDb: Array<Record<string, any>> = []
+    if (productIds.length > 0) {
+        const { data: produtos, error: produtosError } = await supabase
+            .from('produtos')
+            .select('id, nome, preco_venda, peso_kg, largura_cm, altura_cm, comprimento_cm')
+            .in('id', productIds)
+        if (produtosError) console.error('[melhor-envio-etiqueta] reversa: falha ao ler medidas (segue com fallbacks):', produtosError?.code ?? 'erro')
+        produtosDb = produtos || []
+    }
+    const pacote = montarPacoteDaDevolucao(itensDevolvidos, produtosDb)
+    if (!pacote) {
+        return respostaJson({ error: 'A devolução não tem itens registrados — não há o que devolver.' }, 400)
+    }
+
+    // 6. RESERVA (antes de qualquer chamada ao ME).
+    const reserva = `${PREFIXO_RESERVA_REVERSA}${Date.now()}:${crypto.randomUUID()}`
+    let reivindicacao = supabase
+        .from('devolucoes')
+        .update({ me_reverse_id: reserva })
+        .eq('id', devolucaoId)
+        .eq('status', 'aprovada')
+        .eq('metodo_retorno', 'etiqueta_reversa')
+    reivindicacao = vinculo.tipo === 'reservado'
+        ? reivindicacao.eq('me_reverse_id', devolucao.me_reverse_id)
+        : reivindicacao.is('me_reverse_id', null)
+    const { data: reservadas, error: reservaError } = await reivindicacao.select('id')
+    if (reservaError) {
+        console.error('[melhor-envio-etiqueta] reversa: falha ao reservar a devolução:', reservaError?.code ?? reservaError?.message ?? 'erro')
+        return respostaJson({ error: 'Não consegui reservar a devolução agora. Tente novamente em instantes.' }, 500)
+    }
+    if (!Array.isArray(reservadas) || reservadas.length !== 1) {
+        // Perdeu a corrida (ou a devolução mudou): relê e responde o estado real.
+        const { data: relida } = await lerDevolucaoParaReversa(ctx)
+        if (relida?.codigo_postagem && classificarVinculoReverso(relida.me_reverse_id, Date.now()).tipo === 'vinculado') {
+            return respostaJson(resultadoReversoExistente(relida))
+        }
+        if (relida && relida.status !== 'aprovada') {
+            return respostaJson(
+                { error: `Só devolução aprovada gera o código de postagem (status atual: "${String(relida.status)}").` },
+                409,
+            )
+        }
+        return respostaReversaEmAndamento()
+    }
+
+    // 7. Logística reversa no carrinho (NÃO consome saldo).
+    const corpoReverso = {
+        service: servicoDaDevolucaoReversa(customerData.shipping_option_id),
+        order_id: pedido.shipping_label_id,
+        new_sender_mail: emailCliente,
+        new_sender_phone: celularCliente,
+        insurance_value: Number(Number(devolucao.valor_itens || 0).toFixed(2)),
+        package: pacote,
+        options: { own_hand: false, receipt: false },
+    }
+    let carrinho: Response
+    try {
+        carrinho = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/cart/reverse`, {
+            method: 'POST',
+            headers: headersME,
+            body: JSON.stringify(corpoReverso),
+        })
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: carrinho reverso falhou (nada pago):', sanitizarDadosPessoaisDoTexto(String(err)))
+        await liberarVinculoReverso(ctx, reserva)
+        return respostaJson(
+            { error: 'Não consegui falar com o Melhor Envio para criar o envio reverso (nada foi pago). Tente novamente em instantes.' },
+            502,
+        )
+    }
+    if (!carrinho.ok) {
+        const motivo = motivoDoProvedor(await carrinho.text())
+        console.error('[melhor-envio-etiqueta] reversa cart HTTP', carrinho.status, motivo)
+        await liberarVinculoReverso(ctx, reserva)
+        return respostaJson({ error: mensagemDoErroDaReversa(carrinho.status, 'a criação do envio reverso', motivo) }, 502)
+    }
+    let dadosDoCarrinho: any = null
+    try {
+        dadosDoCarrinho = await carrinho.json()
+    } catch {
+        dadosDoCarrinho = null
+    }
+    const meId = dadosDoCarrinho?.id
+    if (!ehUuid(meId)) {
+        console.error('[melhor-envio-etiqueta] reversa: carrinho sem id:', motivoDoProvedor(JSON.stringify(dadosDoCarrinho ?? {})))
+        await liberarVinculoReverso(ctx, reserva)
+        return respostaJson({ error: 'O Melhor Envio não devolveu o id do envio reverso (nada foi pago). Tente novamente.' }, 502)
+    }
+
+    // 8. VÍNCULO: a reserva vira o id do envio reverso — ANTES do checkout.
+    const { data: vinculadas, error: vinculoError } = await supabase
+        .from('devolucoes')
+        .update({ me_reverse_id: meId })
+        .eq('id', devolucaoId)
+        .eq('me_reverse_id', reserva)
+        .select('id')
+    if (vinculoError || !Array.isArray(vinculadas) || vinculadas.length !== 1) {
+        if (vinculoError) console.error('[melhor-envio-etiqueta] reversa: falha ao vincular o envio:', vinculoError?.code ?? vinculoError?.message ?? 'erro')
+        await removerDoCarrinho(buscar, baseUrl, headersME, meId)
+        await liberarVinculoReverso(ctx, reserva)
+        return respostaJson(
+            { error: 'Não consegui registrar o envio reverso na devolução — ele foi retirado do carrinho do Melhor Envio e nada foi pago. Tente novamente.' },
+            500,
+        )
+    }
+
+    // 9–12 sob guarda própria: daqui em diante a ambiguidade de dinheiro é real.
+    let pagoConfirmado = false
+    try {
+        // 9. Checkout — AQUI consome o saldo do lojista.
+        const checkoutResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/checkout`, {
+            method: 'POST',
+            headers: headersME,
+            body: JSON.stringify({ orders: [meId] }),
+        })
+        if (!checkoutResponse.ok) {
+            const motivo = motivoDoProvedor(await checkoutResponse.text())
+            console.error('[melhor-envio-etiqueta] reversa checkout HTTP', checkoutResponse.status, motivo)
+            if (checkoutResponse.status >= 500) return respostaReversaIndeterminada(meId, false)
+            await removerDoCarrinho(buscar, baseUrl, headersME, meId)
+            await liberarVinculoReverso(ctx, meId)
+            return respostaJson({ error: mensagemDoErroDaReversa(checkoutResponse.status, 'o pagamento do envio reverso', motivo) }, 502)
+        }
+        const checkout = normalizarCheckout(await checkoutResponse.json())
+        if (!checkout.pago) {
+            await removerDoCarrinho(buscar, baseUrl, headersME, meId)
+            await liberarVinculoReverso(ctx, meId)
+            return respostaJson({ error: checkout.erro || 'O Melhor Envio não confirmou a compra do envio reverso.' }, 502)
+        }
+        pagoConfirmado = true
+
+        // 10. Geração — obrigatória para o código existir.
+        const gerarResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/generate`, {
+            method: 'POST',
+            headers: headersME,
+            body: JSON.stringify({ orders: [meId] }),
+        })
+        if (!gerarResponse.ok) {
+            console.error('[melhor-envio-etiqueta] reversa generate HTTP', gerarResponse.status, motivoDoProvedor(await gerarResponse.text()))
+            return respostaCodigoPendente(ctx, meId, true)
+        }
+
+        // 11. Código de postagem + DC-e.
+        const codigo = await lerCodigoDePostagem(ctx, meId)
+        if (!codigo) return respostaCodigoPendente(ctx, meId, false)
+        const etiquetaUrl = await buscarLinkDaDeclaracao(ctx, meId)
+
+        // 12. Grava e registra.
+        return await concluirComCodigoDePostagem(ctx, devolucao, meId, codigo, etiquetaUrl, {
+            already: false,
+            validadeAte: new Date(Date.now() + VALIDADE_DO_CODIGO_DE_POSTAGEM_MS).toISOString(),
+        })
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] reversa: falha indeterminada após o vínculo:', sanitizarDadosPessoaisDoTexto(String(err)))
+        return respostaReversaIndeterminada(meId, pagoConfirmado)
+    }
+}
+
 /**
  * Costura de teste (mesmo padrão de `criar-pagamento`/`calculate-shipping`):
  * o handler é exportado e o cliente do Supabase e o fetch podem ser
@@ -565,9 +1192,19 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         // `cpf` (só usado pela action `definir_cpf_destinatario` abaixo): o
         // `gerar_etiqueta` NUNCA lê este campo — o CPF daquele fluxo vem
         // SOMENTE do banco (`customerData.cpf`, mais abaixo).
-        const { action, orderId, serviceId: serviceIdEscolhidoNoCard, cpf: cpfDoCorpo } = body
+        // `devolucao_id` (só `gerar_devolucao_reversa`): a devolução é a
+        // chave daquela action — ela não recebe `orderId` (o pedido vem da
+        // própria devolução, no banco).
+        const { action, orderId, devolucao_id: devolucaoIdDoCorpo, serviceId: serviceIdEscolhidoNoCard, cpf: cpfDoCorpo } = body
 
-        if (!orderId || typeof orderId !== 'string') {
+        if (action === 'gerar_devolucao_reversa') {
+            if (!ehUuid(devolucaoIdDoCorpo)) {
+                return new Response(
+                    JSON.stringify({ error: 'Id da devolução inválido.' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+        } else if (!orderId || typeof orderId !== 'string') {
             return new Response(
                 JSON.stringify({ error: 'Id do pedido é obrigatório.' }),
                 { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -747,6 +1384,20 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 }),
                 { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
             )
+        }
+
+        // ── ACTION: gerar_devolucao_reversa ─────────────────────────────────
+        // Código de postagem dos Correios (logística reversa do ME) para uma
+        // devolução aprovada — ver o bloco "LOGÍSTICA REVERSA" acima.
+        if (action === 'gerar_devolucao_reversa') {
+            return await gerarDevolucaoReversa({
+                supabase: supabaseClient,
+                buscar,
+                baseUrl,
+                headersME,
+                isSandbox,
+                devolucaoId: devolucaoIdDoCorpo,
+            })
         }
 
         // ── ACTION: consultar_rastreio ──────────────────────────────────────
