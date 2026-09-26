@@ -204,31 +204,36 @@ function clienteFalso(opts: {
           const registrarFiltro = (coluna: string, valor: unknown) => {
             opts.registro?.filtrosUpdate?.push([coluna, valor]);
           };
-          return {
-            eq(c1: string, v1: unknown) {
-              registrarFiltro(c1, v1);
+          // Encadeador GENÉRICO (Achado A1 (2), revisão de risco 26/09/2026):
+          // `.eq()`/`.is()` em qualquer QUANTIDADE, na ordem em que o
+          // produção chamar — desde que o cartão parou de repetir o filtro
+          // `payment_status = 'aguardando'` do PIX (ver o comentário grande
+          // da gravação da vaga em index.ts), o WHERE real passou a ter DOIS
+          // filtros para cartão e TRÊS para PIX. Um objeto FIXO
+          // `.eq().eq().is()` (a forma de antes) só sabia reproduzir a forma
+          // do PIX. `registro.filtrosUpdate` continua provando o WHERE do
+          // jeito que já provava (achado da revisão de 14/08/2026, comentário
+          // no teste que usa isto): a lista registrada, não a FORMA do
+          // encadeamento.
+          const encadeador = {
+            eq(coluna: string, valor: unknown) {
+              registrarFiltro(coluna, valor);
+              return encadeador;
+            },
+            is(coluna: string, valor: unknown) {
+              registrarFiltro(coluna, valor);
+              return encadeador;
+            },
+            select(_cols: string) {
               return {
-                eq(c2: string, v2: unknown) {
-                  registrarFiltro(c2, v2);
-                  return {
-                    is(c3: string, v3: unknown) {
-                      registrarFiltro(c3, v3);
-                      return {
-                        select(_cols: string) {
-                          return {
-                            maybeSingle: async () => ({
-                              data: projetarColunas(opts.gravado, _cols),
-                              error: null,
-                            }),
-                          };
-                        },
-                      };
-                    },
-                  };
-                },
+                maybeSingle: async () => ({
+                  data: projetarColunas(opts.gravado, _cols),
+                  error: null,
+                }),
               };
             },
           };
+          return encadeador;
         },
       };
     },
@@ -2333,7 +2338,15 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // viraram UMA chamada cada (`respostaExigeConta`/
   // `respostaCredencialRecusada`), usadas por PIX e cartão — mesma contagem.
   // 12 + 20 = 32.
-  assertEquals(achados, 32);
+  //
+  // 33, não mais 32: Achado A4 (revisão de risco, 26/09/2026) — o 400 do
+  // cartão deixou de ser SEMPRE "confira os dados do cartão"
+  // (`respostaRecusaDoCartao`) e ganhou um segundo ponto de retorno,
+  // `if (!erro400EhDeDadoDoCartao(...)) return json({ error: r.erro }, 502);`,
+  // para o 400 que NÃO é sobre o cartão (bug de integração deste servidor).
+  // Mesmo identificador "r.erro" de sempre — não precisou de entrada nova em
+  // `recuperaveisConhecidas`, só mais uma ocorrência dele.
+  assertEquals(achados, 33);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper
@@ -2631,11 +2644,6 @@ function cenarioCartao(opts: {
 const liberacoes = (chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }>) =>
   chamadasRpc.filter((c) => c.nome === "liberar_cobranca_do_pedido").map((c) => c.args);
 
-async function hash12(token: string): Promise<string> {
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  return Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
-}
-
 // --- chaveDeIdempotencia -----------------------------------------------------
 
 Deno.test("chaveDeIdempotencia (PIX): tentativa 0 é o id do pedido BYTE A BYTE — a chave de antes do cartão; depois, <pedido>:<n>", async () => {
@@ -2649,23 +2657,32 @@ Deno.test("chaveDeIdempotencia (PIX): tentativa 0 é o id do pedido BYTE A BYTE 
   assertEquals(await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 7 }, "pix"), `${UUID}:7`);
 });
 
-Deno.test("chaveDeIdempotencia (cartão): <pedido>:c<n>:<12 hex do sha256 do token>, ≤ 64 chars, sem o token cru", async () => {
+Deno.test("chaveDeIdempotencia (cartão): <pedido>:c<n>, SEM o token — Achado A1, revisão de risco 26/09/2026", async () => {
   const chave0 = await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "cartao", TOKEN_CARTAO);
-  assertEquals(chave0, `${UUID}:c0:${await hash12(TOKEN_CARTAO)}`);
-  assertEquals(/^[0-9a-f-]{36}:c\d+:[0-9a-f]{12}$/.test(chave0), true);
+  assertEquals(chave0, `${UUID}:c0`);
+  assertEquals(/^[0-9a-f-]{36}:c\d+$/.test(chave0), true);
   assertEquals(chave0.length <= 64, true);
   assertEquals(chave0.includes(TOKEN_CARTAO), false);
 
-  // Mesmo token, mesma tentativa: MESMA chave (o retry converge).
+  // Mesmo token, mesma tentativa: MESMA chave (o retry converge) — como
+  // sempre foi.
   assertEquals(
     await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "cartao", TOKEN_CARTAO),
     chave0,
   );
-  // Outro cartão na mesma tentativa, ou mesma tentativa + 1: chave NOVA.
+  // Achado A1a: OUTRO cartão na MESMA tentativa agora converge na MESMA
+  // chave — é essa convergência que faz duas abas com tokens diferentes
+  // caírem na MESMA order do MP, em vez de duas cobranças vivas para o
+  // mesmo pedido (ver o comentário grande de `chaveDeIdempotencia`, index.ts,
+  // para o porquê o hash do token foi o que abriu esse buraco).
   const outroToken = await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "cartao", OUTRO_TOKEN_CARTAO);
-  assertEquals(outroToken === chave0, false);
+  assertEquals(outroToken, chave0);
+  // Mesma tentativa, SEM token nenhum (parâmetro omitido): também converge —
+  // a chave nunca dependeu do token para nada além do formato antigo.
+  assertEquals(await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "cartao"), chave0);
+  // Tentativa DIFERENTE: chave NOVA (a vaga liberada muda a chave).
   const tentativa12 = await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 12 }, "cartao", TOKEN_CARTAO);
-  assertEquals(tentativa12, `${UUID}:c12:${await hash12(TOKEN_CARTAO)}`);
+  assertEquals(tentativa12, `${UUID}:c12`);
   assertEquals(tentativa12.length <= 64, true);
   // Nunca colide com a chave do PIX do mesmo pedido/tentativa.
   assertEquals(chave0 === (await chaveDeIdempotencia({ id: UUID, tentativas_de_pagamento: 0 }, "pix")), false);
@@ -2875,9 +2892,13 @@ Deno.test("handler cartão: aprovado na hora (processed:accredited) -> 200 'pago
   assertEquals(registro.valoresUpdate?.metodo_online, "credito");
   assertEquals(registro.valoresUpdate?.parcelas, 3);
   assertEquals("expires_at" in (registro.valoresUpdate ?? {}), false);
+  // Achado A1 (2), revisão de risco 26/09/2026: o WHERE do cartão NÃO repete
+  // `payment_status = 'aguardando'` — só `id` + vaga livre (Política P1: a
+  // vaga grava mesmo que o pg_cron tenha expirado o pedido no meio da
+  // chamada ao MP). PIX continua com os três filtros, byte a byte (ver o
+  // teste "pedido sem cobrança existente...", mais acima).
   assertEquals(registro.filtrosUpdate, [
     ["id", UUID],
-    ["payment_status", "aguardando"],
     ["gateway_payment_id", null],
   ]);
   // Confirmação é do webhook/reconciliação — nenhuma rpc aqui.
@@ -2897,7 +2918,7 @@ Deno.test("handler cartão: aprovado na hora (processed:accredited) -> 200 'pago
     type: "CPF",
     number: CPF_TITULAR,
   });
-  assertEquals(enviado.headers?.["X-Idempotency-Key"], `${UUID}:c0:${await hash12(TOKEN_CARTAO)}`);
+  assertEquals(enviado.headers?.["X-Idempotency-Key"], `${UUID}:c0`);
 });
 
 Deno.test("handler cartão: desafio 3DS (action_required:pending_challenge) -> 200 'aguardando' + desafio3ds.url, com a vaga ocupada", async () => {
@@ -2938,11 +2959,29 @@ Deno.test("handler cartão: em análise (processing:in_review) -> 200 'aguardand
   assertEquals(registro.chamadasUpdate, 1);
 });
 
-Deno.test("handler cartão: aprovado mas a vaga foi perdida na corrida (UPDATE sem linha, releitura 'expirado') -> 409 terminal de prazo, sem liberar nada", async () => {
-  const { supabase, chamadasRpc } = cenarioCartao({
-    gravado: null,
-    releitura: { payment_status: "expirado", gateway_payment_id: null },
-  });
+// Achado A1 (2) — revisão de risco, 26/09/2026, Política P1 ("pago após
+// expirar": HONRAR). ANTES desta correção, este teste pinava o desfecho
+// ERRADO: `gravado: null` simulava o UPDATE do cartão perdendo a corrida
+// contra o pg_cron do MESMO jeito que o PIX — porque o WHERE do cartão
+// repetia `payment_status = 'aguardando'`. O cliente via "o prazo para pagar
+// este pedido acabou" (terminal) para um CARTÃO QUE O MP JÁ APROVOU — e sem
+// `gateway_payment_id` gravado, `confirmar_pagamento` reprovaria a guarda (d)
+// e devolveria 'divergente' quando o webhook confirmasse, nunca
+// 'pago_apos_expirar'. Agora o WHERE do cartão não filtra por
+// `payment_status` — só `id` + vaga livre — então este UPDATE GRAVA mesmo
+// com o pedido já 'expirado' (pg_cron nunca toca `gateway_payment_id`, só
+// `payment_status`/`status`), e o cliente vê a resposta normal do cartão
+// aprovado. O comentário grande da gravação da vaga (index.ts) e o próprio
+// `chaveDeIdempotencia` explicam a política; este teste prende o
+// COMPORTAMENTO observável dela.
+Deno.test("handler cartão: pg_cron expira o pedido DURANTE a chamada ao MP -> a vaga É GRAVADA mesmo assim (P1), NUNCA 'prazo acabou'", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao();
+  // `gravado` continua não-null (default do cenarioCartao): é exatamente
+  // isso que a correção prova — o UPDATE do cartão NÃO exige mais
+  // `payment_status = 'aguardando'`, então ele grava mesmo que a LINHA REAL
+  // já esteja 'expirado' nesse instante (o dublê não simula o WHERE em si,
+  // mas a asserção de `filtrosUpdate` abaixo prova que o filtro que faria
+  // essa corrida perder NÃO está mais na chamada).
   const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
 
   const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
@@ -2951,9 +2990,40 @@ Deno.test("handler cartão: aprovado mas a vaga foi perdida na corrida (UPDATE s
   });
   const corpo = await resposta.json();
 
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "aguardando");
+  assertEquals(corpo.error, undefined);
+  assertEquals(chamadasRpc.length, 0);
+  // A prova que importa: SEM `payment_status` no WHERE — um pedido que o
+  // pg_cron tenha expirado ENTRE a leitura e este UPDATE não derruba a
+  // gravação.
+  assertEquals(registro.filtrosUpdate, [
+    ["id", UUID],
+    ["gateway_payment_id", null],
+  ]);
+});
+
+Deno.test("handler cartão: perdeu a corrida da vaga de VERDADE (outra cobrança já ocupa) -> 409 recuperável de sempre; a Política P1 não muda essa resposta", async () => {
+  // Diferente do teste acima: aqui `atual.gateway_payment_id` (a releitura)
+  // é uma cobrança DIFERENTE da que esta chamada criou — a vaga foi perdida
+  // para valer (duas abas com tentativas diferentes, por exemplo), não
+  // "gravou mesmo assim". A resposta ao cliente continua a mesma de sempre.
+  const { supabase, chamadasRpc } = cenarioCartao({
+    gravado: null,
+    releitura: { payment_status: "aguardando", gateway_payment_id: "ORDTST01OUTRACOBRANCA000000" },
+  });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+    alertarAdminCartaoOrfao: async () => {},
+  });
+  const corpo = await resposta.json();
+
   assertEquals(resposta.status, 409);
-  assertEquals(corpo.error, "O prazo para pagar este pedido acabou.");
-  assertEquals(corpo.terminal, true);
+  assertEquals(corpo.error, "Este pedido já tem uma cobrança gerada.");
+  assertEquals(corpo.terminal, undefined);
   assertEquals(chamadasRpc.length, 0);
 });
 
@@ -3157,7 +3227,7 @@ Deno.test("handler cartão: e-mail do pagador — o do corpo vence; customer_dat
   }
 });
 
-Deno.test("handler cartão: tentativa 2 no pedido -> chave <pedido>:c2:<hash>; OUTRO token na mesma tentativa -> chave diferente", async () => {
+Deno.test("handler cartão: tentativa 2 no pedido -> chave <pedido>:c2; OUTRO token na MESMA tentativa -> a MESMA chave (Achado A1, converge como o PIX)", async () => {
   const chaves: string[] = [];
   for (const token of [TOKEN_CARTAO, OUTRO_TOKEN_CARTAO]) {
     const { supabase } = cenarioCartao({
@@ -3167,9 +3237,12 @@ Deno.test("handler cartão: tentativa 2 no pedido -> chave <pedido>:c2:<hash>; O
     await handler(requisicao(corpoCartao({ token }), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn });
     chaves.push(String(mp.criacoes()[0].headers?.["X-Idempotency-Key"]));
   }
-  assertEquals(chaves[0], `${UUID}:c2:${await hash12(TOKEN_CARTAO)}`);
-  assertEquals(chaves[1], `${UUID}:c2:${await hash12(OUTRO_TOKEN_CARTAO)}`);
-  assertEquals(chaves[0] === chaves[1], false);
+  assertEquals(chaves[0], `${UUID}:c2`);
+  assertEquals(chaves[1], `${UUID}:c2`);
+  // A prova que importa (Achado A1a): dois tokens na MESMA tentativa
+  // convergem na MESMA chave — é essa convergência que faz o MP devolver a
+  // MESMA order para as duas chamadas em vez de criar duas cobranças vivas.
+  assertEquals(chaves[0] === chaves[1], true);
 });
 
 // --- vaga ocupada: (a) a (f) --------------------------------------------------
@@ -3249,11 +3322,9 @@ for (
     assertEquals(chamadasRpc.some((c) => c.nome === "confirmar_pagamento"), false);
     assertEquals(mp.cancelamentos().length, 0);
     assertEquals(mp.criacoes().length, 1);
-    // A chave vem da RELEITURA (tentativa 1), não do pedido lido antes.
-    assertEquals(
-      mp.criacoes()[0].headers?.["X-Idempotency-Key"],
-      `${UUID}:c1:${await hash12(OUTRO_TOKEN_CARTAO)}`,
-    );
+    // A chave vem da RELEITURA (tentativa 1), não do pedido lido antes —
+    // e não carrega o token (Achado A1).
+    assertEquals(mp.criacoes()[0].headers?.["X-Idempotency-Key"], `${UUID}:c1`);
     assertEquals(registro.valoresUpdate?.gateway_payment_id, ORDER_CARTAO);
   });
 }
@@ -3482,18 +3553,89 @@ Deno.test("vaga (e): PIX RECUSADO na vaga + pedido de PIX -> continua como antes
   assertEquals(chamadasRpc.length, 0);
 });
 
+Deno.test("vaga (f): cartão EM ANÁLISE (processing:in_process, sem desafio) na vaga + pedido de PIX -> 409 recuperável, NUNCA tenta cancelar (MP não cancela processing)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("processing", "in_process", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.error, "Há um pagamento com cartão em análise para este pedido.");
+  assertEquals(corpo.terminal, undefined);
+  // A prova do Achado A2: `processing` nunca gasta uma chamada de cancelamento
+  // que se sabe de antemão que o MP recusaria (só `action_required`/`created`
+  // são canceláveis) — só a consulta, nenhum POST /cancel.
+  assertEquals(mp.chamadas.length, 1);
+  assertEquals(mp.cancelamentos().length, 0);
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+// Achado A2 (revisão de risco, 26/09/2026): o cartão em DESAFIO 3DS
+// (`action_required`) é CANCELÁVEL — ao contrário de `processing`, acima.
+// Sem isto, o cliente que abandona o desafio (~40 min no banco emissor,
+// contra 30 min de reserva) ficava preso: sem cartão (o desafio nunca
+// resolve) e sem PIX (409 para sempre, até o pg_cron matar a reserva).
+
+Deno.test("vaga (f): cartão no DESAFIO 3DS na vaga + pedido de PIX -> CANCELA o cartão no MP, libera a vaga e cria o PIX", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+  });
+  const mp = fetchMP({
+    consultar: {
+      status: 200,
+      corpo: orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA, url3ds: URL_DESAFIO }),
+    },
+    cancelar: { status: 200, corpo: orderDeCartao("canceled", "canceled", { id: ORDER_CARTAO_NA_VAGA }) },
+    criar: { status: 201, corpo: orderDePix("action_required", "waiting_transfer") },
+  });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.qrCode, "QRCODE-DA-VAGA");
+  // Ordem que importa: consulta -> cancela o cartão -> cria o PIX.
+  assertEquals(mp.chamadas.map((c) => `${c.method} ${c.url.replace("https://api.mercadopago.com", "")}`), [
+    `GET /v1/orders/${ORDER_CARTAO_NA_VAGA}`,
+    `POST /v1/orders/${ORDER_CARTAO_NA_VAGA}/cancel`,
+    "POST /v1/orders",
+  ]);
+  assertEquals(mp.cancelamentos()[0].headers?.["X-Idempotency-Key"], `cancelar:${ORDER_CARTAO_NA_VAGA}`);
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: ORDER_CARTAO_NA_VAGA }]);
+  assertEquals(registro.valoresUpdate?.metodo_online, "pix");
+});
+
 for (
-  const emVoo of [
-    { nome: "em análise", status: "processing", detalhe: "in_process" },
-    { nome: "no desafio 3DS", status: "action_required", detalhe: "pending_challenge" },
+  const falha of [
+    { nome: "MP recusa o cancelamento (desafio resolvido no meio do caminho)", cancelar: { status: 409, corpo: { errors: [{ code: "cannot_cancel" }] } } },
+    { nome: "MP responde 200 mas a order NÃO está cancelada", cancelar: { status: 200, corpo: orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA }) } },
+    { nome: "MP fora do ar (500)", cancelar: { status: 500, corpo: {} } },
   ]
 ) {
-  Deno.test(`vaga (f): cartão ${emVoo.nome} na vaga + pedido de PIX -> 409 recuperável, sem criar PIX nem liberar`, async () => {
+  Deno.test(`vaga (f): cartão no DESAFIO 3DS + ${falha.nome} -> 409 recuperável de sempre, vaga intacta, sem criar PIX`, async () => {
     const { supabase, registro, chamadasRpc } = cenarioCartao({
       pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
     });
     const mp = fetchMP({
-      consultar: { status: 200, corpo: orderDeCartao(emVoo.status, emVoo.detalhe, { id: ORDER_CARTAO_NA_VAGA }) },
+      consultar: {
+        status: 200,
+        corpo: orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA, url3ds: URL_DESAFIO }),
+      },
+      cancelar: falha.cancelar,
     });
 
     const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {

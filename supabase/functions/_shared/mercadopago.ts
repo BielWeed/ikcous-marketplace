@@ -600,6 +600,58 @@ export function motivoDaRecusaDoErro(corpoDoErro: unknown): string {
 }
 
 /**
+ * Achado A4 (revisão de risco, 26/09/2026): `criar-pagamento` tratava TODO
+ * HTTP 400 de `POST /v1/orders` como "confira os dados do cartão" — mas a
+ * doc de erros da Orders API (`checkout-api-orders/payment-management/
+ * integration-errors`; bloqueada para fetch direto neste ambiente, pesquisada
+ * por WebSearch) também documenta causas de 400 que NÃO são do cartão, ex.:
+ * "o valor de total_amount não é equivalente à soma de
+ * transactions.payments.amount" ou o order_id do PATH malformado — as duas
+ * são bug de integração DESTE servidor (corpo montado errado, id sujo), não
+ * "cliente digitou o cartão errado". Confundir os dois manda o cliente trocar
+ * de cartão à toa e esconde um defeito nosso atrás de uma mensagem que é
+ * mentira.
+ *
+ * Curada, não "todo 400 é cartão": só os códigos abaixo (`errors[].code`, o
+ * MESMO formato que `motivoDaRecusaDoErro`/`resumoSemDadoPessoal` já leem
+ * para o 402) são, comprovadamente, sobre o DADO do cartão — o cliente
+ * corrige tentando de novo com um token novo:
+ *   - "invalid_card_token" — o código que este repositório já testa para
+ *     token vencido/reusado (`criar-pagamento/index_test.ts`); relatado por
+ *     terceiros (groups.google.com/g/mercadopago-developers) como a causa
+ *     2062 "Invalid card token" do vocabulário clássico do MP, reaproveitada
+ *     pela Orders API.
+ *   - "card_token_not_found" — mesma família: o MP não reconhece mais o
+ *     token (relatos de terceiros na mesma comunidade de desenvolvedores).
+ *   - "bad_filled_card_data" — já é `status_detail` conhecido da RECUSA (402,
+ *     `MOTIVOS_DE_RECUSA` acima); citado pela doc de erros de preenchimento
+ *     do cartão (`checkout-api/response-handling/data-insertion-errors`)
+ *     como o corpo do cartão malformado ANTES de tentar processar.
+ * Código AUSENTE, corpo ilegível, ou código desconhecido: NÃO é cartão
+ * comprovado — 502 (quem chama decide; nunca "confira os dados" para um bug
+ * que pode não ser do cliente). Pesquisa feita por WebSearch — os domínios
+ * mercadopago.* estão bloqueados para fetch direto neste ambiente, então a
+ * lista é o que deu para confirmar por fontes de terceiros, não a doc oficial
+ * completa; ver o relatório da tarefa.
+ */
+const CODIGOS_400_DE_DADO_DO_CARTAO = new Set([
+  "invalid_card_token",
+  "card_token_not_found",
+  "bad_filled_card_data",
+]);
+
+export function erro400EhDeDadoDoCartao(corpoDoErro: unknown): boolean {
+  if (!corpoDoErro || typeof corpoDoErro !== "object") return false;
+  const erros = Array.isArray((corpoDoErro as Record<string, unknown>).errors)
+    ? (corpoDoErro as Record<string, unknown>).errors as unknown[]
+    : [];
+  return erros.some((erro) => {
+    const codigo = (erro as Record<string, unknown> | null)?.code;
+    return typeof codigo === "string" && CODIGOS_400_DE_DADO_DO_CARTAO.has(codigo);
+  });
+}
+
+/**
  * Monta o corpo de `POST /v1/orders` para PIX — o caminho que a Orders API
  * atende (a `/v1/payments` clássica devolve 500 para payment_method_id
  * "pix" hoje; ver montarCorpoPix acima, que continua existindo porque as
