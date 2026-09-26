@@ -305,6 +305,19 @@ export function mapOrderFromDB(
     vendedorId: row.vendedor_id ?? null,
     retiradaNaLoja: enderecoDeRetirada !== "",
     enderecoDeRetirada: enderecoDeRetirada || null,
+    // Achado 1 da revisão de 26/09/2026 (rodada 2): coluna de
+    // get_admin_orders_cancelados_recentes (20261175000000, ainda não
+    // regenerada em database.types.ts, por isso o cast — igual às colunas
+    // acima). Ausente nos demais carregadores de pedido (cache antigo,
+    // outras RPCs) — o valor 0 é o correto ali: nada devolvido por devolução.
+    valorDevolvidoPorDevolucao: Number(
+      (row as any).valor_devolvido_por_devolucao ?? 0,
+    ),
+    // Achado A4 (revisão 26/09/2026, rodada 3): o "Devolver agora" também
+    // precisa saber o que já saiu pelo ledger CONFIRMADO (order_refunds
+    // concluído), não só pela devolução manual — coluna real da tabela,
+    // sem cast (diferente da de cima, que só existe nesta RPC).
+    valorEstornado: Number(row.valor_estornado ?? 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

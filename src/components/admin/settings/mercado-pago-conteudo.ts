@@ -38,6 +38,12 @@
  * credenciais-mercado-pago, que acendem `store_config.pagamento_online`).
  * O passo 5 passou a dizer isso com todas as letras, inclusive o atraso de
  * até 1 minuto da vitrine (cache fresco do porteiro, CACHE_FRESCO_MS).
+ *
+ * Cartão pelo app (Fase 3.5, 26/09/2026): as MESMAS chaves cobram cartão
+ * de crédito/débito pelo Card Payment Brick (os dados do cartão ficam em
+ * campos seguros do Mercado Pago dentro da nossa tela). Quem liga é o bloco
+ * "Cartão pelo app" em Formas de pagamento — textos em `CARTAO_PELO_APP`,
+ * abaixo.
  */
 
 export type PassoDoGuia = {
@@ -156,7 +162,7 @@ export function montarPromptParaAgenteMp({
 Sou o dono de uma loja e NÃO sou programador. A minha loja vende dentro do MEU PRÓPRIO aplicativo (o app da minha marca), que já está pronto e funcionando. Eu só preciso pegar as credenciais da MINHA conta do Mercado Pago e colar dentro desse aplicativo, na tela de Ajustes dele. Ninguém precisa programar nada nesta conversa.
 
 O QUE O MEU APLICATIVO USA (só para você entender o cenário)
-O app usa a integração oficial CHECKOUT API do Mercado Pago (a documentação também chama de Checkout Transparente): o cliente paga por Pix sem sair do aplicativo, e o QR Code do Pix é criado pelo meu sistema falando direto com o Mercado Pago. NÃO é maquininha, NÃO é link de pagamento, NÃO é Checkout Pro e NÃO é site externo.
+O app usa a integração oficial CHECKOUT API do Mercado Pago (a documentação também chama de Checkout Transparente): o cliente paga por Pix (e, se eu ligar, com cartão de crédito ou débito) sem sair do aplicativo, e a cobrança é criada pelo meu sistema falando direto com o Mercado Pago. NÃO é maquininha, NÃO é link de pagamento, NÃO é Checkout Pro e NÃO é site externo.
 
 O QUE EU PRECISO TER EM MÃOS NO FIM DESTA CONVERSA
 1) A PUBLIC KEY de PRODUÇÃO.
@@ -194,3 +200,26 @@ export const PROMPT_PARA_AGENTE_MP = montarPromptParaAgenteMp({
 /** Recado de segurança exibido embaixo do formulário. */
 export const RECADO_DE_SEGURANCA =
   "Suas chaves ficam guardadas cifradas no servidor do seu app. Ninguém vê o Access Token inteiro — nem aqui na tela, que mostra só o finalzinho para você reconhecer qual colou.";
+
+/**
+ * Textos do bloco "Cartão pelo app" (FormasDePagamentoCard.tsx). Fatos da
+ * spec `2026-09-26-cartao-online-design.md`: nasce desligado (decisão 7 — o
+ * Brick monta iframes do Mercado Pago que não foram provados sob o COEP do
+ * app; a lojista liga depois de um pedido de teste), débito é o que o
+ * Mercado Pago liberar para a conta (decisão 5 — no Brasil, hoje, em geral
+ * só Elo) e os juros do parcelamento são do comprador (decisão 6).
+ */
+export const CARTAO_PELO_APP = {
+  titulo: "Cartão pelo app",
+  subtitulo: "Crédito e débito pagos na hora, pelo Mercado Pago",
+  testeAntes:
+    "Antes de ligar para os clientes, faça um pedido de teste com um cartão de teste do Mercado Pago.",
+  semPix:
+    "Ligue o PIX pelo app (seção Mercado Pago) antes: o cartão usa as mesmas chaves e só aparece para o cliente com o pagamento pelo app ligado.",
+  leituraFalhou:
+    "Não foi possível ler a configuração do cartão. Recarregue a página para tentar de novo.",
+  debito:
+    "No débito, o Mercado Pago aceita as bandeiras liberadas para a sua conta (hoje, em geral, só Elo).",
+  parcelas:
+    "Os juros das parcelas ficam com o cliente, como o Mercado Pago cobra por padrão.",
+} as const;

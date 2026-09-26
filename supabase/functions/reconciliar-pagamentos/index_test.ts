@@ -79,8 +79,13 @@ function clienteFalso(opts: {
   // conferência deles nem roda). `erroFrom` injeta falha de leitura.
   pedidoTotal?: number | null;
   erroFrom?: unknown;
+  // Fase 3.5 (cartão): `rpc("liberar_cobranca_do_pedido")` — o boolean
+  // devolvido (default true) e a falha de banco simulada.
+  liberarResultado?: boolean;
+  liberarErro?: unknown;
   registro: {
     chamadasConfirmar: Array<{ args: Record<string, unknown> }>;
+    chamadasLiberar?: Array<{ args: Record<string, unknown> }>;
     chamouCandidatos: boolean;
     chamadasConcluirEstorno?: Array<{ args: Record<string, unknown> }>;
     atualizacoesOrderRefunds?: Array<
@@ -136,6 +141,16 @@ function clienteFalso(opts: {
         opts.registro.chamadasConfirmar.push({ args: args ?? {} });
         if (opts.rpcConfirmarError) return { data: null, error: opts.rpcConfirmarError };
         return { data: opts.rpcConfirmarResultado ?? "pago", error: null };
+      }
+      if (nome === "liberar_cobranca_do_pedido") {
+        if (!opts.registro.chamadasLiberar) {
+          // Teste que não esperava liberação nenhuma: estoura, em vez de a
+          // liberação passar despercebida.
+          throw new Error("rpc liberar_cobranca_do_pedido inesperada neste teste");
+        }
+        opts.registro.chamadasLiberar.push({ args: args ?? {} });
+        if (opts.liberarErro) return { data: null, error: opts.liberarErro };
+        return { data: opts.liberarResultado ?? true, error: null };
       }
       if (nome === "concluir_estorno") {
         opts.registro.chamadasConcluirEstorno?.push({ args: args ?? {} });
@@ -628,6 +643,31 @@ Deno.test("candidato novo (ULID de order) nunca chama /v1/payments/ — vai dire
   assertEquals(corpo.confirmados, 1);
   assertEquals(urlsChamadas.length, 1);
   assertEquals(urlsChamadas.every((u) => !u.includes("/v1/payments/")), true);
+});
+
+// Achado S5/N3 (3ª revisão de risco, 26/09/2026): um candidato cuja vaga
+// guarda o SENTINELA (`verificando:...`, Achado B2) nunca é um id de order
+// de verdade — `idEhClassico` também não reconhece — e cada ciclo (a cada
+// 10 min) gastava uma chamada ao MP que SEMPRE falhava (400
+// `invalid_path_param`), sem o candidato nunca sair da fila.
+Deno.test("candidato com o SENTINELA na vaga ('verificando:...') -> ignorado, NUNCA chama o MP (Achado S5/N3)", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const sentinela = `verificando:${UUID_PEDIDO_1}:c0`;
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: sentinela }];
+  const supabase = clienteFalso({ candidatos, registro });
+  const fetchImpl = async (url: string) => {
+    throw new Error(`fetch inesperado nos testes — o sentinela NUNCA deveria chegar ao MP: ${url}`);
+  };
+  const req = requisicaoComSegredo(SEGREDO);
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.verificados, 1);
+  assertEquals(corpo.ignorados, 1);
+  assertEquals(corpo.falhas, 0);
+  assertEquals(registro.chamadasConfirmar.length, 0);
 });
 
 Deno.test("candidato legado pago (approved) é confirmado como pago_apos_expirar, sem tocar a Orders API", async () => {
@@ -2425,4 +2465,166 @@ Deno.test("MP-4 — lote com DOIS candidatos resolve as credenciais UMA vez (um 
   } finally {
     Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
   }
+});
+
+// ═══ Fase 3.5 (26/09/2026): recusa de CARTÃO libera a vaga, nunca cancela ════
+//
+// Mesma regra do webhook, no caminho que recupera o que ele perdeu: o
+// candidato cuja order de cartão foi recusada/cancelada/expirada chama
+// `liberar_cobranca_do_pedido`, NUNCA `confirmar_pagamento('recusado')` (que
+// cancelaria o pedido e devolveria o estoque). PIX segue como era.
+
+function orderDoCandidato(id: string, status: string, statusDetail: string, tipo: string) {
+  return {
+    id,
+    status,
+    status_detail: statusDetail,
+    transactions: { payments: [{ id: "PAY1", status, status_detail: statusDetail, payment_method: { type: tipo } }] },
+  };
+}
+
+for (
+  const caso of [
+    { nome: "crédito recusado (failed:high_risk)", status: "failed", detalhe: "high_risk", tipo: "credit_card" },
+    { nome: "débito cancelado", status: "canceled", detalhe: "canceled", tipo: "debit_card" },
+    { nome: "crédito expirado (3DS abandonado)", status: "expired", detalhe: "expired", tipo: "credit_card" },
+  ]
+) {
+  Deno.test(`cartão — candidato com order ${caso.nome} -> liberar_cobranca_do_pedido(candidato), NUNCA confirmar_pagamento; ignorados:1, cobrancasLiberadas:1`, async () => {
+    const idOrder = "ORDTST01CARTAORECUSADO";
+    const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+    const supabase = clienteFalso({ candidatos, registro });
+    const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, caso.status, caso.detalhe, caso.tipo));
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.chamadasConfirmar.length, 0, "confirmar_pagamento('recusado') cancelaria o pedido");
+    assertEquals(registro.chamadasLiberar, [
+      { args: { p_order_id: UUID_PEDIDO_1, p_gateway_payment_id: idOrder } },
+    ]);
+    assertEquals(corpo.verificados, 1);
+    assertEquals(corpo.confirmados, 0);
+    assertEquals(corpo.ignorados, 1);
+    assertEquals(corpo.falhas, 0);
+    assertEquals(corpo.cobrancasLiberadas, 1);
+  });
+}
+
+Deno.test("cartão — liberar devolve false (vaga já solta pelo webhook, ou pedido já expirado) -> ignorados:1, cobrancasLiberadas:0", async () => {
+  const idOrder = "ORDTST01CARTAOJASOLTO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    liberarResultado: false,
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "failed", "failed", "credit_card"));
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+
+  assertEquals(corpo.ignorados, 1);
+  assertEquals(corpo.cobrancasLiberadas, 0);
+  assertEquals(registro.chamadasLiberar.length, 1);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("cartão — liberar com erro de banco -> falhas:1 (o candidato volta no próximo ciclo), sem confirmar_pagamento", async () => {
+  const idOrder = "ORDTST01CARTAOERRO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    liberarErro: { message: "deadlock" },
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "failed", "failed", "credit_card"));
+  const erroReal = console.error;
+  console.error = () => {};
+  let corpo: Record<string, unknown>;
+  try {
+    corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+  } finally {
+    console.error = erroReal;
+  }
+
+  assertEquals(corpo.falhas, 1);
+  assertEquals(corpo.ignorados, 0);
+  assertEquals(corpo.cobrancasLiberadas, 0);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("cartão — aprovado (processed:accredited) continua em confirmar_pagamento('pago') — a regra nova é só da recusa", async () => {
+  const idOrder = "ORDTST01CARTAOPAGO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    rpcConfirmarResultado: "ja_pago",
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "processed", "accredited", "credit_card"));
+
+  await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+
+  assertEquals(registro.chamadasLiberar.length, 0);
+  assertEquals(registro.chamadasConfirmar.length, 1);
+  assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+});
+
+Deno.test("PIX — candidato com order recusada (failed, bank_transfer) continua em confirmar_pagamento('recusado') — comportamento de antes", async () => {
+  const idOrder = "ORDTST01PIXRECUSADO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    rpcConfirmarResultado: "recusado",
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "failed", "failed", "bank_transfer"));
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+
+  assertEquals(registro.chamadasLiberar.length, 0);
+  assertEquals(registro.chamadasConfirmar.length, 1);
+  assertEquals(registro.chamadasConfirmar[0].args.p_status, "recusado");
+  assertEquals(corpo.cobrancasLiberadas, 0);
+});
+
+Deno.test("PIX — candidato com order CANCELADA (troca PIX -> cartão) só libera a vaga, nunca cancela o pedido", async () => {
+  const idOrder = "ORDTST01PIXCANCELADO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "canceled", "canceled", "bank_transfer"));
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+
+  assertEquals(registro.chamadasConfirmar.length, 0);
+  assertEquals(registro.chamadasLiberar.length, 1);
+  assertEquals(corpo.ignorados, 1);
+});
+
+Deno.test("invariante confirmados + ignorados + falhas === verificados continua valendo com liberações de cartão no lote", async () => {
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const candidatos = [
+    { order_id: UUID_PEDIDO_1, gateway_payment_id: "ORDTST01A" },
+    { order_id: UUID_PEDIDO_2, gateway_payment_id: "ORDTST01B" },
+  ];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
+  const fetchImpl = async (url: string) => {
+    const corpo = url.endsWith("ORDTST01A")
+      ? orderDoCandidato("ORDTST01A", "failed", "rejected_by_issuer", "credit_card")
+      : orderDoCandidato("ORDTST01B", "processed", "accredited", "credit_card");
+    return new Response(JSON.stringify(corpo), { status: 200 });
+  };
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+
+  assertEquals(corpo.verificados, 2);
+  assertEquals(corpo.confirmados + corpo.ignorados + corpo.falhas, corpo.verificados);
+  assertEquals(corpo.confirmados, 1);
+  assertEquals(corpo.ignorados, 1);
+  assertEquals(corpo.cobrancasLiberadas, 1);
 });

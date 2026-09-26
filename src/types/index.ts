@@ -211,6 +211,22 @@ export interface Order {
   retiradaNaLoja?: boolean;
   /** O endereço da loja no momento da compra (retrato, aparado). */
   enderecoDeRetirada?: string | null;
+  /**
+   * Achado 1 da revisão de risco de 26/09/2026 (rodada 2): soma dos
+   * reembolsos de devoluções JÁ CONCLUÍDAS com `reembolso_manual = true`
+   * deste pedido — dinheiro que já saiu da loja pelo caminho da devolução,
+   * antes de qualquer "Já devolvi" do balde de estorno. Vem de
+   * `get_admin_orders_cancelados_recentes` (redefinida em 20261175000000).
+   * Opcional pelo mesmo motivo dos campos acima (cache antigo sem o mapper).
+   */
+  valorDevolvidoPorDevolucao?: number;
+  /**
+   * Achado A4 da revisão de risco de 26/09/2026 (rodada 3): total já
+   * confirmado no ledger de estorno (`marketplace_orders.valor_estornado`,
+   * somado só em `concluir_estorno` quando o Mercado Pago aprova) — dinheiro
+   * que já saiu por ESSE caminho, distinto do reembolso manual acima.
+   */
+  valorEstornado?: number;
 }
 
 export interface Review {
@@ -457,6 +473,9 @@ export type View =
   | "admin-product-form"
   | "admin-orders"
   | "admin-pdv"
+  | "admin-crm"
+  | "admin-financeiro"
+  | "admin-devolucoes"
   | "admin-coupons"
   | "admin-coupon-form"
   | "admin-banners"

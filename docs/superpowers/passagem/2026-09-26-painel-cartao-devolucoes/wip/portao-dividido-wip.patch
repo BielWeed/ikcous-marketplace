@@ -1,0 +1,140 @@
+diff --git a/scripts/portaoDividido.ts b/scripts/portaoDividido.ts
+new file mode 100644
+index 00000000..384324fa
+--- /dev/null
++++ b/scripts/portaoDividido.ts
+@@ -0,0 +1,134 @@
++/* eslint-disable security/detect-non-literal-fs-filename -- Destino fixo (raiz do repo + ".portao-tamanho" + saída fechada "dist"/"dist-test"), nunca texto de usuário. */
++import fs from "node:fs/promises";
++import path from "node:path";
++import type { Plugin, Rollup } from "vite";
++
++/**
++ * Portão de tamanho DIVIDIDO (decisão do dono, 26/09/2026): o `.size-limit.cjs`
++ * parou de somar TODO `assets/*.js` num teto só — cliente (o que qualquer
++ * visitante pode baixar) e painel (o que só existe atrás do `is_admin` do
++ * servidor) viraram orçamentos separados. Este arquivo classifica a partir do
++ * grafo REAL do Rollup — nunca por nome de arquivo — e devolve a lista de cada
++ * lado; `portaoDividido()` grava o resultado num JSON fora da entrega, que
++ * `.size-limit.cjs` lê e confere contra o disco antes de aplicar os tetos.
++ *
++ * Por que a fronteira é só `AdminArea.tsx`, e não qualquer coisa sob
++ * `src/views/admin/**`: a `AdminAreaGate` (`src/components/layouts/
++ * AdminAreaGate.tsx`) só monta o `React.lazy(() => import(".../AdminArea"))`
++ * DEPOIS do veredito do servidor. Toda tela do painel (`AdminCrmView`,
++ * `AdminFinanceiroView`, …) só é importada de DENTRO de `AdminArea.tsx`
++ * (`lazyWithPreload`, ver o arquivo) — nunca precisam de regra própria aqui,
++ * porque a busca a partir das raízes nunca as alcança sem entrar no portão.
++ * A exceção morando fora do portão é `AdminLoginView`: ela é `lazyWithPreload`
++ * direto em `src/App.tsx`, sem passar pela `AdminAreaGate` (é a tela de login
++ * do lojista — qualquer visitante pode abri-la sem já ser admin), então o
++ * grafo a classifica como `cliente` corretamente, sem exceção escrita à mão.
++ */
++
++const CAMINHO_DA_FRONTEIRA = /\/src\/components\/layouts\/AdminArea\.tsx$/;
++const ARQUIVO_DO_LEITOR_ZXING = /^assets\/leitor-zxing-/;
++
++/** Forma mínima que a classificação usa — não é `Rollup.OutputChunk` inteiro,
++ * só o que o grafo de alcançabilidade lê. Mantém `classificarBundle` pura e
++ * testável com um bundle falso, sem montar um chunk de verdade. */
++export interface ChunkParaClassificar {
++  readonly fileName: string;
++  readonly isEntry: boolean;
++  readonly isDynamicEntry: boolean;
++  readonly facadeModuleId: string | null;
++  readonly imports: readonly string[];
++  readonly dynamicImports: readonly string[];
++}
++
++export interface ClassificacaoDoBundle {
++  readonly versao: 1;
++  readonly cliente: readonly string[];
++  readonly painel: readonly string[];
++}
++
++/** Único portão do painel: o chunk dinâmico cujo módulo de fachada é
++ * `AdminArea.tsx`. Ver a docstring do arquivo para o porquê de não casar por
++ * `src/views/admin/**`. */
++export function ehFronteiraDoPainel(
++  chunk: Pick<ChunkParaClassificar, "isDynamicEntry" | "facadeModuleId">,
++): boolean {
++  if (!chunk.isDynamicEntry || !chunk.facadeModuleId) return false;
++  const id = chunk.facadeModuleId.replace(/\\/g, "/");
++  return CAMINHO_DA_FRONTEIRA.test(id);
++}
++
++/**
++ * Busca a partir das raízes (chunks de entrada) sobre `imports` +
++ * `dynamicImports`, SEM entrar nos chunks de fronteira — o chunk de fronteira
++ * em si também não entra em `cliente` (só é alcançado depois do `is_admin`
++ * responder, nenhum visitante o baixa por conta própria). Tudo alcançado vira
++ * `cliente`; o resto vira `painel`. `leitor-zxing-*` fica de fora dos dois —
++ * tem orçamento próprio em `.size-limit.cjs` (C2.5).
++ */
++export function classificarBundle(
++  chunks: readonly ChunkParaClassificar[],
++  ehFronteira: (
++    chunk: Pick<ChunkParaClassificar, "isDynamicEntry" | "facadeModuleId">,
++  ) => boolean = ehFronteiraDoPainel,
++): ClassificacaoDoBundle {
++  const porNome = new Map(chunks.map((chunk) => [chunk.fileName, chunk] as const));
++  const fronteira = new Set(
++    chunks.filter((chunk) => ehFronteira(chunk)).map((chunk) => chunk.fileName),
++  );
++  const alcancado = new Set<string>();
++  const fila = chunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName);
++  while (fila.length > 0) {
++    const nome = fila.pop();
++    if (nome === undefined || alcancado.has(nome) || fronteira.has(nome)) continue;
++    alcancado.add(nome);
++    const chunk = porNome.get(nome);
++    if (!chunk) continue;
++    for (const proximo of [...chunk.imports, ...chunk.dynamicImports]) {
++      if (!alcancado.has(proximo)) fila.push(proximo);
++    }
++  }
++  const cliente: string[] = [];
++  const painel: string[] = [];
++  for (const chunk of chunks) {
++    if (ARQUIVO_DO_LEITOR_ZXING.test(chunk.fileName)) continue;
++    (alcancado.has(chunk.fileName) ? cliente : painel).push(chunk.fileName);
++  }
++  cliente.sort();
++  painel.sort();
++  return { versao: 1, cliente, painel };
++}
++
++/**
++ * Plugin build-only: no `generateBundle`, classifica os chunks JS do output
++ * (Rollup já resolveu `imports`/`dynamicImports` nesse ponto) e grava o
++ * resultado FORA da entrega — nunca em `dist`/`dist-test`, que
++ * `scripts/buildStore.mjs` valida e que é servido em produção. O caminho
++ * inclui o nome da saída ("dist" ou "dist-test") porque database e fixture
++ * podem rodar em sequência na mesma máquina e não podem compartilhar arquivo.
++ */
++export function portaoDividido(opcoes: { root: string; outDir: string }): Plugin {
++  const destino = path.join(opcoes.root, ".portao-tamanho", `${opcoes.outDir}.json`);
++  return {
++    name: "portao-dividido-tamanho",
++    apply: "build",
++    async generateBundle(_options, bundle) {
++      const chunks: ChunkParaClassificar[] = Object.values(bundle)
++        .filter((item): item is Rollup.OutputChunk => item.type === "chunk")
++        .map((chunk) => ({
++          fileName: chunk.fileName,
++          isEntry: chunk.isEntry,
++          isDynamicEntry: chunk.isDynamicEntry,
++          facadeModuleId: chunk.facadeModuleId,
++          imports: chunk.imports,
++          dynamicImports: chunk.dynamicImports,
++        }));
++      const classificacao = classificarBundle(chunks);
++      await fs.mkdir(path.dirname(destino), { recursive: true });
++      await fs.writeFile(
++        destino,
++        `${JSON.stringify(classificacao, null, 2)}\n`,
++        "utf8",
++      );
++    },
++  };
++}

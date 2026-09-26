@@ -72,7 +72,7 @@ vi.mock("@/hooks/useProducts", () => ({
 // dos outros testes de componente deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const ABAS = ["Geral", "Pedidos", "Produtos", "Clientes", "Ajustes"] as const;
+const ABAS = ["Início", "Pedidos", "Produtos", "Clientes", "Ajustes"] as const;
 
 function botoesDasAbas(hospedeiro: HTMLDivElement): HTMLButtonElement[] {
   return Array.from(hospedeiro.querySelectorAll("button")).filter((b) =>
@@ -80,7 +80,7 @@ function botoesDasAbas(hospedeiro: HTMLDivElement): HTMLButtonElement[] {
   );
 }
 
-describe("AdminLayout — na tela de venda, a barra marca o Vender e não a aba Geral", () => {
+describe("AdminLayout — na tela de venda, a barra marca o Vender e não a aba Início", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 

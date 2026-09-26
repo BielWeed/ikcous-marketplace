@@ -14,6 +14,10 @@
 //
 // Os filhos com gráfico são dublados: o assunto deste teste é o TEXTO da
 // ajuda, não o desenho — recharts em jsdom é ruído caro para nada.
+//
+// 26/09/2026: o dashboard deixou de ser o Início do painel e virou a aba
+// "Visão geral" do Dashboard CRM (AdminCrmView) — a ajuda foi junto
+// (AjudaDoCrm) e continua descrevendo os mesmos quatro cartões reais.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -65,6 +69,8 @@ vi.mock("@/hooks/useScrollRestoration", () => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    // `crm_visao` (números do período) responde vazio: o assunto é a ajuda.
+    rpc: () => Promise.resolve({ data: null, error: null }),
     channel: () => {
       const canal: Record<string, unknown> = {
         on: () => canal,
@@ -129,7 +135,7 @@ async function esperarAte(
   }
 }
 
-describe("A ajuda do dashboard documenta os KPIs que a tela realmente tem", () => {
+describe("A ajuda do dashboard (hoje no Dashboard CRM) documenta os KPIs que a tela realmente tem", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -147,11 +153,9 @@ describe("A ajuda do dashboard documenta os KPIs que a tela realmente tem", () =
   });
 
   it("o modal de ajuda descreve os 4 cartões reais e nenhum fantasma", async () => {
-    const { AdminDashboardView } = await import(
-      "@/views/admin/AdminDashboardView"
-    );
+    const { AdminCrmView } = await import("@/views/admin/AdminCrmView");
     await act(async () => {
-      raiz.render(<AdminDashboardView active={true} onNavigate={() => {}} />);
+      raiz.render(<AdminCrmView active={true} onNavigate={() => {}} />);
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));

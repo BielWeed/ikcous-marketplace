@@ -113,8 +113,15 @@ export function paiDaTelaDoAdmin(
     // não admin-orders, mesmo sendo vizinha temática em adminViewIndices.
     case "admin-pdv":
       return "admin-dashboard";
+    // Dashboard CRM e Financeiro abrem pelos botões do Início (perfil do
+    // lojista) — voltam para ele, como o "Vender".
+    case "admin-crm":
+    case "admin-financeiro":
+      return "admin-dashboard";
+    // Devolução nasce de um pedido entregue: mora ao lado dos pedidos.
     case "admin-reviews":
     case "admin-qa":
+    case "admin-devolucoes":
       return "admin-orders";
     default:
       return "profile";

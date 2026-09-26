@@ -9,6 +9,7 @@ import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
+import { BotaoDevolucoes } from "@/components/admin/devolucoes/BotaoDevolucoes";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
   OrderStatusBadge,
@@ -46,6 +47,7 @@ import { mapOrderFromDB } from "@/lib/mappers";
 import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { valorDevolverAgora } from "@/lib/valor-devolver-agora";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type {
   CanalDaVenda,
@@ -214,6 +216,10 @@ export function baldeDeEstorno(pedido: Order): BaldeDeEstorno {
   if (pedido.cancelledAfterShipping && !pedido.returnedToSellerAt) {
     return "esperando_o_produto";
   }
+  // Achado 1 (rodada 2): nada resta para devolver — uma devolução deste
+  // pedido já devolveu tudo por fora (reembolso manual concluído). O pedido
+  // some do balde de dinheiro sem precisar de nenhum clique.
+  if (valorDevolverAgora(pedido) <= 0) return null;
   return "devolver_agora";
 }
 
@@ -795,8 +801,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // para um dinheiro que ele recebeu na mão. Opcional: os chamadores de
     // hoje (pedido de canal online) continuam sem passar o campo.
     canal?: CanalDaVenda;
+    // Achado A4 (revisão 26/09/2026, rodada 3): o confirm mostrava o TOTAL
+    // do pedido, mesmo com parte já devolvida (manual ou pelo ledger do MP)
+    // — o lojista confirmava um valor maior do que o que realmente falta.
+    valorDevolvidoPorDevolucao?: number;
+    valorEstornado?: number;
   }) => {
-    const valor = (pedido.total || 0).toLocaleString("pt-BR", {
+    const valor = valorDevolverAgora(pedido).toLocaleString("pt-BR", {
       minimumFractionDigits: 2,
     });
     const cliente = pedido.customer?.name || "o cliente";
@@ -822,6 +833,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       setEstornandoId(null);
     }
   };
+
+  // Estável de propósito: vai para o `<OrderDetail>` (memo) e para o botão
+  // do cabeçalho — a tela de Devoluções (filha de Pedidos no roteador).
+  const abrirDevolucoes = useCallback(
+    () => onNavigate("admin-devolucoes"),
+    [onNavigate],
+  );
 
   /**
    * O botão "Ver pedidos" do dropdown de alertas (na pílula antiga era
@@ -1325,6 +1343,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             isOffline={isOffline}
             onRegistrarPagamento={registrarPagamentoRecebido}
             storeName={storeNameDaLoja}
+            onAbrirDevolucoes={abrirDevolucoes}
           />
         </div>
       </LocalErrorBoundary>
@@ -1346,22 +1365,27 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             // direito da linha do título; os detalhes descem dele). Sem
             // pendência e lista completa, ele nem nasce. (1.19.0 — só trocou
             // de container: a marcação interna é a mesma de antes.)
-            <AlertasCancelados
-              pagoCanceladoCount={paidOnCancelledCount}
-              avisoPagoAposCancelado={avisoPagoAposCancelado}
-              pedidosEsperandoRetorno={pedidosEsperandoRetorno}
-              pedidosParaDevolverAgora={pedidosParaDevolverAgora}
-              incompleto={pedidosCanceladosIncompleto}
-              foraDaJanela={canceladosForaDaJanela}
-              onIncluirAntigos={() => {
-                void buscarTambemCanceladosAntigos();
-              }}
-              confirmandoRetornoId={confirmandoRetornoId}
-              onConfirmarRetorno={handleConfirmarRetorno}
-              estornandoId={estornandoId}
-              onRegistrarEstorno={registrarEstornoFeito}
-              onVerPedidos={irParaPedidosCancelados}
-            />
+            // Devoluções (plano 2026-09-26): a porta da tela de devolução de
+            // produto mora ao lado, com quantas estão em andamento.
+            <>
+              <BotaoDevolucoes onAbrir={abrirDevolucoes} ativo={active} />
+              <AlertasCancelados
+                pagoCanceladoCount={paidOnCancelledCount}
+                avisoPagoAposCancelado={avisoPagoAposCancelado}
+                pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+                pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+                incompleto={pedidosCanceladosIncompleto}
+                foraDaJanela={canceladosForaDaJanela}
+                onIncluirAntigos={() => {
+                  void buscarTambemCanceladosAntigos();
+                }}
+                confirmandoRetornoId={confirmandoRetornoId}
+                onConfirmarRetorno={handleConfirmarRetorno}
+                estornandoId={estornandoId}
+                onRegistrarEstorno={registrarEstornoFeito}
+                onVerPedidos={irParaPedidosCancelados}
+              />
+            </>
           }
         >
           <button

@@ -1,129 +1,66 @@
-import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
+import type {
+  ArgsCriarPagamento,
+  RespostaCriarPagamento,
+} from "@/hooks/useOrders";
 import { useOrders } from "@/hooks/useOrders";
+import { type ConfigDoCartao, cartaoLigado } from "@/lib/config-do-cartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { PagamentoComCartao } from "./PagamentoComCartao";
 
-const SDK_URL = "https://sdk.mercadopago.com/js/v2";
-
-let promessaSdk: Promise<void> | null = null;
-
-/**
- * Carrega o SDK do Mercado Pago uma vez por sessão.
- *
- * O `promessaSdk` em módulo evita a corrida do StrictMode do React 18, que
- * monta o componente duas vezes em desenvolvimento: sem ele, duas tags de
- * script entram na página e o Brick tenta renderizar duas vezes no mesmo
- * container.
- */
-export function carregarSdkMercadoPago(): Promise<void> {
-  if (promessaSdk) return promessaSdk;
-
-  promessaSdk = new Promise<void>((resolve, reject) => {
-    const existente = document.querySelector<HTMLScriptElement>(
-      "script[data-mp-sdk]",
-    );
-    const tag = existente ?? document.createElement("script");
-
-    if (!existente) {
-      tag.src = SDK_URL;
-      tag.async = true;
-      tag.dataset.mpSdk = "1";
-    }
-
-    tag.addEventListener("load", () => resolve());
-    tag.addEventListener("error", () => {
-      // Zera para uma tentativa futura poder recomeçar — e REMOVE a tag morta.
-      // Sem o remove(), a próxima chamada acha esta tag via querySelector, cai
-      // no ramo `if (!existente)` e nunca reanexa `src`/listeners a um script
-      // que já falhou: nem resolve, nem rejeita, a Promise nova fica pendurada
-      // para sempre.
-      promessaSdk = null;
-      tag.remove();
-      reject(new Error("Não foi possível carregar o pagamento."));
-    });
-
-    if (!existente) document.head.appendChild(tag);
-  });
-
-  return promessaSdk;
-}
+// O carregador do SDK mora em módulo próprio desde o cartão (26/09/2026) —
+// ver o comentário lá. Reexportado para quem já o importava daqui.
+export { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
  * De que tipo é a falha que `onErro` está reportando — ver CHECKOUT-050.
  *
  * "recuperavel": tentar de novo pode dar um resultado diferente. Cobre dois
  * casos bem distintos: a cobrança pode não ter chegado a existir (rede caiu,
- * SDK não carregou, Brick não montou) — aí `criar-pagamento` cria do zero,
- * sem `gateway_payment_id` gravado; OU o PIX voltou sem QR code num 200 que
- * JÁ CRIOU a cobrança (o UPDATE grava `gateway_payment_id` antes de
+ * SDK não carregou, Brick do cartão não montou) — aí `criar-pagamento` cria
+ * do zero, sem `gateway_payment_id` gravado; OU o PIX voltou sem QR code num
+ * 200 que JÁ CRIOU a cobrança (o UPDATE grava `gateway_payment_id` antes de
  * responder) — aí a próxima tentativa cai em `reconsultar`, que pode trazer
  * o QR que a criação não trouxe. Nos dois casos insistir é seguro; muda só o
  * caminho que `criar-pagamento` escolhe.
  *
- * "terminal": a cobrança já existe e está morta para este pedido (recusada,
- * cancelada, com status que o banco não reconhece) OU a reserva do pedido já
- * venceu. Tentar de novo bate na MESMA recusa — `podeCobrar` manda para
- * `reconsultar` sempre que já existe `gateway_payment_id`, devolvendo o
- * status da mesma cobrança (ver o comentário grande dentro de `onSubmit`
- * abaixo).
+ * "terminal": a cobrança já existe e está morta para este pedido (vencida,
+ * estornada, com status que o banco não reconhece, cartão recusado sem nova
+ * tentativa possível) OU a reserva do pedido já venceu. Tentar de novo bate
+ * na MESMA resposta.
+ *
+ * Cartão recusado COM nova tentativa possível não é erro para esta tela: o
+ * `PagamentoComCartao` mostra o motivo com "Tentar outro cartão" e "Pagar
+ * com PIX" (spec do cartão, decisão 3).
  */
 export type CategoriaErroPagamento = "recuperavel" | "terminal";
 
-/**
- * Marca um erro como TERMINAL para quem captura no catch de `onSubmit` —
- * usado só nos dois pontos abaixo onde SABEMOS que reconsultar devolve a
- * mesma recusa. Qualquer outro erro (rede, `criarPagamento` rejeitando por
- * outro motivo) é tratado como recuperável por padrão.
- */
-class ErroPagamentoTerminal extends Error {}
+type CriarPagamento = (
+  args: ArgsCriarPagamento,
+) => Promise<RespostaCriarPagamento>;
 
-/** O corpo que `criarPagamento` devolve quando a chamada dá certo (201). */
-type RespostaCriarPagamento = {
-  paymentId: string;
-  statusPagamento: string;
-  expiraEm: string;
-  qrCode?: string;
+type DadosDoPix = {
   qrCodeBase64?: string;
+  qrCode?: string;
+  expiraEm: string;
   ticketUrl?: string;
 };
 
 type ResultadoClassificacaoPagamento =
   | { tipo: "erro"; mensagem: string; categoria: CategoriaErroPagamento }
-  | {
-      tipo: "pix";
-      pix: {
-        qrCodeBase64?: string;
-        qrCode?: string;
-        expiraEm: string;
-        ticketUrl?: string;
-      };
-    }
-  // Cartão aprovado: hoje inalcançável (o Brick só oferece PIX, ver
-  // `montarBrick` abaixo), mas o vocabulário de status não distingue o meio
-  // de pagamento — fica nomeado em vez de escondido dentro de um `if`.
-  | { tipo: "sem-acao" };
+  | { tipo: "pix"; pix: DadosDoPix };
 
 /**
- * Traduz a resposta (ou o corpo já resolvido) de `criarPagamento` para o que
- * a tela deve fazer — erro (com categoria) ou QR do PIX. Extraída de dentro
- * do `onSubmit` do Brick (CHECKOUT-080, #213) para ser a MESMA regra nos dois
- * caminhos que chamam `criarPagamento` hoje: o `onSubmit` do Brick (cartão,
- * ainda vivo para a Fase 3.5, ver comentário de `montarBrick`) e o disparo
- * direto do PIX (`dispararPagamentoPix`, pedido do dono de 25/09/2026, que
- * pula o Brick inteiro). Duplicar este `if`-chain nos dois lugares é o tipo
- * de cópia que diverge sozinha na próxima mudança de vocabulário do banco —
- * ver CHECKOUT-080 no histórico, que já foi exatamente esse defeito uma vez.
- *
- * `ehPix` decide só o desfecho de SUCESSO (se vira QR ou "sem-acao"); os
- * quatro ramos de erro (recusado/expirado/estornado/desconhecido) são os
- * mesmos para os dois métodos — a MESMA cobrança recusada volta idêntica
- * numa reconsulta, seja qual for o meio que a criou.
+ * Traduz a resposta de `criarPagamento` do PIX para o que a tela deve fazer —
+ * erro (com categoria) ou QR. Até 26/09/2026 servia também ao `onSubmit` do
+ * Payment Brick (`montarBrick`, CHECKOUT-080, #213); o Payment Brick saiu de
+ * cena (PIX direto desde 25/09, cartão pelo Card Payment Brick desde 26/09,
+ * com classificação própria em `classificarRespostaCartao`), e sobrou o PIX.
  */
 function classificarRespostaPagamento(
   r: RespostaCriarPagamento,
-  ehPix: boolean,
 ): ResultadoClassificacaoPagamento {
   // A-1 da revisão final, vocabulário atualizado na CHECKOUT-080 (#213):
   // recusa é resultado normal de um pagamento CRIADO (o MP responde 201), não
@@ -132,13 +69,10 @@ function classificarRespostaPagamento(
   // 'estornado' — useOrders.ts, `StatusPagamentoConhecido`), não mais no
   // vocabulário cru do MP: a edge function já traduziu.
   if (r.statusPagamento === "recusado") {
-    // Nem "outro cartão" nem "pague com PIX" cabem aqui: cartão está
-    // desligado no Brick (só PIX, ver comentário de `montarBrick`), e
     // `podeCobrar` (criar-pagamento/index.ts) manda para `reconsultar`
     // sempre que o pedido já tem gateway_payment_id — o que devolve o
-    // status da MESMA cobrança recusada, sem criar outra. Qualquer nova
-    // tentativa neste pedido bate na mesma recusa até expirar. 'recusado'
-    // cobre os dois desfechos que o vocabulário clássico separava em
+    // status da MESMA cobrança recusada, sem criar outra. 'recusado' cobre
+    // os dois desfechos que o vocabulário clássico separava em
     // "rejected"/"cancelled" — este banco não tem um valor 'cancelado'
     // distinto de 'recusado' (ver o comentário de MAPA_STATUS_ORDER em
     // supabase/functions/_shared/mercadopago.ts).
@@ -185,13 +119,11 @@ function classificarRespostaPagamento(
       categoria: "terminal",
     };
   }
-  if (!ehPix) return { tipo: "sem-acao" };
   if (!r.qrCode && !r.qrCodeBase64) {
     // Nunca sinaliza sucesso sem QR de verdade — sem QR o cliente ficaria
     // preso numa tela vazia, sem volta, com o pedido morrendo em 30 min de
-    // reserva. Recuperável (não `ErroPagamentoTerminal`): a cobrança em si
-    // não existe de forma útil, e uma nova tentativa cria/reconsulta do zero
-    // sem risco de duplicar cobrança.
+    // reserva. Recuperável: a cobrança em si não existe de forma útil, e uma
+    // nova tentativa cria/reconsulta do zero sem risco de duplicar cobrança.
     return {
       tipo: "erro",
       mensagem: "Não foi possível gerar o QR code do PIX.",
@@ -206,246 +138,6 @@ function classificarRespostaPagamento(
       expiraEm: r.expiraEm,
       ticketUrl: r.ticketUrl,
     },
-  };
-}
-
-/**
- * Monta o Payment Brick e devolve a função de desmontagem do efeito.
- *
- * Cartão (Fase 3.5): o Brick só oferece PIX hoje (`paymentMethods` abaixo), e
- * o PIX passou a se disparar direto (`dispararPagamentoPix`, pedido do dono
- * de 25/09/2026) — ele não chama esta função. `montarBrick` fica viva, sem
- * caller em produção, para o dia em que o cartão for religado: a tela do
- * Brick pedindo os dados do cartão continua fazendo sentido para esse meio,
- * só o PIX é que não precisava mais dela.
- *
- * Extraída do `useEffect` do componente por dois motivos:
- *
- * 1. A guarda contra o StrictMode e o cancelamento do efeito precisam falar a
- *    MESMA língua. `cancelado` é checado nos dois únicos pontos em que dá
- *    para abortar sem deixar rastro: antes do `create()` (a IIFE cancelada
- *    nunca chega a criar nada — é o que faz o StrictMode montar/desmontar/
- *    remontar sem duplicar o Brick, sem precisar de um `jaMontou` que bloqueia
- *    a segunda montagem de verdade também) e depois dele (a criação já
- *    aconteceu; só dá para desfazer desmontando — sem isso, uma criação em
- *    voo cujo efeito já foi cancelado ficava abandonada, e o bundle do Brick
- *    reclama "Brick already initialized" na próxima tentativa, porque só o
- *    `unmount()` dele limpa o estado interno).
- * 2. Isola a corrida do StrictMode e o ciclo de vida do Brick de qualquer
- *    aparato de teste de React — o teste chama esta função diretamente,
- *    simula mount → cleanup → mount e confere o que o SDK real (mockado)
- *    fez, sem precisar renderizar componente nenhum.
- *
- * Exportada para teste — não é API pública do componente.
- */
-export function montarBrick({
-  orderId,
-  valor,
-  criarPagamento,
-  onErro,
-  onPix,
-}: {
-  orderId: string;
-  valor: number;
-  criarPagamento: ReturnType<typeof useOrders>["criarPagamento"];
-  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
-  onPix: (pix: {
-    qrCodeBase64?: string;
-    qrCode?: string;
-    expiraEm: string;
-    ticketUrl?: string;
-  }) => void;
-}): () => void {
-  let cancelado = false;
-  let controlador: { unmount: () => void } | null = null;
-
-  (async () => {
-    try {
-      await carregarSdkMercadoPago();
-      if (cancelado) return;
-
-      const publicKey = chavePublicaMercadoPago();
-      if (!publicKey) throw new Error("Pagamento indisponível.");
-
-      // @ts-expect-error o SDK entra pelo global
-      const mp = new globalThis.MercadoPago(publicKey, { locale: "pt-BR" });
-
-      // "mp-container": desde 25/09/2026 o PIX não passa mais por aqui, e o
-      // `<div id="mp-container" />` que o Brick esperava encontrar SUMIU do
-      // render do componente (ver o `return` no fim do arquivo). Religar
-      // cartão (Fase 3.5) precisa devolver esse contêiner ao JSX antes de
-      // `montarBrick` voltar a ser chamado — sem ele, `create()` abaixo
-      // rejeita por não achar o elemento.
-      const criado = await mp.bricks().create("payment", "mp-container", {
-        initialization: { amount: valor },
-        customization: {
-          // So PIX na Fase 3. O caminho de cartao existe no codigo mas tem
-          // defeito conhecido: depois da primeira recusa o pedido fica
-          // impagavel ate expirar, e a mensagem atual pede "tente outro
-          // cartao", o que e' impossivel. Religar cartao e' a Fase 3.5, e
-          // depende de chave de idempotencia versionada.
-          paymentMethods: { bankTransfer: "all" },
-        },
-        callbacks: {
-          onReady: () => {},
-          onError: (erro: unknown) => {
-            console.error("brick:", erro);
-            // O Brick nem chegou a montar — nenhuma cobrança foi criada.
-            onErro("Não foi possível carregar o pagamento.", "recuperavel");
-          },
-          onSubmit: async ({ formData }: { formData: Record<string, any> }) => {
-            try {
-              // PIX volta sem token; cartão volta tokenizado NO NAVEGADOR — o
-              // número do cartão não passa pelo nosso servidor.
-              const ehPix = !formData.token;
-              const r = await criarPagamento({
-                orderId,
-                metodo: ehPix ? "pix" : "cartao",
-                token: formData.token,
-                parcelas: formData.installments,
-                paymentMethodId: formData.payment_method_id,
-                issuerId: formData.issuer_id,
-                email: formData.payer?.email,
-                documento: formData.payer?.identification,
-              });
-
-              // Classificação (recusado/expirado/estornado/desconhecido/QR
-              // ausente) extraída para `classificarRespostaPagamento` —
-              // MESMA regra usada pelo disparo direto do PIX
-              // (`dispararPagamentoPix`, ver comentário lá). Só o desfecho
-              // muda por caminho: aqui, sucesso desmonta o Brick antes de
-              // repassar o QR.
-              const resultado = classificarRespostaPagamento(r, ehPix);
-              if (resultado.tipo === "erro") {
-                throw resultado.categoria === "terminal"
-                  ? new ErroPagamentoTerminal(resultado.mensagem)
-                  : new Error(resultado.mensagem);
-              }
-              if (resultado.tipo === "pix") {
-                // O Brick some do DOM quando o JSX troca para o QR — desmonta
-                // ANTES de trocar, senão a próxima montagem (voltar ao
-                // checkout sem recarregar a página) esbarra em "Brick
-                // already initialized".
-                controlador?.unmount();
-                controlador = null;
-                onPix(resultado.pix);
-              }
-            } catch (err: any) {
-              // As quatro mensagens de criarPagamento (`useOrders.ts`, na
-              // função `criarPagamento` — âncora por NOME, não por linha: a
-              // citação anterior apontava para :974-980 e o arquivo já
-              // andou 178 linhas desde então)
-              // só chegam ao cliente se saírem por aqui — sem este catch, a
-              // rejeição desaparece dentro do próprio SDK e a tela fica muda.
-              //
-              // Categoria: terminal para os dois `throw new
-              // ErroPagamentoTerminal` acima, e para qualquer erro de
-              // `criarPagamento` (useOrders.ts) que traga `.terminal ===
-              // true` — DADO que a edge function manda no corpo do 409,
-              // não texto. CHECKOUT-050 (#194), achado da revisão: a
-              // versão anterior comparava a MENSAGEM por igualdade exata
-              // com o texto de prazo vencido; assim que o pg_cron marca o
-              // pedido 'expirado' (a cada 5 min), a mesma reserva morta
-              // passa a cair no ramo 1 de podeCobrar (payment_status !==
-              // 'aguardando'), com uma mensagem que a comparação de texto
-              // nunca reconhecia — o cliente ganhava "Tentar de novo" para
-              // uma recusa que nunca muda. Sem compatibilidade com a
-              // versão antiga da criar-pagamento (que não manda o campo):
-              // a loja em produção não cobra online hoje (VITE_
-              // PAGAMENTO_ONLINE falha fechada), e o deploy da function é
-              // pré-requisito conhecido de ligar a flag — um fallback por
-              // texto "só durante a transição" reintroduziria exatamente
-              // este defeito. Qualquer outro erro — rede, gateway fora do
-              // ar, corpo de erro genérico — é recuperável por padrão.
-              const terminal =
-                err instanceof ErroPagamentoTerminal || err?.terminal === true;
-              // Ponto fechado (censo do lote, item 8): esta linha estava
-              // marcada "a verificar — o vizinho é deliberado". Verificação
-              // feita: DIFERENTE do catch de `montarBrick` (o que envolve
-              // `carregarSdkMercadoPago()` e `mp.bricks().create()`, e cujo
-              // comentário proíbe `err?.message` por causa do texto do
-              // bundle do MP), este envolve só o `onSubmit` — que o SDK só
-              // chama DEPOIS de `create()` ter resolvido, então são caminhos
-              // que não se cruzam.
-              //
-              // As fontes que chegam aqui são texto curado em português,
-              // nunca o SDK/rede/navegador crus. A regra que sustenta isso é
-              // mais forte que a lista: só um corpo JSON com a chave exata
-              // `error` sobrepõe o literal padrão, e a única coisa que emite
-              // essa chave neste caminho é a nossa própria edge function.
-              // Enumeração:
-              // 1) os quatro `throw new ErroPagamentoTerminal(...)` acima
-              //    (recusado/expirado/estornado/status desconhecido) e o
-              //    `throw new Error("Não foi possível gerar o QR code do
-              //    PIX.")` — literais fixos deste arquivo;
-              // 2) `criarPagamento` (useOrders.ts) só lança
-              //    `Object.assign(new Error(mensagem), { terminal })`, onde
-              //    `mensagem` é OU o literal "Não foi possível gerar a
-              //    cobrança." OU `corpo.error` lido do 409/502/etc. da edge
-              //    function — e todo `error:` que
-              //    supabase/functions/criar-pagamento/index.ts devolve é uma
-              //    string curada; o corpo cru do Mercado Pago fica preso no
-              //    console do servidor (_shared/mercadopago.ts, comentário
-              //    "NUNCA para o cliente"), nunca no corpo da resposta;
-              // 3) falha de rede pura (`FunctionsFetchError` do
-              //    supabase-js) também não vaza: seu `.context` é o `Error`
-              //    de fetch, sem método `.json`, então `corpo` fica
-              //    `undefined` e a mensagem cai no literal padrão acima —
-              //    `criarPagamento` nunca lê `error.message` diretamente.
-              // 4) `controlador?.unmount()` é a única chamada a código de
-              //    terceiro dentro deste `try`. Fica de fora da conta porque
-              //    o cenário que a faria lançar (desmontagem dupla) está
-              //    fechado pelo `controlador = null` da limpeza somado ao
-              //    `?.`. Não foi possível sustentar NEM refutar que o SDK
-              //    lance ali — ele vem de CDN e não está em node_modules —
-              //    então isto fica declarado, não varrido para debaixo de um
-              //    "todas as fontes".
-              // Por isso, ao contrário do catch de `montarBrick`, aqui NÃO dá para
-              // trocar por uma frase fixa única: cada `throw` já é
-              // específico e verdadeiro para o caso, e um genérico jogaria
-              // fora informação que o cliente precisa (ex.: PIX vencido vs.
-              // pagamento recusado pedem ações diferentes).
-              onErro(
-                err?.message ?? "Não foi possível gerar a cobrança.",
-                terminal ? "terminal" : "recuperavel",
-              );
-              // Relança para o Brick saber que o envio falhou e sair do
-              // estado "processando" — engolir aqui prende o botão.
-              throw err;
-            }
-          },
-        },
-      });
-
-      if (cancelado) {
-        // O efeito já foi cancelado (StrictMode remontando, ou desmontagem de
-        // verdade) enquanto o create() estava em voo: desmonta em vez de
-        // abandonar.
-        criado.unmount();
-        return;
-      }
-      controlador = criado;
-    } catch (err: any) {
-      // SDK que não carregou, chave pública ausente ou create() que falhou —
-      // em qualquer um destes, nenhuma cobrança chegou a ser criada.
-      //
-      // Achado 2 da revisão (CHECKOUT-050, #194): NUNCA usar `err?.message`
-      // aqui. Quando quem rejeita é o próprio create() do SDK do Mercado
-      // Pago, essa mensagem é texto do BUNDLE deles — em inglês, com
-      // jargão de configuração. Um toast escondia isso em 2500ms; agora a
-      // caixa de erro fica NA TELA até o cliente sair, então uma mensagem
-      // de terceiro travada ali é pior que antes. `err` continua indo para
-      // o console, que é onde ela serve.
-      console.error("montarBrick:", err);
-      if (!cancelado)
-        onErro("Não foi possível carregar o pagamento.", "recuperavel");
-    }
-  })();
-
-  return () => {
-    cancelado = true;
-    controlador?.unmount();
-    controlador = null;
   };
 }
 
@@ -465,7 +157,7 @@ export function montarBrick({
  */
 const promessasPagamentoPix = new Map<
   string,
-  ReturnType<ReturnType<typeof useOrders>["criarPagamento"]>
+  Promise<RespostaCriarPagamento>
 >();
 
 /**
@@ -474,15 +166,16 @@ const promessasPagamentoPix = new Map<
  * Pedido do dono (25/09/2026): depois de escolher "Pagar agora com PIX", o
  * cliente caía na tela do Payment Brick do Mercado Pago pedindo para
  * escolher Pix DE NOVO e digitar um e-mail que a conta já tem. Como o Brick
- * hoje só oferece PIX (`paymentMethods` em `montarBrick`, acima — cartão é
- * Fase 3.5), a Brick inteira era uma etapa a mais sem função: `email` e
+ * de então só oferecia PIX (o cartão, Fase 3.5, voltou em 26/09/2026 pelo
+ * Card Payment Brick — `PagamentoComCartao.tsx`), a Brick inteira era uma
+ * etapa a mais sem função: `email` e
  * `documento` são OPCIONAIS em `criarPagamento` (useOrders.ts) — o servidor
  * já resolve o e-mail por `body.email ?? pedido.customer_data.email ?? emailDoToken(...) ?? "sem-email@ikcous.com.br"`
  * (criar-pagamento/index.ts) — então não há nada que só o Brick soubesse
  * coletar.
  *
  * A classificação da resposta (recusado/expirado/estornado/desconhecido/QR
- * ausente) é a MESMA de `montarBrick` — ver `classificarRespostaPagamento`.
+ * ausente) mora em `classificarRespostaPagamento`, acima.
  *
  * Exportada para teste — não é API pública do componente.
  */
@@ -493,14 +186,9 @@ export function dispararPagamentoPix({
   onPix,
 }: {
   orderId: string;
-  criarPagamento: ReturnType<typeof useOrders>["criarPagamento"];
+  criarPagamento: CriarPagamento;
   onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
-  onPix: (pix: {
-    qrCodeBase64?: string;
-    qrCode?: string;
-    expiraEm: string;
-    ticketUrl?: string;
-  }) => void;
+  onPix: (pix: DadosDoPix) => void;
 }): () => void {
   let cancelado = false;
 
@@ -527,16 +215,16 @@ export function dispararPagamentoPix({
   promessa
     .then((r) => {
       if (cancelado) return;
-      const resultado = classificarRespostaPagamento(r, true);
+      const resultado = classificarRespostaPagamento(r);
       if (resultado.tipo === "erro") {
         onErro(resultado.mensagem, resultado.categoria);
         return;
       }
-      if (resultado.tipo === "pix") onPix(resultado.pix);
+      onPix(resultado.pix);
     })
     .catch((err: any) => {
       if (cancelado) return;
-      // Mesmo contrato do catch de `montarBrick` (CHECKOUT-050): `.terminal`
+      // Contrato do CHECKOUT-050: `.terminal`
       // vindo de `criarPagamento` (useOrders.ts) é um DADO lido do corpo do
       // 409/etc. da edge function, nunca reconstruído a partir do texto da
       // mensagem — texto que muda quebraria uma comparação por igualdade.
@@ -559,7 +247,77 @@ function formatarHora(ms: number): string {
   });
 }
 
+/** Por onde o cliente paga pelo app: PIX (padrão) ou cartão (Fase 3.5). */
+export type MetodoOnline = "pix" | "cartao";
+
+/**
+ * A tela de pagamento pelo app, depois de o pedido nascer.
+ *
+ * `metodo="pix"` (padrão): gera a cobrança PIX sozinho, ao montar.
+ * `metodo="cartao"`: mostra o Card Payment Brick e NUNCA cria PIX sozinho —
+ * o PIX só nasce se o cliente tocar em "Pagar com PIX" (depois de uma
+ * recusa, por exemplo), na mesma tela e na mesma reserva de 30 minutos.
+ * `onTrocarParaPix` avisa o pai dessa troca, para um "Tentar de novo" do
+ * CheckoutView remontar já no PIX.
+ */
 export function PagamentoOnline({
+  orderId,
+  valor,
+  onErro,
+  metodo = "pix",
+  configDoCartao = null,
+  emailDoPagador,
+  onTrocarParaPix,
+}: {
+  orderId: string;
+  valor: number;
+  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
+  metodo?: MetodoOnline;
+  configDoCartao?: ConfigDoCartao | null;
+  emailDoPagador?: string | null;
+  onTrocarParaPix?: () => void;
+}) {
+  const [trocouParaPix, setTrocouParaPix] = useState(false);
+  const pagarComPix = () => {
+    setTrocouParaPix(true);
+    onTrocarParaPix?.();
+  };
+
+  if (metodo === "cartao" && !trocouParaPix) {
+    if (configDoCartao && cartaoLigado(configDoCartao)) {
+      return (
+        <PagamentoComCartao
+          orderId={orderId}
+          valor={valor}
+          config={configDoCartao}
+          emailDoPagador={emailDoPagador}
+          onErro={onErro}
+          onPagarComPix={pagarComPix}
+        />
+      );
+    }
+    // A loja desligou o cartão entre a escolha e a tela de pagamento (ou a
+    // config sumiu). Não cria PIX por conta própria: o cliente escolhe.
+    return (
+      <div className="mx-auto w-full max-w-md space-y-3 rounded-2xl border border-zinc-100 bg-white p-4 text-center sm:p-6">
+        <p className="text-sm text-zinc-700">
+          O pagamento com cartão não está disponível nesta loja agora.
+        </p>
+        <button
+          type="button"
+          onClick={pagarComPix}
+          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+        >
+          Pagar com PIX
+        </button>
+      </div>
+    );
+  }
+
+  return <PagamentoComPix orderId={orderId} valor={valor} onErro={onErro} />;
+}
+
+function PagamentoComPix({
   orderId,
   valor,
   onErro,
@@ -578,27 +336,22 @@ export function PagamentoOnline({
   const { criarPagamento } = useOrders(false, false);
   // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
   // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
-  const [pix, setPix] = useState<{
-    qrCodeBase64?: string;
-    qrCode?: string;
-    expiraEm: string;
-    ticketUrl?: string;
-  } | null>(null);
+  const [pix, setPix] = useState<DadosDoPix | null>(null);
 
   // Padrão de ref para callback em recurso imperativo. `onErro` é tipicamente
   // um closure inline de quem consome o componente (`onErro={(m) =>
   // setErro(m)}`), e MUDA de identidade a cada re-render do pai — um toast,
   // um evento realtime do useOrders, o aviso estimado de prazo. Se
   // `onErro` estivesse nas deps do efeito abaixo, cada re-render do pai
-  // desmontaria o Brick vivo (perdendo o formulário e o que o cliente já
-  // digitou) e recriaria do zero, silenciosamente — sem estourar
-  // ALREADY_INITIALIZED, porque o unmount roda antes do create seguinte.
+  // dispararia `criarPagamento` de novo, silenciosamente (na época do
+  // Payment Brick, desmontava o Brick vivo com o formulário digitado — o
+  // cartão, `PagamentoComCartao.tsx`, usa o mesmo padrão pelo mesmo motivo).
   //
   // A atualização do `.current` vai num `useEffect` sem deps (roda depois de
   // TODO render), não direto no corpo do componente: mutar ref durante o
   // render é erro do `eslint-plugin-react-hooks` ("Cannot access refs during
   // render") — o valor só precisa estar atualizado antes da PRÓXIMA vez que
-  // um callback assíncrono do Brick o ler, nunca durante a renderização.
+  // um callback assíncrono o ler, nunca durante a renderização.
   const onErroRef = useRef(onErro);
   useEffect(() => {
     onErroRef.current = onErro;
@@ -689,8 +442,8 @@ export function PagamentoOnline({
   }, []);
 
   const handleCopiarPix = async (codigo: string) => {
-    // Laudo Opus A-1 (08/09/2026): `montarBrick` só recusa o PIX quando
-    // faltam OS DOIS campos (linha ~234) — a edge extrai `qr_code` e
+    // Laudo Opus A-1 (08/09/2026): `classificarRespostaPagamento` só recusa
+    // o PIX quando faltam OS DOIS campos — a edge extrai `qr_code` e
     // `qr_code_base64` em separado, então o estado `{qrCodeBase64,
     // qrCode: undefined}` é alcançável. Sem esta guarda,
     // `copiarParaClipboard("")` resolveria `true` e o botão diria "Copiado!"

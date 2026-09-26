@@ -38,6 +38,9 @@ const VIEW_PREFETCH_MAP: Record<string, () => Promise<unknown>> = {
   // chunk do PDV (que arrasta o leitor de código) nunca desce para
   // cliente nenhum; só aquece no hover/touch de quem já está no painel.
   "admin-pdv": () => import("@/views/admin/AdminPdvView"),
+  "admin-crm": () => import("@/views/admin/AdminCrmView"),
+  "admin-financeiro": () => import("@/views/admin/AdminFinanceiroView"),
+  "admin-devolucoes": () => import("@/views/admin/AdminDevolucoesView"),
   "admin-coupons": () => import("@/views/admin/AdminCouponsView"),
   "admin-coupon-form": () => import("@/views/admin/AdminCouponFormView"),
   "admin-banners": () => import("@/views/admin/AdminBannersView"),

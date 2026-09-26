@@ -79,10 +79,12 @@ export function escaparHtml(texto: unknown): string {
 /**
  * Como cada forma de pagamento se chama para quem comprou.
  *
- * O rotulo `online` diz "PIX" e nao "cartao ou PIX": a `criar-pagamento`
- * devolve 400 para qualquer coisa que nao seja PIX, e o Brick so' oferece
- * `bankTransfer`. Prometer cartao aqui seria a tela dizendo o que o sistema
- * nao faz — o defeito que a release 1.4.0 inteira existiu para acabar.
+ * `online` sem mais nada continua "PIX pelo site": ate a Fase 3.5
+ * (26/09/2026) o PIX era a UNICA forma online, entao todo pedido `online`
+ * antigo — `metodo_online` NULL — foi PIX de fato, nao palpite. Desde o
+ * cartao, o segundo argumento (`marketplace_orders.metodo_online`: pix,
+ * credito ou debito) diz qual foi; valor fora desse conjunto vira "Pagamento
+ * pelo site", que e verdade sem inventar a forma.
  */
 /**
  * `Map`, e nao objeto literal: indexar objeto por chave que veio de fora e o
@@ -98,8 +100,17 @@ const ROTULO_PAGAMENTO = new Map<string, string>([
   ["cash", "Dinheiro na entrega"],
 ]);
 
-export function rotuloDoPagamento(metodo: unknown): string {
+const ROTULO_DO_ONLINE = new Map<string, string>([
+  ["pix", "PIX pelo site"],
+  ["credito", "Cartao de credito pelo site"],
+  ["debito", "Cartao de debito pelo site"],
+]);
+
+export function rotuloDoPagamento(metodo: unknown, metodoOnline?: unknown): string {
   const chave = String(metodo ?? "").toLowerCase();
+  if (chave === "online" && metodoOnline !== undefined && metodoOnline !== null && metodoOnline !== "") {
+    return ROTULO_DO_ONLINE.get(String(metodoOnline).toLowerCase()) ?? "Pagamento pelo site";
+  }
   // Metodo desconhecido nao vira palpite: some a linha inteira, e quem
   // chama decide. Inventar "Outro" seria informar o que ninguem sabe.
   return ROTULO_PAGAMENTO.get(chave) ?? "";

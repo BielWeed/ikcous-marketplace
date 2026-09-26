@@ -2024,6 +2024,198 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // A DEVOLUÇÃO NASCE NO PEDIDO (26/09/2026, migration 20261175000000):
+  // marcadores que somem se a regra for tirada — tipo decidido no servidor,
+  // foto só da própria pasta, reembolso com trava de saldo e reestoque único.
+  //
+  // SEGUNDA REVISÃO (mesmo dia, rodada 2): quatro marcadores atualizados ou
+  // novos, achados 1/2/3/4 — ver os comentários de cada achado no próprio
+  // .sql. O marcador de v_disponivel do achado 3 SUBSTITUI o antigo (que
+  // terminava em `- v_em_voo;` sem o `- v_ja_manual`); deixá-lo como estava
+  // faria este mapa gritar "divergência" para sempre depois do REPLACE.
+  "20261175000000_a_devolucao_nasce_no_pedido.sql": [
+    {
+      funcao: "solicitar_devolucao",
+      esperado: [
+        "OR split_part(v_foto, '/', 1) <> v_uid::text",
+        "RAISE EXCEPTION 'Fora do prazo de arrependimento a loja aceita troca ou vale-troca.' USING ERRCODE = '22023';",
+      ],
+    },
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        "IF v_reestocar AND v_di.reestocado_em IS NULL THEN",
+        // Achado 3: desconta o reembolso manual JÁ CONCLUÍDO de outra
+        // devolução do mesmo pedido (marcador atualizado — o antigo parava
+        // em `- v_em_voo;`).
+        "v_disponivel := v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo - v_ja_manual;",
+        // Achado 4: stock_returned_at só desliga o REESTOQUE do item — não
+        // bloqueia mais a conclusão inteira (o bloqueio antigo virou
+        // comentário; sem este marcador, a trava certa podia sumir de novo
+        // e o mapa continuaria "ok" olhando só para o texto de cima).
+        "AND v_condicao <> 'ausente'\n                   AND v_o.stock_returned_at IS NULL;",
+      ],
+    },
+    {
+      // Achado 2 (rodada 2): manual é TERMINAL, refund_id é obrigatório para
+      // reemitir, e a reemissão pelo Mercado Pago revalida o pedido (status
+      // + pagamento + 180 dias) igual à conclusão — sem isto, um reembolso
+      // já resolvido por fora podia sair de novo pelo MP, ou um pedido morto
+      // podia reemitir para sempre.
+      funcao: "admin_devolucao_reemitir_reembolso",
+      esperado: [
+        "IF v_d.reembolso_manual THEN\n    RAISE EXCEPTION 'Esta devolução já foi resolvida manualmente (fora do app); não há reembolso para reemitir.'",
+        "IF v_d.refund_id IS NULL THEN\n    RAISE EXCEPTION 'Esta devolução não tem um reembolso recusado para reemitir.' USING ERRCODE = '22023';",
+        "IF NOT v_pago_pelo_app THEN\n    RAISE EXCEPTION 'Este pedido não é mais elegível para reembolso pelo Mercado Pago (prazo de 180 dias ou forma de pagamento). Reemita como manual (p_manual = true).'",
+        // Achado 3: mesma trava de saldo descontando reembolso manual de
+        // outra devolução do mesmo pedido.
+        "v_disponivel := GREATEST(v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo - v_ja_manual, 0);",
+      ],
+    },
+    {
+      // Achado 1 (rodada 2): redefinição nascida em 20261164000000 — o balde
+      // "Devolver agora" do painel precisa saber quanto já voltou por
+      // devolução manual, ou dobra a cobrança visual do valor a estornar.
+      funcao: "get_admin_orders_cancelados_recentes",
+      esperado: [
+        "'valor_devolvido_por_devolucao', c.valor_devolvido_por_devolucao",
+        "COALESCE((SELECT sum(d.valor_reembolso) FROM public.devolucoes d\n                              WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0)\n                     AS valor_devolvido_por_devolucao",
+        // Achado A4 (rodada 3): o front também precisa do estorno CONFIRMADO
+        // (ledger) para calcular o que falta — sem isto, um estorno parcial
+        // já pago pelo MP não descontava do "Devolver agora".
+        "'valor_estornado', c.valor_estornado",
+      ],
+    },
+    {
+      // Achado 3 (rodada 2): redefinição nascida em 2026110000000 — o
+      // "Devolver dinheiro" clássico (pedido cancelado antes do envio) tinha
+      // o MESMO buraco do achado 3 na conclusão: não descontava reembolso
+      // manual já concluído do mesmo pedido.
+      funcao: "solicitar_estorno",
+      esperado: [
+        "SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual\n      FROM public.devolucoes d\n     WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;",
+        "v_saldo := v_total - v_valor_estornado - v_em_curso - v_ja_manual;",
+      ],
+    },
+    {
+      // Achado A2 (rodada 3): redefinição nascida em 2026110000000 — o
+      // estorno AUTOMÁTICO do cancelamento (pedido pago cancelado antes do
+      // envio) abria order_refunds pelo v_total CHEIO, sem saber que uma
+      // devolução deste mesmo pedido já tinha pago parte por fora (pedido
+      // reativado e cancelado de novo). Mesmo desconto dos achados 1/3.
+      funcao: "update_order_status_atomic",
+      esperado: [
+        "SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual\n          FROM public.devolucoes d\n         WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;",
+        "IF v_total - v_ja_manual > 0 THEN\n            INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por)\n            VALUES (p_order_id, v_total - v_ja_manual, 'cancelamento antes do envio',",
+      ],
+    },
+  ],
+  // O CARTÃO ONLINE NASCE (26/09/2026, migration 20261176000000): a vaga só é
+  // solta se a cobrança ainda for a gravada e o pedido seguir aguardando.
+  "20261176000000_o_cartao_online_nasce.sql": [
+    {
+      funcao: "liberar_cobranca_do_pedido",
+      esperado: [
+        "AND gateway_payment_id = p_gateway_payment_id",
+        {
+          texto: "tentativas_de_pagamento = tentativas_de_pagamento + 1,",
+          vezes: 2,
+        },
+      ],
+    },
+    {
+      // Achado 1 (rodada 2): "Já devolvi" recusa quando não sobra mais nada a
+      // devolver (uma devolução manual já tirou tudo, ou o próprio estorno já
+      // saiu por aqui antes) — sem isto, o mesmo dinheiro saía duas vezes.
+      funcao: "registrar_estorno_manual",
+      esperado: [
+        "SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual\n          FROM public.devolucoes d\n         WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;",
+        "IF v_total - v_valor_estornado - v_ja_manual <= 0 THEN\n            RAISE EXCEPTION 'Este pedido não tem mais nada a devolver: o valor já saiu por outro caminho (devolução ou estorno).'",
+      ],
+    },
+    {
+      // Achado 7 (rodada 2): o carimbo do achado F precisa cobrir TAMBÉM o
+      // caminho direto de confirmar_pagamento('estornado'), não só
+      // registrar_estorno_manual — sem isto, fin__movimentos cai de volta no
+      // updated_at para esse caminho, o mesmo buraco do achado F por outra
+      // porta.
+      funcao: "marca_estorno_direto_do_pedido",
+      esperado: [
+        "NEW.estorno_manual_registrado_em := COALESCE(NEW.estorno_manual_registrado_em, now());",
+      ],
+    },
+  ],
+  // O FINANCEIRO DA LOJA NASCE (26/09/2026, migration 20261177000000): o
+  // dinheiro sai das fontes (pedido pago/recebido) e o caixa fechado não se
+  // reescreve.
+  //
+  // SEGUNDA REVISÃO (mesmo dia, rodada 2): achados 1 (dupla contagem de
+  // devolução manual + estorno externo), 4/5 (CMV: só CANCELADO com estoque
+  // de volta some, e o desconto de devolução parcial não pode repetir um
+  // pedido já excluído por inteiro), 8 (gaveta só conta pedido com dinheiro
+  // DE VERDADE recebido) e 13 (política de quebra x sobra na abertura, dona
+  // decidiu por escrito).
+  "20261177000000_o_financeiro_da_loja_nasce.sql": [
+    {
+      funcao: "fin__movimentos",
+      esperado: [
+        "AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+        // Achado 1: desconta o que uma devolução CONCLUÍDA com reembolso
+        // manual do mesmo pedido já tirou da loja.
+        "(v.total - COALESCE(v.valor_estornado, 0) - COALESCE(dm.valor, 0))::numeric,",
+      ],
+    },
+    {
+      funcao: "fin_lancamento_cancelar",
+      esperado: ["WHERE s.id = v_l.caixa_sessao_id AND s.status = 'fechado'"],
+    },
+    {
+      // Achados 1 e 8: a gaveta desconta a devolução manual concluída do
+      // mesmo pedido, e só conta estorno externo de pedido que teve dinheiro
+      // DE VERDADE na mão (pagamento_recebido_em IS NOT NULL).
+      funcao: "fin__caixa_calculo",
+      esperado: [
+        "SELECT COALESCE(sum(o.total - COALESCE(o.valor_estornado, 0) - COALESCE(dm.valor, 0)), 0) INTO v_estornos_externos",
+        "AND o.pagamento_recebido_em IS NOT NULL",
+      ],
+    },
+    {
+      // Achados 4 e 5: só CANCELADO com estoque de volta some do CMV (não
+      // stock_returned_at sozinho — a política P1 reativa pedido de verdade
+      // entregue com esse carimbo ainda ligado), e o desconto de devolução
+      // parcial (cmv_volta) não pode repetir um pedido já excluído inteiro.
+      funcao: "fin_dre",
+      esperado: [
+        "AND NOT (o2.status = 'cancelled' AND o2.stock_returned_at IS NOT NULL)),",
+        "AND NOT (o3.status = 'cancelled' AND o3.stock_returned_at IS NOT NULL)),",
+      ],
+    },
+    {
+      // Achado 13 (política do dono, por escrito): falta na abertura CONTRA
+      // o último fechamento é Quebra de caixa DE VERDADE (pesa na DRE);
+      // sobra, ou falta na 1ª abertura (sem fechamento anterior para
+      // comparar), é fora_dre — troco que já existia fora do fluxo da loja.
+      // Achado A1 (rodada 3): a categoria decide com a MESMA base do
+      // tipo/valor (v_valor contra v_saldo) — o marcador antigo comparava
+      // contra v_referencia (que priorizava v_ultimo_contado), e um
+      // movimento de caixa registrado com a sessão FECHADA fazia v_saldo
+      // divergir do último contado, trocando sobra por falta.
+      funcao: "fin_caixa_abrir",
+      esperado: [
+        "SELECT s.valor_contado INTO v_ultimo_contado",
+        "WHEN v_valor > COALESCE(v_saldo, 0)\n        THEN 'f2000000-0000-4000-8000-000000000006'::uuid -- fora_dre: sobra/aporte",
+        "WHEN v_ultimo_contado IS NOT NULL\n        THEN 'f2000000-0000-4000-8000-000000000031'::uuid -- Quebra de caixa (financeiro, na DRE)",
+      ],
+    },
+  ],
+  // O CRM E O INÍCIO LEEM A LOJA (26/09/2026, migration 20261178000000): só
+  // venda com dinheiro reconhecido e pedido vivo entra no CRM.
+  "20261178000000_o_crm_e_o_inicio_leem_a_loja.sql": [
+    {
+      funcao: "crm__vendas",
+      esperado: ["AND o.status NOT IN ('cancelled', 'returned')"],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

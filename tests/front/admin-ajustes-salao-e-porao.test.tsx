@@ -477,6 +477,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
       // Peça 20 (pedido do dono, 14/09): o Mercado Pago vira grupo próprio,
       // ao lado de Entrega e antes do PORÃO (Ferramentas).
       "Pagamentos",
+      // Devoluções (plano 2026-09-26): a política de trocas da loja mora
+      // num grupo próprio, antes do PORÃO.
+      "Pós-venda",
       "Ferramentas",
     ]);
   });
@@ -519,8 +522,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // "Nome, logo e cores" e "Atendimento" SAÍRAM em 22/09/2026 (duplicados
     // de AdminAboutStoreView): sobram Entrega e frete, Formas de pagamento
     // (25/09/2026, migration 20261174000000), Mercado Pago, Minha loja está
-    // no ar? e Consultas de frete.
-    expect(cabecalhos.length).toBe(5);
+    // no ar? e Consultas de frete — e, desde o plano 2026-09-26, Trocas e
+    // devoluções (grupo Pós-venda).
+    expect(cabecalhos.length).toBe(6);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }
