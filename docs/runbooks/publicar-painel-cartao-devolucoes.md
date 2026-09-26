@@ -454,6 +454,13 @@ cartão aparece para todo cliente, então faça em horário sem movimento.
   2. No painel do MP, só pode existir **uma** order com esse `external_reference` por
      tentativa, porque a chave é `<pedido>:c<n>`, sem o token.
   3. Os logs da `criar-pagamento` não podem ter `cartao_orfao`.
+  4. **Resíduo aceito (achado #2, 8ª rodada de risco)**: se a MESMA chamada que troca de forma
+     (PIX→cartão, cartão morto→cartão novo, sentinela liberado→cartão novo) tiver a criação do
+     cartão NOVO falhando de novo (rede/timeout/5xx), a vaga fica presa até `expires_at` — a order
+     nova nasce milissegundos depois do limite que a PRÓPRIA chamada acabou de gravar, dentro da
+     margem de 15s, e nunca libera sozinha. Sem dinheiro em jogo (é o cliente da PRÓPRIA chamada) e
+     raro (exige duas falhas seguidas). Se aparecer no teste, confirme que é ISTO antes de tratar
+     como bug novo.
 - [ ] **Débito**, se ligado: o Brick mostra só o que o MP aceita para a conta. Na Orders API do
   Brasil, isso é débito Elo.
 - [ ] Todos os eventos acima têm `200` nos logs do `webhook-mercadopago`.
@@ -480,6 +487,15 @@ a API real):
   a busca confiável, a liberação da vaga degrada, em silêncio, para "PIX bloqueado até
   `expires_at`" — inclusive no caso mais comum, a recusa cuja resposta se perdeu (S1 da 3ª
   rodada de achados de risco).
+- [ ] **Desvio de relógio entre o `date_created` do MP e o relógio desta function** (achado #6, 8ª
+  rodada de risco): meça a diferença entre o instante em que uma order de teste é criada (medido
+  por ESTE servidor, `Date.now()` logo após o POST responder) e o `date_created` que a Orders API
+  devolve para ela. `MARGEM_LIBERAR_APOS_LIMITE_MS` (15s, `resolverSentinela`) depende deste
+  desvio ser pequeno — se o relógio do MP correr atrasado por mais de ~15s, uma order NOVA
+  (legítima) pode parecer "criada antes do limite" e nunca liberar; se correr adiantado, o
+  problema é o oposto (o achado B1 original: uma order da tentativa ANTERIOR parece "depois" do
+  limite e libera errado). Se o desvio medido for maior que uma fração pequena da margem, ela
+  precisa subir.
 - [ ] **Idempotência da Orders API, corrigida na 7ª rodada** (a frase anterior aqui estava
   errada): a mesma `X-Idempotency-Key` com CORPO diferente (token novo a cada tentativa, por
   exemplo) devolve `409 idempotency_key_already_used`, NÃO a mesma order — é esse 409 que vira
@@ -487,6 +503,15 @@ a API real):
   replay e devolve a MESMA order — é o que permite o retry de cartão sobre o sentinela DA MESMA
   tentativa repetir o POST com a mesma chave sem duplicar a cobrança (item 2, 7ª rodada). Confirme
   os dois casos no sandbox antes de ligar; é a premissa do achado A1.
+- [ ] **A Orders API valida o CORPO antes ou depois de olhar a idempotência?** (achado #3, 8ª
+  rodada de risco — UNVERIFIED, o código assume o pior caso por precaução). No sandbox: crie uma
+  order de cartão de teste com uma chave de idempotência `K`; repita o POST com a MESMA chave `K`,
+  corpo DIFERENTE, mas com um dado INVÁLIDO de propósito (token de cartão malformado). Se a
+  resposta for `409 idempotency_key_already_used` (a idempotência venceu, o corpo nem foi
+  validado), o código está mais conservador do que precisa — soltar a vaga só em 201/402 nunca
+  perde a c0. Se a resposta for `400` (o corpo foi validado primeiro, ANTES de olhar a chave), o
+  código já está certo em NUNCA soltar a vaga com um 400 sobre um sentinela — é exatamente o caso
+  que motivou a correção (a c0 pode estar viva por baixo do 400, achado R7-V).
 - [ ] Os códigos de 400 que culpam o dado do cartão são `invalid_card_token`,
   `card_token_not_found` e `bad_filled_card_data`. A lista não foi conferida na doc do MP
   (`erro400EhDeDadoDoCartao`). Qualquer outro 400 vira 502.

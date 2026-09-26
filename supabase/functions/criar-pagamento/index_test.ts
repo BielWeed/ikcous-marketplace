@@ -28,8 +28,11 @@ import {
 // (B1, Q3) precisam do limite inferior de VERDADE gravado no sentinela, não
 // de um valor calculado antes da chamada que o escreve — a MESMA técnica
 // que o harness do 6º/7º revisor usa (`limiteInferiorDoSentinela` do
-// sentinela lido do banco, nunca um timestamp adivinhado).
-import { limiteInferiorDoSentinela } from "../_shared/mercadopago.ts";
+// sentinela lido do banco, nunca um timestamp adivinhado). `resolverSentinela`
+// (achado #1, 8ª rodada de risco, 26/09/2026): prova, num nível abaixo do
+// handler, que o limite PRESERVADO ainda libera quando a order que ele
+// protege aparece morta.
+import { limiteInferiorDoSentinela, resolverSentinela } from "../_shared/mercadopago.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes do fim deste arquivo — fixture escrito à mão não
 // provaria que a function decifra de verdade. Desde a tarefa mp-6 o fixture
@@ -2504,21 +2507,49 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // separou o antigo `respostaCartaoAmbiguoNaCriacao` único num `if
   // (status === 0 || status >= 500)` + um `json({error: r.erro}, 502)` NOVO
   // para o 4xx definitivo que sobra (429/404/422/...): +1. 44 + 1 = 45.
-  assertEquals(achados, 45);
+  //
+  // 46, não mais 45: achado #4b (8ª rodada de risco, 26/09/2026, flag
+  // scoping). O 409 "Este pedido já tem uma cobrança gerada." da RELEITURA
+  // depois de liberar (`decisaoDepoisDeLiberar.acao === "reconsultar"`)
+  // virou condicional (sentinela OU cartão vivo no `pedidoRelido`) — mesma
+  // duplicação sem chave aninhada de sempre: +1. O par equivalente da
+  // corrida na gravação final (`atual?.gateway_payment_id`) só GANHOU mais
+  // condições no MESMO `if` que já disparava um dos dois `json(...)`
+  // existentes (`cartaoAmbiguoAposCorrida`) — nenhum ponto de retorno novo
+  // ali. Os achados #1/#2a-408-409/#3/#4a não tocam `json(...)` novo (o #1
+  // só faz `ocuparVagaComSentinela` devolver mais cedo; o #2a-408-409 só
+  // alarga a CONDIÇÃO que já levava ao mesmo par de chamadas de sempre; o #3
+  // só condiciona um `await liberarCobranca(...)` já existente, sem trocar o
+  // `json(...)` que vem depois; o #4a só sincroniza uma variável em
+  // memória). 45 + 1 = 46.
+  //
+  // 47, não mais 46: achado A da revisão de risco da migration 80 (26/09/
+  // 2026, adendo à 8ª rodada, prova W). O cancelamento do cliente
+  // (`update_order_status_atomic`) grava `status = 'cancelled'` sem tocar
+  // `payment_status` — a gravação da cobrança de cartão ganhou um ponto de
+  // retorno NOVO para quando a Orders API já aprovou/está processando
+  // (`processed`/`processing`) e a corrida encontra a vaga cancelada: avisa
+  // o admin e devolve "Seu cartão pode ter sido cobrado…" (MESMO
+  // identificador do N7, já conhecido — mais uma ocorrência, não uma entrada
+  // nova). O ramo irmão (`action_required`/`created`) reaproveita o `json(...)`
+  // já existente de "O prazo para pagar este pedido acabou." (só ganhou mais
+  // uma condição no `if`) — nenhum ponto de retorno novo ali. 46 + 1 = 47.
+  assertEquals(achados, 47);
 });
 
-// Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª e na 7ª
-// rodada (revisão do checkout front, 26/09/2026): a tela do checkout (outro
-// agente) decide se pode oferecer "Cancelar pedido"/PIX olhando o campo
-// `cartaoEmAnalise` — o contrato é "um cartão pode existir, num estado que
-// esta function não comprovou morto; nunca ofereça PIX, nunca ofereça
-// cancelar". Nove pontos de retorno cumprem essa condição hoje:
+// Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
+// na 8ª rodada (revisão do checkout front, 26/09/2026): a tela do checkout
+// (outro agente) decide se pode oferecer "Cancelar pedido"/PIX olhando o
+// campo `cartaoEmAnalise` — o contrato é "um cartão pode existir, num estado
+// que esta function não comprovou morto; nunca ofereça PIX, nunca ofereça
+// cancelar". Onze pontos de retorno cumprem essa condição hoje:
 //   1-2. os dois 409 de "cartão em análise" originais (sentinela não
 //        resolvido; cartão `processing`/cancelamento negado);
 //   3. a reconsulta da vaga (`consultarOrder`) que falha (502) — SÓ quando
 //      `pedido.metodo_online` já é credito/debito (achado R6-P5b da 7ª
 //      rodada: sem isto, um PIX-only também herdava a flag);
-//   4. a criação ambígua — rede/timeout/5xx (502) — o MP pode ter processado
+//   4. a criação ambígua — rede/timeout/5xx, 408, ou um 409 sem o código de
+//      idempotência (502, achado #5 da 8ª rodada) — o MP pode ter processado
 //      a order antes de a resposta se perder;
 //   5. o N7 terminal, "Seu cartão pode ter sido cobrado…" (409) — perdeu a
 //      corrida da vaga com uma cobrança aprovada (ou irreversível) na mão;
@@ -2529,9 +2560,23 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
 //        achado da 7ª rodada) — SÓ quando o cancelamento da NOSSA order
 //        falhou, ou a releitura falhou; se o cancelamento teve sucesso e a
 //        vaga segura um PIX de outra aba, a flag fica de fora de propósito.
+//        Achado #4b (8ª rodada): "já tem uma cobrança gerada" TAMBÉM leva a
+//        flag quando o OCUPANTE (`atual`, lido com `metodo_online`) é
+//        sentinela ou cartão vivo, mesmo sem `cartaoAmbiguoAposCorrida`
+//        (metodo desta chamada podia ser PIX) — MESMO ponto de retorno, não
+//        um novo.
+//   10. a releitura depois de LIBERAR a vaga (`decisaoDepoisDeLiberar.acao
+//       === "reconsultar"`) — achado #4b (8ª rodada): SÓ quando o
+//       `pedidoRelido` mostra sentinela ou cartão vivo (`metodo_online`
+//       credito/debito).
+//   11. a gravação da cobrança encontra o pedido CANCELADO pelo cliente
+//       (`gravado.status === "cancelled"`, achado A da revisão de risco da
+//       migration 80, adendo à 8ª rodada) com a order `processed`/
+//       `processing` — MESMA mensagem do N7 (ponto 5), ponto de retorno
+//       diferente.
 // Este teste prova as DUAS metades por RASTREAMENTO DE FONTE (mesmo
 // mecanismo do teste "achados", acima), não por cenário a cenário, para
-// pegar um json(...) novo com a flag fora do contrato, ou um dos nove que
+// pegar um json(...) novo com a flag fora do contrato, ou um dos onze que
 // perca a flag.
 Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cartão pode existir num estado não comprovadamente morto", async () => {
   const fonte = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
@@ -2544,9 +2589,9 @@ Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cart�
     ["Há um pagamento com cartão em análise para este pedido.", 409], // 1 e 2
     ["r.erro", 502], // 3 — reconsulta da vaga (`consultarOrder`) falhou
     ["erroOriginal", 502], // 4 — criação ambígua (respostaCartaoAmbiguoNaCriacao)
-    ["Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.", 409], // 5 — N7
+    ["Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.", 409], // 5 e 11 — N7 e achado A (migration 80)
     ["O prazo para pagar este pedido acabou.", 409], // 6 e 8 — sempre 409, com terminal:true junto
-    ["Este pedido já tem uma cobrança gerada.", 409], // 7 e 9
+    ["Este pedido já tem uma cobrança gerada.", 409], // 7, 9 e 10 (achado #4b, 8ª rodada, acrescenta o 10)
     ["Não foi possível confirmar a cobrança.", 409], // 9 (releitura sem causa conhecida)
   ]);
 
@@ -2573,8 +2618,8 @@ Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cart�
 
   assertEquals(
     comOFlag,
-    10,
-    "o campo tem que aparecer em exatamente dez pontos de retorno (9 lugares; 'Há um pagamento...' aparece em 2) — ver a lista no comentário acima",
+    12,
+    "o campo tem que aparecer em exatamente doze pontos de retorno (11 lugares; 'Há um pagamento...' aparece em 2) — ver a lista no comentário acima",
   );
 });
 
@@ -2719,6 +2764,324 @@ Deno.test("R6-P5 (item 2b): rede falha ANTES de chegar ao MP (zero orders) -> re
   assertEquals(c2.paymentId, mp.orders[0].id);
   assertEquals(db.linha.gateway_payment_id, mp.orders[0].id, "a vaga trocou o sentinela pelo id real");
   assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), false);
+});
+
+// R7-R (8º revisor, achado #1 da 8ª rodada de risco, 26/09/2026): um retry
+// com TOKEN NOVO sobre um sentinela JÁ existente batia 409 de idempotência de
+// novo (a c0 existe no MP, só a resposta se perdeu) — e `ocuparVagaComSentinela`
+// REGRAVAVA o sentinela com um limite inferior NOVO (`limiteInferiorDaTentativa
+// (pedido)` lê `pedido.updated_at`, que agora É o instante da gravação
+// ANTERIOR). Cada retry empurrava o limite pra mais perto da c0, até ela
+// nunca mais bater `criadaEm > limiteInferior + margem` — o sentinela nunca
+// liberava sozinho mesmo com a c0 MORTA de verdade, e cada retry ainda
+// avisava o admin de novo à toa.
+Deno.test("R7-R (achado #1, 8ª rodada): retry com TOKEN NOVO sobre o sentinela NÃO regrava o limite nem avisa o admin de novo — a c0 morta ainda libera com o limite original", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpComEstado({ cartaoStatus: "processing", perderResposta: 1 });
+  let avisos = 0;
+  const deps = {
+    supabase: db,
+    fetchImpl: mp.fn,
+    alertarAdminCartaoOrfao: async () => {
+      avisos++;
+    },
+  };
+
+  const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), deps);
+  const c1 = await r1.json();
+  assertEquals(r1.status, 502);
+  assertEquals(c1.cartaoEmAnalise, true);
+  assertEquals(mp.orders.length, 1, "a c0 FOI criada no MP — só a resposta se perdeu");
+  const s1 = db.linha.gateway_payment_id as string;
+  assertEquals(avisos, 1);
+
+  // Retry: token novo, MESMA chave (tentativas não avançou) -> o MP vê o
+  // corpo diferente sob a chave já usada e devolve 409 de novo.
+  const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), deps);
+  const c2 = await r2.json();
+  const s2 = db.linha.gateway_payment_id as string;
+
+  assertEquals(r2.status, 200);
+  assertEquals(c2.statusPagamento, "aguardando");
+  assertEquals(mp.orders.length, 1, "o MP nunca viu um corpo novo virar order — só o 409 de idempotência de novo");
+  assertEquals(s2, s1, "o sentinela NÃO foi regravado: mesmo limite inferior de antes, byte a byte");
+  assertEquals(avisos, 1, "nenhum aviso NOVO ao admin — nada mudou desde a 1ª vez");
+
+  // Prova que o limite PRESERVADO ainda libera quando a ÚNICA order de
+  // verdade (a c0) aparece morta — construída à mão porque `mpComEstado`
+  // (o MP falso) não grava `date_created` (nenhum outro teste dele precisa
+  // disso; o valor real viria da Orders API).
+  const limite = limiteInferiorDoSentinela(s2)!;
+  const c0Morta = {
+    id: mp.orders[0].id,
+    status: "failed",
+    status_detail: "cc_rejected_other_reason",
+    external_reference: UUID,
+    date_created: new Date(limite + 20_000).toISOString(),
+    transactions: { payments: [{ payment_method: { type: "credit_card" } }] },
+  };
+  assertEquals(
+    resolverSentinela([c0Morta], limite)?.acao,
+    "liberar",
+    "com o limite intacto, a c0 morta ainda libera",
+  );
+});
+
+// R7-V (8º revisor, achado #3 da 8ª rodada de risco, 26/09/2026): um retry
+// sobre o sentinela recebendo 400 (hipótese: o MP valida o CORPO antes da
+// idempotência) NÃO prova nada sobre a c0 ambígua por baixo — soltar a vaga
+// aqui abria espaço para uma SEGUNDA cobrança quando a c0 aprovasse depois.
+Deno.test("R7-V (achado #3, 8ª rodada): retry sobre o sentinela recebe 400 -> NÃO libera a vaga; PIX continua bloqueado, sem dobrar quando a c0 aprovar", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpComEstado({ cartaoStatus: "processing", perderResposta: 1 });
+  const deps = { supabase: db, fetchImpl: mp.fn, alertarAdminCartaoOrfao: async () => {} };
+
+  const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), deps);
+  const c1 = await r1.json();
+  assertEquals(r1.status, 502);
+  assertEquals(c1.cartaoEmAnalise, true);
+  assertEquals(mp.orders.length, 1, "a c0 FOI criada — só a resposta se perdeu");
+
+  // Retry (token novo): a Orders API, NESTA hipótese, valida o CORPO antes da
+  // idempotência — o token novo é "inválido" e ela recusa com 400 sem sequer
+  // olhar a chave repetida (por isso a c0 não aparece em lugar nenhum desta
+  // resposta).
+  const fnValidaAntesDaIdempotencia = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      const corpo = JSON.parse(String(init.body));
+      if (corpo.transactions.payments[0].payment_method.token === OUTRO_TOKEN_CARTAO) {
+        return new Response(JSON.stringify({ errors: [{ code: "invalid_card_token" }] }), { status: 400 });
+      }
+    }
+    return mp.fn(url, init);
+  };
+  const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    ...deps,
+    fetchImpl: fnValidaAntesDaIdempotencia,
+  });
+  const c2 = await r2.json();
+  assertEquals(r2.status, 200, "recusa (dado do cartão) — resposta 200 de sempre, com motivo");
+  assertEquals(c2.statusPagamento, "recusado");
+  assertEquals(
+    db.linha.gateway_payment_id?.startsWith("verificando:"),
+    true,
+    "a vaga NÃO foi liberada — o 400 desta chamada não prova nada sobre a c0",
+  );
+
+  // PIX na mesma reserva continua bloqueado — nunca cria uma SEGUNDA
+  // cobrança enquanto a c0 pode cair aprovada por baixo.
+  const rPix = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    ...deps,
+    fetchImpl: fnValidaAntesDaIdempotencia,
+  });
+  const cPix = await rPix.json();
+  assertEquals(rPix.status, 409);
+  assertEquals(cPix.cartaoEmAnalise, true);
+  assertEquals(
+    mp.orders.some((o) => (o.transactions as { payments: { payment_method: { type: string } }[] }).payments[0].payment_method.type === "bank_transfer"),
+    false,
+    "nenhuma SEGUNDA cobrança foi criada",
+  );
+});
+
+// R7-F (8º revisor, achado #4 da 8ª rodada de risco, 26/09/2026): um PIX
+// sobre um sentinela que a busca RESOLVE para um cartão vivo grava o id real
+// e `metodo_online` no banco — mas `pedido.metodo_online`, em MEMÓRIA,
+// continuava `null` até a correção. Se a reconsulta POR ID desse cartão (o
+// passo seguinte, para decidir se ele está mesmo vivo) falhar, a flag saía
+// de fora — mesmo já sabendo, momentos antes, que a vaga é cartão.
+Deno.test("R7-F (achado #4, 8ª rodada): PIX sobre sentinela resolvido para cartão VIVO, com o GET por id falhando -> 502 COM cartaoEmAnalise", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpComEstado({ cartaoStatus: "processing", perderResposta: 1 });
+  const deps = { supabase: db, fetchImpl: mp.fn, alertarAdminCartaoOrfao: async () => {} };
+
+  await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), deps);
+  const idC0 = mp.orders[0].id as string;
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
+
+  // A busca (Ponto 1/B1) acha a c0 VIVA (`processing`) e resolve o sentinela
+  // para o id real — mas a reconsulta POR ID que vem em seguida (para
+  // decidir se ainda está viva) FALHA (500).
+  const fnBuscaAchaVivaGetFalha = async (url: string, init?: RequestInit) => {
+    if ((init?.method ?? "GET") === "GET" && /\/v1\/orders\?/.test(url)) {
+      return new Response(JSON.stringify({ results: [mp.orders[0]] }), { status: 200 });
+    }
+    if (url.endsWith(`/v1/orders/${idC0}`)) {
+      return new Response(JSON.stringify({ errors: [{ code: "internal_error" }] }), { status: 500 });
+    }
+    return mp.fn(url, init);
+  };
+  const rp = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    ...deps,
+    fetchImpl: fnBuscaAchaVivaGetFalha,
+  });
+  const cp = await rp.json();
+
+  assertEquals(rp.status, 502);
+  assertEquals(cp.cartaoEmAnalise, true, "a vaga JÁ resolveu para um cartão — a flag não pode depender da reconsulta seguinte");
+  assertEquals(db.linha.gateway_payment_id, idC0, "a vaga trocou o sentinela pelo id real antes da reconsulta falhar");
+});
+
+// Achado A (revisão de risco da migration 80, 26/09/2026, adendo à 8ª rodada
+// — prova W): o cliente CANCELA (`update_order_status_atomic`, que grava
+// `status = 'cancelled'` SEM tocar `payment_status`, que fica 'aguardando')
+// enquanto o MP ainda processa o cartão. O WHERE da gravação da vaga
+// (`id` + `gateway_payment_id IS NULL`) não olha `status`/`payment_status` —
+// a gravação acontece do mesmo jeito, numa reserva cujo estoque já voltou.
+Deno.test("handler cartão (achado A, migration 80, prova W): cliente CANCELA enquanto o cartão está em voo -> aprovado/em análise avisa o admin; desafio 3DS é cancelado no MP", async () => {
+  for (
+    const [statusMp, esperado] of [
+      ["processed", "avisa"],
+      ["processing", "avisa"],
+      ["action_required", "cancela"],
+    ] as const
+  ) {
+    const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+    const mp = mpComEstado({ cartaoStatus: statusMp });
+    let avisos = 0;
+    const deps = {
+      supabase: db,
+      fetchImpl: async (url: string, init?: RequestInit) => {
+        if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+          // O cancelamento do cliente resolve ENQUANTO o MP processa esta
+          // chamada — simulado aqui, antes da resposta do MP voltar.
+          db.linha.status = "cancelled";
+          return await mp.fn(url, init);
+        }
+        const mCancel = url.match(/\/v1\/orders\/([^/]+)\/cancel$/);
+        if (init?.method === "POST" && mCancel) {
+          const ordem = mp.orders.find((o) => o.id === decodeURIComponent(mCancel[1])) as
+            | { status: string; status_detail: string }
+            | undefined;
+          if (ordem) {
+            ordem.status = "canceled";
+            ordem.status_detail = "canceled";
+            return new Response(JSON.stringify(ordem), { status: 200 });
+          }
+          return new Response(JSON.stringify({ errors: [{ code: "cannot_cancel" }] }), { status: 409 });
+        }
+        return await mp.fn(url, init);
+      },
+      alertarAdminCartaoOrfao: async () => {
+        avisos++;
+      },
+    };
+
+    const r = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), deps);
+    const c = await r.json();
+
+    if (esperado === "avisa") {
+      assertEquals(r.status, 409, `[${statusMp}] dinheiro capturado/podendo capturar numa reserva cancelada -> 409`);
+      assertEquals(c.cartaoEmAnalise, true, `[${statusMp}] flag presente`);
+      assertEquals(avisos, 1, `[${statusMp}] admin avisado — sem como desfazer por aqui`);
+      assertEquals(
+        db.linha.gateway_payment_id,
+        mp.orders[0].id,
+        `[${statusMp}] a gravação ACONTECEU (o dinheiro foi capturado/pode capturar, não some do registro)`,
+      );
+    } else {
+      assertEquals(r.status, 409, `[${statusMp}] 3DS num pedido já cancelado -> 409 terminal, mesmo texto de 'prazo acabou'`);
+      assertEquals(c.terminal, true, `[${statusMp}] terminal`);
+      assertEquals(
+        (mp.orders[0] as { status: string }).status,
+        "canceled",
+        `[${statusMp}] a order REVERSÍVEL foi cancelada no MP — nada foi capturado`,
+      );
+    }
+  }
+});
+
+// Adendo 2 à 8ª rodada de risco (26/09/2026, revisão do front): branch (d)
+// (pedido de cartão com um cartão já em análise/3DS na vaga) devolvia o par
+// cru para sempre quando `mapearStatusOrder` não reconhece o par — o front,
+// corretamente, trata isso como "em análise", e o cliente ficava esperando
+// até a reserva expirar (30-40 min), sem PIX. Sem afirmar "morto": só loga
+// (status + orderId, nunca dado do pagador) e avisa o admin UMA VEZ por par
+// (dedup, `deps.statusesCartaoDesconhecidosAvisados`) — nunca a cada poll.
+Deno.test("handler cartão (adendo 2 à 8ª rodada): status DESCONHECIDO na vaga -> loga e avisa o admin UMA VEZ por par (dedup); NUNCA assume morto", async () => {
+  const idOrderCartao = "ORDTST0STATUSDESCONHECIDO01";
+  let statusAtual = "on_hold";
+  let statusDetailAtual = "um_motivo_que_o_mp_inventar_amanha";
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: idOrderCartao, metodo_online: "credito" }),
+    gravado: null,
+  });
+  const fn = async (url: string) => {
+    if (url.endsWith(`/v1/orders/${idOrderCartao}`)) {
+      return new Response(
+        JSON.stringify({
+          id: idOrderCartao,
+          status: statusAtual,
+          status_detail: statusDetailAtual,
+          transactions: { payments: [{ payment_method: { type: "credit_card" } }] },
+        }),
+        { status: 200 },
+      );
+    }
+    throw new Error(`fetch inesperado no teste do adendo 2: ${url}`);
+  };
+  let avisos = 0;
+  const dedup = new Set<string>();
+  const deps = {
+    supabase,
+    fetchImpl: fn,
+    alertarAdminCartaoOrfao: async () => {
+      avisos++;
+    },
+    statusesCartaoDesconhecidosAvisados: dedup,
+  };
+
+  const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), deps);
+  const c1 = await r1.json();
+  assertEquals(r1.status, 200, "par desconhecido não é erro — devolve o estado atual, como sempre");
+  assertEquals(c1.statusPagamento, "on_hold:um_motivo_que_o_mp_inventar_amanha", "par cru, igual a antes — o front trata como 'em análise'");
+  assertEquals(avisos, 1, "1º poll com este par -> avisa o admin");
+
+  // MESMO par, segundo poll (o cliente esperando, "Tentar de novo"): NENHUM
+  // aviso novo.
+  const r2 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), deps);
+  assertEquals(r2.status, 200);
+  assertEquals(avisos, 1, "dedup: o MESMO par não avisa de novo");
+
+  // O status MUDA para outro par, também desconhecido: avisa de novo — o
+  // dedup é por PAR, não um bloqueio geral para o pedido inteiro.
+  statusAtual = "on_hold";
+  statusDetailAtual = "outro_motivo_novo";
+  const r3 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), deps);
+  assertEquals(r3.status, 200);
+  assertEquals(avisos, 2, "par NOVO -> avisa de novo");
+});
+
+// Achado B (revisão de risco da migration 80, 26/09/2026, adendo à 8ª rodada
+// — prova X): `podeCobrar` só olhava `payment_status`/`expires_at`/
+// `gateway_payment_id` — um PIX CANCELADO pelo cliente (`status = 'cancelled'`,
+// `payment_status` continua 'aguardando') seguia "cobrável": uma aba aberta
+// trocando para cartão cancelava o PIX (ramo (c) da reconsulta) e criava a
+// cobrança nova numa reserva morta.
+Deno.test("handler (achado B, migration 80, prova X): PIX cancelado pelo cliente -> 409 TERMINAL, nunca 'reconsultar' (troca pra cartão não cancela o PIX e cria um novo)", async () => {
+  const idOrderPix = "ORDTST0PIXCANCELADOX000001";
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({
+      user_id: DONO_LOGADO,
+      gateway_payment_id: idOrderPix,
+      metodo_online: "pix",
+      status: "cancelled",
+    }),
+    gravado: null,
+  });
+  const fn = async () => {
+    throw new Error("fetch inesperado no teste do achado B: o pedido CANCELADO tem que recusar antes de tocar o MP");
+  };
+
+  const resposta = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.error, "Este pedido foi cancelado.");
+  assertEquals(corpo.terminal, true);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper

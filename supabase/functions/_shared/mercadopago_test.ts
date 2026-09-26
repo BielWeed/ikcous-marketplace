@@ -1159,8 +1159,33 @@ Deno.test("mapearStatusOrder: canceled + canceled vira recusado — mesmo rótul
   assertEquals(mapearStatusOrder("canceled", "canceled"), "recusado");
 });
 
+// Adendo 2 à 8ª rodada de risco (26/09/2026, revisão do front): a tabela só
+// cobria o detalhe EXATO "canceled" — um detalhe novo do MP (medido por
+// WebSearch contra a doc oficial, já que os domínios mercadopago.* estão
+// bloqueados para fetch direto neste ambiente: "canceled_transaction",
+// "canceled_by_api", UNVERIFIED contra a API real) caía em `null`, e a vaga
+// ficava presa "em análise" para sempre — a Orders API só cancela order em
+// `action_required`/`created` (sem dinheiro capturado ainda), então
+// QUALQUER detalhe de `canceled`/`cancelled` é terminal, igual a `failed`.
+Deno.test("mapearStatusOrder: canceled/cancelled com QUALQUER detalhe vira recusado — a Orders API só cancela order sem dinheiro capturado", () => {
+  assertEquals(mapearStatusOrder("canceled", "canceled_transaction"), "recusado");
+  assertEquals(mapearStatusOrder("canceled", "canceled_by_api"), "recusado");
+  assertEquals(mapearStatusOrder("cancelled", "um_detalhe_que_o_mp_inventar_amanha"), "recusado");
+  // A regra é do STATUS, não do detalhe: o mesmo detalhe com outro status
+  // continua desconhecido.
+  assertEquals(mapearStatusOrder("processing", "canceled"), null);
+});
+
 Deno.test("mapearStatusOrder: expired + expired vira expirado", () => {
   assertEquals(mapearStatusOrder("expired", "expired"), "expirado");
+});
+
+// Adendo 2 à 8ª rodada de risco (26/09/2026): mesma lacuna do canceled —
+// a doc do MP descreve `expired` como "uma order cancelada sem pagamento
+// aprovado ou pendente", terminal por definição, qualquer detalhe.
+Deno.test("mapearStatusOrder: expired com QUALQUER detalhe vira expirado", () => {
+  assertEquals(mapearStatusOrder("expired", "um_detalhe_que_o_mp_inventar_amanha"), "expirado");
+  assertEquals(mapearStatusOrder("processing", "expired"), null);
 });
 
 Deno.test("mapearStatusOrder: failed + failed vira recusado", () => {

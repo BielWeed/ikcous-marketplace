@@ -275,10 +275,23 @@ export const MAPA_STATUS_ORDER: Record<string, string> = {
  * Combinação desconhecida devolve `null`, nunca um palpite — mesma regra
  * herdada do mapearStatus clássico. Leitor fino de MAPA_STATUS_ORDER, acima.
  *
- * A ÚNICA regra fora da tabela: `status === "failed"` é recusa com qualquer
- * `status_detail` (Fase 3.5 — ver o comentário do fim de MAPA_STATUS_ORDER).
- * Não é palpite: `failed` é estado TERMINAL documentado da order, sem
- * dinheiro capturado; o detalhe só diz o motivo.
+ * REGRAS fora da tabela — `status` sozinho decide, qualquer `status_detail`
+ * (Fase 3.5, e adendo 2 da 8ª rodada de risco, 26/09/2026, para as duas de
+ * baixo): os três são estados TERMINAIS documentados da Orders API, sem
+ * dinheiro NOVO capturável — o detalhe só diz o motivo, nunca muda o
+ * desfecho:
+ *   - `"failed"` → 'recusado' (já existia, Fase 3.5).
+ *   - `"canceled"`/`"cancelled"` → 'recusado' (achado do adendo 2: só a
+ *     tabela cobria `"canceled:canceled"` — um detalhe novo, como
+ *     `"canceled_transaction"`/`"canceled_by_api"` (medido por WebSearch
+ *     contra a doc do MP, domínios mercadopago.* bloqueados para fetch
+ *     direto neste ambiente — UNVERIFIED contra a API real), caía em `null`
+ *     e a vaga ficava "em análise" para sempre, mesmo com a order já
+ *     cancelada. A Orders API só cancela order em `action_required`/
+ *     `created` — SEM dinheiro capturado ainda, em qualquer detalhe.
+ *   - `"expired"` → 'expirado' (achado do adendo 2, mesma lacuna): a doc do
+ *     MP descreve `expired` como "uma order cancelada sem pagamento
+ *     aprovado ou pendente" — terminal por definição, qualquer detalhe.
  */
 export function mapearStatusOrder(
   status: string,
@@ -287,7 +300,9 @@ export function mapearStatusOrder(
   if (typeof status !== "string" || typeof statusDetail !== "string") return null;
   const mapeado = MAPA_STATUS_ORDER[`${status}:${statusDetail}`];
   if (mapeado) return mapeado;
-  return status === "failed" ? "recusado" : null;
+  if (status === "failed" || status === "canceled" || status === "cancelled") return "recusado";
+  if (status === "expired") return "expirado";
+  return null;
 }
 
 // ─── Cartão pela Orders API (Fase 3.5, 26/09/2026) ─────────────────────────

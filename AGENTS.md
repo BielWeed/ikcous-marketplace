@@ -108,9 +108,16 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
    pelo menos uma criada DEPOIS do limite inferior do sentinela por uma margem PARA A FRENTE
    (`MARGEM_LIBERAR_APOS_LIMITE_MS`, 15s): a order da tentativa ANTERIOR nasce SEGUNDOS ANTES desse
    limite (é a própria liberação dela que o grava), então uma margem para trás sempre a incluiria;
-   a order AMBÍGUA nasce DEPOIS, quando o cliente redigita outro cartão. Uma lista PARCIALMENTE
-   indexada, que só mostra a order morta de uma tentativa ANTERIOR (sempre antes do limite), nunca
-   libera. Nunca por um teto fixo de relógio; o único prazo que ainda libera por tempo é a
+   a order AMBÍGUA nasce DEPOIS, quando o cliente redigita outro cartão — **ressalva da 8ª rodada
+   (achado #2, documentação)**: essa frase não vale quando a LIBERAÇÃO e a criação do cartão NOVO
+   acontecem na MESMA chamada (troca PIX→cartão, cartão morto→cartão novo, sentinela liberado→
+   cartão novo) — a order nova nasce só milissegundos DEPOIS do limite (a mesma chamada que acabou
+   de gravá-lo), dentro da margem de 15s, e uma order ambígua NESSA chamada nunca libera sozinha
+   (fica presa até `expires_at`). Resíduo aceito pelo revisor: sem dinheiro em jogo (a vaga só
+   afeta o PRÓPRIO cliente que acabou de tentar), e raro (exige a MESMA chamada falhar de novo,
+   logo depois de já ter liberado uma vez). Uma lista PARCIALMENTE indexada, que só mostra a order
+   morta de uma tentativa ANTERIOR (sempre antes do limite), nunca libera. Nunca por um teto fixo
+   de relógio; o único prazo que ainda libera por tempo é a
    própria reserva (`expires_at`), e uma aprovação tardia sobre isso vira `pago_apos_expirar`
    (P1), nunca uma segunda cobrança; **ressalva honesta**: a busca contra a Orders API está
    UNVERIFIED em produção (nome do campo da lista, nomes de parâmetro, formato de data, atraso de
