@@ -2054,6 +2054,21 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O FINANCEIRO DA LOJA NASCE (26/09/2026, migration 20261177000000): o
+  // dinheiro sai das fontes (pedido pago/recebido) e o caixa fechado não se
+  // reescreve.
+  "20261177000000_o_financeiro_da_loja_nasce.sql": [
+    {
+      funcao: "fin__movimentos",
+      esperado: [
+        "AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+      ],
+    },
+    {
+      funcao: "fin_lancamento_cancelar",
+      esperado: ["WHERE s.id = v_l.caixa_sessao_id AND s.status = 'fechado'"],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
