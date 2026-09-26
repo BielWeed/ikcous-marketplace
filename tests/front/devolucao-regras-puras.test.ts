@@ -23,9 +23,11 @@ import {
   lerListaAdmin,
   lerRespostaEtiquetaReversa,
   lerResultadoConclusao,
+  lerResultadoLiberacaoVinculo,
   lerResultadoSolicitacao,
   mensagemDoErro,
   mensagemDoErroDaEdge,
+  podeLiberarVinculoReverso,
   resolucoesDaConclusao,
   resolucoesPermitidas,
   rotuloMetodo,
@@ -253,8 +255,14 @@ describe("leitores do jsonb das RPCs", () => {
     expect(d?.eventos.map((e) => e.para_status)).toEqual(["solicitada"]);
     expect(d?.pedido?.payment_status).toBe("pago");
     expect(d?.politica?.aceita_vale).toBe(true);
-    // me_reverse_id (token de reserva) não entra no tipo da tela.
-    expect(d && "me_reverse_id" in d).toBe(false);
+    // Achado 1 (rodada 6b, revisão de risco): `me_reverse_id` agora ENTRA no
+    // tipo — é o dado que o painel precisa para a ação de destravar um
+    // vínculo real preso (`admin_devolucao_liberar_vinculo_reverso`). A
+    // leitura crua (aqui, um token de RESERVA) não decide sozinha se algo
+    // aparece na tela: quem decide é `podeLiberarVinculoReverso`, que exclui
+    // o prefixo `reservando:` de propósito — nenhum outro lugar do painel lê
+    // este campo.
+    expect(d?.me_reverse_id).toBe("reservando:123:abc");
   });
 
   it("lerListaAdmin completa a contagem com zero e soma as abertas", () => {
@@ -464,6 +472,68 @@ describe("ações permitidas por status", () => {
         acoesDoLojista({ status: final, metodo_retorno: "envio_proprio" }),
       ).toEqual([]);
     }
+  });
+
+  // Achado 1 (rodada 6b, revisão de risco): espelho do guard "negar por
+  // padrão" da RPC `admin_devolucao_liberar_vinculo_reverso`
+  // (20261179000000) — decide quando o painel mostra a ação de destravar um
+  // vínculo real preso. A fase de RESERVA (`reservando:...`) nunca precisa
+  // disso: a própria edge desfaz sozinha se o cliente cancelar nessa janela.
+  it("podeLiberarVinculoReverso: só com aprovada + etiqueta reversa + link REAL + sem código", () => {
+    const base = {
+      status: "aprovada" as const,
+      metodo_retorno: "etiqueta_reversa" as const,
+      me_reverse_id: "me-rev-1",
+      codigo_postagem: null as string | null,
+    };
+    expect(podeLiberarVinculoReverso(base)).toBe(true);
+    expect(podeLiberarVinculoReverso({ ...base, status: "em_transito" })).toBe(
+      false,
+    );
+    expect(podeLiberarVinculoReverso({ ...base, status: "solicitada" })).toBe(
+      false,
+    );
+    expect(
+      podeLiberarVinculoReverso({ ...base, metodo_retorno: "envio_proprio" }),
+    ).toBe(false);
+    expect(podeLiberarVinculoReverso({ ...base, me_reverse_id: null })).toBe(
+      false,
+    );
+    // Fase de reserva: nunca é "vínculo preso" — a edge resolve sozinha.
+    expect(
+      podeLiberarVinculoReverso({
+        ...base,
+        me_reverse_id: "reservando:1234567890:abc",
+      }),
+    ).toBe(false);
+    // Código já saiu: nada para destravar (a RPC também recusa por esse
+    // motivo — "não há vínculo preso para liberar").
+    expect(podeLiberarVinculoReverso({ ...base, codigo_postagem: "PX1" })).toBe(
+      false,
+    );
+  });
+
+  it("lerResultadoLiberacaoVinculo lê o retorno de admin_devolucao_liberar_vinculo_reverso", () => {
+    expect(
+      lerResultadoLiberacaoVinculo({
+        id: "d-1",
+        me_reverse_id_liberado: "me-rev-1",
+      }),
+    ).toEqual({ id: "d-1", me_reverse_id_liberado: "me-rev-1" });
+    // Reserva liberada: a RPC devolve o token, não um id do Melhor Envio.
+    expect(
+      lerResultadoLiberacaoVinculo({
+        id: "d-1",
+        me_reverse_id_liberado: "reservando:1234567890:abc",
+      }),
+    ).toEqual({
+      id: "d-1",
+      me_reverse_id_liberado: "reservando:1234567890:abc",
+    });
+    expect(
+      lerResultadoLiberacaoVinculo({ me_reverse_id_liberado: "x" }),
+    ).toBeNull();
+    expect(lerResultadoLiberacaoVinculo(null)).toBeNull();
   });
 
   it("troca de política não fecha com reembolso", () => {

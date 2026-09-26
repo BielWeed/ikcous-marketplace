@@ -187,6 +187,21 @@ export interface DevolucaoDetalhe {
   fotos: string[];
   codigo_rastreio: string | null;
   codigo_postagem: string | null;
+  /**
+   * Achado 1 (rodada 6b, revisão de risco): `devolucao_detalhe` (75) já
+   * devolvia esta coluna por `to_jsonb` da linha inteira — para o DONO da
+   * devolução (RLS de `devolucoes` dá SELECT a ele) OU para o admin (`v_d
+   * .user_id = auth.uid() OR is_admin()`); NÃO é admin-only, e o cliente já
+   * recebe este campo desde a 75. Só o leitor do front descartava. Passa a
+   * entrar no tipo para a ação de destravar um vínculo real preso
+   * (`podeLiberarVinculoReverso`, usada só pelo painel do lojista — achado
+   * 2, rodada 6c: o cartão do cliente nunca renderiza este campo, embora o
+   * receba); pode ser um id real do Melhor Envio OU um token de reserva
+   * (`reservando:<epoch>:<uuid>`) — o id sozinho não dá acesso a nada no
+   * Melhor Envio, e quem decide se algo aparece na tela é
+   * `podeLiberarVinculoReverso`, nunca a presença sozinha deste campo.
+   */
+  me_reverse_id: string | null;
   etiqueta_url: string | null;
   coleta_em: string | null;
   mensagem_loja: string | null;
@@ -230,6 +245,17 @@ export interface ListaDevolucoesAdmin {
   total: number;
   contagem: ContagemPorStatus;
   itens: LinhaDevolucaoAdmin[];
+}
+
+/**
+ * Retorno de `admin_devolucao_liberar_vinculo_reverso` (20261179000000) —
+ * achado 1, rodada 6b: a "saída" de painel para um vínculo real preso sem
+ * código de postagem. `me_reverse_id_liberado` é o que foi solto (id real
+ * ou token de reserva, tanto faz).
+ */
+export interface ResultadoLiberacaoVinculo {
+  id: string;
+  me_reverse_id_liberado: string | null;
 }
 
 /** Retorno de `admin_devolucao_concluir`. */

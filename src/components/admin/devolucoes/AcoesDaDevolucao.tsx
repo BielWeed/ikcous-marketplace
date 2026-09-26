@@ -5,6 +5,7 @@ import {
   PackageCheck,
   Tag,
   Truck,
+  Unlock,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -20,6 +21,7 @@ import {
   acoesDoLojista,
   formatarReais,
   paraCentavos,
+  podeLiberarVinculoReverso,
   reestocarPorPadrao,
   resolucoesDaConclusao,
   rotuloCondicao,
@@ -108,6 +110,17 @@ export function AcoesDaDevolucao({
   const [valor, setValor] = useState(valorPadrao);
   const [observacao, setObservacao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  // Achado 1 (rodada 6c, revisão de risco, DINHEIRO): a confirmação precisa
+  // estar amarrada ao `me_reverse_id` atual, não só a um `boolean` solto —
+  // senão marcar a caixa para o vínculo A, liberar A, e a MESMA ficha ganhar
+  // um vínculo B novo por baixo (ex.: "Gerar código de postagem" comprando
+  // de novo com o checkout indeterminado, sem a tela remontar — `key` é
+  // `id:status`, e o status não muda) reaparecia com a caixa JÁ marcada e o
+  // botão JÁ habilitado para B, sem ninguém ter conferido "Meus envios" para
+  // ELE. `confirmadoPara` guarda o id que foi conferido; `confirmado` só é
+  // `true` quando esse id ainda é o vínculo preso na tela.
+  const [confirmadoPara, setConfirmadoPara] = useState<string | null>(null);
+  const confirmado = confirmadoPara === detalhe.me_reverse_id;
 
   const sujo =
     mensagem.trim() !== "" ||
@@ -218,6 +231,20 @@ export function AcoesDaDevolucao({
       valorReembolso: resolucao === "reembolso" ? valorNumero : null,
       observacao,
     });
+  }
+
+  async function liberarVinculoPreso() {
+    // Achado 1 (rodada 6c): reseta a confirmação depois de QUALQUER
+    // resultado — sucesso ou erro (recusa 22023, 42501, o que for). Uma
+    // recusa não muda `me_reverse_id` (o vínculo continua o mesmo), então o
+    // vínculo pelo id sozinho não bastaria aqui: sem este reset explícito, a
+    // caixa continuaria marcada e o botão habilitado para tentar de novo sem
+    // reconfirmar.
+    try {
+      await ficha.liberarVinculoReverso();
+    } finally {
+      setConfirmadoPara(null);
+    }
   }
 
   const girando = (qual: FichaDaDevolucao["emVoo"]) =>
@@ -403,6 +430,56 @@ export function AcoesDaDevolucao({
               Marcar como recebida
             </button>
           )}
+        </div>
+      )}
+
+      {podeLiberarVinculoReverso(detalhe) && (
+        <div
+          data-testid="liberar-vinculo-reverso"
+          className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3"
+        >
+          <p className="text-xs leading-relaxed text-zinc-300">
+            O vínculo desta devolução com o envio reverso no Melhor Envio (id{" "}
+            <span className="font-mono text-amber-300">
+              {detalhe.me_reverse_id}
+            </span>
+            ) está preso sem código de postagem — o cliente não consegue
+            cancelar sozinho enquanto isso durar.
+          </p>
+          <p className="text-xs font-bold leading-relaxed text-amber-200">
+            Antes de liberar: abra "Meus envios" na conta do Melhor Envio da
+            loja e procure esse id.{" "}
+            <span className="font-black">
+              Se ele aparecer como PAGO, NÃO libere aqui
+            </span>{" "}
+            — cancele o envio direto no Melhor Envio. Soltar um vínculo que já
+            foi pago pode abrir uma SEGUNDA compra na próxima vez que o código
+            for gerado; a checagem em "Meus envios" é a única proteção (a RPC
+            também recusa sozinha se o pagamento já tiver sido confirmado, mas
+            nem sempre há esse marcador gravado).
+          </p>
+          <label className="flex items-start gap-2 text-[11px] font-bold text-zinc-300">
+            <input
+              type="checkbox"
+              checked={confirmado}
+              onChange={(e) =>
+                setConfirmadoPara(
+                  e.target.checked ? detalhe.me_reverse_id : null,
+                )
+              }
+              className="mt-0.5 size-4 shrink-0"
+            />
+            Conferi em Meus envios que este envio NÃO foi pago.
+          </label>
+          <button
+            type="button"
+            disabled={ocupado || !confirmado}
+            onClick={() => void liberarVinculoPreso()}
+            className={cn(BOTAO_SECUNDARIO, "w-full")}
+          >
+            {girando("liberar_vinculo") ?? <Unlock className="size-4" />}
+            Liberar vínculo preso
+          </button>
         </div>
       )}
 

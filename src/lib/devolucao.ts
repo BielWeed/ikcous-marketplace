@@ -33,6 +33,7 @@ import type {
   ResultadoConclusao,
   ResultadoDeStatus,
   ResultadoEtiquetaReversa,
+  ResultadoLiberacaoVinculo,
   ResultadoSolicitacao,
   ResumoDevolucao,
   StatusDevolucao,
@@ -594,6 +595,32 @@ export function acoesDoLojista(d: {
   }
 }
 
+/**
+ * Achado 1 (rodada 6b, revisão de risco pré-publicação): espelho do guard
+ * "negar por padrão" de `admin_devolucao_liberar_vinculo_reverso`
+ * (20261179000000) — decide quando o painel mostra a ação de destravar um
+ * vínculo real preso sem código de postagem (edge que morreu no meio do
+ * caminho, liberação automática que falhou nas duas tentativas, ou Sandbox
+ * do Melhor Envio, que nunca gera o código da reversa). A fase de RESERVA
+ * (`reservando:<epoch>:<uuid>`) NUNCA precisa disso — a própria edge relê o
+ * status antes de vincular e desfaz sozinha se o cliente cancelar nessa
+ * janela; código já emitido também não é "preso" (nada para destravar).
+ */
+export function podeLiberarVinculoReverso(d: {
+  status: StatusDevolucao;
+  metodo_retorno: MetodoDevolucao;
+  me_reverse_id?: string | null;
+  codigo_postagem?: string | null;
+}): boolean {
+  return (
+    d.status === "aprovada" &&
+    d.metodo_retorno === "etiqueta_reversa" &&
+    !!d.me_reverse_id &&
+    !d.me_reverse_id.startsWith("reservando:") &&
+    !d.codigo_postagem
+  );
+}
+
 /** Resoluções que o lojista pode escolher ao concluir. */
 export function resolucoesDaConclusao(
   tipo: TipoDevolucao,
@@ -1045,6 +1072,7 @@ export function lerDevolucaoDetalhe(v: unknown): DevolucaoDetalhe | null {
     fotos: listaDeTextos(campo(v, "fotos")),
     codigo_rastreio: texto(campo(v, "codigo_rastreio")),
     codigo_postagem: texto(campo(v, "codigo_postagem")),
+    me_reverse_id: texto(campo(v, "me_reverse_id")),
     etiqueta_url: texto(campo(v, "etiqueta_url")),
     coleta_em: texto(campo(v, "coleta_em")),
     mensagem_loja: texto(campo(v, "mensagem_loja")),
@@ -1163,6 +1191,19 @@ export function lerResultadoConclusao(v: unknown): ResultadoConclusao | null {
     refund_id: texto(campo(v, "refund_id")),
     reembolso_manual: campo(v, "reembolso_manual") === true,
     reestocados: numero(campo(v, "reestocados")) ?? 0,
+  };
+}
+
+/** `admin_devolucao_liberar_vinculo_reverso` (20261179000000, achado 1/rodada 6b). */
+export function lerResultadoLiberacaoVinculo(
+  v: unknown,
+): ResultadoLiberacaoVinculo | null {
+  if (!ehObjeto(v)) return null;
+  const id = texto(campo(v, "id"));
+  if (!id) return null;
+  return {
+    id,
+    me_reverse_id_liberado: texto(campo(v, "me_reverse_id_liberado")),
   };
 }
 

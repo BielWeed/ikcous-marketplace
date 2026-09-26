@@ -896,13 +896,15 @@ addendum, rodada 4) recusa cedo com `to_regclass('public.devolucoes') IS NULL` �
 instrução acima (80 → 79 → 78 → 77 → 76 → 75) continua sendo o caminho feliz, sem depender de
 decorar a ordem de cabeça.
 
-### 7.6 Usar `admin_devolucao_liberar_vinculo_reverso` em produção (achados R5/1/3)
+### 7.6 Usar `admin_devolucao_liberar_vinculo_reverso` em produção (achados R5/1/2/3)
 
-Esta RPC é um escape hatch manual, não um botão do painel — não existe UI para ela. Ela só deve
-ser chamada quando um vínculo real (`me_reverse_id` que não é `reservando:...`) fica preso sem
-código de postagem por tempo demais (edge que morreu entre a reserva e o vínculo, liberação que
-falhou nas duas tentativas apesar da degradação automática — achado R3 —, ou Sandbox do Melhor
-Envio, que nunca gera o código da reversa).
+Esta RPC é um escape hatch — só deve ser chamada quando um vínculo real (`me_reverse_id` que não é
+`reservando:...`) fica preso sem código de postagem por tempo demais (edge que morreu entre a
+reserva e o vínculo, liberação que falhou nas duas tentativas apesar da degradação automática —
+achado R3 —, ou Sandbox do Melhor Envio, que nunca gera o código da reversa). **Achado 1 (rodada
+6b): desde essa rodada existe UI para ela** — o caminho preferido é o painel (abaixo); o `curl`
+manual (§7.6, "via REST") continua valendo como saída de emergência (painel fora do ar, ou uma
+checagem direto pelo SQL Editor).
 
 **QUANDO usar — confira ANTES de chamar, SEMPRE (achado 1, rodada 5, "negar por padrão"):**
 
@@ -938,7 +940,48 @@ SEMPRE o primeiro passo, nunca uma formalidade para "destravar" o parâmetro.
 5. **Se o código de postagem já saiu**: não há nada para "destravar" — a RPC recusa com `22023`
    ("o código de postagem já foi emitido"). Cancelar o envio é direto no Melhor Envio.
 
-**COMO chamar — como um admin autenticado, nunca como `postgres`/service-role sem JWT:**
+**COMO usar — pelo painel (rodada 6b, caminho preferido):**
+
+Abra a devolução na tela Devoluções do painel administrativo. Quando ela está `aprovada`, o
+método é etiqueta reversa, há um `me_reverse_id` REAL (não uma reserva) e o código de postagem
+ainda não saiu, um bloco amarelo aparece em "Próximo passo"
+(`src/components/admin/devolucoes/AcoesDaDevolucao.tsx`, `podeLiberarVinculoReverso` em
+`src/lib/devolucao.ts` — o mesmo guard "negar por padrão" da RPC, achado 1, rodada 5, espelhado no
+front só para decidir visibilidade):
+
+1. O bloco mostra o `me_reverse_id` (o id do envio no Melhor Envio) para você achar o envio em
+   "Meus envios" — é o MESMO id que aparece lá.
+2. Abra "Meus envios" na conta do Melhor Envio da loja e procure esse id. **Se ele aparecer como
+   PAGO, NÃO marque a confirmação** — cancele o envio direto no Melhor Envio; volte ao passo 2 da
+   lista "QUANDO usar" acima.
+3. Só depois de confirmar que o envio NÃO foi pago, marque a caixa "Conferi em Meus envios que
+   este envio NÃO foi pago" — o botão "Liberar vínculo preso" fica desabilitado até isso acontecer
+   (não é possível liberar sem passar por essa confirmação).
+4. O botão chama a RPC com `p_conferi_no_melhor_envio: true` sempre (o painel nunca chama com
+   `false` ou omitindo o parâmetro) — a RPC ainda recusa sozinha, sem exceção nenhuma, se um
+   marcador de pagamento CONFIRMADO existir (achado R5). Achado 3 (rodada 6c): como o painel
+   SEMPRE manda `true`, as recusas que ele de fato alcança são só cinco — `22023` confirmado
+   (achado R5), `22023` sem vínculo ou `22023` código já emitido (as duas últimas são CORRIDAS: o
+   estado mudou no banco entre abrir a ficha e clicar), `42501` (sessão perdeu admin no meio do
+   caminho) e `P0002` (a devolução sumiu). "Indeterminado" e "sem registro" (achado 1, rodada 5)
+   só acontecem SEM esse parâmetro — inalcançáveis pelo painel, só pelo `curl` da seção "via REST"
+   abaixo. Qualquer uma dessas cinco recusas aparece num toast de erro com a MESMA frase que a RPC
+   devolveu — o painel nunca troca o texto por uma mensagem genérica, para o motivo nunca ficar
+   escondido.
+5. Com sucesso, um toast confirma e a ficha relê: o bloco amarelo some (o vínculo não está mais
+   preso) e a devolução volta a poder ser cancelada pelo cliente ou seguir para gerar um código
+   novo. Achado 1 (rodada 6c, DINHEIRO): a confirmação (a caixa marcada) é amarrada ao
+   `me_reverse_id` da tela E reseta depois de QUALQUER resultado (sucesso ou recusa) — **não é
+   possível liberar sem passar por essa confirmação de novo**, nem reaproveitar uma confirmação
+   antiga se a MESMA ficha ganhar um vínculo novo por baixo (ex.: "Gerar código de postagem"
+   comprando de novo com o checkout indeterminado, sem a tela remontar).
+
+Testes: `tests/front/devolucao-liberar-vinculo-reverso.test.tsx` (visibilidade nos dois sentidos,
+botão só habilita depois da confirmação, chamada com `p_conferi_no_melhor_envio: true`, as três
+recusas da RPC aparecem sem esconder o motivo) e `tests/front/devolucao-regras-puras.test.ts`
+(`podeLiberarVinculoReverso`, `lerResultadoLiberacaoVinculo`).
+
+**COMO chamar — via REST, fallback sem painel (nunca como `postgres`/service-role sem JWT):**
 
 A RPC checa `public.is_admin() AND auth.uid() IS NOT NULL`. **Correção (achado 3, rodada 4): a
 versão da rodada 3 deste runbook dizia que não havia atalho de `service_role`/`postgres` — isso
