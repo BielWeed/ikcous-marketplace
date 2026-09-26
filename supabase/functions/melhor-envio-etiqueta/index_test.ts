@@ -57,8 +57,12 @@ const {
     erroDePedidoParaEtiqueta,
     erroDeServicoParaEtiqueta,
     normalizarServicoEscolhidoPeloLojista,
+    classificarVinculoReverso,
+    montarPacoteDaDevolucao,
+    normalizarCodigoDePostagem,
+    servicoDaDevolucaoReversa,
 } = await import('./index.ts')
-const { cpfValido, cpfDoDestinatario, sanitizarCpfDoTexto } = await import('./cpf.ts')
+const { cpfValido, cpfDoDestinatario, sanitizarCpfDoTexto, sanitizarDadosPessoaisDoTexto } = await import('./cpf.ts')
 globalThis.fetch = fetchNativo
 
 /** Instala o fetch admin falso SÓ durante a chamada ao handler. */
@@ -1629,5 +1633,703 @@ Deno.test("handler - cart sem id: CPF que cruza a fronteira do corte de 500 cara
         // um pedaço cortado dele.
         assertEquals(/\d{4,}/.test(String(linhaDoCart)), false)
         assertEquals(String(linhaDoCart).includes('[cpf]'), true)
+    })
+})
+
+// ============================================================================
+// gerar_devolucao_reversa — logística reversa do Melhor Envio (plano
+// 2026-09-26, tarefa 7). Doc oficial: POST /api/v2/me/cart/reverse (só
+// Correios, PAC=1/SEDEX=2, `order_id` do envio de ida) → checkout → generate;
+// o código de postagem é o `tracking` do envio (central de ajuda do ME: "o
+// código de postagem, que também é o seu código de rastreio"). O Sandbox NÃO
+// gera o código de devolução — por isso tudo aqui é dublê, nenhuma rede.
+// ============================================================================
+
+// ── sanitizarDadosPessoaisDoTexto (cpf.ts) ─────────────────────────────────
+
+Deno.test("sanitizarDadosPessoaisDoTexto - some com CPF, e-mail e telefone (vários formatos); CEP e texto comum ficam", () => {
+    const texto = 'email cliente@exemplo.com.br, fone (34) 99876-5432, cel 5534998765432, fixo 3432105678, cpf 529.982.247-25, CEP 38500000'
+    const limpo = sanitizarDadosPessoaisDoTexto(texto)
+    assertEquals(limpo.includes('cliente@exemplo.com.br'), false)
+    assertEquals(limpo.includes('99876-5432'), false)
+    assertEquals(limpo.includes('5534998765432'), false)
+    assertEquals(limpo.includes('3432105678'), false)
+    assertEquals(limpo.includes('529.982.247-25'), false)
+    assertEquals(limpo.includes('[email]'), true)
+    assertEquals(limpo.includes('[telefone]'), true)
+    assertEquals(limpo.includes('[cpf]'), true)
+    assertEquals(limpo.includes('CEP 38500000'), true)
+    assertEquals(sanitizarDadosPessoaisDoTexto('O envio original ainda não foi entregue.'), 'O envio original ainda não foi entregue.')
+})
+
+// ── funções puras da reversa ───────────────────────────────────────────────
+
+Deno.test("reversa - serviço: PAC (1) ou SEDEX (2) da opção do checkout; qualquer outra coisa cai no PAC", () => {
+    assertEquals(servicoDaDevolucaoReversa('melhor-envio-1'), 1)
+    assertEquals(servicoDaDevolucaoReversa('melhor-envio-2'), 2)
+    assertEquals(servicoDaDevolucaoReversa('melhor-envio-2-ss'), 2)
+    assertEquals(servicoDaDevolucaoReversa('melhor-envio-1-ss'), 1)
+    // Jadlog (3), '12' e '22' (não são '1'/'2' por prefixo): a reversa só sai pelos Correios
+    assertEquals(servicoDaDevolucaoReversa('melhor-envio-3'), 1)
+    assertEquals(servicoDaDevolucaoReversa('melhor-envio-12'), 1)
+    assertEquals(servicoDaDevolucaoReversa('melhor-envio-22'), 1)
+    assertEquals(servicoDaDevolucaoReversa('frenet-ABC'), 1)
+    assertEquals(servicoDaDevolucaoReversa(null), 1)
+})
+
+Deno.test("reversa - pacote ÚNICO dos itens devolvidos: peso somado (unitário × quantidade), maior largura/altura/comprimento", () => {
+    const itens = [
+        { product_id: 'p1', quantidade: 2, valor_unitario: 49.9 },
+        { product_id: 'p2', quantidade: 1, valor_unitario: 60 },
+    ]
+    const produtosDb = [
+        { id: 'p1', nome: 'Camiseta', peso_kg: 0.25, largura_cm: 20, altura_cm: 4, comprimento_cm: 30 },
+        { id: 'p2', nome: 'Calça', peso_kg: 0.6, largura_cm: 25, altura_cm: 6, comprimento_cm: 35 },
+    ]
+    assertEquals(montarPacoteDaDevolucao(itens, produtosDb), { weight: 1.1, width: 25, height: 6, length: 35 })
+    // produto sem medição (ou apagado do catálogo): mesmos fallbacks da ida (0.3 kg / 15 cm)
+    assertEquals(montarPacoteDaDevolucao([{ product_id: null, quantidade: 3, valor_unitario: 10 }], []), {
+        weight: 0.9,
+        width: 15,
+        height: 15,
+        length: 15,
+    })
+    assertEquals(montarPacoteDaDevolucao([], produtosDb), null)
+})
+
+Deno.test("reversa - vínculo: livre, reserva recente, reserva vencida (> 10 min), reserva malformada (conservador) e id do ME", () => {
+    const agora = 1_800_000_000_000
+    assertEquals(classificarVinculoReverso(null, agora), { tipo: 'livre' })
+    assertEquals(classificarVinculoReverso('', agora), { tipo: 'livre' })
+    assertEquals(classificarVinculoReverso(`reservando:${agora - 30_000}:abc`, agora), { tipo: 'reservado', vencido: false })
+    assertEquals(classificarVinculoReverso(`reservando:${agora - 11 * 60_000}:abc`, agora), { tipo: 'reservado', vencido: true })
+    // sem carimbo legível: NUNCA toma a reserva de outra chamada
+    assertEquals(classificarVinculoReverso('reservando:9c79c7bb-e365-4d92-8553-255d60bc28d0', agora), { tipo: 'reservado', vencido: false })
+    assertEquals(classificarVinculoReverso('10b87ac0-e99d-4aa4-b8b0-b147a84e16bf', agora), {
+        tipo: 'vinculado',
+        meId: '10b87ac0-e99d-4aa4-b8b0-b147a84e16bf',
+    })
+})
+
+Deno.test("reversa - código de postagem é o `tracking` do envio; o `melhorenvio_tracking` (código interno do ME) NUNCA vira código dos Correios", () => {
+    const id = '10b87ac0-e99d-4aa4-b8b0-b147a84e16bf'
+    assertEquals(normalizarCodigoDePostagem({ [id]: { tracking: ' 2073849152 ', melhorenvio_tracking: 'ME26X' } }, id), '2073849152')
+    assertEquals(normalizarCodigoDePostagem({ [id]: { tracking: null, melhorenvio_tracking: 'ME26X' } }, id), null)
+    assertEquals(normalizarCodigoDePostagem({ [id]: {} }, id), null)
+    assertEquals(normalizarCodigoDePostagem({ 'outro-id': { tracking: 'X' } }, id), null)
+    assertEquals(normalizarCodigoDePostagem(null, id), null)
+})
+
+// ── dublês do handler ──────────────────────────────────────────────────────
+
+const DEVOLUCAO_ID = '11111111-2222-4333-8444-555555555555'
+const ME_ENVIO_DE_IDA = '9c79c7bb-e365-4d92-8553-255d60bc28d0'
+const ME_REVERSO = '10b87ac0-e99d-4aa4-b8b0-b147a84e16bf'
+const CODIGO_POSTAGEM = '2073849152'
+const LINK_DCE = 'https://me-prod.s3.amazonaws.com/dace/reversa.pdf'
+const EMAIL_CLIENTE = 'cliente@exemplo.com.br'
+const NOTA_CODIGO_GERADO = 'Código de postagem dos Correios gerado (válido por 7 dias)'
+
+const DEVOLUCAO_APROVADA = {
+    id: DEVOLUCAO_ID,
+    order_id: 'pedido-9',
+    status: 'aprovada',
+    metodo_retorno: 'etiqueta_reversa',
+    valor_itens: 159.8,
+    me_reverse_id: null,
+    codigo_postagem: null,
+    etiqueta_url: null,
+}
+
+const PEDIDO_DA_DEVOLUCAO = {
+    id: 'pedido-9',
+    status: 'delivered',
+    shipping_label_id: ME_ENVIO_DE_IDA,
+    customer_data: {
+        email: EMAIL_CLIENTE,
+        whatsapp: '(34) 99876-5432',
+        shipping_option_id: 'melhor-envio-2',
+        cpf: '52998224725',
+    },
+}
+
+const ITENS_DEVOLVIDOS = [
+    { product_id: 'p1', quantidade: 2, valor_unitario: 49.9 },
+    { product_id: 'p2', quantidade: 1, valor_unitario: 60 },
+]
+
+const PRODUTOS_DEVOLVIDOS = [
+    { id: 'p1', nome: 'Camiseta', preco_venda: 49.9, peso_kg: 0.25, largura_cm: 20, altura_cm: 4, comprimento_cm: 30 },
+    { id: 'p2', nome: 'Calça', preco_venda: 60, peso_kg: 0.6, largura_cm: 25, altura_cm: 6, comprimento_cm: 35 },
+]
+
+/**
+ * Supabase falso da devolução: mesma cadeia do `clienteFalso`, com assentos
+ * para cada escrita em `devolucoes` (reserva, vínculo com o id do ME,
+ * liberação, gravação do código) e para os eventos da devolução.
+ * `devolucaoRelida` é o que a SEGUNDA leitura da devolução devolve (a
+ * releitura depois de uma reserva perdida).
+ */
+function clienteFalsoDevolucao(cfg: {
+    devolucao?: any
+    devolucaoRelida?: any
+    pedido?: any
+    itens?: any[]
+    credentials?: any
+    linhasReservadas?: any[]
+    linhasVinculadas?: any[]
+} = {}) {
+    const registro = {
+        operacoes: [] as string[],
+        leiturasDevolucao: 0,
+        reservas: [] as Array<{ valores: any; filtros: any[] }>,
+        vinculos: [] as Array<{ valores: any; filtros: any[] }>,
+        liberacoes: [] as Array<{ valores: any; filtros: any[] }>,
+        gravacoesDeCodigo: [] as Array<{ valores: any; filtros: any[] }>,
+        eventos: [] as any[],
+        escritasNoPedido: 0,
+    }
+    const resolver = (no: any): Promise<any> => {
+        registro.operacoes.push(`${no.acao ?? 'select'} ${no.tabela}`)
+        const copia = { valores: no.valores, filtros: [...no.filtros] }
+        if (no.tabela === 'store_shipping_credentials') {
+            return Promise.resolve({ data: { credentials: cfg.credentials ?? { token: 'token-me-de-teste', sandbox: true } }, error: null })
+        }
+        if (no.tabela === 'devolucao_eventos') {
+            registro.eventos.push(no.valores)
+            return Promise.resolve({ data: null, error: null })
+        }
+        if (no.tabela === 'devolucao_itens') return Promise.resolve({ data: cfg.itens ?? ITENS_DEVOLVIDOS, error: null })
+        if (no.tabela === 'produtos') return Promise.resolve({ data: PRODUTOS_DEVOLVIDOS, error: null })
+        if (no.tabela === 'marketplace_orders') {
+            if (no.acao) registro.escritasNoPedido++
+            return Promise.resolve({ data: cfg.pedido === undefined ? PEDIDO_DA_DEVOLUCAO : cfg.pedido, error: null })
+        }
+        if (no.tabela === 'devolucoes' && no.acao === 'update') {
+            const valores = no.valores || {}
+            if ('codigo_postagem' in valores) {
+                registro.gravacoesDeCodigo.push(copia)
+                return Promise.resolve({ data: [{ id: DEVOLUCAO_ID }], error: null })
+            }
+            if (valores.me_reverse_id === null) {
+                registro.liberacoes.push(copia)
+                return Promise.resolve({ data: null, error: null })
+            }
+            if (String(valores.me_reverse_id).startsWith('reservando:')) {
+                registro.reservas.push(copia)
+                return Promise.resolve({ data: cfg.linhasReservadas ?? [{ id: DEVOLUCAO_ID }], error: null })
+            }
+            registro.vinculos.push(copia)
+            return Promise.resolve({ data: cfg.linhasVinculadas ?? [{ id: DEVOLUCAO_ID }], error: null })
+        }
+        if (no.tabela === 'devolucoes') {
+            registro.leiturasDevolucao++
+            const primeira = cfg.devolucao === undefined ? DEVOLUCAO_APROVADA : cfg.devolucao
+            const dado = registro.leiturasDevolucao > 1 && cfg.devolucaoRelida !== undefined ? cfg.devolucaoRelida : primeira
+            return Promise.resolve({ data: dado, error: null })
+        }
+        return Promise.resolve({ data: null, error: null })
+    }
+    const cliente = {
+        from(tabela: string) {
+            const no: any = { tabela, acao: null, valores: null, filtros: [] }
+            const api: any = {
+                select(_colunas?: string) { return api },
+                insert(valores: any) { no.acao = 'insert'; no.valores = valores; return api },
+                update(valores: any) { no.acao = 'update'; no.valores = valores; return api },
+                eq(coluna: string, valor: any) { no.filtros.push({ metodo: 'eq', coluna, valor }); return api },
+                is(coluna: string, valor: any) { no.filtros.push({ metodo: 'is', coluna, valor }); return api },
+                in(coluna: string, valores: any) { no.filtros.push({ metodo: 'in', coluna, valores }); return api },
+                maybeSingle() { return api },
+                single() { return api },
+                then(resolveu: any, rejeitou: any) { return resolver(no).then(resolveu, rejeitou) },
+            }
+            return api
+        },
+    }
+    return { cliente, registro }
+}
+
+/**
+ * Melhor Envio falso da reversa: roteia pela URL e anota cada chamada em
+ * ordem (`chamadas`) — o assento de dinheiro (carrinho reverso criado?
+ * checkout chamado? item removido?).
+ */
+function buscarMeReversoFalso(op: {
+    reverso?: 'ok' | 'erro-422' | 'excecao' | 'sem-id'
+    checkout?: 'pago' | 'pendente' | 'erro-5xx' | 'excecao'
+    gerar?: 'ok' | 'erro'
+    codigo?: string | null
+} = {}) {
+    const registro = {
+        chamadas: [] as string[],
+        corpoReverso: null as any,
+        corposOrders: [] as any[],
+        remocoes: 0,
+        checkouts: 0,
+    }
+    const json = (corpo: unknown, status = 200) =>
+        new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json' } })
+    const buscar = (async (input: any, init?: any) => {
+        const url = String(input instanceof Request ? input.url : input)
+        const metodo = String(init?.method || 'GET')
+        registro.chamadas.push(`${metodo} ${url.replace('https://sandbox.melhorenvio.com.br', '')}`)
+        if (url.endsWith('/api/v2/me/cart/reverse') && metodo === 'POST') {
+            registro.corpoReverso = JSON.parse(String(init?.body || '{}'))
+            if (op.reverso === 'excecao') throw new Error('AbortError: tempo esgotado simulado')
+            if (op.reverso === 'erro-422') {
+                // o ME ecoa o que recebeu — e-mail e celular de quem devolve
+                return json({
+                    message: 'The given data was invalid.',
+                    errors: {
+                        order_id: ['O envio original ainda não foi entregue.'],
+                        new_sender_mail: [`${EMAIL_CLIENTE} já tem devolução pendente`],
+                        new_sender_phone: ['34998765432 não é um celular válido'],
+                    },
+                }, 422)
+            }
+            if (op.reverso === 'sem-id') return json({ protocol: 'ORD-1' }, 201)
+            return json({ id: ME_REVERSO, protocol: 'ORD-20260926001', status: 'pending' }, 201)
+        }
+        if (url.includes('/api/v2/me/cart/') && metodo === 'DELETE') {
+            registro.remocoes++
+            return json({})
+        }
+        if (url.endsWith('/api/v2/me/shipment/checkout')) {
+            registro.checkouts++
+            registro.corposOrders.push(JSON.parse(String(init?.body || '{}')))
+            if (op.checkout === 'excecao') throw new Error('AbortError: tempo esgotado simulado')
+            if (op.checkout === 'erro-5xx') return json({ error: 'Bad gateway' }, 502)
+            return json({ purchase: { id: 'pur-rev-1', status: op.checkout === 'pendente' ? 'pending' : 'paid' } })
+        }
+        if (url.endsWith('/api/v2/me/shipment/generate')) {
+            registro.corposOrders.push(JSON.parse(String(init?.body || '{}')))
+            if (op.gerar === 'erro') return json({ message: 'Falha ao gerar' }, 500)
+            return json({ [ME_REVERSO]: { status: true, message: 'Envio gerado com sucesso' } })
+        }
+        if (url.endsWith('/api/v2/me/shipment/tracking')) {
+            const codigo = op.codigo === undefined ? CODIGO_POSTAGEM : op.codigo
+            return json({ [ME_REVERSO]: { id: ME_REVERSO, status: 'generated', tracking: codigo, melhorenvio_tracking: 'ME26INTERNOBR' } })
+        }
+        if (url.includes('/api/v2/me/imprimir/dace/pdf/')) return json({ pdf: LINK_DCE })
+        if (url.endsWith('/api/v2/me/shipment/print')) return json({ url: 'https://sandbox.melhorenvio.com.br/imprimir/x' })
+        return json({ message: 'url fora do roteiro' }, 404)
+    }) as any
+    return { buscar, registro }
+}
+
+function requisicaoReversa(devolucaoId: unknown = DEVOLUCAO_ID, comAutorizacao = true): Request {
+    return new Request('http://localhost/melhor-envio-etiqueta', {
+        method: 'POST',
+        headers: comAutorizacao ? { Authorization: 'Bearer jwt-admin-de-teste' } : {},
+        body: JSON.stringify({ action: 'gerar_devolucao_reversa', devolucao_id: devolucaoId }),
+    })
+}
+
+async function rodarReversa(
+    supa: ReturnType<typeof clienteFalsoDevolucao>,
+    me: ReturnType<typeof buscarMeReversoFalso>,
+    requisicao: Request = requisicaoReversa(),
+): Promise<{ res: Response; corpo: any }> {
+    const res = await comAdminFalso(() => handler(requisicao, { supabase: supa.cliente, buscar: me.buscar }))
+    return { res, corpo: await res.json() }
+}
+
+const temFiltro = (filtros: any[], metodo: string, coluna: string, valor: unknown) =>
+    filtros.some((f: any) => f.metodo === metodo && f.coluna === coluna && f.valor === valor)
+
+// ── portões ─────────────────────────────────────────────────────────────────
+
+Deno.test("gerar_devolucao_reversa - sem Authorization: 403 antes de qualquer leitura no banco ou chamada ao ME", async () => {
+    const supa = clienteFalsoDevolucao()
+    const me = buscarMeReversoFalso()
+    const res = await handler(requisicaoReversa(DEVOLUCAO_ID, false), { supabase: supa.cliente, buscar: me.buscar })
+    assertEquals(res.status, 403)
+    assertEquals(supa.registro.operacoes, [])
+    assertEquals(me.registro.chamadas, [])
+})
+
+Deno.test("gerar_devolucao_reversa - id da devolução ausente ou que não é UUID: 400 sem tocar no banco nem no ME", async () => {
+    await comEnvAdmin(async () => {
+        // (sem a chave `devolucao_id` no corpo — `requisicaoReversa(undefined)`
+        // cairia no valor padrão do parâmetro, um UUID válido)
+        const semId = new Request('http://localhost/melhor-envio-etiqueta', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer jwt-admin-de-teste' },
+            body: JSON.stringify({ action: 'gerar_devolucao_reversa', orderId: 'pedido-9' }),
+        })
+        const requisicoes = [semId, ...[null, '', 'abc', 123, 'pedido-1', '11111111-2222-4333-8444-55555555555Z', `${DEVOLUCAO_ID}' or 1=1`]
+            .map((idRuim) => requisicaoReversa(idRuim))]
+        for (const requisicao of requisicoes) {
+            const supa = clienteFalsoDevolucao()
+            const me = buscarMeReversoFalso()
+            const { res, corpo } = await rodarReversa(supa, me, requisicao)
+            assertEquals(res.status, 400)
+            assertEquals(String(corpo.error).toLowerCase().includes('devolução'), true)
+            assertEquals(supa.registro.operacoes, [])
+            assertEquals(me.registro.chamadas, [])
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - devolução inexistente: 404, nada reservado", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ devolucao: null })
+        const me = buscarMeReversoFalso()
+        const { res } = await rodarReversa(supa, me)
+        assertEquals(res.status, 404)
+        assertEquals(supa.registro.reservas.length, 0)
+        assertEquals(me.registro.chamadas, [])
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - status diferente de aprovada: 409 sem reservar e sem chamada ao ME", async () => {
+    await comEnvAdmin(async () => {
+        for (const status of ['solicitada', 'recusada', 'cancelada', 'em_transito', 'recebida']) {
+            const supa = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, status } })
+            const me = buscarMeReversoFalso()
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 409)
+            assertEquals(String(corpo.error).includes(status), true)
+            assertEquals(supa.registro.reservas.length, 0)
+            assertEquals(me.registro.chamadas, [])
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - método de retorno que não é etiqueta_reversa: 400 sem reservar e sem chamada ao ME", async () => {
+    await comEnvAdmin(async () => {
+        for (const metodo_retorno of ['envio_proprio', 'entrega_na_loja', 'coleta']) {
+            const supa = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, metodo_retorno } })
+            const me = buscarMeReversoFalso()
+            const { res } = await rodarReversa(supa, me)
+            assertEquals(res.status, 400)
+            assertEquals(supa.registro.reservas.length, 0)
+            assertEquals(me.registro.chamadas, [])
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - código JÁ gerado: devolve o existente (idempotente), zero chamadas ao ME, nada reservado nem gravado", async () => {
+    await comEnvAdmin(async () => {
+        // vale mesmo com a devolução já em trânsito — é leitura pura
+        for (const status of ['aprovada', 'em_transito']) {
+            const supa = clienteFalsoDevolucao({
+                devolucao: { ...DEVOLUCAO_APROVADA, status, me_reverse_id: ME_REVERSO, codigo_postagem: CODIGO_POSTAGEM, etiqueta_url: LINK_DCE },
+            })
+            const me = buscarMeReversoFalso()
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 200)
+            assertEquals(corpo, { ok: true, already: true, codigo_postagem: CODIGO_POSTAGEM, etiqueta_url: LINK_DCE, me_reverse_id: ME_REVERSO })
+            assertEquals(me.registro.chamadas, [])
+            assertEquals(supa.registro.reservas.length, 0)
+            assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+            assertEquals(supa.registro.eventos.length, 0)
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - pedido sem etiqueta de ida do Melhor Envio: 409 mandando usar envio pelo cliente, sem reservar", async () => {
+    await comEnvAdmin(async () => {
+        // null (etiqueta feita fora do app) e id que não é do ME (colado à mão)
+        for (const shipping_label_id of [null, '', 'lbl-legado']) {
+            const supa = clienteFalsoDevolucao({ pedido: { ...PEDIDO_DA_DEVOLUCAO, shipping_label_id } })
+            const me = buscarMeReversoFalso()
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 409)
+            assertEquals(corpo.error, 'Este pedido não saiu por etiqueta do Melhor Envio; use envio pelo cliente.')
+            assertEquals(supa.registro.reservas.length, 0)
+            assertEquals(me.registro.chamadas, [])
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - pedido sem e-mail ou sem celular do cliente: 400 antes de reservar (o ME exige os dois de quem devolve)", async () => {
+    await comEnvAdmin(async () => {
+        const semEmail = { ...PEDIDO_DA_DEVOLUCAO.customer_data, email: '' }
+        const semCelular = { ...PEDIDO_DA_DEVOLUCAO.customer_data, whatsapp: '' }
+        for (const customer_data of [semEmail, semCelular]) {
+            const supa = clienteFalsoDevolucao({ pedido: { ...PEDIDO_DA_DEVOLUCAO, customer_data } })
+            const me = buscarMeReversoFalso()
+            const { res } = await rodarReversa(supa, me)
+            assertEquals(res.status, 400)
+            assertEquals(supa.registro.reservas.length, 0)
+            assertEquals(me.registro.chamadas, [])
+        }
+    })
+})
+
+// ── caminho feliz ───────────────────────────────────────────────────────────
+
+Deno.test("gerar_devolucao_reversa - caminho feliz: reserva, POST /cart/reverse com o corpo da doc, vincula, paga, gera, lê o código, grava e registra o evento", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso()
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 200)
+        assertEquals(corpo.ok, true)
+        assertEquals(corpo.already, false)
+        assertEquals(corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(corpo.etiqueta_url, LINK_DCE)
+        assertEquals(corpo.me_reverse_id, ME_REVERSO)
+        const diasDeValidade = (Date.parse(corpo.validade_ate) - Date.now()) / 86_400_000
+        assertEquals(diasDeValidade > 6.99 && diasDeValidade <= 7, true)
+
+        // ordem das chamadas ao ME (sandbox da credencial de teste)
+        assertEquals(me.registro.chamadas, [
+            'POST /api/v2/me/cart/reverse',
+            'POST /api/v2/me/shipment/checkout',
+            'POST /api/v2/me/shipment/generate',
+            'POST /api/v2/me/shipment/tracking',
+            `GET /api/v2/me/imprimir/dace/pdf/${ME_REVERSO}`,
+        ])
+        // corpo do carrinho reverso: fluxo "envio original feito pelo Melhor
+        // Envio" da doc — sem from/to/products, sem CPF
+        assertEquals(me.registro.corpoReverso, {
+            service: 2, // melhor-envio-2 = SEDEX, o que o cliente pagou na ida
+            order_id: ME_ENVIO_DE_IDA,
+            new_sender_mail: EMAIL_CLIENTE,
+            new_sender_phone: '34998765432',
+            insurance_value: 159.8, // valor_itens da devolução
+            package: { weight: 1.1, width: 25, height: 6, length: 35 },
+            options: { own_hand: false, receipt: false },
+        })
+        assertEquals(JSON.stringify(me.registro.corpoReverso).includes('52998224725'), false)
+        // checkout e generate sobre o id do envio REVERSO (nunca o de ida)
+        assertEquals(me.registro.corposOrders, [{ orders: [ME_REVERSO] }, { orders: [ME_REVERSO] }])
+
+        // reserva condicional ANTES de qualquer chamada ao ME
+        assertEquals(supa.registro.reservas.length, 1)
+        const reserva = supa.registro.reservas[0]
+        const token = reserva.valores.me_reverse_id
+        assertEquals(/^reservando:\d+:[0-9a-f-]{36}$/.test(token), true)
+        assertEquals(temFiltro(reserva.filtros, 'eq', 'id', DEVOLUCAO_ID), true)
+        assertEquals(temFiltro(reserva.filtros, 'is', 'me_reverse_id', null), true)
+        assertEquals(temFiltro(reserva.filtros, 'eq', 'status', 'aprovada'), true)
+        assertEquals(temFiltro(reserva.filtros, 'eq', 'metodo_retorno', 'etiqueta_reversa'), true)
+
+        // vínculo: troca a reserva pelo id do ME — condicional à PRÓPRIA reserva
+        assertEquals(supa.registro.vinculos.length, 1)
+        assertEquals(supa.registro.vinculos[0].valores, { me_reverse_id: ME_REVERSO })
+        assertEquals(temFiltro(supa.registro.vinculos[0].filtros, 'eq', 'me_reverse_id', token), true)
+
+        // colunas gravadas
+        assertEquals(supa.registro.gravacoesDeCodigo.length, 1)
+        assertEquals(supa.registro.gravacoesDeCodigo[0].valores, { codigo_postagem: CODIGO_POSTAGEM, etiqueta_url: LINK_DCE })
+        assertEquals(temFiltro(supa.registro.gravacoesDeCodigo[0].filtros, 'eq', 'me_reverse_id', ME_REVERSO), true)
+
+        // evento da devolução (NUNCA order_shipping_events, cujo CHECK não conhece a reversa)
+        assertEquals(supa.registro.eventos, [{
+            devolucao_id: DEVOLUCAO_ID,
+            de_status: 'aprovada',
+            para_status: 'aprovada',
+            ator: 'sistema',
+            nota: NOTA_CODIGO_GERADO,
+        }])
+        assertEquals(supa.registro.operacoes.includes('insert order_shipping_events'), false)
+        assertEquals(supa.registro.escritasNoPedido, 0)
+
+        assertEquals(supa.registro.liberacoes.length, 0)
+        assertEquals(me.registro.remocoes, 0)
+        // o token da credencial nunca vai na resposta
+        assertEquals(JSON.stringify(corpo).includes('token-me-de-teste'), false)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - ida por PAC, por outra transportadora ou sem opção salva: reversa sai pelo PAC (service 1)", async () => {
+    await comEnvAdmin(async () => {
+        for (const shipping_option_id of ['melhor-envio-1', 'melhor-envio-3', null]) {
+            const supa = clienteFalsoDevolucao({
+                pedido: { ...PEDIDO_DA_DEVOLUCAO, customer_data: { ...PEDIDO_DA_DEVOLUCAO.customer_data, shipping_option_id } },
+            })
+            const me = buscarMeReversoFalso()
+            const { res } = await rodarReversa(supa, me)
+            assertEquals(res.status, 200)
+            assertEquals(me.registro.corpoReverso.service, 1)
+        }
+    })
+})
+
+// ── falhas do provedor ──────────────────────────────────────────────────────
+
+Deno.test("gerar_devolucao_reversa - ME recusa o carrinho reverso (422): reserva LIBERADA, nada pago, motivo do ME na resposta SEM e-mail/celular (nem no log)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ reverso: 'erro-422' })
+        let resultado: any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            resultado = await rodarReversa(supa, me)
+        })
+        const { res, corpo } = resultado
+        assertEquals(res.status, 502)
+        assertEquals(String(corpo.error).includes('O envio original ainda não foi entregue.'), true)
+        const texto = JSON.stringify(corpo) + linhas.join('\n')
+        assertEquals(texto.includes(EMAIL_CLIENTE), false)
+        assertEquals(texto.includes('34998765432'), false)
+        assertEquals(texto.includes('99876'), false)
+        assertEquals(me.registro.checkouts, 0)
+        // liberação condicional à PRÓPRIA reserva
+        assertEquals(supa.registro.reservas.length, 1)
+        assertEquals(supa.registro.liberacoes.length, 1)
+        assertEquals(supa.registro.liberacoes[0].valores, { me_reverse_id: null })
+        const token = supa.registro.reservas[0].valores.me_reverse_id
+        assertEquals(temFiltro(supa.registro.liberacoes[0].filtros, 'eq', 'me_reverse_id', token), true)
+        assertEquals(supa.registro.vinculos.length, 0)
+        assertEquals(supa.registro.eventos.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - carrinho reverso estoura (timeout) ou volta sem id: reserva LIBERADA, checkout nunca chamado", async () => {
+    await comEnvAdmin(async () => {
+        for (const reverso of ['excecao', 'sem-id'] as const) {
+            const supa = clienteFalsoDevolucao()
+            const me = buscarMeReversoFalso({ reverso })
+            const { res } = await rodarReversa(supa, me)
+            assertEquals(res.status, 502)
+            assertEquals(me.registro.checkouts, 0)
+            assertEquals(supa.registro.liberacoes.length, 1)
+            assertEquals(supa.registro.vinculos.length, 0)
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - checkout recusado (200 com status pending): item sai do carrinho e o vínculo é LIBERADO (dá para tentar de novo)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ checkout: 'pendente' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(corpo.resgate, undefined)
+        assertEquals(me.registro.remocoes, 1)
+        assertEquals(supa.registro.liberacoes.length, 1)
+        assertEquals(temFiltro(supa.registro.liberacoes[0].filtros, 'eq', 'me_reverse_id', ME_REVERSO), true)
+        assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+        assertEquals(supa.registro.eventos.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - checkout 5xx ou exceção: INDETERMINADO — vínculo MANTIDO, carrinho intacto, resgate com o id (nada de segunda compra)", async () => {
+    await comEnvAdmin(async () => {
+        for (const checkout of ['erro-5xx', 'excecao'] as const) {
+            const supa = clienteFalsoDevolucao()
+            const me = buscarMeReversoFalso({ checkout })
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 502)
+            assertEquals(corpo.resgate, true)
+            assertEquals(corpo.me_reverse_id, ME_REVERSO)
+            assertEquals(String(corpo.error).includes('INDETERMINADO'), true)
+            assertEquals(supa.registro.liberacoes.length, 0)
+            assertEquals(me.registro.remocoes, 0)
+            assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - pago mas a geração falhou: vínculo MANTIDO (já pago), nada removido, resgate mandando gerar no ME", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ gerar: 'erro' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(corpo.resgate, true)
+        assertEquals(corpo.me_reverse_id, ME_REVERSO)
+        assertEquals(String(corpo.error).includes('PAGO'), true)
+        // credencial de teste é sandbox: a mensagem avisa que lá não sai código
+        assertEquals(String(corpo.error).includes('Sandbox'), true)
+        assertEquals(supa.registro.liberacoes.length, 0)
+        assertEquals(me.registro.remocoes, 0)
+        assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - gerado mas o ME ainda não devolveu o código: 502 pendente/resgate, vínculo mantido, nada gravado", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ codigo: null })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(corpo.pendente, true)
+        assertEquals(corpo.resgate, true)
+        assertEquals(supa.registro.liberacoes.length, 0)
+        assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+        assertEquals(supa.registro.eventos.length, 0)
+    })
+})
+
+// ── corrida e retomada ──────────────────────────────────────────────────────
+
+Deno.test("gerar_devolucao_reversa - reserva perdida (0 linhas): relê — já concluída devolve o existente; ainda em andamento dá 409; ME nunca chamado", async () => {
+    await comEnvAdmin(async () => {
+        const concluida = { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO, codigo_postagem: CODIGO_POSTAGEM, etiqueta_url: LINK_DCE }
+        const supa1 = clienteFalsoDevolucao({ linhasReservadas: [], devolucaoRelida: concluida })
+        const me1 = buscarMeReversoFalso()
+        const r1 = await rodarReversa(supa1, me1)
+        assertEquals(r1.res.status, 200)
+        assertEquals(r1.corpo.already, true)
+        assertEquals(r1.corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(me1.registro.chamadas, [])
+
+        const emAndamento = { ...DEVOLUCAO_APROVADA, me_reverse_id: `reservando:${Date.now()}:outra-chamada` }
+        const supa2 = clienteFalsoDevolucao({ linhasReservadas: [], devolucaoRelida: emAndamento })
+        const me2 = buscarMeReversoFalso()
+        const r2 = await rodarReversa(supa2, me2)
+        assertEquals(r2.res.status, 409)
+        assertEquals(me2.registro.chamadas, [])
+        assertEquals(supa2.registro.liberacoes.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - reserva recente de outra chamada: 409 sem reservar; reserva VENCIDA (> 10 min) é retomada com filtro na reserva antiga", async () => {
+    await comEnvAdmin(async () => {
+        const recente = `reservando:${Date.now() - 5_000}:outra-chamada`
+        const supa1 = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: recente } })
+        const me1 = buscarMeReversoFalso()
+        const r1 = await rodarReversa(supa1, me1)
+        assertEquals(r1.res.status, 409)
+        assertEquals(supa1.registro.reservas.length, 0)
+        assertEquals(me1.registro.chamadas, [])
+
+        const vencida = `reservando:${Date.now() - 11 * 60_000}:chamada-morta`
+        const supa2 = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: vencida } })
+        const me2 = buscarMeReversoFalso()
+        const r2 = await rodarReversa(supa2, me2)
+        assertEquals(r2.res.status, 200)
+        const filtros = supa2.registro.reservas[0].filtros
+        assertEquals(temFiltro(filtros, 'eq', 'me_reverse_id', vencida), true)
+        assertEquals(filtros.some((f: any) => f.metodo === 'is' && f.coluna === 'me_reverse_id'), false)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - vinculada ao ME sem código salvo: SÓ consulta o código (sem carrinho/checkout/generate), grava e registra o evento", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
+        const me = buscarMeReversoFalso()
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 200)
+        assertEquals(corpo.ok, true)
+        assertEquals(corpo.already, true)
+        assertEquals(corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(me.registro.chamadas, [
+            'POST /api/v2/me/shipment/tracking',
+            `GET /api/v2/me/imprimir/dace/pdf/${ME_REVERSO}`,
+        ])
+        assertEquals(supa.registro.reservas.length, 0)
+        assertEquals(supa.registro.gravacoesDeCodigo.length, 1)
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].nota, NOTA_CODIGO_GERADO)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - vinculada ao ME e o código ainda não saiu: 502 pendente, nenhuma compra nova, nada gravado", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
+        const me = buscarMeReversoFalso({ codigo: null })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(corpo.pendente, true)
+        assertEquals(corpo.me_reverse_id, ME_REVERSO)
+        assertEquals(me.registro.chamadas, ['POST /api/v2/me/shipment/tracking'])
+        assertEquals(supa.registro.gravacoesDeCodigo.length, 0)
+        assertEquals(supa.registro.eventos.length, 0)
     })
 })
