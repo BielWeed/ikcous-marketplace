@@ -11,11 +11,17 @@ const vercel = hospedagem.lerVercel();
 // aqui, o iframe morre com ERR_BLOCKED_BY_RESPONSE (quadro cinza no celular,
 // 20/09/2026). A lista é FECHADA e comparada token a token: ampliar origem
 // aqui deve ser decisão explícita, não efeito colateral de edição da CSP.
+// Cartão pelo app (26/09/2026): os três últimos são o desafio 3-D Secure (a
+// URL do banco vem num domínio do Mercado Pago/Mercado Livre do país) —
+// ver vercel-headers-cartao-online.test.ts.
 const FRAME_SRC_APROVADO = [
   "https://maps.google.com",
   "https://www.google.com/maps/embed",
   "https://*.mercadopago.com",
   "https://*.mercadolibre.com",
+  "https://*.mercadopago.com.br",
+  "https://*.mercadolivre.com",
+  "https://*.mercadolivre.com.br",
 ];
 
 function frameSrcDaCsp(csp: string): string[] {

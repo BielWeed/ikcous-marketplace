@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // módulo lê VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY em `@/lib/env` e EXPLODE
 // (por design, ver env.ts) se faltarem. Os testes abaixo não chamam nada do
 // Supabase de verdade — `criarPagamento` chega como dublê nos testes de
-// `montarBrick`, e os de `carregarSdkMercadoPago` nem importam esse caminho —
+// `dispararPagamentoPix`, e os de `carregarSdkMercadoPago` nem importam esse caminho —
 // então o dublê fica vazio. Mesmo padrão de `create-order-rpc.test.ts`.
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -186,685 +186,29 @@ describe("carregarSdkMercadoPago", () => {
   });
 });
 
-// Tipo das opções de `montarBrick`, extraído do próprio módulo (fonte única
-// de verdade) em vez de duplicado à mão aqui. Fica no nível do arquivo — não
-// dentro do describe — porque em 80 colunas o formatter do biome quebra a
-// linha do `typeof import(...)` em várias, e o esbuild do vite não faz o
-// parse de `typeof import(\n "...",\n)` com vírgula à direita.
+// Tipo das opções de `dispararPagamentoPix`, extraído do próprio módulo
+// (fonte única de verdade) em vez de duplicado à mão aqui. Fica no nível do
+// arquivo — não dentro do describe — porque em 80 colunas o formatter do
+// biome quebra a linha do `typeof import(...)` em várias, e o esbuild do vite
+// não faz o parse de `typeof import(\n "...",\n)` com vírgula à direita.
+//
+// 26/09/2026: o describe de `montarBrick` (Payment Brick só-PIX, sem caller
+// em produção desde o PIX direto de 25/09) saiu junto com a função. O ciclo
+// de vida do Brick (StrictMode, desmontagem, create em voo, SDK que não
+// carrega, texto do bundle que não vaza) é provado agora no Brick de CARTÃO,
+// em pagamento-com-cartao.test.tsx; a classificação da resposta do PIX
+// (recusado/expirado/estornado/desconhecido/ausente) passou para o describe
+// de `dispararPagamentoPix`, abaixo — o único caminho que a usa.
 type ModuloComponente = typeof import("@/components/checkout/PagamentoOnline");
-type OpcoesMontarBrick = Parameters<ModuloComponente["montarBrick"]>[0];
 type OpcoesDispararPagamentoPix = Parameters<
   ModuloComponente["dispararPagamentoPix"]
 >[0];
 
-describe("montarBrick", () => {
-  beforeEach(() => {
-    document.head.innerHTML = "";
-    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
-  });
-
-  afterEach(() => {
-    document.querySelectorAll("script[data-mp-sdk]").forEach((s) => s.remove());
-    // @ts-expect-error limpando o global entre testes
-    globalThis.MercadoPago = undefined;
-    vi.unstubAllEnvs();
-    vi.restoreAllMocks();
-  });
-
-  /** Dispara o `load` do SDK e espera a cadeia de `await`s do componente. */
-  async function carregarSdk() {
-    const tag = document.querySelector("script[data-mp-sdk]");
-    tag?.dispatchEvent(new Event("load"));
-    await esperarMicrotarefas();
-  }
-
-  function opcoesPadrao(sobrepor: Partial<OpcoesMontarBrick> = {}) {
-    return {
-      orderId: "ped-1",
-      valor: 100,
-      criarPagamento: vi.fn(),
-      onErro: vi.fn(),
-      onPix: vi.fn(),
-      ...sobrepor,
-    };
-  }
-
-  // B1 da revisão: sem essa checagem, a IIFE da montagem CANCELADA pela
-  // StrictMode (mount → cleanup → mount, tudo síncrono, antes do SDK acabar
-  // de carregar) batia no `if (cancelado) return` DEPOIS de já ter chamado
-  // `create()` — ou nem chegava a checar, e criava o Brick duas vezes. Este
-  // teste reproduz a sequência exata do bug report: cleanup ANTES do SDK
-  // terminar de carregar.
-  it("StrictMode (mount → cleanup → mount antes do SDK carregar) cria o Brick uma vez só", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const opts = opcoesPadrao();
-    const cleanup1 = montarBrick(opts);
-    cleanup1(); // "fake unmount" do StrictMode, ANTES do SDK responder
-    const cleanup2 = montarBrick(opts);
-
-    await carregarSdk();
-
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(opts.onErro).not.toHaveBeenCalled();
-
-    cleanup2();
-  });
-
-  // B4 (primeiro caminho): o cliente sai do checkout e volta sem recarregar
-  // a página — o componente desmonta de verdade, e o cleanup precisa
-  // desmontar o Brick, não só marcar uma variável local.
-  it("cleanup depois do Brick montado chama unmount() no controlador", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const unmount = vi.fn();
-    const create = vi.fn().mockResolvedValue({ unmount });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const cleanup = montarBrick(opcoesPadrao());
-    await carregarSdk();
-
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(unmount).not.toHaveBeenCalled();
-
-    cleanup();
-
-    expect(unmount).toHaveBeenCalledTimes(1);
-  });
-
-  // B4 (segundo caminho): o cleanup roda DEPOIS que o cancelamento já
-  // aconteceu enquanto `create()` ainda estava em voo — a criação não pode
-  // ficar abandonada, senão o `Rt.app` do bundle nunca é limpo e a próxima
-  // tentativa esbarra em "Brick already initialized".
-  it("cancelar enquanto create() está em voo desmonta o Brick assim que ele termina de montar", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const unmount = vi.fn();
-    let resolverCreate!: (v: { unmount: () => void }) => void;
-    const create = vi.fn(
-      () =>
-        new Promise<{ unmount: () => void }>((resolve) => {
-          resolverCreate = resolve;
-        }),
-    );
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const cleanup = montarBrick(opcoesPadrao());
-    await carregarSdk(); // a IIFE chega até `await mp.bricks().create(...)` e fica pendurada ali
-
-    cleanup(); // cancela ANTES do create() responder — controlador ainda é null aqui
-
-    resolverCreate({ unmount });
-    await esperarMicrotarefas();
-
-    expect(unmount).toHaveBeenCalledTimes(1);
-  });
-
-  // A2 da revisão: o `onSubmit` roda DEPOIS que o `await create(...)` já
-  // resolveu — fora do try/catch externo. Sem um catch próprio, as quatro
-  // mensagens de `criarPagamento` (useOrders.ts:974-980) somem dentro do SDK.
-  it("erro dentro do onSubmit chega ao onErro e ainda propaga para o Brick sair de 'processando'", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    // `useOrders.criarPagamento` (CHECKOUT-050) anexa `.terminal` no Error
-    // que lança, lido do corpo do 409 da edge function — é esse campo, não
-    // o texto da mensagem, que classifica a categoria abaixo.
-    const erro = Object.assign(
-      new Error("O prazo para pagar este pedido acabou."),
-      { terminal: true },
-    );
-    const criarPagamento = vi.fn().mockRejectedValue(erro);
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-
-    await expect(onSubmit({ formData: { token: "tok-123" } })).rejects.toThrow(
-      "O prazo para pagar este pedido acabou.",
-    );
-    // Categoria "terminal": a reserva já morreu (pg_cron cobra o prazo), e
-    // tentar de novo bate na mesma recusa — ver podeCobrar() em
-    // supabase/functions/criar-pagamento/index.ts.
-    expect(onErro).toHaveBeenCalledWith(
-      "O prazo para pagar este pedido acabou.",
-      "terminal",
-    );
-  });
-
-  // CHECKOUT-050 (#194) — o achado da revisão: o front classificava
-  // "terminal" comparando a mensagem por igualdade EXATA com o texto de
-  // prazo vencido. Assim que o pg_cron marca o pedido 'expirado' (a cada 5
-  // min), a MESMA reserva morta passa a cair no ramo 1 de podeCobrar
-  // ("Este pedido não está aguardando pagamento.") — uma mensagem que a
-  // comparação por texto nunca reconhecia, e o cliente ganhava "Tentar de
-  // novo" para uma recusa permanente. Este teste usa essa mensagem —
-  // DIFERENTE da de prazo — e prova que quem decide agora é `.terminal`, um
-  // dado, não mais um texto congelado.
-  it("erro com .terminal=true classifica como 'terminal' mesmo com mensagem que não é a de prazo vencido", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    const erro = Object.assign(
-      new Error("Este pedido não está aguardando pagamento."),
-      { terminal: true },
-    );
-    const criarPagamento = vi.fn().mockRejectedValue(erro);
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-
-    await expect(
-      onSubmit({ formData: { token: "tok-123" } }),
-    ).rejects.toThrow();
-
-    expect(onErro).toHaveBeenCalledWith(
-      "Este pedido não está aguardando pagamento.",
-      "terminal",
-    );
-  });
-
-  // Contraste do teste acima: sem `.terminal`, e sem ser um dos dois
-  // `throw new ErroPagamentoTerminal` internos, o erro é recuperável por
-  // padrão — inclusive um erro genérico de rede que por acaso repete a
-  // MESMA mensagem de prazo vencido (não pode haver comparação de texto
-  // nenhuma sobrando).
-  it("erro sem .terminal classifica como 'recuperavel', mesmo que o texto repita a mensagem de prazo vencido", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    const criarPagamento = vi
-      .fn()
-      .mockRejectedValue(new Error("O prazo para pagar este pedido acabou."));
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-
-    await expect(
-      onSubmit({ formData: { token: "tok-123" } }),
-    ).rejects.toThrow();
-
-    expect(onErro).toHaveBeenCalledWith(
-      "O prazo para pagar este pedido acabou.",
-      "recuperavel",
-    );
-  });
-
-  // B4 (terceiro caminho, o mais direto): o próprio componente troca o JSX
-  // ao receber o PIX e arranca #mp-container do DOM por baixo do Brick vivo.
-  it("ao receber o PIX, desmonta o Brick antes de repassar o QR", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const unmount = vi.fn();
-    const create = vi.fn().mockResolvedValue({ unmount });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onPix = vi.fn();
-    const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
-      statusPagamento: "aguardando",
-      expiraEm: "2026-08-06T15:30:00.000Z",
-      qrCode: "000201...",
-      qrCodeBase64: "abc123",
-    });
-
-    montarBrick(opcoesPadrao({ criarPagamento, onPix }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await onSubmit({ formData: {} }); // sem token => PIX
-
-    expect(unmount).toHaveBeenCalledTimes(1);
-    expect(onPix).toHaveBeenCalledWith({
-      qrCodeBase64: "abc123",
-      qrCode: "000201...",
-      expiraEm: "2026-08-06T15:30:00.000Z",
-    });
-  });
-
-  // A-1 da revisão final, vocabulário atualizado na CHECKOUT-080 (#213):
-  // cartão recusado (201 com statusPagamento "recusado") não é erro HTTP —
-  // criarPagamento devolve normalmente. Sem olhar `r.statusPagamento`, o
-  // onSubmit não fazia nada (ehPix é falso), o cliente não via aviso nenhum,
-  // e ao trocar para PIX a reconsulta trazia o MESMO status "recusado" sem
-  // QR — cadeia que terminava desmontando o Brick para um QR vazio.
-  it("statusPagamento 'recusado' chama onErro e MANTÉM o Brick vivo — não desmonta", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const unmount = vi.fn();
-    const create = vi.fn().mockResolvedValue({ unmount });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    const onPix = vi.fn();
-    const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
-      statusPagamento: "recusado",
-      expiraEm: "2026-08-06T15:30:00.000Z",
-    });
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    // token presente => cartão. Mesmo assim tem que rejeitar a promise, para
-    // o Brick sair de "processando" (mesmo contrato do catch de erro).
-    await expect(
-      onSubmit({ formData: { token: "tok-123" } }),
-    ).rejects.toThrow();
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    // Terminal: a MESMA cobrança recusada volta em qualquer reconsulta —
-    // não pode haver "tentar de novo" para este pedido.
-    expect(onErro.mock.calls[0][1]).toBe("terminal");
-    expect(onPix).not.toHaveBeenCalled();
-    expect(unmount).not.toHaveBeenCalled();
-  });
-
-  // Conserto de cópia: as duas instruções antigas ("tente outro cartão ou
-  // pague com PIX") eram impossíveis de seguir — cartão está desligado no
-  // Brick, e "pague com PIX" reconsulta a MESMA cobrança recusada
-  // (podeCobrar manda para `reconsultar` sempre que já existe
-  // gateway_payment_id, sem criar cobrança nova). A asserção de
-  // `not.toMatch` é a que tem dente: sem ela, uma reescrita futura que volte
-  // a falar em cartão passaria despercebida.
-  it("mensagem de 'recusado' não fala em cartão nem sugere tentar de novo neste pedido", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
-      statusPagamento: "recusado",
-      expiraEm: "2026-08-06T15:30:00.000Z",
-    });
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await expect(
-      onSubmit({ formData: { token: "tok-123" } }),
-    ).rejects.toThrow();
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    const mensagem = onErro.mock.calls[0][0] as string;
-    expect(mensagem).toBe(
-      "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
-    );
-    expect(mensagem).not.toMatch(/cart[aã]o/i);
-  });
-
-  // CHECKOUT-080 (#213): 'expirado' e 'estornado' não tinham representação
-  // no vocabulário clássico e caíam no default genérico ("Não foi possível
-  // confirmar o pagamento."). Agora têm nome próprio — os dois testes
-  // abaixo provam que cada um usa a MENSAGEM ESPECÍFICA, não o genérico, e
-  // que os dois continuam terminais (mesma categoria de 'recusado': a
-  // reconsulta devolve a MESMA order vencida/estornada para sempre).
-  it("statusPagamento 'expirado' usa mensagem própria de PIX vencido, terminal, sem desmontar o Brick", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const unmount = vi.fn();
-    const create = vi.fn().mockResolvedValue({ unmount });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    const onPix = vi.fn();
-    const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
-      statusPagamento: "expirado",
-      expiraEm: "2026-08-06T15:30:00.000Z",
-    });
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await expect(onSubmit({ formData: {} })).rejects.toThrow();
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    expect(onErro.mock.calls[0][0]).toBe(
-      "O prazo deste PIX venceu antes do pagamento ser confirmado. Faça um pedido novo para gerar um QR code novo.",
-    );
-    expect(onErro.mock.calls[0][1]).toBe("terminal");
-    expect(onPix).not.toHaveBeenCalled();
-    expect(unmount).not.toHaveBeenCalled();
-  });
-
-  it("statusPagamento 'estornado' usa mensagem própria de estorno, terminal, sem desmontar o Brick", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const unmount = vi.fn();
-    const create = vi.fn().mockResolvedValue({ unmount });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    const onPix = vi.fn();
-    const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
-      statusPagamento: "estornado",
-      expiraEm: "2026-08-06T15:30:00.000Z",
-    });
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await expect(onSubmit({ formData: {} })).rejects.toThrow();
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    expect(onErro.mock.calls[0][0]).toBe(
-      "Este pagamento foi estornado e não pode ser confirmado neste pedido. Faça um pedido novo ou fale com a loja.",
-    );
-    expect(onErro.mock.calls[0][1]).toBe("terminal");
-    expect(onPix).not.toHaveBeenCalled();
-    expect(unmount).not.toHaveBeenCalled();
-  });
-
-  // CHECKOUT-080 (#213): o teste que existia aqui para statusPagamento
-  // "cancelled" foi removido — no vocabulário CLÁSSICO "rejected" e
-  // "cancelled" eram dois valores terminais distintos, mas este banco não
-  // tem um payment_status 'cancelado' separado de 'recusado' (ver o
-  // comentário de MAPA_STATUS_ORDER em
-  // supabase/functions/_shared/mercadopago.ts) — os dois convergem para o
-  // MESMO 'recusado', já coberto pelos testes acima. A cobertura de um
-  // SEGUNDO valor terminal com nome próprio passou para os testes de
-  // 'expirado'/'estornado', que são os dois que o vocabulário clássico não
-  // conseguia representar.
-
-  // A cadeia medida pelo revisor: reconsulta de uma cobrança de CARTÃO
-  // recusada, pelo caminho PIX (mesmo pedido, mesmo gateway_payment_id).
-  // ehPix é true mas não há QR nenhum — nunca pode desmontar o Brick sem QR
-  // de verdade, senão o cliente fica preso numa tela vazia sem volta.
-  it("PIX sem QR (qrCode e qrCodeBase64 ausentes) NÃO chama onPix nem desmonta o Brick", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const unmount = vi.fn();
-    const create = vi.fn().mockResolvedValue({ unmount });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    const onPix = vi.fn();
-    // statusPagamento "conhecido" (aguardando) mas SEM qrCode/qrCodeBase64 —
-    // é exatamente o que a reconsulta de um pagamento de cartão devolve.
-    const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
-      statusPagamento: "aguardando",
-      expiraEm: "2026-08-06T15:30:00.000Z",
-    });
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await expect(onSubmit({ formData: {} })).rejects.toThrow();
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    // Recuperável: a cobrança em si não existe de forma útil (sem QR), e uma
-    // nova tentativa cria/reconsulta do zero sem risco de duplicar cobrança.
-    expect(onErro.mock.calls[0][1]).toBe("recuperavel");
-    expect(onPix).not.toHaveBeenCalled();
-    expect(unmount).not.toHaveBeenCalled();
-  });
-
-  it("statusPagamento desconhecido não vira sucesso silencioso — chama onErro e mantém o Brick vivo", async () => {
-    // CHECKOUT-080 (#213): esta é a rede de segurança OBRIGATÓRIA (item 4 da
-    // issue) — QUALQUER valor fora do conjunto fechado
-    // ('aguardando'/'pago'/'recusado'/'expirado'/'estornado') cai aqui,
-    // nunca vira sucesso silencioso. O exemplo abaixo é o par CRU que o
-    // ramo de reconsulta da Orders API devolve para uma combinação que
-    // `mapearStatusOrder` não reconhece (criar-pagamento/index.ts) — mas
-    // qualquer outra string serviria, é esse o ponto: esta checagem não
-    // pode virar uma lista de exceções.
-    const { montarBrick } = await importarLimpo();
-
-    const unmount = vi.fn();
-    const create = vi.fn().mockResolvedValue({ unmount });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    const onPix = vi.fn();
-    const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
-      statusPagamento: "in_mediation:um_detalhe_novo",
-      expiraEm: "2026-08-06T15:30:00.000Z",
-      qrCode: "000201...",
-      qrCodeBase64: "abc123",
-    });
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await expect(onSubmit({ formData: {} })).rejects.toThrow();
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    // Terminal: status novo/desconhecido do MP também não dá para reconsultar
-    // e obter algo diferente — a reconsulta devolve o mesmo status cru.
-    expect(onErro.mock.calls[0][1]).toBe("terminal");
-    expect(onErro.mock.calls[0][0]).toBe(
-      "Não foi possível confirmar o pagamento.",
-    );
-    expect(onPix).not.toHaveBeenCalled();
-    expect(unmount).not.toHaveBeenCalled();
-  });
-
-  // Correção pós-revisão da CHECKOUT-080 (#213): faltava fixar o caso do
-  // campo AUSENTE (`statusPagamento: undefined`, não uma string cru). É o
-  // caso da JANELA DE DEPLOY — a edge function e o front sobem por caminhos
-  // diferentes (Supabase x Vercel), então uma function ANTIGA (que ainda não
-  // manda `statusPagamento`) pode responder a um front NOVO por um período
-  // curto. O código já cobre isto sem mudança nenhuma — `undefined` não bate
-  // em nenhum dos três terminais nomeados nem em `statusConhecido`, e cai na
-  // MESMA rede de segurança do teste de status desconhecido, acima. Este
-  // teste só torna essa garantia explícita, para uma reescrita futura da
-  // rede de segurança (ex.: trocar `===` por alguma lista) não regredir o
-  // caso silenciosamente.
-  it("statusPagamento AUSENTE (function antiga ainda no ar) não vira sucesso silencioso — chama onErro e mantém o Brick vivo", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const unmount = vi.fn();
-    const create = vi.fn().mockResolvedValue({ unmount });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    const onPix = vi.fn();
-    // `statusPagamento` OMITIDO do corpo — é o formato que uma versão
-    // anterior de `criar-pagamento` (campo `status`, não `statusPagamento`)
-    // devolveria a este front novo.
-    const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
-      expiraEm: "2026-08-06T15:30:00.000Z",
-      qrCode: "000201...",
-      qrCodeBase64: "abc123",
-    });
-
-    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
-    await carregarSdk();
-
-    const { onSubmit } = create.mock.calls[0][2].callbacks;
-    await expect(onSubmit({ formData: {} })).rejects.toThrow();
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    expect(onErro.mock.calls[0][1]).toBe("terminal");
-    expect(onErro.mock.calls[0][0]).toBe(
-      "Não foi possível confirmar o pagamento.",
-    );
-    expect(onPix).not.toHaveBeenCalled();
-    expect(unmount).not.toHaveBeenCalled();
-  });
-
-  // Task 8 da Fase 3: o caminho de cartão fica desligado até a Fase 3.5 (ver
-  // comentário em PagamentoOnline.tsx) — o Brick só pode oferecer PIX. A
-  // documentação do SDK (bricks/payment-review.md e
-  // checkout-bricks/payment-brick/advanced-features/manage-payment-methods)
-  // descreve cada chave de `paymentMethods` como "Optional — Allow payments
-  // with X": a chave OMITIDA é o jeito de desligar um meio de pagamento, não
-  // um valor vazio — por isso o teste confere ausência (`toBeUndefined`), não
-  // `""` nem `[]`.
-  it("customization.paymentMethods habilita só PIX — creditCard não entra", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    montarBrick(opcoesPadrao());
-    await carregarSdk();
-
-    const { paymentMethods } = create.mock.calls[0][2].customization;
-    expect(paymentMethods.bankTransfer).toBe("all");
-    expect(paymentMethods.creditCard).toBeUndefined();
-  });
-
-  // CHECKOUT-050: o Brick nunca chegou a criar cobrança nenhuma aqui — a
-  // falha é do carregamento em si (rede, SDK indisponível). Tentar de novo
-  // simplesmente remonta e tenta carregar de novo, sem risco de duplicar
-  // cobrança.
-  it("SDK que não carrega chama onErro com categoria 'recuperavel'", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const onErro = vi.fn();
-    montarBrick(opcoesPadrao({ onErro }));
-
-    const tag = document.querySelector("script[data-mp-sdk]")!;
-    tag.dispatchEvent(new Event("error"));
-    await esperarMicrotarefas();
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    expect(onErro.mock.calls[0][1]).toBe("recuperavel");
-  });
-
-  // Mesmo raciocínio: o próprio Brick avisou que não conseguiu montar
-  // (callbacks.onError) antes de qualquer onSubmit rodar — nenhuma cobrança
-  // chegou a ser criada.
-  it("onError do Brick (callback de montagem) chama onErro com categoria 'recuperavel'", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    montarBrick(opcoesPadrao({ onErro }));
-    await carregarSdk();
-
-    const { onError } = create.mock.calls[0][2].callbacks;
-    onError(new Error("falha simulada de montagem"));
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    expect(onErro.mock.calls[0][1]).toBe("recuperavel");
-  });
-
-  // Achado 2 da revisão do CHECKOUT-050 (#194): o catch EXTERNO (em volta de
-  // carregarSdkMercadoPago + mp.bricks().create()) mandava `err?.message` —
-  // e quando quem rejeita é o próprio create() do SDK do Mercado Pago, essa
-  // mensagem é texto do BUNDLE deles (inglês, jargão de configuração). Um
-  // toast escondia isso em 2500ms; agora a mensagem fica NA TELA até o
-  // cliente sair (CHECKOUT-050). Este caminho tem que usar sempre a frase
-  // curada em português — a mensagem crua vai só para o console.
-  it("create() do SDK rejeitando com mensagem do bundle deles não vaza na tela — usa a frase curada e loga no console", async () => {
-    const { montarBrick } = await importarLimpo();
-
-    const consoleErroSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-    const mensagemDoBundle = "Invalid public key format provided";
-    const create = vi.fn().mockRejectedValue(new Error(mensagemDoBundle));
-    // @ts-expect-error stub do SDK
-    globalThis.MercadoPago = function MercadoPagoStub() {
-      return { bricks: () => ({ create }) };
-    };
-
-    const onErro = vi.fn();
-    montarBrick(opcoesPadrao({ onErro }));
-    await carregarSdk();
-    await esperarMicrotarefas();
-
-    expect(onErro).toHaveBeenCalledTimes(1);
-    expect(onErro).toHaveBeenCalledWith(
-      "Não foi possível carregar o pagamento.",
-      "recuperavel",
-    );
-    // A prova que tem dente: o texto do bundle NÃO pode estar na mensagem
-    // que vai para a tela.
-    expect(onErro.mock.calls[0][0]).not.toContain(mensagemDoBundle);
-    // O erro cru continua indo para o console — é onde ele serve.
-    expect(consoleErroSpy).toHaveBeenCalled();
-  });
-});
-
 // Pedido do dono (25/09/2026): depois de escolher "Pagar agora com PIX", o
 // cliente caía na tela do Payment Brick pedindo pra escolher Pix DE NOVO e
 // digitar um e-mail que a conta já tem. `dispararPagamentoPix` substitui o
-// `onSubmit` do Brick como origem do disparo — mesma classificação de
-// resposta (`classificarRespostaPagamento`, testada à exaustão acima via
-// `montarBrick`), só que chamando `criarPagamento` direto ao montar.
+// `onSubmit` do Brick como origem do disparo — a classificação de resposta
+// (`classificarRespostaPagamento`) é provada aqui, status a status.
 describe("dispararPagamentoPix", () => {
   function opcoesPadrao(
     sobrepor: Partial<OpcoesDispararPagamentoPix> = {},
@@ -1007,9 +351,65 @@ describe("dispararPagamentoPix", () => {
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
 
+  // Portados do antigo describe de `montarBrick` (CHECKOUT-080, #213): cada
+  // status terminal tem a SUA mensagem, e nenhum deles vira QR. 'recusado'
+  // não fala em cartão nem sugere tentar de novo NESTE pedido pelo PIX
+  // (`reconsultar` devolve a MESMA cobrança recusada). Status desconhecido
+  // (o par cru "status:detalhe" da reconsulta) e AUSENTE (function antiga
+  // ainda no ar na janela de deploy) caem na rede de segurança — nunca
+  // sucesso silencioso, mesmo com QR no corpo.
+  it.each([
+    [
+      "recusado",
+      "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
+    ],
+    [
+      "expirado",
+      "O prazo deste PIX venceu antes do pagamento ser confirmado. Faça um pedido novo para gerar um QR code novo.",
+    ],
+    [
+      "estornado",
+      "Este pagamento foi estornado e não pode ser confirmado neste pedido. Faça um pedido novo ou fale com a loja.",
+    ],
+    ["in_mediation:um_detalhe_novo", "Não foi possível confirmar o pagamento."],
+    [undefined, "Não foi possível confirmar o pagamento."],
+  ])(
+    "statusPagamento %s é terminal, com mensagem própria, e não vira QR",
+    async (statusPagamento, mensagem) => {
+      const { dispararPagamentoPix } = await importarLimpo();
+      const onErro = vi.fn();
+      const onPix = vi.fn();
+      const criarPagamento = vi
+        .fn()
+        .mockResolvedValue(respostaPixOk({ statusPagamento }));
+
+      dispararPagamentoPix(opcoesPadrao({ criarPagamento, onErro, onPix }));
+      await esperarMicrotarefas();
+
+      expect(onErro).toHaveBeenCalledTimes(1);
+      expect(onErro).toHaveBeenCalledWith(mensagem, "terminal");
+      expect(onPix).not.toHaveBeenCalled();
+      if (statusPagamento === "recusado") {
+        expect(mensagem).not.toMatch(/cart[aã]o/i);
+      }
+    },
+  );
+
+  it("statusPagamento 'pago' com QR ainda entrega o QR (a confirmação vem do CheckoutView)", async () => {
+    const { dispararPagamentoPix } = await importarLimpo();
+    const onPix = vi.fn();
+    const criarPagamento = vi
+      .fn()
+      .mockResolvedValue(respostaPixOk({ statusPagamento: "pago" }));
+
+    dispararPagamentoPix(opcoesPadrao({ criarPagamento, onPix }));
+    await esperarMicrotarefas();
+
+    expect(onPix).toHaveBeenCalledTimes(1);
+  });
+
   // Rede de segurança: sem QR (os dois campos ausentes) é recuperável, MESMO
-  // com statusPagamento "conhecido" — mesma regra de `montarBrick`, agora
-  // pelo caminho direto.
+  // com statusPagamento "conhecido".
   it("resposta sem QR (qrCode e qrCodeBase64 ausentes) chama onErro com 'recuperavel', não onPix", async () => {
     const { dispararPagamentoPix } = await importarLimpo();
     const onErro = vi.fn();

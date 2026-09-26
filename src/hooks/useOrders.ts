@@ -397,6 +397,70 @@ export type StatusPagamentoConhecido =
   | "expirado"
   | "estornado";
 
+/**
+ * Corpo que `criarPagamento` manda à edge `criar-pagamento` — contrato em
+ * docs/superpowers/plans/2026-09-26-painel-cartao-e-devolucoes.md, seção
+ * "Cartão online".
+ *
+ * PIX: só o pedido; o servidor resolve o e-mail sozinho (ver
+ * `dispararPagamentoPix` em PagamentoOnline.tsx).
+ *
+ * Cartão (Fase 3.5): o `token` é de USO ÚNICO e nasce no navegador, dentro
+ * do Card Payment Brick — número, validade e CVV nunca passam pelo nosso
+ * código nem pelo nosso servidor (PCI SAQ-A). `paymentTypeId` diz crédito ou
+ * débito; `parcelas` é 1 no débito.
+ */
+export type ArgsCriarPagamento =
+  | {
+      orderId: string;
+      metodo: "pix";
+      email?: string;
+      documento?: { type: string; number: string };
+    }
+  | {
+      orderId: string;
+      metodo: "cartao";
+      token: string;
+      paymentMethodId: string;
+      paymentTypeId: "credit_card" | "debit_card";
+      parcelas: number;
+      documento: { type: "CPF" | "CNPJ"; number: string };
+      email?: string;
+    };
+
+/**
+ * O que a edge devolve num 200/201 — PIX e cartão falam a mesma resposta; os
+ * campos de cada meio são opcionais.
+ */
+export type RespostaCriarPagamento = {
+  paymentId: string;
+  // CHECKOUT-080 (#213): renomeado de `status` — o campo agora fala o
+  // vocabulário FECHADO do banco ('aguardando'/'pago'/'recusado'/
+  // 'expirado'/'estornado'), não mais o vocabulário clássico do MP, e
+  // o nome novo torna impossível confundir com o `status` de PEDIDO
+  // (`OrderStatus`, valores diferentes) que já existe neste mesmo
+  // arquivo. `string`, não `StatusPagamentoConhecido` — ver o
+  // comentário grande de `StatusPagamentoConhecido`, acima: a edge
+  // function pode devolver um par cru para status que ela mesma não
+  // reconhece, e o tipo não pode prometer o que o runtime não garante.
+  // O contrato do cartão só emite "pago" | "aguardando" | "recusado";
+  // PagamentoComCartao.tsx trata qualquer outro valor como falha.
+  statusPagamento: string;
+  expiraEm: string;
+  // PIX
+  qrCode?: string;
+  qrCodeBase64?: string;
+  ticketUrl?: string;
+  // Cartão: o banco pediu 3-D Secure — a tela abre esta URL num iframe.
+  desafio3ds?: { url: string };
+  // Cartão recusado: frase curada pela edge para o cliente.
+  motivoRecusa?: string;
+  // Cartão recusado: `false` quando este pedido não aceita mais tentativa
+  // (reserva vencida, limite de tentativas) — a tela não oferece outro
+  // cartão nem PIX.
+  podeTentarDeNovo?: boolean;
+};
+
 /** Argumentos de uma chamada de `loadOrders`, guardados para poder repeti-la. */
 export type ConsultaAdmin = [
   page?: number,
@@ -3226,16 +3290,7 @@ export function useOrders(
    * spec.
    */
   const criarPagamento = useCallback(
-    async (args: {
-      orderId: string;
-      metodo: "pix" | "cartao";
-      token?: string;
-      parcelas?: number;
-      paymentMethodId?: string;
-      issuerId?: string;
-      email?: string;
-      documento?: { type: string; number: string };
-    }) => {
+    async (args: ArgsCriarPagamento): Promise<RespostaCriarPagamento> => {
       const { data, error } = await (supabase as any).functions.invoke(
         "criar-pagamento",
         { body: args },
@@ -3283,23 +3338,7 @@ export function useOrders(
             (data as any).terminal,
         });
       }
-      return data as {
-        paymentId: string;
-        // CHECKOUT-080 (#213): renomeado de `status` — o campo agora fala o
-        // vocabulário FECHADO do banco ('aguardando'/'pago'/'recusado'/
-        // 'expirado'/'estornado'), não mais o vocabulário clássico do MP, e
-        // o nome novo torna impossível confundir com o `status` de PEDIDO
-        // (`OrderStatus`, valores diferentes) que já existe neste mesmo
-        // arquivo. `string`, não `StatusPagamentoConhecido` — ver o
-        // comentário grande de `StatusPagamentoConhecido`, acima: a edge
-        // function pode devolver um par cru para status que ela mesma não
-        // reconhece, e o tipo não pode prometer o que o runtime não garante.
-        statusPagamento: string;
-        expiraEm: string;
-        qrCode?: string;
-        qrCodeBase64?: string;
-        ticketUrl?: string;
-      };
+      return data as RespostaCriarPagamento;
     },
     [],
   );

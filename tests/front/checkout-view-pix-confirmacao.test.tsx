@@ -242,6 +242,14 @@ vi.mock("@/components/checkout/PagamentoOnline", () => ({
   PagamentoOnline: () => null,
 }));
 
+// Cartão pelo app (26/09/2026): o checkout lê `config_pagamento_cartao` ao
+// montar (useConfigDoCartao) — uma consulta que não é do polling que este
+// arquivo conta em `fromSpy`. A leitura tem suíte própria
+// (config-do-cartao.test.ts); aqui o cartão fica simplesmente desligado.
+vi.mock("@/hooks/useConfigDoCartao", () => ({
+  useConfigDoCartao: () => null,
+}));
+
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
 // dos outros arquivos desta pasta.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
