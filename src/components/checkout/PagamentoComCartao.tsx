@@ -13,7 +13,10 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { CategoriaErroPagamento } from "./PagamentoOnline";
+import type {
+  CategoriaErroPagamento,
+  SinalDeErroPagamento,
+} from "./PagamentoOnline";
 import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
@@ -66,6 +69,10 @@ export type ResultadoDoCartao =
       readonly tipo: "erro";
       readonly mensagem: string;
       readonly categoria: CategoriaErroPagamento;
+      // B1 (rodada 2 da revisão de risco pré-publicação, 26/09/2026): ver
+      // `SinalDeErroPagamento`. Ausente = falha fechada, o CheckoutView não
+      // oferece PIX nem some com "Cancelar pedido".
+      readonly sinal?: SinalDeErroPagamento;
     };
 
 type EtapaDoCartao =
@@ -269,12 +276,16 @@ export function classificarRespostaCartao(
       return { tipo: "desafio", url: r.desafio3ds.url };
     }
     // O banco pediu o desafio, mas a URL não é do Mercado Pago — não abrimos
-    // endereço desconhecido dentro do checkout.
+    // endereço desconhecido dentro do checkout. `semCobranca`: a vaga fica em
+    // `action_required`/`created`, que `criar-pagamento` CANCELA antes de
+    // criar o PIX se o cliente pedir — seguro oferecer PIX aqui (achado B1,
+    // rodada 2 da revisão de risco pré-publicação).
     return {
       tipo: "erro",
       mensagem:
         "Não foi possível abrir a confirmação do seu banco. Tente de novo ou pague com PIX.",
       categoria: "recuperavel",
+      sinal: "semCobranca",
     };
   }
 
@@ -341,10 +352,13 @@ export async function enviarPagamentoComCartao({
 }): Promise<ResultadoDoCartao> {
   const montagem = montarCorpoDoCartao({ orderId, dados, adicionais, config });
   if (!montagem.ok) {
+    // `semCobranca`: a validação é LOCAL — nenhum POST chegou à edge (achado
+    // B1, rodada 2 da revisão de risco pré-publicação). Seguro oferecer PIX.
     return {
       tipo: "erro",
       mensagem: montagem.mensagem,
       categoria: "recuperavel",
+      sinal: "semCobranca",
     };
   }
   try {
@@ -352,10 +366,18 @@ export async function enviarPagamentoComCartao({
   } catch (err: any) {
     // Mesmas fontes curadas do PIX (ver o catch de `dispararPagamentoPix`):
     // `criarPagamento` só lança texto da nossa edge ou o literal padrão.
+    //
+    // SEM `sinal: "semCobranca"` aqui de propósito (achado B1, rodada 2): um
+    // POST de cartão JÁ chegou à edge — um 502 ambíguo pode significar que o
+    // Mercado Pago aprovou e a resposta se perdeu (reproduzido: duas
+    // cobranças vivas quando o front oferecia PIX cegamente aqui). Só
+    // `cartaoEmAnalise`, quando a edge confirma isso explicitamente no corpo
+    // do erro — nunca PIX nem "Cancelar pedido" nesse caso.
     return {
       tipo: "erro",
       mensagem: err?.message ?? "Não foi possível gerar a cobrança.",
       categoria: err?.terminal === true ? "terminal" : "recuperavel",
+      sinal: err?.cartaoEmAnalise === true ? "cartaoEmAnalise" : undefined,
     };
   }
 }
@@ -479,7 +501,12 @@ export function PagamentoComCartao({
   valor: number;
   config: ConfigDoCartao;
   emailDoPagador?: string | null;
-  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
+  // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
+  onErro: (
+    msg: string,
+    categoria: CategoriaErroPagamento,
+    sinal?: SinalDeErroPagamento,
+  ) => void;
   onPagarComPix: () => void;
 }) {
   // Mesma escolha do PIX: só `criarPagamento`, sem realtime — quem vê o
@@ -525,9 +552,14 @@ export function PagamentoComCartao({
       emailDoPagador,
       onPronto: () => setFormularioPronto(true),
       onFalhaDeMontagem: () =>
+        // `semCobranca`: o Brick nem chegou a montar (SDK que não carregou,
+        // chave pública ausente, `create()` que falhou, COEP bloqueando o
+        // iframe) — nenhum POST de cartão foi feito. Seguro oferecer PIX
+        // (achado B1, rodada 2 da revisão de risco pré-publicação).
         onErroRef.current(
           "Não foi possível carregar o pagamento.",
           "recuperavel",
+          "semCobranca",
         ),
       onEnviar: async (dados, adicionais) => {
         const resultado = await enviarPagamentoComCartao({
@@ -539,7 +571,15 @@ export function PagamentoComCartao({
         });
         if (!montadoRef.current) return;
         if (resultado.tipo === "erro") {
-          onErroRef.current(resultado.mensagem, resultado.categoria);
+          if (resultado.sinal) {
+            onErroRef.current(
+              resultado.mensagem,
+              resultado.categoria,
+              resultado.sinal,
+            );
+          } else {
+            onErroRef.current(resultado.mensagem, resultado.categoria);
+          }
           // Relança para o Brick sair do "processando" — engolir prende o
           // botão.
           throw new Error(resultado.mensagem);
@@ -705,24 +745,23 @@ export function PagamentoComCartao({
             </p>
             <p className="text-xs text-zinc-500">
               A confirmação aparece nesta tela. Se o banco não aprovar, você
-              pode tentar outro cartão ou pagar com PIX.
+              pode pagar com PIX.
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={tentarOutroCartao}
-                className="flex min-h-11 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-              >
-                Tentar outro cartão
-              </button>
-              <button
-                type="button"
-                onClick={onPagarComPix}
-                className="flex min-h-11 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-              >
-                Pagar com PIX
-              </button>
-            </div>
+            {/* B2, rodada 2 da revisão de risco pré-publicação (26/09/2026):
+                "Tentar outro cartão" saiu — com o cartão ainda em
+                `action_required`, a edge NUNCA cria uma segunda cobrança
+                (branch (d) de `criar-pagamento/index.ts`): um cartão novo só
+                recebia de volta o MESMO desafio, sem trocar nada de verdade.
+                "Pagar com PIX" continua sendo a única saída real: a edge
+                cancela o cartão em `action_required`/`created` antes de criar
+                o PIX, ou responde 409 `cartaoEmAnalise` se não conseguir. */}
+            <button
+              type="button"
+              onClick={onPagarComPix}
+              className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+            >
+              Pagar com PIX
+            </button>
           </div>
         )}
       </div>
@@ -753,27 +792,20 @@ export function PagamentoComCartao({
               reserva de 30 min morrer. "Pagar com PIX" pede o MESMO
               {orderId, metodo: "pix"} de sempre: a edge já cancela o cartão
               em action_required/created antes de criar o PIX
-              (criar-pagamento/index.ts). */}
+              (criar-pagamento/index.ts).
+              SEM "Tentar outro cartão" (rodada 2 da revisão): com o cartão em
+              `action_required`, um cartão novo bate na branch (d) da edge e
+              recebe de volta o MESMO desafio — nunca troca nada de verdade. */}
           <p className="text-xs text-zinc-500">
-            Não conseguiu concluir com o banco? Você pode tentar outro cartão ou
-            pagar com PIX.
+            Não conseguiu concluir com o banco? Você pode pagar com PIX.
           </p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={tentarOutroCartao}
-              className="flex min-h-11 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-            >
-              Tentar outro cartão
-            </button>
-            <button
-              type="button"
-              onClick={onPagarComPix}
-              className="flex min-h-11 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-            >
-              Pagar com PIX
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onPagarComPix}
+            className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+          >
+            Pagar com PIX
+          </button>
         </div>
       )}
 

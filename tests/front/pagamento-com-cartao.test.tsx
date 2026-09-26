@@ -280,7 +280,7 @@ describe("classificarRespostaCartao — o que a tela faz com a resposta 200", ()
     ).toEqual({ tipo: "desafio", url });
   });
 
-  it("desafio com URL fora do Mercado Pago NÃO vira iframe — erro recuperável", () => {
+  it("desafio com URL fora do Mercado Pago NÃO vira iframe — erro recuperável, semCobranca (a edge cancela a vaga ao pedir PIX)", () => {
     for (const url of [
       "https://golpe.io/3ds",
       "http://www.mercadopago.com.br/3ds",
@@ -293,6 +293,10 @@ describe("classificarRespostaCartao — o que a tela faz com a resposta 200", ()
       });
       expect(r.tipo).toBe("erro");
       expect(r.tipo === "erro" && r.categoria).toBe("recuperavel");
+      // B1, rodada 2 da revisão de risco pré-publicação: só é seguro
+      // oferecer "Pagar com PIX" aqui porque a edge CANCELA o cartão em
+      // action_required/created antes de criar o PIX — nunca duas cobranças.
+      expect(r.tipo === "erro" && r.sinal).toBe("semCobranca");
     }
   });
 
@@ -440,7 +444,7 @@ describe("enviarPagamentoComCartao — o onSubmit sem o Brick", () => {
     );
   });
 
-  it("dado inválido do Brick não chega à edge", async () => {
+  it("dado inválido do Brick não chega à edge, e o erro carrega sinal 'semCobranca' (validação é local)", async () => {
     const criar = vi.fn();
     const r = await enviarPagamentoComCartao({
       orderId: "ped-1",
@@ -451,6 +455,44 @@ describe("enviarPagamentoComCartao — o onSubmit sem o Brick", () => {
     });
     expect(r.tipo).toBe("erro");
     expect(criar).not.toHaveBeenCalled();
+    // B1, rodada 2 da revisão de risco pré-publicação: nenhum POST chegou à
+    // edge — seguro oferecer "Pagar com PIX" na caixa de erro.
+    expect(r.tipo === "erro" && r.sinal).toBe("semCobranca");
+  });
+
+  // B1, rodada 2 da revisão de risco pré-publicação (26/09/2026): um 502
+  // ambíguo do POST de cartão NUNCA pode virar "semCobranca" — o cartão pode
+  // ter chegado ao Mercado Pago e a resposta se perdeu (reproduzido: duas
+  // cobranças vivas quando o front oferecia PIX cegamente aqui). Só
+  // `cartaoEmAnalise`, quando a edge confirma isso explicitamente.
+  it("erro genérico da edge (POST que já saiu) NÃO carrega sinal — falha fechada contra oferecer PIX", async () => {
+    const r = await enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+      criarPagamento: vi
+        .fn()
+        .mockRejectedValue(new Error("Erro de infraestrutura (502).")),
+    });
+    expect(r.tipo).toBe("erro");
+    expect(r.tipo === "erro" && r.sinal).toBeUndefined();
+  });
+
+  it("erro da edge com .cartaoEmAnalise=true propaga o sinal 'cartaoEmAnalise' — nunca 'semCobranca'", async () => {
+    const r = await enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+      criarPagamento: vi.fn().mockRejectedValue(
+        Object.assign(new Error("Há um pagamento com cartão em análise."), {
+          cartaoEmAnalise: true,
+        }),
+      ),
+    });
+    expect(r.tipo).toBe("erro");
+    expect(r.tipo === "erro" && r.sinal).toBe("cartaoEmAnalise");
   });
 });
 
@@ -952,13 +994,42 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     );
   });
 
+  // B1, rodada 2 da revisão de risco pré-publicação (26/09/2026): a falha de
+  // montagem do Brick (SDK que não carrega, chave pública ausente, COEP
+  // bloqueando o iframe, `create()` que rejeita) nunca chega a enviar um
+  // cartão — o sinal "semCobranca" tem que chegar ao `onErro` do
+  // CheckoutView para o botão "Pagar com PIX" aparecer na caixa de erro.
+  it("falha de montagem do Brick: onErro recebe 'Não foi possível carregar o pagamento.' com sinal 'semCobranca'", async () => {
+    const create = vi
+      .fn()
+      .mockRejectedValue(new Error("Invalid public key format provided"));
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { onErro } = await renderCartao();
+
+    expect(onErro).toHaveBeenCalledWith(
+      "Não foi possível carregar o pagamento.",
+      "recuperavel",
+      "semCobranca",
+    );
+  });
+
   // B2 da revisão de risco pré-publicação (26/09/2026): o desafio 3DS ficava
-  // SEM saída — só o iframe, sem "Tentar outro cartão" nem "Pagar com PIX",
-  // mesmo a edge já aceitando PIX (cancela o cartão em action_required/
-  // created, ver criar-pagamento/index.ts) para quem abandonou o SMS do
-  // banco. O pedido do front é o MESMO de sempre: {orderId, metodo: "pix"}
-  // — quem decide cancelar ou recusar é a edge, não esta tela.
-  it("desafio 3DS: 'Tentar outro cartão' e 'Pagar com PIX' aparecem junto do iframe", async () => {
+  // SEM saída — só o iframe, mesmo a edge já aceitando PIX (cancela o
+  // cartão em action_required/created, ver criar-pagamento/index.ts) para
+  // quem abandonou o SMS do banco. O pedido do front é o MESMO de sempre:
+  // {orderId, metodo: "pix"} — quem decide cancelar ou recusar é a edge, não
+  // esta tela.
+  //
+  // Rodada 2 (achado B2, mesma revisão): "Tentar outro cartão" SAIU desta
+  // tela — com o cartão em `action_required`, a edge nunca cria uma segunda
+  // cobrança (branch (d), `criar-pagamento/index.ts`): um cartão novo só
+  // recebia de volta o MESMO desafio, sem trocar nada. "Pagar com PIX"
+  // continua sendo a única saída real.
+  it("desafio 3DS: 'Pagar com PIX' aparece junto do iframe, e 'Tentar outro cartão' NÃO aparece", async () => {
     const { create } = instalarSdkFalso();
     const url =
       "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/abc?display_mode=self_hosted";
@@ -986,7 +1057,7 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     const pix = [...hospedeiro.querySelectorAll("button")].find(
       (b) => b.textContent === "Pagar com PIX",
     );
-    expect(tentar).toBeDefined();
+    expect(tentar).toBeUndefined();
     expect(pix).toBeDefined();
 
     // "Pagar com PIX" no desafio dispara o MESMO caminho de sempre: avisa o
@@ -1008,7 +1079,11 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     ).not.toBeNull();
   });
 
-  it("desafio 3DS: 'Tentar outro cartão' fecha o iframe e remonta o Brick do zero", async () => {
+  // B2, rodada 2: a mesma remoção vale para "Confirmando com o banco…" — a
+  // tela pré-existente também oferecia "Tentar outro cartão" sem trocar nada
+  // de verdade (o cartão nesse ponto já concluiu o desafio e está
+  // `processing`/aprovado no MP; um cartão novo bateria na mesma trava).
+  it("'Confirmando com o banco…' oferece só 'Pagar com PIX', sem 'Tentar outro cartão'", async () => {
     const { create } = instalarSdkFalso();
     const url =
       "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/abc";
@@ -1021,20 +1096,26 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     await renderCartao();
     await enviarCartao(create);
 
-    const tentar = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => b.textContent === "Tentar outro cartão",
-    )!;
     await act(async () => {
-      tentar.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
+      globalThis.dispatchEvent(
+        new MessageEvent("message", {
+          data: { status: "COMPLETE" },
+          origin: "https://www.mercadopago.com.br",
+        }),
+      );
     });
 
-    expect(hospedeiro.querySelector("iframe")).toBeNull();
-    expect(create).toHaveBeenCalledTimes(2);
-    // Continua sem PIX nenhum: a troca não pediu cobrança nova.
-    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    expect(hospedeiro.textContent).toContain("Confirmando com o banco…");
+    expect(
+      [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent === "Tentar outro cartão",
+      ),
+    ).toBeUndefined();
+    expect(
+      [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent === "Pagar com PIX",
+      ),
+    ).toBeDefined();
   });
 
   // B2, cenário 2: cartão em análise sem desafio (`processing`) — o banco

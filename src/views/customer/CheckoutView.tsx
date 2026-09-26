@@ -164,6 +164,17 @@ const TETO_TICKS_VERIFICACAO_PAGAMENTO =
 const MENSAGEM_CARTAO_EM_ANALISE_409 =
   "Há um pagamento com cartão em análise para este pedido.";
 
+// B1/B3, rodada 2 da revisão de risco pré-publicação (26/09/2026): texto
+// EXATO do achado N7 (`criar-pagamento/index.ts`) — a corrida do "cartão
+// órfão" perdida contra o webhook. Cobre `processing` (pode nem ter
+// capturado ainda) e `processed` (capturado); nos dois casos "pode ter sido
+// cobrado" é verdade, então NUNCA oferece PIX nem "Cancelar pedido" aqui —
+// os dois arriscam dinheiro sobre uma cobrança que pode já existir. Mesma
+// função de RESERVA que `MENSAGEM_CARTAO_EM_ANALISE_409`: a edge ainda não
+// manda `cartaoEmAnalise` para este caso (fica para a rodada dela).
+const MENSAGEM_CARTAO_TALVEZ_COBRADO_409 =
+  "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.";
+
 interface CheckoutFormValues {
   name: string;
   whatsapp: string;
@@ -1077,16 +1088,26 @@ export function CheckoutView({
   // "Pagar", no rodapé, para o topo. `categoria` decide se existe "Tentar de
   // novo" (ver CategoriaErroPagamento em PagamentoOnline.tsx): nunca
   // reclassificada aqui por texto de mensagem, só repassada como o
-  // PagamentoOnline mandou. `cartaoEmAnalise` é o achado B3 da revisão de
-  // risco pré-publicação (26/09/2026, PR #666): detectado pelo campo que a
-  // edge manda no 409 OU, como reserva, pela MESMA mensagem exata
-  // (MENSAGEM_CARTAO_EM_ANALISE_409, abaixo) — funciona antes e depois da
-  // edge mandar o campo. Cancelar o pedido enquanto o banco ainda pode
-  // aprovar o cartão é dinheiro cobrado por um pedido morto.
+  // PagamentoOnline mandou.
+  //
+  // `cartaoEmAnalise` (achado B3, reforçado na rodada 2, 26/09/2026):
+  // detectado pelo `sinal` que a tela manda (SinalDeErroPagamento) OU, como
+  // reserva, pela MESMA mensagem exata (MENSAGEM_CARTAO_EM_ANALISE_409 ou
+  // MENSAGEM_CARTAO_TALVEZ_COBRADO_409) — funciona antes e depois da edge
+  // mandar o sinal. Cancelar o pedido ou pagar de novo por PIX enquanto o
+  // banco ainda pode ter cobrado o cartão é dinheiro em risco.
+  //
+  // `semCobranca` (achado B1, rodada 2): só `true` quando o `sinal` diz que
+  // NENHUM POST de cartão pode ter chegado à edge (ou que a edge cancela a
+  // vaga sozinha ao pedir PIX) — é a ÚNICA situação em que "Pagar com PIX" é
+  // seguro na caixa de erro. Falha FECHADA: sem sinal, `semCobranca` fica
+  // `false` (nunca inferido do texto — ao contrário do `cartaoEmAnalise`,
+  // não há frase curada que garanta "não houve cobrança").
   const [erroPagamento, setErroPagamento] = useState<{
     mensagem: string;
     categoria: CategoriaErroPagamento;
     cartaoEmAnalise: boolean;
+    semCobranca: boolean;
   } | null>(null);
   // CHECKOUT-070 (#197): saída para pagamento falho. `isCancelandoPedido`
   // trava o botão contra clique repetido (cancelar duas vezes bateria na
@@ -2755,22 +2776,52 @@ export function CheckoutView({
           itens voltam para o estoque e o pedido é cancelado.
         </p>
         {erroPagamento?.cartaoEmAnalise ? (
-          // B3 da revisão de risco pré-publicação (26/09/2026): NUNCA
-          // "Cancelar pedido" aqui — o cartão ainda pode ser aprovado pelo
-          // banco, e cancelar cobraria por um pedido morto se a aprovação
-          // vier depois. Sem botão de "continuar acompanhando": a
+          // B3 da revisão de risco pré-publicação (26/09/2026, reforçado na
+          // rodada 2): NUNCA "Cancelar pedido" nem "Pagar com PIX" aqui — o
+          // cartão pode ter sido cobrado ou ainda ser aprovado pelo banco, e
+          // os dois botões arriscam dinheiro (cancelar cobraria por um
+          // pedido morto; PIX duplicaria a cobrança se o cartão for aprovado
+          // depois).
+          //
+          // "Tentar de novo" (rodada 2) SÓ quando `categoria` é recuperável:
+          // ele limpa o erro e remonta `<PagamentoOnline>`, que repete o
+          // MESMO pedido — a edge responde o MESMO 409 enquanto o cartão
+          // segue vivo, 'pago' se foi aprovado, ou cria o PIX quando o
+          // cartão finalmente morreu (recusado/expirado). Isso é o que
+          // resolve o cenário "o webhook soltou a vaga mas a tela nunca
+          // reconsulta" do achado B2.
+          //
+          // Terminal com o sinal (achado N7 — "pode ter sido cobrado"):
+          // NENHUM botão, nem "Tentar de novo" — a loja já vai conferir na
+          // mão, e tentar de novo bateria na MESMA resposta terminal.
+          //
+          // Sem botão de "continuar acompanhando" nos dois casos: a
           // verificação periódica do pagamento (useEffect logo abaixo desta
           // função) já roda sozinha enquanto esta tela está montada e troca
           // para `<PagamentoConfirmadoView>` assim que o banco decidir.
-          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <Clock
-              aria-hidden="true"
-              className="mt-0.5 size-5 shrink-0 text-amber-600"
-            />
-            <p className="text-sm font-medium text-amber-800">
-              Seu cartão está em análise pelo banco. Aguarde a resposta; você
-              será avisado aqui.
-            </p>
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <Clock
+                aria-hidden="true"
+                className="mt-0.5 size-5 shrink-0 text-amber-600"
+              />
+              <p className="text-sm font-medium text-amber-800">
+                {erroPagamento.categoria === "terminal"
+                  ? erroPagamento.mensagem
+                  : "Seu cartão está em análise pelo banco. Aguarde a resposta; você será avisado aqui."}
+              </p>
+            </div>
+            {erroPagamento.categoria !== "terminal" && (
+              <Button
+                onClick={() => {
+                  setErroPagamento(null);
+                  setErroCancelamento(null);
+                }}
+                className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+              >
+                Tentar de novo
+              </Button>
+            )}
           </div>
         ) : erroPagamento ? (
           <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
@@ -2796,25 +2847,30 @@ export function CheckoutView({
                 Tentar de novo
               </Button>
             )}
-            {/* B1 da revisão de risco pré-publicação (26/09/2026): em modo
-                cartão, "Tentar de novo" sozinho remonta a tela AINDA em
-                cartão — um Brick bloqueado pelo COEP (o próprio risco que o
-                commit do cartão já declara) entra em loop, e a única saída
-                virava cancelar o pedido. "Pagar com PIX" troca o método e
-                limpa o erro na hora, sem esperar o cliente cancelar. */}
-            {metodoDoPedido === "cartao" && (
-              <Button
-                onClick={() => {
-                  setMetodoDoPedido("pix");
-                  setErroPagamento(null);
-                  setErroCancelamento(null);
-                }}
-                variant="outline"
-                className="w-full rounded-xl"
-              >
-                Pagar com PIX
-              </Button>
-            )}
+            {/* B1 da revisão de risco pré-publicação (26/09/2026), corrigido
+                na rodada 2: "Pagar com PIX" só quando `semCobranca` vier
+                marcado (Brick que não montou, validação local, ou a URL de
+                desafio fora do Mercado Pago) — nunca em erro terminal, nunca
+                com `cartaoEmAnalise` (esses dois já vão para a caixa âmbar
+                acima). A rodada 1 oferecia o botão para QUALQUER erro em modo
+                cartão, inclusive um 502 ambíguo após o cartão já ter sido
+                enviado ao Mercado Pago — reproduzido: duas cobranças vivas. */}
+            {metodoDoPedido === "cartao" &&
+              erroPagamento.categoria !== "terminal" &&
+              erroPagamento.semCobranca &&
+              !erroPagamento.cartaoEmAnalise && (
+                <Button
+                  onClick={() => {
+                    setMetodoDoPedido("pix");
+                    setErroPagamento(null);
+                    setErroCancelamento(null);
+                  }}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Pagar com PIX
+                </Button>
+              )}
             {/* CHECKOUT-070 (#197): visível nos dois casos — no terminal é a
                 única ação; no recuperável fica em segundo plano (variant
                 "outline"), sem roubar o destaque de "Tentar de novo". Só
@@ -2866,7 +2922,7 @@ export function CheckoutView({
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
             onTrocarParaPix={() => setMetodoDoPedido("pix")}
-            onErro={(msg, categoria, cartaoEmAnalise) =>
+            onErro={(msg, categoria, sinal) =>
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
                 // Mercado Pago não é clara sobre a ordem entre `onSubmit`
@@ -2880,12 +2936,18 @@ export function CheckoutView({
                   : {
                       mensagem: msg,
                       categoria,
-                      // B3: pelo campo que a edge manda (quando existir) OU,
+                      // B3: pelo `sinal` que a tela manda (quando existir) OU,
                       // como reserva, pela mensagem exata — funciona antes e
-                      // depois da edge mandar o campo.
+                      // depois da edge mandar o sinal. SEM fallback por texto
+                      // para `semCobranca` (achado B1, rodada 2): não há
+                      // frase curada que garanta "nenhum POST de cartão
+                      // chegou à edge" — só o `sinal` explícito conta.
                       cartaoEmAnalise:
-                        cartaoEmAnalise === true ||
-                        msg === MENSAGEM_CARTAO_EM_ANALISE_409,
+                        sinal === "cartaoEmAnalise" ||
+                        (sinal === undefined &&
+                          (msg === MENSAGEM_CARTAO_EM_ANALISE_409 ||
+                            msg === MENSAGEM_CARTAO_TALVEZ_COBRADO_409)),
+                      semCobranca: sinal === "semCobranca",
                     },
               )
             }

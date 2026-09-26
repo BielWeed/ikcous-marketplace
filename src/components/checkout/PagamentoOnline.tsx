@@ -37,6 +37,34 @@ export { carregarSdkMercadoPago } from "./sdk-mercado-pago";
  */
 export type CategoriaErroPagamento = "recuperavel" | "terminal";
 
+/**
+ * B1/B3 (revisão de risco pré-publicação, rodada 2, 26/09/2026): sinal
+ * opcional que o erro carrega para o CheckoutView escolher a caixa certa —
+ * nunca os dois ao mesmo tempo.
+ *
+ * "cartaoEmAnalise": pode existir uma cobrança de cartão em curso — em
+ * análise, ou um 502/corrida ambígua que a própria edge não sabe resolver
+ * sem conferir. NUNCA oferece PIX nem "Cancelar pedido": os dois arriscam
+ * dinheiro (PIX duplicaria a cobrança se o cartão for aprovado depois;
+ * cancelar cobraria por um pedido morto pelo mesmo motivo).
+ *
+ * "semCobranca": o erro aconteceu ANTES de qualquer POST de cartão chegar à
+ * edge (Brick que não montou, validação local do Brick — `montarCorpoDoCartao`)
+ * OU num caso em que a PRÓPRIA edge cancela a vaga do cartão ao receber o
+ * pedido de PIX (a URL do desafio 3DS fora do Mercado Pago: a vaga fica em
+ * `action_required`/`created`, que `criar-pagamento` cancela antes de criar
+ * o PIX). Só aqui é seguro oferecer "Pagar com PIX" na caixa de erro.
+ *
+ * Ausente (`undefined`): erro comum, sem informação sobre o estado da
+ * cobrança — falha FECHADA (nem PIX, nem esconde "Cancelar pedido"). É o
+ * caso do 502 ambíguo do achado B1 (rodada 2): a criação do cartão pode ter
+ * chegado ao Mercado Pago e ainda assim a edge responder com falha de
+ * infraestrutura — sem confirmação de que "não há cobrança", a rede de
+ * segurança é não oferecer PIX (evita a corrida provada: duas cobranças
+ * vivas para o mesmo pedido).
+ */
+export type SinalDeErroPagamento = "cartaoEmAnalise" | "semCobranca";
+
 type CriarPagamento = (
   args: ArgsCriarPagamento,
 ) => Promise<RespostaCriarPagamento>;
@@ -198,14 +226,12 @@ export function dispararPagamentoPix({
 }: {
   orderId: string;
   criarPagamento: CriarPagamento;
-  // B3: terceiro parâmetro opcional — `cartaoEmAnalise` do 409 "Há um
-  // pagamento com cartão em análise para este pedido." (criarPagamento,
-  // useOrders.ts). Opcional para não quebrar quem ainda chama `onErro` com
-  // dois argumentos.
+  // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`. Opcional para
+  // não quebrar quem ainda chama `onErro` com dois argumentos.
   onErro: (
     msg: string,
     categoria: CategoriaErroPagamento,
-    cartaoEmAnalise?: boolean,
+    sinal?: SinalDeErroPagamento,
   ) => void;
   onPix: (pix: DadosDoPix) => void;
   // B4: 'pago' sem QR (cartão já aprovado, PIX pedido por cima) — opcional
@@ -258,14 +284,14 @@ export function dispararPagamentoPix({
       const terminal = err?.terminal === true;
       const mensagem = err?.message ?? "Não foi possível gerar a cobrança.";
       const categoria = terminal ? "terminal" : "recuperavel";
-      // Terceiro argumento OMITIDO quando não é true (não `false` explícito):
-      // testes existentes fixam `onErro` com dois argumentos exatos
-      // (`toHaveBeenCalledWith(msg, categoria)`), e um `false` extra
-      // quebraria essa igualdade estrita sem mudar nada de real — quem lê o
-      // callback (CheckoutView) já trata "ausente" como "não é isso" (achado
-      // B3, revisão de risco pré-publicação).
+      // Terceiro argumento OMITIDO quando não há sinal (não `undefined`
+      // explícito): testes existentes fixam `onErro` com dois argumentos
+      // exatos (`toHaveBeenCalledWith(msg, categoria)`), e um argumento
+      // extra quebraria essa igualdade estrita sem mudar nada de real — quem
+      // lê o callback (CheckoutView) já trata "ausente" como "sem sinal"
+      // (achado B3, revisão de risco pré-publicação).
       if (err?.cartaoEmAnalise === true) {
-        onErro(mensagem, categoria, true);
+        onErro(mensagem, categoria, "cartaoEmAnalise");
       } else {
         onErro(mensagem, categoria);
       }
@@ -307,11 +333,11 @@ export function PagamentoOnline({
 }: {
   orderId: string;
   valor: number;
-  // B3: terceiro parâmetro opcional — ver o comentário em `dispararPagamentoPix`.
+  // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
   onErro: (
     msg: string,
     categoria: CategoriaErroPagamento,
-    cartaoEmAnalise?: boolean,
+    sinal?: SinalDeErroPagamento,
   ) => void;
   metodo?: MetodoOnline;
   configDoCartao?: ConfigDoCartao | null;
@@ -365,11 +391,11 @@ function PagamentoComPix({
 }: {
   orderId: string;
   valor: number;
-  // B3: terceiro parâmetro opcional — ver o comentário em `dispararPagamentoPix`.
+  // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
   onErro: (
     msg: string,
     categoria: CategoriaErroPagamento,
-    cartaoEmAnalise?: boolean,
+    sinal?: SinalDeErroPagamento,
   ) => void;
 }) {
   // Achado 4 da revisão do CHECKOUT-090 (16/08/2026): `isAdmin=false`, não
@@ -451,8 +477,10 @@ function PagamentoComPix({
     return dispararPagamentoPix({
       orderId,
       criarPagamento,
-      onErro: (msg, categoria, cartaoEmAnalise) =>
-        onErroRef.current(msg, categoria, cartaoEmAnalise),
+      onErro: (msg, categoria, sinal) => {
+        if (sinal) onErroRef.current(msg, categoria, sinal);
+        else onErroRef.current(msg, categoria);
+      },
       // `agora` nasce na montagem, que pode ter sido minutos antes do QR
       // chegar: sincroniza junto do Pix para o aviso começar correto.
       onPix: (dados) => {
