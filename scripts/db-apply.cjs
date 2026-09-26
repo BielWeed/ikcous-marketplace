@@ -2216,6 +2216,40 @@ const VERIFICACOES = {
       esperado: ["AND o.status NOT IN ('cancelled', 'returned')"],
     },
   ],
+  // O CLIENTE NÃO CANCELA COM CARTÃO VIVO (achado independente de risco,
+  // dinheiro; 26/09/2026, migration 20261180000000): o cliente (nunca o
+  // admin) não cancela um pedido 'aguardando' com cartão ainda em jogo
+  // (cobrança gravada ou sentinela de verificação).
+  "20261180000000_cliente_nao_cancela_com_cartao_vivo.sql": [
+    {
+      funcao: "update_order_status_atomic",
+      esperado: [
+        "SELECT status, user_id, cancelled_after_shipping, payment_status, paid_at, total,\n           metodo_online, gateway_payment_id\n      INTO v_old_status, v_user_id, v_cancelled_after_shipping, v_payment_status, v_paid_at, v_total,\n           v_metodo_online, v_gateway_payment_id",
+        "IF v_payment_status = 'aguardando'\n           AND (\n                v_metodo_online IN ('credito', 'debito')\n                OR v_gateway_payment_id LIKE 'verificando:%'\n           )\n        THEN\n            RAISE EXCEPTION 'Este pedido tem uma cobrança no cartão em confirmação com o banco. Aguarde a confirmação ou fale com a loja antes de cancelar.';",
+      ],
+    },
+  ],
+  // O PEDIDO POR WHATSAPP FECHA PARA ANON (achado LGPD, alto — auditoria de
+  // 26/09/2026, migration 20261181000000). O REVOKE de get_orders_by_whatsapp_v3
+  // não muda corpo de função nenhuma (só ACL, fora do que este mapa confere) —
+  // só get_orders_by_otp_v1 entra aqui, pelo CORPO NOVO que tira `cpf` de
+  // `customer_data` (raiz e dentro de `address`, quando `address` é objeto).
+  // RODADA 2 (revisão de risco): três marcadores novos — achado 4 (customer_data
+  // escalar sai intocado, sem explodir "cannot delete from scalar") e achado 5
+  // ({} depois do strip vira JSON null, não {}, para o mapper do front cair no
+  // endereço do JOIN em vez de um objeto vazio truthy).
+  "20261181000000_pedido_por_whatsapp_fecha_para_anon.sql": [
+    {
+      funcao: "get_orders_by_otp_v1",
+      esperado: [
+        "WHEN jsonb_typeof(o.customer_data) <> 'object' THEN o.customer_data",
+        "WHEN jsonb_typeof(o.customer_data -> 'address') = 'object' THEN",
+        "WHEN ((o.customer_data -> 'address') - 'cpf') = '{}'::jsonb THEN NULL",
+        "ELSE (o.customer_data -> 'address') - 'cpf'",
+        "                        ELSE\n                            o.customer_data - 'cpf'\n                    END",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

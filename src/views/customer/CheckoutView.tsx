@@ -29,7 +29,11 @@ import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
+import {
+  mensagemAmigavelErroAtualizacaoStatus,
+  mensagemAmigavelErroPedido,
+  useOrders,
+} from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   criarGerenciadorDeChave,
@@ -94,6 +98,7 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
+  Clock,
   CreditCard,
   FileText,
   Loader2,
@@ -152,6 +157,30 @@ const INTERVALO_VERIFICACAO_PAGAMENTO_MS = 10_000;
 // até `pago_apos_expirar`), só deixou de decidir quando parar.
 const TETO_TICKS_VERIFICACAO_PAGAMENTO =
   (60 * 60 * 1000) / INTERVALO_VERIFICACAO_PAGAMENTO_MS; // 60 min / 10s = 360 ticks
+
+// B3 da revisão de risco pré-publicação (26/09/2026, PR #666): texto EXATO do
+// 409 que `criar-pagamento/index.ts` devolve quando o cartão ainda está em
+// análise/3DS e o cliente pede PIX por cima (grep pela mesma frase no arquivo
+// da edge). Serve de RESERVA para quando o corpo não traz o campo
+// `cartaoEmAnalise` (edge antiga, ou versão ainda sem a marca) — a detecção
+// principal é pelo campo (useOrders.ts propaga `.cartaoEmAnalise` do 409),
+// nunca o contrário: a mensagem pode mudar, o campo não.
+const MENSAGEM_CARTAO_EM_ANALISE_409 =
+  "Há um pagamento com cartão em análise para este pedido.";
+
+// B1/B3, rodada 2 da revisão de risco pré-publicação (26/09/2026): texto
+// EXATO do achado N7 (`criar-pagamento/index.ts`) — a corrida do "cartão
+// órfão" perdida contra o webhook. Cobre `processing` (pode nem ter
+// capturado ainda) e `processed` (capturado); nos dois casos "pode ter sido
+// cobrado" é verdade, então NUNCA oferece PIX nem "Cancelar pedido" aqui —
+// os dois arriscam dinheiro sobre uma cobrança que pode já existir. Mesma
+// função de RESERVA que `MENSAGEM_CARTAO_EM_ANALISE_409`, acima: a edge JÁ
+// manda `cartaoEmAnalise` para este caso (a partir do commit `bf15876f` da
+// edge — corrigido no addendum da rodada 6, o comentário aqui dizia o
+// contrário) — esta constante só entra em jogo como reserva para uma loja
+// ainda rodando uma edge anterior a esse commit.
+const MENSAGEM_CARTAO_TALVEZ_COBRADO_409 =
+  "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.";
 
 interface CheckoutFormValues {
   name: string;
@@ -1067,10 +1096,57 @@ export function CheckoutView({
   // novo" (ver CategoriaErroPagamento em PagamentoOnline.tsx): nunca
   // reclassificada aqui por texto de mensagem, só repassada como o
   // PagamentoOnline mandou.
+  //
+  // `cartaoEmAnalise` (achado B3, reforçado na rodada 2, 26/09/2026):
+  // detectado pelo `sinal` que a tela manda (SinalDeErroPagamento) OU, como
+  // reserva, pela MESMA mensagem exata (MENSAGEM_CARTAO_EM_ANALISE_409 ou
+  // MENSAGEM_CARTAO_TALVEZ_COBRADO_409) — funciona antes e depois da edge
+  // mandar o sinal. Cancelar o pedido ou pagar de novo por PIX enquanto o
+  // banco ainda pode ter cobrado o cartão é dinheiro em risco.
+  //
+  // `semCobranca` (achado B1, rodada 2): só `true` quando o `sinal` diz que
+  // NENHUM POST de cartão pode ter chegado à edge (ou que a edge cancela a
+  // vaga sozinha ao pedir PIX) — é a ÚNICA situação em que "Pagar com PIX" é
+  // seguro na caixa de erro. Falha FECHADA: sem sinal, `semCobranca` fica
+  // `false` (nunca inferido do texto — ao contrário do `cartaoEmAnalise`,
+  // não há frase curada que garanta "não houve cobrança").
   const [erroPagamento, setErroPagamento] = useState<{
     mensagem: string;
     categoria: CategoriaErroPagamento;
+    cartaoEmAnalise: boolean;
+    semCobranca: boolean;
   } | null>(null);
+  // Achado 1 (BLOQUEANTE, rodada 3 da revisão de risco pré-publicação,
+  // 26/09/2026): `cartaoEmAnalise` acima é julgado POR ERRO — a sequência que
+  // quebra isso: (1) um 502 ambíguo do POST de cartão (o Mercado Pago pode
+  // ter aprovado, a resposta se perdeu); (2) o cliente toca "Tentar de novo";
+  // (3) a segunda tentativa falha numa validação LOCAL, marcada
+  // `semCobranca` corretamente — mas SÓ para ESTE erro; (4) "Pagar com PIX"
+  // reaparece, e a edge antiga cria o PIX na vaga vazia: duas cobranças
+  // vivas. Este marcador é POR PEDIDO: uma vez `true`, nenhum erro seguinte —
+  // nem um `semCobranca` legítimo — desmarca.
+  //
+  // Achado 6 (menor, rodada 4): este comentário chegou a prometer que o
+  // efeito abaixo "reseta num pedido novo" — mas `orderId` só é atribuído
+  // UMA vez por pedido nesta função (`grep setOrderId`: uma chamada só), e
+  // não há caminho de UI para reaproveitar o MESMO `<CheckoutView>` montado
+  // num segundo pedido depois deste marcador travar "Cancelar pedido" (essa
+  // é justamente a intenção: sem saída fácil de volta ao formulário). O
+  // efeito é escrito por completude/defesa (se algum dia existir um caminho
+  // de `orderId` mudar sem desmontar, ele já reseta certo) — mas hoje é
+  // MORTO: nenhum teste alcança a transição de `orderId` dentro de UM mount
+  // só, e um teste que remova este efeito continua passando (prova: mutação
+  // "sem reset" na rodada 4 — os mesmos 10 testes, incluindo o de isolamento
+  // entre pedidos, seguem verdes). Mantido mesmo assim (custo zero, nunca
+  // erra) — ver `tests/front/checkout-view-cartao-erro-oferece-pix-e-em-
+  // analise.test.tsx`, teste "(d)", que prova ISOLAMENTO ENTRE SESSÕES de
+  // checkout (dois `<CheckoutView>` distintos), não a transição de `orderId`
+  // dentro de um mount só.
+  const [pedidoTemCobrancaIncerta, setPedidoTemCobrancaIncerta] =
+    useState(false);
+  useEffect(() => {
+    setPedidoTemCobrancaIncerta(false);
+  }, [orderId]);
   // CHECKOUT-070 (#197): saída para pagamento falho. `isCancelandoPedido`
   // trava o botão contra clique repetido (cancelar duas vezes bateria na
   // guarda de status da RPC, mas evitar a segunda viagem de rede evita até
@@ -1079,6 +1155,23 @@ export function CheckoutView({
   const [isCancelandoPedido, setIsCancelandoPedido] = useState(false);
   const isCancelandoPedidoRef = useRef(false);
   const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
+  // Achado 1, rodada 6 da revisão de risco pré-publicação (26/09/2026,
+  // migration 80 — outra frente): a própria RPC já recusou este pedido com
+  // P0001 dizendo que o cartão pode estar em confirmação — isso É a prova de
+  // que "Cancelar pedido" bateria na mesma recusa de novo. DIFERENTE de
+  // `pedidoTemCobrancaIncerta` (acima): aquele também esconde "Pagar com
+  // PIX", que o servidor ACEITA mesmo com essa guarda ligada (o caso da URL
+  // de desafio 3DS inválida, achado 3 opcional da rodada 5). Este marcador
+  // só esconde o botão de cancelar — nada mais. Sem `useEffect` de reset por
+  // `orderId`: mesmo raciocínio já registrado no comentário de
+  // `pedidoTemCobrancaIncerta` (a mutação da rodada 4 provou que esse
+  // caminho nunca é alcançado nesta função) — `useState(false)` já nasce
+  // limpo a cada mount/pedido novo, sem precisar de um efeito para provar o
+  // óbvio uma segunda vez.
+  const [
+    cancelamentoBloqueadoPelaGuardaDoCartao,
+    setCancelamentoBloqueadoPelaGuardaDoCartao,
+  ] = useState(false);
   // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
   // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
   // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
@@ -2643,14 +2736,26 @@ export function CheckoutView({
     setErroCancelamento(null);
     try {
       if (isOffline) {
-        // Sem rede o ramo offline de useOrders só empilha e resolve — não
-        // vale nem tentar a RPC. Mensagem específica em vez do genérico.
+        // Sem rede, `updateOrderStatus` (useOrders.ts) já rejeita sozinho
+        // para o cliente (achado 1, rodada 5) — mas checar aqui evita até a
+        // viagem até lá. Mesma frase de `ErroCancelamentoOfflineRecusado`
+        // (achado 3, rodada 6): mesma causa, mesmo texto, os dois lugares.
         setErroCancelamento(
-          "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+          "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
         );
         return;
       }
 
+      // Achado 2, rodada 5 da revisão de risco pré-publicação (26/09/2026):
+      // a migration 80 (outra frente) ensina `update_order_status_atomic` a
+      // recusar, com P0001, o cancelamento de um pedido cujo cartão ainda
+      // pode estar em confirmação com o banco — texto específico e honesto
+      // ("Aguarde a confirmação ou fale com a loja antes de cancelar").
+      // Sem guardar este erro, o `console.error` abaixo o jogava fora e a
+      // releitura (que confirma `pending`, porque a guarda barrou a
+      // gravação) caía direto no genérico "Tente novamente" — escondendo do
+      // cliente exatamente a explicação que a guarda deu.
+      let erroRpc: unknown;
       try {
         // MESMA rpc que a reconciliação da #180 (PR #198) já ensinou a
         // gravar payment_status — não existe, e não deve existir, outro
@@ -2658,11 +2763,14 @@ export function CheckoutView({
         // 2500ms do useOrders someria antes do cliente ler; o erro fica no
         // banner fixo abaixo, como erroCancelamento.
         await updateOrderStatus(orderId, "cancelled", undefined, true);
-      } catch (erroRpc) {
+      } catch (erro) {
         // Não decide aqui: a RPC pode recusar com a MESMA mensagem P0001
         // por dois motivos opostos (pg_cron já cancelou vs. lojista
-        // adiantou). Quem decide é a releitura logo abaixo.
-        console.error("Erro ao chamar RPC de cancelamento:", erroRpc);
+        // adiantou), ou pela nova guarda do cartão. Quem decide é a
+        // releitura logo abaixo — `erroRpc` só alimenta a MENSAGEM do caso
+        // em que a releitura confirma que nada mudou (segue `pending`).
+        console.error("Erro ao chamar RPC de cancelamento:", erro);
+        erroRpc = erro;
       }
 
       const { data, error: erroLeitura } = await supabase
@@ -2674,13 +2782,34 @@ export function CheckoutView({
       const statusFinal = data?.status;
       if (erroLeitura || statusFinal !== "cancelled") {
         console.error("Cancelamento não confirmado:", erroLeitura);
+        // A releitura confirmando `pending` (nem cancelado, nem adiantado)
+        // é o retrato exato de uma guarda P0001 que recusou a gravação —
+        // `mensagemAmigavelErroAtualizacaoStatus` já sabe repassar o texto
+        // da RPC nesse caso (e cai no genérico sozinha se não for P0001).
+        const guardaBarrouComMensagemPropria =
+          !erroLeitura &&
+          statusFinal === "pending" &&
+          erroRpc !== null &&
+          typeof erroRpc === "object" &&
+          (erroRpc as { code?: unknown }).code === "P0001";
+        // Achado 1, rodada 6: a própria recusa da guarda já É a prova de que
+        // o cartão pode estar vivo — "Cancelar pedido" bateria na mesma
+        // recusa de novo. Ver o comentário grande em
+        // `cancelamentoBloqueadoPelaGuardaDoCartao`, acima: NUNCA
+        // `pedidoTemCobrancaIncerta` aqui, que também esconderia "Pagar com
+        // PIX".
+        if (guardaBarrouComMensagemPropria) {
+          setCancelamentoBloqueadoPelaGuardaDoCartao(true);
+        }
         // Precedente ADMIN-010 (#94): só não segue em frente quando a
         // gravação não é confirmada — nunca leva o cliente ao carrinho como
         // se o cancelamento tivesse dado certo.
         setErroCancelamento(
           statusFinal && statusFinal !== "pending"
             ? "Este pedido não está mais pendente — o lojista já deve ter começado a prepará-lo. Fale com a loja se ainda quiser cancelar."
-            : "Não foi possível confirmar o cancelamento. Tente novamente.",
+            : guardaBarrouComMensagemPropria
+              ? mensagemAmigavelErroAtualizacaoStatus(erroRpc)
+              : "Não foi possível confirmar o cancelamento. Tente novamente.",
         );
         return;
       }
@@ -2698,6 +2827,35 @@ export function CheckoutView({
       isCancelandoPedidoRef.current = false;
       setIsCancelandoPedido(false);
     }
+  };
+
+  // Achado 4, rodada 4 da revisão de risco pré-publicação (26/09/2026): a
+  // caixa âmbar terminal (N7 — "pode ter sido cobrado") e a caixa vermelha
+  // terminal DEPOIS de um erro ambíguo (achado 1) não tinham NENHUM botão —
+  // um beco sem saída de verdade. Mesmo mecanismo já usado em
+  // `SuccessView`/`PagamentoForaDoPrazoView` (wa.me com DDI 55 prefixado
+  // para número de 10 ou 11 dígitos), não um novo. Ainda NÃO oferece "Ver
+  // meus pedidos": aquela tela ainda deixa cancelar um pedido com cartão
+  // incerto até a correção do lado dela (outra frente, `OrderDetailsView`).
+  const numeroLimpoDoCheckout = (config.whatsappNumber || "").replace(
+    /\D/g,
+    "",
+  );
+  const lojaTemWhatsappNoCheckout = lojaTemWhatsapp(config.whatsappNumber);
+  const handleFalarComALojaSobreCartao = () => {
+    if (!lojaTemWhatsappNoCheckout) return;
+    let phone = numeroLimpoDoCheckout;
+    if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
+    const mensagem = `Olá! Meu pedido #${orderId.slice(-6).toUpperCase()} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
   if (aguardandoPagamento && orderId) {
@@ -2737,7 +2895,116 @@ export function CheckoutView({
           Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
           itens voltam para o estoque e o pedido é cancelado.
         </p>
-        {erroPagamento ? (
+        {erroPagamento?.cartaoEmAnalise ? (
+          // B3 da revisão de risco pré-publicação (26/09/2026, reforçado na
+          // rodada 2): NUNCA "Cancelar pedido" nem "Pagar com PIX" aqui — o
+          // cartão pode ter sido cobrado ou ainda ser aprovado pelo banco, e
+          // os dois botões arriscam dinheiro (cancelar cobraria por um
+          // pedido morto; PIX duplicaria a cobrança se o cartão for aprovado
+          // depois).
+          //
+          // "Tentar de novo" (rodada 2) SÓ quando `categoria` é recuperável:
+          // ele limpa o erro e remonta `<PagamentoOnline>`, que repete o
+          // MESMO pedido — a edge responde o MESMO 409 enquanto o cartão
+          // segue vivo, 'pago' se foi aprovado, ou cria o PIX quando o
+          // cartão finalmente morreu (recusado/expirado). Isso é o que
+          // resolve o cenário "o webhook soltou a vaga mas a tela nunca
+          // reconsulta" do achado B2.
+          //
+          // Terminal com o sinal (achado N7 — "pode ter sido cobrado"):
+          // NENHUM botão, nem "Tentar de novo" — a loja já vai conferir na
+          // mão, e tentar de novo bateria na MESMA resposta terminal.
+          //
+          // Sem botão de "continuar acompanhando" nos dois casos: a
+          // verificação periódica do pagamento (useEffect logo abaixo desta
+          // função) já roda sozinha enquanto esta tela está montada e troca
+          // para `<PagamentoConfirmadoView>` assim que o banco decidir.
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <Clock
+                aria-hidden="true"
+                className="mt-0.5 size-5 shrink-0 text-amber-600"
+              />
+              <p className="text-sm font-medium text-amber-800">
+                {erroPagamento.categoria === "terminal"
+                  ? erroPagamento.mensagem
+                  : "Seu cartão está em análise pelo banco. Aguarde a resposta; você será avisado aqui."}
+              </p>
+            </div>
+            {erroPagamento.categoria === "terminal" ? (
+              // Achado 4, rodada 4 da revisão de risco pré-publicação
+              // (26/09/2026): o N7 ficava sem NENHUM botão — um beco sem
+              // saída de verdade, mesmo sabendo que a loja "vai conferir e
+              // confirmar em breve". "Falar com a loja" dá um jeito honesto
+              // de acelerar isso, quando a loja tem WhatsApp configurado.
+              //
+              // Achado 1, rodada 8: SEM WhatsApp configurado, o beco
+              // continuava de pé — "Ver meus pedidos" fecha o último caso.
+              // Seguro com a migration 80 no ar (condição para ligar o
+              // cartão): a tela de pedidos não oferece nada que cobra, e
+              // cancelar por lá esbarra na MESMA guarda P0001 com a mesma
+              // mensagem.
+              lojaTemWhatsappNoCheckout ? (
+                <Button
+                  onClick={handleFalarComALojaSobreCartao}
+                  variant="outline"
+                  className="w-full rounded-xl border-amber-300 text-amber-900 hover:bg-amber-100"
+                >
+                  Falar com a loja
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl border-amber-300 text-amber-900 hover:bg-amber-100"
+                >
+                  Ver meus pedidos
+                </Button>
+              )
+            ) : (
+              <>
+                {/* Achado 2, rodada 3 da revisão de risco pré-publicação: um
+                    POST de cartão sem corpo de resposta (rede caiu, 502)
+                    cai aqui — não sabemos se o Mercado Pago aprovou. O
+                    aviso deixa claro que "Tentar de novo" é a única ação
+                    que resolve, sem prometer um prazo que não existe. */}
+                <p className="text-xs text-amber-700">
+                  Se nada mudar em alguns minutos, toque em Tentar de novo.
+                </p>
+                {/* Achado 4, rodada 4: em modo cartão, "Tentar de novo" pede
+                    o cartão de NOVO (o Brick remonta do zero) — sem isto, a
+                    caixa parecia exigir digitar o cartão outra vez só para
+                    "conferir", quando a verificação periódica e o tempo
+                    real já cobrem isso sozinhos.
+                    Achado 1, rodada 5 (addendum): a frase antiga dizia "use
+                    só se quiser tentar outro cartão" — mas enquanto o
+                    PRIMEIRO cartão ainda está vivo (em análise, branch (d) da
+                    edge), um cartão DIFERENTE cai na mesma branch e recebe o
+                    MESMO status "em análise". Prometer que trocar de cartão
+                    muda o resultado é falso nesse caso — a frase agora não
+                    promete nada sobre o resultado, só explica o que o botão
+                    faz. */}
+                {metodoDoPedido === "cartao" && (
+                  <p className="text-xs text-amber-700">
+                    Você não precisa fazer nada agora: esta tela muda sozinha
+                    quando o banco decidir. "Tentar de novo" confere com o banco
+                    de novo; se o cartão ainda estiver em análise, a resposta
+                    será a mesma.
+                  </p>
+                )}
+                <Button
+                  onClick={() => {
+                    setErroPagamento(null);
+                    setErroCancelamento(null);
+                  }}
+                  className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+                >
+                  Tentar de novo
+                </Button>
+              </>
+            )}
+          </div>
+        ) : erroPagamento ? (
           <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
@@ -2761,11 +3028,109 @@ export function CheckoutView({
                 Tentar de novo
               </Button>
             )}
+            {/* B1 da revisão de risco pré-publicação (26/09/2026), corrigido
+                na rodada 2 e na rodada 3: "Pagar com PIX" só quando
+                `semCobranca` vier marcado (Brick que não montou, validação
+                local, ou a URL de desafio fora do Mercado Pago) — nunca em
+                erro terminal, nunca com `cartaoEmAnalise`, e nunca se
+                `pedidoTemCobrancaIncerta` (achado 1, rodada 3) já estiver
+                marcado por um erro ANTERIOR deste mesmo pedido: um 502
+                ambíguo seguido de uma falha local segura não pode reabrir o
+                botão — a vaga da cobrança ambígua pode virar aprovada
+                depois. A rodada 1 oferecia o botão para QUALQUER erro em
+                modo cartão, inclusive um 502 ambíguo — reproduzido: duas
+                cobranças vivas. */}
+            {metodoDoPedido === "cartao" &&
+              erroPagamento.categoria !== "terminal" &&
+              erroPagamento.semCobranca &&
+              !erroPagamento.cartaoEmAnalise &&
+              !pedidoTemCobrancaIncerta && (
+                <Button
+                  onClick={() => {
+                    setMetodoDoPedido("pix");
+                    setErroPagamento(null);
+                    setErroCancelamento(null);
+                  }}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Pagar com PIX
+                </Button>
+              )}
             {/* CHECKOUT-070 (#197): visível nos dois casos — no terminal é a
                 única ação; no recuperável fica em segundo plano (variant
                 "outline"), sem roubar o destaque de "Tentar de novo". Só
-                para sessão autenticada (ver comentário do handler acima). */}
-            {user ? (
+                para sessão autenticada (ver comentário do handler acima).
+                Achado 1, rodada 3: NUNCA com `pedidoTemCobrancaIncerta` —
+                pelo mesmo motivo do "Pagar com PIX" acima, cancelar um
+                pedido cuja cobrança pode ter ido para o Mercado Pago é
+                dinheiro cobrado por um pedido morto (`pago_apos_expirar`).
+                Achado 4, rodada 4: quando o erro atual é TERMINAL (a
+                sequência do achado 1 — um erro ambíguo seguido de um erro
+                terminal comum), nem "Tentar de novo" aparece (categoria
+                terminal) nem "Cancelar pedido" (marcador ligado): a caixa
+                ficava sem NENHUM botão. "Falar com a loja" evita o beco sem
+                saída.
+                Achado 1, rodada 6: `cancelamentoBloqueadoPelaGuardaDoCartao`
+                (acima) esconde SÓ este botão — "Tentar de novo"/"Pagar com
+                PIX" do bloco de `erroPagamento` continuam do jeito que já
+                estavam, sem depender deste marcador.
+                Achado 1, rodada 7 (revisão de risco, cenário real medido: o
+                relógio do prazo vence — 409 TERMINAL "O prazo para pagar
+                este pedido acabou." — ANTES do pg_cron rodar, então
+                `payment_status` ainda é `aguardando` quando o cliente clica
+                em cancelar): terminal esconde "Tentar de novo", não é
+                `semCobranca` então não esconde "Pagar com PIX" por si só,
+                MAS este marcador também está ligado — as três saídas juntas
+                deixavam a caixa SEM NENHUM BOTÃO. A mensagem de
+                `erroCancelamento`, logo abaixo, já diz "fale com a loja
+                antes de cancelar" — "Falar com a loja" cumpre a própria
+                promessa do texto, em vez de deixar a pessoa lendo uma
+                instrução sem como agir.
+                Achado 1, rodada 8: SEM WhatsApp configurado, os dois becos
+                acima (este e o de `cancelamentoBloqueadoPelaGuardaDoCartao`,
+                abaixo) continuavam de pé. "Ver meus pedidos" fecha os dois —
+                seguro com a migration 80 no ar (condição para ligar o
+                cartão): a tela de pedidos não oferece nada que cobra, e
+                cancelar por lá esbarra na MESMA guarda P0001. */}
+            {pedidoTemCobrancaIncerta ? (
+              erroPagamento.categoria === "terminal" &&
+              (lojaTemWhatsappNoCheckout ? (
+                <Button
+                  onClick={handleFalarComALojaSobreCartao}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Falar com a loja
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Ver meus pedidos
+                </Button>
+              ))
+            ) : cancelamentoBloqueadoPelaGuardaDoCartao ? (
+              lojaTemWhatsappNoCheckout ? (
+                <Button
+                  onClick={handleFalarComALojaSobreCartao}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Falar com a loja
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Ver meus pedidos
+                </Button>
+              )
+            ) : user ? (
               <Button
                 onClick={handleCancelarPedidoESairDoPagamento}
                 disabled={isCancelandoPedido}
@@ -2811,8 +3176,46 @@ export function CheckoutView({
             emailDoPagador={user?.email ?? null}
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
-            onTrocarParaPix={() => setMetodoDoPedido("pix")}
-            onErro={(msg, categoria) =>
+            //
+            // Achado 2, rodada 4 da revisão de risco pré-publicação
+            // (26/09/2026): a troca acontece ANTES de qualquer erro — se o
+            // cartão ainda podia estar vivo (desafio 3DS, "confirmando com o
+            // banco", "em análise"), o pedido já nasce incerto NA HORA da
+            // troca. Sem isto, o primeiro erro do PIX (rede caiu, sem sinal)
+            // chegava com `metodoDoPedido` já em "pix" — fora do alcance da
+            // regra "sem sinal em modo cartão é incerto" — e "Cancelar
+            // pedido" reaparecia sobre um cartão que podia ter sido aprovado.
+            onTrocarParaPix={(cartaoAindaVivo) => {
+              if (cartaoAindaVivo) setPedidoTemCobrancaIncerta(true);
+              setMetodoDoPedido("pix");
+            }}
+            onErro={(msg, categoria, sinal) => {
+              // Achados 1 e 2, rodada 3 da revisão de risco pré-publicação
+              // (26/09/2026): um erro do POST de cartão SEM sinal nenhum
+              // (502 ambíguo, rede caindo antes do corpo chegar — o catch
+              // genérico de `enviarPagamentoComCartao`) é tão incerto quanto
+              // `cartaoEmAnalise` explícito: o Mercado Pago pode ter
+              // aprovado sem o front saber. `categoria !== "terminal"` separa
+              // isso dos terminais DEFINITIVOS do cartão (recusado sem nova
+              // tentativa, expirado, estornado) — esses vêm de uma resposta
+              // que a edge realmente enviou (`classificarRespostaCartao`),
+              // sem ambiguidade nenhuma; cancelar um pedido expirado/
+              // estornado continua seguro e não deve virar a caixa âmbar.
+              const cartaoTalvezEmCurso =
+                sinal === "cartaoEmAnalise" ||
+                (sinal === undefined &&
+                  (msg === MENSAGEM_CARTAO_EM_ANALISE_409 ||
+                    msg === MENSAGEM_CARTAO_TALVEZ_COBRADO_409)) ||
+                (metodoDoPedido === "cartao" &&
+                  sinal === undefined &&
+                  categoria !== "terminal");
+              // Achado 1 (BLOQUEANTE): o marcador é POR PEDIDO — uma vez
+              // `true`, fica `true` para sempre neste pedido (ver o
+              // comentário grande de `pedidoTemCobrancaIncerta`, acima).
+              // Nunca desmarcado aqui, mesmo que ESTE erro em particular não
+              // seja incerto.
+              if (cartaoTalvezEmCurso) setPedidoTemCobrancaIncerta(true);
+
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
                 // Mercado Pago não é clara sobre a ordem entre `onSubmit`
@@ -2823,9 +3226,14 @@ export function CheckoutView({
                 // muda com nova tentativa.
                 atual?.categoria === "terminal"
                   ? atual
-                  : { mensagem: msg, categoria },
-              )
-            }
+                  : {
+                      mensagem: msg,
+                      categoria,
+                      cartaoEmAnalise: cartaoTalvezEmCurso,
+                      semCobranca: sinal === "semCobranca",
+                    },
+              );
+            }}
           />
         )}
       </div>
@@ -4622,7 +5030,14 @@ function SuccessView({
     }
     const mensagem = `Olá! Quero acompanhar o meu pedido #${orderId.slice(-6).toUpperCase()}.`;
     const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
-    globalThis.open(url, "_blank");
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -4807,7 +5222,14 @@ function PagamentoForaDoPrazoView({
     }
     const mensagem = `Olá! Paguei o pedido #${orderId.slice(-6).toUpperCase()}, mas o prazo de reserva venceu. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
-    globalThis.open(url, "_blank");
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (

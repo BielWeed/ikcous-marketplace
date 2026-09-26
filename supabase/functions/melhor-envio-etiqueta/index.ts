@@ -68,7 +68,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
-import { cpfDoDestinatario, cpfValido, sanitizarCpfDoTexto, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
+import { cpfDoDestinatario, cpfValido, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -197,6 +197,18 @@ export function extrairServiceIdDaOpcao(optionId: unknown): string | null {
  * CEP e cidade. Rua sem número vai com aviso? NÃO — recusa também: a
  * transportadora não entrega pacote sem número; melhor parar antes de gastar
  * saldo do lojista numa etiqueta que os Correios devolveriam.
+ *
+ * ATENÇÃO — isto NÃO é a fonte completa do endereço (achado 26/09/2026):
+ * cliente LOGADO nunca grava o retrato em `customer_data` (o front manda
+ * `p_address_id`, não `p_address_data`, quando há conta — `useOrders.ts`).
+ * `customer_data.address` fica `null` (sempre, para logado) ou, na janela
+ * 23–26/09 da migration 20261172, só `{cpf}`. Nos dois casos esta função
+ * devolve null CORRETAMENTE — mas o chamador (`gerar_etiqueta`) TEM de
+ * completar com `buscarEnderecoDaConta` (abaixo) antes de recusar o pedido,
+ * senão nenhum pedido de cliente com conta (== todo pedido nacional, P6:
+ * convidado não paga online) nunca gera etiqueta. O mapper do painel já
+ * cobre isso com o JOIN `row.address`; aqui a mesma verdade vem de uma
+ * segunda consulta, porque a function não faz JOIN no SELECT do pedido.
  */
 export function extrairEnderecoDoPedido(
     customerData: Record<string, any> | null | undefined,
@@ -216,6 +228,64 @@ export function extrairEnderecoDoPedido(
         district: String(fonte.neighborhood || cd.neighborhood || ''),
         city,
         state: String(fonte.state || cd.state || ''),
+    }
+}
+
+/**
+ * Fallback de conta (achado 26/09/2026): o endereço de quem tem conta mora
+ * em `user_addresses`, referenciado por `marketplace_orders.address_id` —
+ * NUNCA em `customer_data` (ver o aviso em `extrairEnderecoDoPedido` acima).
+ * Só chamada quando a extração de `customer_data` já devolveu null; a
+ * precedência (snapshot completo em `customer_data` vence, senão a conta)
+ * mora no CHAMADOR, não aqui.
+ *
+ * Dono explícito (`eq('user_id', ...)`): a function usa SERVICE ROLE, que
+ * não tem RLS — sem este filtro, um `address_id` de OUTRO usuário (dado
+ * corrompido, FK solta de pedido antigo) vazaria o endereço de outra pessoa
+ * na etiqueta. Sem `addressId` ou sem `userId` (convidado, ou pedido sem
+ * endereço de conta), devolve endereço `null` sem erro — não gasta round-trip.
+ *
+ * ERRO DE BANCO ≠ "não achou" (2ª rodada da revisão de risco, item C): antes
+ * um `error` do PostgREST (timeout, conexão) virava `null` calado, igual a
+ * uma linha ausente — o pedido recusava com a MESMA mensagem de "endereço
+ * incompleto" e não sobrava rastro nenhum pra saber que foi o BANCO que
+ * falhou. `erroBanco` carrega só o `code` (nunca `message` — alguns drivers
+ * ecoam dado da linha na mensagem de erro) para o chamador logar e responder
+ * diferente (500, não 400).
+ */
+export async function buscarEnderecoDaConta(
+    supabase: any,
+    addressId: unknown,
+    userId: unknown,
+): Promise<{
+    endereco: { cep: string; street: string; number: string; complement: string; district: string; city: string; state: string } | null
+    erroBanco: string | null
+}> {
+    if (!addressId || !userId) return { endereco: null, erroBanco: null }
+    const { data, error } = await supabase
+        .from('user_addresses')
+        .select('cep, street, number, complement, neighborhood, city, state')
+        .eq('id', addressId)
+        .eq('user_id', userId)
+        .maybeSingle()
+    if (error) return { endereco: null, erroBanco: String(error?.code || 'SEM_CODIGO') }
+    if (!data) return { endereco: null, erroBanco: null }
+    const cep = String(data.cep || '').replace(/\D/g, '')
+    const street = String(data.street || '')
+    const number = String(data.number || '')
+    const city = String(data.city || '')
+    if (cep.length !== 8 || !city || !street || !number) return { endereco: null, erroBanco: null }
+    return {
+        endereco: {
+            cep,
+            street,
+            number,
+            complement: String(data.complement || ''),
+            district: String(data.neighborhood || ''),
+            city,
+            state: String(data.state || ''),
+        },
+        erroBanco: null,
     }
 }
 
@@ -1592,6 +1662,33 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             const customerDataAtual = pedidoAtual.customer_data || {}
             const cpfAnterior = typeof customerDataAtual.cpf === 'string' ? customerDataAtual.cpf : null
 
+            // LIMPEZA DO ENDEREÇO NA ESCRITA (4ª rodada — substitui a trava
+            // otimista por objeto inteiro da 3ª rodada, revertida abaixo por
+            // motivo de privacidade: ver o filtro logo depois). O addendum da
+            // 3ª rodada (scratchpad/edge_lost_update.cjs) provou que uma
+            // leitura desatualizada podia reintroduzir `address.cpf` (sobra
+            // da janela 23-26/09) de volta no banco depois de uma limpeza
+            // concorrente. Em vez de travar a ESCRITA pelo objeto inteiro
+            // (o que resolvia isso mas vazava telefone/CEP/endereço na URL
+            // do PATCH — ver comentário do filtro), a escrita agora tira
+            // `address.cpf` de forma INCONDICIONAL, sempre — não importa se
+            // `customerDataAtual` está desatualizado, o CPF preso no
+            // endereço NUNCA volta a ser gravado. Mesma regra das migrations
+            // 20261172/20261182: `address` sem `cpf`; se sobrar `{}`, vira
+            // JSON `null` (não `{}` — `{}` é truthy em JS e venceria o
+            // endereço de verdade na cadeia `||` do mapper do front). Só
+            // mexe na chave se ela EXISTIR e for objeto — nunca inventa
+            // `address` num pedido do formato legado (o que esta action
+            // também atende) que nunca teve endereço estruturado.
+            const enderecoAtual = customerDataAtual.address
+            const customerDataSemCpfNoEndereco =
+                'address' in customerDataAtual && enderecoAtual !== null && typeof enderecoAtual === 'object' && !Array.isArray(enderecoAtual)
+                    ? (() => {
+                        const { cpf: _cpfSaiDoEndereco, ...resto } = enderecoAtual as Record<string, any>
+                        return { ...customerDataAtual, address: Object.keys(resto).length === 0 ? null : resto }
+                    })()
+                    : customerDataAtual
+
             // UPDATE CONDICIONAL contra corrida: só grava se o pedido AINDA
             // não tem etiqueta E o CPF anterior é exatamente o que este
             // pedido de escrita leu — outra aba/clique que gravou no meio
@@ -1599,9 +1696,22 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             // manda recarregar). O front NUNCA reescreve `customer_data`
             // inteiro por conta própria (PII + corrida); só esta action, no
             // servidor, com validação e filtro condicional.
+            //
+            // PRIVACIDADE (4ª rodada): filtrar pelo OBJETO INTEIRO
+            // (`.eq('customer_data', JSON.stringify(...))`, como a 3ª rodada
+            // fazia) bota telefone, CEP e endereço de convidado na URL do
+            // PATCH — que fica nos logs de API do Supabase (regra da casa:
+            // nunca CPF em log; isso vazava bem mais que CPF). Filtrar só
+            // por `customer_data->>cpf` expõe, no MÁXIMO, o CPF ANTERIOR — e
+            // só quando ele já existia (`.is(..., null)` quando não há CPF
+            // nenhum: exposição zero). Investigado um jeito de não expor nem
+            // isso (trava por `updated_at`/coluna de versão): não há
+            // gatilho nenhum bumping `updated_at` em UPDATE comum nesta
+            // tabela (só `cart_items` tem `set_updated_at`), e criar um exige
+            // migration — fora do escopo aqui. Este é o piso sem migration.
             let atualizacao = supabaseClient
                 .from('marketplace_orders')
-                .update({ customer_data: { ...customerDataAtual, cpf: cpfLimpo } })
+                .update({ customer_data: { ...customerDataSemCpfNoEndereco, cpf: cpfLimpo } })
                 .eq('id', orderId)
                 .is('shipping_label_id', null)
             atualizacao = cpfAnterior === null
@@ -1741,7 +1851,13 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
             if (!response.ok) {
                 const detalhe = await response.text()
-                console.error('[melhor-envio-etiqueta] tracking HTTP', response.status, sanitizarCpfDoTexto(detalhe))
+                // Item 2 (4ª rodada): mesma troca das outras 5 chamadas HTTP
+                // ao ME (achado da 3ª rodada, item 1) — `sanitizarCpfDoTexto`
+                // só tira CPF, sem limite de tamanho; `motivoDoProvedor` (já
+                // usado pela reversa, linha ~1019) só extrai
+                // `errors`/`error`/`message`, sanitiza e-mail/telefone/CPF e
+                // corta em 300.
+                console.error('[melhor-envio-etiqueta] tracking HTTP', response.status, motivoDoProvedor(detalhe))
                 await gravarEvento(supabaseClient, {
                     order_id: orderId,
                     event_type: 'erro',
@@ -1789,9 +1905,12 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
 
         // 1. O pedido, com o que a etiqueta precisa (inclui o estado de
         //    pagamento para o portão e a URL da etiqueta para o `already`).
+        //    `address_id` e `user_id` (achado 26/09/2026): sem eles o
+        //    fallback de `buscarEnderecoDaConta` não teria como achar nem
+        //    provar o dono do endereço de quem tem conta.
         const { data: pedido, error: pedidoError } = await supabaseClient
             .from('marketplace_orders')
-            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, customer_name, customer_data, shipping, shipping_cost')
+            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, customer_name, customer_data, shipping, shipping_cost, address_id, user_id')
             .eq('id', orderId)
             .maybeSingle()
 
@@ -1887,8 +2006,80 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         // subtotal, como sempre foi).
         const semSeguro = opcaoDoCheckout?.semSeguro === true
 
-        const endereco = extrairEnderecoDoPedido(customerData)
+        // Cliente LOGADO nunca grava o retrato em `customer_data` (ver o
+        // aviso em `extrairEnderecoDoPedido`) — sem este fallback, TODO
+        // pedido nacional (P6: convidado não paga online, então transportadora
+        // é sempre cliente com conta) recusava aqui.
+        let endereco = extrairEnderecoDoPedido(customerData)
         if (!endereco) {
+            const contaResultado = await buscarEnderecoDaConta(supabaseClient, pedido.address_id, pedido.user_id)
+            if (contaResultado.erroBanco) {
+                // 2ª rodada da revisão de risco, item C: erro de BANCO (timeout,
+                // conexão) NUNCA pode virar a mesma mensagem de "endereço
+                // incompleto" — o lojista tentaria de novo lendo a ficha,
+                // achando que o DADO está faltando, quando o banco é quem
+                // falhou. Só o código do erro vai pro log (nunca a mensagem
+                // inteira: alguns drivers ecoam valor de coluna nela).
+                console.error('[melhor-envio-etiqueta] falha ao ler o endereço da conta:', contaResultado.erroBanco)
+                return new Response(
+                    JSON.stringify({ error: 'Não foi possível confirmar o endereço da cliente agora. Tente de novo.' }),
+                    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+            endereco = contaResultado.endereco
+            if (endereco) {
+                // Item A: o CEP que a cliente PAGOU (customer_data.destination_cep
+                // — a RPC grava o CEP de entrega/cotação no instante da compra,
+                // sempre, nos dois meios de pagamento) pode não ser mais o CEP
+                // da linha ATUAL de user_addresses — a cliente editou "Casa"
+                // DEPOIS de comprar. Etiquetar sem avisar manda o pacote pro
+                // endereço NOVO, cobrando o frete e reservando produto para um
+                // destino que a compra nunca previu. 409 pede confirmação
+                // humana antes de gastar o saldo do lojista — só os CEPs vão
+                // na mensagem, nunca rua/bairro/nome (podem ser de outra
+                // edição, sem relação com a compra original).
+                const cepPago = String((customerData as Record<string, any>)?.destination_cep || '').replace(/\D/g, '')
+                if (cepPago.length === 8 && cepPago !== endereco.cep) {
+                    const comHifen = (c: string) => `${c.slice(0, 5)}-${c.slice(5)}`
+                    return new Response(
+                        JSON.stringify({
+                            // Item 2 (3ª rodada): sem botão de confirmação nesta
+                            // rodada (tarefa separada) — a mensagem TEM que dar
+                            // as duas saídas de verdade que existem hoje, senão
+                            // o lojista fica preso no 409 sem próximo passo.
+                            error: `O endereço da conta da cliente mudou de CEP depois da compra (era ${comHifen(cepPago)}, agora ${comHifen(endereco.cep)}). Confirme com a cliente antes de gerar a etiqueta. Se o endereço novo estiver certo, peça para a cliente corrigir o endereço na conta dela, ou gere a etiqueta no site do Melhor Envio e informe o rastreio na ficha do pedido.`,
+                            endereco_mudou: true,
+                        }),
+                        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                    )
+                }
+            }
+        }
+        if (!endereco) {
+            // Item C (2ª rodada): endereço APAGADO da conta depois da compra
+            // (FK ON DELETE SET NULL zera a COLUNA `address_id`) ganha
+            // mensagem própria — "endereço incompleto" manda o lojista
+            // procurar rua/número que nunca vão aparecer, quando o problema
+            // é que a linha sumiu.
+            //
+            // Item 4 (3ª rodada): a coluna null SOZINHA não prova nada — é
+            // também o estado de um pedido que nunca teve endereço de conta
+            // (dado incompleto de verdade, não apagado). A prova de que um
+            // endereço EXISTIU é `customer_data.address_id`: o RETRATO que a
+            // RPC grava no INSTANTE da compra (`create_marketplace_order_v23`/
+            // `_v24`, migrations 20261172 e 20261174 —
+            // `jsonb_build_object('address_id', p_address_id, ...)`) — vive
+            // dentro do jsonb, então o `ON DELETE SET NULL` da FK (que só
+            // atinge a COLUNA) nunca o apaga. Sem essa chave, cai na mensagem
+            // genérica de baixo — não inventa uma causa que não dá pra provar.
+            if (pedido.user_id && !pedido.address_id && (customerData as Record<string, any>)?.address_id) {
+                return new Response(
+                    JSON.stringify({
+                        error: 'O endereço usado na compra foi apagado da conta da cliente. Peça um endereço para ela e cadastre um novo antes de gerar a etiqueta.',
+                    }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
             return new Response(
                 JSON.stringify({
                     error: 'O pedido não tem endereço completo (CEP, rua, número e cidade). Sem isso a transportadora não entrega — nenhum dado do endereço é enviado incompleto.',
@@ -1962,7 +2153,13 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         })
         if (!meResponse.ok) {
             const detalhe = await meResponse.text()
-            console.error('[melhor-envio-etiqueta] /me HTTP', meResponse.status, sanitizarCpfDoTexto(detalhe))
+            // 3ª rodada da revisão de risco, item 1: `sanitizarCpfDoTexto`
+            // só tira o CPF — o resto do corpo (que pode ecoar dado da
+            // requisição) ia inteiro pro console, sem limite de tamanho.
+            // `motivoDoProvedor` (já usado pela reversa) só extrai
+            // `errors`/`error`/`message`, sanitiza e-mail/telefone/CPF e
+            // corta em 300 — mesmo tratamento nas 5 chamadas HTTP ao ME.
+            console.error('[melhor-envio-etiqueta] /me HTTP', meResponse.status, motivoDoProvedor(detalhe))
             return new Response(
                 JSON.stringify({ error: mensagemDoErroHttp(meResponse.status, 'leitura do remetente') }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -2015,7 +2212,10 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         })
         if (!cartResponse.ok) {
             const detalhe = await cartResponse.text()
-            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, sanitizarCpfDoTexto(detalhe))
+            // Item 1 (3ª rodada): ver o comentário no log do `/me HTTP` acima
+            // — um 4xx do cart pode ecoar o `to` inteiro (nome, rua, número,
+            // CEP do destinatário) num campo qualquer do corpo de validação.
+            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, motivoDoProvedor(detalhe))
             return new Response(
                 JSON.stringify({ error: mensagemDoErroHttp(cartResponse.status, 'criação da etiqueta') }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -2024,11 +2224,19 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         const cartData = await cartResponse.json()
         const labelId = cartData?.id
         if (!labelId) {
-            // Sanitiza ANTES de cortar em 500 caracteres — cortar primeiro
-            // podia partir um CPF ao meio na fronteira do corte, deixando um
-            // pedaço de dígitos que a regex de 11 não reconhece mais (achado
-            // da 2ª rodada da revisão Opus sobre o commit aadbf4c).
-            console.error('[melhor-envio-etiqueta] cart sem id:', sanitizarCpfDoTexto(JSON.stringify(cartData)).slice(0, 500))
+            // 2ª rodada da revisão de risco, item D: sem `id`, o carrinho do
+            // ME pode ecoar o CORPO INTEIRO que a function mandou — nome,
+            // endereço e telefone do destinatário, não só o CPF. A versão
+            // anterior sanitizava só o CPF (`sanitizarCpfDoTexto`) e imprimia
+            // o resto de corpo inteiro (achado: PII em log, alcançável hoje).
+            // Log só das CHAVES de primeiro nível — nenhum valor, sanitizado
+            // ou não; não há mais nada pra cortar em 500 caracteres.
+            const chavesDoCorpo =
+                cartData && typeof cartData === 'object' && !Array.isArray(cartData) ? Object.keys(cartData) : []
+            console.error(
+                '[melhor-envio-etiqueta] cart sem id, chaves do corpo:',
+                chavesDoCorpo.length > 0 ? chavesDoCorpo.join(', ') : '(vazio ou não é objeto)',
+            )
             return new Response(
                 JSON.stringify({ error: 'O Melhor Envio não devolveu o id da etiqueta. Tente novamente.' }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -2191,7 +2399,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             })
             if (!checkoutResponse.ok) {
                 const detalhe = await checkoutResponse.text()
-                console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, sanitizarCpfDoTexto(detalhe))
+                // Item 1 (3ª rodada): mesma troca do `/me HTTP` acima.
+                console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, motivoDoProvedor(detalhe))
                 if (checkoutResponse.status >= 500) {
                     // 5xx de gateway: a compra PODE ter fechado com a resposta
                     // perdida — indeterminado, NÃO "não pagou" (A′).
@@ -2220,7 +2429,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             })
             if (!generateResponse.ok) {
                 const detalhe = await generateResponse.text()
-                console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, sanitizarCpfDoTexto(detalhe))
+                // Item 1 (3ª rodada): mesma troca do `/me HTTP` acima.
+                console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, motivoDoProvedor(detalhe))
                 return await finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
             }
 
@@ -2237,7 +2447,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                     const printData = await printResponse.json()
                     labelUrl = printData?.url || null
                 } else {
-                    console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, sanitizarCpfDoTexto(await printResponse.text()))
+                    // Item 1 (3ª rodada): mesma troca do `/me HTTP` acima.
+                    console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, motivoDoProvedor(await printResponse.text()))
                 }
             } catch (printErr) {
                 console.error('[melhor-envio-etiqueta] print falhou (suave):', printErr)

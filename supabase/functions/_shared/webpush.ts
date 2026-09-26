@@ -252,6 +252,37 @@ export async function comTempoLimite<T>(
 }
 
 /**
+ * Menor (4ª revisão de risco, 26/09/2026, achado em `criar-pagamento/
+ * index.ts` — a gravação do sentinela, Achado S5(b)): quando o Edge Runtime
+ * sabe manter o isolado vivo sozinho (`EdgeRuntime.waitUntil`, MESMA
+ * detecção de `comTempoLimite`, acima), quem chama nem precisa correr a
+ * promessa contra um teto — ela segue em segundo plano de qualquer jeito, e
+ * o CLIENTE (o navegador do outro lado desta requisição HTTP) não ganha nada
+ * esperando os até `msSemWaitUntil` que `comTempoLimite` existe para
+ * impor. Só faz sentido para um chamador com um CLIENTE de verdade esperando
+ * a resposta — os outros chamadores de `comTempoLimite` (webhook, que
+ * responde ao MP, não a um navegador; reconciliação, que não responde a
+ * ninguém) continuam com o teto de espera de sempre, sem mudança.
+ *
+ * Sem `EdgeRuntime.waitUntil` (o runner de teste, que também é onde a suíte
+ * observa o efeito da promessa SYNCHRONOUSLY logo após o `await
+ * handler(...)`), cai em `comTempoLimite` — byte a byte o comportamento de
+ * antes.
+ */
+export function dispararSemEsperarCliente<T>(
+  promessa: Promise<T>,
+  msSemWaitUntil: number,
+): Promise<T | undefined> {
+  const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+    .EdgeRuntime;
+  if (typeof edgeRuntime?.waitUntil === "function") {
+    edgeRuntime.waitUntil(promessa.catch(() => undefined));
+    return Promise.resolve(undefined);
+  }
+  return comTempoLimite(promessa, msSemWaitUntil);
+}
+
+/**
  * Agrupa as falhas por motivo. Uma lista de 200 linhas repetindo
  * "push service respondeu 401" não ajuda ninguém; "401 em 200 dispositivos"
  * ajuda, e cabe no toast.

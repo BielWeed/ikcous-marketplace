@@ -25,7 +25,7 @@ describe("_headers traduzido do vercel.json", () => {
       "/assets/*\n  Cache-Control: public, max-age=31536000, immutable",
     );
     const global = blocos[6].split("\n");
-    expect(global).toHaveLength(11); // caminho + dez cabeçalhos
+    expect(global).toHaveLength(10); // caminho + nove cabeçalhos
     expect(global.some((l) => /^\s+Cache-Control:/i.test(l))).toBe(false);
     expect(global).toContain("  X-Frame-Options: DENY");
     expect(
@@ -74,11 +74,10 @@ describe("_headers traduzido do vercel.json", () => {
     );
   });
 
-  it("cabeçalhos da função são os dez do bloco global", () => {
-    const dez = hospedagem.cabecalhosDeFuncao(vercel);
-    expect(Object.keys(dez).sort()).toEqual([
+  it("cabeçalhos da função são os nove do bloco global", () => {
+    const nove = hospedagem.cabecalhosDeFuncao(vercel);
+    expect(Object.keys(nove).sort()).toEqual([
       "Content-Security-Policy",
-      "Cross-Origin-Embedder-Policy",
       "Cross-Origin-Opener-Policy",
       "Cross-Origin-Resource-Policy",
       "Permissions-Policy",
@@ -88,7 +87,20 @@ describe("_headers traduzido do vercel.json", () => {
       "X-Frame-Options",
       "X-XSS-Protection",
     ]);
-    expect(Object.isFrozen(dez)).toBe(true);
+    expect(Object.isFrozen(nove)).toBe(true);
+  });
+
+  // Guarda: COEP (Cross-Origin-Embedder-Policy) foi removido do vercel.json
+  // em 26/09/2026, decisão do dono (Gabriel). Sob `credentialless`, iframe
+  // cross-origin só escapa do bloqueio se o documento embutido responder com
+  // COEP + `Cross-Origin-Resource-Policy: cross-origin`; nada garante que os
+  // iframes de Secure Fields do Card Payment Brick (Mercado Pago) façam isso,
+  // e é o principal suspeito por trás do Brick não carregar. Reintroduzir
+  // aqui exige nova decisão documentada do dono — não é para voltar sozinho
+  // num ajuste de CSP ou de outro cabeçalho.
+  it("COEP não volta sem decisão documentada do dono", () => {
+    const nove = hospedagem.cabecalhosDeFuncao(vercel);
+    expect(nove["Cross-Origin-Embedder-Policy"]).toBeUndefined();
   });
 
   it("hosts de imagem vêm do img-src do CSP", () => {

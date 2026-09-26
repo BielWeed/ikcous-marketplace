@@ -61,10 +61,16 @@ describe("CSP libera o Card Payment Brick e o desafio 3-D Secure", () => {
     expect(diretiva(csp, "form-action")).toEqual(["'self'"]);
   });
 
-  it("COEP credentialless continua de pé (o risco conhecido do Brick — por isso o cartão nasce desligado)", () => {
+  // Guarda: COEP removido em 26/09/2026 (decisão do dono) porque bloqueava o
+  // Card Payment Brick — sob credentialless, iframe cross-origin só escapa
+  // do bloqueio se o documento embutido responder com COEP +
+  // Cross-Origin-Resource-Policy: cross-origin, e nada garante que os
+  // Secure Fields do Mercado Pago façam isso. Reintroduzir exige nova
+  // decisão documentada do dono.
+  it("COEP não volta sem decisão documentada do dono", () => {
     expect(
       hospedagem.cabecalhosDeFuncao(vercel)["Cross-Origin-Embedder-Policy"],
-    ).toBe("credentialless");
+    ).toBeUndefined();
   });
 
   it("a linha da CSP no _headers do Cloudflare Pages fica abaixo do limite de 2000 caracteres", () => {
