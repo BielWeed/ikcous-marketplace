@@ -37,6 +37,10 @@ jobs:
     concurrency:
       group: banco-da-loja
       cancel-in-progress: false
+      # queue: max (não o default "single"): sem isto, disparar A (72),
+      # depois B (73) e C (74) cancela B e aplica só A e C, fora de ordem —
+      # achado da rodada 3 da revisão de risco do conferir-banco-da-loja.
+      queue: max
     steps:
       - uses: actions/checkout@v5
 

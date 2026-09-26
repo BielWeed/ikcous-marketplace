@@ -63,6 +63,7 @@ on:
           - 2a-marcadores-72-74
           - 2b-objetos-72-74
           - 3a-cpf-no-endereco
+          - 4a-definer-alcancavel-pelo-leitor
           - backups
       projeto:
         description: "Projeto de destino: loja ou sandbox (nunca texto livre — achado da rodada 2)"
@@ -126,6 +127,10 @@ jobs:
     concurrency:
       group: banco-da-loja
       cancel-in-progress: false
+      # queue: max (não o default "single"): sem isto, um segundo LEDGER
+      # disparado enquanto o primeiro roda CANCELA o primeiro em vez de
+      # esperar a vez — achado da rodada 3 da revisão de risco.
+      queue: max
     steps:
       - uses: actions/checkout@v5
 

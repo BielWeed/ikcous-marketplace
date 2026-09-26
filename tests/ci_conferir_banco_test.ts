@@ -27,17 +27,42 @@
  * 5. `resumoDeBackups`: `backups[]` vazio + PITR físico disponível imprime
  *    a data do PITR em vez de "(nenhum)".
  *
+ * RODADA 3 (26/09/2026) — re-revisão "passa com ressalva". O que mudou e
+ * o que este arquivo passou a medir a mais:
+ *
+ * 1. Os dois workflows (`conferir-banco-da-loja.yml`,
+ *    `aplicar-migrations.yml`) ganharam `queue: max` no `concurrency` — sem
+ *    isto, a fila padrão CANCELA um run pendente em vez de esperar a vez
+ *    (A aplica 72, B=73 é cancelado por C=74, que aplica sem 73 no meio).
+ * 2. "75 política padrão" e "76 cartão nasce desligado" (1a) entraram em
+ *    `IGNORAR_NA_PRE_CHECAGEM_DO_LEDGER` — são dado ao vivo (prazo que o
+ *    dono pode mudar; flag que vira `false` de propósito depois do passo 6
+ *    do runbook), não checagem estrutural.
+ * 3. Nova consulta `4a-definer-alcancavel-pelo-leitor`: lista função
+ *    `SECURITY DEFINER` em `public` alcançável por `supabase_read_only_user`
+ *    — o papel sozinho NÃO barra uma função dessas que escreve.
+ * 4. `contarStatements` corrigido para mais 4 casos adversariais (P5-P8:
+ *    identificador terminado em e/E colado numa string, `$` depois de
+ *    símbolo não-ASCII ou letra fora do BMP, tag de dollar-quote sem ser
+ *    letra Unicode "de verdade" — a regra real do Postgres é "todo code
+ *    point ≥ U+0080 conta"). O INSERT do ledger agora também tem o
+ *    SHA-256 pinado (`conferirHashDoLedger`) como segunda checagem,
+ *    independente da contagem de statements.
+ *
  * O QUE ESTES TESTES MEDEM (visão geral):
  * - O workflow, do jeito que está no arquivo: só dispara à mão, nenhum
  *   `node -e` inline, `consulta` bate com os arquivos do disco, `projeto`
- *   é choice loja/sandbox, o ledger só roda com `confirmar == 'GRAVAR'`.
+ *   é choice loja/sandbox, `queue: max` no concurrency, o ledger só roda
+ *   com `confirmar == 'GRAVAR'`.
  * - `resolverRef`: loja/sandbox resolvem certo; qualquer outra coisa
  *   (inclusive os payloads do stub e chaves de prototype) é recusada.
- * - `contarStatements`/`dividirEmStatements`: P1-P4 e os casos que já
+ * - `contarStatements`/`dividirEmStatements`: P1-P8 e os casos que já
  *   funcionavam antes, mais todo arquivo real de
  *   `scripts/publicacao/consultas/`.
- * - `conferirAntesDeGravar`: aborta com 0 linha ou `ok !== true`; ignora a
- *   linha de dado ao vivo do 2b.
+ * - `conferirAntesDeGravar`: aborta com 0 linha ou `ok !== true` (fora as
+ *   3 linhas de dado ao vivo); NÃO aborta quando só essas 3 vêm `false`.
+ * - `conferirHashDoLedger`: aceita o conteúdo real do arquivo, recusa
+ *   qualquer alteração.
  * - `main()`, com `fetch` global stubado: o request vai para o endpoint
  *   certo (leitura vs. escrita), erro no corpo vira `exit(1)`, PROJETO
  *   inválido nunca gera request nenhum, e o token NUNCA aparece em nada
@@ -136,6 +161,10 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
         opcoes.includes("3a-cpf-no-endereco"),
         "falta a opção `3a-cpf-no-endereco` (janela 23/09-26/09 do CPF no endereço)",
       );
+      assert(
+        opcoes.includes("4a-definer-alcancavel-pelo-leitor"),
+        "falta a opção `4a-definer-alcancavel-pelo-leitor` (achado #3, rodada 3)",
+      );
     },
   );
 
@@ -167,12 +196,16 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
   );
 
   await t.step(
-    "o job do ledger compartilha o grupo de concorrência com aplicar-migrations",
+    "o job do ledger compartilha o grupo de concorrência com aplicar-migrations, com queue: max (achado #1, rodada 3)",
     () => {
       const iLedger = yaml.indexOf("\n  ledger:");
       const blocoLedger = yaml.slice(iLedger);
       assertStringIncludes(blocoLedger, "group: banco-da-loja");
       assertStringIncludes(blocoLedger, "cancel-in-progress: false");
+      // Sem `queue: max` a fila padrão ("single") CANCELA o run pendente
+      // em vez de esperar a vez — a fila padrão nunca deveria ser usada
+      // aqui (o ledger não pode pular uma faixa no meio).
+      assertStringIncludes(blocoLedger, "queue: max");
     },
   );
 
@@ -223,7 +256,7 @@ Deno.test("resolverRef — projeto fechado loja/sandbox (achado #1, rodada 2)", 
   }
 });
 
-Deno.test("dividirEmStatements/contarStatements — o lexer, inclusive P1-P4", async (t) => {
+Deno.test("dividirEmStatements/contarStatements — o lexer, inclusive P1-P8", async (t) => {
   const { contarStatements, dividirEmStatements } = require(SCRIPT);
 
   await t.step("um SELECT simples conta 1", () => {
@@ -288,6 +321,42 @@ Deno.test("dividirEmStatements/contarStatements — o lexer, inclusive P1-P4", a
   });
 
   await t.step(
+    "P5 — identificador terminado em e/E colado numa string não abre E-string (rodada 3)",
+    () => {
+      const sql =
+        "SELECT name'\\' AS a; COMMIT; INSERT INTO alvo VALUES (5); SELECT 'x\\' AS b";
+      assertEquals(contarStatements(sql), 4);
+    },
+  );
+
+  await t.step(
+    "P6 — $ depois de símbolo não-ASCII (x€$a$) não abre dollar-quote (rodada 3)",
+    () => {
+      const sql =
+        "SELECT 1 AS x€$a$; COMMIT; INSERT INTO alvo VALUES (6); SELECT 1";
+      assertEquals(contarStatements(sql), 4);
+    },
+  );
+
+  await t.step(
+    "P7 — tag de dollar-quote sem ser letra Unicode ($€$) fecha certo (rodada 3)",
+    () => {
+      const sql =
+        "SELECT $€$ ' $€$ AS a; COMMIT; INSERT INTO alvo VALUES (7); SELECT ' ' AS b";
+      assertEquals(contarStatements(sql), 4);
+    },
+  );
+
+  await t.step(
+    "P8 — $ depois de letra fora do BMP (𝑥$a$) não abre dollar-quote (rodada 3)",
+    () => {
+      const sql =
+        "SELECT 1 AS 𝑥$a$; COMMIT; INSERT INTO alvo VALUES (8); SELECT 1";
+      assertEquals(contarStatements(sql), 4);
+    },
+  );
+
+  await t.step(
     "todo arquivo real de scripts/publicacao/consultas/ (inclusive ledger) tem exatamente 1 statement",
     async () => {
       for await (const entrada of Deno.readDir(CONSULTAS_DIR)) {
@@ -326,6 +395,51 @@ Deno.test("dividirEmStatements/contarStatements — o lexer, inclusive P1-P4", a
       assertStringIncludes(sql, "count(*)");
     },
   );
+
+  await t.step(
+    "4a-definer-alcancavel-pelo-leitor.sql confere SECURITY DEFINER contra o papel certo, com to_regrole (rodada 3)",
+    async () => {
+      const sql = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/4a-definer-alcancavel-pelo-leitor.sql`,
+      );
+      assertStringIncludes(sql, "prosecdef");
+      assertStringIncludes(sql, "has_function_privilege");
+      assertStringIncludes(
+        sql,
+        "to_regrole('supabase_read_only_user')",
+        "sem to_regrole, a consulta ERRA (em vez de ficar muda) se o papel não existir",
+      );
+      // Só o nome da função — nada de assinatura, corpo ou schema de outro
+      // lugar que pareça mais informação do que "está alcançável ou não".
+      assertStringIncludes(sql, "SELECT p.proname");
+    },
+  );
+});
+
+Deno.test("ehCaractereDeIdentificador — a regra real do Postgres (rodada 3)", () => {
+  const { ehCaractereDeIdentificador } = require(SCRIPT);
+  for (const ch of ["a", "Z", "0", "_", "$"]) {
+    assert(
+      ehCaractereDeIdentificador(ch),
+      `"${ch}" deveria contar como identificador`,
+    );
+  }
+  // Símbolo não-ASCII (não é "letra" pela categoria Unicode) — P6/P7.
+  assert(
+    ehCaractereDeIdentificador("€"),
+    "€ (U+20AC) deveria contar — todo code point ≥ U+0080 conta",
+  );
+  // Metade de par substituto de uma letra fora do BMP (𝑥 = U+1D465) — P8.
+  assert(
+    ehCaractereDeIdentificador("𝑥"[0]),
+    "a primeira metade do par substituto de 𝑥 deveria contar (valor numérico ≥ U+0080)",
+  );
+  for (const ch of [" ", ";", "'", "\n", "", undefined]) {
+    assert(
+      !ehCaractereDeIdentificador(ch),
+      `"${ch}" NÃO deveria contar como identificador`,
+    );
+  }
 });
 
 Deno.test("comGuardaSomenteLeitura — o guard continua correto, mesmo não sendo mais o caminho quente", () => {
@@ -354,6 +468,39 @@ Deno.test("extrairLinhas — os formatos de resposta da API", () => {
     { columns: ["um", "rotulo"], rows: [[1, "ok"]] },
   ]);
   assertEquals(extrairLinhas(porStatement), [{ um: 1, rotulo: "ok" }]);
+});
+
+Deno.test("conferirHashDoLedger — segunda checagem do INSERT, independente da contagem de statements (achado #4, rodada 3)", async (t) => {
+  const { conferirHashDoLedger, SHA256_DO_LEDGER } = require(SCRIPT);
+
+  await t.step(
+    "o conteúdo REAL dos dois arquivos bate com o hash pinado",
+    async () => {
+      for (const faixa of ["72-74", "75-78"]) {
+        const conteudo = await Deno.readTextFile(
+          `${CONSULTAS_DIR}/ledger-${faixa}.sql`,
+        );
+        // Não lança = passou.
+        conferirHashDoLedger(faixa, conteudo);
+        // eslint-disable-next-line security/detect-object-injection -- `faixa` vem só do array literal ["72-74", "75-78"] três linhas acima, nunca de entrada externa.
+        const hashPinado = SHA256_DO_LEDGER[faixa];
+        assert(hashPinado, `SHA256_DO_LEDGER não tem entrada para ${faixa}`);
+      }
+    },
+  );
+
+  await t.step("qualquer alteração no conteúdo é recusada", () => {
+    let lancou = false;
+    try {
+      conferirHashDoLedger(
+        "72-74",
+        "INSERT INTO supabase_migrations.schema_migrations VALUES ('99999999999999', 'malicioso');",
+      );
+    } catch {
+      lancou = true;
+    }
+    assert(lancou, "conteúdo alterado deveria ser recusado pelo hash pinado");
+  });
 });
 
 Deno.test("resumoDeBackups — inclusive o PITR sem backup discreto (achado #5, rodada 2)", async (t) => {
@@ -703,6 +850,74 @@ Deno.test("main() — request certo, stubando fetch", async (t) => {
 
       assert(!saida.includes(TOKEN_FALSO), "o token vazou na saída do ledger");
       assertStringIncludes(saida, "20261172000000");
+    },
+  );
+
+  await t.step(
+    "ledger 75-78: cartão já ligado e prazos de devolução mudados (ok=false nas 2 linhas de dado ao vivo) -> GRAVA do mesmo jeito (achado #2, rodada 3)",
+    async () => {
+      // 1a com as DUAS linhas de dado ao vivo em ok=false (cenário real:
+      // o dono já ligou o cartão no passo 6, e mudou os prazos de
+      // devolução em Ajustes) — e outras linhas estruturais em ok=true.
+      const linhasDeDadoAoVivoFalsas = [
+        {
+          checagem: "75 política padrão",
+          valor: "14/60/90",
+          esperado: "7/30/90",
+          ok: false,
+        },
+        {
+          checagem: "76 cartão nasce desligado",
+          valor: "true/true/12",
+          esperado: "false/false/1",
+          ok: false,
+        },
+        {
+          checagem: "77 contas de sistema",
+          valor: "3",
+          esperado: "3",
+          ok: true,
+        },
+      ];
+      const linhaOk1b = {
+        migration: "20261175000000",
+        funcao: "x",
+        esperado: 1,
+        achado: 1,
+        ok: true,
+      };
+      const { chamadas, resultado } = await comFetchStubado(
+        [
+          { ok: true, corpo: JSON.stringify(linhasDeDadoAoVivoFalsas) }, // 1a
+          { ok: true, corpo: JSON.stringify([linhaOk1b]) }, // 1b
+          { ok: true, status: 201, corpo: "[]" }, // INSERT do ledger
+          {
+            ok: true,
+            corpo: JSON.stringify([{ version: "20261175000000", name: "x" }]),
+          }, // verificação
+        ],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                LEDGER: "75-78",
+              },
+              () => main(),
+            ),
+          ),
+      );
+      assertEquals(
+        chamadas.length,
+        4,
+        `deveria ter chegado no INSERT — pré-checagem não podia abortar por dado ao vivo; saída: ${resultado.saida}`,
+      );
+      const corpoGravacao = JSON.parse(String(chamadas[2].opts.body));
+      assertStringIncludes(
+        corpoGravacao.query,
+        "INSERT INTO supabase_migrations",
+      );
     },
   );
 

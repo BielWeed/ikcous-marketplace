@@ -53,7 +53,11 @@
  *    dedicado `POST /v1/projects/{ref}/database/query/read-only`, que roda
  *    como `supabase_read_only_user` — um papel do BANCO sem grant de
  *    escrita, não uma promessa da aplicação. Mesmo que um arquivo futuro
- *    engane o contador, o papel não tem INSERT/UPDATE/DDL para conceder.
+ *    engane o contador, o papel não tem GRANT direto de INSERT/UPDATE/DDL
+ *    em tabela nenhuma. (Frase corrigida na rodada 3 — ver o item 3 de
+ *    baixo: isto NÃO cobre função `SECURITY DEFINER` executável por
+ *    PUBLIC, que escreve com o privilégio de QUEM CRIOU a função, não do
+ *    papel que a chamou.)
  *    Por isso o guard `BEGIN READ ONLY` (ver `comGuardaSomenteLeitura`) NÃO
  *    é mais usado nas chamadas de leitura: o endpoint é Beta e não
  *    documenta se aceita múltiplos statements, e arriscar um comportamento
@@ -68,7 +72,6 @@
  *    — um COMMIT embutido no meio de um corpo que o contador leu errado
  *    como 1 statement — que o papel `supabase_read_only_user` fecha de
  *    verdade: falta de privilégio de escrita não se desfaz com COMMIT.
- *
 
  *    Texto corrigido (a versão anterior deste comentário errava nos dois
  *    pontos): a Management API (postgres-meta) reduz um corpo com vários
@@ -89,8 +92,60 @@
  *    de "(nenhum)".
  *
  * Sobre o GitHub Environment sugerido pela revisão ("banco-da-loja" com
- * revisor obrigatório): NÃO foi adicionado — ver a nota grande antes de
- * `module.exports` no fim deste arquivo.
+ * revisor obrigatório): NÃO foi adicionado na rodada 2 — ver a nota grande
+ * antes de `module.exports` no fim deste arquivo. A re-revisão da rodada 3
+ * confirmou que a premissa ("ambiente inexistente falha fechado") estava
+ * ERRADA — GitHub Actions cria o ambiente na hora, sem proteção nenhuma —
+ * então a decisão de NÃO adicionar continua de pé.
+ *
+ * REVISÃO DE RISCO DA RODADA 3 (26/09/2026) — o que mudou e por quê:
+ *
+ * 1. `concurrency` com a fila padrão (`queue: single`) CANCELA o run
+ *    pendente, não enfileira: A aplica 72, B (73) e C (74) são disparados
+ *    → B é cancelado e C aplica 74 sem 73 no meio. `queue: max` (até 100
+ *    pendentes, processados em ordem) é compatível com
+ *    `cancel-in-progress: false` — adicionado nos dois workflows
+ *    (`conferir-banco-da-loja.yml` e `aplicar-migrations.yml`).
+ *
+ * 2. A pré-checagem de 75-78 tratava dado ao vivo como estrutura: "75
+ *    política padrão" (1a) — o dono pode mudar os prazos de devolução em
+ *    Ajustes — e "76 cartão nasce desligado" (1a) — vira `false` DE
+ *    PROPÓSITO depois do passo 6 do runbook (ligar o cartão). As duas
+ *    entraram em `IGNORAR_NA_PRE_CHECAGEM_DO_LEDGER`, mesmo motivo da linha
+ *    das "3 formas" (2b).
+ *
+ * 3. O papel `supabase_read_only_user` sozinho NÃO barra uma função
+ *    `SECURITY DEFINER` executável por PUBLIC que escreve — medido: uma
+ *    `SELECT public.<funcao_definer_que_grava>()` roda com o privilégio de
+ *    QUEM CRIOU a função (o dono do schema), não do papel que chamou o
+ *    SELECT. O texto do item 3 acima foi corrigido para não prometer mais
+ *    do que o papel entrega. Nova consulta,
+ *    `4a-definer-alcancavel-pelo-leitor.sql`: lista (só o nome) toda
+ *    função `SECURITY DEFINER` em `public` que `supabase_read_only_user`
+ *    consegue executar — esperado 0 linhas; roda por conta do operador
+ *    (não faz parte de nenhum fluxo automático, porque a defesa de
+ *    verdade é revisar `GRANT`/`SECURITY DEFINER` na hora de escrever a
+ *    função, não uma varredura periódica).
+ *
+ * 4. O lexer ainda divergia em 4 casos além dos P1-P4 (rodada 2):
+ *    identificador terminado em `e`/`E` colado numa string (o `E` do meio
+ *    de "name" não abre string estendida — só abre se o caractere ANTES do
+ *    E/e não for de identificador), `$` depois de um símbolo não-ASCII ou
+ *    de uma letra fora do BMP, e tag de dollar-quote sem ser letra Unicode
+ *    "de verdade" (a regra do Postgres é bem mais simples: todo code point
+ *    ≥ U+0080 conta como caractere de identificador/tag — não só os que a
+ *    categoria Unicode chama de "letra"). Corrigido em
+ *    `ehCaractereDeIdentificador` e na regex de tag. Além disso, o INSERT
+ *    do ledger agora tem o SHA-256 pinado (`SHA256_DO_LEDGER`,
+ *    `conferirHashDoLedger`) — o caminho de escrita não tem o papel
+ *    restrito como rede de segurança, então não pode depender só da
+ *    contagem de statements, que a experiência destas 3 rodadas mostrou
+ *    que nunca fica garantidamente completa contra SQL adversarial.
+ *
+ * 5. `docs/runbooks/publicar-painel-cartao-devolucoes.md`: `projeto_ref`
+ *    trocado por `projeto: loja` (o texto antigo sobrevivia como instrução
+ *    obsoleta) + nota de que disparar pela API com `projeto_ref` depois
+ *    do merge da rodada 2 dá 422 (o input não existe mais).
  */
 /* eslint-disable security/detect-object-injection --
  * As "chaves" indexadas neste arquivo nunca vêm de entrada externa sem
@@ -103,6 +158,7 @@
  * quem chama o script que chegue a um efeito observável sem checagem. */
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 const CONSULTAS_DIR = path.join(
@@ -172,15 +228,41 @@ function listarConsultas(dir = CONSULTAS_DIR) {
  * consulta com mais de 1 statement por engano é recusado antes de
  * qualquer chamada de rede.
  */
+/**
+ * A regra real do Postgres para identificador/tag de dollar-quote: letra
+ * ASCII, dígito, `_`, `$`, OU **qualquer code point ≥ U+0080** — não só
+ * "letra Unicode" (`\p{L}`). É por isso que `€` (símbolo, categoria "Sc",
+ * não "L") e `𝑥` (letra fora do BMP) contam como caractere de identificador
+ * para o Postgres, mas não contavam para `\p{L}` (achados P6/P8 da rodada
+ * 3). `codePointAt(0)` funciona certo mesmo se `ch` for só METADE de um par
+ * substituto (surrogate) de um astral — ainda assim o valor numérico é
+ * ≥ 0x80, então a checagem não precisa iterar por code point de verdade
+ * para decidir "é caractere de identificador?", só para RECONHECER a tag
+ * inteira (isso já é feito pela regex com a flag `u`, que trata pares
+ * substitutos como um único code point).
+ */
+function ehCaractereDeIdentificador(ch) {
+  if (!ch) return false;
+  if (/[A-Za-z0-9_$]/.test(ch)) return true;
+  return ch.codePointAt(0) >= 0x80;
+}
+
+/** Tag de dollar-quote: letra/`_` ASCII para abrir, dígito também para
+ * continuar, OU `\P{ASCII}` (qualquer code point ≥ U+0080) nos dois casos —
+ * `$€$` (achado P7, tag símbolo) e `$𝑥$` (tag fora do BMP) são tags
+ * válidas para o Postgres, não só tag com letra Unicode "de verdade"
+ * (`\p{L}` não bastava). Nomeada e declarada uma vez para o
+ * `eslint-disable-next-line` de baixo mirar a linha certa mesmo depois de
+ * o formatador reindentar o `.exec(...)` embutido. */
+const PADRAO_TAG_DOLLAR_QUOTE =
+  // eslint-disable-next-line security/detect-unsafe-regex -- grupo com um quantificador só, sem aninhamento; entrada é um .sql local desta pasta, nunca rede.
+  /^\$((?:[A-Za-z_]|\P{ASCII})(?:[A-Za-z0-9_]|\P{ASCII})*)?\$/u;
+
 function dividirEmStatements(sql) {
   const statements = [];
   let atual = "";
   let i = 0;
   const n = sql.length;
-  // Caractere que, colado ANTES de um `$`, faz parte do MESMO identificador
-  // — nesse caso o `$` não pode abrir dollar-quote (é o caso `x$y$`: um
-  // identificador comum com `$` no meio, não uma string delimitada).
-  const CONTINUA_IDENTIFICADOR = /[\p{L}\p{N}_$]/u;
   while (i < n) {
     const c = sql[i];
 
@@ -224,7 +306,17 @@ function dividirEmStatements(sql) {
       // string e a áspa seguinte (a de fechamento de verdade) como o
       // INÍCIO de um par `''` — string nunca fechava e engolia o resto do
       // arquivo, inclusive um `COMMIT; INSERT` de verdade.
-      const ehEString = i > 0 && (sql[i - 1] === "E" || sql[i - 1] === "e");
+      //
+      // O `E`/`e` só abre string estendida se ELE MESMO não for o rabo de
+      // um identificador mais longo — sem checar o caractere ANTES do E/e,
+      // `name'...'` (um identificador que por acaso termina em "e", colado
+      // numa string) era lido como `nam` + E-string, e o escape de barra
+      // passava a valer onde não devia (achado P5 da rodada 3).
+      const anteriorDaQuote = i > 0 ? sql[i - 1] : "";
+      const doisAntesDaQuote = i > 1 ? sql[i - 2] : "";
+      const ehEString =
+        /[Ee]/.test(anteriorDaQuote) &&
+        !ehCaractereDeIdentificador(doisAntesDaQuote);
       let j = i + 1;
       while (j < n) {
         if (ehEString && sql[j] === "\\") {
@@ -265,17 +357,19 @@ function dividirEmStatements(sql) {
     }
 
     if (c === "$") {
-      // Um `$` colado depois de letra/dígito/`_`/`$` é parte do MESMO
-      // identificador (Postgres aceita `$` em identificador comum, só não
-      // como primeiro caractere) — `x$y$` é UM identificador, não uma
-      // string delimitada. Sem esta guarda, o `$y$` no meio era lido como
+      // Um `$` colado depois de letra/dígito/`_`/`$`/qualquer code point
+      // não-ASCII é parte do MESMO identificador (Postgres aceita isso em
+      // identificador comum, só não como primeiro caractere) — `x$y$` é UM
+      // identificador, não uma string delimitada; o mesmo vale para
+      // `x€$a$` (símbolo não-ASCII, achado P6) e `𝑥$a$` (letra fora do
+      // BMP, achado P8). Sem esta guarda, o `$` no meio era lido como
       // abertura de dollar-quote, o fechamento nunca era achado, e a
       // "string" engolia o resto do arquivo inteiro.
       const anterior = i > 0 ? sql[i - 1] : "";
-      const dentroDeIdentificador = CONTINUA_IDENTIFICADOR.test(anterior);
+      const dentroDeIdentificador = ehCaractereDeIdentificador(anterior);
       if (!dentroDeIdentificador) {
-        // eslint-disable-next-line security/detect-unsafe-regex -- grupo com um quantificador só, sem aninhamento; entrada é um .sql local desta pasta, nunca rede.
-        const m = /^\$([\p{L}_][\p{L}\p{N}_]*)?\$/u.exec(sql.slice(i));
+        const restante = sql.slice(i);
+        const m = PADRAO_TAG_DOLLAR_QUOTE.exec(restante);
         if (m) {
           const delimitador = m[0];
           const fim = sql.indexOf(delimitador, i + delimitador.length);
@@ -542,11 +636,21 @@ const CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER = {
   "75-78": ["1a-conferir-o-que-nasceu", "1b-conferir-marcadores"],
 };
 
-/** "loja existente com as 3 formas ligadas" (2b) é dado AO VIVO da loja —
- * muda legitimamente conforme o admin liga/desliga forma de pagamento — e
- * não uma checagem estrutural. Ignorada na pré-checagem do ledger. */
+/** Linhas que são dado AO VIVO da loja — mudam legitimamente com o tempo ou
+ * com uma decisão do dono — e não uma checagem estrutural. Ignoradas na
+ * pré-checagem do ledger (achado #2 da rodada 3: sem isto, ligar o cartão
+ * no passo 6 do runbook, ou o dono mudar o prazo padrão de devolução, faz
+ * a pré-checagem de 75-78 falhar para sempre, mesmo com o schema certo):
+ *   - "loja existente com as 3 formas ligadas" (2b) — quais formas de
+ *     pagamento a loja aceita hoje;
+ *   - "75 política padrão" (1a) — os prazos (7/30/90) são o SEED, não uma
+ *     trava: o dono pode mudar em Ajustes → Trocas e devoluções;
+ *   - "76 cartão nasce desligado" (1a) — só é `true` ANTES do passo 6;
+ *     depois de ligar o cartão, esta linha vira `false` OK. */
 const IGNORAR_NA_PRE_CHECAGEM_DO_LEDGER = new Set([
   "loja existente com as 3 formas ligadas",
+  "75 política padrão",
+  "76 cartão nasce desligado",
 ]);
 
 /** Roda as consultas fixas da faixa pelo caminho só-leitura e aborta
@@ -577,6 +681,45 @@ async function conferirAntesDeGravar({ ref, token, faixa }) {
   }
 }
 
+/**
+ * SHA-256 dos dois arquivos de ledger, fixado na última revisão (rodada 3,
+ * 26/09/2026). Por que fixar aqui, e não confiar só em `contarStatements`:
+ * o INSERT do ledger é o ÚNICO caminho de escrita deste script, e vai para
+ * o endpoint SEM papel restrito (`chamarEscrita`) — a barreira do papel
+ * `supabase_read_only_user` não existe nesse caminho. Se o contador tiver
+ * um bug residual (a rodada 3 já achou 8 casos adversariais: P1-P8), a
+ * única coisa entre um arquivo corrompido/alterado e uma escrita de
+ * verdade seria a contagem de statements. O hash é uma segunda checagem,
+ * independente da contagem: qualquer edição — maliciosa ou um erro de
+ * encoding/quebra de linha — muda o hash, e o script recusa ANTES de olhar
+ * o conteúdo. Editar o ledger de propósito exige atualizar o hash aqui
+ * também — a mesma fricção de dois lugares que `scripts/db-apply.cjs` e
+ * `0b-conferir-corpos-vivos.sql` já usam para os corpos de função (lá,
+ * md5 do corpo vivo contra o valor no rollback; aqui, sha256 do arquivo
+ * inteiro). Escolhido em vez de hardcodar o INSERT dentro do script: o
+ * `.sql` continua sendo a ÚNICA fonte (diff revisável no PR); duplicar o
+ * texto em dois lugares (arquivo + string no script) só criaria um jeito
+ * novo de os dois divergirem sem ninguém perceber.
+ */
+const SHA256_DO_LEDGER = {
+  "72-74": "f25b2d23064bd7639c4c65e19ae85021ec0bb2e53a65d16ffbada9c755d0dbef",
+  "75-78": "aa0d443015102f3fba7f326cbcd40f36f3cba9426800e3fb2787e6697062600f",
+};
+
+function conferirHashDoLedger(faixa, conteudo) {
+  const hash = crypto
+    .createHash("sha256")
+    .update(conteudo, "utf8")
+    .digest("hex");
+  const esperado = SHA256_DO_LEDGER[faixa];
+  // eslint-disable-next-line security/detect-possible-timing-attacks -- não há segredo nem atacante remoto aqui: os dois hashes vêm de conteúdo LOCAL (o arquivo .sql no disco e a constante no código-fonte), no mesmo processo de vida curta do CI. Mesma classe de justificativa de scripts/rotate-db-password.cjs.
+  if (hash !== esperado) {
+    throw new Error(
+      `ledger-${faixa}.sql não bate com o hash pinado (esperado ${esperado}, achou ${hash}) — se a edição foi de propósito, atualize SHA256_DO_LEDGER em conferir-banco.cjs`,
+    );
+  }
+}
+
 async function rodarLedger({ ref, token, faixa }) {
   if (!FAIXAS_DE_LEDGER.includes(faixa)) {
     throw new Error(
@@ -591,6 +734,7 @@ async function rodarLedger({ ref, token, faixa }) {
   const arquivo = path.join(CONSULTAS_DIR, `ledger-${faixa}.sql`);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- `faixa` já foi conferida contra FAIXAS_DE_LEDGER (lista fixa) acima.
   const insertUnico = fs.readFileSync(arquivo, "utf8");
+  conferirHashDoLedger(faixa, insertUnico);
   const total = contarStatements(insertUnico);
   if (total !== 1) {
     throw new Error(
@@ -683,6 +827,7 @@ module.exports = {
   REFS_POR_PROJETO,
   resolverRef,
   listarConsultas,
+  ehCaractereDeIdentificador,
   dividirEmStatements,
   contarStatements,
   comGuardaSomenteLeitura,
@@ -694,6 +839,8 @@ module.exports = {
   chamarEscrita,
   buscarBackups,
   conferirAntesDeGravar,
+  SHA256_DO_LEDGER,
+  conferirHashDoLedger,
   main,
   CONSULTAS_DIR,
 };

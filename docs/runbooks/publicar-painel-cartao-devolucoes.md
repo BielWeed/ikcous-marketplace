@@ -31,17 +31,22 @@ credencial nova. A lógica mora em
 
 As consultas de conferência (`consulta`) vão para o endpoint dedicado da Management API
 `POST /database/query/read-only`, que roda como `supabase_read_only_user` — um papel do BANCO sem
-grant de escrita, não uma promessa da aplicação. O job do ledger é o único que escreve (o
-`INSERT` fixo da faixa), e só depois de **pré-conferir o schema daquela faixa** pelo mesmo caminho
-só-leitura (2a+2b para 72-74; 1a+1b para 75-78) — se vier alguma linha `ok = false` (fora a linha
-"loja existente com as 3 formas ligadas", que é dado ao vivo), o job aborta sem gravar nada. Além
+grant de escrita, não uma promessa da aplicação (esse papel **não** cobre uma função
+`SECURITY DEFINER` executável por `PUBLIC` que escreve — ver `consulta = 4a-...` abaixo). O job do
+ledger é o único que escreve (o `INSERT` fixo da faixa), e só depois de **pré-conferir o schema
+daquela faixa** pelo mesmo caminho só-leitura (2a+2b para 72-74; 1a+1b para 75-78) — se vier
+alguma linha `ok = false` (fora as linhas de dado ao vivo: "loja existente com as 3 formas
+ligadas", "75 política padrão" e "76 cartão nasce desligado" — essas mudam legitimamente com o
+tempo e com decisão do dono, não são checagem estrutural), o job aborta sem gravar nada. Além
 disso, `confirmar` precisa ser exatamente `GRAVAR`, senão o job nem roda.
 
 **Nota de risco (26/09/2026, revisão "passa com ressalva"):** a primeira versão deste workflow
 aceitava um `projeto_ref` de texto livre, que ia direto para o path da URL com um token válido
 para todos os projetos da conta — provado que isso permitia mandar a requisição para outro
 endpoint (`.../restart`) ou para OUTRO projeto. Por isso `projeto` agora é uma lista fechada
-(`loja`/`sandbox`), resolvida para o ref dentro do script.
+(`loja`/`sandbox`), resolvida para o ref dentro do script. Os dois workflows (este e
+`aplicar-migrations.yml`) usam `concurrency` com `queue: max`, não o default: sem isso, disparar
+uma segunda vez enquanto a primeira roda CANCELA a pendente em vez de esperar a vez.
 
 Correspondência com os passos deste runbook:
 
@@ -57,6 +62,12 @@ Correspondência com os passos deste runbook:
 O `consulta = 3a-cpf-no-endereco` também está na lista: é a contagem de pedidos com CPF gravado
 dentro de `customer_data.address` (janela 23/09–26/09/2026) que decide se uma limpeza é
 necessária — nenhum CPF sai na saída, só contagens.
+
+O `consulta = 4a-definer-alcancavel-pelo-leitor` é uma checagem de segurança avulsa (rodada 3 da
+revisão de risco): lista, só pelo nome, toda função `SECURITY DEFINER` em `public` que o papel
+`supabase_read_only_user` consegue executar — o papel não ter grant de escrita numa tabela não
+impede uma função dessas de escrever por dentro. Esperado: 0 linhas. Rode manualmente depois de
+criar qualquer função `SECURITY DEFINER` nova.
 
 ## A ordem, e o que acontece se ela for trocada
 
@@ -178,7 +189,10 @@ segredo do repositório apontando para outro projeto.
       20261175000000_a_devolucao_nasce_no_pedido.sql,20261176000000_o_cartao_online_nasce.sql,20261177000000_o_financeiro_da_loja_nasce.sql,20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
       ```
 
-   3. Deixe `projeto_ref` **no padrão**, que é o projeto da loja.
+   3. Deixe `projeto` em `loja` (default). **Desde a rodada 2 da revisão de risco (26/09/2026)
+      o input mudou de `projeto_ref` (texto livre) para `projeto` (`loja`/`sandbox`, fechado)** —
+      disparar pela API do GitHub passando `projeto_ref` depois desse merge dá `422` (o input não
+      existe mais neste workflow).
 
    A ordem importa porque cada migration lê a anterior:
    - `registrar_estorno_manual` (76) lê `devolucoes` (75);
