@@ -187,7 +187,7 @@ export function htmlDoPedido(dados: {
   } = dados;
   const total = pedido?.total ?? pedido?.total_amount;
   const frete = pedido?.shipping ?? pedido?.shipping_cost;
-  const pagamento = rotuloDoPagamento(pedido?.payment_method);
+  const pagamento = rotuloDoPagamento(pedido?.payment_method, pedido?.metodo_online);
   const loja = String(nomeDaLoja ?? "").trim();
 
   // O canal presencial VEM PRIMEIRO no if: venda de balcao nunca fica
@@ -198,7 +198,7 @@ export function htmlDoPedido(dados: {
     canal === "presencial"
       ? "Compra na loja. Obrigado pela preferencia! Este e-mail e o resumo do que voce levou hoje."
       : aguardandoPagamento
-        ? "Recebemos seu pedido e ele esta aguardando a confirmacao do pagamento. Assim que o PIX for confirmado, ele entra na fila de separacao."
+        ? "Recebemos seu pedido e ele esta aguardando a confirmacao do pagamento. Assim que o pagamento for confirmado, ele entra na fila de separacao."
         : "Recebemos seu pedido. Guarde este e-mail: ele e o resumo do que voce comprou.";
 
   const bloco = (rotulo: string, conteudo: string): string =>
@@ -309,7 +309,7 @@ export async function enviarComprovantePedido(args: {
   const { data: pedido, error: erroPedido } = await supabase
     .from("marketplace_orders")
     .select(
-      "id, user_id, customer_name, customer_data, subtotal, shipping, shipping_cost, discount, total, total_amount, payment_method, payment_status, address_id, canal",
+      "id, user_id, customer_name, customer_data, subtotal, shipping, shipping_cost, discount, total, total_amount, payment_method, metodo_online, payment_status, address_id, canal",
     )
     .eq("id", orderId)
     .maybeSingle();
