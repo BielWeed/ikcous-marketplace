@@ -11,6 +11,7 @@
 import { createRequire } from "node:module";
 import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
+  assert,
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
@@ -58,11 +59,30 @@ Deno.test("cartão nasce DESLIGADO e a configuração só é escrita pela RPC de
     m,
     "REVOKE ALL ON public.config_pagamento_cartao FROM PUBLIC, anon, authenticated;",
   );
+  // Achado L (revisão de 26/09/2026): grant por COLUNA, sem updated_by — o
+  // checkout e a edge criar-pagamento só leem credito/debito/parcelas_max.
   assertStringIncludes(
     m,
-    "GRANT SELECT ON public.config_pagamento_cartao TO anon, authenticated;",
+    "GRANT SELECT (id, credito, debito, parcelas_max, updated_at) ON public.config_pagamento_cartao TO anon, authenticated;",
   );
+  assert(!m.includes("GRANT SELECT ON public.config_pagamento_cartao"));
   assertStringIncludes(m, "IF NOT public.is_admin() THEN");
+});
+
+Deno.test("registrar_estorno_manual ganha uma data real do estorno (achado F)", () => {
+  assertStringIncludes(
+    m,
+    "ADD COLUMN IF NOT EXISTS estorno_manual_registrado_em timestamptz;",
+  );
+  const ini = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.registrar_estorno_manual(",
+  );
+  assert(ini >= 0, "registrar_estorno_manual não encontrada");
+  const corpo = m.slice(ini, m.indexOf("$$;", ini));
+  assertStringIncludes(
+    corpo,
+    "estorno_manual_registrado_em = COALESCE(estorno_manual_registrado_em, now())",
+  );
 });
 
 Deno.test("liberar_cobranca_do_pedido: só service role, com as três guardas", () => {
@@ -91,4 +111,18 @@ Deno.test("o rollback derruba RPCs e tabela mas mantém as colunas do pedido", (
     "DROP TABLE IF EXISTS public.config_pagamento_cartao;",
   );
   assertEquals(/DROP COLUMN/i.test(rollback), false);
+  // Achado R: a ordem de reversão (78 -> 77 -> 76) é recusada, não só documentada.
+  assertStringIncludes(r, "to_regprocedure('public.painel_inicio()')");
+  assertStringIncludes(r, "to_regprocedure('public.fin_dre(date, date)')");
+  // Achado F: registrar_estorno_manual volta ao corpo de 20261072000000
+  // (sem o carimbo), verbatim.
+  const ini = r.indexOf(
+    "CREATE OR REPLACE FUNCTION public.registrar_estorno_manual(",
+  );
+  assert(ini >= 0, "registrar_estorno_manual não restaurada no rollback");
+  const corpo = r.slice(ini, r.indexOf("$$;", ini));
+  assert(
+    !corpo.includes("estorno_manual_registrado_em"),
+    "rollback deveria restaurar o corpo ORIGINAL, sem o carimbo do achado F",
+  );
 });

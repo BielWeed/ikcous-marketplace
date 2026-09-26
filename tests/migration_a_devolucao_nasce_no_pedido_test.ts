@@ -51,6 +51,7 @@ const RPCS = [
   "admin_devolucao_decidir",
   "admin_devolucao_registrar",
   "admin_devolucao_concluir",
+  "admin_devolucao_reemitir_reembolso",
   "admin_devolucao_reprovar",
   "salvar_politica_de_devolucao",
 ];
