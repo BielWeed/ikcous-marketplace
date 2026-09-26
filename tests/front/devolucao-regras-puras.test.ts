@@ -307,12 +307,50 @@ describe("leitores do jsonb das RPCs", () => {
         etiqueta_url: "https://x/dce.pdf",
         ja_existia: true,
         validade_ate: null,
+        expirado: false,
+        dcePendente: false,
+        aviso: null,
       },
     });
     expect(
       lerRespostaEtiquetaReversa({ error: "Falhou no ME", resgate: true }),
     ).toEqual({ ok: false, erro: "Falhou no ME", resgate: true });
     expect(lerRespostaEtiquetaReversa({ ok: true }).ok).toBe(false);
+  });
+
+  // Achado A2 (revisão de risco de 26/09/2026): os campos R6 (`dce_pendente`),
+  // R8 (`expirado`) e o `aviso` novo de A1 chegavam na edge e o leitor os
+  // descartava — o painel só via o toast de sucesso, nunca o aviso.
+  it("etiqueta reversa: lê `dce_pendente`, `expirado` e `aviso` — os achados R6/R8/A1 chegam à tela", () => {
+    const semDce = lerRespostaEtiquetaReversa({
+      ok: true,
+      already: false,
+      codigo_postagem: "PX999",
+      etiqueta_url: null,
+      dce_pendente: true,
+      aviso:
+        "O código de postagem saiu, mas a DC-e não veio do Melhor Envio agora.",
+    });
+    expect(semDce.ok).toBe(true);
+    if (semDce.ok) {
+      expect(semDce.dados.dcePendente).toBe(true);
+      expect(semDce.dados.aviso).toContain("DC-e");
+    }
+
+    const vencido = lerRespostaEtiquetaReversa({
+      ok: true,
+      already: true,
+      codigo_postagem: "PX999",
+      etiqueta_url: "https://x/dce.pdf",
+      validade_ate: "2026-01-01T00:00:00.000Z",
+      expirado: true,
+      aviso: "O código de postagem venceu.",
+    });
+    expect(vencido.ok).toBe(true);
+    if (vencido.ok) {
+      expect(vencido.dados.expirado).toBe(true);
+      expect(vencido.dados.aviso).toContain("venceu");
+    }
   });
 });
 
@@ -384,11 +422,24 @@ describe("ações permitidas por status", () => {
         metodo_retorno: "etiqueta_reversa",
       }),
     ).toEqual(["gerar_etiqueta", "marcar_em_transito", "marcar_recebida"]);
+    // Achado A2 (revisão de risco de 26/09/2026): com código mas SEM o link
+    // da DC-e, a ação continua disponível — "Buscar DC-e / conferir código"
+    // (a edge já trata esse caminho sem compra nova).
     expect(
       acoesDoLojista({
         status: "aprovada",
         metodo_retorno: "etiqueta_reversa",
         codigo_postagem: "PX1",
+        etiqueta_url: null,
+      }),
+    ).toEqual(["gerar_etiqueta", "marcar_em_transito", "marcar_recebida"]);
+    // Código E link prontos: nada mais a buscar, a ação some.
+    expect(
+      acoesDoLojista({
+        status: "aprovada",
+        metodo_retorno: "etiqueta_reversa",
+        codigo_postagem: "PX1",
+        etiqueta_url: "https://x/dace.pdf",
       }),
     ).toEqual(["marcar_em_transito", "marcar_recebida"]);
     expect(
@@ -612,5 +663,52 @@ describe("linha do tempo, prazos e instruções", () => {
     });
     expect(texto).toContain("Rua A, 10");
     expect(texto).toContain("Seg a Sex, 9h às 18h");
+  });
+
+  // Achado A2 (revisão de risco de 26/09/2026): a instrução prometia "(botão
+  // Etiqueta)" mesmo quando `etiqueta_url` ainda era nulo — e o botão só
+  // existe no card do cliente com `etiqueta_url` preenchido
+  // (DevolucaoDoPedidoCard.tsx). Sem código nenhum, sem promessa nenhuma.
+  it("etiqueta reversa: a instrução só promete o botão Etiqueta quando a DC-e (etiqueta_url) já existe", () => {
+    const semCodigo = lerDevolucaoDetalhe({
+      ...DETALHE_CRU,
+      status: "aprovada",
+      metodo_retorno: "etiqueta_reversa",
+      codigo_postagem: null,
+      etiqueta_url: null,
+    });
+    expect(semCodigo).not.toBeNull();
+    if (semCodigo) {
+      const texto = instrucaoParaOCliente(semCodigo, {});
+      expect(texto).not.toContain("botão Etiqueta");
+      expect(texto.toLowerCase()).toContain("gerando o código");
+    }
+
+    const codigoSemDce = lerDevolucaoDetalhe({
+      ...DETALHE_CRU,
+      status: "aprovada",
+      metodo_retorno: "etiqueta_reversa",
+      codigo_postagem: "PX123BR",
+      etiqueta_url: null,
+    });
+    expect(codigoSemDce).not.toBeNull();
+    if (codigoSemDce) {
+      const texto = instrucaoParaOCliente(codigoSemDce, {});
+      expect(texto).not.toContain("botão Etiqueta");
+      expect(texto.toLowerCase()).toContain("declaração de conteúdo");
+    }
+
+    const codigoComDce = lerDevolucaoDetalhe({
+      ...DETALHE_CRU,
+      status: "aprovada",
+      metodo_retorno: "etiqueta_reversa",
+      codigo_postagem: "PX123BR",
+      etiqueta_url: "https://x/dace.pdf",
+    });
+    expect(codigoComDce).not.toBeNull();
+    if (codigoComDce) {
+      const texto = instrucaoParaOCliente(codigoComDce, {});
+      expect(texto).toContain("botão Etiqueta");
+    }
   });
 });

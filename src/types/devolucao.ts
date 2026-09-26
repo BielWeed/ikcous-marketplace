@@ -257,6 +257,17 @@ export interface ResultadoEtiquetaReversa {
   ja_existia: boolean;
   /** Só numa geração nova (agora + 7 dias). */
   validade_ate: string | null;
+  /** Só numa geração nova, e só quando `validade_ate` já passou. */
+  expirado: boolean;
+  /** DC-e ainda não veio do Melhor Envio: falta imprimir antes de postar. */
+  dcePendente: boolean;
+  /**
+   * Achados R6/R8 (`devolucao.ts`) e A1 (revisão de risco de 26/09/2026): a
+   * edge nunca devolve `ok: true` mudo — mensagem em pt-BR para o lojista
+   * (DC-e pendente, código vencido, ou a devolução mudou de status durante o
+   * checkout). `null` quando não há nada a avisar.
+   */
+  aviso: string | null;
 }
 
 /** Inspeção de um item na conclusão (`p_itens` de `admin_devolucao_concluir`). */

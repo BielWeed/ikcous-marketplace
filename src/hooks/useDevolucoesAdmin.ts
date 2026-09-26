@@ -493,12 +493,24 @@ export function useDevolucaoAdmin(
         }
         return false;
       }
-      const { codigo_postagem, ja_existia, validade_ate } = resposta.dados;
+      const { codigo_postagem, ja_existia, validade_ate, aviso } =
+        resposta.dados;
+      // Achado N1 (revisão de risco, rodada 2): "o cliente já vê no pedido"
+      // é falso quando o `aviso` diz que a devolução deixou de estar
+      // aprovada durante o checkout (achado A1) — o cliente pode nem ver
+      // mais a etiqueta na tela dele. Só entra quando não há aviso nenhum.
       toast.success(
         ja_existia
           ? `Este pedido já tinha código de postagem: ${codigo_postagem}.`
-          : `Código de postagem gerado: ${codigo_postagem}${validade_ate ? ` (vale até ${formatarDia(validade_ate)})` : ""}. O cliente já vê no pedido.`,
+          : `Código de postagem gerado: ${codigo_postagem}${validade_ate ? ` (vale até ${formatarDia(validade_ate)})` : ""}.${aviso ? "" : " O cliente já vê no pedido."}`,
       );
+      // Achado A2 (revisão de risco de 26/09/2026): a edge nunca devolve
+      // `ok: true` mudo — DC-e pendente (R6), código vencido (R8) ou a
+      // devolução ter mudado de status durante o checkout (A1) chegam aqui.
+      // Antes este campo era lido e descartado; o painel só via o toast de
+      // sucesso e o lojista nunca sabia que faltava buscar a DC-e ou avisar
+      // o cliente do código vencido.
+      if (aviso) toast.warning(aviso, { duration: 15_000 });
       await carregar();
       aoMudarRef.current?.();
       return true;

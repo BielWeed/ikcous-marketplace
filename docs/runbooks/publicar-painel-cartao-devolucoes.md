@@ -291,6 +291,39 @@ INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
 ON CONFLICT (version) DO NOTHING;
 ```
 
+### 1.5 A 81 — já aplicada em produção (achado LGPD, alto)
+
+A `20261181000000_pedido_por_whatsapp_fecha_para_anon.sql` **já foi aplicada em produção em
+26/09/2026 às 19:34** — este runbook só está registrando o fato, não instruindo a aplicar. O
+achado (auditoria de LGPD): `get_orders_by_whatsapp_v3` continuava executável por `anon` e por
+`authenticated` com GRANT PRÓPRIO (sobrevivente ao `REVOKE ... FROM PUBLIC` de uma migration mais
+antiga), sem exigir OTP nem limitar tentativa — bastava telefone + e-mail da vítima e um sufixo de
+4+ caracteres do id do pedido ou do código de rastreio para ler `customer_data` cru (com CPF
+desde a 72). A migration:
+1. Revoga `EXECUTE` de `get_orders_by_whatsapp_v3` de `PUBLIC`, `anon` e `authenticated` (nenhum
+   caller legítimo restava — ver o cabeçalho do arquivo).
+2. Redefine `get_orders_by_otp_v1` (o caminho de convidado que continua em uso) para tirar `cpf`
+   de `customer_data` — raiz e dentro de `address`, quando `address` é objeto.
+
+**Independente de 75–80**: não tem preflight nem guarda referenciando `devolucoes`,
+`config_pagamento_cartao` nem nenhum outro objeto daquelas migrations — só mexe em
+`get_orders_by_otp_v1` e no ACL de `get_orders_by_whatsapp_v3` (conferido lendo o arquivo: zero
+menção a tabelas/funções de 75–80). Por isso ela **não tem posição fixa na fila de rollback do
+§5** — pode reverter a qualquer momento, sem depender de 79/80 estarem ou não aplicadas.
+
+**Rollback**: `rollback-manual-20261181000000_pedido_por_whatsapp_fecha_para_anon.sql` — devolve
+`get_orders_by_otp_v1` ao corpo anterior (byte a byte) e o `GRANT EXECUTE` de
+`get_orders_by_whatsapp_v3` para `anon`/`authenticated`. ⚠️ **Rodar este rollback REABRE o
+vazamento de LGPD** — só rode se a 81 em si for a causa de um problema, nunca por rotina.
+
+Ledger (se ainda não estiver registrado):
+
+```sql
+INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
+  ('20261181000000', 'pedido_por_whatsapp_fecha_para_anon')
+ON CONFLICT (version) DO NOTHING;
+```
+
 ## 2. Publicar as functions — só depois do §1 conferido
 
 1. Abra GitHub → Actions → **"Publicar edge functions (Supabase)"** → *Run workflow*, no branch
@@ -433,16 +466,22 @@ Não precisa mexer em banco.
    mesmas cinco do §2. As versões antigas não leem nada das migrations novas.
 4. **Banco**: rode **sempre 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A 80
    e a 79 só entram na fila se já tiverem sido aplicadas** — as duas são publicadas à parte das
-   75–78, em frentes independentes. **A 79 (`cancelar_devolucao_barra_compra_em_voo`) é dona da
-   frente `fix/devolucao-pos-revisao` — o procedimento completo dela (comando, guardas,
-   ledger) está no §7.5 daquele runbook; aqui só a ORDEM RELATIVA importa: ela vem depois da
-   80 e antes da 78.** Se nenhuma das duas estava aplicada, comece direto em 78. Execute pelo
-   `psql` com a string de conexão do projeto da loja. **Confira o host antes**, porque o
+   75–78, em frentes independentes. **A 79 (`cancelar_devolucao_barra_compra_em_voo`) — o
+   procedimento completo dela (comando, guardas, ledger) está no §7.5 deste mesmo runbook; aqui
+   só a ORDEM RELATIVA importa: ela vem depois da 80 e antes da 78.** Se nenhuma das duas estava
+   aplicada, comece direto em 78. **A 81 (`pedido_por_whatsapp_fecha_para_anon`, LGPD, já
+   aplicada em produção em 26/09/2026 19:34) é INDEPENDENTE de 75–80** — não referencia nem
+   depende de nenhum objeto que elas criam (só `get_orders_by_otp_v1` e o ACL de
+   `get_orders_by_whatsapp_v3`) — então revertê-la, se precisar, não tem posição fixa nesta
+   fila; ver o aviso sobre reabrir o vazamento de LGPD antes de rodar o rollback dela. Execute
+   pelo `psql` com a string de conexão do projeto da loja. **Confira o host antes**, porque o
    workflow não aceita `rollback-manual-*` e o `db-apply` gravaria o rollback no ledger.
 
    ```bash
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
-   # 79, se aplicada: arquivo e comando exatos no §7.5 do runbook de fix/devolucao-pos-revisao
+   # 79, se aplicada: arquivo e comando exatos no §7.5 (mesmo runbook)
+   # 81, se precisar reverter (LGPD — reabre o vazamento; ver acima): arquivo
+   # rollback-manual-20261181000000_pedido_por_whatsapp_fecha_para_anon.sql, independente da ordem abaixo
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
@@ -450,8 +489,8 @@ Não precisa mexer em banco.
    ```
 
 **Guardas que recusam a ordem errada** (um `DO` com `RAISE EXCEPTION`, antes de qualquer
-`DROP`) — só as que este runbook é dono (75, 76, 77, 80; a guarda da 79 é descrita no §7.5 da
-outra frente, não repetida aqui):
+`DROP`) — 75, 76, 77 e 80 (a guarda da 79 é descrita no §7.5, não repetida aqui; a 81 não tem
+guarda de ordem — é independente das demais, sem referenciar nenhum objeto criado por 75–80):
 - a 80 não tem guarda de ordem própria (é sempre a primeira a reverter, se estiver aplicada), e
   seu ROLLBACK tem guarda própria do lado de baixo: recusa se `public.devolucoes` já não
   existir (a 75 já revertida por baixo dela deixaria `update_order_status_atomic` quebrada
@@ -486,8 +525,9 @@ psql "$CONEXAO_DA_LOJA" -c "\copy public.devolucao_eventos TO 'devolucao_eventos
 
 | Migration | Apagado | Fica, de propósito |
 | --- | --- | --- |
+| 81 | Nada é apagado — `get_orders_by_otp_v1` volta ao corpo anterior e `get_orders_by_whatsapp_v3` recebe de volta o GRANT para `anon`/`authenticated`. Independente de 75–80 (sem posição fixa na fila). | ⚠️ REABRE o achado LGPD: convidado sem OTP volta a ler `customer_data` (com CPF) de qualquer pedido só com telefone + e-mail + 4 caracteres do id/rastreio. Só reverta se ELA for a causa do problema. |
 | 80 | Nada é apagado — só redefine `update_order_status_atomic`, que volta ao corpo exato da 75 (comprovado byte a byte). | A guarda de cartão vivo desaparece: o cliente volta a poder cancelar pedido com cobrança de cartão possivelmente aprovável. |
-| 79 | Ver §7.5 do runbook de `fix/devolucao-pos-revisao` — dona da migration, mantém a tabela lá (o conteúdo exato mudou entre rodadas daquela frente; duplicar aqui é o que ficou desatualizado numa revisão anterior deste runbook). | Ver §7.5. |
+| 79 | Ver §7.5 (mesma seção deste runbook) — o conteúdo exato muda a cada rodada de revisão daquela migration; duplicar aqui é o que ficou desatualizado numa revisão anterior deste runbook. | Ver §7.5. |
 | 78 | Só funções de leitura. | Nada. |
 | 77 | Lançamentos, contas, categorias, sessões de caixa e a linha de `assinatura_da_loja`. Ao reaplicar, o hub precisa sincronizar de novo. | Pedidos, estornos e devoluções, que o Financeiro só lia. |
 | 76 | `config_pagamento_cartao`, as RPCs, o gatilho do estorno e as CHECKs. `registrar_estorno_manual` volta ao corpo de `20261072000000`. | As **colunas** `tentativas_de_pagamento`, `metodo_online`, `parcelas` e `estorno_manual_registrado_em`, que guardam como cada pedido foi pago. |
@@ -673,3 +713,280 @@ a API real):
 - [ ] Cancele os pedidos de teste no painel e confira o estoque.
 - [ ] Só então o Gabriel liga crédito e débito para os clientes. Anote a data. Nas primeiras
   vendas, olhe os logs do webhook e o push de cobrança órfã aos admins (`cartao_orfao`).
+
+## 7. Publicar a 79 (compra em voo da etiqueta reversa) — depois de 75–78 no ar
+
+A revisão de risco pré-publicação da etiqueta reversa (achado A1, com a rodada 2 achados
+R1/R2) achou que `cancelar_devolucao` (nascida na 75) deixava cancelar uma devolução ENQUANTO a
+compra do envio reverso estava em voo no Melhor Envio, ou sem avisar o lojista quando o código já
+tinha saído pago. A correção é [`20261179000000_cancelar_devolucao_barra_compra_em_voo.sql`
+](../../supabase/migrations/20261179000000_cancelar_devolucao_barra_compra_em_voo.sql) — redefine
+`cancelar_devolucao` (mesma assinatura da 75) e cria `admin_devolucao_liberar_vinculo_reverso`
+(nova: a "saída" para um vínculo real preso sem código — edge que morreu, liberação que falhou,
+ou Sandbox do Melhor Envio, que nunca gera o código da reversa).
+
+Esta migration **não estava aplicada em nenhum lugar** quando foi escrita — por isso sobe como
+passo À PARTE, depois que 75–78 já estiverem no ar e conferidos (§1–§4 acima), nunca junto com
+elas: ela só faz sentido em cima do `cancelar_devolucao` que a 75 publicou.
+
+A mesma leva de achados também mudou a edge `melhor-envio-etiqueta` (retry + degradação do
+vínculo preso para reserva vencida, achado R3; a frase do carrinho em
+`tratarVinculoNaoConfirmado` também condicional ao DELETE, achado R4; um evento além do toast
+quando a devolução muda de status durante o checkout, achado N2). A function já é uma das cinco
+do §2.
+
+**Ordem obrigatória (achado 2, rodada 4): publique `melhor-envio-etiqueta` (§2) ANTES do §7.1
+(aplicar a 79), nunca depois.** A function desta branch só GRAVA em `devolucao_eventos` (o
+marcador de pagamento, achados R5/1a/1b/1c) — não chama nada que a 79 cria, então funciona sem
+ela. Já a 79 sozinha, sem a function nova, cria uma RPC cujos guards de marcador nunca disparam
+(a edge antiga nunca grava o marcador) — inofensivo, mas sem a proteção. Publicando a function
+primeiro, o marcador já está sendo gravado no instante em que a 79 entra no ar, encurtando ao
+máximo a janela sem proteção. Se a publicação de functions do §2 já tiver acontecido ANTES desta
+migration por outro motivo, republique **só** `melhor-envio-etiqueta` pelo mesmo workflow
+(`publicar-functions.yml`, `functions: melhor-envio-etiqueta`) — mas sempre antes do §7.1, nunca
+depois.
+
+**Vínculos criados antes da function nova estar no ar não têm marcador nenhum.** Qualquer
+`me_reverse_id` real gravado pela edge de produção ANTES da publicação desta function (medido
+pela revisão em 26/09/2026 17:50 UTC) não tem — e nunca vai ter — o evento 'sistema' que os
+guards da 79 procuram. Para esses vínculos específicos, a checagem manual em "Meus envios" (§7.6)
+é a ÚNICA proteção — a RPC não teria como recusar sozinha.
+
+**Rodada 3 (achado R5, DINHEIRO)**: a revisão seguinte achou que
+`admin_devolucao_liberar_vinculo_reverso` (a "saída" da rodada 2) conseguia soltar um vínculo que
+JÁ TINHA SIDO PAGO no Melhor Envio, mas cujo código de postagem ainda não tinha voltado — nesse
+caso a gravação do código, na edge, batia 0 linhas sem erro e a resposta virava `ok: true` sem
+nada salvo, abrindo a porta para uma segunda compra. A RPC agora recusa soltar quando um marcador
+de pagamento confirmado (gravado pela edge, evento 'sistema') existir para o `me_reverse_id`
+atual — ver o procedimento operacional no §7.6. A nota do evento também passou a distinguir
+reserva de vínculo real (achado N-a).
+
+**Rodada 4 (achados 1/2/3/4/5, scratchpad rev79/ataque3.cjs)**: a revisão seguinte achou que o
+marcador da rodada 3 só era gravado em UM ponto (logo após o checkout da PRIMEIRA chamada) —
+faltando no caminho "vinculado" (2ª chamada em diante), sem aviso quando a própria gravação do
+marcador falhava, e sem nada registrado quando o checkout ficava INDETERMINADO (5xx/exceção).
+Também achou que `is_admin()` (baseline) aceita `service_role`/`postgres` sem sessão nenhuma — um
+atalho que este runbook, na rodada 3, afirmava não existir. Correções: (a) o caminho vinculado
+também grava o marcador quando prova pagamento; (b) a gravação tenta 2x e a resposta avisa se as
+duas falharem; (c) um marcador DIFERENTE ("pagamento indeterminado") cobre o caso ambíguo — a RPC
+recusa por padrão, mas libera com o novo argumento `p_conferi_no_melhor_envio = true`, só depois
+de um admin ter conferido "Meus envios"; (3) a RPC agora também exige `auth.uid() IS NOT NULL`,
+fechando o atalho de `service_role`/`postgres`; (4) o guard trocou `LIKE` por `strpos` (substring
+literal, sem curinga) e ganhou um teste (`tests/marcador_pagamento_reverso_contrato_test.ts`) que
+amarra o texto da edge ao texto da RPC.
+
+**Rodada 5 (achados 1/2/3/4/5, scratchpad rev79/ataque4.cjs + fn8/)**: a revisão seguinte achou
+que o guard do marcador indeterminado (rodada 4) só recusava soltar o vínculo QUANDO esse marcador
+existia — um vínculo REAL sem NENHUM marcador (edge derrubada no meio do caminho, ou qualquer link
+de produção anterior a esta proteção nascer) passava direto, SEM pedir confirmação nenhuma (achado
+G5, dinheiro). Correção: a RPC agora "nega por padrão" — para QUALQUER `me_reverse_id` REAL (a
+fase de reserva continua isenta), `p_conferi_no_melhor_envio = true` é OBRIGATÓRIO, com ou sem
+marcador; o marcador indeterminado virou só informação na mensagem de recusa. Achado 3 (G7): o
+texto do marcador indeterminado também mudou para NEUTRO (o dono da devolução lê essa nota por
+RLS, mesmo motivo do achado R2) — a âncora do `strpos` mudou junto. Achados 2/4 (edge, sem mudança
+de SQL): a exceção do `generate` depois do pagamento confirmado agora avisa corretamente se o
+marcador falhou (antes o aviso se perdia), o marcador indeterminado também ganhou a retentativa de
+2x, e o aviso de marcador-não-gravado saiu da resposta 200 (ruído: o código já escrito basta para
+a RPC recusar sozinha). Ver §7.6 atualizado.
+
+**Achado 5 (rodada 5) — publicação da function em conjunto com `fix/etiqueta-le-endereco-da-conta`:**
+a edge `melhor-envio-etiqueta` só pode ser publicada a partir de um commit que contenha ESTA
+branch (`fix/devolucao-pos-revisao`) **E** a branch `fix/etiqueta-le-endereco-da-conta` (a etiqueta
+nacional lendo o endereço da conta, não do pedido). Publicar a partir de uma branch sozinha
+apagaria a correção da outra — as duas mexem no mesmo arquivo `index.ts`. O coordenador faz o
+merge das duas ANTES de publicar; não publique esta function isolada.
+
+### 7.0 Antes de aplicar
+
+- [ ] 75–78 já aplicadas, com §1.1 e §1.2 dando `ok = true` em TODAS as linhas.
+- [ ] Confirme que o corpo VIVO de `cancelar_devolucao` ainda é o que a 75 publicou (ninguém
+  tocou por fora, e portanto o rollback de 79 vai devolver o corpo certo):
+
+```sql
+SELECT md5(replace(prosrc, E'\r', '')) = '45c56a39cc29f31ec5ff904f1929737e' AS igual_ao_corpo_da_75
+  FROM pg_proc WHERE proname = 'cancelar_devolucao' AND pronamespace = 'public'::regnamespace;
+```
+
+  Se `false`, **pare** — o rollback de 79 promete restaurar exatamente esse corpo (conferido por
+  md5 no teste estático); se o corpo vivo já é outro, o rollback restauraria a função errada.
+
+### 7.1 Rodar o workflow
+
+Mesmo workflow do §1 (`aplicar-migrations.yml`), campo `migracoes` com um arquivo só:
+
+```text
+20261179000000_cancelar_devolucao_barra_compra_em_voo.sql
+```
+
+### 7.2 Conferir o que nasceu (SQL Editor, só leitura)
+
+Nenhuma linha abaixo grava em `devolucoes` — é tudo leitura de catálogo (`pg_proc`,
+`has_function_privilege`). **Não teste cancelando uma devolução real** só para conferir a
+migration; isso é o único jeito de checar 79 sem tocar em pedido de cliente nenhum.
+
+```sql
+SELECT checagem, valor, esperado, COALESCE(valor = esperado, false) AS ok FROM (VALUES
+  ('79 cancelar_devolucao: corpo novo',          (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'cancelar_devolucao' AND pronamespace = 'public'::regnamespace), '74fd42d04f8ea55257a0aec73bfcabc1'),
+  ('79 admin_devolucao_liberar_vinculo_reverso: corpo', (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), '83144be5ac2bc52f07f02274023a83ab'),
+  ('79 as duas SECURITY DEFINER',                 (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND prosecdef), '2'),
+  ('79 as duas com search_path fixo',             (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND proconfig @> ARRAY['search_path=public']), '2'),
+  ('rpc nova tem só UM overload (rodada 4: o DROP limpou o de 1 argumento)', (SELECT count(*)::text FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), '1'),
+  ('cancelar_devolucao continua p/ authenticated', has_function_privilege('authenticated', 'public.cancelar_devolucao(uuid)', 'EXECUTE')::text, 'true'),
+  ('rpc nova SAI de anon',                         has_function_privilege('anon', 'public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean)', 'EXECUTE')::text, 'false'),
+  ('rpc nova executa p/ authenticated',            has_function_privilege('authenticated', 'public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean)', 'EXECUTE')::text, 'true')
+) AS c(checagem, valor, esperado)
+ORDER BY ok, checagem;
+```
+
+(O md5 de `cancelar_devolucao` e o `45c56a39cc29f31ec5ff904f1929737e` do §7.0 foram conferidos em
+26/09/2026 (rodada 2) e continuam valendo — nenhuma rodada seguinte tocou o corpo desta função. O
+md5 de `admin_devolucao_liberar_vinculo_reverso` mudou de novo na rodada 5 (achado 1: o guard do
+marcador indeterminado virou o guard "negar por padrão", exigindo `p_conferi_no_melhor_envio`
+sempre para um id real; achado 3: a âncora do `strpos` mudou de texto) e outra vez na rodada 6a
+(achado 2, dinheiro: `NOT p_conferi_no_melhor_envio` virou `p_conferi_no_melhor_envio IS NOT
+TRUE` — um `NULL` explícito não podia mais se comportar como `true`) — o valor acima já é o da
+rodada 6a. Recompute-o de novo se o conteúdo do arquivo mudar antes de publicar.)
+
+### 7.3 Marcadores — o filtro do §1.2 precisa alargar
+
+O script do §1.2 já filtra `Object.keys(VERIFICACOES)` por `/^(2026117[5-8]|20261180)/` (75–78 e
+a 80) — mas a 79 (esta migration) não entra nesse padrão. Troque por
+`/^(2026117[5-8]|20261179|20261180)/` antes de gerar `conferir-marcadores.sql` desta vez, para
+cobrir 75–78, a 79 e a 80 de uma vez. **Não fixe aqui quantas linhas o total deveria ter** — a
+lista de marcadores muda a cada rodada de revisão de qualquer uma das três; rode a consulta e
+confira `ok = true` em TODAS as linhas que ela devolver.
+
+### 7.4 Ledger
+
+```sql
+INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
+  ('20261179000000', 'cancelar_devolucao_barra_compra_em_voo')
+ON CONFLICT (version) DO NOTHING;
+```
+
+### 7.5 Rollback — 79 ANTES de 78 (e DEPOIS de 80)
+
+A ordem GLOBAL de rollback (§5, ajustada pela branch `fix/cancelar-com-cartao-vivo` para incluir a
+80) é **80 → 79 → 78 → 77 → 76 → 75**. Se 79 estiver aplicada e for preciso desfazer o PR inteiro,
+rode o rollback dela depois do de 80 e **antes** de tocar em 78/77/76/75 — ela redefine uma função
+que mora na 75 e cria uma RPC que só faz sentido com a tabela `devolucoes` (75) no ar:
+
+```bash
+psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql
+```
+
+Depois disso, a ordem do §5 (78 → 77 → 76 → 75) continua igual. Se só 79 precisar sair (o
+problema é isolado nela), o rollback acima sozinho já basta — `cancelar_devolucao` volta ao corpo
+da 75 e `admin_devolucao_liberar_vinculo_reverso` é derrubada; nada em 75–78 é tocado.
+
+**Por que a ORDEM importa (N-a/N-c, rodada 3) — e as DUAS guardas que agora cobrem os dois
+sentidos:** a GUARDA DE ORDEM que o rollback da 75 tinha originalmente
+(`rollback-manual-20261175000000_...sql`, bloco `DO $$ ... RAISE EXCEPTION 'reverta 78/77/76 antes
+desta (75)' ... $$`) foi escrita ANTES de a 79 existir — sozinha, ela não sabia nada sobre
+`admin_devolucao_liberar_vinculo_reverso`. Revertendo a 75 com a 79 ainda aplicada, essa guarda não
+barrava: o rollback da 75 derruba `public.devolucoes` sem `CASCADE` (um `DROP TABLE` simples não
+enxerga o corpo de uma função plpgsql como dependência de catálogo), e
+`admin_devolucao_liberar_vinculo_reverso` sobrevivia — ÓRFÃ, apontando para uma tabela que não
+existe mais, falhando com `42P01` (relation does not exist) na primeira chamada seguinte. **Isso
+já não depende só desta instrução:** o rollback da 75 (branch `fix/cancelar-com-cartao-vivo`,
+migration 80) agora recusa por si só, checando `admin_devolucao_liberar_vinculo_reverso` por NOME
+em `pg_proc` — reverter 75 com a 79 viva não passa mais batido; e o rollback da 79 (achado do
+addendum, rodada 4) recusa cedo com `to_regclass('public.devolucoes') IS NULL` — reverter 79 sem a
+75 no ar também não passa batido. As duas guardas cobrem a ordem errada nos dois sentidos; a
+instrução acima (80 → 79 → 78 → 77 → 76 → 75) continua sendo o caminho feliz, sem depender de
+decorar a ordem de cabeça.
+
+### 7.6 Usar `admin_devolucao_liberar_vinculo_reverso` em produção (achados R5/1/3)
+
+Esta RPC é um escape hatch manual, não um botão do painel — não existe UI para ela. Ela só deve
+ser chamada quando um vínculo real (`me_reverse_id` que não é `reservando:...`) fica preso sem
+código de postagem por tempo demais (edge que morreu entre a reserva e o vínculo, liberação que
+falhou nas duas tentativas apesar da degradação automática — achado R3 —, ou Sandbox do Melhor
+Envio, que nunca gera o código da reversa).
+
+**QUANDO usar — confira ANTES de chamar, SEMPRE (achado 1, rodada 5, "negar por padrão"):**
+
+Desde a rodada 5, a RPC exige `p_conferi_no_melhor_envio = true` para QUALQUER `me_reverse_id`
+REAL (não uma reserva) — com ou sem marcador algum gravado. Isso fecha o achado G5 (um vínculo
+real sem NENHUM marcador saía solto sem pedir confirmação nenhuma), mas também quer dizer que a
+checagem manual em "Meus envios" deixou de ser condicional a existir um marcador indeterminado: é
+SEMPRE o primeiro passo, nunca uma formalidade para "destravar" o parâmetro.
+
+1. Abra "Meus envios" na conta do Melhor Envio da loja e procure o `me_reverse_id` da devolução
+   (`SELECT me_reverse_id FROM public.devolucoes WHERE id = '<id-da-devolucao>'`).
+2. **Se o envio aparece como PAGO** (mesmo sem código de rastreio ainda): NÃO chame a RPC. Se o
+   marcador de pagamento confirmado (achado R5) foi gravado, a RPC recusa com `22023` MESMO com
+   `p_conferi_no_melhor_envio = true` — sem exceção possível. Mas esse marcador só existe se a edge
+   chegou a rodar até o checkout responder; se o pagamento foi confirmado por outro caminho (ex.:
+   um checkout manual feito direto no Melhor Envio, fora da edge, ou um vínculo criado ANTES de a
+   function nova estar no ar — ver o aviso no início do §7), o marcador pode faltar — e como a RPC
+   agora SEMPRE aceita `p_conferi_no_melhor_envio = true` para liberar um id real sem marcador
+   nenhum, ela soltaria esse vínculo pago se você mandar essa confirmação sem ter checado de
+   verdade. A checagem manual em "Meus envios" é a ÚNICA linha de defesa nesse caso — a RPC não tem
+   como saber sozinha.
+3. **Se o checkout ficou INDETERMINADO** (achado 1c, rodada 4 — 5xx ou exceção, sem confirmar nem
+   recusar o pagamento) **ou se não há registro de pagamento nenhum** (achado 1, rodada 5 — nem
+   confirmado nem indeterminado; o caso mais comum de "edge que morreu no meio do caminho"): a RPC
+   recusa por padrão com `22023` nos dois casos — a mensagem diz qual dos dois é (cita o marcador
+   indeterminado quando ele existe; diz que não há registro nenhum quando não existe). Só depois de
+   confirmar em "Meus envios" que o envio NÃO foi pago, chame de novo passando
+   `p_conferi_no_melhor_envio = true`.
+4. **Se o envio ainda está no CARRINHO sem pagamento** (ex.: o checkout nunca rodou, ou rodou e foi
+   recusado sem o retry conseguir soltar o vínculo): remova o item do carrinho no Melhor Envio
+   ANTES de liberar aqui — a RPC só apaga o vínculo no NOSSO banco, nunca mexe no carrinho do
+   provedor.
+5. **Se o código de postagem já saiu**: não há nada para "destravar" — a RPC recusa com `22023`
+   ("o código de postagem já foi emitido"). Cancelar o envio é direto no Melhor Envio.
+
+**COMO chamar — como um admin autenticado, nunca como `postgres`/service-role sem JWT:**
+
+A RPC checa `public.is_admin() AND auth.uid() IS NOT NULL`. **Correção (achado 3, rodada 4): a
+versão da rodada 3 deste runbook dizia que não havia atalho de `service_role`/`postgres` — isso
+era falso.** `is_admin()` (baseline) aceita `current_setting('role') IN ('postgres',
+'service_role')` mesmo sem sessão nenhuma, e a rodada 3 da RPC não tinha proteção extra contra
+isso (prova em `ataque3.cjs`, cenário F3: `SET ROLE service_role` sem login nenhum liberava o
+vínculo). A rodada 4 fechou esse atalho, exigindo `auth.uid() IS NOT NULL` além de `is_admin()` —
+uma sessão do SQL Editor do Supabase (ou um `psql` direto como `postgres`, ou `SET ROLE
+service_role`/`postgres` sem JWT) não carrega um JWT de usuário e recebe `42501`, mesmo sendo uma
+conexão de superusuário ou tendo o papel de service_role. O jeito de chamar de verdade:
+
+1. Faça login no painel administrativo como um admin de verdade (perfil com `role = 'admin'`).
+2. O client Supabase deste app (`src/lib/supabase.ts`) NÃO expõe `window.supabase` — não há atalho
+   de console pronto. Pegue o token da PRÓPRIA sessão logada: DevTools → Application → Local
+   Storage → chave `sb-<project-ref>-auth-token` → campo `access_token` do JSON, e cole no prompt
+   abaixo SEM deixar rastro no histórico do shell nem na tela:
+
+   ```bash
+   read -rs TOKEN   # cole o access_token aqui e aperte Enter (não aparece na tela)
+   ```
+
+3. Com `$TOKEN` na variável, chame a RPC por REST (troque `{SUPABASE_URL}` e `{ANON_KEY}` — a
+   chave pública do projeto, a mesma que `VITE_SUPABASE_PUBLISHABLE_KEY`). Achado 1 (rodada 5): para
+   um `me_reverse_id` REAL, `p_conferi_no_melhor_envio: true` já é OBRIGATÓRIO desde a primeira
+   chamada — só depois de ter conferido "Meus envios" (passo 1 acima). Chamar sem o parâmetro só
+   funciona para soltar uma RESERVA (`reservando:...`), o que normalmente já se resolve sozinho na
+   próxima tentativa da edge, sem precisar desta RPC:
+
+   ```bash
+   curl -X POST "{SUPABASE_URL}/rest/v1/rpc/admin_devolucao_liberar_vinculo_reverso" \
+     -H "apikey: {ANON_KEY}" \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"p_id": "<id-da-devolucao>", "p_conferi_no_melhor_envio": true}'
+   ```
+
+   Se a recusa vier mesmo assim com `22023` e a mensagem citar "já confirmou o pagamento", é o
+   marcador CONFIRMADO — não insista, não há `p_conferi_no_melhor_envio` que contorne isso (achado
+   R5); volte ao passo 2 acima.
+
+4. A resposta de sucesso é `{ id, me_reverse_id_liberado }`. Confira o evento novo em
+   `devolucao_eventos` (ator `'sistema'`) para ver o texto gravado — ele também é visível ao
+   cliente dono da devolução (achado R2, texto sempre neutro).
+5. `unset TOKEN` ao terminar.
+
+O mecanismo por trás (RLS via `auth.uid()`/`is_admin()`, não o papel da conexão Postgres) é o
+mesmo provado na prova viva `tests/banco/devolucoes-viva.cjs` — os testes `mutante
+R1_rpc_sem_gate_admin` (cliente comum, `42501`), `mutante F3_service_role_sem_jwt` e `mutante
+F3_postgres_sem_jwt` (`SET ROLE` sem sessão, `42501`) provam a recusa; chamado como admin
+autenticado (mesma emulação de `auth.uid()`), a RPC funciona. É essa autenticação — não o usuário
+nem o papel da conexão Postgres — que este procedimento reproduz em produção.

@@ -2515,6 +2515,16 @@ const O_A2_09 = "3eeeeeee-0000-0000-0000-000000000024";
 const I_A2_09 = "3fffffff-0000-0000-0000-000000000024";
 const O_A4_01 = "3eeeeeee-0000-0000-0000-000000000025";
 const I_A4_01 = "3fffffff-0000-0000-0000-000000000025";
+const O_A1_CANCELA = "3eeeeeee-0000-0000-0000-000000000026";
+const I_A1_CANCELA = "3fffffff-0000-0000-0000-000000000026";
+const O_A1_SEM_REVERSA = "3eeeeeee-0000-0000-0000-000000000027";
+const I_A1_SEM_REVERSA = "3fffffff-0000-0000-0000-000000000027";
+const O_R1_RESERVA = "3eeeeeee-0000-0000-0000-000000000028";
+const I_R1_RESERVA = "3fffffff-0000-0000-0000-000000000028";
+const O_R1_LIBERAR = "3eeeeeee-0000-0000-0000-000000000029";
+const I_R1_LIBERAR = "3fffffff-0000-0000-0000-000000000029";
+const O_R5_PAGO = "3eeeeeee-0000-0000-0000-000000000030";
+const I_R5_PAGO = "3fffffff-0000-0000-0000-000000000030";
 
 PROVAS.push({
   nome: "(A2-02) devolução PARCIAL manual (>180 dias, 1 de 2 itens de 50) -> reativa -> cancela: estorno de 50, não do total",
@@ -2868,6 +2878,746 @@ PROVAS.push({
       [O_A4_01],
     );
     assert.equal(jaDevolvi.rows[0].r.payment_status, "estornado");
+  },
+});
+
+PROVAS.push({
+  nome: "(A1/R1/R2/R5/N-a/1c/3 · 20261179000000) cancelar_devolucao só recusa com id REAL em voo (nunca na fase de reserva); código emitido cancela e avisa por evento; a RPC de liberar recusa vínculo PAGO ou INDETERMINADO (sem confirmação manual), distingue reserva de vínculo real, e recusa service_role/postgres sem sessão — provado inclusive AS CUSTOMER (RLS)",
+  corpo: async (cliente) => {
+    // Pedido nacional saído por etiqueta do Melhor Envio — mesmo desenho do
+    // O_NACIONAL de semear() (shipping_option_id melhor-envio-1), com
+    // shipping_label_id próprio: pedidoCustom() não grava essa coluna.
+    await pedidoCustom(cliente, O_A1_CANCELA, {
+      userId: U_CLIENTE,
+      customerData: {
+        whatsapp: "5534999990000",
+        shipping_option_id: "melhor-envio-1",
+      },
+      total: 90,
+      subtotal: 90,
+      shipping: 0,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-A1-CANCELA",
+      itemId: I_A1_CANCELA,
+      productId: P_VESTIDO,
+      variantId: V_VESTIDO_P,
+      nome: "Vestido de Prova",
+      qtd: 1,
+      preco: 90,
+      entregueHaDias: 2,
+    });
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET shipping_label_id = $1 WHERE id = $2",
+      ["ME-PROVA-A1-CANCELA", O_A1_CANCELA],
+    );
+
+    await logar(cliente, U_CLIENTE);
+    const d = await solicitar(
+      cliente,
+      O_A1_CANCELA,
+      [{ order_item_id: I_A1_CANCELA, quantidade: 1 }],
+      "nao_gostei",
+      "reembolso",
+      "etiqueta_reversa",
+    );
+    await logar(cliente, U_ADMIN);
+    await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_decidir($1::uuid, true) AS r",
+      [d.id],
+    );
+
+    // 0. Achado R1 (rodada 2): a fase de RESERVA (`reservando:<epoch>:<uuid>`,
+    //    gravada pela edge ANTES de qualquer chamada ao Melhor Envio) NÃO
+    //    bloqueia o cancelamento — o vínculo seguinte é condicionado a
+    //    status='aprovada' e desfaz sozinho se o cliente cancelou aqui
+    //    (provado com duas conexões em ataque.cjs, cenários T1/T4). Bloquear
+    //    esta fase só prendia o cliente à toa.
+    await pedidoCustom(cliente, O_R1_RESERVA, {
+      userId: U_CLIENTE,
+      customerData: {
+        whatsapp: "5534999990000",
+        shipping_option_id: "melhor-envio-1",
+      },
+      total: 90,
+      subtotal: 90,
+      shipping: 0,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-R1-RESERVA",
+      itemId: I_R1_RESERVA,
+      productId: P_VESTIDO,
+      variantId: V_VESTIDO_P,
+      nome: "Vestido de Prova",
+      qtd: 1,
+      preco: 90,
+      entregueHaDias: 2,
+    });
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET shipping_label_id = $1 WHERE id = $2",
+      ["ME-PROVA-R1-RESERVA", O_R1_RESERVA],
+    );
+    await logar(cliente, U_CLIENTE);
+    const dReserva = await solicitar(
+      cliente,
+      O_R1_RESERVA,
+      [{ order_item_id: I_R1_RESERVA, quantidade: 1 }],
+      "nao_gostei",
+      "reembolso",
+      "etiqueta_reversa",
+    );
+    await logar(cliente, U_ADMIN);
+    await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_decidir($1::uuid, true) AS r",
+      [dReserva.id],
+    );
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [
+        `reservando:${Date.now()}:00000000-0000-0000-0000-000000000000`,
+        dReserva.id,
+      ],
+    );
+    await logar(cliente, U_CLIENTE);
+    const canceladaNaReserva = await rpc(
+      cliente,
+      "SELECT public.cancelar_devolucao($1::uuid) AS r",
+      [dReserva.id],
+    );
+    assert.equal(
+      canceladaNaReserva.status,
+      "cancelada",
+      "mutante R1_guard_tambem_na_reserva: a fase de reserva não pode travar o cliente",
+    );
+
+    // Simula o VÍNCULO que a edge `melhor-envio-etiqueta` grava (service
+    // role, fora do PostgREST) ANTES do checkout — a "compra em voo" com id
+    // REAL do Melhor Envio (não é mais uma reserva).
+    const ME_REVERSO_DA_PROVA = "me-reverso-prova-a1";
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [ME_REVERSO_DA_PROVA, d.id],
+    );
+
+    // 1. EM VOO com id REAL (não 'reservando:'), código ainda não: cancelar é
+    //    RECUSADO — sem isto, o checkout que está rodando no Melhor Envio
+    //    pagaria uma etiqueta para uma devolução já cancelada. A mensagem não
+    //    promete prazo (achado R1) — manda falar com a loja.
+    await logar(cliente, U_CLIENTE);
+    await assert.rejects(
+      () =>
+        rpc(cliente, "SELECT public.cancelar_devolucao($1::uuid) AS r", [d.id]),
+      /fale com a loja/,
+      "mutante A1_sem_guard_em_voo: sem o guard novo, a devolução cancela com a compra em voo",
+    );
+    const aindaAprovada = await valorUnico(
+      cliente,
+      "SELECT status FROM public.devolucoes WHERE id = $1",
+      [d.id],
+    );
+    assert.equal(aindaAprovada, "aprovada");
+
+    // 2. Código de postagem JÁ EMITIDO (etiqueta paga): agora cancelar é
+    //    PERMITIDO — dinheiro já gasto, nada a bloquear — mas grava um
+    //    evento PRÓPRIO (ator 'sistema') com texto NEUTRO (achado R2):
+    //    `devolucao_eventos` libera o DONO por RLS, e `devolucao_detalhe`
+    //    (que `useDevolucaoCliente` também chama) devolve `eventos` inteiro —
+    //    então o CLIENTE pode ler esta nota, não só o lojista. A rodada 1
+    //    achava (errado) que isso "não vaza para o cliente"; esta prova roda
+    //    a leitura AS CUSTOMER (SET LOCAL ROLE authenticated) para não
+    //    repetir o erro de medir como superusuário e não provar nada.
+    await logar(cliente, U_ADMIN);
+    await cliente.query(
+      "UPDATE public.devolucoes SET codigo_postagem = $1 WHERE id = $2",
+      ["PD123456789BR", d.id],
+    );
+
+    await logar(cliente, U_CLIENTE);
+    const cancelada = await rpc(
+      cliente,
+      "SELECT public.cancelar_devolucao($1::uuid) AS r",
+      [d.id],
+    );
+    assert.equal(cancelada.status, "cancelada");
+
+    const eventos = (
+      await cliente.query(
+        "SELECT nota, ator FROM public.devolucao_eventos WHERE devolucao_id = $1 ORDER BY created_at, id",
+        [d.id],
+      )
+    ).rows;
+    const avisoAoLojista = eventos.find(
+      (e) =>
+        e.ator === "sistema" &&
+        typeof e.nota === "string" &&
+        e.nota.includes("Melhor Envio") &&
+        e.nota.includes(ME_REVERSO_DA_PROVA),
+    );
+    assert.ok(
+      avisoAoLojista,
+      `mutante A1_sem_aviso_ao_lojista: esperava um evento (ator sistema) citando Melhor Envio e "${ME_REVERSO_DA_PROVA}" — eventos vistos: ${JSON.stringify(eventos)}`,
+    );
+    // Achado R2: nada de imperativo dirigido a alguém ("cancele você") — o
+    // texto só CONSTATA o fato, porque o cliente também pode lê-lo.
+    assert.ok(
+      !avisoAoLojista.nota.includes("Cancele esse envio reverso"),
+      "mutante R2_texto_ainda_imperativo: a nota não pode mandar ninguém 'cancelar' — o cliente também lê",
+    );
+    // O evento do CLIENTE (o cancelamento em si) continua existindo, sem o
+    // texto do Melhor Envio dentro dele.
+    const eventoDoCliente = eventos.find(
+      (e) => e.ator === "cliente" && e.nota === null,
+    );
+    assert.ok(
+      eventoDoCliente,
+      "o evento de cancelamento do cliente continua sem nota do Melhor Envio dentro dele",
+    );
+
+    // Achado R2 — a prova de verdade: o DONO (cliente) lê este evento por
+    // RLS, tanto direto em devolucao_eventos quanto via devolucao_detalhe
+    // (a mesma RPC que useDevolucaoCliente chama na tela do pedido).
+    await cliente.query("BEGIN");
+    try {
+      await logar(cliente, U_CLIENTE);
+      await cliente.query("SET LOCAL ROLE authenticated");
+      const comoCliente = (
+        await cliente.query(
+          "SELECT nota, ator FROM public.devolucao_eventos WHERE devolucao_id = $1 AND ator = 'sistema'",
+          [d.id],
+        )
+      ).rows;
+      assert.equal(
+        comoCliente.length,
+        1,
+        "mutante R2_rls_esconde_do_dono: o dono da devolução tem que enxergar o evento 'sistema' por RLS (é isso que prova que o texto precisa ser neutro)",
+      );
+      assert.ok(comoCliente[0].nota.includes("Melhor Envio"));
+
+      const detalheComoCliente = await rpc(
+        cliente,
+        "SELECT public.devolucao_detalhe($1::uuid) AS r",
+        [d.id],
+      );
+      const eventosNoDetalhe = detalheComoCliente.eventos || [];
+      assert.ok(
+        eventosNoDetalhe.some(
+          (e) =>
+            e.ator === "sistema" &&
+            String(e.nota || "").includes("Melhor Envio"),
+        ),
+        "mutante R2_detalhe_esconde_do_dono: devolucao_detalhe (a mesma RPC que useDevolucaoCliente chama) devolve o evento 'sistema' para o dono também",
+      );
+
+      // Outro cliente (não dono) continua sem ver nada — RLS de posse intacta.
+      await cliente.query("RESET ROLE");
+      await logar(cliente, U_OUTRO);
+      await cliente.query("SET LOCAL ROLE authenticated");
+      const comoOutro = (
+        await cliente.query(
+          "SELECT count(*) AS n FROM public.devolucao_eventos WHERE devolucao_id = $1",
+          [d.id],
+        )
+      ).rows;
+      assert.equal(Number(comoOutro[0].n), 0);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+
+    // 3. Devolução SEM etiqueta reversa nenhuma (o caminho de sempre) — em
+    //    pedido PRÓPRIO desta prova, para não depender do estado que outra
+    //    prova já deixou em O_BALCAO — continua cancelando normalmente, sem
+    //    evento extra.
+    await pedidoCustom(cliente, O_A1_SEM_REVERSA, {
+      userId: U_CLIENTE,
+      total: 40,
+      subtotal: 40,
+      shipping: 0,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-A1-SEM-REVERSA",
+      itemId: I_A1_SEM_REVERSA,
+      productId: P_CAMISA,
+      qtd: 1,
+      preco: 40,
+      entregueHaDias: 2,
+    });
+    await logar(cliente, U_CLIENTE);
+    const semReversa = await solicitar(
+      cliente,
+      O_A1_SEM_REVERSA,
+      [{ order_item_id: I_A1_SEM_REVERSA, quantidade: 1 }],
+      "nao_gostei",
+      "reembolso",
+      "entrega_na_loja",
+    );
+    const canceladaSemReversa = await rpc(
+      cliente,
+      "SELECT public.cancelar_devolucao($1::uuid) AS r",
+      [semReversa.id],
+    );
+    assert.equal(canceladaSemReversa.status, "cancelada");
+    const eventosSemReversa = (
+      await cliente.query(
+        "SELECT ator FROM public.devolucao_eventos WHERE devolucao_id = $1",
+        [semReversa.id],
+      )
+    ).rows;
+    assert.equal(
+      eventosSemReversa.filter((e) => e.ator === "sistema").length,
+      0,
+      "sem me_reverse_id/codigo_postagem, não há aviso de Melhor Envio nenhum a gravar",
+    );
+
+    // 4. Achado R1 (rodada 2): admin_devolucao_liberar_vinculo_reverso — a
+    //    "saída" para um vínculo real preso sem código (edge que morreu,
+    //    liberação que falhou, Sandbox do Melhor Envio que nunca gera o
+    //    código da reversa). Só admin; nunca mexe se o código já saiu.
+    await pedidoCustom(cliente, O_R1_LIBERAR, {
+      userId: U_CLIENTE,
+      customerData: {
+        whatsapp: "5534999990000",
+        shipping_option_id: "melhor-envio-1",
+      },
+      total: 90,
+      subtotal: 90,
+      shipping: 0,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-R1-LIBERAR",
+      itemId: I_R1_LIBERAR,
+      productId: P_VESTIDO,
+      variantId: V_VESTIDO_P,
+      nome: "Vestido de Prova",
+      qtd: 1,
+      preco: 90,
+      entregueHaDias: 2,
+    });
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET shipping_label_id = $1 WHERE id = $2",
+      ["ME-PROVA-R1-LIBERAR", O_R1_LIBERAR],
+    );
+    await logar(cliente, U_CLIENTE);
+    const dLiberar = await solicitar(
+      cliente,
+      O_R1_LIBERAR,
+      [{ order_item_id: I_R1_LIBERAR, quantidade: 1 }],
+      "nao_gostei",
+      "reembolso",
+      "etiqueta_reversa",
+    );
+    await logar(cliente, U_ADMIN);
+    await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_decidir($1::uuid, true) AS r",
+      [dLiberar.id],
+    );
+
+    // Sem vínculo nenhum ainda: 22023 (nada para destravar).
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [dLiberar.id],
+        ),
+      /não está vinculada/,
+    );
+
+    const ME_REVERSO_PRESO = "me-reverso-preso-r1";
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [ME_REVERSO_PRESO, dLiberar.id],
+    );
+
+    // Não-admin: 42501.
+    await logar(cliente, U_CLIENTE);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [dLiberar.id],
+        ),
+      /Acesso negado/,
+      "mutante R1_rpc_sem_gate_admin: só admin pode liberar o vínculo preso",
+    );
+
+    // Achado 1 (rodada 5, dinheiro — "negar por padrão", G5 do scratchpad
+    // rev79/ataque4.cjs): SEM o 2º argumento, um vínculo REAL sem NENHUM
+    // marcador (o cenário mais comum de "edge morreu no meio do caminho", ou
+    // um link de produção anterior a esta proteção) agora RECUSA — antes da
+    // rodada 5 soltava direto, sem pedir confirmação nenhuma.
+    await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [dLiberar.id],
+        ),
+      /Não há nenhum registro de pagamento/,
+      "mutante G5_negar_por_padrao: vínculo real SEM marcador nenhum não pode ser solto sem p_conferi_no_melhor_envio = true",
+    );
+    const meReverseAindaPresoSemMarcador = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dLiberar.id],
+    );
+    assert.equal(
+      meReverseAindaPresoSemMarcador,
+      ME_REVERSO_PRESO,
+      "a recusa acima não pode ter mexido em nada",
+    );
+
+    // Achado 2 (rodada 6a, scratchpad rev79/ataque5.cjs, G8): um NULL
+    // EXPLÍCITO em `p_conferi_no_melhor_envio` (PostgREST aceita
+    // `{"p_conferi_no_melhor_envio": null}` no corpo JSON — diferente de
+    // OMITIR o parâmetro, que usaria o DEFAULT `false`) tem que recusar IGUAL
+    // a `false` — `NOT NULL` é `NULL` em SQL, e um `IF` com condição `NULL`
+    // nunca entra no corpo, então `AND NOT p_conferi_no_melhor_envio` deixava
+    // esse caso passar batido e soltar o vínculo sem confirmação nenhuma.
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, $2) AS r",
+          [dLiberar.id, null],
+        ),
+      /Não há nenhum registro de pagamento/,
+      "mutante G8_null_explicito: p_conferi_no_melhor_envio = NULL explícito não pode se comportar como true",
+    );
+    const meReverseAindaPresoComNull = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dLiberar.id],
+    );
+    assert.equal(
+      meReverseAindaPresoComNull,
+      ME_REVERSO_PRESO,
+      "a recusa com NULL explícito não pode ter mexido em nada",
+    );
+
+    // Admin libera de verdade, com p_conferi_no_melhor_envio = true (já olhou
+    // "Meus envios" e não achou nada pago): me_reverse_id volta a NULL,
+    // evento gravado.
+    const liberado = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, true) AS r",
+      [dLiberar.id],
+    );
+    assert.equal(liberado.me_reverse_id_liberado, ME_REVERSO_PRESO);
+    const meReverseDepois = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dLiberar.id],
+    );
+    assert.equal(
+      meReverseDepois,
+      null,
+      "mutante R1_rpc_nao_solta: o vínculo tem que voltar a NULL de verdade",
+    );
+    const eventoDeLiberacao = (
+      await cliente.query(
+        "SELECT ator, nota FROM public.devolucao_eventos WHERE devolucao_id = $1 AND ator = 'sistema' ORDER BY id DESC LIMIT 1",
+        [dLiberar.id],
+      )
+    ).rows[0];
+    assert.ok(eventoDeLiberacao?.nota?.includes(ME_REVERSO_PRESO));
+    assert.ok(
+      !eventoDeLiberacao.nota.includes("Cancele"),
+      "o texto do evento de liberação também é neutro (achado R2) — o dono da devolução pode ler",
+    );
+
+    // Cancelar agora funciona normalmente (o vínculo já foi liberado).
+    await logar(cliente, U_CLIENTE);
+    const canceladaAposLiberar = await rpc(
+      cliente,
+      "SELECT public.cancelar_devolucao($1::uuid) AS r",
+      [dLiberar.id],
+    );
+    assert.equal(canceladaAposLiberar.status, "cancelada");
+
+    // Código já emitido (reaproveita `d`, do passo 2 — codigo_postagem e
+    // me_reverse_id continuam preenchidos mesmo depois de cancelada): a RPC
+    // recusa — nada para "destravar", e liberar por baixo de um código já
+    // pago só perderia o rastro. Cancelar direto no Melhor Envio é o caminho.
+    await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [d.id],
+        ),
+      /código de postagem já foi emitido/,
+      "mutante R1_rpc_libera_com_codigo: com o código já emitido não há vínculo 'preso' para liberar",
+    );
+
+    // 5. Achado R5 (rodada 3, DINHEIRO): a RPC recusa soltar um vínculo com
+    //    pagamento CONFIRMADO no Melhor Envio. Sem este guard, a RPC soltava
+    //    um vínculo PAGO do mesmo jeito que um morto — a gravação do código
+    //    lá na frente (index.ts, concluirComCodigoDePostagem) batia 0 linhas
+    //    SEM ERRO e a edge respondia 200 `ok: true` sem nada salvo; a próxima
+    //    tentativa comprava um SEGUNDO envio reverso (T10 do scratchpad da
+    //    revisão). O marcador é o mesmo evento 'sistema' que a edge grava
+    //    (`gravarPagamentoConfirmadoReverso`, index.ts) assim que
+    //    `pagoConfirmado` vira true — aqui ele é gravado à mão, como a edge
+    //    faria, para provar o guard sem subir a function inteira.
+    await pedidoCustom(cliente, O_R5_PAGO, {
+      userId: U_CLIENTE,
+      customerData: {
+        whatsapp: "5534999990000",
+        shipping_option_id: "melhor-envio-1",
+      },
+      total: 90,
+      subtotal: 90,
+      shipping: 0,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-R5-PAGO",
+      itemId: I_R5_PAGO,
+      productId: P_VESTIDO,
+      variantId: V_VESTIDO_P,
+      nome: "Vestido de Prova",
+      qtd: 1,
+      preco: 90,
+      entregueHaDias: 2,
+    });
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET shipping_label_id = $1 WHERE id = $2",
+      ["ME-PROVA-R5-PAGO", O_R5_PAGO],
+    );
+    await logar(cliente, U_CLIENTE);
+    const dPago = await solicitar(
+      cliente,
+      O_R5_PAGO,
+      [{ order_item_id: I_R5_PAGO, quantidade: 1 }],
+      "nao_gostei",
+      "reembolso",
+      "etiqueta_reversa",
+    );
+    await logar(cliente, U_ADMIN);
+    await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_decidir($1::uuid, true) AS r",
+      [dPago.id],
+    );
+
+    const ME_REVERSO_PAGO = "me-reverso-pago-r5";
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [ME_REVERSO_PAGO, dPago.id],
+    );
+    // O texto abaixo é o CONTRATO com o guard da RPC (LIKE por cima da mesma
+    // frase, casando o me_reverse_id) — index.ts:notaPagamentoConfirmadoReverso.
+    await cliente.query(
+      `INSERT INTO public.devolucao_eventos (devolucao_id, de_status, para_status, ator, nota)
+       VALUES ($1, 'aprovada', 'aprovada', 'sistema', $2)`,
+      [
+        dPago.id,
+        `O Melhor Envio confirmou o pagamento do envio reverso ${ME_REVERSO_PAGO}; o código de postagem ainda está sendo gerado.`,
+      ],
+    );
+
+    await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [dPago.id],
+        ),
+      /já confirmou o pagamento/,
+      "mutante R5_rpc_solta_vinculo_pago: com o marcador de pagamento confirmado gravado para ESTE me_reverse_id, a RPC tem que recusar soltar",
+    );
+    // A recusa não mexeu em nada — o vínculo continua preso como estava.
+    const meReverseAindaPreso = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dPago.id],
+    );
+    assert.equal(meReverseAindaPreso, ME_REVERSO_PAGO);
+
+    // Achado 1 (rodada 5, G3 do scratchpad, segunda metade): o marcador
+    // CONFIRMADO recusa MESMO com p_conferi_no_melhor_envio = true — dinheiro
+    // confirmado não se destrava por auto-declaração, sem NENHUMA exceção.
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, true) AS r",
+          [dPago.id],
+        ),
+      /já confirmou o pagamento/,
+      "mutante R5_confirmado_aceita_flag: o marcador CONFIRMADO não pode aceitar p_conferi_no_melhor_envio nunca",
+    );
+    const meReverseAindaPresoComFlag = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dPago.id],
+    );
+    assert.equal(meReverseAindaPresoComFlag, ME_REVERSO_PAGO);
+
+    // Precisão do guard: o marcador de pagamento gravado ACIMA (para
+    // ME_REVERSO_PAGO) continua na trilha de eventos desta MESMA devolução —
+    // mas o vínculo já foi TROCADO para um id NOVO, sem marcador nenhum
+    // gravado para ele. O LIKE tem que casar só com o me_reverse_id de HOJE;
+    // se casasse com QUALQUER marcador de pagamento da devolução (guard
+    // amplo demais), a liberação abaixo seria recusada à toa mesmo com
+    // p_conferi_no_melhor_envio = true (achado 1, rodada 5: id real SEM
+    // marcador próprio exige o 2º argumento, mas não pode cair no guard do
+    // marcador CONFIRMADO de um id que já não é mais este).
+    const ME_REVERSO_TROCADO = "me-reverso-trocado-r5";
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [ME_REVERSO_TROCADO, dPago.id],
+    );
+    const liberadoAposTroca = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, true) AS r",
+      [dPago.id],
+    );
+    assert.equal(
+      liberadoAposTroca.me_reverse_id_liberado,
+      ME_REVERSO_TROCADO,
+      "mutante R5_guard_amplo_demais: o marcador de pagamento de um me_reverse_id JÁ SUBSTITUÍDO não pode travar a liberação do vínculo ATUAL",
+    );
+
+    // Achado N-a (rodada 3): soltar uma RESERVA (não um id real) grava uma
+    // nota que NÃO chama a reserva de "envio reverso" — confuso, porque não
+    // é um id do Melhor Envio.
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [`reservando:${Date.now()}:${dPago.id}`, dPago.id],
+    );
+    await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+      [dPago.id],
+    );
+    const eventoDaReserva = (
+      await cliente.query(
+        "SELECT nota FROM public.devolucao_eventos WHERE devolucao_id = $1 AND ator = 'sistema' ORDER BY id DESC LIMIT 1",
+        [dPago.id],
+      )
+    ).rows[0];
+    assert.ok(
+      eventoDaReserva.nota.includes("reserva em andamento"),
+      `mutante N_a_nota_confusa: soltar uma RESERVA não pode ficar com a nota de vínculo real (id reservando:...) — nota vista: ${eventoDaReserva.nota}`,
+    );
+    assert.ok(!eventoDaReserva.nota.includes("reservando:"));
+
+    // Achado 1c (rodada 4) + 1 (rodada 5, "negar por padrão"): pagamento
+    // INDETERMINADO recusa por padrão — o texto do marcador mudou (achado 3,
+    // rodada 5, G7: neutro, sem instrução dirigida à loja, porque o dono
+    // também lê esta nota por RLS) e a exigência do 2º argumento agora é a
+    // MESMA de qualquer vínculo real, mas a mensagem de recusa AVISA que há
+    // esse registro. Libera com p_conferi_no_melhor_envio = true, depois de
+    // um admin já ter olhado "Meus envios" na conta do Melhor Envio.
+    const ME_REVERSO_INDETERMINADO = "me-reverso-indeterminado-r79r4";
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [ME_REVERSO_INDETERMINADO, dPago.id],
+    );
+    await cliente.query(
+      `INSERT INTO public.devolucao_eventos (devolucao_id, de_status, para_status, ator, nota)
+       VALUES ($1, 'aprovada', 'aprovada', 'sistema', $2)`,
+      [
+        dPago.id,
+        `Pagamento do envio reverso ${ME_REVERSO_INDETERMINADO} em verificação; o Melhor Envio não confirmou nem recusou o checkout ainda.`,
+      ],
+    );
+    await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [dPago.id],
+        ),
+      /registro de pagamento indeterminado/,
+      "mutante 1c_indeterminado_libera_direto: sem confirmar que já olhou o Melhor Envio, a RPC não pode soltar um vínculo com pagamento indeterminado",
+    );
+    const meReverseAindaPresoIndet = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dPago.id],
+    );
+    assert.equal(meReverseAindaPresoIndet, ME_REVERSO_INDETERMINADO);
+
+    // Achado 3 (rodada 4, F3 do scratchpad): o baseline is_admin() aceita
+    // `current_setting('role') IN ('postgres','service_role')` — correto
+    // para outras RPCs (automações de confiança), mas ERRADO aqui: esta RPC
+    // é uma decisão HUMANA pós-checagem manual no Melhor Envio. SET ROLE SEM
+    // sessão nenhuma (sem `logar()`, `auth.uid()` fica NULL) tem que recusar
+    // mesmo passando pelo baseline. Testado AQUI, com o vínculo indeterminado
+    // ainda intacto — antes de liberá-lo de propósito logo abaixo — para que
+    // "nada mudou" seja uma checagem real, não uma tautologia sobre um
+    // vínculo que já tinha sido solto por outro caminho. Zera a GUC de sessão
+    // para garantir que nenhum `logar()` anterior sobreviva (é
+    // `set_config(..., false)` — session-level, não transaction-level).
+    await cliente.query("SELECT set_config('app.rpc.user_id', '', false)");
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query("SET LOCAL ROLE service_role");
+      await assert.rejects(
+        () =>
+          rpc(
+            cliente,
+            "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+            [dPago.id],
+          ),
+        /Acesso negado/,
+        "mutante F3_service_role_sem_jwt: SET ROLE service_role sem auth.uid() tem que recusar mesmo sendo admin pelo baseline is_admin()",
+      );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query("SET LOCAL ROLE postgres");
+      await assert.rejects(
+        () =>
+          rpc(
+            cliente,
+            "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+            [dPago.id],
+          ),
+        /Acesso negado/,
+        "mutante F3_postgres_sem_jwt: SET ROLE postgres sem auth.uid() tem que recusar do mesmo jeito",
+      );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    // O vínculo indeterminado continua intacto — as tentativas acima negadas
+    // (indeterminado sem confirmar, service_role, postgres) não mexeram em nada.
+    const meReverseDepoisDeF3 = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dPago.id],
+    );
+    assert.equal(meReverseDepoisDeF3, ME_REVERSO_INDETERMINADO);
+
+    // Por fim, com p_conferi_no_melhor_envio = true (um admin autenticado que
+    // já conferiu o Melhor Envio), a liberação funciona normalmente.
+    await logar(cliente, U_ADMIN);
+    const liberadoComConferencia = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, true) AS r",
+      [dPago.id],
+    );
+    assert.equal(
+      liberadoComConferencia.me_reverse_id_liberado,
+      ME_REVERSO_INDETERMINADO,
+      "mutante 1c_conferencia_ignorada: com p_conferi_no_melhor_envio = true, a RPC tem que liberar",
+    );
   },
 });
 

@@ -2250,6 +2250,50 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // CANCELAR_DEVOLUCAO BARRA A COMPRA EM VOO (achado A1 da revisão de risco
+  // pré-publicação de 26/09/2026 sobre a etiqueta reversa do Melhor Envio).
+  // RODADA 2 (achados R1/R2/N3, scratchpad rev79/): o guard só barra id REAL
+  // (a fase de reserva não pode travar o cliente para sempre — Sandbox do
+  // Melhor Envio nunca gera o código da reversa) e a RPC nova dá à loja uma
+  // saída para um vínculo preso sem código.
+  // RODADA 3 (achados R5/N-a): a RPC nova também recusa soltar um vínculo com
+  // pagamento CONFIRMADO no Melhor Envio (marcador gravado pela edge — achado
+  // R5, dinheiro) e a nota distingue reserva de vínculo real (achado N-a).
+  // RODADA 4 (achados 1/3/4, scratchpad rev79/ataque3.cjs): a assinatura
+  // ganha `p_conferi_no_melhor_envio`, o gate também exige `auth.uid() IS NOT
+  // NULL` (achado 3 — is_admin() sozinho aceita service_role/postgres sem
+  // sessão) e o guard do marcador troca LIKE por strpos (achado 4), além de
+  // um segundo guard para o marcador de pagamento INDETERMINADO (achado 1c).
+  // RODADA 5 (achados 1/3, scratchpad rev79/ataque4.cjs): o guard do marcador
+  // INDETERMINADO vira "negar por padrão" — QUALQUER id real exige
+  // `p_conferi_no_melhor_envio`, com ou sem marcador — e a âncora do
+  // indeterminado muda de texto (neutro, achado 3).
+  "20261179000000_cancelar_devolucao_barra_compra_em_voo.sql": [
+    {
+      funcao: "cancelar_devolucao",
+      esperado: [
+        "IF v_d.me_reverse_id IS NOT NULL AND v_d.me_reverse_id NOT LIKE 'reservando:%' AND v_d.codigo_postagem IS NULL THEN",
+        "PERFORM public.devolucao__registrar_evento(\n      p_id, 'cancelada', 'cancelada', 'sistema',",
+        "(envio reverso ' || COALESCE(v_d.me_reverse_id, 'sem id registrado') ||",
+      ],
+    },
+    {
+      funcao: "admin_devolucao_liberar_vinculo_reverso",
+      esperado: [
+        "IF NOT public.is_admin() OR auth.uid() IS NULL THEN",
+        "IF v_d.codigo_postagem IS NOT NULL THEN",
+        "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
+        // Achado 1 (rodada 5, "negar por padrão"): substitui o guard antigo,
+        // que só recusava com o marcador indeterminado presente.
+        // Achado 2 (rodada 6a, G8): `IS NOT TRUE` — `NOT p_conferi_no_melhor_envio`
+        // deixava um NULL explícito passar batido (NOT NULL é NULL, não TRUE).
+        "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND p_conferi_no_melhor_envio IS NOT TRUE THEN",
+        "strpos(nota, 'Pagamento do envio reverso ' || v_d.me_reverse_id || ' em verificação;')",
+        "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
+        "WHEN v_d.me_reverse_id LIKE 'reservando:%' THEN",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
