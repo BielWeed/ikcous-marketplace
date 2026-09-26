@@ -813,6 +813,646 @@ PROVAS.push({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Achados da revisão de risco de 26/09/2026 (migrations 75/76/77 nunca
+// aplicadas em produção — corrigidas em vez de remendadas por cima).
+// ---------------------------------------------------------------------------
+
+/** Pedido customizado para os cenários abaixo (cupom, prazo, estoque já devolvido). */
+async function pedidoCustom(cliente, id, o) {
+  await cliente.query(
+    `INSERT INTO public.marketplace_orders
+       (id, user_id, customer_name, customer_data, total, subtotal, discount, shipping, status, canal,
+        payment_method, payment_status, paid_at, pagamento_recebido_em, gateway_payment_id, stock_returned_at)
+     VALUES ($1, $2, 'Cliente de Prova', $3::jsonb, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [
+      id,
+      o.userId,
+      JSON.stringify(
+        o.customerData || {
+          whatsapp: "5534999990000",
+          shipping_option_id: "local-delivery",
+        },
+      ),
+      o.total,
+      o.subtotal,
+      o.discount || 0,
+      o.shipping || 0,
+      o.status || "delivered",
+      o.canal || "online",
+      o.paymentMethod,
+      o.paymentStatus,
+      o.paidAt || null,
+      o.recebidoEm || null,
+      o.gateway || null,
+      o.stockReturnedAt || null,
+    ],
+  );
+  await cliente.query(
+    `INSERT INTO public.marketplace_order_items (id, order_id, product_id, variant_id, product_name, quantity, price)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      o.itemId,
+      id,
+      o.productId,
+      o.variantId || null,
+      o.nome || "Item de Prova",
+      o.qtd,
+      o.preco,
+    ],
+  );
+  if (o.entregueHaDias !== undefined) {
+    await cliente.query(
+      `INSERT INTO public.marketplace_order_history (order_id, old_status, new_status, created_at)
+       VALUES ($1, 'shipping', 'delivered', now() - make_interval(days => $2::int))`,
+      [id, o.entregueHaDias],
+    );
+  }
+}
+
+async function ateRecebida(cliente, devolucaoId) {
+  await logar(cliente, U_ADMIN);
+  await rpc(
+    cliente,
+    "SELECT public.admin_devolucao_decidir($1::uuid, true) AS r",
+    [devolucaoId],
+  );
+  await rpc(
+    cliente,
+    "SELECT public.admin_devolucao_registrar($1::uuid, 'recebida') AS r",
+    [devolucaoId],
+  );
+}
+
+const O_CUPOM = "3eeeeeee-0000-0000-0000-000000000001";
+const I_CUPOM = "3fffffff-0000-0000-0000-000000000001";
+const O_CUPOM_INTEIRO = "3eeeeeee-0000-0000-0000-000000000002";
+const I_CUPOM_INTEIRO = "3fffffff-0000-0000-0000-000000000002";
+const O_180 = "3eeeeeee-0000-0000-0000-000000000003";
+const I_180 = "3fffffff-0000-0000-0000-000000000003";
+const O_REEMITIR = "3eeeeeee-0000-0000-0000-000000000004";
+const I_REEMITIR = "3fffffff-0000-0000-0000-000000000004";
+const O_SEM_PAGAMENTO = "3eeeeeee-0000-0000-0000-000000000005";
+const I_SEM_PAGAMENTO = "3fffffff-0000-0000-0000-000000000005";
+const O_SEM_HISTORICO = "3eeeeeee-0000-0000-0000-000000000006";
+const I_SEM_HISTORICO = "3fffffff-0000-0000-0000-000000000006";
+const O_H = "3eeeeeee-0000-0000-0000-000000000007";
+const I_H = "3fffffff-0000-0000-0000-000000000007";
+const O_MUTANTE = "3eeeeeee-0000-0000-0000-000000000008";
+const I_MUTANTE = "3fffffff-0000-0000-0000-000000000008";
+const O_RESTANTE = "3eeeeeee-0000-0000-0000-000000000009";
+const I_RESTANTE = "3fffffff-0000-0000-0000-000000000009";
+
+PROVAS.push({
+  nome: "(A) reembolso default rateia o cupom do pedido e não passa do disponível",
+  corpo: async (cliente) => {
+    // 2 unidades de 100, cupom -100, frete 20 -> pago 120 (cenário exato do achado A).
+    await pedidoCustom(cliente, O_CUPOM, {
+      userId: U_CLIENTE,
+      total: 120,
+      subtotal: 200,
+      discount: 100,
+      shipping: 20,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-A-1",
+      itemId: I_CUPOM,
+      productId: P_CAMISA,
+      qtd: 2,
+      preco: 100,
+      entregueHaDias: 2,
+    });
+    await logar(cliente, U_CLIENTE);
+    const parcial = await solicitar(
+      cliente,
+      O_CUPOM,
+      [{ order_item_id: I_CUPOM, quantidade: 1 }],
+      "desisti",
+      "reembolso",
+      "entrega_na_loja",
+    );
+    const valorUnitario = Number(
+      await valorUnico(
+        cliente,
+        "SELECT valor_unitario FROM public.devolucao_itens WHERE devolucao_id = $1",
+        [parcial.id],
+      ),
+    );
+    assert.equal(
+      valorUnitario,
+      50,
+      "snapshot rateado: 100 * (200-100)/200 = 50, não o preço cheio",
+    );
+    await ateRecebida(cliente, parcial.id);
+    const itemId = await valorUnico(
+      cliente,
+      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+      [parcial.id],
+    );
+    const concluida = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
+      [
+        parcial.id,
+        JSON.stringify([
+          { item_id: itemId, condicao: "nova", reestocar: true },
+        ]),
+      ],
+    );
+    assert.equal(
+      Number(concluida.valor_reembolso),
+      50,
+      "reembolso proporcional (não 100, o preço cheio de 1 unidade)",
+    );
+
+    // Devolução do pedido INTEIRO: default é CAPADO em 120 (disponível), não
+    // recusado por tentar devolver 220 (2 x 100 + frete, preço cheio).
+    await pedidoCustom(cliente, O_CUPOM_INTEIRO, {
+      userId: U_CLIENTE,
+      total: 120,
+      subtotal: 200,
+      discount: 100,
+      shipping: 20,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-A-2",
+      itemId: I_CUPOM_INTEIRO,
+      productId: P_CAMISA,
+      qtd: 2,
+      preco: 100,
+      entregueHaDias: 2,
+    });
+    await logar(cliente, U_CLIENTE);
+    const inteira = await solicitar(
+      cliente,
+      O_CUPOM_INTEIRO,
+      [{ order_item_id: I_CUPOM_INTEIRO, quantidade: 2 }],
+      "desisti",
+      "reembolso",
+      "entrega_na_loja",
+    );
+    await ateRecebida(cliente, inteira.id);
+    const itemInteira = await valorUnico(
+      cliente,
+      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+      [inteira.id],
+    );
+    const concluidaInteira = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
+      [
+        inteira.id,
+        JSON.stringify([
+          { item_id: itemInteira, condicao: "nova", reestocar: true },
+        ]),
+      ],
+    );
+    assert.equal(
+      Number(concluidaInteira.valor_reembolso),
+      120,
+      "capado no disponível (100 dos itens rateados + 20 de frete), nunca 220",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(B)(M) payment_status NULL e entrega sem histórico são RECUSADOS, não liberados",
+  corpo: async (cliente) => {
+    // "Ainda não" do admin: pedido delivered, payment_status NULL (nunca confirmado).
+    await pedidoCustom(cliente, O_SEM_PAGAMENTO, {
+      userId: U_CLIENTE,
+      total: 80,
+      subtotal: 80,
+      paymentMethod: "cash",
+      paymentStatus: null,
+      itemId: I_SEM_PAGAMENTO,
+      productId: P_CAMISA,
+      qtd: 1,
+      preco: 80,
+      entregueHaDias: 2,
+    });
+    await logar(cliente, U_CLIENTE);
+    const el = await elegibilidade(cliente, O_SEM_PAGAMENTO);
+    assert.equal(el.pode, false, "payment_status NULL não pode devolver");
+    assert.match(el.motivo_bloqueio, /não tem pagamento a devolver/);
+    await assert.rejects(
+      () =>
+        solicitar(
+          cliente,
+          O_SEM_PAGAMENTO,
+          [{ order_item_id: I_SEM_PAGAMENTO, quantidade: 1 }],
+          "desisti",
+          "reembolso",
+          "entrega_na_loja",
+        ),
+      /não tem pagamento a devolver/,
+    );
+
+    // Pedido 'delivered' sem linha 'delivered' no histórico (legado): sem
+    // fallback para updated_at, fica sem data de entrega -> "fale com a loja".
+    await pedidoCustom(cliente, O_SEM_HISTORICO, {
+      userId: U_CLIENTE,
+      total: 40,
+      subtotal: 40,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-M-1",
+      itemId: I_SEM_HISTORICO,
+      productId: P_CAMISA,
+      qtd: 1,
+      preco: 40,
+      // sem entregueHaDias: nenhuma linha em marketplace_order_history.
+    });
+    const elM = await elegibilidade(cliente, O_SEM_HISTORICO);
+    assert.equal(elM.pode, false);
+    assert.match(elM.motivo_bloqueio, /Fale com a loja/);
+    await assert.rejects(
+      () =>
+        solicitar(
+          cliente,
+          O_SEM_HISTORICO,
+          [{ order_item_id: I_SEM_HISTORICO, quantidade: 1 }],
+          "desisti",
+          "reembolso",
+          "entrega_na_loja",
+        ),
+      /Fale com a loja/,
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(G) pagamento com mais de 180 dias vira manual; admin_devolucao_reemitir_reembolso reabre o recusado",
+  corpo: async (cliente) => {
+    await pedidoCustom(cliente, O_180, {
+      userId: U_CLIENTE,
+      total: 100,
+      subtotal: 100,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(Date.now() - 200 * 86400000),
+      gateway: "ORD-G-1",
+      itemId: I_180,
+      productId: P_CAMISA,
+      qtd: 1,
+      preco: 100,
+      entregueHaDias: 2,
+    });
+    await logar(cliente, U_CLIENTE);
+    const d = await solicitar(
+      cliente,
+      O_180,
+      [{ order_item_id: I_180, quantidade: 1 }],
+      "defeito",
+      "reembolso",
+      "entrega_na_loja",
+      [`${U_CLIENTE}/${O_180}/foto.jpg`],
+    );
+    await ateRecebida(cliente, d.id);
+    const item = await valorUnico(
+      cliente,
+      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+      [d.id],
+    );
+    const concluida = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
+      [
+        d.id,
+        JSON.stringify([{ item_id: item, condicao: "nova", reestocar: true }]),
+      ],
+    );
+    assert.equal(
+      concluida.reembolso_manual,
+      true,
+      "pagamento >180 dias: caminho manual (o MP recusaria)",
+    );
+    assert.equal(concluida.refund_id, null);
+    assert.equal(
+      Number(
+        await valorUnico(
+          cliente,
+          "SELECT count(*) FROM public.order_refunds WHERE order_id = $1",
+          [O_180],
+        ),
+      ),
+      0,
+      "nenhuma linha nasceu em order_refunds para o MP recusar depois",
+    );
+
+    // admin_devolucao_reemitir_reembolso: cenário do achado G onde a linha
+    // NASCE (pedido recente) e o EXECUTOR recusa depois.
+    await pedidoCustom(cliente, O_REEMITIR, {
+      userId: U_CLIENTE,
+      total: 90,
+      subtotal: 90,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-G-2",
+      itemId: I_REEMITIR,
+      productId: P_CAMISA,
+      qtd: 1,
+      preco: 90,
+      entregueHaDias: 2,
+    });
+    await logar(cliente, U_CLIENTE);
+    const d2 = await solicitar(
+      cliente,
+      O_REEMITIR,
+      [{ order_item_id: I_REEMITIR, quantidade: 1 }],
+      "desisti",
+      "reembolso",
+      "entrega_na_loja",
+    );
+    await ateRecebida(cliente, d2.id);
+    const item2 = await valorUnico(
+      cliente,
+      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+      [d2.id],
+    );
+    const concluida2 = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
+      [
+        d2.id,
+        JSON.stringify([{ item_id: item2, condicao: "nova", reestocar: true }]),
+      ],
+    );
+    assert.ok(
+      concluida2.refund_id,
+      "pedido recente: caminho automático abre a linha",
+    );
+
+    await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_reemitir_reembolso($1::uuid, false) AS r",
+          [d2.id],
+        ),
+      /não foi recusado/,
+      "não há o que reemitir enquanto a linha não foi recusada",
+    );
+
+    // O executor recusou (simulado: só o STATUS muda, quem grava é a edge).
+    await cliente.query(
+      "UPDATE public.order_refunds SET status = 'recusado', ultimo_erro = 'pagamento com mais de 180 dias' WHERE id = $1",
+      [concluida2.refund_id],
+    );
+    const reemitido = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_reemitir_reembolso($1::uuid, false) AS r",
+      [d2.id],
+    );
+    assert.ok(reemitido.refund_id, "nova linha nasce");
+    assert.notEqual(
+      reemitido.refund_id,
+      concluida2.refund_id,
+      "refund_id troca para a linha nova",
+    );
+    const refundAntigo = (
+      await cliente.query(
+        "SELECT status FROM public.order_refunds WHERE id = $1",
+        [concluida2.refund_id],
+      )
+    ).rows[0];
+    assert.equal(refundAntigo.status, "recusado", "a linha recusada não some");
+
+    // Reemitir de novo (a nova linha está 'solicitado', não recusada): recusado.
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_reemitir_reembolso($1::uuid, false) AS r",
+          [d2.id],
+        ),
+      /não foi recusado/,
+    );
+
+    // p_manual = true registra como manual, sem depender do MP de novo.
+    await cliente.query(
+      "UPDATE public.order_refunds SET status = 'recusado' WHERE id = $1",
+      [reemitido.refund_id],
+    );
+    const manual = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_reemitir_reembolso($1::uuid, true) AS r",
+      [d2.id],
+    );
+    assert.equal(manual.reembolso_manual, true);
+    assert.equal(manual.refund_id, null);
+  },
+});
+
+PROVAS.push({
+  nome: "(H) conclusão revalida o pedido: cancelado/estornado/estoque já devolvido travam antes do reembolso",
+  corpo: async (cliente) => {
+    await pedidoCustom(cliente, O_H, {
+      userId: U_CLIENTE,
+      total: 100,
+      subtotal: 100,
+      paymentMethod: "cash",
+      paymentStatus: "recebido_na_entrega",
+      recebidoEm: new Date(),
+      itemId: I_H,
+      productId: P_CAMISA,
+      qtd: 1,
+      preco: 100,
+      entregueHaDias: 0,
+    });
+    await logar(cliente, U_CLIENTE);
+    const d = await solicitar(
+      cliente,
+      O_H,
+      [{ order_item_id: I_H, quantidade: 1 }],
+      "desisti",
+      "reembolso",
+      "entrega_na_loja",
+    );
+    await ateRecebida(cliente, d.id);
+    const item = await valorUnico(
+      cliente,
+      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+      [d.id],
+    );
+
+    // O admin cancela o pedido (venda de balcão) e registra o estorno fora do
+    // app ENQUANTO a devolução está 'recebida' — exatamente o achado H.
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
+      [O_H],
+    );
+    await logar(cliente, U_ADMIN);
+    await rpc(cliente, "SELECT public.registrar_estorno_manual($1::uuid)", [
+      O_H,
+    ]);
+
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
+          [
+            d.id,
+            JSON.stringify([
+              { item_id: item, condicao: "nova", reestocar: true },
+            ]),
+          ],
+        ),
+      /não está mais entregue/,
+      "pedido cancelado: a conclusão recusa mesmo com a devolução 'recebida'",
+    );
+
+    // Estoque já voltou por outro caminho (stock_returned_at): mesma trava.
+    await pedidoCustom(cliente, O_MUTANTE, {
+      userId: U_CLIENTE,
+      total: 50,
+      subtotal: 50,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-H-2",
+      itemId: I_MUTANTE,
+      productId: P_CAMISA,
+      qtd: 1,
+      preco: 50,
+      entregueHaDias: 1,
+    });
+    await logar(cliente, U_CLIENTE);
+    const d2 = await solicitar(
+      cliente,
+      O_MUTANTE,
+      [{ order_item_id: I_MUTANTE, quantidade: 1 }],
+      "desisti",
+      "reembolso",
+      "entrega_na_loja",
+    );
+    await ateRecebida(cliente, d2.id);
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET stock_returned_at = now() WHERE id = $1",
+      [O_MUTANTE],
+    );
+    const item2 = await valorUnico(
+      cliente,
+      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+      [d2.id],
+    );
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
+          [
+            d2.id,
+            JSON.stringify([
+              { item_id: item2, condicao: "nova", reestocar: true },
+            ]),
+          ],
+        ),
+      /estoque deste pedido já voltou/,
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(gap 1)(gap 2) item repetido na conclusão não dobra o reestoque; segunda devolução só pega o restante",
+  corpo: async (cliente) => {
+    await pedidoCustom(cliente, O_RESTANTE, {
+      userId: U_CLIENTE,
+      total: 200,
+      subtotal: 200,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-GAP-1",
+      itemId: I_RESTANTE,
+      productId: P_CAMISA,
+      qtd: 2,
+      preco: 100,
+      entregueHaDias: 1,
+    });
+    await logar(cliente, U_CLIENTE);
+    // Uma unidade primeiro.
+    const primeira = await solicitar(
+      cliente,
+      O_RESTANTE,
+      [{ order_item_id: I_RESTANTE, quantidade: 1 }],
+      "desisti",
+      "reembolso",
+      "entrega_na_loja",
+    );
+    await ateRecebida(cliente, primeira.id);
+    const itemPrimeira = await valorUnico(
+      cliente,
+      "SELECT id FROM public.devolucao_itens WHERE devolucao_id = $1",
+      [primeira.id],
+    );
+
+    // (gap 1) o mesmo item_id duas vezes no p_itens não credita 2x.
+    const estoqueAntes = Number(
+      await valorUnico(
+        cliente,
+        "SELECT estoque FROM public.produtos WHERE id = $1",
+        [P_CAMISA],
+      ),
+    );
+    await logar(cliente, U_ADMIN);
+    await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
+      [
+        primeira.id,
+        JSON.stringify([
+          { item_id: itemPrimeira, condicao: "nova", reestocar: true },
+          { item_id: itemPrimeira, condicao: "nova", reestocar: true },
+        ]),
+      ],
+    );
+    assert.equal(
+      Number(
+        await valorUnico(
+          cliente,
+          "SELECT estoque FROM public.produtos WHERE id = $1",
+          [P_CAMISA],
+        ),
+      ),
+      estoqueAntes + 1,
+      "item repetido em p_itens credita 1 unidade, não 2",
+    );
+
+    // (gap 2) segunda devolução do MESMO item de pedido só pode pegar o
+    // restante (1 de 2 já foi; pedir 2 de novo é recusado, pedir 1 passa).
+    await logar(cliente, U_CLIENTE);
+    await assert.rejects(
+      () =>
+        solicitar(
+          cliente,
+          O_RESTANTE,
+          [{ order_item_id: I_RESTANTE, quantidade: 2 }],
+          "tamanho_grande",
+          "reembolso",
+          "entrega_na_loja",
+        ),
+      /Quantidade indisponível/,
+      "só resta 1 unidade — pedir 2 é recusado",
+    );
+    const segunda = await solicitar(
+      cliente,
+      O_RESTANTE,
+      [{ order_item_id: I_RESTANTE, quantidade: 1 }],
+      "tamanho_grande",
+      "reembolso",
+      "entrega_na_loja",
+    );
+    assert.ok(segunda.id, "a unidade restante ainda pode ser devolvida");
+  },
+});
+
 async function main() {
   const url = lerDatabaseUrlEfemera();
   const cliente = new Client({ connectionString: url });

@@ -2759,6 +2759,10 @@ export type Database = {
         };
         Returns: Json;
       };
+      admin_devolucao_reemitir_reembolso: {
+        Args: { p_devolucao_id: string; p_manual?: boolean };
+        Returns: Json;
+      };
       admin_devolucao_registrar: {
         Args: {
           p_codigo?: string | null;
