@@ -144,11 +144,17 @@
     "do destinatário, achado 3 do laudo REPROVADO sobre o commit aadbf4c):",
     "'eslint warnings 458 / teto 467 — baixou -9'. Biome não mexido (errors",
     "16 local — CRLF do Windows, não cobrado fora do CI, conforme a nota de",
-    "22/08/2026 acima)."
+    "22/08/2026 acima).",
+    "",
+    "26/09/2026 — warnings de eslint de 458 para 457. Medido no CI, run 36223074347",
+    "(PR #666, painel/cartão/devoluções): 'eslint warnings 457 / teto 458 — baixou -1'.",
+    "No mesmo run o Biome acusou 17 (teto 15): os 2 erros eram do PR (template",
+    "literal sem interpolação em duas provas vivas de tests/banco/), consertados no",
+    "mesmo commit que abaixa este teto."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 458
+    "warnings": 457
   },
   "biome": {
     "errors": 15,

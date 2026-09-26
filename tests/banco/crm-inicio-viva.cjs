@@ -108,7 +108,7 @@ PROVAS.push({
       diasAtras: 10,
     });
     await venda(cliente, {
-      whatsapp: `+55 (34) 98888-7777`,
+      whatsapp: "+55 (34) 98888-7777",
       total: 30,
       diasAtras: 5,
       canal: "presencial",

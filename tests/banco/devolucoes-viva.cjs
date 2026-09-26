@@ -239,7 +239,7 @@ const solicitar = (
 ) =>
   rpc(
     cliente,
-    `SELECT public.solicitar_devolucao($1::uuid, $2::jsonb, $3, NULL, $4, $5, $6::text[]) AS r`,
+    "SELECT public.solicitar_devolucao($1::uuid, $2::jsonb, $3, NULL, $4, $5, $6::text[]) AS r",
     [orderId, JSON.stringify(itens), motivo, resolucao, metodo, fotos],
   );
 
