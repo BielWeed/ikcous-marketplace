@@ -211,10 +211,12 @@
 -- um objeto com `cpf` (a maioria, fora da janela do defeito); a RPC de
 -- criação de pedido (já corrigida pela 20261172000000, pré-requisito
 -- verificado pelo preflight); a decisão do dono sobre "mover vs apagar"
--- (implementada como toggle, não decidida — ver "OPÇÃO DO DONO"); o lock
--- otimista da etiqueta (`melhor-envio-etiqueta`) — vem em OUTRA branch, só
--- mencionado aqui porque quem revisar o runbook de aplicação lado a lado
--- vai perguntar; aplicar de verdade em qualquer banco (passo separado, com
+-- (implementada como toggle, não decidida — ver "OPÇÃO DO DONO"); o código
+-- da edge `melhor-envio-etiqueta`/`definir_cpf_destinatario` que fecha a
+-- corrida — já em produção (v9, 26/09 19:58) e trazido para esta árvore
+-- pelo merge de `claude/pensive-mendel-b1fnuu`, mas não é parte desta
+-- migration nenhuma linha dele (ver "CORRIDA COM definir_cpf_
+-- destinatario"); aplicar de verdade em qualquer banco (passo separado, com
 -- contagem prévia feita por outra pessoa, e decisão do dono).
 --
 -- GATILHOS EM `marketplace_orders` — CONFERIDO NO CATÁLOGO DO ZERO (banco
@@ -242,41 +244,41 @@
 -- (feita por outra pessoa, fora desta tarefa) confirma quantas linhas a
 -- `alvo` alcança ali.
 --
--- CORRIDA PROVADA (RODADA 3, achado 1 — a rodada 2 dizia "não há corrida
--- provada"; ERRADO, corrigido aqui): a action `definir_cpf_destinatario`
--- (`supabase/functions/melhor-envio-etiqueta/index.ts`, painel → "definir
--- CPF" na ficha do pedido) LÊ `customer_data` inteiro ANTES de escrever
--- (`pedidoAtual.customer_data`, sem `FOR UPDATE` nenhum) e, ao gravar,
--- ESPALHA esse retrato LIDO (`{ ...customerDataAtual, cpf: cpfLimpo }`) —
--- o `UPDATE` condicional dela só verifica se `customer_data->>cpf` (a
--- RAIZ) continua igual ao que ela leu; não olha `address` nenhum. Se esta
--- migration COMMITAR entre a leitura e a escrita da action SEM mudar o
--- `cpf` da raiz (ex.: a raiz já tinha CPF antes, então a migration só
--- limpou o endereço), a checagem otimista da action não percebe nada
--- mudou, e o `UPDATE` dela grava de volta o `address` ANTIGO (com o `cpf`
--- que a migration tinha acabado de tirar) — reabrindo o defeito para
--- AQUELE pedido específico. É por isso que a recomendação abaixo (item 1)
--- não é só cautela: é a mitigação operacional enquanto o lock otimista da
--- action (outra branch) não cobre `address` também.
+-- CORRIDA COM `definir_cpf_destinatario` — FECHADA EM PRODUÇÃO (RODADA 4,
+-- achado B; a RODADA 3 tinha corrigido a rodada 2, que dizia "não há
+-- corrida provada", para "há corrida provada" — as duas frases valiam para
+-- a edge de ENTÃO, que já não está mais no ar): provada contra a edge
+-- ANTERIOR à rodada 4 de `fix/etiqueta-le-endereco-da-conta` (gravava o
+-- `customer_data` LIDO de volta no banco, com `address.cpf` inclusive, se
+-- a leitura tivesse acontecido antes desta migration limpar a linha). A
+-- versão publicada em 26/09 19:58 (`melhor-envio-etiqueta` v9, do commit
+-- `a65be476`; trazida para esta árvore pelo merge de
+-- `claude/pensive-mendel-b1fnuu`, commit `860848ee`) tira `address.cpf`
+-- de forma INCONDICIONAL na escrita — não importa o que a leitura tinha
+-- visto, a chave nunca mais volta. Com ela em produção, a corrida NÃO
+-- reabre o defeito (reprodução com o trecho verbatim da action: 0 pedidos
+-- com `cpf` no endereço). A corrida só volta se a function for publicada a
+-- partir de um commit ANTERIOR a esse fix — por isso a recomendação
+-- abaixo (item 1) virou PRUDÊNCIA, não mais obrigação.
 --
--- RECOMENDAÇÃO DO DIA DA APLICAÇÃO (revisão de risco, rodada 2, achado 8):
---   1. Ninguém usa "salvar CPF" (perfil ou formulário do pedido, painel)
---      enquanto esta migration está rodando — há CORRIDA PROVADA com
---      `definir_cpf_destinatario` (leitura antes, escrita do objeto
---      inteiro depois, ver "CORRIDA PROVADA" acima); por isso ninguém
---      salva CPF durante a aplicação, e a contagem é refeita depois.
---   2. Rode a contagem da FICHA DE VERIFICAÇÃO (item 1 abaixo) de novo
---      alguns minutos depois de aplicar — confirma que nada novo reabriu o
---      buraco (ex.: pedido criado bem na virada da aplicação, antes do
---      front corrigido estar em todas as lojas, OU a corrida acima).
---   3. Se a CONTAGEM PRÉVIA (feita por outra pessoa, antes de aplicar)
+-- RECOMENDAÇÃO DO DIA DA APLICAÇÃO (revisão de risco, rodada 2, achado 8;
+-- item 1 revisado na rodada 4, achado B, com a corrida fechada):
+--   1. Evite salvar CPF no painel (`definir_cpf_destinatario`) durante a
+--      aplicação, e refaça a contagem alguns minutos depois — barato, e
+--      protege contra uma republicação da edge ANTIGA (antes do commit
+--      `a65be476`, ver "CORRIDA COM definir_cpf_destinatario" acima); não
+--      é mais obrigatório como nas rodadas 2 e 3, porque a versão hoje em
+--      produção já fecha a corrida sozinha.
+--   2. Se a CONTAGEM PRÉVIA (feita por outra pessoa, antes de aplicar)
 --      mostrar QUALQUER pedido com `cpf` no endereço fora da janela
 --      23–26/09/2026 17:46 UTC, PARE e investigue antes de aplicar — esta
 --      migration só foi provada para o formato de defeito daquela janela
 --      específica; um pedido fora dela é sintoma de OUTRA causa.
---   4. A etiqueta (`melhor-envio-etiqueta`) vai ganhar lock otimista em
---      outra branch — não é parte desta migration; citado aqui só para
---      quem for revisar o runbook de aplicação lado a lado.
+--   3. O lock que fecha a corrida da etiqueta (`melhor-envio-etiqueta`,
+--      `definir_cpf_destinatario`) já está em produção (v9, 26/09 19:58,
+--      trazido para esta árvore pelo merge de `claude/pensive-mendel-
+--      b1fnuu`) — não é parte desta migration; citado aqui só para quem
+--      for revisar o runbook de aplicação lado a lado.
 --
 -- FICHA DE VERIFICAÇÃO pós-aplicação (rodar contra o banco):
 --   1. Nenhum pedido deveria sobrar com `cpf` dentro do endereço:
@@ -285,7 +287,7 @@
 --         AND (o.customer_data -> 'address') ? 'cpf';
 --      -> espera 0 (a própria migration já garante isto na verificação
 --      final, mas confirmar depois é barato — e de novo alguns minutos
---      depois, ver RECOMENDAÇÃO DO DIA item 2).
+--      depois, ver RECOMENDAÇÃO DO DIA item 1).
 --   2. Amostra de pedido nacional de cliente logado da janela do defeito
 --      (23/09–26/09 17:46 UTC): `customer_data.address` não é mais um
 --      objeto só com `cpf`, e `customer_data.cpf` (quando a opção não era
@@ -398,11 +400,14 @@ BEGIN
            -- <> 'cancelled'`, `payment_status = 'expirado'` dá SQL NULL (não
            -- `false`), e `false OR NULL` também é NULL -- o `NOT (...)` de
            -- fora vira NULL, o `WHEN` inteiro deixa de ser `TRUE` e cai no
-           -- `ELSE` como se fosse "apagar", MESMO com a opção do dono
-           -- DESLIGADA de um pedido que não é cancelado nem expirado (só
-           -- indefinido). `IS NOT DISTINCT FROM` nunca devolve NULL --
+           -- `ELSE` como se fosse "apagar". SÓ com a opção do dono LIGADA
+           -- (`true`): com ela DESLIGADA, `v.apagar_em_vez_de_mover_...` já
+           -- é `false`, e `false AND (qualquer coisa, mesmo NULL)` é
+           -- SEMPRE `false` em SQL (nunca NULL) -- o `NOT (...)` dá `true`
+           -- de qualquer forma, e o bug nunca aparece com o padrão de
+           -- fábrica. `IS NOT DISTINCT FROM` nunca devolve NULL --
            -- `payment_status IS NULL` vira `false` aqui, e o resto da
-           -- comparação booleana continua determinístico.
+           -- comparação booleana continua determinístico nos dois casos.
            || CASE
                 WHEN NOT v.raiz_tem_cpf
                      AND v.cpf_ok

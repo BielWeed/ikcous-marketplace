@@ -190,18 +190,32 @@ END $ref$`);
       `    bateria: ${cmp.total} entradas fictícias, ${cmp.divergencias} divergências`,
     );
     if (cmp.divergencias > 0) {
+      // RODADA 4, achado D (LGPD, repositório PÚBLICO): a versão anterior
+      // devolvia `b.ref`/`customer_data->>'cpf'` CRUS para o log do CI — os
+      // dois são, na maioria dos casos, CPFs FICTÍCIOS mas com dígito
+      // verificador VÁLIDO (gerados por `cpfFicticio` acima só para exercer
+      // a fronteira de aceitação) — um CPF válido aleatório PODE coincidir
+      // com o de uma pessoa real, mesmo nascido de um gerador sintético.
+      // Nunca sai CPF inteiro daqui: só os 2 últimos dígitos (o suficiente
+      // para notar SE o dígito verificador é o problema) e um hash (o
+      // suficiente para notar que duas linhas divergentes são, de fato,
+      // ENTRADAS diferentes, sem reconstituir o valor).
       const div = (
         await cliente.query(
-          `select b.ref, o.customer_data->>'cpf' mig
+          `select
+              (case when b.ref = 'RECUSA' then 'RECUSA'
+                    when b.ref is null then null
+                    else '***' || right(b.ref, 2) end) as ref_mascarado,
+              (case when (o.customer_data->>'cpf') is null then null
+                    else '***' || right(o.customer_data->>'cpf', 2) end) as mig_mascarado,
+              md5(coalesce(b.ref, '') || '|' || coalesce(o.customer_data->>'cpf', '')) as hash_da_entrada
              from marketplace_orders o join _cpf_janela_bat b using (id)
             where (o.customer_data->>'cpf') is distinct from (case when b.ref = 'RECUSA' then null else b.ref end)
             limit 5`,
         )
       ).rows;
-      // Só CPFs FICTÍCIOS gerados por esta prova aparecem aqui — nunca dado
-      // real (a fixture inteira é sintética, criada acima nesta função).
       console.log(
-        "    exemplos de divergência (v24-ref | 82):",
+        "    exemplos de divergência, MASCARADOS (v24-ref | 82 | hash):",
         JSON.stringify(div),
       );
     }

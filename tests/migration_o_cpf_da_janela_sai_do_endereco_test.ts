@@ -362,6 +362,31 @@ Deno.test("RODADA 2, achado 3: verificacao final e' o bloco IF completo e normal
   );
 });
 
+Deno.test("RODADA 4, achado C (X7): o RAISE NOTICE da contagem vem DEPOIS do END IF da verificacao final, nunca antes", () => {
+  // A RODADA 3 (achado 5) moveu o NOTICE para depois da verificacao final --
+  // se ele voltasse para logo apos o UPDATE (antes do IF), o log mostraria
+  // uma contagem de linhas que a excecao, alguns comandos depois, desfaz
+  // junto com o UPDATE inteiro (falso positivo operacional). Nenhuma
+  // asserção anterior conferia a ORDEM relativa entre os dois -- só que os
+  // dois EXISTEM em algum lugar do corpo (mutante X7, medido: passa 18/18
+  // sem este teste). Ancora pelo "END IF;" que fecha especificamente a
+  // verificacao final (o texto logo antes é o RAISE EXCEPTION dela, unico
+  // no arquivo) -- os dois `END IF;` do preflight (v23/v24) vêm ANTES do
+  // UPDATE, então não competem com esta âncora.
+  const marcaVerificacao = "VERIFICACAO_FINAL_20261182";
+  const iVerificacao = corpoN.indexOf(marcaVerificacao);
+  assert(iVerificacao !== -1, "verificacao final nao encontrada no corpo");
+  const iFimVerificacao = corpoN.indexOf("END IF;", iVerificacao);
+  assert(iFimVerificacao !== -1, "END IF da verificacao final nao encontrado");
+  const marcaNotice = "RAISE NOTICE '20261182:";
+  const iNotice = corpoN.indexOf(marcaNotice);
+  assert(iNotice !== -1, "RAISE NOTICE da contagem nao encontrado no corpo");
+  assert(
+    iNotice > iFimVerificacao,
+    "o RAISE NOTICE aparece ANTES do END IF da verificacao final -- se a verificacao falhar, o log mostraria uma contagem que a excecao desfaz junto com o UPDATE inteiro",
+  );
+});
+
 Deno.test("nenhuma outra coluna e' escrita -- so' customer_data no SET do UPDATE", () => {
   const inicioUpdate = corpo.indexOf("UPDATE public.marketplace_orders o");
   assert(inicioUpdate !== -1, "UPDATE nao encontrado no corpo");
