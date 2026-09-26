@@ -77,6 +77,33 @@ describe("montarAvisos", () => {
     expect(montarAvisos({ ...VAZIO, perguntasPendentes: 0 })).toEqual([]);
   });
 
+  it("devolucoes solicitadas viram UM aviso que conta no cracha, logo depois dos pedidos", () => {
+    const avisos = montarAvisos({
+      ...VAZIO,
+      perguntasPendentes: 1,
+      devolucoesSolicitadas: 1,
+      pedidos: [
+        {
+          id: "ped-1",
+          customer_name: "Ana",
+          total: 10,
+          created_at: "2026-08-24T10:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(avisos.map((a) => a.tipo)).toEqual([
+      "pedido",
+      "devolucao",
+      "pergunta",
+    ]);
+    const devolucao = avisos[1];
+    expect(devolucao.titulo).toBe("1 devolução esperando sua resposta");
+    expect(devolucao.destino).toEqual({ view: "admin-devolucoes" });
+    expect(devolucao.contaNoCracha).toBe(true);
+    expect(montarAvisos({ ...VAZIO, devolucoesSolicitadas: 0 })).toEqual([]);
+  });
+
   it("avaliacao sem resposta vira aviso; com resposta nao entra na lista", () => {
     const avisos = montarAvisos({
       ...VAZIO,

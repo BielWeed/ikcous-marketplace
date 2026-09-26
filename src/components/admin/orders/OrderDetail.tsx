@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { DevolucaoDoPedidoAdminCard } from "./DevolucaoDoPedidoAdminCard";
 import { EstornoCard } from "./EstornoCard";
 import { EtiquetaDoPedidoCard } from "./EtiquetaDoPedidoCard";
 import { OrderReceipt } from "./OrderReceipt";
@@ -226,6 +227,12 @@ interface OrderDetailProps {
    * recibo cair no fallback do branding (ver OrderReceiptProps).
    */
   storeName?: string;
+  /**
+   * Leva à tela de Devoluções (o card de devolução do produto abre a
+   * devolução escolhida lá). Opcional pelo mesmo motivo das outras: testes
+   * montam `<OrderDetail>` sem ela, e aí o card só informa.
+   */
+  onAbrirDevolucoes?: () => void;
 }
 
 const globalSkuCache: Record<string, string> = {};
@@ -1122,6 +1129,7 @@ export const OrderDetail = memo(function OrderDetail({
   isOffline = false,
   onRegistrarPagamento,
   storeName,
+  onAbrirDevolucoes,
 }: Readonly<OrderDetailProps>) {
   const [localTrackingCode, setLocalTrackingCode] = useState(
     order.trackingCode || "",
@@ -1579,6 +1587,16 @@ export const OrderDetail = memo(function OrderDetail({
           }
           registrandoPagamento={registrandoPagamento}
         />
+        {/* Devolução de PRODUTO (plano 2026-09-26, seção "Devoluções"):
+            só existe para pedido entregue — e mora logo antes da devolução
+            de DINHEIRO, que é outra coisa (estorno do pedido). */}
+        {order.status === "delivered" && (
+          <DevolucaoDoPedidoAdminCard
+            key={order.id}
+            orderId={order.id}
+            onAbrirDevolucoes={onAbrirDevolucoes}
+          />
+        )}
         {/* T6 do plano de estorno pelo app (08/09/2026): só cobrança
             pelo site passa pelo Mercado Pago — dinheiro/cartão na
             entrega não tem estorno pelo app, e a tela nem oferece. Na

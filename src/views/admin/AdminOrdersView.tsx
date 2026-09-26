@@ -9,6 +9,7 @@ import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
+import { BotaoDevolucoes } from "@/components/admin/devolucoes/BotaoDevolucoes";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
   OrderStatusBadge,
@@ -823,6 +824,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
   };
 
+  // Estável de propósito: vai para o `<OrderDetail>` (memo) e para o botão
+  // do cabeçalho — a tela de Devoluções (filha de Pedidos no roteador).
+  const abrirDevolucoes = useCallback(
+    () => onNavigate("admin-devolucoes"),
+    [onNavigate],
+  );
+
   /**
    * O botão "Ver pedidos" do dropdown de alertas (na pílula antiga era
    * igual — só o contêiner mudou). O botão leva aos
@@ -1325,6 +1333,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             isOffline={isOffline}
             onRegistrarPagamento={registrarPagamentoRecebido}
             storeName={storeNameDaLoja}
+            onAbrirDevolucoes={abrirDevolucoes}
           />
         </div>
       </LocalErrorBoundary>
@@ -1346,22 +1355,27 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             // direito da linha do título; os detalhes descem dele). Sem
             // pendência e lista completa, ele nem nasce. (1.19.0 — só trocou
             // de container: a marcação interna é a mesma de antes.)
-            <AlertasCancelados
-              pagoCanceladoCount={paidOnCancelledCount}
-              avisoPagoAposCancelado={avisoPagoAposCancelado}
-              pedidosEsperandoRetorno={pedidosEsperandoRetorno}
-              pedidosParaDevolverAgora={pedidosParaDevolverAgora}
-              incompleto={pedidosCanceladosIncompleto}
-              foraDaJanela={canceladosForaDaJanela}
-              onIncluirAntigos={() => {
-                void buscarTambemCanceladosAntigos();
-              }}
-              confirmandoRetornoId={confirmandoRetornoId}
-              onConfirmarRetorno={handleConfirmarRetorno}
-              estornandoId={estornandoId}
-              onRegistrarEstorno={registrarEstornoFeito}
-              onVerPedidos={irParaPedidosCancelados}
-            />
+            // Devoluções (plano 2026-09-26): a porta da tela de devolução de
+            // produto mora ao lado, com quantas estão em andamento.
+            <>
+              <BotaoDevolucoes onAbrir={abrirDevolucoes} ativo={active} />
+              <AlertasCancelados
+                pagoCanceladoCount={paidOnCancelledCount}
+                avisoPagoAposCancelado={avisoPagoAposCancelado}
+                pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+                pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+                incompleto={pedidosCanceladosIncompleto}
+                foraDaJanela={canceladosForaDaJanela}
+                onIncluirAntigos={() => {
+                  void buscarTambemCanceladosAntigos();
+                }}
+                confirmandoRetornoId={confirmandoRetornoId}
+                onConfirmarRetorno={handleConfirmarRetorno}
+                estornandoId={estornandoId}
+                onRegistrarEstorno={registrarEstornoFeito}
+                onVerPedidos={irParaPedidosCancelados}
+              />
+            </>
           }
         >
           <button
