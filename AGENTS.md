@@ -58,6 +58,10 @@ cache/logs de cotação, analytics_events, push_subscriptions(+log), otp_verific
 Auditoria: `vor_receipts` (recibos de operação com hash SHA-256 encadeado:
 `proof_hash`/`previous_hash` — consumida por `src/hooks/useVOR.ts`);
 `marketplace_ai_state` é órfã (estado genérico por componente, sem uso vivo no front).
+Painel (26/09/2026): `fin_contas`, `fin_categorias`, `fin_lancamentos`, `fin_caixa_sessoes`
+(Financeiro — vendas, estornos e reembolsos são LIDOS das fontes, nunca copiados),
+`assinatura_da_loja` (só leitura no app; quem grava é o projeto de cobrança), `devolucoes` (+
+itens, eventos, `politica_devolucao`) e `config_pagamento_cartao`.
 
 **Dinheiro (BRL, numeric 10,2).** `payment_status` CHECK: `aguardando | pago | recusado |
 expirado | estornado | pago_apos_expirar | recebido_na_entrega`. O sétimo valor (venda
@@ -65,11 +69,16 @@ paga na mão, ex.: PDV) só é gravado pela RPC `registrar_pagamento_recebido`
 (SECURITY DEFINER, só admin) — nunca por UPDATE direto. Reserva de estoque de
 **30 minutos** (pg_cron expira e devolve estoque).
 
-**Fluxo do dinheiro (PIX é o único método ligado; cartão é código morto "Fase 3.5"):**
+**Fluxo do dinheiro (PIX e, desde 26/09/2026, cartão de crédito/débito pelo app — o cartão nasce
+desligado em `config_pagamento_cartao` e o lojista liga no painel depois de testar no preview):**
 1. Checkout **exige conta** para pagar online (política P6).
 2. `criar-pagamento`: decide criar / reconsultar / recusar; **Orders API** do Mercado Pago
    (`external_reference` = id do pedido, idempotência, PIX PT30M alinhado à reserva,
    realinhamento de `expires_at` com a data do MP); grava o id da cobrança e devolve o QR.
+   Cartão: token do Card Payment Brick (o dado do cartão nunca passa pelo app), 3DS pela
+   Orders API, chave de idempotência por tentativa (`tentativas_de_pagamento`). **Cartão
+   recusado não cancela o pedido**: `liberar_cobranca_do_pedido` solta a vaga e o cliente tenta
+   outro cartão ou PIX na mesma reserva — `confirmar_pagamento('recusado')` só vale para PIX.
 3. `webhook-mercadopago` (sem JWT; autentica por **HMAC x-signature**): nunca confia no
    corpo — reconsulta o MP e **confere o valor (±R$ 0,05)**; chama a RPC
    **`confirmar_pagamento`**, a ÚNICA escrita de pagamento (FOR UPDATE, idempotente).
@@ -92,8 +101,10 @@ wa.me (deep links) · linkrastreio. Sem axios — tudo `fetch`.
   o pedido. Evolução futura: botão no pedido para reanálise pelo usuário.
 - **P2 — Valor divergente** (além da tolerância de ±R$ 0,05): devolver e solicitar novo
   pagamento.
-- **P3 — Reembolso:** política de CADA lojista (o assinante configura a sua). Futuro:
-  painel de configuração no admin — hoje não existe.
+- **P3 — Reembolso:** política de CADA lojista (o assinante configura a sua) — desde 26/09/2026
+  em `politica_devolucao` (Ajustes → Trocas e devoluções), com os mínimos da lei por CHECK
+  (arrependimento ≥ 7 dias, vício ≥ 30). Devolução de produto entregue: `devolucoes` (local ou
+  nacional, etiqueta reversa do Melhor Envio), reembolso pelo ledger `order_refunds`.
 - **P4 — Cupons:** regras definidas na criação/edição pelo lojista; ao tocar no código de
   cupom, **eliminar os contadores duplicados** (`usage_count`/`used_count`).
 - **P5 — Frete:** hoje flat_fee + cotação (Melhor Envio/Frenet). Direção: presets de
