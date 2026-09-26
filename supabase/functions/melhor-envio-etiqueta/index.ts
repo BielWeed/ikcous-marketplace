@@ -1628,70 +1628,118 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 )
             }
 
-            const { data: pedidoAtual, error: pedidoAtualError } = await supabaseClient
-                .from('marketplace_orders')
-                .select('id, status, shipping_label_id, customer_data')
-                .eq('id', orderId)
-                .maybeSingle()
+            // Lê o pedido e confere os dois portões (etiqueta já emitida /
+            // status morto) — extraído em função porque a TRAVA OTIMISTA
+            // abaixo (addendum da 3ª rodada da revisão de risco) pode
+            // precisar reler e reconferir tudo de novo num RETRY.
+            const lerPedidoParaCpf = async (): Promise<
+                { ok: true; customerData: Record<string, any> } | { ok: false; resposta: Response }
+            > => {
+                const { data: pedidoLido, error: erroLeitura } = await supabaseClient
+                    .from('marketplace_orders')
+                    .select('id, status, shipping_label_id, customer_data')
+                    .eq('id', orderId)
+                    .maybeSingle()
 
-            if (pedidoAtualError || !pedidoAtual) {
-                return new Response(
-                    JSON.stringify({ error: 'Pedido não encontrado.' }),
-                    { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                )
+                if (erroLeitura || !pedidoLido) {
+                    return {
+                        ok: false,
+                        resposta: new Response(
+                            JSON.stringify({ error: 'Pedido não encontrado.' }),
+                            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                        ),
+                    }
+                }
+                // Etiqueta já emitida: o CPF que foi para o Melhor Envio na
+                // compra não muda mais retroativamente — não faz sentido
+                // reescrever o banco depois do fato.
+                if (pedidoLido.shipping_label_id) {
+                    return {
+                        ok: false,
+                        resposta: new Response(
+                            JSON.stringify({ error: 'Este pedido já tem etiqueta emitida — o CPF não pode mais ser alterado.' }),
+                            { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                        ),
+                    }
+                }
+                const statusLido = String(pedidoLido.status || '').toLowerCase()
+                if (['cancelled', 'delivered', 'returned'].includes(statusLido)) {
+                    return {
+                        ok: false,
+                        resposta: new Response(
+                            JSON.stringify({ error: `Pedido com status "${statusLido}" não recebe alteração de CPF.` }),
+                            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                        ),
+                    }
+                }
+                return { ok: true, customerData: pedidoLido.customer_data || {} }
             }
 
-            // Etiqueta já emitida: o CPF que foi para o Melhor Envio na compra
-            // não muda mais retroativamente — não faz sentido reescrever o
-            // banco depois do fato.
-            if (pedidoAtual.shipping_label_id) {
-                return new Response(
-                    JSON.stringify({ error: 'Este pedido já tem etiqueta emitida — o CPF não pode mais ser alterado.' }),
-                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                )
+            const primeiraLeitura = await lerPedidoParaCpf()
+            if (!primeiraLeitura.ok) return primeiraLeitura.resposta
+
+            // TRAVA OTIMISTA (achado do addendum, 3ª rodada — "lost update"
+            // provado por scratchpad/edge_lost_update.cjs): o filtro
+            // condicional de antes só olhava `customer_data->>cpf` (o CPF em
+            // si), mas a escrita grava `{...customerDataLido, cpf}` — o
+            // OBJETO INTEIRO lido no início. Se QUALQUER OUTRA chave de
+            // `customer_data` mudar entre a leitura e a escrita SEM tocar o
+            // `cpf` (prova real: uma migration de limpeza tirando
+            // `address.cpf` rodando no meio tempo — casos c04/c10 do
+            // script), o filtro velho não via nada de errado e a escrita
+            // REESCREVIA o objeto com o dado ANTIGO por cima, desfazendo a
+            // limpeza — um "lost update" clássico. Filtrar pelo OBJETO
+            // INTEIRO fecha o buraco: qualquer mudança em qualquer chave
+            // derruba a condição, não só uma troca de CPF concorrente.
+            //
+            // `JSON.stringify` aqui não é estilo — é OBRIGATÓRIO: o
+            // `eq()` do postgrest-js (`PostgrestFilterBuilder`) monta o
+            // filtro com interpolação de template literal
+            // (`` `eq.${value}` ``) — um objeto JS vira o texto literal
+            // "[object Object]", nunca o JSON dele. Sem serializar à mão, a
+            // comparação NUNCA bateria e todo UPDATE devolveria 0 linhas.
+            // Do lado do Postgres, `jsonb = jsonb` é comparação ESTRUTURAL
+            // (a ordem das chaves no texto não importa), então comparar
+            // contra o texto serializado aqui é seguro mesmo que o Postgres
+            // guarde numa ordem diferente internamente.
+            const gravarCpfComTravaOtimista = (customerDataBase: Record<string, any>) =>
+                supabaseClient
+                    .from('marketplace_orders')
+                    .update({ customer_data: { ...customerDataBase, cpf: cpfLimpo } })
+                    .eq('id', orderId)
+                    .is('shipping_label_id', null)
+                    .eq('customer_data', JSON.stringify(customerDataBase))
+                    .select('id')
+
+            let { data: linhasAtualizadas, error: updateError } = await gravarCpfComTravaOtimista(primeiraLeitura.customerData)
+
+            if (!updateError && (!Array.isArray(linhasAtualizadas) || linhasAtualizadas.length !== 1)) {
+                // 0 linhas SEM erro: `customer_data` mudou por fora entre a
+                // leitura e a escrita. RETRY ÚNICO — relê tudo de novo
+                // (inclusive os portões de etiqueta/status: a corrida pode
+                // ter sido isso) e reaplica SÓ a chave `cpf` em cima do
+                // objeto FRESCO. NUNCA reusa o objeto velho: é exatamente
+                // isso que ressuscitaria o dado que a corrida acabou de tirar.
+                const segundaLeitura = await lerPedidoParaCpf()
+                if (!segundaLeitura.ok) return segundaLeitura.resposta
+                const retry = await gravarCpfComTravaOtimista(segundaLeitura.customerData)
+                linhasAtualizadas = retry.data
+                updateError = retry.error
+                if (!updateError && (!Array.isArray(linhasAtualizadas) || linhasAtualizadas.length !== 1)) {
+                    // Corrida PERSISTENTE mesmo depois do retry — desiste
+                    // (nunca um 3º round) e manda o lojista recarregar.
+                    return new Response(
+                        JSON.stringify({ error: 'O pedido mudou enquanto você salvava — recarregue e tente de novo.' }),
+                        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                    )
+                }
             }
-
-            const statusAtual = String(pedidoAtual.status || '').toLowerCase()
-            if (['cancelled', 'delivered', 'returned'].includes(statusAtual)) {
-                return new Response(
-                    JSON.stringify({ error: `Pedido com status "${statusAtual}" não recebe alteração de CPF.` }),
-                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                )
-            }
-
-            const customerDataAtual = pedidoAtual.customer_data || {}
-            const cpfAnterior = typeof customerDataAtual.cpf === 'string' ? customerDataAtual.cpf : null
-
-            // UPDATE CONDICIONAL contra corrida: só grava se o pedido AINDA
-            // não tem etiqueta E o CPF anterior é exatamente o que este
-            // pedido de escrita leu — outra aba/clique que gravou no meio
-            // tempo faz esta linha não bater e devolve 0 linhas (o front
-            // manda recarregar). O front NUNCA reescreve `customer_data`
-            // inteiro por conta própria (PII + corrida); só esta action, no
-            // servidor, com validação e filtro condicional.
-            let atualizacao = supabaseClient
-                .from('marketplace_orders')
-                .update({ customer_data: { ...customerDataAtual, cpf: cpfLimpo } })
-                .eq('id', orderId)
-                .is('shipping_label_id', null)
-            atualizacao = cpfAnterior === null
-                ? atualizacao.is('customer_data->>cpf', null)
-                : atualizacao.eq('customer_data->>cpf', cpfAnterior)
-
-            const { data: linhasAtualizadas, error: updateError } = await atualizacao.select('id')
 
             if (updateError) {
                 console.error('[melhor-envio-etiqueta] Falha ao gravar CPF do destinatário:', updateError)
                 return new Response(
                     JSON.stringify({ error: 'Não foi possível salvar o CPF agora. Tente novamente em instantes.' }),
                     { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                )
-            }
-
-            if (!Array.isArray(linhasAtualizadas) || linhasAtualizadas.length !== 1) {
-                return new Response(
-                    JSON.stringify({ error: 'O pedido mudou enquanto você salvava — recarregue e tente de novo.' }),
-                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
                 )
             }
 
@@ -1997,7 +2045,11 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                     const comHifen = (c: string) => `${c.slice(0, 5)}-${c.slice(5)}`
                     return new Response(
                         JSON.stringify({
-                            error: `O endereço da conta da cliente mudou de CEP depois da compra (era ${comHifen(cepPago)}, agora ${comHifen(endereco.cep)}). Confirme com a cliente antes de gerar a etiqueta.`,
+                            // Item 2 (3ª rodada): sem botão de confirmação nesta
+                            // rodada (tarefa separada) — a mensagem TEM que dar
+                            // as duas saídas de verdade que existem hoje, senão
+                            // o lojista fica preso no 409 sem próximo passo.
+                            error: `O endereço da conta da cliente mudou de CEP depois da compra (era ${comHifen(cepPago)}, agora ${comHifen(endereco.cep)}). Confirme com a cliente antes de gerar a etiqueta. Se o endereço novo estiver certo, peça para a cliente corrigir o endereço na conta dela, ou gere a etiqueta no site do Melhor Envio e informe o rastreio na ficha do pedido.`,
                             endereco_mudou: true,
                         }),
                         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -2006,11 +2058,23 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             }
         }
         if (!endereco) {
-            // Item C: endereço APAGADO da conta depois da compra (FK
-            // ON DELETE SET NULL zera `address_id`) ganha mensagem própria —
-            // "endereço incompleto" manda o lojista procurar rua/número que
-            // nunca vão aparecer, quando o problema é que a linha sumiu.
-            if (pedido.user_id && !pedido.address_id) {
+            // Item C (2ª rodada): endereço APAGADO da conta depois da compra
+            // (FK ON DELETE SET NULL zera a COLUNA `address_id`) ganha
+            // mensagem própria — "endereço incompleto" manda o lojista
+            // procurar rua/número que nunca vão aparecer, quando o problema
+            // é que a linha sumiu.
+            //
+            // Item 4 (3ª rodada): a coluna null SOZINHA não prova nada — é
+            // também o estado de um pedido que nunca teve endereço de conta
+            // (dado incompleto de verdade, não apagado). A prova de que um
+            // endereço EXISTIU é `customer_data.address_id`: o RETRATO que a
+            // RPC grava no INSTANTE da compra (`create_marketplace_order_v23`/
+            // `_v24`, migrations 20261172 e 20261174 —
+            // `jsonb_build_object('address_id', p_address_id, ...)`) — vive
+            // dentro do jsonb, então o `ON DELETE SET NULL` da FK (que só
+            // atinge a COLUNA) nunca o apaga. Sem essa chave, cai na mensagem
+            // genérica de baixo — não inventa uma causa que não dá pra provar.
+            if (pedido.user_id && !pedido.address_id && (customerData as Record<string, any>)?.address_id) {
                 return new Response(
                     JSON.stringify({
                         error: 'O endereço usado na compra foi apagado da conta da cliente. Peça um endereço para ela e cadastre um novo antes de gerar a etiqueta.',
@@ -2091,7 +2155,13 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         })
         if (!meResponse.ok) {
             const detalhe = await meResponse.text()
-            console.error('[melhor-envio-etiqueta] /me HTTP', meResponse.status, sanitizarCpfDoTexto(detalhe))
+            // 3ª rodada da revisão de risco, item 1: `sanitizarCpfDoTexto`
+            // só tira o CPF — o resto do corpo (que pode ecoar dado da
+            // requisição) ia inteiro pro console, sem limite de tamanho.
+            // `motivoDoProvedor` (já usado pela reversa) só extrai
+            // `errors`/`error`/`message`, sanitiza e-mail/telefone/CPF e
+            // corta em 300 — mesmo tratamento nas 5 chamadas HTTP ao ME.
+            console.error('[melhor-envio-etiqueta] /me HTTP', meResponse.status, motivoDoProvedor(detalhe))
             return new Response(
                 JSON.stringify({ error: mensagemDoErroHttp(meResponse.status, 'leitura do remetente') }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -2144,7 +2214,10 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         })
         if (!cartResponse.ok) {
             const detalhe = await cartResponse.text()
-            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, sanitizarCpfDoTexto(detalhe))
+            // Item 1 (3ª rodada): ver o comentário no log do `/me HTTP` acima
+            // — um 4xx do cart pode ecoar o `to` inteiro (nome, rua, número,
+            // CEP do destinatário) num campo qualquer do corpo de validação.
+            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, motivoDoProvedor(detalhe))
             return new Response(
                 JSON.stringify({ error: mensagemDoErroHttp(cartResponse.status, 'criação da etiqueta') }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -2328,7 +2401,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             })
             if (!checkoutResponse.ok) {
                 const detalhe = await checkoutResponse.text()
-                console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, sanitizarCpfDoTexto(detalhe))
+                // Item 1 (3ª rodada): mesma troca do `/me HTTP` acima.
+                console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, motivoDoProvedor(detalhe))
                 if (checkoutResponse.status >= 500) {
                     // 5xx de gateway: a compra PODE ter fechado com a resposta
                     // perdida — indeterminado, NÃO "não pagou" (A′).
@@ -2357,7 +2431,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             })
             if (!generateResponse.ok) {
                 const detalhe = await generateResponse.text()
-                console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, sanitizarCpfDoTexto(detalhe))
+                // Item 1 (3ª rodada): mesma troca do `/me HTTP` acima.
+                console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, motivoDoProvedor(detalhe))
                 return await finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
             }
 
@@ -2374,7 +2449,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                     const printData = await printResponse.json()
                     labelUrl = printData?.url || null
                 } else {
-                    console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, sanitizarCpfDoTexto(await printResponse.text()))
+                    // Item 1 (3ª rodada): mesma troca do `/me HTTP` acima.
+                    console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, motivoDoProvedor(await printResponse.text()))
                 }
             } catch (printErr) {
                 console.error('[melhor-envio-etiqueta] print falhou (suave):', printErr)
