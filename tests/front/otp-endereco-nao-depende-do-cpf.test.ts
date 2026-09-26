@@ -1,4 +1,5 @@
 import { mapOrderFromDB } from "@/lib/mappers";
+import type { Address } from "@/types";
 import type { Database } from "@/types/database.types";
 import { describe, expect, it } from "vitest";
 
@@ -20,6 +21,14 @@ import { describe, expect, it } from "vitest";
  * fecha_para_anon_test.ts); este aqui prova que a remoção é INÓCUA para a
  * tela, o motivo pelo qual esta migration pôde tirar o campo sem quebrar
  * nada.
+ *
+ * RODADA 2 (revisão de risco, achado 5 — melhoria): quando
+ * `customer_data.address` era SÓ `{"cpf":"..."}`, tirar a chave deixava
+ * `{}` — objeto TRUTHY em JS, que vencia `row.address` (o endereço de
+ * verdade, do JOIN) na cadeia `||` do mapper. A RPC agora devolve JSON
+ * `null` nesse caso; o teste "address vira null cai para o JOIN" abaixo
+ * prova que a mudança tem efeito real — sem ela, `row.address` nunca
+ * apareceria.
  */
 
 type OrderRow = Database["public"]["Tables"]["marketplace_orders"]["Row"];
@@ -122,5 +131,39 @@ describe("mapOrderFromDB — a tela de rastreio por OTP não depende do CPF", ()
     expect(pedido.customer.cep).toBe("01001000");
     expect("cpf" in pedido.customer).toBe(false);
     expect(JSON.stringify(pedido)).not.toContain("52998224725");
+  });
+
+  it("RODADA 2 (achado 5): customer_data.address = null (o que a RPC manda quando só sobrava {cpf}) cai para o endereço do JOIN, nunca fica em branco", () => {
+    const enderecoDoJoin: Address = {
+      id: "end-otp-1",
+      user_id: "u-otp-1",
+      name: "Casa",
+      recipient_name: "Joana",
+      cep: "38500-000",
+      street: "Rua do Cadastro",
+      number: "42",
+      complement: "",
+      neighborhood: "Centro",
+      city: "Monte Carmelo",
+      state: "MG",
+      reference: "",
+      is_default: true,
+    };
+
+    const pedido = mapOrderFromDB({
+      ...PEDIDO_BASE,
+      address: enderecoDoJoin,
+      customer_data: {
+        whatsapp: "34999998888",
+        // Exatamente o que a CASE de get_orders_by_otp_v1 devolve quando o
+        // address gravado era só {"cpf":"..."}: a chave existe, valor null.
+        address: null,
+      },
+    } as OrderRow);
+
+    expect(pedido.customer.address).toBe("Rua do Cadastro");
+    expect(pedido.customer.number).toBe("42");
+    expect(pedido.customer.city).toBe("Monte Carmelo");
+    expect(pedido.customer.cep).toBe("38500-000");
   });
 });

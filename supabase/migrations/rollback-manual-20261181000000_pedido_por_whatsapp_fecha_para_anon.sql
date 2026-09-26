@@ -7,11 +7,25 @@
 --      (`customer_data` cru de novo, com CPF quando o pedido tiver) — cópia
 --      byte a byte, mesma assinatura, sem `DROP`.
 --   2. `get_orders_by_whatsapp_v3` recebe de volta `GRANT EXECUTE ... TO
---      PUBLIC` — cobre `anon` e `authenticated` no mesmo comando, porque
---      antes desta migration nenhuma delas tinha um REVOKE próprio: o
---      alcance vinha inteiro do `PUBLIC` (mesma técnica de
---      `rollback-manual-20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql`,
---      que restaura esta mesma função da mesma forma).
+--      anon, authenticated`.
+--
+-- CORREÇÃO DA RODADA 2 (revisão de risco, achado 1 — medium): a VERSÃO
+-- ANTERIOR deste arquivo devolvia o grant `TO PUBLIC`, achando que era
+-- assim que a função nascia acessível — falso. O catálogo de PRODUÇÃO
+-- ANTES da migration 20261181000000 já não tinha entrada nenhuma para
+-- `PUBLIC` nesta função (a `20261090500000` já tinha revogado `PUBLIC`
+-- especificamente dela — seu `REVOKE ... FROM PUBLIC;`, sem `anon`/
+-- `authenticated` na lista); o ACL de fato era
+-- `{postgres=X/postgres,anon=X,authenticated=X,service_role=X}` — `anon` e
+-- `authenticated` com GRANT PRÓPRIO, não herdado de `PUBLIC`. Restaurar via
+-- `TO PUBLIC` reabria a função por um caminho que o catálogo pré-81 NUNCA
+-- teve (qualquer papel futuro passaria a alcançá-la por `PUBLIC`, não só
+-- `anon`/`authenticated`) — divergência que só aparece comparando o ACL
+-- ANTES da 81 com o ACL DEPOIS deste rollback, não só testando se
+-- `anon`/`authenticated` "conseguem chamar de novo" (conseguiam, dos dois
+-- jeitos — o problema é a FORMA do acesso, não o resultado funcional
+-- imediato). `GRANT ... TO anon, authenticated` (sem `PUBLIC`) é o que
+-- devolve o catálogo ao estado byte a byte anterior.
 --
 -- ⚠️ O rollback REABRE o achado LGPD (convidado sem OTP volta a ler
 -- `customer_data` — incluindo CPF — de qualquer pedido só com telefone +
@@ -28,7 +42,7 @@
 -- migration nova — avalie com quem revisar). SEM `BEGIN`/`COMMIT` de nível
 -- superior neste arquivo (regra da casa).
 
-GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3(text,text,text) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3(text,text,text) TO anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.get_orders_by_otp_v1("p_email" "text", "p_otp" "text") RETURNS "jsonb"
     LANGUAGE plpgsql SECURITY DEFINER

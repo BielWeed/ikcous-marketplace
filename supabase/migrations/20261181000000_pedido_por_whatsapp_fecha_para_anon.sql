@@ -2,23 +2,38 @@
 -- 26/09/2026).
 --
 -- O DEFEITO QUE ESTA MIGRATION FECHA: `public.get_orders_by_whatsapp_v3`
--- continua executável por `anon` (e por `PUBLIC`, o que dá o mesmo alcance —
--- `anon` é só mais um papel sob o `PUBLIC` pseudo-papel) SEM exigir OTP e SEM
--- limite de tentativa nenhum. Basta telefone + e-mail da vítima e um
--- sufixo de 4+ caracteres do id do pedido ou do código de rastreio — dado que
--- a própria tela de busca pede, então não é segredo nenhum. A função devolve
--- `customer_data` CRU (`20261035000000`:102), e desde a `20261172000000`
--- (aplicada em produção hoje) `customer_data.cpf` guarda o CPF do
--- destinatário; entre 23 e 26/09 o CPF também podia estar dentro de
--- `customer_data.address` (antes de o INSERT aprender a tirar a chave do
--- endereço — ver o item MAPPER daquela migration). Nenhum front vivo chama
--- mais esta RPC (ver "CALLERS" abaixo): a porta ficou aberta sem morador.
+-- continua executável por `anon` E por `authenticated` — os dois com GRANT
+-- PRÓPRIO no ACL (`anon=X`/`authenticated=X`), não herdado de `PUBLIC`: a
+-- `20261090500000` já tinha revogado `PUBLIC` desta função especificamente
+-- (seu `REVOKE ... FROM PUBLIC;`, sem `anon`/`authenticated` na lista — ver
+-- abaixo), então hoje o ACL de produção é `{postgres=X/postgres,anon=X,
+-- authenticated=X,service_role=X}`, sem entrada nenhuma para `PUBLIC`
+-- (`=X`). RETRATO CORRIGIDO NA RODADA 2 desta migration (revisão de risco):
+-- a versão anterior deste cabeçalho dizia que `anon` alcançava a função
+-- POR SER membro implícito de `PUBLIC` — falso; `anon`/`authenticated` têm
+-- grant próprio, sobrevivente ao REVOKE de `PUBLIC` de 2026109050000. SEM
+-- exigir OTP e SEM limite de tentativa nenhum. Basta telefone + e-mail da
+-- vítima e um sufixo de 4+ caracteres do id do pedido ou do código de
+-- rastreio — dado que a própria tela de busca pede, então não é segredo
+-- nenhum. A função devolve `customer_data` CRU (`20261035000000`:102), e
+-- desde a `20261172000000` (aplicada em produção hoje) `customer_data.cpf`
+-- guarda o CPF do destinatário; entre 23 e 26/09 o CPF também podia estar
+-- dentro de `customer_data.address` (antes de o INSERT aprender a tirar a
+-- chave do endereço — ver o item MAPPER daquela migration). Nenhum front
+-- vivo chama mais esta RPC (ver "CALLERS" abaixo): a porta ficou aberta sem
+-- morador.
 --
--- A `20261090500000` já reduziu o alcance de 58 funções, mas listou
--- `get_orders_by_whatsapp_v3` e `get_orders_by_otp_v1` como EXCEÇÃO
--- DELIBERADA (seu cabeçalho, linhas 110-114/186-190) — na época, as duas
--- pareciam caminho legítimo de convidado. Hoje sabe-se que só a segunda é: a
--- primeira não tem tela nem RPC que a alcance.
+-- A `20261090500000` já reduziu o alcance de 58 funções, mas para
+-- `get_orders_by_whatsapp_v3` e `get_orders_by_otp_v1` o `REVOKE` daquela
+-- migration listou SÓ `PUBLIC` (nunca `anon`/`authenticated` — seu
+-- cabeçalho, linhas 110-114/186-190, chama isto de EXCEÇÃO DELIBERADA: na
+-- época, as duas pareciam caminho legítimo de convidado). O efeito prático:
+-- `PUBLIC` perdeu o acesso ali, mas `anon` e `authenticated` mantiveram o
+-- GRANT PRÓPRIO que já tinham desde a criação da função (default privileges
+-- da plataforma) — o `REVOKE ... FROM PUBLIC` de uma migration NUNCA tira o
+-- que foi concedido a um papel nomeado por outro `GRANT`. Hoje sabe-se que
+-- só `get_orders_by_otp_v1` é caminho legítimo de convidado: a primeira não
+-- tem tela nem RPC que a alcance.
 --
 -- CALLERS (grep, 26/09/2026, em `src/`, `supabase/functions/`, `scripts/` e
 -- `public/`, incluindo string dinâmica — nenhuma ocorrência de
@@ -51,20 +66,42 @@
 --
 -- O QUE ESTA MIGRATION FAZ, NA ORDEM:
 --   1. `REVOKE EXECUTE` de `get_orders_by_whatsapp_v3(text,text,text)` de
---      `PUBLIC`, `anon` e `authenticated` — dos três, porque nenhum consumidor
---      legítimo restou nem para convidado nem para conta logada (ver
---      CALLERS acima). `service_role`/dono/postgres NÃO são tocados (mesma
---      regra da `20261090500000`: quem chama pelo painel/edge com a chave de
---      serviço continua podendo, se um dia precisar de novo).
+--      `PUBLIC`, `anon` e `authenticated` — dos três: `anon`/`authenticated`
+--      porque são eles quem de fato alcança a função hoje (grant próprio,
+--      ver acima); `PUBLIC` por defesa em profundidade, mesmo já revogado
+--      pela `20261090500000` (um `REVOKE` de privilégio ausente é NO-OP no
+--      Postgres — não erra, não muda nada). `service_role`/dono/postgres NÃO
+--      são tocados (mesma regra da `20261090500000`: quem chama pelo
+--      painel/edge com a chave de serviço continua podendo, se um dia
+--      precisar de novo).
 --   2. `CREATE OR REPLACE` de `get_orders_by_otp_v1(text,text)` — corpo
 --      copiado BYTE A BYTE da última definição viva
 --      (`20260950000000_rastreio_por_codigo_mostra_o_pagamento.sql:53-138`,
 --      confirmado como a única `CREATE OR REPLACE` desta função depois do
---      baseline), com UMA mudança: o valor da chave `'customer_data'` deixa
---      de ser `o.customer_data` cru e passa a ser `o.customer_data` SEM a
---      chave `cpf` — nem no nível raiz, nem dentro de `customer_data.address`
---      quando `address` é um objeto (a janela 23-26/09 citada acima). Esta
---      RPC continua sendo chamada por convidado autenticado por OTP
+--      baseline), com a chave `'customer_data'` trocada por uma `CASE` que:
+--        a. devolve `customer_data` INTOCADO quando ele não é um objeto JSON
+--           (`jsonb_typeof <> 'object'`) — RODADA 2, achado 4: `jsonb - text`
+--           explode com "cannot delete from scalar" contra um valor escalar,
+--           e essa explosão derrubaria a verificação de OTP inteira para
+--           aquele pedido. Um escalar não tem chave `cpf` para vazar, então
+--           devolver como está é seguro.
+--        b. tira `cpf` do nível raiz e, quando `customer_data.address` é um
+--           objeto, tira `cpf` de dentro dele também (janela 23-26/09
+--           citada acima) — RODADA 2, achado 5: se sobrar só `{}` depois de
+--           tirar `cpf` (o endereço gravado era só `{"cpf":"..."}`), o valor
+--           vira JSON `null`, não `{}` — mesma régua da `20261172`
+--           (`v_address_data_sem_cpf`): `{}` é TRUTHY em JS e venceria
+--           `row.address` (o endereço de verdade, do JOIN) na cadeia `||` do
+--           mapper (`src/lib/mappers.ts`, `addressSource`), mostrando a
+--           ficha do pedido com endereço em branco; `null` também é
+--           `typeof === "object"` em JS, mas é FALSY, então a cadeia cai
+--           para a próxima fonte.
+--        c. NÃO trata `customer_data.address` como ARRAY (achado 6,
+--           informativo) — CPF aninhado num array sobreviveria. O front
+--           nunca manda `address` como array (só objeto ou string, ver
+--           `src/lib/mappers.ts`), então este caminho está morto hoje;
+--           documentado para quem for mexer aqui de novo.
+--      Esta RPC continua sendo chamada por convidado autenticado por OTP
 --      (`src/hooks/useOrders.ts:3415-3485`, `fetchOrdersByOtp` — legítimo,
 --      protegido por código de 6 dígitos + limite de 5 tentativas,
 --      `20260950000000`), então o GRANT dela para `anon`/`authenticated`
@@ -79,8 +116,23 @@
 --      já prova o lado do mapper; este pacote acrescenta a prova do lado do
 --      banco (`tests/migration_pedido_por_whatsapp_fecha_para_anon_test.ts`)
 --      e um teste de front que o pedido mapeado não muda quando a RPC já
---      chega sem CPF nenhum
+--      chega sem CPF nenhum, e que o endereço `{cpf}`-só cai para o JOIN
 --      (`tests/front/otp-endereco-nao-depende-do-cpf.test.ts`).
+--   3. Bloco `DO $$ ... END $$` de BLINDAGEM (RODADA 2, achado 3): confirma,
+--      no INSTANTE em que o arquivo roda, que o `REVOKE` do item 1 realmente
+--      fechou a porta — um `REVOKE` que só emite AVISO (grantor diferente do
+--      dono da função, ou quem aplica não é o dono) completaria sem erro e
+--      deixaria `anon`/`authenticated` alcançando a função do mesmo jeito.
+--      Mesmo desenho das migrations irmãs `20261090000000`/`20261090500000`:
+--      `RAISE EXCEPTION` nomeando só papel e função (nunca dado de pedido)
+--      se `anon`/`authenticated` ainda alcançarem `get_orders_by_whatsapp_v3`
+--      OU qualquer função `get_orders_by_whatsapp%` (varredura por padrão de
+--      nome, não só esta assinatura — pega uma sobrecarga futura) ainda
+--      tiver `PUBLIC` (medido por `aclexplode`, `grantee = 0` —
+--      `has_function_privilege` não tem pseudo-papel `PUBLIC`) ou
+--      `anon`/`authenticated` alcançando `EXECUTE`, OU `get_orders_by_otp_v1`
+--      tiver PERDIDO o `EXECUTE` de `anon` (o convidado por OTP não pode
+--      ficar sem rota nenhuma — só o CORPO dela muda aqui).
 --
 -- O QUE NÃO MUDA:
 --   * Assinatura de nenhuma das duas funções (mesmos parâmetros, mesmo
@@ -105,7 +157,17 @@
 -- IDEMPOTÊNCIA: `REVOKE EXECUTE ... FROM <papel>` de um privilégio que o
 -- papel já não tem é NO-OP no Postgres (aviso, não erro) — reaplicar este
 -- arquivo não muda nada na segunda vez. `CREATE OR REPLACE FUNCTION` com o
--- mesmo corpo também é idempotente por natureza.
+-- mesmo corpo também é idempotente por natureza. O bloco `DO $$ ... END $$`
+-- do item 3 SÓ VERIFICA estado (nunca cria/altera objeto): reaplicar o
+-- arquivo inteiro roda o mesmo bloco de novo, e ele passa nas duas vezes
+-- (o estado que ele exige já é o estado deixado pela primeira aplicação).
+-- RESSALVA PARA A FERRAMENTA DE DUPLA APLICAÇÃO (`scripts/ci/banco/
+-- prova-dupla-aplicacao.cjs`): ela classifica arquivo por FORMA da
+-- instrução, não por efeito — `DO` não entra na lista do que "promete"
+-- idempotência (mesmo sendo, na prática, idempotente aqui). Este arquivo
+-- passa a contar como "não promete" (relatório, não reprovação) por causa
+-- do bloco, e é esperado: a prova viva desta tarefa mostra que reaplicar
+-- não falha.
 --
 -- ORDEM DE APLICAÇÃO: esta migration não depende de nenhuma migration
 -- numerada `20261179*`/`20261180*` de outra frente (os números 79 e 80 estão
@@ -113,11 +175,14 @@
 -- já estar aplicado (schema vivo hoje). Aplica INDEPENDENTE DE 79/80, em
 -- qualquer ordem relativa a elas.
 --
--- FORA DO ESCOPO: `scripts/db-prove-grants-convergem.cjs` (ALVO desatualizado
--- para `get_orders_by_whatsapp_v3`, ver CALLERS acima); qualquer tela nova de
--- busca de pedido por WhatsApp (não existe, e não é este pacote que decide se
--- deve voltar a existir); mexer em `get_orders_by_otp_v1` além do
--- `customer_data` (rate limit, formato do envelope, etc. — nada disso mudou).
+-- FORA DO ESCOPO: qualquer tela nova de busca de pedido por WhatsApp (não
+-- existe, e não é este pacote que decide se deve voltar a existir); mexer em
+-- `get_orders_by_otp_v1` além do `customer_data` (rate limit, formato do
+-- envelope, etc. — nada disso mudou). `scripts/db-prove-grants-convergem.cjs`
+-- DEIXA de estar fora do escopo na RODADA 2: o ALVO de `get_orders_by_
+-- whatsapp_v3` foi corrigido para `{ PUBLIC: false, anon: false,
+-- authenticated: false }` no mesmo commit (arquivo fora de `supabase/
+-- migrations/`, não versionado aqui).
 --
 -- SEM BEGIN/COMMIT (regra da casa: com eles o ROLLBACK do script de prova
 -- vira no-op e a mudança fica gravada mesmo assim).
@@ -153,12 +218,22 @@
 --       payment_status) intactos.
 --   7. Admin inalterado: `get_admin_orders_paged`/`get_admin_customers_paged`
 --       (gate `is_admin()`) continuam de pé — esta migration não toca neles.
+--   8. Pedido de teste com `customer_data` ESCALAR (ex.: `'"x"'::jsonb`) e um
+--       OTP válido apontando para ele → `get_orders_by_otp_v1` responde
+--       `ok:true` SEM erro (antes desta rodada: `cannot delete from scalar`).
+--   9. Pedido de teste com `customer_data.address = '{"cpf":"..."}'::jsonb`
+--       (só a chave cpf) → a RPC devolve `customer_data.address` como JSON
+--       `null`, não `{}`.
 --
 -- ROLLBACK MANUAL: versionado em
 -- rollback-manual-20261181000000_pedido_por_whatsapp_fecha_para_anon.sql
--- (devolve o `GRANT ... TO PUBLIC` de `get_orders_by_whatsapp_v3` e o corpo
--- EXATO que a `20260950000000` deixava para `get_orders_by_otp_v1`, na ordem
--- inversa desta migration).
+-- (devolve `GRANT EXECUTE ... TO anon, authenticated` — NÃO `TO PUBLIC`, que
+-- reabriria por um caminho que o catálogo de produção pré-81 nunca teve — em
+-- `get_orders_by_whatsapp_v3`, e o corpo EXATO que a `20260950000000` deixava
+-- para `get_orders_by_otp_v1`, na ordem inversa desta migration). PROVA
+-- VIVA EXIGIDA (RODADA 2): o ACL depois do rollback tem de ser IDÊNTICO ao
+-- ACL medido ANTES desta migration rodar — não só "anon/authenticated
+-- alcançam de novo", mas as MESMAS entradas, sem `PUBLIC` a mais.
 
 REVOKE EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3(text,text,text) FROM PUBLIC, anon, authenticated;
 
@@ -234,10 +309,39 @@ BEGIN
                     -- servidor (melhor-envio-etiqueta) quem usa o CPF para
                     -- emitir a etiqueta, nunca o navegador de quem digitou o
                     -- código.
+                    --
+                    -- RODADA 2 (revisão de risco):
+                    --   * achado 4 — `customer_data` ESCALAR (não objeto) não
+                    --     tem chave para `jsonb - text` tirar; sem este
+                    --     primeiro WHEN, `o.customer_data - 'cpf'` explode com
+                    --     "cannot delete from scalar" e derruba a verificação
+                    --     de OTP inteira para aquele pedido. Devolve o valor
+                    --     cru: não há CPF para vazar dentro de um escalar.
+                    --   * achado 5 — quando `address` era só `{"cpf":"..."}`,
+                    --     tirar a chave deixava `{}` (TRUTHY em JS, vencia
+                    --     `row.address` — o endereço de verdade do JOIN — na
+                    --     cadeia `||` de `src/lib/mappers.ts`). Vira JSON
+                    --     `null` (mesma régua da `20261172`,
+                    --     `v_address_data_sem_cpf`): `null` também é
+                    --     `typeof === "object"` em JS, mas é FALSY, então a
+                    --     cadeia cai para a próxima fonte.
+                    --   * achado 6 (informativo, sem código) — `address` como
+                    --     ARRAY não entra no segundo WHEN (`jsonb_typeof` diz
+                    --     'array', não 'object') e mantém qualquer `cpf`
+                    --     aninhado. O front nunca manda array em `address`
+                    --     (só objeto ou string); se um dia mandar, este
+                    --     ponto precisa ser revisto.
                     CASE
+                        WHEN jsonb_typeof(o.customer_data) <> 'object' THEN o.customer_data
                         WHEN jsonb_typeof(o.customer_data -> 'address') = 'object' THEN
                             (o.customer_data - 'cpf')
-                                || jsonb_build_object('address', (o.customer_data -> 'address') - 'cpf')
+                                || jsonb_build_object(
+                                     'address',
+                                     CASE
+                                         WHEN ((o.customer_data -> 'address') - 'cpf') = '{}'::jsonb THEN NULL
+                                         ELSE (o.customer_data -> 'address') - 'cpf'
+                                     END
+                                   )
                         ELSE
                             o.customer_data - 'cpf'
                     END
@@ -268,3 +372,49 @@ BEGIN
     );
 END;
 $$;
+
+-- 3. BLINDAGEM (RODADA 2, achado 3 da revisão de risco) — ver o item 3 do
+-- cabeçalho. Mesmo desenho das migrations irmãs
+-- 20261090000000/20261090500000: varre o estado VIVO, no INSTANTE em que
+-- este arquivo roda, e explode com RAISE EXCEPTION (nomeando só papel e
+-- função — nunca dado de pedido) se o REVOKE acima não tiver pegado de
+-- verdade. Não imprime dado nenhum: só o nome da função/assinatura envolvida.
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    IF has_function_privilege('anon', 'public.get_orders_by_whatsapp_v3(text,text,text)', 'EXECUTE')
+       OR has_function_privilege('authenticated', 'public.get_orders_by_whatsapp_v3(text,text,text)', 'EXECUTE')
+    THEN
+        RAISE EXCEPTION 'blindagem 181: anon ou authenticated ainda alcancam EXECUTE de get_orders_by_whatsapp_v3';
+    END IF;
+
+    -- Varredura por PADRÃO DE NOME (não só a assinatura v3 conhecida): pega
+    -- uma sobrecarga futura (get_orders_by_whatsapp_v4, por exemplo) que
+    -- nasça com o mesmo problema e ninguém tenha lembrado de revogar aqui.
+    FOR r IN
+        SELECT p.oid, p.oid::regprocedure AS assinatura, p.proacl, p.proowner
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'public'
+           AND p.proname LIKE 'get_orders_by_whatsapp%'
+    LOOP
+        IF EXISTS (
+            SELECT 1
+              FROM aclexplode(coalesce(r.proacl, acldefault('f', r.proowner))) g
+             WHERE g.privilege_type = 'EXECUTE' AND g.grantee = 0
+        ) THEN
+            RAISE EXCEPTION 'blindagem 181: % ainda tem EXECUTE aberto para PUBLIC', r.assinatura;
+        END IF;
+        IF has_function_privilege('anon', r.oid, 'EXECUTE')
+           OR has_function_privilege('authenticated', r.oid, 'EXECUTE')
+        THEN
+            RAISE EXCEPTION 'blindagem 181: % ainda alcancavel por anon ou authenticated', r.assinatura;
+        END IF;
+    END LOOP;
+
+    -- O espelho: a rota LEGÍTIMA de convidado não pode ter saído no reboque.
+    IF NOT has_function_privilege('anon', 'public.get_orders_by_otp_v1(text,text)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'blindagem 181: get_orders_by_otp_v1 perdeu EXECUTE de anon -- o convidado por OTP nao pode ficar sem rota';
+    END IF;
+END $$;

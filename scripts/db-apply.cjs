@@ -2221,12 +2221,18 @@ const VERIFICACOES = {
   // não muda corpo de função nenhuma (só ACL, fora do que este mapa confere) —
   // só get_orders_by_otp_v1 entra aqui, pelo CORPO NOVO que tira `cpf` de
   // `customer_data` (raiz e dentro de `address`, quando `address` é objeto).
+  // RODADA 2 (revisão de risco): três marcadores novos — achado 4 (customer_data
+  // escalar sai intocado, sem explodir "cannot delete from scalar") e achado 5
+  // ({} depois do strip vira JSON null, não {}, para o mapper do front cair no
+  // endereço do JOIN em vez de um objeto vazio truthy).
   "20261181000000_pedido_por_whatsapp_fecha_para_anon.sql": [
     {
       funcao: "get_orders_by_otp_v1",
       esperado: [
+        "WHEN jsonb_typeof(o.customer_data) <> 'object' THEN o.customer_data",
         "WHEN jsonb_typeof(o.customer_data -> 'address') = 'object' THEN",
-        "                            (o.customer_data - 'cpf')\n                                || jsonb_build_object('address', (o.customer_data -> 'address') - 'cpf')",
+        "WHEN ((o.customer_data -> 'address') - 'cpf') = '{}'::jsonb THEN NULL",
+        "ELSE (o.customer_data -> 'address') - 'cpf'",
         "                        ELSE\n                            o.customer_data - 'cpf'\n                    END",
       ],
     },
