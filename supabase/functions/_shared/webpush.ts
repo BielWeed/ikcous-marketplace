@@ -212,10 +212,43 @@ export async function comTempoLimite<T>(
   promessa: Promise<T>,
   ms: number,
 ): Promise<T | undefined> {
-  return await Promise.race([
-    promessa,
-    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), ms)),
-  ]);
+  // Achado N2 (3ª revisão de risco, 26/09/2026), duas pontas:
+  //
+  // 1. O `setTimeout` nunca era limpo — quando a PROMESSA vencia a corrida
+  //    (o caso comum: o stub de teste resolve quase instantaneamente), o
+  //    temporizador continuava agendado até `ms` se esgotar sozinho. Sem
+  //    efeito visível no teste (a suíte já observa o resultado antes disso),
+  //    mas é um handle solto por chamada — em produção, sob volume, sobra
+  //    memória à toa. `clearTimeout` no `finally` fecha as duas pernas da
+  //    corrida.
+  // 2. Passado o teto, a promessa pode continuar em voo — e ela é o ÚNICO
+  //    aviso humano do cartão órfão/sentinela/estorno órfão. Se o Edge
+  //    Runtime encerrar o isolado assim que a RESPOSTA HTTP sai (antes de a
+  //    promessa terminar), o push morre no meio. `EdgeRuntime.waitUntil`
+  //    (Supabase Edge Runtime/Deno Deploy) avisa o runtime para manter o
+  //    isolado vivo até a promessa assentar, mesmo depois da resposta —
+  //    FEATURE-DETECTADO (`typeof`, sem `declare global`) porque nem todo
+  //    ambiente Deno o expõe: o runner de teste (`deno test`) não tem
+  //    `EdgeRuntime` nenhum, e assumir que existe quebraria a suíte inteira
+  //    fora do Edge Runtime de verdade. Sem ele disponível, o limite
+  //    documentado continua valendo: a promessa que perder a corrida pode
+  //    morrer com o isolado, e não há como evitar isso sem essa API.
+  const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+    .EdgeRuntime;
+  if (typeof edgeRuntime?.waitUntil === "function") {
+    edgeRuntime.waitUntil(promessa.catch(() => undefined));
+  }
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promessa,
+      new Promise<undefined>((resolve) => {
+        temporizador = setTimeout(() => resolve(undefined), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(temporizador);
+  }
 }
 
 /**

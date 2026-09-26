@@ -222,10 +222,29 @@ function clienteFalso(opts: {
   // `{ data: null, error }` — o handler tem que devolver 500 (evento fica
   // na fila do MP) em vez de confirmar sem conferir.
   erroFrom?: unknown;
+  // Achado S4/W7 (3ª revisão de risco, 26/09/2026): falha só a(s) primeira(s)
+  // N chamada(s) de `.select("gateway_payment_id")` — as leituras do B1
+  // (estorno) e do S1 (liberar pelo sentinela) pedem exatamente essa string
+  // de colunas. `erroFrom` (acima) falharia TODA leitura, inclusive a que lê
+  // o pedido no começo do handler — cedo demais para provar isto.
+  falharLeituraGatewayPaymentId?: number;
+  // Achado S5/W4 (3ª revisão de risco, 26/09/2026): simula uma corrida —
+  // dispara logo DEPOIS da leitura ÚNICA (`select("total, total_amount,
+  // gateway_payment_id")`, index.ts:1753-1757) que precede a decisão de
+  // ADOTAR a vaga, e ANTES de a adoção tentar o próprio `.update()`. Mesmo
+  // padrão do `aposLerLinhaDoPedido` do harness da 3ª revisão de risco.
+  aposLeituraDoPedido?: (pedido: Record<string, unknown>) => void;
   // Fase 3.5 (cartão): `rpc("liberar_cobranca_do_pedido")` — o boolean que
   // a RPC devolve (default true) e a falha de banco simulada.
   liberarResultado?: boolean;
   liberarErro?: unknown;
+  // Achado S1 (3ª revisão de risco, 26/09/2026, W5): fila de resultados
+  // CONSUMIDA NA ORDEM das chamadas de `liberar_cobranca_do_pedido` desta
+  // MESMA notificação — a 1ª tentativa (pelo id do MP) pode não bater com o
+  // sentinela que está na vaga, e o FALLBACK novo tenta de novo pela chave
+  // do sentinela. Esgotada a fila (ou ausente), cai em `liberarResultado`
+  // (default `true`) — nenhum teste anterior a este achado usa isto.
+  liberarResultados?: boolean[];
   registro?: {
     chamadasRpc: Array<{ args: Record<string, unknown> }>;
     chamadasLiberar?: Array<{ args: Record<string, unknown> }>;
@@ -273,6 +292,9 @@ function clienteFalso(opts: {
   // — só soma na PRIMEIRA conclusão de cada linha (P13: (status <> 'concluido'
   // OR concluido_em IS NULL)); replay da MESMA linha não soma de novo.
   let valorEstornadoAcumulado = 0;
+  // Achado S4/W7: contador mutável, decrementado a cada leitura de
+  // `gateway_payment_id` que esta chamada de handler faz.
+  let falhasLeituraGatewayRestantes = opts.falharLeituraGatewayPaymentId ?? 0;
 
   return {
     rpc: async (nome: string, args: Record<string, unknown>) => {
@@ -284,7 +306,8 @@ function clienteFalso(opts: {
       if (nome === "liberar_cobranca_do_pedido") {
         opts.registro?.chamadasLiberar?.push({ args });
         if (opts.liberarErro) return { data: null, error: opts.liberarErro };
-        return { data: opts.liberarResultado ?? true, error: null };
+        const daFila = opts.liberarResultados?.shift();
+        return { data: daFila ?? opts.liberarResultado ?? true, error: null };
       }
       if (nome === "concluir_estorno") {
         opts.registro?.chamadasConcluirEstorno?.push({ args });
@@ -462,10 +485,27 @@ function clienteFalso(opts: {
                         ),
                       );
               return {
-                maybeSingle: async () =>
-                  opts.erroFrom
+                maybeSingle: async () => {
+                  if (colunas.trim() === "gateway_payment_id" && falhasLeituraGatewayRestantes > 0) {
+                    falhasLeituraGatewayRestantes--;
+                    return { data: null, error: { message: "statement timeout" } };
+                  }
+                  // Achado S5/W4: a corrida acontece DEPOIS que esta leitura
+                  // devolveu o snapshot (`projetado`, já calculado acima) —
+                  // mutar `pedido` aqui não pode mudar o que ESTA chamada já
+                  // vai devolver, só o que a PRÓXIMA leitura/escrita vê.
+                  if (
+                    pedido &&
+                    colunasPedidas.has("total_amount") &&
+                    colunasPedidas.has("gateway_payment_id") &&
+                    opts.aposLeituraDoPedido
+                  ) {
+                    opts.aposLeituraDoPedido(pedido as Record<string, unknown>);
+                  }
+                  return opts.erroFrom
                     ? { data: null, error: opts.erroFrom }
-                    : { data: projetado, error: null },
+                    : { data: projetado, error: null };
+                },
               };
             },
           };
@@ -2672,6 +2712,73 @@ Deno.test("W3 - order 'refunded' SEM linha, refund processed 100 (r3) -> UMA lin
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
 });
 
+// Achado S4 (3ª revisão de risco, 26/09/2026, W7 do harness do 3º revisor):
+// a leitura NOVA do id gravado (Achado B1 — decide se o objeto CONSULTADO é
+// a cobrança GRAVADA ou uma ÓRFÃ) ignorava `error` — uma falha de banco
+// (statement timeout, pool esgotado) fazia essa leitura virar `null` do
+// MESMO jeito que "pedido sem essa cobrança", e um estorno LEGÍTIMO da
+// cobrança GRAVADA caía no ramo `estorno_orfao`: nunca registrava no ledger,
+// e o pedido só virava 'estornado' pela RPC `confirmar_pagamento`, sem
+// `valor_estornado` nem razão.
+Deno.test("cartão — Achado S4 (W7): a leitura do id gravado falha 1x num estorno LEGÍTIMO da cobrança GRAVADA -> 500 (MP reenvia), NADA registrado; no reenvio (leitura ok) registra certo", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [],
+    falharLeituraGatewayPaymentId: 1,
+  });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r7", amount: "100.00", status: "processed" }],
+    },
+  };
+  const fetchImpl = fetchConsulta(200, corpoOrder);
+  const req1 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const erroReal = console.error;
+  console.error = () => {};
+  let resposta1: Response;
+  try {
+    resposta1 = await handler(req1, { supabase, fetchImpl });
+  } finally {
+    console.error = erroReal;
+  }
+
+  // A prova que importa: antes desta correção, isto era 200 — o handler
+  // tratava a cobrança GRAVADA como órfã e o MP nunca reenviava.
+  assertEquals(resposta1.status, 500, "leitura falhou -> o MP tem que reenviar, nunca 200 silencioso");
+  assertEquals(registro.insertsOrderRefunds.length, 0, "leitura falhou -> nada registrado no ledger");
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.chamadasRpc.length, 0, "não chega nem a confirmar_pagamento");
+  assertEquals(pedido.payment_status, "pago", "estorno legítimo AINDA não aplicado — nem pela RPC nem pelo ledger");
+
+  // MP reenvia (a leitura já não falha mais) -> registra igual ao W3.
+  const req2 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta2 = await handler(req2, { supabase, fetchImpl });
+  assertEquals(resposta2.status, 200);
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "r7");
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});
+
 Deno.test("W4 - chargeback: 'in_process' cria linha 'sistema' em_processamento (reserva, sem RPC); 'settled' com essa linha -> RPC concluir_estorno (soma)", async () => {
   const registro = {
     chamadasRpc: [] as any[],
@@ -4241,6 +4348,106 @@ Deno.test("cartão — reenvio da MESMA recusa (vaga já solta, RPC devolve fals
   assertEquals(registro.chamadasLiberar.length, 1);
 });
 
+// Achado S1 (3ª revisão de risco, 26/09/2026, W5 do harness do 3º revisor):
+// a recusa desta order (ambígua — nasceu de um retry cuja PRIMEIRA order
+// ficou com a resposta perdida) não bate com o que está NA VAGA: a vaga
+// guarda o SENTINELA (`verificando:...`) que `criar-pagamento` gravou no 409
+// `idempotency_key_already_used`, não o id desta order. Sem o fallback, a
+// 1ª tentativa de liberar (pelo id do MP) sempre falha, e NADA solta a vaga
+// — o pedido fica preso até a reserva morrer, mesmo com a recusa JÁ
+// CONHECIDA e NENHUMA cobrança aprovada existindo.
+Deno.test("cartão — Achado S1 (W5): recusa de order AMBÍGUA sobre um pedido com o SENTINELA na vaga -> a 1ª tentativa de liberar (pelo id do MP) não bate, o FALLBACK libera pela chave do sentinela", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const sentinela = `verificando:${UUID_PEDIDO}:c0`;
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinela };
+  // 1ª chamada (pelo id do MP, ID_ORDER_CARTAO_MP): não bate com o
+  // sentinela -> false. 2ª chamada (o fallback, pela chave do sentinela) ->
+  // true.
+  const supabase = clienteFalso({ pedido, registro, liberarResultados: [false, true] });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl: fetchConsulta(200, orderDoMp("failed", "cc_rejected_other_reason", "credit_card")),
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // A prova que importa: antes desta correção, a resposta era sempre
+  // 'nada_a_liberar' — a vaga nunca soltava.
+  assertEquals(corpo, { ok: true, resultado: "cobranca_liberada" });
+  assertEquals(registro.chamadasRpc.length, 0, "confirmar_pagamento cancelaria o pedido");
+  assertEquals(registro.chamadasLiberar.length, 2);
+  assertEquals(registro.chamadasLiberar[0].args, {
+    p_order_id: UUID_PEDIDO,
+    p_gateway_payment_id: ID_ORDER_CARTAO_MP,
+  });
+  assertEquals(registro.chamadasLiberar[1].args, {
+    p_order_id: UUID_PEDIDO,
+    p_gateway_payment_id: sentinela,
+  });
+});
+
+// Achado N3 (3ª revisão de risco, 26/09/2026, W6 do harness do 3º revisor):
+// a notificação CLÁSSICA ('payment') de 'pago'/'estornado' sobre um pedido
+// cuja vaga guarda o SENTINELA reconsultava a Orders API com o próprio
+// sentinela como id ("verificando:...") — que NUNCA existe como order de
+// verdade — e o 500 correspondente fazia o MP reenviar a MESMA notificação
+// em loop, para sempre (o sentinela não é resolvido por essa rota).
+Deno.test("cartão — Achado N3 (W6): notificação clássica 'pago' sobre um pedido com o SENTINELA na vaga -> ignorado (200), NUNCA reconsulta nem 500 em loop", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const sentinela = `verificando:${UUID_PEDIDO}:c0`;
+  const pedido = { id: UUID_PEDIDO, total: 149.9, total_amount: null, gateway_payment_id: sentinela };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  // Fetch DISCRIMINADO por URL — sem isso um stub fixo (`fetchConsulta`)
+  // devolveria a MESMA resposta de sucesso para a reconsulta do sentinela,
+  // escondendo o defeito real: o MP de verdade responde 400
+  // `invalid_path_param` para um id que não começa com "ORD" (BLOQUEIO 3 da
+  // revisão, `criar-pagamento/index.ts`) — NUNCA um 200 — e é esse 400 que
+  // vira o 500 em loop que este achado fecha.
+  const fetchImpl = async (url: string) => {
+    if (url.includes("/v1/payments/")) {
+      return new Response(
+        JSON.stringify({
+          id: ID_PAGAMENTO_DO_MP,
+          status: "approved",
+          status_detail: "accredited",
+          external_reference: UUID_PEDIDO,
+          transaction_amount: 149.9,
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.includes("/v1/orders/")) {
+      return new Response(
+        JSON.stringify({ errors: [{ code: "invalid_path_param", message: "must begin with the prefix 'ORD'" }] }),
+        { status: 400 },
+      );
+    }
+    throw new Error(`fetch inesperado no teste N3/W6: ${url}`);
+  };
+  const avisoReal = console.warn;
+  console.warn = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(req, { supabase, fetchImpl });
+  } finally {
+    console.warn = avisoReal;
+  }
+  const corpo = await resposta.json();
+
+  // A prova que importa: antes desta correção, isto era 500 (reconsultar o
+  // sentinela pela Orders API sempre bate no 400 acima) — o MP reenviaria a
+  // MESMA notificação para sempre, num loop que nunca se resolve sozinho.
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.ignorado, "vaga em verificação");
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(pedido.gateway_payment_id, sentinela, "a vaga continua intacta — quem resolve o sentinela é outra rota");
+});
+
 // --- Hardening (item não-verificável do laudo do revisor-risco, 26/09/2026)
 //
 // Se o GET da order de cartão vier SEM `payment_method.type` legível (a
@@ -4472,6 +4679,116 @@ Deno.test("cartão — order aprovada, mas a vaga JÁ TEM outra cobrança de ver
   assertEquals(chamadasPush.length, 1, "o admin precisa ser avisado de uma possível cobrança duplicada");
   assertEquals(registro.chamadasRpc.length, 1);
   assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_CARTAO_MP);
+});
+
+// Achado S3 (3ª revisão de risco, 26/09/2026, W3 do harness do 3º revisor):
+// a ADOÇÃO só gravava `gateway_payment_id` — `metodo_online`/`parcelas`
+// ficavam NULL mesmo para uma cobrança de CARTÃO de verdade, e o
+// comprovante ao cliente ("PIX pelo site") e o Financeiro (fin__forma_do_
+// pedido) contavam a venda como PIX.
+Deno.test("cartão — Achado S3 (W3): ADOÇÃO da vaga vazia também grava metodo_online/parcelas, lidos da order RECONSULTADA — nunca do corpo do webhook", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: null,
+    metodo_online: null,
+    parcelas: null,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const ordemAprovada = {
+    id: ID_ORDER_CARTAO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+    transactions: {
+      payments: [{
+        id: "PAY01CARTAO",
+        status: "processed",
+        status_detail: "accredited",
+        payment_method: { id: "master", type: "credit_card", installments: 6 },
+      }],
+    },
+  };
+
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl: fetchConsulta(200, ordemAprovada),
+    enviarPush: async () => {},
+    enviarComprovante: async () => {},
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(pedido.gateway_payment_id, ID_ORDER_CARTAO_MP);
+  // A prova que importa: antes desta correção os dois ficavam `null` — o
+  // comprovante saía como "PIX pelo site" para um cartão de crédito 6x.
+  assertEquals(pedido.metodo_online, "credito");
+  assertEquals(pedido.parcelas, 6);
+  assertEquals(registro.chamadasUpdateMarketplaceOrders[0].valores.metodo_online, "credito");
+  assertEquals(registro.chamadasUpdateMarketplaceOrders[0].valores.parcelas, 6);
+});
+
+// Achado S5 (3ª revisão de risco, 26/09/2026, W4 do harness do 3º revisor):
+// a ADOÇÃO pode perder a corrida para OUTRA escrita (não a `confirmar_
+// pagamento` desta MESMA order — essa a RPC decide sozinha) — por exemplo,
+// `criar-pagamento` gravando um PIX na MESMA janela em que o webhook leu a
+// vaga NULL. Sem reler depois de perder a corrida, o pedido seguia com
+// dinheiro de DUAS cobranças aprovadas (o cartão desta notificação e o PIX,
+// se o cliente pagar os dois) e ZERO aviso ao admin.
+Deno.test("cartão — Achado S5 (W4): a ADOÇÃO perde a corrida para um PIX gravado ENTRE a leitura e o UPDATE -> avisa o admin (antes: zero push)", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+  const idPixConcorrente = "ORDTST01PIXCONCORRENTE000000";
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: null,
+  };
+  const supabase = clienteFalso({
+    rpcResultado: "divergente",
+    pedido,
+    registro,
+    // A corrida: a MESMA leitura que decide "vaga adotável" (vazia) dispara
+    // a mutação — por quando a adoção tentar o `.update(...).is(
+    // "gateway_payment_id", null)`, a vaga já não é mais NULL.
+    aposLeituraDoPedido: (p) => {
+      p.gateway_payment_id = idPixConcorrente;
+    },
+  });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const chamadasPush: unknown[] = [];
+  const erroReal = console.error;
+  console.error = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, orderDoMp("processed", "accredited", "credit_card")),
+      enviarPush: async (a: unknown) => {
+        chamadasPush.push(a);
+      },
+      enviarComprovante: async () => {},
+    });
+  } finally {
+    console.error = erroReal;
+  }
+
+  assertEquals(resposta.status, 200);
+  // A adoção perdeu a corrida — a vaga do PIX concorrente nunca é
+  // sobrescrita pela adoção.
+  assertEquals(pedido.gateway_payment_id, idPixConcorrente);
+  assertEquals(registro.chamadasUpdateMarketplaceOrders.length, 0);
+  // A prova que importa: antes desta correção, `chamadasPush.length` era 0
+  // aqui — o admin nunca soube de duas cobranças aprovadas disputando o
+  // mesmo pedido.
+  assertEquals(chamadasPush.length, 1, "o admin precisa ser avisado — a vaga tem OUTRA cobrança real, não um sentinela");
 });
 
 Deno.test("PIX — order recusada (failed, bank_transfer) continua em confirmar_pagamento('recusado') — comportamento de antes", async () => {
