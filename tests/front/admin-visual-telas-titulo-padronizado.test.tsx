@@ -68,3 +68,24 @@ describe("as 8 telas do painel usam o título padrão", () => {
     });
   }
 });
+
+// 26/09/2026: o Início novo (AdminDashboardView, que deixou de ser o
+// dashboard de métricas) e o Dashboard CRM (AdminCrmView, que era um
+// esqueleto com <h1> manual) nascem no mesmo padrão de título.
+const TELAS_DO_INICIO_E_CRM = ["AdminDashboardView.tsx", "AdminCrmView.tsx"];
+
+describe("Início e Dashboard CRM usam o título padrão", () => {
+  for (const tela of TELAS_DO_INICIO_E_CRM) {
+    it(`${tela} importa e usa o AdminPageHeader, sem <h1> manual`, () => {
+      const fonte = new Map(Object.entries(FONTES)).get(
+        `/src/views/admin/${tela}`,
+      );
+      expect(fonte, `falta o fonte de ${tela}`).toBeDefined();
+      expect(fonte).toContain(
+        'import { AdminPageHeader } from "@/components/admin/AdminPageHeader";',
+      );
+      expect(fonte).toContain("<AdminPageHeader");
+      expect(fonte).not.toContain("<h1");
+    });
+  }
+});

@@ -6,11 +6,16 @@
 // Dashboard, e os números continuavam os de antes até clicar em
 // "Sincronizar" à mão, porque o canal nunca recebia o evento.
 //
-// Este teste monta o AdminDashboardView de verdade (líder, sessão ativa),
-// captura os argumentos passados a cada `.on("postgres_changes", ...)` por
-// canal, e prova as duas pontas: existe uma assinatura com
-// `table: "produtos"`, e NENHUMA com `table: "products"`. Sem a segunda
-// asserção o teste passaria com as duas assinaturas coexistindo.
+// Este teste monta a tela de verdade (líder, sessão ativa), captura os
+// argumentos passados a cada `.on("postgres_changes", ...)` por canal, e
+// prova as duas pontas: existe uma assinatura com `table: "produtos"`, e
+// NENHUMA com `table: "products"`. Sem a segunda asserção o teste passaria
+// com as duas assinaturas coexistindo.
+//
+// 26/09/2026: o dashboard virou a aba "Visão geral" do Dashboard CRM
+// (AdminCrmView; a lógica mora em `useDashboardClassico`, src/hooks/useCrm.ts)
+// e o Início novo (AdminDashboardView) escuta só `marketplace_orders` para
+// recarregar `painel_inicio`. As duas telas são provadas aqui.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,6 +47,8 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     channel: (nome: string) => h.criarCanal(nome),
     removeChannel: () => {},
+    // `crm_visao`/`painel_inicio` respondem vazio: o assunto é o canal.
+    rpc: () => Promise.resolve({ data: null, error: null }),
   },
 }));
 
@@ -57,10 +64,23 @@ vi.mock("@/hooks/useAnalytics", () => ({
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ session: { user: { id: "admin-1" } } }),
+  useAuth: () => ({ session: { user: { id: "admin-1" } }, profile: null }),
 }));
 
-// isLeader: true — é só no líder que AdminDashboardView estabelece as
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { storeName: "Loja" },
+    isLoaded: true,
+    products: [],
+    loadingProducts: false,
+  }),
+}));
+
+vi.mock("@/hooks/usePrefetchOnHover", () => ({
+  usePrefetchOnHover: () => ({ prefetchView: () => {} }),
+}));
+
+// isLeader: true — é só no líder que a Visão geral do CRM estabelece as
 // assinaturas de verdade (o seguidor só ouve o BroadcastChannel).
 vi.mock("@/hooks/useLeaderElection", () => ({
   useLeaderElection: () => ({ isLeader: true }),
@@ -98,7 +118,7 @@ vi.mock("@/components/admin/dashboard/TopProductsList", () => ({
 // dos vizinhos deste diretório.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("AdminDashboardView — o canal do catálogo escuta 'produtos', não 'products' (A2)", () => {
+describe("Visão geral do CRM — o canal do catálogo escuta 'produtos', não 'products' (A2)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -128,12 +148,10 @@ describe("AdminDashboardView — o canal do catálogo escuta 'produtos', não 'p
   });
 
   it("assina 'produtos' e NUNCA assina 'products'", async () => {
-    const { AdminDashboardView } = await import(
-      "@/views/admin/AdminDashboardView"
-    );
+    const { AdminCrmView } = await import("@/views/admin/AdminCrmView");
 
     await act(async () => {
-      raiz.render(<AdminDashboardView onNavigate={() => {}} active={true} />);
+      raiz.render(<AdminCrmView onNavigate={() => {}} active={true} />);
     });
 
     const chamadasDoCanalDeProdutos =
@@ -156,6 +174,27 @@ describe("AdminDashboardView — o canal do catálogo escuta 'produtos', não 'p
           chamada.event === "postgres_changes" &&
           chamada.opts.table === "products",
       );
+    expect(assinaTabelaInexistente).toBe(false);
+  });
+
+  it("o Início escuta só marketplace_orders — e nunca 'products'", async () => {
+    const { AdminDashboardView } = await import(
+      "@/views/admin/AdminDashboardView"
+    );
+
+    await act(async () => {
+      raiz.render(<AdminDashboardView onNavigate={() => {}} active={true} />);
+    });
+
+    const chamadasDoInicio =
+      h.chamadasPorCanal.get("admin-inicio-pedidos") ?? [];
+    expect(chamadasDoInicio.map((chamada) => chamada.opts.table)).toEqual([
+      "marketplace_orders",
+    ]);
+
+    const assinaTabelaInexistente = [...h.chamadasPorCanal.values()]
+      .flat()
+      .some((chamada) => chamada.opts.table === "products");
     expect(assinaTabelaInexistente).toBe(false);
   });
 });
