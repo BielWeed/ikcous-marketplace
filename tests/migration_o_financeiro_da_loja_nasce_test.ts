@@ -66,11 +66,13 @@ Deno.test("toda tabela liga RLS, só admin lê e ninguém escreve direto", () =>
       m,
       `CREATE POLICY ${t}_admin_select_policy ON public.${t} FOR SELECT TO authenticated USING ((SELECT public.is_admin()));`,
     );
-    assertEquals(
-      new RegExp(`ON public\\.${t} FOR (INSERT|UPDATE|DELETE|ALL)`).test(m),
-      false,
-      t,
-    );
+    for (const acao of ["INSERT", "UPDATE", "DELETE", "ALL"]) {
+      assertEquals(
+        m.includes(`ON public.${t} FOR ${acao}`),
+        false,
+        `${t} ${acao}`,
+      );
+    }
   }
   assertStringIncludes(
     m,
@@ -81,13 +83,9 @@ Deno.test("toda tabela liga RLS, só admin lê e ninguém escreve direto", () =>
 Deno.test("o Financeiro não põe gatilho em pedido, estorno nem devolução", () => {
   assertEquals(/CREATE TRIGGER/i.test(removerRuido(migration)), false);
   for (const t of ["marketplace_orders", "order_refunds", "devolucoes"]) {
-    assertEquals(
-      new RegExp(`(INSERT INTO|UPDATE) public\\.${t}\\b`).test(
-        removerRuido(migration),
-      ),
-      false,
-      t,
-    );
+    const limpo = norm(removerRuido(migration));
+    assertEquals(limpo.includes(`INSERT INTO public.${t} `), false, t);
+    assertEquals(limpo.includes(`UPDATE public.${t} `), false, t);
   }
 });
 
