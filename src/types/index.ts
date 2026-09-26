@@ -220,6 +220,13 @@ export interface Order {
    * Opcional pelo mesmo motivo dos campos acima (cache antigo sem o mapper).
    */
   valorDevolvidoPorDevolucao?: number;
+  /**
+   * Achado A4 da revisão de risco de 26/09/2026 (rodada 3): total já
+   * confirmado no ledger de estorno (`marketplace_orders.valor_estornado`,
+   * somado só em `concluir_estorno` quando o Mercado Pago aprova) — dinheiro
+   * que já saiu por ESSE caminho, distinto do reembolso manual acima.
+   */
+  valorEstornado?: number;
 }
 
 export interface Review {

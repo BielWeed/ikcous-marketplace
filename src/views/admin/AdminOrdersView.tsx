@@ -801,8 +801,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // para um dinheiro que ele recebeu na mão. Opcional: os chamadores de
     // hoje (pedido de canal online) continuam sem passar o campo.
     canal?: CanalDaVenda;
+    // Achado A4 (revisão 26/09/2026, rodada 3): o confirm mostrava o TOTAL
+    // do pedido, mesmo com parte já devolvida (manual ou pelo ledger do MP)
+    // — o lojista confirmava um valor maior do que o que realmente falta.
+    valorDevolvidoPorDevolucao?: number;
+    valorEstornado?: number;
   }) => {
-    const valor = (pedido.total || 0).toLocaleString("pt-BR", {
+    const valor = valorDevolverAgora(pedido).toLocaleString("pt-BR", {
       minimumFractionDigits: 2,
     });
     const cliente = pedido.customer?.name || "o cliente";

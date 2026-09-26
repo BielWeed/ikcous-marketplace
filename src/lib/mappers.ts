@@ -313,6 +313,11 @@ export function mapOrderFromDB(
     valorDevolvidoPorDevolucao: Number(
       (row as any).valor_devolvido_por_devolucao ?? 0,
     ),
+    // Achado A4 (revisão 26/09/2026, rodada 3): o "Devolver agora" também
+    // precisa saber o que já saiu pelo ledger CONFIRMADO (order_refunds
+    // concluído), não só pela devolução manual — coluna real da tabela,
+    // sem cast (diferente da de cima, que só existe nesta RPC).
+    valorEstornado: Number(row.valor_estornado ?? 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
