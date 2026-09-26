@@ -74,6 +74,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  buscarOrdersDoPedido,
   cancelarOrder,
   consultarOrder,
   consultarPagamento,
@@ -96,8 +97,10 @@ import {
   normalizarDocumento,
   orderCancelada,
   orderEhDeCartao,
+  parcelasDaOrder,
   parcelasValidas,
   PREFIXO_VAGA_EM_VERIFICACAO,
+  resolverSentinela,
   tipoDeCartaoValido,
   tipoDoPagamentoDaOrder,
   tokenDeCartaoValido,
@@ -117,6 +120,7 @@ import {
 import {
   carregarChavesVapid,
   comTempoLimite,
+  dispararSemEsperarCliente,
   enviarParaInscritos,
   readKey,
   resumir,
@@ -381,42 +385,61 @@ function emailValido(email: unknown): email is string {
  * listas divergiriam, e a releitura decidiria com um pedido pela metade.
  * `created_at` (Achado R4, 2ª revisão de risco, 26/09/2026): o teto absoluto
  * de `expiracaoParaDesafio3ds`, abaixo, precisa da CRIAÇÃO do pedido — nunca
- * do instante da tentativa atual. `updated_at` (Achado S1, 3ª revisão de
- * risco, 26/09/2026): `sentinelaExpirado`, abaixo, precisa de QUANDO o
- * sentinela foi gravado — é o MESMO carimbo que `respostaCartaoEmVerificacao`
- * grava junto do sentinela, nenhuma coluna nova. */
+ * do instante da tentativa atual; é também o `desde` que `resolverVagaEm
+ * Verificacao`, abaixo, manda para `buscarOrdersDoPedido` (Ponto 1, 4ª
+ * revisão de risco, 26/09/2026) — mesma coluna, dois usos. */
 const COLUNAS_DO_PEDIDO =
-  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento, created_at, updated_at";
+  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento, created_at";
 
 /**
- * Achado S1 (3ª revisão de risco, 26/09/2026): teto de quanto tempo um
- * SENTINELA (`vagaEmVerificacao`, `_shared/mercadopago.ts`) pode segurar a
- * vaga sem que o webhook o resolva (a ADOÇÃO, `webhook-mercadopago/
- * index.ts`). O webhook de aprovação da Orders API chega tipicamente em
- * segundos — folgado o bastante para não confundir latência normal de rede
- * com sentinela morto, e curto o bastante para não prender a reserva de 30
- * min por muito tempo à toa. Um sentinela mais velho que isto nunca vai ser
- * adotado: ou a cobrança da tentativa anterior nunca existiu de verdade
- * (409 por corpo perdido antes da chave ser usada), ou já foi recusada/
- * cancelada/expirada e a notificação correspondente não bateu o id contra o
- * sentinela (rede de segurança para esse caso — o caminho normal é o
- * webhook liberar pela própria chave do sentinela, ver `liberarAVaga` em
- * `webhook-mercadopago/index.ts`).
+ * Resolve um SENTINELA (`vagaEmVerificacao`) por FATO, nunca por relógio
+ * (Ponto 1, 4ª revisão de risco, 26/09/2026 — substitui `sentinelaExpirado`/
+ * `MINUTOS_SENTINELA_PRESO`, que o 4º revisor mediu abrindo uma janela de
+ * DUAS cobranças capturadas para o mesmo pedido: um cartão em `processing`
+ * pode levar DIAS em análise antifraude — e um teto de minutos, fixo,
+ * liberava a vaga bem antes de a cobrança da tentativa anterior estar
+ * morta de verdade, deixando o PIX (ou outro cartão) criado por cima virar
+ * uma SEGUNDA cobrança quando o banco emissor finalmente aprovava a
+ * primeira).
+ *
+ * Busca as orders de CARTÃO do pedido na Orders API
+ * (`buscarOrdersDoPedido`/`resolverSentinela`, `_shared/mercadopago.ts`) e
+ * devolve:
+ *   - `{ ok: true, order }` — encontrou uma order de cartão APROVADA ou
+ *     ainda VIVA: quem chama grava `order.id` na vaga (substitui o
+ *     sentinela) e trata como qualquer cartão reconsultado por id (os ramos
+ *     (a)/(d)/(f), mais abaixo, já sabem);
+ *   - `{ ok: true, order: null }` — todas as orders de cartão encontradas
+ *     estão mortas (recusada/cancelada/expirada): a vaga pode ser liberada;
+ *   - `{ ok: false }` — a busca falhou, o corpo veio ilegível, ou NENHUMA
+ *     order de cartão foi encontrada ainda (pode ser atraso de indexação
+ *     entre a Orders API e esta busca — UNVERIFIED, ver o comentário grande
+ *     de `buscarOrdersDoPedido`): o sentinela NUNCA é liberado por isto —
+ *     continua ocupando a vaga, exatamente como antes de qualquer notícia
+ *     chegar. O ÚNICO teto de tempo que continua valendo é a própria
+ *     RESERVA (`pedido.expires_at`) — e esse teto já fecha a porta antes de
+ *     `podeCobrar`, no topo do handler, sequer deixar chegar aqui; uma
+ *     aprovação que só aparece DEPOIS disso é resolvida pela ADOÇÃO do
+ *     webhook (Achado B2) + o ramo `pago_apos_expirar` (P1) de
+ *     `confirmar_pagamento`, nunca por este handler.
  */
-export const MINUTOS_SENTINELA_PRESO = 3;
-
-/**
- * `true` quando um sentinela (`vagaEmVerificacao`) na vaga é velho demais
- * para valer a pena esperar o webhook — ver `MINUTOS_SENTINELA_PRESO`,
- * acima. `updatedAt` ilegível (ausente, não-parseável) nunca conta como
- * "expirado": sem saber HÁ QUANTO TEMPO o sentinela está lá, a decisão mais
- * segura é continuar esperando o webhook, não liberar às cegas.
- */
-export function sentinelaExpirado(updatedAt: unknown, agora: Date): boolean {
-  if (typeof updatedAt !== "string") return false;
-  const data = new Date(updatedAt);
-  if (Number.isNaN(data.getTime())) return false;
-  return agora.getTime() - data.getTime() > MINUTOS_SENTINELA_PRESO * 60_000;
+async function resolverVagaEmVerificacao(args: {
+  token: string;
+  pedidoId: string;
+  desde: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{ ok: true; order: Record<string, unknown> | null } | { ok: false }> {
+  const busca = await buscarOrdersDoPedido({
+    token: args.token,
+    pedidoId: args.pedidoId,
+    desde: args.desde,
+    fetchImpl: args.fetchImpl,
+  });
+  if (!busca.ok) return { ok: false };
+  const resolucao = resolverSentinela(busca.orders);
+  if (resolucao === null) return { ok: false };
+  if (resolucao.acao === "liberar") return { ok: true, order: null };
+  return { ok: true, order: resolucao.order };
 }
 
 /**
@@ -652,6 +675,15 @@ async function alertarAdminCartaoOrfaoReal(args: {
   supabase: ReturnType<typeof createClient>;
   orderId: string;
   idOrderOrfa: string;
+  // S5(b) (achado da 4ª revisão de risco, 26/09/2026): o título/corpo do
+  // aviso, quando quem chama tem uma mensagem PRÓPRIA — a gravação do
+  // sentinela (`respostaCartaoEmVerificacao`, mais abaixo) NÃO é o mesmo
+  // fato que uma cobrança órfã de verdade (Achado A1): o sentinela pode se
+  // resolver sozinho quando o webhook adotar, e reusar "Cobrança de cartão
+  // sem registro" (o default, abaixo) alarmava o admin para algo que ainda
+  // pode não ser problema nenhum. Default AUSENTE — os dois chamadores de
+  // órfã de verdade continuam com o título de sempre.
+  aviso?: { title: string; body: string };
 }): Promise<void> {
   const { supabase, orderId, idOrderOrfa } = args;
   try {
@@ -693,11 +725,13 @@ async function alertarAdminCartaoOrfaoReal(args: {
       vapidKeys,
     });
 
-    const aviso = {
-      title: "Cobrança de cartão sem registro",
-      body: `${descricaoDoPedido(orderId)} · confira o painel do Mercado Pago`,
-      url: "/admin-orders",
-    };
+    const aviso = args.aviso
+      ? { ...args.aviso, url: "/admin-orders" }
+      : {
+          title: "Cobrança de cartão sem registro",
+          body: `${descricaoDoPedido(orderId)} · confira o painel do Mercado Pago`,
+          url: "/admin-orders",
+        };
     const itens = await enviarParaInscritos({
       servidor,
       inscricoes,
@@ -746,6 +780,7 @@ async function handler(
       supabase: ReturnType<typeof createClient>;
       orderId: string;
       idOrderOrfa: string;
+      aviso?: { title: string; body: string };
     }) => Promise<void>;
   } = {},
 ): Promise<Response> {
@@ -979,56 +1014,126 @@ async function handler(
     // `webhook-mercadopago` já fazia, não depende de o MP manter essa
     // taxonomia de erro — e poupa a chamada à Orders API para todo pedido
     // legado, que nunca vai ser reconhecido por ela.
-    const idGatewayReconsulta = String(pedido.gateway_payment_id);
+    let idGatewayReconsulta = String(pedido.gateway_payment_id);
 
     // Achado B2 (2ª revisão de risco, 26/09/2026): a vaga pode estar ocupada
     // por um SENTINELA (`vagaEmVerificacao`, acima) — um cartão cuja
     // resposta do MP veio 409 `idempotency_key_already_used`. Não é um id de
     // verdade: não existe endpoint para reconsultar "por chave de
-    // idempotência" na Orders API, então nem tenta — só o WEBHOOK, quando a
-    // cobrança de fato resolver, sabe a verdade (ele ADOTA a vaga vazia).
-    // QUALQUER forma pedida aqui — cartão novo OU PIX — devolve o MESMO
-    // "aguardando" sem tocar o MP: um cartão novo abriria uma SEGUNDA
-    // cobrança ambígua; um PIX pagaria por fora enquanto a primeira ainda
-    // pode cair aprovada.
-    // Achado S1 (3ª revisão de risco, 26/09/2026): o sentinela só saía
-    // quando o WEBHOOK adotava uma cobrança aprovada — uma recusa, um
-    // cancelamento ou uma order que nunca chegou a existir de verdade (409
-    // por corpo perdido antes da chave ser usada, ou uma falha do
-    // integrador) nunca soltavam a vaga (ver o fechamento simétrico do lado
-    // do webhook, `liberar_cobranca_do_pedido` pela chave do sentinela,
-    // `webhook-mercadopago/index.ts`). Sem NENHUM caminho de saída, o pedido
-    // ficava preso até a reserva morrer, mesmo sem NENHUMA cobrança
-    // aprovada existir. `sentinelaExpirado` é a rede de segurança: o
-    // webhook de aprovação da Orders API chega em segundos quando a
-    // cobrança existe de verdade — um sentinela mais velho que
-    // `MINUTOS_SENTINELA_PRESO` nunca vai ser adotado, e é tratado como
-    // qualquer outra cobrança MORTA na vaga (ver "Daqui para baixo só
-    // chegam (b) e (c)", abaixo): libera e relê antes de decidir.
-    const sentinelaNaVaga = vagaEmVerificacao(idGatewayReconsulta);
-    const sentinelaPresoDemais = sentinelaNaVaga &&
-      sentinelaExpirado(pedido.updated_at as string | null | undefined, new Date());
-    if (sentinelaNaVaga && !sentinelaPresoDemais) {
-      // S1: um PIX pedido sobre um cartão AINDA em verificação nunca pode
-      // virar um 200 sem QR — o front trataria isso como "recuperável, tente
-      // de novo" para sempre (loop de "Não foi possível gerar o QR code do
-      // PIX"), quando a verdade é que HÁ uma cobrança de cartão ambígua
-      // segurando a vaga. Mesma mensagem do ramo (f), mais abaixo, para quem
-      // pede PIX com um cartão em 3DS/análise reconhecível.
-      if (metodo === "pix") {
-        return json({ error: "Há um pagamento com cartão em análise para este pedido." }, 409);
+    // idempotência" na Orders API — por isso `resolverVagaEmVerificacao`,
+    // acima, busca as ORDERS do pedido em vez de tentar reconsultar a chave.
+    // QUALQUER forma pedida aqui — cartão novo OU PIX — enquanto o sentinela
+    // não é resolvido devolve o MESMO "aguardando" sem tocar o MP: um cartão
+    // novo abriria uma SEGUNDA cobrança ambígua; um PIX pagaria por fora
+    // enquanto a primeira ainda pode cair aprovada.
+    let sentinelaNaVaga = vagaEmVerificacao(idGatewayReconsulta);
+    // Ponto 1 (4ª revisão de risco, 26/09/2026): só um sentinela RESOLVIDO
+    // PARA LIBERAR (todas as orders de cartão encontradas estão mortas) pula
+    // direto para a liberação comum ("Daqui para baixo chegam (b), (c)...",
+    // abaixo) SEM passar pelo bloco de reconsulta por id — `idGatewayReconsulta`
+    // continua sendo a STRING do sentinela nesse caso (`liberarCobranca`
+    // solta pela MESMA string que está gravada). Um sentinela resolvido para
+    // um id REAL (aprovado ou ainda vivo) troca `idGatewayReconsulta` pelo
+    // id de verdade e ENTRA no bloco de reconsulta — os ramos (a)/(d)/(f) já
+    // sabem tratar um cartão vivo ou aprovado encontrado por id.
+    let sentinelaResolvidoParaLiberar = false;
+    if (sentinelaNaVaga) {
+      const resolucao = await resolverVagaEmVerificacao({
+        token: mpToken,
+        pedidoId: pedido.id,
+        desde: String(pedido.created_at ?? ""),
+        fetchImpl: deps.fetchImpl,
+      });
+      if (resolucao.ok && resolucao.order === null) {
+        sentinelaResolvidoParaLiberar = true;
+      } else if (resolucao.ok && resolucao.order !== null) {
+        // Achado S3 (3ª revisão de risco, 26/09/2026): grava `metodo_online`/
+        // `parcelas` JUNTO do id real — a partir daqui a vaga deixa de estar
+        // "null/sentinela", a condição que a ADOÇÃO do webhook
+        // (`webhook-mercadopago/index.ts`) exige para gravar os dois; sem
+        // isto aqui, trocar o sentinela por um id real apagaria a ÚNICA
+        // chance de o comprovante/Financeiro saberem que é cartão.
+        const ordemResolvida = resolucao.order;
+        const idResolvido = String(ordemResolvida.id ?? "");
+        if (idResolvido.length > 0) {
+          const tipoResolvido = tipoDoPagamentoDaOrder(ordemResolvida);
+          const metodoResolvido = tipoResolvido === "credit_card"
+            ? "credito"
+            : tipoResolvido === "debit_card"
+              ? "debito"
+              : null;
+          const sentinelaAntes = idGatewayReconsulta;
+          const { data: gravouResolucao, error: erroGravarResolucao } = await supabase
+            .from("marketplace_orders")
+            .update({
+              gateway_payment_id: idResolvido,
+              metodo_online: metodoResolvido,
+              parcelas: parcelasDaOrder(ordemResolvida),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", pedido.id)
+            .eq("gateway_payment_id", sentinelaAntes)
+            .select("id")
+            .maybeSingle();
+          if (erroGravarResolucao) {
+            console.error(
+              "criar-pagamento: falha ao gravar a order resolvida do sentinela (Ponto 1)",
+              pedido.id,
+              erroGravarResolucao,
+            );
+            return json({ error: "Não foi possível verificar o pedido." }, 503);
+          }
+          if (gravouResolucao) {
+            idGatewayReconsulta = idResolvido;
+          } else {
+            // Perdeu a corrida (o webhook resolveu ao mesmo tempo, por
+            // exemplo) — relê o estado REAL, mesmo padrão do resto do
+            // handler: nunca inventa causa.
+            const { data: relido } = await supabase
+              .from("marketplace_orders")
+              .select("gateway_payment_id")
+              .eq("id", pedido.id)
+              .maybeSingle();
+            const idRelido = (relido as Record<string, unknown> | null)?.gateway_payment_id;
+            if (typeof idRelido === "string") idGatewayReconsulta = idRelido;
+          }
+        }
+        sentinelaNaVaga = vagaEmVerificacao(idGatewayReconsulta);
       }
-      return json(
-        { paymentId: null, statusPagamento: "aguardando", expiraEm: pedido.expires_at },
-        200,
-      );
+      // `resolucao.ok === false` (busca falhou, corpo ilegível, ou nenhuma
+      // order de cartão encontrada ainda): não muda nada — `sentinelaNaVaga`
+      // continua `true`, `sentinelaResolvidoParaLiberar` continua `false`.
+
+      if (sentinelaNaVaga && !sentinelaResolvidoParaLiberar) {
+        // Não resolvido: mesma resposta de segurança de sempre para um
+        // sentinela vivo — um PIX pedido sobre um cartão AINDA em
+        // verificação nunca pode virar um 200 sem QR (o front trataria isso
+        // como "recuperável, tente de novo" para sempre), e um cartão novo
+        // abriria uma SEGUNDA cobrança ambígua.
+        if (metodo === "pix") {
+          // Achado B3 (revisão do checkout front, 26/09/2026): `cartaoEmAnalise`
+          // diz ao FRONT que este 409 não é "erro recuperável comum" — é uma
+          // cobrança de cartão ainda EM ANÁLISE, sem desfecho, e a tela não
+          // pode oferecer "Cancelar pedido" aqui: se o cliente cancelar e o
+          // banco aprovar depois, ele paga por um pedido cancelado. Mensagem,
+          // status e `terminal` continuam os mesmos — só um campo A MAIS.
+          return json(
+            { error: "Há um pagamento com cartão em análise para este pedido.", cartaoEmAnalise: true },
+            409,
+          );
+        }
+        return json(
+          { paymentId: null, statusPagamento: "aguardando", expiraEm: pedido.expires_at },
+          200,
+        );
+      }
     }
 
-    // S1: um sentinela PRESO DEMAIS (`sentinelaPresoDemais`, acima) cai
-    // direto na liberação de "Daqui para baixo só chegam (b) e (c)", mais
-    // abaixo — nada aqui embaixo sabe reconsultar um sentinela pela Orders
-    // API (não é um id de order de verdade, e não existe endpoint de
-    // consulta por chave de idempotência).
+    // Um sentinela RESOLVIDO PARA LIBERAR (`sentinelaResolvidoParaLiberar`,
+    // acima) cai direto na liberação de "Daqui para baixo chegam (b),
+    // (c)...", mais abaixo — nada aqui embaixo sabe reconsultar um sentinela
+    // pela Orders API (não é um id de order de verdade, e não existe
+    // endpoint de consulta por chave de idempotência).
     if (!sentinelaNaVaga) {
     if (idEhClassico(idGatewayReconsulta)) {
       // Pedido criado ANTES da migração para a Orders API — vai DIRETO para
@@ -1160,7 +1265,16 @@ async function handler(
             }
           }
           if (!cartaoCanceladoParaPix) {
-            return json({ error: "Há um pagamento com cartão em análise para este pedido." }, 409);
+            // Achado B3 (revisão do checkout front, 26/09/2026): mesmo campo
+            // `cartaoEmAnalise` do outro 409 idêntico, acima — o cartão
+            // `processing` (sem desafio pendente, não cancelável) ou o
+            // cancelamento negado (o desafio pode ter sido resolvido no meio
+            // do caminho) são, os dois, "ainda sem desfecho conhecido": a
+            // tela não pode oferecer "Cancelar pedido" aqui.
+            return json(
+              { error: "Há um pagamento com cartão em análise para este pedido.", cartaoEmAnalise: true },
+              409,
+            );
           }
           // Cancelado — cai para a liberação da vaga (mesmo caminho de
           // (b)/(c), logo abaixo), que cria o PIX pedido.
@@ -1249,14 +1363,16 @@ async function handler(
     }
     } // fecha `if (!sentinelaNaVaga)` (Achado S1)
 
-    // Daqui para baixo chegam (b), (c) e o sentinela PRESO DEMAIS (Achado
-    // S1): a cobrança da vaga está morta (recusada/cancelada/expirada), ou
-    // NUNCA existiu de verdade (sentinela sem adoção do webhook depois do
-    // teto de tempo) — e a vaga é LIBERADA para a nova. Um convidado nunca
-    // chega aqui para cobrar: o cartão parou no portão lá em cima, e o PIX
-    // para na trava de criação logo abaixo — mas a liberação em si é
-    // inofensiva (a RPC só solta a vaga desta cobrança/sentinela, pela MESMA
-    // string que está gravada nela).
+    // Daqui para baixo chegam (b), (c) e o sentinela RESOLVIDO PARA LIBERAR
+    // (Ponto 1, 4ª revisão de risco, 26/09/2026): a cobrança da vaga está
+    // morta (recusada/cancelada/expirada) — para o sentinela, "morta" quer
+    // dizer que a BUSCA (`resolverVagaEmVerificacao`, acima) confirmou que
+    // TODAS as orders de cartão do pedido já morreram, nunca um palpite por
+    // relógio — e a vaga é LIBERADA para a nova. Um convidado nunca chega
+    // aqui para cobrar: o cartão parou no portão lá em cima, e o PIX para na
+    // trava de criação logo abaixo — mas a liberação em si é inofensiva (a
+    // RPC só solta a vaga desta cobrança/sentinela, pela MESMA string que
+    // está gravada nela).
     const liberacao = await liberarCobranca(supabase, pedido.id, idGatewayReconsulta);
     if (!liberacao.ok) {
       // Falha de banco: nada foi cobrado ainda, e o próximo retry reencontra
@@ -1647,11 +1763,37 @@ async function handler(
       // S5/N3) passou a IGNORAR vagas em verificação (não tenta mais
       // consultar o MP com elas a cada 10 min), então esperar por ela para
       // avisar deixaria o admin sem sinal nenhum até a reserva morrer.
-      // Reusa o MESMO canal de "cartão sem registro" — é a mesma categoria
-      // de risco (uma cobrança de cartão pode existir sem nenhum ponteiro
-      // confiável), só a origem muda.
+      //
+      // S5(b) (achado da 4ª revisão de risco, 26/09/2026): título/corpo
+      // PRÓPRIOS, nunca "Cobrança de cartão sem registro" — este aviso sai
+      // toda vez que a chave colide (mesmo quando NADA foi cobrado: uma
+      // recusa cuja resposta se perdeu, ou a corrida de duas abas), e o
+      // sentinela pode se resolver SOZINHO assim que o webhook adotar (ou o
+      // Ponto 1, `resolverVagaEmVerificacao`, resolver na próxima
+      // reconsulta) — reusar o título de uma cobrança órfã de VERDADE
+      // (Achado A1, dinheiro capturado e sem ponteiro nenhum) alarmava o
+      // admin fora de proporção, sem nenhum aviso de "resolvido" depois.
       const alertarAdmin = deps.alertarAdminCartaoOrfao ?? alertarAdminCartaoOrfaoReal;
-      await comTempoLimite(alertarAdmin({ supabase, orderId: pedido.id, idOrderOrfa: sentinela }), 5000);
+      const avisoSentinela = alertarAdmin({
+        supabase,
+        orderId: pedido.id,
+        idOrderOrfa: sentinela,
+        aviso: {
+          title: "Cartão em verificação — pode se resolver sozinho",
+          body: `${descricaoDoPedido(pedido.id)} · confira o painel do Mercado Pago se persistir`,
+        },
+      });
+      // Menor (4ª revisão de risco, 26/09/2026): com `EdgeRuntime.waitUntil`
+      // disponível (Edge Runtime de produção — ver `comTempoLimite`,
+      // `_shared/webpush.ts`), o push segue sozinho depois da resposta — o
+      // CLIENTE (o navegador desta requisição de checkout) não precisa
+      // esperar os até 5s de `comTempoLimite`, que só existiam para o
+      // ambiente SEM `waitUntil` (o runner de teste, que é também onde a
+      // suíte observa o efeito synchronously logo após o `await
+      // handler(...)`). `dispararSemEsperarCliente` faz a MESMA detecção de
+      // `comTempoLimite` e cai nela byte a byte quando `waitUntil` não
+      // existe.
+      await dispararSemEsperarCliente(avisoSentinela, 5000);
       return json(
         { paymentId: null, statusPagamento: "aguardando", expiraEm: pedido.expires_at },
         200,

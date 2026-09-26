@@ -4356,7 +4356,16 @@ Deno.test("cartão — reenvio da MESMA recusa (vaga já solta, RPC devolve fals
 // 1ª tentativa de liberar (pelo id do MP) sempre falha, e NADA solta a vaga
 // — o pedido fica preso até a reserva morrer, mesmo com a recusa JÁ
 // CONHECIDA e NENHUMA cobrança aprovada existindo.
-Deno.test("cartão — Achado S1 (W5): recusa de order AMBÍGUA sobre um pedido com o SENTINELA na vaga -> a 1ª tentativa de liberar (pelo id do MP) não bate, o FALLBACK libera pela chave do sentinela", async () => {
+//
+// Ponto 2 (4ª revisão de risco, 26/09/2026) amarrou este fallback a uma
+// BUSCA (`buscarOrdersDoPedido`/`resolverSentinela`) — o `fetchImpl` deste
+// teste agora discrimina a URL da busca (`/v1/orders?...`) da reconsulta por
+// id (`/v1/orders/{id}`) e devolve a MESMA order recusada nas duas: a busca
+// confirma que é a ÚNICA order de cartão do pedido e que está morta, então
+// o fallback ainda libera — a prova que este teste sempre fez continua de
+// pé, só que agora por FATO, não por confiar cegamente em QUALQUER
+// sentinela achado na vaga.
+Deno.test("cartão — Achado S1 (W5): recusa de order AMBÍGUA sobre um pedido com o SENTINELA na vaga -> a 1ª tentativa de liberar (pelo id do MP) não bate, a BUSCA confirma que está morta, o FALLBACK libera pela chave do sentinela", async () => {
   ambienteDoWebhook();
   const registro = { chamadasRpc: [], chamadasLiberar: [] };
   const sentinela = `verificando:${UUID_PEDIDO}:c0`;
@@ -4366,11 +4375,13 @@ Deno.test("cartão — Achado S1 (W5): recusa de order AMBÍGUA sobre um pedido 
   // true.
   const supabase = clienteFalso({ pedido, registro, liberarResultados: [false, true] });
   const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const ordemRecusada = orderDoMp("failed", "cc_rejected_other_reason", "credit_card");
+  const fetchImpl = async (url: string) =>
+    url.includes("/v1/orders?")
+      ? new Response(JSON.stringify({ results: [ordemRecusada] }), { status: 200 })
+      : new Response(JSON.stringify(ordemRecusada), { status: 200 });
 
-  const resposta = await handler(req, {
-    supabase,
-    fetchImpl: fetchConsulta(200, orderDoMp("failed", "cc_rejected_other_reason", "credit_card")),
-  });
+  const resposta = await handler(req, { supabase, fetchImpl });
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
@@ -4387,6 +4398,124 @@ Deno.test("cartão — Achado S1 (W5): recusa de order AMBÍGUA sobre um pedido 
     p_order_id: UUID_PEDIDO,
     p_gateway_payment_id: sentinela,
   });
+});
+
+// Q2 (4ª revisão de risco, 26/09/2026, harness ponta a ponta do 4º revisor):
+// a recusa ATRASADA (ou reenviada) da tentativa c0 NÃO pode soltar o
+// sentinela da tentativa c1 — que a busca confirma AINDA ESTAR EM ANÁLISE no
+// MP. Sem a busca (o fallback antigo do Ponto 2), esta MESMA notificação
+// soltaria a vaga só porque havia ALGUM sentinela nela — o cliente pedia PIX
+// e, quando c1 aprovasse depois, o pedido tinha DUAS cobranças capturadas.
+Deno.test("cartão — Q2: recusa ATRASADA da tentativa ANTERIOR (c0) NÃO solta o sentinela da tentativa c1 (a busca confirma que c1 segue VIVA)", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const idOrderC1 = "ORDCARTAO2KZZ4D94WC79335A68CZ5N";
+  const sentinelaC1 = `verificando:${UUID_PEDIDO}:c1`;
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinelaC1 };
+  // Só UMA liberação chega a acontecer (a 1ª, pelo id do MP — que nunca bate
+  // com o sentinela) — o fallback não deve tentar uma 2ª vez.
+  const supabase = clienteFalso({ pedido, registro, liberarResultados: [false] });
+  const req = await requisicaoAssinada(ID_ORDER_CARTAO_MP, { corpoExtra: { type: "order" } });
+  const ordemC0Recusada = orderDoMp("failed", "cc_rejected_other_reason", "credit_card");
+  const ordemC1Viva = { ...orderDoMp("processing", "in_process", "credit_card"), id: idOrderC1 };
+  const fetchImpl = async (url: string) => {
+    if (url.includes("/v1/orders?")) {
+      return new Response(JSON.stringify({ results: [ordemC0Recusada, ordemC1Viva] }), { status: 200 });
+    }
+    return new Response(JSON.stringify(ordemC0Recusada), { status: 200 });
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  // A prova que importa: com o fallback antigo, isto seria 'cobranca_liberada'
+  // só por existir ALGUM sentinela na vaga — Q2 reproduzido. Com a busca,
+  // c1 aparece VIVA e o sentinela fica intacto.
+  assertEquals(corpo, { ok: true, resultado: "nada_a_liberar" });
+  assertEquals(registro.chamadasRpc.length, 0, "confirmar_pagamento cancelaria o pedido");
+  assertEquals(
+    registro.chamadasLiberar.length,
+    1,
+    "só a 1ª tentativa (pelo id do MP) — o fallback NÃO chama a RPC de novo sem a busca confirmar que TODAS as orders de cartão estão mortas",
+  );
+  assertEquals(registro.chamadasLiberar[0].args, {
+    p_order_id: UUID_PEDIDO,
+    p_gateway_payment_id: ID_ORDER_CARTAO_MP,
+  });
+});
+
+// Q2b (4ª revisão de risco, 26/09/2026, harness ponta a ponta do 4º revisor):
+// o cancelamento ATRASADO de um PIX ANTIGO (troca PIX→cartão, ramo (c) de
+// `criar-pagamento`) também soltava o sentinela de uma tentativa de CARTÃO
+// seguinte no fallback antigo — `recusaLiberaAVaga` cobre CANCELAMENTO de
+// qualquer tipo, não só cartão. O mínimo do Ponto 2 ignora, neste fallback,
+// toda notificação que não seja de cartão — sem precisar de rede nenhuma
+// (a busca nem chega a ser chamada).
+Deno.test("cartão — Q2b: cancelamento ATRASADO de um PIX ANTIGO (troca PIX→cartão) NÃO solta o sentinela de uma tentativa de cartão seguinte — nem tenta a busca (notificação não é de cartão)", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const sentinelaC1 = `verificando:${UUID_PEDIDO}:c1`;
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinelaC1 };
+  const supabase = clienteFalso({ pedido, registro, liberarResultados: [false] });
+  const idPixAntigo = "ORDPIXANTIGO1KZZ4D94WC79335A6";
+  const req = await requisicaoAssinada(idPixAntigo, { corpoExtra: { type: "order" } });
+  const pixCancelado = {
+    id: idPixAntigo,
+    external_reference: UUID_PEDIDO,
+    status: "canceled",
+    status_detail: "canceled",
+    total_amount: "149.90",
+    transactions: {
+      payments: [{
+        id: "PAYPIXANTIGO",
+        status: "canceled",
+        status_detail: "canceled",
+        payment_method: { id: "pix", type: "bank_transfer" },
+      }],
+    },
+  };
+  let chamouBusca = false;
+  const fetchImpl = async (url: string) => {
+    if (url.includes("/v1/orders?")) {
+      chamouBusca = true;
+      throw new Error("a busca nunca deveria ser chamada para uma notificação que não é de cartão");
+    }
+    return new Response(JSON.stringify(pixCancelado), { status: 200 });
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(corpo, { ok: true, resultado: "nada_a_liberar" });
+  assertEquals(chamouBusca, false, "mínimo do Ponto 2: notificação que não é de cartão nem tenta a busca");
+  assertEquals(registro.chamadasLiberar.length, 1);
+  assertEquals(registro.chamadasLiberar[0].args, {
+    p_order_id: UUID_PEDIDO,
+    p_gateway_payment_id: idPixAntigo,
+  });
+});
+
+// Ponto 2 (4ª revisão de risco, 26/09/2026): a busca pode FALHAR (rede fora
+// do ar, corpo ilegível, 5xx) — nunca libera às cegas. Mesma regra de
+// segurança do Ponto 1 (`criar-pagamento/index.ts`).
+Deno.test("cartão — Ponto 2: busca FALHA (500) ao tentar confirmar o sentinela -> NUNCA libera às cegas", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const sentinela = `verificando:${UUID_PEDIDO}:c0`;
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinela };
+  const supabase = clienteFalso({ pedido, registro, liberarResultados: [false] });
+  const req = await requisicaoAssinada(ID_ORDER_CARTAO_MP, { corpoExtra: { type: "order" } });
+  const ordemRecusada = orderDoMp("failed", "cc_rejected_other_reason", "credit_card");
+  const fetchImpl = async (url: string) => {
+    if (url.includes("/v1/orders?")) return new Response("erro interno", { status: 500 });
+    return new Response(JSON.stringify(ordemRecusada), { status: 200 });
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(corpo, { ok: true, resultado: "nada_a_liberar" });
+  assertEquals(registro.chamadasLiberar.length, 1, "a busca falhou — nunca tenta a 2ª liberação");
 });
 
 // Achado N3 (3ª revisão de risco, 26/09/2026, W6 do harness do 3º revisor):

@@ -480,6 +480,14 @@ export function tipoDoPagamentoDaOrder(
  * cartão de verdade, e o comprovante/Financeiro contavam a venda como PIX.
  * Fonte única para não duplicar a leitura de `payment_method.installments` no
  * dia em que outro chamador precisar do mesmo dado.
+ *
+ * Menor (4ª revisão de risco, 26/09/2026): antes aceitava QUALQUER inteiro —
+ * a CHECK de `parcelas` no banco só aceita 1..12 (`parcelasValidas`, acima,
+ * é a MESMA regra), e um valor fora da faixa (a Orders API nunca prometeu o
+ * teto; um bug do lado dela também não pode virar 500 daqui) rejeitava a
+ * ADOÇÃO inteira — a cobrança aprovada ficava sem registro por causa de uma
+ * coluna cosmética. Fora da faixa vira `null` (desconhecido), nunca quebra
+ * quem chama.
  */
 export function parcelasDaOrder(
   order: Record<string, unknown> | null | undefined,
@@ -488,9 +496,7 @@ export function parcelasDaOrder(
     | Record<string, unknown>
     | undefined;
   const installments = metodo?.installments;
-  return typeof installments === "number" && Number.isInteger(installments)
-    ? installments
-    : null;
+  return parcelasValidas(installments) ? installments : null;
 }
 
 /** `true` quando a order é de cartão (crédito ou débito). */
@@ -1154,6 +1160,174 @@ export async function consultarOrder(args: {
     mensagemDeFalha: "Não foi possível consultar a cobrança.",
     corpoNoLog: args.corpoNoLog !== false,
   });
+}
+
+/**
+ * `buscarOrdersDoPedido` — GET /v1/orders?external_reference=<pedido>&
+ * begin_date=<criação>&end_date=<agora> (Ponto 1, 4ª revisão de risco,
+ * 26/09/2026, achado do 4º revisor de risco).
+ *
+ * POR QUE ISTO EXISTE: resolver um SENTINELA (`vagaEmVerificacao`, acima) por
+ * FATO — a Orders API sabe dizer se a cobrança da tentativa anterior existe e
+ * o que ela virou — em vez de um teto fixo de relógio
+ * (`MINUTOS_SENTINELA_PRESO`, removido de `criar-pagamento/index.ts`): o
+ * revisor mediu dois cenários (Q1: cartão `processing`, que pode levar dias
+ * em análise antifraude; Q2: webhook atrasado/reenviado) em que o relógio
+ * soltava a vaga com a cobrança da tentativa anterior ainda VIVA, e o PIX
+ * criado por cima virava uma SEGUNDA cobrança capturada para o mesmo pedido.
+ *
+ * NÃO VERIFICADO CONTRA A API REAL (o proxy de rede deste ambiente bloqueia
+ * mercadopago.*, e a doc pública também não estava alcançável daqui — ver
+ * AGENTS.md/mapa de risco): os NOMES exatos dos parâmetros de busca, a
+ * paginação, e o atraso de indexação entre a Orders API criar/mudar uma
+ * order e ela aparecer nesta busca. A referência usada (achado do revisor) é
+ * https://www.mercadopago.com.br/developers/en/reference/online-payments/
+ * checkout-api/search-order/get — que documenta `external_reference`,
+ * `begin_date` e `end_date` como parâmetros de query, mas não confirma o
+ * NOME do campo que carrega a lista de orders na resposta. Por segurança,
+ * esta função aceita os dois nomes mais comuns entre endpoints de busca do
+ * MP (`results`, o do `/v1/payments/search` clássico; `elements`, usado por
+ * outros recursos) e também um array na RAIZ — qualquer OUTRO formato
+ * (corpo sem lista reconhecível, corpo não-JSON, HTTP não-2xx, erro de rede)
+ * volta como `{ ok: false }`, NUNCA como lista vazia: quem chama
+ * (`resolverSentinela`, abaixo, e os dois chamadores em `criar-pagamento/
+ * index.ts` e `webhook-mercadopago/index.ts`) trata falha e "nada
+ * encontrado" como coisas DIFERENTES — nenhuma das duas libera a vaga.
+ *
+ * Nunca rejeita — mesmo contrato de `criarOrder`/`consultarOrder`. O corpo
+ * de erro (e a lista de orders, que pode trazer cartão com e-mail/CPF do
+ * pagador) nunca vai para o log cru — só o resumo sem dado pessoal.
+ */
+export async function buscarOrdersDoPedido(args: {
+  token: string;
+  pedidoId: string;
+  // ISO — geralmente `pedido.created_at`: o começo da janela de busca.
+  // `undefined`/inválido é aceito pela Orders API do jeito que a doc
+  // encontrada não deixa claro (UNVERIFIED); mandar mesmo assim é mais
+  // seguro que omitir, se o parâmetro for obrigatório de verdade.
+  desde: string;
+  fetchImpl?: typeof fetch;
+  baseUrl?: string;
+  tempoLimiteMs?: number;
+}): Promise<{ ok: true; orders: Record<string, unknown>[] } | { ok: false }> {
+  const f = args.fetchImpl ?? fetch;
+  const base = args.baseUrl ?? BASE_URL_PADRAO;
+  const params = new URLSearchParams({
+    external_reference: args.pedidoId,
+    begin_date: args.desde,
+    end_date: new Date().toISOString(),
+  });
+
+  let resposta: Response;
+  try {
+    resposta = await fetchComTempo(
+      f,
+      `${base}/v1/orders?${params.toString()}`,
+      { method: "GET", headers: { Authorization: `Bearer ${args.token}` } },
+      args.tempoLimiteMs,
+    );
+  } catch (_err) {
+    return { ok: false };
+  }
+
+  if (!resposta.ok) {
+    console.error("mercadopago: busca de orders do pedido recusou", resposta.status);
+    return { ok: false };
+  }
+
+  let json: unknown;
+  try {
+    json = await resposta.json();
+  } catch (_err) {
+    console.error("mercadopago: busca de orders 2xx com corpo ilegível", resposta.status);
+    return { ok: false };
+  }
+
+  const corpo = json && typeof json === "object" ? json as Record<string, unknown> : null;
+  const lista = Array.isArray(corpo?.results)
+    ? corpo.results
+    : Array.isArray(corpo?.elements)
+      ? corpo.elements
+      : Array.isArray(json)
+        ? json
+        : null;
+  if (!lista) {
+    console.error("mercadopago: busca de orders com corpo sem lista reconhecível (results/elements)");
+    return { ok: false };
+  }
+
+  return {
+    ok: true,
+    orders: lista.filter((o): o is Record<string, unknown> => Boolean(o) && typeof o === "object"),
+  };
+}
+
+/**
+ * Os três status NÃO-terminais documentados da Orders API — a order ainda
+ * pode virar aprovada, recusada, cancelada ou expirada. `mapearStatusOrder`
+ * já traduz os três (com o `status_detail` certo) para 'aguardando' — esta
+ * lista existe porque `resolverSentinela`, abaixo, precisa decidir "ainda
+ * viva" SEM o `status_detail` (a busca de orders pode não devolver o mesmo
+ * nível de detalhe que `GET /v1/orders/{id}` devolve — UNVERIFIED, mesma
+ * ressalva de `buscarOrdersDoPedido`), só pelo `status` da RAIZ.
+ */
+const STATUS_ORDER_VIVOS = new Set(["created", "processing", "action_required"]);
+
+/**
+ * Os status TERMINAIS, documentados, em que a Orders API garante que NENHUM
+ * dinheiro novo pode ser capturado por aquela order — o oposto de
+ * `STATUS_ORDER_VIVOS`. `resolverSentinela`, abaixo, só libera quando TODA
+ * order de cartão encontrada está aqui — nunca por eliminação (um status que
+ * este arquivo não conhece NUNCA conta como morto: pode ser uma variação de
+ * `processed` que este comentário não previu, e liberar às cegas reabriria
+ * exatamente o buraco que este Ponto fecha).
+ */
+const STATUS_ORDER_MORTOS = new Set(["failed", "canceled", "cancelled", "expired", "refunded", "charged_back"]);
+
+/**
+ * Decide o que fazer com um SENTINELA a partir das orders devolvidas por
+ * `buscarOrdersDoPedido` (Ponto 1, 4ª revisão de risco, 26/09/2026) — filtra
+ * para CARTÃO (`orderEhDeCartao`; a busca por `external_reference` também
+ * devolve o PIX do mesmo pedido, que não interessa aqui) e decide:
+ *
+ *   - alguma `status === "processed"` → `{ acao: "adotar", order }` — a
+ *     cobrança da tentativa anterior existe e foi CAPTURADA. Decide pelo
+ *     `status` sozinho, não por `mapearStatusOrder(status, status_detail)`
+ *     (que exige o PAR exato `processed:accredited"): a busca pode não
+ *     devolver o `status_detail` no mesmo formato de `GET /v1/orders/{id}`
+ *     (UNVERIFIED, ver `buscarOrdersDoPedido`) — dinheiro capturado com um
+ *     detalhe que este arquivo não reconhece ainda é dinheiro capturado, e
+ *     tratar isso como "não sei" cairia por eliminação em `liberar` (o
+ *     buraco que este Ponto existe para fechar);
+ *   - nenhuma capturada, mas alguma ainda VIVA (`STATUS_ORDER_VIVOS`, acima)
+ *     → `{ acao: "gravar", order }` — grava o id de verdade na vaga; os
+ *     ramos (d)/(f) de `criar-pagamento/index.ts` cuidam dela como cuidam de
+ *     qualquer cartão vivo reconsultado por id;
+ *   - TODAS reconhecidamente mortas (`STATUS_ORDER_MORTOS`, acima) →
+ *     `{ acao: "liberar" }`;
+ *   - qualquer outra combinação (alguma order com `status` que este arquivo
+ *     não reconhece nem como capturado, nem vivo, nem morto) →
+ *     `{ acao: "gravar", order }` com a PRIMEIRA delas: nunca libera sobre
+ *     um status desconhecido, e o par cru chega ao cliente pelo mesmo
+ *     caminho "par desconhecido" que uma reconsulta normal já devolve.
+ *
+ * Lista VAZIA (nenhuma order de CARTÃO encontrada) devolve `null` — NUNCA
+ * `{ acao: "liberar" }`: "nada encontrado ainda" (atraso de indexação, por
+ * exemplo) não é o mesmo fato que "encontrei e está morta". Quem chama trata
+ * `null` exatamente como uma busca que falhou — nunca libera às cegas.
+ */
+export function resolverSentinela(
+  orders: Record<string, unknown>[],
+): { acao: "adotar" | "gravar"; order: Record<string, unknown> } | { acao: "liberar" } | null {
+  const cartao = orders.filter((o) => orderEhDeCartao(o));
+  if (cartao.length === 0) return null;
+  const aprovada = cartao.find((o) => String(o.status ?? "") === "processed");
+  if (aprovada) return { acao: "adotar", order: aprovada };
+  const viva = cartao.find((o) => STATUS_ORDER_VIVOS.has(String(o.status ?? "")));
+  if (viva) return { acao: "gravar", order: viva };
+  const todasMortas = cartao.every((o) => STATUS_ORDER_MORTOS.has(String(o.status ?? "")));
+  if (todasMortas) return { acao: "liberar" };
+  return { acao: "gravar", order: cartao[0] };
 }
 
 /**

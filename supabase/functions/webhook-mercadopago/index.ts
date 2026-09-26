@@ -78,6 +78,7 @@ import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
   avaliarAssinatura,
+  buscarOrdersDoPedido,
   camposDaAssinatura,
   consultarOrder,
   consultarPagamento,
@@ -88,6 +89,7 @@ import {
   orderEhDeCartao,
   parcelasDaOrder,
   recusaLiberaAVaga,
+  resolverSentinela,
   tipoDoPagamentoDaOrder,
   TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
@@ -1486,13 +1488,35 @@ async function handler(
       // Sem este segundo passo, a recusa de verdade (nenhuma cobrança
       // aprovada existe) não soltava NADA — o pedido ficava preso até a
       // reserva morrer, mesmo com o motivo já conhecido (ver o comentário
-      // grande de `sentinelaExpirado`, `criar-pagamento/index.ts`, para o
-      // outro lado deste fechamento: o teto de tempo, quando NENHUMA
-      // notificação de recusa chega a existir). Só tenta se a primeira
+      // grande de `resolverVagaEmVerificacao`, `criar-pagamento/index.ts`,
+      // para o outro lado deste fechamento). Só tenta se a primeira
       // tentativa não bateu, e só com o valor REAL da vaga — nunca
       // inventado: se ela guarda uma cobrança de verdade (ou outro
       // sentinela), a RPC recusa de novo e nada muda.
-      if (!liberou) {
+      //
+      // Ponto 2 (4ª revisão de risco, 26/09/2026): este fallback soltava
+      // QUALQUER sentinela achado na vaga, sem checar se esta notificação
+      // tinha ALGUMA coisa a ver com a tentativa que ele representa — dois
+      // cenários reproduzidos pelo revisor:
+      //   Q2  — a recusa ATRASADA (ou reenviada) da tentativa c0 soltava o
+      //         sentinela da tentativa c1, ainda em análise no MP;
+      //   Q2b — o cancelamento ATRASADO de um PIX ANTIGO (troca PIX→cartão,
+      //         ramo (c) de `criar-pagamento`) também soltava o sentinela de
+      //         uma tentativa de CARTÃO seguinte.
+      // Nos dois, o cliente acabava pagando duas vezes: a cobrança que
+      // soltou por engano E a que ficou presa atrás dela. Dois cintos:
+      //   1. Só entra aqui para notificação de CARTÃO (`ordemDeCartaoNa
+      //      Notificacao`) — fecha Q2b (a notificação é sobre um PIX) sem
+      //      precisar de rede nenhuma.
+      //   2. Antes de soltar, confirma por BUSCA (`buscarOrdersDoPedido` +
+      //      `resolverSentinela`, `_shared/mercadopago.ts` — MESMA função do
+      //      Ponto 1) que NENHUMA order de cartão deste pedido está viva ou
+      //      aprovada — fecha Q2 (a notificação pode ser de uma tentativa
+      //      BEM mais velha que a que o sentinela representa). Busca que
+      //      falha, corpo ilegível, ou "nada encontrado" (a order do PRÓPRIO
+      //      sentinela pode não estar indexada ainda) NUNCA solta — mesma
+      //      regra de segurança do Ponto 1.
+      if (!liberou && ordemDeCartaoNaNotificacao) {
         const { data: linhaComSentinela, error: erroLeituraSentinela } = await supabase
           .from("marketplace_orders")
           .select("gateway_payment_id")
@@ -1501,12 +1525,37 @@ async function handler(
         if (erroLeituraSentinela) throw erroLeituraSentinela;
         const idNaVaga = (linhaComSentinela as Record<string, unknown> | null)?.gateway_payment_id;
         if (typeof idNaVaga === "string" && vagaEmVerificacao(idNaVaga)) {
-          const { data: liberouSentinela, error: erroLiberarSentinela } = await supabase.rpc(
-            "liberar_cobranca_do_pedido",
-            { p_order_id: orderId, p_gateway_payment_id: idNaVaga },
-          );
-          if (erroLiberarSentinela) throw erroLiberarSentinela;
-          liberou = liberouSentinela === true;
+          // Segunda leitura, só quando o sentinela está mesmo lá — a
+          // primeira (acima) mantém a MESMA string de colunas de antes
+          // (`"gateway_payment_id"`, sozinha) porque o caminho do estorno
+          // (Achado B1/S4) pede exatamente essa string para uma leitura
+          // DIFERENTE; misturar as duas faria a injeção de falha de teste
+          // desse achado enxergar chamada errada.
+          const { data: linhaComCriacao } = await supabase
+            .from("marketplace_orders")
+            .select("created_at")
+            .eq("id", orderId)
+            .maybeSingle();
+          const busca = await buscarOrdersDoPedido({
+            token: credenciaisMp.token,
+            pedidoId: orderId,
+            desde: String((linhaComCriacao as Record<string, unknown> | null)?.created_at ?? ""),
+            fetchImpl: deps.fetchImpl,
+          });
+          const resolucao = busca.ok ? resolverSentinela(busca.orders) : null;
+          if (resolucao?.acao === "liberar") {
+            const { data: liberouSentinela, error: erroLiberarSentinela } = await supabase.rpc(
+              "liberar_cobranca_do_pedido",
+              { p_order_id: orderId, p_gateway_payment_id: idNaVaga },
+            );
+            if (erroLiberarSentinela) throw erroLiberarSentinela;
+            liberou = liberouSentinela === true;
+          } else {
+            console.warn(
+              "webhook-mercadopago: recusa/cancelamento não amarrado ao sentinela (Ponto 2) — busca não confirmou que todas as orders de cartão do pedido estão mortas, sentinela mantido",
+              { orderId, idOrder: idParaRpc, sentinela: idNaVaga, buscaOk: busca.ok },
+            );
+          }
         }
       }
     } catch (erro) {
@@ -1887,7 +1936,22 @@ async function handler(
       queryAdocao = idGravadoAtualStr === null
         ? queryAdocao.is("gateway_payment_id", null)
         : queryAdocao.eq("gateway_payment_id", idGravadoAtualStr);
-      const { data: adotado } = await queryAdocao.select("id").maybeSingle();
+      // Menor (4ª revisão de risco, 26/09/2026): antes este `error` era
+      // ignorado — uma falha de BANCO (timeout, deadlock passageiro) fazia
+      // `adotado` virar `undefined` do MESMO jeito que "perdeu a corrida
+      // para outra adoção" (o ramo `else`, abaixo), e o código seguia como
+      // se alguém MAIS tivesse resolvido a vaga, quando na verdade NINGUÉM
+      // tentou de novo — a cobrança aprovada ficava sem registro. 500
+      // mantém o evento na fila do MP: o próximo reenvio tenta a adoção de
+      // novo.
+      const { data: adotado, error: erroAdocao } = await queryAdocao.select("id").maybeSingle();
+      if (erroAdocao) {
+        console.error(
+          "webhook-mercadopago: UPDATE de adoção (Achado B2) falhou — evento mantido na fila do MP",
+          { orderId, idOrder: idParaRpc, erro: erroAdocao },
+        );
+        return json({ error: "Erro ao adotar a cobrança." }, 500);
+      }
       if (adotado) {
         console.warn(
           "webhook-mercadopago: cartao_adotado — cobrança aprovada ligada a uma vaga que estava vazia/em verificação (Achado B2)",
@@ -1970,9 +2034,11 @@ async function handler(
       // aplicar", mais abaixo, fazia o MP reenviar a MESMA notificação
       // clássica em loop (W6). A rota `payment` não tem como resolver o
       // sentinela por si só (não fala da cobrança de cartão que o ocupa) —
-      // quem resolve é a ADOÇÃO da rota `order` (acima) ou o teto de
-      // `sentinelaExpirado` em `criar-pagamento`. Aqui só ignora, sem
-      // reenviar: reenviar não muda nada até um dos dois caminhos rodar.
+      // quem resolve é a ADOÇÃO da rota `order` (acima) ou
+      // `resolverVagaEmVerificacao` em `criar-pagamento` (busca as orders de
+      // cartão na Orders API, Ponto 1 da 4ª revisão de risco, 26/09/2026).
+      // Aqui só ignora, sem reenviar: reenviar não muda nada até um dos dois
+      // caminhos rodar.
       if (vagaEmVerificacao(idGravadoNoBanco)) {
         console.warn(
           "webhook-mercadopago: rota `payment` sobre um pedido com a vaga em verificação (sentinela) — ignorado, sem reconsultar",

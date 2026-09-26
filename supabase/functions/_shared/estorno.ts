@@ -1094,10 +1094,15 @@ export async function consultarTransacaoDaOrder(args: {
   token: string;
   buscar?: typeof fetch;
 }): Promise<string | null> {
+  // N1 (3ª/4ª revisão de risco, 26/09/2026): a order consultada aqui pode
+  // ser de CARTÃO (payer com e-mail e CPF do titular) — `corpoNoLog: false`
+  // troca o corpo cru por um resumo sem dado pessoal no log de erro, mesma
+  // proteção que os outros pontos do cartão já usam.
   const resultado = await consultarOrder({
     token: args.token,
     orderId: args.orderId,
     fetchImpl: args.buscar,
+    corpoNoLog: false,
   });
   if (!resultado.ok) {
     console.error(
