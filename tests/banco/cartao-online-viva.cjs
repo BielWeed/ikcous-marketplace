@@ -557,6 +557,7 @@ PROVAS.push({
       // aborted" em vez de confirmar o que se quer confirmar.
       await cliente.query("SAVEPOINT antes_da_80");
       await assert.rejects(
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_MIGRATION_80 é constante do próprio teste (path.join de literais), nunca entrada de fora.
         () => cliente.query(fs.readFileSync(CAMINHO_MIGRATION_80, "utf8")),
         /B1_BASELINE_DIVERGENT/,
       );
