@@ -2216,6 +2216,19 @@ const VERIFICACOES = {
       esperado: ["AND o.status NOT IN ('cancelled', 'returned')"],
     },
   ],
+  // O CLIENTE NÃO CANCELA COM CARTÃO VIVO (achado independente de risco,
+  // dinheiro; 26/09/2026, migration 20261180000000): o cliente (nunca o
+  // admin) não cancela um pedido 'aguardando' com cartão ainda em jogo
+  // (cobrança gravada ou sentinela de verificação).
+  "20261180000000_cliente_nao_cancela_com_cartao_vivo.sql": [
+    {
+      funcao: "update_order_status_atomic",
+      esperado: [
+        "SELECT status, user_id, cancelled_after_shipping, payment_status, paid_at, total,\n           metodo_online, gateway_payment_id\n      INTO v_old_status, v_user_id, v_cancelled_after_shipping, v_payment_status, v_paid_at, v_total,\n           v_metodo_online, v_gateway_payment_id",
+        "IF v_payment_status = 'aguardando'\n           AND (\n                v_metodo_online IN ('credito', 'debito')\n                OR v_gateway_payment_id LIKE 'verificando:%'\n           )\n        THEN\n            RAISE EXCEPTION 'Este pedido tem uma cobrança no cartão em confirmação com o banco. Aguarde a confirmação ou fale com a loja antes de cancelar.';",
+      ],
+    },
+  ],
   // O PEDIDO POR WHATSAPP FECHA PARA ANON (achado LGPD, alto — auditoria de
   // 26/09/2026, migration 20261181000000). O REVOKE de get_orders_by_whatsapp_v3
   // não muda corpo de função nenhuma (só ACL, fora do que este mapa confere) —

@@ -203,7 +203,7 @@ node - <<'JS' > conferir-marcadores.sql
 const { VERIFICACOES } = require("./scripts/db-apply.cjs");
 const q = (s) => "'" + s + "'";
 const linhas = [];
-for (const arquivo of Object.keys(VERIFICACOES).filter((a) => /^2026117[5-8]/.test(a)).sort()) {
+for (const arquivo of Object.keys(VERIFICACOES).filter((a) => /^(2026117[5-8]|20261180)/.test(a)).sort()) {
   for (const c of [].concat(VERIFICACOES[arquivo])) {
     for (const bruto of c.esperado) {
       const m = typeof bruto === "string" ? { texto: bruto } : bruto;
@@ -225,12 +225,21 @@ SELECT migration, funcao, vezes AS esperado,
 JS
 ```
 
-Cole o `conferir-marcadores.sql` no SQL Editor. No commit `1af39ee1` (26/09/2026) o mapa tem **32
-marcadores**, e todos precisam dar `ok = true`. A contagem é exata, como no `db-apply`:
+Cole o `conferir-marcadores.sql` no SQL Editor. O filtro acima cobre 75–78 e a 80 (§1.4, **se
+aplicada**) — **não conte marcadores de cabeça**: rode a consulta e confira que TODA linha do
+resultado dá `ok = true`, seja qual for o total (o número exato muda a cada revisão de qualquer
+uma das migrations; hard-codar uma contagem aqui é exatamente o que ficou errado numa rodada
+anterior deste runbook). Nos dois sentidos:
 - `achado` menor que `esperado` quer dizer que parte do trecho sumiu;
 - `achado` maior que `esperado` quer dizer que a função mudou de um jeito que ninguém previu.
 
 Nos dois casos a situação pede olho humano antes do passo 2.
+
+**A 79 (`cancelar_devolucao_barra_compra_em_voo`) NÃO entra neste filtro** — ela é de outra
+frente (`fix/devolucao-pos-revisao`) e tem o próprio procedimento de conferência, no §7.3 do
+runbook daquela frente. Se a 79 estiver aplicada, confira os marcadores dela lá, não aqui —
+duplicar a lista aqui é como a contagem hard-coded acima ficou errada quando a 79 ganhou um
+overload novo na rodada 4 dela.
 
 ### 1.3 Ledger (decisão do dono)
 
@@ -246,7 +255,41 @@ INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
 ON CONFLICT (version) DO NOTHING;
 ```
 
+**A linha da 79 não entra neste `INSERT`** — o ledger dela é registrado pelo §7.4 do runbook da
+frente `fix/devolucao-pos-revisao`, que é quem publica e mantém aquela migration.
+
 Se registrar e depois reverter (§5), apague as linhas das versões revertidas.
+
+### 1.4 Aplicar a 80 (achado independente de risco, 26/09/2026)
+
+A `20261180000000_cliente_nao_cancela_com_cartao_vivo.sql` é publicada À PARTE das 4 migrations
+do §1 — mesmo procedimento (workflow, nunca `db-apply.cjs` direto), mas em outro run, DEPOIS de
+o §1.1/§1.2 confirmarem que 75 e 76 estão de pé (ela lê `metodo_online` e `devolucoes`).
+
+1. Abra *Run workflow* de novo, no branch do SHA anotado.
+2. Preencha `migracoes`:
+
+   ```text
+   20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
+   ```
+
+3. Deixe `projeto_ref` **no padrão**, que é o projeto da loja.
+
+Esta migration tem um **preflight** (`B1_BASELINE_DIVERGENT`, `DO $preflight_20261180$` no topo
+do arquivo) que recusa ANTES de qualquer `CREATE` se `marketplace_orders.metodo_online` ou
+`public.devolucoes` não existirem, ou se o corpo vivo de `update_order_status_atomic` não bater
+com o que a 75 deixou nem com o que ela própria deixa — aplicar fora de ordem (ex.: direto sobre
+um banco parado na 74) sai com esse erro e **nada é gravado**, em vez de criar uma função quebrada
+silenciosamente (o que aconteceria sem o preflight — provado em Postgres 17 efêmero, ver o
+cabeçalho do arquivo).
+
+Depois de aplicar, acrescente ao ledger do §1.3:
+
+```sql
+INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
+  ('20261180000000', 'cliente_nao_cancela_com_cartao_vivo')
+ON CONFLICT (version) DO NOTHING;
+```
 
 ## 2. Publicar as functions — só depois do §1 conferido
 
@@ -358,11 +401,18 @@ Não precisa mexer em banco.
    anterior.
 3. **Functions**: rode o `publicar-functions.yml` a partir do commit anotado no §0, com as
    mesmas cinco do §2. As versões antigas não leem nada das migrations novas.
-4. **Banco**: rode **sempre 78 → 77 → 76 → 75** e pare onde o problema acabar. Execute pelo
+4. **Banco**: rode **sempre 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A 80
+   e a 79 só entram na fila se já tiverem sido aplicadas** — as duas são publicadas à parte das
+   75–78, em frentes independentes. **A 79 (`cancelar_devolucao_barra_compra_em_voo`) é dona da
+   frente `fix/devolucao-pos-revisao` — o procedimento completo dela (comando, guardas,
+   ledger) está no §7.5 daquele runbook; aqui só a ORDEM RELATIVA importa: ela vem depois da
+   80 e antes da 78.** Se nenhuma das duas estava aplicada, comece direto em 78. Execute pelo
    `psql` com a string de conexão do projeto da loja. **Confira o host antes**, porque o
    workflow não aceita `rollback-manual-*` e o `db-apply` gravaria o rollback no ledger.
 
    ```bash
+   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
+   # 79, se aplicada: arquivo e comando exatos no §7.5 do runbook de fix/devolucao-pos-revisao
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
@@ -370,12 +420,27 @@ Não precisa mexer em banco.
    ```
 
 **Guardas que recusam a ordem errada** (um `DO` com `RAISE EXCEPTION`, antes de qualquer
-`DROP`):
+`DROP`) — só as que este runbook é dono (75, 76, 77, 80; a guarda da 79 é descrita no §7.5 da
+outra frente, não repetida aqui):
+- a 80 não tem guarda de ordem própria (é sempre a primeira a reverter, se estiver aplicada), e
+  seu ROLLBACK tem guarda própria do lado de baixo: recusa se `public.devolucoes` já não
+  existir (a 75 já revertida por baixo dela deixaria `update_order_status_atomic` quebrada
+  para qualquer cancelamento);
 - a 77 recusa se `painel_inicio()`/`crm_visao` existirem;
 - a 76 recusa se 78 ou 77 existirem;
-- a 75 recusa se 78, 77 ou 76 existirem, pelo objeto `config_pagamento_cartao`.
+- a 75 recusa, nesta ordem: se o CORPO ATUAL de `update_order_status_atomic` ainda tiver a
+  guarda da 80 (lido de `pg_get_functiondef`, procurando `verificando:` — a 80 só redefine
+  essa função, não cria objeto novo nenhum, então "o objeto existe?" não bastava para
+  detectá-la); senão, se `admin_devolucao_liberar_vinculo_reverso` existir (a 79 — checado por
+  `EXISTS` sobre `pg_proc.proname`, não por `to_regproc`/`to_regprocedure`: o nome sozinho pode
+  ter mais de um overload — a rodada 4 da 79 criou um segundo, `(uuid, boolean)`, ao lado do
+  `(uuid)` original — e tanto `to_regproc` quanto uma assinatura fixa dariam falso negativo
+  nesse caso); senão, se 78, 77 ou 76 existirem (pelo objeto `config_pagamento_cartao`).
+  Reverter a 75 por baixo da 80 ou da 79 sem essas checagens quebraria a guarda de cartão vivo,
+  ou as RPCs de devolução da 79, em silêncio, sem erro nenhum.
 
-Recusa com `-1` não deixa nada pela metade. A 78 não tem guarda, porque é a primeira da fila.
+Recusa com `-1` não deixa nada pela metade. A 78 não tem guarda, porque é a primeira da fila
+das 75–78 (a 80 e a 79, quando aplicadas, vêm antes dela).
 
 Antes da 77 e da 75, **exporte os dados**, porque o rollback apaga:
 
@@ -391,6 +456,8 @@ psql "$CONEXAO_DA_LOJA" -c "\copy public.devolucao_eventos TO 'devolucao_eventos
 
 | Migration | Apagado | Fica, de propósito |
 | --- | --- | --- |
+| 80 | Nada é apagado — só redefine `update_order_status_atomic`, que volta ao corpo exato da 75 (comprovado byte a byte). | A guarda de cartão vivo desaparece: o cliente volta a poder cancelar pedido com cobrança de cartão possivelmente aprovável. |
+| 79 | Ver §7.5 do runbook de `fix/devolucao-pos-revisao` — dona da migration, mantém a tabela lá (o conteúdo exato mudou entre rodadas daquela frente; duplicar aqui é o que ficou desatualizado numa revisão anterior deste runbook). | Ver §7.5. |
 | 78 | Só funções de leitura. | Nada. |
 | 77 | Lançamentos, contas, categorias, sessões de caixa e a linha de `assinatura_da_loja`. Ao reaplicar, o hub precisa sincronizar de novo. | Pedidos, estornos e devoluções, que o Financeiro só lia. |
 | 76 | `config_pagamento_cartao`, as RPCs, o gatilho do estorno e as CHECKs. `registrar_estorno_manual` volta ao corpo de `20261072000000`. | As **colunas** `tentativas_de_pagamento`, `metodo_online`, `parcelas` e `estorno_manual_registrado_em`, que guardam como cada pedido foi pago. |
@@ -407,6 +474,22 @@ vale para a loja inteira, porque preview e produção leem a mesma linha. Durant
 cartão aparece para todo cliente, então faça em horário sem movimento.
 
 **Preparar**
+- [ ] A migration **20261180000000** (`cliente_nao_cancela_com_cartao_vivo`, achado
+  independente de risco de 26/09/2026) está aplicada. Sem ela, o cliente pode cancelar um
+  pedido cuja cobrança de cartão ainda pode ser aprovada pelo banco — o estoque volta, e se o
+  banco aprovar depois, o dinheiro sai do fluxo (`pago_apos_expirar`). Confira com
+  `SELECT pg_get_functiondef('public.update_order_status_atomic(uuid,text,text,boolean)'::regprocedure) LIKE '%verificando:%'`
+  (`true` = aplicada).
+- [ ] A **edge de `fix/cartao-edge-achados`** (021b8720 em diante) está publicada. O 409
+  `idempotency_key_already_used` (retry com o MESMO token) JÁ grava o sentinela `verificando:`
+  hoje (`fe045939`, `criar-pagamento/index.ts:1598-1607`) — não é esse o gap. A guarda da 80 só
+  fecha o cenário de falha de REDE/timeout/5xx na CRIAÇÃO da cobrança (`criar-pagamento/
+  index.ts:1742-1745`, resposta 502 sem tocar a vaga) se essa edge estiver no ar — é ela quem
+  passa a gravar o sentinela `verificando:` nesse 502 de criação
+  (`respostaCartaoAmbiguoNaCriacao`, commit `bf15876f`); sem ela, a vaga fica com
+  `gateway_payment_id`/`metodo_online` NULL e a guarda não tem o que ler (gap documentado no
+  cabeçalho da 20261180000000 e no teste `tests/banco/cartao-online-viva.cjs`, caso E). Confira
+  o commit publicado em `publicar-functions.yml` antes de ligar o cartão.
 - [ ] O §4 está completo, e o PIX pelo app está ligado. O painel trava o cartão sem o PIX,
   porque os dois usam a mesma credencial.
 - [ ] **Cartão de teste só aprova com credencial de TESTE** do Mercado Pago
