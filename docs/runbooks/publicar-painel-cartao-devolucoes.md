@@ -201,7 +201,7 @@ node - <<'JS' > conferir-marcadores.sql
 const { VERIFICACOES } = require("./scripts/db-apply.cjs");
 const q = (s) => "'" + s + "'";
 const linhas = [];
-for (const arquivo of Object.keys(VERIFICACOES).filter((a) => /^(2026117[5-9]|20261180)/.test(a)).sort()) {
+for (const arquivo of Object.keys(VERIFICACOES).filter((a) => /^(2026117[5-8]|20261180)/.test(a)).sort()) {
   for (const c of [].concat(VERIFICACOES[arquivo])) {
     for (const bruto of c.esperado) {
       const m = typeof bruto === "string" ? { texto: bruto } : bruto;
@@ -223,17 +223,21 @@ SELECT migration, funcao, vezes AS esperado,
 JS
 ```
 
-Cole o `conferir-marcadores.sql` no SQL Editor. No commit `1af39ee1` (26/09/2026) o mapa tinha **32
-marcadores** para 75–78. O filtro acima também inclui a 79 (`cancelar_devolucao_barra_compra_
-em_voo`, **se aplicada** — mapa de outra frente, contar os marcadores dela lá) e a 80 (§1.4,
-**se aplicada**): 32 + 8 da 79 + 2 da 80 = **42** quando as três estiverem aplicadas na mesma
-base — menos, se alguma ainda não tiver subido (a 79 e a 80 são publicadas à parte das 75–78,
-cada uma no seu run do workflow). Todos os marcadores presentes precisam dar `ok = true`. A
-contagem é exata, como no `db-apply`:
+Cole o `conferir-marcadores.sql` no SQL Editor. O filtro acima cobre 75–78 e a 80 (§1.4, **se
+aplicada**) — **não conte marcadores de cabeça**: rode a consulta e confira que TODA linha do
+resultado dá `ok = true`, seja qual for o total (o número exato muda a cada revisão de qualquer
+uma das migrations; hard-codar uma contagem aqui é exatamente o que ficou errado numa rodada
+anterior deste runbook). Nos dois sentidos:
 - `achado` menor que `esperado` quer dizer que parte do trecho sumiu;
 - `achado` maior que `esperado` quer dizer que a função mudou de um jeito que ninguém previu.
 
 Nos dois casos a situação pede olho humano antes do passo 2.
+
+**A 79 (`cancelar_devolucao_barra_compra_em_voo`) NÃO entra neste filtro** — ela é de outra
+frente (`fix/devolucao-pos-revisao`) e tem o próprio procedimento de conferência, no §7.3 do
+runbook daquela frente. Se a 79 estiver aplicada, confira os marcadores dela lá, não aqui —
+duplicar a lista aqui é como a contagem hard-coded acima ficou errada quando a 79 ganhou um
+overload novo na rodada 4 dela.
 
 ### 1.3 Ledger (decisão do dono)
 
@@ -249,14 +253,8 @@ INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
 ON CONFLICT (version) DO NOTHING;
 ```
 
-Se a 79 (`cancelar_devolucao_barra_compra_em_voo`) já estiver aplicada nesta rodada, acrescente
-a linha dela ao mesmo `INSERT`:
-
-```sql
-INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
-  ('20261179000000', 'cancelar_devolucao_barra_compra_em_voo')
-ON CONFLICT (version) DO NOTHING;
-```
+**A linha da 79 não entra neste `INSERT`** — o ledger dela é registrado pelo §7.4 do runbook da
+frente `fix/devolucao-pos-revisao`, que é quem publica e mantém aquela migration.
 
 Se registrar e depois reverter (§5), apague as linhas das versões revertidas.
 
@@ -403,16 +401,16 @@ Não precisa mexer em banco.
    mesmas cinco do §2. As versões antigas não leem nada das migrations novas.
 4. **Banco**: rode **sempre 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A 80
    e a 79 só entram na fila se já tiverem sido aplicadas** — as duas são publicadas à parte das
-   75–78, em frentes independentes (80: achado de risco de 26/09/2026, cliente não cancela
-   pedido com cartão vivo; 79: `cancelar_devolucao_barra_compra_em_voo`, achado de risco sobre
-   a etiqueta reversa do Melhor Envio); se nenhuma das duas estava aplicada, comece direto em
-   78. Execute pelo `psql` com a string de conexão do projeto da loja. **Confira o host antes**,
-   porque o workflow não aceita `rollback-manual-*` e o `db-apply` gravaria o rollback no
-   ledger.
+   75–78, em frentes independentes. **A 79 (`cancelar_devolucao_barra_compra_em_voo`) é dona da
+   frente `fix/devolucao-pos-revisao` — o procedimento completo dela (comando, guardas,
+   ledger) está no §7.5 daquele runbook; aqui só a ORDEM RELATIVA importa: ela vem depois da
+   80 e antes da 78.** Se nenhuma das duas estava aplicada, comece direto em 78. Execute pelo
+   `psql` com a string de conexão do projeto da loja. **Confira o host antes**, porque o
+   workflow não aceita `rollback-manual-*` e o `db-apply` gravaria o rollback no ledger.
 
    ```bash
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
-   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql
+   # 79, se aplicada: arquivo e comando exatos no §7.5 do runbook de fix/devolucao-pos-revisao
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261178000000_o_crm_e_o_inicio_leem_a_loja.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261177000000_o_financeiro_da_loja_nasce.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261176000000_o_cartao_online_nasce.sql
@@ -420,22 +418,24 @@ Não precisa mexer em banco.
    ```
 
 **Guardas que recusam a ordem errada** (um `DO` com `RAISE EXCEPTION`, antes de qualquer
-`DROP`):
+`DROP`) — só as que este runbook é dono (75, 76, 77, 80; a guarda da 79 é descrita no §7.5 da
+outra frente, não repetida aqui):
 - a 80 não tem guarda de ordem própria (é sempre a primeira a reverter, se estiver aplicada), e
   seu ROLLBACK tem guarda própria do lado de baixo: recusa se `public.devolucoes` já não
   existir (a 75 já revertida por baixo dela deixaria `update_order_status_atomic` quebrada
   para qualquer cancelamento);
-- a 79 não tem guarda de ordem própria (é a segunda a reverter, se estiver aplicada);
 - a 77 recusa se `painel_inicio()`/`crm_visao` existirem;
 - a 76 recusa se 78 ou 77 existirem;
 - a 75 recusa, nesta ordem: se o CORPO ATUAL de `update_order_status_atomic` ainda tiver a
   guarda da 80 (lido de `pg_get_functiondef`, procurando `verificando:` — a 80 só redefine
   essa função, não cria objeto novo nenhum, então "o objeto existe?" não bastava para
   detectá-la); senão, se `admin_devolucao_liberar_vinculo_reverso` existir (a 79 — checado por
-  `to_regproc`, só pelo nome, robusto a mudança de assinatura em rodada futura da outra
-  frente); senão, se 78, 77 ou 76 existirem (pelo objeto `config_pagamento_cartao`). Reverter a
-  75 por baixo da 80 ou da 79 sem essas checagens quebraria a guarda de cartão vivo, ou as RPCs
-  de devolução da 79, em silêncio, sem erro nenhum.
+  `EXISTS` sobre `pg_proc.proname`, não por `to_regproc`/`to_regprocedure`: o nome sozinho pode
+  ter mais de um overload — a rodada 4 da 79 criou um segundo, `(uuid, boolean)`, ao lado do
+  `(uuid)` original — e tanto `to_regproc` quanto uma assinatura fixa dariam falso negativo
+  nesse caso); senão, se 78, 77 ou 76 existirem (pelo objeto `config_pagamento_cartao`).
+  Reverter a 75 por baixo da 80 ou da 79 sem essas checagens quebraria a guarda de cartão vivo,
+  ou as RPCs de devolução da 79, em silêncio, sem erro nenhum.
 
 Recusa com `-1` não deixa nada pela metade. A 78 não tem guarda, porque é a primeira da fila
 das 75–78 (a 80 e a 79, quando aplicadas, vêm antes dela).
@@ -455,7 +455,7 @@ psql "$CONEXAO_DA_LOJA" -c "\copy public.devolucao_eventos TO 'devolucao_eventos
 | Migration | Apagado | Fica, de propósito |
 | --- | --- | --- |
 | 80 | Nada é apagado — só redefine `update_order_status_atomic`, que volta ao corpo exato da 75 (comprovado byte a byte). | A guarda de cartão vivo desaparece: o cliente volta a poder cancelar pedido com cobrança de cartão possivelmente aprovável. |
-| 79 | `admin_devolucao_liberar_vinculo_reverso` (a RPC que a loja usa para destravar um vínculo reverso real sem código de postagem). `cancelar_devolucao` volta ao corpo da 75. | O guard que impede cancelar devolução com a compra do envio reverso em voo desaparece — volta o buraco de dinheiro que a 79 existe para fechar (etiqueta paga para devolução já cancelada). |
+| 79 | Ver §7.5 do runbook de `fix/devolucao-pos-revisao` — dona da migration, mantém a tabela lá (o conteúdo exato mudou entre rodadas daquela frente; duplicar aqui é o que ficou desatualizado numa revisão anterior deste runbook). | Ver §7.5. |
 | 78 | Só funções de leitura. | Nada. |
 | 77 | Lançamentos, contas, categorias, sessões de caixa e a linha de `assinatura_da_loja`. Ao reaplicar, o hub precisa sincronizar de novo. | Pedidos, estornos e devoluções, que o Financeiro só lia. |
 | 76 | `config_pagamento_cartao`, as RPCs, o gatilho do estorno e as CHECKs. `registrar_estorno_manual` volta ao corpo de `20261072000000`. | As **colunas** `tentativas_de_pagamento`, `metodo_online`, `parcelas` e `estorno_manual_registrado_em`, que guardam como cada pedido foi pago. |

@@ -31,7 +31,7 @@
  *       metodo_online NULL) é um GAP CONHECIDO, documentado no próprio
  *       teste — e NÃO é o 409 de idempotência (esse já é coberto hoje: o 409
  *       `idempotency_key_already_used`, corrida de retry com o MESMO token,
- *       já grava o sentinela `verificando:` na hora, em `fe045945`/`fe045939`
+ *       já grava o sentinela `verificando:` na hora, em `fe045939`
  *       — `criar-pagamento/index.ts:1598-1607`, `respostaCartaoEmVerificacao`
  *       — e o caso C acima prova que a guarda alcança). O gap real é a falha
  *       de REDE/timeout/5xx na CRIAÇÃO da cobrança (`criar-pagamento/
@@ -42,18 +42,38 @@
  *       (`respostaCartaoAmbiguoNaCriacao`, commit `bf15876f`), porque é ELA
  *       quem passa a gravar o sentinela `verificando:` nesse 502 de criação
  *       (ver o cabeçalho da migration 20261180000000 para a citação exata).
+ *   (pf) achado 2 da revisão de risco, round 4 (26/09/2026): o preflight
+ *       `B1_BASELINE_DIVERGENT` da 20261180000000 tinha comentário
+ *       descrevendo a prova ao vivo, mas nenhuma prova ao vivo de verdade —
+ *       só o teste estático (texto) e a checagem manual num Postgres
+ *       efêmero à parte. Esta prova roda o ARQUIVO DE VERDADE da migration
+ *       80 contra um corpo DIVERGENTE de update_order_status_atomic (nem o
+ *       da 75, nem o da própria 80) e espera a recusa
+ *       `B1_BASELINE_DIVERGENT` — dentro de BEGIN/ROLLBACK, para não deixar
+ *       o corpo divergente vazar para as provas seguintes deste arquivo.
  *
  * USO: node tests/banco/cartao-online-viva.cjs (depois de provisionar.cjs e
  * aplicar-migrations.cjs, como no rpc-ci.yml)
  */
 
 const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 const { Client } = require("pg");
 const {
   falhar,
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+
+const CAMINHO_MIGRATION_80 = path.join(
+  __dirname,
+  "..",
+  "..",
+  "supabase",
+  "migrations",
+  "20261180000000_cliente_nao_cancela_com_cartao_vivo.sql",
+);
 
 const U_CLIENTE = "41111111-1111-1111-1111-111111111111";
 const U_ADMIN = "42222222-2222-2222-2222-222222222222";
@@ -509,6 +529,57 @@ async function estadoDoPedidoAposCancelar(cliente, id) {
   );
   return r.rows[0];
 }
+
+PROVAS.push({
+  nome: "(pf) preflight B1_BASELINE_DIVERGENT recusa reaplicar a 80 sobre um corpo divergente — prova ao vivo, não só comentário",
+  corpo: async (cliente) => {
+    await cliente.query("BEGIN");
+    try {
+      // Corpo DIVERGENTE de propósito: nem o que a 75 deixa, nem o que a
+      // própria 80 deixa — mesma assinatura (para o CREATE OR REPLACE não
+      // esbarrar em erro de assinatura antes do preflight ser exercitado).
+      await cliente.query(`
+        CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
+          p_order_id uuid,
+          p_new_status text,
+          p_notes text DEFAULT NULL,
+          p_silent boolean DEFAULT FALSE
+        ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $divergente$
+        BEGIN
+          RETURN jsonb_build_object('divergente', true);
+        END;
+        $divergente$;
+      `);
+
+      // SAVEPOINT antes da tentativa que vai falhar: sem ele, o erro
+      // esperado deixa a transação inteira ABORTADA, e o SELECT de
+      // conferência logo abaixo morreria com "current transaction is
+      // aborted" em vez de confirmar o que se quer confirmar.
+      await cliente.query("SAVEPOINT antes_da_80");
+      await assert.rejects(
+        () => cliente.query(fs.readFileSync(CAMINHO_MIGRATION_80, "utf8")),
+        /B1_BASELINE_DIVERGENT/,
+      );
+      await cliente.query("ROLLBACK TO SAVEPOINT antes_da_80");
+
+      // Confirma que o CREATE da 80 não avançou por cima do corpo
+      // divergente — o preflight recusou ANTES do CREATE, então o corpo
+      // divergente (e não o da 80) continua vivo dentro desta transação.
+      const r = await cliente.query(
+        "SELECT prosrc LIKE '%divergente%' AS ainda_divergente FROM pg_proc WHERE oid = to_regprocedure('public.update_order_status_atomic(uuid,text,text,boolean)')",
+      );
+      assert.equal(
+        r.rows[0].ainda_divergente,
+        true,
+        "o preflight recusou, então o corpo divergente não pode ter sido substituído",
+      );
+    } finally {
+      // Nunca deixa o corpo divergente vazar para as provas seguintes deste
+      // arquivo (elas leem update_order_status_atomic de verdade).
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
 
 async function main() {
   const url = lerDatabaseUrlEfemera();
