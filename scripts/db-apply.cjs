@@ -2225,6 +2225,11 @@ const VERIFICACOES = {
   // RODADA 3 (achados R5/N-a): a RPC nova também recusa soltar um vínculo com
   // pagamento CONFIRMADO no Melhor Envio (marcador gravado pela edge — achado
   // R5, dinheiro) e a nota distingue reserva de vínculo real (achado N-a).
+  // RODADA 4 (achados 1/3/4, scratchpad rev79/ataque3.cjs): a assinatura
+  // ganha `p_conferi_no_melhor_envio`, o gate também exige `auth.uid() IS NOT
+  // NULL` (achado 3 — is_admin() sozinho aceita service_role/postgres sem
+  // sessão) e o guard do marcador troca LIKE por strpos (achado 4), além de
+  // um segundo guard para o marcador de pagamento INDETERMINADO (achado 1c).
   "20261179000000_cancelar_devolucao_barra_compra_em_voo.sql": [
     {
       funcao: "cancelar_devolucao",
@@ -2237,9 +2242,10 @@ const VERIFICACOES = {
     {
       funcao: "admin_devolucao_liberar_vinculo_reverso",
       esperado: [
-        "IF NOT public.is_admin() THEN",
+        "IF NOT public.is_admin() OR auth.uid() IS NULL THEN",
         "IF v_d.codigo_postagem IS NOT NULL THEN",
-        "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND nota LIKE '%confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';%') THEN",
+        "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
+        "IF NOT p_conferi_no_melhor_envio AND EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'Pagamento indeterminado do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
         "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
         "WHEN v_d.me_reverse_id LIKE 'reservando:%' THEN",
       ],

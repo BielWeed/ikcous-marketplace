@@ -2882,7 +2882,7 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(A1/R1/R2/R5/N-a · 20261179000000) cancelar_devolucao só recusa com id REAL em voo (nunca na fase de reserva); código emitido cancela e avisa por evento; a RPC de liberar recusa vínculo PAGO e distingue reserva de vínculo real — provado inclusive AS CUSTOMER (RLS)",
+  nome: "(A1/R1/R2/R5/N-a/1c/3 · 20261179000000) cancelar_devolucao só recusa com id REAL em voo (nunca na fase de reserva); código emitido cancela e avisa por evento; a RPC de liberar recusa vínculo PAGO ou INDETERMINADO (sem confirmação manual), distingue reserva de vínculo real, e recusa service_role/postgres sem sessão — provado inclusive AS CUSTOMER (RLS)",
   corpo: async (cliente) => {
     // Pedido nacional saído por etiqueta do Melhor Envio — mesmo desenho do
     // O_NACIONAL de semear() (shipping_option_id melhor-envio-1), com
@@ -3434,6 +3434,108 @@ PROVAS.push({
       `mutante N_a_nota_confusa: soltar uma RESERVA não pode ficar com a nota de vínculo real (id reservando:...) — nota vista: ${eventoDaReserva.nota}`,
     );
     assert.ok(!eventoDaReserva.nota.includes("reservando:"));
+
+    // Achado 1c (rodada 4): pagamento INDETERMINADO (checkout 5xx/exceção)
+    // recusa por padrão — marcador DIFERENTE do confirmado — mas libera com
+    // p_conferi_no_melhor_envio = true, depois de um admin já ter olhado
+    // "Meus envios" na conta do Melhor Envio.
+    const ME_REVERSO_INDETERMINADO = "me-reverso-indeterminado-r79r4";
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [ME_REVERSO_INDETERMINADO, dPago.id],
+    );
+    await cliente.query(
+      `INSERT INTO public.devolucao_eventos (devolucao_id, de_status, para_status, ator, nota)
+       VALUES ($1, 'aprovada', 'aprovada', 'sistema', $2)`,
+      [
+        dPago.id,
+        `Pagamento indeterminado do envio reverso ${ME_REVERSO_INDETERMINADO}; o Melhor Envio não confirmou nem recusou o checkout — convém conferir em Meus envios, na conta do Melhor Envio, antes de liberar o vínculo manualmente.`,
+      ],
+    );
+    await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [dPago.id],
+        ),
+      /indeterminada/,
+      "mutante 1c_indeterminado_libera_direto: sem confirmar que já olhou o Melhor Envio, a RPC não pode soltar um vínculo com pagamento indeterminado",
+    );
+    const meReverseAindaPresoIndet = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dPago.id],
+    );
+    assert.equal(meReverseAindaPresoIndet, ME_REVERSO_INDETERMINADO);
+
+    // Achado 3 (rodada 4, F3 do scratchpad): o baseline is_admin() aceita
+    // `current_setting('role') IN ('postgres','service_role')` — correto
+    // para outras RPCs (automações de confiança), mas ERRADO aqui: esta RPC
+    // é uma decisão HUMANA pós-checagem manual no Melhor Envio. SET ROLE SEM
+    // sessão nenhuma (sem `logar()`, `auth.uid()` fica NULL) tem que recusar
+    // mesmo passando pelo baseline. Testado AQUI, com o vínculo indeterminado
+    // ainda intacto — antes de liberá-lo de propósito logo abaixo — para que
+    // "nada mudou" seja uma checagem real, não uma tautologia sobre um
+    // vínculo que já tinha sido solto por outro caminho. Zera a GUC de sessão
+    // para garantir que nenhum `logar()` anterior sobreviva (é
+    // `set_config(..., false)` — session-level, não transaction-level).
+    await cliente.query("SELECT set_config('app.rpc.user_id', '', false)");
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query("SET LOCAL ROLE service_role");
+      await assert.rejects(
+        () =>
+          rpc(
+            cliente,
+            "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+            [dPago.id],
+          ),
+        /Acesso negado/,
+        "mutante F3_service_role_sem_jwt: SET ROLE service_role sem auth.uid() tem que recusar mesmo sendo admin pelo baseline is_admin()",
+      );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query("SET LOCAL ROLE postgres");
+      await assert.rejects(
+        () =>
+          rpc(
+            cliente,
+            "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+            [dPago.id],
+          ),
+        /Acesso negado/,
+        "mutante F3_postgres_sem_jwt: SET ROLE postgres sem auth.uid() tem que recusar do mesmo jeito",
+      );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    // O vínculo indeterminado continua intacto — as tentativas acima negadas
+    // (indeterminado sem confirmar, service_role, postgres) não mexeram em nada.
+    const meReverseDepoisDeF3 = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dPago.id],
+    );
+    assert.equal(meReverseDepoisDeF3, ME_REVERSO_INDETERMINADO);
+
+    // Por fim, com p_conferi_no_melhor_envio = true (um admin autenticado que
+    // já conferiu o Melhor Envio), a liberação funciona normalmente.
+    await logar(cliente, U_ADMIN);
+    const liberadoComConferencia = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid, true) AS r",
+      [dPago.id],
+    );
+    assert.equal(
+      liberadoComConferencia.me_reverse_id_liberado,
+      ME_REVERSO_INDETERMINADO,
+      "mutante 1c_conferencia_ignorada: com p_conferi_no_melhor_envio = true, a RPC tem que liberar",
+    );
   },
 });
 

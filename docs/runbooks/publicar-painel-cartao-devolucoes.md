@@ -497,9 +497,24 @@ A mesma leva de achados também mudou a edge `melhor-envio-etiqueta` (retry + de
 vínculo preso para reserva vencida, achado R3; a frase do carrinho em
 `tratarVinculoNaoConfirmado` também condicional ao DELETE, achado R4; um evento além do toast
 quando a devolução muda de status durante o checkout, achado N2). A function já é uma das cinco
-do §2 — se a publicação de functions daquele passo já tiver acontecido antes desta migration,
-republique **só** `melhor-envio-etiqueta` pelo mesmo workflow (`publicar-functions.yml`,
-`functions: melhor-envio-etiqueta`).
+do §2.
+
+**Ordem obrigatória (achado 2, rodada 4): publique `melhor-envio-etiqueta` (§2) ANTES do §7.1
+(aplicar a 79), nunca depois.** A function desta branch só GRAVA em `devolucao_eventos` (o
+marcador de pagamento, achados R5/1a/1b/1c) — não chama nada que a 79 cria, então funciona sem
+ela. Já a 79 sozinha, sem a function nova, cria uma RPC cujos guards de marcador nunca disparam
+(a edge antiga nunca grava o marcador) — inofensivo, mas sem a proteção. Publicando a function
+primeiro, o marcador já está sendo gravado no instante em que a 79 entra no ar, encurtando ao
+máximo a janela sem proteção. Se a publicação de functions do §2 já tiver acontecido ANTES desta
+migration por outro motivo, republique **só** `melhor-envio-etiqueta` pelo mesmo workflow
+(`publicar-functions.yml`, `functions: melhor-envio-etiqueta`) — mas sempre antes do §7.1, nunca
+depois.
+
+**Vínculos criados antes da function nova estar no ar não têm marcador nenhum.** Qualquer
+`me_reverse_id` real gravado pela edge de produção ANTES da publicação desta function (medido
+pela revisão em 26/09/2026 17:50 UTC) não tem — e nunca vai ter — o evento 'sistema' que os
+guards da 79 procuram. Para esses vínculos específicos, a checagem manual em "Meus envios" (§7.6)
+é a ÚNICA proteção — a RPC não teria como recusar sozinha.
 
 **Rodada 3 (achado R5, DINHEIRO)**: a revisão seguinte achou que
 `admin_devolucao_liberar_vinculo_reverso` (a "saída" da rodada 2) conseguia soltar um vínculo que
@@ -509,6 +524,20 @@ nada salvo, abrindo a porta para uma segunda compra. A RPC agora recusa soltar q
 de pagamento confirmado (gravado pela edge, evento 'sistema') existir para o `me_reverse_id`
 atual — ver o procedimento operacional no §7.6. A nota do evento também passou a distinguir
 reserva de vínculo real (achado N-a).
+
+**Rodada 4 (achados 1/2/3/4/5, scratchpad rev79/ataque3.cjs)**: a revisão seguinte achou que o
+marcador da rodada 3 só era gravado em UM ponto (logo após o checkout da PRIMEIRA chamada) —
+faltando no caminho "vinculado" (2ª chamada em diante), sem aviso quando a própria gravação do
+marcador falhava, e sem nada registrado quando o checkout ficava INDETERMINADO (5xx/exceção).
+Também achou que `is_admin()` (baseline) aceita `service_role`/`postgres` sem sessão nenhuma — um
+atalho que este runbook, na rodada 3, afirmava não existir. Correções: (a) o caminho vinculado
+também grava o marcador quando prova pagamento; (b) a gravação tenta 2x e a resposta avisa se as
+duas falharem; (c) um marcador DIFERENTE ("pagamento indeterminado") cobre o caso ambíguo — a RPC
+recusa por padrão, mas libera com o novo argumento `p_conferi_no_melhor_envio = true`, só depois
+de um admin ter conferido "Meus envios"; (3) a RPC agora também exige `auth.uid() IS NOT NULL`,
+fechando o atalho de `service_role`/`postgres`; (4) o guard trocou `LIKE` por `strpos` (substring
+literal, sem curinga) e ganhou um teste (`tests/marcador_pagamento_reverso_contrato_test.ts`) que
+amarra o texto da edge ao texto da RPC. Ver §7.6 atualizado.
 
 ### 7.0 Antes de aplicar
 
@@ -541,30 +570,33 @@ migration; isso é o único jeito de checar 79 sem tocar em pedido de cliente ne
 ```sql
 SELECT checagem, valor, esperado, COALESCE(valor = esperado, false) AS ok FROM (VALUES
   ('79 cancelar_devolucao: corpo novo',          (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'cancelar_devolucao' AND pronamespace = 'public'::regnamespace), '74fd42d04f8ea55257a0aec73bfcabc1'),
-  ('79 admin_devolucao_liberar_vinculo_reverso: corpo', (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), '7c1f6f09fb7c03d648619c9788c7000f'),
+  ('79 admin_devolucao_liberar_vinculo_reverso: corpo', (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), '83a620da726bee13c21578daec6909f3'),
   ('79 as duas SECURITY DEFINER',                 (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND prosecdef), '2'),
   ('79 as duas com search_path fixo',             (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND proconfig @> ARRAY['search_path=public']), '2'),
+  ('rpc nova tem só UM overload (rodada 4: o DROP limpou o de 1 argumento)', (SELECT count(*)::text FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), '1'),
   ('cancelar_devolucao continua p/ authenticated', has_function_privilege('authenticated', 'public.cancelar_devolucao(uuid)', 'EXECUTE')::text, 'true'),
-  ('rpc nova SAI de anon',                         has_function_privilege('anon', 'public.admin_devolucao_liberar_vinculo_reverso(uuid)', 'EXECUTE')::text, 'false'),
-  ('rpc nova executa p/ authenticated',            has_function_privilege('authenticated', 'public.admin_devolucao_liberar_vinculo_reverso(uuid)', 'EXECUTE')::text, 'true')
+  ('rpc nova SAI de anon',                         has_function_privilege('anon', 'public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean)', 'EXECUTE')::text, 'false'),
+  ('rpc nova executa p/ authenticated',            has_function_privilege('authenticated', 'public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean)', 'EXECUTE')::text, 'true')
 ) AS c(checagem, valor, esperado)
 ORDER BY ok, checagem;
 ```
 
 (O md5 de `cancelar_devolucao` e o `45c56a39cc29f31ec5ff904f1929737e` do §7.0 foram conferidos em
-26/09/2026 (rodada 2) e continuam valendo — a rodada 3 não tocou o corpo desta função. O md5 de
-`admin_devolucao_liberar_vinculo_reverso` foi RECALCULADO em 26/09/2026 (rodada 3, achado R5 — o
-guard novo do marcador de pagamento e a nota reescrita do achado N-a mudam o corpo). Recompute-os
-de novo se o conteúdo desses arquivos mudar antes de publicar.)
+26/09/2026 (rodada 2) e continuam valendo — nenhuma rodada seguinte tocou o corpo desta função. O
+md5 de `admin_devolucao_liberar_vinculo_reverso` mudou de novo na rodada 4 (achados 1c/3/4: o
+segundo guard do marcador indeterminado, o `auth.uid() IS NOT NULL` e a troca de `LIKE` por
+`strpos`) — o valor acima já é o da rodada 4. Recompute-o de novo se o conteúdo do arquivo mudar
+antes de publicar.)
 
 ### 7.3 Marcadores — o filtro do §1.2 precisa alargar
 
 O script do §1.2 filtra `Object.keys(VERIFICACOES)` por `/^2026117[5-8]/` — a 79 não entra nesse
 padrão. Troque por `/^(2026117[5-8]|20261179)/` antes de gerar `conferir-marcadores.sql` desta
-vez. O total sobe de **32 para 40 marcadores** (mais 8, os da 79: 3 em `cancelar_devolucao`
-(rodada 2, sem mudança) e 5 em `admin_devolucao_liberar_vinculo_reverso` — os 3 da rodada 2 mais 2
-da rodada 3: o guard do marcador de pagamento confirmado, achado R5, e a nota que distingue
-reserva de vínculo real, achado N-a) — confira que a query devolve 40 linhas, todas `ok = true`.
+vez. O total sobe de **32 para 41 marcadores** (mais 9, os da 79: 3 em `cancelar_devolucao`
+(rodada 2, sem mudança) e 6 em `admin_devolucao_liberar_vinculo_reverso` — os 3 da rodada 2, mais
+2 da rodada 3 (o guard do marcador de pagamento confirmado, achado R5, e a nota que distingue
+reserva de vínculo real, achado N-a), mais 1 da rodada 4 (o guard do marcador de pagamento
+INDETERMINADO, achado 1c) — confira que a query devolve 41 linhas, todas `ok = true`.
 
 ### 7.4 Ledger
 
@@ -599,7 +631,7 @@ existe mais, falhando com `42P01` (relation does not exist) na primeira chamada 
 rollback da 79 primeiro é o que evita essa órfã; não há proteção automática contra a ordem errada
 além desta instrução.
 
-### 7.6 Usar `admin_devolucao_liberar_vinculo_reverso` em produção (achado R5)
+### 7.6 Usar `admin_devolucao_liberar_vinculo_reverso` em produção (achados R5/1/3)
 
 Esta RPC é um escape hatch manual, não um botão do painel — não existe UI para ela. Ela só deve
 ser chamada quando um vínculo real (`me_reverse_id` que não é `reservando:...`) fica preso sem
@@ -615,44 +647,65 @@ Envio, que nunca gera o código da reversa).
    mesma recusa com `22023` quando o marcador de pagamento confirmado (achado R5) foi gravado —
    mas esse marcador só existe se a edge chegou a rodar até o checkout responder; se o pagamento
    foi confirmado por outro caminho (ex.: um checkout manual feito direto no Melhor Envio, fora da
-   edge), o marcador pode faltar e a RPC soltaria um vínculo pago sem avisar. A checagem manual no
-   "Meus envios" é a primeira linha de defesa, não a RPC.
-3. **Se o envio ainda está no CARRINHO sem pagamento** (ex.: o checkout nunca rodou, ou rodou e foi
+   edge, ou um vínculo criado ANTES de a function nova estar no ar — ver o aviso no início do §7),
+   o marcador pode faltar e a RPC soltaria um vínculo pago sem avisar. A checagem manual no "Meus
+   envios" é a primeira linha de defesa, não a RPC.
+3. **Se o checkout ficou INDETERMINADO** (achado 1c, rodada 4 — o Melhor Envio respondeu 5xx ou
+   a chamada deu exceção, sem confirmar nem recusar o pagamento): a RPC recusa por padrão com
+   `22023` (marcador de "pagamento indeterminado"). Só depois de confirmar em "Meus envios" que o
+   envio NÃO foi pago, chame de novo passando `p_conferi_no_melhor_envio = true` — sem essa
+   confirmação manual, não force esse parâmetro.
+4. **Se o envio ainda está no CARRINHO sem pagamento** (ex.: o checkout nunca rodou, ou rodou e foi
    recusado sem o retry conseguir soltar o vínculo): remova o item do carrinho no Melhor Envio
    ANTES de liberar aqui — a RPC só apaga o vínculo no NOSSO banco, nunca mexe no carrinho do
    provedor.
-4. **Se o código de postagem já saiu**: não há nada para "destravar" — a RPC recusa com `22023`
+5. **Se o código de postagem já saiu**: não há nada para "destravar" — a RPC recusa com `22023`
    ("o código de postagem já foi emitido"). Cancelar o envio é direto no Melhor Envio.
 
 **COMO chamar — como um admin autenticado, nunca como `postgres`/service-role sem JWT:**
 
-A RPC checa `public.is_admin()`, que lê `auth.uid()` — uma sessão do SQL Editor do Supabase (ou um
-`psql` direto como `postgres`) não carrega um JWT de usuário e recebe `42501` (acesso negado),
-mesmo sendo uma conexão de superusuário no banco. Não há (nem deve haver) um atalho de
-`service_role`/`postgres` para esta RPC — abrir esse atalho destruiria a premissa de segurança dela
-(uma decisão humana, tomada DEPOIS de olhar o Melhor Envio, não uma automação). O jeito de chamar:
+A RPC checa `public.is_admin() AND auth.uid() IS NOT NULL`. **Correção (achado 3, rodada 4): a
+versão da rodada 3 deste runbook dizia que não havia atalho de `service_role`/`postgres` — isso
+era falso.** `is_admin()` (baseline) aceita `current_setting('role') IN ('postgres',
+'service_role')` mesmo sem sessão nenhuma, e a rodada 3 da RPC não tinha proteção extra contra
+isso (prova em `ataque3.cjs`, cenário F3: `SET ROLE service_role` sem login nenhum liberava o
+vínculo). A rodada 4 fechou esse atalho, exigindo `auth.uid() IS NOT NULL` além de `is_admin()` —
+uma sessão do SQL Editor do Supabase (ou um `psql` direto como `postgres`, ou `SET ROLE
+service_role`/`postgres` sem JWT) não carrega um JWT de usuário e recebe `42501`, mesmo sendo uma
+conexão de superusuário ou tendo o papel de service_role. O jeito de chamar de verdade:
 
 1. Faça login no painel administrativo como um admin de verdade (perfil com `role = 'admin'`).
 2. O client Supabase deste app (`src/lib/supabase.ts`) NÃO expõe `window.supabase` — não há atalho
    de console pronto. Pegue o token da PRÓPRIA sessão logada: DevTools → Application → Local
-   Storage → chave `sb-<project-ref>-auth-token` → campo `access_token` do JSON.
-3. Com esse token, chame a RPC por REST (troque `{SUPABASE_URL}`, `{ANON_KEY}` — a chave pública
-   do projeto, a mesma que `VITE_SUPABASE_PUBLISHABLE_KEY` — e `{ACCESS_TOKEN}`):
+   Storage → chave `sb-<project-ref>-auth-token` → campo `access_token` do JSON, e cole no prompt
+   abaixo SEM deixar rastro no histórico do shell nem na tela:
+
+   ```bash
+   read -rs TOKEN   # cole o access_token aqui e aperte Enter (não aparece na tela)
+   ```
+
+3. Com `$TOKEN` na variável, chame a RPC por REST (troque `{SUPABASE_URL}` e `{ANON_KEY}` — a
+   chave pública do projeto, a mesma que `VITE_SUPABASE_PUBLISHABLE_KEY`):
 
    ```bash
    curl -X POST "{SUPABASE_URL}/rest/v1/rpc/admin_devolucao_liberar_vinculo_reverso" \
      -H "apikey: {ANON_KEY}" \
-     -H "Authorization: Bearer {ACCESS_TOKEN}" \
+     -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"p_id": "<id-da-devolucao>"}'
    ```
 
+   (Achado 1c: se a recusa for por pagamento INDETERMINADO e "Meus envios" já confirmou que não
+   foi pago, repita com `-d '{"p_id": "<id-da-devolucao>", "p_conferi_no_melhor_envio": true}'`.)
+
 4. A resposta de sucesso é `{ id, me_reverse_id_liberado }`. Confira o evento novo em
    `devolucao_eventos` (ator `'sistema'`) para ver o texto gravado — ele também é visível ao
    cliente dono da devolução (achado R2, texto sempre neutro).
+5. `unset TOKEN` ao terminar.
 
 O mecanismo por trás (RLS via `auth.uid()`/`is_admin()`, não o papel da conexão Postgres) é o
-mesmo provado na prova viva `tests/banco/devolucoes-viva.cjs` — o teste `mutante
-R1_rpc_sem_gate_admin` chama a RPC autenticado como cliente comum e espera `42501`; chamado como
-admin autenticado (mesma emulação de `auth.uid()`), a RPC funciona. É essa autenticação — não o
-usuário do Postgres — que este procedimento reproduz em produção.
+mesmo provado na prova viva `tests/banco/devolucoes-viva.cjs` — os testes `mutante
+R1_rpc_sem_gate_admin` (cliente comum, `42501`), `mutante F3_service_role_sem_jwt` e `mutante
+F3_postgres_sem_jwt` (`SET ROLE` sem sessão, `42501`) provam a recusa; chamado como admin
+autenticado (mesma emulação de `auth.uid()`), a RPC funciona. É essa autenticação — não o usuário
+nem o papel da conexão Postgres — que este procedimento reproduz em produção.

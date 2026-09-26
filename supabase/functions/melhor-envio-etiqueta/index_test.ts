@@ -1771,6 +1771,9 @@ const NOTA_CODIGO_GERADO = 'Código de postagem dos Correios gerado (válido por
 // porque o arquivo não importa nada de index.ts (só dynamic import do handler).
 const NOTA_PAGAMENTO_CONFIRMADO_REVERSO = (meId: string) =>
     `O Melhor Envio confirmou o pagamento do envio reverso ${meId}; o código de postagem ainda está sendo gerado.`
+// Achado 1c (rodada 4): mesmo texto de `notaPagamentoIndeterminadoReverso` (index.ts).
+const NOTA_PAGAMENTO_INDETERMINADO_REVERSO = (meId: string) =>
+    `Pagamento indeterminado do envio reverso ${meId}; o Melhor Envio não confirmou nem recusou o checkout — convém conferir em Meus envios, na conta do Melhor Envio, antes de liberar o vínculo manualmente.`
 
 const DEVOLUCAO_APROVADA = {
     id: DEVOLUCAO_ID,
@@ -1851,6 +1854,9 @@ function clienteFalsoDevolucao(cfg: {
      * `filtrosEqCasam` de verdade, como o Postgres faria com um UPDATE ...
      * WHERE — só então 0 linhas vira um resultado possível. */
     gravacaoRespeitaFiltros?: boolean
+    /** Achado 1 (rodada 4, E4/E5): a gravação do marcador de pagamento
+     * CONFIRMADO falha (as 2 tentativas da função de verdade). */
+    erroNoMarcador?: boolean
 } = {}) {
     const registro = {
         operacoes: [] as string[],
@@ -1877,8 +1883,27 @@ function clienteFalsoDevolucao(cfg: {
         }
         if (no.tabela === 'devolucao_eventos') {
             if (no.acao === 'insert') {
+                // Achado 1b/1a (rodada 4): simula a gravação do marcador de
+                // pagamento CONFIRMADO falhando (E4/E5 do scratchpad) — a
+                // função de verdade tenta 2x; a flag falha as duas (não conta
+                // tentativa, só barra qualquer INSERT com essa nota).
+                if (cfg.erroNoMarcador && String(no.valores?.nota ?? '').includes('confirmou o pagamento')) {
+                    return Promise.resolve({ data: null, error: { code: '08006', message: 'connection failure' } })
+                }
                 registro.eventos.push(no.valores)
                 return Promise.resolve({ data: null, error: null })
+            }
+            // Achado 1a (rodada 4): `jaTemMarcadorDePago` lê TODOS os eventos
+            // 'sistema' já gravados (devolucao_id + ator, sem `nota`
+            // específica) para decidir se o marcador já existe — diferente
+            // da leitura do R8 (`lerMomentoDaGeracaoDoCodigo`), que filtra
+            // por uma `nota` exata e usa `.maybeSingle()`. Distingue pela
+            // ausência do filtro de `nota`: sem ele, devolve os eventos JÁ
+            // GRAVADOS nesta mesma chamada (o que uma leitura de verdade
+            // também veria).
+            const temFiltroDeNota = no.filtros.some((f: any) => f.metodo === 'eq' && f.coluna === 'nota')
+            if (!temFiltroDeNota) {
+                return Promise.resolve({ data: registro.eventos.filter((e: any) => e?.ator === 'sistema'), error: null })
             }
             registro.leiturasDeEvento.push({ filtros: [...no.filtros], ordem: no.ordem ?? null })
             return Promise.resolve({ data: cfg.eventoDoCodigo ?? null, error: null })
@@ -2619,8 +2644,11 @@ Deno.test("gerar_devolucao_reversa - R4: vinculada ao ME sem código salvo: GERA
         assertEquals(me.registro.checkouts, 0)
         assertEquals(supa.registro.reservas.length, 0)
         assertEquals(supa.registro.gravacoesDeCodigo.length, 1)
-        assertEquals(supa.registro.eventos.length, 1)
-        assertEquals(supa.registro.eventos[0].nota, NOTA_CODIGO_GERADO)
+        // Achado 1a (rodada 4): o generate aceito prova pagamento mesmo sem
+        // passar pelo checkout desta chamada — o marcador vem primeiro.
+        assertEquals(supa.registro.eventos.length, 2)
+        assertEquals(supa.registro.eventos[0].nota, NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO))
+        assertEquals(supa.registro.eventos[1].nota, NOTA_CODIGO_GERADO)
         // R8: o evento nasceu agora — a validade conta daqui
         const diasDeValidade = (Date.parse(corpo.validade_ate) - Date.now()) / 86_400_000
         assertEquals(diasDeValidade > 6.99 && diasDeValidade <= 7, true)
@@ -2644,7 +2672,10 @@ Deno.test("gerar_devolucao_reversa - R4: vinculada e o código não saiu: a mens
         assertEquals(me1.registro.chamadas, ['POST /api/v2/me/shipment/generate', 'POST /api/v2/me/shipment/tracking'])
         assertEquals(me1.registro.checkouts, 0)
         assertEquals(supa1.registro.gravacoesDeCodigo.length, 0)
-        assertEquals(supa1.registro.eventos.length, 0)
+        // Achado 1a (rodada 4): generate aceito prova pagamento — o marcador
+        // é gravado mesmo com o código ainda pendente (nenhuma compra nova).
+        assertEquals(supa1.registro.eventos.length, 1)
+        assertEquals(supa1.registro.eventos[0].nota, NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO))
 
         // generate 4xx: o envio pode NÃO estar pago — está no carrinho do ME
         const supa2 = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
@@ -3082,5 +3113,121 @@ Deno.test("gerar_devolucao_reversa - R3 residual: checkout 4xx com DELETE do car
         assertEquals(erro.includes('422'), true)
         assertEquals(erro.includes('o envio saiu do carrinho'), true)
         assertEquals(erro.includes('confira lá antes de comprar de novo'), false)
+    })
+})
+
+// ── achado 1 (revisão de risco, rodada 4 — lacunas do marcador R5) ──────────
+// scratchpad rev79/fn5, testes REVISOR79r3 "lacunas do marcador R5" (E1-E5).
+
+Deno.test("gerar_devolucao_reversa - achado 1a: caminho VINCULADO (2ª chamada), generate ACEITO (= pago) e código ainda não saiu — grava o marcador mesmo sem ter passado pelo checkout desta vez (E1)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
+        const me = buscarMeReversoFalso({ gerar: 'ok', codigo: null })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(corpo.situacao, 'pago_sem_codigo')
+        // Antes da rodada 4 (achado E1): 0 marcadores gravados aqui — a RPC
+        // de liberar não tinha como saber que este vínculo estava pago.
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].nota, NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO))
+        // Nenhum aviso de marcador-não-gravado: a gravação funcionou.
+        assertEquals(String(corpo.error).includes('não ficou registrado no banco'), false)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado 1c: checkout 5xx grava um marcador de pagamento INDETERMINADO (diferente do confirmado) (E2)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ checkout: 'erro-5xx' })
+        const { res } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].nota, NOTA_PAGAMENTO_INDETERMINADO_REVERSO(ME_REVERSO))
+        // Não é o marcador confirmado — os dois textos não podem se confundir.
+        assertEquals(supa.registro.eventos[0].nota.includes('confirmou o pagamento'), false)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado 1c: exceção de rede no checkout também grava o marcador de pagamento INDETERMINADO (E3)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const me = buscarMeReversoFalso({ checkout: 'excecao' })
+        const { res } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].nota, NOTA_PAGAMENTO_INDETERMINADO_REVERSO(ME_REVERSO))
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado 1c: exceção DEPOIS do pagamento já confirmado não grava o marcador indeterminado por cima (o confirmado já manda)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        // gerar 'erro' faria a função responder normalmente (respostaCodigoPendente);
+        // para forçar uma EXCEÇÃO depois do checkout pago, o código volta null
+        // e a DACE quebra de um jeito que lança — mais simples: usar
+        // erroEmProdutos não se aplica aqui, então cobrimos via generate 'erro'
+        // (já teve teste próprio) e confirmamos que o marcador é só o confirmado.
+        const me = buscarMeReversoFalso({ gerar: 'erro' })
+        const { res } = await rodarReversa(supa, me)
+        assertEquals(res.status, 502)
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].nota, NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO))
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado 1b: a gravação do marcador de pagamento CONFIRMADO falha (as 2 tentativas) — a resposta avisa que o pagamento não ficou registrado (E4)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNoMarcador: true })
+        const me = buscarMeReversoFalso({ gerar: 'erro' })
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 502)
+            assertEquals(corpo.situacao, 'geracao_falhou')
+            assertEquals(String(corpo.error).includes('não ficou registrado no banco'), true)
+            assertEquals(String(corpo.error).includes('não libere o vínculo manualmente'), true)
+        })
+        // As DUAS tentativas (retry) aparecem no log — nunca falha silenciosa.
+        assertEquals(linhas.filter((l) => l.includes('falha ao gravar o marcador de pagamento confirmado')).length, 2)
+        assertEquals(supa.registro.eventos.length, 0)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado 1a: 2ª chamada (caminho vinculado) depois de o marcador ter falhado na 1ª — o marcador se AUTOCURA sem ação manual (E5)", async () => {
+    await comEnvAdmin(async () => {
+        // 1ª chamada: marcador falha (E4), mas o vínculo entrou mesmo assim.
+        const supa1 = clienteFalsoDevolucao({ erroNoMarcador: true })
+        const me1 = buscarMeReversoFalso({ gerar: 'erro' })
+        await comConsoleErrorCapturado(() => rodarReversa(supa1, me1))
+        assertEquals(supa1.registro.eventos.length, 0)
+
+        // 2ª chamada: um cliente falso NOVO (sem a flag de erro) simulando o
+        // mesmo vínculo real, generate ok, código ainda não saiu.
+        const supa2 = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: ME_REVERSO } })
+        const me2 = buscarMeReversoFalso({ gerar: 'ok', codigo: null })
+        const { res, corpo } = await rodarReversa(supa2, me2)
+        assertEquals(res.status, 502)
+        assertEquals(corpo.situacao, 'pago_sem_codigo')
+        assertEquals(supa2.registro.eventos.length, 1)
+        assertEquals(supa2.registro.eventos[0].nota, NOTA_PAGAMENTO_CONFIRMADO_REVERSO(ME_REVERSO))
+        assertEquals(String(corpo.error).includes('não ficou registrado no banco'), false)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado 5: a resposta 409 honesta (vínculo trocado embaixo do pé) grava um evento com o código pago e o envio a que ele pertence", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({
+            gravacaoRespeitaFiltros: true,
+            mudancaAposVinculo: { me_reverse_id: 'outro-envio-reverso-999' },
+        })
+        const me = buscarMeReversoFalso()
+        await comConsoleErrorCapturado(async () => {
+            const { res } = await rodarReversa(supa, me)
+            assertEquals(res.status, 409)
+        })
+        const eventoDoCodigoOrfao = supa.registro.eventos.find(
+            (e: any) => String(e?.nota ?? '').includes(CODIGO_POSTAGEM) && String(e?.nota ?? '').includes(ME_REVERSO),
+        )
+        assertEquals(!!eventoDoCodigoOrfao, true, `esperava um evento 'sistema' citando o código e o envio — eventos vistos: ${JSON.stringify(supa.registro.eventos)}`)
+        assertEquals(eventoDoCodigoOrfao.ator, 'sistema')
     })
 })

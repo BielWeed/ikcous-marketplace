@@ -1,6 +1,6 @@
 -- ROLLBACK MANUAL de 20261179000000_cancelar_devolucao_barra_compra_em_voo.sql
 --
--- Desfaz as DUAS mudanças daquela migration (rodada 1 + rodada 2):
+-- Desfaz as DUAS mudanças daquela migration (rodadas 1-4):
 --   1. devolve `cancelar_devolucao` ao corpo exato da
 --      20261175000000_a_devolucao_nasce_no_pedido.sql (linhas 768-788
 --      daquele arquivo) — sem o guard de "compra em voo" (nem a versão da
@@ -8,7 +8,10 @@
 --      extra ao lojista;
 --   2. derruba `admin_devolucao_liberar_vinculo_reverso` (função NOVA da
 --      rodada 2 — não existia antes desta migration, não há corpo anterior
---      para restaurar).
+--      para restaurar). Os DOIS `DROP FUNCTION` abaixo (assinatura de 1 e de
+--      2 argumentos) cobrem tanto quem já aplicou só até a rodada 2/3 quanto
+--      quem já tem a rodada 4 — `IF EXISTS` torna as duas chamadas seguras
+--      em qualquer um dos dois estados.
 -- Nenhuma tabela, índice, policy ou trigger foi criado pela migration
 -- original: não há mais nada para desfazer aqui.
 --
@@ -21,7 +24,22 @@
 -- que já foi aprovado, não uma versão reescrita de memória.
 --
 -- Sem BEGIN/COMMIT de nível superior neste arquivo (regra da casa).
+--
+-- GUARDA DE ORDEM: o corpo que este rollback restaura para `cancelar_devolucao`
+-- lê `public.devolucoes` (`SELECT * INTO v_d FROM public.devolucoes ...`) — sem
+-- essa tabela (20261175000000) no ar, a função restaurada nasceria quebrada,
+-- e o erro só apareceria na primeira chamada dela (42P01), não aqui. Isso
+-- acontece se alguém reverter na ordem ERRADA (75 antes de 79 — o §7.5 do
+-- runbook manda o oposto). Recusa cedo, com uma mensagem clara.
+DO $$
+BEGIN
+  IF to_regclass('public.devolucoes') IS NULL THEN
+    RAISE EXCEPTION 'reverta esta migration (79) só com a tabela public.devolucoes (20261175000000) no ar — sem ela, o corpo restaurado de cancelar_devolucao não funciona. Reverta 79 ANTES de 75 (ver runbook, §7.5).';
+  END IF;
+END
+$$;
 
+DROP FUNCTION IF EXISTS public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean);
 DROP FUNCTION IF EXISTS public.admin_devolucao_liberar_vinculo_reverso(uuid);
 
 CREATE OR REPLACE FUNCTION public.cancelar_devolucao(p_id uuid)

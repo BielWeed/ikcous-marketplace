@@ -2763,7 +2763,7 @@ export type Database = {
         Returns: Json;
       };
       admin_devolucao_liberar_vinculo_reverso: {
-        Args: { p_id: string };
+        Args: { p_conferi_no_melhor_envio?: boolean; p_id: string };
         Returns: Json;
       };
       admin_devolucao_reemitir_reembolso: {

@@ -162,7 +162,7 @@ Deno.test("evento ao lojista: código já emitido grava um evento PRÓPRIO (ator
 
 Deno.test("RPC nova (achado R1): admin_devolucao_liberar_vinculo_reverso — admin, trava a linha, recusa sem vínculo ou com código já emitido, texto neutro", () => {
   const ini = m.indexOf(
-    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid)",
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
   );
   assert(ini >= 0, "admin_devolucao_liberar_vinculo_reverso não encontrada");
   const fim = m.indexOf("$$;", ini);
@@ -170,7 +170,12 @@ Deno.test("RPC nova (achado R1): admin_devolucao_liberar_vinculo_reverso — adm
   const cabecalho = m.slice(ini, m.indexOf("AS $$", ini));
   assertStringIncludes(cabecalho, "SECURITY DEFINER");
   assertStringIncludes(cabecalho, "SET search_path = public");
-  assertStringIncludes(corpo, "IF NOT public.is_admin() THEN");
+  // Achado 3 (rodada 4): auth.uid() IS NOT NULL — is_admin() sozinho aceita
+  // service_role/postgres sem sessão nenhuma (SET ROLE, sem JWT).
+  assertStringIncludes(
+    corpo,
+    "IF NOT public.is_admin() OR auth.uid() IS NULL THEN",
+  );
   assertStringIncludes(corpo, "FOR UPDATE;");
   assertStringIncludes(corpo, "IF v_d.me_reverse_id IS NULL THEN");
   assertStringIncludes(corpo, "IF v_d.codigo_postagem IS NOT NULL THEN");
@@ -185,26 +190,44 @@ Deno.test("RPC nova (achado R1): admin_devolucao_liberar_vinculo_reverso — adm
   );
   assertStringIncludes(
     m,
-    "REVOKE ALL ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid) FROM PUBLIC, anon;",
+    "REVOKE ALL ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean) FROM PUBLIC, anon;",
   );
   assertStringIncludes(
     m,
-    "GRANT EXECUTE ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid) TO authenticated;",
+    "GRANT EXECUTE ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean) TO authenticated;",
+  );
+});
+
+Deno.test("achado 1 (rodada 4): a assinatura ganha p_conferi_no_melhor_envio (default false), e um DROP limpa o overload de 1 argumento das rodadas 2/3 antes do CREATE OR REPLACE", () => {
+  const posDrop1arg = m.indexOf(
+    "DROP FUNCTION IF EXISTS public.admin_devolucao_liberar_vinculo_reverso(uuid);",
+  );
+  const posCreate2arg = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
+  );
+  assert(posDrop1arg >= 0, "falta o DROP do overload de 1 argumento");
+  assert(posCreate2arg >= 0);
+  assert(
+    posDrop1arg < posCreate2arg,
+    "o DROP do overload antigo tem que vir ANTES do CREATE OR REPLACE de 2 argumentos — senão os dois convivem",
   );
 });
 
 Deno.test("achado R5 (rodada 3, dinheiro): a RPC recusa soltar um vínculo com pagamento CONFIRMADO — guard checa o marcador de devolucao_eventos ANTES do UPDATE", () => {
   const ini = m.indexOf(
-    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid)",
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
   );
   assert(ini >= 0);
   const fim = m.indexOf("$$;", ini);
   const corpo = m.slice(ini, fim + 3);
-  // O texto do LIKE é o CONTRATO com `notaPagamentoConfirmadoReverso`
+  // O texto do strpos é o CONTRATO com `notaPagamentoConfirmadoReverso`
   // (index.ts) — mudar um lado sem o outro quebra a proteção em silêncio.
+  // Achado 4 (rodada 4): strpos (substring literal), nunca LIKE — ver
+  // tests/marcador_pagamento_reverso_contrato_test.ts para a amarração com a
+  // edge, e o teste "achado 4" abaixo para o LIKE nunca voltar.
   assertStringIncludes(
     corpo,
-    "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND nota LIKE '%confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';%') THEN",
+    "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
   );
   assertStringIncludes(
     corpo,
@@ -212,7 +235,7 @@ Deno.test("achado R5 (rodada 3, dinheiro): a RPC recusa soltar um vínculo com p
   );
   // A ordem importa: o guard do marcador de pago vem ANTES do UPDATE que
   // solta o vínculo — senão a checagem não impede nada.
-  const posGuardPago = corpo.indexOf("nota LIKE '%confirmou o pagamento");
+  const posGuardPago = corpo.indexOf("strpos(nota, 'confirmou o pagamento");
   const posUpdate = corpo.indexOf(
     "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
   );
@@ -223,9 +246,37 @@ Deno.test("achado R5 (rodada 3, dinheiro): a RPC recusa soltar um vínculo com p
   );
 });
 
+Deno.test("achado 4 (rodada 4): a RPC nunca usa LIKE contra a nota — só strpos (F5 do scratchpad: '_'/'%' do próprio id não pode virar curinga)", () => {
+  const ini = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
+  );
+  const fim = m.indexOf("$$;", ini);
+  const corpo = m.slice(ini, fim + 3);
+  assert(!/nota\s+LIKE/i.test(corpo), "a RPC voltou a usar LIKE contra a nota");
+});
+
+Deno.test("achado 1c (rodada 4): pagamento INDETERMINADO recusa por padrão, mas aceita liberar com p_conferi_no_melhor_envio = true; o marcador CONFIRMADO nunca aceita esse parâmetro", () => {
+  const ini = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
+  );
+  const fim = m.indexOf("$$;", ini);
+  const corpo = m.slice(ini, fim + 3);
+  assertStringIncludes(
+    corpo,
+    "IF NOT p_conferi_no_melhor_envio AND EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'Pagamento indeterminado do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
+  );
+  // O guard do marcador CONFIRMADO não cita p_conferi_no_melhor_envio em
+  // lugar nenhum — não tem exceção possível.
+  const guardConfirmado = corpo.slice(
+    corpo.indexOf("strpos(nota, 'confirmou o pagamento"),
+    corpo.indexOf("strpos(nota, 'confirmou o pagamento") + 400,
+  );
+  assert(!guardConfirmado.includes("p_conferi_no_melhor_envio"));
+});
+
 Deno.test("achado N-a (rodada 3): a nota do evento distingue RESERVA (prefixo reservando:) de vínculo REAL — nunca chama uma reserva de 'envio reverso (id reservando:...)'", () => {
   const ini = m.indexOf(
-    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid)",
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
   );
   const fim = m.indexOf("$$;", ini);
   const corpo = m.slice(ini, fim + 3);
@@ -255,8 +306,30 @@ Deno.test("o rollback restaura o corpo de cancelar_devolucao da 20261175000000 B
   // Nem o guard novo nem o evento ao lojista sobrevivem ao rollback.
   assert(!restaurado.includes("codigo_postagem IS NULL"));
   assert(!restaurado.includes("'sistema',"));
+  // As DUAS assinaturas possíveis (1 e 2 argumentos — rodadas 2/3 e 4) são
+  // derrubadas, cobrindo quem só chegou até uma rodada intermediária.
+  assertStringIncludes(
+    r,
+    "DROP FUNCTION IF EXISTS public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean);",
+  );
   assertStringIncludes(
     r,
     "DROP FUNCTION IF EXISTS public.admin_devolucao_liberar_vinculo_reverso(uuid);",
+  );
+});
+
+Deno.test("achado do addendum (rodada 4): o rollback recusa cedo se public.devolucoes (75) já não existir mais — sem isso, o corpo restaurado de cancelar_devolucao nasceria quebrado", () => {
+  assertStringIncludes(r, "IF to_regclass('public.devolucoes') IS NULL THEN");
+  assertStringIncludes(r, "RAISE EXCEPTION 'reverta esta migration (79)");
+  // A ordem importa: a guarda vem ANTES de qualquer DROP/CREATE — recusar
+  // cedo tem que acontecer sem nenhum efeito colateral já aplicado.
+  const posGuarda = r.indexOf("to_regclass('public.devolucoes') IS NULL");
+  const posDrop = r.indexOf(
+    "DROP FUNCTION IF EXISTS public.admin_devolucao_liberar_vinculo_reverso",
+  );
+  assert(posGuarda >= 0 && posDrop >= 0);
+  assert(
+    posGuarda < posDrop,
+    "a guarda de public.devolucoes tem que vir ANTES de qualquer DROP/CREATE do rollback",
   );
 });

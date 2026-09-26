@@ -105,7 +105,52 @@
 --       antes de vincular e desfaz sozinha se a reserva sumiu no meio do
 --       caminho). CORREÇÃO: a nota distingue os dois casos.
 --
--- O QUE ESTA MIGRATION FAZ, NA ORDEM (já com as rodadas 2 e 3 aplicadas):
+-- RODADA 4 (revisão independente sobre o resultado da rodada 3 — achados 1
+-- (lacunas do marcador R5, dinheiro), 3 (atalho de service_role/postgres) e
+-- 4 (contrato textual sem teste), scratchpad rev79/ataque3.cjs + fn5/):
+--   1. O marcador de pagamento confirmado (rodada 3) só era gravado em UM
+--      ponto — logo após o CHECKOUT desta mesma chamada. Três lacunas:
+--        (a) o caminho "vinculado" (chamada seguinte, que já pula reserva e
+--            checkout porque o vínculo real já existe) provava pagamento do
+--            mesmo jeito (`generate` aceito, ou o código já existir — o ME só
+--            gera/emite código de envio pago) mas NUNCA gravava o marcador —
+--            F4 do scratchpad: RPC soltava um vínculo pago sem código, sem
+--            nenhum aviso.
+--        (b) a gravação do marcador era "melhor esforço" sem aviso NENHUM se
+--            falhasse — o vínculo ficava sem proteção, e nem o log do
+--            servidor (que a loja não vê) bastava.
+--        (c) checkout 5xx ou uma exceção de rede não gravavam nada — o
+--            Melhor Envio pode ter debitado com a resposta perdida, e essa
+--            dúvida não ficava registrada.
+--      CORREÇÃO: (a) o caminho vinculado grava o marcador (idempotente,
+--      `garantirMarcadorDePago`) quando prova pagamento; (b) a gravação
+--      tenta 2x, e se as duas falharem a RESPOSTA avisa explicitamente que
+--      o pagamento não ficou registrado e a liberação manual não deve
+--      acontecer sem conferir o Melhor Envio antes; (c) um marcador
+--      DIFERENTE ("Pagamento indeterminado...") é gravado nesses casos — a
+--      RPC abaixo recusa por padrão, mas aceita liberar com
+--      `p_conferi_no_melhor_envio = true`, só depois de o admin já ter
+--      olhado "Meus envios" (o marcador CONFIRMADO nunca aceita esse
+--      parâmetro — dinheiro confirmado não se destrava por auto-declaração).
+--   3. `is_admin()` (baseline, `20260806000000`) aceita a conexão rodando
+--      como `postgres`/`service_role` — correto para outras RPCs (automações
+--      internas de confiança), mas ERRADO aqui: esta RPC é uma decisão
+--      HUMANA pós-checagem manual no Melhor Envio (o runbook, §7.6, dizia
+--      que não havia atalho — falso: F3 do scratchpad soltou o vínculo com
+--      `SET ROLE service_role`, sem JWT nenhum). CORREÇÃO: a RPC também
+--      exige `auth.uid() IS NOT NULL` — só uma sessão de verdade (JWT ou GUC
+--      de teste) tem isso; `SET ROLE` sozinho não.
+--   4. O contrato textual do marcador (a frase que a edge grava e que esta
+--      RPC procura) vivia copiado sem nenhum teste ligando os dois lados, e
+--      o `LIKE` usava `_`/`%` do PRÓPRIO id como curinga sem querer (F5 do
+--      scratchpad: um id manipulado à mão contendo `_` casava com o
+--      marcador de OUTRO id — na direção segura, "recusa a mais", mas
+--      ainda impreciso). CORREÇÃO: `strpos` (substring literal, sem
+--      curingas) no lugar de `LIKE`, e um teste novo
+--      (`tests/marcador_pagamento_reverso_contrato_test.ts`) que lê o texto
+--      de `index.ts` e desta migration e confere que as duas âncoras batem.
+--
+-- O QUE ESTA MIGRATION FAZ, NA ORDEM (já com as rodadas 2-4 aplicadas):
 --   1. Redefine `public.cancelar_devolucao(p_id uuid)` (MESMA assinatura da
 --      20261175000000 — grants de lá continuam valendo, Postgres não perde
 --      privilégio num CREATE OR REPLACE que não muda a assinatura): mantém
@@ -135,27 +180,39 @@
 --      RPC (redefinida por cima da 20261175000000) e um mapper de front
 --      novo, para o mesmo aviso que a ficha da devolução já mostra. Fica
 --      fora do escopo desta correção (ver relatório da tarefa).
---   3. Cria `public.admin_devolucao_liberar_vinculo_reverso(p_id uuid)`
---      (nova, achado R1): só admin; trava a linha (`FOR UPDATE`); recusa se
---      não houver vínculo (`me_reverse_id IS NULL`), se o código já tiver
+--   3. Cria `public.admin_devolucao_liberar_vinculo_reverso(p_id uuid,
+--      p_conferi_no_melhor_envio boolean DEFAULT false)` (nova, achado R1;
+--      2º argumento novo na rodada 4, achado 1c): só admin AUTENTICADO
+--      (achado 3, rodada 4: `is_admin() AND auth.uid() IS NOT NULL` — o
+--      baseline sozinho aceita `service_role`/`postgres` sem sessão nenhuma,
+--      o que esta RPC não pode aceitar); trava a linha (`FOR UPDATE`); recusa
+--      se não houver vínculo (`me_reverse_id IS NULL`), se o código já tiver
 --      saído (nesse caso não há nada para "destravar" — a etiqueta já existe
---      e o caminho é cancelar direto no Melhor Envio) OU (achado R5, rodada
---      3) se o pagamento já tiver sido CONFIRMADO no Melhor Envio para este
---      `me_reverse_id` (marcador gravado pela edge) — nesse caso o dinheiro
---      já saiu e soltar o vínculo abriria a porta para uma segunda compra;
---      solta `me_reverse_id` (reserva OU id real, tanto faz) e grava um
---      evento 'sistema' com texto neutro contando o que foi liberado (achado
---      N-a: o texto distingue reserva de vínculo real). Não mexe em
---      `status`, `codigo_postagem` nem em nada além do vínculo — é
---      estritamente a "saída" para um vínculo preso, nada mais.
+--      e o caminho é cancelar direto no Melhor Envio), se o pagamento já
+--      tiver sido CONFIRMADO no Melhor Envio para este `me_reverse_id`
+--      (achado R5, rodada 3 — marcador gravado pela edge, SEM exceção
+--      possível pelo 2º argumento) OU se o pagamento estiver INDETERMINADO
+--      (achado 1c, rodada 4 — marcador diferente, aceita liberar só com
+--      `p_conferi_no_melhor_envio = true`); solta `me_reverse_id` (reserva OU
+--      id real, tanto faz) e grava um evento 'sistema' com texto neutro
+--      contando o que foi liberado (achado N-a: o texto distingue reserva de
+--      vínculo real). Não mexe em `status`, `codigo_postagem` nem em nada
+--      além do vínculo — é estritamente a "saída" para um vínculo preso,
+--      nada mais.
 --
 -- DADOS EXISTENTES: nenhuma linha é lida ou reescrita por esta migration —
 -- ela só troca o CORPO de uma função e cria outra. Devoluções já canceladas
 -- não são revisitadas.
 --
--- IDEMPOTÊNCIA: `CREATE OR REPLACE FUNCTION` com a mesma assinatura para as
--- duas funções — reaplicar o arquivo dá exatamente o mesmo corpo e não
--- recria a função nova (`CREATE OR REPLACE` também tolera reaplicação).
+-- IDEMPOTÊNCIA: `CREATE OR REPLACE FUNCTION` com a mesma assinatura para
+-- `cancelar_devolucao`; `admin_devolucao_liberar_vinculo_reverso` leva um
+-- `DROP FUNCTION IF EXISTS` do overload de 1 argumento (rodadas 2/3) logo
+-- antes do `CREATE OR REPLACE` de 2 argumentos (rodada 4) — sem isso, um
+-- `CREATE OR REPLACE` com assinatura DIFERENTE criaria um segundo overload
+-- ao lado do antigo, em vez de substituí-lo (Postgres despacha função por
+-- nome + tipos dos argumentos). Reaplicar o arquivo (idempotente: o DROP é
+-- `IF EXISTS`, o CREATE OR REPLACE tolera reaplicação) sempre deixa as duas
+-- funções com o mesmo corpo final e só um overload de cada uma.
 --
 -- FORA DO ESCOPO (achados A2/A3/A4 da mesma revisão original, e R3/R4/N1/N2
 -- da rodada 2, todos corrigidos em código, sem migration):
@@ -199,20 +256,24 @@
 --      NULL) e grava o evento 'sistema' correspondente. Chamado por quem não
 --      é admin: `42501`. Sem vínculo: `22023`. Com código já emitido:
 --      `22023` (nada para destravar). Achado R5 (rodada 3): com um evento
---      'sistema' de pagamento confirmado gravado para o `me_reverse_id`
+--      'sistema' de pagamento CONFIRMADO gravado para o `me_reverse_id`
 --      atual (a edge grava um assim que o checkout paga), a RPC também
---      recusa com `22023` — nada é solto, o vínculo continua como estava.
---      Chamar HOJE (antes do código chegar): confira o envio em "Meus
---      envios" na conta do Melhor Envio da loja ANTES de chamar esta RPC —
---      se já foi pago, não solte (a RPC recusa sozinha se o marcador
---      chegou a ser gravado, mas a checagem manual continua sendo a
---      primeira linha de defesa); se ainda está no carrinho sem pagar,
---      remova-o de lá primeiro. Autenticado: chame como o PRÓPRIO admin
---      logado no painel (sessão com JWT de `authenticated` cujo perfil passa
---      em `is_admin()`) — uma sessão sem JWT (ex.: psql direto como
---      `postgres`, ou o SQL Editor do Supabase sem `SET request.jwt.claims`)
---      não autentica como admin nenhum e recebe `42501`; ver o procedimento
---      no runbook (`docs/runbooks/publicar-painel-cartao-devolucoes.md`,
+--      recusa com `22023` — nada é solto, o vínculo continua como estava, e
+--      NENHUM segundo argumento contorna isso. Achado 1c (rodada 4): com um
+--      evento 'sistema' de pagamento INDETERMINADO gravado (checkout 5xx ou
+--      exceção), a RPC recusa com `22023` a menos que
+--      `p_conferi_no_melhor_envio` venha `true` — `SELECT
+--      public.admin_devolucao_liberar_vinculo_reverso('<id>', true)` solta
+--      normalmente. Achado 3 (rodada 4): `SET ROLE service_role` (ou
+--      `postgres`) SEM uma sessão de verdade (sem `auth.uid()`) recebe
+--      `42501`, mesmo sendo admin pelo `is_admin()` baseline — só uma
+--      sessão autenticada de fato libera. Chamar HOJE (antes do código
+--      chegar): confira o envio em "Meus envios" na conta do Melhor Envio
+--      da loja ANTES de chamar esta RPC — se já foi pago, não solte (a RPC
+--      recusa sozinha se o marcador chegou a ser gravado, mas a checagem
+--      manual continua sendo a primeira linha de defesa); se ainda está no
+--      carrinho sem pagar, remova-o de lá primeiro. Ver o procedimento
+--      completo no runbook (`docs/runbooks/publicar-painel-cartao-devolucoes.md`,
 --      §7.6).
 --
 -- ROLLBACK: `rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql`
@@ -220,8 +281,9 @@
 -- (conferido nesta mesma frente por comparação de texto no teste estático
 -- `tests/migration_cancelar_devolucao_barra_compra_em_voo_test.ts`, md5
 -- ef90f1e3fa72c67a606656aeace10ecf do bloco original) e derruba
--- `admin_devolucao_liberar_vinculo_reverso` (função nova, sem corpo anterior
--- para restaurar).
+-- `admin_devolucao_liberar_vinculo_reverso` nas DUAS assinaturas possíveis
+-- (1 e 2 argumentos — função nova em toda rodada, sem corpo anterior para
+-- restaurar; `IF EXISTS` cobre quem só chegou até a rodada 2/3).
 
 CREATE OR REPLACE FUNCTION public.cancelar_devolucao(p_id uuid)
 RETURNS jsonb
@@ -277,7 +339,14 @@ $$;
 -- código da reversa). Só admin; nunca mexe num vínculo que já tem código
 -- (aí o caminho é cancelar direto no Melhor Envio, não apagar o rastro
 -- daqui); registra o que fez.
-CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid)
+-- Rodada 4: a assinatura ganhou `p_conferi_no_melhor_envio` (achado 1c) — uma
+-- CREATE OR REPLACE não troca a assinatura de uma função (Postgres trataria
+-- como um OVERLOAD novo, deixando a versão de 1 argumento das rodadas 2/3
+-- viva ao lado dela, sem NENHUM dos guards novos). O DROP abaixo é
+-- idempotente (`IF EXISTS`) e limpa esse overload antigo se ele existir.
+DROP FUNCTION IF EXISTS public.admin_devolucao_liberar_vinculo_reverso(uuid);
+
+CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -286,7 +355,15 @@ AS $$
 DECLARE
   v_d public.devolucoes%ROWTYPE;
 BEGIN
-  IF NOT public.is_admin() THEN
+  -- Achado 3 (rodada 4): `is_admin()` (baseline) aceita a conexão rodando
+  -- como `postgres`/`service_role` (`current_setting('role') IN (...)`) —
+  -- correto para as OUTRAS RPCs do app (automações internas de confiança),
+  -- mas esta RPC é uma decisão humana pós-checagem manual no Melhor Envio, e
+  -- nenhuma automação deveria tomá-la. `auth.uid() IS NOT NULL` garante que
+  -- alguém está DE FATO logado (JWT ou GUC de sessão) além de ser admin —
+  -- `SET ROLE service_role`/`postgres` sem login nenhum não tem `auth.uid()`
+  -- e cai aqui (prova viva: `mutante F3_service_role_sem_jwt`).
+  IF NOT public.is_admin() OR auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
   END IF;
   SELECT * INTO v_d FROM public.devolucoes WHERE id = p_id FOR UPDATE;
@@ -309,11 +386,22 @@ BEGIN
   -- `ok: true` sem nada salvo — o próximo "Gerar" comprava um SEGUNDO envio
   -- (T10 do scratchpad da revisão). O marcador é um evento 'sistema' que a
   -- própria edge grava assim que `pagoConfirmado` vira true
-  -- (`gravarPagamentoConfirmadoReverso`, index.ts) — o texto do LIKE abaixo É
-  -- O CONTRATO com aquela função: mudar um lado sem atualizar o outro quebra
-  -- esta proteção em silêncio.
-  IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND nota LIKE '%confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';%') THEN
+  -- (`gravarPagamentoConfirmadoReverso`, index.ts) — o texto do `strpos`
+  -- abaixo É O CONTRATO com aquela função (conferido em
+  -- `tests/marcador_pagamento_reverso_contrato_test.ts`, achado 4 da rodada
+  -- 4): mudar um lado sem atualizar o outro quebra esta proteção em
+  -- silêncio. Este marcador (CONFIRMADO) NUNCA aceita `p_conferi_no_melhor_envio`
+  -- — dinheiro confirmado não se destrava por auto-declaração.
+  IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN
     RAISE EXCEPTION 'O Melhor Envio já confirmou o pagamento deste envio reverso — aguarde o código de postagem chegar ou cancele o envio direto no Melhor Envio antes de liberar o vínculo aqui.'
+      USING ERRCODE = '22023';
+  END IF;
+  -- Achado 1c (rodada 4): checkout 5xx/exceção é AMBÍGUO (o Melhor Envio pode
+  -- ter debitado com a resposta perdida) — marcador DIFERENTE do confirmado.
+  -- Este SIM aceita `p_conferi_no_melhor_envio = true`: um admin que já abriu
+  -- "Meus envios" e viu que não foi pago pode liberar mesmo assim.
+  IF NOT p_conferi_no_melhor_envio AND EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'Pagamento indeterminado do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN
+    RAISE EXCEPTION 'O Melhor Envio deu uma resposta indeterminada ao pagamento deste envio reverso — confira "Meus envios" na conta do Melhor Envio antes de liberar; chame de novo com p_conferi_no_melhor_envio = true depois de conferir que não foi pago.'
       USING ERRCODE = '22023';
   END IF;
   UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;
@@ -337,5 +425,5 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean) TO authenticated;
