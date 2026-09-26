@@ -23,9 +23,11 @@ PR não oferece cartão a ninguém. Ligar é o passo 6, separado, depois do test
 | 6 | Ligar crédito e débito | Só depois do checklist do passo 6. |
 
 Entre os passos 1 e 2, a loja segue funcionando com as functions e o front antigos. As
-migrations são aditivas, e as quatro funções que elas redefinem mantêm a assinatura e o
-contrato: `devolver_estoque`, `get_admin_orders_cancelados_recentes`, `solicitar_estorno` e
-`registrar_estorno_manual`. As functions novas continuam aceitando o PIX do front antigo
+migrations são aditivas, e as cinco funções que elas redefinem mantêm a assinatura e o
+contrato: `devolver_estoque`, `get_admin_orders_cancelados_recentes`, `solicitar_estorno`,
+`update_order_status_atomic` e `registrar_estorno_manual`. A única mudança de comportamento em
+`update_order_status_atomic` é descontar o reembolso manual de uma devolução já concluída
+antes de abrir o estorno automático do cancelamento. As functions novas continuam aceitando o PIX do front antigo
 (`metodo: "pix"`).
 
 ---
@@ -74,9 +76,10 @@ SELECT (SELECT count(*) FROM information_schema.columns
 diferente de NULL quer dizer que alguém aplicou por fora. **Pare nos dois casos.** O
 `CREATE TABLE IF NOT EXISTS` manteria uma forma velha da tabela.
 
-- [ ] **Confira que o corpo vivo das 4 funções que 75 e 76 redefinem bate com a base**
+- [ ] **Confira que o corpo vivo das 5 funções que 75 e 76 redefinem bate com a base**
   ([CONTRIBUTING.md](../../CONTRIBUTING.md), regra do `pg_get_functiondef`). As funções são
-  `devolver_estoque`, `get_admin_orders_cancelados_recentes`, `solicitar_estorno` e
+  `devolver_estoque`, `get_admin_orders_cancelados_recentes`, `solicitar_estorno`,
+  `update_order_status_atomic` (base: `2026110000000_o_estorno_nasce_no_ledger.sql`) e
   `registrar_estorno_manual`. Os rollbacks devolvem exatamente estes corpos, verbatim dos
   arquivos-base (conferido por md5 em 26/09/2026). Se o corpo vivo for outro, o rollback
   restauraria uma função diferente da que está no ar. Gere a consulta a partir dos próprios
@@ -389,7 +392,7 @@ psql "$CONEXAO_DA_LOJA" -c "\copy public.devolucao_eventos TO 'devolucao_eventos
 | 78 | Só funções de leitura. | Nada. |
 | 77 | Lançamentos, contas, categorias, sessões de caixa e a linha de `assinatura_da_loja`. Ao reaplicar, o hub precisa sincronizar de novo. | Pedidos, estornos e devoluções, que o Financeiro só lia. |
 | 76 | `config_pagamento_cartao`, as RPCs, o gatilho do estorno e as CHECKs. `registrar_estorno_manual` volta ao corpo de `20261072000000`. | As **colunas** `tentativas_de_pagamento`, `metodo_online`, `parcelas` e `estorno_manual_registrado_em`, que guardam como cada pedido foi pago. |
-| 75 | Devoluções, itens, trilha, política, RPCs e as policies do bucket. `devolver_estoque`, `get_admin_orders_cancelados_recentes` e `solicitar_estorno` voltam ao corpo original. | As linhas de `order_refunds` abertas por devolução, porque dinheiro não se apaga do ledger. O **bucket `devolucoes` e as fotos**: apagar foto de cliente é decisão do dono. |
+| 75 | Devoluções, itens, trilha, política, RPCs e as policies do bucket. `devolver_estoque`, `get_admin_orders_cancelados_recentes`, `solicitar_estorno` e `update_order_status_atomic` voltam ao corpo original. | As linhas de `order_refunds` abertas por devolução, porque dinheiro não se apaga do ledger. O **bucket `devolucoes` e as fotos**: apagar foto de cliente é decisão do dono. |
 
 Depois do rollback, o job "Código x banco" volta a ficar vermelho enquanto o código que usa
 esses objetos estiver no branch. Reaplicar é repetir o §1, porque as migrations são
