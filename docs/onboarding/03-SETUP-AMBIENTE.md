@@ -350,8 +350,8 @@ use `npm run size` para detectar o vazamento de `NODE_ENV` — use a busca da ar
 
 **Nota de 26/09/2026 (não reconferida linha a linha, só o fato que muda):** o arquivo é
 `.size-limit.cjs`, não `.size-limit.json`, e o "limite de 800 kB" acima já não é o único —
-decisão do dono ("dividir o portão") separou o JS em cliente (<= 800 kB, o número desta
-página) e painel (<= 350 kB, novo), classificados pelo grafo real do Rollup, não por glob.
+decisão do dono ("dividir o portão") separou o JS em cliente (<= 550 kB; o 800 desta
+página era o total antigo) e painel (<= 450 kB, novo), classificados pelo grafo real do Rollup, não por glob.
 O raciocínio desta armadilha (builde antes de medir) continua valendo para os dois.
 
 ### 10. `dist` local ≠ `dist` da Vercel

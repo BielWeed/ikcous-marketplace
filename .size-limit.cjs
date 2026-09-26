@@ -57,10 +57,13 @@ const { cliente, painel } = validarClassificacaoContraDisco(
 
 module.exports = [
   {
-    // D8 (herdado): teto do que QUALQUER visitante da loja pode baixar —
-    // nunca inclui o que só existe atrás do `is_admin` do servidor (ver
-    // `scripts/portaoDividido.ts`). Antes desta divisão o mesmo teto de
-    // 800 kB somava também o painel; o número não mudou, só o que ele mede.
+    // Teto do que QUALQUER visitante da loja pode baixar — nunca inclui o
+    // que só existe atrás do `is_admin` do servidor (ver
+    // `scripts/portaoDividido.ts`). Decisão do dono (26/09/2026, "Painel 450
+    // · cliente 550"): antes desta divisão o teto único de 800 kB (D8) somava
+    // cliente e painel; medido o cliente sozinho (474,97 kB no fixture de
+    // 26/09), o teto cai para 550 kB — folga de ~75 kB, para que um aumento
+    // real na vitrine reprove em vez de sumir numa margem de 325 kB.
     //
     // size-limit-16 (A12.2, preservado): `webpack: false` é o que faz o
     // checker somar a compressão brotli de CADA arquivo casado — que é o
@@ -69,7 +72,7 @@ module.exports = [
     // re-minificava e comprimia UMA vez, criando folga que não existe na
     // entrega real.
     path: cliente.map((arquivo) => `${output}/${arquivo}`),
-    limit: "800 kB",
+    limit: "550 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
@@ -78,17 +81,14 @@ module.exports = [
   },
   {
     // Painel (novo, 26/09/2026): só o que fica atrás do portão do admin
-    // (`AdminAreaGate` -> `AdminArea.tsx` -> `src/views/admin/**`) — o lojista
-    // baixa depois de o servidor confirmar `is_admin`, nunca um visitante da
-    // loja. O teto de 350 kB é a decisão do dono, não uma medida que já
-    // fecha: no fixture build de 26/09/2026 (HEAD 03f3eb76, antes desta
-    // tarefa tocar qualquer tela) o painel já media 402,44 kB — 52,44 kB
-    // ACIMA do teto. É dívida herdada (Financeiro, CRM, Devoluções do PR
-    // #666, ~78 kB), não introduzida por esta divisão; o portão dividido só
-    // parou de escondê-la debaixo do teto único de cliente. Resolver é
-    // decisão do dono: subir o teto ou cortar peso do painel.
+    // (`AdminAreaGate` -> `AdminArea.tsx` -> `src/views/admin/**`, e o
+    // prefetch por hover de `usePrefetchOnHover.ts`) — o lojista baixa
+    // depois de o servidor confirmar `is_admin`, nunca um visitante da loja.
+    // Decisão do dono (26/09/2026, "Painel 450 · cliente 550"): medido
+    // 402,44 kB no fixture de 26/09 (o recharts sozinho ~81 kB; Financeiro,
+    // CRM e Devoluções do PR #666 ~78 kB) — teto de 450 kB, folga de ~48 kB.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "350 kB",
+    limit: "450 kB",
     webpack: false,
     running: false,
   },
