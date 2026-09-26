@@ -477,3 +477,101 @@ a API real):
 - [ ] Cancele os pedidos de teste no painel e confira o estoque.
 - [ ] Só então o Gabriel liga crédito e débito para os clientes. Anote a data. Nas primeiras
   vendas, olhe os logs do webhook e o push de cobrança órfã aos admins (`cartao_orfao`).
+
+## 7. Publicar a 79 (compra em voo da etiqueta reversa) — depois de 75–78 no ar
+
+A revisão de risco pré-publicação da etiqueta reversa (achado A1, com a rodada 2 achados
+R1/R2) achou que `cancelar_devolucao` (nascida na 75) deixava cancelar uma devolução ENQUANTO a
+compra do envio reverso estava em voo no Melhor Envio, ou sem avisar o lojista quando o código já
+tinha saído pago. A correção é [`20261179000000_cancelar_devolucao_barra_compra_em_voo.sql`
+](../../supabase/migrations/20261179000000_cancelar_devolucao_barra_compra_em_voo.sql) — redefine
+`cancelar_devolucao` (mesma assinatura da 75) e cria `admin_devolucao_liberar_vinculo_reverso`
+(nova: a "saída" para um vínculo real preso sem código — edge que morreu, liberação que falhou,
+ou Sandbox do Melhor Envio, que nunca gera o código da reversa).
+
+Esta migration **não estava aplicada em nenhum lugar** quando foi escrita — por isso sobe como
+passo À PARTE, depois que 75–78 já estiverem no ar e conferidos (§1–§4 acima), nunca junto com
+elas: ela só faz sentido em cima do `cancelar_devolucao` que a 75 publicou.
+
+A mesma leva de achados também mudou a edge `melhor-envio-etiqueta` (retry + degradação do
+vínculo preso para reserva vencida, achado R3; a frase do carrinho em
+`tratarVinculoNaoConfirmado` também condicional ao DELETE, achado R4; um evento além do toast
+quando a devolução muda de status durante o checkout, achado N2). A function já é uma das cinco
+do §2 — se a publicação de functions daquele passo já tiver acontecido antes desta migration,
+republique **só** `melhor-envio-etiqueta` pelo mesmo workflow (`publicar-functions.yml`,
+`functions: melhor-envio-etiqueta`).
+
+### 7.0 Antes de aplicar
+
+- [ ] 75–78 já aplicadas, com §1.1 e §1.2 dando `ok = true` em TODAS as linhas.
+- [ ] Confirme que o corpo VIVO de `cancelar_devolucao` ainda é o que a 75 publicou (ninguém
+  tocou por fora, e portanto o rollback de 79 vai devolver o corpo certo):
+
+```sql
+SELECT md5(replace(prosrc, E'\r', '')) = '45c56a39cc29f31ec5ff904f1929737e' AS igual_ao_corpo_da_75
+  FROM pg_proc WHERE proname = 'cancelar_devolucao' AND pronamespace = 'public'::regnamespace;
+```
+
+  Se `false`, **pare** — o rollback de 79 promete restaurar exatamente esse corpo (conferido por
+  md5 no teste estático); se o corpo vivo já é outro, o rollback restauraria a função errada.
+
+### 7.1 Rodar o workflow
+
+Mesmo workflow do §1 (`aplicar-migrations.yml`), campo `migracoes` com um arquivo só:
+
+```text
+20261179000000_cancelar_devolucao_barra_compra_em_voo.sql
+```
+
+### 7.2 Conferir o que nasceu (SQL Editor, só leitura)
+
+Nenhuma linha abaixo grava em `devolucoes` — é tudo leitura de catálogo (`pg_proc`,
+`has_function_privilege`). **Não teste cancelando uma devolução real** só para conferir a
+migration; isso é o único jeito de checar 79 sem tocar em pedido de cliente nenhum.
+
+```sql
+SELECT checagem, valor, esperado, COALESCE(valor = esperado, false) AS ok FROM (VALUES
+  ('79 cancelar_devolucao: corpo novo',          (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'cancelar_devolucao' AND pronamespace = 'public'::regnamespace), '74fd42d04f8ea55257a0aec73bfcabc1'),
+  ('79 admin_devolucao_liberar_vinculo_reverso: corpo', (SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE proname = 'admin_devolucao_liberar_vinculo_reverso' AND pronamespace = 'public'::regnamespace), 'f7496586d589110340994e65c99849a5'),
+  ('79 as duas SECURITY DEFINER',                 (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND prosecdef), '2'),
+  ('79 as duas com search_path fixo',             (SELECT count(*)::text FROM pg_proc WHERE proname IN ('cancelar_devolucao', 'admin_devolucao_liberar_vinculo_reverso') AND pronamespace = 'public'::regnamespace AND proconfig @> ARRAY['search_path=public']), '2'),
+  ('cancelar_devolucao continua p/ authenticated', has_function_privilege('authenticated', 'public.cancelar_devolucao(uuid)', 'EXECUTE')::text, 'true'),
+  ('rpc nova SAI de anon',                         has_function_privilege('anon', 'public.admin_devolucao_liberar_vinculo_reverso(uuid)', 'EXECUTE')::text, 'false'),
+  ('rpc nova executa p/ authenticated',            has_function_privilege('authenticated', 'public.admin_devolucao_liberar_vinculo_reverso(uuid)', 'EXECUTE')::text, 'true')
+) AS c(checagem, valor, esperado)
+ORDER BY ok, checagem;
+```
+
+(Os dois md5 acima e o `45c56a39cc29f31ec5ff904f1929737e` do §7.0 foram conferidos em 26/09/2026
+contra o corpo exato dos arquivos `20261179000000_...sql`/`rollback-manual-20261179000000_...sql`
+— recompute-os se o conteúdo desses arquivos mudar antes de publicar.)
+
+### 7.3 Marcadores — o filtro do §1.2 precisa alargar
+
+O script do §1.2 filtra `Object.keys(VERIFICACOES)` por `/^2026117[5-8]/` — a 79 não entra nesse
+padrão. Troque por `/^(2026117[5-8]|20261179)/` antes de gerar `conferir-marcadores.sql` desta
+vez. O total sobe de **32 para 38 marcadores** (mais 6, os da 79: 3 em `cancelar_devolucao`, 3 em
+`admin_devolucao_liberar_vinculo_reverso`) — confira que a query devolve 38 linhas, todas
+`ok = true`.
+
+### 7.4 Ledger
+
+```sql
+INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES
+  ('20261179000000', 'cancelar_devolucao_barra_compra_em_voo')
+ON CONFLICT (version) DO NOTHING;
+```
+
+### 7.5 Rollback — 79 ANTES de 78
+
+Se 79 estiver aplicada e for preciso desfazer o PR inteiro (§5), rode o rollback dela **antes**
+de tocar em 78/77/76/75 — ela redefine uma função que mora na 75 e cria uma RPC que só faz
+sentido com a tabela `devolucoes` (75) no ar:
+
+```bash
+psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261179000000_cancelar_devolucao_barra_compra_em_voo.sql
+```
+
+Depois disso, a ordem do §5 (78 → 77 → 76 → 75) continua igual. Se só 79 precisar sair (o
+problema é isolado nela), o rollback acima sozinho já basta — `cancelar_devolucao` volta ao corpo
+da 75 e `admin_devolucao_liberar_vinculo_reverso` é derrubada; nada em 75–78 é tocado.

@@ -2519,6 +2519,10 @@ const O_A1_CANCELA = "3eeeeeee-0000-0000-0000-000000000026";
 const I_A1_CANCELA = "3fffffff-0000-0000-0000-000000000026";
 const O_A1_SEM_REVERSA = "3eeeeeee-0000-0000-0000-000000000027";
 const I_A1_SEM_REVERSA = "3fffffff-0000-0000-0000-000000000027";
+const O_R1_RESERVA = "3eeeeeee-0000-0000-0000-000000000028";
+const I_R1_RESERVA = "3fffffff-0000-0000-0000-000000000028";
+const O_R1_LIBERAR = "3eeeeeee-0000-0000-0000-000000000029";
+const I_R1_LIBERAR = "3fffffff-0000-0000-0000-000000000029";
 
 PROVAS.push({
   nome: "(A2-02) devolução PARCIAL manual (>180 dias, 1 de 2 itens de 50) -> reativa -> cancela: estorno de 50, não do total",
@@ -2876,7 +2880,7 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(A1 · 20261179000000) cancelar_devolucao recusa com a compra do envio reverso EM VOO; com o código já emitido, cancela e avisa o lojista",
+  nome: "(A1/R1/R2 · 20261179000000) cancelar_devolucao só recusa com id REAL em voo (nunca na fase de reserva); código emitido cancela e avisa por evento — provado inclusive AS CUSTOMER (RLS)",
   corpo: async (cliente) => {
     // Pedido nacional saído por etiqueta do Melhor Envio — mesmo desenho do
     // O_NACIONAL de semear() (shipping_option_id melhor-envio-1), com
@@ -2923,22 +2927,89 @@ PROVAS.push({
       [d.id],
     );
 
+    // 0. Achado R1 (rodada 2): a fase de RESERVA (`reservando:<epoch>:<uuid>`,
+    //    gravada pela edge ANTES de qualquer chamada ao Melhor Envio) NÃO
+    //    bloqueia o cancelamento — o vínculo seguinte é condicionado a
+    //    status='aprovada' e desfaz sozinho se o cliente cancelou aqui
+    //    (provado com duas conexões em ataque.cjs, cenários T1/T4). Bloquear
+    //    esta fase só prendia o cliente à toa.
+    await pedidoCustom(cliente, O_R1_RESERVA, {
+      userId: U_CLIENTE,
+      customerData: {
+        whatsapp: "5534999990000",
+        shipping_option_id: "melhor-envio-1",
+      },
+      total: 90,
+      subtotal: 90,
+      shipping: 0,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-R1-RESERVA",
+      itemId: I_R1_RESERVA,
+      productId: P_VESTIDO,
+      variantId: V_VESTIDO_P,
+      nome: "Vestido de Prova",
+      qtd: 1,
+      preco: 90,
+      entregueHaDias: 2,
+    });
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET shipping_label_id = $1 WHERE id = $2",
+      ["ME-PROVA-R1-RESERVA", O_R1_RESERVA],
+    );
+    await logar(cliente, U_CLIENTE);
+    const dReserva = await solicitar(
+      cliente,
+      O_R1_RESERVA,
+      [{ order_item_id: I_R1_RESERVA, quantidade: 1 }],
+      "nao_gostei",
+      "reembolso",
+      "etiqueta_reversa",
+    );
+    await logar(cliente, U_ADMIN);
+    await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_decidir($1::uuid, true) AS r",
+      [dReserva.id],
+    );
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [
+        `reservando:${Date.now()}:00000000-0000-0000-0000-000000000000`,
+        dReserva.id,
+      ],
+    );
+    await logar(cliente, U_CLIENTE);
+    const canceladaNaReserva = await rpc(
+      cliente,
+      "SELECT public.cancelar_devolucao($1::uuid) AS r",
+      [dReserva.id],
+    );
+    assert.equal(
+      canceladaNaReserva.status,
+      "cancelada",
+      "mutante R1_guard_tambem_na_reserva: a fase de reserva não pode travar o cliente",
+    );
+
     // Simula o VÍNCULO que a edge `melhor-envio-etiqueta` grava (service
-    // role, fora do PostgREST) ANTES do checkout — a "compra em voo".
+    // role, fora do PostgREST) ANTES do checkout — a "compra em voo" com id
+    // REAL do Melhor Envio (não é mais uma reserva).
     const ME_REVERSO_DA_PROVA = "me-reverso-prova-a1";
     await cliente.query(
       "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
       [ME_REVERSO_DA_PROVA, d.id],
     );
 
-    // 1. EM VOO (me_reverse_id gravado, código ainda não): cancelar é
+    // 1. EM VOO com id REAL (não 'reservando:'), código ainda não: cancelar é
     //    RECUSADO — sem isto, o checkout que está rodando no Melhor Envio
-    //    pagaria uma etiqueta para uma devolução já cancelada.
+    //    pagaria uma etiqueta para uma devolução já cancelada. A mensagem não
+    //    promete prazo (achado R1) — manda falar com a loja.
     await logar(cliente, U_CLIENTE);
     await assert.rejects(
       () =>
         rpc(cliente, "SELECT public.cancelar_devolucao($1::uuid) AS r", [d.id]),
-      /gerado no Melhor Envio/,
+      /fale com a loja/,
       "mutante A1_sem_guard_em_voo: sem o guard novo, a devolução cancela com a compra em voo",
     );
     const aindaAprovada = await valorUnico(
@@ -2950,10 +3021,13 @@ PROVAS.push({
 
     // 2. Código de postagem JÁ EMITIDO (etiqueta paga): agora cancelar é
     //    PERMITIDO — dinheiro já gasto, nada a bloquear — mas grava um
-    //    evento PRÓPRIO (ator 'sistema') avisando o lojista a cancelar o
-    //    envio reverso no Melhor Envio. `devolucao_detalhe` (RPC já viva)
-    //    devolve esse evento dentro de `eventos`, sem migration nem front
-    //    novos — é o que o painel (DetalheDaDevolucao.tsx) já renderiza.
+    //    evento PRÓPRIO (ator 'sistema') com texto NEUTRO (achado R2):
+    //    `devolucao_eventos` libera o DONO por RLS, e `devolucao_detalhe`
+    //    (que `useDevolucaoCliente` também chama) devolve `eventos` inteiro —
+    //    então o CLIENTE pode ler esta nota, não só o lojista. A rodada 1
+    //    achava (errado) que isso "não vaza para o cliente"; esta prova roda
+    //    a leitura AS CUSTOMER (SET LOCAL ROLE authenticated) para não
+    //    repetir o erro de medir como superusuário e não provar nada.
     await logar(cliente, U_ADMIN);
     await cliente.query(
       "UPDATE public.devolucoes SET codigo_postagem = $1 WHERE id = $2",
@@ -2985,9 +3059,14 @@ PROVAS.push({
       avisoAoLojista,
       `mutante A1_sem_aviso_ao_lojista: esperava um evento (ator sistema) citando Melhor Envio e "${ME_REVERSO_DA_PROVA}" — eventos vistos: ${JSON.stringify(eventos)}`,
     );
+    // Achado R2: nada de imperativo dirigido a alguém ("cancele você") — o
+    // texto só CONSTATA o fato, porque o cliente também pode lê-lo.
+    assert.ok(
+      !avisoAoLojista.nota.includes("Cancele esse envio reverso"),
+      "mutante R2_texto_ainda_imperativo: a nota não pode mandar ninguém 'cancelar' — o cliente também lê",
+    );
     // O evento do CLIENTE (o cancelamento em si) continua existindo, sem o
-    // texto do Melhor Envio dentro dele — o aviso ao lojista nunca vaza
-    // para a nota que o cliente também pode ler.
+    // texto do Melhor Envio dentro dele.
     const eventoDoCliente = eventos.find(
       (e) => e.ator === "cliente" && e.nota === null,
     );
@@ -2995,6 +3074,56 @@ PROVAS.push({
       eventoDoCliente,
       "o evento de cancelamento do cliente continua sem nota do Melhor Envio dentro dele",
     );
+
+    // Achado R2 — a prova de verdade: o DONO (cliente) lê este evento por
+    // RLS, tanto direto em devolucao_eventos quanto via devolucao_detalhe
+    // (a mesma RPC que useDevolucaoCliente chama na tela do pedido).
+    await cliente.query("BEGIN");
+    try {
+      await logar(cliente, U_CLIENTE);
+      await cliente.query("SET LOCAL ROLE authenticated");
+      const comoCliente = (
+        await cliente.query(
+          "SELECT nota, ator FROM public.devolucao_eventos WHERE devolucao_id = $1 AND ator = 'sistema'",
+          [d.id],
+        )
+      ).rows;
+      assert.equal(
+        comoCliente.length,
+        1,
+        "mutante R2_rls_esconde_do_dono: o dono da devolução tem que enxergar o evento 'sistema' por RLS (é isso que prova que o texto precisa ser neutro)",
+      );
+      assert.ok(comoCliente[0].nota.includes("Melhor Envio"));
+
+      const detalheComoCliente = await rpc(
+        cliente,
+        "SELECT public.devolucao_detalhe($1::uuid) AS r",
+        [d.id],
+      );
+      const eventosNoDetalhe = detalheComoCliente.eventos || [];
+      assert.ok(
+        eventosNoDetalhe.some(
+          (e) =>
+            e.ator === "sistema" &&
+            String(e.nota || "").includes("Melhor Envio"),
+        ),
+        "mutante R2_detalhe_esconde_do_dono: devolucao_detalhe (a mesma RPC que useDevolucaoCliente chama) devolve o evento 'sistema' para o dono também",
+      );
+
+      // Outro cliente (não dono) continua sem ver nada — RLS de posse intacta.
+      await cliente.query("RESET ROLE");
+      await logar(cliente, U_OUTRO);
+      await cliente.query("SET LOCAL ROLE authenticated");
+      const comoOutro = (
+        await cliente.query(
+          "SELECT count(*) AS n FROM public.devolucao_eventos WHERE devolucao_id = $1",
+          [d.id],
+        )
+      ).rows;
+      assert.equal(Number(comoOutro[0].n), 0);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
 
     // 3. Devolução SEM etiqueta reversa nenhuma (o caminho de sempre) — em
     //    pedido PRÓPRIO desta prova, para não depender do estado que outra
@@ -3040,6 +3169,136 @@ PROVAS.push({
       eventosSemReversa.filter((e) => e.ator === "sistema").length,
       0,
       "sem me_reverse_id/codigo_postagem, não há aviso de Melhor Envio nenhum a gravar",
+    );
+
+    // 4. Achado R1 (rodada 2): admin_devolucao_liberar_vinculo_reverso — a
+    //    "saída" para um vínculo real preso sem código (edge que morreu,
+    //    liberação que falhou, Sandbox do Melhor Envio que nunca gera o
+    //    código da reversa). Só admin; nunca mexe se o código já saiu.
+    await pedidoCustom(cliente, O_R1_LIBERAR, {
+      userId: U_CLIENTE,
+      customerData: {
+        whatsapp: "5534999990000",
+        shipping_option_id: "melhor-envio-1",
+      },
+      total: 90,
+      subtotal: 90,
+      shipping: 0,
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      paidAt: new Date(),
+      gateway: "ORD-R1-LIBERAR",
+      itemId: I_R1_LIBERAR,
+      productId: P_VESTIDO,
+      variantId: V_VESTIDO_P,
+      nome: "Vestido de Prova",
+      qtd: 1,
+      preco: 90,
+      entregueHaDias: 2,
+    });
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET shipping_label_id = $1 WHERE id = $2",
+      ["ME-PROVA-R1-LIBERAR", O_R1_LIBERAR],
+    );
+    await logar(cliente, U_CLIENTE);
+    const dLiberar = await solicitar(
+      cliente,
+      O_R1_LIBERAR,
+      [{ order_item_id: I_R1_LIBERAR, quantidade: 1 }],
+      "nao_gostei",
+      "reembolso",
+      "etiqueta_reversa",
+    );
+    await logar(cliente, U_ADMIN);
+    await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_decidir($1::uuid, true) AS r",
+      [dLiberar.id],
+    );
+
+    // Sem vínculo nenhum ainda: 22023 (nada para destravar).
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [dLiberar.id],
+        ),
+      /não está vinculada/,
+    );
+
+    const ME_REVERSO_PRESO = "me-reverso-preso-r1";
+    await cliente.query(
+      "UPDATE public.devolucoes SET me_reverse_id = $1 WHERE id = $2",
+      [ME_REVERSO_PRESO, dLiberar.id],
+    );
+
+    // Não-admin: 42501.
+    await logar(cliente, U_CLIENTE);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [dLiberar.id],
+        ),
+      /Acesso negado/,
+      "mutante R1_rpc_sem_gate_admin: só admin pode liberar o vínculo preso",
+    );
+
+    // Admin libera de verdade: me_reverse_id volta a NULL, evento gravado.
+    await logar(cliente, U_ADMIN);
+    const liberado = await rpc(
+      cliente,
+      "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+      [dLiberar.id],
+    );
+    assert.equal(liberado.me_reverse_id_liberado, ME_REVERSO_PRESO);
+    const meReverseDepois = await valorUnico(
+      cliente,
+      "SELECT me_reverse_id FROM public.devolucoes WHERE id = $1",
+      [dLiberar.id],
+    );
+    assert.equal(
+      meReverseDepois,
+      null,
+      "mutante R1_rpc_nao_solta: o vínculo tem que voltar a NULL de verdade",
+    );
+    const eventoDeLiberacao = (
+      await cliente.query(
+        "SELECT ator, nota FROM public.devolucao_eventos WHERE devolucao_id = $1 AND ator = 'sistema' ORDER BY id DESC LIMIT 1",
+        [dLiberar.id],
+      )
+    ).rows[0];
+    assert.ok(eventoDeLiberacao?.nota?.includes(ME_REVERSO_PRESO));
+    assert.ok(
+      !eventoDeLiberacao.nota.includes("Cancele"),
+      "o texto do evento de liberação também é neutro (achado R2) — o dono da devolução pode ler",
+    );
+
+    // Cancelar agora funciona normalmente (o vínculo já foi liberado).
+    await logar(cliente, U_CLIENTE);
+    const canceladaAposLiberar = await rpc(
+      cliente,
+      "SELECT public.cancelar_devolucao($1::uuid) AS r",
+      [dLiberar.id],
+    );
+    assert.equal(canceladaAposLiberar.status, "cancelada");
+
+    // Código já emitido (reaproveita `d`, do passo 2 — codigo_postagem e
+    // me_reverse_id continuam preenchidos mesmo depois de cancelada): a RPC
+    // recusa — nada para "destravar", e liberar por baixo de um código já
+    // pago só perderia o rastro. Cancelar direto no Melhor Envio é o caminho.
+    await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        rpc(
+          cliente,
+          "SELECT public.admin_devolucao_liberar_vinculo_reverso($1::uuid) AS r",
+          [d.id],
+        ),
+      /código de postagem já foi emitido/,
+      "mutante R1_rpc_libera_com_codigo: com o código já emitido não há vínculo 'preso' para liberar",
     );
   },
 });

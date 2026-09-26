@@ -279,4 +279,34 @@ describe("painel de devoluções — avisos da etiqueta reversa (achado A2)", ()
       expect.any(Object),
     );
   });
+
+  // Achado N1 (revisão de risco, rodada 2): o toast de sucesso dizia "o
+  // cliente já vê no pedido" mesmo quando a devolução deixou de estar
+  // aprovada durante o checkout (achado A1) — o cliente pode nem ver mais a
+  // etiqueta na tela dele.
+  it("achado N1: a devolução deixou de estar aprovada durante o checkout — o toast de sucesso NÃO promete que o cliente já vê no pedido", async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        ok: true,
+        already: false,
+        codigo_postagem: "PX777BR",
+        etiqueta_url: "https://melhorenvio.com.br/dace.pdf",
+        me_reverse_id: "me-rev-1",
+        aviso:
+          'Atenção: esta devolução não está mais aprovada (status atual: "cancelada"), mas o envio reverso me-rev-1 já foi PAGO no Melhor Envio agora. Cancele esse envio reverso no Melhor Envio.',
+      },
+      error: null,
+    });
+
+    await abrirFicha();
+    await clicar(botao("Gerar código de postagem"));
+
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.not.stringContaining("O cliente já vê no pedido"),
+    );
+    expect(toast.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Melhor Envio"),
+      expect.any(Object),
+    );
+  });
 });

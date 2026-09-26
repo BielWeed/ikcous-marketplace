@@ -199,7 +199,11 @@ escrita serial; quem escreveu não revisa; decisão de produto sobe ao Gabriel c
   `supabase_migrations.schema_migrations` (quem grava é o `scripts/db-apply.cjs`) e cuja
   verificação final não confere migration nova. As `20261175`–`20261178` (PR #666) sobem por
   ele, com ordem, conferência e rollback no
-  [runbook de publicação](docs/runbooks/publicar-painel-cartao-devolucoes.md).
+  [runbook de publicação](docs/runbooks/publicar-painel-cartao-devolucoes.md). A `20261179`
+  (correção pós-revisão de `cancelar_devolucao` e a RPC
+  `admin_devolucao_liberar_vinculo_reverso`, achados A1/R1/R2 da etiqueta reversa) sobe pelo
+  MESMO workflow, mas como passo À PARTE, só depois de 75–78 estarem no ar e conferidas —
+  seção 7 do mesmo runbook.
 - **Migration não leva `BEGIN`/`COMMIT`.** Com eles, o `ROLLBACK` do script de prova vira
   no-op e a mudança fica gravada.
 - **Backup é diário e não há PITR.** Nunca `--no-verify` no commit — o `secretlint` do

@@ -81,22 +81,31 @@ Deno.test("cancelar_devolucao continua SECURITY DEFINER com search_path fixo, me
   assertStringIncludes(cabecalho, "SET search_path = public");
 });
 
-Deno.test("guard novo: recusa cancelar com a compra em voo (me_reverse_id gravado, código ainda não)", () => {
+Deno.test("guard novo (achado R1, rodada 2): só barra com id REAL (NOT LIKE 'reservando:%'), nunca na fase de reserva", () => {
   assertStringIncludes(
     m,
-    "IF v_d.me_reverse_id IS NOT NULL AND v_d.codigo_postagem IS NULL THEN",
+    "IF v_d.me_reverse_id IS NOT NULL AND v_d.me_reverse_id NOT LIKE 'reservando:%' AND v_d.codigo_postagem IS NULL THEN",
   );
-  // A frase é para o CLIENTE entender (mesmo ERRCODE dos outros guards desta
-  // função) — sem ela, o guard existiria mas devolveria um erro cru.
-  assertStringIncludes(m, "aguarde alguns instantes e tente cancelar de novo");
+  // Sem promessa de prazo (achado R1: "aguarde instantes" prendia o cliente
+  // por dias quando o vínculo nunca se resolvia sozinho — Sandbox do Melhor
+  // Envio, edge que morreu, liberação que falhou). A frase manda falar com a
+  // loja, que tem a RPC de liberar (teste abaixo).
+  assertStringIncludes(
+    m,
+    "A loja está gerando o código de postagem desta devolução. Se precisar cancelar, fale com a loja.",
+  );
+  assert(
+    !m.includes("aguarde alguns instantes e tente cancelar de novo"),
+    "a frase da rodada 1 prometia prazo — não pode sobreviver",
+  );
   assertStringIncludes(
     norm(
       m.slice(
         m.indexOf(
-          "IF v_d.me_reverse_id IS NOT NULL AND v_d.codigo_postagem IS NULL THEN",
+          "IF v_d.me_reverse_id IS NOT NULL AND v_d.me_reverse_id NOT LIKE",
         ),
         m.indexOf(
-          "IF v_d.me_reverse_id IS NOT NULL AND v_d.codigo_postagem IS NULL THEN",
+          "IF v_d.me_reverse_id IS NOT NULL AND v_d.me_reverse_id NOT LIKE",
         ) + 400,
       ),
     ),
@@ -114,7 +123,7 @@ Deno.test("guard preservado: os dois guards originais (dono e status) continuam 
     "v_d.status NOT IN ('solicitada', 'aprovada')",
   );
   const posEmVoo = corpo.indexOf(
-    "v_d.me_reverse_id IS NOT NULL AND v_d.codigo_postagem IS NULL",
+    "v_d.me_reverse_id IS NOT NULL AND v_d.me_reverse_id NOT LIKE 'reservando:%'",
   );
   assert(posDono >= 0 && posStatus >= 0 && posEmVoo >= 0);
   assert(
@@ -123,21 +132,68 @@ Deno.test("guard preservado: os dois guards originais (dono e status) continuam 
   );
 });
 
-Deno.test("evento ao lojista: código já emitido grava um evento PRÓPRIO (ator sistema), citando Melhor Envio e o id do envio reverso", () => {
+Deno.test("evento ao lojista: código já emitido grava um evento PRÓPRIO (ator sistema) com texto NEUTRO (achado R2 — o cliente também pode ler)", () => {
   assertStringIncludes(m, "IF v_d.codigo_postagem IS NOT NULL THEN");
   assertStringIncludes(m, "p_id, 'cancelada', 'cancelada', 'sistema',");
-  assertStringIncludes(m, "(envio reverso ' || v_d.me_reverse_id ||");
-  assertStringIncludes(m, "Cancele esse envio reverso no Melhor Envio.");
+  // Achado N3: COALESCE — sem ele, me_reverse_id NULL faria a nota inteira
+  // virar NULL (concatenação `||` com NULL em Postgres).
+  assertStringIncludes(
+    m,
+    "(envio reverso ' || COALESCE(v_d.me_reverse_id, 'sem id registrado') ||",
+  );
+  assertStringIncludes(m, "Melhor Envio");
+  // Achado R2: nada de imperativo dirigido a alguém ("cancele você") — o
+  // texto só CONSTATA o fato, porque o dono da devolução também pode lê-lo.
+  assert(
+    !m.includes("Cancele esse envio reverso no Melhor Envio."),
+    "a frase imperativa da rodada 1 endereçava a loja — não pode sobreviver num texto que o cliente também lê",
+  );
+  assertStringIncludes(
+    m,
+    "Convém conferir se esse envio também precisa ser cancelado por lá.",
+  );
   // O evento do CLIENTE (o que a 20261175000000 já gravava) continua
-  // separado, sem o texto do Melhor Envio dentro da nota dele — nunca vaza
-  // para a tela do cliente por engano.
+  // separado, sem o texto do Melhor Envio dentro da nota dele.
   assertStringIncludes(
     m,
     "PERFORM public.devolucao__registrar_evento(p_id, v_d.status, 'cancelada', 'cliente', NULL);",
   );
 });
 
-Deno.test("o rollback restaura o corpo de cancelar_devolucao da 20261175000000 BYTE A BYTE", () => {
+Deno.test("RPC nova (achado R1): admin_devolucao_liberar_vinculo_reverso — admin, trava a linha, recusa sem vínculo ou com código já emitido, texto neutro", () => {
+  const ini = m.indexOf(
+    "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid)",
+  );
+  assert(ini >= 0, "admin_devolucao_liberar_vinculo_reverso não encontrada");
+  const fim = m.indexOf("$$;", ini);
+  const corpo = m.slice(ini, fim + 3);
+  const cabecalho = m.slice(ini, m.indexOf("AS $$", ini));
+  assertStringIncludes(cabecalho, "SECURITY DEFINER");
+  assertStringIncludes(cabecalho, "SET search_path = public");
+  assertStringIncludes(corpo, "IF NOT public.is_admin() THEN");
+  assertStringIncludes(corpo, "FOR UPDATE;");
+  assertStringIncludes(corpo, "IF v_d.me_reverse_id IS NULL THEN");
+  assertStringIncludes(corpo, "IF v_d.codigo_postagem IS NOT NULL THEN");
+  assertStringIncludes(
+    corpo,
+    "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
+  );
+  assertStringIncludes(corpo, "p_id, v_d.status, v_d.status, 'sistema',");
+  assertStringIncludes(
+    corpo,
+    "Convém conferir se esse envio precisa ser cancelado por lá.",
+  );
+  assertStringIncludes(
+    m,
+    "REVOKE ALL ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid) FROM PUBLIC, anon;",
+  );
+  assertStringIncludes(
+    m,
+    "GRANT EXECUTE ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid) TO authenticated;",
+  );
+});
+
+Deno.test("o rollback restaura o corpo de cancelar_devolucao da 20261175000000 BYTE A BYTE e derruba a RPC nova", () => {
   const original = extrairCancelarDevolucao(norm(migrationBase));
   const restaurado = extrairCancelarDevolucao(r);
   assertEquals(
@@ -148,4 +204,8 @@ Deno.test("o rollback restaura o corpo de cancelar_devolucao da 20261175000000 B
   // Nem o guard novo nem o evento ao lojista sobrevivem ao rollback.
   assert(!restaurado.includes("codigo_postagem IS NULL"));
   assert(!restaurado.includes("'sistema',"));
+  assertStringIncludes(
+    r,
+    "DROP FUNCTION IF EXISTS public.admin_devolucao_liberar_vinculo_reverso(uuid);",
+  );
 });

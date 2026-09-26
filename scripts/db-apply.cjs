@@ -2218,15 +2218,25 @@ const VERIFICACOES = {
   ],
   // CANCELAR_DEVOLUCAO BARRA A COMPRA EM VOO (achado A1 da revisão de risco
   // pré-publicação de 26/09/2026 sobre a etiqueta reversa do Melhor Envio).
-  // Sem os dois marcadores, a função voltaria a deixar cancelar uma
-  // devolução com a etiqueta reversa sendo comprada (ou já paga) no Melhor
-  // Envio, sem avisar o lojista — o mesmo buraco de dinheiro da 20261175000000.
+  // RODADA 2 (achados R1/R2/N3, scratchpad rev79/): o guard só barra id REAL
+  // (a fase de reserva não pode travar o cliente para sempre — Sandbox do
+  // Melhor Envio nunca gera o código da reversa) e a RPC nova dá à loja uma
+  // saída para um vínculo preso sem código.
   "20261179000000_cancelar_devolucao_barra_compra_em_voo.sql": [
     {
       funcao: "cancelar_devolucao",
       esperado: [
-        "IF v_d.me_reverse_id IS NOT NULL AND v_d.codigo_postagem IS NULL THEN",
+        "IF v_d.me_reverse_id IS NOT NULL AND v_d.me_reverse_id NOT LIKE 'reservando:%' AND v_d.codigo_postagem IS NULL THEN",
         "PERFORM public.devolucao__registrar_evento(\n      p_id, 'cancelada', 'cancelada', 'sistema',",
+        "(envio reverso ' || COALESCE(v_d.me_reverse_id, 'sem id registrado') ||",
+      ],
+    },
+    {
+      funcao: "admin_devolucao_liberar_vinculo_reverso",
+      esperado: [
+        "IF NOT public.is_admin() THEN",
+        "IF v_d.codigo_postagem IS NOT NULL THEN",
+        "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
       ],
     },
   ],

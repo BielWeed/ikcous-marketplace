@@ -2787,13 +2787,49 @@ Deno.test("gerar_devolucao_reversa - achado A3: checkout recusado de forma DEFIN
         const me = buscarMeReversoFalso({ checkout: 'erro-4xx' })
         const { res, corpo } = await rodarReversa(supa, me)
         assertEquals(res.status, 502)
-        assertEquals(String(corpo.error).includes('não consegui soltar o vínculo'), true)
+        assertEquals(String(corpo.error).toLowerCase().includes('não consegui soltar o vínculo'), true)
         // Diz que nada foi pago (a recusa É definitiva) — só o vínculo que não soltou.
         assertEquals(String(corpo.error).toLowerCase().includes('nada foi pago'), true)
         assertEquals(String(corpo.error).includes(ME_REVERSO), true)
+        // Achado R3 (rodada 2): a frase da rodada 1 mandava a pessoa ERRADA
+        // "cancelar" — a nova nem promete prazo cego nem manda cancelar.
+        assertEquals(String(corpo.error).includes('Tente cancelar de novo em instantes'), false)
         assertEquals(supa.registro.liberacoes.length, 2)
         // O item ainda saiu do carrinho do ME — só o NOSSO vínculo não soltou.
         assertEquals(me.registro.remocoes, 1)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado R3 (rodada 2): quando a liberação falha 2x, o vínculo é DEGRADADO para uma reserva já vencida — a PRÓXIMA chamada retoma sozinha (mesmo mecanismo da reserva expirada)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNaLiberacao: 2 })
+        const me = buscarMeReversoFalso({ checkout: 'erro-4xx' })
+        const r1 = await rodarReversa(supa, me)
+        assertEquals(r1.res.status, 502)
+        // As duas tentativas de soltar (me_reverse_id = null) falharam, mas
+        // isso não é o fim: uma 3ª escrita degrada o vínculo para uma reserva
+        // já vencida — sem ela, a devolução ficaria vinculada ao id morto
+        // PARA SEMPRE, e é exatamente esse o defeito do achado R3.
+        assertEquals(supa.registro.liberacoes.length, 2)
+        // reservas[0] é a reserva NORMAL do passo 6 (antes do checkout);
+        // reservas[1] é a degradação — as duas usam o mesmo prefixo.
+        assertEquals(supa.registro.reservas.length, 2)
+        const degradado = supa.registro.reservas[1]
+        assertEquals(temFiltro(degradado.filtros, 'eq', 'me_reverse_id', ME_REVERSO), true)
+        const tokenDegradado = String(degradado.valores.me_reverse_id)
+        assertEquals(tokenDegradado.startsWith('reservando:'), true)
+        assertEquals(tokenDegradado.endsWith(`:${ME_REVERSO}`), true)
+
+        // A PRÓXIMA chamada (banco de verdade teria essa linha) vê o token
+        // degradado, classifica como reserva VENCIDA e RETOMA sozinha —
+        // exatamente o caminho que já existe e já é testado para reserva
+        // expirada comum (nenhuma ação manual precisou acontecer).
+        const supa2 = clienteFalsoDevolucao({ devolucao: { ...DEVOLUCAO_APROVADA, me_reverse_id: tokenDegradado } })
+        const me2 = buscarMeReversoFalso()
+        const r2 = await rodarReversa(supa2, me2)
+        assertEquals(r2.res.status, 200)
+        assertEquals(r2.corpo.codigo_postagem, CODIGO_POSTAGEM)
+        assertEquals(me2.registro.chamadas[0], 'POST /api/v2/me/cart/reverse')
     })
 })
 
@@ -2824,5 +2860,74 @@ Deno.test("gerar_devolucao_reversa - achado A4: checkout recusado e o DELETE do 
         const { res, corpo } = await rodarReversa(supa, me)
         assertEquals(res.status, 502)
         assertEquals(String(corpo.error).includes('o envio saiu do carrinho'), true)
+    })
+})
+
+// ── achado R4 (rodada 2 — a A4 da rodada 1 só cobriu tratarVinculoNaoConfirmado pela metade) ─
+
+Deno.test("gerar_devolucao_reversa - achado R4: vínculo NÃO gravou e o DELETE do carrinho FALHA — a frase não afirma retirada que não aconteceu", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNoVinculo: 'nao-gravou' })
+        const me = buscarMeReversoFalso({ removerDoCarrinho: 'erro' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 500)
+        assertEquals(me.registro.remocoes, 1)
+        const erro = String(corpo.error)
+        assertEquals(erro.includes('ele foi retirado do carrinho'), false)
+        assertEquals(erro.toLowerCase().includes('não consegui confirmar'), true)
+        assertEquals(erro.toLowerCase().includes('nada foi pago'), true)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado R4: vínculo NÃO gravou e o DELETE do carrinho SAI — a frase continua afirmando a retirada (comportamento antigo preservado)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ erroNoVinculo: 'nao-gravou' })
+        const me = buscarMeReversoFalso({ removerDoCarrinho: 'ok' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 500)
+        assertEquals(String(corpo.error).includes('ele foi retirado do carrinho'), true)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado R4: a devolução mudou de status ENTRE a reserva e o vínculo e o DELETE do carrinho FALHA — a frase de 409 também não afirma a retirada", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ mudancaAposReserva: { status: 'cancelada' } })
+        const me = buscarMeReversoFalso({ removerDoCarrinho: 'erro' })
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 409)
+        const erro = String(corpo.error)
+        assertEquals(erro.includes('O envio reverso foi retirado do carrinho'), false)
+        assertEquals(erro.toLowerCase().includes('não consegui confirmar'), true)
+        assertEquals(erro.toLowerCase().includes('nada foi pago'), true)
+    })
+})
+
+// ── achado N2 (rodada 2) ─────────────────────────────────────────────────
+
+Deno.test("gerar_devolucao_reversa - achado N2: a devolução deixou de estar aprovada durante o checkout — além do aviso na resposta, grava um evento PRÓPRIO (ator sistema) com texto NEUTRO", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ mudancaAposVinculo: { status: 'cancelada' } })
+        const { res, corpo } = await rodarReversa(supa, buscarMeReversoFalso())
+        assertEquals(res.status, 200)
+        assertEquals(String(corpo.aviso).includes('Melhor Envio'), true)
+        // O evento fica na trilha — não é só o toast de 15s do painel, que
+        // some se ninguém estiver olhando quando ele aparece.
+        const eventoDeAviso = supa.registro.eventos.find(
+            (e: any) => e.ator === 'sistema' && String(e.nota).includes('"cancelada"'),
+        )
+        assertEquals(!!eventoDeAviso, true)
+        // Texto neutro (achado R2): sem imperativo dirigido a alguém — o
+        // cliente também pode ler este evento (devolucao_eventos + RLS do dono).
+        assertEquals(String(eventoDeAviso?.nota).includes('Cancele esse envio reverso'), false)
+        assertEquals(String(eventoDeAviso?.nota).includes('Convém conferir'), true)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - achado N2: devolução continua aprovada — nenhum evento 'sistema' extra é gravado", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao()
+        const { res } = await rodarReversa(supa, buscarMeReversoFalso())
+        assertEquals(res.status, 200)
+        assertEquals(supa.registro.eventos.filter((e: any) => e.ator === 'sistema').length, 1) // só o NOTA_CODIGO_GERADO de sempre
     })
 })
