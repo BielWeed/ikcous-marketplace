@@ -1180,7 +1180,6 @@ DECLARE
   v_conta public.fin_contas%ROWTYPE;
   v_saldo numeric;
   v_ultimo_contado numeric;
-  v_referencia numeric;
   v_categoria uuid;
   v_valor numeric(12, 2) := round(p_valor_abertura, 2);
   v_id uuid;
@@ -1203,32 +1202,44 @@ BEGIN
   -- O que foi contado manda: a diferença vira ajuste, para a conta Caixa
   -- refletir a gaveta de verdade.
   --
-  -- Achado 13 (revisão 26/09/2026, rodada 2 — decisão do dono, reversível):
-  -- a REFERÊNCIA da categoria não é mais o saldo abstrato do sistema
-  -- (fin__saldos — nas duas pontas de um ciclo abre/fecha sem nada estranho
-  -- no meio, ele já é IGUAL ao último contado, porque é o fechamento quem o
-  -- calibra) e sim o que foi CONTADO no último FECHAMENTO desta conta:
-  --   - FALTA em relação ao último contado é perda REAL (sumiu dinheiro que
-  --     estava lá) — Quebra de caixa, `financeiro`, pesa na DRE.
-  --   - SOBRA, ou a PRIMEIRA abertura desta conta (nada anterior para
-  --     comparar) — `fora_dre` (aporte do dono, troco trazido de casa): não
-  --     é lucro nem despesa da loja.
+  -- Achado 13 (revisão 26/09/2026, rodada 2 — decisão do dono, reversível).
+  -- Achado A1 (revisão 26/09/2026, rodada 3 — REGRESSÃO do achado 13
+  -- consertada): a CATEGORIA tem de decidir com a MESMA base de comparação
+  -- que o TIPO/VALOR do lançamento já usam (v_valor contra v_saldo, o saldo
+  -- de fin__saldos AGORA) — não contra v_ultimo_contado. A suposição de que
+  -- "sem nada estranho no meio, v_saldo já é igual ao último contado" era
+  -- verdadeira SÓ quando nada mexe na conta entre o fechamento e a próxima
+  -- abertura; uma venda ou despesa em dinheiro registrada com o caixa
+  -- FECHADO (fin_caixa_movimentar/fin__movimentos continuam escrevendo na
+  -- conta mesmo sem sessão aberta) faz v_saldo divergir de v_ultimo_contado,
+  -- e comparar contra a base errada trocava sobra por falta (e vice-versa):
+  -- uma falta real de R$30 saía como "sobra" fora_dre, e uma sobra real de
+  -- R$10 saía como "Quebra de caixa" (despesa) com sinal de ganho — uma
+  -- combinação que a própria fin_lancamento_salvar recusaria se alguém
+  -- tentasse lançar à mão.
+  --   - v_valor > v_saldo (sobrou dinheiro na gaveta) — sempre `fora_dre`
+  --     (categoria 006): aporte do dono, troco trazido de casa, nunca lucro.
+  --   - v_valor < v_saldo E existe um fechamento anterior desta conta para
+  --     comparar — falta REAL (sumiu dinheiro que o sistema sabia que
+  --     estava lá) — Quebra de caixa, `financeiro`, pesa na DRE (031).
+  --   - v_valor < v_saldo SEM fechamento anterior (1ª abertura desta conta,
+  --     nada para comparar) — `fora_dre` (categoria 007): pode ser só a
+  --     loja começando com menos troco do que o sistema supõe, não uma
+  --     perda comprovada.
   -- O ajuste continua reconciliando o SALDO do sistema (fin__saldos) para
-  -- v_valor — é o mesmo cálculo de antes (achado E) — só a CATEGORIA muda
-  -- de referência.
+  -- v_valor — o mesmo cálculo de sempre (achado E) — só a CATEGORIA muda.
   SELECT s.saldo INTO v_saldo FROM public.fin__saldos() s WHERE s.conta_id = v_conta.id;
   SELECT s.valor_contado INTO v_ultimo_contado
     FROM public.fin_caixa_sessoes s
    WHERE s.conta_id = v_conta.id AND s.status = 'fechado'
    ORDER BY s.fechado_em DESC LIMIT 1;
-  v_referencia := COALESCE(v_ultimo_contado, v_saldo, 0);
 
   IF round(v_valor - COALESCE(v_saldo, 0), 2) <> 0 THEN
     v_categoria := CASE
-      WHEN v_ultimo_contado IS NOT NULL AND v_valor < v_referencia
-        THEN 'f2000000-0000-4000-8000-000000000031'::uuid -- Quebra de caixa (financeiro, na DRE)
-      WHEN v_valor > v_referencia
+      WHEN v_valor > COALESCE(v_saldo, 0)
         THEN 'f2000000-0000-4000-8000-000000000006'::uuid -- fora_dre: sobra/aporte
+      WHEN v_ultimo_contado IS NOT NULL
+        THEN 'f2000000-0000-4000-8000-000000000031'::uuid -- Quebra de caixa (financeiro, na DRE)
       ELSE 'f2000000-0000-4000-8000-000000000007'::uuid   -- fora_dre: falta (1ª abertura)
     END;
     INSERT INTO public.fin_lancamentos (

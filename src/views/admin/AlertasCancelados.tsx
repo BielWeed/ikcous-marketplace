@@ -36,6 +36,9 @@ interface PedidoDaLista {
   customer?: { name?: string | null } | null;
   /** Canal da venda (C4.2): o confirm do estorno manual fala 'no balcão' quando presencial. */
   canal?: CanalDaVenda;
+  /** Achado A4 (rodada 3): o confirm de "Já devolvi" mostra o que FALTA, não o total. */
+  valorDevolvidoPorDevolucao?: number;
+  valorEstornado?: number;
 }
 
 interface AlertasCanceladosProps {

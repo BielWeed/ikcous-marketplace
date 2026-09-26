@@ -721,6 +721,135 @@ PROVAS.push({
   },
 });
 
+// Achado A3 da revisão de 26/09/2026 (rodada 3), ataque N1: devolução manual
+// PARCIAL (não a integral do gap 3) + "Já devolvi" pelo RESTO — mata os
+// mutantes R2_1_movimentos_dm e R2_1_caixa_dm, que só a combinação dos DOIS
+// caminhos de saída no MESMO pedido consegue distinguir (cada um sozinho já
+// tinha prova; o `- COALESCE(dm.valor, 0)` some sem que nenhuma prova
+// anterior notasse, porque nenhuma tinha as duas saídas juntas).
+PROVAS.push({
+  nome: "(A3-dm) devolução manual PARCIAL + estorno do resto pelo 'Já devolvi': gaveta e extrato descontam os dois",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    await rpc(cliente, "SELECT public.fin_caixa_abrir(0) AS r");
+
+    const O_N1 = "5ddddddd-0000-0000-0000-000000000006";
+    await pedido(cliente, O_N1, {
+      total: 100,
+      pagamento: "cash",
+      paymentStatus: "recebido_na_entrega",
+      recebidoEm: new Date(),
+      canal: "presencial",
+    });
+    let atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+    assert.equal(num(atual.vendas_dinheiro), 100);
+    assert.equal(num(atual.esperado), 100);
+
+    // 40 já saíram por uma devolução manual concluída (parcial, não o total).
+    await cliente.query(
+      `INSERT INTO public.devolucoes (
+         id, protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, resolucao_final,
+         modalidade, metodo_retorno, status, valor_itens, valor_reembolso, reembolso_manual,
+         prazo_ate, politica, concluida_em
+       ) VALUES (
+         gen_random_uuid(), 'DV-N1-TESTE', $1, $2, 'arrependimento', 'desisti', 'reembolso', 'reembolso',
+         'local', 'entrega_na_loja', 'concluida', 40, 40, true,
+         current_date + 7, '{}'::jsonb, now()
+       )`,
+      [O_N1, U_CLIENTE],
+    );
+
+    // Os 60 que sobram saem agora pelo "Já devolvi" — o guarda do achado 1
+    // (rodada 2) deixa passar porque 100 - 0 - 40 = 60 > 0.
+    await rpc(
+      cliente,
+      "SELECT public.registrar_estorno_manual($1::uuid) AS r",
+      [O_N1],
+    );
+
+    atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+    assert.equal(num(atual.devolucoes_dinheiro), 40);
+    assert.equal(
+      num(atual.estornos_externos_dinheiro),
+      60,
+      "mutante R2_1_caixa_dm: sem descontar dm.valor, isto sairia 100, não 60",
+    );
+    assert.equal(
+      num(atual.esperado),
+      0,
+      "100 entraram, 40 + 60 saíram pelos dois caminhos — esperado 0",
+    );
+
+    const mov = (
+      await cliente.query(
+        "SELECT valor FROM public.fin__movimentos(NULL, NULL) WHERE id = $1",
+        [`estorno_externo:${O_N1}`],
+      )
+    ).rows[0];
+    assert.equal(
+      num(mov.valor),
+      60,
+      "mutante R2_1_movimentos_dm: o extrato tem de mostrar 60 (100 - 40 da devolução), não 100",
+    );
+
+    const fechado = await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar(0, 'bateu') AS r",
+    );
+    assert.equal(num(fechado.diferenca), 0, "sem quebra fantasma");
+  },
+});
+
+// Achado A3, r2-d-filtro / mutante R2_8_caixa_recebido: pedido em dinheiro
+// que NUNCA foi recebido (pagamento_recebido_em NULL) não pode entrar na
+// gaveta como estorno externo só porque alguém registrou "Já devolvi" nele —
+// não houve dinheiro na mão para devolver.
+PROVAS.push({
+  nome: "(A3-8) pedido em dinheiro nunca recebido + 'Já devolvi': gaveta não conta (achado 8)",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    await rpc(cliente, "SELECT public.fin_caixa_abrir(0) AS r");
+
+    const O_N1B = "5ddddddd-0000-0000-0000-000000000007";
+    await pedido(cliente, O_N1B, {
+      total: 50,
+      pagamento: "cash",
+      paymentStatus: "aguardando",
+      canal: "presencial",
+    });
+    let atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+    assert.equal(
+      num(atual.vendas_dinheiro),
+      0,
+      "nunca recebido: não é venda em dinheiro nenhuma",
+    );
+
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
+      [O_N1B],
+    );
+    await rpc(
+      cliente,
+      "SELECT public.registrar_estorno_manual($1::uuid) AS r",
+      [O_N1B],
+    );
+
+    atual = await rpc(cliente, "SELECT public.fin_caixa_atual() AS r");
+    assert.equal(
+      num(atual.estornos_externos_dinheiro),
+      0,
+      "mutante R2_8_caixa_recebido: sem a guarda de pagamento_recebido_em, isto contaria 50 que nunca entraram",
+    );
+    assert.equal(num(atual.esperado), 0);
+
+    const fechado = await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar(0, 'sem sobra nem quebra') AS r",
+    );
+    assert.equal(num(fechado.diferenca), 0);
+  },
+});
+
 PROVAS.push({
   nome: "(F) estorno_manual_registrado_em data o estorno externo — não o updated_at, que qualquer edição move",
   corpo: async (cliente) => {
@@ -901,6 +1030,114 @@ PROVAS.push({
       /Período inválido/,
       "mais de 400 dias",
     );
+  },
+});
+
+// Achado A1 da revisão de 26/09/2026 (rodada 3) — REGRESSÃO do achado 13:
+// a categoria da abertura decidia contra v_ultimo_contado (v_referencia)
+// enquanto o TIPO/VALOR do lançamento decidiam contra v_saldo — as duas
+// bases só coincidem quando NADA mexe na conta entre o fechamento e a
+// abertura seguinte. As provas anteriores (achado 13, achado E) nunca
+// tinham um movimento NO MEIO — por isso o bug sobrevivia a toda a suíte.
+// X1 e X2 são os dois ataques do revisor: falta real virando sobra
+// (fora_dre) e sobra real virando "Quebra de caixa" com sinal de ganho.
+PROVAS.push({
+  nome: "(A1) abertura decide sobra/falta pela MESMA base do tipo/valor — X1 falta real, X2 sobra real",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    const saldoConta = async () =>
+      num(
+        (await rpc(cliente, "SELECT public.fin_contas_listar() AS r")).find(
+          (c) => c.id === CAIXA,
+        ).saldo,
+      );
+    const resFinanceiro = async () =>
+      num(
+        (
+          await rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [
+            estado.inicio,
+            estado.hoje,
+          ])
+        ).resultado_financeiro,
+      );
+
+    // --- X1: falta REAL entre o fechamento e a abertura seguinte ---
+    const s0 = await saldoConta();
+    await rpc(cliente, "SELECT public.fin_caixa_abrir($1) AS r", [s0]);
+    await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar($1, 'sem diferença') AS r",
+      [s0],
+    );
+
+    // Venda em dinheiro com o caixa FECHADO (a mesma conta segue somando).
+    const O_A1_X1 = "5ddddddd-0000-0000-0000-000000000008";
+    await pedido(cliente, O_A1_X1, {
+      total: 50,
+      pagamento: "cash",
+      paymentStatus: "recebido_na_entrega",
+      recebidoEm: new Date(),
+      canal: "presencial",
+    });
+    assert.equal(
+      await saldoConta(),
+      s0 + 50,
+      "a venda soma na conta mesmo fechado",
+    );
+
+    const resAntesX1 = await resFinanceiro();
+    // Conta 20 a menos que o saldo de verdade (s0+50): faltam 30 DE VERDADE.
+    await rpc(cliente, "SELECT public.fin_caixa_abrir($1) AS r", [s0 + 20]);
+    assert.equal(
+      await saldoConta(),
+      s0 + 20,
+      "o ajuste reconcilia o saldo do sistema para o que foi contado",
+    );
+    assert.equal(
+      num((await resFinanceiro()) - resAntesX1),
+      -30,
+      "mutante R2_13_ref_saldo / achado A1: falta real contra v_saldo (30) pesa na DRE como Quebra de caixa — sem a correção isto saía 0 (virava fora_dre, categoria de sobra)",
+    );
+    await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar($1, 'sem diferença') AS r",
+      [s0 + 20],
+    );
+
+    // --- X2: sobra REAL, depois de uma despesa paga da gaveta com o caixa fechado ---
+    await rpc(cliente, "SELECT public.fin_lancamento_salvar($1::jsonb) AS r", [
+      JSON.stringify({
+        tipo: "saida",
+        valor: 30,
+        conta_id: CAIXA,
+        categoria_id: CAT_ALUGUEL,
+        descricao: "Despesa paga da gaveta com o caixa fechado (prova X2)",
+        status: "realizado",
+        forma_pagamento: "dinheiro",
+      }),
+    ]);
+    assert.equal(
+      await saldoConta(),
+      s0 - 10,
+      "a despesa desconta mesmo fechado",
+    );
+
+    const resAntesX2 = await resFinanceiro();
+    // Conta 10 A MAIS que o saldo de verdade (s0-10): sobram 10 DE VERDADE.
+    await rpc(cliente, "SELECT public.fin_caixa_abrir($1) AS r", [s0]);
+    assert.equal(await saldoConta(), s0);
+    assert.equal(
+      num((await resFinanceiro()) - resAntesX2),
+      0,
+      "achado A1: sobra real contra v_saldo é sempre fora_dre — sem a correção isto entrava como Quebra de caixa com sinal de GANHO (+10), lucro que não existiu",
+    );
+
+    const fechado = await rpc(
+      cliente,
+      "SELECT public.fin_caixa_fechar($1, 'sem diferença') AS r",
+      [s0],
+    );
+    assert.equal(num(fechado.diferenca), 0);
   },
 });
 

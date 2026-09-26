@@ -2080,6 +2080,10 @@ const VERIFICACOES = {
       esperado: [
         "'valor_devolvido_por_devolucao', c.valor_devolvido_por_devolucao",
         "COALESCE((SELECT sum(d.valor_reembolso) FROM public.devolucoes d\n                              WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0)\n                     AS valor_devolvido_por_devolucao",
+        // Achado A4 (rodada 3): o front também precisa do estorno CONFIRMADO
+        // (ledger) para calcular o que falta — sem isto, um estorno parcial
+        // já pago pelo MP não descontava do "Devolver agora".
+        "'valor_estornado', c.valor_estornado",
       ],
     },
     {
@@ -2091,6 +2095,18 @@ const VERIFICACOES = {
       esperado: [
         "SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual\n      FROM public.devolucoes d\n     WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;",
         "v_saldo := v_total - v_valor_estornado - v_em_curso - v_ja_manual;",
+      ],
+    },
+    {
+      // Achado A2 (rodada 3): redefinição nascida em 2026110000000 — o
+      // estorno AUTOMÁTICO do cancelamento (pedido pago cancelado antes do
+      // envio) abria order_refunds pelo v_total CHEIO, sem saber que uma
+      // devolução deste mesmo pedido já tinha pago parte por fora (pedido
+      // reativado e cancelado de novo). Mesmo desconto dos achados 1/3.
+      funcao: "update_order_status_atomic",
+      esperado: [
+        "SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual\n          FROM public.devolucoes d\n         WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;",
+        "IF v_total - v_ja_manual > 0 THEN\n            INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por)\n            VALUES (p_order_id, v_total - v_ja_manual, 'cancelamento antes do envio',",
       ],
     },
   ],
@@ -2179,11 +2195,16 @@ const VERIFICACOES = {
       // o último fechamento é Quebra de caixa DE VERDADE (pesa na DRE);
       // sobra, ou falta na 1ª abertura (sem fechamento anterior para
       // comparar), é fora_dre — troco que já existia fora do fluxo da loja.
+      // Achado A1 (rodada 3): a categoria decide com a MESMA base do
+      // tipo/valor (v_valor contra v_saldo) — o marcador antigo comparava
+      // contra v_referencia (que priorizava v_ultimo_contado), e um
+      // movimento de caixa registrado com a sessão FECHADA fazia v_saldo
+      // divergir do último contado, trocando sobra por falta.
       funcao: "fin_caixa_abrir",
       esperado: [
         "SELECT s.valor_contado INTO v_ultimo_contado",
-        "v_referencia := COALESCE(v_ultimo_contado, v_saldo, 0);",
-        "WHEN v_ultimo_contado IS NOT NULL AND v_valor < v_referencia\n        THEN 'f2000000-0000-4000-8000-000000000031'::uuid -- Quebra de caixa (financeiro, na DRE)",
+        "WHEN v_valor > COALESCE(v_saldo, 0)\n        THEN 'f2000000-0000-4000-8000-000000000006'::uuid -- fora_dre: sobra/aporte",
+        "WHEN v_ultimo_contado IS NOT NULL\n        THEN 'f2000000-0000-4000-8000-000000000031'::uuid -- Quebra de caixa (financeiro, na DRE)",
       ],
     },
   ],

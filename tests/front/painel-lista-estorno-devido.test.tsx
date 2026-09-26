@@ -108,6 +108,9 @@ function pedidoFake(overrides: {
   // Achado 1 da revisão de 26/09/2026 (rodada 2): quanto uma devolução deste
   // pedido já devolveu por fora (reembolso manual concluído).
   valorDevolvidoPorDevolucao?: number;
+  // Achado A4 da revisão de 26/09/2026 (rodada 3): quanto já saiu pelo
+  // ledger CONFIRMADO do estorno (order_refunds concluído).
+  valorEstornado?: number;
 }): Order {
   return {
     id: overrides.id,
@@ -133,6 +136,7 @@ function pedidoFake(overrides: {
     cancelledAfterShipping: overrides.cancelledAfterShipping ?? false,
     returnedToSellerAt: overrides.returnedToSellerAt ?? null,
     valorDevolvidoPorDevolucao: overrides.valorDevolvidoPorDevolucao,
+    valorEstornado: overrides.valorEstornado,
   };
 }
 
@@ -330,6 +334,36 @@ describe("valorDevolverAgora — o valor que falta, não o total do pedido", () 
     const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
     expect(
       valorDevolverAgora({ total: 100, valorDevolvidoPorDevolucao: 150 }),
+    ).toBe(0);
+  });
+
+  // Achado A4 da revisão de 26/09/2026 (rodada 3, ataque X5): estorno
+  // CONFIRMADO pelo ledger (order_refunds concluído) é o MESMO tipo de
+  // dinheiro-que-já-saiu que o reembolso manual — faltava descontar.
+  it("estorno confirmado pelo MP (ledger): desconta também, mesmo sem devolução nenhuma", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(valorDevolverAgora({ total: 100, valorEstornado: 60 })).toBe(40);
+  });
+
+  it("devolução parcial + estorno parcial: desconta os dois juntos", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(
+      valorDevolverAgora({
+        total: 100,
+        valorDevolvidoPorDevolucao: 30,
+        valorEstornado: 30,
+      }),
+    ).toBe(40);
+  });
+
+  it("os dois juntos passando do total: nunca fica negativo", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(
+      valorDevolverAgora({
+        total: 100,
+        valorDevolvidoPorDevolucao: 60,
+        valorEstornado: 60,
+      }),
     ).toBe(0);
   });
 });
@@ -547,6 +581,33 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
 
     expect(hospedeiro.textContent).toContain("Devolver agora");
     expect(hospedeiro.textContent).toContain("60,00");
+    expect(hospedeiro.textContent).not.toContain("100,00");
+  });
+
+  // Achado A4 (rodada 3, ataque X5): o mesmo desconto vale para o estorno
+  // CONFIRMADO pelo ledger (order_refunds concluído pelo MP), não só para a
+  // devolução manual — sem isto, "Devolver agora" prometia o total cheio
+  // mesmo com 60 já devolvidos pelo Mercado Pago.
+  it("estorno parcial já confirmado pelo MP: 'Devolver agora' mostra o valor que falta, não o total", async () => {
+    mockPedidosCancelados = [
+      pedidoFake({
+        id: "ped-estornado-parte",
+        status: "cancelled",
+        paymentStatus: "pago",
+        cancelledAfterShipping: false,
+        valorEstornado: 60,
+      }),
+    ];
+    mockTotalOrders = 1;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
+    });
+    await expandirAlertas(hospedeiro);
+
+    expect(hospedeiro.textContent).toContain("Devolver agora");
+    expect(hospedeiro.textContent).toContain("40,00");
     expect(hospedeiro.textContent).not.toContain("100,00");
   });
 
