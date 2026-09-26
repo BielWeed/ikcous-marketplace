@@ -197,25 +197,35 @@ END $ref$`);
       // a fronteira de aceitação) — um CPF válido aleatório PODE coincidir
       // com o de uma pessoa real, mesmo nascido de um gerador sintético.
       // Nunca sai CPF inteiro daqui: só os 2 últimos dígitos (o suficiente
-      // para notar SE o dígito verificador é o problema) e um hash (o
-      // suficiente para notar que duas linhas divergentes são, de fato,
-      // ENTRADAS diferentes, sem reconstituir o valor).
+      // para notar SE o dígito verificador é o problema).
+      //
+      // RODADA 5, achado 1: a versão da rodada 4 correlacionava as linhas
+      // com `md5(ref || '|' || mig)` -- REVERSÍVEL por força bruta: um CPF
+      // tem só 10^9 bases (os 9 primeiros dígitos escolhem os 2
+      // verificadores), e o `***NN` já entrega os 2 últimos dígitos --
+      // sobra testar ~10^7 bases por hash até bater (o revisor recuperou um
+      // CPF assim, calculando ~7.800 md5 sobre uma fatia de 10^6). Trocado
+      // por `o.id`, o UUID aleatório do PEDIDO SINTÉTICO desta prova (gerado
+      // pelo `insert` acima) -- não tem NENHUMA relação matemática com o
+      // CPF que ele carrega, então não há nada para forçar. Serve exatamente
+      // para o mesmo fim (saber que duas linhas divergentes são entradas
+      // DIFERENTES), sem abrir a porta de volta para o dado real.
       const div = (
         await cliente.query(
           `select
+              o.id as id_da_entrada,
               (case when b.ref = 'RECUSA' then 'RECUSA'
                     when b.ref is null then null
                     else '***' || right(b.ref, 2) end) as ref_mascarado,
               (case when (o.customer_data->>'cpf') is null then null
-                    else '***' || right(o.customer_data->>'cpf', 2) end) as mig_mascarado,
-              md5(coalesce(b.ref, '') || '|' || coalesce(o.customer_data->>'cpf', '')) as hash_da_entrada
+                    else '***' || right(o.customer_data->>'cpf', 2) end) as mig_mascarado
              from marketplace_orders o join _cpf_janela_bat b using (id)
             where (o.customer_data->>'cpf') is distinct from (case when b.ref = 'RECUSA' then null else b.ref end)
             limit 5`,
         )
       ).rows;
       console.log(
-        "    exemplos de divergência, MASCARADOS (v24-ref | 82 | hash):",
+        "    exemplos de divergência, MASCARADOS (id | v24-ref | 82):",
         JSON.stringify(div),
       );
     }

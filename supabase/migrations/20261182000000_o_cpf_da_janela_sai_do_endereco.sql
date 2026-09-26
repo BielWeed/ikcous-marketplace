@@ -274,11 +274,16 @@
 --      23–26/09/2026 17:46 UTC, PARE e investigue antes de aplicar — esta
 --      migration só foi provada para o formato de defeito daquela janela
 --      específica; um pedido fora dela é sintoma de OUTRA causa.
---   3. O lock que fecha a corrida da etiqueta (`melhor-envio-etiqueta`,
---      `definir_cpf_destinatario`) já está em produção (v9, 26/09 19:58,
---      trazido para esta árvore pelo merge de `claude/pensive-mendel-
---      b1fnuu`) — não é parte desta migration; citado aqui só para quem
---      for revisar o runbook de aplicação lado a lado.
+--   3. O que fecha a corrida da etiqueta (`melhor-envio-etiqueta`,
+--      `definir_cpf_destinatario`) NÃO é o lock otimista (esse já existia
+--      antes e só confere o `cpf` da RAIZ — é exatamente ele que não
+--      enxerga a corrida, ver "CORRIDA COM definir_cpf_destinatario"
+--      acima); é a escrita passar a tirar `address.cpf` de forma
+--      INCONDICIONAL, não importa o que a leitura tinha visto. Essa
+--      correção já está em produção (v9, 26/09 19:58, trazida para esta
+--      árvore pelo merge de `claude/pensive-mendel-b1fnuu`) — não é parte
+--      desta migration; citada aqui só para quem for revisar o runbook de
+--      aplicação lado a lado.
 --
 -- FICHA DE VERIFICAÇÃO pós-aplicação (rodar contra o banco):
 --   1. Nenhum pedido deveria sobrar com `cpf` dentro do endereço:
