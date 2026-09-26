@@ -159,10 +159,10 @@ async function main() {
     // (as policies das migrations) quem faz a guarda, nunca o grant de
     // tabela. Replica esse detalhe da plataforma aqui.
     await cliente.query(
-      `GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role`,
+      "GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role",
     );
     await cliente.query(
-      `GRANT ALL ON storage.objects, storage.buckets TO anon, authenticated, service_role`,
+      "GRANT ALL ON storage.objects, storage.buckets TO anon, authenticated, service_role",
     );
     // No Supabase de verdade `storage.objects` já nasce com RLS LIGADO pela
     // plataforma — as migrations do app só ACRESCENTAM policy em cima. Sem
@@ -174,7 +174,7 @@ async function main() {
     // nenhuma policy negaria leitura a anon/authenticated que hoje não
     // precisa de guarda nenhuma aqui.
     await cliente.query(
-      `ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY`,
+      "ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY",
     );
     console.log("[provisionar] storage mínimo criado");
 

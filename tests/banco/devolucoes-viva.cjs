@@ -1434,7 +1434,10 @@ PROVAS.push({
     const concluidaA = await rpc(
       cliente,
       "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
-      [dA.id, JSON.stringify([{ item_id: itemA, condicao: "nova", reestocar: true }])],
+      [
+        dA.id,
+        JSON.stringify([{ item_id: itemA, condicao: "nova", reestocar: true }]),
+      ],
     );
     await cliente.query(
       "UPDATE public.order_refunds SET status = 'recusado' WHERE id = $1",
@@ -1465,7 +1468,11 @@ PROVAS.push({
     const concluidaB = await rpc(
       cliente,
       "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb, $3::numeric) AS r",
-      [dB.id, JSON.stringify([{ item_id: itemB, condicao: "nova", reestocar: true }]), 60],
+      [
+        dB.id,
+        JSON.stringify([{ item_id: itemB, condicao: "nova", reestocar: true }]),
+        60,
+      ],
     );
     await cliente.query(
       "UPDATE public.order_refunds SET status = 'recusado' WHERE id = $1",
@@ -1657,9 +1664,7 @@ PROVAS.push({
       "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
       [
         d2.id,
-        JSON.stringify([
-          { item_id: item2, condicao: "nova", reestocar: true },
-        ]),
+        JSON.stringify([{ item_id: item2, condicao: "nova", reestocar: true }]),
       ],
     );
     assert.equal(
@@ -1827,7 +1832,10 @@ PROVAS.push({
     await rpc(
       cliente,
       "SELECT public.admin_devolucao_concluir($1::uuid, 'reembolso', $2::jsonb) AS r",
-      [d.id, JSON.stringify([{ item_id: item, condicao: "nova", reestocar: true }])],
+      [
+        d.id,
+        JSON.stringify([{ item_id: item, condicao: "nova", reestocar: true }]),
+      ],
     );
     assert.equal(
       Number(
