@@ -3814,3 +3814,219 @@ Deno.test("vaga com id CLÁSSICO (PIX legado) + pedido de cartão: não pago -> 
   assertEquals(respostaPaga.status, 200);
   assertEquals((await respostaPaga.json()).statusPagamento, "pago");
 });
+
+// ═══ Achado A1 — corridas REAIS (revisão de risco, 26/09/2026) ═════════════
+//
+// `clienteFalso`/`fetchMP`, acima, são FIXOS: cada `.select()` devolve sempre
+// o MESMO fixture, então não provam duas chamadas concorrentes disputando a
+// MESMA vaga de verdade. Esta seção adapta o harness do revisor-risco
+// (banco e MP COM ESTADO, UPDATE condicional atômico, idempotência real por
+// chave) para os quatro cenários que a revisão mediu contra o handler ANTES
+// da correção — e que agora provam o desfecho CERTO, com asserções reais em
+// vez do `console.log` original do harness.
+
+/**
+ * Banco COM ESTADO — o UPDATE só grava se os filtros (`.eq()`/`.is()`, em
+ * QUALQUER quantidade e ordem) baterem contra a linha REAL no momento da
+ * chamada. Só assim duas chamadas concorrentes podem de fato disputar a
+ * MESMA vaga: uma "ganha" (os filtros batem, `Object.assign` grava), a outra
+ * "perde" (a mesma checagem falha porque a primeira já mudou a linha).
+ */
+function bancoComEstado(
+  linha: Record<string, unknown>,
+  configCartao: Record<string, unknown> | null = CONFIG_CARTAO_LIGADO,
+) {
+  const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
+  return {
+    linha,
+    chamadasRpc,
+    rpc: async (nome: string, a: Record<string, unknown>) => {
+      chamadasRpc.push({ nome, args: a });
+      if (nome !== "liberar_cobranca_do_pedido") throw new Error(`rpc inesperada nas corridas: ${nome}`);
+      if (a.p_gateway_payment_id === null) {
+        if (linha.payment_status === "aguardando" && linha.gateway_payment_id === null) {
+          linha.tentativas_de_pagamento = Number(linha.tentativas_de_pagamento ?? 0) + 1;
+          return { data: true, error: null };
+        }
+        return { data: null, error: null };
+      }
+      if (linha.gateway_payment_id === a.p_gateway_payment_id && linha.payment_status === "aguardando") {
+        linha.gateway_payment_id = null;
+        linha.tentativas_de_pagamento = Number(linha.tentativas_de_pagamento ?? 0) + 1;
+        return { data: true, error: null };
+      }
+      return { data: null, error: null };
+    },
+    from(tabela: string) {
+      if (tabela === "app_settings") {
+        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) };
+      }
+      if (tabela === "config_pagamento_cartao") {
+        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: configCartao, error: null }) }) }) };
+      }
+      return {
+        select: (_cols: string) => ({
+          eq: (_c: string, _v: unknown) => ({
+            maybeSingle: async () => ({ data: { ...linha }, error: null }),
+          }),
+        }),
+        update(valores: Record<string, unknown>) {
+          // `bateFiltro` compara por NOME FIXO, nunca `linha[coluna]` — o
+          // dublê só conhece três colunas no WHERE de verdade, e indexar um
+          // objeto por uma variável é o `security/detect-object-injection`
+          // que a catraca reprova (mesma regra que `_shared/mercadopago.ts`
+          // já documenta para o MOTIVOS_DE_RECUSA, um `Map` pelo mesmo
+          // motivo).
+          const filtros: Array<{ coluna: string; valor: unknown }> = [];
+          const bateFiltro = (coluna: string, valor: unknown): boolean => {
+            if (coluna === "id") return linha.id === valor;
+            if (coluna === "payment_status") return linha.payment_status === valor;
+            if (coluna === "gateway_payment_id") return linha.gateway_payment_id === valor;
+            return false;
+          };
+          const encadeador = {
+            eq(coluna: string, valor: unknown) {
+              filtros.push({ coluna, valor });
+              return encadeador;
+            },
+            is(coluna: string, valor: unknown) {
+              filtros.push({ coluna, valor });
+              return encadeador;
+            },
+            select(_cols: string) {
+              return {
+                maybeSingle: async () => {
+                  if (filtros.every((f) => bateFiltro(f.coluna, f.valor))) {
+                    Object.assign(linha, valores);
+                    return { data: { id: linha.id, expires_at: linha.expires_at }, error: null };
+                  }
+                  return { data: null, error: null };
+                },
+              };
+            },
+          };
+          return encadeador;
+        },
+      };
+    },
+  };
+}
+
+/** MP COM ESTADO — a MESMA chave de idempotência devolve a MESMA order
+ * (replay); chave nova cria uma order nova, sempre APROVADA na hora
+ * (`payment_method.type !== "bank_transfer"`). `aoCriar` simula uma corrida
+ * externa (o pg_cron) mudando o banco NO MEIO da chamada ao MP. */
+function mpComEstado(opts: { aoCriar?: (order: Record<string, unknown>) => void } = {}) {
+  const porChave = new Map<string, Record<string, unknown>>();
+  const orders: Array<Record<string, unknown>> = [];
+  const fn = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      const chave = (init.headers as Record<string, string>)["X-Idempotency-Key"];
+      const corpo = JSON.parse(String(init.body));
+      if (!porChave.has(chave)) {
+        const tipo = (corpo.transactions.payments[0].payment_method as Record<string, unknown>).type;
+        const o = {
+          id: `ORDTST${String(orders.length + 1).padStart(22, "0")}`,
+          status: tipo === "bank_transfer" ? "action_required" : "processed",
+          status_detail: tipo === "bank_transfer" ? "waiting_transfer" : "accredited",
+          external_reference: corpo.external_reference,
+          total_amount: corpo.total_amount,
+          transactions: { payments: [{ id: "PAY", payment_method: { id: "x", type: tipo } }] },
+        };
+        orders.push(o);
+        porChave.set(chave, o);
+        opts.aoCriar?.(o);
+      }
+      return new Response(JSON.stringify(porChave.get(chave)), { status: 201 });
+    }
+    throw new Error(`fetch inesperado nas corridas: ${init?.method} ${url}`);
+  };
+  return { fn, orders };
+}
+
+Deno.test("CARTÃO (corrida real, Achado A1a): duas abas com TOKENS DIFERENTES no mesmo pedido -> UMA ÚNICA order aprovada (chave sem hash do token converge)", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpComEstado();
+
+  const [r1, r2] = await Promise.all([
+    handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn }),
+    handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn }),
+  ]);
+  const corpos = await Promise.all([r1, r2].map((r) => r.json()));
+
+  // A prova que importa: NUNCA duas orders aprovadas para o mesmo pedido.
+  assertEquals(mp.orders.filter((o) => o.status === "processed").length, 1);
+  assertEquals([r1.status, r2.status].sort(), [200, 409]);
+  assertEquals(corpos.filter((c) => c.statusPagamento === "pago").length, 1);
+  assertEquals(db.linha.gateway_payment_id, mp.orders[0].id);
+});
+
+Deno.test("CARTÃO (corrida real, Achado A1b): MP aprova mas a resposta se perde (timeout); retry com token NOVO -> converge na MESMA cobrança, nunca cria uma segunda", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const base = mpComEstado();
+  let primeira = true;
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    const r = await base.fn(url, init);
+    if (primeira) {
+      primeira = false;
+      throw new DOMException("abortado", "AbortError");
+    }
+    return r;
+  };
+
+  const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl,
+  });
+  assertEquals(r1.status, 502, "1ª chamada: a resposta se perde (timeout) mesmo com o MP tendo aprovado por baixo");
+  assertEquals(db.linha.gateway_payment_id, null, "nada foi gravado na 1ª — o 502 aconteceu antes do UPDATE");
+
+  const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl,
+  });
+  const corpo2 = await r2.json();
+
+  assertEquals(r2.status, 200);
+  assertEquals(corpo2.statusPagamento, "pago");
+  assertEquals(base.orders.filter((o) => o.status === "processed").length, 1, "o retry converge na cobrança JÁ aprovada");
+  assertEquals(db.linha.gateway_payment_id, base.orders[0].id);
+});
+
+Deno.test("CARTÃO (corrida real, Achado A1-P1): pg_cron expira o pedido ENQUANTO o MP aprova -> a vaga é gravada mesmo assim, nunca 'prazo acabou'", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpComEstado({
+    aoCriar: () => {
+      db.linha.payment_status = "expirado";
+    },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.error, undefined);
+  // A vaga foi gravada MESMO com o pedido já 'expirado' — é essa gravação
+  // que faz `confirmar_pagamento` devolver 'pago_apos_expirar' (P1) quando o
+  // webhook confirmar, em vez de 'divergente' com o slot ainda vazio.
+  assertEquals(db.linha.gateway_payment_id, mp.orders[0].id);
+  assertEquals(db.linha.payment_status, "expirado");
+});
+
+Deno.test("PIX (corrida real, controle): duas abas no mesmo pedido -> UMA única order (comportamento de sempre — PIX já convergia, sem mudança nesta tarefa)", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpComEstado();
+  const corpoPix = { orderId: UUID, metodo: "pix" };
+
+  const [r1, r2] = await Promise.all([
+    handler(requisicao(corpoPix, montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn }),
+    handler(requisicao(corpoPix, montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn }),
+  ]);
+
+  assertEquals(mp.orders.length, 1);
+  assertEquals([r1.status, r2.status].sort(), [200, 409]);
+});
