@@ -23,12 +23,20 @@
  *   (5) create_marketplace_order_v23 E _v24 (as duas RPCs — mesma
  *       assinatura, mesmo 0-bis): forma desligada recusa com o texto exato;
  *       forma ligada passa; pagamento online com online ligado é aceito.
+ *   (5-upsert) o CAMINHO REAL do painel (StoreContext.tsx:995-1001):
+ *       upsert_store_config grava formas_pagamento_entrega e a checagem
+ *       observa o valor GRAVADO POR ELE — nunca por INSERT/UPDATE direto.
  *   (6) padrão (as três formas ligadas, nada mexido): pix/card/cash na
  *       entrega continuam se comportando como antes da migration.
- *   (7) ROLLBACK MANUAL: aplica, observa o comportamento antigo voltar em
- *       AMBAS as RPCs (qualquer forma aceita, trigger ausente, coluna
- *       permanece), e REAPLICA a migration (idempotência) — deixa o banco
- *       no estado migrado para qualquer passo de CI que rode depois deste.
+ *   (7) IDEMPOTÊNCIA + ROLLBACK MANUAL: reaplica a migration sobre o
+ *       estado JÁ MIGRADO (idempotência de verdade, não a reaplicação sobre
+ *       o estado revertido) e confere que não erra; aplica o rollback e
+ *       PROVA que os CORPOS de v23/v24/upsert_store_config voltaram ao
+ *       anterior via sha256(prosrc) (não só "existe"/"não existe"), e que
+ *       v_store_config não expõe a coluna nova; observa o comportamento
+ *       antigo voltar nas duas RPCs; e REAPLICA a migration por cima
+ *       (idempotência pós-rollback) — deixa o banco migrado para qualquer
+ *       passo de CI que rode depois deste.
  *
  * USO: node tests/banco/formas-de-pagamento-viva.cjs
  * (mesma DATABASE_URL efêmera do job — ver tests/banco/efemero.cjs)
@@ -69,6 +77,44 @@ const CAMINHO_ROLLBACK = path.join(
 const MENSAGEM_FORMA_DESLIGADA =
   "Esta forma de pagamento não está disponível nesta loja. Escolha outra.";
 
+// Assinaturas exatas usadas pelo preflight da própria migration (mesmo
+// `to_regprocedure` das linhas ~160-168 de 20261174000000) — é como se
+// pergunta ao pg_proc "qual é o corpo desta função AGORA".
+const ASSINATURA_V23 =
+  "public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)";
+const ASSINATURA_V24 =
+  "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)";
+const ASSINATURA_UPSERT = "public.upsert_store_config(jsonb)";
+
+// Hashes copiados LITERALMENTE do preflight da migration (linhas ~172-198
+// de 20261174000000_formas_de_pagamento_por_loja.sql) — cada lista tem 4
+// hashes aceitos: o corpo ANTERIOR (que a 20261172000000/20261171000000
+// deixou, LF|CRLF) e o corpo QUE ESTA MIGRATION deixa (LF|CRLF —
+// reaplicação idempotente). Membership nesta lista, por si só, NÃO prova
+// que o rollback restaurou o corpo anterior (2 das 4 entradas são o corpo
+// NOVO) — é por isso que a prova (7) também exige que o hash pós-rollback
+// seja DIFERENTE do hash capturado ao vivo ANTES do rollback (o corpo
+// migrado de verdade nesta rodada). As duas condições juntas isolam o
+// corpo anterior sem precisar decidir manualmente qual das 4 é qual.
+const HASHES_ACEITOS_V23 = [
+  "e9f3075a42404fbd54369059c7bc736a8a3d0e4dea47c4956e455612c425aab5",
+  "9cfc00feee72e9e228211e3c7c0c3f0e9d86b82e06783d1e26fccdac281d3168",
+  "88b2ca0a30dc8105ce6fff88459652db48186b8496351a3a92b1517fe180e809",
+  "2a5ef2c732793032f400e9caacc13c677d47d6590827a761e5d210f3ab4ebf54",
+];
+const HASHES_ACEITOS_V24 = [
+  "770b1e9d576531c86473640057654ad2ef2250a75b5b76474e7f3824bc2d0b39",
+  "fbd60e3e2d0211b2447a67032b95572f68bae4a7fbac6ea26a14551922dbd439",
+  "000404f0811788dbd5e7bf13390b0de2a7e67453cba1520ae325173b405c30ed",
+  "bf949408077a0a0974eb2bde591908dfaf0b5a0dc90744eb187dcb6f7595507d",
+];
+const HASHES_ACEITOS_UPSERT = [
+  "99d4b7e8a104f25b155732a8a2fbe8a6f9f4707cb643ce351e7eb80ce25d4ca6",
+  "5b832604ae8eead6c73cd0d0594348cf9e3b538163d396324fbeabca4947493d",
+  "27bdea8d7e85336cc1a4f9be3a154985efb767a835709c270aad5992fa9623fb",
+  "b9a54a47a8672ac2ac78b868d75e2029c72cc622047ff9652ad8ed5571e7d046",
+];
+
 // ---- Fixtures determinísticos (uuids fixos, nunca gerados por round-trip) --
 const U_CLIENTE = "33333333-3333-3333-3333-333333333333";
 const U_ADMIN = "33333333-3333-3333-3333-333333333334";
@@ -83,6 +129,10 @@ const P_PADRAO_V24 = "cccccccc-0000-0000-0000-000000000005";
 const P_LIGADA_V24 = "cccccccc-0000-0000-0000-000000000006";
 const P_ONLINE_V24 = "cccccccc-0000-0000-0000-000000000007";
 const P_ROLLBACK_V24 = "cccccccc-0000-0000-0000-000000000008";
+// Produto da prova (5-upsert): o caminho REAL do painel administrativo
+// (StoreContext.tsx:995-1001), que grava por upsert_store_config, nunca
+// por UPDATE/INSERT direto na tabela.
+const P_UPSERT = "cccccccc-0000-0000-0000-000000000009";
 
 // ids de store_config usados só para provar coluna/CHECK/trigger sem tocar
 // na loja id=1 (a que as RPCs de pedido leem de verdade).
@@ -102,6 +152,19 @@ async function logar(cliente, userId) {
 async function valorUnico(cliente, sql, params = []) {
   const resultado = await cliente.query(sql, params);
   return resultado.rows[0][Object.keys(resultado.rows[0])[0]];
+}
+
+// O hash de verdade do CORPO ao vivo agora — mesma expressão do preflight
+// da migration (sha256(convert_to(prosrc,'UTF8')), hex), contra a
+// assinatura exata via to_regprocedure. É isto que prova RESTAURAÇÃO, e
+// não só ausência/presença do objeto.
+async function hashCorpo(cliente, assinatura) {
+  return valorUnico(
+    cliente,
+    `SELECT encode(sha256(convert_to(prosrc, 'UTF8')), 'hex')
+       FROM pg_proc WHERE oid = to_regprocedure($1)`,
+    [assinatura],
+  );
 }
 
 // A loja id=1, com CEP/faixa local fixos (mesmos de invariantes-dinheiro.cjs)
@@ -502,6 +565,84 @@ PROVAS.push({
   },
 });
 
+// (5-upsert) O CAMINHO REAL do painel administrativo: StoreContext.tsx
+// (linhas 995-1001) grava formas_pagamento_entrega chamando
+// public.upsert_store_config({ config_json: {...} }), NUNCA por UPDATE/
+// INSERT direto na tabela — as provas (1)-(4) e (5)/(5-v24) até aqui só
+// tinham exercitado a coluna via INSERT direto (configurarLoja). Achado
+// do revisor Opus (26/09/2026): sem esta prova, um upsert_store_config que
+// ignorasse a chave (ex.: `CASE WHEN false` no lugar de `CASE WHEN
+// v_has_formas_pagamento`) passava verde.
+PROVAS.push({
+  nome: "(5-upsert) caminho do painel: upsert_store_config grava formas_pagamento_entrega e a checagem observa o valor GRAVADO POR ELE",
+  corpo: async (cliente) => {
+    await logar(cliente, U_CLIENTE);
+    await garantirCliente(cliente);
+    await garantirAdmin(cliente);
+    await criarProduto(cliente, P_UPSERT, "Produto Prova Upsert Painel");
+
+    // Estado inicial determinístico, independente do que a prova anterior
+    // deixou: 3 formas ligadas, pagamento_online desligado.
+    await configurarLoja(cliente, {
+      formas: ["pix", "card", "cash"],
+      online: false,
+    });
+
+    // upsert_store_config exige is_admin() — é a mesma trava do painel de
+    // verdade (só admin salva configuração da loja).
+    await logar(cliente, U_ADMIN);
+    await cliente.query("SELECT public.upsert_store_config($1::jsonb) AS cfg", [
+      JSON.stringify({ formas_pagamento_entrega: ["card"] }),
+    ]);
+    await logar(cliente, U_CLIENTE);
+
+    assert.deepEqual(
+      await valorUnico(
+        cliente,
+        "SELECT formas_pagamento_entrega FROM public.store_config WHERE id = 1",
+      ),
+      ["card"],
+      "upsert_store_config tem de gravar EXATAMENTE o array que o painel mandou (nunca ignorar a chave)",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT public.forma_de_pagamento_aceita('pix')",
+      ),
+      false,
+      "forma_de_pagamento_aceita tem de observar o valor GRAVADO PELO UPSERT, não um estado paralelo",
+    );
+    await assert.rejects(
+      () =>
+        criarPedidoV23(cliente, {
+          produtoId: P_UPSERT,
+          metodo: "pix",
+          total: "30.00",
+        }),
+      (erro) => {
+        assert.equal(erro.message, MENSAGEM_FORMA_DESLIGADA);
+        return true;
+      },
+      "pedido com pix deve ser recusado depois que o painel desligou pix via upsert_store_config",
+    );
+
+    // Desligar a ÚLTIMA forma pelo upsert, com pagamento_online desligado:
+    // a mesma trigger que protege o INSERT/UPDATE direto (prova 3) também
+    // protege o caminho do painel — o BEFORE UPDATE que o ON CONFLICT
+    // aciona valida a linha FINAL de verdade.
+    await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        cliente.query("SELECT public.upsert_store_config($1::jsonb) AS cfg", [
+          JSON.stringify({ formas_pagamento_entrega: [] }),
+        ]),
+      /LOJA_SEM_FORMA_DE_PAGAMENTO/,
+      "o painel não pode desligar a última forma de pagamento sem pagamento_online ligado",
+    );
+    await logar(cliente, U_CLIENTE);
+  },
+});
+
 // (6) Padrão: as três formas ligadas, nada mexido — comportamento idêntico
 // ao de antes da migration para pix, card e cash na entrega.
 PROVAS.push({
@@ -528,26 +669,43 @@ PROVAS.push({
   },
 });
 
-// (7) ROLLBACK MANUAL: aplica, observa o comportamento antigo voltar, e
-// REAPLICA a migration (idempotência) — deixa o banco migrado para qualquer
-// passo de CI que rode depois deste script. Fica por ÚLTIMO de propósito:
-// é a única prova que muda o SCHEMA (dropa trigger/função/CHECK), e não deve
-// interferir nas provas (1)-(6) acima.
+// (7) ROLLBACK MANUAL + IDEMPOTÊNCIA: aplica a migration sobre o estado JÁ
+// migrado (idempotência de verdade, achado #2 do revisor), depois aplica o
+// rollback e prova que os CORPOS foram RESTAURADOS de verdade (hash de
+// prosrc — achado #1: antes disto, "trigger ausente" e "coluna permanece"
+// passavam mesmo com o rollback deixando v23/v24/upsert_store_config/
+// v_store_config intocados), e por fim REAPLICA a migration (idempotência
+// pós-rollback) — deixa o banco migrado para qualquer passo de CI que rode
+// depois deste script. Fica por ÚLTIMO de propósito: é a única prova que
+// muda o SCHEMA, e não deve interferir nas provas (1)-(6) acima.
 PROVAS.push({
-  nome: "(7) rollback manual: comportamento antigo volta, coluna permanece, e a migration reaplica (idempotência)",
+  nome: "(7) idempotência + rollback manual: reaplicar sobre o estado migrado não quebra, o rollback restaura os CORPOS de verdade, e a migration reaplica depois",
   corpo: async (cliente) => {
     await logar(cliente, U_CLIENTE);
     await criarProduto(cliente, P_ROLLBACK, "Produto Prova Rollback");
     await criarProduto(cliente, P_ROLLBACK_V24, "Produto Prova Rollback v24");
 
-    // Sanidade ANTES do rollback: um método forjado (fora de pix/card/cash/
-    // online) é recusado pela fonte única — prova que a checagem está
-    // realmente ativa antes de provar que ela some depois do rollback.
-    // Nas DUAS RPCs — o 0-bis é a mesma cópia nas duas.
     await configurarLoja(cliente, {
       formas: ["pix", "card", "cash"],
       online: false,
     });
+
+    // FIX #2 (revisão Opus): idempotência de VERDADE é reaplicar a migration
+    // sobre o estado JÁ MIGRADO — não sobre o estado revertido (isso é outra
+    // prova, mais abaixo). Se faltasse algum IF NOT EXISTS/CREATE OR REPLACE/
+    // DROP IF EXISTS na migration, é AQUI que ela quebraria.
+    const sqlMigrationParaReaplicar = fs.readFileSync(
+      CAMINHO_MIGRATION,
+      "utf8",
+    );
+    await cliente.query('SET search_path = "$user", public, extensions');
+    await cliente.query(sqlMigrationParaReaplicar); // não deve lançar
+
+    // Sanidade ANTES do rollback (e DEPOIS da reaplicação acima): um método
+    // forjado (fora de pix/card/cash/online) é recusado pela fonte única —
+    // prova ao mesmo tempo que a checagem está ativa E que o comportamento
+    // não mudou depois de reaplicar a migration. Nas DUAS RPCs — o 0-bis é a
+    // mesma cópia nas duas.
     await assert.rejects(
       () =>
         criarPedidoV23(cliente, {
@@ -559,7 +717,7 @@ PROVAS.push({
         assert.equal(erro.message, MENSAGEM_FORMA_DESLIGADA);
         return true;
       },
-      "ANTES do rollback: método desconhecido deve ser recusado (v23)",
+      "depois de reaplicar sobre o estado JÁ migrado, o método desconhecido continua recusado (v23)",
     );
     await assert.rejects(
       () =>
@@ -572,7 +730,20 @@ PROVAS.push({
         assert.equal(erro.message, MENSAGEM_FORMA_DESLIGADA);
         return true;
       },
-      "ANTES do rollback: método desconhecido deve ser recusado (v24)",
+      "depois de reaplicar sobre o estado JÁ migrado, o método desconhecido continua recusado (v24)",
+    );
+
+    // Hash dos corpos AGORA — o corpo "novo" (migrado), capturado ao vivo,
+    // ANTES do rollback. É contra ISTO que a prova de restauração (FIX #1,
+    // abaixo) compara depois de rodar o rollback.
+    const hashNovoV23 = await hashCorpo(cliente, ASSINATURA_V23);
+    const hashNovoV24 = await hashCorpo(cliente, ASSINATURA_V24);
+    const hashNovoUpsert = await hashCorpo(cliente, ASSINATURA_UPSERT);
+    assert.ok(hashNovoV23, "v23 tem de existir com corpo antes do rollback");
+    assert.ok(hashNovoV24, "v24 tem de existir com corpo antes do rollback");
+    assert.ok(
+      hashNovoUpsert,
+      "upsert_store_config tem de existir com corpo antes do rollback",
     );
 
     // Aplica o rollback manual — um único statement multi-comando na mesma
@@ -583,6 +754,63 @@ PROVAS.push({
     const sqlRollback = fs.readFileSync(CAMINHO_ROLLBACK, "utf8");
     await cliente.query('SET search_path = "$user", public, extensions');
     await cliente.query(sqlRollback);
+
+    // FIX #1 (revisão Opus): não basta a função "existir" ou "não existir"
+    // — o rollback tem de ter RESTAURADO o CORPO anterior de v23, v24 e
+    // upsert_store_config. Prova: o hash pós-rollback (a) está entre os
+    // hashes aceitos pelo preflight da própria migration (LF|CRLF do corpo
+    // anterior OU do corpo novo — union das duas variantes) e (b) é
+    // DIFERENTE do hash capturado ao vivo ANTES do rollback (o corpo
+    // migrado). As duas condições juntas só sobram para o corpo ANTERIOR —
+    // sem (b), um rollback que não tocasse a função passaria (a) porque a
+    // lista também contém o corpo novo.
+    const hashDepoisV23 = await hashCorpo(cliente, ASSINATURA_V23);
+    assert.ok(
+      HASHES_ACEITOS_V23.includes(hashDepoisV23),
+      `v23 pós-rollback tem de ter um dos hashes conhecidos do preflight (obtido: ${hashDepoisV23})`,
+    );
+    assert.notEqual(
+      hashDepoisV23,
+      hashNovoV23,
+      "v23 pós-rollback não pode ter o MESMO corpo de antes do rollback — o rollback tem de ter restaurado, não deixado como estava",
+    );
+
+    const hashDepoisV24 = await hashCorpo(cliente, ASSINATURA_V24);
+    assert.ok(
+      HASHES_ACEITOS_V24.includes(hashDepoisV24),
+      `v24 pós-rollback tem de ter um dos hashes conhecidos do preflight (obtido: ${hashDepoisV24})`,
+    );
+    assert.notEqual(
+      hashDepoisV24,
+      hashNovoV24,
+      "v24 pós-rollback não pode ter o MESMO corpo de antes do rollback — o rollback tem de ter restaurado a v24, não só a v23",
+    );
+
+    const hashDepoisUpsert = await hashCorpo(cliente, ASSINATURA_UPSERT);
+    assert.ok(
+      HASHES_ACEITOS_UPSERT.includes(hashDepoisUpsert),
+      `upsert_store_config pós-rollback tem de ter um dos hashes conhecidos do preflight (obtido: ${hashDepoisUpsert})`,
+    );
+    assert.notEqual(
+      hashDepoisUpsert,
+      hashNovoUpsert,
+      "upsert_store_config pós-rollback não pode ter o MESMO corpo de antes do rollback",
+    );
+
+    // FIX #1, continuação: v_store_config pós-rollback não pode expor
+    // formas_pagamento_entrega — a view tem de ter voltado às 34 colunas
+    // (DROP VIEW + CREATE VIEW do rollback, não a view da migration).
+    const colunaNaView = await valorUnico(
+      cliente,
+      `SELECT count(*) FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'v_store_config'
+          AND column_name = 'formas_pagamento_entrega'`,
+    );
+    assert.equal(
+      Number(colunaNaView),
+      0,
+      "v_store_config pós-rollback NÃO pode expor formas_pagamento_entrega — a view tem de ter sido restaurada",
+    );
 
     // DEPOIS do rollback: a trigger não existe mais — lista vazia SEM
     // pagamento_online não é mais recusada.
