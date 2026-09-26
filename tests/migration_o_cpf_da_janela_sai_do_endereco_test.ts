@@ -3,8 +3,23 @@
 // rollback (migration de DADOS: move `customer_data.address.cpf` para
 // `customer_data.cpf` nos pedidos gravados entre a 20261171000000 e a
 // 20261172000000, ou apaga a chave quando o CPF é inválido / a modalidade é
-// local-delivery/store-pickup). RODADA 2 (revisão de risco): reforça as
-// asserções contra os achados medium/low da revisão — ver cada teste.
+// local-delivery/store-pickup). RODADA 2 e RODADA 3 (revisão de risco):
+// reforça as asserções contra os achados medium/low/info da revisão — ver
+// cada teste.
+//
+// RODADA 3, ACHADO 4 (dois buracos na suíte estática, medidos pelo
+// revisor): X1 -- trocar `RAISE EXCEPTION` por `RAISE NOTICE` no preflight
+// da v23 passava 16/16 (as asserções conferiam fragmentos do `IF`, nunca o
+// bloco INTEIRO -- nenhum fragmento sozinho exige a palavra `EXCEPTION`).
+// X2 -- remover `jsonb_typeof(...) = 'object' AND` SÓ da `alvo` também
+// passava 16/16, porque a MESMA substring sobrevive na verificação final
+// (o `WHERE` dela tem o mesmo `jsonb_typeof(...) = 'object' AND (...) ?
+// 'cpf'`) -- a asserção da `alvo` achava a substring ali, não na `alvo`.
+// Comprovado com dois mutantes (`X1_v23_notice_em_vez_de_exception.sql`,
+// `X2_sem_jsonb_typeof_no_alvo.sql`) rodados contra a suíte ANTERIOR: os
+// dois passavam 16/16. A cura dos dois é a MESMA dos achados 2/3 da rodada
+// 2 -- parar de checar fragmento e passar a checar o BLOCO INTEIRO,
+// ancorado por texto que só existe naquele lugar específico.
 //
 // O DEFEITO QUE ESTE PAR FECHA: sem esta migration, todo pedido nacional de
 // cliente logado criado naquela janela continua com
@@ -158,14 +173,6 @@ Deno.test("RODADA 2, achado 4: a migration inteira e' UM UNICO bloco DO (preflig
 
 Deno.test("preflight recusa quando v23 ou v24 nao carregam o splice v_address_data_sem_cpf da 20261172000000", () => {
   assertStringIncludes(corpoN, "PREFLIGHT_20261182");
-  assertStringIncludes(
-    corpoN,
-    "v_prosrc_v23 IS NULL OR v_prosrc_v23 !~ 'v_address_data_sem_cpf'",
-  );
-  assertStringIncludes(
-    corpoN,
-    "v_prosrc_v24 IS NULL OR v_prosrc_v24 !~ 'v_address_data_sem_cpf'",
-  );
   // As duas assinaturas conferidas são as MESMAS 13 posições que a
   // 20261172000000 já usa no preflight dela — sem parâmetro novo.
   assertStringIncludes(
@@ -182,25 +189,59 @@ Deno.test("preflight recusa quando v23 ou v24 nao carregam o splice v_address_da
   );
 });
 
-Deno.test("a CTE alvo trava com FOR UPDATE OF o (codigo real do CORPO, nao a mencao em prosa do cabecalho -- achado 1)", () => {
-  // Esta é a asserção que o achado 1 mirou: `corpoN` NUNCA inclui o
-  // cabeçalho (fatiado por índice antes deste ponto), então o mutante M4
-  // (remove só a linha de código) derruba ESTE teste — a menção em prosa no
-  // cabeçalho, que continuaria intacta, não está neste texto para salvá-lo.
-  assertStringIncludes(corpoN, "FOR UPDATE OF o");
+Deno.test("RODADA 3, achado 4 (X1): o preflight e' o bloco IF...RAISE EXCEPTION...END IF completo, para v23 E para v24", () => {
+  // Bloco INTEIRO (não fragmentos soltos): pega o mutante que troca
+  // `RAISE EXCEPTION` por `RAISE NOTICE` (a migration deixaria de recusar
+  // sem RPC nova — só avisaria e seguiria em frente) porque a palavra
+  // `EXCEPTION` faz parte do texto EXIGIDO, não é conferida à parte.
   assertStringIncludes(
     corpoN,
     norm(
-      "WHERE jsonb_typeof(o.customer_data -> 'address') = 'object' AND (o.customer_data -> 'address') ? 'cpf'",
+      `IF v_prosrc_v23 IS NULL OR v_prosrc_v23 !~ 'v_address_data_sem_cpf' THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261182: create_marketplace_order_v23 nao carrega o splice v_address_data_sem_cpf da 20261172000000 -- aplique a 20261172000000 (e a 20261174000000, que a recria) antes desta migration.';
+  END IF;`,
     ),
   );
-  // shipping_option_id normalizado com o MESMO NULLIF(btrim(...)) que a
-  // 20261172000000 aplica em v_opcao antes de comparar contra
-  // local-delivery/store-pickup.
   assertStringIncludes(
     corpoN,
     norm(
-      "NULLIF(btrim(COALESCE(o.customer_data ->> 'shipping_option_id', '')), '') AS opcao",
+      `IF v_prosrc_v24 IS NULL OR v_prosrc_v24 !~ 'v_address_data_sem_cpf' THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261182: create_marketplace_order_v24 nao carrega o splice v_address_data_sem_cpf da 20261172000000 -- aplique a 20261172000000 (e a 20261174000000, que a recria) antes desta migration.';
+  END IF;`,
+    ),
+  );
+});
+
+Deno.test("RODADA 3, achado 4 (X2): a CTE alvo INTEIRA (SELECT...WHERE jsonb_typeof...FOR UPDATE OF o) e' capturada, nao so' fragmentos que tambem existem na verificacao final", () => {
+  // A verificação final tem uma WHERE quase idêntica (`jsonb_typeof(...) =
+  // 'object' AND (...) ? 'cpf'`) -- um assertStringIncludes fragmentado
+  // continuava achando essa substring ALI, mesmo que alguém apagasse
+  // `jsonb_typeof(...) = 'object' AND` SÓ da `alvo`. Capturando o bloco
+  // INTEIRO da CTE (com `FOR UPDATE OF o` e o fechamento `),` logo depois,
+  // que só existem na `alvo`), a âncora fica única -- o mutante que tira só
+  // o `jsonb_typeof` da `alvo` muda ESTE texto e não bate mais.
+  assertStringIncludes(
+    corpoN,
+    norm(
+      `alvo AS (
+    SELECT
+      o.id,
+      o.status,
+      o.payment_status,
+      o.shipping_label_id,
+      o.customer_data -> 'address' AS endereco,
+      regexp_replace(COALESCE(o.customer_data -> 'address' ->> 'cpf', ''), '\\D', '', 'g') AS digitos,
+      -- RODADA 2, achado 5: presença de CPF na raiz exige TEXTO NÃO-VAZIO —
+      -- \`{"cpf": null}\` ou \`{"cpf": ""}\` NÃO contam como "já tem CPF" (NÃO é
+      -- a régua de \`cpfDoDestinatario\`, que exige válido; ver RODADA 3,
+      -- achado 6, no cabeçalho).
+      (NULLIF(btrim(o.customer_data ->> 'cpf'), '') IS NOT NULL) AS raiz_tem_cpf,
+      NULLIF(btrim(COALESCE(o.customer_data ->> 'shipping_option_id', '')), '') AS opcao
+    FROM public.marketplace_orders o
+    WHERE jsonb_typeof(o.customer_data -> 'address') = 'object'
+      AND (o.customer_data -> 'address') ? 'cpf'
+    FOR UPDATE OF o
+  ),`,
     ),
   );
 });
@@ -258,7 +299,7 @@ Deno.test("a chave cpf SEMPRE sai do endereco, e o objeto vazio vira JSON null (
   );
 });
 
-Deno.test("customer_data.cpf na raiz so' nasce com as CINCO condicoes juntas (achado 1: NOT raiz_tem_cpf tambem e' codigo do CORPO)", () => {
+Deno.test("customer_data.cpf na raiz so' nasce com as CINCO condicoes juntas, com o OR NULL-safe (achado 1: NOT raiz_tem_cpf e' codigo do CORPO; RODADA 3, achado 2: payment_status IS NOT DISTINCT FROM)", () => {
   assertStringIncludes(
     corpoN,
     norm(
@@ -268,13 +309,24 @@ Deno.test("customer_data.cpf na raiz so' nasce com as CINCO condicoes juntas (ac
                      AND v.opcao NOT IN ('local-delivery', 'store-pickup')
                      AND NOT (
                        v.apagar_em_vez_de_mover_cancelado_sem_etiqueta
-                       AND (v.status = 'cancelled' OR v.payment_status = 'expirado')
+                       AND (v.status = 'cancelled' OR v.payment_status IS NOT DISTINCT FROM 'expirado')
                        AND v.payment_status IS DISTINCT FROM 'pago_apos_expirar'
                        AND v.shipping_label_id IS NULL
                      )
                 THEN jsonb_build_object('cpf', v.digitos)
                 ELSE '{}'::jsonb`,
     ),
+  );
+});
+
+Deno.test("RODADA 3, achado 2: a comparacao de expirado usa IS NOT DISTINCT FROM (NULL-safe), nunca '=' (que vira SQL NULL de tres valores quando payment_status e' NULL)", () => {
+  assert(
+    !/\bv\.payment_status = 'expirado'/.test(corpo),
+    "voltou a usar `v.payment_status = 'expirado'` -- com payment_status NULL isso avalia NULL, e `false OR NULL` tambem e' NULL: o WHEN inteiro deixa de ser TRUE e a linha cai no ELSE (apaga) mesmo sem ser cancelado/expirado de verdade",
+  );
+  assertStringIncludes(
+    corpoN,
+    "v.payment_status IS NOT DISTINCT FROM 'expirado'",
   );
 });
 

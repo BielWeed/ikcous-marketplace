@@ -1,7 +1,8 @@
 -- O CPF DA JANELA SAI DO ENDEREÇO (migration de DADOS, 26/09/2026 — conserta
 -- os pedidos gravados na janela do defeito entre a 20261171000000 e a
--- 20261172000000). RODADA 2: achados (medium/low) da revisão de risco —
--- ver "RODADA 2" nas seções abaixo para o que mudou e por quê.
+-- 20261172000000). RODADA 2 e RODADA 3: achados (medium/low/info) da
+-- revisão de risco — ver "RODADA 2"/"RODADA 3" nas seções abaixo para o
+-- que mudou e por quê.
 --
 -- O DEFEITO, em uma frase: entre 23/09 e 26/09/2026 17:46 UTC, o front já
 -- mandava o CPF dentro de `p_address_data` (`p_address_data.cpf`), mas o
@@ -77,14 +78,28 @@
 --      RODADA 2, ACHADO 5 (raiz_tem_cpf): a rodada 1 usava `customer_data ?
 --      'cpf'` (a chave EXISTE) — `{"cpf": null}` ou `{"cpf": ""}` na raiz
 --      contavam como "já tem CPF" e bloqueavam o move de um CPF válido do
---      endereço, mesmo a raiz não tendo CPF NENHUM de verdade (caso medido:
---      pedido com `cpf: null` na raiz de uma tentativa de formulário que
---      não completou). Trocado para `NULLIF(btrim(o.customer_data->>'cpf'),
---      '') IS NOT NULL` — a MESMA régua de "presença" que a edge
---      `melhor-envio-etiqueta` usa (`cpfDoDestinatario`,
---      `supabase/functions/melhor-envio-etiqueta/cpf.ts`): só conta como
---      "tem CPF" quem tem TEXTO de verdade depois de aparar espaço, nunca
---      chave presente com `null`/vazio.
+--      endereço, mesmo a raiz não tendo CPF NENHUM de verdade (caso
+--      SINTÉTICO, construído para provar o achado — nenhum caminho de
+--      escrita hoje grava `cpf: null`/`""` na raiz; é defesa contra um
+--      formato que pode aparecer por engano, não um bug já visto em
+--      produção). Trocado para `NULLIF(btrim(o.customer_data->>'cpf'), '')
+--      IS NOT NULL` — só conta como "tem CPF" quem tem TEXTO não-vazio
+--      depois de aparar espaço.
+--
+--      RODADA 3, ACHADO 6 (correção de honestidade — NÃO é a régua da
+--      edge): a rodada 2 dizia que esta é "a MESMA régua" que
+--      `cpfDoDestinatario` (`supabase/functions/melhor-envio-etiqueta/
+--      cpf.ts:50-57`) usa. É FALSO — `cpfDoDestinatario` exige um CPF
+--      VÁLIDO (módulo 11 completo); devolve `null` para texto presente mas
+--      inválido. `raiz_tem_cpf` aqui exige só TEXTO NÃO-VAZIO, válido ou
+--      não. As duas divergem quando a raiz tem lixo (ex.: `cpf: "123"`):
+--      `raiz_tem_cpf` diz "já tem CPF" (não move o válido do endereço, só
+--      apaga), enquanto `cpfDoDestinatario` trataria esse mesmo valor como
+--      AUSENTE. HOJE isso é só uma divergência LATENTE — nenhum caminho de
+--      escrita real grava CPF inválido na raiz (o único escritor,
+--      `definir_cpf_destinatario`, valida com `cpfValido` antes de gravar;
+--      ver "CORRIDA PROVADA" abaixo) — mas é honesto registrar que não é a
+--      mesma régua, não fingir que é.
 --
 --   2. `validado` (CTE, em cima de `alvo`) — `cpf_ok`: os MESMOS três
 --      testes da 20261172000000 (v24), na MESMA ordem, para o MESMO
@@ -227,16 +242,33 @@
 -- (feita por outra pessoa, fora desta tarefa) confirma quantas linhas a
 -- `alvo` alcança ali.
 --
+-- CORRIDA PROVADA (RODADA 3, achado 1 — a rodada 2 dizia "não há corrida
+-- provada"; ERRADO, corrigido aqui): a action `definir_cpf_destinatario`
+-- (`supabase/functions/melhor-envio-etiqueta/index.ts`, painel → "definir
+-- CPF" na ficha do pedido) LÊ `customer_data` inteiro ANTES de escrever
+-- (`pedidoAtual.customer_data`, sem `FOR UPDATE` nenhum) e, ao gravar,
+-- ESPALHA esse retrato LIDO (`{ ...customerDataAtual, cpf: cpfLimpo }`) —
+-- o `UPDATE` condicional dela só verifica se `customer_data->>cpf` (a
+-- RAIZ) continua igual ao que ela leu; não olha `address` nenhum. Se esta
+-- migration COMMITAR entre a leitura e a escrita da action SEM mudar o
+-- `cpf` da raiz (ex.: a raiz já tinha CPF antes, então a migration só
+-- limpou o endereço), a checagem otimista da action não percebe nada
+-- mudou, e o `UPDATE` dela grava de volta o `address` ANTIGO (com o `cpf`
+-- que a migration tinha acabado de tirar) — reabrindo o defeito para
+-- AQUELE pedido específico. É por isso que a recomendação abaixo (item 1)
+-- não é só cautela: é a mitigação operacional enquanto o lock otimista da
+-- action (outra branch) não cobre `address` também.
+--
 -- RECOMENDAÇÃO DO DIA DA APLICAÇÃO (revisão de risco, rodada 2, achado 8):
 --   1. Ninguém usa "salvar CPF" (perfil ou formulário do pedido, painel)
---      enquanto esta migration está rodando — por cautela operacional, não
---      porque haja corrida provada (o `FOR UPDATE OF o` trava cada linha
---      alcançada; uma gravação concorrente de `customer_data.cpf` numa
---      dessas linhas ESPERA a migration soltar, não corre com ela).
+--      enquanto esta migration está rodando — há CORRIDA PROVADA com
+--      `definir_cpf_destinatario` (leitura antes, escrita do objeto
+--      inteiro depois, ver "CORRIDA PROVADA" acima); por isso ninguém
+--      salva CPF durante a aplicação, e a contagem é refeita depois.
 --   2. Rode a contagem da FICHA DE VERIFICAÇÃO (item 1 abaixo) de novo
 --      alguns minutos depois de aplicar — confirma que nada novo reabriu o
 --      buraco (ex.: pedido criado bem na virada da aplicação, antes do
---      front corrigido estar em todas as lojas).
+--      front corrigido estar em todas as lojas, OU a corrida acima).
 --   3. Se a CONTAGEM PRÉVIA (feita por outra pessoa, antes de aplicar)
 --      mostrar QUALQUER pedido com `cpf` no endereço fora da janela
 --      23–26/09/2026 17:46 UTC, PARE e investigue antes de aplicar — esta
@@ -309,9 +341,10 @@ BEGIN
       o.shipping_label_id,
       o.customer_data -> 'address' AS endereco,
       regexp_replace(COALESCE(o.customer_data -> 'address' ->> 'cpf', ''), '\D', '', 'g') AS digitos,
-      -- RODADA 2, achado 5: presença de CPF na raiz exige TEXTO de verdade
-      -- (mesma régua de cpfDoDestinatario, melhor-envio-etiqueta/cpf.ts) —
-      -- `{"cpf": null}` ou `{"cpf": ""}` NÃO contam como "já tem CPF".
+      -- RODADA 2, achado 5: presença de CPF na raiz exige TEXTO NÃO-VAZIO —
+      -- `{"cpf": null}` ou `{"cpf": ""}` NÃO contam como "já tem CPF" (NÃO é
+      -- a régua de `cpfDoDestinatario`, que exige válido; ver RODADA 3,
+      -- achado 6, no cabeçalho).
       (NULLIF(btrim(o.customer_data ->> 'cpf'), '') IS NOT NULL) AS raiz_tem_cpf,
       NULLIF(btrim(COALESCE(o.customer_data ->> 'shipping_option_id', '')), '') AS opcao
     FROM public.marketplace_orders o
@@ -359,6 +392,17 @@ BEGIN
            -- RODADA 2, achado 6: `payment_status IS DISTINCT FROM
            -- 'pago_apos_expirar'` na condição abaixo -- dinheiro que chegou
            -- depois do prazo (P1) pode reativar o pedido, nunca só apagar.
+           -- RODADA 3, achado 2: `payment_status IS NOT DISTINCT FROM
+           -- 'expirado'` (não `= 'expirado'`) -- `status` é NOT NULL, mas
+           -- `payment_status` não é; com `payment_status IS NULL` e `status
+           -- <> 'cancelled'`, `payment_status = 'expirado'` dá SQL NULL (não
+           -- `false`), e `false OR NULL` também é NULL -- o `NOT (...)` de
+           -- fora vira NULL, o `WHEN` inteiro deixa de ser `TRUE` e cai no
+           -- `ELSE` como se fosse "apagar", MESMO com a opção do dono
+           -- DESLIGADA de um pedido que não é cancelado nem expirado (só
+           -- indefinido). `IS NOT DISTINCT FROM` nunca devolve NULL --
+           -- `payment_status IS NULL` vira `false` aqui, e o resto da
+           -- comparação booleana continua determinístico.
            || CASE
                 WHEN NOT v.raiz_tem_cpf
                      AND v.cpf_ok
@@ -366,7 +410,7 @@ BEGIN
                      AND v.opcao NOT IN ('local-delivery', 'store-pickup')
                      AND NOT (
                        v.apagar_em_vez_de_mover_cancelado_sem_etiqueta
-                       AND (v.status = 'cancelled' OR v.payment_status = 'expirado')
+                       AND (v.status = 'cancelled' OR v.payment_status IS NOT DISTINCT FROM 'expirado')
                        AND v.payment_status IS DISTINCT FROM 'pago_apos_expirar'
                        AND v.shipping_label_id IS NULL
                      )
@@ -375,13 +419,11 @@ BEGIN
               END
     FROM validado v
    WHERE o.id = v.id;
-  -- Visibilidade operacional (RODADA 2): um único bloco DO não devolve mais
-  -- a tag `UPDATE n` que o psql mostrava por comando de nível superior (a
-  -- rodada 1 tinha 3 comandos separados) -- o RAISE NOTICE abaixo é o
-  -- substituto: quem aplicar vê quantas linhas mudaram, e a FICHA DE
-  -- VERIFICAÇÃO (item 3) usa ele para confirmar "0 linhas" na reaplicação.
+  -- `GET DIAGNOSTICS` tem de vir LOGO depois do UPDATE -- ROW_COUNT reflete
+  -- o ÚLTIMO comando executado; se corresse depois do SELECT INTO da
+  -- verificação final (linha abaixo), devolveria 1 (a contagem escalar),
+  -- nunca as linhas do UPDATE.
   GET DIAGNOSTICS v_linhas_afetadas = ROW_COUNT;
-  RAISE NOTICE '20261182: % pedido(s) tiveram customer_data reescrito nesta aplicação.', v_linhas_afetadas;
 
   -- 5. VERIFICAÇÃO FINAL (mesmo bloco do UPDATE -- RODADA 2, achado 4) ----
   SELECT count(*) INTO v_restantes
@@ -391,4 +433,17 @@ BEGIN
   IF v_restantes > 0 THEN
     RAISE EXCEPTION 'VERIFICACAO_FINAL_20261182: % pedido(s) ainda com a chave cpf dentro de customer_data.address depois da migration -- aborte e investigue antes de reaplicar.', v_restantes;
   END IF;
+
+  -- Visibilidade operacional (RODADA 2), DEPOIS da verificação final
+  -- (RODADA 3, achado 5 -- na rodada 2 o NOTICE saía ANTES do IF, então
+  -- mostrava uma contagem que a exceção logo desfazia junto com o UPDATE
+  -- inteiro): só imprime se a migration realmente vingou -- o `RAISE
+  -- EXCEPTION` acima interrompe o bloco antes de chegar aqui.
+  -- ATENÇÃO PARA QUEM APLICA PELO WORKFLOW: a Management API do Supabase
+  -- NÃO devolve `NOTICE` na resposta (eles vão para o log do Postgres, não
+  -- para quem chamou) -- pelo `aplicar-migrations.yml`, a contagem
+  -- confiável é a da CONTAGEM PRÉVIA (script `3a-cpf-no-endereco.sql`,
+  -- rodada por outra pessoa ANTES de aplicar), não este NOTICE. Rodando por
+  -- `psql`/`db-apply.cjs` local, o NOTICE aparece no terminal normalmente.
+  RAISE NOTICE '20261182: % pedido(s) tiveram customer_data reescrito nesta aplicação.', v_linhas_afetadas;
 END $migracao_20261182$;
