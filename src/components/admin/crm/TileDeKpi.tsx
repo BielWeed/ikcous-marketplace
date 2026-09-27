@@ -1,3 +1,4 @@
+import { SUPERFICIE_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -6,7 +7,8 @@ import type { ReactNode } from "react";
  * Um número do painel: rótulo · valor · (variação ou linha de apoio).
  * No celular o valor pode trocar para a forma compacta ("R$ 12,3 mil") —
  * só uma das duas formas fica visível por vez, então o leitor de tela lê
- * uma só.
+ * uma só. Superfície de `SUPERFICIE_DO_CRM`: sem ela, o cartão (quase da
+ * mesma cor do fundo `#09090b`) não parecia um cartão.
  */
 export function TileDeKpi({
   rotulo,
@@ -30,7 +32,8 @@ export function TileDeKpi({
   return (
     <div
       className={cn(
-        "flex min-h-[112px] flex-col justify-between gap-2 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg sm:p-4",
+        SUPERFICIE_DO_CRM,
+        "flex min-h-[112px] flex-col justify-between gap-2 p-3 sm:p-4",
         className,
       )}
     >
@@ -50,7 +53,7 @@ export function TileDeKpi({
         </div>
       ) : (
         <div className="min-w-0 space-y-1">
-          <p className="truncate text-lg font-black tracking-tight text-white sm:text-2xl">
+          <p className="truncate text-lg font-black tabular-nums tracking-tight text-white sm:text-2xl">
             {valorCompacto && valorCompacto !== valor ? (
               <>
                 <span className="sm:hidden">{valorCompacto}</span>

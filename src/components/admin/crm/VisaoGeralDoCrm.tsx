@@ -61,6 +61,17 @@ export function VisaoGeralDoCrm({
   const { stats, categorias, erro, erroDeCategoria, carregar } = classico;
   const carregandoClassico = classico.carregando && !stats;
 
+  // Sem período anterior para comparar (ex.: loja nova), o chip virava
+  // "sem base de comparação" repetido em 3 dos 8 tiles — ruído sem
+  // informação nova (rodada 3 da conferência visual, 27/09). Sem chip
+  // nenhum é melhor que o mesmo aviso 3 vezes.
+  const variacaoDaReceita = variacaoPercentual(k?.receita, k?.receitaAnterior);
+  const variacaoDosPedidos = variacaoPercentual(k?.pedidos, k?.pedidosAnterior);
+  const variacaoDoTicketMedio = variacaoPercentual(
+    k?.ticketMedio,
+    k?.ticketMedioAnterior,
+  );
+
   return (
     <div className="space-y-6 sm:space-y-10">
       <section aria-labelledby="crm-kpis-titulo" aria-busy={esqueleto}>
@@ -76,10 +87,12 @@ export function VisaoGeralDoCrm({
             valor={formatarMoeda(k?.receita)}
             valorCompacto={formatarMoedaCompacta(k?.receita)}
             rodape={
-              <ChipDeVariacao
-                pct={variacaoPercentual(k?.receita, k?.receitaAnterior)}
-                comparacao={comparacao}
-              />
+              variacaoDaReceita == null ? null : (
+                <ChipDeVariacao
+                  pct={variacaoDaReceita}
+                  comparacao={comparacao}
+                />
+              )
             }
           />
           <TileDeKpi
@@ -88,10 +101,12 @@ export function VisaoGeralDoCrm({
             carregando={esqueleto}
             valor={formatarInteiro(k?.pedidos)}
             rodape={
-              <ChipDeVariacao
-                pct={variacaoPercentual(k?.pedidos, k?.pedidosAnterior)}
-                comparacao={comparacao}
-              />
+              variacaoDosPedidos == null ? null : (
+                <ChipDeVariacao
+                  pct={variacaoDosPedidos}
+                  comparacao={comparacao}
+                />
+              )
             }
           />
           <TileDeKpi
@@ -102,10 +117,12 @@ export function VisaoGeralDoCrm({
             valor={formatarMoeda(k?.ticketMedio)}
             valorCompacto={formatarMoedaCompacta(k?.ticketMedio)}
             rodape={
-              <ChipDeVariacao
-                pct={variacaoPercentual(k?.ticketMedio, k?.ticketMedioAnterior)}
-                comparacao={comparacao}
-              />
+              variacaoDoTicketMedio == null ? null : (
+                <ChipDeVariacao
+                  pct={variacaoDoTicketMedio}
+                  comparacao={comparacao}
+                />
+              )
             }
           />
           <TileDeKpi
@@ -183,14 +200,14 @@ export function VisaoGeralDoCrm({
         aria-labelledby="crm-historico-titulo"
         className="space-y-6 sm:space-y-10"
       >
-        <div className="space-y-1 border-t border-white/5 pt-6">
+        <div className="space-y-0.5 border-t border-white/5 pt-6">
           <h2
             id="crm-historico-titulo"
-            className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+            className="text-sm font-semibold leading-snug text-white"
           >
             Histórico completo da loja
           </h2>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs leading-relaxed text-zinc-400">
             Números de todo o período, desempenho diário, categorias e os
             produtos mais lucrativos.
           </p>

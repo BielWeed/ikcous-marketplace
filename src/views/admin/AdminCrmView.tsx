@@ -4,12 +4,20 @@ import { AjudaDoCrm } from "@/components/admin/crm/AjudaDoCrm";
 import { CanaisDoCrm } from "@/components/admin/crm/CanaisDoCrm";
 import { ClientesDoCrm } from "@/components/admin/crm/ClientesDoCrm";
 import { FunilEPedidosDoCrm } from "@/components/admin/crm/FunilEPedidosDoCrm";
+import {
+  FOCO_DO_CRM,
+  SUPERFICIE_DO_CRM,
+} from "@/components/admin/crm/PecasDoCrm";
 import { VisaoGeralDoCrm } from "@/components/admin/crm/VisaoGeralDoCrm";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { useCrmVisao, useDashboardClassico } from "@/hooks/useCrm";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
-import { PERIODOS_DO_CRM, intervaloDoPeriodo } from "@/lib/crm";
+import {
+  PERIODOS_DO_CRM,
+  formatarIntervaloCurto,
+  intervaloDoPeriodo,
+} from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { PeriodoDoCrm, SegmentoCrm } from "@/types/crm";
@@ -169,13 +177,19 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
       </div>
 
       {/* Barra fixa: abas + período. Filha direta do bloco que rola, para o
-          sticky andar junto com a tela inteira. */}
+          sticky andar junto com a tela inteira. Os dois controles vivem num
+          trilho segmentado (`SUPERFICIE_DO_CRM`, a mesma superfície dos
+          cartões de KPI, com p-1) — sem uma superfície tão visível quanto a
+          deles, abas e período viravam "palavras soltas" sobre o #09090b. */}
       <div className="sticky top-0 z-30 mt-2 border-b border-white/5 bg-[#09090b]/95 backdrop-blur-md">
-        <div className="flex flex-col gap-2 py-2.5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <div className="flex flex-col gap-2 py-2 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div
             role="tablist"
             aria-label="Seções do CRM"
-            className="custom-scrollbar-hidden flex gap-1 overflow-x-auto px-4 sm:px-6 lg:px-0"
+            className={cn(
+              SUPERFICIE_DO_CRM,
+              "custom-scrollbar-hidden mx-4 flex gap-1 overflow-x-auto p-1 sm:mx-6 lg:mx-0",
+            )}
           >
             {ABAS.map((item) => {
               const selecionada = item.id === aba;
@@ -195,9 +209,10 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                   onClick={() => trocarAba(item.id)}
                   onKeyDown={aoTeclarNasAbas}
                   className={cn(
-                    "min-h-11 shrink-0 whitespace-nowrap rounded-xl px-3.5 text-xs font-black uppercase tracking-wider transition-colors",
+                    "min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-xs font-black uppercase tracking-wider transition-colors",
+                    FOCO_DO_CRM,
                     selecionada
-                      ? "bg-white text-black"
+                      ? "bg-white text-black shadow"
                       : "text-zinc-400 hover:bg-white/5 hover:text-white",
                   )}
                 >
@@ -207,30 +222,44 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
             })}
           </div>
 
-          <div
-            role="group"
-            aria-label="Período"
-            className="custom-scrollbar-hidden flex gap-1.5 overflow-x-auto px-4 sm:px-6 lg:px-0"
-          >
-            {PERIODOS_DO_CRM.map((item) => {
-              const escolhido = item.id === periodo;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={escolhido}
-                  onClick={() => setPeriodo(item.id)}
-                  className={cn(
-                    "min-h-11 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-[11px] font-bold transition-colors",
-                    escolhido
-                      ? "border-admin-gold/50 bg-admin-gold/15 text-admin-gold"
-                      : "border-white/10 text-zinc-400 hover:border-white/20 hover:text-white",
-                  )}
-                >
-                  {item.rotulo}
-                </button>
-              );
-            })}
+          <div className="flex flex-col gap-1 px-4 sm:px-6 lg:items-end lg:px-0">
+            <div
+              role="group"
+              aria-label="Período"
+              className={cn(
+                SUPERFICIE_DO_CRM,
+                "custom-scrollbar-hidden flex gap-1 overflow-x-auto p-1",
+              )}
+            >
+              {PERIODOS_DO_CRM.map((item) => {
+                const escolhido = item.id === periodo;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={escolhido}
+                    onClick={() => setPeriodo(item.id)}
+                    className={cn(
+                      "min-h-11 shrink-0 whitespace-nowrap rounded-lg border px-3.5 text-[11px] font-bold transition-colors",
+                      FOCO_DO_CRM,
+                      escolhido
+                        ? "border-admin-gold/40 bg-admin-gold/15 text-admin-gold"
+                        : "border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/5 hover:text-white",
+                    )}
+                  >
+                    {item.rotulo}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Datas do intervalo escolhido e contra o que ele compara —
+                sem isso, "Mês" ou "90 dias" não dizem quais dias entram. */}
+            <p className="px-1 text-[11px] leading-snug text-zinc-500">
+              <span className="font-semibold tabular-nums text-zinc-300">
+                {formatarIntervaloCurto(intervalo)}
+              </span>{" "}
+              · {comparacao}
+            </p>
           </div>
         </div>
       </div>

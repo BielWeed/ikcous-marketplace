@@ -44,7 +44,12 @@ export function buildKpiCards(
       id: "volume",
       label: "Volume Total",
       value: dinheiro(executivo?.totalRevenue),
-      subValue: "Total líquido de descontos",
+      // Curto de propósito (#casca visual 27/09, rodada 4): "Total líquido
+      // de descontos" truncava ("TOTAL LIQUIDO DE ...") no card compacto do
+      // carrossel (AdminKpiCarousel) no celular — sem o "Total" redundante
+      // (o label já diz "Volume Total"), "Líquido de descontos" cabe
+      // inteiro na largura do card em 375 px.
+      subValue: "Líquido de descontos",
       icon: ShoppingBag,
       accent: "text-admin-gold",
     },
@@ -52,7 +57,8 @@ export function buildKpiCards(
       id: "pedidos",
       label: "Total de Pedidos",
       value: inteiro(executivo?.totalOrders),
-      subValue: "Transações realizadas",
+      // Idem: "Transações realizadas" truncava no mesmo card.
+      subValue: "Transações",
       icon: TrendingUp,
       accent: "text-emerald-500",
     },

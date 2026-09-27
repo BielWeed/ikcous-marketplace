@@ -1007,3 +1007,40 @@ export function textoDoFiltroDeSegmento(
   if (!segmento) return null;
   return `Mostrando: ${infoDoSegmento(segmento).rotulo} · ${formatarInteiro(clientes)}`;
 }
+
+// --- casca do CRM (visual 27/09) ---
+
+const MESES_ABREVIADOS_DO_CRM = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+] as const;
+
+/**
+ * `IntervaloDeDatas` → texto curto para ficar ao lado do trilho de período
+ * ("28 ago – 26 set" em vez de seis palavras soltas sem contexto — spec
+ * `2026-09-27-crm-visual-profissional-design.md`). Sem ano, a não ser que o
+ * intervalo cruze a virada ("28 dez/2025 – 3 jan/2026"); início e fim iguais
+ * (período "Hoje") mostram só um lado.
+ */
+export function formatarIntervaloCurto(intervalo: IntervaloDeDatas): string {
+  const formatarLado = (dia: string, comAno: boolean) => {
+    const [ano, mes, data] = dia.split("-").map(Number);
+    const rotuloMes = MESES_ABREVIADOS_DO_CRM[mes - 1] ?? "";
+    return comAno ? `${data} ${rotuloMes}/${ano}` : `${data} ${rotuloMes}`;
+  };
+  if (intervalo.inicio === intervalo.fim) {
+    return formatarLado(intervalo.fim, false);
+  }
+  const cruzaAno = intervalo.inicio.slice(0, 4) !== intervalo.fim.slice(0, 4);
+  return `${formatarLado(intervalo.inicio, cruzaAno)} – ${formatarLado(intervalo.fim, cruzaAno)}`;
+}

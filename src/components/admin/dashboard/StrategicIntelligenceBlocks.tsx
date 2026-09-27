@@ -1,9 +1,10 @@
 "use client";
 
+import { SUPERFICIE_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import {
   AlertCircle,
   Eye,
@@ -117,7 +118,7 @@ const CustomPieLabel = React.memo(
           dy={valueDy}
           textAnchor="middle"
           dominantBaseline="middle"
-          className={`pointer-events-none fill-white font-black italic tracking-tight transition-all duration-300 ${fontSize}`}
+          className={`pointer-events-none fill-white font-black tracking-tight transition-all duration-300 ${fontSize}`}
         >
           {formatCurrency(value)}
         </text>
@@ -317,9 +318,9 @@ export const StrategicIntelligenceBlocks = React.memo(
       (loading && (!categoryData || categoryData.length === 0))
     ) {
       return (
-        <div className="space-y-12 pb-10 sm:pb-20">
+        <div className="space-y-12">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
-            <Skeleton className="relative h-[340px] w-full overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-800/20 shadow-lg backdrop-blur-xl sm:h-[380px] lg:col-span-5" />
+            <Skeleton className="relative h-[340px] w-full overflow-hidden rounded-2xl border border-white/5 bg-zinc-800/20 shadow-lg backdrop-blur-xl sm:h-[380px] lg:col-span-5" />
           </div>
         </div>
       );
@@ -378,7 +379,7 @@ export const StrategicIntelligenceBlocks = React.memo(
     }
 
     return (
-      <div className="space-y-12 pb-10 duration-500 animate-in fade-in sm:pb-20">
+      <div className="space-y-12 duration-500 animate-in fade-in">
         {/* A11y - Accessibility Layer for Screen Readers */}
         <section
           className="sr-only"
@@ -402,18 +403,23 @@ export const StrategicIntelligenceBlocks = React.memo(
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
           {/* Performance por Categoria Elite */}
-          <Card className="group relative overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-950/60 p-5 shadow-2xl backdrop-blur-3xl transition-all duration-700 hover:border-admin-gold/10 sm:p-7 lg:col-span-5">
+          <Card
+            className={cn(
+              SUPERFICIE_DO_CRM,
+              "group relative overflow-hidden p-5 transition-all duration-700 hover:border-admin-gold/20 sm:p-7 lg:col-span-5",
+            )}
+          >
             <div
               className="absolute left-0 top-0 size-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-admin-gold/5 blur-[100px] transition-colors duration-1000 group-hover:bg-admin-gold/10"
               style={{ willChange: "background-color" }}
             />
             <div className="relative z-10 mb-3 flex items-center justify-between sm:mb-5">
-              <div className="space-y-1">
-                <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-zinc-500">
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-semibold leading-snug text-white">
                   Divisão de Faturamento
                 </h3>
-                <p className="text-[10px] font-bold uppercase tracking-tight text-zinc-600">
-                  Desempenho por Categoria
+                <p className="text-xs leading-relaxed text-zinc-400">
+                  Desempenho por categoria
                 </p>
               </div>
               <div className="flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 transition-colors group-hover:border-admin-gold/40">
@@ -509,10 +515,10 @@ export const StrategicIntelligenceBlocks = React.memo(
               {/* COLUNA DA TABELA DE LEGENDAS DETALHADAS */}
               <div className="flex w-full flex-col justify-center space-y-3 lg:w-[45%]">
                 <div className="hidden items-center justify-between border-b border-white/5 pb-2 lg:flex">
-                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                    Divisão de Categorias
+                  <span className="text-[10px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
+                    Divisão de categorias
                   </span>
-                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <span className="text-[10px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
                     Faturamento (%)
                   </span>
                 </div>
@@ -592,13 +598,13 @@ export const StrategicIntelligenceBlocks = React.memo(
                                     : `0 0 10px ${color}`,
                               }}
                             />
-                            <span className="text-[11px] font-black uppercase tracking-widest text-white">
+                            <span className="text-[11px] font-semibold text-white">
                               {entry.name}
                             </span>
                           </div>
 
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-black italic text-zinc-100">
+                            <span className="text-[11px] font-black tabular-nums text-zinc-100">
                               {formatCurrency(entry.value)}
                             </span>
                             <span className="min-w-[42px] rounded-md bg-admin-gold/10 px-1.5 py-0.5 text-center text-[9px] font-black text-admin-gold">
@@ -631,7 +637,7 @@ export const StrategicIntelligenceBlocks = React.memo(
 
                         {/* Sub Details Row */}
                         {!isInactive && (entry.avg_ticket || entry.orders) && (
-                          <div className="pl-5.5 mt-1.5 flex items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                          <div className="pl-5.5 mt-1.5 flex items-center gap-4 text-[10px] font-medium text-zinc-500">
                             {entry.avg_ticket && (
                               <span>
                                 Ticket M.:{" "}
