@@ -246,6 +246,12 @@ PROVAS.push({
       novos: 1,
       quase_dormindo: 1,
       em_risco: 1,
+      // Migration 20261183000000 (o CRM vê todo mundo): estes 2 aparecem
+      // SEMPRE, mesmo com 0 — este fixture não tem ninguém sem conta
+      // (`profiles` nunca é populada aqui) nem identidade só com pedido não
+      // pago (C2 já é comprador; "Na entrega" não tem chave nenhuma).
+      pediu_nao_pagou: 0,
+      nunca_comprou: 0,
     });
     estado.hojeReceita = 100;
   },
