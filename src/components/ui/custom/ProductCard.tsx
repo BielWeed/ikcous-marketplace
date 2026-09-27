@@ -8,6 +8,10 @@ import {
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import {
+  CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+  CLASSE_SELO_DESCONTO,
+} from "@/lib/cor-do-preco-promocional";
+import {
   type PromessasDeFrete,
   fraseDoSeloDeFreteGratis,
 } from "@/lib/estrategias-de-frete";
@@ -654,7 +658,12 @@ export const ProductCard = memo(function ProductCard({
                     {formatCurrency(product.originalPrice)}
                   </span>
                 </span>
-                <span className="mt-1 text-[15px] font-black leading-none tracking-tight text-rose-600">
+                <span
+                  className={cn(
+                    "mt-1 text-[15px] font-black leading-none tracking-tight",
+                    CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                  )}
+                >
                   Por: {formatCurrency(precoAtual)}
                 </span>
               </div>
@@ -670,7 +679,12 @@ export const ProductCard = memo(function ProductCard({
           {/* Badges */}
           <div className="flex shrink-0 items-center gap-1">
             {discount > 0 && (
-              <span className="shrink-0 select-none rounded border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-rose-700">
+              <span
+                className={cn(
+                  "shrink-0 select-none rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
+                  CLASSE_SELO_DESCONTO,
+                )}
+              >
                 {discount}% OFF
               </span>
             )}
@@ -820,7 +834,12 @@ export const ProductCard = memo(function ProductCard({
                   {/* Os MESMOS selos do card -- a folha não inventa
                       promessa que o card não faz. */}
                   {discount > 0 && (
-                    <span className="shrink-0 select-none rounded border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-rose-700">
+                    <span
+                      className={cn(
+                        "shrink-0 select-none rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
+                        CLASSE_SELO_DESCONTO,
+                      )}
+                    >
                       {discount}% OFF
                     </span>
                   )}
@@ -869,7 +888,12 @@ export const ProductCard = memo(function ProductCard({
                     card: `??` preserva override zero). */}
                 {product.originalPrice && product.originalPrice > precoAtual ? (
                   <div className="flex flex-wrap items-baseline gap-2 pt-1">
-                    <span className="text-[15px] font-black leading-none tracking-tight text-rose-600">
+                    <span
+                      className={cn(
+                        "text-[15px] font-black leading-none tracking-tight",
+                        CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                      )}
+                    >
                       Por: {formatCurrency(precoAtual)}
                     </span>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">

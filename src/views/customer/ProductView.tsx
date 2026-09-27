@@ -16,6 +16,11 @@ import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import {
+  CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
+  CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+  CLASSE_SELO_DESCONTO,
+} from "@/lib/cor-do-preco-promocional";
+import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
@@ -974,7 +979,12 @@ export const ProductView = React.memo(function ProductView({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
           {product.originalPrice && product.originalPrice > currentPrice ? (
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black tracking-tight text-rose-600">
+              <span
+                className={cn(
+                  "text-2xl font-black tracking-tight",
+                  CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
+                )}
+              >
                 R$ {currentPrice.toFixed(2).replace(".", ",")}
               </span>
               <span className="text-xs font-bold text-zinc-400 line-through">
@@ -989,7 +999,12 @@ export const ProductView = React.memo(function ProductView({
 
           <div className="flex items-center gap-1.5">
             {discount > 0 && (
-              <span className="rounded-md border border-rose-100 bg-rose-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-rose-600">
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider",
+                  CLASSE_SELO_DESCONTO,
+                )}
+              >
                 {discount}% OFF
               </span>
             )}
@@ -1507,7 +1522,21 @@ export const ProductView = React.memo(function ProductView({
                     <p className="max-w-[80px] truncate text-[11px] font-bold leading-tight text-zinc-900 sm:max-w-[110px]">
                       {product.name}
                     </p>
-                    <p className="mt-0.5 text-[11px] font-black leading-tight text-rose-600">
+                    <p
+                      className={cn(
+                        "mt-0.5 text-[11px] font-black leading-tight",
+                        // Mesma regra do bloco de preço principal (linhas
+                        // 976-994): a barra dockada usava text-rose-600 SEMPRE,
+                        // com ou sem promoção. Vermelho só faz sentido quando
+                        // há desconto de verdade (`originalPrice > currentPrice`)
+                        // -- sem isso, o neutro é o mesmo tom do preço sem
+                        // desconto ali em cima (text-zinc-900).
+                        product.originalPrice &&
+                          product.originalPrice > currentPrice
+                          ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
+                          : "text-zinc-900",
+                      )}
+                    >
                       R$ {currentPrice.toFixed(2).replace(".", ",")}
                     </p>
                   </div>
