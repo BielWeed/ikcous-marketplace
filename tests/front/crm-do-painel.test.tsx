@@ -268,9 +268,13 @@ describe("Dashboard CRM", () => {
 
   it("as abas trocam de painel e só a aba visível fica à mostra", async () => {
     await montar();
+    // Acha pelo nome acessível (`aria-label`), não pelo texto visível: no
+    // celular a aba mostra um rótulo curto (ex.: "Funil") e só a partir de
+    // `sm` mostra o completo — mas o nome acessível é sempre o completo nas
+    // duas telas, então é ele que identifica a aba de forma estável.
     const aba = (rotulo: string) =>
       Array.from(hospedeiro.querySelectorAll('[role="tab"]')).find(
-        (t) => texto(t) === rotulo,
+        (t) => t.getAttribute("aria-label") === rotulo,
       ) as HTMLButtonElement;
     const painel = (id: string) =>
       hospedeiro.querySelector(`#crm-painel-${id}`) as HTMLElement | null;
@@ -364,6 +368,64 @@ describe("Dashboard CRM", () => {
       p_offset: 0,
     });
     expect(segmento.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("no celular, a barra vira grade sem rolar: abas têm rótulo curto com nome acessível prefixado por ele; períodos ficam por extenso", async () => {
+    // Print do celular (Gabriel, 27/09): "FUNIL E PEDIDOS" e "Ano" saíam
+    // cortados porque os trilhos rolavam na horizontal (`overflow-x-auto`).
+    // Vira grade de colunas iguais — sem scroll. As abas ganham um rótulo
+    // curto SÓ visível abaixo de `sm` (span `.sm:hidden` — jsdom não aplica
+    // a media query, então o teste tem de ler o span certo, não o
+    // `textContent` do botão inteiro, que sempre contém "Funil e pedidos" e
+    // faria `toContain("Funil")` passar mesmo com o span vazio); o nome
+    // acessível (aria-label) é o rótulo completo mas SEMPRE começa pelo
+    // texto curto (WCAG 2.5.3 — Label in Name, achado da re-revisão).
+    // Períodos NÃO têm rótulo curto nem aria-label: "7 dias"/"30 dias"/
+    // "90 dias" cabem inteiros em 360/375 (medido pela re-revisão) e
+    // abreviar ("7d") quebraria comando de voz, cujo texto ditado é o que
+    // a pessoa VÊ — o texto visível já É o nome acessível.
+    await montar();
+    const tablist = hospedeiro.querySelector('[role="tablist"]') as HTMLElement;
+    const grupoPeriodo = hospedeiro.querySelector(
+      '[role="group"][aria-label="Período"]',
+    ) as HTMLElement;
+
+    expect(tablist.className).not.toContain("overflow-x-auto");
+    expect(grupoPeriodo.className).not.toContain("overflow-x-auto");
+    expect(tablist.className).toContain("grid-cols-4");
+    expect(grupoPeriodo.className).toContain("grid-cols-6");
+
+    const spanCurto = (botao: HTMLElement) =>
+      Array.from(botao.querySelectorAll("span")).find((s) =>
+        s.classList.contains("sm:hidden"),
+      ) ?? null;
+
+    const abaFunil = Array.from(
+      tablist.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+    ).find((t) => t.getAttribute("aria-label") === "Funil e pedidos");
+    expect(
+      abaFunil,
+      'nome acessível "Funil e pedidos" sumiu',
+    ).not.toBeUndefined();
+    expect(texto(spanCurto(abaFunil!)), "span do rótulo curto").toBe("Funil");
+    expect(abaFunil!.getAttribute("aria-label")).toMatch(/^Funil/);
+
+    const abaVisao = Array.from(
+      tablist.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+    ).find((t) => t.getAttribute("aria-label") === "Visão geral");
+    expect(abaVisao, 'nome acessível "Visão geral" sumiu').not.toBeUndefined();
+    expect(texto(spanCurto(abaVisao!)), "span do rótulo curto").toBe("Visão");
+    expect(abaVisao!.getAttribute("aria-label")).toMatch(/^Visão/);
+
+    const periodo90Dias = Array.from(
+      grupoPeriodo.querySelectorAll("button"),
+    ).find((b) => texto(b).trim() === "90 dias");
+    expect(
+      periodo90Dias,
+      '"90 dias" sumiu ou virou rótulo curto ("90d"?)',
+    ).not.toBeUndefined();
+    expect(periodo90Dias!.hasAttribute("aria-label")).toBe(false);
+    expect(spanCurto(periodo90Dias!)).toBeNull();
   });
 
   it("'Ver clientes em risco' na Visão geral abre Clientes já filtrado", async () => {
