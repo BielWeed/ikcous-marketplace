@@ -44,12 +44,10 @@ export function buildKpiCards(
       id: "volume",
       label: "Volume Total",
       value: dinheiro(executivo?.totalRevenue),
-      // Curto de propósito (#casca visual 27/09, rodada 4): "Total líquido
-      // de descontos" truncava ("TOTAL LIQUIDO DE ...") no card compacto do
-      // carrossel (AdminKpiCarousel) no celular — sem o "Total" redundante
-      // (o label já diz "Volume Total"), "Líquido de descontos" cabe
-      // inteiro na largura do card em 375 px.
-      subValue: "Líquido de descontos",
+      // Curto de propósito (visual do CRM, 27/09): "Total líquido de
+      // descontos" e até "Líquido de descontos" truncavam no card compacto
+      // do carrossel (AdminKpiCarousel) em 375 px. Só ~10 caracteres cabem.
+      subValue: "Líquido",
       icon: ShoppingBag,
       accent: "text-admin-gold",
     },
