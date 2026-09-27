@@ -4,7 +4,10 @@ import { AjudaDoCrm } from "@/components/admin/crm/AjudaDoCrm";
 import { CanaisDoCrm } from "@/components/admin/crm/CanaisDoCrm";
 import { ClientesDoCrm } from "@/components/admin/crm/ClientesDoCrm";
 import { FunilEPedidosDoCrm } from "@/components/admin/crm/FunilEPedidosDoCrm";
-import { FOCO_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
+import {
+  FOCO_DO_CRM,
+  SUPERFICIE_DO_CRM,
+} from "@/components/admin/crm/PecasDoCrm";
 import { VisaoGeralDoCrm } from "@/components/admin/crm/VisaoGeralDoCrm";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { useCrmVisao, useDashboardClassico } from "@/hooks/useCrm";
@@ -175,14 +178,18 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
 
       {/* Barra fixa: abas + período. Filha direta do bloco que rola, para o
           sticky andar junto com a tela inteira. Os dois controles vivem num
-          trilho segmentado (fundo + borda visíveis, p-1) — sem isso, abas e
-          período viram "palavras soltas" sobre o fundo #09090b. */}
+          trilho segmentado (`SUPERFICIE_DO_CRM`, a mesma superfície dos
+          cartões de KPI, com p-1) — sem uma superfície tão visível quanto a
+          deles, abas e período viravam "palavras soltas" sobre o #09090b. */}
       <div className="sticky top-0 z-30 mt-2 border-b border-white/5 bg-[#09090b]/95 backdrop-blur-md">
-        <div className="flex flex-col gap-3 py-2.5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <div className="flex flex-col gap-2 py-2 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div
             role="tablist"
             aria-label="Seções do CRM"
-            className="custom-scrollbar-hidden mx-4 flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] p-1 sm:mx-6 lg:mx-0"
+            className={cn(
+              SUPERFICIE_DO_CRM,
+              "custom-scrollbar-hidden mx-4 flex gap-1 overflow-x-auto p-1 sm:mx-6 lg:mx-0",
+            )}
           >
             {ABAS.map((item) => {
               const selecionada = item.id === aba;
@@ -215,11 +222,14 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
             })}
           </div>
 
-          <div className="flex flex-col gap-1.5 px-4 sm:px-6 lg:items-end lg:px-0">
+          <div className="flex flex-col gap-1 px-4 sm:px-6 lg:items-end lg:px-0">
             <div
               role="group"
               aria-label="Período"
-              className="custom-scrollbar-hidden flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] p-1"
+              className={cn(
+                SUPERFICIE_DO_CRM,
+                "custom-scrollbar-hidden flex gap-1 overflow-x-auto p-1",
+              )}
             >
               {PERIODOS_DO_CRM.map((item) => {
                 const escolhido = item.id === periodo;
