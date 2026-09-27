@@ -41,12 +41,29 @@ interface AdminCrmViewProps {
 
 type AbaDoCrm = "visao" | "clientes" | "canais" | "funil";
 
-const ABAS: readonly { readonly id: AbaDoCrm; readonly rotulo: string }[] = [
-  { id: "visao", rotulo: "Visão geral" },
+/**
+ * `rotuloCurto` só existe onde o rótulo completo não cabe na grade de 4
+ * colunas do celular (print do Gabriel, 27/09: "FUNIL E PEDIDOS" cortava);
+ * a partir de `sm` o rótulo completo volta a aparecer (ver render abaixo) e
+ * o nome acessível (`aria-label`) é sempre o completo, nas duas telas.
+ */
+const ABAS: readonly {
+  readonly id: AbaDoCrm;
+  readonly rotulo: string;
+  readonly rotuloCurto?: string;
+}[] = [
+  { id: "visao", rotulo: "Visão geral", rotuloCurto: "Visão" },
   { id: "clientes", rotulo: "Clientes" },
   { id: "canais", rotulo: "Canais" },
-  { id: "funil", rotulo: "Funil e pedidos" },
+  { id: "funil", rotulo: "Funil e pedidos", rotuloCurto: "Funil" },
 ];
+
+/** Mesma ideia da tabela acima, para os chips de período. */
+const ROTULO_CURTO_DO_PERIODO: Partial<Record<PeriodoDoCrm, string>> = {
+  "7d": "7d",
+  "30d": "30d",
+  "90d": "90d",
+};
 
 /**
  * Dashboard CRM (`admin-crm`): gestão do app E da loja física num só lugar.
@@ -180,15 +197,20 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
           sticky andar junto com a tela inteira. Os dois controles vivem num
           trilho segmentado (`SUPERFICIE_DO_CRM`, a mesma superfície dos
           cartões de KPI, com p-1) — sem uma superfície tão visível quanto a
-          deles, abas e período viravam "palavras soltas" sobre o #09090b. */}
+          deles, abas e período viravam "palavras soltas" sobre o #09090b.
+          Até 1023px o trilho é uma GRADE de colunas iguais (nada de
+          `overflow-x-auto`): as 4 abas e os 6 períodos cabem inteiros sem
+          rolar nem cortar texto (print do Gabriel, 27/09, no celular). A
+          partir de `lg` volta a virar fileira (`lg:flex`), do jeito que já
+          era no desktop. */}
       <div className="sticky top-0 z-30 mt-2 border-b border-white/5 bg-[#09090b]/95 backdrop-blur-md">
-        <div className="flex flex-col gap-2 py-2 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <div className="flex flex-col gap-1.5 py-1.5 lg:flex-row lg:items-center lg:justify-between lg:gap-2 lg:px-6 lg:py-2">
           <div
             role="tablist"
             aria-label="Seções do CRM"
             className={cn(
               SUPERFICIE_DO_CRM,
-              "custom-scrollbar-hidden mx-4 flex gap-1 overflow-x-auto p-1 sm:mx-6 lg:mx-0",
+              "mx-4 grid grid-cols-4 gap-1 p-1 sm:mx-6 lg:mx-0 lg:flex lg:w-auto",
             )}
           >
             {ABAS.map((item) => {
@@ -205,18 +227,30 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                   id={`crm-aba-${item.id}`}
                   aria-selected={selecionada}
                   aria-controls={`crm-painel-${item.id}`}
+                  aria-label={item.rotulo}
                   tabIndex={selecionada ? 0 : -1}
                   onClick={() => trocarAba(item.id)}
                   onKeyDown={aoTeclarNasAbas}
                   className={cn(
-                    "min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-xs font-black uppercase tracking-wider transition-colors",
+                    "flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-lg px-1 text-center text-[11px] font-bold transition-colors lg:w-auto lg:shrink-0 lg:px-3.5 lg:text-xs lg:font-black lg:uppercase lg:tracking-wider",
                     FOCO_DO_CRM,
                     selecionada
                       ? "bg-white text-black shadow"
                       : "text-zinc-400 hover:bg-white/5 hover:text-white",
                   )}
                 >
-                  {item.rotulo}
+                  {item.rotuloCurto ? (
+                    <>
+                      <span className="sm:hidden" aria-hidden="true">
+                        {item.rotuloCurto}
+                      </span>
+                      <span className="hidden sm:inline" aria-hidden="true">
+                        {item.rotulo}
+                      </span>
+                    </>
+                  ) : (
+                    item.rotulo
+                  )}
                 </button>
               );
             })}
@@ -228,26 +262,39 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
               aria-label="Período"
               className={cn(
                 SUPERFICIE_DO_CRM,
-                "custom-scrollbar-hidden flex gap-1 overflow-x-auto p-1",
+                "grid grid-cols-6 gap-1 p-1 lg:flex lg:w-auto",
               )}
             >
               {PERIODOS_DO_CRM.map((item) => {
                 const escolhido = item.id === periodo;
+                const rotuloCurto = ROTULO_CURTO_DO_PERIODO[item.id];
                 return (
                   <button
                     key={item.id}
                     type="button"
                     aria-pressed={escolhido}
+                    aria-label={item.rotulo}
                     onClick={() => setPeriodo(item.id)}
                     className={cn(
-                      "min-h-11 shrink-0 whitespace-nowrap rounded-lg border px-3.5 text-[11px] font-bold transition-colors",
+                      "flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-lg border px-1 text-center text-[11px] font-bold transition-colors lg:w-auto lg:shrink-0 lg:px-3.5",
                       FOCO_DO_CRM,
                       escolhido
                         ? "border-admin-gold/40 bg-admin-gold/15 text-admin-gold"
                         : "border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/5 hover:text-white",
                     )}
                   >
-                    {item.rotulo}
+                    {rotuloCurto ? (
+                      <>
+                        <span className="sm:hidden" aria-hidden="true">
+                          {rotuloCurto}
+                        </span>
+                        <span className="hidden sm:inline" aria-hidden="true">
+                          {item.rotulo}
+                        </span>
+                      </>
+                    ) : (
+                      item.rotulo
+                    )}
                   </button>
                 );
               })}

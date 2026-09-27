@@ -268,9 +268,13 @@ describe("Dashboard CRM", () => {
 
   it("as abas trocam de painel e só a aba visível fica à mostra", async () => {
     await montar();
+    // Acha pelo nome acessível (`aria-label`), não pelo texto visível: no
+    // celular a aba mostra um rótulo curto (ex.: "Funil") e só a partir de
+    // `sm` mostra o completo — mas o nome acessível é sempre o completo nas
+    // duas telas, então é ele que identifica a aba de forma estável.
     const aba = (rotulo: string) =>
       Array.from(hospedeiro.querySelectorAll('[role="tab"]')).find(
-        (t) => texto(t) === rotulo,
+        (t) => t.getAttribute("aria-label") === rotulo,
       ) as HTMLButtonElement;
     const painel = (id: string) =>
       hospedeiro.querySelector(`#crm-painel-${id}`) as HTMLElement | null;
@@ -364,6 +368,43 @@ describe("Dashboard CRM", () => {
       p_offset: 0,
     });
     expect(segmento.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("no celular, a barra usa rótulos curtos mas o nome acessível continua completo, sem rolagem horizontal", async () => {
+    // Print do celular (Gabriel, 27/09): "FUNIL E PEDIDOS" e "Ano" saíam
+    // cortados porque os trilhos rolavam na horizontal (`overflow-x-auto`).
+    // A correção vira grade de colunas iguais — sem scroll — com rótulo
+    // curto só na tela pequena; o nome acessível (aria-label) nunca muda.
+    await montar();
+    const tablist = hospedeiro.querySelector('[role="tablist"]') as HTMLElement;
+    const grupoPeriodo = hospedeiro.querySelector(
+      '[role="group"][aria-label="Período"]',
+    ) as HTMLElement;
+
+    expect(tablist.className).not.toContain("overflow-x-auto");
+    expect(grupoPeriodo.className).not.toContain("overflow-x-auto");
+    expect(tablist.className).toContain("grid-cols-4");
+    expect(grupoPeriodo.className).toContain("grid-cols-6");
+
+    const abaFunil = Array.from(tablist.querySelectorAll('[role="tab"]')).find(
+      (t) => t.getAttribute("aria-label") === "Funil e pedidos",
+    );
+    expect(
+      abaFunil,
+      'nome acessível "Funil e pedidos" sumiu',
+    ).not.toBeUndefined();
+    expect(texto(abaFunil!)).toContain("Funil");
+
+    const abaVisao = Array.from(tablist.querySelectorAll('[role="tab"]')).find(
+      (t) => t.getAttribute("aria-label") === "Visão geral",
+    );
+    expect(abaVisao, 'nome acessível "Visão geral" sumiu').not.toBeUndefined();
+
+    const periodo90Dias = Array.from(
+      grupoPeriodo.querySelectorAll("button"),
+    ).find((b) => b.getAttribute("aria-label") === "90 dias");
+    expect(periodo90Dias, 'nome acessível "90 dias" sumiu').not.toBeUndefined();
+    expect(texto(periodo90Dias!)).toContain("90d");
   });
 
   it("'Ver clientes em risco' na Visão geral abre Clientes já filtrado", async () => {
