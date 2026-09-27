@@ -183,14 +183,14 @@ export function VisaoGeralDoCrm({
         aria-labelledby="crm-historico-titulo"
         className="space-y-6 sm:space-y-10"
       >
-        <div className="space-y-1 border-t border-white/5 pt-6">
+        <div className="space-y-0.5 border-t border-white/5 pt-6">
           <h2
             id="crm-historico-titulo"
-            className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+            className="text-sm font-semibold leading-snug text-white"
           >
             Histórico completo da loja
           </h2>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs leading-relaxed text-zinc-400">
             Números de todo o período, desempenho diário, categorias e os
             produtos mais lucrativos.
           </p>
