@@ -1,37 +1,72 @@
-import { diaEmSaoPaulo, formatarData, formatarMoeda } from "@/lib/crm";
+import {
+  completarSerieDe14Dias,
+  diaEmSaoPaulo,
+  formatarData,
+  formatarMoeda,
+} from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import type { PontoDaSerieDiaria } from "@/types/painel";
 import { type PointerEvent, useState } from "react";
 
+const MESES_ABREVIADOS = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+];
+
 /**
- * Minigráfico de barras dos últimos 14 dias (receita por dia). Barras em tom
- * neutro e HOJE no dourado do painel; passar o dedo/mouse mostra
- * o dia e o valor na linha de cima. HTML puro (sem recharts): 14 barras não
- * pedem biblioteca, e o Início abre mais leve. A tabela escondida dá o mesmo
- * dado a quem usa leitor de tela.
+ * Minigráfico de barras dos últimos 14 dias (receita por dia). Pedido do
+ * Gabriel (27/09/2026): "não tem clareza: tem que dar para entender cada
+ * barra de cada dia" — com poucas vendas o gráfico virava um bloco cinza
+ * quase invisível (13 riscos de 1px, só o 1º/último rótulo). Agora:
+ *
+ * - `completarSerieDe14Dias` (src/lib/crm.ts) garante as 14 COLUNAS sempre,
+ *   mesmo se a série chegar menor — cada dia tem seu "trilho" de fundo, e um
+ *   dia sem venda nunca some nem vira uma barra;
+ * - cada coluna tem o número do dia embaixo (mês só na 1ª/na virada), Hoje
+ *   sai escrito por extenso e no dourado do painel;
+ * - venda em tom esmeralda (mesmo tom de "ótimo" do CRM), hoje em
+ *   admin-gold; tocar/passar numa coluna marca ela e mostra o dia + valor na
+ *   linha de cima (mantido); a barra de maior valor ganha o rótulo do valor
+ *   em cima, para dar escala.
+ *
+ * HTML puro (sem recharts): 14 barras não pedem biblioteca, e o Início abre
+ * mais leve. A tabela escondida dá o mesmo dado a quem usa leitor de tela.
  */
 export function SerieDe14Dias({
   serie,
   carregando,
 }: Readonly<{ serie: readonly PontoDaSerieDiaria[]; carregando: boolean }>) {
   const [marcado, setMarcado] = useState<number | null>(null);
-  const total = serie.reduce((soma, ponto) => soma + ponto.receita, 0);
-  const maximo = serie.reduce(
+  const serieCompleta = completarSerieDe14Dias(serie);
+  const total = serieCompleta.reduce((soma, ponto) => soma + ponto.receita, 0);
+  const maximo = serieCompleta.reduce(
     (maior, ponto) => Math.max(maior, ponto.receita),
     0,
   );
-  const pontoMarcado = marcado == null ? null : (serie.at(marcado) ?? null);
+  const indicePico =
+    maximo > 0 ? serieCompleta.findIndex((p) => p.receita === maximo) : -1;
+  const pontoMarcado =
+    marcado == null ? null : (serieCompleta.at(marcado) ?? null);
   const diaDeHoje = diaEmSaoPaulo(new Date());
-  const ultimoDia = serie.at(-1)?.dia;
 
   const aoMoverPonteiro = (evento: PointerEvent<HTMLDivElement>) => {
-    if (serie.length === 0) return;
+    if (serieCompleta.length === 0) return;
     const caixa = evento.currentTarget.getBoundingClientRect();
     if (caixa.width <= 0) return;
     const fracao = (evento.clientX - caixa.left) / caixa.width;
     const indice = Math.min(
-      serie.length - 1,
-      Math.max(0, Math.floor(fracao * serie.length)),
+      serieCompleta.length - 1,
+      Math.max(0, Math.floor(fracao * serieCompleta.length)),
     );
     setMarcado(indice);
   };
@@ -39,7 +74,7 @@ export function SerieDe14Dias({
   return (
     <section
       aria-labelledby="inicio-serie-titulo"
-      aria-busy={carregando && serie.length === 0}
+      aria-busy={carregando && serieCompleta.length === 0}
       className="admin-glass h-full rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6"
     >
       <div className="flex items-baseline justify-between gap-3">
@@ -57,7 +92,7 @@ export function SerieDe14Dias({
                 {formatarMoeda(pontoMarcado.receita)}
               </strong>
             </>
-          ) : serie.length > 0 ? (
+          ) : serieCompleta.length > 0 ? (
             <>
               Total{" "}
               <strong className="font-bold tabular-nums text-white">
@@ -68,64 +103,99 @@ export function SerieDe14Dias({
         </p>
       </div>
 
-      {carregando && serie.length === 0 ? (
+      {carregando && serieCompleta.length === 0 ? (
         <div
-          className="premium-shimmer mt-4 h-24 w-full rounded-xl"
+          className="premium-shimmer mt-4 h-28 w-full rounded-xl"
           aria-hidden="true"
         />
-      ) : serie.length === 0 ? (
+      ) : serieCompleta.length === 0 ? (
         <p className="mt-4 flex h-24 items-center justify-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">
           Sem vendas registradas nos últimos 14 dias.
         </p>
       ) : (
         <>
           <div
-            className="mt-4 flex h-24 touch-pan-y items-end gap-1"
+            className="mt-6 flex touch-pan-y gap-0.5"
             onPointerMove={aoMoverPonteiro}
             onPointerDown={aoMoverPonteiro}
             onPointerLeave={() => setMarcado(null)}
             aria-hidden="true"
           >
-            {serie.map((ponto, indice) => {
+            {serieCompleta.map((ponto, indice) => {
               const hoje = ponto.dia === diaDeHoje;
-              const altura =
-                maximo > 0
-                  ? Math.max(
-                      ponto.receita > 0 ? 4 : 0,
-                      (ponto.receita / maximo) * 100,
-                    )
-                  : 0;
+              const temVenda = ponto.receita > 0;
+              const alturaPct = maximo > 0 ? (ponto.receita / maximo) * 100 : 0;
+              const [, mesTexto, diaTexto] = ponto.dia.split("-");
+              const mesAnterior =
+                indice > 0 ? serieCompleta[indice - 1].dia.split("-")[1] : null;
+              const mostrarMes = indice === 0 || mesTexto !== mesAnterior;
+              // 14 colunas em ~343px cabem uma ao lado da outra no
+              // celular só se o rótulo não for pesado demais: hoje e a
+              // virada de mês sempre aparecem; o resto alterna (dia sim,
+              // dia não) abaixo de `sm` para não sobrepor, e some por
+              // completo a partir de `sm` (tela maior sobra espaço).
+              const mostrarRotulo = hoje || mostrarMes || indice % 2 === 0;
               return (
-                <div key={ponto.dia} className="flex h-full flex-1 items-end">
+                <div
+                  key={ponto.dia}
+                  data-testid="serie-14d-coluna"
+                  data-dia={ponto.dia}
+                  data-hoje={hoje ? "true" : "false"}
+                  data-com-venda={temVenda ? "true" : "false"}
+                  className="flex min-w-0 flex-1 flex-col items-center gap-1"
+                >
+                  <div className="relative flex h-24 w-full items-end overflow-visible">
+                    {indice === indicePico ? (
+                      <span className="pointer-events-none absolute inset-x-0 -top-4 whitespace-nowrap text-center text-[9px] font-bold tabular-nums text-zinc-400">
+                        {formatarMoeda(ponto.receita)}
+                      </span>
+                    ) : null}
+                    {/* Trilho: SEMPRE visível, ocupa a altura inteira da
+                        coluna — é o que faz um dia sem venda continuar
+                        sendo uma coluna (não sumir). Opacidade baixa e
+                        altura fixa o distinguem de uma barra de venda
+                        (cor cheia, altura proporcional ao valor). */}
+                    <div
+                      className={cn(
+                        "absolute inset-x-0 bottom-0 h-full rounded-[4px] bg-zinc-800/50",
+                        marcado === indice && "bg-zinc-700/60",
+                        hoje && "ring-1 ring-inset ring-admin-gold/40",
+                      )}
+                    />
+                    {temVenda ? (
+                      <div
+                        data-testid="serie-14d-barra"
+                        className={cn(
+                          "relative w-full rounded-t-[4px] transition-[height]",
+                          hoje ? "bg-admin-gold" : "bg-emerald-400",
+                        )}
+                        style={{ height: `${Math.max(6, alturaPct)}%` }}
+                      />
+                    ) : null}
+                  </div>
                   <div
-                    className={cn(
-                      "w-full rounded-t-[4px] transition-colors",
-                      ponto.receita > 0 ? "" : "h-px bg-zinc-800",
-                      ponto.receita > 0 &&
-                        (hoje
-                          ? "bg-admin-gold"
-                          : marcado === indice
-                            ? "bg-zinc-400"
-                            : "bg-zinc-700"),
-                    )}
-                    style={
-                      ponto.receita > 0 ? { height: `${altura}%` } : undefined
-                    }
-                  />
+                    data-testid="serie-14d-rotulo"
+                    className="flex flex-col items-center gap-0.5 text-center"
+                  >
+                    {mostrarMes ? (
+                      <span className="text-[8px] uppercase leading-none text-zinc-600">
+                        {MESES_ABREVIADOS[Number(mesTexto) - 1]}
+                      </span>
+                    ) : null}
+                    <span
+                      data-testid="serie-14d-rotulo-dia"
+                      className={cn(
+                        "text-[10px] leading-none tabular-nums",
+                        hoje ? "font-bold text-admin-gold" : "text-zinc-500",
+                        !mostrarRotulo && "hidden sm:inline",
+                      )}
+                    >
+                      {hoje ? "Hoje" : diaTexto}
+                    </span>
+                  </div>
                 </div>
               );
             })}
-          </div>
-          <div
-            className="mt-1.5 flex justify-between text-[10px] tabular-nums text-zinc-500"
-            aria-hidden="true"
-          >
-            <span>{formatarData(serie[0].dia).slice(0, 5)}</span>
-            <span>
-              {ultimoDia === diaDeHoje
-                ? "Hoje"
-                : formatarData(ultimoDia).slice(0, 5)}
-            </span>
           </div>
           <table className="sr-only">
             <caption>Receita por dia nos últimos 14 dias</caption>
@@ -136,7 +206,7 @@ export function SerieDe14Dias({
               </tr>
             </thead>
             <tbody>
-              {serie.map((ponto) => (
+              {serieCompleta.map((ponto) => (
                 <tr key={ponto.dia}>
                   <td>{formatarData(ponto.dia)}</td>
                   <td>{formatarMoeda(ponto.receita)}</td>

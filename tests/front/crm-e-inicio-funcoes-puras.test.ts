@@ -5,6 +5,7 @@
 // e o link de WhatsApp com texto pronto por segmento RFM.
 import {
   SEGMENTOS_DO_CRM,
+  completarSerieDe14Dias,
   formatarData,
   formatarMoeda,
   formatarMoedaCompacta,
@@ -210,6 +211,71 @@ describe("lerVisaoDoCrm e lerClientesDoCrm", () => {
     expect(lista?.clientes.map((c) => c.chave)).toEqual(["u-1", "11999990000"]);
     expect(lista?.clientes[0].ticketMedio).toBe(100);
     expect(lista?.clientes[1].segmento).toBeNull();
+  });
+});
+
+describe("completarSerieDe14Dias — o minigráfico do Início nunca perde coluna", () => {
+  it("série vazia continua vazia (a tela já lê isso como 'sem venda')", () => {
+    expect(completarSerieDe14Dias([])).toEqual([]);
+  });
+
+  it("1 ponto vira 14 dias: 13 completados com zero, o dia recebido preserva a receita", () => {
+    const completa = completarSerieDe14Dias([
+      { dia: "2026-09-26", receita: 350 },
+    ]);
+    expect(completa).toHaveLength(14);
+    expect(completa[0].dia).toBe("2026-09-13");
+    expect(completa.at(-1)).toEqual({ dia: "2026-09-26", receita: 350 });
+    // Os outros 13 dias são zero, não "não sei" — dia sem venda é zero medido.
+    expect(completa.slice(0, -1).every((p) => p.receita === 0)).toBe(true);
+    expect(completa.map((p) => p.dia)).toEqual([
+      "2026-09-13",
+      "2026-09-14",
+      "2026-09-15",
+      "2026-09-16",
+      "2026-09-17",
+      "2026-09-18",
+      "2026-09-19",
+      "2026-09-20",
+      "2026-09-21",
+      "2026-09-22",
+      "2026-09-23",
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+    ]);
+  });
+
+  it("ancora no ÚLTIMO dia recebido, não em 'hoje' do cliente", () => {
+    // O último ponto é de ontem (ex.: o servidor ainda não fechou o dia de
+    // hoje) — os 14 dias terminam nele, não em "hoje".
+    const completa = completarSerieDe14Dias([
+      { dia: "2026-09-10", receita: 40 },
+      { dia: "2026-09-25", receita: 200 },
+    ]);
+    expect(completa.at(-1)?.dia).toBe("2026-09-25");
+    expect(completa[0].dia).toBe("2026-09-12");
+    // O dia 10 caiu fora da janela de 14 dias (12 a 25) e não aparece mais.
+    expect(completa.find((p) => p.dia === "2026-09-10")).toBeUndefined();
+  });
+
+  it("um buraco no meio da série vira zero, sem mexer nos dias já preenchidos", () => {
+    const completa = completarSerieDe14Dias([
+      { dia: "2026-09-13", receita: 10 },
+      { dia: "2026-09-20", receita: 80 },
+      { dia: "2026-09-26", receita: 350 },
+    ]);
+    expect(completa).toHaveLength(14);
+    expect(completa.find((p) => p.dia === "2026-09-20")?.receita).toBe(80);
+    expect(completa.find((p) => p.dia === "2026-09-15")?.receita).toBe(0);
+  });
+
+  it("série já com 14 dias sai igual (idempotente)", () => {
+    const original = Array.from({ length: 14 }, (_, i) => ({
+      dia: `2026-09-${String(13 + i).padStart(2, "0")}`,
+      receita: i,
+    }));
+    expect(completarSerieDe14Dias(original)).toEqual(original);
   });
 });
 
