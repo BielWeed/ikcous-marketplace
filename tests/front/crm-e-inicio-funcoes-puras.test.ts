@@ -277,6 +277,19 @@ describe("completarSerieDe14Dias — o minigráfico do Início nunca perde colun
     }));
     expect(completarSerieDe14Dias(original)).toEqual(original);
   });
+
+  it("ancora no MAIOR dia, mesmo com a entrada fora de ordem", () => {
+    // Fora de ordem de propósito: o dia mais recente (26) vem no meio, não
+    // no fim do array — a função não pode confiar em posição, só no valor.
+    const completa = completarSerieDe14Dias([
+      { dia: "2026-09-20", receita: 80 },
+      { dia: "2026-09-26", receita: 350 },
+      { dia: "2026-09-10", receita: 40 },
+    ]);
+    expect(completa.at(-1)?.dia).toBe("2026-09-26");
+    expect(completa[0].dia).toBe("2026-09-13");
+    expect(completa.find((p) => p.dia === "2026-09-20")?.receita).toBe(80);
+  });
 });
 
 describe("intervaloDoPeriodo — datas no fuso de São Paulo", () => {

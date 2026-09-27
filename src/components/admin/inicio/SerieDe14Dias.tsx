@@ -31,7 +31,10 @@ type AncoragemDoRotulo = "esquerda" | "centro" | "direita";
  * cartão quando o pico cai numa das primeiras/últimas colunas (achado do
  * Gabriel: "hoje", a última coluna, é o caso mais comum). Perto da borda o
  * rótulo ancora para o lado de DENTRO do cartão (onde sobra coluna); só no
- * meio, com coluna sobrando dos dois lados, ele fica centralizado.
+ * meio, com coluna sobrando dos dois lados, ele fica centralizado de
+ * verdade — `left-1/2 -translate-x-1/2` (não `inset-x-0 text-center`: essa
+ * combinação limita a CAIXA à largura da coluna, e um texto mais largo que
+ * a caixa saía alinhado ao início dela, não centralizado na tela).
  */
 function ancoragemDoRotulo(indice: number, total: number): AncoragemDoRotulo {
   if (indice <= 3) return "esquerda";
@@ -48,11 +51,14 @@ function ancoragemDoRotulo(indice: number, total: number): AncoragemDoRotulo {
  * - `completarSerieDe14Dias` (src/lib/crm.ts) garante as 14 COLUNAS sempre,
  *   mesmo se a série chegar menor — cada dia tem seu "trilho" de fundo, e um
  *   dia sem venda nunca some nem vira uma barra;
- * - cada coluna tem o número do dia embaixo (mês só na 1ª/na virada), Hoje
- *   sai escrito por extenso e no dourado do painel;
+ * - as 14 colunas mostram o número do dia SEMPRE (mês só na 1ª/na virada,
+ *   linha reservada em toda coluna para a fileira de dias não desalinhar),
+ *   Hoje sai escrito por extenso e no dourado do painel;
  * - venda em tom esmeralda (mesmo tom de "ótimo" do CRM), hoje em
- *   admin-gold; tocar/passar numa coluna marca ela e mostra o dia + valor na
- *   linha de cima (mantido); a barra de maior valor ganha o rótulo do valor
+ *   admin-gold; tocar/passar numa coluna marca ela — as barras das OUTRAS
+ *   colunas esmaecem (opacity-40) para o destaque não depender só do trilho,
+ *   que uma barra em 100% de altura cobre por inteiro — e mostra o dia +
+ *   valor na linha de cima; a barra de maior valor ganha o rótulo do valor
  *   em cima, para dar escala.
  *
  * HTML puro (sem recharts): 14 barras não pedem biblioteca, e o Início abre
@@ -135,6 +141,7 @@ export function SerieDe14Dias({
       ) : (
         <>
           <div
+            data-testid="serie-14d-barras"
             className="mt-6 flex touch-pan-y gap-0.5"
             onPointerMove={aoMoverPonteiro}
             onPointerDown={aoMoverPonteiro}
@@ -149,12 +156,13 @@ export function SerieDe14Dias({
               const mesAnterior =
                 indice > 0 ? serieCompleta[indice - 1].dia.split("-")[1] : null;
               const mostrarMes = indice === 0 || mesTexto !== mesAnterior;
-              // 14 colunas em ~343px cabem uma ao lado da outra no
-              // celular só se o rótulo não for pesado demais: hoje e a
-              // virada de mês sempre aparecem; o resto alterna (dia sim,
-              // dia não) abaixo de `sm` para não sobrepor, e some por
-              // completo a partir de `sm` (tela maior sobra espaço).
-              const mostrarRotulo = hoje || mostrarMes || indice % 2 === 0;
+              // As 14 colunas mostram o rótulo do dia SEMPRE (pedido do
+              // Gabriel: "cada barra de cada dia") — a folga medida a 375px
+              // e até a 320px é positiva, então nada de alternar dia
+              // sim/dia não; se algum dia isso apertar de verdade num
+              // celular menor, é a fonte do rótulo que cede, não a
+              // presença dele.
+              const outraColunaMarcada = marcado != null && marcado !== indice;
               return (
                 <div
                   key={ponto.dia}
@@ -178,56 +186,80 @@ export function SerieDe14Dias({
                           // para a direita (left-0, sem right-0: sobra
                           // coluna à direita); perto do FIM cresce para a
                           // esquerda (right-0, sem left-0); no meio sobra
-                          // cartão dos dois lados e ele fica centralizado.
+                          // cartão dos dois lados e ele fica centralizado
+                          // de verdade com `left-1/2 -translate-x-1/2`
+                          // (`inset-x-0 text-center` prendia a caixa à
+                          // largura da coluna e o texto saía alinhado ao
+                          // início dela, não centralizado na tela).
                           ancoragemDoRotuloDoPico === "esquerda" &&
                             "left-0 text-left",
                           ancoragemDoRotuloDoPico === "direita" &&
                             "right-0 text-right",
                           ancoragemDoRotuloDoPico === "centro" &&
-                            "inset-x-0 text-center",
+                            "left-1/2 -translate-x-1/2",
                         )}
                       >
                         {formatarMoeda(ponto.receita)}
                       </span>
                     ) : null}
-                    {/* Trilho: SEMPRE visível, ocupa a altura inteira da
-                        coluna — é o que faz um dia sem venda continuar
-                        sendo uma coluna (não sumir). Opacidade baixa e
-                        altura fixa o distinguem de uma barra de venda
-                        (cor cheia, altura proporcional ao valor). */}
+                    {/* Trilho + barra ficam num wrapper à parte porque só
+                        ELES esmaecem quando outra coluna está marcada — o
+                        texto (rótulo do pico, dia, mês) nunca perde
+                        contraste por causa de um toque em outro lugar. */}
                     <div
+                      data-testid="serie-14d-grafico"
                       className={cn(
-                        "absolute inset-x-0 bottom-0 h-full rounded-[4px] bg-zinc-800/50",
-                        marcado === indice && "bg-zinc-700/60",
-                        hoje && "ring-1 ring-inset ring-admin-gold/40",
+                        "absolute inset-0 flex items-end transition-opacity",
+                        outraColunaMarcada && "opacity-40",
                       )}
-                    />
-                    {temVenda ? (
+                    >
+                      {/* Trilho: SEMPRE visível, ocupa a altura inteira da
+                          coluna — é o que faz um dia sem venda continuar
+                          sendo uma coluna (não sumir). Opacidade baixa e
+                          altura fixa o distinguem de uma barra de venda
+                          (cor cheia, altura proporcional ao valor). */}
                       <div
-                        data-testid="serie-14d-barra"
                         className={cn(
-                          "relative w-full rounded-t-[4px] transition-[height]",
-                          hoje ? "bg-admin-gold" : "bg-emerald-400",
+                          "absolute inset-x-0 bottom-0 h-full rounded-[4px] bg-zinc-800/50",
+                          marcado === indice && "bg-zinc-700/60",
+                          hoje && "ring-1 ring-inset ring-admin-gold/40",
                         )}
-                        style={{ height: `${Math.max(6, alturaPct)}%` }}
                       />
-                    ) : null}
+                      {temVenda ? (
+                        <div
+                          data-testid="serie-14d-barra"
+                          className={cn(
+                            "relative w-full rounded-t-[4px] transition-[height]",
+                            hoje ? "bg-admin-gold" : "bg-emerald-400",
+                          )}
+                          style={{ height: `${Math.max(6, alturaPct)}%` }}
+                        />
+                      ) : null}
+                    </div>
                   </div>
                   <div
                     data-testid="serie-14d-rotulo"
                     className="flex flex-col items-center gap-0.5 text-center"
                   >
-                    {mostrarMes ? (
-                      <span className="text-[8px] uppercase leading-none text-zinc-600">
-                        {MESES_ABREVIADOS[Number(mesTexto) - 1]}
-                      </span>
-                    ) : null}
+                    {/* A linha do mês é reservada em TODAS as colunas (só
+                        fica invisível fora da 1ª/virada) — sem isto, as
+                        colunas sem mês tinham uma linha a menos e o número
+                        do dia descia, desalinhando a fileira toda. */}
+                    <span
+                      data-testid="serie-14d-rotulo-mes"
+                      aria-hidden="true"
+                      className={cn(
+                        "text-[9px] uppercase leading-none text-zinc-400",
+                        !mostrarMes && "invisible",
+                      )}
+                    >
+                      {MESES_ABREVIADOS[Number(mesTexto) - 1]}
+                    </span>
                     <span
                       data-testid="serie-14d-rotulo-dia"
                       className={cn(
                         "text-[10px] leading-none tabular-nums",
-                        hoje ? "font-bold text-admin-gold" : "text-zinc-500",
-                        !mostrarRotulo && "hidden sm:inline",
+                        hoje ? "font-bold text-admin-gold" : "text-zinc-400",
                       )}
                     >
                       {hoje ? "Hoje" : diaTexto}
