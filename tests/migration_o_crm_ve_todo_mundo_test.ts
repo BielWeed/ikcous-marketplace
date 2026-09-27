@@ -97,19 +97,43 @@ Deno.test("crm__pedidos_nao_pagos reaproveita a fusão wa->conta de crm__vendas 
   assertStringIncludes(
     migrationN,
     norm(
-      "COALESCE(sum(i.total) FILTER (WHERE i.payment_status = 'aguardando'), 0),",
+      "COALESCE(sum(i.total) FILTER ( WHERE i.payment_status = 'aguardando' AND i.status NOT IN ('cancelled', 'returned') AND (i.expires_at IS NULL OR i.expires_at > now()) ), 0) AS valor_em_aberto,",
     ),
   );
   assertStringIncludes(
     migrationN,
     norm("AND i.chave_calc NOT IN (SELECT chave FROM pagas)"),
   );
+  // Achado 7 (revisão de risco): fusão wa→conta de pedidos NÃO pagos (não só
+  // dos pagos) — sem pedido pago nenhum, a mesma pessoa (conta + balcão)
+  // virava dois registros.
+  assertStringIncludes(
+    migrationN,
+    norm(
+      "LEFT JOIN wa_de_qualquer_pedido wq ON wq.wa = t.wa AND t.user_id IS NULL AND wp.user_id IS NULL",
+    ),
+  );
+  // Achado 8: equipe/admin também não pode aparecer em pediu_nao_pagou.
+  assertStringIncludes(
+    migrationN,
+    norm(
+      "WHERE COALESCE(pr.role, 'customer') = 'customer' AND COALESCE(au.raw_app_meta_data ->> 'role', 'customer') NOT IN ('admin', 'gerente', 'vendedor')",
+    ),
+  );
 });
 
-Deno.test("crm__nunca_comprou exclui equipe/admin (só role customer) e lê e-mail de auth.users", () => {
+Deno.test("crm__nunca_comprou exclui equipe/admin (2 checagens) e o mesmo WhatsApp de uma venda paga de balcão", () => {
   assertStringIncludes(
     migrationN,
     norm("WHERE COALESCE(p.role, 'customer') = 'customer'"),
+  );
+  // Achado 8: a checagem que is_admin() de fato lê (app_metadata), não só
+  // profiles.role.
+  assertStringIncludes(
+    migrationN,
+    norm(
+      "AND COALESCE(u.raw_app_meta_data ->> 'role', 'customer') NOT IN ('admin', 'gerente', 'vendedor')",
+    ),
   );
   assertStringIncludes(
     migrationN,
@@ -119,6 +143,20 @@ Deno.test("crm__nunca_comprou exclui equipe/admin (só role customer) e lê e-ma
     migrationN,
     norm(
       "AND NOT EXISTS ( SELECT 1 FROM public.marketplace_orders o WHERE o.user_id = p.id AND o.created_at <= p_ate )",
+    ),
+  );
+  // Achado 6: WhatsApp normalizado a dígitos e exclusão de quem já é uma
+  // venda paga de balcão (mesma pessoa).
+  assertStringIncludes(
+    migrationN,
+    norm(
+      "NULLIF(regexp_replace(COALESCE(p.whatsapp, ''), '\\D', '', 'g'), ''),",
+    ),
+  );
+  assertStringIncludes(
+    migrationN,
+    norm(
+      "SELECT DISTINCT substring(v.chave FROM 4) AS digitos FROM public.crm__vendas(p_ate) v WHERE v.chave LIKE 'wa:%'",
     ),
   );
 });
@@ -150,11 +188,15 @@ Deno.test("crm_clientes vira a uniao de 3 grupos, ordenados grupo->receita->data
   );
   assertStringIncludes(
     migrationN,
-    norm("ORDER BY b.grupo ASC, b.receita DESC, b.ordem_data DESC)"),
+    norm(
+      "ORDER BY b.grupo ASC, b.receita DESC, b.ordem_data DESC, b.chave ASC)",
+    ),
   );
   assertStringIncludes(
     migrationN,
-    norm("'valor_em_aberto', b.valor_em_aberto"),
+    norm(
+      "'valor_em_aberto', b.valor_em_aberto, 'cadastrado_em', b.cadastrado_em",
+    ),
   );
 });
 

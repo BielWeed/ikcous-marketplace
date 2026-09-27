@@ -18,9 +18,9 @@
 SELECT checagem, valor, esperado, COALESCE(valor = esperado, false) AS ok FROM (VALUES
   ('83 crm__pedidos_nao_pagos existe', (to_regprocedure('public.crm__pedidos_nao_pagos(timestamptz)') IS NOT NULL)::text, 'true'),
   ('83 crm__nunca_comprou existe', (to_regprocedure('public.crm__nunca_comprou(timestamptz)') IS NOT NULL)::text, 'true'),
-  ('83 crm__pedidos_nao_pagos: corpo', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm__pedidos_nao_pagos(timestamptz)')), '(função ausente)'), '7ecb6313f758ec497ea18d1392ca5081'),
-  ('83 crm__nunca_comprou: corpo', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm__nunca_comprou(timestamptz)')), '(função ausente)'), 'f095282f9c14b89f35241b13855e0740'),
-  ('83 crm_clientes: corpo novo (3 grupos)', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm_clientes(text, text, integer, integer)')), '(função ausente)'), '8e3bd79aac1d531910f6f6b1d7505498'),
+  ('83 crm__pedidos_nao_pagos: corpo', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm__pedidos_nao_pagos(timestamptz)')), '(função ausente)'), '706d3cbaffc77d4b15ac06cc4c244256'),
+  ('83 crm__nunca_comprou: corpo', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm__nunca_comprou(timestamptz)')), '(função ausente)'), '3e069334090dd819a036dd2dc546a184'),
+  ('83 crm_clientes: corpo novo (3 grupos)', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm_clientes(text, text, integer, integer)')), '(função ausente)'), 'f31396c2f583756da56ae63a44cf09dc'),
   ('83 crm_visao: corpo novo (2 segmentos a mais)', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm_visao(date, date)')), '(função ausente)'), '0e76e93760b7db349c294c40b4477c18'),
   ('83 crm__pedidos_nao_pagos SAI de anon', has_function_privilege('anon', 'public.crm__pedidos_nao_pagos(timestamptz)', 'EXECUTE')::text, 'false'),
   ('83 crm__pedidos_nao_pagos SAI de authenticated', has_function_privilege('authenticated', 'public.crm__pedidos_nao_pagos(timestamptz)', 'EXECUTE')::text, 'false'),

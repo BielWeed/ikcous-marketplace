@@ -86,7 +86,7 @@ on:
           - 72-74
           - 75-78
           - 79-82
-          - 83
+          - "83"
       confirmar:
         description: "Só o job do ledger olha isto: precisa ser exatamente GRAVAR"
         required: false

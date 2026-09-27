@@ -14,22 +14,34 @@
 -- O QUE ESTA MIGRATION FAZ, NA ORDEM (só LEITURA — nenhuma tabela nova)
 --   1. crm__pedidos_nao_pagos(p_ate): identidade (conta OU WhatsApp, MESMA
 --      regra de chave/fusão wa→conta de crm__vendas — reaproveita
---      crm__vendas(p_ate) para achar a fusão, sem duplicar a lógica) com
---      ≥ 1 pedido (qualquer status, `marketplace_orders.created_at <= p_ate`)
---      e NENHUM pedido "pago válido" (a mesma régua de crm__vendas: chave
---      ausente do conjunto que crm__vendas devolve). `pedidos` conta TODOS os
---      pedidos da identidade (pedidos criados); `valor_em_aberto` soma só o
---      que está `payment_status = 'aguardando'` agora — é o valor que ainda
---      tem chance real de virar pagamento (pedido `recusado`/`expirado` já
---      morreu; não teria por que entrar num "valor em aberto").
+--      crm__vendas(p_ate) para achar a fusão, sem duplicar a lógica; achado 7
+--      da revisão de risco acrescenta um SEGUNDO mapa de fusão, tirado de
+--      TODOS os pedidos com user_id — não só os pagos — para a mesma pessoa
+--      não virar dois registros quando NENHUM dos pedidos dela é pago, ver
+--      REVISÃO DE RISCO abaixo) com ≥ 1 pedido (qualquer status,
+--      `marketplace_orders.created_at <= p_ate`) e NENHUM pedido "pago
+--      válido" (a mesma régua de crm__vendas: chave ausente do conjunto que
+--      crm__vendas devolve). `pedidos` conta TODOS os pedidos da identidade
+--      (pedidos criados); `valor_em_aberto` soma só pedido `aguardando`,
+--      NÃO cancelado/devolvido e com a reserva ainda viva (achado 2) — é o
+--      valor que ainda tem chance real de virar pagamento. Exclui
+--      equipe/admin (achado 8, mesma dupla checagem do item 2 abaixo).
 --   2. crm__nunca_comprou(p_ate): conta cadastrada em `profiles` até p_ate
---      SEM nenhum pedido (`NOT EXISTS` em marketplace_orders) e com
---      `COALESCE(role, 'customer') = 'customer'` — exclui equipe/admin
---      (`profiles.role` é `admin | gerente | vendedor | customer`; só
---      `handle_new_user` grava `customer` no cadastro real da loja, os outros
---      três papéis são conta de STAFF, nunca de cliente comprando —
---      AGENTS.md: "papel mora em profiles.role ... lojista = staff"). E-mail
---      vem de `auth.users` (schema-qualificado; profiles não guarda e-mail).
+--      SEM nenhum pedido (`NOT EXISTS` em marketplace_orders), sem o mesmo
+--      WhatsApp de uma venda paga de balcão (achado 6 — mesma pessoa, não
+--      duas) e com DUAS checagens de "não é staff" (achado 8):
+--      `COALESCE(profiles.role, 'customer') = 'customer'` (papel mora em
+--      `profiles.role`: `admin | gerente | vendedor | customer` — só
+--      `handle_new_user` grava `customer` no cadastro real da loja, os
+--      outros três papéis são conta de STAFF, nunca de cliente comprando —
+--      AGENTS.md: "papel mora em profiles.role ... lojista = staff") E
+--      `auth.users.raw_app_meta_data->>'role' NOT IN staff` — a checagem que
+--      `is_admin()` de fato lê; hoje as duas sempre concordam (gatilho
+--      `handle_profile_role_sync_to_auth` mantém sincronizado), mas checar
+--      só uma seria confiar num gatilho por trás de uma régua de segurança.
+--      E-mail vem de `auth.users` (schema-qualificado; profiles não guarda
+--      e-mail); WhatsApp sai normalizado a dígitos (mesma régua do resto do
+--      CRM — achado 6, `profiles.whatsapp` pode estar em qualquer formato).
 --      As duas funções são STABLE, sem SECURITY DEFINER (mesmo padrão de
 --      crm__vendas/crm__clientes_rfm): quem autoriza é o REVOKE de
 --      PUBLIC/anon/authenticated logo abaixo, e quem as chama com privilégio
@@ -48,10 +60,12 @@
 --      exclusivamente dentro do `jsonb_build_object` de `segmentos`.
 --   4. crm_clientes(p_segmento, p_busca, p_limite, p_offset): CREATE OR
 --      REPLACE, MESMA assinatura, MESMO formato jsonb `{total, clientes:[…]}`
---      com as MESMAS chaves de antes + uma nova, `valor_em_aberto` (número ou
---      `null`) — quem lê a RPC antiga (banco de uma loja ainda na 78) não
---      ganha a chave, e o parser do front (`lerCliente`) já trata chave
---      ausente como "não sei" por padrão, então nenhuma tela quebra.
+--      com as MESMAS chaves de antes + DUAS novas, `valor_em_aberto` (só
+--      `pediu_nao_pagou`) e `cadastrado_em` (só `nunca_comprou` — o front
+--      usa para o cartão enxuto do celular desse grupo) — quem lê a RPC
+--      antiga (banco de uma loja ainda na 78) não ganha as chaves, e o
+--      parser do front (`lerCliente`) já trata chave ausente como "não sei"
+--      por padrão, então nenhuma tela quebra.
 --      A lista vira a UNIÃO de três grupos, cada um com um número de ordem
 --      (`grupo` 0/1/2) que MANDA na ordenação final antes de qualquer outro
 --      critério — por isso os compradores (grupo 0) sempre vêm primeiro,
@@ -77,13 +91,55 @@
 --                  recente.
 --      `p_segmento` e a busca (nome/e-mail/WhatsApp) filtram os TRÊS grupos
 --      igual — o filtro roda sobre a união, não sobre cada grupo à parte.
---      `total` conta a união inteira (já filtrada).
+--      `total` conta a união inteira (já filtrada). Desempate final por
+--      `chave ASC` (achado 10) — paginação por OFFSET estável quando grupo/
+--      receita/data empatam (comum nos grupos novos, receita sempre 0).
 --      Nome: `profiles.full_name` quando existir (LEFT JOIN em todos os
 --      grupos), senão o nome que o pedido carrega (`customer_name`, só
 --      grupos 0/1) — igual à regra de hoje.
 --      SECURITY DEFINER, `search_path = public`, gate `is_admin()` com
 --      42501, REVOKE/GRANT iguais aos de 78: nenhum SELECT amplo novo para
 --      anon/authenticated.
+--
+-- REVISÃO DE RISCO (rodada 1, 27/09/2026) — achados corrigidos aqui
+--   1. `tests/banco/crm-inicio-viva.cjs` esperava só os 10 segmentos RFM em
+--      `crm_visao.segmentos` — corrigido NO TESTE (não aqui: a promessa desta
+--      migration é trazer os 2 grupos sempre, é o teste que estava
+--      desatualizado); ver tests/banco/LEIA-ME e o passo novo no rpc-ci.yml.
+--   2. `valor_em_aberto`/a `receita` de `pediu_nao_pagou` em `crm_visao`
+--      somavam pedido CANCELADO (cancelar não muda `payment_status`, fica
+--      'aguardando' para sempre) e reserva online JÁ VENCIDA que o pg_cron
+--      ainda não varreu (a varredura só olha `status='pending'`) — os dois
+--      filtros novos (`status NOT IN ('cancelled','returned')` e
+--      `expires_at IS NULL OR expires_at > now()`) fecham isso.
+--   5. Decisão do coordenador: quem PAGOU e teve o pedido cancelado/
+--      estornado/devolvido depois CONTINUA em `pediu_nao_pagou` (não tem
+--      compra paga VÁLIDA agora — a descrição do front já é "não tem compra
+--      paga válida", não "nunca pagou") — mas com `valor_em_aberto = 0`
+--      (o achado 2 já garante: `payment_status` desse pedido não é mais
+--      'aguardando'). Provado em prova viva com fixture de pedido estornado.
+--   6. `crm__nunca_comprou`: WhatsApp saía CRU (`profiles.whatsapp`, formato
+--      livre) — agora normalizado a dígitos, mesma régua do resto do CRM.
+--      E um perfil cujo WhatsApp bate com uma venda PAGA de balcão
+--      ('wa:...', a mesma pessoa comprando sem conta antes de se cadastrar)
+--      não pode virar um SEGUNDO cliente aqui — `NOT EXISTS` contra as
+--      chaves 'wa:' de `crm__vendas`.
+--   7. `crm__pedidos_nao_pagos` só fundia WhatsApp→conta a partir de pedido
+--      PAGO (`crm__vendas`) — vazio por definição neste grupo (ninguém aqui
+--      pagou nada). Sem pedido pago nenhum, a MESMA pessoa que pediu uma vez
+--      com conta e outra só pelo WhatsApp do balcão virava DOIS registros.
+--      `wa_de_qualquer_pedido` é o fallback: mapa tirado de TODOS os pedidos
+--      com `user_id`, só usado quando o mapa dos pagos não resolveu.
+--   8. Equipe/admin não era excluída de `pediu_nao_pagou` (só de
+--      `nunca_comprou`) — agora as duas funções excluem por
+--      `profiles.role <> 'customer'` E `auth.users.raw_app_meta_data->>
+--      'role' IN staff` (o que `is_admin()` de fato lê).
+--   9. Provas vivas reescritas para provar 42501 com `SET ROLE anon`/
+--      `SET ROLE authenticated` de verdade (não só "logado como não-admin"),
+--      contra as 4 funções (as 2 RPCs e os 2 ajudantes).
+--  10. `ORDER BY` de `crm_clientes` sem desempate único — paginação por
+--      OFFSET podia reordenar linhas empatadas entre uma chamada e outra.
+--      `, chave ASC` no fim do `ORDER BY` (interno e do `jsonb_agg`).
 --
 -- DADOS EXISTENTES
 --   Nenhuma tabela nova, nenhuma coluna nova, nenhuma linha escrita ou
@@ -103,8 +159,12 @@
 --   `ClientesDoCrm.tsx`) é passo à parte desta mesma tarefa, não desta
 --   migration.
 --
--- COMO APLICAR: `node scripts/db-apply.cjs <este arquivo>` (sem BEGIN/COMMIT
--- de nível superior neste arquivo — regra da casa).
+-- COMO APLICAR (local/dev, DATABASE_URL direto): `node scripts/db-apply.cjs
+-- <este arquivo>` (sem BEGIN/COMMIT de nível superior neste arquivo — regra
+-- da casa). NA LOJA (produção), NUNCA db-apply direto — só pelo workflow
+-- `aplicar-migrations.yml` (Actions → migracoes=
+-- 20261183000000_o_crm_ve_todo_mundo.sql, projeto=loja), que faz a prova
+-- BEGIN/ROLLBACK antes de aplicar de verdade. Ver runbook §8.
 --
 -- FICHA DE VERIFICAÇÃO:
 --   1. SELECT public.crm_clientes(NULL, NULL, 200, 0) -> 'total'; -- soma os 3 grupos
@@ -119,7 +179,13 @@
 --
 -- ROLLBACK MANUAL: rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql
 -- (restaura os corpos de crm_visao e crm_clientes da 78, verbatim, e derruba
--- os dois ajudantes novos). psql -1 -f, nunca db-apply.
+-- os dois ajudantes novos). psql -1 -f, nunca db-apply. Rode ANTES de
+-- reverter a 78 — provado ao vivo: reverter a 78 primeiro DROPA
+-- crm_clientes/crm_visao/crm__vendas/crm__clientes_rfm (o rollback da 78 é
+-- só DROP, ela não existia antes) enquanto os ajudantes desta migration
+-- ainda estão no ar chamando `crm__vendas` — a PRÓXIMA chamada a
+-- `crm_clientes` já estoura 42883 (function does not exist), antes mesmo de
+-- chegar nos ajudantes órfãos. Ver runbook §5.
 
 CREATE OR REPLACE FUNCTION public.crm__pedidos_nao_pagos(p_ate timestamptz)
 RETURNS TABLE (
@@ -132,38 +198,74 @@ AS $$
     SELECT * FROM public.crm__vendas(p_ate)
   ), pagas AS (
     SELECT DISTINCT chave FROM vendas WHERE chave IS NOT NULL
-  ), wa_da_conta AS (
+  ), wa_da_conta_paga AS (
     SELECT DISTINCT ON (v.whatsapp) v.whatsapp AS wa, v.user_id
       FROM vendas v
      WHERE v.whatsapp IS NOT NULL AND v.user_id IS NOT NULL
      ORDER BY v.whatsapp, v.pago_em DESC
   ), todos AS (
-    SELECT o.id, o.total::numeric AS total, o.canal, o.user_id, o.created_at, o.payment_status,
+    SELECT o.id, o.total::numeric AS total, o.canal, o.user_id, o.created_at,
+           o.payment_status, o.status, o.expires_at,
            NULLIF(btrim(o.customer_name), '') AS nome,
            NULLIF(regexp_replace(COALESCE(o.customer_data ->> 'whatsapp', ''), '\D', '', 'g'), '') AS wa,
            NULLIF(btrim(COALESCE(o.customer_data ->> 'email', '')), '') AS email
       FROM public.marketplace_orders o
      WHERE o.created_at <= p_ate
+  ), wa_de_qualquer_pedido AS (
+    -- Achado 7 (revisão de risco): sem NENHUM pedido pago, a fusão de
+    -- `vendas` (só paga) fica vazia para este grupo inteiro — sem este
+    -- ajudante, a MESMA pessoa que pediu uma vez com conta e outra só pelo
+    -- WhatsApp do balcão (nenhuma das duas paga) virava DOIS registros.
+    -- Só entra quando `wa_da_conta_paga` não resolveu aquele número.
+    SELECT DISTINCT ON (t.wa) t.wa, t.user_id
+      FROM todos t
+     WHERE t.wa IS NOT NULL AND t.user_id IS NOT NULL
+     ORDER BY t.wa, t.created_at DESC
   ), identificados AS (
     SELECT t.*,
-           COALESCE(t.user_id::text, w.user_id::text, CASE WHEN t.wa IS NOT NULL THEN 'wa:' || t.wa END) AS chave_calc,
-           COALESCE(t.user_id, w.user_id) AS uid
+           COALESCE(t.user_id::text, wp.user_id::text, wq.user_id::text,
+                    CASE WHEN t.wa IS NOT NULL THEN 'wa:' || t.wa END) AS chave_calc,
+           COALESCE(t.user_id, wp.user_id, wq.user_id) AS uid
       FROM todos t
-      LEFT JOIN wa_da_conta w ON w.wa = t.wa AND t.user_id IS NULL
+      LEFT JOIN wa_da_conta_paga wp ON wp.wa = t.wa AND t.user_id IS NULL
+      LEFT JOIN wa_de_qualquer_pedido wq
+             ON wq.wa = t.wa AND t.user_id IS NULL AND wp.user_id IS NULL
+  ), agregados AS (
+    SELECT i.chave_calc AS chave,
+           (array_agg(i.uid ORDER BY i.created_at DESC) FILTER (WHERE i.uid IS NOT NULL))[1] AS user_id,
+           (array_agg(i.nome ORDER BY i.created_at DESC) FILTER (WHERE i.nome IS NOT NULL))[1] AS nome,
+           (array_agg(i.wa ORDER BY i.created_at DESC) FILTER (WHERE i.wa IS NOT NULL))[1] AS whatsapp,
+           (array_agg(i.email ORDER BY i.created_at DESC) FILTER (WHERE i.email IS NOT NULL))[1] AS email,
+           count(*)::integer AS pedidos,
+           -- Achado 2 (revisão de risco): cancelar NÃO muda payment_status
+           -- (fica 'aguardando' para sempre — update_order_status_atomic só
+           -- mexe em status/estoque) e a varredura de expiração só varre
+           -- status='pending'; sem os dois filtros extras, um pedido morto
+           -- (cancelado, ou uma reserva online já vencida que o cron ainda
+           -- não varreu) inflava "valor em aberto" com dinheiro que não tem
+           -- mais chance nenhuma de virar pagamento.
+           COALESCE(sum(i.total) FILTER (
+             WHERE i.payment_status = 'aguardando'
+               AND i.status NOT IN ('cancelled', 'returned')
+               AND (i.expires_at IS NULL OR i.expires_at > now())
+           ), 0) AS valor_em_aberto,
+           mode() WITHIN GROUP (ORDER BY i.canal) AS canal_preferido,
+           max(i.created_at) AS ultimo_pedido
+      FROM identificados i
+     WHERE i.chave_calc IS NOT NULL
+       AND i.chave_calc NOT IN (SELECT chave FROM pagas)
+     GROUP BY i.chave_calc
   )
-  SELECT i.chave_calc,
-         (array_agg(i.uid ORDER BY i.created_at DESC) FILTER (WHERE i.uid IS NOT NULL))[1],
-         (array_agg(i.nome ORDER BY i.created_at DESC) FILTER (WHERE i.nome IS NOT NULL))[1],
-         (array_agg(i.wa ORDER BY i.created_at DESC) FILTER (WHERE i.wa IS NOT NULL))[1],
-         (array_agg(i.email ORDER BY i.created_at DESC) FILTER (WHERE i.email IS NOT NULL))[1],
-         count(*)::integer,
-         COALESCE(sum(i.total) FILTER (WHERE i.payment_status = 'aguardando'), 0),
-         mode() WITHIN GROUP (ORDER BY i.canal),
-         max(i.created_at)
-    FROM identificados i
-   WHERE i.chave_calc IS NOT NULL
-     AND i.chave_calc NOT IN (SELECT chave FROM pagas)
-   GROUP BY i.chave_calc
+  -- Achado 8 (revisão de risco): equipe/admin também não pode aparecer
+  -- aqui — mesma dupla checagem de crm__nunca_comprou (profiles.role E
+  -- auth.users.raw_app_meta_data->>'role', o que is_admin() lê de fato).
+  SELECT a.chave, a.user_id, a.nome, a.whatsapp, a.email, a.pedidos,
+         a.valor_em_aberto, a.canal_preferido, a.ultimo_pedido
+    FROM agregados a
+    LEFT JOIN public.profiles pr ON pr.id = a.user_id
+    LEFT JOIN auth.users au ON au.id = a.user_id
+   WHERE COALESCE(pr.role, 'customer') = 'customer'
+     AND COALESCE(au.raw_app_meta_data ->> 'role', 'customer') NOT IN ('admin', 'gerente', 'vendedor')
 $$;
 
 CREATE OR REPLACE FUNCTION public.crm__nunca_comprou(p_ate timestamptz)
@@ -172,14 +274,35 @@ RETURNS TABLE (
 )
 LANGUAGE sql STABLE SET search_path = public
 AS $$
-  SELECT p.id::text, p.id, NULLIF(btrim(COALESCE(p.full_name, '')), ''), p.whatsapp, u.email::text, p.created_at
+  WITH wa_pagos AS (
+    -- Achado 6 (revisão de risco): o MESMO WhatsApp que já é uma venda paga
+    -- de balcão ('wa:...', crm__vendas) não pode voltar como um SEGUNDO
+    -- cliente aqui só porque a pessoa depois criou conta — é a MESMA
+    -- identidade, já contada como compradora.
+    SELECT DISTINCT substring(v.chave FROM 4) AS digitos
+      FROM public.crm__vendas(p_ate) v
+     WHERE v.chave LIKE 'wa:%'
+  )
+  SELECT p.id::text, p.id, NULLIF(btrim(COALESCE(p.full_name, '')), ''),
+         -- WhatsApp normalizado a dígitos, mesma régua do resto do CRM (era
+         -- devolvido cru — achado 6).
+         NULLIF(regexp_replace(COALESCE(p.whatsapp, ''), '\D', '', 'g'), ''),
+         u.email::text, p.created_at
     FROM public.profiles p
     LEFT JOIN auth.users u ON u.id = p.id
    WHERE COALESCE(p.role, 'customer') = 'customer'
+     -- Achado 8: a checagem que is_admin() de fato lê (app_metadata), não só
+     -- profiles.role — defesa em profundidade mesmo com o gatilho que hoje
+     -- mantém os dois sincronizados (handle_profile_role_sync_to_auth).
+     AND COALESCE(u.raw_app_meta_data ->> 'role', 'customer') NOT IN ('admin', 'gerente', 'vendedor')
      AND p.created_at <= p_ate
      AND NOT EXISTS (
        SELECT 1 FROM public.marketplace_orders o
         WHERE o.user_id = p.id AND o.created_at <= p_ate
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM wa_pagos wp
+        WHERE wp.digitos = NULLIF(regexp_replace(COALESCE(p.whatsapp, ''), '\D', '', 'g'), '')
      )
 $$;
 
@@ -319,7 +442,7 @@ BEGIN
            CASE WHEN c.pedidos_total > 0 THEN round(c.receita_total / c.pedidos_total, 2) ELSE 0 END AS ticket_medio,
            c.primeira_compra, c.ultima_compra, c.dias_sem_comprar,
            c.r, c.f, c.m, c.segmento, c.canal_preferido,
-           NULL::numeric AS valor_em_aberto,
+           NULL::numeric AS valor_em_aberto, NULL::timestamptz AS cadastrado_em,
            0 AS grupo, c.ultima_compra AS ordem_data
       FROM public.crm__clientes_rfm(now()) c
       LEFT JOIN public.profiles pr ON pr.id = c.user_id
@@ -330,7 +453,7 @@ BEGIN
            (public.fin__dia(now()) - public.fin__dia(np.ultimo_pedido))::integer AS dias_sem_comprar,
            NULL::integer AS r, NULL::integer AS f, NULL::integer AS m,
            'pediu_nao_pagou'::text AS segmento, np.canal_preferido,
-           np.valor_em_aberto,
+           np.valor_em_aberto, NULL::timestamptz AS cadastrado_em,
            1 AS grupo, np.ultimo_pedido AS ordem_data
       FROM public.crm__pedidos_nao_pagos(now()) np
       LEFT JOIN public.profiles pr ON pr.id = np.user_id
@@ -341,7 +464,7 @@ BEGIN
            NULL::integer AS dias_sem_comprar,
            NULL::integer AS r, NULL::integer AS f, NULL::integer AS m,
            'nunca_comprou'::text AS segmento, NULL::text AS canal_preferido,
-           NULL::numeric AS valor_em_aberto,
+           NULL::numeric AS valor_em_aberto, nc.cadastrado_em,
            2 AS grupo, nc.cadastrado_em AS ordem_data
       FROM public.crm__nunca_comprou(now()) nc
   ), base AS (
@@ -365,9 +488,12 @@ BEGIN
         'primeira_compra', b.primeira_compra, 'ultima_compra', b.ultima_compra,
         'dias_sem_comprar', b.dias_sem_comprar, 'r', b.r, 'f', b.f, 'm', b.m,
         'segmento', b.segmento, 'canal_preferido', b.canal_preferido,
-        'valor_em_aberto', b.valor_em_aberto
-      ) ORDER BY b.grupo ASC, b.receita DESC, b.ordem_data DESC)
-      FROM (SELECT * FROM filtrado ORDER BY grupo ASC, receita DESC, ordem_data DESC
+        'valor_em_aberto', b.valor_em_aberto, 'cadastrado_em', b.cadastrado_em
+      ) ORDER BY b.grupo ASC, b.receita DESC, b.ordem_data DESC, b.chave ASC)
+      -- `, chave ASC` no fim (achado 10, revisão de risco): desempate único
+      -- para a paginação por OFFSET ficar estável quando grupo/receita/data
+      -- empatam entre si (comum nos grupos novos, onde receita é sempre 0).
+      FROM (SELECT * FROM filtrado ORDER BY grupo ASC, receita DESC, ordem_data DESC, chave ASC
              LIMIT LEAST(GREATEST(COALESCE(p_limite, 50), 1), 200)
             OFFSET GREATEST(COALESCE(p_offset, 0), 0)) b), '[]'::jsonb)
   ) INTO v_res;

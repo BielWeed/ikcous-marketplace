@@ -265,7 +265,10 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
     () => {
       assertStringIncludes(
         yaml,
-        "options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82\n          - 83",
+        // "83" entre aspas de propósito (achado 10, revisão de risco): sem
+        // aspas é um YAML bare scalar NUMÉRICO — as outras opções têm hífen
+        // (72-74 etc.) e nunca são ambíguas, só esta é um inteiro puro.
+        'options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82\n          - "83"',
       );
     },
   );
@@ -834,12 +837,12 @@ Deno.test("7a-conferir-83.sql — os hashes/ACLs embutidos batem com o que a ár
     [
       "crm__pedidos_nao_pagos",
       "CREATE OR REPLACE FUNCTION public.crm__pedidos_nao_pagos(p_ate timestamptz)",
-      "7ecb6313f758ec497ea18d1392ca5081",
+      "706d3cbaffc77d4b15ac06cc4c244256",
     ],
     [
       "crm__nunca_comprou",
       "CREATE OR REPLACE FUNCTION public.crm__nunca_comprou(p_ate timestamptz)",
-      "f095282f9c14b89f35241b13855e0740",
+      "3e069334090dd819a036dd2dc546a184",
     ],
     [
       "crm_visao",
@@ -849,7 +852,7 @@ Deno.test("7a-conferir-83.sql — os hashes/ACLs embutidos batem com o que a ár
     [
       "crm_clientes",
       "CREATE OR REPLACE FUNCTION public.crm_clientes(",
-      "8e3bd79aac1d531910f6f6b1d7505498",
+      "f31396c2f583756da56ae63a44cf09dc",
     ],
   ];
 
