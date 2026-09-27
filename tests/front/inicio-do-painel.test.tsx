@@ -263,11 +263,8 @@ describe("Início do painel", () => {
       botaoPorTexto(hospedeiro, "Caixa, extrato").click();
     });
     expect(onNavigate).toHaveBeenLastCalledWith("admin-financeiro");
-
-    await act(async () => {
-      botaoPorTexto(hospedeiro, "Vender").click();
-    });
-    expect(onNavigate).toHaveBeenLastCalledWith("admin-pdv");
+    // "Vender" saiu do Início (27/09/2026): já vive na barra de baixo — ver
+    // atalhos-do-inicio-so-dois-botoes-grandes.test.tsx.
   });
 
   it("o 'Para fazer' mostra as contagens e cada linha abre a tela que resolve", async () => {

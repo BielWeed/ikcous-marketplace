@@ -1,13 +1,5 @@
 import type { View } from "@/types";
-import {
-  ArrowRight,
-  BarChart3,
-  Landmark,
-  type LucideIcon,
-  RotateCcw,
-  ScanBarcode,
-  ShoppingBag,
-} from "lucide-react";
+import { ArrowRight, BarChart3, Landmark, type LucideIcon } from "lucide-react";
 
 interface BotaoGrande {
   readonly destino: View;
@@ -31,20 +23,13 @@ const BOTOES_GRANDES: readonly BotaoGrande[] = [
   },
 ];
 
-const ACOES_RAPIDAS: readonly {
-  readonly destino: View;
-  readonly rotulo: string;
-  readonly icone: LucideIcon;
-}[] = [
-  { destino: "admin-pdv", rotulo: "Vender", icone: ScanBarcode },
-  { destino: "admin-orders", rotulo: "Pedidos", icone: ShoppingBag },
-  { destino: "admin-devolucoes", rotulo: "Devoluções", icone: RotateCcw },
-];
-
 /**
- * As portas do Início: os dois botões grandes (CRM e Financeiro) e as ações
- * rápidas do dia a dia. `aoPrepararDestino` aquece o chunk da tela no
- * hover/toque, antes do clique.
+ * As portas do Início: os dois botões grandes (CRM e Financeiro).
+ * `aoPrepararDestino` aquece o chunk da tela no hover/toque, antes do
+ * clique. A fileira de ações rápidas (Vender, Pedidos, Devoluções) saiu —
+ * pedido do Gabriel (27/09/2026): Vender e Pedidos já estão na barra de
+ * baixo, e Devoluções tem porta própria na tela de Pedidos
+ * (`BotaoDevolucoes` em `AdminOrdersView.tsx`).
  */
 export function AtalhosDoInicio({
   onNavigate,
@@ -54,7 +39,7 @@ export function AtalhosDoInicio({
   aoPrepararDestino?: (view: View) => void;
 }>) {
   return (
-    <nav aria-label="Atalhos do painel" className="h-full space-y-3">
+    <nav aria-label="Atalhos do painel" className="h-full">
       <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 lg:grid-cols-1">
         {BOTOES_GRANDES.map((botao) => (
           <button
@@ -84,27 +69,6 @@ export function AtalhosDoInicio({
               className="size-4 shrink-0 text-admin-gold transition-transform duration-300 group-hover:translate-x-1"
               aria-hidden="true"
             />
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        {ACOES_RAPIDAS.map((acao) => (
-          <button
-            key={acao.destino}
-            type="button"
-            onClick={() => onNavigate(acao.destino)}
-            onMouseEnter={() => aoPrepararDestino?.(acao.destino)}
-            onFocus={() => aoPrepararDestino?.(acao.destino)}
-            className="group flex min-h-[64px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-2xl border border-white/5 bg-zinc-950/40 p-2 shadow-lg transition-all duration-500 hover:border-admin-gold/30 hover:bg-zinc-900/30 active:scale-[0.98]"
-          >
-            <acao.icone
-              className="size-4 text-zinc-300 transition-colors group-hover:text-admin-gold"
-              aria-hidden="true"
-            />
-            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-300">
-              {acao.rotulo}
-            </span>
           </button>
         ))}
       </div>
