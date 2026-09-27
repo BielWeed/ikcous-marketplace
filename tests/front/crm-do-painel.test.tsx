@@ -102,7 +102,9 @@ const VISAO = {
   ],
   formas: [
     { forma: "pix", receita: 3500, pedidos: 20 },
-    { forma: "cash", receita: 1500, pedidos: 20 },
+    // Valor REAL de fin__forma_do_pedido — nunca "cash" (achado N2 da
+    // re-revisão).
+    { forma: "dinheiro", receita: 1500, pedidos: 20 },
   ],
   funil: {
     // Sempre null no banco de verdade (`crm_visao` nunca mede isso hoje) —

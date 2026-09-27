@@ -33,6 +33,7 @@ import {
   QrCode,
   Smartphone,
   Store,
+  Wallet,
 } from "lucide-react";
 
 /** Identidade fixa dos canais — a MESMA do "Hoje" do Início. */
@@ -56,22 +57,35 @@ function estiloDoCanal(canal: "online" | "presencial"): {
  * Pago) usavam sky-400/violet-400 por engano — na mesma tela "Canais", ao
  * lado dos cartões de canal, a cor repetida sugeria (errado) que a forma
  * de pagamento era o canal.
+ *
+ * Valores REAIS de `forma` (ver `rotuloDaFormaDePagamento` em
+ * `src/lib/crm.ts`): `pix`, `credito`, `debito`, `dinheiro`, `cartao` ou
+ * `outro` — nunca `cash`/`card`/`online` (mantidos abaixo só como
+ * sinônimos defensivos). `cartao` é o cartão presencial genérico da
+ * maquininha, sem saber se foi crédito ou débito — cor PRÓPRIA (teal),
+ * distinta de `credito` (índigo) e `debito` (ciano): são 3 "tipos de
+ * cartão" diferentes na mesma lista.
  */
 function estiloDaForma(forma: string): { cor: string; icone: LucideIcon } {
   switch (forma) {
     case "pix":
       return { cor: "bg-emerald-400", icone: QrCode };
-    case "cash":
+    case "dinheiro":
+    case "cash": // sinônimo defensivo — nunca sai de fin__forma_do_pedido
       return { cor: "bg-amber-400", icone: Banknote };
-    case "online":
-      return { cor: "bg-fuchsia-400", icone: Globe };
+    case "credito":
+      return { cor: "bg-indigo-400", icone: CreditCard };
     case "debito":
       return { cor: "bg-cyan-400", icone: CreditCard };
-    case "credito":
-    case "card":
-      return { cor: "bg-indigo-400", icone: CreditCard };
+    case "cartao":
+    case "card": // sinônimo defensivo — idem
+      return { cor: "bg-teal-400", icone: CreditCard };
+    case "online": // sinônimo defensivo — idem (vira pix/credito/debito)
+      return { cor: "bg-fuchsia-400", icone: Globe };
+    // "outro" (valor real) e qualquer forma não reconhecida caem no mesmo
+    // neutro — ícone e cor de "não sei classificar", nunca inventados.
     default:
-      return { cor: "bg-indigo-400", icone: CreditCard };
+      return { cor: "bg-zinc-400", icone: Wallet };
   }
 }
 

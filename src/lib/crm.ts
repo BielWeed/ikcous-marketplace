@@ -695,20 +695,34 @@ export function rotuloDoCanal(canal: string | null | undefined): string {
   return canal ?? "—";
 }
 
+/**
+ * Rótulo por forma de pagamento. Os valores REAIS de `crm_visao.formas[].forma`
+ * vêm de `fin__forma_do_pedido` (migration
+ * `20261177000000_o_financeiro_da_loja_nasce.sql:308-318`): só `pix`,
+ * `credito`, `debito`, `dinheiro`, `cartao` ou `outro` — a função nunca
+ * devolve `cash`/`card`/`online` (esses são o `payment_method`/
+ * `metodo_online` BRUTOS de entrada, não a saída). `cash`/`card`/`online`
+ * ficam como sinônimos defensivos (nunca custam nada manter, e cobrem
+ * quem porventura chamar esta função com o valor bruto por engano).
+ */
 export function rotuloDaFormaDePagamento(forma: string): string {
   switch (forma) {
-    case "online":
-      return "Online (Mercado Pago)";
     case "pix":
       return "PIX";
-    case "card":
-      return "Cartão";
     case "credito":
       return "Cartão de crédito";
     case "debito":
       return "Cartão de débito";
-    case "cash":
+    case "dinheiro":
+    case "cash": // sinônimo defensivo — nunca sai de fin__forma_do_pedido
       return "Dinheiro";
+    case "cartao":
+    case "card": // sinônimo defensivo — idem
+      return "Cartão";
+    case "outro":
+      return "Outra forma";
+    case "online": // sinônimo defensivo — idem (vira pix/credito/debito)
+      return "Online (Mercado Pago)";
     default:
       return forma;
   }

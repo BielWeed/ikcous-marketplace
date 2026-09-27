@@ -15,6 +15,7 @@ import {
   pedidosSemVendaPaga,
   percentualDoTotal,
   pipelineEmAberto,
+  rotuloDaFormaDePagamento,
   ticketPorForma,
   tomDaTaxaDePagamento,
 } from "@/lib/crm";
@@ -251,6 +252,15 @@ describe("fraseLeituraDasFormas", () => {
     ).toBe("PIX é 70% da receita do período.");
   });
 
+  it("forma líder 'dinheiro' (valor real de fin__forma_do_pedido, não 'cash')", () => {
+    expect(
+      fraseLeituraDasFormas([
+        { forma: "dinheiro", receita: 3500, pedidos: 20 },
+        { forma: "pix", receita: 1500, pedidos: 20 },
+      ]),
+    ).toBe("Dinheiro é 70% da receita do período.");
+  });
+
   it("sem pagamentos: null", () => {
     expect(fraseLeituraDasFormas([])).toBeNull();
     expect(
@@ -342,5 +352,22 @@ describe("idadePorExtenso", () => {
   it("sem data ou data inválida: null", () => {
     expect(idadePorExtenso(null, agora)).toBeNull();
     expect(idadePorExtenso("não é data", agora)).toBeNull();
+  });
+});
+
+describe("rotuloDaFormaDePagamento", () => {
+  it("os 6 valores REAIS de fin__forma_do_pedido têm rótulo certo", () => {
+    expect(rotuloDaFormaDePagamento("pix")).toBe("PIX");
+    expect(rotuloDaFormaDePagamento("credito")).toBe("Cartão de crédito");
+    expect(rotuloDaFormaDePagamento("debito")).toBe("Cartão de débito");
+    expect(rotuloDaFormaDePagamento("dinheiro")).toBe("Dinheiro");
+    expect(rotuloDaFormaDePagamento("cartao")).toBe("Cartão");
+    expect(rotuloDaFormaDePagamento("outro")).toBe("Outra forma");
+  });
+
+  it("cash/card/online são sinônimos defensivos — nunca saem da RPC, mas não quebram se chegarem", () => {
+    expect(rotuloDaFormaDePagamento("cash")).toBe("Dinheiro");
+    expect(rotuloDaFormaDePagamento("card")).toBe("Cartão");
+    expect(rotuloDaFormaDePagamento("online")).toBe("Online (Mercado Pago)");
   });
 });
