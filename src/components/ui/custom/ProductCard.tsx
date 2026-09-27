@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/sheet";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
 import {
   type PromessasDeFrete,
   fraseDoSeloDeFreteGratis,
@@ -654,7 +655,12 @@ export const ProductCard = memo(function ProductCard({
                     {formatCurrency(product.originalPrice)}
                   </span>
                 </span>
-                <span className="mt-1 text-[15px] font-black leading-none tracking-tight text-rose-600">
+                <span
+                  className={cn(
+                    "mt-1 text-[15px] font-black leading-none tracking-tight",
+                    CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                  )}
+                >
                   Por: {formatCurrency(precoAtual)}
                 </span>
               </div>
@@ -869,7 +875,12 @@ export const ProductCard = memo(function ProductCard({
                     card: `??` preserva override zero). */}
                 {product.originalPrice && product.originalPrice > precoAtual ? (
                   <div className="flex flex-wrap items-baseline gap-2 pt-1">
-                    <span className="text-[15px] font-black leading-none tracking-tight text-rose-600">
+                    <span
+                      className={cn(
+                        "text-[15px] font-black leading-none tracking-tight",
+                        CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                      )}
+                    >
                       Por: {formatCurrency(precoAtual)}
                     </span>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">

@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE } from "@/lib/cor-do-preco-promocional";
 import {
   type PromessasDeFrete,
   fraseDoSeloDeFreteGratis,
@@ -454,7 +455,12 @@ function HeroOfferCard({
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 line-through">
                     De: {formatCurrency(product.originalPrice)}
                   </span>
-                  <span className="mt-0.5 text-xl font-black leading-none tracking-tighter text-rose-600 sm:text-2xl">
+                  <span
+                    className={cn(
+                      "mt-0.5 text-xl font-black leading-none tracking-tighter sm:text-2xl",
+                      CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
+                    )}
+                  >
                     Por: {formatCurrency(product.price)}
                   </span>
                 </div>

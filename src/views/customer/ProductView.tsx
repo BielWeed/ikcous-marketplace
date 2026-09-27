@@ -15,6 +15,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE } from "@/lib/cor-do-preco-promocional";
 import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
@@ -974,7 +975,12 @@ export const ProductView = React.memo(function ProductView({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
           {product.originalPrice && product.originalPrice > currentPrice ? (
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black tracking-tight text-rose-600">
+              <span
+                className={cn(
+                  "text-2xl font-black tracking-tight",
+                  CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
+                )}
+              >
                 R$ {currentPrice.toFixed(2).replace(".", ",")}
               </span>
               <span className="text-xs font-bold text-zinc-400 line-through">

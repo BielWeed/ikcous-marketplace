@@ -1,4 +1,8 @@
 import { useStore } from "@/contexts/StoreContext";
+import {
+  CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
+  CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+} from "@/lib/cor-do-preco-promocional";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
@@ -313,7 +317,12 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                                 })}
                               </span>
                             </span>
-                            <span className="mt-1 text-xs font-black leading-none tracking-tight text-rose-500">
+                            <span
+                              className={cn(
+                                "mt-1 text-xs font-black leading-none tracking-tight",
+                                CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
+                              )}
+                            >
                               Por: R${" "}
                               {Number.parseFloat(displayPrice).toLocaleString(
                                 "pt-BR",
@@ -490,7 +499,12 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                             })}
                           </span>
                         </span>
-                        <span className="mt-1 text-base font-black leading-none tracking-tighter text-rose-600">
+                        <span
+                          className={cn(
+                            "mt-1 text-base font-black leading-none tracking-tighter",
+                            CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                          )}
+                        >
                           Por: R${" "}
                           {Number.parseFloat(displayPrice).toLocaleString(
                             "pt-BR",
