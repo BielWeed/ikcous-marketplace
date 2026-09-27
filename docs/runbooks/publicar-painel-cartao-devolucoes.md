@@ -567,9 +567,13 @@ Não precisa mexer em banco.
    anterior.
 3. **Functions**: rode o `publicar-functions.yml` a partir do commit anotado no §0, com as
    mesmas cinco do §2. As versões antigas não leem nada das migrations novas.
-4. **Banco**: rode **sempre 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A 80
-   e a 79 só entram na fila se já tiverem sido aplicadas** — as duas são publicadas à parte das
-   75–78, em frentes independentes. **A 79 (`cancelar_devolucao_barra_compra_em_voo`) — o
+4. **Banco**: rode **sempre 83 → 80 → 79 → 78 → 77 → 76 → 75** e pare onde o problema acabar. **A
+   83, a 80 e a 79 só entram na fila se já tiverem sido aplicadas** — as três são publicadas à
+   parte das 75–78, em frentes independentes. **A 83 (`o_crm_ve_todo_mundo`) só depende da 78** —
+   revertê-la ANTES da 78 é obrigatório se as duas estiverem aplicadas (provado ao vivo: reverter
+   a 78 primeiro DROPA `crm__vendas`/`crm__clientes_rfm`/`crm_clientes`/`crm_visao` enquanto os
+   ajudantes da 83 ainda chamam `crm__vendas` — a próxima chamada a `crm_clientes` estoura
+   `42883`); fora essa restrição de ordem, ela não referencia nada de 75–82. **A 79 (`cancelar_devolucao_barra_compra_em_voo`) — o
    procedimento completo dela (comando, guardas, ledger) está no §7.5 deste mesmo runbook; aqui
    só a ORDEM RELATIVA importa: ela vem depois da 80 e antes da 78.** Se nenhuma das duas estava
    aplicada, comece direto em 78. **A 81 (`pedido_por_whatsapp_fecha_para_anon`, LGPD, já
@@ -581,6 +585,8 @@ Não precisa mexer em banco.
    workflow não aceita `rollback-manual-*` e o `db-apply` gravaria o rollback no ledger.
 
    ```bash
+   # 83, se aplicada — SEMPRE antes da 78 (ver acima):
+   psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql
    psql "$CONEXAO_DA_LOJA" -1 -v ON_ERROR_STOP=1 -f supabase/migrations/rollback-manual-20261180000000_cliente_nao_cancela_com_cartao_vivo.sql
    # 79, se aplicada: arquivo e comando exatos no §7.5 (mesmo runbook)
    # 81, se precisar reverter (LGPD — reabre o vazamento; ver acima): arquivo
@@ -1146,11 +1152,12 @@ compra paga: além dos compradores de sempre (RFM intocado), entram quem pediu e
 Só leitura — nenhuma tabela nova, sem `BEGIN`/`COMMIT`. Independente de 75–82 (não depende de
 nenhuma delas, só da própria 78).
 
-**Aplicar:**
-
-```bash
-node scripts/db-apply.cjs supabase/migrations/20261183000000_o_crm_ve_todo_mundo.sql
-```
+**Aplicar** (NA LOJA, sempre pelo workflow — nunca `db-apply.cjs` direto contra produção; ver §1 e
+§1.4 acima): Actions → **Aplicar migrations (Supabase)** → `migracoes =
+20261183000000_o_crm_ve_todo_mundo.sql`, `projeto = loja`. O workflow faz a prova
+`BEGIN`/`ROLLBACK` antes de aplicar de verdade e confere as RPCs no fim. (`node
+scripts/db-apply.cjs <arquivo>` só vale local/dev, contra um `DATABASE_URL` que não é o da loja —
+é o que a prova viva desta tarefa usou.)
 
 **Conferir** (SQL Editor, só leitura, ou `consulta = 7a-conferir-83` no workflow "Conferir banco da
 loja" — todas as linhas devem vir `ok = true`):
@@ -1171,9 +1178,18 @@ a verificação pós-gravação mostra o ledger 72–83 inteiro.
 
 **Front:** publique DEPOIS de a migration estar no ar e conferida (a tela chama `valor_em_aberto` e
 os 2 segmentos novos; o parser tolera a ausência, então a ordem inversa não quebra nada — só a UI
-não mostra os grupos novos até a migration chegar).
+não mostra os grupos novos até a migration chegar). Se a migration subir ANTES do front (ordem
+inversa da recomendada): o front ANTIGO não reconhece `pediu_nao_pagou`/`nunca_comprou` como
+segmento válido (`lerSegmento` só aceita os 12 valores que ELE conhece) — os clientes desses 2
+grupos aparecem na lista com o crachá "Sem segmento" em vez do rótulo certo, até o front novo
+publicar. Não é dado errado (a RPC está certa), é só a tela antiga não ter o vocabulário — some
+sozinho no próximo deploy do front.
 
 **Rollback:** `rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql` (`psql -1 -f`, nunca
 `db-apply`) — restaura `crm_clientes`/`crm_visao` com os corpos EXATOS da 78 e derruba
 `crm__pedidos_nao_pagos`/`crm__nunca_comprou`. Reverta o front primeiro (ver cabeçalho do
-arquivo).
+arquivo). **A 83 sempre ANTES da 78, se as duas estiverem aplicadas** — provado ao vivo (revisão de
+risco): reverter a 78 primeiro DROPA `crm_clientes`/`crm_visao`/`crm__vendas`/`crm__clientes_rfm`
+(o rollback da 78 é só `DROP`, ela não existia antes) enquanto os ajudantes da 83 ainda estão no ar
+chamando `crm__vendas` — a PRÓXIMA chamada a `crm_clientes` já estoura `42883` (function does not
+exist). Ver §5 (ordem geral de rollback).
