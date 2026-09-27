@@ -18,8 +18,8 @@
 SELECT checagem, valor, esperado, COALESCE(valor = esperado, false) AS ok FROM (VALUES
   ('83 crm__pedidos_nao_pagos existe', (to_regprocedure('public.crm__pedidos_nao_pagos(timestamptz)') IS NOT NULL)::text, 'true'),
   ('83 crm__nunca_comprou existe', (to_regprocedure('public.crm__nunca_comprou(timestamptz)') IS NOT NULL)::text, 'true'),
-  ('83 crm__pedidos_nao_pagos: corpo', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm__pedidos_nao_pagos(timestamptz)')), '(função ausente)'), '706d3cbaffc77d4b15ac06cc4c244256'),
-  ('83 crm__nunca_comprou: corpo', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm__nunca_comprou(timestamptz)')), '(função ausente)'), '3e069334090dd819a036dd2dc546a184'),
+  ('83 crm__pedidos_nao_pagos: corpo', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm__pedidos_nao_pagos(timestamptz)')), '(função ausente)'), 'cb48ff1b4cae231cf79a965f06578f82'),
+  ('83 crm__nunca_comprou: corpo', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm__nunca_comprou(timestamptz)')), '(função ausente)'), '9a83cf34789b8b67c245648c8d82fc42'),
   ('83 crm_clientes: corpo novo (3 grupos)', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm_clientes(text, text, integer, integer)')), '(função ausente)'), 'f31396c2f583756da56ae63a44cf09dc'),
   ('83 crm_visao: corpo novo (2 segmentos a mais)', COALESCE((SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm_visao(date, date)')), '(função ausente)'), '0e76e93760b7db349c294c40b4477c18'),
   ('83 crm__pedidos_nao_pagos SAI de anon', has_function_privilege('anon', 'public.crm__pedidos_nao_pagos(timestamptz)', 'EXECUTE')::text, 'false'),

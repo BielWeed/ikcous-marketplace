@@ -141,6 +141,50 @@
 --      OFFSET podia reordenar linhas empatadas entre uma chamada e outra.
 --      `, chave ASC` no fim do `ORDER BY` (interno e do `jsonb_agg`).
 --
+-- RE-REVISÃO DE RISCO (rodada 2, 27/09/2026) — achados corrigidos aqui
+--   N1. Regressão da própria correção do achado 7: a fusão wa→conta de
+--       pedidos NÃO pagos podia juntar um pedido não pago com um pedido QUE
+--       `crm__vendas` reconhece como pago (ex.: pedido de app sem pagar +
+--       balcão avulso pago, mesmo WhatsApp) — a identidade "vazava" para
+--       pediu_nao_pagou mesmo já sendo compradora (aparecia nos dois
+--       grupos). `HAVING bool_and(i.id NOT IN (SELECT order_id FROM
+--       vendas))`: se qualquer pedido do grupo fundido é um pedido pago
+--       reconhecido, o grupo inteiro sai de pediu_nao_pagou.
+--   N2. A prova viva das RPCs/ajudantes (M10/M17) aceitava qualquer
+--       "permission denied" — provado ao vivo que, com o REVOKE dos 2
+--       ajudantes removido, a chamada AINDA falha (42501 "permission denied
+--       for schema auth", ao ler auth.users por dentro), então um validador
+--       genérico passaria com o mutante VIVO. A prova agora exige a
+--       mensagem citar a FUNÇÃO certa. Também acrescentadas fixtures que
+--       provam que as DUAS checagens de staff (achado 8) são
+--       independentemente necessárias (profiles.role e app_metadata.role
+--       mentindo um em relação ao outro) e que o WhatsApp de nunca_comprou
+--       sai mesmo em dígitos (não só "não duplica").
+--   N3. `scripts/ci/banco/provisionar-efemero.cjs` emulava `auth.users` sem
+--       `raw_app_meta_data` — as funções desta migration leem essa coluna
+--       no próprio corpo (LANGUAGE sql valida contra o catálogo na
+--       criação), e a 2ª passada de aplicação (prova-dupla-aplicacao.cjs)
+--       registrava o 42703 como "colisão informativa" em vez de expor o
+--       defeito real de provisionamento. Coluna acrescentada, mesma receita
+--       de tests/banco/provisionar.cjs.
+--   N4. Comparação de WhatsApp entre os pedidos/perfis desta migration não
+--       ignorava o prefixo "55" (DDI) — o mesmo número gravado uma vez com
+--       DDI (balcão, "+55...") e outra sem (conta/perfil) virava duas
+--       pessoas. `crm__pedidos_nao_pagos` e `crm__nunca_comprou` agora
+--       comparam por uma CHAVE que tira o "55" quando o número tem 12-13
+--       dígitos — o valor EXIBIDO continua o original captado.
+--       `crm__vendas` (migration 78) não foi tocado.
+--   N5. Custo medido (aceito como risco conhecido, sem mudança de desenho):
+--       em amostra de ~20 mil perfis / ~60 mil pedidos, `crm_clientes` roda
+--       ~4× mais devagar e `crm_visao` ~2,3× mais devagar que na 78 (as
+--       duas novas funções fazem full scan de `profiles`/`marketplace_orders`
+--       sem índice dedicado). Aceitável no volume atual da loja; se crescer
+--       uma ordem de grandeza, revisar com índice em profiles.role/
+--       marketplace_orders.user_id+created_at.
+--   N6. `chave ASC` (achado 10) e o restante do desempate já cobriam a
+--       paginação estável — nenhuma mudança adicional aqui (nit de runbook,
+--       ver §8).
+--
 -- DADOS EXISTENTES
 --   Nenhuma tabela nova, nenhuma coluna nova, nenhuma linha escrita ou
 --   reescrita. As quatro funções são leitura pura.
@@ -199,17 +243,29 @@ AS $$
   ), pagas AS (
     SELECT DISTINCT chave FROM vendas WHERE chave IS NOT NULL
   ), wa_da_conta_paga AS (
-    SELECT DISTINCT ON (v.whatsapp) v.whatsapp AS wa, v.user_id
+    -- N4 (re-revisão de risco): `wa_chave` compara SEM o "55" quando o
+    -- número tem DDI (12-13 dígitos) — o MESMO WhatsApp gravado uma vez com
+    -- conta (sem DDI) e outra num balcão (com "+55", ou vice-versa) não pode
+    -- virar duas pessoas. `wa` (exibido) continua o valor ORIGINAL captado.
+    SELECT DISTINCT ON (wa_chave)
+           CASE WHEN length(v.whatsapp) IN (12, 13) AND left(v.whatsapp, 2) = '55'
+                THEN substring(v.whatsapp FROM 3) ELSE v.whatsapp END AS wa_chave,
+           v.user_id
       FROM vendas v
      WHERE v.whatsapp IS NOT NULL AND v.user_id IS NOT NULL
-     ORDER BY v.whatsapp, v.pago_em DESC
+     ORDER BY wa_chave, v.pago_em DESC
   ), todos AS (
     SELECT o.id, o.total::numeric AS total, o.canal, o.user_id, o.created_at,
            o.payment_status, o.status, o.expires_at,
            NULLIF(btrim(o.customer_name), '') AS nome,
-           NULLIF(regexp_replace(COALESCE(o.customer_data ->> 'whatsapp', ''), '\D', '', 'g'), '') AS wa,
+           w.wa,
+           CASE WHEN length(w.wa) IN (12, 13) AND left(w.wa, 2) = '55'
+                THEN substring(w.wa FROM 3) ELSE w.wa END AS wa_chave,
            NULLIF(btrim(COALESCE(o.customer_data ->> 'email', '')), '') AS email
       FROM public.marketplace_orders o
+      CROSS JOIN LATERAL (
+        SELECT NULLIF(regexp_replace(COALESCE(o.customer_data ->> 'whatsapp', ''), '\D', '', 'g'), '') AS wa
+      ) w
      WHERE o.created_at <= p_ate
   ), wa_de_qualquer_pedido AS (
     -- Achado 7 (revisão de risco): sem NENHUM pedido pago, a fusão de
@@ -217,19 +273,19 @@ AS $$
     -- ajudante, a MESMA pessoa que pediu uma vez com conta e outra só pelo
     -- WhatsApp do balcão (nenhuma das duas paga) virava DOIS registros.
     -- Só entra quando `wa_da_conta_paga` não resolveu aquele número.
-    SELECT DISTINCT ON (t.wa) t.wa, t.user_id
+    SELECT DISTINCT ON (t.wa_chave) t.wa_chave, t.user_id
       FROM todos t
-     WHERE t.wa IS NOT NULL AND t.user_id IS NOT NULL
-     ORDER BY t.wa, t.created_at DESC
+     WHERE t.wa_chave IS NOT NULL AND t.user_id IS NOT NULL
+     ORDER BY t.wa_chave, t.created_at DESC
   ), identificados AS (
     SELECT t.*,
            COALESCE(t.user_id::text, wp.user_id::text, wq.user_id::text,
                     CASE WHEN t.wa IS NOT NULL THEN 'wa:' || t.wa END) AS chave_calc,
            COALESCE(t.user_id, wp.user_id, wq.user_id) AS uid
       FROM todos t
-      LEFT JOIN wa_da_conta_paga wp ON wp.wa = t.wa AND t.user_id IS NULL
+      LEFT JOIN wa_da_conta_paga wp ON wp.wa_chave = t.wa_chave AND t.user_id IS NULL
       LEFT JOIN wa_de_qualquer_pedido wq
-             ON wq.wa = t.wa AND t.user_id IS NULL AND wp.user_id IS NULL
+             ON wq.wa_chave = t.wa_chave AND t.user_id IS NULL AND wp.user_id IS NULL
   ), agregados AS (
     SELECT i.chave_calc AS chave,
            (array_agg(i.uid ORDER BY i.created_at DESC) FILTER (WHERE i.uid IS NOT NULL))[1] AS user_id,
@@ -255,6 +311,17 @@ AS $$
      WHERE i.chave_calc IS NOT NULL
        AND i.chave_calc NOT IN (SELECT chave FROM pagas)
      GROUP BY i.chave_calc
+    -- Re-revisão de risco (N1, 27/09/2026): regressão da própria correção do
+    -- achado 7. `pagas` só sabe excluir pela chave que crm__vendas calculou
+    -- (sem a fusão NOVA desta migration) — quando a fusão wa→conta junta um
+    -- pedido NÃO pago (ex.: app) com um pedido QUE crm__vendas RECONHECE
+    -- como pago (ex.: balcão avulso, mesmo WhatsApp), a chave fundida (o
+    -- user_id) não bate com a chave estreita ('wa:...') que está em `pagas`
+    -- — a identidade "vazava" para pediu_nao_pagou mesmo já sendo compradora.
+    -- `HAVING`: se QUALQUER pedido do grupo fundido é um dos pedidos que
+    -- `vendas` (crm__vendas) reconhece como pago, o grupo inteiro sai daqui
+    -- — a pessoa já é comprador, não é "quem pediu e não pagou".
+    HAVING bool_and(i.id NOT IN (SELECT v.order_id FROM vendas v))
   )
   -- Achado 8 (revisão de risco): equipe/admin também não pode aparecer
   -- aqui — mesma dupla checagem de crm__nunca_comprou (profiles.role E
@@ -279,17 +346,30 @@ AS $$
     -- de balcão ('wa:...', crm__vendas) não pode voltar como um SEGUNDO
     -- cliente aqui só porque a pessoa depois criou conta — é a MESMA
     -- identidade, já contada como compradora.
-    SELECT DISTINCT substring(v.chave FROM 4) AS digitos
-      FROM public.crm__vendas(p_ate) v
-     WHERE v.chave LIKE 'wa:%'
+    -- N4 (re-revisão de risco): a chave de comparação sai SEM o "55" quando
+    -- o número tem DDI (12-13 dígitos) — a MESMA régua de
+    -- crm__pedidos_nao_pagos, para o perfil sem DDI e a venda de balcão com
+    -- DDI (ou vice-versa) baterem como a mesma pessoa.
+    SELECT DISTINCT
+           CASE WHEN length(d) IN (12, 13) AND left(d, 2) = '55'
+                THEN substring(d FROM 3) ELSE d END AS wa_chave
+      FROM (
+        SELECT substring(v.chave FROM 4) AS d
+          FROM public.crm__vendas(p_ate) v
+         WHERE v.chave LIKE 'wa:%'
+      ) x
   )
   SELECT p.id::text, p.id, NULLIF(btrim(COALESCE(p.full_name, '')), ''),
          -- WhatsApp normalizado a dígitos, mesma régua do resto do CRM (era
-         -- devolvido cru — achado 6).
-         NULLIF(regexp_replace(COALESCE(p.whatsapp, ''), '\D', '', 'g'), ''),
+         -- devolvido cru — achado 6). Exibido no formato ORIGINAL captado
+         -- (só a comparação abaixo ignora o "55").
+         pw.wa,
          u.email::text, p.created_at
     FROM public.profiles p
     LEFT JOIN auth.users u ON u.id = p.id
+    CROSS JOIN LATERAL (
+      SELECT NULLIF(regexp_replace(COALESCE(p.whatsapp, ''), '\D', '', 'g'), '') AS wa
+    ) pw
    WHERE COALESCE(p.role, 'customer') = 'customer'
      -- Achado 8: a checagem que is_admin() de fato lê (app_metadata), não só
      -- profiles.role — defesa em profundidade mesmo com o gatilho que hoje
@@ -302,7 +382,10 @@ AS $$
      )
      AND NOT EXISTS (
        SELECT 1 FROM wa_pagos wp
-        WHERE wp.digitos = NULLIF(regexp_replace(COALESCE(p.whatsapp, ''), '\D', '', 'g'), '')
+        WHERE wp.wa_chave = (
+          CASE WHEN length(pw.wa) IN (12, 13) AND left(pw.wa, 2) = '55'
+               THEN substring(pw.wa FROM 3) ELSE pw.wa END
+        )
      )
 $$;
 

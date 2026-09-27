@@ -837,12 +837,12 @@ Deno.test("7a-conferir-83.sql — os hashes/ACLs embutidos batem com o que a ár
     [
       "crm__pedidos_nao_pagos",
       "CREATE OR REPLACE FUNCTION public.crm__pedidos_nao_pagos(p_ate timestamptz)",
-      "706d3cbaffc77d4b15ac06cc4c244256",
+      "cb48ff1b4cae231cf79a965f06578f82",
     ],
     [
       "crm__nunca_comprou",
       "CREATE OR REPLACE FUNCTION public.crm__nunca_comprou(p_ate timestamptz)",
-      "3e069334090dd819a036dd2dc546a184",
+      "9a83cf34789b8b67c245648c8d82fc42",
     ],
     [
       "crm_visao",

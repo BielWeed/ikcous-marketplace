@@ -110,7 +110,17 @@ Deno.test("crm__pedidos_nao_pagos reaproveita a fusão wa->conta de crm__vendas 
   assertStringIncludes(
     migrationN,
     norm(
-      "LEFT JOIN wa_de_qualquer_pedido wq ON wq.wa = t.wa AND t.user_id IS NULL AND wp.user_id IS NULL",
+      "LEFT JOIN wa_de_qualquer_pedido wq ON wq.wa_chave = t.wa_chave AND t.user_id IS NULL AND wp.user_id IS NULL",
+    ),
+  );
+  // N4 (re-revisão de risco): a chave de comparação ignora o "55" (DDI)
+  // quando o número tem 12-13 dígitos — o mesmo WhatsApp gravado com e sem
+  // DDI não pode virar duas pessoas. `wa` (exibido) fica com o valor
+  // original; só `wa_chave` (usado nos JOINs) normaliza.
+  assertStringIncludes(
+    migrationN,
+    norm(
+      "CASE WHEN length(w.wa) IN (12, 13) AND left(w.wa, 2) = '55' THEN substring(w.wa FROM 3) ELSE w.wa END AS wa_chave,",
     ),
   );
   // Achado 8: equipe/admin também não pode aparecer em pediu_nao_pagou.
@@ -119,6 +129,14 @@ Deno.test("crm__pedidos_nao_pagos reaproveita a fusão wa->conta de crm__vendas 
     norm(
       "WHERE COALESCE(pr.role, 'customer') = 'customer' AND COALESCE(au.raw_app_meta_data ->> 'role', 'customer') NOT IN ('admin', 'gerente', 'vendedor')",
     ),
+  );
+  // N1 (re-revisão de risco, regressão da correção do achado 7): a fusão
+  // wa→conta não pode fazer um pedido NÃO pago "vazar" para pediu_nao_pagou
+  // quando outro pedido do MESMO grupo fundido já é uma venda reconhecida
+  // por crm__vendas — o HAVING derruba o grupo inteiro nesse caso.
+  assertStringIncludes(
+    migrationN,
+    norm("HAVING bool_and(i.id NOT IN (SELECT v.order_id FROM vendas v))"),
   );
 });
 
@@ -150,13 +168,21 @@ Deno.test("crm__nunca_comprou exclui equipe/admin (2 checagens) e o mesmo WhatsA
   assertStringIncludes(
     migrationN,
     norm(
-      "NULLIF(regexp_replace(COALESCE(p.whatsapp, ''), '\\D', '', 'g'), ''),",
+      "SELECT NULLIF(regexp_replace(COALESCE(p.whatsapp, ''), '\\D', '', 'g'), '') AS wa",
     ),
   );
   assertStringIncludes(
     migrationN,
     norm(
-      "SELECT DISTINCT substring(v.chave FROM 4) AS digitos FROM public.crm__vendas(p_ate) v WHERE v.chave LIKE 'wa:%'",
+      "SELECT substring(v.chave FROM 4) AS d FROM public.crm__vendas(p_ate) v WHERE v.chave LIKE 'wa:%'",
+    ),
+  );
+  // N4 (re-revisão de risco): mesma normalização sem "55" da chave, do lado
+  // de crm__nunca_comprou (perfil x venda de balcão paga).
+  assertStringIncludes(
+    migrationN,
+    norm(
+      "CASE WHEN length(d) IN (12, 13) AND left(d, 2) = '55' THEN substring(d FROM 3) ELSE d END AS wa_chave",
     ),
   );
 });
