@@ -38,6 +38,7 @@ import {
   MessageCircle,
   RefreshCw,
   Search,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
@@ -321,9 +322,12 @@ function CamposDoPedidoEDaAtividade({
             para `formatarMoedaCompacta` (achado B, re-revisão de front:
             "R$ 12.345,67" por extenso encostava em "Última compra", já que
             o `Intl` usa espaço NÃO separável entre número e símbolo — a
-            string não quebra linha sozinha, só transborda). `title` sempre
-            com o valor por extenso, para quem passar o mouse ou usar
-            leitor de tela. */}
+            string não quebra linha sozinha, só transborda). `title` aqui é
+            só para quem passa o MOUSE (um `<p>` não é focável nem lido de
+            forma confiável por leitor de tela via `title`) — o texto que o
+            leitor de tela de fato lê é o conteúdo visível do `<p>`, que em
+            todas as larguras já é um valor em dinheiro completo (só a
+            forma compacta ou por extenso muda, nunca corta um dígito). */}
         <p
           title={receitaTexto}
           className={cn(
@@ -449,15 +453,21 @@ function LinhaDoCliente({
           (online)" da coluna Canal. Entre `lg` e `xl` (1024-1279px) os
           botões ficam só ícone (o rótulo vai para `sr-only`, então o nome
           acessível continua completo pra leitor de tela); a partir de `xl`
-          a coluna já tem espaço de sobra e o texto volta. */}
+          a coluna já tem espaço de sobra e o texto volta.
+          R1 (re-revisão de front): `lg:min-w-11` nos dois — sem isso o
+          alvo de toque ficava 36-38×44 (ícone + padding), não os 44×44
+          mínimos recomendados. R2: `title` nos dois (o ícone sozinho não
+          basta pra quem passa o mouse) e a borda de "Ver cliente" sobe de
+          `border-white/10` (quase invisível) para `border-white/15`. */}
       <div className="col-span-2 flex gap-2 lg:col-span-1 lg:justify-end lg:gap-1.5 lg:pl-2 xl:gap-2">
         {whatsapp ? (
           <a
             href={whatsapp}
             target="_blank"
             rel="noopener noreferrer"
+            title={`WhatsApp — chamar ${nome}`}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-[10px] font-black uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-500/20 lg:flex-none lg:px-2.5 xl:px-3",
+              "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-[10px] font-black uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-500/20 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
               FOCO_DO_CRM,
             )}
           >
@@ -476,13 +486,25 @@ function LinhaDoCliente({
             onClick={() =>
               onNavigate("admin-user-detail", cliente.userId ?? undefined)
             }
+            title={`Ver cliente — ${nome}`}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-white/10 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:flex-none lg:px-2.5 xl:px-3",
+              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-white/15 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
               FOCO_DO_CRM,
             )}
           >
+            {/* R2: entre lg e xl um chevron sozinho é ambíguo (não diz
+                "cliente") — troca por um ícone de ficha (UserRound) só
+                nessa faixa; fora dela (celular e xl+) o chevron de sempre
+                acompanha o texto "Ver cliente". */}
+            <UserRound
+              className="hidden size-4 lg:inline xl:hidden"
+              aria-hidden="true"
+            />
             <span className="lg:sr-only xl:not-sr-only">Ver cliente</span>
-            <ChevronRight className="size-4" aria-hidden="true" />
+            <ChevronRight
+              className="size-4 lg:hidden xl:inline"
+              aria-hidden="true"
+            />
             <span className="sr-only"> {nome}</span>
           </button>
         ) : null}
