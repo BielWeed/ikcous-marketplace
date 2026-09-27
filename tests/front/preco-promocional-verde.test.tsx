@@ -8,8 +8,10 @@
 // promocional em VERDE (contraste AA, ver src/lib/cor-do-preco-promocional.ts)
 // no card da vitrine (e na folha de opções, mesmo card) e no carrossel
 // "Ofertas Imperdíveis" (PremiumOffers/HeroOfferCard) -- os dois prints que o
-// dono mandou. O selo de desconto ("% OFF") continua vermelho de propósito:
-// não é o valor do produto, é fora do escopo deste pedido.
+// dono mandou. Segunda decisão dele (mesmo dia): o selo "% OFF" também virou
+// verde -- ver tests/front/selo-desconto-verde.test.tsx para os outros
+// lugares (ProductCard, ProductView, PhoneSimulator); o caso abaixo cobre só
+// o do PremiumOffers/HeroOfferCard.
 //
 // POR QUE RENDER DE VERDADE (react-dom/client + jsdom), NÃO DUBLÊ DE REACT:
 // mesmo raciocínio de product-card-estoque-contraste-aa.test.tsx -- a classe
@@ -163,7 +165,7 @@ describe("PremiumOffers/HeroOfferCard — preço promocional ('Por:') usa verde,
     expect(preco?.classList.contains("text-red-600")).toBe(false);
   });
 
-  it("o selo de desconto ('% OFF') continua vermelho -- fora do escopo deste pedido", async () => {
+  it("o selo de desconto ('% OFF') também troca vermelho por verde", async () => {
     const { PremiumOffers } = await import(
       "@/components/ui/custom/PremiumOffers"
     );
@@ -183,6 +185,8 @@ describe("PremiumOffers/HeroOfferCard — preço promocional ('Por:') usa verde,
       el.textContent?.trim().endsWith("% OFF"),
     );
     expect(selo).not.toBeUndefined();
-    expect(selo?.classList.contains("text-rose-600")).toBe(true);
+    expect(selo?.classList.contains("bg-emerald-50")).toBe(true);
+    expect(selo?.classList.contains("text-emerald-700")).toBe(true);
+    expect(selo?.classList.contains("text-rose-600")).toBe(false);
   });
 });

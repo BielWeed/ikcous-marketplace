@@ -18,6 +18,7 @@ import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+  CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
 import {
   fraseDoSeloDeFreteGratis,
@@ -998,7 +999,12 @@ export const ProductView = React.memo(function ProductView({
 
           <div className="flex items-center gap-1.5">
             {discount > 0 && (
-              <span className="rounded-md border border-rose-100 bg-rose-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-rose-600">
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider",
+                  CLASSE_SELO_DESCONTO,
+                )}
+              >
                 {discount}% OFF
               </span>
             )}

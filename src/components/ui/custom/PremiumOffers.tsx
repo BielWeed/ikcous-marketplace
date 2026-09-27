@@ -1,7 +1,10 @@
 import { LazyImage } from "@/components/LazyImage";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
-import { CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE } from "@/lib/cor-do-preco-promocional";
+import {
+  CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
+  CLASSE_SELO_DESCONTO,
+} from "@/lib/cor-do-preco-promocional";
 import {
   type PromessasDeFrete,
   fraseDoSeloDeFreteGratis,
@@ -340,7 +343,12 @@ function HeroOfferCard({
             Super Oferta
           </span>
           {discount > 0 && (
-            <span className="px-3 py-0.5 font-black text-rose-600">
+            <span
+              className={cn(
+                "rounded-full px-3 py-0.5 font-black",
+                CLASSE_SELO_DESCONTO,
+              )}
+            >
               {discount}% OFF
             </span>
           )}
