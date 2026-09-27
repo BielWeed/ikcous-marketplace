@@ -239,6 +239,15 @@ describe("ClientesDoCrm — receita do segmento zerado e títulos de faixa usam 
     expect(pontoDeCor).not.toBeNull();
     expect(pontoDeCor?.classList.contains("opacity-60")).toBe(true);
 
+    // "Zero não compete com dado": o "0" do segmento vazio sai em cinza,
+    // não no branco dos segmentos que têm cliente.
+    const numero = Array.from(blocoCampeoes!.querySelectorAll("span")).find(
+      (el) => el.children.length === 0 && texto(el) === "0",
+    );
+    expect(numero).not.toBeUndefined();
+    expect(numero?.classList.contains("text-zinc-400")).toBe(true);
+    expect(numero?.classList.contains("text-white")).toBe(false);
+
     const tituloFaixa = Array.from(hospedeiro.querySelectorAll("h3")).find(
       (el) => texto(el) === "Melhores",
     );

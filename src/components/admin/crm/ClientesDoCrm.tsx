@@ -138,7 +138,15 @@ function BlocoDeSegmento({
         />
       ) : (
         <span className="flex items-baseline justify-between gap-1.5 sm:block">
-          <span className="text-base font-black tabular-nums text-white sm:block sm:text-xl">
+          {/* "Zero não compete com dado" (spec, princípio 4): o número do
+              segmento vazio sai em cinza (zinc-400, ainda AA), e o que tem
+              cliente fica branco. */}
+          <span
+            className={cn(
+              "text-base font-black tabular-nums sm:block sm:text-xl",
+              zerado ? "text-zinc-400" : "text-white",
+            )}
+          >
             {formatarInteiro(resumo?.clientes ?? 0)}
           </span>
           <span className="shrink-0 truncate text-[10px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
