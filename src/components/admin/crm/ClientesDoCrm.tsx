@@ -284,6 +284,14 @@ function CamposDoPedidoEDaAtividade({
   cliente,
 }: Readonly<{ cliente: ClienteDoCrm }>) {
   const receitaTexto = textoDaReceitaDoCliente(cliente);
+  // Achado B (re-revisão de front): a coluna "Receita / Em aberto" da
+  // TABELA desktop é estreita (~85px a 1024px) — "R$ 12.345,67" por extenso
+  // (~96px) transbordava e encostava em "Última compra". No celular (grade
+  // 2×2, célula com metade da largura do cartão) o valor por extenso cabe
+  // numa linha só; só a versão `lg` troca para o compacto.
+  const receitaTextoCompacto = textoDaReceitaDoCliente(cliente, {
+    compacto: true,
+  });
   // "—" (não sei) e "Sem valor em aberto" (zero medido) não são um dado em
   // destaque como uma receita de verdade — ficam discretos (achado 7,
   // revisão de risco), do mesmo jeito que o "0" do segmento zerado na
@@ -307,17 +315,32 @@ function CamposDoPedidoEDaAtividade({
           {rotuloDaReceita(cliente.segmento)}
         </p>
         {/* Sem `truncate` (achado 2, revisão de risco): cortava "R$
-            134,80 em ab…" antes do rótulo virar "Em aberto". `title`
-            continua como rede de segurança se algum valor grande demais
-            quebrar a linha visualmente. */}
+            134,80 em ab…" antes do rótulo virar "Em aberto". No celular o
+            valor por extenso cabe (célula com metade da largura do
+            cartão); no `lg` a coluna é estreita (~85px a 1024px) — troca
+            para `formatarMoedaCompacta` (achado B, re-revisão de front:
+            "R$ 12.345,67" por extenso encostava em "Última compra", já que
+            o `Intl` usa espaço NÃO separável entre número e símbolo — a
+            string não quebra linha sozinha, só transborda). `title` sempre
+            com o valor por extenso, para quem passar o mouse ou usar
+            leitor de tela. */}
         <p
           title={receitaTexto}
           className={cn(
-            "font-bold tabular-nums",
+            "font-bold tabular-nums lg:hidden",
             receitaEhDestaque ? "text-white" : "text-zinc-400",
           )}
         >
           {receitaTexto}
+        </p>
+        <p
+          title={receitaTexto}
+          className={cn(
+            "hidden font-bold tabular-nums lg:block",
+            receitaEhDestaque ? "text-white" : "text-zinc-400",
+          )}
+        >
+          {receitaTextoCompacto}
         </p>
       </div>
 
@@ -420,19 +443,26 @@ function LinhaDoCliente({
         </div>
       )}
 
-      <div className="col-span-2 flex gap-2 lg:col-span-1 lg:justify-end lg:pl-2">
+      {/* Achado C (revisão de front, já existia antes desta branch): a
+          coluna "Ações" tem ~1.45fr (~148px a 1024px) — os 2 botões de
+          texto completo (~240px) não cabem e o WhatsApp cobria "App
+          (online)" da coluna Canal. Entre `lg` e `xl` (1024-1279px) os
+          botões ficam só ícone (o rótulo vai para `sr-only`, então o nome
+          acessível continua completo pra leitor de tela); a partir de `xl`
+          a coluna já tem espaço de sobra e o texto volta. */}
+      <div className="col-span-2 flex gap-2 lg:col-span-1 lg:justify-end lg:gap-1.5 lg:pl-2 xl:gap-2">
         {whatsapp ? (
           <a
             href={whatsapp}
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-[10px] font-black uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-500/20 lg:flex-none",
+              "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-[10px] font-black uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-500/20 lg:flex-none lg:px-2.5 xl:px-3",
               FOCO_DO_CRM,
             )}
           >
             <MessageCircle className="size-4" aria-hidden="true" />
-            WhatsApp
+            <span className="lg:sr-only xl:not-sr-only">WhatsApp</span>
             <span className="sr-only"> — chamar {nome} (abre em nova aba)</span>
           </a>
         ) : (
@@ -447,11 +477,11 @@ function LinhaDoCliente({
               onNavigate("admin-user-detail", cliente.userId ?? undefined)
             }
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-white/10 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:flex-none",
+              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-white/10 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:flex-none lg:px-2.5 xl:px-3",
               FOCO_DO_CRM,
             )}
           >
-            Ver cliente
+            <span className="lg:sr-only xl:not-sr-only">Ver cliente</span>
             <ChevronRight className="size-4" aria-hidden="true" />
             <span className="sr-only"> {nome}</span>
           </button>

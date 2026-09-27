@@ -1118,18 +1118,28 @@ export function rotuloDaReceita(segmento: SegmentoCrm | null): string {
  * aberto foi MEDIDO como zero (ex.: o único pedido "aguardando" expirou —
  * não sobrou nada para cobrar, mas a pessoa continua sem compra paga).
  */
-export function textoDaReceitaDoCliente(cliente: {
-  readonly segmento: SegmentoCrm | null;
-  readonly receita: number;
-  readonly valorEmAberto: number | null;
-}): string {
+export function textoDaReceitaDoCliente(
+  cliente: {
+    readonly segmento: SegmentoCrm | null;
+    readonly receita: number;
+    readonly valorEmAberto: number | null;
+  },
+  opcoes?: { readonly compacto?: boolean },
+): string {
+  // `compacto` (achado B, re-revisão de front): a coluna "Receita / Em
+  // aberto" da TABELA desktop é estreita (~85px a 1024px) — "R$ 12.345,67"
+  // por extenso (~96px) transborda e encosta em "Última compra". A partir
+  // de R$ 10 mil, `formatarMoedaCompacta` abrevia ("R$ 12,3 mil"); abaixo
+  // disso é igual a `formatarMoeda`. Os textos especiais ("—", "Sem valor
+  // em aberto") nunca mudam — só o valor em dinheiro de verdade encolhe.
+  const moeda = opcoes?.compacto ? formatarMoedaCompacta : formatarMoeda;
   if (cliente.segmento === "nunca_comprou") return "—";
   if (cliente.segmento === "pediu_nao_pagou") {
     if (cliente.valorEmAberto == null) return "—";
     if (cliente.valorEmAberto === 0) return "Sem valor em aberto";
-    return formatarMoeda(cliente.valorEmAberto);
+    return moeda(cliente.valorEmAberto);
   }
-  return formatarMoeda(cliente.receita);
+  return moeda(cliente.receita);
 }
 
 /**

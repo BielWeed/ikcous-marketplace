@@ -363,6 +363,47 @@ describe("linha do cliente dos grupos novos: receita, e rótulo/texto da última
       }),
     ).toBe("Nunca");
   });
+
+  it("compacto=true usa formatarMoedaCompacta (célula estreita do desktop, achado B da revisão de front): valor grande não transborda a coluna", () => {
+    // R$ 12.345,67 por extenso (~96px) não cabe na coluna "Receita / Em
+    // aberto" (~85px a 1024px) e encosta em "Última compra" — a partir de
+    // R$ 10 mil, formatarMoedaCompacta já abrevia ("R$ 12,3 mil").
+    const cheio = textoDaReceitaDoCliente({
+      segmento: "campeoes",
+      receita: 12345.67,
+      valorEmAberto: null,
+    });
+    const compacto = textoDaReceitaDoCliente(
+      { segmento: "campeoes", receita: 12345.67, valorEmAberto: null },
+      { compacto: true },
+    );
+    expect(semNbsp(cheio)).toBe(semNbsp(formatarMoeda(12345.67)));
+    expect(semNbsp(compacto)).toBe(semNbsp(formatarMoedaCompacta(12345.67)));
+    expect(compacto.length).toBeLessThan(cheio.length);
+  });
+
+  it("compacto=true não muda os textos especiais ('—' e 'Sem valor em aberto') nem o pediu_nao_pagou pequeno", () => {
+    expect(
+      textoDaReceitaDoCliente(
+        { segmento: "nunca_comprou", receita: 0, valorEmAberto: null },
+        { compacto: true },
+      ),
+    ).toBe("—");
+    expect(
+      textoDaReceitaDoCliente(
+        { segmento: "pediu_nao_pagou", receita: 0, valorEmAberto: 0 },
+        { compacto: true },
+      ),
+    ).toBe("Sem valor em aberto");
+    expect(
+      semNbsp(
+        textoDaReceitaDoCliente(
+          { segmento: "pediu_nao_pagou", receita: 0, valorEmAberto: 80 },
+          { compacto: true },
+        ),
+      ),
+    ).toBe(semNbsp(formatarMoedaCompacta(80)));
+  });
 });
 
 describe("crachá curto do segmento (não espreme o nome na linha do cliente)", () => {
