@@ -52,7 +52,8 @@ Toda informação nova sai do que `crm_visao`/`crm_clientes` já devolvem.
    - Etapa não medida não vira barra com "—": vira uma nota.
    - Conversão só entre etapas da mesma unidade, e nunca acima de 100%.
 6. **Cada cartão responde uma pergunta e, quando cabe, oferece uma ação.** Exemplos: "13
-   pedidos do app não foram pagos — Ver pedidos"; "Nenhuma venda pelo app neste período".
+   pedidos criados não viraram venda paga — Ver pedidos"; "Nenhuma venda pelo app neste
+   período".
 7. **Mobile primeiro (375 px), e desktop de verdade (≥ 1024 px).** No desktop, grade de 2
    colunas onde fizer sentido; no celular, nada estoura e nada fica espremido.
 8. **Identidade do painel mantida:**
@@ -88,7 +89,16 @@ Toda aba usa essas peças. Estilo novo que se repete em duas abas vira peça aqu
   (▲ verde / ▼ vermelho / = cinza). O "Ver clientes em risco" parece link de ação.
 - O bloco "Histórico completo da loja" (componentes antigos de `components/admin/dashboard/`)
   continua com os mesmos componentes. Só o cabeçalho da seção e o espaçamento se alinham à
-  hierarquia nova. Os componentes antigos não são reescritos nesta rodada.
+  hierarquia nova.
+- **Atualização (rodadas 3 e 4 da conferência visual, 27/09):** os 4 componentes legados do
+  Histórico (`KpiSummaryCards`, `OperationalPerformanceChart`, `StrategicIntelligenceBlocks`,
+  `TopProductsList`) FORAM reestilizados — só classe/estrutura de apresentação (superfície
+  `SUPERFICIE_DO_CRM`, título em frase normal 14px semibold, sem itálico/gradiente/caixa alta
+  espaçadíssima), nenhum dado, cálculo ou texto que os testes procuram mudou. As duas barras
+  de participação por item (o rastro de fundo quase invisível e a barrinha ao lado de
+  "X vendas", proporcionais ao produto #1) saíram do "Top 5 produtos mais lucrativos" — não
+  traziam número novo (a receita já aparece por extenso à direita de cada linha) e eram a
+  última peça do visual antigo (glow/gradiente) sobrevivendo ali.
 
 ### Clientes
 
@@ -133,8 +143,11 @@ Toda aba usa essas peças. Estilo novo que se repete em duas abas vira peça aqu
     "Visitas e produtos vistos ainda não são medidos";
   - etapas com unidade escrita ("pessoas com carrinho", "pedidos criados", "pedidos pagos");
   - taxa entre etapas só quando a unidade é a mesma e o valor fica ≤ 100%;
-  - destaque principal para "pagos ÷ criados" (taxa de pagamento), com ação quando há pedido
-    não pago: "N pedidos do app não foram pagos — Ver pedidos".
+  - destaque principal para "vendas pagas ÷ pedidos criados" ("Conversão em venda" — não mais
+    "taxa de pagamento", achado da revisão: um pedido pago e depois estornado/cancelado sai
+    das vendas pagas mas continua contado em pedidos criados, e "taxa de pagamento" ficava
+    falsa nesse caso), com ação quando há pedido criado sem venda paga: "N pedidos criados não
+    viraram venda paga — Ver pedidos".
 - "Pedidos em aberto agora":
   - diz que não depende do período;
   - cada status é uma linha clicável com ícone/cor do status, quantidade e idade do mais
