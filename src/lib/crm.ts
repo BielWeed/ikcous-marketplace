@@ -858,25 +858,74 @@ export function conversaoEntreEtapas(
   return percentual > 100 ? null : percentual;
 }
 
-/** Taxa de pagamento do funil do app: pedidos pagos ÷ pedidos criados. */
-export function taxaDePagamento(
+/**
+ * Conversão em venda do funil do app: vendas pagas ÷ pedidos criados no
+ * período. Não se chama mais "taxa de pagamento" porque essa palavra ficava
+ * falsa quando um pedido pago era depois estornado/cancelado: `pedidosPagos`
+ * aqui é `crm__vendas` (exclui cancelado/devolvido e status de pagamento
+ * fora de pago/pago_apos_expirar/recebido_na_entrega), mas `pedidosCriados`
+ * conta TODO pedido criado no período — inclusive o que chegou a ser pago e
+ * saiu depois. "Conversão em venda" descreve isso sem prometer que todo
+ * pedido pago continua contado como pago para sempre.
+ */
+export function conversaoEmVenda(
   pedidosCriados: number | null,
-  pedidosPagos: number | null,
+  vendasPagas: number | null,
 ): number | null {
-  return conversaoEntreEtapas(pedidosPagos, pedidosCriados);
+  return conversaoEntreEtapas(vendasPagas, pedidosCriados);
 }
 
 /**
- * Quantos pedidos criados no período ainda não foram pagos — a ação "Ver
- * pedidos" só aparece quando este número é positivo. `null` quando alguma
- * das duas etapas não é medida.
+ * Quantos pedidos criados no período NÃO viraram venda paga — a ação "Ver
+ * pedidos" só aparece quando este número é positivo. Cobre as DUAS coortes:
+ * quem nunca pagou e quem pagou e foi estornado/cancelado depois (ele sai
+ * de `vendasPagas`, mas continua contado em `pedidosCriados`). `null`
+ * quando alguma das duas etapas não é medida.
  */
-export function pedidosNaoPagos(
-  criados: number | null,
-  pagos: number | null,
+export function pedidosSemVendaPaga(
+  pedidosCriados: number | null,
+  vendasPagas: number | null,
 ): number | null {
-  if (criados == null || pagos == null) return null;
-  return Math.max(0, criados - pagos);
+  if (pedidosCriados == null || vendasPagas == null) return null;
+  return Math.max(0, pedidosCriados - vendasPagas);
+}
+
+/** Tom do destaque "Conversão em venda" do Funil do app — a cor reage ao
+ * valor medido, não é sempre verde (o dono viu 0% pintado de verde, a
+ * mesma cor de sucesso do resto do painel). ≥ 70% é saudável; entre 30% e
+ * 70% é intermediário; abaixo de 30% chama atenção; sem taxa medida
+ * (`null`, as duas etapas ainda não vieram) é neutro. */
+export type TomDaTaxaDePagamento = "boa" | "mediana" | "baixa" | "neutra";
+
+export function tomDaTaxaDePagamento(
+  taxa: number | null,
+): TomDaTaxaDePagamento {
+  if (taxa == null) return "neutra";
+  if (taxa >= 70) return "boa";
+  if (taxa >= 30) return "mediana";
+  return "baixa";
+}
+
+/**
+ * Nota "X ainda não são medidos" do Funil do app — cita só as etapas de
+ * fato ausentes (`visitas`/`produtosVistos`), nunca as três que o funil já
+ * mede (carrinhos, pedidos criados, pedidos pagos). Antes desta função, a
+ * nota comparava o número de etapas MEDIDAS contra `ETAPAS_MEDIDAS.length`
+ * — uma conta que nunca aponta para visitas/produtos vistos (que nem
+ * entram nessa lista) e por isso a nota nunca aparecia.
+ */
+export function notaDeEtapasNaoMedidas(funil: {
+  readonly visitas: number | null;
+  readonly produtosVistos: number | null;
+}): string | null {
+  const semVisitas = funil.visitas == null;
+  const semProdutosVistos = funil.produtosVistos == null;
+  if (semVisitas && semProdutosVistos) {
+    return "Visitas e produtos vistos ainda não são medidos.";
+  }
+  if (semVisitas) return "Visitas ainda não são medidas.";
+  if (semProdutosVistos) return "Produtos vistos ainda não são medidos.";
+  return null;
 }
 
 /** Frase de leitura do cartão "App × loja física": quem vendeu mais. */

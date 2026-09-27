@@ -105,8 +105,10 @@ const VISAO = {
     { forma: "cash", receita: 1500, pedidos: 20 },
   ],
   funil: {
-    visitas: 1000,
-    produtos_vistos: 600,
+    // Sempre null no banco de verdade (`crm_visao` nunca mede isso hoje) —
+    // é o formato REAL que faz a nota "ainda não são medidos" aparecer.
+    visitas: null,
+    produtos_vistos: null,
     carrinhos: 120,
     pedidos_criados: 60,
     pedidos_pagos: 40,
@@ -276,10 +278,18 @@ describe("Dashboard CRM", () => {
     await esperarAte(() => texto(painel("funil")).includes("Pedidos pagos"));
     expect(painel("canais")?.hidden).toBe(true);
     // Redesenho visual (27/09): a conversão "pagos ÷ criados" virou o
-    // destaque "Taxa de pagamento", não mais um "% do passo anterior" ao
-    // lado da etapa — o número (66,7% = 40 pagos ÷ 60 criados) é o mesmo.
-    expect(texto(painel("funil"))).toContain("Taxa de pagamento");
+    // destaque "Conversão em venda" (achado da revisão: "taxa de
+    // pagamento" ficava falso quando um pedido pago era estornado depois),
+    // não mais um "% do passo anterior" ao lado da etapa — o número (66,7%
+    // = 40 pagos ÷ 60 criados) é o mesmo.
+    expect(texto(painel("funil"))).toContain("Conversão em venda");
     expect(texto(painel("funil"))).toContain("66,7%");
+    // visitas/produtos_vistos são SEMPRE null no banco de verdade — a nota
+    // tem de citar os dois, não ficar muda (achado da revisão: a conta
+    // antiga nunca comparava essas duas etapas).
+    expect(texto(painel("funil"))).toContain(
+      "Visitas e produtos vistos ainda não são medidos.",
+    );
     await act(async () => botao(painel("funil")!, "Em separação").click());
     expect(onNavigate).toHaveBeenLastCalledWith("admin-orders");
 

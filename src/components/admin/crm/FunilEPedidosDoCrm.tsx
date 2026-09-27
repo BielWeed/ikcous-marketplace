@@ -4,15 +4,16 @@ import {
   EstadoVazioDoCrm,
 } from "@/components/admin/crm/PecasDoCrm";
 import {
-  conversaoEntreEtapas,
+  conversaoEmVenda,
   formatarInteiro,
   formatarPercentual,
   funilEhMonotonico,
   idadePorExtenso,
-  pedidosNaoPagos,
+  notaDeEtapasNaoMedidas,
+  pedidosSemVendaPaga,
   pipelineEmAberto,
   rotuloDoStatusDoPedido,
-  taxaDePagamento,
+  tomDaTaxaDePagamento,
 } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -138,8 +139,41 @@ function estiloDoStatus(status: string): {
   }
 }
 
-/** Destaque principal do funil: pedidos pagos ÷ pedidos criados. */
-function DestaqueDePagamento({
+/**
+ * Superfície do destaque "Conversão em venda" por tom — a cor reage ao
+ * valor medido (`tomDaTaxaDePagamento`), nunca é sempre verde: o dono via
+ * 0% pintado da mesma cor de sucesso do resto do painel.
+ */
+const CLASSES_DO_DESTAQUE_DE_PAGAMENTO: Record<
+  ReturnType<typeof tomDaTaxaDePagamento>,
+  { readonly caixa: string; readonly rotulo: string }
+> = {
+  boa: {
+    caixa: "border-emerald-500/20 bg-emerald-500/[0.06]",
+    rotulo: "text-emerald-300/80",
+  },
+  mediana: {
+    caixa: "border-amber-500/20 bg-amber-500/[0.06]",
+    rotulo: "text-amber-300/80",
+  },
+  baixa: {
+    caixa: "border-rose-500/20 bg-rose-500/[0.06]",
+    rotulo: "text-rose-300/80",
+  },
+  neutra: {
+    caixa: "border-white/10 bg-white/[0.04]",
+    rotulo: "text-zinc-400",
+  },
+};
+
+/**
+ * Destaque principal do funil: vendas pagas ÷ pedidos criados — "conversão
+ * em venda", não mais "taxa de pagamento". O nome antigo dava a entender
+ * que um pedido pago fica pago para sempre; um estorno/cancelamento tira o
+ * pedido de `vendasPagas` (`crm__vendas`), mas ele continua contado em
+ * `pedidosCriados` — o texto agora vale para as duas coortes.
+ */
+function DestaqueDeConversaoEmVenda({
   criados,
   pagos,
   onNavigate,
@@ -149,23 +183,35 @@ function DestaqueDePagamento({
   onNavigate: (view: View) => void;
 }>) {
   if (criados == null || pagos == null) return null;
-  const taxa = taxaDePagamento(criados, pagos);
-  const naoPagos = pedidosNaoPagos(criados, pagos);
+  const conversao = conversaoEmVenda(criados, pagos);
+  const semVendaPaga = pedidosSemVendaPaga(criados, pagos);
+  const classes =
+    CLASSES_DO_DESTAQUE_DE_PAGAMENTO[tomDaTaxaDePagamento(conversao)];
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-3 sm:p-4">
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 sm:p-4",
+        classes.caixa,
+      )}
+    >
       <div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-300/80">
-          Taxa de pagamento
+        <p
+          className={cn(
+            "text-[10px] font-black uppercase tracking-widest",
+            classes.rotulo,
+          )}
+        >
+          Conversão em venda
         </p>
         <p className="text-2xl font-black tabular-nums text-white">
-          {formatarPercentual(taxa)}
+          {formatarPercentual(conversao)}
         </p>
-        <p className="text-[11px] text-zinc-500">
-          pedidos pagos ÷ pedidos criados
+        <p className="text-[11px] text-zinc-400">
+          vendas pagas ÷ pedidos criados
         </p>
       </div>
-      {naoPagos != null && naoPagos > 0 ? (
+      {semVendaPaga != null && semVendaPaga > 0 ? (
         <button
           type="button"
           onClick={() => onNavigate("admin-orders")}
@@ -174,10 +220,10 @@ function DestaqueDePagamento({
             "flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-amber-200",
           )}
         >
-          {formatarInteiro(naoPagos)}{" "}
-          {naoPagos === 1
-            ? "pedido do app não foi pago"
-            : "pedidos do app não foram pagos"}
+          {formatarInteiro(semVendaPaga)}{" "}
+          {semVendaPaga === 1
+            ? "pedido criado não virou venda paga"
+            : "pedidos criados não viraram venda paga"}
           <ArrowRight className="size-3.5 shrink-0" aria-hidden="true" />
           Ver pedidos
         </button>
@@ -200,13 +246,6 @@ function FunilProporcional({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
   return (
     <ol className="space-y-1">
       {medidas.map((etapa, indice) => {
-        const anterior = medidas.at(indice - 1);
-        // Conversão só entre etapas da MESMA unidade (pedidos → pedidos);
-        // carrinhos conta pessoas, então nunca compara com pedidos.
-        const conversao =
-          indice > 0 && anterior && anterior.unidade === etapa.unidade
-            ? conversaoEntreEtapas(etapa.valor, anterior.valor)
-            : null;
         const vazio = etapa.valor === 0;
         const largura =
           topo > 0 ? Math.max((etapa.valor / topo) * 100, 14) : 14;
@@ -225,11 +264,6 @@ function FunilProporcional({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
                     {formatarInteiro(etapa.valor)}
                   </strong>{" "}
                   {etapa.unidade}
-                  {conversao != null ? (
-                    <span className="ml-2 text-zinc-500">
-                      ({formatarPercentual(conversao)} do passo anterior)
-                    </span>
-                  ) : null}
                 </span>
               </div>
               <div
@@ -296,7 +330,7 @@ function Funil({
     const valor = funil[etapa.chave];
     return valor == null ? [] : [{ ...etapa, valor }];
   });
-  const naoMedidas = ETAPAS_MEDIDAS.length > medidas.length;
+  const nota = notaDeEtapasNaoMedidas(funil);
   const monotonico = funilEhMonotonico(medidas.map((etapa) => etapa.valor));
 
   return (
@@ -306,7 +340,7 @@ function Funil({
       descricao="Do carrinho ao pagamento — só o que já é medido hoje."
     >
       <div className="space-y-4">
-        <DestaqueDePagamento
+        <DestaqueDeConversaoEmVenda
           criados={funil.pedidosCriados}
           pagos={funil.pedidosPagos}
           onNavigate={onNavigate}
@@ -320,10 +354,8 @@ function Funil({
           <FunilEmEtapas medidas={medidas} />
         )}
 
-        {naoMedidas ? (
-          <p className="text-[11px] leading-relaxed text-zinc-500">
-            Visitas e produtos vistos ainda não são medidos.
-          </p>
+        {nota ? (
+          <p className="text-[11px] leading-relaxed text-zinc-400">{nota}</p>
         ) : null}
       </div>
     </CartaoDoCrm>
@@ -404,7 +436,7 @@ function Pipeline({
                           parado há {idade}
                         </span>
                       ) : idade && podeEstarParado ? (
-                        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-500">
+                        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-400">
                           <Clock className="size-3" aria-hidden="true" />
                           mais antigo há {idade}
                         </span>
@@ -424,7 +456,7 @@ function Pipeline({
           </ul>
         )}
         {ordenadas.length > 0 ? (
-          <p className="text-[11px] leading-relaxed text-zinc-600">
+          <p className="text-[11px] leading-relaxed text-zinc-400">
             Pedidos entregues ou cancelados não aparecem aqui — já saíram da
             fila.
           </p>

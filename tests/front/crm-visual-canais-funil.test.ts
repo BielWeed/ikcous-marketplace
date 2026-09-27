@@ -3,6 +3,7 @@
 // Arquivo NOVO para não conflitar com `crm-e-inicio-funcoes-puras.test.ts`,
 // que outra dupla mexe em paralelo.
 import {
+  conversaoEmVenda,
   conversaoEntreEtapas,
   diasPorExtenso,
   fraseLeituraDasFormas,
@@ -10,11 +11,12 @@ import {
   funilEhMonotonico,
   garantirAppELoja,
   idadePorExtenso,
-  pedidosNaoPagos,
+  notaDeEtapasNaoMedidas,
+  pedidosSemVendaPaga,
   percentualDoTotal,
   pipelineEmAberto,
-  taxaDePagamento,
   ticketPorForma,
+  tomDaTaxaDePagamento,
 } from "@/lib/crm";
 import { describe, expect, it } from "vitest";
 
@@ -100,30 +102,86 @@ describe("conversaoEntreEtapas", () => {
   });
 });
 
-describe("taxaDePagamento", () => {
-  it("pagos ÷ criados, mesma unidade (pedidos)", () => {
-    expect(taxaDePagamento(60, 40)).toBe(66.7);
+describe("conversaoEmVenda", () => {
+  it("vendas pagas ÷ pedidos criados, mesma unidade (pedidos)", () => {
+    expect(conversaoEmVenda(60, 40)).toBe(66.7);
   });
 
-  it("pagos > criados (janela de data) ainda vira null, nunca acima de 100%", () => {
-    expect(taxaDePagamento(10, 12)).toBeNull();
+  it("vendas > criados (janela de data) ainda vira null, nunca acima de 100%", () => {
+    expect(conversaoEmVenda(10, 12)).toBeNull();
   });
 
   it("sem pedidos criados: null, não 0%", () => {
-    expect(taxaDePagamento(0, 0)).toBeNull();
+    expect(conversaoEmVenda(0, 0)).toBeNull();
   });
 });
 
-describe("pedidosNaoPagos", () => {
+describe("pedidosSemVendaPaga", () => {
   it("etapa não medida vira null", () => {
-    expect(pedidosNaoPagos(null, 5)).toBeNull();
-    expect(pedidosNaoPagos(13, null)).toBeNull();
+    expect(pedidosSemVendaPaga(null, 5)).toBeNull();
+    expect(pedidosSemVendaPaga(13, null)).toBeNull();
   });
 
-  it("diferença entre criados e pagos, nunca negativa", () => {
-    expect(pedidosNaoPagos(13, 0)).toBe(13);
-    expect(pedidosNaoPagos(60, 40)).toBe(20);
-    expect(pedidosNaoPagos(10, 12)).toBe(0);
+  it("diferença entre criados e vendas pagas, nunca negativa", () => {
+    expect(pedidosSemVendaPaga(13, 0)).toBe(13);
+    expect(pedidosSemVendaPaga(60, 40)).toBe(20);
+    expect(pedidosSemVendaPaga(10, 12)).toBe(0);
+  });
+
+  it("conta também quem pagou e foi estornado depois (saiu de vendas, continua em criados)", () => {
+    // 12 pedidos criados no período; 12 chegaram a ser pagos, mas 3 foram
+    // estornados/cancelados depois — crm__vendas só tem os 9 que ficaram
+    // pagos, mas os 12 continuam "criados". O laudo original (achado 2):
+    // "N pedidos do app não foram pagos" dizia 0 aqui, quando na verdade 3
+    // pedidos criados nunca viraram venda que ficou paga.
+    expect(pedidosSemVendaPaga(12, 9)).toBe(3);
+  });
+});
+
+describe("tomDaTaxaDePagamento", () => {
+  it("sem taxa medida (etapa null): neutra", () => {
+    expect(tomDaTaxaDePagamento(null)).toBe("neutra");
+  });
+
+  it(">= 70%: boa (o destaque deixa de ser sempre verde, mas 70%+ merece verde)", () => {
+    expect(tomDaTaxaDePagamento(70)).toBe("boa");
+    expect(tomDaTaxaDePagamento(100)).toBe("boa");
+  });
+
+  it("30% a 69,9%: mediana (âmbar)", () => {
+    expect(tomDaTaxaDePagamento(30)).toBe("mediana");
+    expect(tomDaTaxaDePagamento(69.9)).toBe("mediana");
+  });
+
+  it("< 30%, inclusive 0%: baixa — o caso real (0% sempre verde) que motivou o achado", () => {
+    expect(tomDaTaxaDePagamento(0)).toBe("baixa");
+    expect(tomDaTaxaDePagamento(29.9)).toBe("baixa");
+  });
+});
+
+describe("notaDeEtapasNaoMedidas", () => {
+  it("visitas e produtos vistos nulos (o caso real de hoje): cita os dois", () => {
+    expect(
+      notaDeEtapasNaoMedidas({ visitas: null, produtosVistos: null }),
+    ).toBe("Visitas e produtos vistos ainda não são medidos.");
+  });
+
+  it("só visitas nula: cita só visitas, no feminino", () => {
+    expect(notaDeEtapasNaoMedidas({ visitas: null, produtosVistos: 40 })).toBe(
+      "Visitas ainda não são medidas.",
+    );
+  });
+
+  it("só produtos vistos nulo: cita só produtos vistos", () => {
+    expect(notaDeEtapasNaoMedidas({ visitas: 100, produtosVistos: null })).toBe(
+      "Produtos vistos ainda não são medidos.",
+    );
+  });
+
+  it("as duas medidas: sem nota", () => {
+    expect(
+      notaDeEtapasNaoMedidas({ visitas: 100, produtosVistos: 40 }),
+    ).toBeNull();
   });
 });
 
