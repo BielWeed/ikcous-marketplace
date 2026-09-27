@@ -1,43 +1,56 @@
 import {
+  CLICAVEL_DO_CRM,
+  CartaoDoCrm,
+  EstadoVazioDoCrm,
+} from "@/components/admin/crm/PecasDoCrm";
+import {
+  conversaoEntreEtapas,
+  diasPorExtenso,
   formatarInteiro,
   formatarPercentual,
   idadeCurta,
+  pedidosNaoPagos,
   rotuloDoStatusDoPedido,
+  taxaDePagamento,
 } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { EtapaDoPipeline, FunilDoCrm, VisaoDoCrm } from "@/types/crm";
-import { ChevronRight, Clock } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  type LucideIcon,
+  Package,
+  PackageCheck,
+  PackageSearch,
+  ShoppingBag,
+  Truck,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
-const PASSOS_DO_FUNIL: readonly {
+interface DefinicaoDeEtapa {
   readonly chave: keyof FunilDoCrm;
   readonly rotulo: string;
-}[] = [
-  { chave: "visitas", rotulo: "Visitas" },
-  { chave: "produtosVistos", rotulo: "Produtos vistos" },
-  { chave: "carrinhos", rotulo: "Carrinhos" },
-  { chave: "pedidosCriados", rotulo: "Pedidos criados" },
-  { chave: "pedidosPagos", rotulo: "Pedidos pagos" },
-];
-
-function valorDoPasso(
-  funil: FunilDoCrm,
-  chave: keyof FunilDoCrm,
-): number | null {
-  switch (chave) {
-    case "visitas":
-      return funil.visitas;
-    case "produtosVistos":
-      return funil.produtosVistos;
-    case "carrinhos":
-      return funil.carrinhos;
-    case "pedidosCriados":
-      return funil.pedidosCriados;
-    case "pedidosPagos":
-      return funil.pedidosPagos;
-  }
+  readonly unidade: string;
 }
+
+interface EtapaMedida extends DefinicaoDeEtapa {
+  readonly valor: number;
+}
+
+/** Só as etapas que o app realmente mede — cada uma com a unidade escrita. */
+const ETAPAS_MEDIDAS: readonly DefinicaoDeEtapa[] = [
+  { chave: "carrinhos", rotulo: "Carrinhos", unidade: "pessoas com carrinho" },
+  {
+    chave: "pedidosCriados",
+    rotulo: "Pedidos criados",
+    unidade: "pedidos criados",
+  },
+  { chave: "pedidosPagos", rotulo: "Pedidos pagos", unidade: "pedidos pagos" },
+];
 
 /** Ordem de trabalho do lojista; status desconhecido vai para o fim. */
 const ORDEM_DO_PIPELINE = [
@@ -63,87 +76,191 @@ function ordenarPipeline(
 const ESPERAM_O_LOJISTA = new Set(["new", "pending", "processing"]);
 const DOIS_DIAS_MS = 2 * 86_400_000;
 
-function Funil({ funil }: Readonly<{ funil: FunilDoCrm }>) {
-  const valores = PASSOS_DO_FUNIL.map((passo) =>
-    valorDoPasso(funil, passo.chave),
-  );
-  const topo = valores.reduce<number>(
-    (maior, valor) => (valor != null && valor > maior ? valor : maior),
-    0,
-  );
-  const primeiro = valores.at(0) ?? null;
-  const ultimo = valores.at(-1) ?? null;
-  const conversaoTotal =
-    primeiro != null && primeiro > 0 && ultimo != null
-      ? (ultimo / primeiro) * 100
-      : null;
+function estiloDoStatus(status: string): {
+  icone: LucideIcon;
+  cor: string;
+  chip: string;
+} {
+  switch (status) {
+    case "new":
+    case "pending":
+      return {
+        icone: ShoppingBag,
+        cor: "text-sky-300",
+        chip: "border-sky-500/20 bg-sky-500/10",
+      };
+    case "processing":
+      return {
+        icone: PackageSearch,
+        cor: "text-violet-300",
+        chip: "border-violet-500/20 bg-violet-500/10",
+      };
+    case "shipping":
+      return {
+        icone: Truck,
+        cor: "text-indigo-300",
+        chip: "border-indigo-500/20 bg-indigo-500/10",
+      };
+    case "delivered":
+      return {
+        icone: PackageCheck,
+        cor: "text-emerald-300",
+        chip: "border-emerald-500/20 bg-emerald-500/10",
+      };
+    case "cancelled":
+      return {
+        icone: XCircle,
+        cor: "text-rose-300",
+        chip: "border-rose-500/20 bg-rose-500/10",
+      };
+    default:
+      return {
+        icone: Package,
+        cor: "text-zinc-300",
+        chip: "border-white/10 bg-white/5",
+      };
+  }
+}
+
+/** Destaque principal do funil: pedidos pagos ÷ pedidos criados. */
+function DestaqueDePagamento({
+  criados,
+  pagos,
+  onNavigate,
+}: Readonly<{
+  criados: number | null;
+  pagos: number | null;
+  onNavigate: (view: View) => void;
+}>) {
+  if (criados == null || pagos == null) return null;
+  const taxa = taxaDePagamento(criados, pagos);
+  const naoPagos = pedidosNaoPagos(criados, pagos);
 
   return (
-    <section
-      aria-labelledby="crm-funil-titulo"
-      className="admin-glass space-y-4 rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6"
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2
-          id="crm-funil-titulo"
-          className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-3 sm:p-4">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-300/80">
+          Taxa de pagamento
+        </p>
+        <p className="text-2xl font-black tabular-nums text-white">
+          {formatarPercentual(taxa)}
+        </p>
+        <p className="text-[11px] text-zinc-500">
+          pedidos pagos ÷ pedidos criados
+        </p>
+      </div>
+      {naoPagos != null && naoPagos > 0 ? (
+        <button
+          type="button"
+          onClick={() => onNavigate("admin-orders")}
+          className={cn(
+            CLICAVEL_DO_CRM,
+            "flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-amber-200",
+          )}
         >
-          Funil do app
-        </h2>
-        {conversaoTotal != null ? (
-          <p className="text-[11px] text-zinc-400">
-            Conversão total{" "}
-            <strong className="font-bold tabular-nums text-white">
-              {formatarPercentual(conversaoTotal, 2)}
-            </strong>
+          {formatarInteiro(naoPagos)}{" "}
+          {naoPagos === 1
+            ? "pedido do app não foi pago"
+            : "pedidos do app não foram pagos"}
+          <ArrowRight className="size-3.5 shrink-0" aria-hidden="true" />
+          Ver pedidos
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function Funil({
+  funil,
+  onNavigate,
+}: Readonly<{
+  funil: FunilDoCrm;
+  onNavigate: (view: View) => void;
+}>) {
+  const medidas: EtapaMedida[] = ETAPAS_MEDIDAS.flatMap((etapa) => {
+    const valor = funil[etapa.chave];
+    return valor == null ? [] : [{ ...etapa, valor }];
+  });
+  const topo = medidas.reduce(
+    (maior, etapa) => Math.max(maior, etapa.valor),
+    0,
+  );
+  const naoMedidas = ETAPAS_MEDIDAS.length > medidas.length;
+
+  return (
+    <CartaoDoCrm
+      id="crm-funil"
+      titulo="Funil do app"
+      descricao="Do carrinho ao pagamento — só o que já é medido hoje."
+    >
+      <div className="space-y-4">
+        <DestaqueDePagamento
+          criados={funil.pedidosCriados}
+          pagos={funil.pedidosPagos}
+          onNavigate={onNavigate}
+        />
+
+        {medidas.length === 0 ? (
+          <EstadoVazioDoCrm titulo="Ainda não há dados do funil do app" />
+        ) : (
+          <ol className="space-y-1">
+            {medidas.map((etapa, indice) => {
+              const anterior = medidas.at(indice - 1);
+              // Conversão só entre etapas da MESMA unidade (pedidos → pedidos);
+              // carrinhos conta pessoas, então nunca compara com pedidos.
+              const conversao =
+                indice > 0 && anterior && anterior.unidade === etapa.unidade
+                  ? conversaoEntreEtapas(etapa.valor, anterior.valor)
+                  : null;
+              const largura =
+                topo > 0 ? Math.max((etapa.valor / topo) * 100, 14) : 14;
+              return (
+                <li key={etapa.chave}>
+                  {indice > 0 ? (
+                    <div
+                      className="flex justify-center py-1"
+                      aria-hidden="true"
+                    >
+                      <ChevronDown className="size-3.5 text-zinc-600" />
+                    </div>
+                  ) : null}
+                  <div className="space-y-1.5">
+                    <div className="flex items-baseline justify-between gap-2 text-xs">
+                      <span className="font-bold text-zinc-200">
+                        {etapa.rotulo}
+                      </span>
+                      <span className="tabular-nums text-zinc-400">
+                        <strong className="font-bold text-white">
+                          {formatarInteiro(etapa.valor)}
+                        </strong>{" "}
+                        {etapa.unidade}
+                        {conversao != null ? (
+                          <span className="ml-2 text-zinc-500">
+                            ({formatarPercentual(conversao)} do passo anterior)
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                    <div
+                      className="mx-auto flex h-8 items-center justify-center rounded-lg bg-gradient-to-b from-emerald-400/80 to-emerald-500/60 text-[11px] font-black tabular-nums text-emerald-950"
+                      style={{ width: `${largura}%` }}
+                    >
+                      {formatarInteiro(etapa.valor)}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        {naoMedidas ? (
+          <p className="text-[11px] leading-relaxed text-zinc-500">
+            Visitas e produtos vistos ainda não são medidos.
           </p>
         ) : null}
       </div>
-
-      <ol className="space-y-3">
-        {PASSOS_DO_FUNIL.map((passo, indice) => {
-          const valor = valores.at(indice) ?? null;
-          const anterior = indice > 0 ? (valores.at(indice - 1) ?? null) : null;
-          const conversao =
-            valor != null && anterior != null && anterior > 0
-              ? (valor / anterior) * 100
-              : null;
-          const largura = valor != null && topo > 0 ? (valor / topo) * 100 : 0;
-          return (
-            <li key={passo.chave} className="space-y-1.5">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-xs">
-                <span className="font-bold text-zinc-200">{passo.rotulo}</span>
-                <span className="tabular-nums text-zinc-400">
-                  <strong className="font-bold text-white">
-                    {formatarInteiro(valor)}
-                  </strong>
-                  {indice > 0 ? (
-                    <span className="ml-2">
-                      {conversao == null
-                        ? "—"
-                        : `${formatarPercentual(conversao)} do passo anterior`}
-                    </span>
-                  ) : null}
-                </span>
-              </div>
-              <div
-                className="h-2.5 w-full overflow-hidden rounded-full bg-zinc-800/80"
-                aria-hidden="true"
-              >
-                <div
-                  className="h-full rounded-full bg-emerald-400/80"
-                  style={{ width: `${Math.max(largura, valor ? 1 : 0)}%` }}
-                />
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-      <p className="text-[11px] leading-relaxed text-zinc-500">
-        Visitas, produtos vistos e carrinhos vêm do app; vendas do balcão não
-        passam por essas etapas.
-      </p>
-    </section>
+    </CartaoDoCrm>
   );
 }
 
@@ -161,28 +278,29 @@ function Pipeline({
   useEffect(() => {
     setAgora(Date.now());
   }, [etapas]);
+
   return (
-    <section
-      aria-labelledby="crm-pipeline-titulo"
-      className="admin-glass space-y-4 rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6"
+    <CartaoDoCrm
+      id="crm-pipeline"
+      titulo="Pedidos em aberto agora"
+      descricao="Não depende do período escolhido no topo — é a fila neste instante."
     >
-      <h2
-        id="crm-pipeline-titulo"
-        className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
-      >
-        Pedidos por status
-      </h2>
       {ordenadas.length === 0 ? (
-        <p className="text-xs text-zinc-500">Nenhum pedido no período.</p>
+        <EstadoVazioDoCrm
+          titulo="Nenhum pedido em aberto"
+          texto="A fila está em dia: nenhum pedido esperando separação, pagamento ou envio."
+        />
       ) : (
         <ul className="space-y-1.5">
           {ordenadas.map((etapa) => {
+            const estilo = estiloDoStatus(etapa.status);
             const idade = idadeCurta(etapa.maisAntigoEm, agora);
             const instante = etapa.maisAntigoEm
               ? Date.parse(etapa.maisAntigoEm)
               : Number.NaN;
+            const podeEstarParado = ESPERAM_O_LOJISTA.has(etapa.status);
             const parado =
-              ESPERAM_O_LOJISTA.has(etapa.status) &&
+              podeEstarParado &&
               etapa.quantidade > 0 &&
               !Number.isNaN(instante) &&
               agora - instante > DOIS_DIAS_MS;
@@ -191,22 +309,34 @@ function Pipeline({
                 <button
                   type="button"
                   onClick={() => onNavigate("admin-orders")}
-                  className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-white/5 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-white/10 hover:bg-zinc-900/40"
+                  className={cn(
+                    CLICAVEL_DO_CRM,
+                    "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
+                  )}
                 >
+                  <span
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded-lg border",
+                      estilo.chip,
+                    )}
+                    aria-hidden="true"
+                  >
+                    <estilo.icone className={cn("size-4", estilo.cor)} />
+                  </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-bold text-white">
                       {rotuloDoStatusDoPedido(etapa.status)}
                     </span>
-                    {idade && ESPERAM_O_LOJISTA.has(etapa.status) ? (
-                      <span
-                        className={cn(
-                          "mt-0.5 flex items-center gap-1 text-[11px]",
-                          parado ? "text-amber-300" : "text-zinc-500",
-                        )}
-                      >
+                    {parado ? (
+                      <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
                         <Clock className="size-3" aria-hidden="true" />
-                        Mais antigo há {idade}
-                        {parado ? " — parado" : ""}
+                        parado há{" "}
+                        {diasPorExtenso((agora - instante) / 86_400_000)}
+                      </span>
+                    ) : idade && podeEstarParado ? (
+                      <span className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-500">
+                        <Clock className="size-3" aria-hidden="true" />
+                        mais antigo há {idade}
                       </span>
                     ) : null}
                   </span>
@@ -214,7 +344,7 @@ function Pipeline({
                     {formatarInteiro(etapa.quantidade)}
                   </span>
                   <ChevronRight
-                    className="size-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5"
+                    className="size-4 shrink-0 text-zinc-600"
                     aria-hidden="true"
                   />
                 </button>
@@ -223,7 +353,7 @@ function Pipeline({
           })}
         </ul>
       )}
-    </section>
+    </CartaoDoCrm>
   );
 }
 
@@ -248,7 +378,7 @@ export function FunilEPedidosDoCrm({
   if (!visao) return null;
   return (
     <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
-      <Funil funil={visao.funil} />
+      <Funil funil={visao.funil} onNavigate={onNavigate} />
       <Pipeline etapas={visao.pipeline} onNavigate={onNavigate} />
     </div>
   );

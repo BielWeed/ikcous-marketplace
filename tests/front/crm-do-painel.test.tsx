@@ -275,7 +275,11 @@ describe("Dashboard CRM", () => {
     await act(async () => aba("Funil e pedidos").click());
     await esperarAte(() => texto(painel("funil")).includes("Pedidos pagos"));
     expect(painel("canais")?.hidden).toBe(true);
-    expect(texto(painel("funil"))).toContain("66,7% do passo anterior");
+    // Redesenho visual (27/09): a conversão "pagos ÷ criados" virou o
+    // destaque "Taxa de pagamento", não mais um "% do passo anterior" ao
+    // lado da etapa — o número (66,7% = 40 pagos ÷ 60 criados) é o mesmo.
+    expect(texto(painel("funil"))).toContain("Taxa de pagamento");
+    expect(texto(painel("funil"))).toContain("66,7%");
     await act(async () => botao(painel("funil")!, "Em separação").click());
     expect(onNavigate).toHaveBeenLastCalledWith("admin-orders");
 

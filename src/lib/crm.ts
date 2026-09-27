@@ -790,3 +790,125 @@ export function rotuloDoCiclo(ciclo: string | null): string {
       return ` · ${ciclo}`;
   }
 }
+
+// --- canais e funil do CRM (visual 27/09) ---
+//
+// Funções puras do redesenho das abas Canais e Funil e pedidos
+// (`docs/superpowers/specs/2026-09-27-crm-visual-profissional-design.md`).
+// A regra que motivou todas elas: nunca inventar um número — canal sem
+// venda é ZERO (não some), mas divisão sem base e conversão maluca (o
+// "650% do passo anterior" que o dono viu) viram `null`, e a tela lê `null`
+// como "—" ou como nota, nunca como dado.
+
+/**
+ * Os DOIS canais sempre presentes, na mesma ordem (app, depois loja
+ * física) — canal sem venda no período não some da comparação, vira zero.
+ */
+export function garantirAppELoja(canais: readonly CanalDoCrm[]): {
+  readonly online: CanalDoCrm;
+  readonly presencial: CanalDoCrm;
+} {
+  const achar = (canal: string): CanalDoCrm =>
+    canais.find((c) => c.canal === canal) ?? {
+      canal,
+      receita: 0,
+      pedidos: 0,
+      ticketMedio: 0,
+    };
+  return { online: achar("online"), presencial: achar("presencial") };
+}
+
+/**
+ * `parte` como percentual de `total`. Sem base (total ≤ 0) é `null` — nunca
+ * "0%", que pareceria uma fatia medida em vez de "não há o que dividir".
+ */
+export function percentualDoTotal(
+  parte: number,
+  total: number,
+  casas = 0,
+): number | null {
+  if (total <= 0) return null;
+  const fator = 10 ** casas;
+  return Math.round((parte / total) * 100 * fator) / fator;
+}
+
+/** Ticket médio de uma forma de pagamento: receita ÷ pedidos, ao centavo. */
+export function ticketPorForma(
+  receita: number,
+  pedidos: number,
+): number | null {
+  if (pedidos <= 0) return null;
+  return Math.round((receita / pedidos) * 100) / 100;
+}
+
+/**
+ * Conversão entre duas etapas DA MESMA UNIDADE. `> 100%` vira `null`: um
+ * funil nunca mostra mais que o passo anterior (foi assim que "13 pedidos
+ * criados, 2 carrinhos" virou "650% do passo anterior" — unidades
+ * diferentes, pessoas × pedidos, nunca deveriam ter sido divididas).
+ */
+export function conversaoEntreEtapas(
+  atual: number | null,
+  anterior: number | null,
+): number | null {
+  if (atual == null || anterior == null || anterior <= 0 || atual < 0) {
+    return null;
+  }
+  const percentual = Math.round((atual / anterior) * 1000) / 10;
+  return percentual > 100 ? null : percentual;
+}
+
+/** Taxa de pagamento do funil do app: pedidos pagos ÷ pedidos criados. */
+export function taxaDePagamento(
+  pedidosCriados: number | null,
+  pedidosPagos: number | null,
+): number | null {
+  return conversaoEntreEtapas(pedidosPagos, pedidosCriados);
+}
+
+/**
+ * Quantos pedidos criados no período ainda não foram pagos — a ação "Ver
+ * pedidos" só aparece quando este número é positivo. `null` quando alguma
+ * das duas etapas não é medida.
+ */
+export function pedidosNaoPagos(
+  criados: number | null,
+  pagos: number | null,
+): number | null {
+  if (criados == null || pagos == null) return null;
+  return Math.max(0, criados - pagos);
+}
+
+/** Frase de leitura do cartão "App × loja física": quem vendeu mais. */
+export function fraseLeituraDosCanais(
+  online: CanalDoCrm,
+  presencial: CanalDoCrm,
+): string {
+  const total = online.receita + presencial.receita;
+  if (total <= 0) return "Nenhuma venda no período.";
+  const pctOnline = Math.round((online.receita / total) * 100);
+  const pctPresencial = 100 - pctOnline;
+  if (Math.abs(pctOnline - pctPresencial) <= 10) {
+    return "App e loja física dividem a receita quase igual neste período.";
+  }
+  return pctOnline > pctPresencial
+    ? `O app fez ${pctOnline}% da receita do período.`
+    : `A loja física fez ${pctPresencial}% da receita do período.`;
+}
+
+/** Frase de leitura do cartão "Formas de pagamento": a forma líder. */
+export function fraseLeituraDasFormas(
+  formas: readonly FormaDePagamentoDoCrm[],
+): string | null {
+  const total = formas.reduce((soma, f) => soma + f.receita, 0);
+  if (total <= 0) return null;
+  const lider = [...formas].sort((a, b) => b.receita - a.receita)[0];
+  const pct = Math.round((lider.receita / total) * 100);
+  return `${rotuloDaFormaDePagamento(lider.forma)} é ${pct}% da receita do período.`;
+}
+
+/** "81 dias", "1 dia" — o selo de pedido parado escreve por extenso. */
+export function diasPorExtenso(dias: number): string {
+  const inteiro = Math.max(0, Math.floor(dias));
+  return `${inteiro} ${inteiro === 1 ? "dia" : "dias"}`;
+}
