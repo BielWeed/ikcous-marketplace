@@ -42,7 +42,7 @@ const POR_PAGINA = 20;
 
 /** Colunas da lista, compartilhadas entre o cabeçalho e cada linha no desktop. */
 const COLUNAS_DA_LISTA =
-  "lg:grid-cols-[minmax(0,1.9fr)_minmax(0,1.15fr)_minmax(0,0.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,1.45fr)]";
+  "lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1.1fr)_minmax(0,0.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.95fr)_minmax(0,1.45fr)]";
 
 function CrachaDoSegmento({
   segmento,
@@ -100,7 +100,10 @@ function BlocoDeSegmento({
       aria-pressed={selecionado}
       onClick={aoSelecionar}
       className={cn(
-        "relative flex min-h-[92px] flex-col justify-between gap-2 rounded-2xl p-3 text-left",
+        // Compacto no celular (alvo ~64–72 px: rótulo numa linha, número +
+        // receita na outra) — no desktop (`sm:`) volta ao cartão maior de
+        // antes, com o número em destaque na própria linha.
+        "relative flex min-h-[64px] flex-col justify-center gap-1 rounded-2xl p-2.5 text-left sm:min-h-[92px] sm:justify-between sm:gap-2 sm:p-3",
         CLICAVEL_DO_CRM,
         selecionado
           ? "border-admin-gold/60 bg-admin-gold/[0.08] ring-1 ring-admin-gold/40 hover:border-admin-gold/60"
@@ -116,21 +119,21 @@ function BlocoDeSegmento({
           {info.rotulo}
         </span>
         <Filter
-          className="ml-auto size-3.5 shrink-0 text-zinc-500"
+          className="ml-auto size-3 shrink-0 text-zinc-500 sm:size-3.5"
           aria-hidden="true"
         />
       </span>
       {carregando && !resumo ? (
         <span
-          className="premium-shimmer h-6 w-12 rounded-md"
+          className="premium-shimmer h-5 w-16 rounded-md sm:h-6 sm:w-12"
           aria-hidden="true"
         />
       ) : (
-        <span>
-          <span className="block text-xl font-black tabular-nums text-white">
+        <span className="flex items-baseline justify-between gap-1.5 sm:block">
+          <span className="text-base font-black tabular-nums text-white sm:block sm:text-xl">
             {formatarInteiro(resumo?.clientes ?? 0)}
           </span>
-          <span className="block truncate text-[10px] tabular-nums text-zinc-500">
+          <span className="shrink-0 truncate text-[10px] tabular-nums text-zinc-500 sm:mt-0.5 sm:block">
             {formatarMoedaCompacta(resumo?.receita ?? 0)}
           </span>
         </span>
@@ -237,7 +240,7 @@ function LinhaDoCliente({
   return (
     <li
       className={cn(
-        "grid grid-cols-2 gap-x-3 gap-y-2 rounded-2xl border border-white/5 bg-zinc-950/60 p-3 sm:p-4 lg:items-center lg:gap-4",
+        "grid grid-cols-2 gap-x-3 gap-y-2 rounded-2xl border border-white/5 bg-zinc-950/60 p-3 sm:p-4 lg:items-center lg:gap-5",
         COLUNAS_DA_LISTA,
       )}
     >
@@ -263,9 +266,10 @@ function LinhaDoCliente({
         <CrachaDoSegmento segmento={cliente.segmento} />
       </div>
 
-      {/* Pedidos/receita/última compra: 1 linha de 3 no celular (`contents`
-          some no desktop e devolve os 3 filhos direto pras colunas deles). */}
-      <div className="col-span-2 grid grid-cols-3 gap-2 lg:contents">
+      {/* Pedidos/receita/última compra/canal: grade 2×2 no celular (`contents`
+          some no desktop e devolve os 4 filhos direto pras colunas deles, na
+          mesma ordem do cabeçalho — sem sobrar "Canal" sozinho numa linha). */}
+      <div className="col-span-2 grid grid-cols-2 gap-x-3 gap-y-2 lg:contents">
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-wider text-zinc-500 lg:sr-only">
             Pedidos
@@ -292,18 +296,20 @@ function LinhaDoCliente({
             {formatarData(cliente.ultimaCompra)}
           </p>
         </div>
+
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500 lg:sr-only">
+            Canal
+          </p>
+          <p className="truncate text-zinc-300">
+            {cliente.canalPreferido
+              ? rotuloDoCanal(cliente.canalPreferido)
+              : "—"}
+          </p>
+        </div>
       </div>
 
-      <div className="col-span-2 min-w-0 lg:col-span-1">
-        <p className="text-[10px] uppercase tracking-wider text-zinc-500 lg:sr-only">
-          Canal
-        </p>
-        <p className="truncate text-zinc-300">
-          {cliente.canalPreferido ? rotuloDoCanal(cliente.canalPreferido) : "—"}
-        </p>
-      </div>
-
-      <div className="col-span-2 flex gap-2 lg:col-span-1 lg:justify-end">
+      <div className="col-span-2 flex gap-2 lg:col-span-1 lg:justify-end lg:pl-2">
         {whatsapp ? (
           <a
             href={whatsapp}
@@ -499,7 +505,7 @@ export function ClientesDoCrm({
               <div
                 aria-hidden="true"
                 className={cn(
-                  "hidden gap-4 px-4 text-[10px] font-black uppercase tracking-wider text-zinc-500 lg:grid",
+                  "hidden gap-5 px-4 text-[10px] font-black uppercase tracking-wider text-zinc-500 lg:grid",
                   COLUNAS_DA_LISTA,
                 )}
               >
