@@ -159,15 +159,24 @@ function GradeDeSegmentos({
   carregando,
   selecionado,
   aoSelecionar,
+  contagemFiltrada,
 }: Readonly<{
   segmentos: readonly ResumoDoSegmento[];
   carregando: boolean;
   selecionado: SegmentoCrm | null;
   aoSelecionar: (segmento: SegmentoCrm | null) => void;
+  /**
+   * Total já filtrado pela busca (`lista.total`) — substitui o bruto do
+   * segmento quando há um termo digitado, senão "Mostrando: Em risco · 14"
+   * continuava mostrando o total do segmento inteiro mesmo com a lista
+   * abaixo filtrada para 1 ou 2 nomes. `undefined` quando não há busca
+   * ativa (usa o bruto do segmento, comportamento de sempre).
+   */
+  contagemFiltrada?: number;
 }>) {
   const porSegmento = new Map(segmentos.map((s) => [s.segmento, s]));
   const resumoSelecionado = selecionado
-    ? (porSegmento.get(selecionado)?.clientes ?? 0)
+    ? (contagemFiltrada ?? porSegmento.get(selecionado)?.clientes ?? 0)
     : 0;
   const textoDoFiltro = selecionado
     ? textoDoFiltroDeSegmento(selecionado, resumoSelecionado)
@@ -411,6 +420,12 @@ export function ClientesDoCrm({
   const totalPaginas = Math.max(1, Math.ceil(total / POR_PAGINA));
   const esqueleto = carregando && !lista;
   const nomeDoSegmento = segmento ? infoDoSegmento(segmento).rotulo : null;
+  // Com busca ativa e a lista já carregada, "Mostrando" usa o total JÁ
+  // filtrado (busca + segmento) — o bruto do segmento (crm_visao) ignora a
+  // busca e mentia ("Mostrando: Em risco · 14" com a lista abaixo mostrando
+  // só 1 nome).
+  const contagemFiltradaPelaBusca =
+    busca.trim() !== "" && lista ? total : undefined;
 
   return (
     <div className="space-y-6">
@@ -419,6 +434,7 @@ export function ClientesDoCrm({
         carregando={carregandoSegmentos}
         selecionado={segmento}
         aoSelecionar={aoMudarSegmento}
+        contagemFiltrada={contagemFiltradaPelaBusca}
       />
 
       <CartaoDoCrm

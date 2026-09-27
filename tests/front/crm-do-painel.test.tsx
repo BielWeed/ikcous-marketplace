@@ -363,4 +363,53 @@ describe("Dashboard CRM", () => {
       p_segmento: "em_risco",
     });
   });
+
+  it("Clientes: 'Mostrando: Em risco · N' usa o total filtrado pela busca, não o bruto do segmento", async () => {
+    // esperarAte mede o próprio timeout com Date.now(), que este describe
+    // deixa CONGELADO (vi.useFakeTimers({ toFake: ["Date"] })) — sem
+    // timeout de teste próprio e mais curto, uma condição que nunca fica
+    // verdadeira trava até o timeout padrão do Vitest (bem mais lento).
+    await montar();
+    const abaClientes = Array.from(
+      hospedeiro.querySelectorAll('[role="tab"]'),
+    ).find((t) => texto(t) === "Clientes") as HTMLButtonElement;
+    await act(async () => abaClientes.click());
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+
+    // Segmento "Em risco" tem 2 clientes no total (VISAO.segmentos) — sem
+    // busca, o texto usa esse bruto normalmente.
+    const segmento = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) =>
+        b.getAttribute("aria-pressed") !== null &&
+        texto(b).includes("Em risco"),
+    ) as HTMLButtonElement;
+    await act(async () => segmento.click());
+    await esperarAte(() =>
+      texto(hospedeiro).includes("Mostrando: Em risco · 2"),
+    );
+
+    // Busca por "Bruno": só 1 dos 2 clientes do segmento bate — a RPC
+    // devolve total=1, e a "Mostrando" tem de acompanhar, não travar em 2.
+    h.respostas.set("crm_clientes", {
+      data: { total: 1, clientes: [CLIENTES.clientes[1]] },
+      error: null,
+    });
+    const campoDeBusca = hospedeiro.querySelector(
+      "#crm-busca-cliente",
+    ) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      campoDeBusca.focus();
+      setter?.call(campoDeBusca, "Bruno");
+      campoDeBusca.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    await esperarAte(() =>
+      texto(hospedeiro).includes("Mostrando: Em risco · 1"),
+    );
+    expect(texto(hospedeiro)).not.toContain("Mostrando: Em risco · 2");
+  }, 8000);
 });
