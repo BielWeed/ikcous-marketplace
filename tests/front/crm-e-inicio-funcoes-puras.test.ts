@@ -10,7 +10,6 @@ import {
   formatarMoedaCompacta,
   formatarPercentual,
   formatarVariacao,
-  idadeCurta,
   infoDoSegmento,
   intervaloDoPeriodo,
   lerAssinaturaDaLoja,
@@ -258,15 +257,10 @@ describe("formatadores", () => {
     expect(formatarPercentual(null)).toBe("—");
   });
 
-  it("datas e idades curtas", () => {
+  it("datas", () => {
     expect(formatarData("2026-09-26")).toBe("26/09/2026");
     expect(formatarData("2026-09-26T01:00:00Z")).toBe("25/09/2026");
     expect(formatarData(null)).toBe("—");
-    const agora = Date.parse("2026-09-26T12:00:00Z");
-    expect(idadeCurta("2026-09-26T11:48:00Z", agora)).toBe("12 min");
-    expect(idadeCurta("2026-09-26T07:00:00Z", agora)).toBe("5 h");
-    expect(idadeCurta("2026-09-23T12:00:00Z", agora)).toBe("3 d");
-    expect(idadeCurta("não é data", agora)).toBeNull();
   });
 
   it("rótulos de canal e status", () => {

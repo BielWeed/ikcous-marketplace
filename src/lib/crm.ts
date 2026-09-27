@@ -658,22 +658,6 @@ export function formatarData(valor: string | null | undefined): string {
   return `${dia}/${mes}/${ano}`;
 }
 
-/** Idade curta de um instante: "agora", "12 min", "5 h", "3 d". */
-export function idadeCurta(
-  iso: string | null | undefined,
-  agora: number = Date.now(),
-): string | null {
-  if (!iso) return null;
-  const instante = Date.parse(iso);
-  if (Number.isNaN(instante)) return null;
-  const minutos = Math.max(0, Math.floor((agora - instante) / 60_000));
-  if (minutos < 1) return "agora";
-  if (minutos < 60) return `${minutos} min`;
-  const horas = Math.floor(minutos / 60);
-  if (horas < 24) return `${horas} h`;
-  return `${Math.floor(horas / 24)} d`;
-}
-
 // ─── Erro ────────────────────────────────────────────────────────────────
 
 /**
@@ -963,10 +947,11 @@ export function diasPorExtenso(dias: number): string {
 }
 
 /**
- * Idade por extenso — "agora", "12 minutos", "5 horas", "3 dias" — NUNCA a
- * abreviação de `idadeCurta` ("min"/"h"/"d"). Não reescreve `idadeCurta`
- * (o pipeline de "mais antigo há" e o selo "parado" usam esta; outro lugar
- * do painel continua com a curta); dias reaproveita `diasPorExtenso`.
+ * Idade por extenso — "agora", "12 minutos", "5 horas", "3 dias" — nunca a
+ * abreviação "min"/"h"/"d" (a antiga `idadeCurta`, removida por falta de
+ * uso: só o pipeline de "mais antigo há" e o selo "parado" mediam idade, e
+ * os dois já usam esta versão por extenso). Dias reaproveita
+ * `diasPorExtenso`.
  */
 export function idadePorExtenso(
   iso: string | null | undefined,
