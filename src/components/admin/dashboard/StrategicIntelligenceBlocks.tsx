@@ -318,9 +318,9 @@ export const StrategicIntelligenceBlocks = React.memo(
       (loading && (!categoryData || categoryData.length === 0))
     ) {
       return (
-        <div className="space-y-12 pb-10 sm:pb-20">
+        <div className="space-y-12">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
-            <Skeleton className="relative h-[340px] w-full overflow-hidden rounded-[3rem] border border-white/5 bg-zinc-800/20 shadow-lg backdrop-blur-xl sm:h-[380px] lg:col-span-5" />
+            <Skeleton className="relative h-[340px] w-full overflow-hidden rounded-2xl border border-white/5 bg-zinc-800/20 shadow-lg backdrop-blur-xl sm:h-[380px] lg:col-span-5" />
           </div>
         </div>
       );
@@ -379,7 +379,7 @@ export const StrategicIntelligenceBlocks = React.memo(
     }
 
     return (
-      <div className="space-y-12 pb-10 duration-500 animate-in fade-in sm:pb-20">
+      <div className="space-y-12 duration-500 animate-in fade-in">
         {/* A11y - Accessibility Layer for Screen Readers */}
         <section
           className="sr-only"
@@ -515,10 +515,10 @@ export const StrategicIntelligenceBlocks = React.memo(
               {/* COLUNA DA TABELA DE LEGENDAS DETALHADAS */}
               <div className="flex w-full flex-col justify-center space-y-3 lg:w-[45%]">
                 <div className="hidden items-center justify-between border-b border-white/5 pb-2 lg:flex">
-                  <span className="text-[10px] font-black uppercase leading-tight tracking-widest text-zinc-400">
+                  <span className="text-[10px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
                     Divisão de categorias
                   </span>
-                  <span className="text-[10px] font-black uppercase leading-tight tracking-widest text-zinc-400">
+                  <span className="text-[10px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
                     Faturamento (%)
                   </span>
                 </div>
@@ -598,7 +598,7 @@ export const StrategicIntelligenceBlocks = React.memo(
                                     : `0 0 10px ${color}`,
                               }}
                             />
-                            <span className="text-[11px] font-black uppercase tracking-widest text-white">
+                            <span className="text-[11px] font-semibold text-white">
                               {entry.name}
                             </span>
                           </div>
@@ -637,7 +637,7 @@ export const StrategicIntelligenceBlocks = React.memo(
 
                         {/* Sub Details Row */}
                         {!isInactive && (entry.avg_ticket || entry.orders) && (
-                          <div className="pl-5.5 mt-1.5 flex items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                          <div className="pl-5.5 mt-1.5 flex items-center gap-4 text-[10px] font-medium text-zinc-500">
                             {entry.avg_ticket && (
                               <span>
                                 Ticket M.:{" "}

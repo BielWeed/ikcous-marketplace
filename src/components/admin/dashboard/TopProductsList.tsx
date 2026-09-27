@@ -26,10 +26,6 @@ export const TopProductsList = memo(function TopProductsList({
   onNavigate,
 }: TopProductsListProps) {
   const products = stats?.topProducts || [];
-  const maxTotal =
-    products.length > 0
-      ? Math.max(...products.map((p) => Number(p.total || 0)))
-      : 0;
 
   const itemVariants = {
     hidden: { x: -20, opacity: 0 },
@@ -79,7 +75,7 @@ export const TopProductsList = memo(function TopProductsList({
                 className="rounded-2xl border border-white/5 bg-white/[0.01] py-10 text-center"
               >
                 <TrendingUp className="mx-auto mb-2 size-8 text-zinc-500/50" />
-                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">
+                <p className="text-xs font-semibold text-zinc-400">
                   Nenhum dado de vendas disponível
                 </p>
               </motion.div>
@@ -91,10 +87,6 @@ export const TopProductsList = memo(function TopProductsList({
               >
                 {products.map((item, idx) => {
                   const isFirst = idx === 0;
-                  const sharePercentage =
-                    maxTotal > 0
-                      ? (Number(item.total || 0) / maxTotal) * 100
-                      : 0;
                   const displayName = item.name || "Produto sem nome";
 
                   return (
@@ -109,12 +101,6 @@ export const TopProductsList = memo(function TopProductsList({
                           : "hover:bg-white/[0.02] hover:border-white/5",
                       )}
                     >
-                      {/* Progress background bar effect */}
-                      <div
-                        className="absolute bottom-0 left-0 h-[2px] bg-admin-gold/10 transition-all duration-1000"
-                        style={{ width: `${sharePercentage}%` }}
-                      />
-
                       <div className="relative z-10 flex min-w-0 items-center gap-3">
                         {/* Rank indicators */}
                         <div className="relative flex size-5 shrink-0 items-center justify-center">
@@ -166,24 +152,10 @@ export const TopProductsList = memo(function TopProductsList({
                           </h4>
 
                           <div className="mt-0.5 flex items-center gap-1.5">
-                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-admin-gold/90">
+                            <span className="shrink-0 text-[10px] font-semibold text-admin-gold/90">
                               {item.quantity}{" "}
                               {item.quantity === 1 ? "venda" : "vendas"}
                             </span>
-                            <span className="shrink-0 text-[9px] text-zinc-700">
-                              •
-                            </span>
-                            <div className="h-[3px] w-12 shrink-0 overflow-hidden rounded-full bg-white/5 sm:w-20">
-                              <div
-                                className={cn(
-                                  "h-full rounded-full bg-admin-gold",
-                                  isFirst
-                                    ? "shadow-[0_0_6px_rgba(234,179,8,0.5)]"
-                                    : "",
-                                )}
-                                style={{ width: `${sharePercentage}%` }}
-                              />
-                            </div>
                           </div>
                         </div>
                       </div>
