@@ -427,7 +427,13 @@ describe("PremiumOffers/HeroOfferCard — o card não é um botão com botões d
     expect(onProductClick).not.toHaveBeenCalled();
   });
 
-  it("com variação ativa: os dois CTAs abrem o produto (regra que já existia, não muda)", async () => {
+  // Decisão do Gabriel (27/09/2026): dois botões com o MESMO rótulo
+  // ("Escolher opções") fazendo a MESMA coisa (abrir o produto) era
+  // redundante -- o segundo sumiu (ver
+  // hero-offer-card-um-botao-com-variacao.test.tsx para a cobertura da
+  // contagem nos dois cenários). A regra do botão que SOBROU não mudou:
+  // continua abrindo o produto, nunca adicionando direto.
+  it("com variação ativa: só o botão principal existe, e ele abre o produto", async () => {
     const onProductClick = vi.fn();
     const onAddToCart = vi.fn();
     const onQuickBuy = vi.fn();
@@ -457,18 +463,13 @@ describe("PremiumOffers/HeroOfferCard — o card não é um botão com botões d
     const escolherOpcoes = botoes.filter((b) =>
       b.textContent?.includes("Escolher opções"),
     );
-    expect(escolherOpcoes).toHaveLength(2);
+    expect(escolherOpcoes).toHaveLength(1);
 
     await act(async () => {
       escolherOpcoes[0].click();
     });
     expect(onProductClick).toHaveBeenCalledWith(produto.id);
     expect(onAddToCart).not.toHaveBeenCalled();
-
-    await act(async () => {
-      escolherOpcoes[1].click();
-    });
-    expect(onProductClick).toHaveBeenCalledTimes(2);
     expect(onQuickBuy).not.toHaveBeenCalled();
   });
 });
