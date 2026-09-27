@@ -18,6 +18,15 @@ import type { ReactNode } from "react";
  * mais claros/"caixudos" que os outros cartões (achado da revisão,
  * confirmado no print do harness em 375/1280). O Início passa
  * `superficie="admin-glass"`; o CRM não passa nada e mantém o padrão.
+ *
+ * `rounded-2xl` é FIXO aqui embaixo (não faz parte de `superficie`): a
+ * re-revisão pegou que `.admin-glass` (`src/index.css`) não define
+ * `rounded-*` nenhum — quando o Início troca a superfície inteira, o
+ * cartão perdia o canto arredondado. `SUPERFICIE_DO_CRM` também tem
+ * `rounded-2xl` (redundante quando ela é a superfície ativa, inofensivo:
+ * é a mesma classe duas vezes), mas ela é usada em vários outros lugares
+ * (`CartaoDoCrm` etc.) que não podem perder o canto — por isso o canto
+ * mora no CORPO do tile, não em `SUPERFICIE_DO_CRM`.
  */
 export function TileDeKpi({
   rotulo,
@@ -44,7 +53,7 @@ export function TileDeKpi({
     <div
       className={cn(
         superficie,
-        "flex min-h-[112px] flex-col justify-between gap-2 p-3 sm:p-4",
+        "flex min-h-[112px] flex-col justify-between gap-2 rounded-2xl p-3 sm:p-4",
         className,
       )}
     >

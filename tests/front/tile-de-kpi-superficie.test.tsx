@@ -11,6 +11,13 @@
 // perceptivelmente mais claros/"caixudos" que o resto da tela. Nova prop
 // `superficie` deixa o Início pedir a superfície antiga (`admin-glass`)
 // sem mexer no padrão do CRM.
+//
+// Regressão da re-revisão (N1): `superficie="admin-glass"` SUBSTITUI
+// `SUPERFICIE_DO_CRM` inteiro, e `.admin-glass` (src/index.css) não tem
+// `rounded-*` nenhum — os 4 tiles do Início perderam o canto arredondado.
+// `rounded-2xl` agora é fixo no corpo do TileDeKpi (não faz parte de
+// `superficie`), então os dois modos ficam com canto — os testes abaixo
+// provam isso nos dois.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -47,6 +54,7 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
     const cartao = hospedeiro.firstElementChild as HTMLElement;
     expect(cartao.classList.contains("bg-zinc-900/60")).toBe(true);
     expect(cartao.classList.contains("admin-glass")).toBe(false);
+    expect(cartao.classList.contains("rounded-2xl")).toBe(true);
   });
 
   it('superficie="admin-glass": o cartão troca para a linguagem do Início', async () => {
@@ -66,6 +74,9 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
     const cartao = hospedeiro.firstElementChild as HTMLElement;
     expect(cartao.classList.contains("admin-glass")).toBe(true);
     expect(cartao.classList.contains("bg-zinc-900/60")).toBe(false);
+    // N1: admin-glass (src/index.css) não tem rounded-* nenhum — sem o
+    // rounded-2xl fixo no corpo do TileDeKpi, este cartão perde o canto.
+    expect(cartao.classList.contains("rounded-2xl")).toBe(true);
   });
 });
 
@@ -101,6 +112,7 @@ describe("NumerosDoMes (Início) — os 4 tiles pedem a superfície admin-glass"
     for (const tile of tiles) {
       expect(tile.classList.contains("admin-glass")).toBe(true);
       expect(tile.classList.contains("bg-zinc-900/60")).toBe(false);
+      expect(tile.classList.contains("rounded-2xl")).toBe(true);
     }
   });
 });
