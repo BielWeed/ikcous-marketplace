@@ -291,3 +291,28 @@ Deno.test("lerDatabaseUrlEfemera — tests/banco/efemero.cjs (trava irmã do job
     },
   );
 });
+
+Deno.test("provisionar-efemero.cjs (frente CI-BANCO) — auth.users emulado com raw_app_meta_data", () => {
+  // N3 (re-revisão de risco, 27/09/2026): sem esta coluna, as funções da
+  // migration 83 (crm__pedidos_nao_pagos/crm__nunca_comprou, que leem
+  // `auth.users.raw_app_meta_data ->> 'role'` no próprio corpo) explodem
+  // com 42703 (undefined_column) já no CREATE OR REPLACE FUNCTION — a 2ª
+  // passada de aplicação (prova-dupla-aplicacao.cjs) registrava isso como
+  // "colisão informativa" em vez de expor o defeito real de provisionamento.
+  // Guarda de regressão por texto: a mesma trava que tests/banco/
+  // provisionar.cjs já tinha para a frente rpc-ci.
+  const texto = Deno.readTextFileSync(
+    new URL("../scripts/ci/banco/provisionar-efemero.cjs", import.meta.url),
+  );
+  const criaAuthUsers = texto.match(/CREATE TABLE auth\.users \(([^)]*)\)/s);
+  if (!criaAuthUsers) {
+    throw new Error(
+      "provisionar-efemero.cjs não tem mais um CREATE TABLE auth.users reconhecível",
+    );
+  }
+  if (!/raw_app_meta_data\s+jsonb/.test(criaAuthUsers[1])) {
+    throw new Error(
+      "auth.users emulado pelo CI-BANCO precisa de raw_app_meta_data jsonb (migration 83 lê essa coluna)",
+    );
+  }
+});
