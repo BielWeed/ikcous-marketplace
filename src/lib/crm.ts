@@ -967,3 +967,43 @@ export function pipelineEmAberto(
     (etapa) => !STATUS_FECHADOS_DO_PIPELINE.has(etapa.status),
   );
 }
+
+// --- clientes do CRM (visual 27/09) ---
+
+/** Faixa de saúde da relação — agrupa os 10 segmentos RFM na aba Clientes. */
+export interface FaixaDeSegmentosDoCrm {
+  readonly titulo: string;
+  readonly segmentos: readonly SegmentoCrm[];
+}
+
+/**
+ * As 3 faixas de segmentos RFM da grade "Segmentos RFM" da aba Clientes, na
+ * ordem de exibição: Melhores (quem compra bem) → Atenção (esfriando) →
+ * Perdendo (em risco de sumir).
+ */
+export const FAIXAS_DE_SEGMENTOS_DO_CRM: readonly FaixaDeSegmentosDoCrm[] = [
+  {
+    titulo: "Melhores",
+    segmentos: ["campeoes", "leais", "ativos", "novos", "promissores"],
+  },
+  {
+    titulo: "Atenção",
+    segmentos: ["precisam_atencao", "quase_dormindo"],
+  },
+  {
+    titulo: "Perdendo",
+    segmentos: ["em_risco", "nao_pode_perder", "hibernando"],
+  },
+];
+
+/**
+ * Texto da linha de filtro ativo da aba Clientes ("Mostrando: Em risco · 2").
+ * `null` quando nenhum segmento está selecionado (a lista mostra todos).
+ */
+export function textoDoFiltroDeSegmento(
+  segmento: SegmentoCrm | null,
+  clientes: number,
+): string | null {
+  if (!segmento) return null;
+  return `Mostrando: ${infoDoSegmento(segmento).rotulo} · ${formatarInteiro(clientes)}`;
+}
