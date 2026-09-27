@@ -1525,12 +1525,17 @@ export const ProductView = React.memo(function ProductView({
                     <p
                       className={cn(
                         "mt-0.5 text-[11px] font-black leading-tight",
-                        // Mesma regra do bloco de preço principal (linhas
-                        // 976-994): a barra dockada usava text-rose-600 SEMPRE,
-                        // com ou sem promoção. Vermelho só faz sentido quando
-                        // há desconto de verdade (`originalPrice > currentPrice`)
-                        // -- sem isso, o neutro é o mesmo tom do preço sem
-                        // desconto ali em cima (text-zinc-900).
+                        // Mesma regra do bloco de preço principal ("Price &
+                        // Promo Badges Row" logo acima): a barra dockada
+                        // usava text-rose-600 SEMPRE, com ou sem promoção.
+                        // Cor de promoção só faz sentido quando há desconto
+                        // de verdade (`originalPrice > currentPrice`) -- sem
+                        // isso, o neutro é o mesmo tom do preço sem desconto
+                        // ali em cima (text-zinc-900). A cor de promoção em
+                        // si é verde (CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                        // `src/lib/cor-do-preco-promocional.ts`), não mais
+                        // vermelho -- decisão do dono (27/09/2026): vermelho
+                        // é a mesma cor de "negativo" do resto da loja.
                         product.originalPrice &&
                           product.originalPrice > currentPrice
                           ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
