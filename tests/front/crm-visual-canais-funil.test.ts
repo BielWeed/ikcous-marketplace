@@ -7,9 +7,12 @@ import {
   diasPorExtenso,
   fraseLeituraDasFormas,
   fraseLeituraDosCanais,
+  funilEhMonotonico,
   garantirAppELoja,
+  idadePorExtenso,
   pedidosNaoPagos,
   percentualDoTotal,
+  pipelineEmAberto,
   taxaDePagamento,
   ticketPorForma,
 } from "@/lib/crm";
@@ -211,5 +214,75 @@ describe("diasPorExtenso", () => {
   it("arredonda para baixo e nunca fica negativo", () => {
     expect(diasPorExtenso(1.9)).toBe("1 dia");
     expect(diasPorExtenso(-3)).toBe("0 dias");
+  });
+});
+
+describe("funilEhMonotonico", () => {
+  it("sequência vazia ou de um item é monotônica", () => {
+    expect(funilEhMonotonico([])).toBe(true);
+    expect(funilEhMonotonico([5])).toBe(true);
+  });
+
+  it("não-crescente (decrescente ou igual) é monotônica — o funil afunila", () => {
+    expect(funilEhMonotonico([2100, 720, 612])).toBe(true);
+    expect(funilEhMonotonico([10, 10, 5])).toBe(true);
+  });
+
+  it("etapa maior que a anterior quebra a monotonia — o funil que alargava", () => {
+    // carrinhos=2 (pessoas) -> pedidos criados=13 (pedidos) -> pagos=0: o
+    // caso real do dono, unidades diferentes fazendo a barra alargar.
+    expect(funilEhMonotonico([2, 13, 0])).toBe(false);
+    expect(funilEhMonotonico([1, 2])).toBe(false);
+  });
+});
+
+describe("pipelineEmAberto", () => {
+  const etapa = (status: string) => ({
+    status,
+    quantidade: 1,
+    maisAntigoEm: null,
+  });
+
+  it("tira entregue e cancelado — não estão em aberto", () => {
+    const resultado = pipelineEmAberto([
+      etapa("new"),
+      etapa("delivered"),
+      etapa("cancelled"),
+      etapa("shipping"),
+    ]);
+    expect(resultado.map((e) => e.status)).toEqual(["new", "shipping"]);
+  });
+
+  it("status desconhecido fica — lista negativa, nunca esconde o que não reconhece", () => {
+    expect(pipelineEmAberto([etapa("um-status-novo")])).toHaveLength(1);
+  });
+
+  it("lista vazia continua vazia", () => {
+    expect(pipelineEmAberto([])).toEqual([]);
+  });
+});
+
+describe("idadePorExtenso", () => {
+  const agora = Date.parse("2026-09-26T12:00:00Z");
+
+  it("agora e minutos por extenso — nunca abreviado", () => {
+    expect(idadePorExtenso("2026-09-26T11:59:30Z", agora)).toBe("agora");
+    expect(idadePorExtenso("2026-09-26T11:59:00Z", agora)).toBe("1 minuto");
+    expect(idadePorExtenso("2026-09-26T11:48:00Z", agora)).toBe("12 minutos");
+  });
+
+  it("horas por extenso, singular e plural", () => {
+    expect(idadePorExtenso("2026-09-26T11:00:00Z", agora)).toBe("1 hora");
+    expect(idadePorExtenso("2026-09-26T07:00:00Z", agora)).toBe("5 horas");
+  });
+
+  it("24h ou mais reaproveita diasPorExtenso", () => {
+    expect(idadePorExtenso("2026-09-25T12:00:00Z", agora)).toBe("1 dia");
+    expect(idadePorExtenso("2026-09-23T12:00:00Z", agora)).toBe("3 dias");
+  });
+
+  it("sem data ou data inválida: null", () => {
+    expect(idadePorExtenso(null, agora)).toBeNull();
+    expect(idadePorExtenso("não é data", agora)).toBeNull();
   });
 });

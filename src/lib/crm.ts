@@ -912,3 +912,58 @@ export function diasPorExtenso(dias: number): string {
   const inteiro = Math.max(0, Math.floor(dias));
   return `${inteiro} ${inteiro === 1 ? "dia" : "dias"}`;
 }
+
+/**
+ * Idade por extenso — "agora", "12 minutos", "5 horas", "3 dias" — NUNCA a
+ * abreviação de `idadeCurta` ("min"/"h"/"d"). Não reescreve `idadeCurta`
+ * (o pipeline de "mais antigo há" e o selo "parado" usam esta; outro lugar
+ * do painel continua com a curta); dias reaproveita `diasPorExtenso`.
+ */
+export function idadePorExtenso(
+  iso: string | null | undefined,
+  agora: number = Date.now(),
+): string | null {
+  if (!iso) return null;
+  const instante = Date.parse(iso);
+  if (Number.isNaN(instante)) return null;
+  const minutos = Math.max(0, Math.floor((agora - instante) / 60_000));
+  if (minutos < 1) return "agora";
+  if (minutos < 60) {
+    return `${minutos} ${minutos === 1 ? "minuto" : "minutos"}`;
+  }
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `${horas} ${horas === 1 ? "hora" : "horas"}`;
+  return diasPorExtenso(horas / 24);
+}
+
+/**
+ * Uma sequência de etapas do funil é monotônica quando NUNCA sobe (cada
+ * etapa ≤ a anterior). Quando falsa, uma etapa é maior que a anterior — o
+ * sinal de que as unidades são diferentes (pessoas × pedidos, o caso real
+ * "carrinhos 2 → pedidos criados 13") — e uma barra com largura
+ * proporcional alargaria em vez de afunilar, parecendo quebrada.
+ */
+export function funilEhMonotonico(valores: readonly number[]): boolean {
+  let anterior: number | null = null;
+  for (const valor of valores) {
+    if (anterior != null && valor > anterior) return false;
+    anterior = valor;
+  }
+  return true;
+}
+
+/** Status que já saíram da fila — não pertencem a "Pedidos em aberto agora". */
+const STATUS_FECHADOS_DO_PIPELINE = new Set(["delivered", "cancelled"]);
+
+/**
+ * Só os status ABERTOS do pipeline. Lista NEGATIVA de propósito: um status
+ * novo que a UI ainda não conhece fica visível (falha aberta) em vez de
+ * sumir da tela por não estar numa lista positiva desatualizada.
+ */
+export function pipelineEmAberto(
+  etapas: readonly EtapaDoPipeline[],
+): EtapaDoPipeline[] {
+  return etapas.filter(
+    (etapa) => !STATUS_FECHADOS_DO_PIPELINE.has(etapa.status),
+  );
+}

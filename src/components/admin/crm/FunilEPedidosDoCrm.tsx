@@ -5,11 +5,12 @@ import {
 } from "@/components/admin/crm/PecasDoCrm";
 import {
   conversaoEntreEtapas,
-  diasPorExtenso,
   formatarInteiro,
   formatarPercentual,
-  idadeCurta,
+  funilEhMonotonico,
+  idadePorExtenso,
   pedidosNaoPagos,
+  pipelineEmAberto,
   rotuloDoStatusDoPedido,
   taxaDePagamento,
 } from "@/lib/crm";
@@ -170,6 +171,110 @@ function DestaqueDePagamento({
   );
 }
 
+/**
+ * Barras proporcionais centradas, afunilando — só faz sentido quando a
+ * sequência é não-crescente (`funilEhMonotonico`). Valor 0 nunca é barra
+ * preenchida: vira um trilho vazio (tracejado) com o "0" escrito, para não
+ * parecer uma etapa com volume.
+ */
+function FunilProporcional({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
+  const topo = medidas.reduce(
+    (maior, etapa) => Math.max(maior, etapa.valor),
+    0,
+  );
+  return (
+    <ol className="space-y-1">
+      {medidas.map((etapa, indice) => {
+        const anterior = medidas.at(indice - 1);
+        // Conversão só entre etapas da MESMA unidade (pedidos → pedidos);
+        // carrinhos conta pessoas, então nunca compara com pedidos.
+        const conversao =
+          indice > 0 && anterior && anterior.unidade === etapa.unidade
+            ? conversaoEntreEtapas(etapa.valor, anterior.valor)
+            : null;
+        const vazio = etapa.valor === 0;
+        const largura =
+          topo > 0 ? Math.max((etapa.valor / topo) * 100, 14) : 14;
+        return (
+          <li key={etapa.chave}>
+            {indice > 0 ? (
+              <div className="flex justify-center py-1" aria-hidden="true">
+                <ChevronDown className="size-3.5 text-zinc-600" />
+              </div>
+            ) : null}
+            <div className="space-y-1.5">
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="font-bold text-zinc-200">{etapa.rotulo}</span>
+                <span className="tabular-nums text-zinc-400">
+                  <strong className="font-bold text-white">
+                    {formatarInteiro(etapa.valor)}
+                  </strong>{" "}
+                  {etapa.unidade}
+                  {conversao != null ? (
+                    <span className="ml-2 text-zinc-500">
+                      ({formatarPercentual(conversao)} do passo anterior)
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              <div
+                className={cn(
+                  "mx-auto flex h-8 items-center justify-center rounded-lg text-[11px] font-black tabular-nums",
+                  vazio
+                    ? "border border-dashed border-white/15 bg-transparent text-zinc-500"
+                    : "bg-gradient-to-b from-emerald-400/80 to-emerald-500/60 text-emerald-950",
+                )}
+                style={{ width: `${largura}%` }}
+              >
+                {formatarInteiro(etapa.valor)}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/**
+ * Fileira de cartões ligados por chevron, SEM largura proporcional —
+ * usada quando `funilEhMonotonico` é falso (etapas de unidades diferentes,
+ * ex.: pessoas com carrinho → pedidos criados, que pode crescer). Barra
+ * proporcional aqui alargaria em vez de afunilar e pareceria quebrada.
+ * Horizontal no desktop, empilhada no celular.
+ */
+function FunilEmEtapas({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
+  return (
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-stretch sm:gap-2">
+      {medidas.map((etapa, indice) => (
+        <div
+          key={etapa.chave}
+          className="flex flex-1 flex-col gap-1 sm:flex-row sm:items-stretch"
+        >
+          {indice > 0 ? (
+            <div
+              className="flex items-center justify-center text-zinc-600"
+              aria-hidden="true"
+            >
+              <ChevronDown className="size-4 sm:hidden" />
+              <ChevronRight className="hidden size-4 sm:block" />
+            </div>
+          ) : null}
+          <div className="flex-1 rounded-xl border border-white/10 bg-zinc-950/60 px-3 py-2.5 text-center">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+              {etapa.rotulo}
+            </p>
+            <p className="text-2xl font-black tabular-nums text-white">
+              {formatarInteiro(etapa.valor)}
+            </p>
+            <p className="text-[11px] text-zinc-400">{etapa.unidade}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Funil({
   funil,
   onNavigate,
@@ -181,11 +286,8 @@ function Funil({
     const valor = funil[etapa.chave];
     return valor == null ? [] : [{ ...etapa, valor }];
   });
-  const topo = medidas.reduce(
-    (maior, etapa) => Math.max(maior, etapa.valor),
-    0,
-  );
   const naoMedidas = ETAPAS_MEDIDAS.length > medidas.length;
+  const monotonico = funilEhMonotonico(medidas.map((etapa) => etapa.valor));
 
   return (
     <CartaoDoCrm
@@ -202,56 +304,10 @@ function Funil({
 
         {medidas.length === 0 ? (
           <EstadoVazioDoCrm titulo="Ainda não há dados do funil do app" />
+        ) : monotonico ? (
+          <FunilProporcional medidas={medidas} />
         ) : (
-          <ol className="space-y-1">
-            {medidas.map((etapa, indice) => {
-              const anterior = medidas.at(indice - 1);
-              // Conversão só entre etapas da MESMA unidade (pedidos → pedidos);
-              // carrinhos conta pessoas, então nunca compara com pedidos.
-              const conversao =
-                indice > 0 && anterior && anterior.unidade === etapa.unidade
-                  ? conversaoEntreEtapas(etapa.valor, anterior.valor)
-                  : null;
-              const largura =
-                topo > 0 ? Math.max((etapa.valor / topo) * 100, 14) : 14;
-              return (
-                <li key={etapa.chave}>
-                  {indice > 0 ? (
-                    <div
-                      className="flex justify-center py-1"
-                      aria-hidden="true"
-                    >
-                      <ChevronDown className="size-3.5 text-zinc-600" />
-                    </div>
-                  ) : null}
-                  <div className="space-y-1.5">
-                    <div className="flex items-baseline justify-between gap-2 text-xs">
-                      <span className="font-bold text-zinc-200">
-                        {etapa.rotulo}
-                      </span>
-                      <span className="tabular-nums text-zinc-400">
-                        <strong className="font-bold text-white">
-                          {formatarInteiro(etapa.valor)}
-                        </strong>{" "}
-                        {etapa.unidade}
-                        {conversao != null ? (
-                          <span className="ml-2 text-zinc-500">
-                            ({formatarPercentual(conversao)} do passo anterior)
-                          </span>
-                        ) : null}
-                      </span>
-                    </div>
-                    <div
-                      className="mx-auto flex h-8 items-center justify-center rounded-lg bg-gradient-to-b from-emerald-400/80 to-emerald-500/60 text-[11px] font-black tabular-nums text-emerald-950"
-                      style={{ width: `${largura}%` }}
-                    >
-                      {formatarInteiro(etapa.valor)}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
+          <FunilEmEtapas medidas={medidas} />
         )}
 
         {naoMedidas ? (
@@ -271,7 +327,8 @@ function Pipeline({
   etapas: readonly EtapaDoPipeline[];
   onNavigate: (view: View) => void;
 }>) {
-  const ordenadas = ordenarPipeline(etapas);
+  // Entregue e cancelado já saíram da fila — não são "pedidos em aberto".
+  const ordenadas = ordenarPipeline(pipelineEmAberto(etapas));
   // "Agora" é fotografado junto com os dados: cada leitura nova do pipeline
   // recalcula as idades (render continua puro).
   const [agora, setAgora] = useState(() => Date.now());
@@ -285,74 +342,84 @@ function Pipeline({
       titulo="Pedidos em aberto agora"
       descricao="Não depende do período escolhido no topo — é a fila neste instante."
     >
-      {ordenadas.length === 0 ? (
-        <EstadoVazioDoCrm
-          titulo="Nenhum pedido em aberto"
-          texto="A fila está em dia: nenhum pedido esperando separação, pagamento ou envio."
-        />
-      ) : (
-        <ul className="space-y-1.5">
-          {ordenadas.map((etapa) => {
-            const estilo = estiloDoStatus(etapa.status);
-            const idade = idadeCurta(etapa.maisAntigoEm, agora);
-            const instante = etapa.maisAntigoEm
-              ? Date.parse(etapa.maisAntigoEm)
-              : Number.NaN;
-            const podeEstarParado = ESPERAM_O_LOJISTA.has(etapa.status);
-            const parado =
-              podeEstarParado &&
-              etapa.quantidade > 0 &&
-              !Number.isNaN(instante) &&
-              agora - instante > DOIS_DIAS_MS;
-            return (
-              <li key={etapa.status}>
-                <button
-                  type="button"
-                  onClick={() => onNavigate("admin-orders")}
-                  className={cn(
-                    CLICAVEL_DO_CRM,
-                    "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
-                  )}
-                >
-                  <span
+      <div className="space-y-3">
+        {ordenadas.length === 0 ? (
+          <EstadoVazioDoCrm
+            titulo="Nenhum pedido em aberto"
+            texto="A fila está em dia: nenhum pedido esperando separação, pagamento ou envio."
+          />
+        ) : (
+          <ul className="space-y-1.5">
+            {ordenadas.map((etapa) => {
+              const estilo = estiloDoStatus(etapa.status);
+              // Por extenso nos dois casos ("mais antigo há 1 dia", "parado
+              // há 81 dias") — nunca a abreviação "1 d" ao lado do selo por
+              // extenso, que ficava inconsistente.
+              const idade = idadePorExtenso(etapa.maisAntigoEm, agora);
+              const instante = etapa.maisAntigoEm
+                ? Date.parse(etapa.maisAntigoEm)
+                : Number.NaN;
+              const podeEstarParado = ESPERAM_O_LOJISTA.has(etapa.status);
+              const parado =
+                podeEstarParado &&
+                etapa.quantidade > 0 &&
+                !Number.isNaN(instante) &&
+                agora - instante > DOIS_DIAS_MS;
+              return (
+                <li key={etapa.status}>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin-orders")}
                     className={cn(
-                      "flex size-8 shrink-0 items-center justify-center rounded-lg border",
-                      estilo.chip,
+                      CLICAVEL_DO_CRM,
+                      "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
                     )}
-                    aria-hidden="true"
                   >
-                    <estilo.icone className={cn("size-4", estilo.cor)} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-bold text-white">
-                      {rotuloDoStatusDoPedido(etapa.status)}
+                    <span
+                      className={cn(
+                        "flex size-8 shrink-0 items-center justify-center rounded-lg border",
+                        estilo.chip,
+                      )}
+                      aria-hidden="true"
+                    >
+                      <estilo.icone className={cn("size-4", estilo.cor)} />
                     </span>
-                    {parado ? (
-                      <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
-                        <Clock className="size-3" aria-hidden="true" />
-                        parado há{" "}
-                        {diasPorExtenso((agora - instante) / 86_400_000)}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-bold text-white">
+                        {rotuloDoStatusDoPedido(etapa.status)}
                       </span>
-                    ) : idade && podeEstarParado ? (
-                      <span className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-500">
-                        <Clock className="size-3" aria-hidden="true" />
-                        mais antigo há {idade}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="min-w-8 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-center text-[11px] font-black tabular-nums text-zinc-200">
-                    {formatarInteiro(etapa.quantidade)}
-                  </span>
-                  <ChevronRight
-                    className="size-4 shrink-0 text-zinc-600"
-                    aria-hidden="true"
-                  />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                      {parado ? (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                          <Clock className="size-3" aria-hidden="true" />
+                          parado há {idade}
+                        </span>
+                      ) : idade && podeEstarParado ? (
+                        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-500">
+                          <Clock className="size-3" aria-hidden="true" />
+                          mais antigo há {idade}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="min-w-8 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-center text-[11px] font-black tabular-nums text-zinc-200">
+                      {formatarInteiro(etapa.quantidade)}
+                    </span>
+                    <ChevronRight
+                      className="size-4 shrink-0 text-zinc-600"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {ordenadas.length > 0 ? (
+          <p className="text-[11px] leading-relaxed text-zinc-600">
+            Pedidos entregues ou cancelados não aparecem aqui — já saíram da
+            fila.
+          </p>
+        ) : null}
+      </div>
     </CartaoDoCrm>
   );
 }

@@ -333,6 +333,15 @@ export function CanaisDoCrm({
   const k = visao.kpis;
   const totalCanais = visao.canais.reduce((soma, c) => soma + c.receita, 0);
   const totalFormas = visao.formas.reduce((soma, f) => soma + f.receita, 0);
+  // Sem base de comparação (loja nova, período anterior sem dado), o chip
+  // "sem base de comparação" repetido nos 3 cards virava ruído — some
+  // quando não há variação, em vez de repetir a mesma frase três vezes.
+  const variacaoReceita = variacaoPercentual(k.receita, k.receitaAnterior);
+  const variacaoPedidos = variacaoPercentual(k.pedidos, k.pedidosAnterior);
+  const variacaoTicket = variacaoPercentual(
+    k.ticketMedio,
+    k.ticketMedioAnterior,
+  );
 
   if (totalCanais <= 0 && totalFormas <= 0) {
     return (
@@ -366,10 +375,12 @@ export function CanaisDoCrm({
             valor={formatarMoeda(k.receita)}
             valorCompacto={formatarMoedaCompacta(k.receita)}
             rodape={
-              <ChipDeVariacao
-                pct={variacaoPercentual(k.receita, k.receitaAnterior)}
-                comparacao="vs. período anterior"
-              />
+              variacaoReceita != null ? (
+                <ChipDeVariacao
+                  pct={variacaoReceita}
+                  comparacao="vs. período anterior"
+                />
+              ) : undefined
             }
           />
           <TileDeKpi
@@ -377,10 +388,12 @@ export function CanaisDoCrm({
             icone={ShoppingBag}
             valor={formatarInteiro(k.pedidos)}
             rodape={
-              <ChipDeVariacao
-                pct={variacaoPercentual(k.pedidos, k.pedidosAnterior)}
-                comparacao="vs. período anterior"
-              />
+              variacaoPedidos != null ? (
+                <ChipDeVariacao
+                  pct={variacaoPedidos}
+                  comparacao="vs. período anterior"
+                />
+              ) : undefined
             }
           />
           <TileDeKpi
@@ -390,10 +403,12 @@ export function CanaisDoCrm({
             valor={formatarMoeda(k.ticketMedio)}
             valorCompacto={formatarMoedaCompacta(k.ticketMedio)}
             rodape={
-              <ChipDeVariacao
-                pct={variacaoPercentual(k.ticketMedio, k.ticketMedioAnterior)}
-                comparacao="vs. período anterior"
-              />
+              variacaoTicket != null ? (
+                <ChipDeVariacao
+                  pct={variacaoTicket}
+                  comparacao="vs. período anterior"
+                />
+              ) : undefined
             }
           />
         </div>
