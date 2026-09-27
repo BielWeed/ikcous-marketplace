@@ -254,7 +254,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
             </div>
             {/* Datas do intervalo escolhido e contra o que ele compara —
                 sem isso, "Mês" ou "90 dias" não dizem quais dias entram. */}
-            <p className="px-1 text-[11px] leading-snug text-zinc-500">
+            <p className="px-1 text-[11px] leading-snug text-zinc-400">
               <span className="font-semibold tabular-nums text-zinc-300">
                 {formatarIntervaloCurto(intervalo)}
               </span>{" "}

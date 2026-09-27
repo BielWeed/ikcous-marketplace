@@ -105,14 +105,22 @@ function BlocoDeSegmento({
         // antes, com o número em destaque na própria linha.
         "relative flex min-h-[64px] flex-col justify-center gap-1 rounded-2xl p-2.5 text-left sm:min-h-[92px] sm:justify-between sm:gap-2 sm:p-3",
         CLICAVEL_DO_CRM,
-        selecionado
-          ? "border-admin-gold/60 bg-admin-gold/[0.08] ring-1 ring-admin-gold/40 hover:border-admin-gold/60"
-          : zerado && "opacity-60",
+        selecionado &&
+          "border-admin-gold/60 bg-admin-gold/[0.08] ring-1 ring-admin-gold/40 hover:border-admin-gold/60",
       )}
     >
       <span className="flex items-center gap-1.5">
+        {/* Contraste AA (N3 da re-revisão): a opacidade de "segmento sem
+            cliente" ficava no BOTÃO inteiro, dimmerizando também a receita
+            em texto (~3,2:1, abaixo do mínimo AA). Ela fica só no ponto de
+            cor — um elemento gráfico, não texto — igual ao que já foi
+            feito em CanaisDoCrm. */}
         <span
-          className={cn("size-2 shrink-0 rounded-full", classes.marca)}
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            classes.marca,
+            zerado && "opacity-60",
+          )}
           aria-hidden="true"
         />
         <span className="truncate text-[11px] font-bold text-zinc-200">
@@ -133,10 +141,6 @@ function BlocoDeSegmento({
           <span className="text-base font-black tabular-nums text-white sm:block sm:text-xl">
             {formatarInteiro(resumo?.clientes ?? 0)}
           </span>
-          {/* Contraste AA: dentro do cartão zerado (button com opacity-60
-              quando o segmento não tem cliente), text-zinc-500 media
-              ~2,1:1 — text-zinc-400 melhora a leitura sem perder o peso
-              secundário que a opacidade do botão já dá. */}
           <span className="shrink-0 truncate text-[10px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
             {formatarMoedaCompacta(resumo?.receita ?? 0)}
           </span>

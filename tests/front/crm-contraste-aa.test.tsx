@@ -13,6 +13,13 @@
 //   para zinc-400.
 // - O botão "Limpar" do filtro de segmento tinha min-h-9 (36 px), abaixo do
 //   alvo de toque de 44 px — vira min-h-11.
+//
+// N3 da re-revisão (27/09/2026): o fix acima do segmento zerado trocou só a
+// COR da receita, mas o `opacity-60` continuava no BOTÃO inteiro (~3,2:1,
+// ainda abaixo de AA) — agora a opacidade fica só no ponto de cor (gráfico),
+// igual ao que já tinha sido feito em CanaisDoCrm. Também troca para
+// text-zinc-400: "(67%)" ao lado de Pedidos e "· ticket R$…" em
+// CanaisDoCrm.tsx.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -126,6 +133,52 @@ describe("CanaisDoCrm — frase do canal zerado usa text-zinc-400 a 100% de opac
       no = no.parentElement;
     }
   });
+
+  it('N3: "(N%)" ao lado de Pedidos e "· ticket R$…" usam text-zinc-400', async () => {
+    const { CanaisDoCrm } = await import("@/components/admin/crm/CanaisDoCrm");
+
+    const canais: CanalDoCrm[] = [
+      { canal: "online", receita: 800, pedidos: 8, ticketMedio: 100 },
+      { canal: "presencial", receita: 200, pedidos: 2, ticketMedio: 100 },
+    ];
+    const formas: FormaDePagamentoDoCrm[] = [
+      { forma: "pix", receita: 1000, pedidos: 10 },
+    ];
+    const visao: VisaoDoCrm = {
+      kpis: { ...KPIS_VAZIOS, receita: 1000, pedidos: 10, ticketMedio: 100 },
+      canais,
+      formas,
+      funil: {
+        visitas: null,
+        produtosVistos: null,
+        carrinhos: null,
+        pedidosCriados: null,
+        pedidosPagos: null,
+      },
+      pipeline: [],
+      segmentos: [],
+    };
+
+    await act(async () => {
+      raiz.render(
+        <CanaisDoCrm visao={visao} carregando={false} onNavigate={() => {}} />,
+      );
+    });
+
+    const fatiaPedidos = Array.from(hospedeiro.querySelectorAll("span")).find(
+      (el) => /^\(\d+%\)$/.test(texto(el).trim()),
+    );
+    expect(fatiaPedidos).not.toBeUndefined();
+    expect(fatiaPedidos?.classList.contains("text-zinc-400")).toBe(true);
+    expect(fatiaPedidos?.classList.contains("text-zinc-500")).toBe(false);
+
+    const ticket = Array.from(hospedeiro.querySelectorAll("span")).find((el) =>
+      texto(el).trim().startsWith("· ticket"),
+    );
+    expect(ticket).not.toBeUndefined();
+    expect(ticket?.classList.contains("text-zinc-400")).toBe(true);
+    expect(ticket?.classList.contains("text-zinc-500")).toBe(false);
+  });
 });
 
 describe("ClientesDoCrm — receita do segmento zerado e títulos de faixa usam text-zinc-400", () => {
@@ -177,6 +230,14 @@ describe("ClientesDoCrm — receita do segmento zerado e títulos de faixa usam 
     expect(receita).not.toBeUndefined();
     expect(receita?.classList.contains("text-zinc-400")).toBe(true);
     expect(receita?.classList.contains("text-zinc-500")).toBe(false);
+
+    // N3: opacity-60 não pode mais recair sobre o BOTÃO inteiro (dimmerizava
+    // a receita mesmo já em zinc-400, ~3,2:1) — só sobre o ponto de cor
+    // (gráfico), dentro do botão.
+    expect(blocoCampeoes!.classList.contains("opacity-60")).toBe(false);
+    const pontoDeCor = blocoCampeoes!.querySelector("span.rounded-full");
+    expect(pontoDeCor).not.toBeNull();
+    expect(pontoDeCor?.classList.contains("opacity-60")).toBe(true);
 
     const tituloFaixa = Array.from(hospedeiro.querySelectorAll("h3")).find(
       (el) => texto(el) === "Melhores",

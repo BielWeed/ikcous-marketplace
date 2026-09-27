@@ -244,6 +244,16 @@ describe("Dashboard CRM", () => {
     }
   });
 
+  it('N3 da re-revisão: a legenda "vs. 30 dias antes" usa text-zinc-400, não text-zinc-500', async () => {
+    await montar();
+    const legenda = Array.from(hospedeiro.querySelectorAll("p")).find((el) =>
+      texto(el).includes("vs. 30 dias antes"),
+    );
+    expect(legenda).not.toBeUndefined();
+    expect(legenda?.classList.contains("text-zinc-400")).toBe(true);
+    expect(legenda?.classList.contains("text-zinc-500")).toBe(false);
+  });
+
   it("Visão geral mostra os números do período com a variação escrita", async () => {
     await montar();
     await esperarAte(() => texto(hospedeiro).includes("R$ 5.000,00"));

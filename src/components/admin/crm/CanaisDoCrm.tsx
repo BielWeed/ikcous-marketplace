@@ -205,7 +205,7 @@ function BlocoDeCanal({
               <dd className="font-bold tabular-nums text-white">
                 {formatarInteiro(canal.pedidos)}
                 {fatiaPedidos != null ? (
-                  <span className="ml-1 font-semibold text-zinc-500">
+                  <span className="ml-1 font-semibold text-zinc-400">
                     ({formatarPercentual(fatiaPedidos, 0)})
                   </span>
                 ) : null}
@@ -340,7 +340,7 @@ function CartaoDeFormas({
                     · {formatarMoeda(f.receita)} · {formatarInteiro(f.pedidos)}{" "}
                     {f.pedidos === 1 ? "pedido" : "pedidos"}
                     {ticket != null ? (
-                      <span className="text-zinc-500">
+                      <span className="text-zinc-400">
                         {" "}
                         · ticket {formatarMoeda(ticket)}
                       </span>
