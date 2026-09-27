@@ -47,7 +47,16 @@ function estiloDoCanal(canal: "online" | "presencial"): {
   return { cor: "text-violet-300", barra: "bg-violet-400", icone: Store };
 }
 
-/** Ícone e cor por forma de pagamento — a barra usa a MESMA cor do ícone. */
+/**
+ * Ícone e cor da BARRA por forma de pagamento. O ícone em si é sempre
+ * renderizado em tom neutro (`text-zinc-400`, ver CartaoDeFormas abaixo) —
+ * só a barra usa esta cor. Paleta própria, sem repetir sky/violet: essas
+ * são a identidade FIXA dos canais (App/Loja física, `estiloDoCanal`
+ * acima), e "Cartão de crédito"/"Online" (forma de pagamento, Mercado
+ * Pago) usavam sky-400/violet-400 por engano — na mesma tela "Canais", ao
+ * lado dos cartões de canal, a cor repetida sugeria (errado) que a forma
+ * de pagamento era o canal.
+ */
 function estiloDaForma(forma: string): { cor: string; icone: LucideIcon } {
   switch (forma) {
     case "pix":
@@ -55,11 +64,14 @@ function estiloDaForma(forma: string): { cor: string; icone: LucideIcon } {
     case "cash":
       return { cor: "bg-amber-400", icone: Banknote };
     case "online":
-      return { cor: "bg-violet-400", icone: Globe };
+      return { cor: "bg-fuchsia-400", icone: Globe };
     case "debito":
       return { cor: "bg-cyan-400", icone: CreditCard };
+    case "credito":
+    case "card":
+      return { cor: "bg-indigo-400", icone: CreditCard };
     default:
-      return { cor: "bg-sky-400", icone: CreditCard };
+      return { cor: "bg-indigo-400", icone: CreditCard };
   }
 }
 
