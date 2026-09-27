@@ -1,6 +1,6 @@
 # Roda, sob demanda, as conferências de pré/pós-publicação que uma pessoa
 # fazia à mão no SQL Editor (docs/runbooks/publicar-painel-cartao-devolucoes.md
-# §0/§1), o horário do último backup, e o registro do ledger
+# §0/§1, e o §7.0 pela consulta 5a), o horário do último backup, e o registro do ledger
 # (`supabase_migrations.schema_migrations`) para as faixas 72-74 e 75-78.
 #
 # POR QUE EXISTE: as consultas do runbook eram "cole no SQL Editor" — um
