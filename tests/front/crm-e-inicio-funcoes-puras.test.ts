@@ -4,7 +4,9 @@
 // inventado), a matemática de período no fuso de São Paulo, os formatadores
 // e o link de WhatsApp com texto pronto por segmento RFM.
 import {
+  FAIXAS_DE_SEGMENTOS_DO_CRM,
   SEGMENTOS_DO_CRM,
+  faixaApareceNaGrade,
   formatarData,
   formatarMoeda,
   formatarMoedaCompacta,
@@ -19,11 +21,14 @@ import {
   linkWhatsappDoCrm,
   mensagemDeErroDoPainel,
   mensagemDoSegmento,
+  rotuloCurtoDoSegmento,
+  rotuloDaReceita,
   rotuloDeUltimaAtividade,
   rotuloDoCanal,
   rotuloDoStatusDoPedido,
   textoDaReceitaDoCliente,
   textoDeUltimaAtividade,
+  textoDoValorDoBlocoDeSegmento,
   variacaoPercentual,
 } from "@/lib/crm";
 import { describe, expect, it } from "vitest";
@@ -233,6 +238,24 @@ describe("lerVisaoDoCrm e lerClientesDoCrm", () => {
     expect(lista?.clientes[1].valorEmAberto).toBeNull();
   });
 
+  it("lê cadastrado_em quando a RPC manda (grupo nunca_comprou); vira null quando ausente", () => {
+    const lista = lerClientesDoCrm({
+      clientes: [
+        {
+          user_id: "u-3",
+          nome: "Gustavo",
+          pedidos: 0,
+          receita: 0,
+          segmento: "nunca_comprou",
+          cadastrado_em: "2026-08-15",
+        },
+        { user_id: "u-1", nome: "Ana", pedidos: 3, receita: 300 },
+      ],
+    });
+    expect(lista?.clientes[0].cadastradoEm).toBe("2026-08-15");
+    expect(lista?.clientes[1].cadastradoEm).toBeNull();
+  });
+
   it("lê os segmentos novos em crm_clientes e em crm_visao (RPC nova, migration 83)", () => {
     const lista = lerClientesDoCrm({
       clientes: [
@@ -260,7 +283,7 @@ describe("lerVisaoDoCrm e lerClientesDoCrm", () => {
 });
 
 describe("linha do cliente dos grupos novos: receita, e rótulo/texto da última atividade", () => {
-  it("comprador de sempre: receita normal, rótulo 'Última compra'", () => {
+  it("comprador de sempre: receita normal, rótulo 'Receita'/'Última compra'", () => {
     expect(
       semNbsp(
         textoDaReceitaDoCliente({
@@ -270,6 +293,7 @@ describe("linha do cliente dos grupos novos: receita, e rótulo/texto da última
         }),
       ),
     ).toBe(semNbsp(formatarMoeda(300)));
+    expect(rotuloDaReceita("campeoes")).toBe("Receita");
     expect(rotuloDeUltimaAtividade("campeoes")).toBe("Última compra");
     expect(
       textoDeUltimaAtividade({
@@ -279,14 +303,9 @@ describe("linha do cliente dos grupos novos: receita, e rótulo/texto da última
     ).toBe("20/09/2026");
   });
 
-  it("pediu_nao_pagou: '—' sem valor_em_aberto (RPC antiga), 'R$ X em aberto' com ele; rótulo 'Último pedido'", () => {
-    expect(
-      textoDaReceitaDoCliente({
-        segmento: "pediu_nao_pagou",
-        receita: 0,
-        valorEmAberto: null,
-      }),
-    ).toBe("—");
+  it("pediu_nao_pagou: rótulo 'Em aberto'/'Último pedido'; valor é SÓ o dinheiro (o rótulo já diz 'em aberto', sem repetir no valor)", () => {
+    expect(rotuloDaReceita("pediu_nao_pagou")).toBe("Em aberto");
+    expect(rotuloDeUltimaAtividade("pediu_nao_pagou")).toBe("Último pedido");
     expect(
       semNbsp(
         textoDaReceitaDoCliente({
@@ -295,14 +314,33 @@ describe("linha do cliente dos grupos novos: receita, e rótulo/texto da última
           valorEmAberto: 80,
         }),
       ),
-    ).toBe("R$ 80,00 em aberto");
-    expect(rotuloDeUltimaAtividade("pediu_nao_pagou")).toBe("Último pedido");
+    ).toBe(semNbsp(formatarMoeda(80)));
     expect(
       textoDeUltimaAtividade({
         segmento: "pediu_nao_pagou",
         ultimaCompra: "2026-09-24",
       }),
     ).toBe("24/09/2026");
+  });
+
+  it("pediu_nao_pagou sem valor_em_aberto (RPC antiga, banco na 78): '—', nunca 'R$ 0,00'", () => {
+    expect(
+      textoDaReceitaDoCliente({
+        segmento: "pediu_nao_pagou",
+        receita: 0,
+        valorEmAberto: null,
+      }),
+    ).toBe("—");
+  });
+
+  it("pediu_nao_pagou com valor_em_aberto MEDIDO zero (ex.: PIX expirou, nada mais em aberto): texto discreto, nunca 'R$ 0,00' em destaque", () => {
+    const texto = textoDaReceitaDoCliente({
+      segmento: "pediu_nao_pagou",
+      receita: 0,
+      valorEmAberto: 0,
+    });
+    expect(texto).not.toMatch(/R\$\s?0,00/);
+    expect(texto.length).toBeGreaterThan(0);
   });
 
   it("nunca_comprou: receita '—', 'Última compra: Nunca' mesmo se o campo vier preenchido por engano", () => {
@@ -313,6 +351,7 @@ describe("linha do cliente dos grupos novos: receita, e rótulo/texto da última
         valorEmAberto: null,
       }),
     ).toBe("—");
+    expect(rotuloDaReceita("nunca_comprou")).toBe("Receita");
     expect(rotuloDeUltimaAtividade("nunca_comprou")).toBe("Última compra");
     expect(
       textoDeUltimaAtividade({ segmento: "nunca_comprou", ultimaCompra: null }),
@@ -323,6 +362,74 @@ describe("linha do cliente dos grupos novos: receita, e rótulo/texto da última
         ultimaCompra: "2026-09-24",
       }),
     ).toBe("Nunca");
+  });
+});
+
+describe("crachá curto do segmento (não espreme o nome na linha do cliente)", () => {
+  it("nunca_comprou usa 'Nunca comprou' — a faixa já dá o contexto de 'Cadastrado'", () => {
+    expect(rotuloCurtoDoSegmento("nunca_comprou")).toBe("Nunca comprou");
+  });
+
+  it("os demais segmentos continuam com o rótulo de sempre (nada de encolher o que já cabia)", () => {
+    expect(rotuloCurtoDoSegmento("pediu_nao_pagou")).toBe(
+      infoDoSegmento("pediu_nao_pagou").rotulo,
+    );
+    expect(rotuloCurtoDoSegmento("campeoes")).toBe(
+      infoDoSegmento("campeoes").rotulo,
+    );
+  });
+});
+
+describe("textoDoValorDoBlocoDeSegmento — a linha de dinheiro do bloco na grade", () => {
+  it("nunca_comprou não tem valor possível: null (o bloco não desenha a linha)", () => {
+    expect(textoDoValorDoBlocoDeSegmento("nunca_comprou", 0)).toBeNull();
+    // Mesmo que algum dia venha receita > 0 por engano, o grupo nunca teve
+    // pedido — não desenha valor nenhum de qualquer forma.
+    expect(textoDoValorDoBlocoDeSegmento("nunca_comprou", 500)).toBeNull();
+  });
+
+  it("pediu_nao_pagou qualifica o número como 'em aberto' — é dinheiro em risco, não reconhecido", () => {
+    expect(
+      semNbsp(textoDoValorDoBlocoDeSegmento("pediu_nao_pagou", 612.3) ?? ""),
+    ).toBe(`${semNbsp(formatarMoedaCompacta(612.3))} em aberto`);
+  });
+
+  it("os demais segmentos mostram a receita compacta de sempre", () => {
+    expect(textoDoValorDoBlocoDeSegmento("campeoes", 9800)).toBe(
+      formatarMoedaCompacta(9800),
+    );
+  });
+});
+
+describe("faixaApareceNaGrade — RPC antiga (78) não inventa '0' para os 2 grupos novos", () => {
+  const faixaNova = FAIXAS_DE_SEGMENTOS_DO_CRM.find(
+    (f) => f.titulo === "Ainda não compraram",
+  )!;
+  const faixaAntiga = FAIXAS_DE_SEGMENTOS_DO_CRM.find(
+    (f) => f.titulo === "Melhores",
+  )!;
+
+  it("a faixa nova NÃO aparece sem nenhum dos 2 segmentos presentes e sem estar carregando (RPC ainda na 78)", () => {
+    expect(faixaApareceNaGrade(faixaNova, new Set(["ativos"]), false)).toBe(
+      false,
+    );
+  });
+
+  it("a faixa nova aparece enquanto carrega (esqueleto), mesmo sem dado nenhum ainda", () => {
+    expect(faixaApareceNaGrade(faixaNova, new Set(), true)).toBe(true);
+  });
+
+  it("a faixa nova aparece quando a RPC (83) manda pelo menos um dos 2 segmentos", () => {
+    expect(
+      faixaApareceNaGrade(faixaNova, new Set(["pediu_nao_pagou"]), false),
+    ).toBe(true);
+    expect(
+      faixaApareceNaGrade(faixaNova, new Set(["nunca_comprou"]), false),
+    ).toBe(true);
+  });
+
+  it("as faixas RFM de sempre continuam aparecendo mesmo com 0 clientes (sempre puderam ser 0 legitimamente)", () => {
+    expect(faixaApareceNaGrade(faixaAntiga, new Set(), false)).toBe(true);
   });
 });
 
@@ -409,6 +516,12 @@ describe("segmentos RFM e WhatsApp", () => {
     expect(infoDoSegmento("nunca_comprou").rotulo).toBe(
       "Cadastrado, nunca comprou",
     );
+    // A descrição não pode afirmar "nenhum pagamento foi confirmado": o
+    // grupo também inclui quem pagou e teve o pedido cancelado/estornado/
+    // devolvido depois — "nunca_pagou" seria falso para essa gente.
+    expect(infoDoSegmento("pediu_nao_pagou").descricao).not.toMatch(
+      /nenhum pagamento|não pagou|nunca pagou/i,
+    );
   });
 
   it("wa.me com DDI 55 e o texto codificado; número curto não vira link", () => {
@@ -433,5 +546,14 @@ describe("segmentos RFM e WhatsApp", () => {
       const texto = mensagemDoSegmento(segmento, { nome: "Ana", loja: "L" });
       expect(texto).not.toMatch(/cupom|desconto|% off|grátis/i);
     }
+  });
+
+  it("pediu_nao_pagou: a mensagem não afirma nada sobre pagamento (o pedido pode ter sido pago e cancelado/estornado depois)", () => {
+    const texto = mensagemDoSegmento("pediu_nao_pagou", {
+      nome: "Ana",
+      loja: "Loja X",
+    });
+    expect(texto).not.toMatch(/pagamento|pagou|pago/i);
+    expect(texto).toMatch(/pedido/i);
   });
 });

@@ -342,6 +342,7 @@ function lerCliente(item: unknown, posicao: number): ClienteDoCrm | null {
     // loja sem a migration aplicada); `comoNumero` já devolve `null` nesse
     // caso, então nenhuma tela quebra.
     valorEmAberto: comoNumero(registro.valor_em_aberto),
+    cadastradoEm: comoTexto(registro.cadastrado_em),
   };
 }
 
@@ -433,7 +434,12 @@ export function infoDoSegmento(segmento: SegmentoCrm): InfoDoSegmento {
     case "pediu_nao_pagou":
       return {
         rotulo: "Pediu e não pagou",
-        descricao: "Fez pedido, mas nenhum pagamento foi confirmado",
+        // Nunca "nenhum pagamento foi confirmado": o grupo também pega
+        // quem PAGOU e depois teve o pedido cancelado/estornado/devolvido
+        // (revisão de risco, achado 3) — a régua de "compra paga válida" é
+        // a mesma de crm__vendas (payment_status reconhecido + pedido não
+        // cancelado/devolvido).
+        descricao: "Fez pedido, mas não tem compra paga válida",
         tom: "atencao",
       };
     case "nunca_comprou":
@@ -519,7 +525,11 @@ export function mensagemDoSegmento(
     case "hibernando":
       return `${oi} Tudo bem? Faz tempo! Passando para te mostrar as novidades da loja.`;
     case "pediu_nao_pagou":
-      return `${oi} Vi que você começou um pedido com a gente e o pagamento não foi concluído. Posso te ajudar a finalizar?`;
+      // Sem afirmar nada sobre pagamento (achado 3, revisão de risco): o
+      // grupo também inclui quem pagou e teve o pedido cancelado/estornado/
+      // devolvido depois — dizer "o pagamento não foi concluído" seria
+      // falso para essa gente.
+      return `${oi} Vi que você fez um pedido com a gente. Ficou alguma dúvida? Posso te ajudar a finalizar a compra?`;
     case "nunca_comprou":
       return `${oi} Obrigado por criar sua conta na loja! Quando quiser dar uma olhada nos produtos, é só me chamar por aqui.`;
     default:
@@ -1040,16 +1050,17 @@ export function pipelineEmAberto(
 
 // --- clientes do CRM (visual 27/09) ---
 
-/** Faixa de saúde da relação — agrupa os 10 segmentos RFM na aba Clientes. */
+/** Faixa de saúde da relação — agrupa os 12 segmentos da aba Clientes (10
+ * RFM de quem comprou + os 2 grupos de quem ainda não comprou). */
 export interface FaixaDeSegmentosDoCrm {
   readonly titulo: string;
   readonly segmentos: readonly SegmentoCrm[];
 }
 
 /**
- * As 3 faixas de segmentos RFM da grade "Segmentos RFM" da aba Clientes, na
- * ordem de exibição: Melhores (quem compra bem) → Atenção (esfriando) →
- * Perdendo (em risco de sumir).
+ * As 4 faixas da grade "Segmentos de clientes" da aba Clientes, na ordem de
+ * exibição: Melhores (quem compra bem) → Atenção (esfriando) → Perdendo (em
+ * risco de sumir) → Ainda não compraram (pediu e não pagou / nunca comprou).
  */
 export const FAIXAS_DE_SEGMENTOS_DO_CRM: readonly FaixaDeSegmentosDoCrm[] = [
   {
@@ -1086,11 +1097,26 @@ export function textoDoFiltroDeSegmento(
 }
 
 /**
- * A célula "Receita" da linha do cliente (migration 83, grupos novos):
- * comprador mostra a receita de sempre; `pediu_nao_pagou` mostra o valor em
- * aberto quando a RPC manda (`"R$ 80,00 em aberto"`), ou "—" numa RPC ainda
- * na 78 (chave ausente, `valorEmAberto` chega `null`); `nunca_comprou`
- * nunca teve receita nenhuma, sempre "—".
+ * Rótulo da coluna/campo de dinheiro da linha do cliente: `pediu_nao_pagou`
+ * já qualifica o número como "em aberto" NO RÓTULO — o valor abaixo é só o
+ * dinheiro (`textoDaReceitaDoCliente`), sem repetir "em aberto" ali (achado
+ * 2, revisão de risco: o valor com `truncate` cortava "R$ 134,80 em ab…").
+ * Os demais grupos continuam "Receita".
+ */
+export function rotuloDaReceita(segmento: SegmentoCrm | null): string {
+  return segmento === "pediu_nao_pagou" ? "Em aberto" : "Receita";
+}
+
+/**
+ * A célula de dinheiro da linha do cliente (migration 83, grupos novos):
+ * comprador mostra a receita de sempre; `nunca_comprou` nunca teve valor
+ * possível, sempre "—"; `pediu_nao_pagou` mostra só o valor em aberto (o
+ * rótulo da célula, `rotuloDaReceita`, já diz "Em aberto") — "—" quando a
+ * RPC ainda é a 78 (chave ausente, `valorEmAberto` chega `null` — "não sei"
+ * nunca é zero) e um texto discreto (nunca "R$ 0,00" em destaque, que
+ * pareceria um valor medido igual a qualquer outro) quando o valor em
+ * aberto foi MEDIDO como zero (ex.: o único pedido "aguardando" expirou —
+ * não sobrou nada para cobrar, mas a pessoa continua sem compra paga).
  */
 export function textoDaReceitaDoCliente(cliente: {
   readonly segmento: SegmentoCrm | null;
@@ -1099,9 +1125,9 @@ export function textoDaReceitaDoCliente(cliente: {
 }): string {
   if (cliente.segmento === "nunca_comprou") return "—";
   if (cliente.segmento === "pediu_nao_pagou") {
-    return cliente.valorEmAberto == null
-      ? "—"
-      : `${formatarMoeda(cliente.valorEmAberto)} em aberto`;
+    if (cliente.valorEmAberto == null) return "—";
+    if (cliente.valorEmAberto === 0) return "Sem valor em aberto";
+    return formatarMoeda(cliente.valorEmAberto);
   }
   return formatarMoeda(cliente.receita);
 }
@@ -1127,6 +1153,61 @@ export function textoDeUltimaAtividade(cliente: {
 }): string {
   if (cliente.segmento === "nunca_comprou") return "Nunca";
   return formatarData(cliente.ultimaCompra);
+}
+
+/**
+ * Rótulo curto do crachá de segmento na linha do cliente (achado 4, revisão
+ * de risco): "Cadastrado, nunca comprou" espreme o nome no celular e trunca
+ * até no desktop — a faixa "Ainda não compraram" já dá o contexto de
+ * "cadastrado", então o crachá pode ser mais direto. O bloco da grade
+ * continua com o rótulo longo (`infoDoSegmento`, cabe lá). Os demais
+ * segmentos usam o mesmo rótulo de sempre.
+ */
+export function rotuloCurtoDoSegmento(segmento: SegmentoCrm): string {
+  if (segmento === "nunca_comprou") return "Nunca comprou";
+  return infoDoSegmento(segmento).rotulo;
+}
+
+/**
+ * O texto pequeno de dinheiro dentro do bloco de segmento (grade "Segmentos
+ * de clientes", achado 6 da revisão de risco). `nunca_comprou` nunca teve
+ * nenhum valor possível — `null` faz o bloco NÃO desenhar a linha (mostrar
+ * "R$ 0,00" sugeriria um valor medido que não existe). `pediu_nao_pagou`
+ * qualifica o número como "em aberto" — é dinheiro em risco de virar venda,
+ * nunca receita reconhecida, e sem o qualificador o bloco pareceria dizer
+ * que aquela gente já gastou aquilo. Os demais segmentos mostram a receita
+ * compacta de sempre.
+ */
+export function textoDoValorDoBlocoDeSegmento(
+  segmento: SegmentoCrm,
+  receita: number,
+): string | null {
+  if (segmento === "nunca_comprou") return null;
+  if (segmento === "pediu_nao_pagou") {
+    return `${formatarMoedaCompacta(receita)} em aberto`;
+  }
+  return formatarMoedaCompacta(receita);
+}
+
+/**
+ * Só os 2 grupos novos (migration 83) podem estar ausentes de
+ * `crm_visao.segmentos` — o banco de uma loja ainda na migration 78 nunca
+ * manda essas 2 linhas. "Não sei" nunca é zero (regra da casa, topo deste
+ * arquivo): se NENHUM dos dois aparece no resumo (e a tela não está mais
+ * carregando), a faixa "Ainda não compraram" não desenha, em vez de mostrar
+ * "0" — um dado inventado que pareceria "zero clientes nesse estado", não
+ * "o banco não manda isso ainda". As faixas RFM de sempre (Melhores,
+ * Atenção, Perdendo) sempre puderam legitimamente ter 0 clientes e
+ * continuam desenhando sempre.
+ */
+export function faixaApareceNaGrade(
+  faixa: FaixaDeSegmentosDoCrm,
+  segmentosPresentes: ReadonlySet<SegmentoCrm>,
+  carregando: boolean,
+): boolean {
+  if (faixa.titulo !== "Ainda não compraram") return true;
+  if (carregando) return true;
+  return faixa.segmentos.some((segmento) => segmentosPresentes.has(segmento));
 }
 
 // --- casca do CRM (visual 27/09) ---

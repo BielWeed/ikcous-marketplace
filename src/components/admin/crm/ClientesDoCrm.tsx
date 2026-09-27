@@ -11,16 +11,20 @@ import { useCrmClientes } from "@/hooks/useCrm";
 import {
   FAIXAS_DE_SEGMENTOS_DO_CRM,
   classesDoTom,
+  faixaApareceNaGrade,
+  formatarData,
   formatarInteiro,
-  formatarMoedaCompacta,
   infoDoSegmento,
   linkWhatsappDoCrm,
   mensagemDoSegmento,
+  rotuloCurtoDoSegmento,
+  rotuloDaReceita,
   rotuloDeUltimaAtividade,
   rotuloDoCanal,
   textoDaReceitaDoCliente,
   textoDeUltimaAtividade,
   textoDoFiltroDeSegmento,
+  textoDoValorDoBlocoDeSegmento,
 } from "@/lib/crm";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
@@ -68,7 +72,13 @@ function CrachaDoSegmento({
         className={cn("size-1.5 shrink-0 rounded-full", classes.marca)}
         aria-hidden="true"
       />
-      <span className="min-w-0 truncate">{info.rotulo}</span>
+      {/* Rótulo CURTO aqui (achado 4, revisão de risco): "Cadastrado, nunca
+          comprou" espremia o nome no celular e truncava até no desktop — a
+          faixa "Ainda não compraram" já dá o contexto. O bloco da grade
+          continua com o rótulo longo. */}
+      <span className="min-w-0 truncate">
+        {rotuloCurtoDoSegmento(segmento)}
+      </span>
     </span>
   );
 }
@@ -94,6 +104,10 @@ function BlocoDeSegmento({
   const info = infoDoSegmento(segmento);
   const classes = classesDoTom(info.tom);
   const zerado = !carregando && (resumo?.clientes ?? 0) === 0;
+  const valorDoBloco = textoDoValorDoBlocoDeSegmento(
+    segmento,
+    resumo?.receita ?? 0,
+  );
 
   return (
     <button
@@ -150,9 +164,14 @@ function BlocoDeSegmento({
           >
             {formatarInteiro(resumo?.clientes ?? 0)}
           </span>
-          <span className="shrink-0 truncate text-[10px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
-            {formatarMoedaCompacta(resumo?.receita ?? 0)}
-          </span>
+          {/* `nunca_comprou` não tem valor possível — `null` não desenha
+              linha nenhuma (achado 6, revisão de risco: "R$ 0,00" sugeriria
+              um valor medido que não existe). */}
+          {valorDoBloco != null ? (
+            <span className="shrink-0 truncate text-[10px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
+              {valorDoBloco}
+            </span>
+          ) : null}
         </span>
       )}
       {selecionado ? (
@@ -188,21 +207,28 @@ function GradeDeSegmentos({
   contagemFiltrada?: number;
 }>) {
   const porSegmento = new Map(segmentos.map((s) => [s.segmento, s]));
+  const segmentosPresentes = new Set(porSegmento.keys());
   const resumoSelecionado = selecionado
     ? (contagemFiltrada ?? porSegmento.get(selecionado)?.clientes ?? 0)
     : 0;
   const textoDoFiltro = selecionado
     ? textoDoFiltroDeSegmento(selecionado, resumoSelecionado)
     : null;
+  // RPC antiga (banco ainda na 78): crm_visao nunca manda as 2 linhas novas
+  // — a faixa "Ainda não compraram" não desenha nesse caso, em vez de
+  // mostrar "0" (dado inventado, achado 1 da revisão de risco).
+  const faixasParaMostrar = FAIXAS_DE_SEGMENTOS_DO_CRM.filter((faixa) =>
+    faixaApareceNaGrade(faixa, segmentosPresentes, carregando),
+  );
 
   return (
     <CartaoDoCrm
       id="crm-segmentos"
-      titulo="Segmentos RFM"
-      descricao="Agrupa quem compra por quando comprou, quantas vezes e quanto gastou. Toque para filtrar a lista."
+      titulo="Segmentos de clientes"
+      descricao="De quem compra bem a quem ainda não comprou nada — toque num grupo para filtrar a lista."
     >
       <div className="space-y-4">
-        {FAIXAS_DE_SEGMENTOS_DO_CRM.map((faixa) => (
+        {faixasParaMostrar.map((faixa) => (
           <div key={faixa.titulo}>
             <h3 className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">
               {faixa.titulo}
@@ -248,6 +274,74 @@ function GradeDeSegmentos({
   );
 }
 
+/**
+ * Os 4 campos de sempre (Pedidos/Receita ou Em aberto/Última compra ou
+ * Último pedido/Canal) — extraído para reaproveitar tanto na linha normal
+ * (grade 2×2 no celular) quanto na linha enxuta de `nunca_comprou` (só
+ * desktop, achado do dono na revisão de risco).
+ */
+function CamposDoPedidoEDaAtividade({
+  cliente,
+}: Readonly<{ cliente: ClienteDoCrm }>) {
+  const receitaTexto = textoDaReceitaDoCliente(cliente);
+  // "—" (não sei) e "Sem valor em aberto" (zero medido) não são um dado em
+  // destaque como uma receita de verdade — ficam discretos (achado 7,
+  // revisão de risco), do mesmo jeito que o "0" do segmento zerado na
+  // grade já fica em zinc-400 em vez de branco.
+  const receitaEhDestaque =
+    receitaTexto !== "—" && receitaTexto !== "Sem valor em aberto";
+
+  return (
+    <>
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+          Pedidos
+        </p>
+        <p className="font-bold tabular-nums text-white">
+          {formatarInteiro(cliente.pedidos)}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+          {rotuloDaReceita(cliente.segmento)}
+        </p>
+        {/* Sem `truncate` (achado 2, revisão de risco): cortava "R$
+            134,80 em ab…" antes do rótulo virar "Em aberto". `title`
+            continua como rede de segurança se algum valor grande demais
+            quebrar a linha visualmente. */}
+        <p
+          title={receitaTexto}
+          className={cn(
+            "font-bold tabular-nums",
+            receitaEhDestaque ? "text-white" : "text-zinc-400",
+          )}
+        >
+          {receitaTexto}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+          {rotuloDeUltimaAtividade(cliente.segmento)}
+        </p>
+        <p className="truncate tabular-nums text-zinc-300">
+          {textoDeUltimaAtividade(cliente)}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+          Canal
+        </p>
+        <p className="truncate text-zinc-300">
+          {cliente.canalPreferido ? rotuloDoCanal(cliente.canalPreferido) : "—"}
+        </p>
+      </div>
+    </>
+  );
+}
+
 function LinhaDoCliente({
   cliente,
   loja,
@@ -262,6 +356,13 @@ function LinhaDoCliente({
     cliente.whatsapp,
     mensagemDoSegmento(cliente.segmento, { nome: cliente.nome, loja }),
   );
+  // Quem nunca comprou não tem NENHUM dos 4 campos preenchido — repetir
+  // "Pedidos 0 / Receita — / Última compra Nunca / Canal —" por pessoa
+  // vira uma tela enorme de nada com 8+ pessoas no celular (achado do
+  // dono, revisão de risco). O celular mostra só nome + crachá + a data de
+  // cadastro; o desktop mantém as 4 colunas de sempre (discretas), porque
+  // lá elas não competem por espaço vertical.
+  const semDadoDeCompra = cliente.segmento === "nunca_comprou";
 
   return (
     <li
@@ -292,48 +393,32 @@ function LinhaDoCliente({
         <CrachaDoSegmento segmento={cliente.segmento} />
       </div>
 
-      {/* Pedidos/receita/última compra/canal: grade 2×2 no celular (`contents`
-          some no desktop e devolve os 4 filhos direto pras colunas deles, na
-          mesma ordem do cabeçalho — sem sobrar "Canal" sozinho numa linha). */}
-      <div className="col-span-2 grid grid-cols-2 gap-x-3 gap-y-2 lg:contents">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
-            Pedidos
-          </p>
-          <p className="font-bold tabular-nums text-white">
-            {formatarInteiro(cliente.pedidos)}
-          </p>
+      {semDadoDeCompra ? (
+        <>
+          {/* Cartão enxuto: só no celular. Os 4 campos de sempre não têm
+              nada para mostrar nesse grupo (nunca houve pedido) — em vez
+              de repetir "Pedidos 0 / Receita — / Última compra Nunca /
+              Canal —" por pessoa, uma linha só com a data de cadastro. */}
+          <div className="col-span-2 lg:hidden">
+            <p className="text-xs text-zinc-400">
+              Cadastro em {formatarData(cliente.cadastradoEm)}
+            </p>
+          </div>
+          {/* Desktop: as mesmas 4 colunas de sempre (a tabela tem espaço
+              horizontal de sobra — "—"/"Nunca" ficam discretos ali). */}
+          <div className="hidden lg:contents">
+            <CamposDoPedidoEDaAtividade cliente={cliente} />
+          </div>
+        </>
+      ) : (
+        // Pedidos/receita/última compra/canal: grade 2×2 no celular
+        // (`contents` some no desktop e devolve os 4 filhos direto pras
+        // colunas deles, na mesma ordem do cabeçalho — sem sobrar "Canal"
+        // sozinho numa linha).
+        <div className="col-span-2 grid grid-cols-2 gap-x-3 gap-y-2 lg:contents">
+          <CamposDoPedidoEDaAtividade cliente={cliente} />
         </div>
-
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
-            Receita
-          </p>
-          <p className="truncate font-bold tabular-nums text-white">
-            {textoDaReceitaDoCliente(cliente)}
-          </p>
-        </div>
-
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
-            {rotuloDeUltimaAtividade(cliente.segmento)}
-          </p>
-          <p className="truncate tabular-nums text-zinc-300">
-            {textoDeUltimaAtividade(cliente)}
-          </p>
-        </div>
-
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
-            Canal
-          </p>
-          <p className="truncate text-zinc-300">
-            {cliente.canalPreferido
-              ? rotuloDoCanal(cliente.canalPreferido)
-              : "—"}
-          </p>
-        </div>
-      </div>
+      )}
 
       <div className="col-span-2 flex gap-2 lg:col-span-1 lg:justify-end lg:pl-2">
         {whatsapp ? (
@@ -465,7 +550,7 @@ export function ClientesDoCrm({
             ) : null}
           </span>
         }
-        descricao="Quem já comprou pago, com WhatsApp e ficha prontos para um toque."
+        descricao="Quem compra e quem ainda não comprou, com WhatsApp e ficha prontos para um toque."
       >
         <div className="space-y-3">
           {/* Linha própria (não vai no `acao` do cabeçalho): o cabeçalho do
@@ -545,8 +630,12 @@ export function ClientesDoCrm({
                 <span>Cliente</span>
                 <span>Segmento</span>
                 <span>Pedidos</span>
-                <span>Receita</span>
-                <span>Última compra</span>
+                {/* Cabeçalho composto (achado 2, revisão de risco): a coluna
+                    serve as duas colunas, "Receita" para quem já comprou e
+                    "Em aberto" para quem pediu e não pagou — mais limpo no
+                    desktop do que repetir o rótulo por linha. */}
+                <span>Receita / Em aberto</span>
+                <span>Última compra / pedido</span>
                 <span>Canal</span>
                 <span>Ações</span>
               </div>
@@ -573,14 +662,14 @@ export function ClientesDoCrm({
                   ? `Nenhum cliente encontrado para “${busca.trim()}”`
                   : nomeDoSegmento
                     ? `Nenhum cliente em ${nomeDoSegmento} agora`
-                    : "Ainda não há clientes com compra paga"
+                    : "Ainda não há nenhum cliente"
               }
               texto={
                 busca.trim()
                   ? "Tente outro nome, e-mail ou telefone."
                   : nomeDoSegmento
                     ? "Troque o segmento ou limpe o filtro para ver os outros clientes."
-                    : "Assim que alguém comprar e o pagamento cair, a lista aparece aqui."
+                    : "Assim que alguém se cadastrar, pedir ou comprar, a lista aparece aqui."
               }
               acao={
                 busca.trim() || segmento ? (

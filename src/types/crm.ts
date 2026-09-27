@@ -118,9 +118,18 @@ export interface ClienteDoCrm {
   /**
    * Só para `pediu_nao_pagou` (soma dos pedidos `aguardando`); `null` nos
    * demais grupos e quando a RPC ainda é a da migration 78 (chave ausente
-   * no jsonb — o parser não distingue "zero" de "não veio").
+   * no jsonb — o parser (`comoNumero`) DISTINGUE os dois casos: ausente ou
+   * fora da forma vira `null`, e um zero MEDIDO chega como `0`, nunca `null`
+   * — "não sei" nunca é zero, regra do topo de `lib/crm.ts`).
    */
   readonly valorEmAberto: number | null;
+  /**
+   * Só para `nunca_comprou` (data do cadastro em `profiles`); `null` nos
+   * demais grupos e numa RPC que ainda não manda esta chave — o cartão
+   * enxuto do celular mostra "—" nesse caso (`formatarData(null)`), nunca
+   * inventa uma data.
+   */
+  readonly cadastradoEm: string | null;
 }
 
 export interface ListaDeClientesDoCrm {
