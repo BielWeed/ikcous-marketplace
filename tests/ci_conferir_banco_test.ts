@@ -256,15 +256,12 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
     },
   );
 
-  await t.step(
-    "gravar_ledger é choice fechado nao/72-74/75-78/79-82",
-    () => {
-      assertStringIncludes(
-        yaml,
-        "options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82",
-      );
-    },
-  );
+  await t.step("gravar_ledger é choice fechado nao/72-74/75-78/79-82", () => {
+    assertStringIncludes(
+      yaml,
+      "options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82",
+    );
+  });
 
   await t.step("o segredo é o SUPABASE_ACCESS_TOKEN, nunca literal", () => {
     assertStringIncludes(yaml, "${{ secrets.SUPABASE_ACCESS_TOKEN }}");
@@ -738,7 +735,10 @@ Deno.test("6a-conferir-79-a-82.sql — os hashes/ACLs embutidos batem com o que 
         `${MIGRATIONS_DIR}/20261181000000_pedido_por_whatsapp_fecha_para_anon.sql`,
       );
       const inicioBlindagem = sql81.indexOf("DO $$");
-      assert(inicioBlindagem >= 0, "não achei o bloco DO $$ de blindagem na 81");
+      assert(
+        inicioBlindagem >= 0,
+        "não achei o bloco DO $$ de blindagem na 81",
+      );
       const blocoBlindagem = sql81.slice(inicioBlindagem);
       const checagens = [
         ...blocoBlindagem.matchAll(
@@ -772,13 +772,19 @@ Deno.test("6a-conferir-79-a-82.sql — os hashes/ACLs embutidos batem com o que 
       const m82 = sql82.match(
         /SELECT count\(\*\) INTO v_restantes\s+FROM public\.marketplace_orders o\s+(WHERE[\s\S]*?);/,
       );
-      assert(m82, "não achei a VERIFICAÇÃO FINAL (v_restantes) na migration 82");
+      assert(
+        m82,
+        "não achei a VERIFICAÇÃO FINAL (v_restantes) na migration 82",
+      );
       const wherePredicado82 = normalizar(m82[1]);
 
       const m6a = sql6a.match(
         /'82 zero pedidos com cpf no endereco', \(SELECT count\(\*\)::text FROM public\.marketplace_orders o (WHERE[\s\S]*?)\), '0'\)/,
       );
-      assert(m6a, "não achei a linha '82 zero pedidos com cpf no endereco' em 6a");
+      assert(
+        m6a,
+        "não achei a linha '82 zero pedidos com cpf no endereco' em 6a",
+      );
       const wherePredicado6a = normalizar(m6a[1]);
 
       assertEquals(
