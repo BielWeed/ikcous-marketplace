@@ -7,8 +7,17 @@ import type { ReactNode } from "react";
  * Um número do painel: rótulo · valor · (variação ou linha de apoio).
  * No celular o valor pode trocar para a forma compacta ("R$ 12,3 mil") —
  * só uma das duas formas fica visível por vez, então o leitor de tela lê
- * uma só. Superfície de `SUPERFICIE_DO_CRM`: sem ela, o cartão (quase da
- * mesma cor do fundo `#09090b`) não parecia um cartão.
+ * uma só. Superfície de `SUPERFICIE_DO_CRM` por padrão (a linguagem do
+ * CRM, usada pelos 8 KPIs de `VisaoGeralDoCrm`): sem ela, o cartão (quase
+ * da mesma cor do fundo `#09090b`) não parecia um cartão.
+ *
+ * `superficie` existe porque este MESMO componente também é usado pelos 4
+ * tiles de "Este mês" no Início (`NumerosDoMes`) — ali, o resto da tela
+ * (Hoje, Para fazer, Assinatura) continua em `admin-glass`, e trocar só o
+ * TileDeKpi para `SUPERFICIE_DO_CRM` deixava os 4 tiles perceptivelmente
+ * mais claros/"caixudos" que os outros cartões (achado da revisão,
+ * confirmado no print do harness em 375/1280). O Início passa
+ * `superficie="admin-glass"`; o CRM não passa nada e mantém o padrão.
  */
 export function TileDeKpi({
   rotulo,
@@ -18,6 +27,7 @@ export function TileDeKpi({
   corDoIcone = "text-admin-gold",
   rodape,
   carregando = false,
+  superficie = SUPERFICIE_DO_CRM,
   className,
 }: Readonly<{
   rotulo: string;
@@ -27,12 +37,13 @@ export function TileDeKpi({
   corDoIcone?: string;
   rodape?: ReactNode;
   carregando?: boolean;
+  superficie?: string;
   className?: string;
 }>) {
   return (
     <div
       className={cn(
-        SUPERFICIE_DO_CRM,
+        superficie,
         "flex min-h-[112px] flex-col justify-between gap-2 p-3 sm:p-4",
         className,
       )}

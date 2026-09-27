@@ -69,6 +69,7 @@ export function NumerosDoMes({
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
         <TileDeKpi
+          superficie="admin-glass"
           rotulo="Receita do mês"
           icone={TrendingUp}
           corDoIcone="text-emerald-400"
@@ -83,6 +84,7 @@ export function NumerosDoMes({
           }
         />
         <TileDeKpi
+          superficie="admin-glass"
           rotulo="Lucro estimado"
           icone={PiggyBank}
           corDoIcone="text-admin-gold"
@@ -96,6 +98,7 @@ export function NumerosDoMes({
           }
         />
         <TileDeKpi
+          superficie="admin-glass"
           rotulo="Saldo em contas"
           icone={Landmark}
           corDoIcone="text-sky-400"
@@ -105,6 +108,7 @@ export function NumerosDoMes({
           rodape="Caixa, banco e Mercado Pago"
         />
         <TileDeKpi
+          superficie="admin-glass"
           rotulo="A receber em 7 dias"
           icone={ArrowDownToLine}
           corDoIcone="text-violet-400"
