@@ -23,6 +23,22 @@ const MESES_ABREVIADOS = [
   "dez",
 ];
 
+type AncoragemDoRotulo = "esquerda" | "centro" | "direita";
+
+/**
+ * O rótulo do valor do pico é bem mais largo que uma coluna (~24px) e
+ * cresce para os dois lados quando centralizado — o que estoura a borda do
+ * cartão quando o pico cai numa das primeiras/últimas colunas (achado do
+ * Gabriel: "hoje", a última coluna, é o caso mais comum). Perto da borda o
+ * rótulo ancora para o lado de DENTRO do cartão (onde sobra coluna); só no
+ * meio, com coluna sobrando dos dois lados, ele fica centralizado.
+ */
+function ancoragemDoRotulo(indice: number, total: number): AncoragemDoRotulo {
+  if (indice <= 3) return "esquerda";
+  if (indice >= total - 4) return "direita";
+  return "centro";
+}
+
 /**
  * Minigráfico de barras dos últimos 14 dias (receita por dia). Pedido do
  * Gabriel (27/09/2026): "não tem clareza: tem que dar para entender cada
@@ -55,6 +71,10 @@ export function SerieDe14Dias({
   );
   const indicePico =
     maximo > 0 ? serieCompleta.findIndex((p) => p.receita === maximo) : -1;
+  const ancoragemDoRotuloDoPico =
+    indicePico >= 0
+      ? ancoragemDoRotulo(indicePico, serieCompleta.length)
+      : "centro";
   const pontoMarcado =
     marcado == null ? null : (serieCompleta.at(marcado) ?? null);
   const diaDeHoje = diaEmSaoPaulo(new Date());
@@ -146,7 +166,27 @@ export function SerieDe14Dias({
                 >
                   <div className="relative flex h-24 w-full items-end overflow-visible">
                     {indice === indicePico ? (
-                      <span className="pointer-events-none absolute inset-x-0 -top-4 whitespace-nowrap text-center text-[9px] font-bold tabular-nums text-zinc-400">
+                      <span
+                        data-testid="serie-14d-pico"
+                        className={cn(
+                          "pointer-events-none absolute -top-4 whitespace-nowrap text-[9px] font-bold tabular-nums text-zinc-400",
+                          // O rótulo é bem mais largo que uma coluna
+                          // (~24px): centralizado, ele estoura a borda do
+                          // cartão quando o pico é uma das últimas colunas
+                          // (achado do Gabriel — "hoje" é o caso mais
+                          // comum). Perto do INÍCIO da janela ele cresce
+                          // para a direita (left-0, sem right-0: sobra
+                          // coluna à direita); perto do FIM cresce para a
+                          // esquerda (right-0, sem left-0); no meio sobra
+                          // cartão dos dois lados e ele fica centralizado.
+                          ancoragemDoRotuloDoPico === "esquerda" &&
+                            "left-0 text-left",
+                          ancoragemDoRotuloDoPico === "direita" &&
+                            "right-0 text-right",
+                          ancoragemDoRotuloDoPico === "centro" &&
+                            "inset-x-0 text-center",
+                        )}
+                      >
                         {formatarMoeda(ponto.receita)}
                       </span>
                     ) : null}

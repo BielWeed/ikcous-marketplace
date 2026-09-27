@@ -133,3 +133,57 @@ describe("SerieDe14Dias — 14 colunas legíveis", () => {
     ).toBeNull();
   });
 });
+
+// Achado do Gabriel (recortes de d53ceb52): o rótulo do valor acima da barra
+// de maior receita ESTOURAVA a borda do cartão quando o pico caía numa das
+// últimas colunas (o caso mais comum: hoje) — centralizado numa coluna de
+// ~24px, um texto como "R$ 1.494,10" transborda para fora do cartão porque
+// não sobra coluna à direita para "absorver" a metade direita do texto.
+// A âncora agora muda pelo ÍNDICE do pico: início (<=3) cresce para a
+// direita (left-0, sem right-0 — sobra coluna à direita); fim (>=10) cresce
+// para a esquerda (right-0, sem left-0); meio fica centralizado (inset-x-0),
+// porque aí sobra coluna dos dois lados dentro do cartão.
+function serieComPico(indicePico: number): PontoDaSerieDiaria[] {
+  return Array.from({ length: 14 }, (_, i) => {
+    const dia = new Date(Date.UTC(2026, 8, 13 + i)).toISOString().slice(0, 10);
+    return { dia, receita: i === indicePico ? 999 : 10 };
+  });
+}
+
+function rotuloDoPico(tela: HTMLElement) {
+  const rotulo = tela.querySelector('[data-testid="serie-14d-pico"]');
+  expect(rotulo).not.toBeNull();
+  return rotulo as HTMLElement;
+}
+
+describe("SerieDe14Dias — o rótulo do pico nunca estoura o cartão", () => {
+  it("pico nas primeiras colunas ancora à esquerda (cresce para dentro do cartão)", () => {
+    const tela = montar(
+      <SerieDe14Dias serie={serieComPico(1)} carregando={false} />,
+    );
+    const rotulo = rotuloDoPico(tela);
+    expect(rotulo.classList.contains("left-0")).toBe(true);
+    expect(rotulo.classList.contains("right-0")).toBe(false);
+    expect(rotulo.classList.contains("inset-x-0")).toBe(false);
+  });
+
+  it("pico numa coluna do meio fica centralizado (sobra cartão nos dois lados)", () => {
+    const tela = montar(
+      <SerieDe14Dias serie={serieComPico(7)} carregando={false} />,
+    );
+    const rotulo = rotuloDoPico(tela);
+    expect(rotulo.classList.contains("inset-x-0")).toBe(true);
+    expect(rotulo.classList.contains("left-0")).toBe(false);
+    expect(rotulo.classList.contains("right-0")).toBe(false);
+  });
+
+  it("pico nas últimas colunas (ex.: hoje) ancora à direita (cresce para dentro do cartão)", () => {
+    const tela = montar(
+      <SerieDe14Dias serie={serieComPico(13)} carregando={false} />,
+    );
+    const rotulo = rotuloDoPico(tela);
+    expect(rotulo.classList.contains("right-0")).toBe(true);
+    expect(rotulo.classList.contains("left-0")).toBe(false);
+    expect(rotulo.classList.contains("inset-x-0")).toBe(false);
+  });
+});
