@@ -12,7 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 describe("FAIXAS_DE_SEGMENTOS_DO_CRM", () => {
-  it("agrupa os 10 segmentos em 3 faixas, sem repetir nem esquecer nenhum", () => {
+  it("agrupa os 12 segmentos em 4 faixas, sem repetir nem esquecer nenhum", () => {
     const todos = FAIXAS_DE_SEGMENTOS_DO_CRM.flatMap(
       (faixa) => faixa.segmentos,
     );
@@ -20,7 +20,7 @@ describe("FAIXAS_DE_SEGMENTOS_DO_CRM", () => {
     expect(new Set(todos)).toEqual(new Set(SEGMENTOS_DO_CRM));
   });
 
-  it("Melhores, Atenção e Perdendo na ordem certa com os segmentos da spec", () => {
+  it("Melhores, Atenção, Perdendo e Ainda não compraram na ordem certa com os segmentos da spec", () => {
     expect(FAIXAS_DE_SEGMENTOS_DO_CRM).toEqual([
       {
         titulo: "Melhores",
@@ -33,6 +33,12 @@ describe("FAIXAS_DE_SEGMENTOS_DO_CRM", () => {
       {
         titulo: "Perdendo",
         segmentos: ["em_risco", "nao_pode_perder", "hibernando"],
+      },
+      {
+        // Pediu e não pagou vem PRIMEIRO nesta faixa — é a mais acionável
+        // (pedido do dono, 27/09/2026): dá para recuperar a venda hoje.
+        titulo: "Ainda não compraram",
+        segmentos: ["pediu_nao_pagou", "nunca_comprou"],
       },
     ]);
   });

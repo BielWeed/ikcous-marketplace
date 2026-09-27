@@ -11,14 +11,15 @@ import { useCrmClientes } from "@/hooks/useCrm";
 import {
   FAIXAS_DE_SEGMENTOS_DO_CRM,
   classesDoTom,
-  formatarData,
   formatarInteiro,
-  formatarMoeda,
   formatarMoedaCompacta,
   infoDoSegmento,
   linkWhatsappDoCrm,
   mensagemDoSegmento,
+  rotuloDeUltimaAtividade,
   rotuloDoCanal,
+  textoDaReceitaDoCliente,
+  textoDeUltimaAtividade,
   textoDoFiltroDeSegmento,
 } from "@/lib/crm";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
@@ -309,16 +310,16 @@ function LinhaDoCliente({
             Receita
           </p>
           <p className="truncate font-bold tabular-nums text-white">
-            {formatarMoeda(cliente.receita)}
+            {textoDaReceitaDoCliente(cliente)}
           </p>
         </div>
 
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
-            Última compra
+            {rotuloDeUltimaAtividade(cliente.segmento)}
           </p>
           <p className="truncate tabular-nums text-zinc-300">
-            {formatarData(cliente.ultimaCompra)}
+            {textoDeUltimaAtividade(cliente)}
           </p>
         </div>
 

@@ -17,7 +17,12 @@ export type SegmentoCrm =
   | "quase_dormindo"
   | "em_risco"
   | "nao_pode_perder"
-  | "hibernando";
+  | "hibernando"
+  // Migration 20261183000000 (pedido do dono, 27/09/2026): não são
+  // segmento RFM (sem r/f/m) — são os dois grupos que "Todos os clientes"
+  // passou a mostrar além de quem já pagou.
+  | "pediu_nao_pagou"
+  | "nunca_comprou";
 
 /** Chips de período do CRM — cada um vira um intervalo de datas. */
 export type PeriodoDoCrm = "hoje" | "7d" | "30d" | "90d" | "mes" | "ano";
@@ -110,6 +115,12 @@ export interface ClienteDoCrm {
   readonly m: number | null;
   readonly segmento: SegmentoCrm | null;
   readonly canalPreferido: string | null;
+  /**
+   * Só para `pediu_nao_pagou` (soma dos pedidos `aguardando`); `null` nos
+   * demais grupos e quando a RPC ainda é a da migration 78 (chave ausente
+   * no jsonb — o parser não distingue "zero" de "não veio").
+   */
+  readonly valorEmAberto: number | null;
 }
 
 export interface ListaDeClientesDoCrm {

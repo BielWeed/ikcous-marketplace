@@ -202,6 +202,8 @@ export const SEGMENTOS_DO_CRM: readonly SegmentoCrm[] = [
   "em_risco",
   "nao_pode_perder",
   "hibernando",
+  "pediu_nao_pagou",
+  "nunca_comprou",
 ];
 
 function lerSegmento(valor: unknown): SegmentoCrm | null {
@@ -336,6 +338,10 @@ function lerCliente(item: unknown, posicao: number): ClienteDoCrm | null {
     m: comoNumero(registro.m),
     segmento: lerSegmento(registro.segmento),
     canalPreferido: comoTexto(registro.canal_preferido),
+    // Chave nova da migration 83 — ausente numa RPC ainda na 78 (banco da
+    // loja sem a migration aplicada); `comoNumero` já devolve `null` nesse
+    // caso, então nenhuma tela quebra.
+    valorEmAberto: comoNumero(registro.valor_em_aberto),
   };
 }
 
@@ -424,6 +430,18 @@ export function infoDoSegmento(segmento: SegmentoCrm): InfoDoSegmento {
         descricao: "Pouca compra, há muito tempo",
         tom: "neutro",
       };
+    case "pediu_nao_pagou":
+      return {
+        rotulo: "Pediu e não pagou",
+        descricao: "Fez pedido, mas nenhum pagamento foi confirmado",
+        tom: "atencao",
+      };
+    case "nunca_comprou":
+      return {
+        rotulo: "Cadastrado, nunca comprou",
+        descricao: "Tem conta na loja, mas ainda não fez o primeiro pedido",
+        tom: "neutro",
+      };
   }
 }
 
@@ -500,6 +518,10 @@ export function mensagemDoSegmento(
       return `${oi} Você é um cliente muito especial para nós e sentimos sua falta. Posso te mostrar o que chegou de novo?`;
     case "hibernando":
       return `${oi} Tudo bem? Faz tempo! Passando para te mostrar as novidades da loja.`;
+    case "pediu_nao_pagou":
+      return `${oi} Vi que você começou um pedido com a gente e o pagamento não foi concluído. Posso te ajudar a finalizar?`;
+    case "nunca_comprou":
+      return `${oi} Obrigado por criar sua conta na loja! Quando quiser dar uma olhada nos produtos, é só me chamar por aqui.`;
     default:
       return `${oi} Tudo bem? Posso ajudar com alguma coisa?`;
   }
@@ -1042,6 +1064,13 @@ export const FAIXAS_DE_SEGMENTOS_DO_CRM: readonly FaixaDeSegmentosDoCrm[] = [
     titulo: "Perdendo",
     segmentos: ["em_risco", "nao_pode_perder", "hibernando"],
   },
+  {
+    // Pediu e não pagou vem PRIMEIRO — é a mais acionável (pedido do dono,
+    // 27/09/2026: dá para recuperar a venda hoje, diferente de quem nunca
+    // comprou).
+    titulo: "Ainda não compraram",
+    segmentos: ["pediu_nao_pagou", "nunca_comprou"],
+  },
 ];
 
 /**
@@ -1054,6 +1083,50 @@ export function textoDoFiltroDeSegmento(
 ): string | null {
   if (!segmento) return null;
   return `Mostrando: ${infoDoSegmento(segmento).rotulo} · ${formatarInteiro(clientes)}`;
+}
+
+/**
+ * A célula "Receita" da linha do cliente (migration 83, grupos novos):
+ * comprador mostra a receita de sempre; `pediu_nao_pagou` mostra o valor em
+ * aberto quando a RPC manda (`"R$ 80,00 em aberto"`), ou "—" numa RPC ainda
+ * na 78 (chave ausente, `valorEmAberto` chega `null`); `nunca_comprou`
+ * nunca teve receita nenhuma, sempre "—".
+ */
+export function textoDaReceitaDoCliente(cliente: {
+  readonly segmento: SegmentoCrm | null;
+  readonly receita: number;
+  readonly valorEmAberto: number | null;
+}): string {
+  if (cliente.segmento === "nunca_comprou") return "—";
+  if (cliente.segmento === "pediu_nao_pagou") {
+    return cliente.valorEmAberto == null
+      ? "—"
+      : `${formatarMoeda(cliente.valorEmAberto)} em aberto`;
+  }
+  return formatarMoeda(cliente.receita);
+}
+
+/**
+ * Rótulo da coluna/campo de data da linha do cliente: quem só pediu (e não
+ * pagou) não tem "compra" nenhuma — o rótulo muda para "Último pedido"
+ * (`ultimaCompra` carrega a data do pedido mais recente para este grupo,
+ * migration 83). Os demais grupos continuam "Última compra".
+ */
+export function rotuloDeUltimaAtividade(segmento: SegmentoCrm | null): string {
+  return segmento === "pediu_nao_pagou" ? "Último pedido" : "Última compra";
+}
+
+/**
+ * Texto da mesma célula: "Nunca" para quem nunca comprou (mesmo que
+ * `ultimaCompra` venha preenchida por engano — o segmento manda, não o
+ * dado bruto); nos demais grupos, a data formatada de sempre.
+ */
+export function textoDeUltimaAtividade(cliente: {
+  readonly segmento: SegmentoCrm | null;
+  readonly ultimaCompra: string | null;
+}): string {
+  if (cliente.segmento === "nunca_comprou") return "Nunca";
+  return formatarData(cliente.ultimaCompra);
 }
 
 // --- casca do CRM (visual 27/09) ---

@@ -19,8 +19,11 @@ import {
   linkWhatsappDoCrm,
   mensagemDeErroDoPainel,
   mensagemDoSegmento,
+  rotuloDeUltimaAtividade,
   rotuloDoCanal,
   rotuloDoStatusDoPedido,
+  textoDaReceitaDoCliente,
+  textoDeUltimaAtividade,
   variacaoPercentual,
 } from "@/lib/crm";
 import { describe, expect, it } from "vitest";
@@ -211,6 +214,116 @@ describe("lerVisaoDoCrm e lerClientesDoCrm", () => {
     expect(lista?.clientes[0].ticketMedio).toBe(100);
     expect(lista?.clientes[1].segmento).toBeNull();
   });
+
+  it("lê valor_em_aberto quando a RPC manda (grupo pediu_nao_pagou); vira null quando ausente (RPC antiga, banco na 78)", () => {
+    const lista = lerClientesDoCrm({
+      clientes: [
+        {
+          user_id: "u-2",
+          nome: "Bia",
+          pedidos: 2,
+          receita: 0,
+          segmento: "pediu_nao_pagou",
+          valor_em_aberto: 80,
+        },
+        { user_id: "u-1", nome: "Ana", pedidos: 3, receita: 300 },
+      ],
+    });
+    expect(lista?.clientes[0].valorEmAberto).toBe(80);
+    expect(lista?.clientes[1].valorEmAberto).toBeNull();
+  });
+
+  it("lê os segmentos novos em crm_clientes e em crm_visao (RPC nova, migration 83)", () => {
+    const lista = lerClientesDoCrm({
+      clientes: [
+        { user_id: "u-1", segmento: "nunca_comprou", pedidos: 0, receita: 0 },
+      ],
+    });
+    expect(lista?.clientes[0].segmento).toBe("nunca_comprou");
+
+    const visao = lerVisaoDoCrm({
+      kpis: {},
+      canais: [],
+      formas: [],
+      funil: {},
+      pipeline: [],
+      segmentos: [
+        { segmento: "pediu_nao_pagou", clientes: 3, receita: 80 },
+        { segmento: "nunca_comprou", clientes: 5, receita: 0 },
+      ],
+    });
+    expect(visao?.segmentos).toEqual([
+      { segmento: "pediu_nao_pagou", clientes: 3, receita: 80 },
+      { segmento: "nunca_comprou", clientes: 5, receita: 0 },
+    ]);
+  });
+});
+
+describe("linha do cliente dos grupos novos: receita, e rótulo/texto da última atividade", () => {
+  it("comprador de sempre: receita normal, rótulo 'Última compra'", () => {
+    expect(
+      semNbsp(
+        textoDaReceitaDoCliente({
+          segmento: "campeoes",
+          receita: 300,
+          valorEmAberto: null,
+        }),
+      ),
+    ).toBe(semNbsp(formatarMoeda(300)));
+    expect(rotuloDeUltimaAtividade("campeoes")).toBe("Última compra");
+    expect(
+      textoDeUltimaAtividade({
+        segmento: "campeoes",
+        ultimaCompra: "2026-09-20",
+      }),
+    ).toBe("20/09/2026");
+  });
+
+  it("pediu_nao_pagou: '—' sem valor_em_aberto (RPC antiga), 'R$ X em aberto' com ele; rótulo 'Último pedido'", () => {
+    expect(
+      textoDaReceitaDoCliente({
+        segmento: "pediu_nao_pagou",
+        receita: 0,
+        valorEmAberto: null,
+      }),
+    ).toBe("—");
+    expect(
+      semNbsp(
+        textoDaReceitaDoCliente({
+          segmento: "pediu_nao_pagou",
+          receita: 0,
+          valorEmAberto: 80,
+        }),
+      ),
+    ).toBe("R$ 80,00 em aberto");
+    expect(rotuloDeUltimaAtividade("pediu_nao_pagou")).toBe("Último pedido");
+    expect(
+      textoDeUltimaAtividade({
+        segmento: "pediu_nao_pagou",
+        ultimaCompra: "2026-09-24",
+      }),
+    ).toBe("24/09/2026");
+  });
+
+  it("nunca_comprou: receita '—', 'Última compra: Nunca' mesmo se o campo vier preenchido por engano", () => {
+    expect(
+      textoDaReceitaDoCliente({
+        segmento: "nunca_comprou",
+        receita: 0,
+        valorEmAberto: null,
+      }),
+    ).toBe("—");
+    expect(rotuloDeUltimaAtividade("nunca_comprou")).toBe("Última compra");
+    expect(
+      textoDeUltimaAtividade({ segmento: "nunca_comprou", ultimaCompra: null }),
+    ).toBe("Nunca");
+    expect(
+      textoDeUltimaAtividade({
+        segmento: "nunca_comprou",
+        ultimaCompra: "2026-09-24",
+      }),
+    ).toBe("Nunca");
+  });
 });
 
 describe("intervaloDoPeriodo — datas no fuso de São Paulo", () => {
@@ -284,14 +397,18 @@ describe("formatadores", () => {
 });
 
 describe("segmentos RFM e WhatsApp", () => {
-  it("os 10 segmentos do contrato têm rótulo e descrição", () => {
-    expect(new Set(SEGMENTOS_DO_CRM).size).toBe(10);
+  it("os 10 segmentos RFM + os 2 grupos novos (pediu_nao_pagou, nunca_comprou) têm rótulo e descrição", () => {
+    expect(new Set(SEGMENTOS_DO_CRM).size).toBe(12);
     for (const segmento of SEGMENTOS_DO_CRM) {
       const info = infoDoSegmento(segmento);
       expect(info.rotulo.length).toBeGreaterThan(0);
       expect(info.descricao.length).toBeGreaterThan(0);
     }
     expect(infoDoSegmento("nao_pode_perder").rotulo).toBe("Não pode perder");
+    expect(infoDoSegmento("pediu_nao_pagou").rotulo).toBe("Pediu e não pagou");
+    expect(infoDoSegmento("nunca_comprou").rotulo).toBe(
+      "Cadastrado, nunca comprou",
+    );
   });
 
   it("wa.me com DDI 55 e o texto codificado; número curto não vira link", () => {

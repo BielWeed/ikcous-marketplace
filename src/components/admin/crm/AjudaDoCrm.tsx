@@ -39,11 +39,14 @@ export function AjudaDoCrm({
               abaixo, o histórico completo da loja.
             </li>
             <li>
-              <strong className="text-white">Clientes:</strong> segmentos RFM
+              <strong className="text-white">Clientes:</strong> a lista mostra
+              todo mundo — quem já comprou, agrupado por segmentos RFM
               (recência, frequência e valor) no modelo usado pelo Shopify —
-              Campeões, Leais, Em risco, Hibernando e outros. Toque num segmento
-              para filtrar a lista; o botão de WhatsApp abre a conversa com um
-              texto pronto para aquele segmento.
+              Campeões, Leais, Em risco, Hibernando e outros —, quem fez pedido
+              e não pagou ("Pediu e não pagou") e quem se cadastrou e ainda não
+              comprou ("Cadastrado, nunca comprou"). Toque num segmento para
+              filtrar a lista; o botão de WhatsApp abre a conversa com um texto
+              pronto para aquele grupo.
             </li>
             <li>
               <strong className="text-white">Canais:</strong> app × loja física
