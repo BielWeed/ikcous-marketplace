@@ -26,7 +26,7 @@ credencial nova. A lógica mora em
 | --- | --- |
 | `consulta` | o nome de um arquivo de [`scripts/publicacao/consultas/`](../../scripts/publicacao/consultas/) (sem `.sql`), ou `backups` |
 | `projeto` | `loja` (default) ou `sandbox` — **nunca um ref de texto livre** (ver nota de risco abaixo) |
-| `gravar_ledger` | `nao` (default), `72-74` ou `75-78` — grava o `INSERT` fixo daquela faixa |
+| `gravar_ledger` | `nao` (default), `72-74`, `75-78` ou `79-82` — grava o `INSERT` fixo daquela faixa |
 | `confirmar` | só o job do ledger olha isto; precisa ser exatamente `GRAVAR` |
 
 As consultas de conferência (`consulta`) vão para o endpoint dedicado da Management API
@@ -34,11 +34,11 @@ As consultas de conferência (`consulta`) vão para o endpoint dedicado da Manag
 grant de escrita, não uma promessa da aplicação (esse papel **não** cobre uma função
 `SECURITY DEFINER` executável por `PUBLIC` que escreve — ver `consulta = 4a-...` abaixo). O job do
 ledger é o único que escreve (o `INSERT` fixo da faixa), e só depois de **pré-conferir o schema
-daquela faixa** pelo mesmo caminho só-leitura (2a+2b para 72-74; 1a+1b para 75-78) — se vier
-alguma linha `ok = false` (fora as linhas de dado ao vivo: "loja existente com as 3 formas
-ligadas", "75 política padrão" e "76 cartão nasce desligado" — essas mudam legitimamente com o
-tempo e com decisão do dono, não são checagem estrutural), o job aborta sem gravar nada. Além
-disso, `confirmar` precisa ser exatamente `GRAVAR`, senão o job nem roda.
+daquela faixa** pelo mesmo caminho só-leitura (2a+2b para 72-74; 1a+1b para 75-78; 6a para 79-82)
+— se vier alguma linha `ok = false` (fora as linhas de dado ao vivo: "loja existente com as 3
+formas ligadas", "75 política padrão" e "76 cartão nasce desligado" — essas mudam legitimamente
+com o tempo e com decisão do dono, não são checagem estrutural), o job aborta sem gravar nada.
+Além disso, `confirmar` precisa ser exatamente `GRAVAR`, senão o job nem roda.
 
 **Nota de risco (26/09/2026, revisão "passa com ressalva"):** a primeira versão deste workflow
 aceitava um `projeto_ref` de texto livre, que ia direto para o path da URL com um token válido
@@ -56,9 +56,13 @@ Correspondência com os passos deste runbook:
 - **§1.2** — `consulta = 1b-conferir-marcadores`.
 - **§1.3** — `gravar_ledger = 75-78`, `confirmar = GRAVAR`. Depois de gravar, o job imprime as
   linhas de `supabase_migrations.schema_migrations` para 72–78 (leitura, à parte do `INSERT`).
-  **`gravar_ledger` só tem as faixas 72-74 e 75-78** — o `INSERT` do ledger da **80** (§1.4) e de
-  qualquer migration além da 78 (79, 81, 82...) **não é coberto pela ferramenta**: continua manual,
-  com o `INSERT` do próprio runbook (ex.: o do fim do §1.4).
+- **79–82** (a 79, do §7 abaixo, e a 80/81/82, já aplicadas em produção pelo `aplicar-migrations.yml`
+  sem passar pelo ledger) — `gravar_ledger` agora também tem a faixa **79-82**:
+  `consulta = 6a-conferir-79-a-82` pré-confere o corpo/ACL das quatro migrations (mesmo desenho de
+  1a/1b, condensado numa consulta só, porque cada uma mexe numa coisa diferente), e
+  `gravar_ledger = 79-82` + `confirmar = GRAVAR` grava o `INSERT` fixo
+  (`scripts/publicacao/consultas/ledger-79-82.sql`) só depois de TODAS as linhas de `6a` virem
+  `ok = true`. Depois de gravar, o job imprime `supabase_migrations.schema_migrations` para 72–82.
 - **§1.4** — `consulta = 5a-antes-da-79-e-80`: alternativa ao SQL Editor para conferir, ANTES de
   rodar a migration, se o preflight dela (`DO $preflight_20261180$`) vai passar (mesmos hashes,
   mesma checagem de `metodo_online`/`devolucoes`) — ver o parágrafo próprio abaixo.

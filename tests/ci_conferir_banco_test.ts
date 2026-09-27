@@ -62,6 +62,18 @@
  * ela, "0 linhas" seria ambíguo entre "nada alcançável" e "não dava pra
  * saber".
  *
+ * RODADA 5 (27/09/2026) — a faixa 79-82 ganha ferramenta. As migrations 79
+ * (via `aplicar-migrations.yml`, run à parte), 80, 81 e 82 já estavam
+ * aplicadas em produção sem passar pelo ledger. `gravar_ledger` ganhou a
+ * opção `79-82` e `consulta` ganhou `6a-conferir-79-a-82` — uma consulta só
+ * (não duas como 1a+1b ou 2a+2b), porque cada migration da faixa mexe numa
+ * coisa diferente (RPC de devolução, RPC de pedido, ACL de RPC de
+ * convidado, dado). Os hashes/ACLs de 6a são conferidos contra a árvore
+ * (extraídos dos arquivos de migration, mesmo desenho do guard de 5a) num
+ * teste próprio, não só copiados do runbook. A leitura pós-gravação também
+ * passou a depender da faixa: 72–78 para as duas faixas antigas, 72–82 para
+ * a nova (`VERIFICACAO_POS_LEDGER` no script).
+ *
  * O QUE ESTES TESTES MEDEM (visão geral):
  * - O workflow, do jeito que está no arquivo: só dispara à mão, nenhum
  *   `node -e` inline, `consulta` bate com os arquivos do disco, `projeto`
@@ -196,6 +208,10 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
         opcoes.includes("5a-antes-da-79-e-80"),
         "falta a opção `5a-antes-da-79-e-80` (pré-voo da 79/80)",
       );
+      assert(
+        opcoes.includes("6a-conferir-79-a-82"),
+        "falta a opção `6a-conferir-79-a-82` (pré-checagem do ledger 79-82)",
+      );
     },
   );
 
@@ -240,12 +256,15 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
     },
   );
 
-  await t.step("gravar_ledger é choice fechado nao/72-74/75-78", () => {
-    assertStringIncludes(
-      yaml,
-      "options:\n          - nao\n          - 72-74\n          - 75-78",
-    );
-  });
+  await t.step(
+    "gravar_ledger é choice fechado nao/72-74/75-78/79-82",
+    () => {
+      assertStringIncludes(
+        yaml,
+        "options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82",
+      );
+    },
+  );
 
   await t.step("o segredo é o SUPABASE_ACCESS_TOKEN, nunca literal", () => {
     assertStringIncludes(yaml, "${{ secrets.SUPABASE_ACCESS_TOKEN }}");
@@ -631,6 +650,146 @@ Deno.test("5a-antes-da-79-e-80.sql — os hashes embutidos batem com o que a ár
   );
 });
 
+Deno.test("6a-conferir-79-a-82.sql — os hashes/ACLs embutidos batem com o que a árvore REALMENTE tem (guarda contra a faixa 79-82)", async (t) => {
+  const { createHash } = require("node:crypto");
+
+  /** Mesma extração do teste de 5a (prosrc entre "AS $$" e o "\n$$;" de
+   * fechamento) — repetida aqui, não importada, para este teste continuar
+   * autocontido se o de 5a mudar de forma no futuro. */
+  function extrairCorpoDeFuncao(
+    sqlMigracao: string,
+    marcadorCreate: string,
+  ): string {
+    const inicioCreate = sqlMigracao.indexOf(marcadorCreate);
+    assert(inicioCreate >= 0, `não achei "${marcadorCreate}" na migration`);
+    const asIdx = sqlMigracao.indexOf("AS $$", inicioCreate);
+    assert(asIdx >= 0, `não achei "AS $$" depois de "${marcadorCreate}"`);
+    const inicioCorpo = asIdx + "AS $$".length;
+    const fimCorpo = sqlMigracao.indexOf("\n$$;", inicioCorpo);
+    assert(fimCorpo >= 0, "não achei o fechamento $$; do corpo");
+    return sqlMigracao.slice(inicioCorpo, fimCorpo + 1);
+  }
+
+  function md5Normalizado(corpo: string): string {
+    return createHash("md5").update(corpo.replace(/\r/g, "")).digest("hex");
+  }
+
+  const sql6a = await Deno.readTextFile(
+    `${CONSULTAS_DIR}/6a-conferir-79-a-82.sql`,
+  );
+
+  await t.step(
+    "79 — cancelar_devolucao e admin_devolucao_liberar_vinculo_reverso: os hashes em 6a são o md5 REAL dos corpos que a 20261179000000 deixa NESTA árvore",
+    async () => {
+      const sql79 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261179000000_cancelar_devolucao_barra_compra_em_voo.sql`,
+      );
+
+      const corpoCancelar = extrairCorpoDeFuncao(
+        sql79,
+        "CREATE OR REPLACE FUNCTION public.cancelar_devolucao(p_id uuid)",
+      );
+      const hashCancelar = md5Normalizado(corpoCancelar);
+      assertEquals(
+        hashCancelar,
+        "74fd42d04f8ea55257a0aec73bfcabc1",
+        "o corpo de cancelar_devolucao na 79 mudou nesta árvore — recalcule o valor de 6a e do runbook §7.2",
+      );
+      assertStringIncludes(sql6a, hashCancelar);
+
+      const corpoLiberar = extrairCorpoDeFuncao(
+        sql79,
+        "CREATE OR REPLACE FUNCTION public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean DEFAULT false)",
+      );
+      const hashLiberar = md5Normalizado(corpoLiberar);
+      assertEquals(
+        hashLiberar,
+        "83144be5ac2bc52f07f02274023a83ab",
+        "o corpo de admin_devolucao_liberar_vinculo_reverso na 79 mudou nesta árvore — recalcule o valor de 6a e do runbook §7.2",
+      );
+      assertStringIncludes(sql6a, hashLiberar);
+    },
+  );
+
+  await t.step(
+    "80 — update_order_status_atomic: o hash em 6a é o md5 REAL do corpo que a 20261180000000 deixa NESTA árvore",
+    async () => {
+      const sql80 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261180000000_cliente_nao_cancela_com_cartao_vivo.sql`,
+      );
+      const corpo80 = extrairCorpoDeFuncao(
+        sql80,
+        "CREATE OR REPLACE FUNCTION public.update_order_status_atomic(",
+      );
+      const hash80 = md5Normalizado(corpo80);
+      assertEquals(
+        hash80,
+        "ed2f7fd3e0177c027720049b2fe55d3b",
+        "o corpo de update_order_status_atomic na 80 mudou nesta árvore — recalcule o valor de 6a",
+      );
+      assertStringIncludes(sql6a, hash80);
+    },
+  );
+
+  await t.step(
+    "81 — os mesmos três has_function_privilege() do bloco DO $$ final da 20261181000000 aparecem em 6a",
+    async () => {
+      const sql81 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261181000000_pedido_por_whatsapp_fecha_para_anon.sql`,
+      );
+      const inicioBlindagem = sql81.indexOf("DO $$");
+      assert(inicioBlindagem >= 0, "não achei o bloco DO $$ de blindagem na 81");
+      const blocoBlindagem = sql81.slice(inicioBlindagem);
+      const checagens = [
+        ...blocoBlindagem.matchAll(
+          /has_function_privilege\('(anon|authenticated)', '(public\.get_orders_by_(?:whatsapp_v3\(text,text,text\)|otp_v1\(text,text\)))', 'EXECUTE'\)/g,
+        ),
+      ].map((m) => m[0]);
+      assert(
+        checagens.length >= 3,
+        `esperava pelo menos 3 checagens de has_function_privilege no bloco de blindagem da 81, achei ${checagens.length}`,
+      );
+      for (const checagem of checagens) {
+        assertStringIncludes(
+          sql6a,
+          checagem,
+          `6a não cita a checagem "${checagem}" que o bloco de blindagem da 81 usa`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "82 — o predicado de 6a (cpf dentro de customer_data.address) bate com a VERIFICAÇÃO FINAL da 20261182000000",
+    async () => {
+      function normalizar(s: string): string {
+        return s.replace(/\s+/g, " ").trim();
+      }
+
+      const sql82 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261182000000_o_cpf_da_janela_sai_do_endereco.sql`,
+      );
+      const m82 = sql82.match(
+        /SELECT count\(\*\) INTO v_restantes\s+FROM public\.marketplace_orders o\s+(WHERE[\s\S]*?);/,
+      );
+      assert(m82, "não achei a VERIFICAÇÃO FINAL (v_restantes) na migration 82");
+      const wherePredicado82 = normalizar(m82[1]);
+
+      const m6a = sql6a.match(
+        /'82 zero pedidos com cpf no endereco', \(SELECT count\(\*\)::text FROM public\.marketplace_orders o (WHERE[\s\S]*?)\), '0'\)/,
+      );
+      assert(m6a, "não achei a linha '82 zero pedidos com cpf no endereco' em 6a");
+      const wherePredicado6a = normalizar(m6a[1]);
+
+      assertEquals(
+        wherePredicado6a,
+        wherePredicado82,
+        "o predicado de 6a para a 82 tem de ser EXATAMENTE o mesmo da verificação final da migration (mesmo conjunto de linhas)",
+      );
+    },
+  );
+});
+
 Deno.test({
   name: MIGRACAO_82_EXISTE
     ? "3a-cpf-no-endereco.sql — o WHERE bate com a CTE `alvo` da migration 82 (normalizando espaço em branco)"
@@ -728,7 +887,7 @@ Deno.test("conferirHashDoLedger — segunda checagem do INSERT, independente da 
   await t.step(
     "o conteúdo REAL dos dois arquivos bate com o hash pinado",
     async () => {
-      for (const faixa of ["72-74", "75-78"]) {
+      for (const faixa of ["72-74", "75-78", "79-82"]) {
         const conteudo = await Deno.readTextFile(
           `${CONSULTAS_DIR}/ledger-${faixa}.sql`,
         );
@@ -1170,6 +1329,119 @@ Deno.test("main() — request certo, stubando fetch", async (t) => {
         corpoGravacao.query,
         "INSERT INTO supabase_migrations",
       );
+    },
+  );
+
+  await t.step(
+    "ledger 79-82: pré-checagem (6a, uma consulta só) toda ok=true -> grava (endpoint de escrita) e confere 72-82",
+    async () => {
+      const linhasOk6a = [
+        {
+          checagem: "79 admin_devolucao_liberar_vinculo_reverso existe",
+          valor: "true",
+          esperado: "true",
+          ok: true,
+        },
+        {
+          checagem: "82 zero pedidos com cpf no endereco",
+          valor: "0",
+          esperado: "0",
+          ok: true,
+        },
+      ];
+      const { chamadas, resultado } = await comFetchStubado(
+        [
+          { ok: true, corpo: JSON.stringify(linhasOk6a) }, // 6a (única consulta da faixa)
+          { ok: true, status: 201, corpo: "[]" }, // INSERT do ledger
+          {
+            ok: true,
+            corpo: JSON.stringify([
+              { version: "20261179000000", name: "cancelar_devolucao_..." },
+            ]),
+          }, // verificação 72-82
+        ],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                LEDGER: "79-82",
+              },
+              () => main(),
+            ),
+          ),
+      );
+      const { saida } = resultado;
+      // Só 3 chamadas — a faixa 79-82 tem UMA consulta de pré-checagem (6a),
+      // não duas como 72-74 (2a+2b) e 75-78 (1a+1b).
+      assertEquals(chamadas.length, 3);
+
+      assertStringIncludes(chamadas[0].url, "/database/query/read-only");
+      const corpoPreCheck = JSON.parse(String(chamadas[0].opts.body));
+      assertStringIncludes(
+        corpoPreCheck.query,
+        "82 zero pedidos com cpf no endereco",
+        "a pré-checagem de 79-82 tem de rodar a 6a-conferir-79-a-82, não outra consulta",
+      );
+
+      assertStringIncludes(
+        chamadas[1].url,
+        `/v1/projects/${REF_LOJA}/database/query`,
+      );
+      assert(!chamadas[1].url.includes("read-only"));
+      const corpoGravacao = JSON.parse(String(chamadas[1].opts.body));
+      assertStringIncludes(
+        corpoGravacao.query,
+        "INSERT INTO supabase_migrations",
+      );
+      assertStringIncludes(corpoGravacao.query, "20261182000000");
+
+      assertStringIncludes(chamadas[2].url, "/database/query/read-only");
+      const corpoVerificacao = JSON.parse(String(chamadas[2].opts.body));
+      assertStringIncludes(corpoVerificacao.query, "20261182999999");
+
+      assert(!saida.includes(TOKEN_FALSO), "o token vazou na saída do ledger");
+      assertStringIncludes(saida, "20261179000000");
+    },
+  );
+
+  await t.step(
+    "ledger 79-82: alguma linha de 6a com ok=false -> ABORTA sem gravar (o INSERT nunca é chamado)",
+    async () => {
+      const linhasComFalha6a = [
+        {
+          checagem: "79 admin_devolucao_liberar_vinculo_reverso existe",
+          valor: "true",
+          esperado: "true",
+          ok: true,
+        },
+        {
+          checagem: "82 zero pedidos com cpf no endereco",
+          valor: "3",
+          esperado: "0",
+          ok: false,
+        },
+      ];
+      const { chamadas, resultado } = await comFetchStubado(
+        [{ ok: true, corpo: JSON.stringify(linhasComFalha6a) }],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                LEDGER: "79-82",
+              },
+              () => comSaidaCapturada(() => main()),
+            ),
+          ),
+      );
+      assertEquals(resultado.valor?.retornou, false);
+      assertEquals(resultado.valor?.codigoSaida, 1);
+      // Só a pré-checagem (6a) rodou — o INSERT nunca é chamado.
+      assertEquals(chamadas.length, 1);
+      assertStringIncludes(chamadas[0].url, "/database/query/read-only");
     },
   );
 

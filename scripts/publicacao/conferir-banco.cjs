@@ -3,7 +3,8 @@
  * Roda, sob demanda e SÓ LEITURA, as conferências de pré/pós-publicação que
  * o `docs/runbooks/publicar-painel-cartao-devolucoes.md` (§0/§1) descrevia
  * como "cole no SQL Editor" — e o registro do ledger
- * (`supabase_migrations.schema_migrations`) para as faixas 72-74 e 75-78.
+ * (`supabase_migrations.schema_migrations`) para as faixas 72-74, 75-78 e
+ * 79-82.
  * Chamado por `.github/workflows/conferir-banco-da-loja.yml`.
  *
  * USO (variáveis de ambiente, o mesmo estilo de aplicar-migrations.yml):
@@ -14,8 +15,9 @@
  *                          `resolverRef` (ver abaixo, achado da rodada 2).
  *   CONSULTA                nome (sem `.sql`) de um arquivo em
  *                          scripts/publicacao/consultas/, ou "backups".
- *   LEDGER                 "72-74" ou "75-78" — pré-confere o schema, grava
- *                          o ledger fixo daquela faixa e confere 72-78
+ *   LEDGER                 "72-74", "75-78" ou "79-82" — pré-confere o
+ *                          schema, grava o ledger fixo daquela faixa e
+ *                          confere 72-78 (ou 72-82, para a faixa nova)
  *                          depois. Mutuamente exclusivo com CONSULTA (o
  *                          workflow só passa um).
  *
@@ -187,7 +189,7 @@ const CONSULTAS_DIR = path.join(
 // real de produção é sempre o host oficial da Management API.
 const API_BASE =
   process.env.CONFERIR_BANCO_API_BASE || "https://api.supabase.com";
-const FAIXAS_DE_LEDGER = ["72-74", "75-78"];
+const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82"];
 
 /** Os únicos dois projetos que este token alcança (mesmos refs de
  * `publicar-functions.yml`). Nunca aceitar um terceiro valor aqui: é isso
@@ -649,6 +651,7 @@ async function rodarBackups({ ref, token }) {
 const CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER = {
   "72-74": ["2a-marcadores-72-74", "2b-objetos-72-74"],
   "75-78": ["1a-conferir-o-que-nasceu", "1b-conferir-marcadores"],
+  "79-82": ["6a-conferir-79-a-82"],
 };
 
 /** Linhas que são dado AO VIVO da loja — mudam legitimamente com o tempo ou
@@ -719,6 +722,7 @@ async function conferirAntesDeGravar({ ref, token, faixa }) {
 const SHA256_DO_LEDGER = {
   "72-74": "f25b2d23064bd7639c4c65e19ae85021ec0bb2e53a65d16ffbada9c755d0dbef",
   "75-78": "aa0d443015102f3fba7f326cbcd40f36f3cba9426800e3fb2787e6697062600f",
+  "79-82": "505f62dd9be2da3e9af9607b700ee30c681ce5afe339fe61bcfe8b44db86a0bf",
 };
 
 function conferirHashDoLedger(faixa, conteudo) {
@@ -734,6 +738,15 @@ function conferirHashDoLedger(faixa, conteudo) {
     );
   }
 }
+
+/** A leitura pós-gravação (achado desta tarefa: a faixa nova amplia o que já
+ * estava no ledger, então a leitura de conferência amplia junto — sempre
+ * mostrando desde 72, nunca só a faixa recém-gravada isolada). */
+const VERIFICACAO_POS_LEDGER = {
+  "72-74": { rotulo: "72–78", limiteSuperior: "20261178999999" },
+  "75-78": { rotulo: "72–78", limiteSuperior: "20261178999999" },
+  "79-82": { rotulo: "72–82", limiteSuperior: "20261182999999" },
+};
 
 async function rodarLedger({ ref, token, faixa }) {
   if (!FAIXAS_DE_LEDGER.includes(faixa)) {
@@ -764,12 +777,13 @@ async function rodarLedger({ ref, token, faixa }) {
     `Ledger ${faixa} gravado (ou já estava — ON CONFLICT DO NOTHING).`,
   );
 
-  const verificacao = `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20261172000000' AND '20261178999999' ORDER BY version;`;
+  const { rotulo, limiteSuperior } = VERIFICACAO_POS_LEDGER[faixa];
+  const verificacao = `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20261172000000' AND '${limiteSuperior}' ORDER BY version;`;
   const corpo = await chamarLeitura({ ref, token, query: verificacao });
   const linhas = extrairLinhas(corpo);
   const tabela = formatarTabela(linhas);
   escreverResumo(
-    `## Ledger 72–78 depois da gravação de \`${faixa}\`\n\n\`\`\`\n${tabela}\n\`\`\``,
+    `## Ledger ${rotulo} depois da gravação de \`${faixa}\`\n\n\`\`\`\n${tabela}\n\`\`\``,
   );
 }
 

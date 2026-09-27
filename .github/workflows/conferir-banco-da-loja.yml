@@ -1,7 +1,7 @@
 # Roda, sob demanda, as conferências de pré/pós-publicação que uma pessoa
 # fazia à mão no SQL Editor (docs/runbooks/publicar-painel-cartao-devolucoes.md
 # §0/§1, e o §7.0 pela consulta 5a), o horário do último backup, e o registro do ledger
-# (`supabase_migrations.schema_migrations`) para as faixas 72-74 e 75-78.
+# (`supabase_migrations.schema_migrations`) para as faixas 72-74, 75-78 e 79-82.
 #
 # POR QUE EXISTE: as consultas do runbook eram "cole no SQL Editor" — um
 # passo manual, sem registro, que só quem tinha acesso ao painel do Supabase
@@ -37,7 +37,7 @@
 #   consulta      = um arquivo de scripts/publicacao/consultas/ (sem `.sql`),
 #                   ou "backups";
 #   projeto       = "loja" (default) ou "sandbox";
-#   gravar_ledger = "nao" (default), "72-74" ou "75-78";
+#   gravar_ledger = "nao" (default), "72-74", "75-78" ou "79-82";
 #   confirmar     = só o job do ledger olha isto — precisa ser exatamente
 #                   "GRAVAR" para gravar de verdade.
 #
@@ -65,6 +65,7 @@ on:
           - 3a-cpf-no-endereco
           - 4a-definer-alcancavel-pelo-leitor
           - 5a-antes-da-79-e-80
+          - 6a-conferir-79-a-82
           - backups
       projeto:
         description: "Projeto de destino: loja ou sandbox (nunca texto livre — achado da rodada 2)"
@@ -83,6 +84,7 @@ on:
           - nao
           - 72-74
           - 75-78
+          - 79-82
       confirmar:
         description: "Só o job do ledger olha isto: precisa ser exatamente GRAVAR"
         required: false
@@ -139,7 +141,7 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Pré-confere o schema da faixa, grava o ledger e confere 72-78 (leitura)
+      - name: Pré-confere o schema da faixa, grava o ledger e confere 72-78/72-82 (leitura)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           PROJETO: ${{ inputs.projeto }}
