@@ -133,7 +133,11 @@ function BlocoDeSegmento({
           <span className="text-base font-black tabular-nums text-white sm:block sm:text-xl">
             {formatarInteiro(resumo?.clientes ?? 0)}
           </span>
-          <span className="shrink-0 truncate text-[10px] tabular-nums text-zinc-500 sm:mt-0.5 sm:block">
+          {/* Contraste AA: dentro do cartão zerado (button com opacity-60
+              quando o segmento não tem cliente), text-zinc-500 media
+              ~2,1:1 — text-zinc-400 melhora a leitura sem perder o peso
+              secundário que a opacidade do botão já dá. */}
+          <span className="shrink-0 truncate text-[10px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
             {formatarMoedaCompacta(resumo?.receita ?? 0)}
           </span>
         </span>
@@ -178,7 +182,7 @@ function GradeDeSegmentos({
       <div className="space-y-4">
         {FAIXAS_DE_SEGMENTOS_DO_CRM.map((faixa) => (
           <div key={faixa.titulo}>
-            <h3 className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+            <h3 className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">
               {faixa.titulo}
             </h3>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
@@ -209,7 +213,7 @@ function GradeDeSegmentos({
             type="button"
             onClick={() => aoSelecionar(null)}
             className={cn(
-              "flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-2.5 text-[10px] font-black uppercase tracking-wider text-admin-gold transition-colors hover:bg-admin-gold/10",
+              "flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2.5 text-[10px] font-black uppercase tracking-wider text-admin-gold transition-colors hover:bg-admin-gold/10",
               FOCO_DO_CRM,
             )}
           >
@@ -271,7 +275,7 @@ function LinhaDoCliente({
           mesma ordem do cabeçalho — sem sobrar "Canal" sozinho numa linha). */}
       <div className="col-span-2 grid grid-cols-2 gap-x-3 gap-y-2 lg:contents">
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-zinc-500 lg:sr-only">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
             Pedidos
           </p>
           <p className="font-bold tabular-nums text-white">
@@ -280,7 +284,7 @@ function LinhaDoCliente({
         </div>
 
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-zinc-500 lg:sr-only">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
             Receita
           </p>
           <p className="truncate font-bold tabular-nums text-white">
@@ -289,7 +293,7 @@ function LinhaDoCliente({
         </div>
 
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-zinc-500 lg:sr-only">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
             Última compra
           </p>
           <p className="truncate tabular-nums text-zinc-300">
@@ -298,7 +302,7 @@ function LinhaDoCliente({
         </div>
 
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-zinc-500 lg:sr-only">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
             Canal
           </p>
           <p className="truncate text-zinc-300">
@@ -505,7 +509,7 @@ export function ClientesDoCrm({
               <div
                 aria-hidden="true"
                 className={cn(
-                  "hidden gap-5 px-4 text-[10px] font-black uppercase tracking-wider text-zinc-500 lg:grid",
+                  "hidden gap-5 px-4 text-[10px] font-black uppercase tracking-wider text-zinc-400 lg:grid",
                   COLUNAS_DA_LISTA,
                 )}
               >

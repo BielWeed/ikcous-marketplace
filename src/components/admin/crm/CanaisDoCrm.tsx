@@ -134,7 +134,6 @@ function BlocoDeCanal({
     <div
       className={cn(
         "space-y-3 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-4",
-        zerado && "opacity-60",
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -145,7 +144,7 @@ function BlocoDeCanal({
           )}
         >
           <estilo.icone
-            className={cn("size-4", estilo.cor)}
+            className={cn("size-4", estilo.cor, zerado && "opacity-60")}
             aria-hidden="true"
           />
           {rotuloDoCanal(canal.canal)}
@@ -158,7 +157,11 @@ function BlocoDeCanal({
       </div>
 
       {zerado ? (
-        <p className="text-xs leading-relaxed text-zinc-500">
+        // Contraste AA: a opacidade de "canal secundário" fica só no ícone
+        // (gráfico) acima — texto informativo nunca perde opacidade, e usa
+        // text-zinc-400 (não mais text-zinc-500, que dentro do opacity-60
+        // do cartão inteiro media ~2,2:1, abaixo do mínimo AA).
+        <p className="text-xs leading-relaxed text-zinc-400">
           Nenhuma venda{" "}
           {canal.canal === "online" ? "pelo app" : "pela loja física"} neste
           período.
@@ -170,7 +173,7 @@ function BlocoDeCanal({
           </p>
           <dl className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+              <dt className="text-[10px] uppercase tracking-wider text-zinc-400">
                 Pedidos
               </dt>
               <dd className="font-bold tabular-nums text-white">
@@ -183,7 +186,7 @@ function BlocoDeCanal({
               </dd>
             </div>
             <div>
-              <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+              <dt className="text-[10px] uppercase tracking-wider text-zinc-400">
                 Ticket médio
               </dt>
               <dd className="font-bold tabular-nums text-white">
@@ -192,7 +195,7 @@ function BlocoDeCanal({
             </div>
           </dl>
           {diffTicket != null && diffTicket !== 0 ? (
-            <p className="text-[11px] text-zinc-500">
+            <p className="text-[11px] text-zinc-400">
               Ticket{" "}
               <strong
                 className={cn(
