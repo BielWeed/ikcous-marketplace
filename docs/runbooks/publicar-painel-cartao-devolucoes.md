@@ -1155,7 +1155,8 @@ nenhuma delas, só da própria 78).
 **Aplicar** (NA LOJA, sempre pelo workflow — nunca `db-apply.cjs` direto contra produção; ver §1 e
 §1.4 acima): Actions → **Aplicar migrations (Supabase)** → `migracoes =
 20261183000000_o_crm_ve_todo_mundo.sql`, `projeto = loja`. O workflow faz a prova
-`BEGIN`/`ROLLBACK` antes de aplicar de verdade e confere as RPCs no fim. (`node
+`BEGIN`/`ROLLBACK` antes de aplicar de verdade; a conferência da 83 é a consulta 7a (o ledger
+exige). (`node
 scripts/db-apply.cjs <arquivo>` só vale local/dev, contra um `DATABASE_URL` que não é o da loja —
 é o que a prova viva desta tarefa usou.)
 
@@ -1176,14 +1177,19 @@ loja", `confirmar = GRAVAR`): pré-confere com `7a-conferir-83` e grava
 `scripts/publicacao/consultas/ledger-83.sql` (idempotente, `ON CONFLICT (version) DO NOTHING`), e
 a verificação pós-gravação mostra o ledger 72–83 inteiro.
 
-**Front:** publique DEPOIS de a migration estar no ar e conferida (a tela chama `valor_em_aberto` e
-os 2 segmentos novos; o parser tolera a ausência, então a ordem inversa não quebra nada — só a UI
-não mostra os grupos novos até a migration chegar). Se a migration subir ANTES do front (ordem
-inversa da recomendada): o front ANTIGO não reconhece `pediu_nao_pagou`/`nunca_comprou` como
-segmento válido (`lerSegmento` só aceita os 12 valores que ELE conhece) — os clientes desses 2
-grupos aparecem na lista com o crachá "Sem segmento" em vez do rótulo certo, até o front novo
-publicar. Não é dado errado (a RPC está certa), é só a tela antiga não ter o vocabulário — some
-sozinho no próximo deploy do front.
+**Front:** ESTE front (desta branch) tolera tanto a 78 quanto a 83 aplicadas — a ordem entre
+migration e front não importa para ele: `lerCliente` trata `valor_em_aberto`/`cadastrado_em`
+ausentes como "não sei" (nunca inventa "R$ 0,00"), e a grade só mostra a faixa "Ainda não
+compraram" quando `crm_visao` realmente manda os 2 segmentos novos.
+
+Isso vale só para o front DESTA branch. Um front ANTERIOR a ela, se a 83 subir antes dele, mostra
+dado ENGANOSO — não é só "sem rótulo": `lerSegmento` não reconhece `pediu_nao_pagou`/
+`nunca_comprou` (só os 12 valores que ele conhece), o cliente cai no crachá "Sem segmento", MAS a
+receita desse grupo é sempre 0 na RPC — o front antigo formata isso como "R$ 0,00" — e "Última
+compra" mostra a data do PEDIDO NÃO PAGO como se fosse uma venda de verdade. Junto, a linha lê como
+"Sem segmento · R$ 0,00 · Última compra <data>" — parece uma venda de R$ 0 que aconteceu naquele
+dia, não uma pessoa que só pediu e não pagou. Para não abrir essa janela, publique o front desta
+branch junto com a 83 (ou antes dela) sempre que puder.
 
 **Rollback:** `rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql` (`psql -1 -f`, nunca
 `db-apply`) — restaura `crm_clientes`/`crm_visao` com os corpos EXATOS da 78 e derruba
