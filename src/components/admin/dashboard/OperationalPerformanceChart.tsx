@@ -1,3 +1,4 @@
+import { SUPERFICIE_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -129,24 +130,25 @@ export const OperationalPerformanceChart = memo(
     return (
       <div
         className={cn(
-          "admin-glass pt-0 pb-6 px-4 sm:pt-0 sm:pb-10 sm:px-10 sm:rounded-[3rem] border border-white/5 space-y-4 sm:space-y-6 relative overflow-hidden group",
+          SUPERFICIE_DO_CRM,
+          "pt-4 pb-6 px-4 sm:pt-5 sm:pb-10 sm:px-10 space-y-4 sm:space-y-6 relative overflow-hidden group",
           className,
         )}
       >
         <div className="absolute -bottom-20 -right-20 size-96 rounded-full bg-admin-gold/[0.02] blur-[100px]" />
 
-        <div className="relative z-10 mt-5 flex flex-row items-center justify-between px-2 sm:px-0">
+        <div className="relative z-10 flex flex-row items-center justify-between px-2 sm:px-0">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
-            <div className="-mt-1 sm:-mt-2">
-              <h3 className="bg-gradient-to-r from-white via-white to-white/40 bg-clip-text pr-2 text-xl font-black uppercase italic leading-tight tracking-tighter text-transparent sm:text-3xl">
+            <div>
+              <h3 className="text-sm font-semibold leading-snug text-white">
                 Performance
               </h3>
-              <div className="mt-0.5 flex items-center gap-2 sm:mt-1">
+              <div className="mt-0.5 flex items-center gap-2">
                 <span className="size-1.5 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)]" />
-                <p className="text-[8px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:text-[10px]">
+                <p className="text-xs leading-relaxed text-zinc-400">
                   {chartMode === "revenue"
-                    ? "Fluxo Operacional"
-                    : "Retorno sobre Estoque"}
+                    ? "Fluxo operacional"
+                    : "Retorno sobre estoque"}
                 </p>
               </div>
             </div>
@@ -230,7 +232,7 @@ export const OperationalPerformanceChart = memo(
                   <span className="size-1.5 rounded-full bg-emerald-500" />
                   <span>
                     Faturamento Total:{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       R${" "}
                       {periodTotals.revenue.toLocaleString("pt-BR", {
                         maximumFractionDigits: 0,
@@ -242,7 +244,7 @@ export const OperationalPerformanceChart = memo(
                   <span className="size-1.5 rounded-full bg-zinc-400" />
                   <span>
                     Pedidos:{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       {periodTotals.orders}
                     </strong>
                   </span>
@@ -251,7 +253,7 @@ export const OperationalPerformanceChart = memo(
                   <span className="size-1.5 rounded-full bg-admin-gold" />
                   <span>
                     Ticket Médio:{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       R${" "}
                       {periodTotals.avgTicket.toLocaleString("pt-BR", {
                         maximumFractionDigits: 0,
@@ -266,7 +268,7 @@ export const OperationalPerformanceChart = memo(
                   <span className="size-1.5 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" />
                   <span>
                     Estoque At. (Custo):{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       R${" "}
                       {(stats.inventory?.totalCost ?? 0).toLocaleString(
                         "pt-BR",
@@ -279,7 +281,7 @@ export const OperationalPerformanceChart = memo(
                   <span className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
                   <span>
                     Lucro Acumulado:{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       R${" "}
                       {processedRoiData[
                         processedRoiData.length - 1

@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { SUPERFICIE_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { cn } from "@/lib/utils";
@@ -13,15 +14,9 @@ interface TopProductsListProps {
 }
 
 const SectionTitle = ({ title, icon: Icon }: { title: string; icon: any }) => (
-  <div className="mb-4 flex items-center gap-3 px-2">
-    <div className="relative">
-      <div className="h-6 w-1.5 rounded-full bg-admin-gold shadow-[0_0_15px_rgba(234,179,8,0.6)]" />
-      <div className="absolute -left-1 top-0 h-6 w-3.5 animate-pulse rounded-full bg-admin-gold/20 blur-md" />
-    </div>
-    <Icon className="size-5 animate-pulse text-admin-gold" />
-    <h2 className="text-sm font-black uppercase tracking-[0.25em] text-white/90 drop-shadow-sm">
-      {title}
-    </h2>
+  <div className="mb-4 flex items-center gap-2.5 px-2">
+    <Icon className="size-4 shrink-0 text-admin-gold" />
+    <h2 className="text-sm font-semibold leading-snug text-white">{title}</h2>
   </div>
 );
 
@@ -48,13 +43,13 @@ export const TopProductsList = memo(function TopProductsList({
           é verdade desde a migration. As duas metades aplicam juntas
           (branch com o front primeiro, clique da migration logo depois);
           sozinha, qualquer uma delas faz a tela mentir. */}
-      <SectionTitle title="top 5 produtos mais lucrativos" icon={Trophy} />
+      <SectionTitle title="Top 5 produtos mais lucrativos" icon={Trophy} />
 
       <div className="relative">
         {/* Decorative background element */}
         <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-admin-gold/5 blur-[100px]" />
 
-        <div className="admin-glass relative overflow-hidden border border-white/5 shadow-2xl sm:rounded-[2rem]">
+        <div className={cn(SUPERFICIE_DO_CRM, "relative overflow-hidden")}>
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.03] via-transparent to-transparent" />
 
           <div className="relative z-10 space-y-1 p-2.5 sm:p-4">
