@@ -104,6 +104,34 @@ function lerSerieDiaria(valor: unknown): PontoDaSerieDiaria[] {
   return pontos.sort((a, b) => a.dia.localeCompare(b.dia));
 }
 
+/**
+ * Garante os 14 pontos do minigráfico do Início mesmo se a série chegar
+ * menor (o contrato de `painel_inicio()` sempre manda os 14 dias de
+ * hoje-13 até hoje — migration `20261178000000_o_crm_e_o_inicio_leem_a_loja.sql`
+ * ~346 — mas o parser não trava se um dia faltar). Ancora no MAIOR dia
+ * RECEBIDO (não assume que o array chegue ordenado, nem usa "hoje" do
+ * cliente, que pode divergir do servidor por um instante), e completa os
+ * dias anteriores que faltarem com receita ZERO — dia sem venda é zero
+ * medido, não "não sei". Série vazia continua vazia: a tela já lê isso como
+ * "sem venda registrada".
+ */
+export function completarSerieDe14Dias(
+  serie: readonly PontoDaSerieDiaria[],
+): PontoDaSerieDiaria[] {
+  if (serie.length === 0) return [];
+  const porDia = new Map(serie.map((ponto) => [ponto.dia, ponto.receita]));
+  const ultimoDia = serie.reduce(
+    (maior, ponto) => (ponto.dia > maior ? ponto.dia : maior),
+    serie[0].dia,
+  );
+  const completa: PontoDaSerieDiaria[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const dia = somarDias(ultimoDia, -i);
+    completa.push({ dia, receita: porDia.get(dia) ?? 0 });
+  }
+  return completa;
+}
+
 export function lerPainelInicio(json: unknown): PainelInicio | null {
   const raiz = comoRegistro(json);
   if (!raiz) return null;
