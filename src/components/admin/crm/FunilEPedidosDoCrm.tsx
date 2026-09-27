@@ -35,7 +35,11 @@ import { useEffect, useState } from "react";
 interface DefinicaoDeEtapa {
   readonly chave: keyof FunilDoCrm;
   readonly rotulo: string;
+  /** Unidade por extenso — usada na barra proporcional ("13 pedidos criados"). */
   readonly unidade: string;
+  /** Unidade curta — usada no cartão de etapas ("13 pedidos"), sem repetir
+   * o nome da etapa duas vezes. */
+  readonly unidadeCurta: string;
 }
 
 interface EtapaMedida extends DefinicaoDeEtapa {
@@ -44,13 +48,24 @@ interface EtapaMedida extends DefinicaoDeEtapa {
 
 /** Só as etapas que o app realmente mede — cada uma com a unidade escrita. */
 const ETAPAS_MEDIDAS: readonly DefinicaoDeEtapa[] = [
-  { chave: "carrinhos", rotulo: "Carrinhos", unidade: "pessoas com carrinho" },
+  {
+    chave: "carrinhos",
+    rotulo: "Carrinhos",
+    unidade: "pessoas com carrinho",
+    unidadeCurta: "pessoas",
+  },
   {
     chave: "pedidosCriados",
     rotulo: "Pedidos criados",
     unidade: "pedidos criados",
+    unidadeCurta: "pedidos",
   },
-  { chave: "pedidosPagos", rotulo: "Pedidos pagos", unidade: "pedidos pagos" },
+  {
+    chave: "pedidosPagos",
+    rotulo: "Pedidos pagos",
+    unidade: "pedidos pagos",
+    unidadeCurta: "pagos",
+  },
 ];
 
 /** Ordem de trabalho do lojista; status desconhecido vai para o fim. */
@@ -241,33 +256,28 @@ function FunilProporcional({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
  * usada quando `funilEhMonotonico` é falso (etapas de unidades diferentes,
  * ex.: pessoas com carrinho → pedidos criados, que pode crescer). Barra
  * proporcional aqui alargaria em vez de afunilar e pareceria quebrada.
- * Horizontal no desktop, empilhada no celular.
+ * SEMPRE lado a lado (3 colunas compactas), no celular e no desktop — nome
+ * da etapa uma vez só, dentro do número ("13 pedidos", não "PEDIDOS
+ * CRIADOS" em cima de "13" em cima de "pedidos criados" de novo embaixo).
  */
 function FunilEmEtapas({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
   return (
-    <div className="flex flex-col gap-1 sm:flex-row sm:items-stretch sm:gap-2">
+    <div className="flex items-stretch gap-1">
       {medidas.map((etapa, indice) => (
-        <div
-          key={etapa.chave}
-          className="flex flex-1 flex-col gap-1 sm:flex-row sm:items-stretch"
-        >
+        <div key={etapa.chave} className="flex flex-1 items-stretch gap-1">
           {indice > 0 ? (
-            <div
-              className="flex items-center justify-center text-zinc-600"
+            <ChevronRight
+              className="my-auto size-3.5 shrink-0 text-zinc-600"
               aria-hidden="true"
-            >
-              <ChevronDown className="size-4 sm:hidden" />
-              <ChevronRight className="hidden size-4 sm:block" />
-            </div>
+            />
           ) : null}
-          <div className="flex-1 rounded-xl border border-white/10 bg-zinc-950/60 px-3 py-2.5 text-center">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
-              {etapa.rotulo}
-            </p>
-            <p className="text-2xl font-black tabular-nums text-white">
+          <div className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950/60 px-1.5 py-2 text-center">
+            <p className="truncate text-2xl font-black tabular-nums text-white">
               {formatarInteiro(etapa.valor)}
             </p>
-            <p className="text-[11px] text-zinc-400">{etapa.unidade}</p>
+            <p className="truncate text-[11px] text-zinc-400">
+              {etapa.unidadeCurta}
+            </p>
           </div>
         </div>
       ))}

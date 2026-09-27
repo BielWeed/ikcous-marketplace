@@ -2,8 +2,8 @@ import { ChipDeVariacao } from "@/components/admin/crm/ChipDeVariacao";
 import {
   CartaoDoCrm,
   EstadoVazioDoCrm,
+  SUPERFICIE_DO_CRM,
 } from "@/components/admin/crm/PecasDoCrm";
-import { TileDeKpi } from "@/components/admin/crm/TileDeKpi";
 import {
   formatarInteiro,
   formatarMoeda,
@@ -31,11 +31,8 @@ import {
   Globe,
   type LucideIcon,
   QrCode,
-  Receipt,
-  ShoppingBag,
   Smartphone,
   Store,
-  TrendingUp,
 } from "lucide-react";
 
 /** Identidade fixa dos canais — a MESMA do "Hoje" do Início. */
@@ -64,6 +61,48 @@ function estiloDaForma(forma: string): { cor: string; icone: LucideIcon } {
     default:
       return { cor: "bg-sky-400", icone: CreditCard };
   }
+}
+
+/**
+ * Um número do resumo do período: rótulo pequeno, valor grande e — só
+ * quando há base — a variação. Compacto de propósito: no celular, o antigo
+ * `TileDeKpi` empilhado 3× virava três cartões altos e vazios só para 3
+ * números; aqui os 3 dividem uma única superfície, lado a lado, também no
+ * desktop (não usa `TileDeKpi`, que é peça de outro agente).
+ */
+function ItemDoResumo({
+  rotulo,
+  valor,
+  valorCompacto,
+  variacao,
+}: Readonly<{
+  rotulo: string;
+  valor: string;
+  valorCompacto?: string;
+  variacao: number | null;
+}>) {
+  return (
+    <div className="min-w-0 px-2 first:pl-0 last:pr-0 sm:px-4">
+      <p className="truncate text-[10px] font-black uppercase tracking-widest text-zinc-400">
+        {rotulo}
+      </p>
+      <p className="truncate text-lg font-black tabular-nums text-white sm:text-xl">
+        {valorCompacto && valorCompacto !== valor ? (
+          <>
+            <span className="sm:hidden">{valorCompacto}</span>
+            <span className="hidden sm:inline">{valor}</span>
+          </>
+        ) : (
+          valor
+        )}
+      </p>
+      {variacao != null ? (
+        <div className="mt-1">
+          <ChipDeVariacao pct={variacao} comparacao="vs. anterior" />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -316,11 +355,7 @@ export function CanaisDoCrm({
   if (carregando && !visao) {
     return (
       <div className="space-y-4 sm:space-y-6" aria-busy="true">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="premium-shimmer h-[112px] rounded-2xl" />
-          <div className="premium-shimmer h-[112px] rounded-2xl" />
-          <div className="premium-shimmer h-[112px] rounded-2xl" />
-        </div>
+        <div className="premium-shimmer h-20 rounded-2xl" />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="premium-shimmer h-72 rounded-2xl" />
           <div className="premium-shimmer h-72 rounded-2xl" />
@@ -367,49 +402,28 @@ export function CanaisDoCrm({
         <h2 id="crm-canais-resumo-titulo" className="sr-only">
           Resumo do período
         </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <TileDeKpi
+        <div
+          className={cn(
+            SUPERFICIE_DO_CRM,
+            "grid grid-cols-3 divide-x divide-white/[0.06] p-3 sm:p-4",
+          )}
+        >
+          <ItemDoResumo
             rotulo="Total vendido"
-            icone={TrendingUp}
-            corDoIcone="text-emerald-400"
             valor={formatarMoeda(k.receita)}
             valorCompacto={formatarMoedaCompacta(k.receita)}
-            rodape={
-              variacaoReceita != null ? (
-                <ChipDeVariacao
-                  pct={variacaoReceita}
-                  comparacao="vs. período anterior"
-                />
-              ) : undefined
-            }
+            variacao={variacaoReceita}
           />
-          <TileDeKpi
+          <ItemDoResumo
             rotulo="Pedidos"
-            icone={ShoppingBag}
             valor={formatarInteiro(k.pedidos)}
-            rodape={
-              variacaoPedidos != null ? (
-                <ChipDeVariacao
-                  pct={variacaoPedidos}
-                  comparacao="vs. período anterior"
-                />
-              ) : undefined
-            }
+            variacao={variacaoPedidos}
           />
-          <TileDeKpi
+          <ItemDoResumo
             rotulo="Ticket médio"
-            icone={Receipt}
-            corDoIcone="text-sky-400"
             valor={formatarMoeda(k.ticketMedio)}
             valorCompacto={formatarMoedaCompacta(k.ticketMedio)}
-            rodape={
-              variacaoTicket != null ? (
-                <ChipDeVariacao
-                  pct={variacaoTicket}
-                  comparacao="vs. período anterior"
-                />
-              ) : undefined
-            }
+            variacao={variacaoTicket}
           />
         </div>
       </section>
