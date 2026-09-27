@@ -17,19 +17,42 @@
  *         MESMO WhatsApp de uma venda paga de balcão virando 2º cliente.
  *   M07 — sem a fusão wa→conta de pedidos NÃO pagos, a mesma pessoa (conta +
  *         balcão, nenhum pago) vira DOIS registros em pediu_nao_pagou.
+ *   N1  — (regressão da correção do M07, re-revisão de risco 27/09/2026) a
+ *         MESMA fusão wa→conta, quando um dos pedidos fundidos É pago (ex.:
+ *         pedido de app não pago + balcão avulso pago, mesmo WhatsApp),
+ *         "vazava" a identidade para pediu_nao_pagou também — a pessoa
+ *         aparecia comprando (RFM, pela chave paga) E pedindo sem pagar (pela
+ *         fusão). Corrigido com `HAVING bool_and(...)`: se QUALQUER pedido do
+ *         grupo fundido é reconhecido como pago por `crm__vendas`, o grupo
+ *         inteiro sai de pediu_nao_pagou (a pessoa já é comprador).
  *   M08 — staff com pedido não pago aparecendo em pediu_nao_pagou.
  *   M09 — (mesmo mecanismo de M07) sem fusão nenhuma.
  *   M10 — REVOKE dos 2 ajudantes ausente (anon/authenticated conseguem
- *         chamar crm__pedidos_nao_pagos/crm__nunca_comprou direto).
+ *         chamar crm__pedidos_nao_pagos/crm__nunca_comprou direto). A prova
+ *         exige a mensagem "permission denied for function crm__..." —
+ *         genérico "permission denied" NÃO basta: provado ao vivo que, sem
+ *         o REVOKE, anon/authenticated ainda tomam 42501 "permission denied
+ *         for schema auth" ao ler auth.users por dentro da função, e um
+ *         validador genérico passaria com o mutante VIVO (N2a, re-revisão).
  *   M12 — grupos trocados (pediu_nao_pagou depois de nunca_comprou, ou
  *         compradores fora da frente).
  *   M14 — balcão PAGO sem WhatsApp (chave NULL) esvaziando o grupo inteiro
  *         (o clássico `NOT IN` com NULL no meio).
  *   M15 — nome de pediu_nao_pagou ignora profiles.full_name.
  *   M16 — busca não alcança e-mail.
- *   M17 — os ajudantes virando SECURITY DEFINER + GRANT authenticated (a
- *         régua de segurança é o REVOKE + serem chamados só de dentro das
- *         RPCs SECURITY DEFINER).
+ *   M17 — os ajudantes virando SECURITY DEFINER + GRANT authenticated —
+ *         mesma prova e mesmo validador exigente de M10 (a mensagem tem de
+ *         citar a função certa nos 2 papéis, anon e authenticated).
+ *   N2b — (re-revisão de risco) as DUAS checagens de staff (achado 8) têm de
+ *         ser INDEPENDENTEMENTE necessárias — fixtures onde profiles.role e
+ *         auth.raw_app_meta_data.role MENTEM um em relação ao outro (forçado
+ *         via UPDATE depois do INSERT, porque o gatilho
+ *         tr_sync_profile_role_to_auth resincroniza os dois a cada INSERT
+ *         em profiles). Cada checagem sozinha tem de pegar o caso que só ela
+ *         enxerga.
+ *   N2c — WhatsApp de nunca_comprou sai só em dígitos mesmo quando o perfil
+ *         guarda o número formatado (não só "não duplica" — o valor de
+ *         SAÍDA é conferido dígito a dígito).
  *
  * USO: node tests/banco/crm-todos-viva.cjs
  */
@@ -54,8 +77,19 @@ const U_ESTORNADO = "64444444-4444-4444-4444-000000000006";
 const U_FUSAO_CONTA = "64444444-4444-4444-4444-000000000007";
 const U_PERFIL_WA_DE_COMPRADOR_BALCAO = "64444444-4444-4444-4444-000000000008";
 const U_RESERVA_VENCIDA = "64444444-4444-4444-4444-000000000009";
+const U_CONTA_COM_BALCAO_PAGO = "64444444-4444-4444-4444-000000000013";
+const U_STAFF_SO_NO_JWT = "64444444-4444-4444-4444-000000000014";
+const U_STAFF_SO_NO_PROFILE = "64444444-4444-4444-4444-000000000015";
+const U_NUNCA_COMPROU_WA_COM_DDI = "64444444-4444-4444-4444-000000000016";
 const WA_FUSAO = "5534988880007";
 const WA_COMPRADOR_BALCAO = "5534988880008";
+const WA_BALCAO_PAGO = "5534988880013";
+const WA_NUNCA_COMPROU_CRU = "(34) 99999-1234";
+// N4 (re-revisão de risco): o MESMO WhatsApp, um lado sem DDI (perfil) e o
+// outro COM "+55" (venda de balcão) — os dois têm de normalizar para a
+// MESMA chave de comparação (34999990012), mesmo com 11 vs. 13 dígitos.
+const WA_PERFIL_SEM_DDI = "(34) 99999-0012";
+const WA_BALCAO_COM_DDI = "+55 34 99999-0012";
 
 async function logar(cliente, userId) {
   await cliente.query("SELECT set_config('app.rpc.user_id', $1, false)", [
@@ -166,7 +200,14 @@ PROVAS.push({
          ($9, 'estornado@crmtodos.teste', '{}'::jsonb),
          ($10, 'fusao@crmtodos.teste', '{}'::jsonb),
          ($11, 'perfilwa@crmtodos.teste', '{}'::jsonb),
-         ($12, 'reservavencida@crmtodos.teste', '{}'::jsonb)
+         ($12, 'reservavencida@crmtodos.teste', '{}'::jsonb),
+         ($13, 'balcaopago@crmtodos.teste', '{}'::jsonb),
+         -- N2b (re-revisão de risco): as DUAS checagens de staff (achado 8)
+         -- têm de ser NECESSÁRIAS, não só redundantes — cada fixture abaixo
+         -- mente numa fonte e diz a verdade na outra.
+         ($14, 'staffsonojwt@crmtodos.teste', '{"role":"admin"}'::jsonb),
+         ($15, 'staffsonoprofile@crmtodos.teste', '{}'::jsonb),
+         ($16, 'nuncacomprouddi@crmtodos.teste', '{}'::jsonb)
        ON CONFLICT (id) DO NOTHING`,
       [
         U_ADMIN,
@@ -181,6 +222,10 @@ PROVAS.push({
         U_FUSAO_CONTA,
         U_PERFIL_WA_DE_COMPRADOR_BALCAO,
         U_RESERVA_VENCIDA,
+        U_CONTA_COM_BALCAO_PAGO,
+        U_STAFF_SO_NO_JWT,
+        U_STAFF_SO_NO_PROFILE,
+        U_NUNCA_COMPROU_WA_COM_DDI,
       ],
     );
     // profiles: handle_new_user não roda aqui (sem trigger em auth.users
@@ -192,7 +237,9 @@ PROVAS.push({
          ($3, 'Vendedor Com Pedido', 'vendedor', NULL),
          ($4, 'Cliente Comprador', 'customer', NULL),
          ($5, 'Cliente Não Pagou', 'customer', NULL),
-         ($6, 'Cliente Nunca Comprou', 'customer', NULL),
+         -- N2c: WhatsApp CRU no perfil (com formatação) — a saída de
+         -- crm__nunca_comprou tem de vir SÓ dígitos.
+         ($6, 'Cliente Nunca Comprou', 'customer', '(34) 99999-1234'),
          -- M04: role NULL explícito — só o COALESCE(role,'customer') no
          -- WHERE decide se esta pessoa conta como cliente comum.
          ($7, 'Cliente Role Nulo', NULL, NULL),
@@ -200,7 +247,18 @@ PROVAS.push({
          ($9, 'Cliente Estornado', 'customer', NULL),
          ($10, 'Cliente Fusão Conta', 'customer', '(34) 98888-0007'),
          ($11, 'Perfil Com WhatsApp De Comprador De Balcão', 'customer', '+55 (34) 98888-0008'),
-         ($12, 'Cliente Reserva Vencida', 'customer', NULL)
+         ($12, 'Cliente Reserva Vencida', 'customer', NULL),
+         ($13, 'Cliente Pediu E Comprou No Balcão', 'customer', NULL),
+         -- N2b: profiles diz 'customer' (mente), o JWT (auth.raw_app_meta_data)
+         -- é que sabe que é staff — só a checagem de app_metadata pega.
+         ($14, 'Staff Só No JWT', 'customer', NULL),
+         -- N2b (inversa): profiles diz 'admin' (staff de verdade), o JWT não
+         -- tem role nenhum — só a checagem de profiles.role pega.
+         ($15, 'Staff Só No Profile', 'admin', NULL),
+         -- N4 (re-revisão de risco): WhatsApp SEM o "55" — a venda de balcão
+         -- paga do MESMO número (mas COM "55") não pode deixar de ser
+         -- reconhecida como a mesma pessoa.
+         ($16, 'Cliente Nunca Comprou Com DDI', 'customer', $17)
        ON CONFLICT (id) DO UPDATE SET full_name = EXCLUDED.full_name, role = EXCLUDED.role, whatsapp = EXCLUDED.whatsapp`,
       [
         U_ADMIN,
@@ -215,7 +273,26 @@ PROVAS.push({
         U_FUSAO_CONTA,
         U_PERFIL_WA_DE_COMPRADOR_BALCAO,
         U_RESERVA_VENCIDA,
+        U_CONTA_COM_BALCAO_PAGO,
+        U_STAFF_SO_NO_JWT,
+        U_STAFF_SO_NO_PROFILE,
+        U_NUNCA_COMPROU_WA_COM_DDI,
+        WA_PERFIL_SEM_DDI,
       ],
+    );
+    // N2b: o INSERT em profiles acima dispara o gatilho
+    // `tr_sync_profile_role_to_auth` (AFTER INSERT ... ON profiles), que
+    // RESSINCRONIZA `auth.users.raw_app_meta_data.role` a partir de
+    // `profiles.role` — sem este UPDATE depois, as duas fontes NUNCA
+    // ficariam desalinhadas de propósito e a prova de "as duas checagens são
+    // necessárias" seria vazia (o gatilho apagaria o cenário sozinho).
+    await cliente.query(
+      `UPDATE auth.users SET raw_app_meta_data = '{"role":"admin"}'::jsonb WHERE id = $1`,
+      [U_STAFF_SO_NO_JWT],
+    );
+    await cliente.query(
+      `UPDATE auth.users SET raw_app_meta_data = '{}'::jsonb WHERE id = $1`,
+      [U_STAFF_SO_NO_PROFILE],
     );
 
     // Comprador: 1 pedido pago recente → RFM 'novos'.
@@ -349,6 +426,45 @@ PROVAS.push({
       pagamento: "cash",
     });
 
+    // N1 (regressão da correção do M07, re-revisão de risco): pedido de app
+    // NÃO pago (conta) + balcão avulso PAGO com o MESMO WhatsApp — a fusão
+    // wa→conta (achado 7) junta os dois pedidos na mesma identidade, mas
+    // aquele balcão É uma venda reconhecida por crm__vendas: a pessoa já é
+    // compradora e não pode "vazar" para pediu_nao_pagou também.
+    await pedido(cliente, {
+      userId: U_CONTA_COM_BALCAO_PAGO,
+      whatsapp: WA_BALCAO_PAGO,
+      total: 90,
+      diasAtras: 2,
+      status: "pending",
+      paymentStatus: "aguardando",
+      canal: "online",
+    });
+    await pedido(cliente, {
+      whatsapp: WA_BALCAO_PAGO,
+      total: 60,
+      diasAtras: 1,
+      status: "delivered",
+      canal: "presencial",
+      pagamento: "cash",
+      paymentStatus: "recebido_na_entrega",
+    });
+
+    // N4 (re-revisão de risco): venda de balcão PAGA com o WhatsApp COM "55"
+    // (WA_BALCAO_COM_DDI) — o perfil U_NUNCA_COMPROU_WA_COM_DDI guarda o
+    // MESMO número, mas SEM "55" (WA_PERFIL_SEM_DDI). Sem normalizar os dois
+    // lados, são dígitos diferentes (11 vs. 13) e a pessoa vira DOIS
+    // registros: comprador (wa:...) E nunca_comprou.
+    await pedido(cliente, {
+      whatsapp: WA_BALCAO_COM_DDI,
+      total: 33,
+      diasAtras: 6,
+      status: "delivered",
+      canal: "presencial",
+      pagamento: "cash",
+      paymentStatus: "recebido_na_entrega",
+    });
+
     await logar(cliente, U_ADMIN);
     const lista = await rpc(
       cliente,
@@ -468,11 +584,29 @@ PROVAS.push({
       nuncaComprou.cadastrado_em,
       "traz a data de cadastro (cartão enxuto do front)",
     );
+    // --- N2c: WhatsApp de nunca_comprou sai SÓ dígitos (era devolvido cru) ---
+    assert.equal(
+      nuncaComprou.whatsapp,
+      WA_NUNCA_COMPROU_CRU.replace(/\D/g, ""),
+      "N2c: o WhatsApp cru do perfil ('(34) 99999-1234') tem de sair normalizado a dígitos",
+    );
 
     // --- M04: role NULL ainda conta como cliente comum (COALESCE) ---
     assert.ok(
       porChave.has(U_NUNCA_COMPROU_ROLE_NULO),
       "profiles.role NULL tem de contar como 'customer' (COALESCE), não sumir da lista",
+    );
+
+    // --- N2b: as DUAS checagens de staff são NECESSÁRIAS, não redundantes ---
+    assert.equal(
+      porChave.has(U_STAFF_SO_NO_JWT),
+      false,
+      "N2b: profiles diz 'customer' mas o JWT diz 'admin' — só a checagem de app_metadata pega, e ela TEM de pegar",
+    );
+    assert.equal(
+      porChave.has(U_STAFF_SO_NO_PROFILE),
+      false,
+      "N2b (inversa): profiles diz 'admin' mas o JWT não tem role — só a checagem de profiles.role pega, e ela TEM de pegar",
     );
 
     // --- staff sem pedido não aparece em nenhum grupo ---
@@ -506,6 +640,37 @@ PROVAS.push({
       [...porChave.keys()].some((k) => k == null),
       false,
       "chave nula nunca aparece na lista (M14)",
+    );
+
+    // --- N1: pedido não pago + balcão PAGO (mesmo WhatsApp) não vaza para
+    // pediu_nao_pagou — a pessoa já é comprador (venda de balcão reconhecida
+    // por crm__vendas), então o grupo fundido inteiro sai da lista.
+    assert.equal(
+      porChave.has(U_CONTA_COM_BALCAO_PAGO),
+      false,
+      "N1: quem tem uma venda de balcão PAGA fundida no grupo não pode aparecer em pediu_nao_pagou",
+    );
+    assert.ok(
+      porChave.has(`wa:${WA_BALCAO_PAGO}`),
+      "N1: a pessoa continua aparecendo como compradora, pela chave da venda paga",
+    );
+    const compradorBalcaoPago = porChave.get(`wa:${WA_BALCAO_PAGO}`);
+    assert.equal(
+      num(compradorBalcaoPago.pedidos),
+      1,
+      "N1: só o pedido PAGO conta para o comprador (RFM/crm__vendas continua intocado)",
+    );
+    assert.equal(num(compradorBalcaoPago.receita), 60);
+
+    // --- N4: WhatsApp sem "55" (perfil) e com "55" (balcão pago) são a MESMA pessoa ---
+    assert.equal(
+      porChave.has(U_NUNCA_COMPROU_WA_COM_DDI),
+      false,
+      "N4: perfil sem '55' e venda de balcão paga com '55' têm de normalizar para a mesma chave — não pode virar nunca_comprou",
+    );
+    assert.ok(
+      porChave.has(`wa:${WA_BALCAO_COM_DDI.replace(/\D/g, "")}`),
+      "N4: a pessoa continua aparecendo como compradora, pela chave (com DDI, em dígitos) da venda paga",
     );
 
     // --- ordem: compradores (grupo 0) → pediu_nao_pagou (grupo 1) → nunca_comprou (grupo 2) ---
@@ -589,10 +754,12 @@ PROVAS.push({
     assert.equal(num(segmentos.pediu_nao_pagou.receita), 168);
     assert.ok(segmentos.nunca_comprou, "segmento nunca_comprou presente");
     assert.equal(num(segmentos.nunca_comprou.receita), 0);
-    // kpis continuam só com dinheiro reconhecido: os 3 pedidos PAGOS no
+    // kpis continuam só com dinheiro reconhecido: os 5 pedidos PAGOS no
     // período de 10 dias — comprador (150), venda de balcão do achado 6
-    // (45) e a venda de balcão sem WhatsApp do M14 (25) — nenhum a mais.
-    assert.equal(num(visao.kpis.receita), 220);
+    // (45), a venda de balcão sem WhatsApp do M14 (25), o balcão pago da
+    // fixture N1 (60) e o balcão pago com DDI da fixture N4 (33) — nenhum a
+    // mais.
+    assert.equal(num(visao.kpis.receita), 313);
   },
 });
 
@@ -603,21 +770,52 @@ PROVAS.push({
     // auth.uid() ainda devolveria U_ADMIN e is_admin() passaria mesmo com
     // SET ROLE authenticated (o teste provaria menos do que promete).
     await cliente.query("SELECT set_config('app.rpc.user_id', '', false)");
+    // N2a (re-revisão de risco): o validador ANTIGO aceitava qualquer
+    // /permission denied/i — provado ao vivo que isso é FALSO POSITIVO para
+    // o M10 (REVOKE dos 2 ajudantes removido): sem o REVOKE, anon/
+    // authenticated CONSEGUEM chamar a função, mas ela ainda estoura 42501
+    // "permission denied for schema auth" ao ler `auth.users` por dentro —
+    // o mutante sobrevive e o teste passaria do mesmo jeito. A mensagem tem
+    // de citar a FUNÇÃO (só isso prova que é o REVOKE dela que barrou, não
+    // um acaso de outro objeto interno).
     for (const papel of ["anon", "authenticated"]) {
       await setRole(cliente, papel);
       try {
+        // RPCs (SECURITY DEFINER, GRANT EXECUTE para authenticated): anon
+        // nunca tem GRANT (nega no Postgres, mensagem cita a RPC);
+        // authenticated tem GRANT mas cai no is_admin() de dentro da função
+        // (42501 customizado "Acesso negado.", NUNCA "permission denied" —
+        // se aparecesse "permission denied" aqui seria o GRANT que sumiu).
         for (const sql of [
           "SELECT public.crm_clientes() AS r",
           "SELECT public.crm_visao(current_date - 6, current_date) AS r",
+        ]) {
+          await assert.rejects(
+            () => cliente.query(sql),
+            (erro) =>
+              erro.code === "42501" &&
+              (papel === "anon"
+                ? /permission denied for function crm_(clientes|visao)/i.test(
+                    erro.message || "",
+                  )
+                : /Acesso negado/.test(erro.message || "")),
+            `${papel} tem de receber o 42501 certo (não um genérico) em: ${sql}`,
+          );
+        }
+        // Ajudantes (STABLE simples, sem SECURITY DEFINER — só o REVOKE
+        // protege): a mensagem TEM de citar a função, para os dois papéis.
+        for (const sql of [
           "SELECT public.crm__pedidos_nao_pagos(now()) AS r",
           "SELECT public.crm__nunca_comprou(now()) AS r",
         ]) {
           await assert.rejects(
             () => cliente.query(sql),
             (erro) =>
-              erro.code === "42501" ||
-              /permission denied/i.test(erro.message || ""),
-            `${papel} tem de receber 42501/permission denied em: ${sql}`,
+              erro.code === "42501" &&
+              /permission denied for function crm__(pedidos_nao_pagos|nunca_comprou)/i.test(
+                erro.message || "",
+              ),
+            `${papel} tem de receber "permission denied for function" (não outro 42501 qualquer) em: ${sql}`,
           );
         }
       } finally {
