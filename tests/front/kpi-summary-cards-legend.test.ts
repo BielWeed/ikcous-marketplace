@@ -47,7 +47,14 @@ describe("buildKpiCards — rótulo do card Volume Total (#104)", () => {
     const cards = buildKpiCards(statsComTotal(1000));
     const volume = cards.find((c) => c.id === "volume");
 
+    // Achado da revisão do redesenho visual (27/09): "Líquido" sozinho é
+    // ambíguo (líquido de QUÊ? imposto? taxa do gateway?) — o texto virou
+    // "Pós-desconto", que não contém a palavra "líquido" mas continua sem
+    // chamar o valor de "bruto" e deixa claro que é depois do desconto. Por
+    // isso o `toMatch(/líquido/i)` original saiu: a intenção que ele cobria
+    // (nunca "bruto"; deixar claro que é líquido de desconto) continua
+    // coberta pelas duas asserções abaixo, só que sem exigir a palavra.
     expect(volume?.subValue).not.toMatch(/bruto/i);
-    expect(volume?.subValue).toMatch(/líquido/i);
+    expect(volume?.subValue).toBe("Pós-desconto");
   });
 });

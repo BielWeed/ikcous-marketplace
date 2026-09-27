@@ -44,10 +44,12 @@ export function buildKpiCards(
       id: "volume",
       label: "Volume Total",
       value: dinheiro(executivo?.totalRevenue),
-      // Curto de propósito (visual do CRM, 27/09): "Total líquido de
-      // descontos" e até "Líquido de descontos" truncavam no card compacto
-      // do carrossel (AdminKpiCarousel) em 375 px. Só ~10 caracteres cabem.
-      subValue: "Líquido",
+      // "Líquido" sozinho é ambíguo (líquido de quê? imposto? taxa do
+      // gateway?) — achado da revisão do redesenho visual (27/09).
+      // "Pós-desconto" é curto e específico: cabe no card compacto do
+      // carrossel (AdminKpiCarousel) em 375 px (confirmado no print do
+      // harness) e não deixa dúvida sobre o que já foi descontado.
+      subValue: "Pós-desconto",
       icon: ShoppingBag,
       accent: "text-admin-gold",
     },
