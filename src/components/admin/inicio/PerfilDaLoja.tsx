@@ -1,10 +1,14 @@
-import { ExternalLink, MapPin, UserRound } from "lucide-react";
+import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { MapPin, Share2, UserRound } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 /**
  * Cartão de identidade do Início: logo (ou a inicial), nome da loja,
- * cidade/UF, quem está no comando e o atalho para ver a vitrine como o
- * cliente vê. Componente puro — quem lê `useStore`/`useAuth` é a ponte em
+ * cidade/UF, quem está no comando e o botão de compartilhar o link da loja
+ * (WhatsApp/Instagram). O antigo "Ver loja" saiu: o botão Voltar do Perfil
+ * já leva para a vitrine — dois botões para o mesmo lugar não fazem sentido.
+ * Componente puro — quem lê `useStore`/`useAuth` é a ponte em
  * `AdminDashboardView`.
  */
 export function PerfilDaLoja({
@@ -23,6 +27,33 @@ export function PerfilDaLoja({
   const [logoFalhou, setLogoFalhou] = useState(false);
   const inicial = nome.trim().charAt(0).toUpperCase() || "L";
   const local = [cidade, uf].filter(Boolean).join(" / ");
+
+  async function compartilharLoja() {
+    const url = `${window.location.origin}/`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: nome,
+          text: `Conheça a ${nome} — compre pelo app:`,
+          url,
+        });
+      } catch (erro) {
+        // Cancelar o share (usuário fechou a folha) não é falha — é a pessoa
+        // desistindo. Só avisa quando o motivo é outro (sem permissão etc.).
+        if ((erro as { name?: string } | null)?.name !== "AbortError") {
+          toast.error("Não foi possível compartilhar agora");
+        }
+      }
+      return;
+    }
+    // Desktop não tem Web Share API: cai para copiar o link, mesma regra do
+    // `copiarParaClipboard` (só comemora quando DEU CERTO).
+    if (await copiarParaClipboard(url)) {
+      toast.success("Link da loja copiado");
+    } else {
+      toast.error("Não foi possível compartilhar agora");
+    }
+  }
 
   return (
     <section
@@ -68,16 +99,17 @@ export function PerfilDaLoja({
         </div>
       </div>
 
-      <a
-        href="/"
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
+        onClick={() => void compartilharLoja()}
+        aria-label="Compartilhar o link da loja"
         className="relative flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:border-admin-gold/30 hover:text-white"
       >
-        <ExternalLink className="size-4" aria-hidden="true" />
-        <span className="sr-only xs:not-sr-only">Ver loja</span>
-        <span className="sr-only"> (abre em nova aba)</span>
-      </a>
+        <Share2 className="size-4" aria-hidden="true" />
+        <span className="sr-only xs:not-sr-only" aria-hidden="true">
+          Compartilhar
+        </span>
+      </button>
     </section>
   );
 }
