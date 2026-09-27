@@ -2294,6 +2294,34 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O CRM VÊ TODO MUNDO (pedido do dono, 27/09/2026, migration
+  // 20261183000000): "Todos os clientes" passa a listar quem pagou (RFM
+  // intocado), quem pediu e não pagou e quem se cadastrou e nunca comprou.
+  "20261183000000_o_crm_ve_todo_mundo.sql": [
+    {
+      funcao: "crm__nunca_comprou",
+      esperado: [
+        "WHERE COALESCE(p.role, 'customer') = 'customer'",
+        "AND NOT EXISTS (\n       SELECT 1 FROM public.marketplace_orders o\n        WHERE o.user_id = p.id AND o.created_at <= p_ate\n     )",
+      ],
+    },
+    {
+      funcao: "crm_clientes",
+      esperado: [
+        "'pediu_nao_pagou'::text AS segmento",
+        "'nunca_comprou'::text AS segmento",
+        "UNION ALL SELECT * FROM nao_pagos",
+        "UNION ALL SELECT * FROM nunca",
+      ],
+    },
+    {
+      funcao: "crm_visao",
+      esperado: [
+        "SELECT 'pediu_nao_pagou', count(*), COALESCE(sum(valor_em_aberto), 0) FROM nao_pagos",
+        "SELECT 'nunca_comprou', count(*), 0 FROM nunca",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

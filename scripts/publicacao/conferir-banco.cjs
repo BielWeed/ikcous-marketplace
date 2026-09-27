@@ -15,11 +15,11 @@
  *                          `resolverRef` (ver abaixo, achado da rodada 2).
  *   CONSULTA                nome (sem `.sql`) de um arquivo em
  *                          scripts/publicacao/consultas/, ou "backups".
- *   LEDGER                 "72-74", "75-78" ou "79-82" — pré-confere o
+ *   LEDGER                 "72-74", "75-78", "79-82" ou "83" — pré-confere o
  *                          schema, grava o ledger fixo daquela faixa e
- *                          confere 72-78 (ou 72-82, para a faixa nova)
- *                          depois. Mutuamente exclusivo com CONSULTA (o
- *                          workflow só passa um).
+ *                          confere 72-78 (ou 72-82/72-83, para as faixas
+ *                          novas) depois. Mutuamente exclusivo com CONSULTA
+ *                          (o workflow só passa um).
  *
  *   node scripts/publicacao/conferir-banco.cjs
  *
@@ -189,7 +189,7 @@ const CONSULTAS_DIR = path.join(
 // real de produção é sempre o host oficial da Management API.
 const API_BASE =
   process.env.CONFERIR_BANCO_API_BASE || "https://api.supabase.com";
-const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82"];
+const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83"];
 
 /** Os únicos dois projetos que este token alcança (mesmos refs de
  * `publicar-functions.yml`). Nunca aceitar um terceiro valor aqui: é isso
@@ -652,6 +652,7 @@ const CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER = {
   "72-74": ["2a-marcadores-72-74", "2b-objetos-72-74"],
   "75-78": ["1a-conferir-o-que-nasceu", "1b-conferir-marcadores"],
   "79-82": ["6a-conferir-79-a-82"],
+  83: ["7a-conferir-83"],
 };
 
 /** Linhas que são dado AO VIVO da loja — mudam legitimamente com o tempo ou
@@ -723,6 +724,7 @@ const SHA256_DO_LEDGER = {
   "72-74": "f25b2d23064bd7639c4c65e19ae85021ec0bb2e53a65d16ffbada9c755d0dbef",
   "75-78": "aa0d443015102f3fba7f326cbcd40f36f3cba9426800e3fb2787e6697062600f",
   "79-82": "505f62dd9be2da3e9af9607b700ee30c681ce5afe339fe61bcfe8b44db86a0bf",
+  83: "e30d8ee7c2a1bb94ef90540e9341bd799c0d421585e4813f8fc88914934d79ae",
 };
 
 function conferirHashDoLedger(faixa, conteudo) {
@@ -746,6 +748,7 @@ const VERIFICACAO_POS_LEDGER = {
   "72-74": { rotulo: "72–78", limiteSuperior: "20261178999999" },
   "75-78": { rotulo: "72–78", limiteSuperior: "20261178999999" },
   "79-82": { rotulo: "72–82", limiteSuperior: "20261182999999" },
+  83: { rotulo: "72–83", limiteSuperior: "20261183999999" },
 };
 
 async function rodarLedger({ ref, token, faixa }) {

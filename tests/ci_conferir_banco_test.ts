@@ -212,6 +212,10 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
         opcoes.includes("6a-conferir-79-a-82"),
         "falta a opção `6a-conferir-79-a-82` (pré-checagem do ledger 79-82)",
       );
+      assert(
+        opcoes.includes("7a-conferir-83"),
+        "falta a opção `7a-conferir-83` (pré-checagem do ledger 83)",
+      );
     },
   );
 
@@ -256,12 +260,15 @@ Deno.test("o workflow, do jeito que está no arquivo", async (t) => {
     },
   );
 
-  await t.step("gravar_ledger é choice fechado nao/72-74/75-78/79-82", () => {
-    assertStringIncludes(
-      yaml,
-      "options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82",
-    );
-  });
+  await t.step(
+    "gravar_ledger é choice fechado nao/72-74/75-78/79-82/83",
+    () => {
+      assertStringIncludes(
+        yaml,
+        "options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82\n          - 83",
+      );
+    },
+  );
 
   await t.step("o segredo é o SUPABASE_ACCESS_TOKEN, nunca literal", () => {
     assertStringIncludes(yaml, "${{ secrets.SUPABASE_ACCESS_TOKEN }}");
@@ -796,6 +803,90 @@ Deno.test("6a-conferir-79-a-82.sql — os hashes/ACLs embutidos batem com o que 
   );
 });
 
+Deno.test("7a-conferir-83.sql — os hashes/ACLs embutidos batem com o que a árvore REALMENTE tem (guarda contra a faixa 83)", async (t) => {
+  const { createHash } = require("node:crypto");
+
+  /** Mesma extração do teste de 6a — repetida aqui, autocontida. */
+  function extrairCorpoDeFuncao(
+    sqlMigracao: string,
+    marcadorCreate: string,
+  ): string {
+    const inicioCreate = sqlMigracao.indexOf(marcadorCreate);
+    assert(inicioCreate >= 0, `não achei "${marcadorCreate}" na migration`);
+    const asIdx = sqlMigracao.indexOf("AS $$", inicioCreate);
+    assert(asIdx >= 0, `não achei "AS $$" depois de "${marcadorCreate}"`);
+    const inicioCorpo = asIdx + "AS $$".length;
+    const fimCorpo = sqlMigracao.indexOf("\n$$;", inicioCorpo);
+    assert(fimCorpo >= 0, "não achei o fechamento $$; do corpo");
+    return sqlMigracao.slice(inicioCorpo, fimCorpo + 1);
+  }
+
+  function md5Normalizado(corpo: string): string {
+    return createHash("md5").update(corpo.replace(/\r/g, "")).digest("hex");
+  }
+
+  const sql7a = await Deno.readTextFile(`${CONSULTAS_DIR}/7a-conferir-83.sql`);
+  const sql83 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261183000000_o_crm_ve_todo_mundo.sql`,
+  );
+
+  const FUNCOES_83: readonly [string, string, string][] = [
+    [
+      "crm__pedidos_nao_pagos",
+      "CREATE OR REPLACE FUNCTION public.crm__pedidos_nao_pagos(p_ate timestamptz)",
+      "7ecb6313f758ec497ea18d1392ca5081",
+    ],
+    [
+      "crm__nunca_comprou",
+      "CREATE OR REPLACE FUNCTION public.crm__nunca_comprou(p_ate timestamptz)",
+      "f095282f9c14b89f35241b13855e0740",
+    ],
+    [
+      "crm_visao",
+      "CREATE OR REPLACE FUNCTION public.crm_visao(p_inicio date, p_fim date)",
+      "0e76e93760b7db349c294c40b4477c18",
+    ],
+    [
+      "crm_clientes",
+      "CREATE OR REPLACE FUNCTION public.crm_clientes(",
+      "8e3bd79aac1d531910f6f6b1d7505498",
+    ],
+  ];
+
+  for (const [nome, marcador, hashEsperado] of FUNCOES_83) {
+    await t.step(
+      `83 — ${nome}: o hash em 7a é o md5 REAL do corpo que a 20261183000000 deixa NESTA árvore`,
+      () => {
+        const corpo = extrairCorpoDeFuncao(sql83, marcador);
+        const hash = md5Normalizado(corpo);
+        assertEquals(
+          hash,
+          hashEsperado,
+          `o corpo de ${nome} na 83 mudou nesta árvore — recalcule o valor de 7a e de SHA256_DO_LEDGER["83"]`,
+        );
+        assertStringIncludes(sql7a, hash);
+      },
+    );
+  }
+
+  await t.step(
+    "83 — os 2 ajudantes novos SAEM de anon E authenticated em 7a (mesma régua de crm__vendas/crm__clientes_rfm)",
+    () => {
+      for (const funcao of [
+        "crm__pedidos_nao_pagos(timestamptz)",
+        "crm__nunca_comprou(timestamptz)",
+      ]) {
+        for (const papel of ["anon", "authenticated"]) {
+          assertStringIncludes(
+            sql7a,
+            `has_function_privilege('${papel}', 'public.${funcao}', 'EXECUTE')::text, 'false'`,
+          );
+        }
+      }
+    },
+  );
+});
+
 Deno.test({
   name: MIGRACAO_82_EXISTE
     ? "3a-cpf-no-endereco.sql — o WHERE bate com a CTE `alvo` da migration 82 (normalizando espaço em branco)"
@@ -893,13 +984,13 @@ Deno.test("conferirHashDoLedger — segunda checagem do INSERT, independente da 
   await t.step(
     "o conteúdo REAL dos dois arquivos bate com o hash pinado",
     async () => {
-      for (const faixa of ["72-74", "75-78", "79-82"]) {
+      for (const faixa of ["72-74", "75-78", "79-82", "83"]) {
         const conteudo = await Deno.readTextFile(
           `${CONSULTAS_DIR}/ledger-${faixa}.sql`,
         );
         // Não lança = passou.
         conferirHashDoLedger(faixa, conteudo);
-        // eslint-disable-next-line security/detect-object-injection -- `faixa` vem só do array literal ["72-74", "75-78"] três linhas acima, nunca de entrada externa.
+        // eslint-disable-next-line security/detect-object-injection -- `faixa` vem só do array literal ["72-74", "75-78", "79-82", "83"] três linhas acima, nunca de entrada externa.
         const hashPinado = SHA256_DO_LEDGER[faixa];
         assert(hashPinado, `SHA256_DO_LEDGER não tem entrada para ${faixa}`);
       }
@@ -1409,6 +1500,118 @@ Deno.test("main() — request certo, stubando fetch", async (t) => {
 
       assert(!saida.includes(TOKEN_FALSO), "o token vazou na saída do ledger");
       assertStringIncludes(saida, "20261179000000");
+    },
+  );
+
+  await t.step(
+    "ledger 83: pré-checagem (7a, uma consulta só) toda ok=true -> grava (endpoint de escrita) e confere 72-83",
+    async () => {
+      const linhasOk7a = [
+        {
+          checagem: "83 crm__pedidos_nao_pagos existe",
+          valor: "true",
+          esperado: "true",
+          ok: true,
+        },
+        {
+          checagem: "83 crm_visao SAI de anon",
+          valor: "false",
+          esperado: "false",
+          ok: true,
+        },
+      ];
+      const { chamadas, resultado } = await comFetchStubado(
+        [
+          { ok: true, corpo: JSON.stringify(linhasOk7a) }, // 7a (única consulta da faixa)
+          { ok: true, status: 201, corpo: "[]" }, // INSERT do ledger
+          {
+            ok: true,
+            corpo: JSON.stringify([
+              { version: "20261183000000", name: "o_crm_ve_todo_mundo" },
+            ]),
+          }, // verificação 72-83
+        ],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                LEDGER: "83",
+              },
+              () => main(),
+            ),
+          ),
+      );
+      const { saida } = resultado;
+      // Só 3 chamadas — a faixa 83 tem UMA consulta de pré-checagem (7a).
+      assertEquals(chamadas.length, 3);
+
+      assertStringIncludes(chamadas[0].url, "/database/query/read-only");
+      const corpoPreCheck = JSON.parse(String(chamadas[0].opts.body));
+      assertStringIncludes(
+        corpoPreCheck.query,
+        "83 crm_visao SAI de anon",
+        "a pré-checagem de 83 tem de rodar a 7a-conferir-83, não outra consulta",
+      );
+
+      assertStringIncludes(
+        chamadas[1].url,
+        `/v1/projects/${REF_LOJA}/database/query`,
+      );
+      assert(!chamadas[1].url.includes("read-only"));
+      const corpoGravacao = JSON.parse(String(chamadas[1].opts.body));
+      assertStringIncludes(
+        corpoGravacao.query,
+        "INSERT INTO supabase_migrations",
+      );
+      assertStringIncludes(corpoGravacao.query, "20261183000000");
+
+      assertStringIncludes(chamadas[2].url, "/database/query/read-only");
+      const corpoVerificacao = JSON.parse(String(chamadas[2].opts.body));
+      assertStringIncludes(corpoVerificacao.query, "20261183999999");
+
+      assert(!saida.includes(TOKEN_FALSO), "o token vazou na saída do ledger");
+      assertStringIncludes(saida, "20261183000000");
+    },
+  );
+
+  await t.step(
+    "ledger 83: alguma linha de 7a com ok=false -> ABORTA sem gravar (o INSERT nunca é chamado)",
+    async () => {
+      const linhasComFalha7a = [
+        {
+          checagem: "83 crm__pedidos_nao_pagos existe",
+          valor: "true",
+          esperado: "true",
+          ok: true,
+        },
+        {
+          checagem: "83 crm_visao SAI de anon",
+          valor: "true",
+          esperado: "false",
+          ok: false,
+        },
+      ];
+      const { chamadas, resultado } = await comFetchStubado(
+        [{ ok: true, corpo: JSON.stringify(linhasComFalha7a) }],
+        () =>
+          comConsoleCapturado(() =>
+            comEnv(
+              {
+                SUPABASE_ACCESS_TOKEN: TOKEN_FALSO,
+                PROJETO: "loja",
+                LEDGER: "83",
+              },
+              () => comSaidaCapturada(() => main()),
+            ),
+          ),
+      );
+      assertEquals(resultado.valor?.retornou, false);
+      assertEquals(resultado.valor?.codigoSaida, 1);
+      // Só a pré-checagem (7a) rodou — o INSERT nunca é chamado.
+      assertEquals(chamadas.length, 1);
+      assertStringIncludes(chamadas[0].url, "/database/query/read-only");
     },
   );
 

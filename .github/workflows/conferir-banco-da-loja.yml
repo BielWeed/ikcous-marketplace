@@ -1,7 +1,7 @@
 # Roda, sob demanda, as conferências de pré/pós-publicação que uma pessoa
 # fazia à mão no SQL Editor (docs/runbooks/publicar-painel-cartao-devolucoes.md
 # §0/§1, e o §7.0 pela consulta 5a), o horário do último backup, e o registro do ledger
-# (`supabase_migrations.schema_migrations`) para as faixas 72-74, 75-78 e 79-82.
+# (`supabase_migrations.schema_migrations`) para as faixas 72-74, 75-78, 79-82 e 83.
 #
 # POR QUE EXISTE: as consultas do runbook eram "cole no SQL Editor" — um
 # passo manual, sem registro, que só quem tinha acesso ao painel do Supabase
@@ -37,7 +37,7 @@
 #   consulta      = um arquivo de scripts/publicacao/consultas/ (sem `.sql`),
 #                   ou "backups";
 #   projeto       = "loja" (default) ou "sandbox";
-#   gravar_ledger = "nao" (default), "72-74", "75-78" ou "79-82";
+#   gravar_ledger = "nao" (default), "72-74", "75-78", "79-82" ou "83";
 #   confirmar     = só o job do ledger olha isto — precisa ser exatamente
 #                   "GRAVAR" para gravar de verdade.
 #
@@ -66,6 +66,7 @@ on:
           - 4a-definer-alcancavel-pelo-leitor
           - 5a-antes-da-79-e-80
           - 6a-conferir-79-a-82
+          - 7a-conferir-83
           - backups
       projeto:
         description: "Projeto de destino: loja ou sandbox (nunca texto livre — achado da rodada 2)"
@@ -85,6 +86,7 @@ on:
           - 72-74
           - 75-78
           - 79-82
+          - 83
       confirmar:
         description: "Só o job do ledger olha isto: precisa ser exatamente GRAVAR"
         required: false

@@ -1136,3 +1136,44 @@ R1_rpc_sem_gate_admin` (cliente comum, `42501`), `mutante F3_service_role_sem_jw
 F3_postgres_sem_jwt` (`SET ROLE` sem sessão, `42501`) provam a recusa; chamado como admin
 autenticado (mesma emulação de `auth.uid()`), a RPC funciona. É essa autenticação — não o usuário
 nem o papel da conexão Postgres — que este procedimento reproduz em produção.
+
+## 8. Publicar a 83 (o CRM vê todo mundo) — pedido do dono, 27/09/2026
+
+`20261183000000_o_crm_ve_todo_mundo.sql` redefine `crm_clientes`/`crm_visao` (mesma assinatura,
+mesmo formato de retorno) para a aba Clientes do Dashboard CRM listar TODO MUNDO, não só quem tem
+compra paga: além dos compradores de sempre (RFM intocado), entram quem pediu e não pagou
+(`pediu_nao_pagou`) e quem se cadastrou e nunca comprou (`nunca_comprou`, excluindo equipe/admin).
+Só leitura — nenhuma tabela nova, sem `BEGIN`/`COMMIT`. Independente de 75–82 (não depende de
+nenhuma delas, só da própria 78).
+
+**Aplicar:**
+
+```bash
+node scripts/db-apply.cjs supabase/migrations/20261183000000_o_crm_ve_todo_mundo.sql
+```
+
+**Conferir** (SQL Editor, só leitura, ou `consulta = 7a-conferir-83` no workflow "Conferir banco da
+loja" — todas as linhas devem vir `ok = true`):
+
+```bash
+node scripts/publicacao/conferir-banco.cjs   # CONSULTA=7a-conferir-83 PROJETO=loja
+```
+
+ou cole `scripts/publicacao/consultas/7a-conferir-83.sql` direto no SQL Editor: confere que
+`crm__pedidos_nao_pagos`/`crm__nunca_comprou` existem com o corpo certo e SAEM de
+`anon`/`authenticated` (mesma régua de `crm__vendas`/`crm__clientes_rfm`), e que
+`crm_clientes`/`crm_visao` têm o corpo novo e continuam só para `authenticated`.
+
+**Ledger** (decisão do dono, mesmo fluxo de 79–82 — `LEDGER=83` no workflow "Conferir banco da
+loja", `confirmar = GRAVAR`): pré-confere com `7a-conferir-83` e grava
+`scripts/publicacao/consultas/ledger-83.sql` (idempotente, `ON CONFLICT (version) DO NOTHING`), e
+a verificação pós-gravação mostra o ledger 72–83 inteiro.
+
+**Front:** publique DEPOIS de a migration estar no ar e conferida (a tela chama `valor_em_aberto` e
+os 2 segmentos novos; o parser tolera a ausência, então a ordem inversa não quebra nada — só a UI
+não mostra os grupos novos até a migration chegar).
+
+**Rollback:** `rollback-manual-20261183000000_o_crm_ve_todo_mundo.sql` (`psql -1 -f`, nunca
+`db-apply`) — restaura `crm_clientes`/`crm_visao` com os corpos EXATOS da 78 e derruba
+`crm__pedidos_nao_pagos`/`crm__nunca_comprou`. Reverta o front primeiro (ver cabeçalho do
+arquivo).
