@@ -131,4 +131,31 @@ describe("PerfilDaLoja — Compartilhar no lugar de Ver loja", () => {
     expect(toast.error).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
   });
+
+  // Controle positivo do teste acima: sem este caso, um `if` invertido por
+  // engano (mostrar o erro só quando FOR AbortError, por exemplo) passaria
+  // no teste de cancelamento sem ninguém notar — aqui um erro que NÃO é
+  // AbortError precisa continuar mostrando o toast.
+  it("erro de share que NÃO é AbortError mostra o toast de erro", async () => {
+    const share = vi
+      .fn()
+      .mockRejectedValue(new DOMException("sem permissão", "NotAllowedError"));
+    Object.defineProperty(window.navigator, "share", {
+      value: share,
+      configurable: true,
+    });
+
+    const tela = montar(<PerfilDaLoja {...props} />);
+    const botao = tela.querySelector("button")!;
+    await act(async () => {
+      botao.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Não foi possível compartilhar agora",
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+  });
 });
