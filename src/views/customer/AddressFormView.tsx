@@ -5,7 +5,7 @@ import { useAddresses } from "@/hooks/useAddresses";
 import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
-import type { Address } from "@/types";
+import type { Address, View } from "@/types";
 import { MapPin, Sparkles } from "lucide-react";
 import { Suspense, lazy, useEffect } from "react";
 
@@ -18,9 +18,14 @@ const MenuDaConta = lazy(() =>
 interface AddressFormViewProps {
   addressId?: string | null;
   onBack: () => void;
+  onNavigate?: (view: View, id?: string) => void;
 }
 
-export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
+export function AddressFormView({
+  addressId,
+  onBack,
+  onNavigate = () => {},
+}: AddressFormViewProps) {
   const computador = useTelaDeComputador();
   const { config } = useStore();
   const { addresses, fetchAddresses, addAddress, updateAddress } =
@@ -58,10 +63,7 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
     >
       {computador && (
         <Suspense fallback={null}>
-          <MenuDaConta
-            atual="address-form"
-            onNavigate={(view) => globalThis.location.assign(`/${view}`)}
-          />
+          <MenuDaConta atual="address-form" onNavigate={onNavigate} />
         </Suspense>
       )}
       <div

@@ -2,7 +2,7 @@ import { COLUNA_FIXA_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
-import { Package, Settings, Shield, Store, User } from "lucide-react";
+import { MapPin, Package, Settings, Shield, Store, User } from "lucide-react";
 
 interface MenuDaContaProps {
   atual: View;
@@ -12,6 +12,7 @@ interface MenuDaContaProps {
 const destinos = [
   { view: "profile", texto: "Minha conta", Icone: User },
   { view: "orders", texto: "Meus pedidos", Icone: Package },
+  { view: "address-form", texto: "Endereços", Icone: MapPin },
   { view: "account-settings", texto: "Configurações", Icone: Shield },
   { view: "about-store", texto: "Sobre a loja", Icone: Store },
 ] as const;

@@ -134,9 +134,15 @@ describe("F7 — menu da conta", () => {
     expect(host.querySelector("img")?.getAttribute("src")).toBe(
       perfil.avatar_url,
     );
-    const destinos = ["profile", "orders", "account-settings", "about-store"];
+    const destinos = [
+      "profile",
+      "orders",
+      "address-form",
+      "account-settings",
+      "about-store",
+    ];
     const links = host.querySelectorAll("a");
-    expect(links).toHaveLength(4);
+    expect(links).toHaveLength(destinos.length);
     expect(host.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
     expect([...links].map((link) => link.getAttribute("href"))).toEqual(
       destinos.map((view) => `/${view}`),
@@ -201,7 +207,10 @@ describe("F7 — telas reais preservam classes do celular", () => {
     expect(host.textContent).toContain("Encerrar Sessão");
   });
   it("Configurações ganha menu e campos em duas colunas sem mudar o celular", async () => {
-    await act(async () => raiz.render(<AccountSettingsView />));
+    const navegar = vi.fn();
+    await act(async () =>
+      raiz.render(<AccountSettingsView onNavigate={navegar} />),
+    );
     expect(host.querySelector("aside")).toBeNull();
     conferir(
       host.querySelector(".max-w-md"),
@@ -214,14 +223,23 @@ describe("F7 — telas reais preservam classes do celular", () => {
       "lg:grid-cols-2",
     );
     computador();
-    await act(async () => raiz.render(<AccountSettingsView />));
+    await act(async () =>
+      raiz.render(<AccountSettingsView onNavigate={navegar} />),
+    );
     expect(host.querySelector('[aria-current="page"]')?.textContent).toContain(
       "Configurações",
     );
+    act(() =>
+      host.querySelector<HTMLAnchorElement>('a[href="/profile"]')!.click(),
+    );
+    expect(navegar).toHaveBeenCalledWith("profile");
   });
   it("Endereço ganha cartão largo e menu só no computador", async () => {
+    const navegar = vi.fn();
     const montar = async () =>
-      act(async () => raiz.render(<AddressFormView onBack={vi.fn()} />));
+      act(async () =>
+        raiz.render(<AddressFormView onBack={vi.fn()} onNavigate={navegar} />),
+      );
     await montar();
     expect(host.querySelector("aside")).toBeNull();
     conferir(
@@ -234,6 +252,15 @@ describe("F7 — telas reais preservam classes do celular", () => {
     expect(
       host.querySelector('aside[aria-label="Minha conta"]'),
     ).not.toBeNull();
+    expect(host.querySelector('[aria-current="page"]')?.textContent).toContain(
+      "Endereços",
+    );
+    act(() =>
+      host
+        .querySelector<HTMLAnchorElement>('a[href="/account-settings"]')!
+        .click(),
+    );
+    expect(navegar).toHaveBeenCalledWith("account-settings");
     expect(host.querySelector('form[aria-label="Endereço"]')).not.toBeNull();
   });
   it("Perfil público mantém as classes e a ordem da identidade e atividades", async () => {
