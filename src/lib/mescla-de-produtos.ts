@@ -43,6 +43,6 @@ export function mesclarProdutoNaLista(
   const indice = lista.findIndex((p) => p.id === evento.id);
   if (indice < 0) return [...lista, evento.registro];
   const nova = lista.slice();
-  nova[indice] = evento.registro;
+  nova.splice(indice, 1, evento.registro);
   return nova;
 }

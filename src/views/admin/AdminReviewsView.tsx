@@ -530,7 +530,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-[#09090b] pb-admin lg:pb-12 font-sans text-zinc-400 duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-white"
+      className="pb-admin h-auto bg-[#09090b] font-sans text-zinc-400 duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-white lg:pb-12"
     >
       {/* Header / Stats Overlay */}
       <div className="sticky top-0 z-50 bg-[#09090b]/80 p-2 pb-0 backdrop-blur-md sm:p-4">
@@ -716,18 +716,18 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       <span
                         className={`inline-block size-1.5 rounded-full ${config.enableReviews ? "animate-pulse bg-emerald-500" : "bg-zinc-600"}`}
                       />
-                      <span className="text-[9px] font-semibold tracking-wider text-zinc-500 uppercase">
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500">
                         {config.enableReviews ? "Ativo" : "Inativo"}
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <p className="text-[11px] text-zinc-400 leading-none">
+                      <p className="text-[11px] leading-none text-zinc-400">
                         Exibir notas e comentários nas páginas dos produtos.
                       </p>
                       <button
                         type="button"
                         onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-                        className="flex items-center gap-0.5 text-[11px] font-medium text-blue-400 hover:text-blue-300 transition-colors leading-none"
+                        className="flex items-center gap-0.5 text-[11px] font-medium leading-none text-blue-400 transition-colors hover:text-blue-300"
                       >
                         Saiba mais
                         {isDetailsExpanded ? (
@@ -760,7 +760,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-3 pt-3 border-t border-white/5 text-[11px] leading-relaxed text-zinc-500 text-left space-y-1.5">
+                    <div className="mt-3 space-y-1.5 border-t border-white/5 pt-3 text-left text-[11px] leading-relaxed text-zinc-500">
                       <p>
                         Ativando esta opção, seus clientes poderão dar notas de
                         1 a 5 estrelas e escrever depoimentos sobre os produtos

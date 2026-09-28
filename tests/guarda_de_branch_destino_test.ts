@@ -31,10 +31,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
-const MODULO = new URL(
-  "../scripts/guarda-de-branch.mjs",
-  import.meta.url,
-).href;
+const MODULO = new URL("../scripts/guarda-de-branch.mjs", import.meta.url).href;
 const { refsProtegidosNoPush } = await import(MODULO);
 
 const PROTEGIDAS = ["main", "develop"];
@@ -105,8 +102,7 @@ Deno.test("refsProtegidosNoPush lê o DESTINO, não o branch local", async (t) =
   });
 
   await t.step("CRLF e linhas em branco não quebram a leitura", () => {
-    const stdin =
-      `\r\nrefs/heads/feat/x ${SHA} refs/heads/main ${SHA}\r\n\r\n`;
+    const stdin = `\r\nrefs/heads/feat/x ${SHA} refs/heads/main ${SHA}\r\n\r\n`;
     assertEquals(refsProtegidosNoPush(stdin, PROTEGIDAS), ["main"]);
   });
 
