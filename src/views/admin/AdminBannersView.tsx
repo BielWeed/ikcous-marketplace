@@ -3680,8 +3680,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           </span>
                           <div className="flex select-none flex-wrap gap-1">
                             {presetColors.map((color) => {
-                              const isSelected =
-                                targetColorValue === color.hex;
+                              const isSelected = targetColorValue === color.hex;
                               return (
                                 <button
                                   key={color.hex}
@@ -3827,8 +3826,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           </div>
                           <div className="flex select-none flex-wrap gap-1">
                             {extractedColors.map((color) => {
-                              const isSelected =
-                                activeColorValue === color;
+                              const isSelected = activeColorValue === color;
                               return (
                                 <button
                                   key={color}
