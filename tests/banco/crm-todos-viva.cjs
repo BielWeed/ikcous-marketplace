@@ -44,15 +44,30 @@
  *         mesma prova e mesmo validador exigente de M10 (a mensagem tem de
  *         citar a função certa nos 2 papéis, anon e authenticated).
  *   N2b — (re-revisão de risco) as DUAS checagens de staff (achado 8) têm de
- *         ser INDEPENDENTEMENTE necessárias — fixtures onde profiles.role e
- *         auth.raw_app_meta_data.role MENTEM um em relação ao outro (forçado
- *         via UPDATE depois do INSERT, porque o gatilho
- *         tr_sync_profile_role_to_auth resincroniza os dois a cada INSERT
- *         em profiles). Cada checagem sozinha tem de pegar o caso que só ela
- *         enxerga.
+ *         ser INDEPENDENTEMENTE necessárias do lado de crm__nunca_comprou —
+ *         fixtures (SEM pedido nenhum, condição para ficar elegível a
+ *         nunca_comprou) onde profiles.role e auth.raw_app_meta_data.role
+ *         MENTEM um em relação ao outro (forçado via UPDATE depois do
+ *         INSERT, porque o gatilho tr_sync_profile_role_to_auth
+ *         resincroniza os dois a cada INSERT em profiles). Cada checagem
+ *         sozinha tem de pegar o caso que só ela enxerga. NÃO dar pedido a
+ *         estas duas identidades — isso as tiraria de nunca_comprou por um
+ *         motivo ALHEIO ao papel (NOT EXISTS de pedido) e esvaziaria a prova
+ *         (achado da conferência final: uma rodada anterior fez esse
+ *         engano).
  *   N2c — WhatsApp de nunca_comprou sai só em dígitos mesmo quando o perfil
  *         guarda o número formatado (não só "não duplica" — o valor de
  *         SAÍDA é conferido dígito a dígito).
+ *   N4b — a mesma normalização sem-55 de N4, agora do lado da fusão
+ *         conta+balcão (achado 7) de crm__pedidos_nao_pagos — nenhum pedido
+ *         pago em nenhum dos dois lados.
+ *   M09p — o mapa dos PAGOS (wa_da_conta_paga) tem prioridade sobre o mapa
+ *          de QUALQUER pedido (wa_de_qualquer_pedido) quando os dois
+ *          resolvem o mesmo WhatsApp para contas DIFERENTES.
+ *   M20p/M20m — as MESMAS duas checagens de staff de N2b, agora do lado de
+ *          crm__pedidos_nao_pagos (WHERE independente) — identidades
+ *          PRÓPRIAS, com pedido não pago (U_STAFF_PEDIDO_SO_NO_JWT/
+ *          U_STAFF_PEDIDO_SO_NO_PROFILE), sem reaproveitar as duas de N2b.
  *
  * USO: node tests/banco/crm-todos-viva.cjs
  */
@@ -78,17 +93,25 @@ const U_FUSAO_CONTA = "64444444-4444-4444-4444-000000000007";
 const U_PERFIL_WA_DE_COMPRADOR_BALCAO = "64444444-4444-4444-4444-000000000008";
 const U_RESERVA_VENCIDA = "64444444-4444-4444-4444-000000000009";
 const U_CONTA_COM_BALCAO_PAGO = "64444444-4444-4444-4444-000000000013";
+// N2b: SEM pedido nenhum — só assim ficam elegíveis para nunca_comprou
+// (NOT EXISTS de pedido), condição necessária para provar as duas
+// checagens de staff (achado 8) do LADO de crm__nunca_comprou. Dar pedido
+// a estes dois (como uma rodada anterior fez, por engano) tira a
+// elegibilidade por um motivo ALHEIO ao papel — a prova de N2b passaria
+// "de graça" mesmo com só uma das duas checagens presente.
 const U_STAFF_SO_NO_JWT = "64444444-4444-4444-4444-000000000014";
 const U_STAFF_SO_NO_PROFILE = "64444444-4444-4444-4444-000000000015";
 const U_NUNCA_COMPROU_WA_COM_DDI = "64444444-4444-4444-4444-000000000016";
-// Re-revisão (rodada 3, só prova — a migration 83 já está indo para a loja,
-// não foi tocada): M20p/M20m — U_STAFF_SO_NO_JWT/U_STAFF_SO_NO_PROFILE
-// ganham um pedido NÃO pago mais abaixo, para provar que as duas checagens
-// de staff (achado 8) TAMBÉM protegem crm__pedidos_nao_pagos (só tinham
-// pedido nenhum antes, o que só provava o lado de crm__nunca_comprou).
 const U_FUSAO_DDI_MISTO = "64444444-4444-4444-4444-000000000017";
 const U_PRIORIDADE_PAGO = "64444444-4444-4444-4444-000000000018";
 const U_PRIORIDADE_RECENTE = "64444444-4444-4444-4444-000000000019";
+// M20p/M20m (re-revisão de risco, conferência final): identidades PRÓPRIAS
+// (papéis contraditórios E com pedido não pago) para provar que as duas
+// checagens de staff também protegem crm__pedidos_nao_pagos — sem
+// reaproveitar U_STAFF_SO_NO_JWT/U_STAFF_SO_NO_PROFILE, que o N2b precisa
+// SEM pedido nenhum (ver comentário acima).
+const U_STAFF_PEDIDO_SO_NO_JWT = "64444444-4444-4444-4444-000000000020";
+const U_STAFF_PEDIDO_SO_NO_PROFILE = "64444444-4444-4444-4444-000000000021";
 const WA_FUSAO = "5534988880007";
 const WA_COMPRADOR_BALCAO = "5534988880008";
 const WA_BALCAO_PAGO = "5534988880013";
@@ -228,7 +251,12 @@ PROVAS.push({
          ($16, 'nuncacomprouddi@crmtodos.teste', '{}'::jsonb),
          ($17, 'fusaoddimisto@crmtodos.teste', '{}'::jsonb),
          ($18, 'prioridadepago@crmtodos.teste', '{}'::jsonb),
-         ($19, 'prioridaderecente@crmtodos.teste', '{}'::jsonb)
+         ($19, 'prioridaderecente@crmtodos.teste', '{}'::jsonb),
+         -- M20p/M20m: identidades PRÓPRIAS (com pedido não pago) — mesma
+         -- régua de mentira contraditória do N2b acima, mas sem reaproveitar
+         -- as duas de lá (que precisam ficar sem pedido nenhum).
+         ($20, 'staffpedidosonojwt@crmtodos.teste', '{"role":"admin"}'::jsonb),
+         ($21, 'staffpedidosonoprofile@crmtodos.teste', '{}'::jsonb)
        ON CONFLICT (id) DO NOTHING`,
       [
         U_ADMIN,
@@ -250,6 +278,8 @@ PROVAS.push({
         U_FUSAO_DDI_MISTO,
         U_PRIORIDADE_PAGO,
         U_PRIORIDADE_RECENTE,
+        U_STAFF_PEDIDO_SO_NO_JWT,
+        U_STAFF_PEDIDO_SO_NO_PROFILE,
       ],
     );
     // profiles: handle_new_user não roda aqui (sem trigger em auth.users
@@ -287,7 +317,11 @@ PROVAS.push({
          -- fundir com o pedido de balcão que carrega o MESMO número COM "55".
          ($18, 'Cliente Fusão DDI Misto', 'customer', NULL),
          ($19, 'Cliente Prioridade Pago', 'customer', NULL),
-         ($20, 'Cliente Prioridade Recente', 'customer', NULL)
+         ($20, 'Cliente Prioridade Recente', 'customer', NULL),
+         -- M20p/M20m: mesma régua contraditória do N2b, identidades próprias
+         -- (estas ganham pedido não pago mais abaixo).
+         ($21, 'Staff Pedido Só No JWT', 'customer', NULL),
+         ($22, 'Staff Pedido Só No Profile', 'admin', NULL)
        ON CONFLICT (id) DO UPDATE SET full_name = EXCLUDED.full_name, role = EXCLUDED.role, whatsapp = EXCLUDED.whatsapp`,
       [
         U_ADMIN,
@@ -310,6 +344,8 @@ PROVAS.push({
         U_FUSAO_DDI_MISTO,
         U_PRIORIDADE_PAGO,
         U_PRIORIDADE_RECENTE,
+        U_STAFF_PEDIDO_SO_NO_JWT,
+        U_STAFF_PEDIDO_SO_NO_PROFILE,
       ],
     );
     // N2b: o INSERT em profiles acima dispara o gatilho
@@ -325,6 +361,17 @@ PROVAS.push({
     await cliente.query(
       `UPDATE auth.users SET raw_app_meta_data = '{}'::jsonb WHERE id = $1`,
       [U_STAFF_SO_NO_PROFILE],
+    );
+    // M20p/M20m: mesmo problema do gatilho, para as 2 identidades PRÓPRIAS
+    // (com pedido) que provam a dupla checagem do lado de
+    // crm__pedidos_nao_pagos.
+    await cliente.query(
+      `UPDATE auth.users SET raw_app_meta_data = '{"role":"admin"}'::jsonb WHERE id = $1`,
+      [U_STAFF_PEDIDO_SO_NO_JWT],
+    );
+    await cliente.query(
+      `UPDATE auth.users SET raw_app_meta_data = '{}'::jsonb WHERE id = $1`,
+      [U_STAFF_PEDIDO_SO_NO_PROFILE],
     );
 
     // Comprador: 1 pedido pago recente → RFM 'novos'.
@@ -426,10 +473,17 @@ PROVAS.push({
     // M06: comprador de balcão PAGO só por WhatsApp (sem conta) — vira
     // 'wa:...' em crm__vendas. Depois, um PERFIL com o MESMO WhatsApp
     // (normalizado) não pode aparecer em nunca_comprou (é a mesma pessoa).
+    // Achado incidental (não faz parte de N1-N4/M20/border-solid, achado à
+    // parte enquanto verificava esta rodada): `diasAtras: 10` sentava
+    // exatamente na borda da janela de 10 dias que a prova de crm_visao usa
+    // (`current_date - 10`) — `fin__dia()` converte para o dia CALENDÁRIO em
+    // America/Sao_Paulo, e `current_date` da sessão é UTC; a virada do dia
+    // (27→28/09) empurrou esse pedido para FORA da janela por causa do fuso,
+    // não por nada que este trabalho mudou. `diasAtras: 8` dá margem real.
     await pedido(cliente, {
       whatsapp: WA_COMPRADOR_BALCAO,
       total: 45,
-      diasAtras: 10,
+      diasAtras: 8,
       status: "delivered",
       canal: "presencial",
       pagamento: "cash",
@@ -497,20 +551,21 @@ PROVAS.push({
       paymentStatus: "recebido_na_entrega",
     });
 
-    // M20p/M20m (re-revisão de risco, rodada 3): U_STAFF_SO_NO_JWT e
-    // U_STAFF_SO_NO_PROFILE (já provados do lado de crm__nunca_comprou, sem
-    // pedido nenhum) ganham um pedido NÃO pago — para as MESMAS duas
-    // checagens de staff (achado 8) ficarem provadas TAMBÉM do lado de
+    // M20p/M20m (re-revisão de risco, conferência final): identidades
+    // PRÓPRIAS (papéis contraditórios E com pedido não pago) — NÃO
+    // reaproveita U_STAFF_SO_NO_JWT/U_STAFF_SO_NO_PROFILE, que o N2b precisa
+    // SEM pedido nenhum (ver comentário da constante). Provam que as MESMAS
+    // duas checagens de staff (achado 8) TAMBÉM protegem
     // crm__pedidos_nao_pagos, que tem o próprio WHERE independente.
     await pedido(cliente, {
-      userId: U_STAFF_SO_NO_JWT,
+      userId: U_STAFF_PEDIDO_SO_NO_JWT,
       total: 40,
       diasAtras: 2,
       status: "pending",
       paymentStatus: "aguardando",
     });
     await pedido(cliente, {
-      userId: U_STAFF_SO_NO_PROFILE,
+      userId: U_STAFF_PEDIDO_SO_NO_PROFILE,
       total: 50,
       diasAtras: 2,
       status: "pending",
@@ -787,13 +842,15 @@ PROVAS.push({
     );
 
     // --- M20p/M20m: staff com pedido não pago também não aparece em pediu_nao_pagou ---
+    // Identidades PRÓPRIAS (não as do N2b, que precisam ficar sem pedido
+    // nenhum para provar o lado de crm__nunca_comprou).
     assert.equal(
-      porChave.has(U_STAFF_SO_NO_JWT),
+      porChave.has(U_STAFF_PEDIDO_SO_NO_JWT),
       false,
       "M20m: profiles diz 'customer' mas o JWT diz 'admin' — mesmo com pedido não pago, não pode virar pediu_nao_pagou",
     );
     assert.equal(
-      porChave.has(U_STAFF_SO_NO_PROFILE),
+      porChave.has(U_STAFF_PEDIDO_SO_NO_PROFILE),
       false,
       "M20p: profiles diz 'admin' mas o JWT não tem role — mesmo com pedido não pago, não pode virar pediu_nao_pagou",
     );
