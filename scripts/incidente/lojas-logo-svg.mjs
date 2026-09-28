@@ -116,7 +116,23 @@ function meliz() {
   return { circulo, topo, fundo: "#F7F3EE" };
 }
 
-const DESENHOS = { almeidastoremc: almeida, brand_meliz: meliz, space_lojadoskit: space };
+// Logo vetorizada da arte original enviada pelo dono (potrace, 28/09):
+// substitui o desenho à mão quando existe scripts/incidente/logos/<perfil>.svg.
+function vetorizada(perfil, fundo, largura = 640) {
+  const topo = fs.readFileSync(`scripts/incidente/logos/${perfil}.svg`, "utf8");
+  const [, , , vw, vh] = topo.match(/viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"/).map(Number);
+  const altura = (largura * vh) / vw;
+  const interno = topo.replace("<svg ", `<svg x="${(1000 - largura) / 2}" y="${(1000 - altura) / 2}" width="${largura}" height="${altura}" preserveAspectRatio="xMidYMid meet" `);
+  const circulo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><circle cx="500" cy="500" r="500" fill="${fundo}"/>${interno.replace(' xmlns="http://www.w3.org/2000/svg"', "")}</svg>`;
+  return { circulo, topo, fundo };
+}
+
+const DESENHOS = {
+  almeidastoremc: almeida,
+  brand_meliz: meliz,
+  space_lojadoskit: () =>
+    fs.existsSync("scripts/incidente/logos/space_lojadoskit.svg") ? vetorizada("space_lojadoskit", "#FFFFFF") : space(),
+};
 
 async function chamar(url, { metodo = "GET", headers = {}, corpo, bruto } = {}) {
   const r = await fetch(url, {
