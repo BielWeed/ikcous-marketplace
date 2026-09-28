@@ -21,6 +21,7 @@ import {
 } from "@/lib/cpf-da-conta";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import type { View } from "@/types";
 import {
   PREDEFINED_AVATARS,
   compressImage,
@@ -70,7 +71,13 @@ const MenuDaConta = lazy(() =>
   })),
 );
 
-export function AccountSettingsView() {
+interface AccountSettingsViewProps {
+  onNavigate?: (view: View, id?: string) => void;
+}
+
+export function AccountSettingsView({
+  onNavigate = () => {},
+}: AccountSettingsViewProps) {
   const computador = useTelaDeComputador();
   const { user, profile, fetchProfile, updateProfile, updatePassword } =
     useAuth();
@@ -537,10 +544,7 @@ export function AccountSettingsView() {
     >
       {computador && (
         <Suspense fallback={null}>
-          <MenuDaConta
-            atual="account-settings"
-            onNavigate={(view) => globalThis.location.assign(`/${view}`)}
-          />
+          <MenuDaConta atual="account-settings" onNavigate={onNavigate} />
         </Suspense>
       )}
       <div

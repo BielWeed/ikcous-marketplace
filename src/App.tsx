@@ -2347,6 +2347,7 @@ const AppContent = () => {
               key: user?.id
                 ? `account-settings-${user.id}`
                 : "account-settings-guest",
+              onNavigate: handleNavigate,
             }}
           />
         );
@@ -2377,6 +2378,7 @@ const AppContent = () => {
               key: user?.id ? `address-form-${user.id}` : "address-form-guest",
               addressId: selectedProductId,
               onBack: handleBack,
+              onNavigate: handleNavigate,
             }}
           />
         );
