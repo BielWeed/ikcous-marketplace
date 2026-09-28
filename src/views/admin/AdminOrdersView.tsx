@@ -973,7 +973,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // Estável de propósito: vai para o `<OrderDetail>` (memo) e para o botão
   // do cabeçalho — a tela de Devoluções (filha de Pedidos no roteador).
   const abrirDevolucoes = useCallback(
-    () => onNavigate("admin-devolucoes"),
+    (id?: string) => onNavigate("admin-devolucoes", id),
     [onNavigate],
   );
 
@@ -1527,7 +1527,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             // Devoluções (plano 2026-09-26): a porta da tela de devolução de
             // produto mora ao lado, com quantas estão em andamento.
             <>
-              <BotaoDevolucoes onAbrir={abrirDevolucoes} ativo={active} />
+              <BotaoDevolucoes
+                onAbrir={() => abrirDevolucoes()}
+                ativo={active}
+              />
               <AlertasCancelados
                 pagoCanceladoCount={paidOnCancelledCount}
                 avisoPagoAposCancelado={avisoPagoAposCancelado}

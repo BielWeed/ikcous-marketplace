@@ -229,7 +229,7 @@ interface OrderDetailProps {
    * devolução escolhida lá). Opcional pelo mesmo motivo das outras: testes
    * montam `<OrderDetail>` sem ela, e aí o card só informa.
    */
-  onAbrirDevolucoes?: () => void;
+  onAbrirDevolucoes?: (id: string) => void;
 }
 
 const globalSkuCache: Record<string, string> = {};
