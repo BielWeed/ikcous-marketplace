@@ -1,5 +1,5 @@
-import type { CartItem } from "@/types";
 // @vitest-environment jsdom
+import type { CartItem } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -244,4 +244,66 @@ it("fecha o painel ao crescer para computador sem voltar ao focar o formulário"
     document.getElementById("checkout-name")!.focus();
   });
   expect(voltar).toHaveBeenCalledTimes(1);
+});
+
+it("popstate atrasado + largura oscilando + foco no meio: ainda só 1 back()", async () => {
+  let computador = false;
+  const ouvintes = new Set<() => void>();
+  vi.stubGlobal("matchMedia", () => ({
+    get matches() {
+      return computador;
+    },
+    addEventListener: (_evento: string, ouvinte: () => void) =>
+      ouvintes.add(ouvinte),
+    removeEventListener: (_evento: string, ouvinte: () => void) =>
+      ouvintes.delete(ouvinte),
+  }));
+
+  const onSetBackOverride = vi.fn();
+  // Diferente do teste acima: aqui `history.back()` só ENFILEIRA — não
+  // dispara o `popstate`/override de imediato. É exatamente a folga que o
+  // navegador real tem entre o `back()` assíncrono e o evento chegando, e é
+  // nessa folga que a largura pode oscilar e um campo pode ganhar foco antes
+  // do primeiro fechamento se resolver.
+  const filaDeBack: Array<() => void> = [];
+  const voltar = vi.spyOn(globalThis.history, "back").mockImplementation(() => {
+    filaDeBack.push(() => {});
+  });
+  // Zera qualquer contagem que tenha sobrado de um teste anterior nesta
+  // mesma suíte (o spy acima é global e nenhum teste deste arquivo chama
+  // `mockRestore`) — sem isto a asserção de "exatamente 1" ficaria
+  // contaminada pelo teste anterior.
+  voltar.mockClear();
+
+  await montar(false, onSetBackOverride);
+
+  await act(async () => {
+    slot.querySelector("button")!.click();
+  });
+  expect(slot.querySelector("button")?.getAttribute("aria-expanded")).toBe(
+    "true",
+  );
+
+  // Oscila computador -> celular -> computador SEM o popstate do primeiro
+  // back() ter chegado (a fila acima nunca é drenada).
+  await act(async () => {
+    computador = true;
+    for (const notificar of ouvintes) notificar();
+  });
+  await act(async () => {
+    computador = false;
+    for (const notificar of ouvintes) notificar();
+  });
+  await act(async () => {
+    computador = true;
+    for (const notificar of ouvintes) notificar();
+  });
+
+  // E, no meio dessa folga, a cliente foca um campo do formulário.
+  await act(async () => {
+    document.getElementById("checkout-name")!.focus();
+  });
+
+  expect(voltar).toHaveBeenCalledTimes(1);
+  voltar.mockRestore();
 });
