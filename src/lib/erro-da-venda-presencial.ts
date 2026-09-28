@@ -56,7 +56,11 @@ function codigoDoErro(erro: unknown): string | null {
     return null;
   }
   const codigo = (erro as { code: unknown }).code;
-  return typeof codigo === "string" ? codigo : null;
+  // `""` NÃO é código (revisão, rodada 2): o postgrest-js devolve queda de
+  // rede e corpo não-JSON como `{ message: "TypeError: Failed to fetch",
+  // code: "" }` — sem isto, a rede caindo passava por recusa do servidor
+  // (a chave do PIX era descartada) e a mensagem crua ia para a tela.
+  return typeof codigo === "string" && codigo !== "" ? codigo : null;
 }
 
 function mensagemDoErro(erro: unknown): string | null {

@@ -14,6 +14,10 @@ import {
   trocoDaVenda,
   vendaPodeSerRegistrada,
 } from "@/hooks/useVendaPresencial";
+import {
+  falhaVeioDoServidor,
+  mensagemDaFalhaDaVenda,
+} from "@/lib/erro-da-venda-presencial";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import {
   desvioDoRelogio,
@@ -159,6 +163,22 @@ describe("PIX com QR na máquina do caixa", () => {
 });
 
 describe("revisão, rodada 1", () => {
+  it('rodada 2: queda de rede no formato REAL do postgrest-js ({code: ""}) não é recusa do servidor', () => {
+    const rede = {
+      message: "TypeError: Failed to fetch",
+      details: "",
+      hint: "",
+      code: "",
+    };
+    expect(falhaVeioDoServidor(rede)).toBe(false);
+    expect(mensagemDaFalhaDaVenda(rede).mensagem).toContain(
+      "Não consegui falar com o servidor",
+    );
+    expect(
+      falhaVeioDoServidor({ code: "22023", message: "Estoque insuficiente" }),
+    ).toBe(true);
+  });
+
   it("o cupom trava desde o 'Gerar PIX' (sem esperar a resposta): resposta perdida não deixa editar", () => {
     const preparado = reducerDaVenda(
       reducerDaVenda(comItens(item(10)), {

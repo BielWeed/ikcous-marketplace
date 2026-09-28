@@ -413,4 +413,44 @@ describe("PIX com QR na tela Vender", () => {
         ?.getAttribute("aria-checked"),
     ).toBe("true");
   });
+
+  it('queda de rede ao gerar ({code: ""}): a chave do PIX fica, o cupom trava e o retry usa a MESMA chave', async () => {
+    const chaves: string[] = [];
+    rpcMock.mockImplementation(async (nome: string, params: any) => {
+      if (nome === "buscar_por_codigo_barras")
+        return { data: PRODUTO, error: null };
+      if (nome === "iniciar_venda_presencial_pix") {
+        chaves.push(params.p_idempotency_key);
+        return {
+          data: null,
+          error: {
+            message: "TypeError: Failed to fetch",
+            details: "",
+            hint: "",
+            code: "",
+          },
+        };
+      }
+      return { data: null, error: null };
+    });
+    await montarAteOFechamento();
+    await clicar(botao(container, "PIX com QR"));
+    await clicar(botao(container, "Gerar PIX"));
+    await avancar(10);
+    expect(container.textContent).toContain(
+      "A conexão caiu enquanto o PIX era gerado",
+    );
+    expect(container.textContent).not.toContain("TypeError");
+    await clicar(botao(container, "Dinheiro"));
+    expect(
+      [...container.querySelectorAll("[role=radio]")]
+        .find((b) => b.textContent?.includes("PIX com QR"))
+        ?.getAttribute("aria-checked"),
+      "cupom travado: a forma não troca",
+    ).toBe("true");
+    await clicar(botao(container, "Gerar PIX"));
+    await avancar(10);
+    expect(chaves).toHaveLength(2);
+    expect(chaves[1]).toBe(chaves[0]);
+  });
 });
