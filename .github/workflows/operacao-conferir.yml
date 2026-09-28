@@ -1,0 +1,21 @@
+# Temporário (incidente 28/09/2026): confere os segredos que o dono cadastrou no
+# painel do Supabase (só nomes e SHA-256; nenhum valor vai para o log).
+name: Operação do incidente — conferir segredos (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths: [scripts/incidente/conferir-segredos.mjs, .github/workflows/operacao-conferir.yml]
+permissions:
+  contents: read
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node scripts/incidente/conferir-segredos.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
