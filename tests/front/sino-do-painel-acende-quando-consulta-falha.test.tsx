@@ -127,7 +127,13 @@ vi.mock("@/lib/supabase", () => ({
       }
       return criarContagemBuilder(tabela, 0, false, false);
     }),
-    rpc: vi.fn(() => {
+    rpc: vi.fn((nome: string) => {
+      if (nome === "admin_devolucoes_listar") {
+        return Promise.resolve({
+          data: { total: 0, itens: [], contagem: { solicitada: 0 } },
+          error: null,
+        });
+      }
       if (EXCECAO_NA_CONSULTA_DE_PERGUNTAS) {
         return Promise.reject(new Error("excecao simulada de rede"));
       }
