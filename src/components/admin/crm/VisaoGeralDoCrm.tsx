@@ -220,7 +220,12 @@ export function VisaoGeralDoCrm({
             <Button
               variant="outline"
               size="sm"
-              className="ml-auto h-8 border-red-500/20 text-[10px] text-red-400 hover:bg-red-500/10"
+              // `border-solid` (achado da conferência final): o `<Button>`
+              // compartilhado usa `border` puro na variante "outline" — sem
+              // o reset global de `<button>` (`border: none`) zerar
+              // `border-style`, essa borda também some. Fix local (só aqui,
+              // sem tocar em `ui/button.tsx`, que é usado fora do CRM).
+              className="ml-auto h-8 border-solid border-red-500/20 text-[10px] text-red-400 hover:bg-red-500/10"
               onClick={() => carregar(true)}
             >
               Tentar

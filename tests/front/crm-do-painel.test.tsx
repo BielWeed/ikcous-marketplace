@@ -438,6 +438,71 @@ describe("Dashboard CRM", () => {
     });
   });
 
+  it("conferência final (achado 1): CLICAVEL_DO_CRM e os botões do CRM que usam border* têm border-solid — o reset global (`button { border: none }`) zera o border-style, e o utilitário `border` só define largura", async () => {
+    const { CLICAVEL_DO_CRM } = await import(
+      "@/components/admin/crm/PecasDoCrm"
+    );
+    expect(CLICAVEL_DO_CRM).toContain("border-solid");
+
+    await montar();
+    const sincronizar = botao(hospedeiro, "Sincronizar");
+    expect(sincronizar.className).toContain("border-solid");
+
+    const ajuda = hospedeiro.querySelector(
+      'button[aria-label="Guia de Ajuda e Informações"]',
+    );
+    expect(ajuda?.className).toContain("border-solid");
+
+    const periodoMes = botao(hospedeiro, "Mês");
+    expect(periodoMes.className).toContain("border-solid");
+
+    const abaClientes = Array.from(
+      hospedeiro.querySelectorAll('[role="tab"]'),
+    ).find((t) => texto(t) === "Clientes") as HTMLButtonElement;
+    await act(async () => abaClientes.click());
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    const painelClientes = hospedeiro.querySelector(
+      "#crm-painel-clientes",
+    ) as HTMLElement;
+    const verCliente = Array.from(
+      painelClientes.querySelectorAll("button"),
+    ).find((b) => texto(b).includes("Ver cliente")) as HTMLButtonElement;
+    expect(verCliente.className).toContain("border-solid");
+  });
+
+  it("conferência final (achado 1): 'Tentar de novo' da Visão geral (erro do crm_visao) tem border-solid", async () => {
+    h.respostas.set("crm_visao", {
+      data: null,
+      error: { message: "falhou" },
+    });
+    await montar();
+    await esperarAte(() => texto(hospedeiro).includes("Tentar de novo"));
+    const retry = botao(hospedeiro, "Tentar de novo");
+    expect(retry.className).toContain("border-solid");
+  });
+
+  it("conferência final (achado 1): 'Tentar de novo' de Clientes (erro do crm_clientes) tem border-solid", async () => {
+    h.respostas.set("crm_clientes", {
+      data: null,
+      error: { message: "falhou" },
+    });
+    await montar();
+    const abaClientes = Array.from(
+      hospedeiro.querySelectorAll('[role="tab"]'),
+    ).find((t) => texto(t) === "Clientes") as HTMLButtonElement;
+    await act(async () => abaClientes.click());
+    await esperarAte(() =>
+      texto(hospedeiro).includes("Não foi possível carregar os clientes"),
+    );
+    const painelClientes = hospedeiro.querySelector(
+      "#crm-painel-clientes",
+    ) as HTMLElement;
+    const retry = Array.from(painelClientes.querySelectorAll("button")).find(
+      (b) => texto(b).includes("Tentar de novo"),
+    ) as HTMLButtonElement;
+    expect(retry.className).toContain("border-solid");
+  });
+
   it("Clientes: 'Mostrando: Em risco · N' usa o total filtrado pela busca, não o bruto do segmento", async () => {
     // esperarAte mede o próprio timeout com Date.now(), que este describe
     // deixa CONGELADO (vi.useFakeTimers({ toFake: ["Date"] })) — sem
