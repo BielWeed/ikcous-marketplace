@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import React from "react";
 
 /**
@@ -38,7 +39,13 @@ export function MarkdownRenderer({
         const lines = para.split("\n");
 
         return (
-          <p key={i} className="text-sm leading-relaxed text-gray-600">
+          <p
+            key={i}
+            className={cn(
+              "text-sm leading-relaxed text-gray-600",
+              "lg:text-base",
+            )}
+          >
             {lines.map((line, lineIdx) => (
               <React.Fragment key={lineIdx}>
                 {processInline(line)}
