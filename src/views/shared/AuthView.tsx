@@ -546,7 +546,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               variants={itemVariants}
               className="mt-2 max-w-[280px] px-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 sm:mt-4 sm:max-w-none sm:text-sm"
             >
-              {viewMode === "login" && subtituloBoasVindas(config.storeName)}
+              {viewMode === "login" && subtituloBoasVindas(config?.storeName)}
               {viewMode === "signup" &&
                 "Inicie sua jornada no marketplace premium."}
               {viewMode === "forgot" &&
@@ -872,9 +872,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         >
           <p className="px-4 text-[10px] font-black uppercase tracking-[0.4em] text-zinc-300">
             {/* Sem cidade configurada, mostra só o nome, sem o "•" solto. */}
-            {config.storeName?.trim() || branding.appName}
-            {config.storeCity &&
-              ` • ${config.storeCity}${config.storeState ? `, ${config.storeState}` : ""}`}
+            {config?.storeName?.trim() || branding.appName}
+            {config?.storeCity &&
+              ` • ${config?.storeCity}${config?.storeState ? `, ${config?.storeState}` : ""}`}
           </p>
         </motion.div>
       </motion.div>
