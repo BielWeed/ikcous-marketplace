@@ -1,10 +1,29 @@
 {
+  "remover": [
+    {
+      "conta": "SUPABASE_ACCESS_TOKEN",
+      "ref": "kkrrxcozhshhuspfllxi",
+      "nome": "barber-flow-teste"
+    }
+  ],
   "lojas": [
     {
       "perfil": "almeidastoremc",
       "projeto": "loja-almeida-store",
       "conta": "SUPABASE_ACCESS_TOKEN",
-      "organizacao": "doidyyhdafcbpfmiciii"
+      "organizacao": "Almeida Store"
+    },
+    {
+      "perfil": "brand_meliz",
+      "projeto": "loja-brand-meliz",
+      "conta": "SUPABASE_ACCESS_TOKEN_CONTA2",
+      "organizacao": "Brand Meliz"
+    },
+    {
+      "perfil": "space_lojadoskit",
+      "projeto": "loja-space-lojadoskit",
+      "conta": "SUPABASE_ACCESS_TOKEN_CONTA2",
+      "organizacao": "Space Loja dos Kit"
     }
   ]
 }

@@ -7,7 +7,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 
-const { lojas } = JSON.parse(fs.readFileSync("scripts/incidente/lojas-novas.json", "utf8"));
+const { remover = [], lojas } = JSON.parse(
+  fs.readFileSync("scripts/incidente/lojas-novas.json", "utf8"),
+);
 
 async function api(token, metodo, caminho, corpo) {
   for (let tentativa = 1; ; tentativa++) {
@@ -27,6 +29,47 @@ async function api(token, metodo, caminho, corpo) {
 }
 
 let falhou = false;
+
+// Remoção pedida pelo dono no chat (28/09): o projeto de teste do BarberFlow,
+// pausado, libera a vaga grátis para a loja Almeida. Só apaga se o ref E o
+// nome baterem exatamente; qualquer divergência para tudo.
+for (const alvo of remover) {
+  const token = (process.env[alvo.conta] ?? "").trim();
+  if (token === "") continue;
+  const projetos = await api(token, "GET", "/projects");
+  const achado = projetos.find((p) => p.id === alvo.ref);
+  if (!achado) {
+    console.log(`Remoção: ${alvo.ref} (${alvo.nome}) já não existe.`);
+    continue;
+  }
+  if (achado.name !== alvo.nome) {
+    console.log(`::error::Remoção recusada: ${alvo.ref} se chama "${achado.name}", não "${alvo.nome}".`);
+    process.exit(1);
+  }
+  console.log(`Removendo ${alvo.ref} (${achado.name}, ${achado.status})…`);
+  await api(token, "DELETE", `/projects/${alvo.ref}`);
+  for (let i = 0; i < 30; i++) {
+    const ainda = (await api(token, "GET", "/projects")).some((p) => p.id === alvo.ref);
+    if (!ainda) break;
+    await new Promise((res) => setTimeout(res, 5000));
+  }
+  console.log("Removido.");
+}
+
+async function organizacaoDa(token, nome) {
+  const orgs = await api(token, "GET", "/organizations");
+  const existente = orgs.find((o) => o.name === nome);
+  if (existente) return existente;
+  try {
+    const nova = await api(token, "POST", "/organizations", { name: nome });
+    console.log(`Organização criada: ${nome} (${nova.id})`);
+    return nova;
+  } catch (erro) {
+    console.log(`::warning::Não criei a organização "${nome}" (${erro.message}); uso ${orgs[0]?.name}.`);
+    return orgs[0];
+  }
+}
+
 for (const loja of lojas) {
   console.log(`\n==================== ${loja.projeto} (@${loja.perfil}) ====================`);
   const token = (process.env[loja.conta] ?? "").trim();
@@ -40,12 +83,11 @@ for (const loja of lojas) {
     if (projeto) {
       console.log(`Já existe: ${projeto.id} (${projeto.status})`);
     } else {
-      const orgs = await api(token, "GET", "/organizations");
-      const org = loja.organizacao ?? orgs[0]?.id;
-      console.log(`Criando na organização ${org} (${orgs.find((o) => o.id === org)?.name ?? "?"}), região sa-east-1…`);
+      const org = await organizacaoDa(token, loja.organizacao);
+      console.log(`Criando na organização ${org.name} (${org.id}), região sa-east-1…`);
       projeto = await api(token, "POST", "/projects", {
         name: loja.projeto,
-        organization_id: org,
+        organization_id: org.id,
         region: "sa-east-1",
         db_pass: crypto.randomBytes(24).toString("base64url"),
       });
