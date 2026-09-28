@@ -1,0 +1,43 @@
+# Temporário (28/09/2026): logos das lojas novas redesenhadas em SVG a partir
+# dos prints da foto de perfil (pedido do dono). Prévias vão para a branch
+# dos catálogos, em logos-svg/, para conferência.
+name: Operação — logos SVG das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-logo-svg.mjs
+      - .github/workflows/operacao-lojas-logo-svg.yml
+permissions:
+  contents: write
+concurrency:
+  group: lojas-identidade
+  cancel-in-progress: false
+jobs:
+  logos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: npm install --prefix /tmp/ferr --no-save --no-audit --no-fund sharp@0.34 opentype.js@1.3.4
+      - name: Desenha, sobe e grava
+        run: node scripts/incidente/lojas-logo-svg.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}
+      - name: Prévias na branch dos catálogos
+        run: |
+          git fetch --depth=1 origin infra/catalogos-lojas-novas
+          git worktree add /tmp/cat FETCH_HEAD
+          mkdir -p /tmp/cat/logos-svg && cp /tmp/logos/* /tmp/cat/logos-svg/
+          cd /tmp/cat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add logos-svg/
+          git commit -m "chore(ci): prévias das logos SVG das lojas novas" || exit 0
+          git push origin HEAD:infra/catalogos-lojas-novas
+      - name: Confere as lojas pelo endereço
+        run: sleep 65 && node scripts/incidente/lojas-fumaca.mjs

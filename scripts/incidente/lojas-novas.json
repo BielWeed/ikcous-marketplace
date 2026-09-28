@@ -17,8 +17,8 @@
       "slug": "almeidastore",
       "admin_email": "ikcous.imports+almeidastore@gmail.com",
       "prefixo_senha": "AlmeidaStore",
-      "cor": "#1C1C1C",
-      "cor2": "#3A3A3A",
+      "cor": "#141414",
+      "cor2": "#2E2E2E",
       "acento": "#E4B400",
       "endereco": {
         "texto": "Av. Belo Horizonte, 790 — Monte Carmelo/MG",
@@ -43,7 +43,7 @@
       "prefixo_senha": "BrandMeliz",
       "cor": "#7B2D3B",
       "cor2": "#4A2C24",
-      "acento": "#E7B7AE",
+      "acento": "#D4B483",
       "endereco": {
         "texto": "Rua José Avelino, 751 — Vila Nova",
         "rua": "Rua José Avelino",
