@@ -1,4 +1,4 @@
-// Temporário (28/09/2026): SÓ LEITURA. Lista organizações e projetos que cada
+// Temporário (28/09/2026, releitura 12h10 UTC): SÓ LEITURA. Lista organizações e projetos que cada
 // token do Supabase enxerga — a conta nova (SUPABASE_ACCESS_TOKEN) e a antiga,
 // com fatura em aberto (SUPABASE_ACCESS_TOKEN_SAVY) — para conferir o projeto
 // novo que o dono criou na conta antiga. Nenhum token é impresso; nenhuma
