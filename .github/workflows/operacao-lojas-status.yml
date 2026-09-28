@@ -1,0 +1,23 @@
+# Temporário (28/09/2026): SÓ LEITURA — progresso do esquema nas lojas novas.
+name: Operação — status das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-status.mjs
+      - .github/workflows/operacao-lojas-status.yml
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node scripts/incidente/lojas-status.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}

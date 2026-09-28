@@ -11,20 +11,31 @@
       "perfil": "almeidastoremc",
       "projeto": "loja-almeida-store",
       "conta": "SUPABASE_ACCESS_TOKEN",
-      "organizacao": "Almeida Store"
+      "organizacao": "Almeida Store",
+      "nome": "Almeida Store",
+      "frota_id": "cliente-02",
+      "slug": "almeidastore",
+      "admin_email": "ikcous.imports+almeidastore@gmail.com"
     },
     {
       "perfil": "brand_meliz",
       "projeto": "loja-brand-meliz",
       "conta": "SUPABASE_ACCESS_TOKEN_CONTA2",
-      "organizacao": "Brand Meliz"
+      "organizacao": "Brand Meliz",
+      "nome": "Brand Meliz",
+      "frota_id": "cliente-03",
+      "slug": "brandmeliz",
+      "admin_email": "ikcous.imports+brandmeliz@gmail.com"
     },
     {
       "perfil": "space_lojadoskit",
       "projeto": "loja-space-lojadoskit",
       "conta": "SUPABASE_ACCESS_TOKEN_CONTA2",
-      "organizacao": "Space Loja dos Kit"
+      "organizacao": "Space Loja dos Kit",
+      "nome": "Space Loja dos Kit",
+      "frota_id": "cliente-04",
+      "slug": "spacelojadoskit",
+      "admin_email": "ikcous.imports+spacelojadoskit@gmail.com"
     }
-  ],
-  "rodada": "2026-09-28 13h40 UTC: CONTA2 cadastrada pelo dono"
+  ]
 }
