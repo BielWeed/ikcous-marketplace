@@ -73,6 +73,20 @@ const busyPhases: readonly Phase[] = [
   "checking",
 ];
 
+// O fundo do maskable é pintado com a cor principal, e o canvas ignora em
+// silêncio um fillStyle inválido e fica preto. A cor do rascunho vale se passar
+// pela regra da loja; senão vale a salva; sem nenhuma válida, não há ícone.
+function appIconColor(draft: IdentityEditorDraft): string | null {
+  for (const candidate of [
+    draft.fields.primaryColor,
+    draft.expected.identity.primary_color ?? "",
+  ]) {
+    const color = validaCorDaLoja(candidate);
+    if (color.ok) return color.cor;
+  }
+  return null;
+}
+
 export function useStoreIdentityEditor(active = true) {
   const auth = useAuth();
   const { refresh } = useStore();
@@ -307,6 +321,15 @@ export function useStoreIdentityEditor(active = true) {
   async function upload(file: File, target: IdentityUploadTarget) {
     if (!editable()) return;
     const before = model.current;
+    const iconColor =
+      target.kind === "app-icons" ? appIconColor(before.draft!) : null;
+    if (target.kind === "app-icons" && !iconColor) {
+      publish({
+        ...before,
+        message: "Defina a cor principal antes de enviar o ícone.",
+      });
+      return;
+    }
     const op = start("preparing");
     if (!op) return;
     try {
@@ -317,7 +340,7 @@ export function useStoreIdentityEditor(active = true) {
       if (target.kind === "app-icons") {
         const prepared = await prepareIdentityAppIcons(file, {
           signal: op.options.signal,
-          primaryColor: before.draft!.fields.primaryColor,
+          primaryColor: iconColor!,
           logoUrl: `${op.origin}/storage/v1/object/public/branding/${before.draft!.assets.header.path}`,
         });
         if (!op.isCurrent()) return;

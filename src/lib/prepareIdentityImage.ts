@@ -316,6 +316,8 @@ export async function prepareIdentityImage(
   }
 }
 
+const LOGO_TIMEOUT_MS = 8000;
+
 /** Mantém o PNG original de 512 e prepara os tamanhos exigidos pelo schema. */
 export async function prepareIdentityAppIcons(
   file: Blob,
@@ -402,14 +404,34 @@ export async function prepareIdentityAppIcons(
         );
       }
 
+      // A logo vem da rede da loja: prazo PRÓPRIO e curto. Ao estourar, cai na
+      // mesma reserva de uma logo que não carrega, em vez de gastar o prazo do
+      // envio inteiro e derrubá-lo com IDENTITY_IMAGE_TIMEOUT.
+      async function decodeLogo() {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await scope.wait(() => {
+            logo.src = options.logoUrl!;
+            return Promise.race([
+              logo.decode(),
+              new Promise<never>((_resolve, reject) => {
+                timer = setTimeout(
+                  () => reject(new IdentityImageError("IDENTITY_IMAGE_DECODE")),
+                  LOGO_TIMEOUT_MS,
+                );
+              }),
+            ]);
+          }, "IDENTITY_IMAGE_DECODE");
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
       let blob: Blob | undefined;
       if (options.logoUrl) {
         try {
           logo.crossOrigin = "anonymous";
-          await scope.wait(() => {
-            logo.src = options.logoUrl!;
-            return logo.decode();
-          }, "IDENTITY_IMAGE_DECODE");
+          await decodeLogo();
           if (logo.naturalWidth > 0 && logo.naturalHeight > 0)
             blob = await render(logo, 512 * 0.7);
         } catch (error) {

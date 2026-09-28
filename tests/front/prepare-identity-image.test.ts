@@ -124,77 +124,119 @@ async function errorCode(
   expect(error).not.toHaveProperty("cause");
 }
 
+// O canvas falso GRAVA o que o código desenhou: o `fillStyle` vigente no
+// instante de cada `fillRect` e os argumentos de cada `drawImage`. O PNG que
+// `toBlob` devolve é pronto (sharp) e não deriva do desenho — serve só para
+// dimensão/sha; cor e posição do maskable só se provam por este registro.
+// `image` vira o índice em `images` (0 = original em prepareIdentityImage,
+// 1 = ícone original decodificado, 2 = logo) para distinguir FakeImage
+// estruturalmente idênticas. Os argumentos são arredondados (4 casas) para
+// absorver o ruído de ponto flutuante de (512 - 358.4) / 2.
+type Operacao =
+  | { op: "fillRect"; canvas: number; fillStyle: string; args: number[] }
+  | { op: "drawImage"; canvas: number; image: number; args: number[] };
+const arredondar = (numeros: number[]) =>
+  numeros.map((numero) => Math.round(numero * 1e4) / 1e4);
+function documentoComCanvasGravador(large: Uint8Array) {
+  const operacoes: Operacao[] = [];
+  vi.stubGlobal("document", {
+    createElement: () => {
+      const canvas = {
+        width: 0,
+        height: 0,
+        getContext: () => {
+          const context = {
+            // Canvas real nasce preto: sem atribuição, o fundo sai preto.
+            fillStyle: "#000000",
+            fillRect: (...args: number[]) =>
+              operacoes.push({
+                op: "fillRect",
+                canvas: canvas.width,
+                fillStyle: context.fillStyle,
+                args: arredondar(args),
+              }),
+            drawImage: (image: FakeImage, ...args: number[]) =>
+              operacoes.push({
+                op: "drawImage",
+                canvas: canvas.width,
+                image: images.indexOf(image),
+                args: arredondar(args),
+              }),
+          };
+          return context;
+        },
+        toBlob: (callback: (value: Blob | null) => void) => {
+          // O maskable sai diferente do icon_512 (outro sha); os demais são
+          // o original reduzido.
+          const output =
+            canvas.width === 512
+              ? sharp({
+                  create: {
+                    width: 512,
+                    height: 512,
+                    channels: 4,
+                    background: "#123456",
+                  },
+                })
+              : sharp(large).resize(canvas.width, canvas.height);
+          void output
+            .png()
+            .toBuffer()
+            .then((bytes) =>
+              callback(
+                new Blob([new Uint8Array(bytes)], { type: "image/png" }),
+              ),
+            );
+        },
+      };
+      return canvas;
+    },
+  });
+  return operacoes;
+}
+// Sob timers falsos (setTimeout/clearTimeout) a espera por tempo de parede não
+// pode usar setTimeout: cede o laço com setImmediate, que não é falsificado.
+async function cederAte(condicao: () => boolean, limiteMs = 3000) {
+  const inicio = performance.now();
+  while (!condicao() && performance.now() - inicio < limiteMs)
+    await new Promise<void>((resolve) => setImmediate(resolve));
+}
+const pngGrande = async (background: string) =>
+  new Uint8Array(
+    await sharp({
+      create: { width: 512, height: 512, channels: 4, background },
+    })
+      .png()
+      .toBuffer(),
+  );
+
 describe("original preservado", () => {
   it("gera os tamanhos e um maskable com cor principal e logo centralizada", async () => {
-    const large = new Uint8Array(
-      await sharp({
-        create: { width: 512, height: 512, channels: 4, background: "red" },
-      })
-        .png()
-        .toBuffer(),
-    );
-    const draws: { image: unknown; width: number; height?: number }[] = [];
-    vi.stubGlobal("document", {
-      createElement: () => {
-        const canvas = {
-          width: 0,
-          height: 0,
-          getContext: () => ({
-            fillStyle: "",
-            fillRect: vi.fn(),
-            drawImage: (
-              drawnImage: unknown,
-              _x: number,
-              _y: number,
-              width: number,
-              height?: number,
-            ) => draws.push({ image: drawnImage, width, height }),
-          }),
-          toBlob: (callback: (value: Blob | null) => void) => {
-            const output =
-              canvas.width === 512
-                ? sharp({
-                    create: {
-                      width: 512,
-                      height: 512,
-                      channels: 4,
-                      background: "#123456",
-                    },
-                  }).composite([
-                    {
-                      input: {
-                        create: {
-                          width: 358,
-                          height: 179,
-                          channels: 4,
-                          background: "#00ff00",
-                        },
-                      },
-                      left: 77,
-                      top: 166,
-                    },
-                  ])
-                : sharp(large).resize(canvas.width, canvas.height);
-            void output
-              .png()
-              .toBuffer()
-              .then((bytes) =>
-                callback(
-                  new Blob([new Uint8Array(bytes)], { type: "image/png" }),
-                ),
-              );
-          },
-        };
-        return canvas;
-      },
-    });
+    const large = await pngGrande("red");
+    const operacoes = documentoComCanvasGravador(large);
     const icons = await prepareIdentityAppIcons(blob(large), {
       signal: signal(),
       primaryColor: "#123456",
       logoUrl: "https://store.test/header.png",
     });
-    expect(draws.map(({ width }) => width)).toEqual([192, 180, 358.4]);
-    expect(draws[2].image).toBe(images[2]);
+    // Fundo na cor principal ANTES da logo; a logo (32x16) a 70% da largura,
+    // centralizada: 358.4 x 179.2 em (76.8, 166.4).
+    expect(operacoes).toEqual([
+      { op: "drawImage", canvas: 192, image: 1, args: [0, 0, 192, 192] },
+      { op: "drawImage", canvas: 180, image: 1, args: [0, 0, 180, 180] },
+      {
+        op: "fillRect",
+        canvas: 512,
+        fillStyle: "#123456",
+        args: [0, 0, 512, 512],
+      },
+      {
+        op: "drawImage",
+        canvas: 512,
+        image: 2,
+        args: [76.8, 166.4, 358.4, 179.2],
+      },
+    ]);
     expect(icons.icon_512.asset.sha256).not.toBe(
       icons.maskable_512.asset.sha256,
     );
@@ -220,23 +262,10 @@ describe("original preservado", () => {
         format: "png",
       });
     }
-    const maskable = sharp(await icons.maskable_512.blob.arrayBuffer());
-    const { data, info } = await maskable.raw().toBuffer({
-      resolveWithObject: true,
-    });
-    expect([...data.subarray(0, 3)]).toEqual([18, 52, 86]);
-    const center = (256 * info.width + 256) * info.channels;
-    expect([...data.subarray(center, center + 3)]).toEqual([0, 255, 0]);
   });
 
   it("usa o icon_512 a 80% quando a logo não carrega", async () => {
-    const large = new Uint8Array(
-      await sharp({
-        create: { width: 512, height: 512, channels: 4, background: "blue" },
-      })
-        .png()
-        .toBuffer(),
-    );
+    const large = await pngGrande("blue");
     let logoFailed = false;
     decode.mockImplementation(async () => {
       if (
@@ -247,40 +276,111 @@ describe("original preservado", () => {
         throw new Error();
       }
     });
-    const draws: { image: unknown; width: number }[] = [];
-    vi.stubGlobal("document", {
-      createElement: () => {
-        const canvas = {
-          width: 0,
-          height: 0,
-          getContext: () => ({
-            fillStyle: "",
-            fillRect: vi.fn(),
-            drawImage: (
-              drawnImage: unknown,
-              _x: number,
-              _y: number,
-              width: number,
-            ) => draws.push({ image: drawnImage, width }),
-          }),
-          toBlob: (callback: (value: Blob | null) => void) => {
-            void sharp(large)
-              .resize(canvas.width, canvas.height)
-              .png()
-              .toBuffer()
-              .then((bytes) => callback(new Blob([new Uint8Array(bytes)])));
-          },
-        };
-        return canvas;
-      },
-    });
+    const operacoes = documentoComCanvasGravador(large);
     await prepareIdentityAppIcons(blob(large), {
       signal: signal(),
       primaryColor: "#123456",
       logoUrl: "https://store.test/missing.png",
     });
-    expect(draws.at(-1)).toEqual({ image: images[1], width: 409.6 });
+    // Reserva: o próprio ícone (imagem 1) a 80%, também sobre a cor principal.
+    // A FakeImage mede 32x16: encaixada em 409.6 fica 409.6 x 204.8, centralizada.
+    expect(operacoes.slice(-2)).toEqual([
+      {
+        op: "fillRect",
+        canvas: 512,
+        fillStyle: "#123456",
+        args: [0, 0, 512, 512],
+      },
+      {
+        op: "drawImage",
+        canvas: 512,
+        image: 1,
+        args: [51.2, 153.6, 409.6, 204.8],
+      },
+    ]);
     expect(images[2].crossOrigin).toBe("anonymous");
+  });
+
+  it("logo que nunca responde cai na reserva no prazo próprio e o envio completa", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const large = await pngGrande("blue");
+      const logoUrl = "https://store.test/lenta.png";
+      // A logo nunca resolve nem rejeita: só um prazo próprio a solta.
+      decode.mockImplementation(() =>
+        images.some((image) => image.src === logoUrl)
+          ? new Promise<void>(() => {})
+          : Promise.resolve(),
+      );
+      const operacoes = documentoComCanvasGravador(large);
+      let desfecho:
+        | { icones: Awaited<ReturnType<typeof prepareIdentityAppIcons>> }
+        | { erro: unknown }
+        | undefined;
+      const envio = prepareIdentityAppIcons(blob(large), {
+        signal: signal(),
+        primaryColor: "#123456",
+        logoUrl,
+      }).then(
+        (icones) => {
+          desfecho = { icones };
+        },
+        (erro: unknown) => {
+          desfecho = { erro };
+        },
+      );
+      try {
+        await cederAte(() => images[2]?.src === logoUrl);
+        expect(images[2]?.src).toBe(logoUrl);
+        // 8 s: muito abaixo dos 30 s do envio inteiro (que nem chegam a correr).
+        await vi.advanceTimersByTimeAsync(8000);
+        await cederAte(() => desfecho !== undefined);
+        expect(
+          desfecho,
+          "o envio não completou: a logo lenta segurou o prazo do envio",
+        ).toBeDefined();
+        expect(desfecho).toHaveProperty("icones");
+        expect(operacoes.slice(-2)).toEqual([
+          {
+            op: "fillRect",
+            canvas: 512,
+            fillStyle: "#123456",
+            args: [0, 0, 512, 512],
+          },
+          {
+            op: "drawImage",
+            canvas: 512,
+            image: 1,
+            args: [51.2, 153.6, 409.6, 204.8],
+          },
+        ]);
+        // O prazo próprio já disparou e o do envio foi liberado: nada pendente.
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        // Se o envio ainda estiver preso, o prazo de 30 s o encerra aqui.
+        await vi.advanceTimersByTimeAsync(30_000);
+        await envio;
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("logo que carrega não deixa o prazo próprio pendurado", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const large = await pngGrande("red");
+      const operacoes = documentoComCanvasGravador(large);
+      await prepareIdentityAppIcons(blob(large), {
+        signal: signal(),
+        primaryColor: "#123456",
+        logoUrl: "https://store.test/header.png",
+      });
+      expect(operacoes.at(-1)).toMatchObject({ op: "drawImage", image: 2 });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("não deriva ícones de uma imagem com dimensão incorreta", async () => {
