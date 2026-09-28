@@ -42,10 +42,13 @@
 name: CI
 
 on:
+  # Todo PR, qualquer que seja a base (28/09/2026, decisão do dono): as frentes
+  # paralelas abrem PR contra `proxima/base` (ou contra outra frente), e a
+  # suíte inteira no PC do Gabriel esgotou a memória com 11 sessões ao mesmo
+  # tempo. O repositório é público, então o Actions não tem custo.
   pull_request:
-    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
   push:
-    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
+    branches: [develop, main, claude/app-major-upgrade-wmc8x2, proxima/base]
 
 # NOTA (14/09/2026): o raciocínio abaixo nasceu quando o repositório era
 # privado e a API de branch protection devolvia 403 no plano Free. Essa

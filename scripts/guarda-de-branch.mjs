@@ -118,7 +118,10 @@ function lerStdin() {
       clearTimeout(relogio);
       resolve(valor);
     };
-    const relogio = setTimeout(() => fim(dados === "" ? null : dados), TIMEOUT_STDIN_MS);
+    const relogio = setTimeout(
+      () => fim(dados === "" ? null : dados),
+      TIMEOUT_STDIN_MS,
+    );
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (pedaco) => {
       dados += pedaco;
@@ -209,6 +212,9 @@ async function main() {
 // Só executa quando chamado como programa. Sem este guarda, importar o módulo
 // num teste dispara o `process.exit(0)` do caminho feliz e a suíte inteira
 // termina com "0 passed" — que é verde, e não prova nada.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   await main();
 }

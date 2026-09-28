@@ -47,7 +47,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
         <div className="absolute -right-6 -top-6 size-24 rounded-full bg-emerald-500/10 blur-2xl transition-all duration-700 group-hover:bg-emerald-500/20" />
 
         <div className="relative z-10 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
               <CheckCircle2 className="size-5 text-emerald-400" />
             </div>
@@ -58,7 +58,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
                 </span>
               </div>
               <h3 className="truncate text-xs font-bold leading-tight text-white sm:text-sm">
-                <span className="text-emerald-400 font-extrabold">
+                <span className="font-extrabold text-emerald-400">
                   {soLocal
                     ? "Frete grátis na cidade"
                     : "Frete grátis em toda a loja"}
@@ -72,9 +72,9 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-            <div className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-3 py-1 shadow-2xs">
-              <Sparkles className="size-3 text-emerald-400 animate-pulse" />
+          <div className="flex flex-shrink-0 flex-col items-end gap-1">
+            <div className="shadow-2xs flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-3 py-1">
+              <Sparkles className="size-3 animate-pulse text-emerald-400" />
               <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400">
                 Liberado
               </span>
@@ -84,7 +84,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
 
         {/* Barra cheia: o grátis é incondicional, não há progresso a fazer. */}
         <div className="absolute inset-x-0 bottom-0 h-1 bg-zinc-900">
-          <div className="h-full w-full bg-emerald-500" />
+          <div className="size-full bg-emerald-500" />
         </div>
       </div>
     );
@@ -110,7 +110,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
       return (
         <>
           Oba!{" "}
-          <span className="text-emerald-400 font-extrabold">
+          <span className="font-extrabold text-emerald-400">
             Frete Grátis {soLocal ? "na Cidade " : ""}Liberado!
           </span>{" "}
           🎉
@@ -121,7 +121,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
       return (
         <>
           Falta pouquinho pro{" "}
-          <span className="text-emerald-400 font-extrabold">
+          <span className="font-extrabold text-emerald-400">
             Frete Grátis{soLocal ? " na Cidade" : ""}!
           </span>{" "}
           ✨
@@ -131,7 +131,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
     return (
       <>
         Frete{" "}
-        <span className="text-emerald-400 font-extrabold italic">
+        <span className="font-extrabold italic text-emerald-400">
           Grátis{soLocal ? " na Cidade" : ""}
         </span>
       </>
@@ -180,7 +180,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
 
       <div className="relative z-10 flex items-center justify-between gap-3">
         {/* Esquerda: Ícone + Copy */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner transition-transform duration-300 group-hover:scale-105">
             {isGoalReached ? (
               <CheckCircle2 className="size-5 text-emerald-400" />
@@ -226,10 +226,10 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
         </div>
 
         {/* Direita: Badge do Valor / Progresso */}
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+        <div className="flex flex-shrink-0 flex-col items-end gap-1">
           {isGoalReached ? (
-            <div className="flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-3 py-1 shadow-2xs">
-              <Sparkles className="size-3 text-emerald-400 animate-pulse" />
+            <div className="shadow-2xs flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/80 px-3 py-1">
+              <Sparkles className="size-3 animate-pulse text-emerald-400" />
               <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400">
                 Liberado
               </span>

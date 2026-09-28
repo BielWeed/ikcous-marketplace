@@ -42,14 +42,18 @@ function lerDatabaseUrl() {
  * Roda um cenário dentro de transação e SEMPRE desfaz.
  * @returns {Promise<{ok: boolean, mensagem: string, detalhe?: string}>}
  */
-async function cenario(client, { titulo, userId, freeShippingMin, produto, quantidade, totalEnviado }) {
+async function cenario(
+  client,
+  { userId, freeShippingMin, produto, quantidade, totalEnviado },
+) {
   try {
     await client.query("BEGIN");
 
     // Ajuste da regra só dentro da transação — some no ROLLBACK.
-    await client.query("UPDATE public.store_config SET free_shipping_min = $1 WHERE id = 1", [
-      freeShippingMin,
-    ]);
+    await client.query(
+      "UPDATE public.store_config SET free_shipping_min = $1 WHERE id = 1",
+      [freeShippingMin],
+    );
 
     // auth.uid() lê request.jwt.claims. Sem claim => convidado.
     await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
@@ -97,7 +101,9 @@ async function main() {
       ORDER BY preco_venda DESC LIMIT 1`,
   );
   if (prodRows.length === 0) {
-    console.error("Nenhum produto ativo, com estoque >= 2 e sem frete grátis próprio.");
+    console.error(
+      "Nenhum produto ativo, com estoque >= 2 e sem frete grátis próprio.",
+    );
     await client.end();
     process.exit(1);
   }
@@ -110,11 +116,17 @@ async function main() {
   );
   const userId = userRows[0]?.id ?? null;
 
-  console.log(`Produto de teste : ${produto.nome} (R$ ${preco.toFixed(2)}, estoque ${produto.estoque})`);
+  console.log(
+    `Produto de teste : ${produto.nome} (R$ ${preco.toFixed(2)}, estoque ${produto.estoque})`,
+  );
   console.log(`Carrinho         : 2 un = R$ ${subtotal.toFixed(2)}`);
   console.log(`Taxa de entrega  : R$ ${frete.toFixed(2)}`);
-  console.log(`free_shipping_min real da loja: R$ ${Number(cfgRows[0].free_shipping_min).toFixed(2)}`);
-  console.log(`Usuário para o caso logado: ${userId ? `${userId.slice(0, 8)}…` : "nenhum encontrado"}\n`);
+  console.log(
+    `free_shipping_min real da loja: R$ ${Number(cfgRows[0].free_shipping_min).toFixed(2)}`,
+  );
+  console.log(
+    `Usuário para o caso logado: ${userId ? `${userId.slice(0, 8)}…` : "nenhum encontrado"}\n`,
+  );
 
   const cenarios = [
     {
@@ -125,7 +137,8 @@ async function main() {
       esperado: true,
     },
     {
-      titulo: "2. Convidado, carrinho ACIMA do mínimo -> paga frete  [ERA O BUG]",
+      titulo:
+        "2. Convidado, carrinho ACIMA do mínimo -> paga frete  [ERA O BUG]",
       userId: null,
       freeShippingMin: Math.max(1, subtotal - 1),
       totalEnviado: subtotal + frete,
@@ -139,7 +152,8 @@ async function main() {
       esperado: true,
     },
     {
-      titulo: "4. Regra desligada (min = 0) -> todo mundo paga frete  [ERA O BUG]",
+      titulo:
+        "4. Regra desligada (min = 0) -> todo mundo paga frete  [ERA O BUG]",
       userId: null,
       freeShippingMin: 0,
       totalEnviado: subtotal + frete,
@@ -157,7 +171,9 @@ async function main() {
     const passou = r.ok === c.esperado;
     if (!passou) falhas++;
     console.log(c.titulo);
-    console.log(`   total enviado: R$ ${c.totalEnviado.toFixed(2)} | min: R$ ${Number(c.freeShippingMin).toFixed(2)}`);
+    console.log(
+      `   total enviado: R$ ${c.totalEnviado.toFixed(2)} | min: R$ ${Number(c.freeShippingMin).toFixed(2)}`,
+    );
     console.log(`   ${passou ? "PASSOU" : "FALHOU"} -> ${r.mensagem}`);
     if (r.detalhe) console.log(`   detalhe: ${r.detalhe}`);
     console.log("");
@@ -172,11 +188,19 @@ async function main() {
     [produto.id],
   );
   console.log("Estado após os testes (deve estar idêntico ao inicial):");
-  console.log(`   free_shipping_min: R$ ${Number(depois[0].free_shipping_min).toFixed(2)} (era R$ ${Number(cfgRows[0].free_shipping_min).toFixed(2)})`);
-  console.log(`   estoque do produto: ${est[0].estoque} (era ${produto.estoque})`);
+  console.log(
+    `   free_shipping_min: R$ ${Number(depois[0].free_shipping_min).toFixed(2)} (era R$ ${Number(cfgRows[0].free_shipping_min).toFixed(2)})`,
+  );
+  console.log(
+    `   estoque do produto: ${est[0].estoque} (era ${produto.estoque})`,
+  );
 
   await client.end();
-  console.log(falhas === 0 ? "\nTodos os cenários passaram." : `\n${falhas} cenário(s) falharam.`);
+  console.log(
+    falhas === 0
+      ? "\nTodos os cenários passaram."
+      : `\n${falhas} cenário(s) falharam.`,
+  );
   process.exit(falhas === 0 ? 0 : 1);
 }
 
