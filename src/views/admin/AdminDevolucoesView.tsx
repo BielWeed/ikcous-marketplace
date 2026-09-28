@@ -92,10 +92,15 @@ export function AdminDevolucoesView({
 
   // Voltar do aparelho fecha a ficha primeiro (mesmo contrato do PDV e dos
   // banners): a trava evita fechar duas vezes com um popstate atrasado.
+  // Com a ficha SUJA o override NÃO fica registrado: ele só roda depois de o
+  // popstate já ter consumido a entrada `?id=`, então cancelar o `confirm` não
+  // a devolveria — o App aplicaria a URL sem id e fecharia a ficha. Sem
+  // override, o controle de dirty do App re-empurra a entrada `?id=` e
+  // pergunta uma vez.
   const fechouRef = useRef(false);
   useEffect(() => {
     if (!onSetBackOverride) return;
-    if (selecionada) {
+    if (selecionada && !sujo) {
       fechouRef.current = false;
       onSetBackOverride(() => () => {
         if (fechouRef.current) return;
@@ -106,7 +111,7 @@ export function AdminDevolucoesView({
       onSetBackOverride(null);
     }
     return () => onSetBackOverride(null);
-  }, [selecionada, fechar, onSetBackOverride]);
+  }, [selecionada, sujo, fechar, onSetBackOverride]);
 
   // No celular a ficha cobre a tela: o fundo não pode rolar por baixo.
   useEffect(() => {

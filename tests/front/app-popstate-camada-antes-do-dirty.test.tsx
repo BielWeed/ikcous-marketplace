@@ -18,29 +18,60 @@
 // descidos pelo App). O AlertDialog é dublê que CONTA quando renderiza
 // `open={true}` — o `open` do diálogo é `!!pendingNavigation` (App.tsx), então
 // é a prova direta de que o gate de dirty setou (ou não) a navegação pendente.
+//
+// Bloco "Devoluções na rota" (frente X2, `?id=` da ficha na URL): a mesma
+// máquina de Voltar/dirty, agora com a AdminDevolucoesView REAL (ficha suja +
+// Cancelar no Voltar não pode fechar a ficha no Chrome) e a View Transition
+// ASSÍNCRONA — o stub de `document.startViewTransition` roda o callback depois
+// de um tick, como o navegador. Também prende o que o ramo "só troca a ficha"
+// do `handleNavigate` não pode engolir (produto → produto segue pela View
+// Transition) e as três listas de `admin-devolucoes` que serializam o `?id=`.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Prova compartilhada entre os dublês: quantas vezes o override da camada
-// rodou (o "fechamento da camada") e quantas renderizações o AlertDialog fez
-// aberto (`open === true` — o diálogo de "alterações não salvas").
-const prova = vi.hoisted(() => ({
-  camadaFechadaPeloOverride: 0,
-  dialogoAberto: 0,
-  viewTransitions: 0,
-}));
-
-vi.mock("@/hooks/useViewTransition", () => ({
-  useViewTransition: () => ({
-    isSupported: true,
-    navigate: (atualizar: () => void) => {
-      prova.viewTransitions += 1;
-      atualizar();
-      return null;
-    },
-  }),
-}));
+// rodou (o "fechamento da camada"), quantas renderizações o AlertDialog fez
+// aberto (`open === true` — o diálogo de "alterações não salvas") e quantas
+// vezes ele ABRIU (virou de fechado para aberto), que é o que "aparece uma vez"
+// mede. `telaReal` escolhe, por teste, entre a AdminDevolucoesView de verdade e
+// o dublê de contrato (mais abaixo); `respostas` alimenta as RPCs da tela real.
+const prova = vi.hoisted(() => {
+  const estado = {
+    camadaFechadaPeloOverride: 0,
+    dialogoAberto: 0,
+    dialogoAberturas: 0,
+    dialogoEstavaAberto: false,
+    viewTransitions: 0,
+    telaReal: false,
+    respostas: new Map<string, unknown>(),
+    produtos: [{ id: "p-1" }, { id: "p-2" }],
+    // Quando preenchida, o chunk da tela de destino "ainda está baixando":
+    // a navegação fica presa na trava de transição, com a tela antiga de pé.
+    chunkPendente: null as Promise<void> | null,
+  };
+  // View Transition ASSÍNCRONA, como no Chrome: o callback que troca a tela só
+  // roda depois de um tick (o navegador captura o estado antigo antes). O hook
+  // real `useViewTransition` decide `isSupported` UMA vez, ao carregar o
+  // módulo — por isso o stub nasce aqui, antes de qualquer import. Um dublê
+  // síncrono esconde tudo que depende de "o que roda depois de o Voltar já ter
+  // sido consumido".
+  (
+    document as unknown as {
+      startViewTransition: (atualizar: () => void) => unknown;
+    }
+  ).startViewTransition = (atualizar: () => void) => {
+    estado.viewTransitions += 1;
+    const terminou = new Promise<void>((resolver) => {
+      setTimeout(() => {
+        atualizar();
+        resolver();
+      }, 0);
+    });
+    return { ready: terminou, finished: terminou, skip: () => {} };
+  };
+  return estado;
+});
 
 vi.mock("framer-motion", async () => {
   const React = await import("react");
@@ -101,7 +132,9 @@ vi.mock("@/components/layouts/AdminAreaGate", async () => {
       fallback: _fallback,
       ...props
     }: Record<string, unknown>) => (
-      <AdminArea {...(props as React.ComponentProps<typeof AdminArea>)} />
+      <AdminArea
+        {...(props as unknown as React.ComponentProps<typeof AdminArea>)}
+      />
     ),
   };
 });
@@ -149,53 +182,98 @@ vi.mock("@/views/admin/AdminPdvView", () => ({
   ),
 }));
 
-vi.mock("@/views/admin/AdminDevolucoesView", async () => {
-  const React = await import("react");
+// A tela de Devoluções tem DUAS caras, escolhidas por teste em `prova.telaReal`:
+// - a REAL (`AdminDevolucoesView` de verdade, com as RPCs respondidas por
+//   `prova.respostas`): é o que prova o Voltar do aparelho com a ficha suja;
+// - um dublê de CONTRATO, com um botão por gesto que a tela faz no App
+//   (trocar de ficha, sujar, registrar o override uma única vez). Ele NÃO se
+//   registra sozinho quando o id muda: a tela real re-registra o override a
+//   cada ficha nova (o efeito dela depende de `selecionada`), o que esconderia
+//   um `setBackOverride(null)` indevido no App — o dublê que registra uma vez
+//   só é o que expõe esse defeito.
+vi.mock("@/views/admin/AdminDevolucoesView", async (importarOriginal) => {
+  const original =
+    await importarOriginal<
+      typeof import("@/views/admin/AdminDevolucoesView")
+    >();
+  type Propriedades = React.ComponentProps<typeof original.AdminDevolucoesView>;
+  function DubleDeContrato({
+    onNavigate,
+    selectedDevolucaoId,
+    onSetDirty,
+    onSetBackOverride,
+  }: Propriedades) {
+    return (
+      <div data-testid="devolucao-id" data-id={selectedDevolucaoId ?? ""}>
+        <button
+          type="button"
+          data-testid="trocar-devolucao"
+          onClick={() => onNavigate("admin-devolucoes", "dev-2", true)}
+        >
+          Trocar devolução
+        </button>
+        <button
+          type="button"
+          data-testid="sair-da-tela"
+          onClick={() => onNavigate("admin-orders")}
+        >
+          Ir para Pedidos
+        </button>
+        <button
+          type="button"
+          data-testid="registrar-override"
+          onClick={() =>
+            onSetBackOverride?.(() => () => {
+              prova.camadaFechadaPeloOverride += 1;
+            })
+          }
+        >
+          Registrar o Voltar da ficha
+        </button>
+        <button
+          type="button"
+          data-testid="sujar-devolucao"
+          onClick={() => {
+            onSetDirty?.(true);
+            // O que a tela real faz com a ficha suja: solta o override e deixa
+            // o controle de dirty do App cuidar do Voltar.
+            onSetBackOverride?.(null);
+          }}
+        >
+          Alterar devolução
+        </button>
+      </div>
+    );
+  }
   return {
-    AdminDevolucoesView: ({
-      onNavigate,
-      selectedDevolucaoId,
-      onSetDirty,
-      onSetBackOverride,
-    }: {
-      readonly onNavigate: (
-        view: string,
-        id?: string,
-        bypass?: boolean,
-      ) => void;
-      readonly selectedDevolucaoId?: string | null;
-      readonly onSetDirty?: (dirty: boolean) => void;
-      readonly onSetBackOverride?: (fn: (() => void) | null) => void;
-    }) => {
-      React.useEffect(() => {
-        if (selectedDevolucaoId) onSetBackOverride?.(() => () => {});
-        return () => onSetBackOverride?.(null);
-      }, [selectedDevolucaoId, onSetBackOverride]);
-      return (
-        <div data-testid="devolucao-id" data-id={selectedDevolucaoId ?? ""}>
-          <button
-            type="button"
-            data-testid="trocar-devolucao"
-            onClick={() => onNavigate("admin-devolucoes", "dev-2", true)}
-          >
-            Trocar devolução
-          </button>
-          <button
-            type="button"
-            data-testid="sujar-devolucao"
-            onClick={() => {
-              onSetDirty?.(true);
-              // Exercita o fallback do App se uma camada perder o override.
-              onSetBackOverride?.(null);
-            }}
-          >
-            Alterar devolução
-          </button>
-        </div>
-      );
-    },
+    AdminDevolucoesView: (props: Propriedades) =>
+      prova.telaReal ? (
+        <original.AdminDevolucoesView {...props} />
+      ) : (
+        <DubleDeContrato {...props} />
+      ),
   };
 });
+
+// Porta do "Ver devolução" do pedido: a tela de Pedidos só chama
+// `onNavigate("admin-devolucoes", <id da devolução>)`.
+vi.mock("@/views/admin/AdminOrdersView", () => ({
+  AdminOrdersView: ({
+    onNavigate,
+  }: {
+    readonly onNavigate: (view: string, id?: string) => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="ver-devolucao-do-pedido"
+      onClick={() =>
+        onNavigate("admin-devolucoes", "5b1f1c1e-6a52-4c7e-9d35-0f2d7c9a4b10")
+      }
+    >
+      Ver devolução
+    </button>
+  ),
+}));
 
 vi.mock("@/views/customer/HomeView", () => ({
   HomeView: () => <div data-testid="home" />,
@@ -203,8 +281,26 @@ vi.mock("@/views/customer/HomeView", () => ({
 vi.mock("@/views/customer/CartView", () => ({
   CartView: () => <div data-testid="tela-carrinho" />,
 }));
+// Dublê do ProductView com a mesma porta da faixa "você também pode gostar":
+// `onProductClick` leva a `handleNavigate("product-detail", <outro id>)`.
 vi.mock("@/views/customer/ProductView", () => ({
-  ProductView: () => <div data-testid="tela-produto" />,
+  ProductView: ({
+    product,
+    onProductClick,
+  }: {
+    readonly product: { id: string };
+    readonly onProductClick: (id: string) => void;
+  }) => (
+    <div data-testid="tela-produto" data-id={product.id}>
+      <button
+        type="button"
+        data-testid="abrir-outro-produto"
+        onClick={() => onProductClick("p-2")}
+      >
+        Você também pode gostar
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("@/components/debug/DebugPanel", () => ({ DebugPanel: () => null }));
@@ -250,7 +346,11 @@ vi.mock("@/components/ui/alert-dialog", async () => {
     readonly children?: unknown;
     readonly open?: boolean;
   }) {
-    if (open) prova.dialogoAberto += 1;
+    if (open) {
+      prova.dialogoAberto += 1;
+      if (!prova.dialogoEstavaAberto) prova.dialogoAberturas += 1;
+    }
+    prova.dialogoEstavaAberto = !!open;
     return React.createElement(
       React.Fragment,
       null,
@@ -305,7 +405,7 @@ vi.mock("@/hooks/useAuth", () => ({
   }),
 }));
 vi.mock("@/hooks/useProducts", () => ({
-  useProducts: () => ({ products: [], loading: false }),
+  useProducts: () => ({ products: prova.produtos, loading: false }),
 }));
 vi.mock("@/hooks/useFavorites", () => ({
   useFavorites: () => ({
@@ -317,13 +417,18 @@ vi.mock("@/hooks/useFavorites", () => ({
 vi.mock("@/hooks/useAppBadge", () => ({
   useAppBadge: () => ({ setBadge: () => {}, clearBadge: () => {} }),
 }));
-vi.mock("@/hooks/usePrefetchOnHover", () => ({
-  usePrefetchOnHover: () => ({
+// Estável de propósito (o hook real devolve funções estáveis): `handleNavigate`
+// depende de `prefetchViewPromise`, e a tela real de Devoluções depende de
+// `onNavigate` no efeito que registra o Voltar — uma identidade nova a cada
+// render vira laço de render entre o App e a tela.
+vi.mock("@/hooks/usePrefetchOnHover", () => {
+  const api = {
     prefetchView: () => {},
     prefetchAll: () => {},
-    prefetchViewPromise: () => Promise.resolve(),
-  }),
-}));
+    prefetchViewPromise: () => prova.chunkPendente ?? Promise.resolve(),
+  };
+  return { usePrefetchOnHover: () => api };
+});
 vi.mock("@/hooks/useNetworkAdaptive", () => ({
   useNetworkAdaptive: () => ({ isSlow: () => false }),
 }));
@@ -354,7 +459,21 @@ vi.mock("@/lib/supabase", () => {
   return {
     supabase: {
       from: () => consulta,
-      rpc: () => Promise.resolve({ data: false, error: null }),
+      rpc: (nome: string) =>
+        Promise.resolve({
+          data: prova.respostas.has(nome) ? prova.respostas.get(nome) : false,
+          error: null,
+        }),
+      functions: { invoke: () => Promise.resolve({ data: {}, error: null }) },
+      storage: {
+        from: () => ({
+          createSignedUrl: () =>
+            Promise.resolve({
+              data: { signedUrl: "https://assinada/a.jpg" },
+              error: null,
+            }),
+        }),
+      },
       auth: { getSession: () => Promise.resolve({ data: { session: null } }) },
       channel: () => ({
         on: () => ({ subscribe: () => ({}) }),
@@ -366,6 +485,87 @@ vi.mock("@/lib/supabase", () => {
 });
 
 import App from "@/App";
+
+// Uma devolução `recebida` (o lojista inspeciona e conclui): é a ficha que a
+// tela real abre pela lista e onde "Nova, sem uso" suja o formulário.
+const LINHA = {
+  id: "d-1",
+  protocolo: "DV260926-ABCDE",
+  order_id: "o-1",
+  cliente_nome: "Maria",
+  cliente_whatsapp: "34999999999",
+  tipo: "arrependimento",
+  motivo: "tamanho_pequeno",
+  status: "recebida",
+  resolucao_desejada: "reembolso",
+  metodo_retorno: "envio_proprio",
+  modalidade: "nacional",
+  valor_itens: 199.8,
+  prazo_ate: "2026-10-01",
+  created_at: "2026-09-26T10:00:00Z",
+};
+
+const DETALHE = {
+  ...LINHA,
+  detalhe: "Ficou apertado.",
+  resolucao_final: null,
+  valor_frete_ida: 20,
+  valor_reembolso: null,
+  refund_id: null,
+  reembolso_manual: false,
+  fotos: [],
+  codigo_rastreio: "AB123456789BR",
+  codigo_postagem: null,
+  etiqueta_url: null,
+  me_reverse_id: null,
+  coleta_em: null,
+  mensagem_loja: null,
+  observacao_inspecao: null,
+  entregue_em: "2026-09-24T15:00:00Z",
+  politica: null,
+  aprovada_em: "2026-09-26T11:00:00Z",
+  postada_em: "2026-09-26T12:00:00Z",
+  recebida_em: "2026-09-27T12:00:00Z",
+  concluida_em: null,
+  encerrada_em: null,
+  itens: [
+    {
+      id: "di-1",
+      order_item_id: "oi-1",
+      product_id: "p-1",
+      variant_id: null,
+      product_name: "Tênis",
+      image_url: null,
+      quantidade: 2,
+      valor_unitario: 99.9,
+      condicao: null,
+      reestocar: null,
+      reestocado_em: null,
+    },
+  ],
+  eventos: [
+    {
+      id: 1,
+      de_status: null,
+      para_status: "solicitada",
+      ator: "cliente",
+      nota: null,
+      created_at: "2026-09-26T10:00:00Z",
+    },
+  ],
+  pedido: {
+    id: "o-1",
+    total: 219.8,
+    shipping: 20,
+    payment_method: "online",
+    payment_status: "pago",
+    canal: "online",
+    customer_name: "Maria",
+    whatsapp: "34999999999",
+    shipping_label_id: null,
+    shipping_option_id: null,
+  },
+};
 
 class ObservadorDeInterseccao {
   observe() {}
@@ -403,7 +603,18 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
   beforeEach(() => {
     prova.camadaFechadaPeloOverride = 0;
     prova.dialogoAberto = 0;
+    prova.dialogoAberturas = 0;
+    prova.dialogoEstavaAberto = false;
     prova.viewTransitions = 0;
+    prova.telaReal = false;
+    prova.chunkPendente = null;
+    prova.respostas.clear();
+    prova.respostas.set("admin_devolucoes_listar", {
+      total: 1,
+      contagem: { recebida: 1 },
+      itens: [LINHA],
+    });
+    prova.respostas.set("devolucao_detalhe", DETALHE);
     vi.stubGlobal("localStorage", dubleDeArmazem());
     vi.stubGlobal("sessionStorage", dubleDeArmazem());
     vi.stubGlobal("IntersectionObserver", ObservadorDeInterseccao);
@@ -567,5 +778,224 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
     expect(globalThis.location.pathname + globalThis.location.search).toBe(
       "/admin-devolucoes?id=dev-2",
     );
+  });
+  describe("Devoluções na rota: a ficha aberta pelo App", () => {
+    const rota = () =>
+      globalThis.location.pathname + globalThis.location.search;
+    const ficha = () =>
+      container?.querySelector<HTMLDivElement>(
+        '[data-testid="detalhe-devolucao"]',
+      ) ?? null;
+    const dubleDaFicha = () =>
+      container?.querySelector<HTMLDivElement>(
+        '[data-testid="devolucao-id"]',
+      ) ?? null;
+    const botaoComTexto = (texto: string) =>
+      Array.from(container?.querySelectorAll("button") ?? []).find(
+        (b) => b.textContent?.trim() === texto,
+      );
+    const clicarEm = async (el: Element | null | undefined) => {
+      if (!el) throw new Error("elemento não encontrado");
+      await act(async () => {
+        (el as HTMLElement).click();
+      });
+      await assentar();
+    };
+    const montar = async (pronto: () => boolean) => {
+      await act(async () => {
+        raiz?.render(<App />);
+      });
+      await assentar();
+      await esperarAte(pronto);
+    };
+    // O Voltar do aparelho: o jsdom entrega o popstate em uma macrotask e a
+    // View Transition do teste roda em outra — `assentar` espera as duas.
+    const voltar = async () => {
+      await act(async () => {
+        globalThis.history.back();
+      });
+      await assentar(20);
+    };
+
+    it("com a ficha SUJA, o Voltar não fecha a ficha: o diálogo do App abre uma vez e o que foi escolhido fica", async () => {
+      prova.telaReal = true;
+      const confirmar = vi.fn(() => false); // o lojista responde "Cancelar"
+      vi.stubGlobal("confirm", confirmar);
+      globalThis.history.replaceState(
+        { view: "admin-devolucoes" },
+        "",
+        "/admin-devolucoes",
+      );
+      await montar(
+        () => container?.querySelector('[data-devolucao="d-1"]') != null,
+      );
+
+      // Abre a devolução pela lista e suja o formulário (concluir → condição).
+      await clicarEm(container?.querySelector('[data-devolucao="d-1"]'));
+      await esperarAte(() => ficha() !== null);
+      expect(rota()).toBe("/admin-devolucoes?id=d-1");
+      await clicarEm(botaoComTexto("Concluir"));
+      await clicarEm(botaoComTexto("Nova, sem uso"));
+      expect(botaoComTexto("Nova, sem uso")?.getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+
+      await voltar();
+
+      // A ficha continua aberta, com o que o lojista escolheu…
+      expect(ficha()).not.toBeNull();
+      expect(botaoComTexto("Nova, sem uso")?.getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      // …a URL segue com o id da ficha…
+      expect(rota()).toBe("/admin-devolucoes?id=d-1");
+      // …e quem perguntou sobre as alterações não salvas foi o App, uma vez
+      // só — não o `confirm` da tela, que rodaria com o Voltar já consumido.
+      expect(prova.dialogoAberturas).toBe(1);
+      expect(confirmar).not.toHaveBeenCalled();
+    });
+
+    it("com a ficha LIMPA, o Voltar fecha a ficha pelo override e não pergunta nada", async () => {
+      prova.telaReal = true;
+      const confirmar = vi.fn(() => false);
+      vi.stubGlobal("confirm", confirmar);
+      globalThis.history.replaceState(
+        { view: "admin-devolucoes" },
+        "",
+        "/admin-devolucoes",
+      );
+      await montar(
+        () => container?.querySelector('[data-devolucao="d-1"]') != null,
+      );
+      await clicarEm(container?.querySelector('[data-devolucao="d-1"]'));
+      await esperarAte(() => ficha() !== null);
+
+      await voltar();
+
+      expect(ficha()).toBeNull();
+      expect(rota()).toBe("/admin-devolucoes");
+      expect(prova.dialogoAberturas).toBe(0);
+      expect(confirmar).not.toHaveBeenCalled();
+    });
+
+    it("trocar de produto pela vitrine segue pela View Transition: o ramo da ficha não vale fora das Devoluções", async () => {
+      globalThis.history.replaceState(
+        { view: "product-detail", id: "p-1" },
+        "",
+        "/product-detail?id=p-1",
+      );
+      const produtoAberto = () =>
+        container?.querySelector<HTMLElement>('[data-testid="tela-produto"]');
+      await montar(() => produtoAberto()?.dataset.id === "p-1");
+      prova.viewTransitions = 0;
+
+      await clicarEm(
+        container?.querySelector('[data-testid="abrir-outro-produto"]'),
+      );
+      await esperarAte(() => produtoAberto()?.dataset.id === "p-2");
+
+      // É a View Transition que leva a foto do card para a foto principal.
+      expect(prova.viewTransitions).toBe(1);
+      expect(rota()).toBe("/product-detail?id=p-2");
+    });
+
+    it('"Ver devolução" no pedido leva o id da devolução para a URL', async () => {
+      globalThis.history.replaceState(
+        { view: "admin-orders" },
+        "",
+        "/admin-orders",
+      );
+      await montar(() => areaAdmin() !== null);
+
+      await clicarEm(
+        container?.querySelector('[data-testid="ver-devolucao-do-pedido"]'),
+      );
+      await esperarAte(() => dubleDaFicha() !== null);
+
+      const idDaDevolucao = "5b1f1c1e-6a52-4c7e-9d35-0f2d7c9a4b10";
+      expect(rota()).toBe(`/admin-devolucoes?id=${idDaDevolucao}`);
+      expect(dubleDaFicha()?.dataset.id).toBe(idDaDevolucao);
+    });
+
+    it("o Voltar durante a troca de tela devolve a URL da ficha, com o ?id=", async () => {
+      globalThis.history.replaceState(
+        { view: "admin-orders" },
+        "",
+        "/admin-orders",
+      );
+      globalThis.history.pushState(
+        { view: "admin-devolucoes", id: "d-1" },
+        "",
+        "/admin-devolucoes?id=d-1",
+      );
+      // O chunk de Pedidos não chegou: a trava de transição segura a tela
+      // antiga (a ficha d-1) enquanto o lojista aperta Voltar.
+      prova.chunkPendente = new Promise<void>(() => {});
+      await montar(() => dubleDaFicha()?.dataset.id === "d-1");
+      await clicar("sair-da-tela");
+      expect(dubleDaFicha()?.dataset.id).toBe("d-1");
+
+      await voltar();
+
+      // O App re-empurra a rota da tela que continua de pé — a ficha inclusive.
+      expect(rota()).toBe("/admin-devolucoes?id=d-1");
+      expect(dubleDaFicha()?.dataset.id).toBe("d-1");
+    });
+
+    it("abrir outra ficha enquanto a troca de tela espera o chunk cancela a troca pendente", async () => {
+      globalThis.history.replaceState(
+        { view: "admin-orders" },
+        "",
+        "/admin-orders",
+      );
+      globalThis.history.pushState(
+        { view: "admin-devolucoes", id: "dev-1" },
+        "",
+        "/admin-devolucoes?id=dev-1",
+      );
+      let liberarChunk = () => {};
+      prova.chunkPendente = new Promise<void>((resolver) => {
+        liberarChunk = resolver;
+      });
+      await montar(() => dubleDaFicha()?.dataset.id === "dev-1");
+      await clicar("sair-da-tela");
+
+      // Passa da janela de 400ms da trava: a próxima navegação destrava e
+      // segue — a ficha nova é a última intenção do lojista.
+      await act(async () => {
+        await new Promise((resolver) => setTimeout(resolver, 450));
+      });
+      await clicar("trocar-devolucao");
+      expect(dubleDaFicha()?.dataset.id).toBe("dev-2");
+
+      // O chunk de Pedidos chega tarde: a troca de tela ficou velha.
+      liberarChunk();
+      await assentar(20);
+
+      expect(dubleDaFicha()?.dataset.id).toBe("dev-2");
+      expect(rota()).toBe("/admin-devolucoes?id=dev-2");
+    });
+
+    it("trocar de ficha não zera o Voltar que a tela registrou: ele continua fechando a ficha", async () => {
+      globalThis.history.replaceState(
+        { view: "admin-devolucoes" },
+        "",
+        "/admin-devolucoes",
+      );
+      globalThis.history.pushState(
+        { view: "admin-devolucoes", id: "dev-1" },
+        "",
+        "/admin-devolucoes?id=dev-1",
+      );
+      await montar(() => dubleDaFicha()?.dataset.id === "dev-1");
+      await clicar("registrar-override");
+
+      await clicar("trocar-devolucao");
+      expect(dubleDaFicha()?.dataset.id).toBe("dev-2");
+
+      await voltar();
+
+      expect(prova.camadaFechadaPeloOverride).toBe(1);
+    });
   });
 });

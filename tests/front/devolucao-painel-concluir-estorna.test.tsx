@@ -393,25 +393,64 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     );
   });
 
-  it("formulário tocado liga onSetDirty; o Voltar do aparelho fecha a ficha", async () => {
+  function botaoFechar() {
+    return hospedeiro.querySelector<HTMLElement>(
+      '[aria-label="Fechar devolução"]',
+    );
+  }
+
+  it("ficha limpa: o Voltar do aparelho fecha a ficha sem perguntar", async () => {
+    await montar();
+    await clicar(
+      hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
+    );
+    const registro = onSetBackOverride.mock.calls
+      .map((c) => c[0])
+      .filter((f): f is () => () => void => typeof f === "function")
+      .at(-1);
+    expect(registro).toBeTruthy();
+    onNavigate.mockClear();
+    await act(async () => {
+      registro?.()();
+    });
+    await drenar();
+    expect(globalThis.confirm).not.toHaveBeenCalled();
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).toBeNull();
+    expect(onNavigate).toHaveBeenLastCalledWith(
+      "admin-devolucoes",
+      undefined,
+      true,
+    );
+  });
+
+  it("formulário tocado liga onSetDirty e solta o Voltar da ficha: quem avisa é o App", async () => {
+    await montar();
+    await clicar(
+      hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
+    );
+    expect(
+      typeof onSetBackOverride.mock.calls.at(-1)?.[0],
+      "ficha limpa registra o Voltar",
+    ).toBe("function");
+    await clicar(botao("Concluir"));
+    await clicar(botao("Nova, sem uso"));
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    // Com rascunho, o override não fica registrado: ele só rodaria depois de
+    // o popstate consumir a entrada `?id=`, e cancelar o `confirm` não a
+    // devolveria (o App aplicaria a URL sem id e fecharia a ficha).
+    expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+  });
+
+  it("Fechar com rascunho confirma antes de descartar", async () => {
     await montar();
     await clicar(
       hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
     );
     await clicar(botao("Concluir"));
     await clicar(botao("Nova, sem uso"));
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
-
-    const registro = onSetBackOverride.mock.calls
-      .map((c) => c[0])
-      .filter((f): f is () => () => void => typeof f === "function")
-      .at(-1);
-    expect(registro).toBeTruthy();
-    // Com rascunho, o Voltar confirma antes de descartar.
-    await act(async () => {
-      registro?.()();
-    });
-    await drenar();
+    await clicar(botaoFechar());
     expect(globalThis.confirm).toHaveBeenCalled();
     expect(
       hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
@@ -431,12 +470,7 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     await clicar(botao("Nova, sem uso"));
     vi.mocked(globalThis.confirm).mockReturnValue(false);
     onNavigate.mockClear();
-    const registro = onSetBackOverride.mock.calls
-      .map((c) => c[0])
-      .filter((f): f is () => () => void => typeof f === "function")
-      .at(-1);
-    expect(registro).toBeTruthy();
-    await act(async () => registro?.()());
+    await clicar(botaoFechar());
     expect(globalThis.confirm).toHaveBeenCalled();
     expect(onNavigate).not.toHaveBeenCalled();
     expect(
