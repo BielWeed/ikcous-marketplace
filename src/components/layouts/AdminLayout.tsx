@@ -6,6 +6,7 @@ import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useConnectionDiagnostics } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
+import { prefetchPainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import {
@@ -26,7 +27,6 @@ import { haptic } from "@/utils/haptic";
 import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity,
   ArrowLeft,
   Bell,
   Layers,
@@ -37,6 +37,7 @@ import {
   ScanBarcode,
   Settings,
   ShoppingBag,
+  Store,
   Users,
 } from "lucide-react";
 import React from "react";
@@ -414,6 +415,10 @@ export function AdminLayout({
       }
       prefetchView(view);
       if (view === "admin-dashboard" || view === "admin") {
+        // O Início lê `painel_inicio` (+ assinatura); o dashboard de
+        // métricas que ele era foi para a Visão geral do CRM (26/09/2026).
+        prefetchPainelInicio();
+      } else if (view === "admin-crm") {
         fetchExecutiveSummary(false).catch(() => {});
         fetchCategoryAnalytics(
           "2020-01-01T00:00:00.000Z",
@@ -517,7 +522,7 @@ export function AdminLayout({
   }, [currentView]);
 
   const navItems = [
-    { icon: Activity, label: "Geral", view: "admin-dashboard" },
+    { icon: Store, label: "Início", view: "admin-dashboard" },
     { icon: Package, label: "Pedidos", view: "admin-orders" },
     { icon: ShoppingBag, label: "Produtos", view: "admin-products" },
     { icon: Users, label: "Clientes", view: "admin-customers" },

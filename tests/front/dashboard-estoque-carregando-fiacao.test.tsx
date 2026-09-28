@@ -1,61 +1,62 @@
 // @vitest-environment jsdom
-import type { DashboardStats } from "@/hooks/useAnalytics";
+//
+// O card "Estoque baixo" + checklist "loja pronta para vender"
+// (LojaProntaEEstoqueBaixo) continua no Início do painel. Desde 26/09/2026
+// o número vem de `painel_inicio().pendencias.estoque_baixo` (o Início não
+// chama mais a RPC de analytics do dashboard antigo, que foi para a Visão
+// geral do CRM). A fiação que este teste prende é a mesma de antes:
+// "ainda buscando" é "Conferindo estoque…" — nunca o alarme de falha — e
+// número em mãos aparece sem carregando.
 import { type ComponentProps, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  stats: null as DashboardStats | null,
   receberProps: vi.fn(),
-  fetchExecutiveSummary: vi.fn(),
-  fetchCategoryAnalytics: vi.fn(),
+  resolverPainel: null as
+    | ((resposta: { data: unknown; error: unknown }) => void)
+    | null,
 }));
 
-vi.mock("@/hooks/useAnalytics", () => ({
-  useAnalytics: () => ({
-    stats: h.stats,
-    // Mantém isLoading=true mesmo quando já há stats em cache.
-    categoryData: null,
-    error: null,
-    categoryError: null,
-    fetchExecutiveSummary: h.fetchExecutiveSummary,
-    fetchCategoryAnalytics: h.fetchCategoryAnalytics,
-  }),
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    rpc: (nome: string) =>
+      nome === "painel_inicio"
+        ? new Promise((resolve) => {
+            h.resolverPainel = resolve;
+          })
+        : Promise.resolve({ data: null, error: null }),
+    channel: () => {
+      const canal: Record<string, unknown> = {
+        on: () => canal,
+        subscribe: () => canal,
+      };
+      return canal;
+    },
+    removeChannel: vi.fn(),
+  },
 }));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    config: { originCep: "12345-678" },
+    config: { originCep: "12345-678", storeName: "Loja" },
     isLoaded: true,
     products: [{ isActive: true }],
     loadingProducts: false,
   }),
 }));
-// A sessão nula isola este teste de RPCs, timers e canais de rede.
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ session: null }),
-}));
-vi.mock("@/hooks/useLeaderElection", () => ({
-  useLeaderElection: () => ({ isLeader: false }),
+  useAuth: () => ({ session: { user: { id: "adm-1" } }, profile: null }),
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/hooks/useScrollRestoration", () => ({
   useScrollRestoration: () => ({ ref: { current: null } }),
 }));
-vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/hooks/usePrefetchOnHover", () => ({
+  usePrefetchOnHover: () => ({ prefetchView: vi.fn() }),
+}));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-// Só os gráficos/carrossel são substituídos; painel, ponte e card são reais.
-vi.mock("@/components/admin/dashboard/KpiSummaryCards", () => ({
-  KpiSummaryCards: () => null,
-}));
-vi.mock("@/components/admin/dashboard/OperationalPerformanceChart", () => ({
-  OperationalPerformanceChart: () => null,
-}));
-vi.mock("@/components/admin/dashboard/StrategicIntelligenceBlocks", () => ({
-  StrategicIntelligenceBlocks: () => null,
-}));
-vi.mock("@/components/admin/dashboard/TopProductsList", () => ({
-  TopProductsList: () => null,
-}));
+// Painel, ponte e card são reais; só espiamos as props que chegam ao card.
 vi.mock(
   "@/components/admin/dashboard/LojaProntaEEstoqueBaixo",
   async (importOriginal) => {
@@ -78,31 +79,27 @@ vi.mock(
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const STATS: DashboardStats = {
-  today: { revenue: 0, count: 0, pending: 0, revenueTrend: 0, countTrend: 0 },
-  month: { revenue: 0, count: 0, revenueTrend: 0, countTrend: 0 },
-  executive: {
-    totalRevenue: 0,
-    totalOrders: 0,
-    revenueTrend: 0,
-    ordersTrend: 0,
-    avgTicket: 0,
-    avgTicketTrend: 0,
-    activeCustomers: 0,
-    activeCustomersTrend: 0,
-  },
-  revenueHistory: [],
-  topProducts: [],
-  inventoryAlerts: 3,
-};
+async function esperarAte(condicao: () => boolean, timeoutMs = 3000) {
+  const inicio = Date.now();
+  while (!condicao()) {
+    if (Date.now() - inicio > timeoutMs) {
+      throw new Error(`esperarAte: não aconteceu em ${timeoutMs}ms`);
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  }
+}
 
-describe("AdminDashboardView liga o carregamento ao card de estoque", () => {
+describe("Início liga o carregamento do painel ao card de estoque", () => {
   let hospedeiro: HTMLDivElement;
   let raiz: Root;
 
   beforeEach(() => {
+    // Cache do Início é de módulo: cada teste parte de um módulo novo.
+    vi.resetModules();
     vi.clearAllMocks();
-    h.stats = null;
+    h.resolverPainel = null;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -120,16 +117,20 @@ describe("AdminDashboardView liga o carregamento ao card de estoque", () => {
     await act(async () => {
       raiz.render(<AdminDashboardView active={true} onNavigate={vi.fn()} />);
     });
-    const sincronizar = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (botao) => botao.textContent?.includes("Sincronizar"),
-    );
-    // Online, botão desabilitado confirma que o estado interno ainda carrega.
-    expect(sincronizar?.disabled).toBe(true);
+    await esperarAte(() => h.resolverPainel !== null);
   }
 
-  it("isLoading=true sem stats envia estoqueCarregando=true e não acusa falha", async () => {
+  function botaoSincronizar() {
+    return Array.from(hospedeiro.querySelectorAll("button")).find((botao) =>
+      botao.textContent?.includes("Sincronizar"),
+    );
+  }
+
+  it("buscando sem número: estoqueCarregando=true e não acusa falha", async () => {
     await montarPainel();
 
+    // Online, botão desabilitado confirma que o estado interno ainda carrega.
+    expect(botaoSincronizar()?.disabled).toBe(true);
     expect(h.receberProps).toHaveBeenLastCalledWith(
       expect.objectContaining({ stats: null, estoqueCarregando: true }),
     );
@@ -138,15 +139,26 @@ describe("AdminDashboardView liga o carregamento ao card de estoque", () => {
     expect(hospedeiro.textContent).not.toMatch(/tentar de novo/i);
   });
 
-  it("isLoading=true com stats envia estoqueCarregando=false e mantém o número", async () => {
-    h.stats = STATS;
+  it("número em mãos: estoqueCarregando=false e o número do painel aparece", async () => {
     await montarPainel();
+    await act(async () => {
+      h.resolverPainel?.({
+        data: { pendencias: { estoque_baixo: 3 } },
+        error: null,
+      });
+    });
+    await esperarAte(() =>
+      (hospedeiro.textContent ?? "").includes("Estoque baixo: 3 produtos"),
+    );
 
     expect(h.receberProps).toHaveBeenLastCalledWith(
-      expect.objectContaining({ stats: STATS, estoqueCarregando: false }),
+      expect.objectContaining({
+        stats: { inventoryAlerts: 3 },
+        estoqueCarregando: false,
+      }),
     );
-    expect(hospedeiro.textContent).toContain("Estoque baixo: 3 produtos");
     expect(hospedeiro.textContent).not.toMatch(/conferindo estoque/i);
     expect(hospedeiro.textContent).not.toMatch(/não foi possível conferir/i);
+    expect(botaoSincronizar()?.disabled).toBe(false);
   });
 });

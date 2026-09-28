@@ -1,6 +1,12 @@
 // O atributo credentialless do iframe (Chrome 110+) ainda não existe nos
-// tipos do React 19. Ele é a peça que permite o embed do Google Maps sob o
-// COEP credentialless do app — ver AboutStoreView e AdminAboutStoreView.
+// tipos do React 19. Continua usado nos mapas (AboutStoreView,
+// AdminAboutStoreView e AddressList) e no desafio 3DS do cartão
+// (PagamentoComCartao) mesmo depois de o app deixar de enviar COEP
+// credentialless (26/09/2026 — decisão do dono, travava o Card Payment Brick).
+// Sem o COEP o atributo já não evita bloqueio; ele só abre o iframe num pote de
+// cookies vazio e faz popups de dentro saírem noopener (Chromium 110+). Nos
+// mapas isso já era o comportamento em produção; no 3DS não está provado (ver
+// o comentário em PagamentoComCartao).
 // O import torna este arquivo um MÓDULO: sem ele, o declare module deixa de
 // ser augmentation e passa a sombrear os tipos do react inteiros.
 import "react";

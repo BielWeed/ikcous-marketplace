@@ -2,6 +2,10 @@ import { LazyImage } from "@/components/LazyImage";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import {
+  CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
+  CLASSE_SELO_DESCONTO,
+} from "@/lib/cor-do-preco-promocional";
+import {
   type PromessasDeFrete,
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
@@ -339,7 +343,12 @@ function HeroOfferCard({
             Super Oferta
           </span>
           {discount > 0 && (
-            <span className="px-3 py-0.5 font-black text-rose-600">
+            <span
+              className={cn(
+                "rounded-full px-3 py-0.5 font-black",
+                CLASSE_SELO_DESCONTO,
+              )}
+            >
               {discount}% OFF
             </span>
           )}
@@ -454,7 +463,12 @@ function HeroOfferCard({
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 line-through">
                     De: {formatCurrency(product.originalPrice)}
                   </span>
-                  <span className="mt-0.5 text-xl font-black leading-none tracking-tighter text-rose-600 sm:text-2xl">
+                  <span
+                    className={cn(
+                      "mt-0.5 text-xl font-black leading-none tracking-tighter sm:text-2xl",
+                      CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
+                    )}
+                  >
                     Por: {formatCurrency(product.price)}
                   </span>
                 </div>
@@ -491,6 +505,13 @@ function HeroOfferCard({
           </div>
 
           {/* CTAs */}
+          {/* Decisão do Gabriel (27/09/2026): dois botões dizendo a MESMA
+              coisa ("Escolher opções") e fazendo a MESMA coisa (abrir o
+              produto, ver os `if (hasActiveVariant)` dos dois handlers
+              acima) é redundante -- com variação ativa, só o principal
+              fica, e ocupa a largura inteira (`flex-[2]` sozinho num flex
+              container já cresce para 100%, sem precisar de classe extra).
+              Sem variação, os dois continuam lado a lado como sempre. */}
           <div className="flex gap-2">
             <button
               onClick={handleAddToCartClick}
@@ -524,18 +545,20 @@ function HeroOfferCard({
               </span>
             </button>
 
-            <button
-              onClick={handleQuickBuyClick}
-              disabled={product.stock <= 0}
-              className={cn(
-                "flex-grow-1 flex-[1] py-2.5 px-4 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] border shadow-sm",
-                product.stock <= 0
-                  ? "bg-zinc-50 text-zinc-300 border-zinc-100 cursor-not-allowed shadow-none"
-                  : "bg-secondary/10 hover:bg-secondary/20 text-primary border-secondary/20",
-              )}
-            >
-              {hasActiveVariant ? "Escolher opções" : "Comprar"}
-            </button>
+            {!hasActiveVariant && (
+              <button
+                onClick={handleQuickBuyClick}
+                disabled={product.stock <= 0}
+                className={cn(
+                  "flex-grow-1 flex-[1] py-2.5 px-4 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] border shadow-sm",
+                  product.stock <= 0
+                    ? "bg-zinc-50 text-zinc-300 border-zinc-100 cursor-not-allowed shadow-none"
+                    : "bg-secondary/10 hover:bg-secondary/20 text-primary border-secondary/20",
+                )}
+              >
+                Comprar
+              </button>
+            )}
           </div>
         </div>
       </div>

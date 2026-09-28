@@ -140,6 +140,21 @@ describe("paiDaTelaDoAdmin", () => {
     );
   });
 
+  // 26/09: Dashboard CRM e Financeiro abrem pelos botões do Início e voltam a
+  // ele; Devoluções mora ao lado dos pedidos (nasce de pedido entregue).
+  it("admin-crm e admin-financeiro voltam ao Início; admin-devolucoes volta aos pedidos", () => {
+    expect(paiDaTelaDoAdmin("admin-crm", null, false)).toBe("admin-dashboard");
+    expect(paiDaTelaDoAdmin("admin-financeiro", "home", false)).toBe(
+      "admin-dashboard",
+    );
+    expect(paiDaTelaDoAdmin("admin-devolucoes", null, false)).toBe(
+      "admin-orders",
+    );
+    expect(paiDaTelaDoAdmin("admin-devolucoes", "admin-dashboard", false)).toBe(
+      "admin-orders",
+    );
+  });
+
   it("admin-shipping-national sempre volta para admin-shipping — tela filha do botão 'Estratégias do frete nacional'", () => {
     expect(paiDaTelaDoAdmin("admin-shipping-national", null, false)).toBe(
       "admin-shipping",

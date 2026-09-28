@@ -33,6 +33,21 @@ const AdminPdv = lazyWithPreload(() =>
     default: m.AdminPdvView,
   })),
 );
+const AdminCrm = lazyWithPreload(() =>
+  import("@/views/admin/AdminCrmView").then((m) => ({
+    default: m.AdminCrmView,
+  })),
+);
+const AdminFinanceiro = lazyWithPreload(() =>
+  import("@/views/admin/AdminFinanceiroView").then((m) => ({
+    default: m.AdminFinanceiroView,
+  })),
+);
+const AdminDevolucoes = lazyWithPreload(() =>
+  import("@/views/admin/AdminDevolucoesView").then((m) => ({
+    default: m.AdminDevolucoesView,
+  })),
+);
 const AdminCoupons = lazyWithPreload(() =>
   import("@/views/admin/AdminCouponsView").then((m) => ({
     default: m.AdminCouponsView,
@@ -173,7 +188,10 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   }
 
   let title = "Painel";
-  if (view === "admin-dashboard" || view === "admin") title = "Dashboard";
+  if (view === "admin-dashboard" || view === "admin") title = "Início";
+  else if (view === "admin-crm") title = "Dashboard CRM";
+  else if (view === "admin-financeiro") title = "Financeiro";
+  else if (view === "admin-devolucoes") title = "Devoluções";
   else if (view === "admin-products") title = "Produtos";
   else if (view === "admin-orders") title = "Pedidos";
   // Mesma palavra do botão da barra, não "PDV".
@@ -598,6 +616,46 @@ export function AdminArea({
                           props={{
                             onNavigate: onNavigate,
                             active: currentView === "admin-pdv",
+                            onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-crm":
+                    return (
+                      <LocalErrorBoundary key="admin-crm">
+                        <PreloadedOrLazy
+                          component={AdminCrm}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-crm",
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-financeiro":
+                    return (
+                      <LocalErrorBoundary key="admin-financeiro">
+                        <PreloadedOrLazy
+                          component={AdminFinanceiro}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-financeiro",
+                            onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-devolucoes":
+                    return (
+                      <LocalErrorBoundary key="admin-devolucoes">
+                        <PreloadedOrLazy
+                          component={AdminDevolucoes}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-devolucoes",
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
                           }}

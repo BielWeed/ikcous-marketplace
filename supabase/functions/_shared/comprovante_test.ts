@@ -468,7 +468,7 @@ Deno.test("PIX pelo site AINDA aguardando pagamento -> abertura de 'aguardando',
   assertEquals(chamadasEnvio.length, 1);
   assertStringIncludes(
     chamadasEnvio[0].html,
-    "Recebemos seu pedido e ele esta aguardando a confirmacao do pagamento. Assim que o PIX for confirmado, ele entra na fila de separacao.",
+    "Recebemos seu pedido e ele esta aguardando a confirmacao do pagamento. Assim que o pagamento for confirmado, ele entra na fila de separacao.",
   );
   assertEquals(
     chamadasEnvio[0].html.includes("Guarde este e-mail: ele e o resumo do que voce comprou"),
@@ -514,4 +514,38 @@ Deno.test("envio de e-mail falha -> libera a reserva (RPC 'liberar_email_de_conf
     UUID_PEDIDO,
     "sem liberar, o pedido ficaria marcado 'já avisado' para sempre e o cliente sem comprovante nenhum",
   );
+});
+
+// 26/09/2026 — cartão pelo app: o comprovante diz a forma que o cliente usou
+// de fato (metodo_online), não "PIX pelo site" para todo pedido online.
+Deno.test("cartão de crédito pelo app -> o comprovante diz cartão, nunca PIX", async () => {
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_data: { email: "cliente@exemplo.com" },
+    subtotal: 100,
+    total: 100,
+    payment_method: "online",
+    metodo_online: "credito",
+    payment_status: "pago",
+  };
+  const chamadasEnvio: Array<{ para: string; assunto: string; html: string }> = [];
+  const supabase = clienteFalso({
+    pedido,
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    storeConfig: { store_name: "Loja Teste" },
+    reservou: true,
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      remetenteConfigurado: () => true,
+      enviarEmail: async (args) => {
+        chamadasEnvio.push(args);
+      },
+    },
+  });
+  assertEquals(desfecho, { ok: true });
+  assertStringIncludes(chamadasEnvio[0].html, "Cartao de credito pelo site");
+  assertEquals(chamadasEnvio[0].html.includes("PIX pelo site"), false);
 });

@@ -141,15 +141,24 @@ async function main() {
       `CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE
        AS $stub$ SELECT NULL::text $stub$`,
     );
+    // raw_app_meta_data existe aqui porque public.is_admin() (baseline) cai
+    // nele no fallback, e as funções da migration 83 (crm__pedidos_nao_pagos/
+    // crm__nunca_comprou) leem `auth.users.raw_app_meta_data ->> 'role'` no
+    // próprio corpo — sem a coluna, CREATE OR REPLACE FUNCTION dessas duas
+    // (LANGUAGE sql, corpo validado contra o catálogo na criação) explode
+    // com 42703 (undefined_column) já na 2ª passada de aplicação (achado da
+    // re-revisão de risco, 27/09/2026; mesma coluna que tests/banco/
+    // provisionar.cjs já tinha para a frente rpc-ci).
     await cliente.query(
       `CREATE TABLE auth.users (
          id uuid PRIMARY KEY,
          email text,
-         phone text
+         phone text,
+         raw_app_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb
        )`,
     );
     console.log(
-      "[provisionar] auth.* de fábrica emulado (uid/role stubs + auth.users id/email/phone).",
+      "[provisionar] auth.* de fábrica emulado (uid/role stubs + auth.users id/email/phone/raw_app_meta_data).",
     );
 
     // 4. Publication de fábrica do realtime (achado da 1ª rodada de depuração:

@@ -39,7 +39,8 @@ interface EstornosDoPedido {
    * chargeback em análise) — é a mesma conta que a RPC `solicitar_estorno`
    * faz para recusar um pedido maior que o saldo livre. */
   emCurso: number;
-  /** `pago - devolvido - emCurso`. */
+  /** `pago - devolvido - emCurso - reembolso manual de devolução já concluída
+   * do mesmo pedido` (achado A3, rodada 3). */
   disponivel: number;
   carregando: boolean;
   /** O pedido já foi lido pelo menos uma vez. Distingue "ainda não sei o
@@ -80,6 +81,16 @@ interface SaldoDoPedido {
   valor_estornado: number;
 }
 
+// Achado A3 (revisão de 26/09/2026, rodada 3, baixa prioridade): mesmo
+// desconto que a RPC solicitar_estorno já faz no saldo dela — sem isto, o
+// "disponível" desta TELA prometia mais do que o clique de verdade aceitava
+// (reembolso manual de devolução já concluída do mesmo pedido é dinheiro
+// que já saiu por outro caminho). Só LEITURA/exibição: quem decide de
+// verdade continua sendo o servidor, que recusa se este número mentir.
+interface DevolucaoManualDoPedido {
+  valor_reembolso: number;
+}
+
 /**
  * Lê o saldo e o histórico de devoluções de UM pedido (`order_refunds` +
  * `marketplace_orders.valor_estornado`) e expõe `solicitarEstorno`, que
@@ -98,6 +109,9 @@ interface SaldoDoPedido {
 export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
   const [linhas, setLinhas] = useState<LinhaEstornoDoPedido[]>([]);
   const [pedido, setPedido] = useState<SaldoDoPedido | null>(null);
+  const [devolucoesManuais, setDevolucoesManuais] = useState<
+    DevolucaoManualDoPedido[]
+  >([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -112,20 +126,27 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const [respostaLinhas, respostaPedido] = await Promise.all([
-        supabase
-          .from("order_refunds")
-          .select(
-            "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em",
-          )
-          .eq("order_id", orderId)
-          .order("created_at", { ascending: true }),
-        supabase
-          .from("marketplace_orders")
-          .select("total, valor_estornado, payment_status")
-          .eq("id", orderId)
-          .single(),
-      ]);
+      const [respostaLinhas, respostaPedido, respostaDevolucoesManuais] =
+        await Promise.all([
+          supabase
+            .from("order_refunds")
+            .select(
+              "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em",
+            )
+            .eq("order_id", orderId)
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("marketplace_orders")
+            .select("total, valor_estornado, payment_status")
+            .eq("id", orderId)
+            .single(),
+          supabase
+            .from("devolucoes")
+            .select("valor_reembolso")
+            .eq("order_id", orderId)
+            .eq("status", "concluida")
+            .eq("reembolso_manual", true),
+        ]);
 
       if (!ativoRef.current) return;
 
@@ -138,6 +159,13 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
         (respostaLinhas.data ?? []) as unknown as LinhaEstornoDoPedido[],
       );
       setPedido(respostaPedido.data as unknown as SaldoDoPedido);
+      // Erro aqui não derruba a tela (a mesma degradação graciosa que o
+      // resto do hook já assume): sem a lista, o desconto só fica 0 — o
+      // servidor continua sendo quem recusa de verdade.
+      setDevolucoesManuais(
+        (respostaDevolucoesManuais.data ??
+          []) as unknown as DevolucaoManualDoPedido[],
+      );
       setErro(false);
     } catch {
       if (ativoRef.current) setErro(true);
@@ -174,7 +202,18 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
   const centavosEmCurso = linhas
     .filter((linha) => ESTADOS_EM_CURSO.includes(linha.status))
     .reduce((soma, linha) => soma + paraCentavos(linha.amount), 0);
-  const centavosDisponivel = centavosPago - centavosDevolvido - centavosEmCurso;
+  // Achado A3 (rodada 3): mesmo desconto que solicitar_estorno já faz no
+  // saldo dela — reembolso manual de devolução já concluída do mesmo
+  // pedido é dinheiro que já saiu por outro caminho.
+  const centavosDevolucaoManual = devolucoesManuais.reduce(
+    (soma, d) => soma + paraCentavos(d.valor_reembolso),
+    0,
+  );
+  const centavosDisponivel =
+    centavosPago -
+    centavosDevolvido -
+    centavosEmCurso -
+    centavosDevolucaoManual;
 
   const solicitarEstorno = useCallback(
     async ({ amount, motivo }: { amount: number; motivo: string }) => {

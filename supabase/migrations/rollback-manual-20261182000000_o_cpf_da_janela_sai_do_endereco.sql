@@ -1,0 +1,38 @@
+-- ROLLBACK MANUAL de 20261182000000_o_cpf_da_janela_sai_do_endereco.sql
+-- (o CPF da janela sai do endereço — migration de DADOS que move
+-- `customer_data.address.cpf` para `customer_data.cpf` nos pedidos gravados
+-- entre a 20261171000000 e a 20261172000000, ou apaga a chave quando o CPF é
+-- inválido / o pedido é local-delivery/store-pickup).
+--
+-- NÃO HÁ SQL NESTE ARQUIVO. É UM NO-OP DELIBERADO E DOCUMENTADO, não um
+-- rollback incompleto.
+--
+-- POR QUE NÃO EXISTE VOLTA POR SQL: desfazer esta migration significaria
+-- devolver o CPF para dentro de `customer_data.address` — exatamente o
+-- formato que CAUSA o defeito que ela existe para fechar (o painel, o
+-- comprovante e "Meus pedidos" voltariam a mostrar endereço em branco para
+-- todo pedido da janela, porque um objeto `{cpf: "..."}` é `typeof ===
+-- "object"` e TRUTHY em JS e vence o endereço de verdade na cadeia `||` de
+-- `src/lib/mappers.ts`, `addressSource`). Um rollback SQL "correto" aqui
+-- seria, por definição, reintroduzir o bug — não existe uma versão segura
+-- dele.
+--
+-- ALÉM DISSO, A OPERAÇÃO NÃO É REVERSÍVEL COM FIDELIDADE mesmo ignorando o
+-- ponto acima: a migration MOVE o CPF (não duplica) e, quando o inválido é
+-- só APAGADO (CPF malformado, ou modalidade local/retirada), o dígito
+-- original nem chega a ser gravado em lugar nenhum — não há de onde
+-- recuperá-lo por SQL depois. Reconstituir "qual pedido tinha qual CPF antes"
+-- exigiria um snapshot de ANTES da migration, que este arquivo não é.
+--
+-- O CAMINHO DE VOLTA, se algum dia for realmente necessário desfazer o
+-- efeito desta migration num banco específico: o BACKUP DIÁRIO da loja
+-- (este projeto não tem PITR — replay contínuo até um instante exato não é
+-- possível; a granularidade é o snapshot do dia). Restaurar a partir dele é
+-- decisão do dono, feita fora deste repositório, e afeta TODAS as tabelas
+-- do dia, não só `marketplace_orders.customer_data` — avaliar o custo antes
+-- de escolher esse caminho.
+--
+-- O QUE ESTE ARQUIVO NÃO FAZ: não recria `pg_proc`/RPC nenhuma (a migration
+-- 20261182000000 não altera função nenhuma, só dados de
+-- `public.marketplace_orders.customer_data`); não apaga nem recria `cpf` em
+-- lugar nenhum; não precisa de `BEGIN`/`COMMIT` (não há nada para aplicar).

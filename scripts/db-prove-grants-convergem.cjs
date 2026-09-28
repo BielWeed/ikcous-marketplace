@@ -301,10 +301,15 @@ const ALVO = {
     anon: true,
     authenticated: true,
   },
+  // Corrigido pela 20261181000000 (achado LGPD, 26/09/2026): a função não
+  // tem mais consumidor legítimo (nem convidado, nem conta logada) e perdeu
+  // EXECUTE de PUBLIC/anon/authenticated. Ficou `anon: true` aqui de
+  // 08/09 até a correção da RODADA 2 desta migration (item 2 do laudo de
+  // risco) — o ALVO tinha ficado desatualizado por não ser gate de CI.
   "get_orders_by_whatsapp_v3(text,text,text)": {
     PUBLIC: false,
-    anon: true,
-    authenticated: true,
+    anon: false,
+    authenticated: false,
   },
   "get_product_optimization_data()": {
     PUBLIC: false,

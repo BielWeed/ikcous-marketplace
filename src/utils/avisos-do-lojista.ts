@@ -10,7 +10,12 @@ import type { View } from "@/types";
  */
 export const LIMIAR_PADRAO_DE_ESTOQUE = 5;
 
-export type TipoDeAviso = "pedido" | "pergunta" | "avaliacao" | "estoque";
+export type TipoDeAviso =
+  | "pedido"
+  | "devolucao"
+  | "pergunta"
+  | "avaliacao"
+  | "estoque";
 
 export interface Aviso {
   id: string;
@@ -50,6 +55,11 @@ export interface EntradaDeAvisos {
   perguntasPendentes: number;
   avaliacoes: AvaliacaoSemResposta[];
   produtos: ProdutoComEstoque[];
+  /**
+   * Pedidos de devolução/troca esperando a resposta da loja (status
+   * `solicitada`). Opcional: ausente = a fonte não entrou nesta rodada.
+   */
+  devolucoesSolicitadas?: number;
 }
 
 /**
@@ -64,8 +74,11 @@ export function precisaDeReposicao(
   return estoque <= (estoqueMinimo ?? LIMIAR_PADRAO_DE_ESTOQUE);
 }
 
+// Devolução logo depois de pedido: a resposta da loja tem prazo legal
+// correndo (CDC art. 26 §2º I — a reclamação suspende o prazo até a resposta).
 const ORDEM_DE_URGENCIA: TipoDeAviso[] = [
   "pedido",
+  "devolucao",
   "pergunta",
   "avaliacao",
   "estoque",
@@ -90,6 +103,22 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       detalhe: formatarReais(pedido.total),
       quando: pedido.created_at,
       destino: { view: "admin-orders", id: pedido.id },
+      contaNoCracha: true,
+    });
+  }
+
+  const devolucoes = entrada.devolucoesSolicitadas ?? 0;
+  if (devolucoes > 0) {
+    const uma = devolucoes === 1;
+    avisos.push({
+      id: "devolucao:solicitadas",
+      tipo: "devolucao",
+      titulo: uma
+        ? "1 devolução esperando sua resposta"
+        : `${devolucoes} devoluções esperando sua resposta`,
+      detalhe: "Clientes pediram para devolver ou trocar produtos",
+      quando: "",
+      destino: { view: "admin-devolucoes" },
       contaNoCracha: true,
     });
   }

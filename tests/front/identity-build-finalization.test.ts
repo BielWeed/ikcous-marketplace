@@ -925,11 +925,12 @@ describe("entrega preparada chega ao observador e é conferida", () => {
         path.join(saida, "_redirects"),
         "utf8",
       );
-      // 122 = 61 formas × 2 (com e sem barra): admin-pdv (C3.3),
-      // admin-about-store (20/09/2026) e admin-shipping-national (23/09/2026,
-      // estratégias do frete nacional) entraram em telasDeEntrada e cada uma
+      // 134 = 67 formas × 2 (com e sem barra): admin-pdv (C3.3),
+      // admin-about-store (20/09/2026), admin-shipping-national (23/09/2026,
+      // estratégias do frete nacional) e admin-crm, admin-financeiro e
+      // admin-devolucoes (26/09/2026) entraram em telasDeEntrada e cada uma
       // trouxe 4 linhas, como hospedagem-rotas.test.ts prende.
-      expect(redirecionamentos.trimEnd().split("\n")).toHaveLength(122);
+      expect(redirecionamentos.trimEnd().split("\n")).toHaveLength(134);
       expect(
         JSON.parse(await fs.readFile(path.join(saida, "_routes.json"), "utf8")),
       ).toEqual({

@@ -1,0 +1,151 @@
+# Roda, sob demanda, as conferências de pré/pós-publicação que uma pessoa
+# fazia à mão no SQL Editor (docs/runbooks/publicar-painel-cartao-devolucoes.md
+# §0/§1, e o §7.0 pela consulta 5a), o horário do último backup, e o registro do ledger
+# (`supabase_migrations.schema_migrations`) para as faixas 72-74, 75-78, 79-82 e 83.
+#
+# POR QUE EXISTE: as consultas do runbook eram "cole no SQL Editor" — um
+# passo manual, sem registro, que só quem tinha acesso ao painel do Supabase
+# conseguia rodar. Aqui o coordenador escolhe a consulta pelo nome e o
+# workflow imprime o resultado no log e no resumo do run.
+#
+# SÓ LEITURA, POR CONSTRUÇÃO: a lógica mora em
+# scripts/publicacao/conferir-banco.cjs (NÃO em `node -e "…"` — foi a crase
+# dentro de `node -e` que virou substituição de comando do bash em
+# aplicar-migrations.yml). Toda consulta de conferência vai para o endpoint
+# dedicado `POST /database/query/read-only`, que roda como
+# `supabase_read_only_user` — um papel do banco sem grant de escrita, a
+# barreira real (ver o cabeçalho do script para a revisão de risco da
+# rodada 2 e por que o guard `BEGIN READ ONLY` sozinho não bastava). O único
+# job que ESCREVE é o `ledger`, e só quando `confirmar` for exatamente
+# `GRAVAR` — e só depois de uma pré-checagem do schema da própria faixa.
+#
+# PROJETO: fechado em "loja"/"sandbox" (nunca um ref de texto livre — a
+# rodada 2 da revisão provou que `projeto_ref` cru habilitava
+# "<ref>/restart#" e "x/../outroref.../database/query#" com o mesmo token,
+# que vale para TODOS os projetos da conta). O ref de 20 letras é resolvido
+# DENTRO do script (`resolverRef`), nunca aqui.
+#
+# CREDENCIAL: o mesmo segredo `SUPABASE_ACCESS_TOKEN` que
+# aplicar-migrations.yml e publicar-functions.yml já usam. Nenhuma
+# credencial nova.
+#
+# CONCORRÊNCIA: o job `ledger` compartilha o grupo `banco-da-loja` com
+# `aplicar-migrations.yml` — o ledger não roda enquanto uma migration está
+# sendo aplicada, e vice-versa.
+#
+# USO: Actions → Run workflow →
+#   consulta      = um arquivo de scripts/publicacao/consultas/ (sem `.sql`),
+#                   ou "backups";
+#   projeto       = "loja" (default) ou "sandbox";
+#   gravar_ledger = "nao" (default), "72-74", "75-78", "79-82" ou "83";
+#   confirmar     = só o job do ledger olha isto — precisa ser exatamente
+#                   "GRAVAR" para gravar de verdade.
+#
+# Testado por tests/ci_conferir_banco_test.ts.
+
+name: Conferir banco da loja
+
+on:
+  workflow_dispatch:
+    inputs:
+      consulta:
+        description: "Consulta a rodar (scripts/publicacao/consultas/, sem .sql) ou backups"
+        required: true
+        type: choice
+        default: backups
+        options:
+          - 0a-antes-base-e-nada-aplicado
+          - 0b-conferir-corpos-vivos
+          - 0c1-corpos-vivos-72-74
+          - 0c2-funcoes-72-74-ainda-nao-existem
+          - 1a-conferir-o-que-nasceu
+          - 1b-conferir-marcadores
+          - 2a-marcadores-72-74
+          - 2b-objetos-72-74
+          - 3a-cpf-no-endereco
+          - 4a-definer-alcancavel-pelo-leitor
+          - 5a-antes-da-79-e-80
+          - 6a-conferir-79-a-82
+          - 7a-conferir-83
+          - backups
+      projeto:
+        description: "Projeto de destino: loja ou sandbox (nunca texto livre — achado da rodada 2)"
+        required: false
+        type: choice
+        default: loja
+        options:
+          - loja
+          - sandbox
+      gravar_ledger:
+        description: "Gravar o ledger de qual faixa? (nao = só conferir, sem gravar)"
+        required: false
+        type: choice
+        default: nao
+        options:
+          - nao
+          - 72-74
+          - 75-78
+          - 79-82
+          - "83"
+      confirmar:
+        description: "Só o job do ledger olha isto: precisa ser exatamente GRAVAR"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  conferir:
+    name: Conferir ${{ inputs.consulta }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Confere o segredo
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::segredo SUPABASE_ACCESS_TOKEN ausente no repositório (Settings → Secrets and variables → Actions)"; exit 1
+          fi
+
+      - name: Roda a consulta (só leitura)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJETO: ${{ inputs.projeto }}
+          CONSULTA: ${{ inputs.consulta }}
+        run: node scripts/publicacao/conferir-banco.cjs
+
+  ledger:
+    name: Gravar ledger ${{ inputs.gravar_ledger }}
+    if: inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Mesmo grupo de aplicar-migrations.yml: nunca gravar o ledger enquanto
+    # uma migration está sendo aplicada (nem o contrário).
+    concurrency:
+      group: banco-da-loja
+      cancel-in-progress: false
+      # queue: max (não o default "single"): sem isto, um segundo LEDGER
+      # disparado enquanto o primeiro roda CANCELA o primeiro em vez de
+      # esperar a vez — achado da rodada 3 da revisão de risco.
+      queue: max
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Pré-confere o schema da faixa, grava o ledger e confere 72-78/72-82 (leitura)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJETO: ${{ inputs.projeto }}
+          LEDGER: ${{ inputs.gravar_ledger }}
+        run: node scripts/publicacao/conferir-banco.cjs

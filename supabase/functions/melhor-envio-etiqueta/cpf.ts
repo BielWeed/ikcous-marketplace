@@ -71,3 +71,25 @@ export function sanitizarCpfDoTexto(texto: string): string {
     if (typeof texto !== 'string') return texto
     return texto.replace(REGEX_CPF_MASCARADO, '[cpf]').replace(REGEX_CPF_CRU, '[cpf]')
 }
+
+// E-mail e telefone brasileiro. Telefone em duas passadas (sem quantificador
+// aninhado — `security/detect-unsafe-regex`): corrida crua de 10 a 13
+// dígitos (com ou sem DDI 55) e o formato com DDD entre parênteses, espaço
+// ou hífen. Os dois exigem 10+ dígitos — CEP (8) passa intacto.
+const REGEX_EMAIL = /[^\s@"'<>(),;:]+@[^\s@"'<>(),;:]+\.[^\s@"'<>(),;:]+/g
+const REGEX_TELEFONE_CRU = /(?<!\d)\+?\d{10,13}(?!\d)/g
+const REGEX_TELEFONE_FORMATADO = /\(?\d{2}\)?[\s-]?\d{4,5}-?\d{4}/g
+
+/**
+ * CPF + e-mail + telefone fora do texto. A devolução reversa manda ao Melhor
+ * Envio o e-mail e o celular de quem devolve (`new_sender_mail`,
+ * `new_sender_phone`) — a resposta de erro pode ecoá-los. Regra da casa:
+ * nenhum desses dados vai para log nem para a mensagem devolvida ao painel.
+ */
+export function sanitizarDadosPessoaisDoTexto(texto: string): string {
+    if (typeof texto !== 'string') return texto
+    return sanitizarCpfDoTexto(texto)
+        .replace(REGEX_EMAIL, '[email]')
+        .replace(REGEX_TELEFONE_CRU, '[telefone]')
+        .replace(REGEX_TELEFONE_FORMATADO, '[telefone]')
+}

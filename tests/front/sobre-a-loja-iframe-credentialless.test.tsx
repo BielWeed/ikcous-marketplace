@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 //
-// O mapa da "Sobre a Loja" só carrega com DUAS peças juntas: frame-src com o
-// destino do redirect (https://www.google.com/maps/embed — ver
-// vercel-headers-frame-do-mapa.test.ts) e o atributo credentialless no
-// iframe, porque o COEP credentialless do app barra iframe terceiro sem
-// COEP/CORP (o embed do Google não responde com nenhum dos dois —
-// ERR_BLOCKED_BY_RESPONSE, quadro cinza no celular em 20/09/2026).
+// O mapa da "Sobre a Loja" precisa do frame-src com o destino do redirect
+// (https://www.google.com/maps/embed — ver vercel-headers-frame-do-mapa.test.ts).
+// O atributo credentialless no iframe era a peça que evitava o bloqueio do
+// COEP credentialless do app (removido do vercel.json em 26/09/2026 — decisão
+// do dono, travava o Card Payment Brick); sem o COEP do app o atributo já não
+// evita bloqueio nenhum, mas continua no componente porque é inofensivo aqui
+// (o mapa não usa cookie nosso).
 // Este teste prende a peça do COMPONENTE: os dois iframes (página pública e
 // prévia do painel) nascem credentialless e com a cascata certa de query.
 import { act } from "react";

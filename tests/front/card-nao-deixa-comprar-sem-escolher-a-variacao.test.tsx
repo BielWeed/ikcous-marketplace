@@ -308,7 +308,14 @@ describe("HeroOfferCard (via PremiumOffers) -- os dois botões respeitam a varia
     expect(onProductClick).toHaveBeenCalledWith(produto.id);
   });
 
-  it("produto com variação ativa: 'Comprar' abre a tela do produto, não vai direto para o checkout", async () => {
+  // Decisão do Gabriel (27/09/2026): dois botões dizendo a MESMA coisa
+  // ("Escolher opções") e fazendo a MESMA coisa (abrir o produto) é
+  // redundante -- com variação ativa, só o botão principal (preto) fica.
+  // Esta era a prova de que o "Comprar" também não pulava a escolha; agora
+  // esse botão nem existe mais nesse estado, e a prova vira "ele sumiu"
+  // (ver hero-offer-card-um-botao-com-variacao.test.tsx para a cobertura
+  // completa da contagem de botões nos dois cenários).
+  it("produto com variação ativa: o botão 'Comprar' some -- só o principal fica", async () => {
     const onAddToCart = vi.fn();
     const onQuickBuy = vi.fn();
     const onProductClick = vi.fn();
@@ -316,12 +323,7 @@ describe("HeroOfferCard (via PremiumOffers) -- os dois botões respeitam a varia
 
     await renderizarOfertas(produto, onAddToCart, onQuickBuy, onProductClick);
 
-    await act(async () => {
-      botoes(hospedeiro).comprar.click();
-    });
-
-    expect(onQuickBuy).not.toHaveBeenCalled();
-    expect(onProductClick).toHaveBeenCalledWith(produto.id);
+    expect(botoes(hospedeiro).comprar).toBeUndefined();
   });
 
   it("controle negativo: sem variação, 'Adicionar' e 'Comprar' continuam funcionando direto", async () => {
