@@ -100,7 +100,9 @@ describe("a animacao de voar para o carrinho mira a barra de baixo", () => {
   });
 
   it("com a consulta de desktop ativa, o pop cai só no #header-cart", () => {
-    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(min-width: 1024px)" }));
+    vi.stubGlobal("matchMedia", (q: string) => ({
+      matches: q === "(min-width: 1024px)",
+    }));
     triggerFlyingCartAnimation(origem, "");
     vi.advanceTimersByTime(760);
     expect(alvoDoTopo.classList.contains("cart-pop")).toBe(true);

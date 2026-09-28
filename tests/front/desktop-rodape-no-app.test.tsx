@@ -1,3 +1,4 @@
+import { CONSULTA_TELA_DE_COMPUTADOR } from "@/hooks/useTelaDeComputador";
 // @vitest-environment jsdom
 // F1.15: harness do App baseado na regressão da categoria, com as telas isoladas.
 import { act } from "react";
@@ -145,6 +146,14 @@ vi.mock("@/components/ui/custom/LocalErrorBoundary", () => ({
     children as never,
 }));
 
+vi.mock("@/components/layouts/AppMotionFallbacks", () => ({
+  MainTabsMotionShell: ({ children }: { readonly children?: unknown }) =>
+    children as never,
+  SecondaryViewMotionShell: ({ children }: { readonly children?: unknown }) =>
+    children as never,
+  RouteLoadingProgress: () => null,
+}));
+
 vi.mock("@/components/ui/alert-dialog", () => {
   const nada = () => null;
   return {
@@ -162,7 +171,13 @@ vi.mock("@/components/ui/alert-dialog", () => {
 vi.mock("@/contexts/StoreContext", () => ({
   StoreProvider: ({ children }: { readonly children?: unknown }) =>
     children as never,
-  useStore: () => ({ config: null }),
+  useStore: () => ({
+    config: {
+      storeName: "Loja de Teste",
+      storeCity: "Cidade",
+      storeState: "UF",
+    },
+  }),
 }));
 vi.mock("@/contexts/CartContext", () => ({
   CartProvider: ({ children }: { readonly children?: unknown }) =>
@@ -318,7 +333,7 @@ describe("F1.15 rodapé dentro da rolagem da cliente", () => {
   });
   async function abrir(rota: string, desktop = true) {
     vi.stubGlobal("matchMedia", (q: string) => ({
-      matches: desktop && q === "(min-width: 1024px)",
+      matches: desktop && q === CONSULTA_TELA_DE_COMPUTADOR,
       addEventListener() {},
       removeEventListener() {},
     }));
