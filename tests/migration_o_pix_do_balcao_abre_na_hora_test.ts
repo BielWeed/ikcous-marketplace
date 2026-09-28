@@ -288,5 +288,5 @@ Deno.test("rollback: derruba gatilho e as duas funcoes pela assinatura completa,
   );
   assertStringIncludes(rollbackN, `DROP FUNCTION IF EXISTS ${ASSINATURA};`);
   const limpo = removerRuido(rollback);
-  assert(!/CREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|TRIGGER)/i.test(limpo));
+  assert(!/CREATE\s+(?:FUNCTION|TRIGGER|OR\s+REPLACE)/i.test(limpo));
 });
