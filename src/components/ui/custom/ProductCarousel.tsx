@@ -1,11 +1,14 @@
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import React, {
   useRef,
+  useId,
   useState,
   useEffect,
   useCallback,
@@ -50,6 +53,8 @@ export const ProductCarousel = React.memo(function ProductCarousel({
   className,
   selectedProductId,
 }: ProductCarouselProps) {
+  const computador = useTelaDeComputador();
+  const faixaId = useId();
   const { config } = useStore();
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
   // preset da LOJA (ProductCard-520), derivado do MESMO config que já
@@ -128,11 +133,27 @@ export const ProductCarousel = React.memo(function ProductCarousel({
     prefetchView("product-detail");
   }, [prefetchView]);
 
+  const rolarPagina = (direcao: number) => {
+    const faixa = scrollContainerRef.current;
+    faixa?.scrollBy({ left: direcao * faixa.clientWidth, behavior: "smooth" });
+  };
+
   if (products.length === 0) return null;
 
   return (
-    <div className={cn("px-5 sm:px-6 py-4 overflow-hidden", className)}>
-      <div className="mb-6 flex flex-col">
+    <div
+      className={cn(
+        "px-5 sm:px-6 py-4 overflow-hidden",
+        "lg:px-0 lg:py-10",
+        className,
+      )}
+    >
+      <div
+        className={cn(
+          "mb-6 flex flex-col",
+          "lg:relative lg:min-h-11 lg:justify-center lg:pr-28",
+        )}
+      >
         {subtitle && (
           <div className="mb-1.5 flex items-center gap-2">
             {icon}
@@ -146,12 +167,39 @@ export const ProductCarousel = React.memo(function ProductCarousel({
             </span>
           </div>
         )}
-        <h2 className="text-3xl font-black leading-[0.9] tracking-tighter text-zinc-950 sm:text-4xl">
+        <h2
+          className={cn(
+            "text-3xl font-black leading-[0.9] tracking-tighter text-zinc-950 sm:text-4xl",
+            "lg:text-3xl",
+          )}
+        >
           {title}
         </h2>
+        {computador && (
+          <div className="lg:absolute lg:right-0 lg:top-0 lg:flex lg:gap-2">
+            <button
+              type="button"
+              aria-label="Ver anteriores"
+              aria-controls={faixaId}
+              onClick={() => rolarPagina(-1)}
+              className="lg:flex lg:size-11 lg:items-center lg:justify-center lg:rounded-full lg:border lg:border-zinc-200 lg:bg-white lg:text-zinc-900 lg:hover:bg-zinc-100 lg:focus-visible:ring-2 lg:focus-visible:ring-zinc-900/50"
+            >
+              <ChevronLeft className="lg:size-5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Ver próximos"
+              aria-controls={faixaId}
+              onClick={() => rolarPagina(1)}
+              className="lg:flex lg:size-11 lg:items-center lg:justify-center lg:rounded-full lg:border lg:border-zinc-200 lg:bg-white lg:text-zinc-900 lg:hover:bg-zinc-100 lg:focus-visible:ring-2 lg:focus-visible:ring-zinc-900/50"
+            >
+              <ChevronRight className="lg:size-5" />
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="relative -mx-6">
+      <div className={cn("relative -mx-6", "lg:mx-0")}>
         {/* Dynamic Vignettes - Improved White Gradient */}
         <div
           className={cn(
@@ -168,7 +216,11 @@ export const ProductCarousel = React.memo(function ProductCarousel({
 
         <div
           ref={scrollContainerRef}
-          className="scrollbar-hide flex snap-x snap-mandatory items-stretch gap-4 overflow-x-auto scroll-smooth pb-2"
+          id={faixaId}
+          className={cn(
+            "scrollbar-hide flex snap-x snap-mandatory items-stretch gap-4 overflow-x-auto scroll-smooth pb-2",
+            "lg:gap-5 lg:!px-0 lg:!scroll-pl-0",
+          )}
           style={{
             paddingLeft: "24px",
             paddingRight: "24px",
@@ -180,6 +232,7 @@ export const ProductCarousel = React.memo(function ProductCarousel({
               key={product.id}
               className={cn(
                 "flex-shrink-0 w-[260px] py-2 flex flex-col",
+                "lg:w-[calc((100%-60px)/4)] lg:snap-start xl:w-[calc((100%-80px)/5)]",
                 index === 0 ? "snap-start" : "snap-center",
               )}
             >

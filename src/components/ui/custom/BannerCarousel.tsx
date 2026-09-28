@@ -129,7 +129,10 @@ export const BannerCarousel = memo(function BannerCarousel({
 
   return (
     <div
-      className="premium-shadow relative aspect-[2/1] w-full touch-pan-y overflow-hidden bg-zinc-100 md:aspect-[4/1]"
+      className={cn(
+        "premium-shadow relative aspect-[2/1] w-full touch-pan-y overflow-hidden bg-zinc-100 md:aspect-[4/1]",
+        "lg:rounded-3xl",
+      )}
       style={{ minHeight: "200px" }} // Safety for very small screens
       role="region"
       aria-roledescription="carousel"
