@@ -177,6 +177,13 @@ describe("revisão, rodada 1", () => {
     expect(
       falhaVeioDoServidor({ code: "22023", message: "Estoque insuficiente" }),
     ).toBe(true);
+    expect(
+      falhaVeioDoServidor({ code: "PGRST202", message: "sem função" }),
+    ).toBe(true);
+    expect(
+      falhaVeioDoServidor({ code: "gateway_timeout", message: "proxy" }),
+      "código que não é do Postgres/PostgREST é incerto, como a rede",
+    ).toBe(false);
   });
 
   it("o cupom trava desde o 'Gerar PIX' (sem esperar a resposta): resposta perdida não deixa editar", () => {

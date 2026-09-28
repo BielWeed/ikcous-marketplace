@@ -44,7 +44,15 @@ const FALHA_DE_REDE: FalhaDaVendaTraduzida = {
  * PostgREST): a transação desfez tudo e nada foi gravado. `false` para rede
  * caindo, aborto, erro sem código — aí não dá para saber se gravou. */
 export function falhaVeioDoServidor(erro: unknown): boolean {
-  return codigoDoErro(erro) !== null;
+  // Só códigos do PRÓPRIO banco (SQLSTATE de 5 caracteres, ex.: 22023,
+  // 23505, 42501) ou do PostgREST (PGRST…) provam que a transação desfez
+  // tudo. Um JSON de erro com outro "código" (proxy, gateway) pode ter vindo
+  // depois do commit — aí é incerto, como a rede (revisão de risco, rodada 3).
+  const codigo = codigoDoErro(erro);
+  return (
+    codigo !== null &&
+    (/^[0-9A-Z]{5}$/.test(codigo) || codigo.startsWith("PGRST"))
+  );
 }
 
 /** O supabase-js devolve `{code, message}` tanto para `PostgrestError`
