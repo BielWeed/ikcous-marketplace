@@ -23,6 +23,11 @@ dist/
 dist-test/
 build/
 
+# Saída do harness visual da vitrine (scripts/visual/vitrine/) — prints,
+# baselines e diffs de comparação. Gerado localmente, por rodada; nunca
+# commitado (é imagem gerada, não código-fonte).
+.visual/
+
 # Cache do eslint (--cache). Guarda o resultado por arquivo para a rodada
 # seguinte so analisar o que mudou. E' derivado e por maquina: versionar traria
 # resultado de OUTRO sistema de arquivos para dentro da catraca.
