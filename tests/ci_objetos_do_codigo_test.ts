@@ -6,7 +6,7 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  * prova, porque só testa `refDoProjeto`/`conferirProjeto` ISOLADAS, nunca
  * através de `main()` nem do `ci.yml`:
  *
- *   (a) o `ci.yml` de fato passa PROJETO_REF_ESPERADO=cafkrminfnokvgjqtkle
+ *   (a) o `ci.yml` de fato passa PROJETO_REF_ESPERADO=dekxabvqdsuukijblazl
  *       (o ref REAL da loja) no step que roda o detector — sem essa linha o
  *       guard nunca liga em produção, mesmo com refDoProjeto/conferirProjeto
  *       corretos;
@@ -59,7 +59,7 @@ const SCRIPT = fromFileUrl(
 // Único lugar deste arquivo (e do irmão db_check_objetos_do_codigo_test.ts)
 // em que o ref REAL da loja é necessário: provar que o guard está de fato
 // ligado no ci.yml, não só implementado no script.
-const REF_LOJA = "cafkrminfnokvgjqtkle";
+const REF_LOJA = "dekxabvqdsuukijblazl";
 // Refs fictícios para o processo real — nunca o da loja.
 const REF_FICTICIO_CONECTADO = "aaaaaaaaaaaaaaaaaaaa";
 const REF_FICTICIO_ESPERADO = "bbbbbbbbbbbbbbbbbbbb";

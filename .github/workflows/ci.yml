@@ -367,7 +367,7 @@ jobs:
     # papel da origem alcança) — defeitos de correção diferente.
     #
     # PRECONDIÇÃO: o secret DATABASE_URL do repo tem de apontar para a LOJA
-    # (cafkrminfnokvgjqtkle), de preferência com um role só de leitura — o
+    # (dekxabvqdsuukijblazl), de preferência com um role só de leitura — o
     # ref é extraído tanto do host direto quanto do usuário do pooler
     # (Supavisor aceita QUALQUER role como usuário, no formato <role>.<ref>;
     # não precisa ser postgres.<ref>). Este job agora RECUSA um banco de
@@ -401,5 +401,5 @@ jobs:
       - name: Confere objetos usados pelo código contra o catálogo do banco
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          PROJETO_REF_ESPERADO: cafkrminfnokvgjqtkle
+          PROJETO_REF_ESPERADO: dekxabvqdsuukijblazl
         run: node scripts/db-check-objetos-do-codigo.mjs
