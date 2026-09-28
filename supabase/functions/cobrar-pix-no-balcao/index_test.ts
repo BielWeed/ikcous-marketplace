@@ -67,7 +67,7 @@ function bancoFalso(linha: Record<string, unknown> | null, opcoes: { naoGravar?:
             const casa =
               !opcoes.naoGravar &&
               estado.linha &&
-              filtros.every(([, c, v]) => (estado.linha as any)[c] === v);
+              filtros.every(([, c, v]) => new Map(Object.entries(estado.linha)).get(c) === v);
             if (!casa) return { data: null, error: null };
             Object.assign(estado.linha, valores);
             return { data: { id: PEDIDO }, error: null };
