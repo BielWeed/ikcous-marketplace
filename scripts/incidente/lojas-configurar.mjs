@@ -127,7 +127,7 @@ for (const loja of lojas) {
       const h = { apikey: servico, ...(servico.startsWith("eyJ") ? { Authorization: `Bearer ${servico}` } : {}) };
       const corpo = {
         email: loja.admin_email,
-        // Pedido do dono (28/09): senha de cada loja = nome da loja sem
+        // Pedido do dono (28/09): senha de cada loja = nome da loja (minúsculo, sem
         // espaço + a senha do segredo LOJAS_ADMIN_SENHA.
         password: `${loja.prefixo_senha ?? ""}${senhaAdmin}`,
         email_confirm: true,
