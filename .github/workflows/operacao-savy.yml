@@ -1,0 +1,28 @@
+# Temporário (28/09/2026): propagação da 1.5.10 ao banco da Savy. Etapa 1 = só
+# leitura (diagnóstico). Autorizado pelo dono no chat.
+name: Operação — banco da Savy (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths: [scripts/incidente/savy.mjs, .github/workflows/operacao-savy.yml]
+permissions:
+  contents: read
+concurrency:
+  group: banco-da-savy
+  cancel-in-progress: false
+jobs:
+  savy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Diagnóstico (só leitura)
+        run: |
+          git fetch --depth=1 origin claude/app-major-upgrade-wmc8x2
+          git ls-tree --name-only FETCH_HEAD supabase/migrations/ > /tmp/migracoes.txt
+          node scripts/incidente/savy.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
