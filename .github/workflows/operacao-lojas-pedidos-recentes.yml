@@ -1,0 +1,24 @@
+# Temporário (28/09/2026): SÓ LEITURA — pedidos recentes das lojas novas
+# (investigação do Pix de R$ 1 que não confirmou).
+name: Operação — pedidos recentes das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-pedidos-recentes.mjs
+      - .github/workflows/operacao-lojas-pedidos-recentes.yml
+permissions:
+  contents: read
+jobs:
+  pedidos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node scripts/incidente/lojas-pedidos-recentes.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}
