@@ -1,9 +1,9 @@
+import { OrderSuccessView } from "@/views/customer/OrderSuccessView";
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { classesDoCelular } from "./classes-do-celular";
-import { OrderSuccessView } from "@/views/customer/OrderSuccessView";
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
 vi.mock("@/contexts/StoreContext", () => ({
@@ -43,7 +43,7 @@ it.each([
 ])("%s ganha cartão só a partir de lg", (nome) => {
   const trecho = fonte.slice(fonte.indexOf(`function ${nome}(`));
   const classe = trecho.match(
-    /return \(\s*<div className=\{cn\(\s*"([^"]+)",\s*"([^"]+)"/,
+    /return \(\s*<div\s+className=\{cn\(\s*"([^"]+)",\s*"([^"]+)"/,
   );
   expect(classe).not.toBeNull();
   expect(classesDoCelular(classe![2])).toBe("");

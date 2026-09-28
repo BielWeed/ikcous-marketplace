@@ -1,10 +1,9 @@
+import type { CartItem } from "@/types";
 // @vitest-environment jsdom
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { beforeEach, afterEach, it, expect, vi } from "vitest";
-import type { CartItem } from "@/types";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { classesDoCelular } from "./classes-do-celular";
-vi.setConfig({ testTimeout: 60000 });
 const { mockValidateCoupon } = vi.hoisted(() => ({
   mockValidateCoupon: vi.fn(),
 }));
@@ -128,7 +127,7 @@ afterEach(() => {
   slot.remove();
   vi.unstubAllGlobals();
 });
-async function montar(computador = false) {
+async function montar(computador = false, onSetBackOverride = vi.fn()) {
   if (computador)
     vi.stubGlobal("matchMedia", (q: string) => ({
       matches: q === "(min-width: 1024px)",
@@ -142,7 +141,7 @@ async function montar(computador = false) {
         shipping={0}
         total={20}
         onNavigate={vi.fn()}
-        onSetBackOverride={vi.fn()}
+        onSetBackOverride={onSetBackOverride}
       />,
     ),
   );
@@ -183,14 +182,66 @@ it("ao reduzir a janela a barra volta ao body sem perder o formulário", async (
   await montar(true);
   const nome = document.getElementById("checkout-name") as HTMLInputElement;
   await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(nome, "Cliente de teste");
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(nome, "Cliente de teste");
     nome.dispatchEvent(new Event("input", { bubbles: true }));
   });
   vi.stubGlobal("matchMedia", undefined);
   await montar();
   expect(host.querySelector("aside")).toBeNull();
-  expect(document.querySelectorAll('[aria-label="Finalizar pedido"]')).toHaveLength(1);
-  expect(host.contains(document.querySelector('[aria-label="Finalizar pedido"]'))).toBe(false);
+  expect(
+    document.querySelectorAll('[aria-label="Finalizar pedido"]'),
+  ).toHaveLength(1);
+  expect(
+    host.contains(document.querySelector('[aria-label="Finalizar pedido"]')),
+  ).toBe(false);
   expect(document.getElementById("checkout-name")).toBe(nome);
   expect(nome.value).toBe("Cliente de teste");
+});
+
+it("fecha o painel ao crescer para computador sem voltar ao focar o formulário", async () => {
+  let computador = false;
+  const ouvintes = new Set<() => void>();
+  vi.stubGlobal("matchMedia", () => ({
+    get matches() {
+      return computador;
+    },
+    addEventListener: (_evento: string, ouvinte: () => void) =>
+      ouvintes.add(ouvinte),
+    removeEventListener: (_evento: string, ouvinte: () => void) =>
+      ouvintes.delete(ouvinte),
+  }));
+
+  let override: (() => void) | null = null;
+  const onSetBackOverride = vi.fn((proximo: unknown) => {
+    override =
+      typeof proximo === "function" ? (proximo as () => () => void)() : null;
+  });
+  const voltar = vi.spyOn(globalThis.history, "back").mockImplementation(() => {
+    override?.();
+  });
+  await montar(false, onSetBackOverride);
+
+  await act(async () => {
+    slot.querySelector("button")!.click();
+  });
+  expect(slot.querySelector("button")?.getAttribute("aria-expanded")).toBe(
+    "true",
+  );
+
+  await act(async () => {
+    computador = true;
+    for (const notificar of ouvintes) notificar();
+  });
+  expect(voltar).toHaveBeenCalledTimes(1);
+  expect(slot.querySelector("button")?.getAttribute("aria-expanded")).toBe(
+    "false",
+  );
+
+  await act(async () => {
+    document.getElementById("checkout-name")!.focus();
+  });
+  expect(voltar).toHaveBeenCalledTimes(1);
 });
