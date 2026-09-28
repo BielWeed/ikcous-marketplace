@@ -1,0 +1,34 @@
+# Temporário (28/09/2026): esquema completo (migrations da versão em produção,
+# branch claude/app-major-upgrade-wmc8x2) nos bancos VAZIOS das lojas novas.
+name: Operação — esquema das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-esquema.mjs
+      - .github/workflows/operacao-lojas-esquema.yml
+permissions:
+  contents: read
+concurrency:
+  group: lojas-esquema
+  cancel-in-progress: false
+jobs:
+  esquema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Pega as migrations da versão em produção
+        run: |
+          git fetch --depth=1 origin claude/app-major-upgrade-wmc8x2
+          git worktree add --detach /tmp/super FETCH_HEAD
+          git -C /tmp/super log -1 --format='%h %s'
+      - name: Aplica o esquema nas lojas novas
+        run: node scripts/incidente/lojas-esquema.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}
+          SUPABASE_ACCESS_TOKEN_CONTA3: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA3 }}
