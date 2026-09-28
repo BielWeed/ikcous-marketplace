@@ -29,11 +29,11 @@ for (const loja of lojas) {
   const sql = (query) => api("POST", `/projects/${projeto.id}/database/query`, { query });
 
   const cols = (await sql(`SELECT column_name FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='orders' ORDER BY ordinal_position`)).map((c) => c.column_name);
+    WHERE table_schema='public' AND table_name='marketplace_orders' ORDER BY ordinal_position`)).map((c) => c.column_name);
   const escolhidas = cols.filter((c) => INTERESSA.test(c) && !PII.test(c) && !/payload|qr_code|copia|brcode|emv|ticket/i.test(c));
   console.log(`colunas lidas: ${escolhidas.join(", ")}`);
   const lista = escolhidas.map((c) => `"${c}"`).join(", ");
-  const pedidos = await sql(`SELECT ${lista} FROM public.orders WHERE created_at > now() - interval '6 hours' ORDER BY created_at DESC LIMIT 10`);
+  const pedidos = await sql(`SELECT ${lista} FROM public.marketplace_orders WHERE created_at > now() - interval '6 hours' ORDER BY created_at DESC LIMIT 10`);
   console.log(`pedidos (6h): ${JSON.stringify(pedidos)}`);
 
   const cfgCols = (await sql(`SELECT column_name FROM information_schema.columns
