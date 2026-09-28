@@ -100,13 +100,13 @@ describe("achado 12 — carregando em silêncio: skeletons viram status", () => 
   it("o grid de skeletons da vitrine é UMA região de status", () => {
     const src = fonte(PRODUCT_LIST);
     expect(src).toMatch(
-      /<div\s+role="status"\s+className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"/,
+      /<div\s+role="status"\s+className=\{cn\(\s*"grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"/,
     );
     expect(src).toContain("Carregando produtos");
     expect(src).toContain('className="sr-only"');
     // Classes originais do grid preservadas.
     expect(src).toContain(
-      'className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"',
+      '"grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"',
     );
   });
 
@@ -129,7 +129,7 @@ describe("achado 12 — carregando em silêncio: skeletons viram status", () => 
     // acessibilidade deste teste (role="status" + sr-only + o texto)
     // permanece intacto.
     expect(src).toMatch(
-      /<div\s+role="status"\s+className="flex aspect-\[2\/1\] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-\[4\/1\]"/,
+      /<div\s+role="status"\s+className=\{cn\(\s*"flex aspect-\[2\/1\] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-\[4\/1\]"/,
     );
     expect(src).toContain("Carregando banners");
   });

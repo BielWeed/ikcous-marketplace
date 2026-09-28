@@ -229,8 +229,12 @@ describe("bloco de frete: altura estável da primeira pintura ao config", () => 
     // (mt-2 + px-4) para a troca não mudar nem margem.
     const info = fonte(INFO_BLOCK);
     // O literal de celular permanece inteiro; cn acrescenta o desktop.
-    expect(info).toContain('"relative mt-2 w-full px-4"');
-    expect(home).toContain('"relative mt-2 w-full px-4"');
+    expect(info).toContain(
+      'className={cn("relative mt-2 w-full px-4", "lg:px-0")}',
+    );
+    expect(home).toContain(
+      'className={cn("relative mt-2 w-full px-4", "lg:px-0")}',
+    );
   });
 });
 
@@ -358,8 +362,8 @@ describe("catálogo: o esqueleto do card reserva a mesma proporção do real", (
     expect(src).toContain("[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (");
     // A grade de esqueleto e a grade real compartilham a MESMA classe de
     // grid (2 colunas no mobile) — mesma largura de card, mesma coluna.
-    expect(src).toContain(
-      '"grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"',
+    expect(src).toMatch(
+      /className=\{cn\(\s*"grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4",/,
     );
   });
 
