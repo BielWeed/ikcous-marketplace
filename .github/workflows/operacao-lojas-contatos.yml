@@ -1,0 +1,36 @@
+# Temporário (28/09/2026): folhas de contato dos catálogos do Instagram, para
+# a curadoria de produto. Grava em contatos/ na branch dos catálogos.
+name: Operação — folhas de contato dos catálogos (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-contatos.mjs
+      - .github/workflows/operacao-lojas-contatos.yml
+permissions:
+  contents: write
+jobs:
+  contatos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: infra/catalogos-lojas-novas
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: npm install --prefix /tmp/ferr --no-save --no-audit --no-fund sharp@0.34
+      - name: Gera as folhas
+        run: |
+          mkdir -p /tmp/cat && cp catalogos/*.json /tmp/cat/
+          git fetch --depth=1 origin infra/operacao-incidente
+          git show FETCH_HEAD:scripts/incidente/lojas-contatos.mjs > /tmp/lojas-contatos.mjs
+          node /tmp/lojas-contatos.mjs
+      - name: Grava na branch dos catálogos
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add contatos/
+          git commit -m "chore(ci): folhas de contato dos catálogos" || exit 0
+          git push origin HEAD:infra/catalogos-lojas-novas
