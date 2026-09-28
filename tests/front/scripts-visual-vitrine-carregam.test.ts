@@ -9,10 +9,22 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";
 
 const PASTA = "../../scripts/visual/vitrine";
+
+// `pngjs` não tem `@types/pngjs` — um `import("pngjs")` com specifier
+// LITERAL ainda é resolvido em tempo de checagem (`tsc -b` recusa com
+// TS7016, "implicitamente `any`") mesmo sendo `import()` dinâmico; só um
+// specifier de tipo `string` (não o tipo literal `"pngjs"`) faz o
+// TypeScript desistir de resolver o módulo e tipar o resultado como `any`.
+// A anotação abaixo é o que evita precisar de um `.d.ts` só para um pacote
+// usado unicamente neste arquivo de teste.
+const MODULO_PNGJS: string = "pngjs";
+async function carregarPng() {
+  const { PNG } = await import(MODULO_PNGJS);
+  return PNG;
+}
 
 describe("scripts/visual/vitrine — módulos carregam sem navegador", () => {
   it("fixtures.mjs exporta um catálogo e uma ficha da loja consistentes", async () => {
@@ -79,6 +91,7 @@ describe("scripts/visual/vitrine — módulos carregam sem navegador", () => {
 
   it("comparar.mjs: dois PNGs idênticos dão 0 px de diferença", async () => {
     const { compararDiretorios } = await import(`${PASTA}/comparar.mjs`);
+    const PNG = await carregarPng();
     const dirBase = mkdtempSync(join(tmpdir(), "vitrine-comparar-base-"));
     const dirCand = mkdtempSync(join(tmpdir(), "vitrine-comparar-cand-"));
     try {
@@ -106,6 +119,7 @@ describe("scripts/visual/vitrine — módulos carregam sem navegador", () => {
 
   it("comparar.mjs: um pixel diferente numa largura de celular falha (ok:false)", async () => {
     const { compararDiretorios } = await import(`${PASTA}/comparar.mjs`);
+    const PNG = await carregarPng();
     const dirBase = mkdtempSync(join(tmpdir(), "vitrine-comparar-base-"));
     const dirCand = mkdtempSync(join(tmpdir(), "vitrine-comparar-cand-"));
     try {

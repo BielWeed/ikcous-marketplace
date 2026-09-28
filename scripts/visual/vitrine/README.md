@@ -79,30 +79,46 @@ Flags de `comparar.mjs`:
    com fallback de SPA (qualquer caminho sem arquivo correspondente devolve
    `index.html` — é o que faz `goto("/product-detail?id=...")` funcionar
    como link direto).
-3. **Chromium via Playwright**, lançado com
-   `--host-resolver-rules="MAP * 127.0.0.1"` — TODO hostname resolve para a
-   máquina local; nenhum DNS de verdade sai daqui, mesmo que uma rota
-   escape do interceptador.
+3. **Chromium via Playwright**, lançado com `env` LIMPO de qualquer variável
+   `*proxy*` (achado real: um `HTTPS_PROXY` no ambiente faz o Chromium mandar
+   a PRÓPRIA telemetria de fundo — Safe Browsing, component updater, GCM —
+   para o proxy, contornando `--host-resolver-rules`) e com
+   `--host-resolver-rules="MAP * 127.0.0.1"` mais `--disable-background-networking`/
+   `--disable-component-update`/`--disable-sync`/`--disable-client-side-phishing-detection`
+   e afins — TODO hostname resolve para a máquina local, e o Chromium não
+   tenta falar sozinho com o Google.
 4. **`page.route("**/*")`** (`rede.mjs`) intercepta tudo: injeta a "ficha da
    loja" fixture no HTML (mesma técnica de `tests/e2e/kit-jornadas.ts` — o
    porteiro/`middleware.ts` faria isso em produção), responde
    `/rest/v1/<tabela>`, `/rest/v1/rpc/<nome>`, `/auth/v1/*` e
-   `/functions/v1/calculate-shipping` com dados fixos (`fixtures.mjs`), e
-   BLOQUEIA (`route.abort()`, registrado no relatório) qualquer request para
-   fora do host fixture. WebSocket (realtime) é fechado via
-   `page.routeWebSocket` quando a versão do Playwright suporta.
+   `/functions/v1/calculate-shipping` com dados fixos (`fixtures.mjs`).
+   Qualquer OUTRA origem é bloqueada e registrada; um `<iframe>` de origem
+   externa (o mapa em `AboutStoreView`) recebe um HTML em branco (200 OK) em
+   vez de `route.abort()` — abortar fazia o Chromium desenhar a PRÓPRIA
+   página de erro interna ali dentro, com layout/timing fora do nosso
+   controle. WebSocket (realtime) é fechado via `page.routeWebSocket` quando
+   a versão do Playwright suporta.
 5. **Determinismo**: `Date`/`Math.random` congelados via `addInitScript`
    (mesmo instante para toda fixture e toda tela), CSS forçando
    `animation-duration/transition-duration: 0`, contexto com
    `reducedMotion: "reduce"` (o carrossel de banners já obedece essa media
    query para nunca trocar de slide sozinho — `BannerCarousel.tsx`) e
    `serviceWorkers: "block"` (nada de cache/atualização de PWA interferindo).
+   `esperarBootEEstabilizar` também espera `page.waitForLoadState("networkidle")`
+   — o `<iframe loading="lazy">` do mapa dispara seu fetch bloqueado num
+   instante que varia entre processos do Chromium.
 6. **Altura real do print**: este app rola dentro de
    `.active-scroll-container` (`mainRef` em `App.tsx`), não no
    `<html>/<body>` — `page.screenshot({fullPage:true})` mediria só a altura
    da viewport. O harness mede o `scrollHeight` de verdade (varrendo por
    `overflow:auto|scroll`), redimensiona a viewport para ele e só então
    fotografa.
+7. **Print só grava quando estabiliza**: `screenshotEstavel` tira capturas
+   seguidas e só devolve quando DUAS saem byte a byte iguais (até 6
+   tentativas, 250ms entre elas). Achado real: numa máquina compartilhada e
+   ocupada, texto minúsculo (badges de 9-10px) podia sair com anti-aliasing
+   ligeiramente diferente por o compositor do Chromium ser preemptado no
+   meio da rasterização — não a vitrine mudando.
 
 ## Telas e estados cobertos (22)
 
