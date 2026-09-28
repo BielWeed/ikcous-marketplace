@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Revisão independente (achado #2): a ligação entre `AbaVisao` e
+// Revisão independente: a ligação entre `AbaVisao` e
 // `FluxoDeCaixaGrafico` — passar `marco` para `serieDoFluxoDeCaixa` E para o
 // componente — não tinha teste de INTEGRAÇÃO nenhum. `serieDoFluxoDeCaixa`
 // tem `marco: DataIso | null = null` como default, então tirar o 4º

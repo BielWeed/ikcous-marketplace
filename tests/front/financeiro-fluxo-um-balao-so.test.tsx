@@ -206,10 +206,13 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
   });
 
   it("num dia ANTES do marco (saldo: null), o balão mostra “—” e nunca inventa o −R$ 187,40", () => {
-    // 3 dias (não 2): com só 1 saldo conhecido ("2+ pontos" é outro cenário,
-    // testado à parte em "painel de saldo com poucos pontos conhecidos") o
-    // AreaChart nem monta — este teste quer o caminho NORMAL (linha do saldo
-    // desenhada), só com um dia ANTES do marco no meio.
+    // 3 dias, com os 2 dias de saldo conhecido DIFERENTES entre si (0 e
+    // −10): com só 1 saldo conhecido, ou 2+ TODOS IGUAIS, o AreaChart nem
+    // monta (outros cenários, testados à parte em
+    // "painel de saldo com poucos pontos conhecidos" e
+    // "...quando todos os pontos conhecidos são IGUAIS") — este teste quer
+    // o caminho NORMAL (linha do saldo desenhada), só com um dia ANTES do
+    // marco no meio.
     const antesDoMarco: readonly PontoDoFluxo[] = [
       { dia: "2026-08-29", entradas: 0, saidas: 0, resultado: 0, saldo: null },
       {
@@ -219,7 +222,13 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
         resultado: 187.4,
         saldo: 0,
       },
-      { dia: "2026-08-31", entradas: 0, saidas: 0, resultado: 0, saldo: 0 },
+      {
+        dia: "2026-08-31",
+        entradas: 0,
+        saidas: 10,
+        resultado: -10,
+        saldo: -10,
+      },
     ];
     const tela = montar(
       <FluxoDeCaixaGrafico

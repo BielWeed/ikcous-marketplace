@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Revisão independente (achado #3): quando o marco do saldo inicial cai
+// Revisão independente: quando o marco do saldo inicial cai
 // perto de hoje — bem provável na loja real, as 3 contas de sistema nascem
 // com `saldo_inicial_em` = o dia em que a migration 20261177000000 rodou —
 // quase todo dia da janela de 30 dias fica com `saldo: null`. O AreaChart da
@@ -195,8 +195,19 @@ describe("FluxoDeCaixaGrafico — painel de saldo com poucos pontos conhecidos",
     });
 
     expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(1);
-    const texto = (tela.textContent ?? "").replace(/\s/g, " ");
-    expect(texto).toContain("Saldo de hoje");
+    // Revisão independente: `tela.textContent` inteiro também bate com
+    // "−R$ 50,00" pela TABELA de baixo (o dia 30/08 tem movimento, então
+    // aparece lá com o mesmo valor) — isso escondia um mutante (perder o
+    // sinal só no painel "Saldo de hoje") sem o teste perceber. Escopar no
+    // `<p>` certo.
+    const paragrafoDoSaldoDeHoje = [...tela.querySelectorAll("p")].find((p) =>
+      (p.textContent ?? "").includes("Saldo de hoje"),
+    );
+    expect(paragrafoDoSaldoDeHoje).toBeTruthy();
+    const texto = (paragrafoDoSaldoDeHoje?.textContent ?? "").replace(
+      /\s/g,
+      " ",
+    );
     expect(texto).toContain("−R$ 50,00");
   });
 
@@ -231,11 +242,13 @@ describe("FluxoDeCaixaGrafico — painel de saldo com poucos pontos conhecidos",
     expect(texto).not.toContain("50,00");
   });
 
-  it("2+ pontos com saldo conhecido: comportamento normal — AreaChart desenha a linha", () => {
+  it("2+ pontos com saldo conhecido E DIFERENTES ENTRE SI: comportamento normal — AreaChart desenha a linha", () => {
+    // 50 e 60 (não os dois iguais — isso é OUTRO cenário, "saldo sem
+    // mudança", testado à parte abaixo).
     const pontos: readonly PontoDoFluxo[] = [
       { dia: "2026-08-29", entradas: 0, saidas: 0, resultado: 0, saldo: null },
       { dia: "2026-08-30", entradas: 50, saidas: 0, resultado: 50, saldo: 50 },
-      { dia: "2026-08-31", entradas: 0, saidas: 0, resultado: 0, saldo: 50 },
+      { dia: "2026-08-31", entradas: 10, saidas: 0, resultado: 10, saldo: 60 },
     ];
     const tela = montar(
       <FluxoDeCaixaGrafico
@@ -252,7 +265,85 @@ describe("FluxoDeCaixaGrafico — painel de saldo com poucos pontos conhecidos",
     expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(2);
     expect(tela.textContent).not.toContain("Saldo de hoje");
     expect(tela.textContent).not.toContain("O saldo aparece aqui a partir de");
+    expect(tela.textContent).not.toContain("Saldo sem mudança desde");
     // A nota "de sempre" (não a versão curta) segue de pé quando há linha.
     expect(tela.textContent).toContain("O saldo só aparece a partir de 30/08");
+  });
+});
+
+// Revisão independente: o paliativo de "poucos pontos" só
+// olhava a QUANTIDADE de pontos conhecidos — com 2+ pontos, mas todos com o
+// MESMO saldo (marco perto de hoje e nenhum movimento desde então, bem
+// comum: a loja acabou de configurar a conta e ainda não vendeu de novo), o
+// AreaChart ainda desenhava, só que uma reta sobre um domínio de largura
+// zero — o MESMO eixo Y sem sentido ("R$ 1, R$ 2, R$ 3, R$ 4"), com um
+// "toco" de linha na borda em vez de nada. Uma reta não diz nada que a
+// frase "Saldo sem mudança desde DD/MM" não diga melhor.
+describe("FluxoDeCaixaGrafico — painel de saldo quando todos os pontos conhecidos são IGUAIS", () => {
+  it("2 pontos, ambos saldo 0: sem AreaChart, frase 'sem mudança desde' com a data do 1º ponto conhecido", () => {
+    const pontos: readonly PontoDoFluxo[] = [
+      // Movimento ANTES do marco (lançamento antigo importado depois de a
+      // conta já ter um saldo inicial mais recente) — só para o componente
+      // não cair no estado vazio "Nenhum dinheiro entrou ou saiu" (que olha
+      // `entradas`/`saidas`, não `saldo`); não afeta o saldo, que segue null.
+      {
+        dia: "2026-08-29",
+        entradas: 20,
+        saidas: 0,
+        resultado: 20,
+        saldo: null,
+      },
+      { dia: "2026-08-30", entradas: 0, saidas: 0, resultado: 0, saldo: 0 },
+      { dia: "2026-08-31", entradas: 0, saidas: 0, resultado: 0, saldo: 0 },
+    ];
+    const tela = montar(
+      <FluxoDeCaixaGrafico
+        pontos={pontos}
+        carregando={false}
+        ativo={true}
+        marco="2026-08-30"
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(1);
+    const texto = (tela.textContent ?? "").replace(/\s/g, " ");
+    expect(texto).toContain("Saldo sem mudança desde 30/08: R$ 0,00");
+
+    // A nota de baixo não repete a mesma informação — só a dica de ação.
+    expect(texto).toContain("Ajuste o saldo inicial em Contas e categorias");
+    expect(texto).not.toContain("O saldo só aparece a partir de");
+  });
+
+  it("3 pontos, todos saldo 100: também vira frase (não é só o caso de 2 pontos)", () => {
+    const pontos: readonly PontoDoFluxo[] = [
+      { dia: "2026-08-29", entradas: 0, saidas: 0, resultado: 0, saldo: null },
+      {
+        dia: "2026-08-30",
+        entradas: 100,
+        saidas: 0,
+        resultado: 100,
+        saldo: 100,
+      },
+      { dia: "2026-08-31", entradas: 0, saidas: 0, resultado: 0, saldo: 100 },
+      { dia: "2026-09-01", entradas: 0, saidas: 0, resultado: 0, saldo: 100 },
+    ];
+    const tela = montar(
+      <FluxoDeCaixaGrafico
+        pontos={pontos}
+        carregando={false}
+        ativo={true}
+        marco="2026-08-30"
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(1);
+    const texto = (tela.textContent ?? "").replace(/\s/g, " ");
+    expect(texto).toContain("Saldo sem mudança desde 30/08: R$ 100,00");
   });
 });

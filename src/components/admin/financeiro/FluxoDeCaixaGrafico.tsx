@@ -21,6 +21,7 @@ import {
   formatarBRLCompacto,
   formatarDataCurta,
   formatarDiaPorExtenso,
+  paraCentavos,
 } from "@/lib/financeiro";
 import type { DataIso } from "@/types/financeiro";
 import { Dinheiro, useValoresEstaoOcultos } from "./partes";
@@ -40,12 +41,12 @@ interface PontoDoGrafico extends PontoDoFluxo {
 
 /**
  * Saldo com sinal, respeitando o "olho" que esconde valores — usada no
- * balão e no painel que substitui o AreaChart quando há poucos pontos de
- * saldo conhecido (ver `poucosPontosDeSaldo` mais abaixo). Achado do
- * Gabriel: nunca `formatarBRL` puro aqui — ele devolve sempre o valor
- * ABSOLUTO (certo para entradas/saídas, que nunca são negativas; errado
- * para saldo, que pode ser negativo). `formatarBRLComSinal` só quando
- * negativo: nunca um "+" na frente de saldo positivo.
+ * balão e no painel que substitui o AreaChart quando não há o que desenhar
+ * (ver `semLinhaDeSaldo` mais abaixo). Achado do Gabriel: nunca
+ * `formatarBRL` puro aqui — ele devolve sempre o valor ABSOLUTO (certo para
+ * entradas/saídas, que nunca são negativas; errado para saldo, que pode ser
+ * negativo). `formatarBRLComSinal` só quando negativo: nunca um "+" na
+ * frente de saldo positivo.
  */
 function formatarSaldoComSinal(valor: number, ocultos: boolean): string {
   if (ocultos) return "R$ ••••";
@@ -194,6 +195,23 @@ export function FluxoDeCaixaGrafico({
     [pontos],
   );
   const poucosPontosDeSaldo = pontosComSaldo.length < 2;
+  // Segundo achado da mesma revisão: mesmo com 2+ pontos, se TODOS tiverem o
+  // saldo igual (marco perto de hoje e nenhum movimento desde então — bem
+  // comum: a loja acabou de configurar a conta e ainda não vendeu de novo),
+  // o AreaChart desenha uma linha reta sobre um domínio de largura zero — o
+  // mesmo eixo Y sem sentido do caso de poucos pontos, só que com uma linha
+  // (e um "toco" na borda) em vez de nada. Uma reta não diz nada que a
+  // própria frase não diga melhor.
+  const saldoConstante = useMemo(() => {
+    if (poucosPontosDeSaldo) return null;
+    const primeiro = pontosComSaldo[0].saldo!;
+    const primeiroEmCentavos = paraCentavos(primeiro);
+    const todosIguais = pontosComSaldo.every(
+      (p) => paraCentavos(p.saldo!) === primeiroEmCentavos,
+    );
+    return todosIguais ? primeiro : null;
+  }, [pontosComSaldo, poucosPontosDeSaldo]);
+  const semLinhaDeSaldo = poucosPontosDeSaldo || saldoConstante !== null;
 
   const eixoY = (
     <YAxis
@@ -255,19 +273,29 @@ export function FluxoDeCaixaGrafico({
           <p className="text-[9px] font-black uppercase tracking-[0.15em] text-zinc-400">
             Saldo
           </p>
-          {poucosPontosDeSaldo ? (
-            <div className="flex h-[56px] w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/10 px-3 text-center">
-              <p className="text-[11px] text-zinc-400">
-                {marco
-                  ? `O saldo aparece aqui a partir de ${formatarDataCurta(marco)}, data do saldo inicial das contas.`
-                  : "Ainda não há saldo suficiente nesta janela para desenhar a linha."}
-              </p>
-              {pontosComSaldo.length === 1 ? (
+          {semLinhaDeSaldo ? (
+            <div className="flex min-h-[56px] w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/10 px-3 py-2 text-center">
+              {poucosPontosDeSaldo ? (
+                <>
+                  <p className="text-[11px] text-zinc-400">
+                    {marco
+                      ? `O saldo aparece aqui a partir de ${formatarDataCurta(marco)}, data do saldo inicial das contas.`
+                      : "Ainda não há saldo suficiente nesta janela para desenhar a linha."}
+                  </p>
+                  {pontosComSaldo.length === 1 ? (
+                    <p className="text-[11px] font-bold text-white">
+                      Saldo de hoje:{" "}
+                      {formatarSaldoComSinal(pontosComSaldo[0].saldo!, ocultos)}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
                 <p className="text-[11px] font-bold text-white">
-                  Saldo de hoje:{" "}
-                  {formatarSaldoComSinal(pontosComSaldo[0].saldo!, ocultos)}
+                  Saldo sem mudança desde{" "}
+                  {formatarDataCurta(pontosComSaldo[0].dia)}:{" "}
+                  {formatarSaldoComSinal(saldoConstante!, ocultos)}
                 </p>
-              ) : null}
+              )}
             </div>
           ) : (
             <div className="h-[110px] w-full min-w-0">
@@ -408,10 +436,11 @@ export function FluxoDeCaixaGrafico({
       )}
       {marco && pontos.some((p) => p.saldo === null) ? (
         <p className="text-[11px] text-zinc-400">
-          {poucosPontosDeSaldo ? (
+          {semLinhaDeSaldo ? (
             // O painel que substitui o AreaChart (acima) já diz "a partir de
-            // DD/MM" — repetir aqui seria a MESMA frase duas vezes na tela;
-            // só a dica de ação fica de pé.
+            // DD/MM" (ou "sem mudança desde DD/MM") — repetir aqui seria a
+            // MESMA informação duas vezes na tela; só a dica de ação fica de
+            // pé.
             "Ajuste o saldo inicial em Contas e categorias para ver o saldo de dias anteriores."
           ) : (
             <>

@@ -246,9 +246,10 @@ export function ContaFolha({
             />
           </Campo>
         </div>
-        <p className="-mt-2 text-[11px] text-zinc-500">
+        <p className="-mt-2 text-[11px] text-zinc-400">
           Quanto a conta tinha no começo desse dia, antes dos lançamentos dele.
-          Lançamentos desse dia em diante entram no saldo de hoje.
+          Tudo o que entrou e saiu desse dia até hoje — vendas e lançamentos já
+          pagos ou recebidos — entra no saldo de hoje.
         </p>
         <LinhaDoInterruptor
           id="fin-conta-ativa"
