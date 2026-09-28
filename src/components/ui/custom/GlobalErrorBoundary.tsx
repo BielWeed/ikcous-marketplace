@@ -204,7 +204,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
       if (isChunkError) {
         return (
           <div className="flex size-full flex-col items-center justify-center bg-[#09090b] p-6 text-center antialiased">
-            <div className="size-10 animate-spin rounded-full border-3 border-white/10 border-t-admin-gold" />
+            <div className="border-3 size-10 animate-spin rounded-full border-white/10 border-t-admin-gold" />
             {/* Peça 22/09: erro de módulo não PROVA versão nova — na maior
                 parte das vezes é rede/reload de aba velha pós-deploy. A tela
                 fala em RECUPERAÇÃO (o que a escada faz de fato: ciclo do SW,

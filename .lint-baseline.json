@@ -157,14 +157,16 @@
     "teto'. A queda VEIO do PR: as rodadas 2 e 3 das edges do cartão (457 → 454 → 453)",
     "entraram com 0 warning novo e levaram velhos junto nos arquivos que reescreveram.",
     "Biome ficou 15/1. Baixado",
-    "SÓ DEPOIS do CI, como as quedas anteriores."
+    "SÓ DEPOIS do CI, como as quedas anteriores.",
+    "",
+    "28/09/2026 — Onda H1 do Hermes (#677: #690 biome zerado, #691/#692/#693 lint do painel e do cliente). Medido com `npm run lint:ratchet` na proxima/base 9a808fc4: eslint warnings 453 → 182; biome 15/1 → 0/0 (o 1 erro de formatação que a H3 deixou em AdminBannersView.tsx foi formatado neste mesmo PR). Teto baixado junto, como manda a regra acima."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 453
+    "warnings": 182
   },
   "biome": {
-    "errors": 15,
-    "warnings": 1
+    "errors": 0,
+    "warnings": 0
   }
 }
