@@ -120,4 +120,21 @@ describe("Dashboard CRM não rola para o lado (achado 28/09/2026)", () => {
     // explicitamente "NÃO overflow-x-hidden").
     expect(raizDaTela!.className).not.toContain("overflow-x-hidden");
   });
+
+  // Achado da re-revisão (28/09/2026): com overflow-x-clip na raiz mas SEM
+  // o título do header podendo encolher, o botão Sincronizar ficava
+  // escondido (em vez de rolar até ele) abaixo de ~356px. O AdminCrmView
+  // passa `tituloEncolhe` no AdminPageHeader para isso não acontecer — se
+  // alguém tirar essa prop, este teste tem que cair.
+  it("o h1 do header usa tituloEncolhe (min-w-0) — sem isso, o botão Sincronizar volta a sumir em telas estreitas", async () => {
+    const { AdminCrmView } = await import("@/views/admin/AdminCrmView");
+    await act(async () => {
+      raiz.render(<AdminCrmView active={true} onNavigate={() => {}} />);
+    });
+
+    const h1 = hospedeiro.querySelector("h1");
+    expect(h1).toBeTruthy();
+    expect(h1!.className).toContain("min-w-0");
+    expect(h1!.className).not.toContain("shrink-0");
+  });
 });

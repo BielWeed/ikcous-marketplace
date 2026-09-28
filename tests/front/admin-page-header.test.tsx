@@ -64,12 +64,13 @@ describe("AdminPageHeader", () => {
 
   // Achado do dono (28/09/2026): "Dashboard CRM" abaixo de ~356px empurrava
   // o botão Sincronizar para fora da tela — o h1 nunca encolhia
-  // (`shrink-0`). `tituloEncolhe` é opt-in por prop para não mudar as
-  // outras 21 telas que usam este componente com título curto
-  // ("Pedidos", "Produtos"...). Este teste prova as DUAS pontas: sem a
+  // (`shrink-0`). `tituloEncolhe` é opt-in por prop: nenhuma outra tela usa
+  // esta prop hoje (a Push, AdminPushView.tsx:973-981, resolveu um
+  // problema parecido de outro jeito, local à view — `flex-wrap` na linha
+  // em vez de encolher o título). Este teste prova as DUAS pontas: sem a
   // prop, as classes são as MESMAS de sempre (shrink-0, whitespace-nowrap,
-  // sem truncate) — nenhuma das 21 telas muda; com a prop, o h1 pode
-  // encolher e o texto trunca.
+  // sem truncate) — nenhuma tela muda; com a prop, o h1 pode encolher e o
+  // texto trunca.
   it("tituloEncolhe é opt-in: sem a prop, nada muda; com ela, o título pode encolher e truncar", () => {
     const semEncolher = montar(<AdminPageHeader titulo="Pedidos" />);
     const h1Padrao = semEncolher.querySelector("h1")!;

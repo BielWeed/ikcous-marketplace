@@ -19,12 +19,16 @@ import type { ReactNode } from "react";
  * listas vs. barra sticky com `max-w-4xl` nos ajustes — e não é cópia.
  *
  * `tituloEncolhe` (achado do dono, 28/09/2026): o título é `shrink-0` por
- * padrão — nas 21 telas com título curto ("Pedidos", "Produtos"...) isso
- * nunca foi problema, mas "Dashboard CRM" abaixo de ~356px empurrava as
- * ações (o botão Sincronizar) para fora da tela. Como a view põe
- * `overflow-x-clip` na raiz para não rolar de lado, o botão sumia em vez
- * de rolar até ele. Opt-in por prop para não mudar nada nas outras 21
- * telas (default preserva as mesmas classes de sempre).
+ * padrão — "Dashboard CRM" abaixo de ~356px empurrava as ações (o botão
+ * Sincronizar) para fora da tela. Como a view põe `overflow-x-clip` na
+ * raiz para não rolar de lado, o botão sumia em vez de rolar até ele.
+ * Nenhuma das outras telas usa esta prop hoje; a Push
+ * (`AdminPushView.tsx:973-981`) resolveu um problema parecido (título +
+ * ações estourando em 360-390px) de outro jeito, local à view — `flex-wrap`
+ * na linha, deixando o selo de status cair para uma segunda linha em vez
+ * de encolher o título. Aqui a prop existe como opt-in por prop para não
+ * mudar nada nas outras telas (default preserva as mesmas classes de
+ * sempre).
  */
 export function AdminPageHeader({
   titulo,
@@ -63,7 +67,13 @@ export function AdminPageHeader({
           )}
         >
           <span
-            className={cn("italic text-white", tituloEncolhe && "truncate")}
+            className={cn(
+              "italic text-white",
+              // `pr-1`: o itálico inclina a última letra para a direita —
+              // sem essa folga, o `truncate` corta a pontinha dela mesmo
+              // quando o título cabe inteiro (achado do dono, 28/09/2026).
+              tituloEncolhe && "truncate pr-1",
+            )}
           >
             {titulo}
           </span>

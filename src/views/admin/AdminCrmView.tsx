@@ -161,7 +161,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
       // computado); `clip` não tem esse acoplamento.
       className="pb-admin h-auto overflow-x-clip bg-[#09090b] text-white selection:bg-emerald-500/30 lg:pb-12"
     >
-      <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
+      <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-6 sm:gap-4 sm:px-6">
         <AdminPageHeader
           titulo="Dashboard CRM"
           tituloEncolhe
