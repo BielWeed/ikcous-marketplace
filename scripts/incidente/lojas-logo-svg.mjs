@@ -62,8 +62,14 @@ function almeida() {
   const marca = (cor, contorno) => `<path d="${nome.d}" fill="${cor}"/>
     <g transform="rotate(-5 560 630)"><path d="${store.d}" fill="${cor}" stroke="${contorno}" stroke-width="14" stroke-linejoin="round" paint-order="stroke"/></g>`;
   const circulo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><circle cx="500" cy="500" r="500" fill="#0B0B0B"/>${losango}${marca("#FFFFFF", "#0B0B0B")}</svg>`;
-  const [x0, y0, x1, y1] = caixa(`${nome.d} ${store.d}`);
-  const topo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0 - 12} ${y0 - 12} ${x1 - x0 + 24} ${y1 - y0 + 40}">${marca("#141414", "#FFFFFF")}</svg>`;
+  // Topo: a logo como ela é (fundo preto, losango e letras brancas) num selo
+  // retangular — o topo do site é claro e a marca da Almeida é o preto.
+  const [x0, , x1] = caixa(`${nome.d} ${store.d}`);
+  const bx = x0 - 50;
+  const bw = x1 - x0 + 100;
+  const topo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${bx} 330 ${bw} 380">
+    <defs><clipPath id="selo"><rect x="${bx}" y="330" width="${bw}" height="380" rx="46"/></clipPath></defs>
+    <g clip-path="url(#selo)"><rect x="${bx}" y="330" width="${bw}" height="380" fill="#0B0B0B"/>${losango}${marca("#FFFFFF", "#0B0B0B")}</g></svg>`;
   return { circulo, topo, fundo: "#0B0B0B" };
 }
 
