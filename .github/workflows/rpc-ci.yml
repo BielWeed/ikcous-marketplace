@@ -114,5 +114,11 @@ jobs:
       # de entradas fictícias -- 0 divergências.
       - name: Prova viva do CPF da janela (migration 20261182000000)
         run: node tests/banco/rodar-isolado.cjs tests/banco/cpf-da-janela-viva.cjs
+      # Migrations 20261187000000/20261188000000 (frente B, cupons no
+      # checkout): a lista mostra só vitrine e o exclusivo DA própria conta;
+      # validação e gatilho do pedido recusam exclusivo de outra; RLS/grants
+      # com SET ROLE; used_count morreu (P4). CLONE próprio.
+      - name: Prova viva dos cupons do checkout (migrations 20261187000000/88)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-do-checkout-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs

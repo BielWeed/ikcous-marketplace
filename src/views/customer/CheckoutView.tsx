@@ -1,3 +1,4 @@
+import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
 import {
   type CategoriaErroPagamento,
   type MetodoOnline,
@@ -11,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
-import { CouponInput } from "@/components/ui/custom/CouponInput";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import {
@@ -26,6 +26,7 @@ import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useConfigDoCartao } from "@/hooks/useConfigDoCartao";
 import { useCoupons } from "@/hooks/useCoupons";
+import { useCuponsDoCheckout } from "@/hooks/useCuponsDoCheckout";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -107,7 +108,6 @@ import {
   Phone,
   Plus,
   Sparkles,
-  Tag,
   User,
 } from "lucide-react";
 import {
@@ -874,6 +874,10 @@ export function CheckoutView({
   }, [user]);
 
   const hasInitializedRef = useRef(false);
+  const cupomPendenteDoRascunhoRef = useRef<{
+    codigo: string;
+    conta: string | null;
+  } | null>(null);
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
       // O RASCUNHO É LIDO ANTES DE QUALQUER form.reset E ANTES DE ABRIR A
@@ -946,13 +950,63 @@ export function CheckoutView({
           // O cupom volta SÓ o código: o efeito de revalidação do E1
           // (logo acima, [codigoDoCupom, subtotal]) decide em seguida —
           // válido atualiza o desconto; inválido sai com o motivo na tela.
+          // Frente B (28/09/2026): o cupom só volta para a MESMA conta que
+          // o aplicou — o código de um cupom exclusivo nunca aparece na tela
+          // de outra conta que abra o checkout nesta aba. A conta só é
+          // conhecida quando a autenticação termina (pode ser DEPOIS da
+          // config da loja): o cupom fica pendente e o efeito
+          // "cupom pendente do rascunho", logo abaixo, decide.
           if (rascunho.cupom) {
-            setAppliedCoupon({ code: rascunho.cupom, discount: 0 });
+            cupomPendenteDoRascunhoRef.current = {
+              codigo: rascunho.cupom,
+              conta: rascunho.contaDoCupom ?? null,
+            };
           }
         }
       }
     }
   }, [storeConfigLoaded, profile, user]);
+
+  // Troca de conta com o checkout aberto (frente B): o cupom aplicado por
+  // uma CONTA sai quando outra entra (ou quando ela sai) — exclusivo não passa
+  // de mão em mão. Convidado → conta NÃO é troca: cupom de convidado nunca é
+  // exclusivo (o servidor recusa exclusivo para anon), e o funil da P6 manda
+  // o convidado entrar na conta no meio do checkout — o cupom dele fica e é
+  // revalidado para a conta nova (o par conferido inclui a conta). A
+  // primeira resolução da autenticação também não conta.
+  const contaAnteriorRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (authLoading) return;
+    const agora = user?.id ?? null;
+    const antes = contaAnteriorRef.current;
+    contaAnteriorRef.current = agora;
+    if (antes === undefined || antes === null || antes === agora) return;
+    cupomPendenteDoRascunhoRef.current = null;
+    cupomConferidoRef.current = null;
+    setAppliedCoupon(null);
+    setCouponError("");
+  }, [authLoading, user]);
+
+  // Cupom pendente do rascunho (frente B): devolvido só quando a conta é
+  // conhecida E é a mesma que o aplicou; a revalidação do E1 confere o valor
+  // em seguida. Declarado DEPOIS do efeito de init — no mesmo commit em que
+  // a config chega, roda logo depois dele.
+  // - cupom de convidado (conta null) volta para qualquer um — não é
+  //   exclusivo, e a revalidação confere o valor para a conta de agora;
+  // - cupom de uma conta com a autenticação ainda SEM usuário (sessão que
+  //   chega tarde depois do timeout do AuthContext) fica pendente;
+  // - cupom de outra conta é descartado.
+  useEffect(() => {
+    if (!storeConfigLoaded || authLoading) return;
+    const pendente = cupomPendenteDoRascunhoRef.current;
+    if (!pendente) return;
+    const agora = user?.id ?? null;
+    if (pendente.conta !== null && agora === null) return;
+    cupomPendenteDoRascunhoRef.current = null;
+    if (pendente.conta === null || pendente.conta === agora) {
+      setAppliedCoupon({ code: pendente.codigo, discount: 0 });
+    }
+  }, [storeConfigLoaded, authLoading, user]);
 
   // A quem os campos de endereço ATUALMENTE pertencem: o último CEP cuja
   // busca foi aplicada. `null` só quando o campo nasce vazio — aí não existe
@@ -1191,6 +1245,17 @@ export function CheckoutView({
     discount: number;
   } | null>(null);
   const [couponError, setCouponError] = useState<string>("");
+  // Frente B: o código em validação agora (toque em "Aplicar") — trava o
+  // toque duplo e mostra "Aplicando…" no botão certo.
+  const [aplicandoCupom, setAplicandoCupom] = useState<string | null>(null);
+  // O par (código, subtotal) que o toque em "Aplicar" ACABOU de validar: o
+  // efeito de revalidação abaixo não repete a mesma consulta (antes cada
+  // toque validava duas vezes — defeito 6 da investigação da frente B).
+  const cupomConferidoRef = useRef<{
+    code: string;
+    subtotal: number;
+    conta: string | null;
+  } | null>(null);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const hasPushedAddressModalState = useRef(false);
@@ -1361,6 +1426,15 @@ export function CheckoutView({
   const codigoDoCupom = appliedCoupon?.code ?? null;
   useEffect(() => {
     if (!codigoDoCupom) return;
+    const conferido = cupomConferidoRef.current;
+    if (
+      conferido &&
+      conferido.code === codigoDoCupom &&
+      conferido.subtotal === subtotal &&
+      conferido.conta === (user?.id ?? null)
+    ) {
+      return;
+    }
     let vivo = true;
     (async () => {
       try {
@@ -1368,6 +1442,14 @@ export function CheckoutView({
         if (!vivo) return;
         if (resultado.networkError) return;
         if (resultado.valid) {
+          // O par que ACABOU de ser validado vira a referência: subtotal que
+          // vai e volta (100 → 150 → 100) revalida de novo em vez de manter
+          // o desconto de 150 (revisão de risco, M1).
+          cupomConferidoRef.current = {
+            code: codigoDoCupom,
+            subtotal,
+            conta: user?.id ?? null,
+          };
           setAppliedCoupon({
             code: codigoDoCupom,
             discount: resultado.discount,
@@ -1383,7 +1465,23 @@ export function CheckoutView({
     return () => {
       vivo = false;
     };
-  }, [codigoDoCupom, subtotal, validateCoupon, isOffline]);
+    // `user` entra: convidado que entra na conta com o cupom na tela
+    // revalida para a conta nova.
+  }, [codigoDoCupom, subtotal, validateCoupon, isOffline, user]);
+  // Frente B (D7): a loja desligou os cupons com um cupom na tela (ou o
+  // rascunho trouxe um) — o servidor recusaria o pedido; o cupom sai antes.
+  useEffect(() => {
+    if (!config.enableCoupons && codigoDoCupom) {
+      setAppliedCoupon(null);
+      setCouponError("");
+    }
+  }, [config.enableCoupons, codigoDoCupom]);
+  // A lista de cupons que a cliente pode usar (vitrine + exclusivos DELA).
+  const cuponsDoCheckout = useCuponsDoCheckout({
+    subtotal,
+    userId: user?.id ?? null,
+    ligado: Boolean(config.enableCoupons),
+  });
   // `isOffline` nos deps é a pílula da re-revisão do PR #374 (ressalva 2):
   // em falha de REDE a revalidação mantém o cupom com desconto 0 e não
   // havia retry — com a conexão de volta o efeito roda de novo e o desconto
@@ -1410,6 +1508,10 @@ export function CheckoutView({
   useEffect(() => {
     cupomRef.current = appliedCoupon;
   }, [appliedCoupon]);
+  const contaRef = useRef<string | null>(user?.id ?? null);
+  useEffect(() => {
+    contaRef.current = user?.id ?? null;
+  }, [user]);
   useEffect(() => {
     const gravarRascunho = (valores: {
       name?: string;
@@ -1434,7 +1536,14 @@ export function CheckoutView({
         estado: valores.state ?? "",
         complemento: valores.complement ?? "",
         notas: notasRef.current,
-        cupom: cupomRef.current?.code ?? null,
+        // Cupom ainda pendente (auth carregando) não se perde numa gravação.
+        cupom:
+          cupomRef.current?.code ??
+          cupomPendenteDoRascunhoRef.current?.codigo ??
+          null,
+        contaDoCupom: cupomRef.current
+          ? contaRef.current
+          : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
       };
       if (!rascunhoTemConteudo(rascunho)) return;
       salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
@@ -1459,11 +1568,17 @@ export function CheckoutView({
       estado: form.getValues("state") ?? "",
       complemento: form.getValues("complement") ?? "",
       notas: notes,
-      cupom: appliedCoupon?.code ?? null,
+      cupom:
+        appliedCoupon?.code ??
+        cupomPendenteDoRascunhoRef.current?.codigo ??
+        null,
+      contaDoCupom: appliedCoupon
+        ? (user?.id ?? null)
+        : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
     };
     if (!rascunhoTemConteudo(rascunho)) return;
     salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
-  }, [notes, appliedCoupon, form]);
+  }, [notes, appliedCoupon, form, user]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
   // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
   // gatilho já na montagem (isSummaryPanelOpen começa `false`).
@@ -2145,6 +2260,7 @@ export function CheckoutView({
     : null;
 
   const handleRemoveCoupon = () => {
+    cupomConferidoRef.current = null;
     setAppliedCoupon(null);
     setCouponError("");
   };
@@ -2189,18 +2305,31 @@ export function CheckoutView({
   };
 
   const handleApplyCoupon = async (code: string) => {
+    // Toque duplo (ou toque em outro cartão) com uma validação em voo: nada.
+    if (aplicandoCupom) return;
     setCouponError("");
+    setAplicandoCupom(code);
+    // A conta que PEDIU a validação: se outra entrar enquanto a resposta não
+    // chega, a resposta é descartada (revisão, I2 — o cupom de uma conta
+    // nunca aparece aplicado na tela da outra).
+    const contaQuePediu = contaRef.current;
     try {
       const result = await validateCoupon(code, subtotal);
+      if (contaRef.current !== contaQuePediu) return;
 
       if (result.valid) {
+        cupomConferidoRef.current = { code, subtotal, conta: contaQuePediu };
         setAppliedCoupon({ code, discount: result.discount });
       } else {
         setCouponError(result.message || "Cupom inválido");
+        // O cupom da lista pode ter esgotado/vencido desde a última busca.
+        cuponsDoCheckout.tentarDeNovo();
       }
     } catch (error) {
       console.error("Error applying coupon:", error);
       setCouponError("Erro ao validar cupom");
+    } finally {
+      setAplicandoCupom(null);
     }
   };
 
@@ -4183,26 +4312,20 @@ export function CheckoutView({
           />
         )}
 
-        {/* Coupon */}
+        {/* Cupons (frente B, 28/09/2026): a seção inteira mora em
+            CuponsDoCheckout — lista dos cupons disponíveis + campo de
+            digitar. O layout de computador só POSICIONA esta seção. */}
         {config.enableCoupons && (
-          <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-              <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-                <Tag className="size-4" />
-              </div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                Vantagem Exclusiva
-              </span>
-            </div>
-            <div className="p-4">
-              <CouponInput
-                onApply={handleApplyCoupon}
-                onRemove={handleRemoveCoupon}
-                appliedCoupon={appliedCoupon}
-                error={couponError}
-              />
-            </div>
-          </div>
+          <CuponsDoCheckout
+            cupons={cuponsDoCheckout.cupons}
+            situacao={cuponsDoCheckout.situacao}
+            onTentarDeNovo={cuponsDoCheckout.tentarDeNovo}
+            appliedCoupon={appliedCoupon}
+            couponError={couponError}
+            aplicando={aplicandoCupom}
+            onApply={handleApplyCoupon}
+            onRemove={handleRemoveCoupon}
+          />
         )}
 
         {/* Payment Method */}

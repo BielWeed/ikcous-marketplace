@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { cupomDoBanco } from "@/lib/cupom-do-banco";
 import { mensagemDeErroDoCupom } from "@/lib/erro-do-cupom";
 import { supabase } from "@/lib/supabase";
 import type { Coupon } from "@/types";
@@ -6,6 +7,20 @@ import type { Database } from "@/types/database.types";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+
+/** Uma linha da busca de clientes do painel (sem CPF). */
+export interface ClienteEncontradoParaCupom {
+  readonly id: string;
+  readonly full_name: string | null;
+  readonly email: string | null;
+}
+
+/** Uma conta na lista de um cupom exclusivo (painel). */
+export interface ClienteDoCupom {
+  readonly id: string;
+  readonly nome: string | null;
+  readonly email: string | null;
+}
 
 export function useCoupons(autoFetch = false) {
   const { isAdmin } = useAuth();
@@ -33,21 +48,9 @@ export function useCoupons(autoFetch = false) {
         throw error;
       }
 
+      // PAINEL-12 + frente B: o mapeador único (usage_count só, alcance).
       const formattedCoupons: Coupon[] =
-        data?.map((c) => ({
-          id: c.id,
-          code: c.code,
-          type: c.type as "percentage" | "fixed",
-          value: c.value,
-          minPurchase: c.min_purchase ?? undefined,
-          usageLimit: c.usage_limit ?? undefined,
-          // PAINEL-12: schema so tem usage_count (baseline:423/689) — o
-          // used_count era codigo morto. `?? 0` em vez de `|| 0`: 0 real
-          // continua 0, null (coluna nao veio) nao vira 0 falso.
-          usageCount: c.usage_count ?? 0,
-          validUntil: c.valid_until ?? undefined,
-          active: c.active ?? true,
-        })) || [];
+        data?.map((c) => cupomDoBanco(c)) || [];
 
       setCachedCouponsData(formattedCoupons);
       setCoupons(formattedCoupons);
@@ -134,6 +137,11 @@ export function useCoupons(autoFetch = false) {
             valid_until: coupon.validUntil,
             active: coupon.active ?? true,
             usage_count: 0,
+            // Frente B: só vai quando NÃO é o padrão — criar cupom secreto
+            // continua funcionando com o banco de antes da 20261187000000.
+            ...(coupon.alcance && coupon.alcance !== "codigo"
+              ? { alcance: coupon.alcance }
+              : {}),
           },
         ])
         .select()
@@ -197,6 +205,11 @@ export function useCoupons(autoFetch = false) {
     if ("validUntil" in updates)
       dbUpdates.valid_until = updates.validUntil ?? null;
     if ("active" in updates) dbUpdates.active = updates.active;
+    // Frente B: o alcance só vai quando o form o MUDOU (o form só manda a
+    // chave nesse caso) — editar um cupom continua funcionando com o banco
+    // de antes da migration 20261187000000.
+    if ("alcance" in updates && updates.alcance)
+      dbUpdates.alcance = updates.alcance;
 
     try {
       const { error } = await supabase
@@ -254,6 +267,57 @@ export function useCoupons(autoFetch = false) {
     }
   };
 
+  /** Contas que podem usar um cupom exclusivo (RPC admin, sem CPF). */
+  const lerClientesDoCupom = useCallback(
+    async (couponId: string): Promise<ClienteDoCupom[]> => {
+      const { data, error } = await supabase.rpc("admin_cupom_clientes", {
+        p_coupon_id: couponId,
+      });
+      if (error) throw error;
+      return (data ?? []).map((l) => ({
+        id: l.user_id,
+        nome: l.nome,
+        email: l.email,
+      }));
+    },
+    [],
+  );
+
+  /** Troca a lista inteira (atômica no servidor; gate is_admin()). */
+  const definirClientesDoCupom = useCallback(
+    async (couponId: string, clientes: readonly string[]): Promise<void> => {
+      const { error } = await supabase.rpc("admin_cupom_definir_clientes", {
+        p_coupon_id: couponId,
+        p_clientes: [...clientes],
+      });
+      if (error) throw error;
+    },
+    [],
+  );
+
+  /** Busca de contas para a lista do exclusivo (mesma RPC da tela de
+   * Clientes e do balcão; gate de admin no servidor; sem CPF). */
+  const buscarClientesParaCupom = useCallback(
+    async (termo: string): Promise<ClienteEncontradoParaCupom[]> => {
+      const { data, error } = await supabase.rpc("get_admin_customers_paged", {
+        p_search: termo,
+        p_sort_field: "created_at",
+        p_sort_direction: "desc",
+        p_page: 0,
+        p_page_size: 8,
+      });
+      if (error) throw error;
+      const linhas = ((data as { data?: unknown[] } | null)?.data ??
+        []) as Array<Record<string, unknown>>;
+      return linhas.map((l) => ({
+        id: String(l.id),
+        full_name: typeof l.full_name === "string" ? l.full_name : null,
+        email: typeof l.email === "string" ? l.email : null,
+      }));
+    },
+    [],
+  );
+
   const getCouponStats = useCallback(async () => {
     if (!isAdmin) {
       toast.error("Permissão negada");
@@ -278,5 +342,8 @@ export function useCoupons(autoFetch = false) {
     updateCoupon,
     deleteCoupon,
     getCouponStats,
+    lerClientesDoCupom,
+    definirClientesDoCupom,
+    buscarClientesParaCupom,
   };
 }

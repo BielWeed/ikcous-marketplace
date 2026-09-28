@@ -415,6 +415,7 @@ export type Database = {
       coupons: {
         Row: {
           active: boolean | null;
+          alcance: string;
           code: string;
           created_at: string;
           id: string;
@@ -422,12 +423,12 @@ export type Database = {
           type: string;
           usage_count: number | null;
           usage_limit: number | null;
-          used_count: number | null;
           valid_until: string | null;
           value: number;
         };
         Insert: {
           active?: boolean | null;
+          alcance?: string;
           code: string;
           created_at?: string;
           id?: string;
@@ -435,12 +436,12 @@ export type Database = {
           type: string;
           usage_count?: number | null;
           usage_limit?: number | null;
-          used_count?: number | null;
           valid_until?: string | null;
           value: number;
         };
         Update: {
           active?: boolean | null;
+          alcance?: string;
           code?: string;
           created_at?: string;
           id?: string;
@@ -448,11 +449,43 @@ export type Database = {
           type?: string;
           usage_count?: number | null;
           usage_limit?: number | null;
-          used_count?: number | null;
           valid_until?: string | null;
           value?: number;
         };
         Relationships: [];
+      };
+      cupom_clientes: {
+        Row: {
+          coupon_id: string;
+          criado_em: string;
+          user_id: string;
+        };
+        Insert: {
+          coupon_id: string;
+          criado_em?: string;
+          user_id: string;
+        };
+        Update: {
+          coupon_id?: string;
+          criado_em?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cupom_clientes_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cupom_clientes_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       devolucao_eventos: {
         Row: {
@@ -2743,6 +2776,18 @@ export type Database = {
             Returns: undefined;
           };
       check_is_admin: { Args: never; Returns: boolean };
+      admin_cupom_clientes: {
+        Args: { p_coupon_id: string };
+        Returns: {
+          email: string | null;
+          nome: string | null;
+          user_id: string;
+        }[];
+      };
+      admin_cupom_definir_clientes: {
+        Args: { p_clientes: string[]; p_coupon_id: string };
+        Returns: number;
+      };
       admin_devolucao_concluir: {
         Args: {
           p_id: string;
@@ -2887,6 +2932,20 @@ export type Database = {
       buscar_por_codigo_barras: {
         Args: { p_codigo: string };
         Returns: Json;
+      };
+      cupons_do_checkout: {
+        Args: { p_subtotal: number };
+        Returns: {
+          aplica: boolean;
+          codigo: string;
+          desconto: number;
+          exclusivo: boolean;
+          falta: number;
+          minimo: number;
+          tipo: string;
+          valido_ate: string | null;
+          valor: number;
+        }[];
       };
       crm_clientes: {
         Args: {
