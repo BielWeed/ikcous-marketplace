@@ -270,7 +270,7 @@ export function ImageAdjuster({
       let count = 0;
 
       for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
+        const r = data.at(i) ?? 0;
         const g = data[i + 1];
         const b = data[i + 2];
 
@@ -297,15 +297,21 @@ export function ImageAdjuster({
       const stdDevLuminance = Math.sqrt(sumSqDiff / count);
 
       // Compute histogram bins (5 ranges of luminance)
-      const histogram = [0, 0, 0, 0, 0];
+      const histogram = new Map<number, number>([
+        [0, 0],
+        [1, 0],
+        [2, 0],
+        [3, 0],
+        [4, 0],
+      ]);
       for (const lum of pixelLuminances) {
         const bin = Math.min(4, Math.floor(lum / 51.2));
-        histogram[bin]++;
+        histogram.set(bin, (histogram.get(bin) ?? 0) + 1);
       }
 
       // Normalize histogram bins to percentage of max bin
-      const maxBin = Math.max(...histogram) || 1;
-      const normalizedHist = histogram.map((val) =>
+      const maxBin = Math.max(...histogram.values()) || 1;
+      const normalizedHist = [...histogram.values()].map((val) =>
         Math.round((val / maxBin) * 100),
       );
 
@@ -1359,6 +1365,7 @@ export function ImageAdjuster({
                           )}
                         >
                           {renderPresetIcon(preset, aspectRatio === preset)}
+                          {/* eslint-disable-next-line security/detect-object-injection -- `preset` é tipado como AspectRatioPreset e PRESET_LABELS é um Record exaustivo sobre essa união fechada, sem chave dinâmica */}
                           <span>{PRESET_LABELS[preset]}</span>
                         </button>
                       ))}

@@ -12,7 +12,7 @@ import { useNetworkAdaptive } from "./useNetworkAdaptive";
  */
 
 // Map view names to their dynamic import factories
-const VIEW_PREFETCH_MAP: Record<string, () => Promise<unknown>> = {
+const VIEW_PREFETCH_FACTORIES: Record<string, () => Promise<unknown>> = {
   home: () => import("@/views/customer/HomeView"),
   cart: () => import("@/views/customer/CartView"),
   "product-detail": () => import("@/views/customer/ProductView"),
@@ -61,6 +61,10 @@ const VIEW_PREFETCH_MAP: Record<string, () => Promise<unknown>> = {
   "admin-login": () => import("@/views/admin/AdminLoginView"),
 };
 
+const VIEW_PREFETCH_MAP = new Map<string, () => Promise<unknown>>(
+  Object.entries(VIEW_PREFETCH_FACTORIES),
+);
+
 const prefetched = new Set<string>();
 
 /**
@@ -92,7 +96,7 @@ export function usePrefetchOnHover() {
     (view: string) => {
       if (isSlow()) return; // skip prefetching on slow connections
       if (prefetched.has(view)) return; // already prefetched
-      const factory = VIEW_PREFETCH_MAP[view];
+      const factory = VIEW_PREFETCH_MAP.get(view);
       if (!factory) return;
 
       prefetched.add(view);
@@ -119,7 +123,7 @@ export function usePrefetchOnHover() {
   // prefetchView, sem duplicar essa checagem aqui (App-2114).
   const prefetchAll = useCallback(
     (isAdmin = false) => {
-      chavesParaPrefetchAll(Object.keys(VIEW_PREFETCH_MAP), isAdmin).forEach(
+      chavesParaPrefetchAll([...VIEW_PREFETCH_MAP.keys()], isAdmin).forEach(
         (v) => prefetchView(v),
       );
     },
@@ -127,7 +131,7 @@ export function usePrefetchOnHover() {
   );
 
   const prefetchViewPromise = useCallback((view: string): Promise<unknown> => {
-    const factory = VIEW_PREFETCH_MAP[view];
+    const factory = VIEW_PREFETCH_MAP.get(view);
     if (!factory) return Promise.resolve();
     if (prefetched.has(view)) return Promise.resolve();
 

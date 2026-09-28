@@ -964,7 +964,7 @@ export const AdminPushView = memo(function AdminPushView({
     (effectiveReach === 0 && !podeGravarAvisoSemPush);
 
   return (
-    <div className="min-h-screen bg-[#09090b] pb-admin lg:pb-12 text-white duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-admin-gold">
+    <div className="pb-admin min-h-screen bg-[#09090b] text-white duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-admin-gold lg:pb-12">
       {/* Top Header Bar — fórmula "Elite Header" (AdminPageHeader), mesma
           casca das ondas anteriores: o título padrão, a ajuda na linha do
           título e os indicadores à direita. O subtítulo fica na view. */}
@@ -985,10 +985,10 @@ export const AdminPushView = memo(function AdminPushView({
               acoes={
                 <>
                   {/* Indicadores no Topbar (os mesmos de antes) */}
-                  <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold text-zinc-300">
+                  <div className="hidden items-center gap-2 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold text-zinc-300 sm:flex">
                     <Smartphone className="size-3.5 text-admin-gold" />
                     <span>
-                      <strong className="text-white font-bold">
+                      <strong className="font-bold text-white">
                         {rotuloDaContagem(subCount)}
                       </strong>{" "}
                       Celulares Cadastrados
@@ -996,9 +996,9 @@ export const AdminPushView = memo(function AdminPushView({
                   </div>
                   <div className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold">
                     <span
-                      className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-admin-gold animate-pulse" : "bg-zinc-600"}`}
+                      className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "animate-pulse bg-admin-gold" : "bg-zinc-600"}`}
                     />
-                    <span className="text-zinc-400 uppercase tracking-wider text-[9px]">
+                    <span className="text-[9px] uppercase tracking-wider text-zinc-400">
                       {config.realTimeSalesAlerts
                         ? "Avisos de Vendas Ativos"
                         : "Avisos Desativados"}
@@ -1156,14 +1156,14 @@ export const AdminPushView = memo(function AdminPushView({
                 tabulares para o número não dançar enquanto digita. */}
             <div className="space-y-2">
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="mb-1 flex items-center justify-between">
                   <Label
                     htmlFor="push-title"
                     className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
                   >
                     Título da mensagem
                   </Label>
-                  <span className="text-[8px] font-mono tabular-nums text-zinc-500">
+                  <span className="font-mono text-[8px] tabular-nums text-zinc-500">
                     {notification.title.length}/60
                   </span>
                 </div>
@@ -1186,19 +1186,19 @@ export const AdminPushView = memo(function AdminPushView({
                       : "Ex: Oferta especial liberada para você! 🎁"
                   }
                   useShadcn={true}
-                  className="h-9 rounded-lg border-white/10 bg-black/50 px-3 text-xs text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 placeholder:text-zinc-600 disabled:opacity-40"
+                  className="h-9 rounded-lg border-white/10 bg-black/50 px-3 text-xs text-white shadow-inner placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-0 disabled:opacity-40"
                 />
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="mb-1 flex items-center justify-between">
                   <Label
                     htmlFor="push-body"
                     className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
                   >
                     Texto da mensagem
                   </Label>
-                  <span className="text-[8px] font-mono tabular-nums text-zinc-500">
+                  <span className="font-mono text-[8px] tabular-nums text-zinc-500">
                     {notification.body.length}/140
                   </span>
                 </div>
@@ -1222,7 +1222,7 @@ export const AdminPushView = memo(function AdminPushView({
                   }
                   rows={2}
                   useShadcn={true}
-                  className="resize-none rounded-lg border-white/10 bg-black/50 p-2.5 text-xs font-medium text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 placeholder:text-zinc-600 disabled:opacity-40"
+                  className="resize-none rounded-lg border-white/10 bg-black/50 p-2.5 text-xs font-medium text-white shadow-inner placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-0 disabled:opacity-40"
                 />
               </div>
             </div>
@@ -1236,7 +1236,7 @@ export const AdminPushView = memo(function AdminPushView({
                 público. Único filho com posição explícita da grade — o
                 row-span-6 cobre as linhas da composição à esquerda, com
                 (6) e sem (5) o aviso offline renderizado. */}
-            <div className="lg:col-start-2 lg:row-start-1 lg:row-span-6 lg:sticky lg:top-20">
+            <div className="lg:sticky lg:top-20 lg:col-start-2 lg:row-span-6 lg:row-start-1">
               <PreviaNoCelular
                 title={notification.title}
                 body={notification.body}
@@ -1264,10 +1264,10 @@ export const AdminPushView = memo(function AdminPushView({
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="size-4 text-admin-gold" />
                     <div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-admin-gold leading-none">
+                      <p className="text-[9px] font-black uppercase leading-none tracking-widest text-admin-gold">
                         Mensagem para Cliente Específico
                       </p>
-                      <p className="text-xs font-bold text-white mt-0.5">
+                      <p className="mt-0.5 text-xs font-bold text-white">
                         Cliente: {targetUserName || "Carregando..."}
                       </p>
                     </div>
@@ -1503,7 +1503,7 @@ export const AdminPushView = memo(function AdminPushView({
                     disabled={isOffline || loading}
                     placeholder="/exemplo-pagina"
                     useShadcn={true}
-                    className="h-9 rounded-lg border-white/10 bg-black/50 font-mono text-xs text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 placeholder:text-zinc-600"
+                    className="h-9 rounded-lg border-white/10 bg-black/50 font-mono text-xs text-white shadow-inner placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-0"
                   />
                 </div>
               )}
@@ -1511,7 +1511,7 @@ export const AdminPushView = memo(function AdminPushView({
 
             {/* Botão de Ação */}
             <button
-              className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-admin-gold to-[#e2c04a] text-xs font-black uppercase tracking-[0.15em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98] disabled:opacity-30 disabled:grayscale disabled:shadow-none"
+              className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-admin-gold to-[#e2c04a] text-xs font-black uppercase tracking-[0.15em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98] disabled:opacity-30 disabled:shadow-none disabled:grayscale"
               onClick={handleSend}
               disabled={botaoEnviarDesabilitado}
             >
@@ -1549,12 +1549,12 @@ export const AdminPushView = memo(function AdminPushView({
               inventar substituto.
             */}
           <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
-            <div className="flex items-center justify-between mb-2">
+            <div className="mb-2 flex items-center justify-between">
               <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400">
                 <Users className="size-3.5 text-admin-gold" /> Clientes Prontos
                 para Receber
               </p>
-              <span className="text-[9px] font-mono text-admin-gold font-bold uppercase">
+              <span className="font-mono text-[9px] font-bold uppercase text-admin-gold">
                 Ativos
               </span>
             </div>
@@ -1576,8 +1576,8 @@ export const AdminPushView = memo(function AdminPushView({
             <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-admin-gold/20 bg-admin-gold/10 text-admin-gold">
               <Clock className="size-3.5 text-admin-gold" />
             </div>
-            <p className="text-[10px] font-medium text-zinc-300 leading-tight">
-              <span className="font-bold text-admin-gold uppercase tracking-wider">
+            <p className="text-[10px] font-medium leading-tight text-zinc-300">
+              <span className="font-bold uppercase tracking-wider text-admin-gold">
                 Dica de Vendas:
               </span>{" "}
               Enviar mensagens entre{" "}
@@ -1598,12 +1598,12 @@ export const AdminPushView = memo(function AdminPushView({
           icone={History}
           abertaPorPadrao
           extra={
-            <span className="text-[8px] font-mono text-zinc-500">
+            <span className="font-mono text-[8px] text-zinc-500">
               Últimas 20 mensagens
             </span>
           }
         >
-          <div className="max-h-[350px] overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-zinc-700">
+          <div className="scrollbar-thin scrollbar-thumb-zinc-700 max-h-[350px] space-y-2 overflow-y-auto pr-1">
             {history === null ? (
               <div className="py-6 text-center italic text-zinc-600">
                 <p className="text-[9px] font-bold uppercase tracking-widest">
@@ -1629,27 +1629,27 @@ export const AdminPushView = memo(function AdminPushView({
                   key={item.id}
                   className="rounded-lg border border-white/5 bg-black/30 p-2.5 transition-all hover:border-white/10 hover:bg-black/50"
                 >
-                  <div className="flex items-center justify-between text-[8px] font-bold uppercase tracking-widest text-zinc-400 mb-1">
-                    <span className="text-zinc-500 font-mono">
+                  <div className="mb-1 flex items-center justify-between text-[8px] font-bold uppercase tracking-widest text-zinc-400">
+                    <span className="font-mono text-zinc-500">
                       {new Date(item.sent_at).toLocaleDateString()} às{" "}
                       {new Date(item.sent_at).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
                     </span>
-                    <span className="flex items-center gap-1 bg-zinc-800/80 px-1.5 py-0.5 rounded text-zinc-300">
+                    <span className="flex items-center gap-1 rounded bg-zinc-800/80 px-1.5 py-0.5 text-zinc-300">
                       <Users className="size-2.5 text-zinc-400" />{" "}
                       {textoDeAlcanceEmAparelhos(item.recipient_count)}
                     </span>
                   </div>
-                  <h4 className="text-[10px] font-bold text-white line-clamp-1">
+                  <h4 className="line-clamp-1 text-[10px] font-bold text-white">
                     {item.title}
                   </h4>
-                  <p className="text-[9px] text-zinc-400 line-clamp-1 mt-0.5 font-medium">
+                  <p className="mt-0.5 line-clamp-1 text-[9px] font-medium text-zinc-400">
                     {item.body}
                   </p>
                   <div className="mt-1.5 flex items-center justify-between border-t border-white/5 pt-1 text-[8px]">
-                    <span className="font-mono text-zinc-500 truncate max-w-[150px]">
+                    <span className="max-w-[150px] truncate font-mono text-zinc-500">
                       Ao clicar: {item.url}
                     </span>
                     {/* Achado 11 da auditoria de 20/08/2026: o registro
@@ -1720,13 +1720,13 @@ export const AdminPushView = memo(function AdminPushView({
                         <span
                           className={`size-1.5 rounded-full ${
                             config.realTimeSalesAlerts
-                              ? "bg-admin-gold animate-pulse"
+                              ? "animate-pulse bg-admin-gold"
                               : "bg-zinc-600"
                           }`}
                         />
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-[10px] text-zinc-400 leading-none">
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <p className="text-[10px] leading-none text-zinc-400">
                           Mostra na loja avisos de compras em tempo real.
                         </p>
                         <button
@@ -1734,7 +1734,7 @@ export const AdminPushView = memo(function AdminPushView({
                           onClick={() =>
                             setIsSocialProofExpanded(!isSocialProofExpanded)
                           }
-                          className="flex items-center text-[10px] font-bold text-admin-gold hover:text-admin-gold/80 leading-none"
+                          className="flex items-center text-[10px] font-bold leading-none text-admin-gold hover:text-admin-gold/80"
                         >
                           {isSocialProofExpanded ? (
                             <ChevronUp className="size-3" />
@@ -1763,7 +1763,7 @@ export const AdminPushView = memo(function AdminPushView({
                       transition={{ duration: 0.2, ease: "easeInOut" }}
                       className="overflow-hidden"
                     >
-                      <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[10px] leading-relaxed text-zinc-400 space-y-1">
+                      <div className="mt-2.5 space-y-1 border-t border-white/5 pt-2.5 text-[10px] leading-relaxed text-zinc-400">
                         <p>
                           Esta opção exibe pequenas notificações discretas na
                           loja quando alguém faz um pedido, passando mais

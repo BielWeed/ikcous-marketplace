@@ -159,9 +159,7 @@ describe("AdminLayout — crachá de Pedidos usa a mesma conta ampla do cartão"
   });
 
   it("mostra 7 (pending+new+processing), não 6 (só pending)", async () => {
-    const { AdminLayout } = await import(
-      "@/components/layouts/AdminLayout"
-    );
+    const { AdminLayout } = await import("@/components/layouts/AdminLayout");
 
     await act(async () => {
       raiz.render(
@@ -171,13 +169,16 @@ describe("AdminLayout — crachá de Pedidos usa a mesma conta ampla do cartão"
       );
     });
 
-    const botaoPedidos = Array.from(
-      hospedeiro.querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Pedidos"));
+    const botaoPedidos = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Pedidos"),
+    );
     expect(botaoPedidos).toBeTruthy();
 
     await esperarAte(
-      () => botaoPedidos!.textContent?.includes(String(CONTAGEM_AMPLA_IGUAL_AO_CARTAO)) ?? false,
+      () =>
+        botaoPedidos!.textContent?.includes(
+          String(CONTAGEM_AMPLA_IGUAL_AO_CARTAO),
+        ) ?? false,
     );
 
     expect(botaoPedidos!.textContent).toContain(
