@@ -196,9 +196,15 @@ vi.mock("@/hooks/useCart", () => ({
   useCartState: () => ({ cartCount: 0 }),
   useCartActions: () => ({ addToCart: () => {} }),
 }));
+// Quem está logada muda por teste: deslogada, `/address-form` é redirecionada
+// para `/auth` (outra tela, que leva rodapé) — o modo foco só existe logada.
+const sessao = vi.hoisted(() => ({
+  user: null as { id: string; email: string } | null,
+}));
+const USUARIA = { id: "usuaria-1", email: "cliente@exemplo.com" };
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
-    user: null,
+    user: sessao.user,
     isAdmin: false,
     adminStatus: "not-admin",
     loading: false,
@@ -317,6 +323,7 @@ describe("F1.15 rodapé dentro da rolagem da cliente", () => {
   let root: Root;
   let host: HTMLDivElement;
   beforeEach(() => {
+    sessao.user = null;
     vi.stubGlobal("localStorage", dubleDeArmazem());
     vi.stubGlobal("sessionStorage", dubleDeArmazem());
     vi.stubGlobal("IntersectionObserver", ObservadorDeInterseccao);
@@ -331,7 +338,14 @@ describe("F1.15 rodapé dentro da rolagem da cliente", () => {
     host.remove();
     vi.unstubAllGlobals();
   });
-  async function abrir(rota: string, desktop = true) {
+  const passo = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  // Espera a tela pedida montar de verdade (o chunk lazy pode levar mais que
+  // qualquer número fixo de ticks — foi o que fez o teste do modo foco passar
+  // no vazio) e só então dá uns ticks para um rodapé indevido aparecer.
+  async function abrir(rota: string, tela: string, desktop = true) {
     vi.stubGlobal("matchMedia", (q: string) => ({
       matches: desktop && q === CONSULTA_TELA_DE_COMPUTADOR,
       addEventListener() {},
@@ -341,16 +355,20 @@ describe("F1.15 rodapé dentro da rolagem da cliente", () => {
     await act(async () => {
       root.render(<App />);
     });
-    for (let i = 0; i < 20; i++)
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
+    for (
+      let i = 0;
+      i < 400 && !host.querySelector(`[data-testid="${tela}"]`);
+      i++
+    )
+      await passo();
+    expect(host.querySelector(`[data-testid="${tela}"]`)).not.toBeNull();
+    for (let i = 0; i < 20; i++) await passo();
   }
   it.each([
     ["/", "home"],
     ["/product-detail?id=produto-A", "tela-produto"],
   ])("desktop em %s mostra rodapé após a tela", async (rota, tela) => {
-    await abrir(rota);
+    await abrir(rota, tela);
     const conteudo = host.querySelector(`[data-testid="${tela}"]`)!;
     expect(conteudo).not.toBeNull();
     const footer = host.querySelector("footer")!;
@@ -361,15 +379,16 @@ describe("F1.15 rodapé dentro da rolagem da cliente", () => {
     ).toBeTruthy();
     expect(host.querySelectorAll("footer")).toHaveLength(1);
   });
-  it.each(["/checkout", "/address-form"])(
-    "modo foco %s não monta rodapé",
-    async (rota) => {
-      await abrir(rota);
-      expect(host.querySelector("footer")).toBeNull();
-    },
-  );
+  it.each([
+    ["/checkout", "checkout"],
+    ["/address-form", "endereco"],
+  ])("modo foco %s não monta rodapé", async (rota, tela) => {
+    sessao.user = USUARIA;
+    await abrir(rota, tela);
+    expect(host.querySelector("footer")).toBeNull();
+  });
   it("celular não monta rodapé", async () => {
-    await abrir("/", false);
+    await abrir("/", "home", false);
     expect(host.querySelector("footer")).toBeNull();
   });
 });
