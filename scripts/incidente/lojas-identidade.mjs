@@ -64,9 +64,21 @@ for (const loja of lojas) {
   // Fonte da logo: a foto do perfil (quando já baixada) ou as iniciais.
   let logo = null;
   if (loja.logo_fonte) {
-    const r = await fetch(loja.logo_fonte);
+    // O CDN do Instagram recusa pedido sem cara de navegador (403).
+    const r = await fetch(loja.logo_fonte, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36",
+        Referer: "https://www.instagram.com/",
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      },
+    });
     if (r.ok) logo = Buffer.from(await r.arrayBuffer());
     console.log(`Logo do perfil: HTTP ${r.status} (${logo?.length ?? 0} bytes)`);
+  }
+  if (loja.logo_fonte && !logo) {
+    console.log("::warning::logo do perfil não baixou; identidade atual mantida.");
+    continue;
   }
   const primaria = loja.cor ?? (logo ? await corDominante(logo) : null) ?? "#27272A";
   const secundaria = loja.cor2 ?? "#18181B";
