@@ -73,6 +73,34 @@ function almeida() {
   return { circulo, topo, fundo: "#0B0B0B" };
 }
 
+// Almeida vetorizada da arte original (print de perto enviado pelo dono,
+// 28/09): camadas do potrace — linhas do losango, degradê, ALMEIDA e STORE
+// separado, com a sombra escura em volta do STORE como no original.
+// Coordenadas do JSON = pixels do print × escala.
+function almeidaVetorizada() {
+  const v = JSON.parse(fs.readFileSync("scripts/incidente/logos/almeidastoremc.json", "utf8"));
+  const E = v.escala;
+  const k = Object.fromEntries(v.camadas.map((c) => [c.nome, c]));
+  const miolo = (id) => `<defs><filter id="${id}s" x="-25%" y="-70%" width="150%" height="240%"><feGaussianBlur stdDeviation="${11 * E}"/></filter></defs>
+    <path d="${k.linhas.d}" fill="${k.linhas.cor}" fill-rule="evenodd"/><path d="${k.degrade.d}" fill="${k.degrade.cor}" fill-rule="evenodd"/>
+    <path d="${k.almeida.d}" fill="#FFFFFF" fill-rule="evenodd"/>
+    <path d="${k.store.d}" fill="#000000" stroke="#000000" stroke-width="${40 * E}" stroke-linejoin="round" filter="url(#${id}s)"/>
+    <path d="${k.store.d}" fill="#000000" stroke="#000000" stroke-width="${10 * E}" stroke-linejoin="round"/>
+    <path d="${k.store.d}" fill="#FFFFFF" fill-rule="evenodd"/>`;
+  // Círculo (ícones, favicon, foto do perfil): a arte inteira, centrada no
+  // miolo do texto, com escala que deixa as pontas do ALMEIDA dentro do círculo.
+  const s = 880 / v.largura;
+  const [cx, cy] = [559 * E, 468 * E];
+  const circulo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><circle cx="500" cy="500" r="500" fill="#000000"/><g transform="translate(${500 - cx * s} ${500 - cy * s}) scale(${s})">${miolo("c")}</g></svg>`;
+  // Topo: o recorte da faixa do ALMEIDA/STORE (com o losango passando atrás)
+  // num selo preto — o topo do site é claro e a marca da Almeida é o preto.
+  const [x0, y0, x1, y1] = [13, 290, 1073, 740].map((n) => n * E);
+  const topo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${y0} ${x1 - x0} ${y1 - y0}">
+    <defs><clipPath id="selo"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="${50 * E}"/></clipPath></defs>
+    <g clip-path="url(#selo)"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="#000000"/>${miolo("t")}</g></svg>`;
+  return { circulo, topo, fundo: "#000000" };
+}
+
 // ---------- Space: fênix preta, "A LOJA DOS KIT", SPACE geométrica pesada.
 function space() {
   // Fênix heráldica: asas abertas para cima com penas, cabeça virada para a
@@ -135,7 +163,7 @@ function vetorizada(perfil, fundo, largura = 640) {
 }
 
 const DESENHOS = {
-  almeidastoremc: almeida,
+  almeidastoremc: () => (fs.existsSync("scripts/incidente/logos/almeidastoremc.json") ? almeidaVetorizada() : almeida()),
   brand_meliz: () => {
     if (!fs.existsSync("scripts/incidente/logos/brand_meliz.json")) return meliz();
     // Vetorizada da arte original (print de perto enviado pelo dono).
