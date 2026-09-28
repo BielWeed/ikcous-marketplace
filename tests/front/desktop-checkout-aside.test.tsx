@@ -246,7 +246,7 @@ it("fecha o painel ao crescer para computador sem voltar ao focar o formulário"
   expect(voltar).toHaveBeenCalledTimes(1);
 });
 
-it("popstate atrasado + largura oscilando + foco no meio: ainda só 1 back()", async () => {
+it("popstate atrasado + largura oscilando + foco no meio: ainda só 1 back(), e a trava é liberada depois", async () => {
   let computador = false;
   const ouvintes = new Set<() => void>();
   vi.stubGlobal("matchMedia", () => ({
@@ -259,16 +259,30 @@ it("popstate atrasado + largura oscilando + foco no meio: ainda só 1 back()", a
       ouvintes.delete(ouvinte),
   }));
 
-  const onSetBackOverride = vi.fn();
+  // Mesmo dublê do teste acima: guarda o override que a tela registra no App
+  // (`onSetBackOverride(() => handler)`); é o que o `popstate` real chama.
+  let override: (() => void) | null = null;
+  const onSetBackOverride = vi.fn((proximo: unknown) => {
+    override =
+      typeof proximo === "function" ? (proximo as () => () => void)() : null;
+  });
   // Diferente do teste acima: aqui `history.back()` só ENFILEIRA — não
   // dispara o `popstate`/override de imediato. É exatamente a folga que o
   // navegador real tem entre o `back()` assíncrono e o evento chegando, e é
   // nessa folga que a largura pode oscilar e um campo pode ganhar foco antes
-  // do primeiro fechamento se resolver.
+  // do primeiro fechamento se resolver. Cada item da fila é o EFEITO real do
+  // `back()`: no `popstate` o App lê o override VIGENTE naquele instante e o
+  // chama (`backOverrideRef.current()`), então a fila faz o mesmo ao drenar.
   const filaDeBack: Array<() => void> = [];
   const voltar = vi.spyOn(globalThis.history, "back").mockImplementation(() => {
-    filaDeBack.push(() => {});
+    filaDeBack.push(() => override?.());
   });
+  const drenarFila = () =>
+    act(async () => {
+      while (filaDeBack.length > 0) filaDeBack.shift()?.();
+    });
+  const painelAberto = () =>
+    slot.querySelector("button")?.getAttribute("aria-expanded") === "true";
   // Zera qualquer contagem que tenha sobrado de um teste anterior nesta
   // mesma suíte (o spy acima é global e nenhum teste deste arquivo chama
   // `mockRestore`) — sem isto a asserção de "exatamente 1" ficaria
@@ -280,12 +294,10 @@ it("popstate atrasado + largura oscilando + foco no meio: ainda só 1 back()", a
   await act(async () => {
     slot.querySelector("button")!.click();
   });
-  expect(slot.querySelector("button")?.getAttribute("aria-expanded")).toBe(
-    "true",
-  );
+  expect(painelAberto()).toBe(true);
 
   // Oscila computador -> celular -> computador SEM o popstate do primeiro
-  // back() ter chegado (a fila acima nunca é drenada).
+  // back() ter chegado (a fila acima ainda não foi drenada).
   await act(async () => {
     computador = true;
     for (const notificar of ouvintes) notificar();
@@ -305,5 +317,37 @@ it("popstate atrasado + largura oscilando + foco no meio: ainda só 1 back()", a
   });
 
   expect(voltar).toHaveBeenCalledTimes(1);
+  expect(filaDeBack).toHaveLength(1);
+  // O painel só fecha quando o `popstate` chega — nada o fechou até aqui.
+  expect(painelAberto()).toBe(true);
+
+  // O `popstate` atrasado finalmente chega: o painel fecha de verdade e o
+  // efeito de foco libera a trava (`fechandoPorFocoDoFormularioRef`).
+  await drenarFila();
+  expect(painelAberto()).toBe(false);
+  expect(voltar).toHaveBeenCalledTimes(1);
+
+  // A trava tem que ter sido SOLTA: volta ao celular, reabre o painel e foca
+  // um campo — isso é um fechamento novo e tem que pedir exatamente mais 1
+  // `back()`. Com a trava presa em `true` (liberação apagada), o foco não
+  // chamaria nada e a cliente ficaria com o painel aberto sobre o formulário.
+  await act(async () => {
+    computador = false;
+    for (const notificar of ouvintes) notificar();
+  });
+  await act(async () => {
+    slot.querySelector("button")!.click();
+  });
+  expect(painelAberto()).toBe(true);
+  await act(async () => {
+    document.getElementById("checkout-name")!.focus();
+  });
+  expect(voltar).toHaveBeenCalledTimes(2);
+  expect(filaDeBack).toHaveLength(1);
+
+  await drenarFila();
+  expect(painelAberto()).toBe(false);
+  expect(filaDeBack).toHaveLength(0);
+  expect(voltar).toHaveBeenCalledTimes(2);
   voltar.mockRestore();
 });

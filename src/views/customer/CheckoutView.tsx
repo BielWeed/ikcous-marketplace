@@ -1591,14 +1591,17 @@ export function CheckoutView({
   // histórico; assim o primeiro foco no formulário já visível no computador
   // não chama `history.back()` e não tira a cliente do checkout.
   //
-  // Trava de `fechandoPorFocoDoFormularioRef` (mesma dos outros dois
-  // caminhos de fechamento acima): `history.back()` é assíncrono — o
-  // `popstate` só chega depois. Sem a trava, a largura oscilando em torno de
-  // 1024px (ou o foco de um campo, `onFocusCapture` abaixo) antes desse
-  // `popstate` chegar empurrava um SEGUNDO `back()` para a mesma entrada de
-  // histórico, e esse segundo `back()` é quem tira a cliente do checkout. A
-  // trava libera de volta a `false` no efeito de foco (linha ~1688), quando
-  // `isSummaryPanelOpen` vira `false` de fato.
+  // Trava de `fechandoPorFocoDoFormularioRef` (a mesma dos outros dois
+  // caminhos de fechamento, que vêm ABAIXO: o toque fora, `pointerdown` em
+  // captura, e o foco de um campo, `onFocusCapture`). Além de "fechando por
+  // foco", aqui a ref também marca "`back()` pendente" do crescimento da
+  // janela: `history.back()` é assíncrono — o `popstate` só chega depois. Sem
+  // a trava, a largura oscilando em torno de 1024px (ou o foco de um campo)
+  // antes desse `popstate` chegar empurrava um SEGUNDO `back()` para a mesma
+  // entrada de histórico, e esse segundo `back()` é quem tira a cliente do
+  // checkout. A trava só volta a `false` no efeito que devolve o foco ao
+  // gatilho (o que roda quando `isSummaryPanelOpen` passa de aberto para
+  // fechado), ou seja, quando o painel fecha de fato.
   useEffect(() => {
     if (
       computador &&
