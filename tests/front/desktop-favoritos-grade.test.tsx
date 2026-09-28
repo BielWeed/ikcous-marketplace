@@ -11,11 +11,13 @@ const produtos = [
   { id: "favorito", name: "Vestido", isActive: true },
 ] as Product[];
 const navegar = vi.fn();
+const favoritosRefresh = vi.fn();
+let favoritosErro: string | null = null;
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: {}, products: produtos }),
 }));
 vi.mock("@/hooks/useFavorites", () => ({
-  useFavorites: () => ({ erro: null, refresh: vi.fn() }),
+  useFavorites: () => ({ erro: favoritosErro, refresh: favoritosRefresh }),
 }));
 vi.mock("@/hooks/usePrefetchOnHover", () => ({
   usePrefetchOnHover: () => ({ prefetchView: vi.fn() }),
@@ -37,6 +39,8 @@ describe("Favoritos no computador — F4", () => {
 
   beforeEach(() => {
     navegar.mockClear();
+    favoritosRefresh.mockClear();
+    favoritosErro = null;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -137,5 +141,22 @@ describe("Favoritos no computador — F4", () => {
       "grid grid-cols-2 gap-3 sm:gap-4",
     );
     expect(grade.classList.contains("lg:grid-cols-4")).toBe(true);
+    expect(grade.classList.contains("lg:gap-5")).toBe(true);
+  });
+
+  it("distingue erro de lista vazia e permite tentar novamente", () => {
+    favoritosErro = "Falha ao consultar favoritos.";
+    renderizar(false, []);
+
+    expect(hospedeiro.textContent).toContain("Não conseguimos carregar");
+    expect(hospedeiro.textContent).toContain("Falha ao consultar favoritos.");
+    expect(hospedeiro.textContent).not.toContain("Sua lista de desejos");
+
+    const tentarNovamente = [...hospedeiro.querySelectorAll("button")].find(
+      (botao) => botao.textContent?.includes("Tentar de novo"),
+    );
+    expect(tentarNovamente).toBeDefined();
+    act(() => tentarNovamente!.click());
+    expect(favoritosRefresh).toHaveBeenCalledOnce();
   });
 });
