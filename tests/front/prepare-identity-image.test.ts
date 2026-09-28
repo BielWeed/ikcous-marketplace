@@ -63,6 +63,7 @@ let decode = vi.fn<() => Promise<void>>();
 let images: FakeImage[];
 class FakeImage {
   src = "";
+  crossOrigin: string | null = null;
   onload = null;
   onerror = null;
   naturalWidth = 32;
@@ -124,7 +125,7 @@ async function errorCode(
 }
 
 describe("original preservado", () => {
-  it("gera PNGs 192 e 180 com hashes dos bytes e reaproveita o original 512", async () => {
+  it("gera os tamanhos e um maskable com cor principal e logo centralizada", async () => {
     const large = new Uint8Array(
       await sharp({
         create: { width: 512, height: 512, channels: 4, background: "red" },
@@ -132,23 +133,49 @@ describe("original preservado", () => {
         .png()
         .toBuffer(),
     );
-    const draws: number[] = [];
+    const draws: { image: unknown; width: number; height?: number }[] = [];
     vi.stubGlobal("document", {
       createElement: () => {
         const canvas = {
           width: 0,
           height: 0,
           getContext: () => ({
+            fillStyle: "",
+            fillRect: vi.fn(),
             drawImage: (
-              _image: unknown,
+              drawnImage: unknown,
               _x: number,
               _y: number,
               width: number,
-            ) => draws.push(width),
+              height?: number,
+            ) => draws.push({ image: drawnImage, width, height }),
           }),
           toBlob: (callback: (value: Blob | null) => void) => {
-            void sharp(large)
-              .resize(canvas.width, canvas.height)
+            const output =
+              canvas.width === 512
+                ? sharp({
+                    create: {
+                      width: 512,
+                      height: 512,
+                      channels: 4,
+                      background: "#123456",
+                    },
+                  }).composite([
+                    {
+                      input: {
+                        create: {
+                          width: 358,
+                          height: 179,
+                          channels: 4,
+                          background: "#00ff00",
+                        },
+                      },
+                      left: 77,
+                      top: 166,
+                    },
+                  ])
+                : sharp(large).resize(canvas.width, canvas.height);
+            void output
               .png()
               .toBuffer()
               .then((bytes) =>
@@ -163,15 +190,21 @@ describe("original preservado", () => {
     });
     const icons = await prepareIdentityAppIcons(blob(large), {
       signal: signal(),
+      primaryColor: "#123456",
+      logoUrl: "https://store.test/header.png",
     });
-    expect(draws).toEqual([192, 180]);
-    expect(icons.icon_512).toBe(icons.maskable_512);
+    expect(draws.map(({ width }) => width)).toEqual([192, 180, 358.4]);
+    expect(draws[2].image).toBe(images[2]);
+    expect(icons.icon_512.asset.sha256).not.toBe(
+      icons.maskable_512.asset.sha256,
+    );
     expect(new Uint8Array(await icons.icon_512.blob.arrayBuffer())).toEqual(
       large,
     );
     for (const [prepared, size] of [
       [icons.icon_192, 192],
       [icons.apple_touch, 180],
+      [icons.maskable_512, 512],
     ] as const) {
       const bytes = new Uint8Array(await prepared.blob.arrayBuffer());
       expect(prepared.asset).toMatchObject({
@@ -187,11 +220,75 @@ describe("original preservado", () => {
         format: "png",
       });
     }
+    const maskable = sharp(await icons.maskable_512.blob.arrayBuffer());
+    const { data, info } = await maskable.raw().toBuffer({
+      resolveWithObject: true,
+    });
+    expect([...data.subarray(0, 3)]).toEqual([18, 52, 86]);
+    const center = (256 * info.width + 256) * info.channels;
+    expect([...data.subarray(center, center + 3)]).toEqual([0, 255, 0]);
+  });
+
+  it("usa o icon_512 a 80% quando a logo não carrega", async () => {
+    const large = new Uint8Array(
+      await sharp({
+        create: { width: 512, height: 512, channels: 4, background: "blue" },
+      })
+        .png()
+        .toBuffer(),
+    );
+    let logoFailed = false;
+    decode.mockImplementation(async () => {
+      if (
+        !logoFailed &&
+        images.some((image) => image.src === "https://store.test/missing.png")
+      ) {
+        logoFailed = true;
+        throw new Error();
+      }
+    });
+    const draws: { image: unknown; width: number }[] = [];
+    vi.stubGlobal("document", {
+      createElement: () => {
+        const canvas = {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            fillStyle: "",
+            fillRect: vi.fn(),
+            drawImage: (
+              drawnImage: unknown,
+              _x: number,
+              _y: number,
+              width: number,
+            ) => draws.push({ image: drawnImage, width }),
+          }),
+          toBlob: (callback: (value: Blob | null) => void) => {
+            void sharp(large)
+              .resize(canvas.width, canvas.height)
+              .png()
+              .toBuffer()
+              .then((bytes) => callback(new Blob([new Uint8Array(bytes)])));
+          },
+        };
+        return canvas;
+      },
+    });
+    await prepareIdentityAppIcons(blob(large), {
+      signal: signal(),
+      primaryColor: "#123456",
+      logoUrl: "https://store.test/missing.png",
+    });
+    expect(draws.at(-1)).toEqual({ image: images[1], width: 409.6 });
+    expect(images[2].crossOrigin).toBe("anonymous");
   });
 
   it("não deriva ícones de uma imagem com dimensão incorreta", async () => {
     await expect(
-      prepareIdentityAppIcons(blob(), { signal: signal() }),
+      prepareIdentityAppIcons(blob(), {
+        signal: signal(),
+        primaryColor: "#123456",
+      }),
     ).rejects.toMatchObject({ code: "IDENTITY_IMAGE_DIMENSIONS" });
   });
 
@@ -213,7 +310,10 @@ describe("original preservado", () => {
       }),
     });
     await expect(
-      prepareIdentityAppIcons(blob(large), { signal: controller.signal }),
+      prepareIdentityAppIcons(blob(large), {
+        signal: controller.signal,
+        primaryColor: "#123456",
+      }),
     ).rejects.toMatchObject({ code: "IDENTITY_IMAGE_CANCELED" });
     expect(images.every((image) => image.src === "")).toBe(true);
   });

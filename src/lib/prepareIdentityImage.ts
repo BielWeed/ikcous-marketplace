@@ -25,6 +25,12 @@ export interface PrepareIdentityImageOptions {
   readonly timeoutMs?: number;
 }
 
+export interface PrepareIdentityAppIconsOptions
+  extends PrepareIdentityImageOptions {
+  readonly primaryColor: string;
+  readonly logoUrl?: string;
+}
+
 type Format = "png" | "jpeg" | "webp" | "svg" | "ico";
 const formats = new Map<Format, readonly [IdentityAsset["media_type"], string]>(
   [
@@ -313,7 +319,7 @@ export async function prepareIdentityImage(
 /** Mantém o PNG original de 512 e prepara os tamanhos exigidos pelo schema. */
 export async function prepareIdentityAppIcons(
   file: Blob,
-  options: PrepareIdentityImageOptions,
+  options: PrepareIdentityAppIconsOptions,
 ) {
   const original = await prepareIdentityImage(file, options);
   if (
@@ -325,6 +331,7 @@ export async function prepareIdentityAppIcons(
   const scope = lifetime(options.signal, options.timeoutMs ?? 30000);
   let url: string | undefined;
   const image = new Image();
+  const logo = new Image();
   try {
     await scope.wait(() => {
       url = URL.createObjectURL(original.blob);
@@ -357,17 +364,82 @@ export async function prepareIdentityAppIcons(
         "IDENTITY_IMAGE_INVALID",
       );
     }
+    async function maskable() {
+      scope.check();
+      async function render(foreground: HTMLImageElement, maximumSize: number) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 512;
+        canvas.height = 512;
+        const context = canvas.getContext("2d");
+        if (!context) throw new IdentityImageError("IDENTITY_IMAGE_DECODE");
+        context.fillStyle = options.primaryColor;
+        context.fillRect(0, 0, 512, 512);
+        const scale = Math.min(
+          maximumSize / foreground.naturalWidth,
+          maximumSize / foreground.naturalHeight,
+        );
+        const width = foreground.naturalWidth * scale;
+        const height = foreground.naturalHeight * scale;
+        context.drawImage(
+          foreground,
+          (512 - width) / 2,
+          (512 - height) / 2,
+          width,
+          height,
+        );
+        return scope.wait(
+          () =>
+            new Promise<Blob>((resolve, reject) => {
+              canvas.toBlob(
+                (result) =>
+                  result
+                    ? resolve(result)
+                    : reject(new IdentityImageError("IDENTITY_IMAGE_DECODE")),
+                "image/png",
+              );
+            }),
+          "IDENTITY_IMAGE_DECODE",
+        );
+      }
+
+      let blob: Blob | undefined;
+      if (options.logoUrl) {
+        try {
+          logo.crossOrigin = "anonymous";
+          await scope.wait(() => {
+            logo.src = options.logoUrl!;
+            return logo.decode();
+          }, "IDENTITY_IMAGE_DECODE");
+          if (logo.naturalWidth > 0 && logo.naturalHeight > 0)
+            blob = await render(logo, 512 * 0.7);
+        } catch (error) {
+          if (
+            error instanceof IdentityImageError &&
+            error.code !== "IDENTITY_IMAGE_DECODE"
+          )
+            throw error;
+          logo.removeAttribute("src");
+        }
+      }
+      blob ??= await render(image, 512 * 0.8);
+      return scope.wait(
+        () => prepareIdentityImage(blob, options),
+        "IDENTITY_IMAGE_INVALID",
+      );
+    }
     const small = await resize(192);
     const apple = await resize(180);
+    const masked = await maskable();
     return Object.freeze({
       icon_512: original,
-      maskable_512: original,
+      maskable_512: masked,
       icon_192: small,
       apple_touch: apple,
     });
   } finally {
     scope.dispose();
     image.removeAttribute("src");
+    logo.removeAttribute("src");
     if (url !== undefined) URL.revokeObjectURL(url);
   }
 }
