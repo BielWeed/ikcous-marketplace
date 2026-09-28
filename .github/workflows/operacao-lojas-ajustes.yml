@@ -1,5 +1,6 @@
 # Temporário (28/09/2026): endereço da loja (Sobre) e endereço de teste do
 # admin nas lojas novas.
+# Reroda depois de trocar a logo: a foto do perfil do admin aponta para o icon_512 atual.
 name: Operação — ajustes das lojas novas (temporário)
 on:
   push:
