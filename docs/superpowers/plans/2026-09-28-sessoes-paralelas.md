@@ -120,10 +120,12 @@ container, grade), o dono de cada arquivo e as tarefas. Regras fixas:
 As frentes D1–D8 (layout de computador) rodam em sessões do **Codex**, isoladas das sessões do
 Claude. Quem escreveu não revisa: o Codex escreve, a coordenação (Claude) revisa, mede e junta.
 
-1. **Pré-condição.** Rode `git fetch origin proxima/base` e confira que existem, em
-   `origin/proxima/base`, os arquivos `src/hooks/useTelaDeComputador.ts` (Onda 0, contrato) e
-   `scripts/visual/vitrine/README.md` (harness visual). Se algum faltar, **não mude nada**: responda
-   "A base ainda não está pronta (Onda 0/harness)" e pare.
+1. **Pré-condição.** Rode `git fetch origin proxima/base` e traga-a para a sua branch
+   (`git merge --ff-only origin/proxima/base` ou merge normal se já tiver commits). Confira que
+   existe `src/hooks/useTelaDeComputador.ts` (Onda 0, contrato). Se faltar, **não mude nada**:
+   responda "A base ainda não está pronta (Onda 0)" e pare. O harness visual
+   (`scripts/visual/vitrine/`) pode chegar depois: antes de abrir o PR, faça `git fetch` de novo e
+   rode-o se já existir; se não existir, diga no PR — a coordenação roda a prova do celular.
 2. **Branch.** `codex/desktop-fN-<nome>` (ex.: `codex/desktop-f3-produto`), criada a partir de
    `origin/proxima/base`. Push só nela. Nunca em `proxima/base`, `claude/*`, na branch padrão ou em
    branch de outra frente.
@@ -141,3 +143,28 @@ Claude. Quem escreveu não revisa: o Codex escreve, a coordenação (Claude) rev
 6. **Verificação:** V1 em toda tarefa e V2 no fim da frente (seção D do plano). Commits em
    Conventional Commits com escopo de `.commitlintrc.json`. Todas as regras comuns do topo deste
    arquivo valem (nada de banco, `npm run dev` contra o banco real, `.env*`, `--no-verify`).
+
+## Frentes extras no Codex (podem começar já, sem esperar a Onda 0)
+
+Pequenas, independentes das frentes D e das frentes A/B. Mesmas regras da seção do Codex (branch
+`codex/<nome>` a partir de `origin/proxima/base`, PR rascunho contra `proxima/base`, só os arquivos
+da frente, nada de banco/migration/edge, a coordenação revisa). Se descobrir que a correção exige
+banco ou edge, pare e descreva no PR.
+
+- **X1 — O sino do painel conta as devoluções.** O ponto de aviso do sino em
+  `src/components/layouts/AdminLayout.tsx` não conta devoluções novas/pendentes, embora a devolução
+  apareça na lista do sino. Faça o ponto acender também para devolução que pede ação do lojista,
+  com teste. Branch `codex/sino-conta-devolucoes`.
+- **X2 — Abrir a devolução pelo pedido não perde o id no reload.** No painel, abrir a devolução a
+  partir da ficha do pedido e recarregar a página (F5) perde qual devolução estava aberta. Leve o id
+  para a URL/rota como as outras telas do painel já fazem (veja `src/config/rotas.ts` e como
+  pedidos abrem por deep link), com teste. Não toque em `src/views/customer/*`. Branch
+  `codex/devolucao-id-no-reload`.
+- **X3 — Trocar o ícone do app troca todos os ícones.** Em Ajustes → identidade
+  (`src/components/admin/settings/IdentitySettingsSection.tsx` ~27 e ~208-216,
+  `src/lib/storeIdentityDraft.ts` ~231-236), o controle principal "Ícone do aplicativo" grava só o
+  papel `icon_512`; `icon_192` (pin do mapa da loja, notificação push), `apple_touch` (iPhone) e
+  `maskable_512` ficam com a imagem antiga. Faça um upload do controle principal preencher os papéis
+  quadrados que não foram trocados individualmente (gerando os tamanhos no navegador se o fluxo já
+  redimensiona; senão, reaproveitando a mesma imagem onde o schema aceitar), sem quebrar os
+  controles avançados por papel. Teste. Branch `codex/icone-do-app-em-todos-os-papeis`.
