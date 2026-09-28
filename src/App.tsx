@@ -997,6 +997,7 @@ const AppContent = () => {
             "admin-coupon-form",
             "admin-user-detail",
             "admin-orders",
+            "admin-devolucoes",
             "admin-push",
           ].includes(targetView) &&
           id

@@ -257,14 +257,17 @@ describe("AdminOrdersView — ficha aberta por deep link não remonta quando `or
     vi.unstubAllGlobals();
   });
 
-  async function renderizar() {
+  async function renderizar(
+    onNavigate = vi.fn(),
+    selectedOrderId: string | undefined = PEDIDO_ID,
+  ) {
     const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
     await act(async () => {
       raiz.render(
         <AdminOrdersView
-          onNavigate={vi.fn()}
+          onNavigate={onNavigate}
           active={true}
-          selectedOrderId={PEDIDO_ID}
+          selectedOrderId={selectedOrderId}
         />,
       );
     });
@@ -305,6 +308,19 @@ describe("AdminOrdersView — ficha aberta por deep link não remonta quando `or
   function spinnerDeCarregamento() {
     return hospedeiro.textContent?.includes("Carregando Pedido");
   }
+
+  it("o botão do cabeçalho abre a lista de devoluções sem usar o evento do clique como id", async () => {
+    const onNavigate = vi.fn();
+    await renderizar(onNavigate, "");
+    const botao = hospedeiro.querySelector<HTMLButtonElement>(
+      '[data-acao="abrir-devolucoes"]',
+    );
+    expect(botao).not.toBeNull();
+    await act(async () => botao?.click());
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate.mock.calls[0][0]).toBe("admin-devolucoes");
+    expect(typeof onNavigate.mock.calls[0][1]).toBe("undefined");
+  });
 
   function botaoAdicionarAnotacao() {
     return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>

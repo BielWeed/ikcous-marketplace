@@ -5,10 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { CartaoDaDevolucao } from "@/components/admin/devolucoes/CartaoDaDevolucao";
 import { DetalheDaDevolucao } from "@/components/admin/devolucoes/DetalheDaDevolucao";
-import {
-  tomarDevolucaoParaAbrir,
-  useDevolucoesAdmin,
-} from "@/hooks/useDevolucoesAdmin";
+import { useDevolucoesAdmin } from "@/hooks/useDevolucoesAdmin";
 import {
   STATUS_EM_ORDEM,
   contagemDe,
@@ -20,7 +17,8 @@ import type { View } from "@/types";
 import type { StatusDevolucao } from "@/types/devolucao";
 
 interface AdminDevolucoesViewProps {
-  onNavigate: (view: View, id?: string) => void;
+  onNavigate: (view: View, id?: string, bypassDirtyCheck?: boolean) => void;
+  selectedDevolucaoId?: string | null;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
   onSetBackOverride?: (fn: (() => void) | null) => void;
@@ -38,16 +36,16 @@ const TEXTO_DESCARTAR =
 export function AdminDevolucoesView({
   onNavigate,
   active,
+  selectedDevolucaoId,
   onSetDirty,
   onSetBackOverride,
 }: AdminDevolucoesViewProps) {
   const [status, setStatus] = useState<StatusDevolucao | null>(null);
   const [busca, setBusca] = useState("");
   const [digitando, setDigitando] = useState(false);
-  // A devolução que o card do pedido pediu para abrir chega por aqui, uma
-  // vez, na montagem.
-  const [selecionada, setSelecionada] = useState<string | null>(() =>
-    tomarDevolucaoParaAbrir(),
+  // O roteador restaura o id da URL também no F5 e em links diretos.
+  const [selecionada, setSelecionada] = useState<string | null>(
+    selectedDevolucaoId ?? null,
   );
   const [sujo, setSujo] = useState(false);
   // "Agora" congelado por montagem: prazo e idade não mudam de rótulo no
@@ -57,6 +55,10 @@ export function AdminDevolucoesView({
 
   const lista = useDevolucoesAdmin({ status, busca, ativo: active !== false });
   const { recarregar } = lista;
+
+  useEffect(() => {
+    setSelecionada(selectedDevolucaoId ?? null);
+  }, [selectedDevolucaoId]);
 
   useEffect(() => {
     sujoRef.current = sujo;
@@ -73,7 +75,9 @@ export function AdminDevolucoesView({
     if (!podeDescartar()) return;
     setSujo(false);
     setSelecionada(null);
-  }, [podeDescartar]);
+    // O descarte já foi confirmado aqui; não abrir outro diálogo no App.
+    onNavigate("admin-devolucoes", undefined, true);
+  }, [podeDescartar, onNavigate]);
 
   const abrir = useCallback(
     (id: string) => {
@@ -81,8 +85,9 @@ export function AdminDevolucoesView({
       if (!podeDescartar()) return;
       setSujo(false);
       setSelecionada(id);
+      onNavigate("admin-devolucoes", id, true);
     },
-    [selecionada, podeDescartar],
+    [selecionada, podeDescartar, onNavigate],
   );
 
   // Voltar do aparelho fecha a ficha primeiro (mesmo contrato do PDV e dos
