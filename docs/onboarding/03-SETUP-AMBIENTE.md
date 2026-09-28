@@ -710,11 +710,13 @@ No PowerShell (a senha fica só no seu terminal, nunca no chat nem no repositór
 
 ```powershell
 $bin = "C:\Program Files\PostgreSQL\17\bin"
-& "$bin\pg_dump.exe" $PGURL --schema=public --schema=auth -Fc -f antes-<migration>.dump
-& "$bin\pg_restore.exe" -f NUL antes-<migration>.dump; "arquivo inteiro: $($LASTEXITCODE -eq 0)"
-(& "$bin\pg_restore.exe" -l antes-<migration>.dump | Select-String "TABLE DATA").Count
+& "$bin\pg_dump.exe" $PGURL --schema=public --schema=auth -Fc -f backups\antes-<migration>.dump
+& "$bin\pg_restore.exe" -f NUL backups\antes-<migration>.dump; "arquivo inteiro: $($LASTEXITCODE -eq 0)"
+(& "$bin\pg_restore.exe" -l backups\antes-<migration>.dump | Select-String "TABLE DATA").Count
 ```
 
+Sempre em `backups\` (a pasta que o `.gitignore` reserva para dumps): o dump leva usuários,
+e-mails, CPFs e endereços, e fora dela um `git add .` o manda para o histórico público.
 Duas conferências: a segunda linha lê o arquivo inteiro (dump cortado dá erro), e a
 terceira tem de ser maior que zero (sem `TABLE DATA`, o dump é só estrutura e não serve
 para voltar dado nenhum).
@@ -781,13 +783,15 @@ termina com erros em `is_admin()`. Provado num Postgres de teste em 28/09/2026.
 
 O caminho depende do que quebrou:
 
-- **Estrutura** (função, policy, trigger, grant): o rollback da própria migration, que vem
-  no PR dela, mais o snapshot de policies do passo 1. Não se restaura dump para isso.
+- **Estrutura** (função, policy, trigger, grant): o rollback da própria migration, mais o
+  snapshot de policies do passo 1. Nem toda migration antiga tem `rollback-manual-*.sql`:
+  se a que você vai aplicar não tem, escreva o rollback ANTES de aplicar. Não se restaura
+  dump para isso.
 - **Dados** (linhas estragadas por uma migration): tire do dump **só os dados** da tabela
   afetada, confira o arquivo e aplique numa transação, sem tocar em estrutura nem grant:
 
 ```powershell
-& "$bin\pg_restore.exe" --data-only --table=<tabela> -f dados-<tabela>.sql antes-<migration>.dump
+& "$bin\pg_restore.exe" --data-only --table=<tabela> -f backups\dados-<tabela>.sql backups\antes-<migration>.dump
 ```
 
   O arquivo é só `COPY` para a tabela original. Como reinserir depende da tabela: chave
