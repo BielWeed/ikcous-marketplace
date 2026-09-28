@@ -8,6 +8,7 @@ on:
     paths:
       - scripts/incidente/lojas-novas.mjs
       - scripts/incidente/lojas-novas.json
+      - scripts/incidente/frota-ler.mjs
       - .github/workflows/operacao-lojas-novas.yml
 permissions:
   contents: read
@@ -29,3 +30,8 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}
           SUPABASE_ACCESS_TOKEN_CONTA3: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA3 }}
+      - name: Frota e domínios (só leitura)
+        run: node scripts/incidente/frota-ler.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
