@@ -75,7 +75,7 @@ afterEach(() => {
 });
 
 describe("nota do gráfico de categorias (par com a 20261063000000)", () => {
-  it("total do gráfico é declarado IGUAL ao Volume Total — nunca 'sem frete'", async () => {
+  it("total do gráfico é declarado como a receita total da loja — nunca 'sem frete' nem 'Volume Total'", async () => {
     vi.useFakeTimers();
     try {
       await act(async () => {

@@ -39,10 +39,12 @@ type EstadoClassico = ReturnType<typeof useDashboardClassico>;
  * Até 28/09/2026 havia um 5º bloco aqui (KpiSummaryCards — o carrossel
  * "Métricas principais": Volume total, Total de pedidos, Ticket médio,
  * Clientes únicos, todo o histórico da loja). O dono pediu para tirar:
- * duplicava os 8 números do período de cima. O caso "Ano" nos KPIs de
- * cima cobre o que aquele carrossel mostrava — não exatamente (o
- * carrossel era desde sempre; "Ano" é desde 1º de janeiro), mas perto o
- * suficiente para não justificar duas fileiras de números na mesma tela.
+ * duplicava os 8 números do período de cima. Quem cobre Volume
+ * total/Total de pedidos/Ticket médio hoje é o "Tudo" do bloco
+ * Performance logo abaixo (Faturamento Total, Pedidos, Ticket Médio —
+ * OperationalPerformanceChart, seletor 30D/90D/Tudo). "Clientes únicos de
+ * toda a vida da loja" ficou SEM equivalente na tela: o "Clientes
+ * compradores" dos 8 KPIs de cima é só do período escolhido.
  */
 export function VisaoGeralDoCrm({
   visao,

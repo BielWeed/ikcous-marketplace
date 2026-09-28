@@ -10,10 +10,15 @@
 //
 // 28/09/2026: o próprio carrossel saiu da tela (pedido do dono — duplicava
 // os 8 números do período que já aparecem no topo da Visão geral). A ajuda
-// tem que acompanhar: agora ela NÃO PODE mais citar "Volume Total"/"Total de
-// Pedidos"/"Ticket Médio"/"Clientes Únicos" (são os 4 cartões que o
-// carrossel mostrava, e não existem mais em lugar nenhum da tela) — e
-// continua sem os três fantasmas originais, que nunca existiram.
+// tem que acompanhar: agora ela NÃO PODE mais prometer os 4 CARTÕES que o
+// carrossel mostrava ("Volume Total", "Total de Pedidos", "Ticket Médio",
+// "Clientes Únicos") — esses cartões, específicos, não existem mais. As
+// PALAVRAS "Pedidos"/"Ticket Médio" continuam na tela em outro contexto
+// (a linha de resumo do bloco Performance, "Pedidos: N" / "Ticket Médio:
+// R$ X" — OperationalPerformanceChart, mocado para null neste teste, por
+// isso a asserção abaixo não precisa excluir essas palavras soltas, só as
+// frases exatas dos 4 cartões removidos). Continua sem os três fantasmas
+// originais, que nunca existiram.
 //
 // Os filhos com gráfico são dublados: o assunto deste teste é o TEXTO da
 // ajuda, não o desenho — recharts em jsdom é ruído caro para nada.
