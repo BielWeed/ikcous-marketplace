@@ -36,5 +36,7 @@ jobs:
       - run: node scripts/incidente/vercel.mjs
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          # Produção que estava no ar antes do incidente (25/09 19:31 UTC, linha 1.5.9).
-          REDEPLOY_DE: dpl_DybomesLqkuLhNWMkAqZHpRkY4YH
+          # O que estava no ar antes do incidente: deploy de 25/09 19:31 UTC = merge do
+          # #663 na branch da Super atualização (package.json 1.5.9).
+          DEPLOY_REF: claude/app-major-upgrade-wmc8x2
+          DEPLOY_SHA: 846023e0da42639ecb7ff1966d9557e6874f6dfa

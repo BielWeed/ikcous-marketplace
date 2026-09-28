@@ -121,19 +121,21 @@ console.table(
     commit: (d.meta?.githubCommitSha ?? "").slice(0, 8),
   })),
 );
-// O último deploy de produção que estava no ar (READY) antes do incidente — não o
-// último vindo do Git: as releases 1.5.x sobem pela CLI, sem meta do GitHub.
-const pedido = (process.env.REDEPLOY_DE ?? "").trim();
-const base = pedido
-  ? deployments.find((d) => d.uid === pedido)
-  : deployments.find((d) => d.state === "READY");
-if (!base) parar(`Deploy para refazer não encontrado (${pedido || "nenhum READY"}).`);
-console.log(`Refazendo o deploy ${base.uid} (${base.meta?.githubCommitRef ?? "?"} @ ${(base.meta?.githubCommitSha ?? "").slice(0, 8)})`);
+// As releases 1.5.x subiram pela CLI, e o código enviado por ela não passa mais no
+// build contra o projeto novo. Por isso o deploy nasce do GitHub, no commit que
+// estava no ar antes do incidente (DEPLOY_SHA, da branch DEPLOY_REF).
+const sha = (process.env.DEPLOY_SHA ?? "").trim();
+const ref = (process.env.DEPLOY_REF ?? "").trim();
+if (!sha || !ref) parar("Faltou DEPLOY_SHA/DEPLOY_REF no workflow.");
+if (projeto.link?.type !== "github" || !projeto.link?.repoId) {
+  parar("O projeto da Vercel não está ligado a um repositório do GitHub.");
+}
+console.log(`Deploy de produção a partir do GitHub: ${ref} @ ${sha.slice(0, 8)}`);
 const novo = await api("POST", "/v13/deployments?forceNew=1", {
   name: projeto.name,
   project: projeto.id,
-  deploymentId: base.uid,
   target: "production",
+  gitSource: { type: "github", repoId: projeto.link.repoId, ref, sha },
 });
 console.log(`Novo deploy: ${novo.id} https://${novo.url}`);
 
