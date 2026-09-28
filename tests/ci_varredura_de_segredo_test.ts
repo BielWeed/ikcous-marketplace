@@ -28,12 +28,22 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  * COMO: o bloco de shell é EXTRAÍDO do ci.yml de verdade (não copiado para
  * cá, senão o teste passaria enquanto o arquivo apodrece) e rodado com `npm`
  * e `npx` substituídos por stubs que anotam a chamada num arquivo.
+ *
+ * O bash que roda o bloco vem de `./_bash_multiplataforma.ts`: no Windows o
+ * `bash` do PATH pode ser o do WSL, que não recebe o caminho `C:\…` nem as
+ * variáveis de ambiente do processo.
  */
 import {
   assert,
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+
+import {
+  bashMultiplataforma,
+  caminhoPosix,
+  montarPath,
+} from "./_bash_multiplataforma.ts";
 
 // `fromFileUrl` e não `.pathname`: o caminho deste projeto tem espaços, e o
 // pathname devolve `%20` mais uma barra sobrando no Windows.
@@ -136,15 +146,15 @@ async function rodarBloco(
   const script = `${sandbox}/bloco.sh`;
   await Deno.writeTextFile(script, bloco);
 
-  const proc = new Deno.Command("bash", {
-    args: [script],
+  const proc = new Deno.Command(bashMultiplataforma(), {
+    args: [caminhoPosix(script)],
     cwd: repo,
     env: {
-      PATH: `${sandbox}:${Deno.env.get("PATH")}`,
-      CHAMADAS: chamadas,
+      PATH: montarPath(sandbox),
+      CHAMADAS: caminhoPosix(chamadas),
       BASE_SHA: baseSha === "REAL" ? base : baseSha,
       HEAD_SHA: headSha === "REAL" ? head : headSha,
-      RUNNER_TEMP: sandbox,
+      RUNNER_TEMP: caminhoPosix(sandbox),
     },
     stdout: "piped",
     stderr: "piped",
