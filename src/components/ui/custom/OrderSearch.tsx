@@ -158,7 +158,12 @@ export function OrderSearch({
   };
 
   return (
-    <div className="space-y-4 xs:space-y-6">
+    <div
+      className={cn(
+        "space-y-4 xs:space-y-6",
+        "lg:mx-auto lg:w-full lg:max-w-xl",
+      )}
+    >
       <div className="group relative overflow-hidden rounded-3xl border border-zinc-100 bg-zinc-50/20 p-4 text-slate-800 xs:p-6">
         <div className="absolute right-0 top-0 size-32 -translate-y-1/2 translate-x-1/2 rounded-full bg-secondary/5 blur-2xl transition-all duration-1000 group-hover:bg-secondary/10" />
 
