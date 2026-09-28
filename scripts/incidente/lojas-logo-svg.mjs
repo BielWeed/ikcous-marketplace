@@ -21,6 +21,7 @@ const FONTES = {
   black: "ofl/poppins/Poppins-Black.ttf",
   semi: "ofl/poppins/Poppins-SemiBold.ttf",
   medium: "ofl/poppins/Poppins-Medium.ttf",
+  josefin: "ofl/josefinsans/JosefinSans[wght].ttf",
 };
 const fonte = {};
 for (const [k, caminho] of Object.entries(FONTES)) {
@@ -135,7 +136,12 @@ const DESENHOS = {
     const v = JSON.parse(fs.readFileSync("scripts/incidente/logos/brand_meliz.json", "utf8"));
     const circulo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${v.lado} ${v.lado}"><circle cx="${v.lado / 2}" cy="${v.lado / 2}" r="${v.lado / 2}" fill="${v.fundo}"/><path d="${v.d}" fill="${v.cor}" fill-rule="evenodd"/></svg>`;
     // No topo (fundo claro), só o monograma, num dourado mais escuro.
-    const topo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${v.viewbox_topo}"><path d="${v.d_topo}" fill="${v.cor_topo}" fill-rule="evenodd"/></svg>`;
+    // Topo: o monograma É o "M" — completa com "eliz" para ler "Meliz"
+    // (pedido do dono: não repetir o M).
+    const eliz = texto(fonte.josefin, "eliz", { tam: 900, x: 1880, y: 1702, tracking: 40 });
+    const [vx, vy, , vh] = v.viewbox_topo.split(" ").map(Number);
+    const largura = 1880 + eliz.w + 60 - vx;
+    const topo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vx} ${vy} ${largura} ${vh}"><g fill="${v.cor_topo}"><path d="${v.d_topo}" fill-rule="evenodd"/><path d="${eliz.d}" stroke="${v.cor_topo}" stroke-width="26" stroke-linejoin="round"/></g></svg>`;
     return { circulo, topo, fundo: v.fundo };
   },
   space_lojadoskit: () =>
