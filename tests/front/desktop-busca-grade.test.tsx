@@ -96,11 +96,21 @@ describe("Busca no computador — F4", () => {
         expect(container.classList.contains("lg:max-w-[1280px]")).toBe(true);
         expect(container.classList.contains("2xl:max-w-[1440px]")).toBe(true);
       }
-      const grade = hospedeiro.querySelector(".grid")!;
-      expect(classesDoCelular(grade.className)).toBe("grid grid-cols-2 gap-6");
-      expect(grade.classList.contains("lg:grid-cols-4")).toBe(true);
-      expect(grade.classList.contains("xl:grid-cols-5")).toBe(true);
-      expect(grade.classList.contains("lg:gap-5")).toBe(true);
+      const tituloDosResultados = [...hospedeiro.querySelectorAll("h2")].find(
+        (titulo) => titulo.textContent?.startsWith("Encontramos"),
+      );
+      if (vazia) {
+        expect(tituloDosResultados).toBeUndefined();
+      } else {
+        const grade = tituloDosResultados!.parentElement!.parentElement!
+          .nextElementSibling as HTMLElement;
+        expect(classesDoCelular(grade.className)).toBe(
+          "grid grid-cols-2 gap-6",
+        );
+        expect(grade.classList.contains("lg:grid-cols-4")).toBe(true);
+        expect(grade.classList.contains("xl:grid-cols-5")).toBe(true);
+        expect(grade.classList.contains("lg:gap-5")).toBe(true);
+      }
       expect(hospedeiro.querySelector('[aria-label="Voltar"]')).not.toBeNull();
     },
   );
