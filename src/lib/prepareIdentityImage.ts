@@ -309,3 +309,65 @@ export async function prepareIdentityImage(
     if (url !== undefined) URL.revokeObjectURL(url);
   }
 }
+
+/** Mantém o PNG original de 512 e prepara os tamanhos exigidos pelo schema. */
+export async function prepareIdentityAppIcons(
+  file: Blob,
+  options: PrepareIdentityImageOptions,
+) {
+  const original = await prepareIdentityImage(file, options);
+  if (
+    original.asset.media_type !== "image/png" ||
+    original.asset.width !== 512 ||
+    original.asset.height !== 512
+  )
+    throw new IdentityImageError("IDENTITY_IMAGE_DIMENSIONS");
+  const scope = lifetime(options.signal, options.timeoutMs ?? 30000);
+  let url: string | undefined;
+  const image = new Image();
+  try {
+    await scope.wait(() => {
+      url = URL.createObjectURL(original.blob);
+      image.src = url;
+      return image.decode();
+    }, "IDENTITY_IMAGE_DECODE");
+    async function resize(size: number) {
+      scope.check();
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const context = canvas.getContext("2d");
+      if (!context) throw new IdentityImageError("IDENTITY_IMAGE_DECODE");
+      context.drawImage(image, 0, 0, size, size);
+      const blob = await scope.wait(
+        () =>
+          new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob(
+              (result) =>
+                result
+                  ? resolve(result)
+                  : reject(new IdentityImageError("IDENTITY_IMAGE_DECODE")),
+              "image/png",
+            );
+          }),
+        "IDENTITY_IMAGE_DECODE",
+      );
+      return scope.wait(
+        () => prepareIdentityImage(blob, options),
+        "IDENTITY_IMAGE_INVALID",
+      );
+    }
+    const small = await resize(192);
+    const apple = await resize(180);
+    return Object.freeze({
+      icon_512: original,
+      maskable_512: original,
+      icon_192: small,
+      apple_touch: apple,
+    });
+  } finally {
+    scope.dispose();
+    image.removeAttribute("src");
+    if (url !== undefined) URL.revokeObjectURL(url);
+  }
+}

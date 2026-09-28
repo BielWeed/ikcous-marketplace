@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   read: vi.fn(),
   save: vi.fn(),
   prepare: vi.fn(),
+  prepareIcons: vi.fn(),
   upload: vi.fn(),
   refresh: vi.fn(),
   update: vi.fn(),
@@ -60,6 +61,7 @@ vi.mock("@/lib/adminStoreIdentity", () => ({
 }));
 vi.mock("@/lib/prepareIdentityImage", () => ({
   prepareIdentityImage: h.prepare,
+  prepareIdentityAppIcons: h.prepareIcons,
 }));
 vi.mock("@/lib/uploadIdentityImage", () => ({ uploadIdentityImage: h.upload }));
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
@@ -196,6 +198,7 @@ beforeEach(() => {
   h.read.mockReset();
   h.save.mockReset();
   h.prepare.mockReset();
+  h.prepareIcons.mockReset();
   h.upload.mockReset();
   h.refresh.mockResolvedValue(undefined);
   h.origin = "https://abcdefghijklmnopqrst.supabase.co";
@@ -232,6 +235,63 @@ afterEach(() => {
 });
 
 describe("editor de identidade sobre fotografia RPC", () => {
+  function preparedIcons() {
+    const large = {
+      blob: new Blob(["large"]),
+      asset: asset("new-512.png", 512, 512),
+    };
+    return {
+      icon_512: large,
+      maskable_512: large,
+      icon_192: {
+        blob: new Blob(["small"]),
+        asset: asset("new-192.png", 192, 192),
+      },
+      apple_touch: {
+        blob: new Blob(["apple"]),
+        asset: asset("new-180.png", 180, 180),
+      },
+    };
+  }
+
+  it("upload principal salva todos os tamanhos e preserva ícone avançado", async () => {
+    const icons = preparedIcons();
+    h.prepareIcons.mockResolvedValue(icons);
+    h.prepare.mockResolvedValueOnce({
+      blob: new Blob(["custom"]),
+      asset: asset("custom.png", 192, 192),
+    });
+    await render();
+    await select("Trocar Ícone 192");
+    await select("Trocar ícone do aplicativo");
+    await click("Salvar identidade");
+    const saved = h.save.mock.calls[0][0].desired.branding_assets;
+    expect(saved.icon_512).toEqual(icons.icon_512.asset);
+    expect(saved.maskable_512).toEqual(icons.maskable_512.asset);
+    expect(saved.apple_touch).toEqual(icons.apple_touch.asset);
+    expect(saved.icon_192.path).toContain("custom.png");
+    expect(saved.favicon).toEqual(snapshot().identity.branding_assets.favicon);
+  });
+
+  it("falha parcial no upload principal mantém todos os ícones anteriores", async () => {
+    h.prepareIcons.mockResolvedValue(preparedIcons());
+    h.upload
+      .mockImplementationOnce(async (image) => ({
+        asset: image.asset,
+        url: `${h.origin}/storage/v1/object/public/branding/${image.asset.path}`,
+      }))
+      .mockRejectedValueOnce(new Error("upload failed"));
+    await render();
+    await select("Trocar ícone do aplicativo");
+    expect(host.textContent).toContain("Não foi possível conferir esta imagem");
+    expect(h.upload).toHaveBeenCalledTimes(2);
+    await type("store-name", "Nome alterado");
+    await click("Salvar identidade");
+    expect(h.save.mock.calls[0][0].desired.branding_assets).toEqual(
+      snapshot().identity.branding_assets,
+    );
+  });
+
   it("carrega somente RPC e preserva nome/cor digitados ao publicar config externa", async () => {
     await render();
     await type("store-name", "Meu rascunho");
