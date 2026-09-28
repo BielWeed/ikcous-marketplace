@@ -129,7 +129,15 @@ function vetorizada(perfil, fundo, largura = 640) {
 
 const DESENHOS = {
   almeidastoremc: almeida,
-  brand_meliz: meliz,
+  brand_meliz: () => {
+    if (!fs.existsSync("scripts/incidente/logos/brand_meliz.json")) return meliz();
+    // Vetorizada da arte original (print de perto enviado pelo dono).
+    const v = JSON.parse(fs.readFileSync("scripts/incidente/logos/brand_meliz.json", "utf8"));
+    const circulo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${v.lado} ${v.lado}"><circle cx="${v.lado / 2}" cy="${v.lado / 2}" r="${v.lado / 2}" fill="${v.fundo}"/><path d="${v.d}" fill="${v.cor}" fill-rule="evenodd"/></svg>`;
+    // No topo (fundo claro), só o monograma, num dourado mais escuro.
+    const topo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${v.viewbox_topo}"><path d="${v.d_topo}" fill="${v.cor_topo}" fill-rule="evenodd"/></svg>`;
+    return { circulo, topo, fundo: v.fundo };
+  },
   space_lojadoskit: () =>
     fs.existsSync("scripts/incidente/logos/space_lojadoskit.svg") ? vetorizada("space_lojadoskit", "#FFFFFF") : space(),
 };
