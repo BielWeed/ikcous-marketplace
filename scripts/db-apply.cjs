@@ -246,7 +246,7 @@ const VERIFICACOES = {
     esperado: [
       // O destino certo. Entre 08/07 e 05/08/2026 o corpo vivo apontava para
       // jvgyjlbjhbfrncwbytls, onde send-otp-email nao existe — 404 silencioso.
-      "https://cafkrminfnokvgjqtkle.functions.supabase.co/send-otp-email",
+      "https://dekxabvqdsuukijblazl.functions.supabase.co/send-otp-email",
       // A credencial vem do Vault. Se esta linha sumir, voltou o caminho por
       // app_settings/header, que manda a chave anon e leva 401.
       "FROM vault.decrypted_secrets",

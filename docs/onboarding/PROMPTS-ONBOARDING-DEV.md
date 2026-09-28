@@ -57,7 +57,7 @@ gh auth refresh -s project,read:project
 ### 2. Acessos pro Netim (fazer manualmente, não é coisa de prompt)
 
 - **GitHub**: convidar como colaborador em `BielWeed/ikcous-marketplace`. O repositório virou **privado** em 30/07/2026, então sem convite ele não consegue nem ler o código. Repositório de conta pessoal só tem dois níveis — dono e colaborador (write); não existe `maintain` aqui.
-- **Supabase**: convidar no projeto `cafkrminfnokvgjqtkle` (Settings → Team). Você escolheu dar acesso à produção — o prompt 1 vai gerar as regras de segurança pra isso não virar problema.
+- **Supabase**: convidar no projeto `dekxabvqdsuukijblazl` (Settings → Team). Você escolheu dar acesso à produção — o prompt 1 vai gerar as regras de segurança pra isso não virar problema.
 - **Vercel**: convidar no projeto `ickous-marketplace` pra ele ver os preview deploys.
 - **Discord**: canal do projeto, que virou o lugar de organização.
 
@@ -83,7 +83,7 @@ REPOSITÓRIO
 STACK
 - Frontend: Vite 7 + React 19.2 + TypeScript 5.9 + Tailwind 3.4 + Radix UI + Framer Motion + Zod
 - PWA: vite-plugin-pwa, Service Worker com injectManifest, offline-first
-- Backend: Supabase (Postgres + Auth + Realtime + Storage), projeto `cafkrminfnokvgjqtkle`
+- Backend: Supabase (Postgres + Auth + Realtime + Storage), projeto `dekxabvqdsuukijblazl`
 - Edge Functions: Deno — `calculate-shipping`, `send-otp-email`, `send-push`
 - ~176 arquivos TS/TSX em src/, ~72.600 linhas
 

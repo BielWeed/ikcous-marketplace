@@ -18,7 +18,7 @@ Sem isto, a segunda-feira do Netim é perdida.
 | Item | Quem faz | Estado |
 | --- | --- | --- |
 | Convite de colaborador no GitHub | Gabriel | ✅ feito — `wpfsilvaa`, permissão de escrita, sem convite pendente |
-| Convite no projeto Supabase `cafkrminfnokvgjqtkle` | Gabriel | pendente (Settings → Team) |
+| Convite no projeto Supabase `dekxabvqdsuukijblazl` | Gabriel | pendente (Settings → Team) |
 | Convite no projeto Vercel `ickous-marketplace` | Gabriel | pendente |
 | Canal do projeto no Discord | Gabriel | pendente |
 | **PRs de onboarding mergeados** | Gabriel | ver abaixo |

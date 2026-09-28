@@ -45,7 +45,7 @@ const { resolverCaminhoMigration } = require("./ler-migration.cjs");
 const NOME_DA_MIGRATION = "20260805120000_otp_aponta_para_o_projeto_certo.sql";
 const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);
 
-const PROJETO_CERTO = "cafkrminfnokvgjqtkle";
+const PROJETO_CERTO = "dekxabvqdsuukijblazl";
 const PROJETO_ERRADO = "jvgyjlbjhbfrncwbytls";
 const NOME_SEGREDO = "otp_trigger_secret";
 

@@ -128,7 +128,7 @@ Deno.test("aplicar-migrations.yml — input projeto (achado #1, rodada 2)", asyn
     () => {
       const trecho = extrairTrechoDeResolucaoDoRef(yaml);
       const loja = avaliarResolucaoDoRef(trecho, "loja");
-      assertEquals(loja.ref, "cafkrminfnokvgjqtkle", loja.saida);
+      assertEquals(loja.ref, "dekxabvqdsuukijblazl", loja.saida);
       const sandbox = avaliarResolucaoDoRef(trecho, "sandbox");
       assertEquals(sandbox.ref, "lofznuxcvezrhxsgjqyg", sandbox.saida);
     },
@@ -139,9 +139,9 @@ Deno.test("aplicar-migrations.yml — input projeto (achado #1, rodada 2)", asyn
     () => {
       const trecho = extrairTrechoDeResolucaoDoRef(yaml);
       for (const malicioso of [
-        "cafkrminfnokvgjqtkle/restart#",
+        "dekxabvqdsuukijblazl/restart#",
         "x/../outroprojetoabcdefgh/database/query#",
-        "cafkrminfnokvgjqtkle/pause?",
+        "dekxabvqdsuukijblazl/pause?",
         "producao",
         "__proto__",
         "constructor",

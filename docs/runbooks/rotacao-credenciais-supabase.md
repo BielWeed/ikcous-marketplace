@@ -84,7 +84,7 @@ São dois projetos. Faça um, confirme, depois o outro.
 
 ### 1.1 — Projeto de produção
 
-1. Abra: <https://supabase.com/dashboard/project/cafkrminfnokvgjqtkle/settings/database>
+1. Abra: <https://supabase.com/dashboard/project/dekxabvqdsuukijblazl/settings/database>
 2. Procure a seção **Database password** e o botão de **reset** / **gerar nova senha**
 3. O Supabase vai gerar uma senha nova e **mostrar ela uma única vez**
 4. **Copie e cole no bloco de notas agora.** Se fechar a tela sem copiar, você não vê
@@ -145,7 +145,7 @@ Esta é a parte que exige atenção.
 
 ### 2.1 — Entenda o que você vai ver
 
-Abra: <https://supabase.com/dashboard/project/cafkrminfnokvgjqtkle/settings/api-keys>
+Abra: <https://supabase.com/dashboard/project/dekxabvqdsuukijblazl/settings/api-keys>
 
 Nesta tela existem dois mundos:
 
@@ -176,7 +176,7 @@ O detalhe que importa: as duas chaves antigas são assinadas pela mesma chave-me
 >
 > **Faça isto primeiro, nesta ordem exata:**
 >
-> 1. Abra <https://supabase.com/dashboard/project/cafkrminfnokvgjqtkle/settings/api-keys> e
+> 1. Abra <https://supabase.com/dashboard/project/dekxabvqdsuukijblazl/settings/api-keys> e
 >    ache a chave **publishable** (formato `sb_publishable_...`). Copie ela pro bloco de notas.
 > 2. Na Vercel: **Settings → Environment Variables → Add New**.
 >    - Nome: `VITE_SUPABASE_PUBLISHABLE_KEY`

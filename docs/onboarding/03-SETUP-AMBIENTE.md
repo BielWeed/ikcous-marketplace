@@ -157,7 +157,7 @@ nunca escreva no `.env.production.local`; no `.env.local` só encoste se a `DATA
 
 ## 4. Quais variáveis pedir e quais pegar sozinho
 
-Antes de tudo: **peça ao Gabriel convite de membro no projeto Supabase `cafkrminfnokvgjqtkle`
+Antes de tudo: **peça ao Gabriel convite de membro no projeto Supabase `dekxabvqdsuukijblazl`
 e no projeto Vercel `ickous-marketplace`.** Sem isso, nada abaixo existe para você.
 
 | Variável | De onde vem |
@@ -419,7 +419,7 @@ Esses três arquivos estão no `.gitignore` — cada um já guardou credencial. 
 peça o modelo; não copie de produção.
 
 > **Armadilha:** `.agents_inactive/mcp_config.json` aponta para **produção**
-> (`cafkrminfnokvgjqtkle`). Se alguém reativar aquelas skills copiando o config de volta, o MCP
+> (`dekxabvqdsuukijblazl`). Se alguém reativar aquelas skills copiando o config de volta, o MCP
 > passa a falar com a loja no ar — e ferramenta de IA escrevendo em produção não avisa antes.
 > Ao reativar qualquer coisa de `.agents_inactive/`, **conferir o `project_ref` primeiro.**
 
@@ -671,7 +671,7 @@ Quatro passos. Nenhum custa dinheiro.
 variam ~8 minutos e um dia pode atrasar.
 
 ```bash
-npx supabase backups list --project-ref cafkrminfnokvgjqtkle
+npx supabase backups list --project-ref dekxabvqdsuukijblazl
 ```
 
 Olhe o `inserted_at` mais recente. **Se não for de hoje, pare e espere.** Rodar

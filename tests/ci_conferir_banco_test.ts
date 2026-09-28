@@ -122,7 +122,7 @@ try {
 }
 
 const TOKEN_FALSO = "sbp_segredo-de-teste-nunca-pode-aparecer-no-log";
-const REF_LOJA = "cafkrminfnokvgjqtkle";
+const REF_LOJA = "dekxabvqdsuukijblazl";
 const REF_SANDBOX = "lofznuxcvezrhxsgjqyg";
 
 function semComentarios(yaml: string): string {
@@ -293,8 +293,8 @@ Deno.test("resolverRef — projeto fechado loja/sandbox (achado #1, rodada 2)", 
   // Os dois payloads provados contra o stub da revisão de risco (guard.cjs
   // não se aplica aqui — é ref.cjs): nenhum chega a virar ref.
   for (const malicioso of [
-    "cafkrminfnokvgjqtkle/restart#",
-    "cafkrminfnokvgjqtkle/pause?",
+    "dekxabvqdsuukijblazl/restart#",
+    "dekxabvqdsuukijblazl/pause?",
     "x/../outroprojetoabcdefgh/database/query#",
     "producao",
     "",
@@ -1257,8 +1257,8 @@ Deno.test("main() — request certo, stubando fetch", async (t) => {
     "PROJETO malicioso (payloads da revisão de risco) nunca gera request nenhum — exit(1) antes de qualquer fetch",
     async () => {
       for (const projetoMalicioso of [
-        "cafkrminfnokvgjqtkle/restart#",
-        "cafkrminfnokvgjqtkle/pause?",
+        "dekxabvqdsuukijblazl/restart#",
+        "dekxabvqdsuukijblazl/pause?",
         "x/../outroprojetoabcdefgh/database/query#",
       ]) {
         const { chamadas, resultado } = await comFetchStubado([], () =>

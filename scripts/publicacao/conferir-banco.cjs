@@ -27,7 +27,7 @@
  *
  * 1. `projeto_ref` como TEXTO LIVRE ia direto para o path da URL, com um
  *    token válido para TODOS os projetos da conta. Provado contra um stub:
- *    "cafkrminfnokvgjqtkle/restart#" batia em POST /restart; e
+ *    "dekxabvqdsuukijblazl/restart#" batia em POST /restart; e
  *    "x/../outroprojeto.../database/query#" fazia o INSERT do ledger ir
  *    para OUTRO projeto. Agora `PROJETO` só aceita "loja"/"sandbox"
  *    (`resolverRef`, lookup fechado + `Object.hasOwn` + regex
@@ -195,7 +195,7 @@ const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83"];
  * `publicar-functions.yml`). Nunca aceitar um terceiro valor aqui: é isso
  * que fecha a injeção de `projeto_ref` da rodada 2 da revisão. */
 const REFS_POR_PROJETO = {
-  loja: "cafkrminfnokvgjqtkle",
+  loja: "dekxabvqdsuukijblazl",
   sandbox: "lofznuxcvezrhxsgjqyg",
 };
 

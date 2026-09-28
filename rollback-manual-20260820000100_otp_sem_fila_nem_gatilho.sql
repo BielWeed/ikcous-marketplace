@@ -37,7 +37,7 @@ BEGIN
     END IF;
 
     PERFORM net.http_post(
-        url := 'https://cafkrminfnokvgjqtkle.functions.supabase.co/send-otp-email',
+        url := 'https://dekxabvqdsuukijblazl.functions.supabase.co/send-otp-email',
         headers := jsonb_build_object(
             'Content-Type', 'application/json',
             'Authorization', 'Bearer ' || v_chave
