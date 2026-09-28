@@ -1,0 +1,32 @@
+# Temporário (28/09/2026): liga as 3 lojas novas ao site (domínio na Vercel,
+# store_config, Auth, admin e linha nova na frota). Autorizado pelo dono no
+# chat ("pode ligar as lojas").
+name: Operação — ligar as lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-configurar.mjs
+      - .github/workflows/operacao-lojas-configurar.yml
+permissions:
+  contents: read
+concurrency:
+  group: lojas-configurar
+  cancel-in-progress: false
+jobs:
+  ligar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Liga as lojas novas
+        run: node scripts/incidente/lojas-configurar.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}
+          SUPABASE_ACCESS_TOKEN_CONTA3: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA3 }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          LOJAS_ADMIN_SENHA: ${{ secrets.LOJAS_ADMIN_SENHA }}
