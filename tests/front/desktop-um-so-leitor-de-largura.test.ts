@@ -22,14 +22,25 @@ import { describe, expect, it } from "vitest";
 
 /**
  * Acha, num texto de fonte, usos de leitor de largura fora do gancho único:
- * qualquer `useMediaQuery(`, e todo `matchMedia(` cuja string de consulta
- * mencione `min-width` ou `max-width`.
+ * `useMediaQuery(`, `useTelaLarga(` (o gancho do PAINEL -- mesma consulta de
+ * 1024px, mas é outro leitor: a casca da cliente não pode importar dele),
+ * todo `matchMedia(` cuja string de consulta mencione `min-width` ou
+ * `max-width`, e todo `matchMedia(` cujo argumento NÃO é uma string literal
+ * (revisão da Onda 0, item 2): alguém poderia esconder a consulta atrás de
+ * uma constante importada (`matchMedia(ALGUMA_CONSULTA)`) para escapar do
+ * padrão anterior, que só lê literal. Qualquer consulta dinâmica aqui fora
+ * já é suspeita o bastante para reprovar -- só `src/hooks/useTelaDeComputador.ts`
+ * (fora do escopo desta varredura, ver o teste dedicado abaixo) tem
+ * legitimidade para isso.
  */
 function acharLeitoresDeLarguraForaDoGancho(texto: string): string[] {
   const achados: string[] = [];
 
   if (texto.includes("useMediaQuery(")) {
     achados.push("useMediaQuery(");
+  }
+  if (texto.includes("useTelaLarga(")) {
+    achados.push("useTelaLarga(");
   }
 
   const padraoMatchMediaComString =
@@ -39,6 +50,16 @@ function acharLeitoresDeLarguraForaDoGancho(texto: string): string[] {
     if (/min-width|max-width/.test(consulta)) {
       achados.push(`matchMedia("${consulta}")`);
     }
+  }
+
+  // Argumento dinâmico: logo depois de "matchMedia(" (e de espaço em
+  // branco), o próximo caractere NÃO é aspas nem ")" -- ou seja, não é uma
+  // string literal (já coberta acima) nem uma chamada vazia. Sem a flag `g`
+  // de propósito: só precisamos saber SE existe, não enumerar cada
+  // ocorrência -- `g` guardaria `lastIndex` sem necessidade nenhuma (o
+  // mesmo cuidado de guarda-de-cor-sai-junto-com-a-escrita.test.ts).
+  if (/matchMedia\(\s*(?!['"`)])/.test(texto)) {
+    achados.push("matchMedia(<expressão não literal>)");
   }
 
   return achados;
@@ -82,6 +103,30 @@ describe("acharLeitoresDeLarguraForaDoGancho — o detector reconhece violação
     ).toEqual([]);
   });
 
+  it("acha useTelaLarga( em qualquer forma de chamada (é o gancho do PAINEL, não o da cliente)", () => {
+    expect(
+      acharLeitoresDeLarguraForaDoGancho(
+        "const larga = useTelaLarga(); if (larga) { ... }",
+      ),
+    ).toContain("useTelaLarga(");
+  });
+
+  it("acha matchMedia( com argumento dinâmico (não é string literal) -- não dá para confiar que não seja largura", () => {
+    expect(
+      acharLeitoresDeLarguraForaDoGancho(
+        "const larga = window.matchMedia(CONSULTA_TELA_LARGA);",
+      ),
+    ).toEqual(["matchMedia(<expressão não literal>)"]);
+  });
+
+  it("matchMedia( com string literal SEM min-width/max-width não conta como dinâmico nem como largura (não duplica o achado)", () => {
+    expect(
+      acharLeitoresDeLarguraForaDoGancho(
+        'window.matchMedia("(prefers-reduced-motion: reduce)")',
+      ),
+    ).toEqual([]);
+  });
+
   it("texto sem nenhum leitor de largura não acha nada", () => {
     expect(
       acharLeitoresDeLarguraForaDoGancho(
@@ -98,6 +143,10 @@ const FONTES = import.meta.glob<string>(
     "/src/components/ui/custom/**/*.{ts,tsx}",
     "/src/components/desktop/**/*.{ts,tsx}",
     "/src/components/pwa/**/*.{ts,tsx}",
+    "/src/components/checkout/**/*.{ts,tsx}",
+    "/src/components/devolucao/**/*.{ts,tsx}",
+    "/src/components/layouts/**/*.{ts,tsx}",
+    "/src/utils/**/*.{ts,tsx}",
     "/src/App.tsx",
   ],
   { query: "?raw", import: "default", eager: true },
@@ -105,7 +154,12 @@ const FONTES = import.meta.glob<string>(
 
 describe("um só leitor de largura na casca da cliente (contrato C1, regra R8)", () => {
   it("a varredura não é vazia (senão o teste protegeria contra nada)", () => {
-    expect(Object.keys(FONTES).length).toBeGreaterThan(20);
+    expect(Object.keys(FONTES).length).toBeGreaterThan(60);
+  });
+
+  it("a varredura NÃO inclui src/hooks/ -- é lá que mora a única leitura dinâmica legítima (useTelaDeComputador.ts), e o detector de argumento dinâmico a reprovaria por engano", () => {
+    const caminhos = Object.keys(FONTES);
+    expect(caminhos.some((c) => c.includes("/src/hooks/"))).toBe(false);
   });
 
   it("nenhum arquivo usa useMediaQuery( ou matchMedia( com min-width/max-width fora do gancho", () => {

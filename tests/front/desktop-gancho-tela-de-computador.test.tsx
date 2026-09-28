@@ -27,8 +27,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // dos outros testes de hook deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function Sonda() {
+function Sonda({ valores }: { valores?: boolean[] } = {}) {
   const computador = useTelaDeComputador();
+  // Empilha o valor de CADA execução do corpo do componente -- inclusive as
+  // que rodam antes de qualquer efeito ser flushado. É o que permite
+  // distinguir "o valor certo já nasceu no 1º render" de "o valor nasceu
+  // errado e um efeito corrigiu depois" (ver o teste que usa isto abaixo).
+  valores?.push(computador);
   return <span data-testid="computador">{String(computador)}</span>;
 }
 
@@ -71,7 +76,7 @@ describe("useTelaDeComputador — gancho único de largura (C1)", () => {
     expect(lido()).toBe("false");
   });
 
-  it("com stub matches:true, o valor certo já chega no PRIMEIRO render (sem passar por efeito)", () => {
+  it("com stub matches:true, o valor certo já chega no PRIMEIRO render — nem por uma execução passa por false (revisão: o act() abaixo flusharia um efeito corretor antes de qualquer leitura do DOM, então só um array preenchido DURANTE o render, não o DOM final, prova a ordem)", () => {
     vi.stubGlobal("matchMedia", (consulta: string) => ({
       matches: true,
       media: consulta,
@@ -79,10 +84,20 @@ describe("useTelaDeComputador — gancho único de largura (C1)", () => {
       removeEventListener: () => {},
     }));
 
+    const valores: boolean[] = [];
     act(() => {
-      raiz.render(<Sonda />);
+      raiz.render(<Sonda valores={valores} />);
     });
 
+    // valores[0] é o resultado da 1ª execução do corpo do componente. Um
+    // `useState(false)` + `useEffect(() => setState(mq.matches))` (o padrão
+    // do `useMediaQuery` legado que este contrato proíbe) empilharia `false`
+    // aqui e só chegaria a `true` numa 2ª execução, disparada pelo efeito --
+    // o `act()` já teria flushado esse efeito antes deste `expect` rodar,
+    // então `valores` viraria `[false, true]` e `lido()` mentiria "true" de
+    // qualquer jeito. `useSyncExternalStore` lê a `getSnapshot` já na 1ª
+    // execução: `valores` fica `[true]`.
+    expect(valores[0]).toBe(true);
     expect(lido()).toBe("true");
   });
 
