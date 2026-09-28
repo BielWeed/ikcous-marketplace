@@ -2294,6 +2294,38 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O CHECKOUT MOSTRA OS CUPONS DA CLIENTE (frente B, 28/09/2026). Cada
+  // marcador SABOTA a garantia do exclusivo: sem ele, cupom de outra conta
+  // aparece na lista, valida ou nasce no pedido. A 20261188000000 (DROP de
+  // used_count) é só ALTER TABLE — sai como "pulada", por construção.
+  "20261187000000_o_checkout_mostra_os_cupons_da_cliente.sql": [
+    {
+      funcao: "cupom_do_pedido_vale_para_quem_compra",
+      esperado: [
+        "RAISE EXCEPTION 'O cupom % não existe. Confira o código.', NEW.coupon_code;",
+        "RAISE EXCEPTION 'O cupom % está desativado pela loja.', NEW.coupon_code;",
+      ],
+    },
+    {
+      funcao: "validate_coupon_secure_v2",
+      esperado: [
+        "OR (v_coupon.alcance = 'exclusivo' AND (",
+        "v_coupon.valid_until <= NOW()",
+      ],
+    },
+    {
+      funcao: "cupons_do_checkout",
+      esperado: [
+        "c.alcance = 'vitrine'",
+        "AND e.uid IS NOT NULL",
+        "WHERE cc.coupon_id = c.id AND cc.user_id = e.uid",
+      ],
+    },
+    {
+      funcao: "admin_cupom_definir_clientes",
+      esperado: ["IF NOT public.is_admin() THEN"],
+    },
+  ],
   // O CRM VÊ TODO MUNDO (pedido do dono, 27/09/2026, migration
   // 20261183000000): "Todos os clientes" passa a listar quem pagou (RFM
   // intocado), quem pediu e não pagou e quem se cadastrou e nunca comprou.
