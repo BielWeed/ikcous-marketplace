@@ -151,7 +151,15 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
   return (
     <div
       ref={viewRef}
-      className="pb-admin h-auto bg-[#09090b] text-white selection:bg-emerald-500/30 lg:pb-12"
+      // `overflow-x-clip`, não `overflow-x-hidden`: rede de segurança contra
+      // rolagem lateral (achado do dono, 28/09/2026 — a tela do CRM
+      // transbordava 56-64px por causa de um enfeite `absolute` com
+      // deslocamento negativo dentro de um cartão, corrigido na origem em
+      // TopProductsList.tsx). `overflow-x-hidden` criaria um novo contêiner
+      // de rolagem e quebraria o `sticky` da barra de abas/período (o
+      // acoplamento overflow-x/overflow-y do CSS vira `overflow-y: auto`
+      // computado); `clip` não tem esse acoplamento.
+      className="pb-admin h-auto overflow-x-clip bg-[#09090b] text-white selection:bg-emerald-500/30 lg:pb-12"
     >
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
