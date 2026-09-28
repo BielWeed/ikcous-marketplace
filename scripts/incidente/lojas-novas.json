@@ -17,8 +17,8 @@
       "slug": "almeidastore",
       "admin_email": "ikcous.imports+almeidastore@gmail.com",
       "prefixo_senha": "almeidastore",
-      "cor": "#141414",
-      "cor2": "#2E2E2E",
+      "cor": "#A16207",
+      "cor2": "#1C1917",
       "acento": "#E4B400",
       "endereco": {
         "texto": "Av. Belo Horizonte, 790 — Monte Carmelo/MG",
@@ -41,9 +41,9 @@
       "slug": "brandmeliz",
       "admin_email": "ikcous.imports+brandmeliz@gmail.com",
       "prefixo_senha": "brandmeliz",
-      "cor": "#7B2D3B",
+      "cor": "#9C6F44",
       "cor2": "#4A2C24",
-      "acento": "#D4B483",
+      "acento": "#D9BF96",
       "endereco": {
         "texto": "Rua José Avelino, 751 — Vila Nova",
         "rua": "Rua José Avelino",
@@ -65,7 +65,7 @@
       "slug": "spacelojadoskit",
       "admin_email": "ikcous.imports+spacelojadoskit@gmail.com",
       "prefixo_senha": "spacelojadoskit",
-      "cor": "#1E3A8A",
+      "cor": "#2563EB",
       "cor2": "#0F172A",
       "acento": "#F97316",
       "endereco": {

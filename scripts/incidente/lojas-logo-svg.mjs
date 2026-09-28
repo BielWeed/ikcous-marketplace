@@ -167,7 +167,14 @@ for (const loja of lojas) {
   const desenho = DESENHOS[loja.perfil];
   if (!desenho) continue;
   console.log(`\n==================== ${loja.nome} ====================`);
-  const { circulo, topo, fundo } = desenho();
+  const { circulo, topo: topoJusto, fundo } = desenho();
+  // O topo do site recorta a logo com cantos arredondados (rounded-[8px] numa
+  // caixa de 32px): margem interna de 14% da altura em volta, para nenhuma
+  // letra encostar no canto (achado do dono: S, E e a asa cortados).
+  const topo = topoJusto.replace(/viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"/, (_, x, y, w, h) => {
+    const m = Number(h) * 0.14;
+    return `viewBox="${Number(x) - m} ${Number(y) - m} ${Number(w) + 2 * m} ${Number(h) + 2 * m}"`;
+  });
   const quadrado = circulo.replace(/<circle cx="500" cy="500" r="500" fill="([^"]+)"\/>/, '<rect width="1000" height="1000" fill="$1"/>');
   const png = (svg, lado) => sharp(Buffer.from(svg), { density: 200 }).resize(lado, lado).png().toBuffer();
   const og = await sharp({ create: { width: 1200, height: 630, channels: 4, background: fundo } })
