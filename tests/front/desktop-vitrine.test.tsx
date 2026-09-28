@@ -360,11 +360,21 @@ describe("F2.7 — barra do catálogo", () => {
     home();
     const botao = alvo('[title="Filtrar e Ordenar"]');
     expect(botao.textContent).toBe(desktop ? "Ordenar: Menor Preço" : "");
-    classes(
-      alvo("h2.mb-8"),
-      "mb-8 text-3xl font-black leading-none tracking-tighter text-zinc-900",
-      "lg:text-4xl",
-    );
+    const titulo = [...host.querySelectorAll("h2")].find(
+      (h2) => h2.textContent === "Catálogo",
+    )!;
+    const barraSticky = titulo.closest(".sticky");
+    if (desktop) {
+      // Spec §3.6: barra sticky com "Catálogo" em text-3xl (30px).
+      expect(barraSticky).not.toBeNull();
+      expect(titulo.className).toContain("text-3xl");
+      expect(titulo.className).not.toContain("lg:text-4xl");
+    } else {
+      expect(barraSticky).toBeNull();
+      expect(titulo.className).toBe(
+        "mb-8 text-3xl font-black leading-none tracking-tighter text-zinc-900",
+      );
+    }
   });
 });
 it("F2.8 — horário preservado no celular e oculto no computador", () => {

@@ -568,14 +568,12 @@ export const HomeView = React.memo(function HomeView({
 
       {/* All Products */}
       <div className={cn("p-3 sm:p-4", "lg:px-0 lg:py-10")}>
-        <h2
-          className={cn(
-            "mb-8 text-3xl font-black leading-none tracking-tighter text-zinc-900",
-            "lg:text-4xl",
-          )}
-        >
-          {searchQuery ? "Resultados da busca" : "Catálogo"}
-        </h2>
+        {/* No computador o título mora dentro da barra sticky (spec §3.6). */}
+        {!computador && (
+          <h2 className="mb-8 text-3xl font-black leading-none tracking-tighter text-zinc-900">
+            {searchQuery ? "Resultados da busca" : "Catálogo"}
+          </h2>
+        )}
 
         {/* Sentinel for sticky docking detection */}
         <div
@@ -592,6 +590,11 @@ export const HomeView = React.memo(function HomeView({
               : "border-b border-transparent",
           )}
         >
+          {computador && (
+            <h2 className="pb-3 pt-4 text-3xl font-black leading-none tracking-tighter text-zinc-900">
+              {searchQuery ? "Resultados da busca" : "Catálogo"}
+            </h2>
+          )}
           {/* Interactive Header Bar */}
           <div className="flex items-center gap-3 py-1">
             <div className="min-w-0 flex-1">
