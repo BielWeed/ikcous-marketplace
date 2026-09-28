@@ -2,13 +2,17 @@
 //
 // Trilha 4 (#104), ATUALIZADO pela 20261063000000 (o donut passou a
 // ratear `marketplace_orders.total` por categoria): o centro do donut e
-// o card "Volume Total" (SUM de `marketplace_orders.total`) agora somam
+// a receita total da loja (SUM de `marketplace_orders.total`) agora somam
 // o MESMO dinheiro — a legenda que dizia "pode divergir" ficou obsoleta
 // no dia em que a migration 20261063 fechou a divergência de cupom e
-// frete. Este teste prova que a legenda ATUALIZADA (o total bate com o
-// Volume Total) aparece no bloco de dados de verdade (não nos ramos de
-// erro/vazio/esqueleto, que não têm total para comparar). O guardião
-// frase-a-frase da nota vive em
+// frete. Este teste prova que a legenda ATUALIZADA (o total bate com a
+// receita total da loja) aparece no bloco de dados de verdade (não nos
+// ramos de erro/vazio/esqueleto, que não têm total para comparar).
+//
+// 28/09/2026: a legenda dizia "o card 'Volume Total'" — esse card (o
+// carrossel "Métricas principais", KpiSummaryCards) saiu da tela, então a
+// legenda parou de citar um card específico e passou a descrever o número
+// direto. O guardião frase-a-frase da nota vive em
 // grafico-de-categorias-nao-promete-frete.test.tsx; este cobre a
 // existência da legenda no ramo de dados.
 import { act } from "react";
@@ -57,7 +61,7 @@ describe("StrategicIntelligenceBlocks — legenda do total do donut (#104, pós-
     vi.unstubAllGlobals();
   });
 
-  it("explica que o total do donut é o mesmo dinheiro do Volume Total", async () => {
+  it("explica que o total do donut é a receita total da loja", async () => {
     const { StrategicIntelligenceBlocks } = await import(
       "@/components/admin/dashboard/StrategicIntelligenceBlocks"
     );
@@ -73,9 +77,7 @@ describe("StrategicIntelligenceBlocks — legenda do total do donut (#104, pós-
     await esperarChartPronto();
     act(() => {});
 
-    expect(hospedeiro.textContent).toMatch(
-      /mesmo dinheiro do card "volume total"/i,
-    );
-    expect(hospedeiro.textContent).toMatch(/volume total/i);
+    expect(hospedeiro.textContent).toMatch(/a receita total da loja/i);
+    expect(hospedeiro.textContent).not.toMatch(/volume total/i);
   });
 });

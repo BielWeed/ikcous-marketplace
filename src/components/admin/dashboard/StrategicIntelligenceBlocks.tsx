@@ -433,21 +433,21 @@ export const StrategicIntelligenceBlocks = React.memo(
               (09/09/2026) — `get_category_analytics` deixou de somar
               `oi.price * oi.quantity` bruto e passou a ratear
               `marketplace_orders.total` (já líquido de cupom, COM frete)
-              proporcionalmente por categoria. A soma deste gráfico é hoje
-              o MESMO dinheiro do card "Volume Total" (KpiSummaryCards,
-              `SUM(marketplace_orders.total)`). Única exceção, prevista no
-              próprio cabeçalho da migration: um pedido cujos itens são
-              TODOS de produtos excluídos do catálogo não sobrevive ao
-              JOIN com `produtos`, fica sem categoria para receber sua
-              fatia e sai inteiro do rateio — só nesse caso o donut fica
-              ABAIXO do Volume Total, nunca acima. Par da frase guardado
-              por tests/front/grafico-de-categorias-nao-promete-frete.test.tsx.
+              proporcionalmente por categoria. A soma deste gráfico é a
+              receita total da loja, de toda a vida (`SUM(marketplace_
+              orders.total)` — o mesmo dinheiro que o card "Volume Total"
+              somava antes de sair da tela em 28/09/2026, KpiSummaryCards).
+              Única exceção, prevista no próprio cabeçalho da migration: um
+              pedido cujos itens são TODOS de produtos excluídos do catálogo
+              não sobrevive ao JOIN com `produtos`, fica sem categoria para
+              receber sua fatia e sai inteiro do rateio — só nesse caso o
+              donut fica ABAIXO da receita total, nunca acima. Par da frase
+              guardado por tests/front/grafico-de-categorias-nao-promete-frete.test.tsx.
             */}
             <p className="relative z-10 mb-3 text-[9px] font-medium normal-case leading-snug text-zinc-600 sm:mb-5">
-              Total deste gráfico = mesmo dinheiro do card "Volume Total"
-              (rateado por categoria, já líquido de desconto e com frete). Só
-              fica abaixo se algum pedido tiver todos os produtos excluídos do
-              catálogo.
+              Total deste gráfico = a receita total da loja (rateada por
+              categoria, já líquida de desconto e com frete). Só fica abaixo se
+              algum pedido tiver todos os produtos excluídos do catálogo.
             </p>
 
             {/* CONTAINER DO GRÁFICO E DA LEGENDA DETALHADA */}

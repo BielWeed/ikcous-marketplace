@@ -3,21 +3,25 @@
 // Lote 1 do laudo "o que falta" (29/08, achado banners 13): a "Central de
 // Inteligência & KPIs" (o modal de ajuda do dashboard) documentava
 // "Capital Alocado", "Lucro Potencial" e "Faturamento" como indicadores da
-// tela — mas os cartões reais (KpiSummaryCards.tsx) são "Volume Total",
-// "Total de Pedidos", "Ticket Médio" e "Clientes Únicos". Um nome em quatro
-// batia. O lojista leia a ajuda e procurava números que não existem.
+// tela — mas os cartões reais eram "Volume Total", "Total de Pedidos",
+// "Ticket Médio" e "Clientes Únicos" (o carrossel "Métricas principais",
+// KpiSummaryCards.tsx). Um nome em quatro batia. O lojista lia a ajuda e
+// procurava números que não existem.
 //
-// O conserto reescreve a ajuda para descrever os quatro cartões reais. A
-// prova abre o modal e confere presença dos quatro nomes reais e ausência
-// dos três fantasmas. No código de antes, os fantasmas estavam lá e o
-// teste morria.
+// 28/09/2026: o próprio carrossel saiu da tela (pedido do dono — duplicava
+// os 8 números do período que já aparecem no topo da Visão geral). A ajuda
+// tem que acompanhar: agora ela NÃO PODE mais prometer os 4 CARTÕES que o
+// carrossel mostrava ("Volume Total", "Total de Pedidos", "Ticket Médio",
+// "Clientes Únicos") — esses cartões, específicos, não existem mais. As
+// PALAVRAS "Pedidos"/"Ticket Médio" continuam na tela em outro contexto
+// (a linha de resumo do bloco Performance, "Pedidos: N" / "Ticket Médio:
+// R$ X" — OperationalPerformanceChart, mocado para null neste teste, por
+// isso a asserção abaixo não precisa excluir essas palavras soltas, só as
+// frases exatas dos 4 cartões removidos). Continua sem os três fantasmas
+// originais, que nunca existiram.
 //
 // Os filhos com gráfico são dublados: o assunto deste teste é o TEXTO da
 // ajuda, não o desenho — recharts em jsdom é ruído caro para nada.
-//
-// 26/09/2026: o dashboard deixou de ser o Início do painel e virou a aba
-// "Visão geral" do Dashboard CRM (AdminCrmView) — a ajuda foi junto
-// (AjudaDoCrm) e continua descrevendo os mesmos quatro cartões reais.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -91,11 +95,6 @@ vi.mock("@/components/admin/dashboard/StrategicIntelligenceBlocks", () => ({
 vi.mock("@/components/admin/dashboard/TopProductsList", () => ({
   TopProductsList: () => null,
 }));
-// O carrossel de KPIs usa embla-carousel, que pede matchMedia/ResizeObserver
-// reais na montagem — e o assunto do teste é o TEXTO da ajuda, não o desenho.
-vi.mock("@/components/admin/dashboard/KpiSummaryCards", () => ({
-  KpiSummaryCards: () => null,
-}));
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -152,7 +151,7 @@ describe("A ajuda do dashboard (hoje no Dashboard CRM) documenta os KPIs que a t
     hospedeiro.remove();
   });
 
-  it("o modal de ajuda descreve os 4 cartões reais e nenhum fantasma", async () => {
+  it("o modal de ajuda descreve exatamente os cards que a tela tem — sem o carrossel removido, sem fantasma", async () => {
     const { AdminCrmView } = await import("@/views/admin/AdminCrmView");
     await act(async () => {
       raiz.render(<AdminCrmView active={true} onNavigate={() => {}} />);
@@ -176,17 +175,32 @@ describe("A ajuda do dashboard (hoje no Dashboard CRM) documenta os KPIs que a t
     );
 
     const texto = document.body.textContent ?? "";
-    for (const kpiReal of [
+
+    // O que sobrou do Histórico completo (Divisão de faturamento,
+    // Performance, Top 5) continua descrito.
+    for (const blocoReal of [
+      "Performance Operacional",
+      "Inteligência Estratégica por Categoria",
+      "Produtos Mais Lucrativos",
+    ]) {
+      expect(texto).toContain(blocoReal);
+    }
+
+    // O carrossel "Métricas principais" saiu da tela (28/09/2026) — a ajuda
+    // não pode mais prometer estes 4 cartões, que não existem em lugar
+    // nenhum do Dashboard CRM.
+    for (const kpiRemovido of [
       "Volume Total",
       "Total de Pedidos",
       "Ticket Médio",
       "Clientes Únicos",
     ]) {
-      expect(texto).toContain(kpiReal);
+      expect(texto).not.toContain(kpiRemovido);
     }
-    // Os três fantasmas: indicadores que a tela NUNCA teve e a ajuda
-    // ensinava. O "Faturamento" com letra maiúscula é a marca do cartão
-    // fantasma — em minúsculo, a palavra é texto comum de outras seções.
+    // Os três fantasmas originais: indicadores que a tela NUNCA teve e a
+    // ajuda ensinava. O "Faturamento" com letra maiúscula é a marca do
+    // cartão fantasma — em minúsculo, a palavra é texto comum de outras
+    // seções.
     expect(texto).not.toContain("Capital Alocado");
     expect(texto).not.toContain("Lucro Potencial");
     expect(texto).not.toContain("Faturamento");

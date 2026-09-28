@@ -41,11 +41,14 @@ export const TopProductsList = memo(function TopProductsList({
           sozinha, qualquer uma delas faz a tela mentir. */}
       <SectionTitle title="Top 5 produtos mais lucrativos" icon={Trophy} />
 
-      <div className="relative">
-        {/* Decorative background element */}
-        <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-admin-gold/5 blur-[100px]" />
-
+      <div>
         <div className={cn(SUPERFICIE_DO_CRM, "relative overflow-hidden")}>
+          {/* Decorative background element — DENTRO do card com
+              overflow-hidden (achado da medição de transbordo horizontal,
+              28/09/2026): fora dele, o deslocamento negativo (-right-20
+              -top-20) vazava até o contêiner de rolagem do AdminArea e
+              virava rolagem lateral na tela inteira. */}
+          <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-admin-gold/5 blur-[100px]" />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.03] via-transparent to-transparent" />
 
           <div className="relative z-10 space-y-1 p-2.5 sm:p-4">

@@ -98,12 +98,9 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-// Os blocos filhos (gráficos, KPIs) não importam para este achado — mocados
-// para não arrastar recharts/matchMedia para um teste que só prova a
-// assinatura do canal de realtime.
-vi.mock("@/components/admin/dashboard/KpiSummaryCards", () => ({
-  KpiSummaryCards: () => null,
-}));
+// Os blocos filhos (gráficos) não importam para este achado — mocados para
+// não arrastar recharts/matchMedia para um teste que só prova a assinatura
+// do canal de realtime.
 vi.mock("@/components/admin/dashboard/OperationalPerformanceChart", () => ({
   OperationalPerformanceChart: () => null,
 }));

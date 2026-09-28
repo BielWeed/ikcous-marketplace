@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
 /**
@@ -16,11 +17,24 @@ import type { ReactNode } from "react";
  * A linha que abraça título e ações (padding/centralização) continua na
  * view de propósito: ela muda de contexto por tela — linha solta nas
  * listas vs. barra sticky com `max-w-4xl` nos ajustes — e não é cópia.
+ *
+ * `tituloEncolhe` (achado do dono, 28/09/2026): o título é `shrink-0` por
+ * padrão — "Dashboard CRM" abaixo de ~356px empurrava as ações (o botão
+ * Sincronizar) para fora da tela. Como a view põe `overflow-x-clip` na
+ * raiz para não rolar de lado, o botão sumia em vez de rolar até ele.
+ * Nenhuma das outras telas usa esta prop hoje; a Push
+ * (`AdminPushView.tsx:973-981`) resolveu um problema parecido (título +
+ * ações estourando em 360-390px) de outro jeito, local à view — `flex-wrap`
+ * na linha, deixando o selo de status cair para uma segunda linha em vez
+ * de encolher o título. Aqui a prop existe como opt-in por prop para não
+ * mudar nada nas outras telas (default preserva as mesmas classes de
+ * sempre).
  */
 export function AdminPageHeader({
   titulo,
   children,
   acoes,
+  tituloEncolhe = false,
 }: {
   /** Texto do título — a view passa o MESMO texto de antes. */
   titulo: string;
@@ -28,12 +42,41 @@ export function AdminPageHeader({
   children?: ReactNode;
   /** Lado direito da linha (botões de ação, alertas). */
   acoes?: ReactNode;
+  /**
+   * Deixa o título encolher e truncar (com "…") em vez de forçar a
+   * largura mínima do texto inteiro — usa em telas com título comprido e
+   * pouco espaço (hoje só o Dashboard CRM). Default `false`: comportamento
+   * idêntico ao de sempre.
+   */
+  tituloEncolhe?: boolean;
 }) {
   return (
     <>
-      <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-        <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-          <span className="italic text-white">{titulo}</span>
+      <h1
+        className={cn(
+          "flex select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl",
+          tituloEncolhe ? "min-w-0" : "shrink-0",
+        )}
+      >
+        <span
+          className={cn(
+            "flex items-baseline",
+            tituloEncolhe
+              ? "min-w-0 truncate"
+              : "flex-nowrap whitespace-nowrap",
+          )}
+        >
+          <span
+            className={cn(
+              "italic text-white",
+              // `pr-1`: o itálico inclina a última letra para a direita —
+              // sem essa folga, o `truncate` corta a pontinha dela mesmo
+              // quando o título cabe inteiro (achado do dono, 28/09/2026).
+              tituloEncolhe && "truncate pr-1",
+            )}
+          >
+            {titulo}
+          </span>
         </span>
         {children}
       </h1>

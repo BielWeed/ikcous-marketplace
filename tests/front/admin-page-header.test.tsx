@@ -61,4 +61,35 @@ describe("AdminPageHeader", () => {
     ).not.toBeNull();
     expect(tela.querySelector("h1 + div")).toBeNull();
   });
+
+  // Achado do dono (28/09/2026): "Dashboard CRM" abaixo de ~356px empurrava
+  // o botão Sincronizar para fora da tela — o h1 nunca encolhia
+  // (`shrink-0`). `tituloEncolhe` é opt-in por prop: nenhuma outra tela usa
+  // esta prop hoje (a Push, AdminPushView.tsx:973-981, resolveu um
+  // problema parecido de outro jeito, local à view — `flex-wrap` na linha
+  // em vez de encolher o título). Este teste prova as DUAS pontas: sem a
+  // prop, as classes são as MESMAS de sempre (shrink-0, whitespace-nowrap,
+  // sem truncate) — nenhuma tela muda; com a prop, o h1 pode encolher e o
+  // texto trunca.
+  it("tituloEncolhe é opt-in: sem a prop, nada muda; com ela, o título pode encolher e truncar", () => {
+    const semEncolher = montar(<AdminPageHeader titulo="Pedidos" />);
+    const h1Padrao = semEncolher.querySelector("h1")!;
+    expect(h1Padrao.className).toContain("shrink-0");
+    expect(h1Padrao.className).not.toContain("min-w-0");
+    const spanPadrao = h1Padrao.querySelector("span")!;
+    expect(spanPadrao.className).toContain("whitespace-nowrap");
+    expect(spanPadrao.className).not.toContain("truncate");
+
+    act(() => root.unmount());
+    container.remove();
+
+    const comEncolher = montar(
+      <AdminPageHeader titulo="Dashboard CRM" tituloEncolhe />,
+    );
+    const h1Encolhe = comEncolher.querySelector("h1")!;
+    expect(h1Encolhe.className).toContain("min-w-0");
+    expect(h1Encolhe.className).not.toContain("shrink-0");
+    const spanEncolhe = h1Encolhe.querySelector("span")!;
+    expect(spanEncolhe.className).toContain("truncate");
+  });
 });

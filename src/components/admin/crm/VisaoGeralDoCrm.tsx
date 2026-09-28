@@ -1,6 +1,5 @@
 import { ChipDeVariacao } from "@/components/admin/crm/ChipDeVariacao";
 import { TileDeKpi } from "@/components/admin/crm/TileDeKpi";
-import { KpiSummaryCards } from "@/components/admin/dashboard/KpiSummaryCards";
 import { OperationalPerformanceChart } from "@/components/admin/dashboard/OperationalPerformanceChart";
 import { StrategicIntelligenceBlocks } from "@/components/admin/dashboard/StrategicIntelligenceBlocks";
 import { TopProductsList } from "@/components/admin/dashboard/TopProductsList";
@@ -34,9 +33,18 @@ type EstadoClassico = ReturnType<typeof useDashboardClassico>;
 /**
  * Aba "Visão geral" do CRM: os 8 números do período escolhido (com
  * variação contra o período anterior onde a RPC traz a base) e, logo
- * abaixo, o dashboard que era o Início até 26/09/2026 — INTACTO: KPIs
- * históricos, inteligência por categoria, desempenho operacional e produtos
- * mais lucrativos.
+ * abaixo, o histórico completo da loja — inteligência por categoria,
+ * desempenho operacional e produtos mais lucrativos.
+ *
+ * Até 28/09/2026 havia um 5º bloco aqui (KpiSummaryCards — o carrossel
+ * "Métricas principais": Volume total, Total de pedidos, Ticket médio,
+ * Clientes únicos, todo o histórico da loja). O dono pediu para tirar:
+ * duplicava os 8 números do período de cima. Quem cobre Volume
+ * total/Total de pedidos/Ticket médio hoje é o "Tudo" do bloco
+ * Performance logo abaixo (Faturamento Total, Pedidos, Ticket Médio —
+ * OperationalPerformanceChart, seletor 30D/90D/Tudo). "Clientes únicos de
+ * toda a vida da loja" ficou SEM equivalente na tela: o "Clientes
+ * compradores" dos 8 KPIs de cima é só do período escolhido.
  */
 export function VisaoGeralDoCrm({
   visao,
@@ -208,8 +216,7 @@ export function VisaoGeralDoCrm({
             Histórico completo da loja
           </h2>
           <p className="text-xs leading-relaxed text-zinc-400">
-            Números de todo o período, desempenho diário, categorias e os
-            produtos mais lucrativos.
+            Desempenho diário, categorias e os produtos mais lucrativos.
           </p>
         </div>
 
@@ -233,19 +240,7 @@ export function VisaoGeralDoCrm({
           </div>
         ) : null}
 
-        {/* KpiSummaryCards traz o próprio `sm:px-6`; a margem negativa
-            devolve o alinhamento com os blocos vizinhos. */}
-        <div className="duration-300 animate-in fade-in slide-in-from-bottom-2 sm:-mx-6">
-          <LocalErrorBoundary>
-            <KpiSummaryCards
-              stats={stats}
-              loading={carregandoClassico}
-              active={active}
-            />
-          </LocalErrorBoundary>
-        </div>
-
-        <div className="delay-75 duration-300 animate-in fade-in slide-in-from-bottom-2">
+        <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
           <LocalErrorBoundary>
             <StrategicIntelligenceBlocks
               categoryData={categorias}
