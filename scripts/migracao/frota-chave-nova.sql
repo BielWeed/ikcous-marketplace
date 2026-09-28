@@ -33,3 +33,10 @@ SELECT extname, extnamespace::regnamespace AS schema
 
 \echo '== Senha da frota veio no backup (tem que ser 1) =='
 SELECT count(*) AS senhas FROM public.frota_segredo;
+
+\echo '== Funções do banco que ainda citam o projeto antigo (o ideal é 0 linhas) =='
+SELECT n.nspname AS schema, p.proname AS funcao
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE p.prosrc LIKE '%cafkrminfnokvgjqtkle%'
+ ORDER BY 1, 2;
