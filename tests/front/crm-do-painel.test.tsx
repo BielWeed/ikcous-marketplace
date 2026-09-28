@@ -8,8 +8,9 @@
 //   - na aba Clientes, `crm_clientes` recebe segmento/paginação, cada linha
 //     tem o WhatsApp com o texto do segmento e "Ver cliente" abre a ficha;
 //   - o funil/pipeline leva à tela de Pedidos.
-// Os blocos do dashboard antigo (gráficos/carrossel) são dublados: o
-// assunto aqui é a casca nova do CRM.
+// Os blocos do dashboard antigo (gráficos) são dublados: o assunto aqui é
+// a casca nova do CRM. O carrossel "Métricas principais" (KpiSummaryCards)
+// saiu da tela em 28/09/2026 — não existe mais para dublar.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -63,9 +64,6 @@ vi.mock("@/contexts/StoreContext", () => ({
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
-}));
-vi.mock("@/components/admin/dashboard/KpiSummaryCards", () => ({
-  KpiSummaryCards: () => null,
 }));
 vi.mock("@/components/admin/dashboard/OperationalPerformanceChart", () => ({
   OperationalPerformanceChart: () => null,
@@ -264,6 +262,11 @@ describe("Dashboard CRM", () => {
     expect(pagina).toContain("33,3%");
     expect(pagina).toContain("Receita em risco");
     expect(pagina).toContain("Histórico completo da loja");
+    // O carrossel "Métricas principais" (KpiSummaryCards) saiu da tela
+    // (28/09/2026): duplicava estes mesmos 8 números do período. Este
+    // componente NÃO é dublado neste teste — se alguém voltar a importá-lo
+    // em VisaoGeralDoCrm, o texto real do carrossel apareceria aqui.
+    expect(pagina).not.toContain("Métricas Principais");
   });
 
   it("as abas trocam de painel e só a aba visível fica à mostra", async () => {
