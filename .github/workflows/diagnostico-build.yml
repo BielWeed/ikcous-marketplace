@@ -1,0 +1,34 @@
+# Temporário (incidente 28/09/2026): mostra o motivo real do
+# IDENTITY_BUILD_FAILED contra o projeto novo do Supabase. Só valores públicos.
+name: Diagnóstico do build (temporário)
+on:
+  push:
+    branches: [infra/diagnostico-build]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: production
+      IKCOUS_IDENTITY_MODE: database
+      VITE_SUPABASE_URL: https://dekxabvqdsuukijblazl.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_07V7N2KcNA3Kk7e4sxQVLA_dlOKUf14
+      VITE_APP_URL: https://ickous-marketplace.vercel.app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: npm ci --legacy-peer-deps
+      - run: npx tsc -b
+      - run: node scripts/diagnostico/build-identidade.mjs
+      - name: Confere a ficha pública (só leitura, chave pública)
+        if: always()
+        run: |
+          curl -s -o /dev/null -w "v_store_config HTTP %{http_code}\n" \
+            -H "apikey: $VITE_SUPABASE_PUBLISHABLE_KEY" \
+            "$VITE_SUPABASE_URL/rest/v1/v_store_config?select=store_name&limit=1"
+          curl -s -w "\n" -H "apikey: $VITE_SUPABASE_PUBLISHABLE_KEY" \
+            "$VITE_SUPABASE_URL/rest/v1/v_store_config?select=store_name,logo_url&limit=1" | head -c 600
