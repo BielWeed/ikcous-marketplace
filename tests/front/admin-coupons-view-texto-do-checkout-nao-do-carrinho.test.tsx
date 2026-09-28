@@ -99,9 +99,7 @@ describe("AdminCouponsView — o cupom é usado no checkout, não no carrinho", 
     await abrirTela();
 
     const texto = (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
-    expect(texto).toContain(
-      "Permitir que clientes usem cupons no checkout.",
-    );
+    expect(texto).toContain("Permitir que clientes usem cupons no checkout.");
     expect(texto).not.toMatch(/usem cupons no carrinho/i);
   });
 
@@ -137,10 +135,7 @@ describe("AdminCouponsView — o cupom é usado no checkout, não no carrinho", 
     });
 
     // O modal é montado via createPortal em document.body, fora de `hospedeiro`.
-    const textoDoModal = (document.body.textContent ?? "").replace(
-      /\s+/g,
-      " ",
-    );
+    const textoDoModal = (document.body.textContent ?? "").replace(/\s+/g, " ");
     expect(textoDoModal).toContain("deixa de ser aceito no checkout");
     expect(textoDoModal).not.toMatch(/aceito no carrinho/i);
   });
