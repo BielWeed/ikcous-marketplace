@@ -39,9 +39,10 @@ vi.mock("@/lib/supabase", () => ({
       // demorou, mas a sessão é boa"). Antes do R-1 o getUser nem era
       // chamado neste caminho; devolver `user: null` aqui faria a validação
       // honesta deslogar a sessão que este teste quer ver aplicada.
-      getUser: vi
-        .fn()
-        .mockResolvedValue({ data: { user: { id: "user-tardio" } }, error: null }),
+      getUser: vi.fn().mockResolvedValue({
+        data: { user: { id: "user-tardio" } },
+        error: null,
+      }),
       onAuthStateChange: vi.fn(),
       signOut: vi.fn().mockResolvedValue({ error: null }),
     },

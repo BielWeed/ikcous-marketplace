@@ -542,7 +542,7 @@ export const RealtimeSyncEngine = {
    * Apply change to DataVault and notify all listeners.
    */
   async _applyChangeAndNotify(
-    vault: DataVault,
+    _vault: DataVault,
     config: TableConfig,
     eventType: RealtimeEventType,
     raw: any,
@@ -552,7 +552,7 @@ export const RealtimeSyncEngine = {
     // capturado em start() pode ter sido fechado por um versionchange de
     // outra aba; gravar nele seria InvalidStateError com aviso à tela como
     // se tivesse gravado.
-    vault = await cofreVivo(vault);
+    const vault = await cofreVivo(_vault);
     // A exclusão de produto deste app é *soft-delete*: `useProducts` grava
     // `deleted_at` com um UPDATE, então a exclusão chega aqui como UPDATE. Sem
     // esta checagem o `case "UPDATE"` daria `vault.put` e gravaria de volta no
@@ -752,12 +752,12 @@ export const RealtimeSyncEngine = {
   /**
    * Run delta synchronization / catch-up reconciliation with Supabase.
    */
-  async catchUp(vault: DataVault, isAdmin: boolean): Promise<void> {
+  async catchUp(_vault: DataVault, isAdmin: boolean): Promise<void> {
     if (_isCatchingUp) return;
     _isCatchingUp = true;
     // dataVault-129: mesma regra da borda de escrita — a rodada inteira
     // (leituras e reconciliação) passa a rodar sobre o cofre VIVO.
-    vault = await cofreVivo(vault);
+    const vault = await cofreVivo(_vault);
     console.log("[RealtimeSyncEngine] 🔄 Running catchUp/reconciliation...");
 
     try {
