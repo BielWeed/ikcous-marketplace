@@ -134,13 +134,7 @@ describe("F7 — menu da conta", () => {
     expect(host.querySelector("img")?.getAttribute("src")).toBe(
       perfil.avatar_url,
     );
-    const destinos = [
-      "profile",
-      "orders",
-      "address-form",
-      "account-settings",
-      "about-store",
-    ];
+    const destinos = ["profile", "orders", "account-settings", "about-store"];
     const links = host.querySelectorAll("a");
     expect(links).toHaveLength(destinos.length);
     expect(host.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
@@ -253,7 +247,7 @@ describe("F7 — telas reais preservam classes do celular", () => {
       host.querySelector('aside[aria-label="Minha conta"]'),
     ).not.toBeNull();
     expect(host.querySelector('[aria-current="page"]')?.textContent).toContain(
-      "Endereços",
+      "Minha conta",
     );
     act(() =>
       host

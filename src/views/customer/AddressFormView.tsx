@@ -63,7 +63,8 @@ export function AddressFormView({
     >
       {computador && (
         <Suspense fallback={null}>
-          <MenuDaConta atual="address-form" onNavigate={onNavigate} />
+          {/* Os endereços moram em "Minha conta": o formulário marca esse item. */}
+          <MenuDaConta atual="profile" onNavigate={onNavigate} />
         </Suspense>
       )}
       <div
