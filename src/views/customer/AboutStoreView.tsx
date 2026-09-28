@@ -83,6 +83,19 @@ export function AboutStoreView() {
     });
   };
 
+  // Ícone do PIN do mapa (pedido do dono, 28/09): o MESMO ícone que vai para
+  // a tela inicial do celular — papel `icon_192`, o que o manifest do PWA
+  // manda em `iconesManifestParaUrls` (porteiro.ts) e a notificação push lê
+  // em `resolverIconeDaLoja` (sw.ts). NUNCA a logo LARGA do cabeçalho
+  // (`logoSrc` acima): uma logo-palavra (ex.: "SAVY") recortada num círculo
+  // pequeno virava um borrão preto indistinguível do balão — o pin é
+  // independente da cascata banco→build→inicial da logo grande porque o
+  // ícone do app já vem QUADRADO e validado no build (schema garante
+  // largura===altura), sem precisar de estágio intermediário. Falha de rede
+  // cai na inicial, nunca num borrão.
+  const [iconeDoPinFalhou, setIconeDoPinFalhou] = useState(false);
+  const iconeDoPin = iconeDoPinFalhou ? null : buildIdentity.localUrls.icon_192;
+
   useDocumentMeta({ title: `Sobre a loja | ${storeName}` });
 
   // Mesma formatação do suporte do Perfil: só dígitos, prefixo 55 quando o
@@ -199,10 +212,15 @@ export function AboutStoreView() {
                   className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
                 />
                 {/* Pin balão da casa em UM SVG: gota PRETA sólida (contorno
-                    e corpo), a LOGO da loja ocupando o círculo e a ponta de
-                    baixo como âncora no centro do mapa. Sem logo, a inicial
-                    branca. */}
-                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
+                    e corpo) e o ÍCONE DO APP (`iconeDoPin`, não a logo larga
+                    do cabeçalho) num quadrado de cantos arredondados — não um
+                    círculo: ícone de app já nasce QUADRADO, então cabe
+                    inteiro (`meet`) sem recortar a marca. Moldura branca ao
+                    redor: contraste garantido mesmo com ícone escuro e sobre
+                    qualquer fundo de mapa. Sombra no pin inteiro para
+                    destacar sobre o mapa. A ponta de baixo continua a âncora
+                    no centro do mapa; sem ícone (ou falha), a inicial. */}
+                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full drop-shadow-[0_3px_6px_rgba(0,0,0,0.45)]">
                   <svg
                     width="60"
                     height="73"
@@ -211,8 +229,8 @@ export function AboutStoreView() {
                     aria-label={`Local da loja ${storeName}`}
                   >
                     <defs>
-                      <clipPath id="pin-logo-recorte">
-                        <circle cx="28" cy="28" r="14.5" />
+                      <clipPath id="pin-icone-recorte">
+                        <rect x="15" y="15" width="26" height="26" rx="7" />
                       </clipPath>
                     </defs>
                     <path
@@ -222,27 +240,45 @@ export function AboutStoreView() {
                       strokeWidth="3"
                       strokeLinejoin="round"
                     />
-                    <g clipPath="url(#pin-logo-recorte)">
-                      {logoSrc ? (
+                    <rect
+                      x="13"
+                      y="13"
+                      width="30"
+                      height="30"
+                      rx="9"
+                      fill="#ffffff"
+                    />
+                    <g clipPath="url(#pin-icone-recorte)">
+                      {iconeDoPin ? (
                         <image
-                          href={logoSrc}
-                          x="13.5"
-                          y="13.5"
-                          width="29"
-                          height="29"
-                          preserveAspectRatio="xMidYMid slice"
+                          href={iconeDoPin}
+                          x="15"
+                          y="15"
+                          width="26"
+                          height="26"
+                          preserveAspectRatio="xMidYMid meet"
+                          onError={() => setIconeDoPinFalhou(true)}
                         />
                       ) : (
-                        <text
-                          x="28"
-                          y="33"
-                          textAnchor="middle"
-                          fontSize="15"
-                          fontWeight="900"
-                          fill="white"
-                        >
-                          {inicial}
-                        </text>
+                        <>
+                          <rect
+                            x="15"
+                            y="15"
+                            width="26"
+                            height="26"
+                            fill="#18181b"
+                          />
+                          <text
+                            x="28"
+                            y="33"
+                            textAnchor="middle"
+                            fontSize="14"
+                            fontWeight="900"
+                            fill="#ffffff"
+                          >
+                            {inicial}
+                          </text>
+                        </>
                       )}
                     </g>
                   </svg>

@@ -60,7 +60,9 @@ vi.mock("@/contexts/StoreContext", () => ({
       storeName: "Loja do Gabriel",
       storeCity: "Manaus",
       storeState: "AM",
-      logoUrl: null,
+      // Logo larga cadastrada (como a da Savy): o cartão tem de preferir o
+      // ícone do app mesmo assim — o teste do ícone trava essa prioridade.
+      logoUrl: "https://exemplo.test/logo-larga.png",
       originCep: "69000-000",
     },
     isLoaded: true,
@@ -288,6 +290,23 @@ describe("Início do painel", () => {
     expect(texto(preparar)).toContain("5");
     // 4 pendências acesas: preparar, devolução, vencidas, estoque.
     expect(texto(hospedeiro)).toContain("4 pendências");
+  });
+
+  it("o cartão da loja mostra o ícone do app (quadrado), não a logo larga", async () => {
+    // Pedido do dono (28/09): na Savy a logo-palavra "SAVY", transparente e
+    // escura, sumia no quadrado escuro do cartão. O ícone do app (papel
+    // `icon_192`, o mesmo do pin do mapa e da tela inicial do celular) vem
+    // quadrado e com fundo próprio, por loja, da ficha que o porteiro escreve.
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    const { buildIdentity } = await import("@/config/buildIdentity");
+    await montar();
+    const imagem = hospedeiro.querySelector<HTMLImageElement>(
+      'section[aria-label="Sua loja"] img',
+    );
+    expect(imagem?.getAttribute("src")).toBe(buildIdentity.localUrls.icon_192);
+    expect(imagem?.getAttribute("src")).not.toBe(
+      "https://exemplo.test/logo-larga.png",
+    );
   });
 
   it("função ainda não criada no banco vira aviso honesto, não número zero", async () => {
