@@ -6,6 +6,7 @@ name: Operação do incidente (temporário)
 on:
   push:
     branches: [infra/operacao-incidente]
+    paths: [scripts/incidente/banco.mjs, scripts/incidente/vercel.mjs]
 permissions:
   contents: read
 concurrency:

@@ -1,0 +1,42 @@
+# Temporário (incidente 28/09/2026): publica as edge functions no projeto novo do
+# Supabase (dekxabvqdsuukijblazl) do mesmo jeito que o publicar-functions.yml (uma
+# por vez, pelo nome, respeitando o verify_jwt do config.toml) e recria Vault,
+# pg_cron e endereços do Auth. Autorizado pelo dono no chat do incidente.
+name: Operação do incidente — functions (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths: [scripts/incidente/funcoes.mjs, .github/workflows/operacao-funcoes.yml]
+permissions:
+  contents: read
+concurrency:
+  group: operacao-funcoes
+  cancel-in-progress: false
+jobs:
+  funcoes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      REF: dekxabvqdsuukijblazl
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Publica, uma function por vez, sempre pelo nome
+        run: |
+          set -euo pipefail
+          for n in calculate-shipping credenciais-mercado-pago criar-pagamento estornar-pagamento \
+                   melhor-envio-etiqueta notify-new-order reconciliar-pagamentos \
+                   send-order-confirmation send-otp-email send-push webhook-mercadopago; do
+            echo "::group::supabase functions deploy $n --project-ref $REF"
+            supabase functions deploy "$n" --project-ref "$REF"
+            echo "::endgroup::"
+          done
+      - name: Vault, pg_cron, Auth e conferência
+        if: always()
+        run: node scripts/incidente/funcoes.mjs
