@@ -1,11 +1,10 @@
 import { ConteudoDoResumoDoPedido } from "@/components/checkout/ConteudoDoResumoDoPedido";
-import { COLUNA_FIXA_NO_COMPUTADOR } from "@/components/desktop/medidas";
-import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import {
   type CategoriaErroPagamento,
   type MetodoOnline,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
+import { COLUNA_FIXA_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import {
   IconeCartao,
   IconeDinheiro,
@@ -37,6 +36,7 @@ import {
   mensagemAmigavelErroPedido,
   useOrders,
 } from "@/hooks/useOrders";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   criarGerenciadorDeChave,
@@ -1585,6 +1585,16 @@ export function CheckoutView({
       hasPushedSummaryPanelState.current = false;
     }
   }, [isSummaryPanelOpen]);
+
+  // O painel existe apenas abaixo de 1024px. Se a janela crescer enquanto
+  // ele está aberto, consome também a entrada virtual que foi empurrada no
+  // histórico; assim o primeiro foco no formulário já visível no computador
+  // não chama `history.back()` e não tira a cliente do checkout.
+  useEffect(() => {
+    if (computador && isSummaryPanelOpen) {
+      globalThis.history.back();
+    }
+  }, [computador, isSummaryPanelOpen]);
 
   // Handle back button override for address modal
   useEffect(() => {

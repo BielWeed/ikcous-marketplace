@@ -1,8 +1,8 @@
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, Home, Package } from "lucide-react";
@@ -24,7 +24,7 @@ export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
     <div
       className={cn(
         "flex min-h-full flex-col items-center justify-center bg-white px-6 py-12 text-center",
-        "lg:mx-auto lg:my-10 lg:min-h-0 lg:w-full lg:max-w-[560px] lg:rounded-3xl lg:border lg:border-zinc-100 lg:py-12 lg:shadow-sm",
+        "lg:mx-auto lg:my-10 lg:min-h-0 lg:w-full lg:max-w-[560px] lg:rounded-3xl lg:border lg:border-zinc-100 lg:shadow-sm",
       )}
     >
       <motion.div
