@@ -112,11 +112,11 @@ export function FechamentoDaVenda({
   const idTitulo = useId();
   const idConferi = useId();
   const tituloRef = useRef<HTMLHeadingElement>(null);
-  // A7: ao abrir, a folha do fechamento vem para a vista e o leitor de tela
-  // anuncia o título — no celular ela abria ABAIXO do cupom, fora da tela.
+  // A7: ao abrir, a folha do fechamento vem para a vista — no celular ela
+  // abria ABAIXO do cupom, fora da tela. Sem foco programático: o contorno
+  // de foco acendia no título sem o balconista ter tocado em nada.
   useEffect(() => {
     tituloRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-    tituloRef.current?.focus({ preventScroll: true });
   }, []);
 
   // A ÚLTIMA falha traduzida (mensagem + `podeTentarDeNovo`) — achado "ANTES
@@ -205,8 +205,7 @@ export function FechamentoDaVenda({
         <h3
           id={idTitulo}
           ref={tituloRef}
-          tabIndex={-1}
-          className="text-sm font-bold text-white outline-none"
+          className="text-sm font-bold text-white"
         >
           Fechar venda
         </h3>
