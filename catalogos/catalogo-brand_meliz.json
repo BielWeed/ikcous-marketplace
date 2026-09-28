@@ -12,23 +12,15 @@
   "verificado": false
  },
  "extraido_em": "2026-09-28T14:46:19.348Z",
- "fonte": "leitura do instagram.com (web, aba logada) - sem curtir/seguir/comentar",
+ "atualizado_em": "2026-09-28T15:18:52.839Z",
+ "fonte": "leitura do instagram.com (web, aba logada) - sem curtir/seguir/comentar | filtrado pela regra do dono: so posts de produto com foto (avisos/sorteios/eventos/memes/repos de terceiros fora); o_que_e gerado a partir da legenda",
  "posts": [
-  {
-   "link": "https://www.instagram.com/p/DdrCIFsFubS/",
-   "data": "2026-09-24",
-   "legenda": "🤎🩵\n📍 Rua José Avelino 751 vila nova \nEnviamos para todo Brasil 🇧🇷📦",
-   "tipo": "carrossel",
-   "curtidas": 11,
-   "comentarios": 0,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/818062442_17950738992274684_7731789330393178715_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=Mzk5MzI5NDQ3OTY2ODkzMzgwMQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzA3Mi5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=4DC6E2mhEJ8Q7kNvwEk3LLg&_nc_oc=AdpIPi-UicpnUg0CwzAB_dJ12t0jFRrCzdn-DW7XN2rCyutAqV8EmI5Pth_oIzdUcvE8q63p5HhXqYjhn5G7nZfD&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=TypRxOz5koGK7fvfmZFSBw&_nc_ss=7b6a8&oh=00_AQNBRYFGAgxAscSqFRah55idRCNf51tWsJMWgLP5bod8ig&oe=6AC03E1B"
-   ]
-  },
   {
    "link": "https://www.instagram.com/p/DdrB7umlrEg/",
    "data": "2026-09-24",
    "legenda": "Escolha a cor e arrase 💚🩷",
+   "produto": true,
+   "o_que_e": "peça disponível em várias cores",
    "tipo": "carrossel",
    "curtidas": 9,
    "comentarios": 0,
@@ -41,6 +33,8 @@
    "link": "https://www.instagram.com/p/DdrBzaYlo0N/",
    "data": "2026-09-24",
    "legenda": "TENDÊNCIA ✨🩷❤️‍🔥 disponível na loja !",
+   "produto": true,
+   "o_que_e": "peça em alta (tendência da estação)",
    "tipo": "carrossel",
    "curtidas": 10,
    "comentarios": 0,
@@ -50,21 +44,11 @@
    ]
   },
   {
-   "link": "https://www.instagram.com/p/Dc1c-ASllQ4/",
-   "data": "2026-09-03",
-   "legenda": "🖤🤍",
-   "tipo": "carrossel",
-   "curtidas": 19,
-   "comentarios": 0,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/793573686_17947767552274684_5050075853708472045_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=Mzk3ODIxMzE2MTIyNjY5NzM2NA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzA3Mi5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=Mwvi8FXAl_gQ7kNvwGXrDwN&_nc_oc=Adqr0BSt1AxXLbNHzXNshOjvO2vjE2OphL5FlxklnIBTkQgnR29WtX17BdB21HBX2-LvhpQOLkevscGMTY-6MuID&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=TypRxOz5koGK7fvfmZFSBw&_nc_ss=7b6a8&oh=00_AQM9vWWFMxAfE65UISP6fQ6ZWF8SwKAj4-Q69KNkFoQJdA&oe=6AC0405D",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/793027930_17947767561274684_3889119308033922561_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=103&_nc_map=urlgen_bucketless&ig_cache_key=Mzk3ODIxMzE2NjA0OTk5OTg0NQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzA3Mi5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=32o-mLfRniAQ7kNvwEdsF4N&_nc_oc=AdrqbaadZBvKQd1LdGoCGA8Mc1yyQnwwiPyffOo80RZpUAxWh1rDzQgqipJnATsyLZSp6U9yuQhiEVZHUjIrJRo2&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=TypRxOz5koGK7fvfmZFSBw&_nc_ss=7b6a8&oh=00_AQNmsiDNqBEXeHd9a4ThZ4-HwUCVt2ALRP43w2ZwfKdnlA&oe=6AC0693A"
-   ]
-  },
-  {
    "link": "https://www.instagram.com/p/Dc1am0eME8X/",
    "data": "2026-09-03",
    "legenda": "Poá que nunca sai de moda! ✨\nCalças em estampa de poá, super estilosas e perfeitas para deixar o look moderno e cheio de personalidade. 🤎🖤\n\nQual é a sua favorita? 😍\n📲 Disponíveis na loja!",
+   "produto": true,
+   "o_que_e": "calças em estampa de poá",
    "tipo": "foto",
    "curtidas": 10,
    "comentarios": 2,
@@ -73,20 +57,11 @@
    ]
   },
   {
-   "link": "https://www.instagram.com/p/DcJShzsFv7Y/",
-   "data": "2026-08-17",
-   "legenda": "Perfeita para quem ama um look moderno, leve e cheio de estilo. 💙✨",
-   "tipo": "carrossel",
-   "curtidas": 20,
-   "comentarios": 0,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/778836137_17945179167274684_2303401250342040600_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=111&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2NTc4MjA5NDU2NTg2NTQxNw%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzUyMy5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=GXjCJUTKBPQQ7kNvwGiqRPs&_nc_oc=AdoXtnL3LoxZ5ug8QOqFs1Vxt7OiJZmkh8gBf24nlospD4_AAkVATDsaxqtWMBgupe8Dwzzx7fx3rqoRUmvnzWbl&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=zqpZTwWJ89HCJTjCstJJlA&_nc_ss=7b6a8&oh=00_AQP05qqdioQ54KSgeMPpAXbowkYm--T5hqN-R8CMm_EIZQ&oe=6AC05D1F"
-   ]
-  },
-  {
    "link": "https://www.instagram.com/p/DcJReUzFo9J/",
    "data": "2026-08-17",
    "legenda": "Polo 👕 over disponível em cores ! Veste até 44 \nShort jeans consultar tamanhos .",
+   "produto": true,
+   "o_que_e": "polo over (veste até 44) e short jeans",
    "tipo": "carrossel",
    "curtidas": 11,
    "comentarios": 0,
@@ -96,21 +71,11 @@
    ]
   },
   {
-   "link": "https://www.instagram.com/p/DcJRZS-Flh0/",
-   "data": "2026-08-17",
-   "legenda": "Consultar tamanhos disponíveis ! ✨🛍️🫶🏻",
-   "tipo": "carrossel",
-   "curtidas": 9,
-   "comentarios": 0,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/778869331_17945177406274684_4555814804368205557_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2NTc3NjQyMjA5NjYwNDgxNQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzA3Mi5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=5HeJe9qLL1MQ7kNvwGcQ0Mc&_nc_oc=AdqJTWZVyyDk4sRpfqTdverS8Ywq18DyhIOCZoPXLjunWSjLQbCWEdQkSoHaen0fJXxqd8OsKuYYSddk_p2PedJp&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=zqpZTwWJ89HCJTjCstJJlA&_nc_ss=7b6a8&oh=00_AQOgXag-e64YJWZg3So1qOhxJOoiFS0QTnOMBHgYyCvXdw&oe=6AC04692",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/778873925_17945177421274684_2569459309693318121_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2NTc3NjQzMzQ4MDE3NDI4Ng%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzA3Mi5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=PJ0J96Ms82AQ7kNvwGSUI38&_nc_oc=AdpuB25Z6QLgpTKWfR9jBeG-yvpfJYd0qnzxDeU5DI3OwIkL_c7JQ39j7NKVonD6vc9BTtEOVXNNjcffHhTjsCLb&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=zqpZTwWJ89HCJTjCstJJlA&_nc_ss=7b6a8&oh=00_AQPkK4Mc7HiBQ6uHdhYlZXC9TiepalfZthMKf09RPfbSfg&oe=6AC042C8"
-   ]
-  },
-  {
    "link": "https://www.instagram.com/p/DZz1zNnEXvV/",
    "data": "2026-06-20",
    "legenda": "Coleção Essência Country Meliz 👢✨",
+   "produto": true,
+   "o_que_e": "coleção Essência Country (look country)",
    "tipo": "carrossel",
    "curtidas": 94,
    "comentarios": 2,
@@ -123,6 +88,8 @@
    "link": "https://www.instagram.com/p/DZz1nmBkTBp/",
    "data": "2026-06-20",
    "legenda": "Coleção Essência  Country Meliz 👢✨",
+   "produto": true,
+   "o_que_e": "coleção Essência Country (look country)",
    "tipo": "carrossel",
    "curtidas": 10,
    "comentarios": 0,
@@ -135,6 +102,8 @@
    "link": "https://www.instagram.com/p/DZz1iUZkaWk/",
    "data": "2026-06-20",
    "legenda": "Coleção Essência Country Meliz 👢✨",
+   "produto": true,
+   "o_que_e": "coleção Essência Country (look country)",
    "tipo": "carrossel",
    "curtidas": 15,
    "comentarios": 1,
@@ -147,6 +116,8 @@
    "link": "https://www.instagram.com/p/DZtA_B4H43c/",
    "data": "2026-06-17",
    "legenda": "🔥 Tendência da estação\n🤎 Tons neutros que combinam com tudo\n✨ Perfeito para arrasar ! \n\nDisponível na Meliz. Corre garantir o seu!",
+   "produto": true,
+   "o_que_e": "peças em tons neutros",
    "tipo": "carrossel",
    "curtidas": 6,
    "comentarios": 0,
@@ -159,6 +130,8 @@
    "link": "https://www.instagram.com/p/DZtAfzEH-TO/",
    "data": "2026-06-17",
    "legenda": "✨ O vestido que fala por si só. ✨\n\nElegância, sofisticação e aquele caimento perfeito que valoriza cada detalhe. \n\nUm modelo marcante para quem ama se sentir poderosa em qualquer ocasião.\n\nDisponível em cores .",
+   "produto": true,
+   "o_que_e": "vestido elegante (disponível em cores)",
    "tipo": "carrossel",
    "curtidas": 10,
    "comentarios": 1,
@@ -171,6 +144,8 @@
    "link": "https://www.instagram.com/p/DZI9ql5BpLB/",
    "data": "2026-06-03",
    "legenda": "O casaco que faltava para transformar seus looks de inverno chegou na Meliz!\n\nElegante, sofisticado e atemporal, ele veste perfeitamente e está disponível em cores apaixonantes para você escolher a sua favorita. 🍂",
+   "produto": true,
+   "o_que_e": "casaco de inverno (disponível em cores)",
    "tipo": "foto",
    "curtidas": 19,
    "comentarios": 1,
@@ -182,6 +157,8 @@
    "link": "https://www.instagram.com/p/DY4o3YDFq-x/",
    "data": "2026-05-28",
    "legenda": "LANÇAMENTO 😮‍💨✨ calça flanelada xadrez ♟️ \n$189,90",
+   "produto": true,
+   "o_que_e": "calça flanelada xadrez",
    "tipo": "carrossel",
    "curtidas": 15,
    "comentarios": 1,
@@ -194,178 +171,14 @@
    "link": "https://www.instagram.com/p/DY4oJ9ultq0/",
    "data": "2026-05-28",
    "legenda": "Tricô Polo $119,90 \nCalça Barrel 👖",
+   "produto": true,
+   "o_que_e": "tricô polo e calça barrel",
    "tipo": "carrossel",
    "curtidas": 14,
    "comentarios": 1,
    "imagens": [
     "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/709226745_17932154607274684_201413753622431428_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=101&_nc_map=urlgen_bucketless&ig_cache_key=MzkwNzA0ODg5NDQ2NTUwMDY0OA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzA3Mi5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=SefY2Mvb1KMQ7kNvwEYgvVH&_nc_oc=Adqz9JUr0jsGSifNXRoDZXge_MnRxHpfu9DXlzzdnEPW5IQ8cYsiE9MqdbOl384hPJOu-Kpu6apns_CTWoKR2Mdq&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQNd87dxisSEsva40iVYFowLNUX73pejqEjV0KlRq68-eQ&oe=6AC06448",
     "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/710147326_17932154628274684_2296360256777747149_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=MzkwNzA0ODkyMzg3NTgwNDU5MA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzA3Mi5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=U5k2Jp_F6RQQ7kNvwG_UOHz&_nc_oc=AdrM1WPr2KXJqIE8raj1_ElEeiz0s58Tbbjz0ZyWcP1HNK1zpMGVIVS6nc4J4cBL434gAelEdxevKedAPkEClNLN&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQOULSYzwYUwD7H4_h4DQzNPLYcL4NOHitQZ0H8L3OJjJQ&oe=6AC05A42"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DY4n_-vFlMS/",
-   "data": "2026-05-28",
-   "legenda": "Calça Bicolor 🩵 👖 \n34 ao 44 \n$259,90",
-   "tipo": "carrossel",
-   "curtidas": 26,
-   "comentarios": 0,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/709035765_17932154427274684_6626978592300951729_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=108&_nc_map=urlgen_bucketless&ig_cache_key=MzkwNzA0ODI2NDc3NDYzNjA3Mg%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzY0MS5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=YpIw-Mdx26oQ7kNvwGUfXa-&_nc_oc=AdoXqY-9OoLgjepdOVTiAtWqPS8vx5LdsdLiIYvmpXFc6cQ1ywYgwZg9OtjUSvNno-y4wXaZkogizJf1Y7hQH0BE&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQNrqkPMLL-kvG9nqRMekp7kjOszvVVBzHJ32sQIHycGHg&oe=6AC04007",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/710147329_17932154451274684_7942836566253280457_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=110&_nc_map=urlgen_bucketless&ig_cache_key=MzkwNzA0ODMwMDg1NDA5NjcxNA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMzY0MS5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=jou3EcNvtDQQ7kNvwH6zCDl&_nc_oc=AdpzVg7zY-sfdsEjguDvk5q_3qLJtaRrJY0PmWbtLE1eIRjf5CfBtp--X6PuK2EdDOyL768ovlJStyLpnUct-1B_&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQOEb9_71YjPudeLJFDY_X7ISqcpgX052LShLQbQLkq79A&oe=6AC06BD1"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DY4ncZvsMFh/",
-   "data": "2026-05-28",
-   "legenda": "✨ Casaco Emily ✨\nElegância, conforto e aquele toque sofisticado que transforma qualquer look 🤎❤️🖤\nQual cor ganhou seu coração ? \n$239.90",
-   "tipo": "foto",
-   "curtidas": 11,
-   "comentarios": 1,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/708270777_17932154022274684_5722844524165345416_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=MzkwNzA0NjE1MjM0Njg0NTUzNw%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkZFRUQueHBpZHMuMzA3Mi5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=eDaOCJOlHi8Q7kNvwFDOhqb&_nc_oc=Ado0oZ9oK30XtEOvDjNBztijzGvvDF564VjGoJv__Yy_qYREsRU7dFhMfhFgPG_SI4RIYEjM_cQw2-MX0-uIBIOv&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQPjaGvauTxwW6yqsdlAn_YKiXcP4_AO8McnWt_mHjebMQ&oe=6AC0439C"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DYP-WsesLwH/",
-   "data": "2026-05-12",
-   "legenda": "O pretinho nada básico que entrega elegância e estilo em cada detalhe 🖤✨\nAquele look versátil que vai do casual ao sofisticado sem esforço!\n\nDisponível em cores ! \nVeste 38 ao 44",
-   "tipo": "foto",
-   "curtidas": 9,
-   "comentarios": 1,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/692592752_17929774644274684_4436837636555917786_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=Mzg5NTYwNjQ0MTE3MDQ4NDIzMQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkZFRUQueHBpZHMuMzk3NS5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=L2ozPtdvt4oQ7kNvwHcbGny&_nc_oc=AdquFD9-0GoQpZUUPkDeiHiZ0mG0u0ftJ09196UlcDbZKL5e_7Nfd12gDqTUHDmf1F7Gy3VDL51uXUZolgDfd3wf&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQMLVF-fqnhi8tg4jNbdhf_IGW7UXcqelGoPFllt_nhOyA&oe=6AC06AED"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DXdEUcijWTa/",
-   "data": "2026-04-22",
-   "legenda": "Um look versátil que transita do elegante ao moderno com facilidade ✨🖤 Conjunto de alfaiataria 3 peças para montar várias produções e estar impecável em qualquer ocasião. Disponível em cores !",
-   "tipo": "carrossel",
-   "curtidas": 13,
-   "comentarios": 0,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671214743_17926700223274684_3054412636533158343_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=103&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3Njc4Mzk2MjQ1OTg1OQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=5xMzFxBGquIQ7kNvwF0MiUh&_nc_oc=Adpi9lysfD9Tn-oE7oWekAlzoOd-fxLd88KaQOIsRxXXnggAJtM_qTQSY6Wkb71IRJiN60vRwIPkygkkH9vQITSJ&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQNU_dECl36QoUs2oEWEZxKmqbH_3V68-CNUErApLro25Q&oe=6AC051DC",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/674422388_17926700232274684_1840955401121038513_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3NjgwNzk1Mzg1Nzk4NQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=5FjtybopzmoQ7kNvwFA4_g1&_nc_oc=AdpvzZTyxMkgf4OIXO71KNCZmfeJcnLN2wvcl7502DbuW1ojQa-WkiPOByuZLQWL3KiXCypkti9XB6KQKPakXIWO&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQOJYXOeIqdKH94k0lxZyNbDgrBeryerLY_kU-V88_kGcg&oe=6AC06AB4"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DXdEEUDjdbw/",
-   "data": "2026-04-22",
-   "legenda": "Country girl com elegância e atitude 🤎🤠 O look perfeito para quem ama marcar presença por onde passa. Disponível na Meliz! ✨",
-   "tipo": "carrossel",
-   "curtidas": 68,
-   "comentarios": 1,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671129977_17926700034274684_2242177843773005761_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3NTk4MzE1MjM2OTkzMQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=1pu1r-svhaEQ7kNvwHLCNj_&_nc_oc=Ado_8zo2IwThu9xcs7QoEtZmB7NmnafJrTaQNV6vBrg32MW-NBEAZs1HTCk09y2PXi2OUFT_K8hT5L1DkUO5uggu&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQPXcg2Jq33lXdd3nBPkR0_cO2ujeIzWopDqHF4mmvkWEQ&oe=6AC0683A",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671034072_17926700046274684_499472890432053995_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=111&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3NjAwMDc4NTIxNzQ2MA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=e_acDB_4G14Q7kNvwFbuZUJ&_nc_oc=AdpUHCUzD5DkyAmMSw2D1Snoi0eSE1VTKibS8OI1L7jAwSh4E1_D0AJp44h5EMgAynfhyUVDLnmW7hooBAn8Q-T-&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQPp4mRxe_mySiZexh-B38PPBNjCa904rkdtuntq0PJy7Q&oe=6AC05560"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DXdD5yHDVsR/",
-   "data": "2026-04-22",
-   "legenda": "Macaquinho ✨ disponível em cores ! \n36 ao 42",
-   "tipo": "carrossel",
-   "curtidas": 19,
-   "comentarios": 4,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/674458440_17926699605274684_1971516659470803003_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=102&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3NTI5OTEwMzM2MDQ1Ng%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=xkMeqQAoWaEQ7kNvwGda9_O&_nc_oc=Adp4t6NQKLOJOzOLyOvxzpNF9q_E2mSzO06iDszHbDsLgqQ-zFYmzOBY0tib7yBxXAYH2dDafm9-zw8KSLd3Kjb0&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQNbtlpJvdaf8tSPIpekoKlNyLRIgedKyr50yGfgo5_fMA&oe=6AC05CE0"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DXdDvQ1jUTg/",
-   "data": "2026-04-22",
-   "legenda": "Calça brilho ✨🖤\nP e M disponível",
-   "tipo": "carrossel",
-   "curtidas": 14,
-   "comentarios": 2,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671872059_17926699491274684_288804308826735927_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=107&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3NDcxNDI1Nzk2ODMzNQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=YoYOm2-paeYQ7kNvwFxG3eM&_nc_oc=AdoF6ngeZblvQoiBhvMmg2-irp2N73oi33thlA3Xh0VQCvWwU2basvA-W2aXqcKYt4DnwzlzI9uE8LuVRLv_S8v4&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=O22QoTHNHdwcdHsRyxTW0Q&_nc_ss=7b6a8&oh=00_AQN2Lc7gOtka7_MuD_Z_TmDEGPsl7y3Pg0FN4Z0mRPRE_g&oe=6AC03EC8"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DXdDoS2jYwz/",
-   "data": "2026-04-22",
-   "legenda": "Vestido BOHO renda 🖤🤎✨",
-   "tipo": "carrossel",
-   "curtidas": 40,
-   "comentarios": 3,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/673192266_17926699359274684_5493009243507124494_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=111&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3NDIyODQ0MDE2Mjc3MQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=40xwOWcj8u8Q7kNvwGX_FLe&_nc_oc=Adpk_qeRh_BrUNMKFOyg5xNjudV_0I7tLdkFPr4hToURfBPDtdRP-P2h9aYzyUZI0tFcqH8UZiLybjmauVlsK_pH&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQPsUsf8_kG_km6mVXW9xV2BmgUzj-LMnCG_mKxPBRB7Gg&oe=6AC0618D",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671237242_17926699368274684_2400196335191959008_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=108&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3NDI1NDQ3ODM5MzA0MA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=agFfFpZ_CdcQ7kNvwGHdY9n&_nc_oc=Ado_MAjXM6cvHrjs-_v11HskXh5KAPoTXsHUG-nX2gM6sCBef0gaBPBXbxmqeBJ3_BclaaLC4Ztpz2mh-Np1seOc&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQM1H6Kzo55AhenEUe5a7enEEPhFkc8VWueVD4ePm4pw1A&oe=6AC03641",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671250925_17926699377274684_4682788231375078503_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=111&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3NDI2Njk5NDIwNDg5Mw%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=viFVxHZncYcQ7kNvwGmlIe_&_nc_oc=AdrgNgsSuJyTzZB7ZxOtoKEsmvzgz2gYI56S8waAy30x0emceAs85AGf0jB_yd0WXb0qwtfAx1Zg471AikTijjwP&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQMPWUS6PyGPPlm-sdpTZJRzmLX8tStdKqr61GA9o_CK_w&oe=6AC039A2"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DXdDaRYjXQw/",
-   "data": "2026-04-22",
-   "legenda": "All Jeans 🤎👢🤠",
-   "tipo": "carrossel",
-   "curtidas": 27,
-   "comentarios": 3,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671785327_17926699248274684_9058148204301508383_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3MzMyNzczODUwMDYzNg%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=bgswUkG1c3gQ7kNvwF1buko&_nc_oc=AdrGnV_1JAqhQL84ZWm_tESO_yBwB-_ZWl-VYCglBSPWB3e-H1mwWNgQ0nzUVuRROAPdEk4ixKNf1Pg59RMZP2eL&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQPqiL-69Zq183rnizlZJ-SLl65v5hQ7v2MZFcg1oaGYKg&oe=6AC05CE5",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671157221_17926699257274684_7687280719841334250_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=111&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3MzMzODgxOTg1Nzc0Ng%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=zK6mHoWtuacQ7kNvwG9-V1P&_nc_oc=AdqdghpnnrZ7oKNyP62Lr0e2HjDKxMZssS9KBpqSVNaJkvi0ATokDH9mc5_qm_P47kJJVNid6d2g8DOykGoMm8aJ&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQOtIDqMcu-T_T1QFXHTri1WwKiz6PIoFZANECAH-mxEHw&oe=6AC061D7"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DXdDTaQDQMZ/",
-   "data": "2026-04-22",
-   "legenda": "Mood country chic do jeitinho que a gente ama 🤎✨ Bota, atitude e um look poderoso para arrasar em qualquer rodeio ou show. Disponível na Meliz! 🤠🔥",
-   "tipo": "carrossel",
-   "curtidas": 23,
-   "comentarios": 6,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671216815_17926699164274684_2892506454667120051_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=106&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3MjcwNzAzMTg2ODEyMg%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=iDGmzlzonkAQ7kNvwEgN44P&_nc_oc=AdqCYYP3dzcIKMBMHz5vQAchmKgztTwHOD6htXz13AiF2YH815vYgy81q8kh3hXo9bsen-0tW1OAN3vAYBFf15xD&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQMd6jB0ftO-N5ORYiRH2U-u_U_DyuvgdSPKaW9IxE1QjQ&oe=6AC04DF8",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671280944_17926699188274684_8610083274601730036_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=103&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3Mjg5MjU2MjY2OTk2OQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=KfTWChO6uEYQ7kNvwHzMGOV&_nc_oc=Adpe_0xnSY8wUxyU9-MZEgo4kbdasjmrpkJnxLbY8fGfvGOxhwYs-YafAQKGF8dLT7RWi2ODYY7WBaVNzvL8oo4Y&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQPdLBRrR0RxAyf-D1avj9m9RkzBWXtb0GmtfOj9ajanBA&oe=6AC0611B",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671865849_17926699200274684_7884698379752404881_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=102&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3Mjg5ODkwNDUxMzYzMQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=0Tos2S51hoYQ7kNvwEFc786&_nc_oc=AdpOHT0o_byvdHZoGVvSiAWQMVAbEjtcIx1z2oa5yW32VnC_P25d8YuWYvVeFXBP3gxeMw4Fx3LTCCl7Jcj77-y-&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQMSJXwt_8Ed_ikSJ_VOvi7TvK-LA7rNyVILzEXG58XuFg&oe=6AC04937",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/671043503_17926699209274684_3385053855462658120_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=Mzg4MTI3MjkwNTk5Mjg2MTc5OQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=Pd1ElhEpF2QQ7kNvwHjfzjT&_nc_oc=AdpkmLm3baWzfoRalHFJaxzy0X10vPNbB0od2JLi-i0x0BURn2z9bLMMXtvNv7gBe4E84-TFoyGsB7ajNhxJ1EpO&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQOYzlICaOMVfz5FVRuGJs-jTnMpM3xCB5IB2FvFN6YQlw&oe=6AC04790"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DW_m4TVjTT3/",
-   "data": "2026-04-11",
-   "legenda": "Sofisticação na medida certa pra arrasar em qualquer ocasião ✨ Do salto a bota 👢",
-   "tipo": "carrossel",
-   "curtidas": 14,
-   "comentarios": 1,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/669699061_17924974590274684_5023617850701370502_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=Mzg3Mjk4NDY2NTgwODUzNTU1Ng%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=tDSqZ7b1F7QQ7kNvwGxkiK4&_nc_oc=AdphnS6dZD50CbIANEIrw4FeneqDIKbK5Kqk7XdK47VFL6LUj3v3X9JdHzpv9GIR6xFXyQtvhgcDwk4-rQ54wbZS&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQO9jxomrsmiTXXXAwNqwbco0MYlvZY0ffhOwKmcVjab_w&oe=6AC05219",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/670781837_17924974788274684_7414074907727666850_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=107&_nc_map=urlgen_bucketless&ig_cache_key=Mzg3Mjk4NDk1MDY2MDQ5NjE4Mw%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=3gFpYoNch1sQ7kNvwGCUC45&_nc_oc=Adp_CaJPeoApLgdja4nn2fa8ubYFTbSBe5YzhJBUl-dGIDNJsw_peHFuStWlS2TaC_-1d3ptvuYFOtNnN9EWziRu&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQOcoMOc_LvzEs0Vm4Mb9M7c_B8MWLB0CgHE9HQ9yyL2wg&oe=6AC03F59"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DW_mZULjbrX/",
-   "data": "2026-04-11",
-   "legenda": "Composição com a túnica liz 🤎👢",
-   "tipo": "foto",
-   "curtidas": 10,
-   "comentarios": 0,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/670198771_17924974185274684_1738715779826356218_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=101&_nc_map=urlgen_bucketless&ig_cache_key=Mzg3Mjk4MzA2OTk4NDkzMDUxOQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkZFRUQueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=7jZ_bPOt8DgQ7kNvwFGM00i&_nc_oc=AdpJLSzauI_eqo7FWFD-IzM8xsE-D3pVa_U4Gq6sbFFL9_80-nmzNY91qzB3ZeTSBsVnwHvMpCziuweuMDVowgOQ&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQNN76x218Oi9pM27nePTgoP8VGr9Ihr-OBWMi7R7dNW6A&oe=6AC06462"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DWyoucgDXYI/",
-   "data": "2026-04-06",
-   "legenda": "Esse conjunto é aquele look coringa que vai do básico ao elegante sem esforço ! \nDisponível em cores e veste do 38 ao 44 .✨🛍️",
-   "tipo": "carrossel",
-   "curtidas": 9,
-   "comentarios": 0,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/659031034_17924199132274684_4663867134770944739_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=102&_nc_map=urlgen_bucketless&ig_cache_key=Mzg2OTMzMzg0NzExMjc2MzA4OA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=DYWLJEHuBJ0Q7kNvwHj48OD&_nc_oc=AdqrG7lEF8kJpjQoUM3HgXtbXOvs4JF5FZOuIg1zmuhIBYYDv_TFpz4xhpRwRkgQnPIHxVHvxQWYdIrIWa_xSKY-&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQMpHZvRYUEv9bEqa9uQW6wo8pCCzpwqYp804okvZJEaCQ&oe=6AC04044",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/660141681_17924199147274684_5395725495479227590_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=103&_nc_map=urlgen_bucketless&ig_cache_key=Mzg2OTMzMzg2MTI3Mjc3MTk2NA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=Nrj0QNN0AYQQ7kNvwHrSi8G&_nc_oc=AdrOBRkbl_3fgYhQbg2i1ne4hr09L2-_KnxBcB3sO0CdZVh9FEIXkU3-wj1nulLmMwMUZuHrxSyPyxErV31pmgU2&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQMhEHC1gb4DPPposEB7HmQWKqYByYimkBxBr-PWkbfZfA&oe=6AC05478"
-   ]
-  },
-  {
-   "link": "https://www.instagram.com/p/DWyoXjMDXfS/",
-   "data": "2026-04-06",
-   "legenda": "Elegância que fala por você 🤍✨\nEsse macacão é a definição de sofisticação + conforto… perfeito pra arrasar em qualquer ocasião!\n\nDisponível na Meliz 💫\nCorre garantir o seu! 🛍️",
-   "tipo": "carrossel",
-   "curtidas": 12,
-   "comentarios": 1,
-   "imagens": [
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/659576513_17924198700274684_1218349341989248573_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=102&_nc_map=urlgen_bucketless&ig_cache_key=Mzg2OTMzMjIyNjY5Mzc0Mzc2Mw%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=b704EJKLYzUQ7kNvwGOxWnv&_nc_oc=AdrqJidtH2nkxP400Bk6wLeaybLtwAQLixVjsjbhqpDvAMkMW0SYgjU9HxgbRxjFf1-hdhZmFRzqifZLgc-hLzKF&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQMfQGXER35D7tmAYKzbThFW98IBEe_FfYRSHBLRUz-l0g&oe=6AC04C49",
-    "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.82787-15/661934825_17924198712274684_1399083113976782368_n.jpg?stp=dst-jpegr_e35_tt6&_nc_cat=107&_nc_map=urlgen_bucketless&ig_cache_key=Mzg2OTMzMjI0MDY5NDM2NjY1OQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTQ0MC5oZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=XxL694SVKgEQ7kNvwFK2Cd9&_nc_oc=Adow2ycdfUquX56zxtSNQ6h25Ll3O1WqHgBSOSJ80u9r-zw-UD37t_N3xTV3H5roD4-BkPGdZEFP5QKi3U1OoLA9&_nc_zt=23&_nc_ht=instagram.fudi4-1.fna&_nc_gid=lkUKfLOgesFdhjgr80kD_Q&_nc_ss=7b6a8&oh=00_AQOsLJVUXfjlH5iaULfQkLqeey_OUF703vIdQB4xCYViVg&oe=6AC04E8C"
    ]
   }
  ]
