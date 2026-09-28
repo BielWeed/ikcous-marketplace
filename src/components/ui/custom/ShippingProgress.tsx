@@ -50,15 +50,18 @@ export function ShippingProgress({
   deferred = false,
   onNavigate,
 }: ShippingProgressProps) {
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [quantities, setQuantities] = useState<Map<string, number>>(
+    () => new Map(),
+  );
 
-  const getQuantity = (productId: string) => quantities[productId] || 1;
+  const getQuantity = (productId: string) => quantities.get(productId) ?? 1;
   const updateQuantity = (productId: string, delta: number) => {
     haptic.light();
-    setQuantities((prev) => ({
-      ...prev,
-      [productId]: Math.max(1, (prev[productId] || 1) + delta),
-    }));
+    setQuantities((prev) => {
+      const next = new Map(prev);
+      next.set(productId, Math.max(1, (prev.get(productId) ?? 1) + delta));
+      return next;
+    });
   };
 
   // Rede de segurança (achado CartView-328): quem monta este componente
