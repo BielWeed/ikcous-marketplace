@@ -196,3 +196,4 @@ if (naoCadastrados > 0) console.log(`${naoCadastrados} domínio(s) fora da frota
 if (falhas > 0) parar(`${falhas} domínio(s) da frota ainda respondendo erro.`);
 console.log("Todos os domínios da frota responderam sem erro de servidor.");
 // release 1.5.10 (28/09/2026): deploy do merge do PR #670
+// release 1.5.11 (28/09/2026): deploy do merge do PR #673
