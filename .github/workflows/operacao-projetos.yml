@@ -1,0 +1,26 @@
+# Temporário (28/09/2026): SÓ LEITURA — lista organizações, projetos e saúde
+# que cada token do Supabase enxerga (conta nova e conta antiga), para conferir
+# o projeto novo criado pelo dono na conta antiga.
+name: Operação — projetos do Supabase (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/projetos.mjs
+      - .github/workflows/operacao-projetos.yml
+permissions:
+  contents: read
+jobs:
+  projetos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Lista (só leitura)
+        run: node scripts/incidente/projetos.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
