@@ -1,0 +1,20 @@
+# Temporário (28/09/2026): SÓ LEITURA — abre as lojas novas pelo endereço.
+name: Operação — fumaça das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-fumaca.mjs
+      - .github/workflows/operacao-lojas-fumaca.yml
+permissions:
+  contents: read
+jobs:
+  fumaca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node scripts/incidente/lojas-fumaca.mjs
