@@ -16,7 +16,19 @@
       "frota_id": "cliente-02",
       "slug": "almeidastore",
       "admin_email": "ikcous.imports+almeidastore@gmail.com",
-      "prefixo_senha": "AlmeidaStore"
+      "prefixo_senha": "AlmeidaStore",
+      "cor": "#1C1C1C",
+      "cor2": "#3A3A3A",
+      "acento": "#E4B400",
+      "endereco": {
+        "texto": "Av. Belo Horizonte, 790 — Monte Carmelo/MG",
+        "rua": "Avenida Belo Horizonte",
+        "numero": "790",
+        "bairro": "Centro",
+        "cidade": "Monte Carmelo",
+        "uf": "MG",
+        "cep": "38500-000"
+      }
     },
     {
       "perfil": "brand_meliz",
@@ -27,7 +39,19 @@
       "frota_id": "cliente-03",
       "slug": "brandmeliz",
       "admin_email": "ikcous.imports+brandmeliz@gmail.com",
-      "prefixo_senha": "BrandMeliz"
+      "prefixo_senha": "BrandMeliz",
+      "cor": "#7B2D3B",
+      "cor2": "#4A2C24",
+      "acento": "#E7B7AE",
+      "endereco": {
+        "texto": "Rua José Avelino, 751 — Vila Nova",
+        "rua": "Rua José Avelino",
+        "numero": "751",
+        "bairro": "Vila Nova",
+        "cidade": null,
+        "uf": null,
+        "cep": null
+      }
     },
     {
       "perfil": "space_lojadoskit",
@@ -38,7 +62,19 @@
       "frota_id": "cliente-04",
       "slug": "spacelojadoskit",
       "admin_email": "ikcous.imports+spacelojadoskit@gmail.com",
-      "prefixo_senha": "SpaceLojaDosKit"
+      "prefixo_senha": "SpaceLojaDosKit",
+      "cor": "#1E3A8A",
+      "cor2": "#0F172A",
+      "acento": "#F97316",
+      "endereco": {
+        "texto": "Av. João Pinheiro, 53 — Centro, Monte Carmelo/MG",
+        "rua": "Avenida João Pinheiro",
+        "numero": "53",
+        "bairro": "Centro",
+        "cidade": "Monte Carmelo",
+        "uf": "MG",
+        "cep": "38500-000"
+      }
     }
   ]
 }

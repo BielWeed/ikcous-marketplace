@@ -1,0 +1,28 @@
+# Temporário (28/09/2026): endereço da loja (Sobre) e endereço de teste do
+# admin nas lojas novas.
+name: Operação — ajustes das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-ajustes.mjs
+      - scripts/incidente/lojas-novas.json
+      - .github/workflows/operacao-lojas-ajustes.yml
+permissions:
+  contents: read
+concurrency:
+  group: lojas-ajustes
+  cancel-in-progress: false
+jobs:
+  ajustes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node scripts/incidente/lojas-ajustes.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}

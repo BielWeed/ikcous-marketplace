@@ -5,6 +5,7 @@ on:
     branches: [infra/operacao-incidente]
     paths:
       - scripts/incidente/lojas-identidade.mjs
+      - scripts/incidente/lojas-novas.json
       - .github/workflows/operacao-lojas-identidade.yml
 permissions:
   contents: read
