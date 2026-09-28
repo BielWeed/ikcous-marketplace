@@ -227,6 +227,16 @@ export const Header = memo(function Header({
                 className={cn(
                   "flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]",
                   "lg:h-10 lg:max-w-[140px] xl:max-w-[200px]",
+                  // Com Voltar, a coluna esquerda da grade mede ~144px em
+                  // 1024 (medido: CONTAINER_DO_COMPUTADOR - px-8 - as duas
+                  // colunas fixas/gap da grade `lg:grid-cols-[...]`). Voltar
+                  // (40px) + gap (12px) + o teto normal da logo (140px)
+                  // estoura em 192px e pinta por cima da busca. 92 = 144 -
+                  // 40 - 12 cabe exato. Em xl (1280) a coluna sobe para
+                  // ~264px — 212px sobram para a logo depois de Voltar +
+                  // gap, e o teto normal (200px) já cabe, então libera sem
+                  // precisar de outro token.
+                  showBackButton && "lg:max-w-[92px]",
                 )}
               >
                 <img

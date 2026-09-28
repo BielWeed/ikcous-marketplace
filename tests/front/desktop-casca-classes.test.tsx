@@ -54,6 +54,7 @@ it("F1.6 mantém a barra montada, com as classes do celular intactas e lg:hidden
   expect(nav.classList.contains("lg:hidden")).toBe(true);
   expect(host.querySelector("#bottom-nav-cart")).not.toBeNull();
   expect(fontes["../../src/App.tsx"]).toMatch(
+    // eslint-disable-next-line security/detect-non-literal-regexp -- padrão monta com a constante fixa `barra` deste arquivo, não com entrada externa.
     new RegExp(
       `className=\\{cn\\(\\s*"${regexLiteral(barra)}",\\s*"lg:hidden",?\\s*\\)\\}`,
     ),
@@ -100,6 +101,23 @@ it("F1.7 acrescenta a grade simétrica, o container e a escala da logo sem alter
   expect(logo.classList.contains("xl:max-w-[200px]")).toBe(true);
 });
 
+it("B3 com Voltar, a logo recua em lg: (92 = 144 - 40 - 12) para não sobrepor a busca", () => {
+  act(() =>
+    root.render(
+      <Header onNavigate={vi.fn()} showBackButton onBack={vi.fn()} />,
+    ),
+  );
+  const logo = host.querySelector("img")!.parentElement!;
+  expect(classesDoCelular(logo.className)).toBe(
+    "flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]",
+  );
+  expect(logo.classList.contains("lg:max-w-[92px]")).toBe(true);
+  expect(logo.classList.contains("lg:max-w-[140px]")).toBe(false);
+  // Em xl (1280) a coluna tem ~264px — 212px sobram para a logo depois de
+  // Voltar + gap, então o teto normal (200px) continua cabendo.
+  expect(logo.classList.contains("xl:max-w-[200px]")).toBe(true);
+});
+
 it("F1.12 e F1.16 acrescentam só tokens de desktop ao dropdown e aos overlays", () => {
   const casos = [
     [
@@ -116,6 +134,7 @@ it("F1.12 e F1.16 acrescentam só tokens de desktop ao dropdown e aos overlays",
   for (const [arquivo, base, desktop] of casos) {
     // eslint-disable-next-line security/detect-object-injection -- caminhos fixos da tabela de casos acima.
     expect(fontes[arquivo]).toMatch(
+      // eslint-disable-next-line security/detect-non-literal-regexp -- padrão monta com valores fixos da tabela `casos` acima, não com entrada externa.
       new RegExp(
         `cn\\(\\s*"${regexLiteral(base)}",\\s*"${regexLiteral(desktop)}",?\\s*\\)`,
       ),

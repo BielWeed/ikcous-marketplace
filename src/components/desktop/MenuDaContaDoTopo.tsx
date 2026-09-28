@@ -38,6 +38,7 @@ export function MenuDaContaDoTopo({
       <button
         type="button"
         onClick={() => onNavigate("auth")}
+        aria-label="Entrar"
         className="flex h-10 items-center gap-1 rounded-xl px-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-primary lg:size-7 lg:justify-center lg:p-0 xl:h-10 xl:w-auto xl:justify-start xl:px-2"
       >
         <User aria-hidden="true" className="size-5" />
@@ -50,6 +51,7 @@ export function MenuDaContaDoTopo({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
+          aria-label={`Conta de ${nome}`}
           className="flex h-10 min-w-0 items-center gap-1 rounded-xl px-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-primary lg:size-7 lg:justify-center lg:p-0 xl:h-10 xl:w-auto xl:justify-start xl:px-2"
         >
           <User aria-hidden="true" className="size-5 shrink-0" />

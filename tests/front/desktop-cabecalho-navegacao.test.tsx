@@ -180,6 +180,15 @@ it("F1.11 o menu usa o logout existente e os destinos da conta; Esc fecha", asyn
   );
   expect(estado.logout).toHaveBeenCalledTimes(1);
 });
+it("B1 o botão Entrar tem nome acessível entre 1024 e 1279px", async () => {
+  await montar();
+  expect(botao("Entrar").getAttribute("aria-label")).toBe("Entrar");
+});
+it("B1 o gatilho do menu da conta expõe aria-label com o nome visível (label in name) entre 1024 e 1279px", async () => {
+  estado.user = { user_metadata: { name: "Ana Silva" } };
+  await montar();
+  expect(botao("Ana").getAttribute("aria-label")).toBe("Conta de Ana");
+});
 it("F1.8/11 o admin tem acesso ao Painel da loja", async () => {
   estado.user = { user_metadata: { name: "Ana Silva" } };
   estado.isAdmin = true;
