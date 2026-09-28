@@ -971,7 +971,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   };
 
   // Estável de propósito: vai para o `<OrderDetail>` (memo) e para o botão
-  // do cabeçalho — a tela de Devoluções (filha de Pedidos no roteador).
+  // do cabeçalho; o id opcional abre uma ficha específica de Devoluções.
   const abrirDevolucoes = useCallback(
     (id?: string) => onNavigate("admin-devolucoes", id),
     [onNavigate],
