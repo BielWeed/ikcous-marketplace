@@ -66,7 +66,7 @@ function estaComoAppInstalado(): boolean {
 // primeiro. Sem diferenciar maiúsculas: o texto é da engine e não é
 // contrato. Só conta como bloqueio do APARELHO com a permissão do SITE já
 // "granted" (lida agora, não a de antes): com o site sem permissão a causa é
-// outra e "o celular está bloqueando" seria palpite — cai em "navegador",
+// outra e "o aparelho está bloqueando" seria palpite — cai em "navegador",
 // como qualquer outro erro de `subscribe()`.
 // Duck typing em vez de `instanceof`: só `name` e `message` importam.
 function falhouPorPermissaoDoAparelho(erro: unknown): boolean {
@@ -118,15 +118,17 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       return "Toque de novo e escolha Permitir quando o navegador perguntar.";
     case "permissao_do_aparelho":
       // Duas frases porque o caminho é outro: o app instalado tem entrada
-      // PRÓPRIA na lista de Apps do celular; na aba, quem tem a chave é o
-      // navegador. Nenhuma cita Android ou iOS pelo nome, e a mesma regra do
+      // PRÓPRIA na lista de Apps do aparelho; na aba, quem tem a chave é o
+      // navegador. "Aparelho" e não "celular": um tablet com o app instalado
+      // cai neste mesmo ramo, e é a palavra que a frase de `permissao_negada`
+      // já usa. Nenhuma cita Android ou iOS pelo nome, e a mesma regra do
       // caso acima vale: sem nome de botão (esta frase sai no banner e no
       // painel, com controles de nomes diferentes — "toque de novo" já aponta
       // para o que a pessoa acabou de tocar).
       //
       // O nome do app é o do MANIFESTO (`branding.appName` — a mesma fotografia
       // que preparou o HTML e o manifesto): é com ele que o app aparece na
-      // lista de Apps do celular, e é lá que a pessoa vai procurá-lo. Não se
+      // lista de Apps do aparelho, e é lá que a pessoa vai procurá-lo. Não se
       // adivinha o nome do navegador (o user agent de um Chromium qualquer
       // diz "Chrome"): "o seu navegador" é verdade em qualquer um.
       //
@@ -136,8 +138,8 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       // inferência. Se chegar, a entrada "Apps" das Configurações só existe do
       // iOS 18 em diante.
       return estaComoAppInstalado()
-        ? `O celular está bloqueando as notificações deste app. Abra as configurações do celular → Apps → ${nomeDaLoja()} → Notificações, ative e toque de novo.`
-        : "O celular está bloqueando as notificações do navegador. Abra as configurações do celular → Apps → o seu navegador → Notificações, ative e toque de novo.";
+        ? `O aparelho está bloqueando as notificações deste app. Abra as configurações do aparelho → Apps → ${nomeDaLoja()} → Notificações, ative e toque de novo.`
+        : "O aparelho está bloqueando as notificações do navegador. Abra as configurações do aparelho → Apps → o seu navegador → Notificações, ative e toque de novo.";
     case "navegador":
       return "Não foi possível ativar as notificações neste navegador. Tente novamente ou use um navegador atualizado.";
     case "banco":
@@ -177,6 +179,24 @@ function mensagemPorOrigem(error: unknown): string {
   }
   return "Não foi possível se inscrever para notificações. Tente novamente.";
 }
+
+// As duas origens de PERMISSÃO cuja frase é uma INSTRUÇÃO de vários passos
+// ("abra as configurações → Apps → … → Notificações, ative e toque de novo").
+// O `<Toaster>` do app fecha todo aviso em 2500 ms
+// (`src/components/ui/sonner.tsx`), e a pessoa não chega ao fim da frase
+// antes de ela sumir. `permissao_pendente` é uma linha só ("Toque de novo…")
+// e segue no padrão, como as demais origens.
+function ehInstrucaoDePermissao(error: unknown): boolean {
+  return (
+    error instanceof PushSubscribeError &&
+    (error.origin === "permissao_negada" ||
+      error.origin === "permissao_do_aparelho")
+  );
+}
+
+// `duration` passado no PRÓPRIO `toast.error` vence o do `<Toaster>` (sonner:
+// `toast.duration || duration do Toaster`), então o resto do app não muda.
+const DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS = 8000;
 
 // O guard de suporte precisa olhar as TRÊS peças que este hook toca — o
 // container (`navigator.serviceWorker.ready`), `Notification` (permissão) e
@@ -460,7 +480,14 @@ export function usePushNotifications() {
       return newSubscription;
     } catch (error: any) {
       console.error("Error subscribing to push:", error);
-      toast.error(mensagemPorOrigem(error));
+      const mensagem = mensagemPorOrigem(error);
+      if (ehInstrucaoDePermissao(error)) {
+        toast.error(mensagem, {
+          duration: DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS,
+        });
+      } else {
+        toast.error(mensagem);
+      }
       throw error;
     }
   }, [isSupported, user]);

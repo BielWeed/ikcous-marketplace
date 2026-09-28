@@ -24,6 +24,9 @@
 //   b. Qualquer outro erro de `subscribe()` continua na origem `navegador`.
 //   c. Nesse caminho nada é gravado nem desfeito (o erro acontece antes do
 //      `upsert`) e a permissão do site fica como está.
+//   d. O aviso fica na tela tempo de ler (8000 ms, contra os 2500 do
+//      `<Toaster>`): a instrução é longa e o aviso sumia antes do fim. Vale
+//      para as origens de PERMISSÃO; `navegador` segue sem opção nenhuma.
 //
 // Mesmo molde de push-notifications-erro-por-origem.test.tsx (Sonda, sem
 // @testing-library/react).
@@ -97,16 +100,24 @@ function ultimoEstado(
 // O nome da loja é o do MANIFESTO (`branding.appName`, a mesma fotografia
 // que preparou o HTML e o manifesto): é com ele que o app aparece na lista
 // de Apps do Android, que é onde a pessoa vai procurá-lo.
-const MENSAGEM_DO_APP = `O celular está bloqueando as notificações deste app. Abra as configurações do celular → Apps → ${branding.appName} → Notificações, ative e toque de novo.`;
+const MENSAGEM_DO_APP = `O aparelho está bloqueando as notificações deste app. Abra as configurações do aparelho → Apps → ${branding.appName} → Notificações, ative e toque de novo.`;
 const MENSAGEM_DA_ABA =
-  "O celular está bloqueando as notificações do navegador. Abra as configurações do celular → Apps → o seu navegador → Notificações, ative e toque de novo.";
+  "O aparelho está bloqueando as notificações do navegador. Abra as configurações do aparelho → Apps → o seu navegador → Notificações, ative e toque de novo.";
 const MENSAGEM_NAVEGADOR =
   "Não foi possível ativar as notificações neste navegador. Tente novamente ou use um navegador atualizado.";
+
+// O `<Toaster>` do app fecha cada aviso em 2500 ms (`src/components/ui/sonner.tsx`),
+// o que não dá para ler uma instrução de três passos até o fim. Para as origens
+// de PERMISSÃO o hook passa `{ duration }` no PRÓPRIO `toast.error` (a duração
+// do aviso vence a do Toaster); as demais não passam opção nenhuma. O 8000 é
+// fixado aqui de propósito, sem importar do hook: a constante do hook não pode
+// ser a régua de si mesma.
+const DURACAO_DA_INSTRUCAO_MS = 8000;
 
 const PERMISSAO_NEGADA_PELO_APARELHO = () =>
   new DOMException("Registration failed - permission denied", "AbortError");
 
-describe("usePushNotifications — o celular bloqueia as notificações e a mensagem diz o que fazer", () => {
+describe("usePushNotifications — o aparelho bloqueia as notificações e a mensagem diz o que fazer", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -220,7 +231,9 @@ describe("usePushNotifications — o celular bloqueia as notificações e a mens
       message: MENSAGEM_DO_APP,
     });
     expect(toast.error).toHaveBeenCalledTimes(1);
-    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DO_APP);
+    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DO_APP, {
+      duration: DURACAO_DA_INSTRUCAO_MS,
+    });
     // O erro acontece ANTES do upsert: nada no banco, nem sequer a tabela.
     expect(upsert).not.toHaveBeenCalled();
     expect(tabelaDoSupabase).not.toHaveBeenCalled();
@@ -240,7 +253,9 @@ describe("usePushNotifications — o celular bloqueia as notificações e a mens
       message: MENSAGEM_DA_ABA,
     });
     expect(toast.error).toHaveBeenCalledTimes(1);
-    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DA_ABA);
+    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DA_ABA, {
+      duration: DURACAO_DA_INSTRUCAO_MS,
+    });
     expect(MENSAGEM_DA_ABA).not.toContain(branding.appName);
     expect(upsert).not.toHaveBeenCalled();
     expect(tabelaDoSupabase).not.toHaveBeenCalled();
@@ -261,7 +276,9 @@ describe("usePushNotifications — o celular bloqueia as notificações e a mens
       const erro = await tocarEmReceber(aoAtualizar);
 
       expect(erro).toMatchObject({ origin: "permissao_do_aparelho" });
-      expect(toast.error).toHaveBeenCalledWith(mensagem);
+      expect(toast.error).toHaveBeenCalledWith(mensagem, {
+        duration: DURACAO_DA_INSTRUCAO_MS,
+      });
       expect(upsert).not.toHaveBeenCalled();
       expect(tabelaDoSupabase).not.toHaveBeenCalled();
     },
@@ -277,7 +294,9 @@ describe("usePushNotifications — o celular bloqueia as notificações e a mens
     const erro = await tocarEmReceber(aoAtualizar);
 
     expect(erro).toMatchObject({ origin: "permissao_do_aparelho" });
-    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DO_APP);
+    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DO_APP, {
+      duration: DURACAO_DA_INSTRUCAO_MS,
+    });
   });
 
   it("app instalado no iOS (sem display-mode, mas `navigator.standalone === true`): também é o APP, não o navegador", async () => {
@@ -291,7 +310,9 @@ describe("usePushNotifications — o celular bloqueia as notificações e a mens
 
     await tocarEmReceber(aoAtualizar);
 
-    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DO_APP);
+    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DO_APP, {
+      duration: DURACAO_DA_INSTRUCAO_MS,
+    });
   });
 
   it("ambiente sem matchMedia: trata como aba do navegador, sem quebrar o tratamento do erro", async () => {
@@ -302,7 +323,9 @@ describe("usePushNotifications — o celular bloqueia as notificações e a mens
     const erro = await tocarEmReceber(aoAtualizar);
 
     expect(erro).toMatchObject({ origin: "permissao_do_aparelho" });
-    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DA_ABA);
+    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_DA_ABA, {
+      duration: DURACAO_DA_INSTRUCAO_MS,
+    });
   });
 
   // Controles negativos: o que NÃO pode ter mudado de família.
@@ -320,7 +343,10 @@ describe("usePushNotifications — o celular bloqueia as notificações e a mens
 
     expect(erro).toMatchObject({ origin: "navegador" });
     expect(toast.error).toHaveBeenCalledTimes(1);
+    // Só a mensagem, sem segundo argumento: a duração longa é das origens de
+    // PERMISSÃO, não de qualquer erro de `subscribe()`.
     expect(toast.error).toHaveBeenCalledWith(MENSAGEM_NAVEGADOR);
+    expect(vi.mocked(toast.error).mock.calls[0]).toHaveLength(1);
     expect(upsert).not.toHaveBeenCalled();
   });
 
@@ -342,7 +368,7 @@ describe("usePushNotifications — o celular bloqueia as notificações e a mens
     const { toast, aoAtualizar } = await montar();
     // `requestPermission` respondeu "granted", mas quando o `subscribe()`
     // falha o site já não tem a permissão (revogada no meio do caminho): a
-    // frase "o celular está bloqueando" seria um palpite.
+    // frase "o aparelho está bloqueando" seria um palpite.
     vi.stubGlobal("Notification", {
       permission: "denied" as NotificationPermission,
       requestPermission,
