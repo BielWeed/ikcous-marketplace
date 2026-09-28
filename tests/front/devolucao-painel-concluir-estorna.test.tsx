@@ -173,7 +173,7 @@ async function drenar() {
   });
 }
 
-async function montar() {
+async function montar(selectedDevolucaoId?: string | null) {
   const { AdminDevolucoesView } = await import(
     "@/views/admin/AdminDevolucoesView"
   );
@@ -181,6 +181,7 @@ async function montar() {
     raiz.render(
       <AdminDevolucoesView
         onNavigate={onNavigate}
+        selectedDevolucaoId={selectedDevolucaoId}
         active
         onSetDirty={onSetDirty}
         onSetBackOverride={onSetBackOverride}
@@ -329,14 +330,51 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     );
     expect(card?.textContent).toContain("Aguardando a sua resposta");
     await clicar(card?.querySelector("button"));
-    expect(onAbrirDevolucoes).toHaveBeenCalledTimes(1);
+    expect(onAbrirDevolucoes).toHaveBeenCalledExactlyOnceWith("d-1");
 
     // A tela de Devoluções nasce com a ficha pedida já aberta.
-    await montar();
+    await montar("d-1");
     expect(
       hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
     ).not.toBeNull();
     expect(rpc).toHaveBeenCalledWith("devolucao_detalhe", { p_id: "d-1" });
+  });
+
+  it("restaura a ficha só com o id da rota, inclusive após remontar sem memória do pedido", async () => {
+    await montar("d-1");
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).not.toBeNull();
+    await act(async () => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    rpc.mockClear();
+    await montar("d-1");
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).not.toBeNull();
+    expect(rpc).toHaveBeenCalledWith("devolucao_detalhe", { p_id: "d-1" });
+  });
+
+  it("acompanha a troca de id pela rota e a volta para a lista sem id", async () => {
+    await montar("d-1");
+    await montar("d-2");
+    expect(rpc).toHaveBeenCalledWith("devolucao_detalhe", { p_id: "d-2" });
+    await montar(null);
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).toBeNull();
+  });
+
+  it("abrir pela lista também leva o id à navegação", async () => {
+    await montar();
+    await clicar(
+      hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
+    );
+    expect(onNavigate).toHaveBeenLastCalledWith(
+      "admin-devolucoes",
+      "d-1",
+      true,
+    );
   });
 
   it("sem condição do item, não chama a RPC e explica", async () => {
@@ -380,5 +418,30 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     ).toBeNull();
     expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
+    expect(onNavigate).toHaveBeenLastCalledWith(
+      "admin-devolucoes",
+      undefined,
+      true,
+    );
+  });
+
+  it("recusar o descarte mantém a ficha e não navega para uma URL sem id", async () => {
+    await montar("d-1");
+    await clicar(botao("Concluir"));
+    await clicar(botao("Nova, sem uso"));
+    vi.mocked(globalThis.confirm).mockReturnValue(false);
+    onNavigate.mockClear();
+    const registro = onSetBackOverride.mock.calls
+      .map((c) => c[0])
+      .filter((f): f is () => () => void => typeof f === "function")
+      .at(-1);
+    expect(registro).toBeTruthy();
+    await act(async () => registro?.()());
+    expect(globalThis.confirm).toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).not.toBeNull();
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
   });
 });
