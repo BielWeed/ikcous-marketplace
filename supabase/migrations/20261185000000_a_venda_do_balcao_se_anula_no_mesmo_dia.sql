@@ -71,6 +71,22 @@
 -- ROLLBACK MANUAL: rollback-manual-20261185000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql
 -- ============================================================================
 
+-- PREFLIGHT (revisão de risco, rodada 1, achado 3): dependências resolvidas
+-- só na primeira chamada do plpgsql — falha aqui, com o nome do que falta.
+DO $preflight$
+BEGIN
+  IF to_regclass('public.devolucoes') IS NULL THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261185: falta public.devolucoes -- aplique a 20261175000000 antes desta migration.';
+  END IF;
+  IF to_regprocedure('public.devolver_estoque(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261185: falta public.devolver_estoque(uuid).';
+  END IF;
+  IF to_regclass('public.marketplace_order_payment_history') IS NULL THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261185: falta public.marketplace_order_payment_history -- aplique a 20261020000000 antes desta migration.';
+  END IF;
+END
+$preflight$;
+
 CREATE OR REPLACE FUNCTION public.anular_venda_presencial(p_order_id uuid, p_motivo text)
  RETURNS jsonb
  LANGUAGE plpgsql

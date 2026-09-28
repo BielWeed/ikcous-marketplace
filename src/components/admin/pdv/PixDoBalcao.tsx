@@ -101,6 +101,10 @@ export function PixDoBalcao({
   const [ocupado, setOcupado] = useState<"conferindo" | "cancelando" | null>(
     null,
   );
+  // O Mercado Pago não respondeu ao cancelamento (revisão, rodada 1,
+  // achado 1): sem uma saída, o caixa inteiro ficaria preso a este PIX até a
+  // varredura — o próximo cliente não seria atendido.
+  const [cancelamentoFalhou, setCancelamentoFalhou] = useState(false);
   const [agora, setAgora] = useState(() => Date.now());
   const [copiado, setCopiado] = useState(false);
   // O total que o QR COBRA é o do pedido gravado (a resposta da edge), não o
@@ -266,11 +270,33 @@ export function PixDoBalcao({
       finalizadoRef.current = true;
       aoEncerradoRef.current();
     } catch (erro) {
-      if (montadoRef.current) setAviso(mensagemDoErro(erro));
+      if (montadoRef.current) {
+        setAviso(mensagemDoErro(erro));
+        setCancelamentoFalhou(true);
+      }
     } finally {
       if (montadoRef.current) setOcupado(null);
     }
   }
+
+  const saidaSemCancelar = cancelamentoFalhou && (
+    <div className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+      <p className="text-xs text-zinc-400">
+        Sem resposta do Mercado Pago. Você pode deixar este PIX vencer e atender
+        o próximo cliente: se ninguém pagar, a reserva do estoque volta sozinha;
+        se o cliente ainda pagar, a venda aparece em Pedidos. Não cobre esta
+        mesma venda de outro jeito sem conferir.
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => aoDescartarCupomRef.current()}
+        className="h-11"
+      >
+        Deixar este PIX vencer e limpar o cupom
+      </Button>
+    </div>
+  );
 
   async function copiar(codigo: string): Promise<void> {
     const ok = await copiarParaClipboard(codigo);
@@ -331,6 +357,7 @@ export function PixDoBalcao({
             >
               Cancelar este PIX e trocar a forma
             </Button>
+            {saidaSemCancelar}
           </>
         )}
       </section>
@@ -361,6 +388,7 @@ export function PixDoBalcao({
           {texto}
         </p>
         {avisoVisivel}
+        {saidaSemCancelar}
         {fase === "pago_fora_do_prazo" ? (
           <Button
             type="button"
@@ -452,6 +480,7 @@ export function PixDoBalcao({
       )}
 
       {avisoVisivel}
+      {saidaSemCancelar}
 
       <div className="flex flex-col gap-2">
         <Button

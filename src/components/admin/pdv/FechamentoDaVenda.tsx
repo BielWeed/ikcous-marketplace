@@ -26,6 +26,7 @@ import {
 } from "@/hooks/useVendaPresencial";
 import {
   type FalhaDaVendaTraduzida,
+  falhaVeioDoServidor,
   mensagemDaFalhaDaVenda,
 } from "@/lib/erro-da-venda-presencial";
 import {
@@ -183,6 +184,11 @@ export function FechamentoDaVenda({
       // (C3.4) é o ÚNICO lugar que traduz `erro` para português — nunca
       // `erro.message` cru aqui, que vazaria `DOMException`/stack na tela.
       const falha = mensagemDaFalhaDaVenda(erro);
+      // PIX recusado pelo servidor: nenhuma venda nasceu — a chave do PIX
+      // pode ir embora e o cupom volta a ser editável. Falha de rede: a
+      // venda pode ter nascido, e a chave fica para o retry recuperá-la.
+      if (ehPixQr && falhaVeioDoServidor(erro))
+        despachar({ tipo: "pix_descartado" });
       setUltimaFalha(falha);
       despachar({ tipo: "envio_falhou", mensagem: falha.mensagem });
     }
@@ -371,6 +377,17 @@ export function FechamentoDaVenda({
               : `Conferi o comprovante da maquininha: R$ ${reais(total)} aprovado.`}
           </span>
         </label>
+      )}
+
+      {estado.pix && !estado.pix.orderId && !estado.enviando && (
+        <p
+          role="status"
+          className="flex items-start gap-2 rounded-xl border border-amber-800/50 bg-amber-950/30 p-3 text-xs text-amber-200"
+        >
+          <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />A
+          conexão caiu enquanto o PIX era gerado — ele pode já existir. Toque em
+          "Gerar PIX" de novo para recuperá-lo; o cupom fica travado até lá.
+        </p>
       )}
 
       {isOffline && (

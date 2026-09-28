@@ -311,6 +311,11 @@ export type AcaoDaVenda =
    * se a resposta se perder, o retry usa a MESMA chave e recebe o mesmo
    * pedido. Chamar de novo com um PIX já preparado mantém a chave antiga. */
   | { readonly tipo: "pix_preparado"; readonly chave: string }
+  /** O servidor RECUSOU "Gerar PIX" (22023, 23505, 42501, PGRST202): a
+   * transação desfez tudo, nenhuma venda nasceu com aquela chave — ela pode
+   * ser descartada e o cupom volta a ser editável. Falha de rede NÃO passa
+   * por aqui: aí a venda pode ter nascido, e a chave fica. */
+  | { readonly tipo: "pix_descartado" }
   /** A RPC respondeu: a venda existe, à espera do PIX. */
   | { readonly tipo: "pix_aberto"; readonly orderId: string }
   /** O PIX morreu (cancelado pela loja, vencido): volta ao fechamento com o
@@ -647,7 +652,12 @@ export function reducerDaVenda(
   estado: EstadoDaVenda,
   acao: AcaoDaVenda,
 ): EstadoDaVenda {
-  if (estado.pix?.orderId && ACOES_QUE_MUDAM_A_VENDA.has(acao.tipo)) {
+  // Desde o "Gerar PIX", não só depois da resposta (revisão, rodada 1,
+  // achado 2): se a RPC gravou e a resposta se perdeu, o retry com a MESMA
+  // chave devolve a venda JÁ gravada — com os itens de antes. Mexer no cupom
+  // entre as duas tentativas faria o QR cobrar um carrinho que a tela não
+  // mostra.
+  if (estado.pix && ACOES_QUE_MUDAM_A_VENDA.has(acao.tipo)) {
     return estado;
   }
   switch (acao.tipo) {
@@ -915,6 +925,11 @@ export function reducerDaVenda(
             enviando: true,
             erro: null,
           };
+
+    case "pix_descartado":
+      return estado.pix && !estado.pix.orderId
+        ? { ...estado, pix: null }
+        : estado;
 
     case "pix_aberto":
       if (!estado.pix) return estado;

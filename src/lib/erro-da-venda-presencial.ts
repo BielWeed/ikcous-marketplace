@@ -40,6 +40,13 @@ const FALHA_DE_REDE: FalhaDaVendaTraduzida = {
   precisaEntrarDeNovo: false,
 };
 
+/** `true` quando quem recusou foi o SERVIDOR (veio um código do Postgres/
+ * PostgREST): a transação desfez tudo e nada foi gravado. `false` para rede
+ * caindo, aborto, erro sem código — aí não dá para saber se gravou. */
+export function falhaVeioDoServidor(erro: unknown): boolean {
+  return codigoDoErro(erro) !== null;
+}
+
 /** O supabase-js devolve `{code, message}` tanto para `PostgrestError`
  * quanto para o erro sintético de função fora do cache de schema
  * (`PGRST202`) — nenhum dos dois tem um tipo público exportado, então lemos

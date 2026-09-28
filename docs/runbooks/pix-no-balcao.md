@@ -25,8 +25,9 @@ e o front da tela Vender. Plano: [2026-09-28-balcao-pix-no-balcao.md](../superpo
    SELECT p.proname, p.prosecdef, p.proconfig FROM pg_proc p
     WHERE p.proname IN ('iniciar_venda_presencial_pix', 'venda_do_balcao_paga_e_entregue');
    -- esperado: 2 linhas, prosecdef = true, {"search_path=pg_catalog, pg_temp"}
-   SELECT tgname FROM pg_trigger WHERE tgname = 'tr_venda_do_balcao_paga_e_entregue';
-   -- esperado: 1 linha
+   SELECT tgname FROM pg_trigger
+    WHERE tgname IN ('tr_venda_do_balcao_paga_e_entregue', 'tr_venda_do_balcao_guarda_o_status');
+   -- esperado: 2 linhas
    SELECT has_function_privilege('anon', 'public.iniciar_venda_presencial_pix(jsonb, uuid, uuid, text, text, numeric, text)', 'EXECUTE');
    -- esperado: false
    ```
@@ -80,4 +81,10 @@ e o front da tela Vender. Plano: [2026-09-28-balcao-pix-no-balcao.md](../superpo
   nesse instante, a edge descobre e responde **pago** (a venda não é cancelada). Se o MP estiver
   fora do ar, a venda NÃO é cancelada (a tela pede para tentar de novo).
 - Pagamento que chega depois do prazo (30 min) vira `pago_apos_expirar` (política P1): a tela
-  avisa para não cobrar de novo e o pedido fica com o selo de atenção em Pedidos.
+  avisa para não cobrar de novo e o pedido fica com o selo de atenção em Pedidos. "Conferir" e
+  "Cancelar" sempre perguntam ao Mercado Pago quando existe cobrança, mesmo com a venda vencida.
+- A 84 aborta na aplicação (`PREFLIGHT_20261184`) se faltar a 74 ou a 76; a 85 aborta
+  (`PREFLIGHT_20261185`) se faltar a 75.
+- Venda do balcão: só a loja muda o status (o cliente com conta não cancela pelo app), e ninguém
+  marca "Entregue" enquanto o PIX estiver aguardando. Se o Mercado Pago não responder ao
+  cancelamento, a tela oferece "Deixar este PIX vencer e limpar o cupom" para o caixa não parar.

@@ -380,4 +380,37 @@ describe("PIX com QR na tela Vender", () => {
     expect(container.textContent).toContain("Venda anulada");
     expect(container.textContent).toContain("Devolva R$ 39,90 ao cliente.");
   });
+
+  it("recusa do servidor ao gerar (22023) destrava o cupom; o próximo PIX usa outra chave", async () => {
+    let tentativas = 0;
+    rpcMock.mockImplementation(async (nome: string, params: any) => {
+      if (nome === "buscar_por_codigo_barras")
+        return { data: PRODUTO, error: null };
+      if (nome === "iniciar_venda_presencial_pix") {
+        tentativas++;
+        return {
+          data: null,
+          error: {
+            code: "22023",
+            message: "Estoque insuficiente para o produto Camiseta Lisa",
+            _k: params.p_idempotency_key,
+          },
+        };
+      }
+      return { data: null, error: null };
+    });
+    await montarAteOFechamento();
+    await clicar(botao(container, "PIX com QR"));
+    await clicar(botao(container, "Gerar PIX"));
+    await avancar(10);
+    expect(tentativas).toBe(1);
+    expect(container.textContent).toContain("Estoque insuficiente");
+    expect(container.textContent).not.toContain("A conexão caiu");
+    await clicar(botao(container, "Dinheiro"));
+    expect(
+      [...container.querySelectorAll("[role=radio]")]
+        .find((b) => b.textContent?.includes("Dinheiro"))
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
+  });
 });

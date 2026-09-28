@@ -48,7 +48,7 @@ function corpos() {
     marcas.push(i);
     i = migration.indexOf("$function$", i + 1);
   }
-  assertEquals(marcas.length, 4, "duas funções, dois pares de $function$");
+  assertEquals(marcas.length, 6, "três funções, três pares de $function$");
   return [
     migration.slice(marcas[0] + 10, marcas[1]),
     migration.slice(marcas[2] + 10, marcas[3]),
@@ -304,4 +304,47 @@ Deno.test("rollback: derruba gatilho e as duas funcoes pela assinatura completa,
   assertStringIncludes(rollbackN, `DROP FUNCTION IF EXISTS ${ASSINATURA};`);
   const limpo = removerRuido(rollback);
   assert(!/CREATE\s+(?:FUNCTION|TRIGGER|OR\s+REPLACE)/i.test(limpo));
+});
+
+Deno.test("preflight das dependências (74, 76, 60) antes de criar qualquer função", () => {
+  const pos = migration.indexOf("DO $preflight$");
+  assert(pos !== -1 && pos < migration.indexOf("CREATE OR REPLACE FUNCTION"));
+  for (const falta of [
+    "column_name = 'metodo_online'",
+    "to_regprocedure('public.forma_de_pagamento_aceita(text)')",
+    "to_regprocedure('public.devolver_estoque(uuid)')",
+  ]) {
+    assertStringIncludes(migration, falta);
+  }
+});
+
+Deno.test("guarda do status: só a loja com sessão; PIX aguardando não avança; só balcão", () => {
+  assertStringIncludes(
+    migrationN,
+    norm(`CREATE TRIGGER tr_venda_do_balcao_guarda_o_status
+      BEFORE UPDATE OF status ON public.marketplace_orders
+      FOR EACH ROW
+      WHEN (OLD.canal = 'presencial' AND NEW.status IS DISTINCT FROM OLD.status)
+      EXECUTE FUNCTION public.venda_do_balcao_guarda_o_status();`),
+  );
+  assertStringIncludes(
+    migrationN,
+    norm(
+      "IF auth.uid() IS NOT NULL AND public.is_admin() IS DISTINCT FROM true THEN",
+    ),
+  );
+  assertStringIncludes(
+    migrationN,
+    norm(
+      `IF OLD.payment_status = 'aguardando' AND NEW.payment_status = 'aguardando' AND NEW.status IN ('processing', 'shipping', 'delivered') THEN`,
+    ),
+  );
+  assertStringIncludes(
+    rollbackN,
+    "DROP TRIGGER IF EXISTS tr_venda_do_balcao_guarda_o_status ON public.marketplace_orders;",
+  );
+  assertStringIncludes(
+    rollbackN,
+    "DROP FUNCTION IF EXISTS public.venda_do_balcao_guarda_o_status();",
+  );
 });

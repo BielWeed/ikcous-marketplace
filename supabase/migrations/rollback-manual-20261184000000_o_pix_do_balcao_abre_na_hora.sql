@@ -2,9 +2,10 @@
 -- ROLLBACK MANUAL da 20261184000000 — o PIX do balcão abre na hora
 -- ============================================================================
 --
--- O QUE ESTE ARQUIVO DESFAZ: o gatilho `tr_venda_do_balcao_paga_e_entregue`,
--- a função dele e `public.iniciar_venda_presencial_pix`. As duas funções são
--- NOVAS — não substituíram corpo nenhum —, então desfazer é derrubar.
+-- O QUE ESTE ARQUIVO DESFAZ: os gatilhos `tr_venda_do_balcao_paga_e_entregue`
+-- e `tr_venda_do_balcao_guarda_o_status`, as funções deles e
+-- `public.iniciar_venda_presencial_pix`. As três funções são NOVAS — não
+-- substituíram corpo nenhum —, então desfazer é derrubar.
 --
 -- O QUE ELE NÃO TOCA, DE PROPÓSITO:
 --   - `registrar_venda_presencial`, `confirmar_pagamento`,
@@ -28,12 +29,14 @@
 -- `BEGIN`/`COMMIT` de nível superior neste arquivo (regra da casa).
 --
 -- VERIFICAÇÃO pós-rollback:
---   SELECT count(*) FROM pg_trigger WHERE tgname = 'tr_venda_do_balcao_paga_e_entregue';
+--   SELECT count(*) FROM pg_trigger WHERE tgname IN ('tr_venda_do_balcao_paga_e_entregue', 'tr_venda_do_balcao_guarda_o_status');
 --   -- esperado: 0.
---   SELECT count(*) FROM pg_proc WHERE proname IN ('iniciar_venda_presencial_pix', 'venda_do_balcao_paga_e_entregue');
+--   SELECT count(*) FROM pg_proc WHERE proname IN ('iniciar_venda_presencial_pix', 'venda_do_balcao_paga_e_entregue', 'venda_do_balcao_guarda_o_status');
 --   -- esperado: 0.
 -- ============================================================================
 
+DROP TRIGGER IF EXISTS tr_venda_do_balcao_guarda_o_status ON public.marketplace_orders;
+DROP FUNCTION IF EXISTS public.venda_do_balcao_guarda_o_status();
 DROP TRIGGER IF EXISTS tr_venda_do_balcao_paga_e_entregue ON public.marketplace_orders;
 DROP FUNCTION IF EXISTS public.venda_do_balcao_paga_e_entregue();
 DROP FUNCTION IF EXISTS public.iniciar_venda_presencial_pix(jsonb, uuid, uuid, text, text, numeric, text);

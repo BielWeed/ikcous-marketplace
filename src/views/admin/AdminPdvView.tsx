@@ -159,6 +159,18 @@ export function AdminPdvView({
           // Voltar não pode largá-la com o QR pagável. A saída é o botão
           // "Cancelar este PIX" (cancela no Mercado Pago antes).
           efetuouFechamentoRef.current = false;
+          // Voltar do NAVEGADOR (popstate) já consumiu a entrada `{modal}` —
+          // sem empurrá-la de novo, o próximo Voltar sairia da tela Vender
+          // com o QR aberto (revisão, rodada 1). O Voltar do painel chama
+          // esta função direto, sem consumir nada: aí a entrada ainda é nossa.
+          if (window.history.state?.modal !== "pdv") {
+            window.history.pushState(
+              { ...window.history.state, modal: "pdv" },
+              "",
+              window.location.pathname + window.location.search,
+            );
+            temEntradaDeHistoricoPendenteRef.current = true;
+          }
           toast.info("Para sair, cancele o PIX na tela ou espere o pagamento.");
         } else {
           despachar({ tipo: "etapa_pedida", etapa: "cupom" });
@@ -500,25 +512,22 @@ export function AdminPdvView({
     // perder, o retry usa a MESMA chave e recebe o MESMO pedido.
     const chave = estado.pix?.chave ?? globalThis.crypto.randomUUID();
     despachar({ tipo: "pix_preparado", chave });
-    const { data, error } = await supabase.rpc(
-      "iniciar_venda_presencial_pix" as any,
-      {
-        p_itens: estado.itens.map((item) => ({
-          product_id: item.productId,
-          variant_id: item.variantId,
-          quantity: item.quantidade,
-        })),
-        p_idempotency_key: chave,
-        p_cliente_user_id:
-          estado.cliente.tipo === "cadastrado" ? estado.cliente.userId : null,
-        p_cliente_nome:
-          estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
-        p_cliente_whatsapp:
-          estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
-        p_desconto: estado.desconto,
-        p_observacao: estado.desconto > 0 ? estado.motivoDoDesconto : null,
-      } as any,
-    );
+    const { data, error } = await supabase.rpc("iniciar_venda_presencial_pix", {
+      p_itens: estado.itens.map((item) => ({
+        product_id: item.productId,
+        variant_id: item.variantId,
+        quantity: item.quantidade,
+      })),
+      p_idempotency_key: chave,
+      p_cliente_user_id:
+        estado.cliente.tipo === "cadastrado" ? estado.cliente.userId : null,
+      p_cliente_nome:
+        estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
+      p_cliente_whatsapp:
+        estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
+      p_desconto: estado.desconto,
+      p_observacao: estado.desconto > 0 ? estado.motivoDoDesconto : null,
+    });
     if (error) throw error;
     const resposta = data as unknown as RespostaDoFechamento;
     despachar({ tipo: "pix_aberto", orderId: resposta.order.id });
@@ -613,7 +622,7 @@ export function AdminPdvView({
     let vivo = true;
     void (async () => {
       try {
-        const { data, error } = await supabase.rpc("fin_caixa_atual" as any);
+        const { data, error } = await supabase.rpc("fin_caixa_atual");
         if (!vivo) return;
         setCaixaAberto(error ? null : data !== null);
       } catch {
@@ -709,10 +718,10 @@ export function AdminPdvView({
           aoAnular={async (motivo) => {
             const orderId = estado.recibo?.orderId;
             if (!orderId) return;
-            const { error } = await supabase.rpc(
-              "anular_venda_presencial" as any,
-              { p_order_id: orderId, p_motivo: motivo } as any,
-            );
+            const { error } = await supabase.rpc("anular_venda_presencial", {
+              p_order_id: orderId,
+              p_motivo: motivo,
+            });
             if ((error as { code?: string } | null)?.code === "PGRST202") {
               throw new Error(
                 "A anulação ainda não está liberada neste servidor. Avise quem cuida do app.",

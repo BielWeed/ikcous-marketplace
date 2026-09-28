@@ -158,6 +158,47 @@ describe("PIX com QR na máquina do caixa", () => {
   });
 });
 
+describe("revisão, rodada 1", () => {
+  it("o cupom trava desde o 'Gerar PIX' (sem esperar a resposta): resposta perdida não deixa editar", () => {
+    const preparado = reducerDaVenda(
+      reducerDaVenda(comItens(item(10)), {
+        tipo: "pagamento_escolhido",
+        pagamento: "pix_qr",
+      }),
+      { tipo: "pix_preparado", chave: "k" },
+    );
+    const falhou = reducerDaVenda(preparado, {
+      tipo: "envio_falhou",
+      mensagem: "rede",
+    });
+    expect(falhou.pix).toEqual({ chave: "k", orderId: null });
+    expect(
+      reducerDaVenda(falhou, { tipo: "item_removido", chave: "p1::" }),
+    ).toBe(falhou);
+    expect(
+      reducerDaVenda(falhou, {
+        tipo: "pagamento_escolhido",
+        pagamento: "cash",
+      }),
+    ).toBe(falhou);
+  });
+
+  it("recusa do servidor descarta a chave e destrava; PIX já aberto nunca é descartado assim", () => {
+    const preparado = reducerDaVenda(comItens(item(10)), {
+      tipo: "pix_preparado",
+      chave: "k",
+    });
+    const descartado = reducerDaVenda(preparado, { tipo: "pix_descartado" });
+    expect(descartado.pix).toBeNull();
+    expect(
+      reducerDaVenda(descartado, { tipo: "item_removido", chave: "p1::" })
+        .itens,
+    ).toHaveLength(0);
+    const aberto = abrirPix(comItens(item(10)));
+    expect(reducerDaVenda(aberto, { tipo: "pix_descartado" })).toBe(aberto);
+  });
+});
+
 describe("correções da investigação", () => {
   it("A1: 3 × R$ 1,15 com desconto de R$ 3,45 é aceito (conta em centavos)", () => {
     let e = comItens(item(1.15, 3));

@@ -37,7 +37,11 @@
 --      de 'aguardando' para 'pago' ainda 'pending', ele vira 'delivered' na
 --      MESMA linha (o cliente está na frente do balconista e leva a
 --      mercadoria na hora) e ganha uma linha de histórico.
---   3. REVOKE/GRANT e COMMENT.
+--   3. Gatilho `tr_venda_do_balcao_guarda_o_status` (BEFORE UPDATE OF
+--      status, só canal='presencial'): com sessão de usuário, só a loja muda
+--      o status; e venda com o PIX 'aguardando' não avança para
+--      processing/shipping/delivered (ver o bloco no fim do arquivo).
+--   4. Preflight das dependências (74, 76, 60/75), REVOKE/GRANT e COMMENT.
 --
 -- 3. POR QUE `payment_method='online'` E NÃO 'pix'
 --
@@ -117,6 +121,34 @@
 -- (derruba o gatilho e as duas funções; pedidos já criados continuam válidos
 -- — são pedidos 'online' comuns, que o webhook e a expiração já tratam).
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 0. PREFLIGHT (revisão de risco, rodada 1, achado 3): as funções abaixo só
+-- resolvem colunas e funções na PRIMEIRA chamada (plpgsql). Sem as
+-- dependências, a prova BEGIN/ROLLBACK do workflow passaria e todo "Gerar
+-- PIX" falharia depois com 42703. Falha aqui, na aplicação, com o nome do que
+-- falta.
+-- ---------------------------------------------------------------------------
+DO $preflight$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'marketplace_orders'
+                    AND column_name = 'metodo_online') THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261184: falta marketplace_orders.metodo_online -- aplique a 20261176000000 antes desta migration.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'marketplace_orders'
+                    AND column_name = 'canal') THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261184: falta marketplace_orders.canal -- aplique a 20261160000000 antes desta migration.';
+  END IF;
+  IF to_regprocedure('public.forma_de_pagamento_aceita(text)') IS NULL THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261184: falta public.forma_de_pagamento_aceita(text) -- aplique a 20261174000000 antes desta migration.';
+  END IF;
+  IF to_regprocedure('public.devolver_estoque(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261184: falta public.devolver_estoque(uuid).';
+  END IF;
+END
+$preflight$;
 
 CREATE OR REPLACE FUNCTION public.iniciar_venda_presencial_pix(p_itens jsonb, p_idempotency_key uuid, p_cliente_user_id uuid DEFAULT NULL, p_cliente_nome text DEFAULT NULL, p_cliente_whatsapp text DEFAULT NULL, p_desconto numeric DEFAULT 0, p_observacao text DEFAULT NULL)
  RETURNS jsonb
@@ -441,3 +473,47 @@ CREATE TRIGGER tr_venda_do_balcao_paga_e_entregue
   EXECUTE FUNCTION public.venda_do_balcao_paga_e_entregue();
 
 COMMENT ON FUNCTION public.venda_do_balcao_paga_e_entregue() IS 'Gatilho do PIX do balcão (20261184000000): pedido canal=presencial que sai de aguardando para pago ainda pending vira delivered na MESMA linha e ganha uma linha de histórico. Não toca dinheiro, estoque nem payment_status; pago_apos_expirar e pedido cancelado não passam (condições no WHEN do gatilho).';
+
+-- ---------------------------------------------------------------------------
+-- A guarda do status da venda do balcão (revisão de risco, rodada 1,
+-- achados 2 e 7).
+-- ---------------------------------------------------------------------------
+-- (a) Com cliente cadastrado, o pedido do balcão é DO cliente (`user_id`), e
+--     `update_order_status_atomic` deixa o dono cancelar pedido pendente pelo
+--     app — o QR na tela do balcão seguiria pagável com a venda já morta. Só
+--     a LOJA muda o status de uma venda do balcão. Caminhos sem sessão de
+--     usuário (a varredura do pg_cron, o webhook/reconciliação em service
+--     role, o gatilho de entrega acima) não têm `auth.uid()` e passam.
+-- (b) Venda do balcão com o PIX ainda 'aguardando' não avança para
+--     processing/shipping/delivered por ninguém — nem pelo admin em Pedidos:
+--     seria a mercadoria saindo sem o dinheiro, com a reserva que a varredura
+--     (só `pending`) nunca mais devolveria. Quem entrega é o gatilho de cima,
+--     no mesmo UPDATE que grava 'pago'.
+CREATE OR REPLACE FUNCTION public.venda_do_balcao_guarda_o_status()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path = pg_catalog, pg_temp
+AS $function$
+BEGIN
+    IF auth.uid() IS NOT NULL AND public.is_admin() IS DISTINCT FROM true THEN
+        RAISE EXCEPTION USING ERRCODE='42501', MESSAGE='Venda do balcão: só a loja altera esta venda.';
+    END IF;
+    IF OLD.payment_status = 'aguardando'
+       AND NEW.payment_status = 'aguardando'
+       AND NEW.status IN ('processing', 'shipping', 'delivered') THEN
+        RAISE EXCEPTION USING ERRCODE='22023', MESSAGE='Venda do balcão com o PIX em aberto: espere o pagamento ser confirmado ou cancele o PIX.';
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.venda_do_balcao_guarda_o_status() FROM PUBLIC, anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS tr_venda_do_balcao_guarda_o_status ON public.marketplace_orders;
+CREATE TRIGGER tr_venda_do_balcao_guarda_o_status
+  BEFORE UPDATE OF status ON public.marketplace_orders
+  FOR EACH ROW
+  WHEN (OLD.canal = 'presencial' AND NEW.status IS DISTINCT FROM OLD.status)
+  EXECUTE FUNCTION public.venda_do_balcao_guarda_o_status();
+
+COMMENT ON FUNCTION public.venda_do_balcao_guarda_o_status() IS 'Gatilho do balcão (20261184000000): só a loja (is_admin) muda o status de uma venda canal=presencial quando há sessão de usuário; e venda com o PIX aguardando não avança para processing/shipping/delivered por ninguém.';

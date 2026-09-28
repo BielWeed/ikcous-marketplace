@@ -338,3 +338,41 @@ Deno.test("P12 venda já paga ou expirada: só a situação, sem tocar no MP", a
     assertEquals(mp.chamadas.length, 0);
   }
 });
+
+Deno.test("P13 venda vencida pelo relógio COM cobrança: conferir pergunta ao MP e confirma o pago do último segundo", async () => {
+  const { supabase, estado } = bancoFalso(
+    pedidoBase({ gateway_payment_id: "ORDTST-1", expires_at: mais(-1) }),
+  );
+  const mp = mpFalso({ consultar: () => ok(orderPix("processed", "accredited")) });
+  const corpo = await (await chamar("conferir", { supabase, fetchImpl: mp.fetchImpl })).json();
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"]);
+  assertEquals(estado.rpcs[0]?.nome, "confirmar_pagamento");
+  assertEquals(corpo.situacao, "pago");
+});
+
+Deno.test("P14 venda já cancelada por outro caminho com o PIX vivo: cancelar derruba o QR no MP e não mexe no banco", async () => {
+  const { supabase } = bancoFalso(
+    pedidoBase({ gateway_payment_id: "ORDTST-1", status: "cancelled" }),
+  );
+  const mp = mpFalso({ cancelar: () => ok(orderPix("canceled", "canceled")) });
+  let chamouOBanco = false;
+  const clienteDoLojista = () => ({
+    rpc: async () => {
+      chamouOBanco = true;
+      return { data: {}, error: null };
+    },
+  });
+  const corpo = await (await chamar("cancelar", { supabase, fetchImpl: mp.fetchImpl, clienteDoLojista })).json();
+  assert(mp.chamadas[0].url.endsWith("/v1/orders/ORDTST-1/cancel"));
+  assertEquals(chamouOBanco, false);
+  assertEquals(corpo.situacao, "cancelado");
+});
+
+Deno.test("P15 aprovado sem valor legível: confirma pelo status (como webhook e reconciliação)", async () => {
+  const { supabase, estado } = bancoFalso(pedidoBase({ gateway_payment_id: "ORDTST-1" }));
+  const semValor = orderPix("processed", "accredited", { total_amount: undefined });
+  (semValor.transactions.payments[0] as any).amount = undefined;
+  const mp = mpFalso({ consultar: () => ok(semValor) });
+  await chamar("conferir", { supabase, fetchImpl: mp.fetchImpl });
+  assertEquals(estado.rpcs.map((r: any) => r.nome), ["confirmar_pagamento"]);
+});

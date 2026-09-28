@@ -1625,10 +1625,10 @@ export const OrderDetail = memo(function OrderDetail({
             total={order.total}
             formaEmDinheiro={order.paymentMethod === "cash"}
             aoAnular={async (motivo) => {
-              const { error } = await supabase.rpc(
-                "anular_venda_presencial" as any,
-                { p_order_id: order.id, p_motivo: motivo } as any,
-              );
+              const { error } = await supabase.rpc("anular_venda_presencial", {
+                p_order_id: order.id,
+                p_motivo: motivo,
+              });
               if ((error as { code?: string } | null)?.code === "PGRST202") {
                 throw new Error(
                   "A anulação ainda não está liberada neste servidor. Avise quem cuida do app.",

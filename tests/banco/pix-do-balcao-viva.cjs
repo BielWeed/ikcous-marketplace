@@ -24,6 +24,8 @@
  *   (h) anular venda do balcão (migration 20261185000000): só admin, motivo,
  *       mesmo dia, nunca PIX com QR; estoque de volta uma vez; Financeiro e
  *       caixa voltam ao que eram.
+ *   (i) guarda do status: o cliente não cancela a venda do balcão pelo app;
+ *       ninguém entrega com o PIX aguardando; a varredura sem sessão passa.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/pix-do-balcao-viva.cjs
  */
@@ -615,6 +617,62 @@ PROVAS.push({
         ]),
       /mesmo dia/,
     );
+  },
+});
+
+PROVAS.push({
+  nome: "(i) guarda do status: o cliente não mexe na venda do balcão; PIX aguardando não vira entregue; a varredura sem sessão segue",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    const venda = await iniciar(
+      cliente,
+      [{ product_id: P_SIMPLES, quantity: 1 }],
+      { chave: CHAVE(7), clienteUserId: U_CLIENTE },
+    );
+    const id = venda.order.id;
+    const reservado = (await estoque(cliente)).simples;
+
+    await logar(cliente, U_CLIENTE);
+    await assert.rejects(
+      () =>
+        cliente.query(
+          "SELECT public.update_order_status_atomic($1, 'cancelled', NULL, false)",
+          [id],
+        ),
+      /só a loja altera/,
+      "o dono do pedido não cancela a venda do balcão pelo app",
+    );
+
+    await logar(cliente, U_ADMIN);
+    await assert.rejects(
+      () =>
+        cliente.query(
+          "SELECT public.update_order_status_atomic($1, 'delivered', NULL, false)",
+          [id],
+        ),
+      /PIX em aberto/,
+      "nem o admin entrega sem o PIX pago",
+    );
+
+    // A varredura roda sem sessão de usuário (pg_cron): passa pela guarda.
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET expires_at = now() - interval '1 minute' WHERE id = $1",
+      [id],
+    );
+    await logar(cliente, "");
+    await cliente.query("SELECT public.expirar_pedidos_vencidos()");
+    const o = await um(
+      cliente,
+      "SELECT status, payment_status FROM public.marketplace_orders WHERE id = $1",
+      [id],
+    );
+    assert.deepEqual(o, { status: "cancelled", payment_status: "expirado" });
+    assert.equal(
+      (await estoque(cliente)).simples,
+      reservado + 1,
+      "reserva devolvida",
+    );
+    await logar(cliente, U_ADMIN);
   },
 });
 

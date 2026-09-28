@@ -155,4 +155,23 @@ describe("PixDoBalcao", () => {
     expect(container.textContent).toContain("Não entregue");
     expect(props.aoPago).not.toHaveBeenCalled();
   });
+
+  it("cancelamento sem resposta do MP oferece a saída 'deixar vencer e limpar o cupom'", async () => {
+    const cobrar = vi.fn(async (acao: string) => {
+      if (acao === "cancelar")
+        throw new Error(
+          "Não consegui cancelar o PIX no Mercado Pago agora. Tente de novo.",
+        );
+      return resp();
+    });
+    const props = await montar({ cobrar });
+    await avancar(1);
+    expect(botao("Deixar este PIX vencer")).toBeUndefined();
+    await act(async () => botao("Cancelar este PIX")?.click());
+    await avancar(1);
+    expect(container.textContent).toContain("Sem resposta do Mercado Pago");
+    await act(async () => botao("Deixar este PIX vencer")?.click());
+    expect(props.aoDescartarCupom).toHaveBeenCalledTimes(1);
+    expect(props.aoEncerrado).not.toHaveBeenCalled();
+  });
 });

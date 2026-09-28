@@ -213,14 +213,24 @@ export async function handler(req: Request, deps: DepsDoPixDoBalcao = {}): Promi
   };
 
   const situacao = situacaoDoPedido(pedido, agora());
+  const jaPago = pedido.payment_status === "pago" || pedido.payment_status === "pago_apos_expirar";
+  // A cobrança pode estar VIVA no Mercado Pago mesmo com a venda fora da
+  // espera no banco (revisão de risco, rodada 1, achados 1 e 2): vencida pelo
+  // relógio antes da varredura, já 'expirado' pela varredura, ou cancelada
+  // por outro caminho com o pagamento ainda em aberto. Nesses casos quem diz
+  // se o cliente pagou no último segundo é o MP — nunca só o banco.
+  const cobrancaPodeViver =
+    !jaPago &&
+    Boolean(pedido.gateway_payment_id) &&
+    (pedido.payment_status === "aguardando" || pedido.payment_status === "expirado");
 
-  // `conferir` e `gerar` sobre venda que já saiu da espera: só o estado.
-  if (situacao !== "aguardando" && acao !== "cancelar") return responderSituacao();
+  if (jaPago) return responderSituacao();
 
   const tokenDoMp = deps.tokenDoMercadoPago ?? tokenDoMercadoPagoReal;
 
   // Confirma pela MESMA régua da reconciliação: status aprovado + valor
-  // dentro de ±R$ 0,05 do total do pedido. Devolve `true` se confirmou.
+  // dentro de ±R$ 0,05 do total do pedido. `confirmar_pagamento` decide entre
+  // 'pago' e 'pago_apos_expirar' (venda vencida ou cancelada) sob FOR UPDATE.
   const confirmarSeAprovado = async (orderMp: Record<string, unknown>): Promise<"confirmado" | "divergente" | "nao_pago"> => {
     const mapeado = mapearStatusOrder(
       String(orderMp.status ?? ""),
@@ -229,8 +239,11 @@ export async function handler(req: Request, deps: DepsDoPixDoBalcao = {}): Promi
     if (mapeado !== "pago") return "nao_pago";
     const valorAprovado = extrairValorDaOrder(orderMp);
     const total = Number(pedido.total);
-    if (
-      typeof valorAprovado === "number" &&
+    if (valorAprovado === undefined) {
+      // Mesmo comportamento do webhook e da reconciliação: sem valor legível,
+      // confirma pelo status — mas deixa rastro.
+      console.warn("cobrar-pix-no-balcao: valor aprovado não veio na resposta do MP — conferência de valor não rodou", orderId);
+    } else if (
       Number.isFinite(total) &&
       Math.abs(valorAprovado - total) > TOLERANCIA_DE_VALOR
     ) {
@@ -250,33 +263,34 @@ export async function handler(req: Request, deps: DepsDoPixDoBalcao = {}): Promi
     return "confirmado";
   };
 
+  /** Pergunta ao MP e confirma se foi pago. `null` = o MP não respondeu. */
+  const conferirNoMp = async (token: string) => {
+    const consulta = await consultarOrder({
+      token,
+      orderId: pedido.gateway_payment_id,
+      fetchImpl: deps.fetchImpl,
+    });
+    if (!consulta.ok) return null;
+    return { order: consulta.order, desfecho: await confirmarSeAprovado(consulta.order) };
+  };
+
   try {
-    if (acao === "conferir") {
-      if (!pedido.gateway_payment_id) return responderSituacao();
+    // `conferir`, e `gerar` sobre venda que já saiu da espera: se a cobrança
+    // pode estar viva, o MP decide; senão, só o estado do banco.
+    if (acao === "conferir" || (acao === "gerar" && situacao !== "aguardando")) {
+      if (!cobrancaPodeViver) return responderSituacao();
       const token = await tokenDoMp(supabase);
       if (!token) return json({ error: MENSAGEM_SEM_CREDENCIAL, terminal: true }, 503);
-      const consulta = await consultarOrder({
-        token,
-        orderId: pedido.gateway_payment_id,
-        fetchImpl: deps.fetchImpl,
-      });
-      if (!consulta.ok) {
+      const conferido = await conferirNoMp(token);
+      if (!conferido) {
         return json({ error: "Não consegui falar com o Mercado Pago agora. Tente de novo." }, 502);
       }
-      const desfecho = await confirmarSeAprovado(consulta.order);
-      if (desfecho === "divergente") {
-        return responderSituacao({ valorDivergente: true });
-      }
+      if (conferido.desfecho === "divergente") return responderSituacao({ valorDivergente: true });
       return responderSituacao();
     }
 
     if (acao === "cancelar") {
-      // Já fora da espera (pago, expirado, cancelado): nada a cancelar — a
-      // tela decide pelo estado.
-      if (pedido.payment_status !== "aguardando" || pedido.status !== "pending") {
-        return responderSituacao();
-      }
-      if (pedido.gateway_payment_id) {
+      if (cobrancaPodeViver) {
         const token = await tokenDoMp(supabase);
         if (!token) return json({ error: MENSAGEM_SEM_CREDENCIAL }, 503);
         const cancelamento = await cancelarOrder({
@@ -285,31 +299,24 @@ export async function handler(req: Request, deps: DepsDoPixDoBalcao = {}): Promi
           chaveIdempotencia: `cancelar:${pedido.gateway_payment_id}`,
           fetchImpl: deps.fetchImpl,
         });
-        let cobrancaMorta = cancelamento.ok && orderCancelada(cancelamento.order);
-        if (!cobrancaMorta) {
+        if (!(cancelamento.ok && orderCancelada(cancelamento.order))) {
           // O MP não cancelou: pode ter sido PAGA um instante antes (a
           // Orders API não cancela order processada), ou já estar morta, ou
           // a rede caiu. Só a reconsulta diz qual.
-          const consulta = await consultarOrder({
-            token,
-            orderId: pedido.gateway_payment_id,
-            fetchImpl: deps.fetchImpl,
-          });
-          if (!consulta.ok) {
+          const conferido = await conferirNoMp(token);
+          if (!conferido) {
             return json(
               { error: "Não consegui cancelar o PIX no Mercado Pago agora. Tente de novo." },
               502,
             );
           }
-          const desfecho = await confirmarSeAprovado(consulta.order);
-          if (desfecho === "confirmado") return responderSituacao({ jaEstavaPago: true });
-          if (desfecho === "divergente") return responderSituacao({ valorDivergente: true });
+          if (conferido.desfecho === "confirmado") return responderSituacao({ jaEstavaPago: true });
+          if (conferido.desfecho === "divergente") return responderSituacao({ valorDivergente: true });
           const mapeado = mapearStatusOrder(
-            String(consulta.order.status ?? ""),
-            String(consulta.order.status_detail ?? ""),
+            String(conferido.order.status ?? ""),
+            String(conferido.order.status_detail ?? ""),
           );
-          cobrancaMorta = mapeado === "recusado" || mapeado === "expirado";
-          if (!cobrancaMorta) {
+          if (mapeado !== "recusado" && mapeado !== "expirado") {
             return json(
               { error: "Não consegui cancelar o PIX no Mercado Pago agora. Tente de novo." },
               502,
@@ -317,18 +324,21 @@ export async function handler(req: Request, deps: DepsDoPixDoBalcao = {}): Promi
           }
         }
       }
-      // Cobrança morta no MP (ou nunca criada): cancela a venda COMO o
-      // lojista — devolve o estoque e deixa no histórico quem cancelou.
-      const clienteDoLojista = (deps.clienteDoLojista ?? clienteDoLojistaReal)(authorization!);
-      const { error: erroCancelar } = await clienteDoLojista.rpc("update_order_status_atomic", {
-        p_order_id: orderId,
-        p_new_status: "cancelled",
-        p_notes: "PIX do balcão cancelado pela loja",
-        p_silent: true,
-      });
-      if (erroCancelar) {
-        console.error("cobrar-pix-no-balcao: falha ao cancelar a venda", orderId, erroCancelar);
-        return json({ error: "O PIX foi cancelado, mas a venda não. Tente de novo." }, 502);
+      // Cobrança morta no MP (ou nunca criada). Se a venda ainda está à
+      // espera, cancela COMO o lojista — devolve o estoque e deixa no
+      // histórico quem cancelou. Já fora da espera: nada a mudar no banco.
+      if (pedido.payment_status === "aguardando" && pedido.status === "pending") {
+        const clienteDoLojista = (deps.clienteDoLojista ?? clienteDoLojistaReal)(authorization!);
+        const { error: erroCancelar } = await clienteDoLojista.rpc("update_order_status_atomic", {
+          p_order_id: orderId,
+          p_new_status: "cancelled",
+          p_notes: "PIX do balcão cancelado pela loja",
+          p_silent: true,
+        });
+        if (erroCancelar) {
+          console.error("cobrar-pix-no-balcao: falha ao cancelar a venda", orderId, erroCancelar);
+          return json({ error: "O PIX foi cancelado, mas a venda não. Tente de novo." }, 502);
+        }
       }
       return responderSituacao();
     }
