@@ -44,6 +44,12 @@ async function corDominante(buffer) {
 
 for (const loja of lojas) {
   console.log(`\n==================== ${loja.nome} ====================`);
+  // Logo vetorizada da arte original já publicada (lojas-logo-svg.mjs): esta
+  // identidade provisória não pode mais sobrescrevê-la.
+  if (["svg", "json"].some((ext) => fs.existsSync(`scripts/incidente/logos/${loja.perfil}.${ext}`))) {
+    console.log("Logo vetorizada publicada; identidade mantida.");
+    continue;
+  }
   const token = (process.env[loja.conta] ?? "").trim();
   if (!token) continue;
   const api = (metodo, caminho, corpo) =>

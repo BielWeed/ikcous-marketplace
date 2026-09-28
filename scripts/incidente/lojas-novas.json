@@ -45,13 +45,13 @@
       "cor2": "#4A2C24",
       "acento": "#D9BF96",
       "endereco": {
-        "texto": "Rua José Avelino, 751 — Vila Nova",
+        "texto": "Rua José Avelino, 751 — Vila Nova, Monte Carmelo/MG",
         "rua": "Rua José Avelino",
         "numero": "751",
         "bairro": "Vila Nova",
-        "cidade": null,
-        "uf": null,
-        "cep": null
+        "cidade": "Monte Carmelo",
+        "uf": "MG",
+        "cep": "38500-000"
       },
       "logo_fonte": "https://instagram.fudi4-1.fna.fbcdn.net/v/t51.2885-19/460385744_542325901693820_7888143525447158709_n.jpg?stp=dst-jpg_s320x320_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ccb=7-5&_nc_sid=f7ccc5&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy44MjkuQzMifQ%3D%3D&_nc_ohc=JLzzVFopzJ0Q7kNvwHgk7h8&_nc_oc=Adqp7XAXwQmNuT0_OAQjnn2yqm-3hvnXYDUMEBSK50DhzEBml2060PQUGHdwlrl0VAAieJvjcdrcq4kwoHbvUgoA&_nc_zt=24&_nc_ht=instagram.fudi4-1.fna&_nc_ss=7b6a8&oh=00_AQMlYonBSGjv0JwShfDWutRcM5h6sOjg8U-XtptT8fL38A&oe=6AC04CBD"
     },
