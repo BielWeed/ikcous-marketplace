@@ -10,6 +10,7 @@ import { ParaFazer } from "@/components/admin/inicio/ParaFazer";
 import { PerfilDaLoja } from "@/components/admin/inicio/PerfilDaLoja";
 import { SerieDe14Dias } from "@/components/admin/inicio/SerieDe14Dias";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
+import { buildIdentity } from "@/config/buildIdentity";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -71,7 +72,16 @@ function SecaoLojaProntaEEstoqueBaixo({
   );
 }
 
-/** Mesma ideia da ponte acima: `useStore` isolado atrás do boundary. */
+/**
+ * Mesma ideia da ponte acima: `useStore` isolado atrás do boundary.
+ *
+ * A imagem é o ÍCONE DO APP (papel `icon_192`, o mesmo do pin do mapa em
+ * "Sobre a loja" e da tela inicial do celular), não a logo larga do
+ * cabeçalho: pedido do dono (28/09), porque a logo-palavra "SAVY",
+ * transparente e escura, sumia no quadrado escuro deste cartão. O ícone vem
+ * quadrado, com fundo próprio e por loja — `buildIdentity` é a ficha que o
+ * porteiro escreve para o host aberto. A logo cadastrada fica de reserva.
+ */
 function PerfilDaLojaComDados({
   responsavel,
 }: Readonly<{ responsavel: string | null }>) {
@@ -79,7 +89,7 @@ function PerfilDaLojaComDados({
   return (
     <PerfilDaLoja
       nome={nomeDaLoja(config)}
-      logoUrl={config.logoUrl ?? null}
+      logoUrl={buildIdentity.localUrls.icon_192 || config.logoUrl || null}
       cidade={config.storeCity ?? null}
       uf={config.storeState ?? null}
       responsavel={responsavel}
