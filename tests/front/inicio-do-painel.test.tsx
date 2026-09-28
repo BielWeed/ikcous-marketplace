@@ -304,7 +304,9 @@ describe("Início do painel", () => {
       'section[aria-label="Sua loja"] img',
     );
     expect(imagem?.getAttribute("src")).toBe(buildIdentity.localUrls.icon_192);
-    expect(imagem?.getAttribute("src")).not.toBe("https://exemplo.test/logo-larga.png");
+    expect(imagem?.getAttribute("src")).not.toBe(
+      "https://exemplo.test/logo-larga.png",
+    );
   });
 
   it("função ainda não criada no banco vira aviso honesto, não número zero", async () => {
