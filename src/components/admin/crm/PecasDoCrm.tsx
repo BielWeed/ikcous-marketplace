@@ -19,9 +19,22 @@ export const FOCO_DO_CRM =
 export const SUPERFICIE_DO_CRM =
   "rounded-2xl border border-white/[0.08] bg-zinc-900/60 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]";
 
-/** Superfície de linha, bloco ou chip clicável DENTRO de um cartão. */
+/**
+ * Superfície de linha, bloco ou chip clicável DENTRO de um cartão.
+ *
+ * `border-solid` é OBRIGATÓRIO aqui (achado da conferência final,
+ * 27/09/2026): `src/index.css` zera `border-style` em TODO `<button>`
+ * (`@layer base { button { border: none } }`, reset que outras telas
+ * dependem — não mexer nele) e o utilitário `border` do Tailwind só define
+ * `border-width`, não `border-style`. Sem `border-solid` (que vem da
+ * camada `utilities`, de prioridade maior que `base`), a borda desta peça
+ * — a "superfície própria" que a separa do fundo — nunca aparecia em
+ * NENHUM `<button>` que a usa (blocos de segmento, linhas do pipeline
+ * etc.), só o fundo (`bg-zinc-800/40`) dava alguma pista de que era
+ * clicável.
+ */
 export const CLICAVEL_DO_CRM = cn(
-  "cursor-pointer border border-white/10 bg-zinc-800/40 transition-[background-color,border-color,transform] hover:border-white/20 hover:bg-zinc-800/80 active:scale-[0.99]",
+  "cursor-pointer border border-solid border-white/10 bg-zinc-800/40 transition-[background-color,border-color,transform] hover:border-white/20 hover:bg-zinc-800/80 active:scale-[0.99]",
   FOCO_DO_CRM,
 );
 

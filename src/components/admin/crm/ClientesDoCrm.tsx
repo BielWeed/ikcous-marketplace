@@ -458,7 +458,11 @@ function LinhaDoCliente({
           alvo de toque ficava 36-38×44 (ícone + padding), não os 44×44
           mínimos recomendados. R2: `title` nos dois (o ícone sozinho não
           basta pra quem passa o mouse) e a borda de "Ver cliente" sobe de
-          `border-white/10` (quase invisível) para `border-white/15`. */}
+          `border-white/10` (quase invisível) para `border-white/15`.
+          `border-solid` no "Ver cliente" (achado da conferência final):
+          sem ele a borda não aparece de jeito nenhum — ver o comentário de
+          `CLICAVEL_DO_CRM` em PecasDoCrm.tsx para o porquê (o reset global
+          de `<button>` zera `border-style`). */}
       <div className="col-span-2 flex gap-2 lg:col-span-1 lg:justify-end lg:gap-1.5 lg:pl-2 xl:gap-2">
         {whatsapp ? (
           <a
@@ -488,7 +492,7 @@ function LinhaDoCliente({
             }
             title={`Ver cliente — ${nome}`}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-white/15 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
+              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-solid border-white/15 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
               FOCO_DO_CRM,
             )}
           >
@@ -649,7 +653,7 @@ export function ClientesDoCrm({
                     type="button"
                     onClick={atualizar}
                     className={cn(
-                      "flex min-h-11 items-center gap-1.5 rounded-xl border border-red-500/20 px-4 text-[10px] font-black uppercase tracking-wider text-red-200 transition-colors hover:bg-red-500/10",
+                      "flex min-h-11 items-center gap-1.5 rounded-xl border border-solid border-red-500/20 px-4 text-[10px] font-black uppercase tracking-wider text-red-200 transition-colors hover:bg-red-500/10",
                       FOCO_DO_CRM,
                     )}
                   >
@@ -732,7 +736,7 @@ export function ClientesDoCrm({
                       aoMudarSegmento(null);
                     }}
                     className={cn(
-                      "min-h-11 rounded-xl border border-white/10 px-4 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5",
+                      "min-h-11 rounded-xl border border-solid border-white/10 px-4 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5",
                       FOCO_DO_CRM,
                     )}
                   >
