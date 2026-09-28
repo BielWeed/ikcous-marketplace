@@ -100,8 +100,20 @@ it("monta a faixa e os cartões completos de Sobre no computador", async () => {
   expect(host.querySelector("section div")?.className).toContain("text-[17px]");
   expect(host.textContent).toContain("SOBRE A LOJA");
   expect(host.textContent).toContain("QUEM SOMOS");
+  // Rótulo em caixa alta sobre branco (spec §3.4): zinc-500 no computador
+  // (zinc-400 sobre branco a 12px reprova AA, 2,58:1). A faixa escura de
+  // "SOBRE A LOJA" fica com zinc-400, que é OUTRO fundo.
+  expect(faixa.querySelector("p")?.className).toContain("text-zinc-400");
+  expect(host.querySelector("section p")?.className).toContain("text-zinc-500");
+  expect(host.querySelector("section p")?.className).not.toContain(
+    "text-zinc-400",
+  );
   const contato = host.querySelector("aside");
   expect(contato?.className).toContain("sticky top-24");
+  expect(contato?.querySelector("h2")?.className).toContain("text-zinc-500");
+  expect(contato?.querySelector("h2")?.className).not.toContain(
+    "text-zinc-400",
+  );
   expect(contato?.textContent).toContain("Horário de atendimento");
   expect(contato?.textContent).toContain("São Paulo, SP");
   expect(contato?.textContent).toContain("Rua das Flores, 10");
@@ -111,6 +123,46 @@ it("monta a faixa e os cartões completos de Sobre no computador", async () => {
   expect(
     host.querySelector("button[aria-label='Falar com a loja no WhatsApp']"),
   ).toBeNull();
+});
+
+it("card de contato sozinho (sem descrição) não deixa a coluna de 380px vazia no computador", async () => {
+  estado.computador = true;
+  estado.config = {
+    storeName: "Loja sem descrição",
+    whatsappNumber: "11999999999",
+    businessHours: "Segunda a sexta",
+  };
+  const { AboutStoreView } = await import("@/views/customer/AboutStoreView");
+  await act(async () => raiz.render(<AboutStoreView />));
+
+  // Sem descrição, não existe <section> — só o cartão de contato. A grade de
+  // 2 colunas exige AMBOS (descrição E contato); com um só, 1 coluna, e o
+  // cartão sozinho não estica pela largura toda do container.
+  expect(host.querySelector("section")).toBeNull();
+  const contato = host.querySelector("aside")!;
+  const grade = contato.parentElement as HTMLElement;
+  expect(grade.className).not.toContain("grid-cols-[minmax(0,1fr)_380px]");
+  expect(grade.className).toContain("grid-cols-1");
+  expect(contato.className).toContain("max-w-[380px]");
+});
+
+it("sanitiza XSS da descrição também no computador (o hook mobile mascarava esse ramo)", async () => {
+  estado.computador = true;
+  estado.config = {
+    storeName: "Loja com ataque",
+    storeDescription:
+      '<p>texto legítimo</p><img src="x" onerror="alert(1)"><script>alert(1)</script><a href="javascript:alert(1)">clique</a>',
+  };
+  const { AboutStoreView } = await import("@/views/customer/AboutStoreView");
+  await act(async () => raiz.render(<AboutStoreView />));
+
+  const secao = host.querySelector("section");
+  expect(secao).not.toBeNull();
+  const html = secao!.innerHTML;
+  expect(html).not.toContain("onerror");
+  expect(html.toLowerCase()).not.toContain("<script");
+  expect(html.toLowerCase()).not.toContain("javascript:");
+  expect(host.textContent).toContain("texto legítimo");
 });
 
 it("omite o cartão de contato para uma loja mínima no computador", async () => {

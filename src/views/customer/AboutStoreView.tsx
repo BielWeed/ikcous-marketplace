@@ -120,6 +120,13 @@ export function AboutStoreView() {
   const temCartaoDeContato = Boolean(
     horario || temOndeEstamos || queryMaps || temWhatsapp,
   );
+  // Grade de 2 colunas só quando os DOIS cartões existem — loja sem
+  // descrição mas com contato (ex.: só WhatsApp/horário) tinha só o `aside`
+  // como filho e a coluna de 380px ficava vazia, mesmo com temCartaoDeContato
+  // sozinho decidindo 2 colunas. Com um só cartão, 1 coluna, e o cartão
+  // sozinho não estica pela largura toda (largura contida em 380px, a mesma
+  // da coluna aprovada, sem inventar medida nova).
+  const doisColunas = Boolean(descricaoHtml) && temCartaoDeContato;
 
   if (computador) {
     return (
@@ -161,7 +168,7 @@ export function AboutStoreView() {
 
           <div
             className={
-              temCartaoDeContato
+              doisColunas
                 ? "grid grid-cols-[minmax(0,1fr)_380px] items-start gap-7"
                 : "grid grid-cols-1"
             }
@@ -173,7 +180,7 @@ export function AboutStoreView() {
                 transition={{ duration: 0.3, delay: 0.05 }}
                 className="rounded-[28px] border border-zinc-100 bg-white p-8 shadow-sm"
               >
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
                   QUEM SOMOS
                 </p>
                 <div
@@ -189,9 +196,9 @@ export function AboutStoreView() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
-                className="sticky top-24 rounded-[28px] border border-zinc-100 bg-white p-7 shadow-sm"
+                className={`sticky top-24 rounded-[28px] border border-zinc-100 bg-white p-7 shadow-sm${doisColunas ? "" : " w-full max-w-[380px]"}`}
               >
-                <h2 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
+                <h2 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
                   VISITE OU FALE COM A LOJA
                 </h2>
                 <div className="mt-6 space-y-5">
