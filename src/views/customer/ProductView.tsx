@@ -787,7 +787,7 @@ export const ProductView = React.memo(function ProductView({
   });
 
   return (
-    <div className="pb-customer relative min-h-full bg-white">
+    <div className={cn("pb-customer relative min-h-full bg-white", "lg:pb-0")}>
       <div
         className={cn(
           CONTAINER_DO_COMPUTADOR,
@@ -950,7 +950,7 @@ export const ProductView = React.memo(function ProductView({
             >
               {product.images.map((foto, index) => (
                 <button
-                  key={foto}
+                  key={`${foto}-${index}`}
                   type="button"
                   aria-label={`Ver foto ${index + 1} de ${product.images.length}`}
                   aria-current={
