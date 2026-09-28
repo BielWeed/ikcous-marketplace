@@ -2792,6 +2792,10 @@ export type Database = {
         };
         Returns: Json;
       };
+      anular_venda_presencial: {
+        Args: { p_motivo: string; p_order_id: string };
+        Returns: Json;
+      };
       assinatura_da_loja_ler: {
         Args: never;
         Returns: Json;
@@ -3299,6 +3303,18 @@ export type Database = {
       };
       increment_helpful: { Args: { review_id: string }; Returns: undefined };
       is_admin: { Args: never; Returns: boolean };
+      iniciar_venda_presencial_pix: {
+        Args: {
+          p_cliente_nome?: string | null;
+          p_cliente_user_id?: string | null;
+          p_cliente_whatsapp?: string | null;
+          p_desconto?: number;
+          p_idempotency_key: string;
+          p_itens: unknown;
+          p_observacao?: string | null;
+        };
+        Returns: Json;
+      };
       informar_envio_devolucao: {
         Args: { p_codigo_rastreio: string; p_id: string };
         Returns: Json;

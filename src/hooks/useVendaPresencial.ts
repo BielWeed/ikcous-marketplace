@@ -42,6 +42,7 @@ export type EtapaDaVenda =
   | "escolha_de_variacao"
   | "cliente"
   | "fechamento"
+  | "pix"
   | "recibo";
 
 /** A MESMA lista do union acima, mas em VALOR — é o que permite validar uma
@@ -56,6 +57,7 @@ export const ETAPAS_DA_VENDA: readonly EtapaDaVenda[] = [
   "escolha_de_variacao",
   "cliente",
   "fechamento",
+  "pix",
   "recibo",
 ];
 
@@ -64,6 +66,22 @@ export const ETAPAS_DA_VENDA: readonly EtapaDaVenda[] = [
  * faz o TypeScript recusar uma quarta forma de pagamento no build, antes do
  * 22023 do servidor. */
 export type FormaDePagamentoDoBalcao = "cash" | "pix" | "card";
+
+/** O que o balconista ESCOLHE na tela: as três formas de
+ * `registrar_venda_presencial` (dinheiro, PIX na chave da loja conferido na
+ * mão, maquininha) mais o PIX com QR (`pix_qr`), que NÃO passa por aquela RPC
+ * — nasce à espera do pagamento em `iniciar_venda_presencial_pix` (migration
+ * 20261184000000) e só vira venda paga quando o Mercado Pago confirma. */
+export type FormaEscolhidaNoBalcao = FormaDePagamentoDoBalcao | "pix_qr";
+
+/** O PIX com QR em curso. `chave` é a idempotência PRÓPRIA do PIX (nasce ao
+ * tocar "Gerar PIX", nunca a do cupom — a do cupom fica livre para a venda em
+ * dinheiro se o PIX for cancelado); `orderId` chega quando a RPC responde.
+ * Vai para o rascunho: um F5 no meio da espera volta para o MESMO PIX. */
+export interface PixDaVenda {
+  readonly chave: string;
+  readonly orderId: string | null;
+}
 
 /** Um item do cupom em curso. `chave` é a identidade do item NO CUPOM — dois
  * bipes do MESMO produto/variação somam quantidade no MESMO item; produto e
@@ -193,7 +211,7 @@ export interface ReciboDaVendaRegistrada {
   readonly total: number;
   readonly subtotal: number;
   readonly desconto: number;
-  readonly pagamento: FormaDePagamentoDoBalcao;
+  readonly pagamento: FormaEscolhidaNoBalcao;
   readonly cliente: ClienteDaVenda;
   readonly itens: readonly ItemDoCupom[];
   /** `true` quando a chave de idempotência já tinha sido usada e a RPC
@@ -208,7 +226,14 @@ export interface EstadoDaVenda {
   readonly etapa: EtapaDaVenda;
   readonly itens: readonly ItemDoCupom[];
   readonly cliente: ClienteDaVenda;
-  readonly pagamento: FormaDePagamentoDoBalcao | null;
+  readonly pagamento: FormaEscolhidaNoBalcao | null;
+  /** B14 (resposta do dono, 28/09): no PIX na chave da loja e na maquininha
+   * não há quem confirme sozinho — o balconista marca que CONFERIU o
+   * pagamento (no app do banco / no comprovante da maquininha) antes de
+   * registrar. Zera a cada troca de forma. */
+  readonly pagamentoConferido: boolean;
+  /** O PIX com QR em curso (ver `PixDaVenda`); `null` fora dele. */
+  readonly pix: PixDaVenda | null;
   /** EM REAIS (D4), nunca centavos. */
   readonly desconto: number;
   /** Obrigatório quando `desconto > 0` (D4) — string vazia quando não há
@@ -278,8 +303,24 @@ export type AcaoDaVenda =
   | { readonly tipo: "cliente_definido"; readonly cliente: ClienteDaVenda }
   | {
       readonly tipo: "pagamento_escolhido";
-      readonly pagamento: FormaDePagamentoDoBalcao;
+      readonly pagamento: FormaEscolhidaNoBalcao;
     }
+  | { readonly tipo: "pagamento_conferido"; readonly conferido: boolean }
+  /** "Gerar PIX": a chave própria do PIX nasce AQUI (gerada por quem
+   * despacha, como `cupom_limpo`) e vai para o rascunho ANTES da chamada —
+   * se a resposta se perder, o retry usa a MESMA chave e recebe o mesmo
+   * pedido. Chamar de novo com um PIX já preparado mantém a chave antiga. */
+  | { readonly tipo: "pix_preparado"; readonly chave: string }
+  /** O servidor RECUSOU "Gerar PIX" (22023, 23505, 42501, PGRST202): a
+   * transação desfez tudo, nenhuma venda nasceu com aquela chave — ela pode
+   * ser descartada e o cupom volta a ser editável. Falha de rede NÃO passa
+   * por aqui: aí a venda pode ter nascido, e a chave fica. */
+  | { readonly tipo: "pix_descartado" }
+  /** A RPC respondeu: a venda existe, à espera do PIX. */
+  | { readonly tipo: "pix_aberto"; readonly orderId: string }
+  /** O PIX morreu (cancelado pela loja, vencido): volta ao fechamento com o
+   * cupom INTACTO e a chave do PIX descartada — o próximo PIX é outra venda. */
+  | { readonly tipo: "pix_encerrado" }
   | {
       readonly tipo: "desconto_alterado";
       readonly valor: number;
@@ -314,6 +355,8 @@ export function estadoInicialDaVenda(
     itens: [],
     cliente: { tipo: "sem_cliente" },
     pagamento: null,
+    pagamentoConferido: false,
+    pix: null,
     desconto: 0,
     motivoDoDesconto: "",
     chaveDeIdempotencia: gerarChave(),
@@ -420,20 +463,59 @@ export function podeIrPara(
   ) {
     return false;
   }
+  // PIX com QR aberto: a venda JÁ existe no banco, com o estoque reservado.
+  // Sair da camada por navegação (Voltar, popstate) deixaria um QR pagável
+  // sem ninguém olhando — a saída é `pix_encerrado` (depois de cancelar) ou
+  // `venda_registrada` (pago), nunca `etapa_pedida`.
+  if (estado.etapa === "pix" && estado.pix?.orderId && etapa !== "pix") {
+    return false;
+  }
+  if (etapa === "pix") return Boolean(estado.pix?.orderId);
   if (etapa === "fechamento") return estado.itens.length > 0;
   if (etapa === "recibo") return estado.recibo !== null;
   return true;
 }
 
+/** Reais → centavos inteiros. A conta do cupom é feita em CENTAVOS (achado
+ * D5 da investigação de 28/09): em float, 3 × 1,15 = 3,4499999… e um
+ * desconto de 3,45 era recusado aqui como "maior que o subtotal" — o banco
+ * (numeric) aceitaria. */
+export function emCentavos(valor: number): number {
+  return Math.round(valor * 100);
+}
+
 export function subtotalDaVenda(itens: readonly ItemDoCupom[]): number {
-  return itens.reduce((soma, item) => soma + item.preco * item.quantidade, 0);
+  const centavos = itens.reduce(
+    (soma, item) => soma + emCentavos(item.preco) * item.quantidade,
+    0,
+  );
+  return centavos / 100;
 }
 
 /** `subtotal - desconto`, nunca negativo — o clamp é só de exibição; quem
  * RECUSA desconto maior que o subtotal é `vendaPodeSerRegistrada` (e,
  * atrás dela, a RPC). */
 export function totalDaVenda(estado: EstadoDaVenda): number {
-  return Math.max(0, subtotalDaVenda(estado.itens) - estado.desconto);
+  const centavos =
+    emCentavos(subtotalDaVenda(estado.itens)) - emCentavos(estado.desconto);
+  return Math.max(0, centavos) / 100;
+}
+
+/** Troco do dinheiro, em reais: `null` sem valor recebido; negativo quando
+ * falta dinheiro. Só de tela — nada disto vai para a RPC. */
+export function trocoDaVenda(
+  total: number,
+  recebido: number | null,
+): number | null {
+  if (recebido === null || !Number.isFinite(recebido)) return null;
+  return (emCentavos(recebido) - emCentavos(total)) / 100;
+}
+
+/** As duas formas que ninguém confirma sozinho (B14). */
+export function formaPedeConferencia(
+  forma: FormaEscolhidaNoBalcao | null,
+): boolean {
+  return forma === "pix" || forma === "card";
 }
 
 /**
@@ -478,11 +560,24 @@ export function vendaPodeSerRegistrada(
     // migration 20261162000000:286
     return { ok: false, motivo: "Informe o motivo do desconto." };
   }
-  if (estado.desconto > subtotalDaVenda(estado.itens)) {
+  if (emCentavos(estado.desconto) > emCentavos(subtotalDaVenda(estado.itens))) {
     // migration 20261162000000:360
     return {
       ok: false,
       motivo: "O desconto não pode ser maior que o subtotal da venda.",
+    };
+  }
+  if (estado.pagamento === "pix_qr" && totalDaVenda(estado) <= 0) {
+    // migration 20261184000000 — o Mercado Pago não gera PIX de R$ 0,00.
+    return { ok: false, motivo: "Um PIX precisa de valor maior que zero." };
+  }
+  if (formaPedeConferencia(estado.pagamento) && !estado.pagamentoConferido) {
+    return {
+      ok: false,
+      motivo:
+        estado.pagamento === "pix"
+          ? "Confira o PIX no app do banco e marque que conferiu."
+          : "Confira o comprovante da maquininha e marque que conferiu.",
     };
   }
   return { ok: true };
@@ -537,10 +632,34 @@ function entrarItemNoCupom(
   };
 }
 
+/** Ações que mudam a VENDA (itens, cliente, forma, desconto). Com o PIX
+ * aberto elas são ignoradas: a venda já foi gravada com o que estava na tela,
+ * e o QR cobra aquele total — o cupom fica só de leitura até o PIX pagar ou
+ * ser cancelado. */
+const ACOES_QUE_MUDAM_A_VENDA: ReadonlySet<AcaoDaVenda["tipo"]> = new Set([
+  "codigo_resolvido",
+  "variacao_escolhida",
+  "item_adicionado_manualmente",
+  "quantidade_alterada",
+  "item_removido",
+  "cliente_definido",
+  "pagamento_escolhido",
+  "pagamento_conferido",
+  "desconto_alterado",
+]);
+
 export function reducerDaVenda(
   estado: EstadoDaVenda,
   acao: AcaoDaVenda,
 ): EstadoDaVenda {
+  // Desde o "Gerar PIX", não só depois da resposta (revisão, rodada 1,
+  // achado 2): se a RPC gravou e a resposta se perdeu, o retry com a MESMA
+  // chave devolve a venda JÁ gravada — com os itens de antes. Mexer no cupom
+  // entre as duas tentativas faria o QR cobrar um carrinho que a tela não
+  // mostra.
+  if (estado.pix && ACOES_QUE_MUDAM_A_VENDA.has(acao.tipo)) {
+    return estado;
+  }
   switch (acao.tipo) {
     case "codigo_resolvido": {
       // A guarda da leitura repetida vem PRIMEIRO: nenhum dos cinco
@@ -762,6 +881,8 @@ export function reducerDaVenda(
         itens: [],
         cliente: { tipo: "sem_cliente" },
         pagamento: null,
+        pagamentoConferido: false,
+        pix: null,
         desconto: 0,
         motivoDoDesconto: "",
         chaveDeIdempotencia: acao.novaChave,
@@ -783,10 +904,60 @@ export function reducerDaVenda(
       return { ...estado, cliente: acao.cliente };
 
     case "pagamento_escolhido":
-      return { ...estado, pagamento: acao.pagamento };
+      return {
+        ...estado,
+        pagamento: acao.pagamento,
+        pagamentoConferido:
+          acao.pagamento === estado.pagamento
+            ? estado.pagamentoConferido
+            : false,
+      };
+
+    case "pagamento_conferido":
+      return { ...estado, pagamentoConferido: acao.conferido };
+
+    case "pix_preparado":
+      return estado.pix
+        ? { ...estado, enviando: true, erro: null }
+        : {
+            ...estado,
+            pix: { chave: acao.chave, orderId: null },
+            enviando: true,
+            erro: null,
+          };
+
+    case "pix_descartado":
+      return estado.pix && !estado.pix.orderId
+        ? { ...estado, pix: null }
+        : estado;
+
+    case "pix_aberto":
+      if (!estado.pix) return estado;
+      return {
+        ...estado,
+        pix: { ...estado.pix, orderId: acao.orderId },
+        etapa: "pix",
+        enviando: false,
+        erro: null,
+      };
+
+    case "pix_encerrado":
+      return {
+        ...estado,
+        pix: null,
+        etapa: estado.itens.length > 0 ? "fechamento" : "cupom",
+        enviando: false,
+      };
 
     case "desconto_alterado":
-      return { ...estado, desconto: acao.valor, motivoDoDesconto: acao.motivo };
+      // Achado D6 (28/09): o motivo digitado sobrevivia ao desconto zerado e
+      // ia parar nas notas do pedido como se explicasse um desconto que não
+      // existe. Sem desconto, sem motivo.
+      return {
+        ...estado,
+        desconto: acao.valor,
+        motivoDoDesconto: acao.valor > 0 ? acao.motivo : "",
+      };
 
     case "etapa_pedida":
       // Pedido inválido devolve o estado como está, sem erro: a tela não
@@ -872,6 +1043,21 @@ function pareceRascunhoValido(
   // campo virava estado e o efeito de gravar/apagar lançava em
   // `estado.cliente.tipo` ANTES do removeItem — o rascunho envenenado
   // ficava em disco e toda abertura seguinte quebrava igual.
+  // Campos nascidos depois (28/09): rascunho antigo, sem eles, continua
+  // válido (vira `false`/`null` em `lerRascunho`); com eles, têm de ter a
+  // forma certa.
+  if (
+    v.pagamentoConferido !== undefined &&
+    typeof v.pagamentoConferido !== "boolean"
+  )
+    return false;
+  if (v.pix !== undefined && v.pix !== null) {
+    if (typeof v.pix !== "object") return false;
+    const pix = v.pix as Record<string, unknown>;
+    if (typeof pix.chave !== "string") return false;
+    if (pix.orderId !== null && typeof pix.orderId !== "string") return false;
+  }
+
   if (typeof v.cliente !== "object" || v.cliente === null) return false;
   const tipoDoCliente = (v.cliente as { tipo?: unknown }).tipo;
   if (
@@ -933,6 +1119,8 @@ export function lerRascunho(bruto: string | null): EstadoDaVenda | null {
     if (!pareceRascunhoValido(objeto)) return null;
     const restaurado: EstadoDaVenda = {
       ...objeto,
+      pagamentoConferido: objeto.pagamentoConferido ?? false,
+      pix: objeto.pix ?? null,
       recibo: null,
       enviando: false,
       erro: null,
@@ -1098,6 +1286,7 @@ export function useVendaPresencial(
     if (!armazenamento) return;
 
     const cupomSemNadaAGuardar =
+      estado.pix === null &&
       estado.itens.length === 0 &&
       estado.pagamento === null &&
       estado.desconto === 0 &&

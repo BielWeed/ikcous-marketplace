@@ -7,12 +7,14 @@
 // Este arquivo NÃO chama Supabase.
 
 import { OrderReceipt } from "@/components/admin/orders/OrderReceipt";
+import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import { Button } from "@/components/ui/button";
 import type {
   AcaoDaVenda,
   ClienteDaVenda,
   ReciboDaVendaRegistrada,
 } from "@/hooks/useVendaPresencial";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 import {
@@ -31,6 +33,9 @@ export interface PropsDoReciboDaVenda {
    * apaga o rascunho (o reducer sozinho não faz nenhuma das duas). */
   readonly limparCupom: () => void;
   readonly storeName?: string;
+  /** `anular_venda_presencial` (migration 20261185000000). Sem ela, o botão
+   * não aparece. PIX com QR nunca oferece: volta pelo estorno do app. */
+  readonly aoAnular?: (motivo: string) => Promise<void>;
 }
 
 function reais(valor: number): string {
@@ -72,7 +77,8 @@ function construirOrderParaImpressao(recibo: ReciboDaVendaRegistrada): Order {
     shipping: 0,
     discount: recibo.desconto,
     total: recibo.total,
-    paymentMethod: recibo.pagamento,
+    paymentMethod: recibo.pagamento === "pix_qr" ? "online" : recibo.pagamento,
+    metodoOnline: recibo.pagamento === "pix_qr" ? "pix" : null,
     status: "delivered",
     createdAt: recibo.criadoEm,
     updatedAt: recibo.criadoEm,
@@ -81,19 +87,22 @@ function construirOrderParaImpressao(recibo: ReciboDaVendaRegistrada): Order {
   };
 }
 
-const ROTULO_DO_PAGAMENTO: Record<
-  ReciboDaVendaRegistrada["pagamento"],
-  string
-> = {
-  cash: "Dinheiro",
-  pix: "PIX na hora",
-  card: "Cartão na maquininha",
-};
+/** O MESMO rótulo da ficha do pedido e da planilha (achado D4, 28/09). */
+function rotuloDoPagamento(
+  pagamento: ReciboDaVendaRegistrada["pagamento"],
+): string {
+  return rotuloDaFormaDoPedido({
+    paymentMethod: pagamento === "pix_qr" ? "online" : pagamento,
+    metodoOnline: pagamento === "pix_qr" ? "pix" : null,
+    canal: "presencial",
+  });
+}
 
 export function ReciboDaVenda({
   recibo,
   limparCupom,
   storeName,
+  aoAnular,
 }: PropsDoReciboDaVenda): ReactElement {
   const whatsapp = whatsappDoCliente(recibo.cliente);
   const linkWhatsapp = linkWhatsappDoCliente(whatsapp);
@@ -169,7 +178,7 @@ export function ReciboDaVenda({
         </div>
         <div className="flex justify-between text-zinc-500">
           <span>Pagamento</span>
-          <span>{ROTULO_DO_PAGAMENTO[recibo.pagamento]}</span>
+          <span>{rotuloDoPagamento(recibo.pagamento)}</span>
         </div>
       </div>
 
@@ -203,6 +212,14 @@ export function ReciboDaVenda({
           Nova venda
         </Button>
       </div>
+
+      {aoAnular && recibo.pagamento !== "pix_qr" && (
+        <AnularVendaDoBalcao
+          total={recibo.total}
+          formaEmDinheiro={recibo.pagamento === "cash"}
+          aoAnular={aoAnular}
+        />
+      )}
 
       {/* `OrderReceipt` é `hidden ... print:block` (contexto, fato 14): não
           aparece aqui na tela, só quando o botão "Imprimir" chama

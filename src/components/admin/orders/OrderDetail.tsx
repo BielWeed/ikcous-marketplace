@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
@@ -20,7 +22,7 @@ import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
-import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
+import type { Order, OrderStatus, PaymentStatus } from "@/types";
 import {
   Check,
   CheckCircle2,
@@ -118,12 +120,9 @@ const statusConfigByKey = new Map(Object.entries(statusConfig));
 // "online" existe desde a Fase 2 (CHECKOUT-010): pedido cobrado no site
 // via Mercado Pago, não confundir com dinheiro na entrega — quem lança o
 // caixa a partir daqui não pode ler "Dinheiro Espécie" e cobrar de novo.
-const getPaymentMethodLabel = (method: PaymentMethod) => {
-  if (method === "pix") return "PIX";
-  if (method === "card") return "Cartão de crédito";
-  if (method === "online") return "Pagamento Online";
-  return "Dinheiro Espécie";
-};
+// Achado D4 (28/09): "Cartão de crédito" para a maquininha e "Dinheiro
+// Espécie" para forma desconhecida — agora o rótulo único, com canal.
+const getPaymentMethodLabel = (order: Order) => rotuloDaFormaDoPedido(order);
 
 // T3 (lote B, 12/09) — a frase-situação do dinheiro no cabeçalho da seção
 // Pagamento (emprestada da direção "Dinheiro primeiro"): a primeira dúvida
@@ -177,22 +176,37 @@ function fraseSituacaoDoPagamento(order: Order): string {
       ? `Recebido na entrega · R$ ${valor}`
       : `Falta receber na entrega · R$ ${valor}`;
   }
-  // Cobrança pelo site, sem atenção pendente.
+  // Cobrança pelo app — no site, ou o PIX com QR do balcão (28/09): mesmo
+  // gateway, outro lugar; a frase diz onde.
+  const onde =
+    order.canal === "presencial" ? "no balcão (PIX com QR)" : "no site";
   if (order.paymentStatus === "pago") {
-    return `Pago no site · R$ ${valor}`;
+    return `Pago ${onde} · R$ ${valor}`;
   }
   if (order.paymentStatus === "aguardando") {
-    return `Aguardando pagamento no site · R$ ${valor}`;
+    return `Aguardando pagamento ${onde} · R$ ${valor}`;
   }
   if (order.paymentStatus === "recusado") {
-    return `Pagamento recusado no site · R$ ${valor}`;
+    return `Pagamento recusado ${onde} · R$ ${valor}`;
   }
   if (order.paymentStatus === "expirado") {
-    return `Pagamento expirado no site · R$ ${valor}`;
+    return `Pagamento expirado ${onde} · R$ ${valor}`;
   }
   // `null` com cobrança online não existe na prática (a cobrança nasce
   // "aguardando"); se aparecer, o rótulo do selo é a frase — sem inventar.
   return `${rotuloDoSelo} · R$ ${valor}`;
+}
+
+/** Venda do balcão recebida na hora, HOJE — onde "Anular venda" aparece. */
+function podeAnularVendaDoBalcao(order: Order): boolean {
+  if (order.canal !== "presencial") return false;
+  if (order.status !== "delivered") return false;
+  if (order.paymentStatus !== "recebido_na_entrega") return false;
+  if (!["cash", "pix", "card"].includes(order.paymentMethod)) return false;
+  if (!order.pagamentoRecebidoEm) return false;
+  const dia = (d: Date) =>
+    d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  return dia(new Date(order.pagamentoRecebidoEm)) === dia(new Date());
 }
 
 interface OrderDetailProps {
@@ -305,7 +319,7 @@ function OrderHeader({ order }: Readonly<OrderHeaderProps>) {
         />
       </div>
       <p className="text-[11px] font-medium text-zinc-500">
-        Feito em {data} às {hora} · {getPaymentMethodLabel(order.paymentMethod)}
+        Feito em {data} às {hora} · {getPaymentMethodLabel(order)}
       </p>
     </header>
   );
@@ -798,7 +812,7 @@ function OrderFinanceCard({
                 />
               </div>
               <p className="mt-1 truncate text-xs font-bold uppercase tracking-tight text-white">
-                {getPaymentMethodLabel(order.paymentMethod)}
+                {getPaymentMethodLabel(order)}
               </p>
             </div>
           </div>
@@ -1602,6 +1616,28 @@ export const OrderDetail = memo(function OrderDetail({
             entrega não tem estorno pelo app, e a tela nem oferece. Na
             comanda, a devolução mora logo abaixo da seção Pagamento, que
             é de quem ela trata. */}
+        {/* Anular venda do balcão (frente A, 28/09 — resposta do dono: só
+            no mesmo dia, com motivo). A regra de verdade é da RPC
+            `anular_venda_presencial`; aqui só se esconde o botão onde ele
+            não faria sentido. */}
+        {podeAnularVendaDoBalcao(order) && (
+          <AnularVendaDoBalcao
+            total={order.total}
+            formaEmDinheiro={order.paymentMethod === "cash"}
+            aoAnular={async (motivo) => {
+              const { error } = await supabase.rpc("anular_venda_presencial", {
+                p_order_id: order.id,
+                p_motivo: motivo,
+              });
+              if ((error as { code?: string } | null)?.code === "PGRST202") {
+                throw new Error(
+                  "A anulação ainda não está liberada neste servidor. Avise quem cuida do app.",
+                );
+              }
+              if (error) throw error;
+            }}
+          />
+        )}
         {order.paymentMethod === "online" &&
           (order.paymentStatus === "pago" ||
             order.paymentStatus === "pago_apos_expirar" ||

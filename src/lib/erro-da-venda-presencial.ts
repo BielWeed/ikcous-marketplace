@@ -40,6 +40,21 @@ const FALHA_DE_REDE: FalhaDaVendaTraduzida = {
   precisaEntrarDeNovo: false,
 };
 
+/** `true` quando quem recusou foi o SERVIDOR (veio um código do Postgres/
+ * PostgREST): a transação desfez tudo e nada foi gravado. `false` para rede
+ * caindo, aborto, erro sem código — aí não dá para saber se gravou. */
+export function falhaVeioDoServidor(erro: unknown): boolean {
+  // Só códigos do PRÓPRIO banco (SQLSTATE de 5 caracteres, ex.: 22023,
+  // 23505, 42501) ou do PostgREST (PGRST…) provam que a transação desfez
+  // tudo. Um JSON de erro com outro "código" (proxy, gateway) pode ter vindo
+  // depois do commit — aí é incerto, como a rede (revisão de risco, rodada 3).
+  const codigo = codigoDoErro(erro);
+  return (
+    codigo !== null &&
+    (/^[0-9A-Z]{5}$/.test(codigo) || codigo.startsWith("PGRST"))
+  );
+}
+
 /** O supabase-js devolve `{code, message}` tanto para `PostgrestError`
  * quanto para o erro sintético de função fora do cache de schema
  * (`PGRST202`) — nenhum dos dois tem um tipo público exportado, então lemos
@@ -49,7 +64,11 @@ function codigoDoErro(erro: unknown): string | null {
     return null;
   }
   const codigo = (erro as { code: unknown }).code;
-  return typeof codigo === "string" ? codigo : null;
+  // `""` NÃO é código (revisão, rodada 2): o postgrest-js devolve queda de
+  // rede e corpo não-JSON como `{ message: "TypeError: Failed to fetch",
+  // code: "" }` — sem isto, a rede caindo passava por recusa do servidor
+  // (a chave do PIX era descartada) e a mensagem crua ia para a tela.
+  return typeof codigo === "string" && codigo !== "" ? codigo : null;
 }
 
 function mensagemDoErro(erro: unknown): string | null {
