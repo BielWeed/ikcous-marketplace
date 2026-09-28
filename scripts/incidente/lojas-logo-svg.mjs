@@ -4,6 +4,9 @@
 // depende de fonte instalada. Gera: logo do topo (fundo transparente),
 // círculo da marca (ícones, favicon, og), sobe no bucket `branding` e grava
 // cores + branding_assets na store_config. Prévias vão para /tmp/logos.
+// A cor secundária (cor2) é a de DESTAQUE: o aviso de notificações pinta as
+// palavras realçadas com ela sobre fundo quase preto, então tem de ser clara
+// (achado do dono no Space, 28/09: secundária escura sumia no aviso).
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
