@@ -874,6 +874,24 @@ const AppContent = () => {
         return;
       }
 
+      // Trocar apenas a ficha selecionada não é uma navegação de página. Além
+      // de evitar uma View Transition desnecessária, o caminho direto preserva
+      // o back override que a própria tela registrou para fechar a ficha.
+      if (!isDifferentView) {
+        setSelectedProductId(id || null);
+        const path = id ? `/${targetView}?id=${id}` : `/${targetView}`;
+        const currentPathAndSearch =
+          globalThis.location.pathname + globalThis.location.search;
+        if (currentPathAndSearch !== path) {
+          globalThis.history.pushState(
+            { view: targetView, id, from: currView },
+            "",
+            path,
+          );
+        }
+        return;
+      }
+
       const fromView = currView;
       const dir = getNavigationDirection(currView, targetView);
       navigationDirectionRef.current = dir;
@@ -1997,6 +2015,7 @@ const AppContent = () => {
                     "admin-coupon-form",
                     "admin-user-detail",
                     "admin-orders",
+                    "admin-devolucoes",
                     "admin-push",
                   ].includes(currentViewRef.current) &&
                   selectedProductIdRef.current
@@ -2035,6 +2054,7 @@ const AppContent = () => {
                     "admin-coupon-form",
                     "admin-user-detail",
                     "admin-orders",
+                    "admin-devolucoes",
                     "admin-push",
                   ].includes(currentView) && selectedProductId
                 ? `/${currentView}?id=${selectedProductId}`

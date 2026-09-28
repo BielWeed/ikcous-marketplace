@@ -28,6 +28,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const prova = vi.hoisted(() => ({
   camadaFechadaPeloOverride: 0,
   dialogoAberto: 0,
+  viewTransitions: 0,
+}));
+
+vi.mock("@/hooks/useViewTransition", () => ({
+  useViewTransition: () => ({
+    isSupported: true,
+    navigate: (atualizar: () => void) => {
+      prova.viewTransitions += 1;
+      atualizar();
+      return null;
+    },
+  }),
 }));
 
 vi.mock("framer-motion", async () => {
@@ -79,27 +91,41 @@ vi.mock("framer-motion", async () => {
   return { motion, AnimatePresence, useReducedMotion: () => true };
 });
 
-// Dublê MÍNIMO do portão do admin: expõe a view atual e botões que usam
-// EXATAMENTE os contratos que o AdminPdvView real usa — `setIsAdminDirty`
-// (o cupom cheio liga o dirty) e `setBackOverride` (a camada aberta registra
-// o fechamento como override e empurra a entrada `{modal: "pdv"}`, o mesmo
-// par de gestos do AdminPdvView.tsx). A prova do fechamento é o contador
-// incrementado DENTRO do override — é isso que o `handlePopState` roda.
-vi.mock("@/components/layouts/AdminAreaGate", () => ({
-  AdminAreaGate: ({
-    currentView,
-    setIsAdminDirty,
-    setBackOverride,
+// O portão é liberado no harness, mas a AdminArea real continua no caminho.
+// Isso faz a regressão de rota provar também o repasse de selectedProductId
+// da AdminArea para a tela de devoluções.
+vi.mock("@/components/layouts/AdminAreaGate", async () => {
+  const { AdminArea } = await import("@/components/layouts/AdminArea");
+  return {
+    AdminAreaGate: ({
+      fallback: _fallback,
+      ...props
+    }: Record<string, unknown>) => (
+      <AdminArea {...(props as React.ComponentProps<typeof AdminArea>)} />
+    ),
+  };
+});
+
+vi.mock("@/components/layouts/AdminLayout", () => ({
+  AdminLayout: ({ children }: { readonly children?: unknown }) => (
+    <div data-testid="admin-area">{children as React.ReactNode}</div>
+  ),
+}));
+
+// Dublê MÍNIMO do PDV: expõe os mesmos contratos usados pela tela real.
+vi.mock("@/views/admin/AdminPdvView", () => ({
+  AdminPdvView: ({
+    onSetDirty,
+    onSetBackOverride,
   }: {
-    readonly currentView: string;
-    readonly setIsAdminDirty: (dirty: boolean) => void;
-    readonly setBackOverride: (fn: (() => void) | null) => void;
+    readonly onSetDirty: (dirty: boolean) => void;
+    readonly onSetBackOverride: (fn: (() => void) | null) => void;
   }) => (
-    <div data-testid="admin-area" data-view={currentView}>
+    <div>
       <button
         type="button"
         data-testid="sujar-cupom"
-        onClick={() => setIsAdminDirty(true)}
+        onClick={() => onSetDirty(true)}
       >
         Cupom cheio
       </button>
@@ -112,7 +138,7 @@ vi.mock("@/components/layouts/AdminAreaGate", () => ({
             "",
             window.location.pathname + window.location.search,
           );
-          setBackOverride(() => () => {
+          onSetBackOverride(() => () => {
             prova.camadaFechadaPeloOverride += 1;
           });
         }}
@@ -122,6 +148,54 @@ vi.mock("@/components/layouts/AdminAreaGate", () => ({
     </div>
   ),
 }));
+
+vi.mock("@/views/admin/AdminDevolucoesView", async () => {
+  const React = await import("react");
+  return {
+    AdminDevolucoesView: ({
+      onNavigate,
+      selectedDevolucaoId,
+      onSetDirty,
+      onSetBackOverride,
+    }: {
+      readonly onNavigate: (
+        view: string,
+        id?: string,
+        bypass?: boolean,
+      ) => void;
+      readonly selectedDevolucaoId?: string | null;
+      readonly onSetDirty?: (dirty: boolean) => void;
+      readonly onSetBackOverride?: (fn: (() => void) | null) => void;
+    }) => {
+      React.useEffect(() => {
+        if (selectedDevolucaoId) onSetBackOverride?.(() => () => {});
+        return () => onSetBackOverride?.(null);
+      }, [selectedDevolucaoId, onSetBackOverride]);
+      return (
+        <div data-testid="devolucao-id" data-id={selectedDevolucaoId ?? ""}>
+          <button
+            type="button"
+            data-testid="trocar-devolucao"
+            onClick={() => onNavigate("admin-devolucoes", "dev-2", true)}
+          >
+            Trocar devolução
+          </button>
+          <button
+            type="button"
+            data-testid="sujar-devolucao"
+            onClick={() => {
+              onSetDirty?.(true);
+              // Exercita o fallback do App se uma camada perder o override.
+              onSetBackOverride?.(null);
+            }}
+          >
+            Alterar devolução
+          </button>
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("@/views/customer/HomeView", () => ({
   HomeView: () => <div data-testid="home" />,
@@ -329,6 +403,7 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
   beforeEach(() => {
     prova.camadaFechadaPeloOverride = 0;
     prova.dialogoAberto = 0;
+    prova.viewTransitions = 0;
     vi.stubGlobal("localStorage", dubleDeArmazem());
     vi.stubGlobal("sessionStorage", dubleDeArmazem());
     vi.stubGlobal("IntersectionObserver", ObservadorDeInterseccao);
@@ -461,5 +536,36 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
 
     expect(prova.dialogoAberto).toBeGreaterThan(0);
     expect(prova.camadaFechadaPeloOverride).toBe(0);
+  });
+
+  it("propaga o id da rota pela AdminArea e serializa a troca de ficha no App", async () => {
+    globalThis.history.replaceState(
+      { view: "admin-devolucoes", id: "dev-1" },
+      "",
+      "/admin-devolucoes?id=dev-1",
+    );
+    await abrir();
+
+    const ficha = () =>
+      container?.querySelector<HTMLDivElement>('[data-testid="devolucao-id"]');
+    await esperarAte(() => ficha()?.dataset.id === "dev-1");
+    prova.viewTransitions = 0;
+
+    await clicar("trocar-devolucao");
+
+    expect(ficha()?.dataset.id).toBe("dev-2");
+    expect(prova.viewTransitions).toBe(0);
+    expect(globalThis.location.pathname + globalThis.location.search).toBe(
+      "/admin-devolucoes?id=dev-2",
+    );
+
+    await clicar("sujar-devolucao");
+    await act(async () => {
+      globalThis.history.back();
+    });
+    await esperarAte(() => prova.dialogoAberto > 0);
+    expect(globalThis.location.pathname + globalThis.location.search).toBe(
+      "/admin-devolucoes?id=dev-2",
+    );
   });
 });
