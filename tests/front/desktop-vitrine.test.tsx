@@ -299,6 +299,12 @@ describe("F2.5 — prateleiras", () => {
   });
 });
 describe("F2.6 — ofertas", () => {
+  it('mantém o alinhamento "center" do Embla no celular', () => {
+    montar(<PremiumOffers {...lista} />);
+    expect(embla.montar).toHaveBeenLastCalledWith(
+      expect.objectContaining({ align: "center" }),
+    );
+  });
   it("alinha as duas ofertas pela borda no desktop, sem metades nas pontas", () => {
     computador = true;
     montar(<PremiumOffers {...lista} />);
