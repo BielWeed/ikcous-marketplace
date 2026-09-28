@@ -9,14 +9,14 @@ interface WebVitalEntry {
 }
 
 function getRating(name: string, value: number): WebVitalEntry["rating"] {
-  const thresholds: Record<string, [number, number]> = {
-    LCP: [2500, 4000],
-    FCP: [1800, 3000],
-    CLS: [0.1, 0.25],
-    INP: [200, 500],
-    TTFB: [800, 1800],
-  };
-  const [good, poor] = thresholds[name] || [
+  const thresholds = new Map<string, [number, number]>([
+    ["LCP", [2500, 4000]],
+    ["FCP", [1800, 3000]],
+    ["CLS", [0.1, 0.25]],
+    ["INP", [200, 500]],
+    ["TTFB", [800, 1800]],
+  ]);
+  const [good, poor] = thresholds.get(name) ?? [
     Number.POSITIVE_INFINITY,
     Number.POSITIVE_INFINITY,
   ];

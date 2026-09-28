@@ -53,7 +53,7 @@ function statement(sqlBruto, assinaturaExata) {
   const ini = sqlBruto.indexOf(assinaturaExata);
   assert(ini >= 0, `${assinaturaExata} não encontrada no texto bruto`);
   const fim = sqlBruto.indexOf("$function$;", ini) + "$function$;".length;
-  assert(fim > ini, `fechamento $function$; não encontrado após a assinatura`);
+  assert(fim > ini, "fechamento $function$; não encontrado após a assinatura");
   return sqlBruto.slice(ini, fim);
 }
 

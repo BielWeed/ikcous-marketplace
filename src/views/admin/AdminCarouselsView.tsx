@@ -188,9 +188,8 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     if (targetIndex < 0 || targetIndex >= homeSections.length) return;
 
     const updated = [...homeSections];
-    const temp = updated[index];
-    updated[index] = updated[targetIndex];
-    updated[targetIndex] = temp;
+    updated.splice(index, 1, homeSections.at(targetIndex)!);
+    updated.splice(targetIndex, 1, homeSections.at(index)!);
 
     handleUpdateHomeSections(updated, false);
   };
@@ -381,14 +380,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   ]);
 
   return (
-    <div className="relative h-auto w-full max-w-full overflow-x-hidden bg-[#09090b] pb-admin font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white">
+    <div className="pb-admin relative h-auto w-full max-w-full overflow-x-hidden bg-[#09090b] font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white">
       {/* Ambient background */}
       <div className="pointer-events-none absolute left-1/3 top-0 h-[250px] w-[250px] rounded-full bg-admin-gold/5 blur-[90px]" />
 
       {/* Sticky Desktop Header */}
-      <div className="hidden lg:block sticky top-0 z-40 w-full border-b border-white/10 bg-[#09090b]/95 px-3 py-1.5 shadow-md backdrop-blur-md">
+      <div className="sticky top-0 z-40 hidden w-full border-b border-white/10 bg-[#09090b]/95 px-3 py-1.5 shadow-md backdrop-blur-md lg:block">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-md border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
               <Layers className="size-3" />
             </div>
@@ -400,7 +399,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             <button
               type="button"
               onClick={handleResetDefaultVitrines}
-              className="flex items-center gap-1 rounded-xl border border-white/10 bg-zinc-900 px-2 py-1 text-[9px] font-bold text-zinc-400 hover:border-amber-500/40 hover:text-amber-400 transition-colors"
+              className="flex items-center gap-1 rounded-xl border border-white/10 bg-zinc-900 px-2 py-1 text-[9px] font-bold text-zinc-400 transition-colors hover:border-amber-500/40 hover:text-amber-400"
               title="Restaurar Vitrines Padrão"
             >
               <RotateCcw className="size-2.5" /> Restaurar Padrão
@@ -419,23 +418,23 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
       <div className="relative z-10 mx-auto max-w-5xl space-y-3 p-2.5 sm:p-4">
         {/* Top Micro Stats Bar + Quick Action Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/80 p-2 text-[10px] backdrop-blur-md shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/80 p-2 text-[10px] shadow-sm backdrop-blur-md">
           {/* Stats Chips */}
           <div className="flex items-center gap-1.5">
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-xl bg-zinc-900/80 border border-white/5">
-              <Eye className="size-3 text-emerald-400 shrink-0" />
+            <div className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-zinc-900/80 px-2 py-0.5">
+              <Eye className="size-3 shrink-0 text-emerald-400" />
               <span className="font-mono font-bold text-white">
                 {activeVitrinesCount}/{homeSections.length}
               </span>
-              <span className="hidden sm:inline text-zinc-400">Ativas</span>
+              <span className="hidden text-zinc-400 sm:inline">Ativas</span>
             </div>
 
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-xl bg-zinc-900/80 border border-white/5">
-              <Package className="size-3 text-[#FFBF00] shrink-0" />
+            <div className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-zinc-900/80 px-2 py-0.5">
+              <Package className="size-3 shrink-0 text-[#FFBF00]" />
               <span className="font-mono font-bold text-white">
                 ~{totalProductsInActiveVitrines}
               </span>
-              <span className="hidden sm:inline text-zinc-400">Produtos</span>
+              <span className="hidden text-zinc-400 sm:inline">Produtos</span>
             </div>
           </div>
 
@@ -444,7 +443,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             <button
               type="button"
               onClick={() => setShowAddVitrineModal(true)}
-              className="flex items-center gap-1 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00]/15 px-2.5 py-1 font-mono text-[9px] font-black text-[#FFBF00] hover:bg-[#FFBF00]/25 transition-all shadow-xs active:scale-95"
+              className="flex items-center gap-1 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00]/15 px-2.5 py-1 font-mono text-[9px] font-black text-[#FFBF00] shadow-xs transition-all hover:bg-[#FFBF00]/25 active:scale-95"
             >
               <Plus className="size-3" />+ Nova Vitrine
             </button>
@@ -452,7 +451,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             <button
               type="button"
               onClick={handleResetDefaultVitrines}
-              className="sm:hidden flex items-center justify-center size-6 rounded-xl border border-white/10 bg-zinc-900 text-zinc-400"
+              className="flex size-6 items-center justify-center rounded-xl border border-white/10 bg-zinc-900 text-zinc-400 sm:hidden"
               title="Restaurar Vitrines Padrão"
             >
               <RotateCcw className="size-3" />
@@ -500,7 +499,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                       glowClass:
                         "from-rose-500/10 via-zinc-950/90 to-zinc-950 border-rose-500/25",
                       icon: (
-                        <Flame className="size-3 text-rose-500 fill-rose-500/20" />
+                        <Flame className="size-3 fill-rose-500/20 text-rose-500" />
                       ),
                     }
                   : isBestsellers
@@ -534,10 +533,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                   <div className="flex flex-col gap-2">
                     {/* Top Row inside Card: Badges + Action Buttons */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                        <GripVertical className="size-3.5 text-zinc-600 shrink-0" />
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <GripVertical className="size-3.5 shrink-0 text-zinc-600" />
 
-                        <span className="rounded-md border border-white/10 bg-zinc-900/90 px-1.5 py-0.5 font-mono text-[9px] font-black text-white shrink-0">
+                        <span className="shrink-0 rounded-md border border-white/10 bg-zinc-900/90 px-1.5 py-0.5 font-mono text-[9px] font-black text-white">
                           #{index + 1}
                         </span>
 
@@ -552,7 +551,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         </span>
 
                         {/* Max items limit selector */}
-                        <div className="flex items-center gap-1 rounded-md border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[8px] font-bold text-zinc-400 shrink-0">
+                        <div className="flex shrink-0 items-center gap-1 rounded-md border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[8px] font-bold text-zinc-400">
                           <span>Max:</span>
                           <select
                             value={sec.maxItems ?? 6}
@@ -562,7 +561,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                                 Number(e.target.value),
                               )
                             }
-                            className="bg-transparent text-white font-mono font-bold focus:outline-none cursor-pointer pr-1"
+                            className="cursor-pointer bg-transparent pr-1 font-mono font-bold text-white focus:outline-none"
                           >
                             <option
                               value={4}
@@ -593,13 +592,13 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                       </div>
 
                       {/* Right Cluster: Delete Custom + Visibility Switch + Reorder */}
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex shrink-0 items-center gap-1.5">
                         {/* Delete Custom Section Button */}
                         {sec.isCustom && (
                           <button
                             type="button"
                             onClick={() => handleDeleteVitrine(sec.id)}
-                            className="flex size-6 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 active:scale-95 transition-colors"
+                            className="flex size-6 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 transition-colors hover:bg-rose-500/20 active:scale-95"
                             title="Excluir Vitrine"
                           >
                             <Trash2 className="size-3" />
@@ -607,14 +606,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         )}
 
                         {/* Visibility Switch */}
-                        <div className="flex items-center gap-1 bg-zinc-900/80 px-1.5 py-0.5 rounded-xl border border-white/5">
+                        <div className="flex items-center gap-1 rounded-xl border border-white/5 bg-zinc-900/80 px-1.5 py-0.5">
                           <span className="text-[8px] font-bold uppercase tracking-wider text-zinc-400">
                             {sec.active ? (
-                              <span className="text-emerald-400 flex items-center gap-0.5">
+                              <span className="flex items-center gap-0.5 text-emerald-400">
                                 <Eye className="size-2.5" /> Exibir
                               </span>
                             ) : (
-                              <span className="text-zinc-500 flex items-center gap-0.5">
+                              <span className="flex items-center gap-0.5 text-zinc-500">
                                 <EyeOff className="size-2.5" /> Ocultar
                               </span>
                             )}
@@ -624,12 +623,12 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                             onCheckedChange={() =>
                               handleToggleSectionActive(sec.id)
                             }
-                            className="scale-75 origin-right data-[state=checked]:bg-[#FFBF00]"
+                            className="origin-right scale-75 data-[state=checked]:bg-[#FFBF00]"
                           />
                         </div>
 
                         {/* Reorder Buttons */}
-                        <div className="flex items-center gap-0.5 bg-zinc-900/90 p-0.5 rounded-xl border border-white/10">
+                        <div className="flex items-center gap-0.5 rounded-xl border border-white/10 bg-zinc-900/90 p-0.5">
                           <button
                             type="button"
                             onClick={() => moveSection(index, "up")}
@@ -653,7 +652,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                     </div>
 
                     {/* Bottom Row inside Card: Editable Title Input + Manual Curation Button + Mini Avatars */}
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       {/* Title Input */}
                       <div className="relative flex-1">
                         <LocalBufferedInput
@@ -689,16 +688,16 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                       </button>
 
                       {/* Product Mini Avatars */}
-                      <div className="flex items-center gap-1 shrink-0 overflow-x-auto py-0.5">
+                      <div className="flex shrink-0 items-center gap-1 overflow-x-auto py-0.5">
                         {previewItems.length === 0 ? (
-                          <span className="text-[9px] text-zinc-600 italic">
+                          <span className="text-[9px] italic text-zinc-600">
                             Sem produtos
                           </span>
                         ) : (
                           previewItems.map((prod) => (
                             <div
                               key={prod.id}
-                              className="relative size-6 shrink-0 rounded-md border border-white/10 bg-zinc-900 overflow-hidden"
+                              className="relative size-6 shrink-0 overflow-hidden rounded-md border border-white/10 bg-zinc-900"
                               title={`${prod.name} - R$ ${prod.price.toFixed(2)}`}
                             >
                               {prod.images?.[0] ? (
@@ -727,7 +726,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
       {/* Modal 1: Adicionar Nova Vitrine Customizada */}
       {showAddVitrineModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm duration-200 animate-in fade-in">
           <div className="w-full max-w-md space-y-4 rounded-3xl border border-[#FFBF00]/30 bg-zinc-950 p-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
@@ -767,7 +766,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
               {/* Suggestions */}
               <div className="space-y-1">
-                <span className="text-[9px] font-bold text-zinc-500 uppercase">
+                <span className="text-[9px] font-bold uppercase text-zinc-500">
                   Sugestões rápidas:
                 </span>
                 <div className="flex flex-wrap gap-1.5">
@@ -782,7 +781,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                       key={sug}
                       type="button"
                       onClick={() => setNewVitrineTitle(sug)}
-                      className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[9px] font-medium text-zinc-300 hover:border-[#FFBF00]/40 hover:text-[#FFBF00] transition-colors"
+                      className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[9px] font-medium text-zinc-300 transition-colors hover:border-[#FFBF00]/40 hover:text-[#FFBF00]"
                     >
                       + {sug}
                     </button>
@@ -791,18 +790,18 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+            <div className="flex items-center justify-end gap-2 border-t border-white/10 pt-2">
               <button
                 type="button"
                 onClick={() => setShowAddVitrineModal(false)}
-                className="h-9 px-4 rounded-xl border border-white/10 bg-zinc-900 text-xs font-bold text-zinc-300 hover:bg-zinc-800"
+                className="h-9 rounded-xl border border-white/10 bg-zinc-900 px-4 text-xs font-bold text-zinc-300 hover:bg-zinc-800"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleAddCustomVitrine}
-                className="h-9 px-4 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00] text-xs font-black text-black hover:bg-amber-400 transition-all shadow-md active:scale-95"
+                className="h-9 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00] px-4 text-xs font-black text-black shadow-md transition-all hover:bg-amber-400 active:scale-95"
               >
                 Criar Vitrine
               </button>
@@ -813,10 +812,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
       {/* Modal 2: Seleção Manual de Produtos (Curadoria) */}
       {activeCurationSection && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-xl max-h-[85vh] flex flex-col rounded-3xl border border-[#FFBF00]/30 bg-zinc-950 p-4 sm:p-5 shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm duration-200 animate-in fade-in sm:p-4">
+          <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-[#FFBF00]/30 bg-zinc-950 p-4 shadow-2xl sm:p-5">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
+            <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <div className="flex size-7 items-center justify-center rounded-xl border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
                   <Package className="size-4" />
@@ -827,7 +826,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                   </h3>
                   <p className="text-[10px] text-zinc-400">
                     Vitrine:{" "}
-                    <span className="text-[#FFBF00] font-bold">
+                    <span className="font-bold text-[#FFBF00]">
                       {activeCurationSection.title}
                     </span>
                   </p>
@@ -843,7 +842,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             </div>
 
             {/* Search input */}
-            <div className="py-3 shrink-0">
+            <div className="shrink-0 py-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
                 <input
@@ -866,14 +865,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             </div>
 
             {/* Counter bar */}
-            <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 pb-2 border-b border-white/5 shrink-0">
+            <div className="flex shrink-0 items-center justify-between border-b border-white/5 pb-2 text-[10px] font-bold text-zinc-400">
               {isManualCurated ? (
                 <span className="text-[#FFBF00]">
                   {activeCurationSection.productIds?.length} produto(s)
                   selecionado(s) manualmente
                 </span>
               ) : (
-                <span className="text-amber-400 flex items-center gap-1">
+                <span className="flex items-center gap-1 text-amber-400">
                   <Sparkles className="size-3 shrink-0" />
                   Modo Automático: {activeCurationProductIds.length} produto(s)
                   pré-selecionados (Em exibição)
@@ -893,7 +892,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                       false,
                     )
                   }
-                  className="text-rose-400 hover:underline text-[9px]"
+                  className="text-[9px] text-rose-400 hover:underline"
                 >
                   Resetar Seleção (Voltar pro Automático)
                 </button>
@@ -901,7 +900,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             </div>
 
             {/* Products Selection List */}
-            <div className="flex-1 overflow-y-auto py-2 space-y-1.5 scrollbar-thin">
+            <div className="scrollbar-thin flex-1 space-y-1.5 overflow-y-auto py-2">
               {filteredCurationProducts.length === 0 ? (
                 <div className="py-8 text-center text-xs text-zinc-500">
                   Nenhum produto encontrado na busca.
@@ -927,9 +926,9 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                           : "bg-zinc-900/60 border-white/5 hover:border-white/20 text-zinc-300",
                       )}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex min-w-0 items-center gap-2.5">
                         {/* Image Avatar */}
-                        <div className="size-8 rounded-lg border border-white/10 overflow-hidden bg-zinc-800 shrink-0">
+                        <div className="size-8 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-zinc-800">
                           {prod.images?.[0] ? (
                             <img
                               src={prod.images[0]}
@@ -944,19 +943,19 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         </div>
 
                         {/* Details */}
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-xs font-bold truncate text-white">
+                        <div className="flex min-w-0 flex-col">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-xs font-bold text-white">
                               {prod.name}
                             </span>
                             {!isManualCurated && isSelected && (
-                              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-bold text-amber-300 border border-amber-500/30">
+                              <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-bold text-amber-300">
                                 Automático
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-[9px] text-zinc-400 font-mono">
-                            <span className="text-[#FFBF00] font-bold">
+                          <div className="flex items-center gap-2 font-mono text-[9px] text-zinc-400">
+                            <span className="font-bold text-[#FFBF00]">
                               R$ {prod.price.toFixed(2)}
                             </span>
                             <span>• {prod.category}</span>
@@ -982,11 +981,11 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end pt-3 border-t border-white/10 shrink-0">
+            <div className="flex shrink-0 items-center justify-end border-t border-white/10 pt-3">
               <button
                 type="button"
                 onClick={() => setCurationSectionId(null)}
-                className="h-9 px-5 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00] text-xs font-black text-black hover:bg-amber-400 transition-all shadow-md active:scale-95"
+                className="h-9 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00] px-5 text-xs font-black text-black shadow-md transition-all hover:bg-amber-400 active:scale-95"
               >
                 Concluir Curadoria
               </button>
@@ -1010,7 +1009,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-wider text-white">
               Recursos Avançados
             </h4>
-            <ul className="list-disc pl-4 space-y-1 text-zinc-400">
+            <ul className="list-disc space-y-1 pl-4 text-zinc-400">
               <li>
                 <strong>+ Nova Vitrine:</strong> Crie seções personalizadas com
                 seus próprios títulos.
