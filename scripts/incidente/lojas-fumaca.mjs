@@ -13,5 +13,10 @@ for (const [nome, host] of lojas) {
     const titulo = texto.match(/<title>([^<]*)<\/title>/)?.[1] ?? "";
     console.log(`${host}${caminho} → HTTP ${r.status} · ${texto.length} bytes · nome da loja: ${temNome ? "SIM" : "não"}${titulo ? ` · <title>${titulo}` : ""}`);
     if (caminho === "/identidade.json" && r.ok) console.log(`   ${texto.slice(0, 400)}`);
+    // Cores que a página (a ficha no HTML) entrega de fato ao celular.
+    if (caminho === "/" && r.ok) {
+      const cores = texto.match(/"theme":\{[^}]*\}/)?.[0] ?? "(sem theme na ficha)";
+      console.log(`   ficha no HTML: ${cores} · cache: ${r.headers.get("cache-control") ?? "-"} · idade: ${r.headers.get("age") ?? "-"}`);
+    }
   }
 }
