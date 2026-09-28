@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      NODE_ENV: production
       IKCOUS_IDENTITY_MODE: database
       VITE_SUPABASE_URL: https://dekxabvqdsuukijblazl.supabase.co
       VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_07V7N2KcNA3Kk7e4sxQVLA_dlOKUf14
@@ -21,9 +20,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci --legacy-peer-deps --include=dev
       - run: npx tsc -b
       - run: node scripts/diagnostico/build-identidade.mjs
+        env:
+          NODE_ENV: production
       - name: Confere a ficha pública (só leitura, chave pública)
         if: always()
         run: |
