@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 // Central cache for scroll positions across views
-const scrollCache: Record<string, number> = {};
+const scrollCache = new Map<string, number>();
 
 export function useScrollRestoration(
   key: string,
@@ -18,7 +18,7 @@ export function useScrollRestoration(
         document.querySelector(".active-scroll-container") ||
         document.querySelector("main");
       if (container) {
-        scrollCache[key] = container.scrollTop;
+        scrollCache.set(key, container.scrollTop);
       }
     }
   }, [key]);
@@ -36,7 +36,7 @@ export function useScrollRestoration(
 
     if (!shouldRestore) return;
 
-    const savedPos = scrollCache[key] || 0;
+    const savedPos = scrollCache.get(key) ?? 0;
     if (savedPos > 0 && !hasRestoredRef.current) {
       const container =
         elementRef.current?.closest(".admin-scroll-container") ||
@@ -66,7 +66,7 @@ export function useScrollRestoration(
           document.querySelector(".active-scroll-container") ||
           document.querySelector("main");
         if (container) {
-          scrollCache[key] = container.scrollTop;
+          scrollCache.set(key, container.scrollTop);
         }
       }
     };
