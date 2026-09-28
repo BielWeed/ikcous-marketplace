@@ -305,7 +305,11 @@ export const AdminProductsView = memo(function AdminProductsView({
   }, [simCost, simPrice, simStock]);
 
   const toggleHelp = (key: string) => {
-    setExpandedHelp((prev) => ({ ...prev, [key]: !prev[key] }));
+    setExpandedHelp((prev) => ({
+      ...prev,
+      // eslint-disable-next-line security/detect-object-injection -- `key` é sempre um literal fixo dos call sites deste arquivo (ex.: "global-guide")
+      [key]: !prev[key],
+    }));
   };
 
   const totalPages = Math.ceil(totalProducts / pageSize);
@@ -616,7 +620,7 @@ export const AdminProductsView = memo(function AdminProductsView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-admin-bg pb-admin lg:pb-12 text-white duration-200 animate-in fade-in"
+      className="pb-admin h-auto bg-admin-bg text-white duration-200 animate-in fade-in lg:pb-12"
     >
       <style>{`
         @keyframes help-vertical-scroll {

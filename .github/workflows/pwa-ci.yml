@@ -29,8 +29,8 @@
 name: CI PWA
 
 on:
+  # Todo PR, qualquer base (28/09/2026): ver o comentário do `on:` no ci.yml.
   pull_request:
-    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
     # O build é `npx tsc -b && node scripts/buildStore.mjs` (package.json):
     # só o buildStore dispara; script novo que entrar no build entra aqui.
     paths:
@@ -43,7 +43,7 @@ on:
       - "package-lock.json"
       - ".github/workflows/pwa-ci.yml"
   push:
-    branches: [develop, claude/app-major-upgrade-wmc8x2]
+    branches: [develop, claude/app-major-upgrade-wmc8x2, proxima/base]
     paths:
       - "src/**"
       - "e2e/**"

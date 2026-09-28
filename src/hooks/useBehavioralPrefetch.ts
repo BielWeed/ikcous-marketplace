@@ -29,12 +29,15 @@ export function useBehavioralPrefetch(
         const lastPath = newHistory[newHistory.length - 2];
         const transitionKey = `markov_${lastPath}`;
         const transitionsRaw = localStorage.getItem(transitionKey);
-        const transitions: Record<string, number> = transitionsRaw
-          ? JSON.parse(transitionsRaw)
-          : {};
+        const transitions = new Map<string, number>(
+          transitionsRaw ? Object.entries(JSON.parse(transitionsRaw)) : [],
+        );
 
-        transitions[path] = (transitions[path] || 0) + 1;
-        localStorage.setItem(transitionKey, JSON.stringify(transitions));
+        transitions.set(path, (transitions.get(path) ?? 0) + 1);
+        localStorage.setItem(
+          transitionKey,
+          JSON.stringify(Object.fromEntries(transitions)),
+        );
       }
     } catch (e) {
       console.warn("[Markov] Failed to update chain:", e);
