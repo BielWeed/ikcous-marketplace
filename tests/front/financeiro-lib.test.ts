@@ -27,6 +27,7 @@ import {
   parseResumo,
   parseValorBR,
   percentualDaReceita,
+  precisaExplicarSaldoRelativo,
   saldoCorrenteRetroativo,
   serieDoFluxoDeCaixa,
   situacaoDoVencimento,
@@ -422,6 +423,40 @@ describe("extrato por dia e saldo corrente", () => {
       ["2026-09-25", 0, 510.5],
       ["2026-09-26", -10.5, 500],
     ]);
+  });
+
+  // Achado do coordenador (print do Financeiro, cartão "Fluxo de caixa —
+  // últimos 30 dias"): saldo de hoje 0 + uma entrada de R$187,40 em 18/09 →
+  // reconstruído para trás, os dias antes de 18/09 aparecem em −187,40, que
+  // não é o saldo real da conta (a loja nunca informou o saldo inicial). A
+  // tela só sabe explicar isso quando bate a heurística: hoje EXATAMENTE
+  // zero e algum dia reconstruído negativo.
+  it("precisaExplicarSaldoRelativo: só quando o saldo de hoje é zero E a reconstrução cruza para negativo", () => {
+    const comSaldoHojeZero = serieDoFluxoDeCaixa(
+      [{ dia: "2026-09-18", entradas: 187.4, saidas: 0 }],
+      { inicio: "2026-08-30", fim: "2026-09-27" },
+      0,
+    );
+    expect(precisaExplicarSaldoRelativo(comSaldoHojeZero)).toBe(true);
+
+    // Mesma reconstrução, mas o saldo de hoje é positivo de verdade (não é
+    // 0): mesmo cruzando negativo antes, a conta claramente tem saldo
+    // rastreado — não é o caso de saldo inicial nunca informado.
+    const comSaldoHojePositivo = serieDoFluxoDeCaixa(
+      [{ dia: "2026-09-18", entradas: 187.4, saidas: 0 }],
+      { inicio: "2026-08-30", fim: "2026-09-27" },
+      50,
+    );
+    expect(precisaExplicarSaldoRelativo(comSaldoHojePositivo)).toBe(false);
+
+    // Saldo de hoje zero, mas a reconstrução nunca fica negativa: nada para
+    // explicar.
+    const semNegativo = serieDoFluxoDeCaixa(
+      [{ dia: "2026-09-18", entradas: 0, saidas: 0 }],
+      { inicio: "2026-09-17", fim: "2026-09-18" },
+      0,
+    );
+    expect(precisaExplicarSaldoRelativo(semNegativo)).toBe(false);
   });
 });
 

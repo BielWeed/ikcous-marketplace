@@ -17,9 +17,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   type PontoDoFluxo,
   formatarBRL,
+  formatarBRLComSinal,
   formatarBRLCompacto,
   formatarDataCurta,
   formatarDiaPorExtenso,
+  precisaExplicarSaldoRelativo,
 } from "@/lib/financeiro";
 import { Dinheiro, useValoresEstaoOcultos } from "./partes";
 
@@ -48,7 +50,10 @@ function ConteudoDoTooltip({
   if (!active || !ponto) return null;
   const valor = (v: number) => (ocultos ? "R$ ••••" : formatarBRL(v));
   return (
-    <div className="pointer-events-none flex min-w-[168px] flex-col gap-1.5 rounded-xl border border-white/10 bg-zinc-950/95 px-3 py-2 text-[11px] shadow-[0_10px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+    <div
+      data-testid="fluxo-tooltip"
+      className="pointer-events-none flex min-w-[168px] flex-col gap-1.5 rounded-xl border border-white/10 bg-zinc-950/95 px-3 py-2 text-[11px] shadow-[0_10px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl"
+    >
       <p className="font-black text-white">
         {formatarDiaPorExtenso(ponto.dia)}
       </p>
@@ -84,8 +89,19 @@ function ConteudoDoTooltip({
           />
           Saldo ao fim do dia
         </span>
-        <span className="font-bold tabular-nums text-white">
-          {ocultos ? "R$ ••••" : formatarBRL(ponto.saldo)}
+        <span
+          className={`font-bold tabular-nums ${ponto.saldo < 0 ? "text-red-300" : "text-white"}`}
+        >
+          {/* Achado do Gabriel: aqui era `formatarBRL`, que devolve sempre o
+              valor ABSOLUTO (certo para entradas/saídas, que nunca são
+              negativas) — o saldo apagava o sinal de "−" mesmo desenhado
+              abaixo de zero no gráfico. `formatarBRLComSinal` só quando
+              negativo: nunca um "+" na frente de saldo positivo. */}
+          {ocultos
+            ? "R$ ••••"
+            : ponto.saldo < 0
+              ? formatarBRLComSinal(ponto.saldo)
+              : formatarBRL(ponto.saldo)}
         </span>
       </p>
     </div>
@@ -98,6 +114,14 @@ function ConteudoDoTooltip({
  * embaixo as barras de entrada (para cima) e saída (para baixo). Dois
  * gráficos e não um de dois eixos Y: o saldo vive numa escala muito maior
  * que o movimento do dia, e eixo duplo faz a leitura mentir.
+ *
+ * Só o gráfico de BAIXO mostra o balão do tooltip (Pedido do Gabriel,
+ * 27/09/2026: com um `<Tooltip content={<ConteudoDoTooltip/>}>` em cada
+ * gráfico, o `syncId` ativa os dois ao mesmo tempo — dois balões iguais, um
+ * em cima do outro). O de cima mantém seu `<Tooltip>` (sem ele o
+ * `activeDot` da linha do saldo não acende — depende de o recharts achar um
+ * `Tooltip` entre os filhos) só com `content={() => null}`: o cursor
+ * tracejado continua sincronizado nos dois, mas o balão nasce uma vez só.
  */
 export function FluxoDeCaixaGrafico({
   pontos,
@@ -184,6 +208,9 @@ export function FluxoDeCaixaGrafico({
           aria-label="Gráfico do fluxo de caixa dos últimos 30 dias. A tabela logo abaixo tem os mesmos números."
           className="flex flex-col"
         >
+          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-zinc-400">
+            Saldo
+          </p>
           <div className="h-[110px] w-full min-w-0">
             <ResponsiveContainer
               width="100%"
@@ -213,8 +240,11 @@ export function FluxoDeCaixaGrafico({
                 />
                 <XAxis dataKey="dia" hide />
                 {eixoY}
+                {/* Sem balão aqui — só o cursor tracejado, sincronizado com o
+                    gráfico de baixo pelo `syncId`. O balão de verdade é
+                    renderizado uma vez só, no `<Tooltip>` do BarChart. */}
                 <Tooltip
-                  content={<ConteudoDoTooltip />}
+                  content={() => null}
                   cursor={{
                     stroke: "rgba(255,255,255,0.15)",
                     strokeDasharray: "4 4",
@@ -238,6 +268,15 @@ export function FluxoDeCaixaGrafico({
               </AreaChart>
             </ResponsiveContainer>
           </div>
+
+          {/* Linha + rótulo entre os dois painéis: sem isto, o fim do eixo
+              de cima ("−R$ 150") ficava colado no começo do eixo de baixo
+              ("R$ 200") — dois painéis com escalas independentes, fáceis de
+              ler como um só. */}
+          <div className="my-1.5 h-px w-full bg-white/5" />
+          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-zinc-400">
+            Entradas e saídas
+          </p>
           <div className="h-[170px] w-full min-w-0">
             <ResponsiveContainer
               width="100%"
@@ -296,6 +335,13 @@ export function FluxoDeCaixaGrafico({
       ) : (
         <Skeleton className="h-[280px] w-full rounded-2xl bg-white/5" />
       )}
+      {precisaExplicarSaldoRelativo(pontos) ? (
+        <p className="text-[11px] text-zinc-400">
+          Saldo inicial das contas não informado — os valores de saldo antes do
+          primeiro lançamento são uma extrapolação a partir do saldo de hoje,
+          não o saldo real que a conta tinha naquele dia.
+        </p>
+      ) : null}
 
       <details className="group rounded-xl border border-white/5 bg-white/[0.02]">
         <summary className="flex min-h-11 cursor-pointer select-none items-center px-4 text-xs font-bold text-zinc-400 hover:text-white">

@@ -1189,6 +1189,27 @@ export function serieDoFluxoDeCaixa(
   });
 }
 
+/**
+ * O saldo reconstruído (`serieDoFluxoDeCaixa`) parte do saldo de HOJE e volta
+ * no tempo subtraindo o resultado de cada dia — matematicamente correto, mas
+ * sem saber o saldo REAL de 30 dias atrás. Quando o saldo de hoje é
+ * exatamente zero (achado do coordenador: sinal de que a conta nunca teve um
+ * saldo inicial informado — `fin_contas.saldo_inicial` nasce 0 — e não que a
+ * loja realmente zerou a conta hoje) e essa reconstrução cruza para
+ * negativo, o número não é o saldo que a conta teve naquele dia: é só "hoje
+ * menos o que já se sabe que entrou/saiu depois". Mostrar isso sem contexto
+ * é dinheiro inventado. `fin_resumo` não devolve `saldo_inicial`/
+ * `saldo_inicial_em` por conta — dá para confirmar a causa com certeza só
+ * mudando a RPC; esta é a heurística possível só com o que o front já tem.
+ */
+export function precisaExplicarSaldoRelativo(
+  pontos: readonly PontoDoFluxo[],
+): boolean {
+  const hoje = pontos.at(-1);
+  if (!hoje || paraCentavos(hoje.saldo) !== 0) return false;
+  return pontos.some((p) => paraCentavos(p.saldo) < 0);
+}
+
 // ---------------------------------------------------------------------------
 // A pagar / a receber
 // ---------------------------------------------------------------------------
