@@ -1,0 +1,49 @@
+# Temporário (28/09/2026): publica as 12 edge functions da versão em produção
+# (claude/app-major-upgrade-wmc8x2) nos projetos das 3 lojas novas. O
+# verify_jwt de cada uma vem do supabase/config.toml versionado.
+name: Operação — functions das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - .github/workflows/operacao-lojas-funcoes.yml
+permissions:
+  contents: read
+concurrency:
+  group: lojas-funcoes
+  cancel-in-progress: false
+jobs:
+  funcoes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        loja:
+          - { nome: almeida-store, ref: cuemaffjmhkebhmghbap, conta: SUPABASE_ACCESS_TOKEN }
+          - { nome: brand-meliz, ref: htblgvlosaihdgckokld, conta: SUPABASE_ACCESS_TOKEN_CONTA2 }
+          - { nome: space-lojadoskit, ref: bgwpxpcbffxazrxjduns, conta: SUPABASE_ACCESS_TOKEN_CONTA2 }
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: claude/app-major-upgrade-wmc8x2
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Publica as functions em ${{ matrix.loja.nome }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets[matrix.loja.conta] }}
+          REF: ${{ matrix.loja.ref }}
+        run: |
+          set -euo pipefail
+          case "$REF" in dekxabvqdsuukijblazl|gnjsrucsmjkajijrakzr|cafkrminfnokvgjqtkle)
+            echo "::error::RECUSADO: $REF é banco em produção"; exit 1;; esac
+          git log -1 --format='%h %s'
+          for n in calculate-shipping credenciais-mercado-pago criar-pagamento estornar-pagamento \
+                   melhor-envio-etiqueta notify-new-order reconciliar-pagamentos send-order-confirmation \
+                   send-order-whatsapp send-otp-email send-push webhook-mercadopago; do
+            echo "::group::deploy $n → $REF"
+            supabase functions deploy "$n" --project-ref "$REF"
+            echo "::endgroup::"
+          done
+          supabase functions list --project-ref "$REF"
