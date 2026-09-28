@@ -1,3 +1,5 @@
+import { CONTAINER_DO_COMPUTADOR } from "@/components/desktop/medidas";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -11,14 +13,17 @@ import {
   CheckCircle2,
   Info,
   OctagonX,
+  LockKeyhole,
 } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, memo, useEffect, useRef, useState } from "react";
 import { SearchBar } from "./SearchBar";
 
 import { buildIdentity } from "@/config/buildIdentity";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { useStore } from "@/contexts/StoreContext";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+
+const NavegacaoDoTopo = lazy(() => import("@/components/desktop/NavegacaoDoTopo").then((m) => ({ default: m.NavegacaoDoTopo })));
 
 // Ponto de encaixe do centro da barra, usado quando não há busca (hoje:
 // "address-form" e "checkout"). ID ESTÁVEL de propósito — o CheckoutView
@@ -28,6 +33,7 @@ import { nomeDaLoja } from "@/lib/nome-da-loja";
 export const HEADER_CENTER_SLOT_ID = "checkout-header-center-slot";
 
 interface HeaderProps {
+  currentView?: View;
   onNavigate: (view: View, id?: string) => void;
   showBackButton?: boolean;
   onBack?: () => void;
@@ -39,6 +45,7 @@ interface HeaderProps {
 }
 
 export const Header = memo(function Header({
+  currentView,
   onNavigate,
   showBackButton,
   onBack,
@@ -49,6 +56,7 @@ export const Header = memo(function Header({
   scrollProgress = 0,
 }: Readonly<HeaderProps>) {
   const { config } = useStore();
+  const computador = useTelaDeComputador();
   const { unreadCount } = useNotificationCenter();
   const isScrolled = scrollProgress > 20;
 
@@ -172,9 +180,9 @@ export const Header = memo(function Header({
         } as React.CSSProperties
       }
     >
-      <div className="relative flex h-[var(--header-height)] items-center justify-between gap-2.5 px-3 xs:px-4 md:grid md:grid-cols-[180px,1fr,auto]">
+      <div className={cn("relative flex h-[var(--header-height)] items-center justify-between gap-2.5 px-3 xs:px-4 md:grid md:grid-cols-[180px,1fr,auto]", "lg:grid-cols-[minmax(280px,1fr)_minmax(0,640px)_minmax(280px,1fr)] lg:gap-6", CONTAINER_DO_COMPUTADOR)}>
         {/* LEFT: Logo and optional Back Button */}
-        <div className="z-[70] flex shrink-0 items-center gap-2 xs:gap-3 md:w-[180px]">
+        <div className={cn("z-[70] flex shrink-0 items-center gap-2 xs:gap-3 md:w-[180px]", "lg:w-auto lg:min-w-0")}>
           {showBackButton && (
             <button
               onClick={() => {
@@ -200,7 +208,7 @@ export const Header = memo(function Header({
             aria-label="Ir para o Início"
           >
             {logoSrc ? (
-              <div className="flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]">
+              <div className={cn("flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]", "lg:h-10 lg:max-w-[200px]")}>
                 <img
                   key={`${logoSelection.revision}:${logoState}`}
                   src={logoSrc}
@@ -282,8 +290,11 @@ export const Header = memo(function Header({
             className={cn(
               "mx-auto flex min-w-0 flex-1 items-center justify-center overflow-hidden px-1 sm:px-4 md:w-full",
               activeToast ? "max-w-[72px]" : "max-w-[140px]",
+              "lg:max-w-[640px] lg:gap-3",
             )}
-          />
+          >
+            {computador && <span className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-zinc-600"><LockKeyhole aria-hidden="true" className="size-4" />Compra segura</span>}
+          </div>
         ) : (
           <motion.div
             layout
@@ -298,6 +309,8 @@ export const Header = memo(function Header({
               activeToast
                 ? "max-w-[110px] xs:max-w-[145px] sm:max-w-[220px]"
                 : "max-w-lg",
+              "lg:max-w-[640px] lg:px-0",
+              activeToast && "lg:pr-[224px]",
             )}
           >
             <SearchBar
@@ -311,7 +324,7 @@ export const Header = memo(function Header({
         )}
 
         {/* RIGHT: Notification Morphing Container (Bell expands into Vinho Nobre rounded capsule) */}
-        <div className="z-[70] flex shrink-0 items-center justify-end gap-1.5 md:min-w-[100px]">
+        <div className={cn("z-[70] flex shrink-0 items-center justify-end gap-1.5 md:min-w-[100px]", "lg:relative lg:min-w-0")}>
           <AnimatePresence mode="wait">
             {activeToast ? (
               <motion.button
@@ -340,7 +353,7 @@ export const Header = memo(function Header({
                     dispensarToast();
                   }
                 }}
-                className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"
+                className={cn("flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95", "lg:absolute lg:right-[calc(100%+24px)] lg:max-w-[200px]")}
               >
                 <motion.div
                   initial={{ scale: 0.4, opacity: 0 }}
@@ -373,7 +386,7 @@ export const Header = memo(function Header({
                   ✨
                 </motion.span>
               </motion.button>
-            ) : (
+            ) : !computador && (
               <motion.div
                 layout
                 key="header-standard-actions"
@@ -388,15 +401,6 @@ export const Header = memo(function Header({
                 }}
                 className="flex items-center gap-2"
               >
-                {/*
-                  O carrinho do topo saiu em 24/08/2026. Ele era `hidden ...
-                  md:flex`, entao em tela larga aparecia AO MESMO TEMPO que o
-                  da barra de baixo — dois carrinhos, medidos vivos em 1280px
-                  nas posicoes (1176, 6) e (663, 716). A barra de baixo nunca
-                  some (em `md` ela so vira flutuante), logo o do topo era o
-                  que sobrava. Quem depende disto: `cartAnimation.ts`, que
-                  mira `#bottom-nav-cart` sempre.
-                */}
                 <button
                   onClick={() => {
                     haptic.light();
@@ -421,6 +425,11 @@ export const Header = memo(function Header({
               </motion.div>
             )}
           </AnimatePresence>
+          {computador && (
+            <Suspense fallback={null}>
+              <NavegacaoDoTopo currentView={currentView} onNavigate={onNavigate} onOpenNotifications={onOpenNotifications} />
+            </Suspense>
+          )}
         </div>
       </div>
     </header>
