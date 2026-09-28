@@ -27,7 +27,7 @@
  *
  * 1. `projeto_ref` como TEXTO LIVRE ia direto para o path da URL, com um
  *    token válido para TODOS os projetos da conta. Provado contra um stub:
- *    "dekxabvqdsuukijblazl/restart#" batia em POST /restart; e
+ *    "cafkrminfnokvgjqtkle/restart#" batia em POST /restart; e
  *    "x/../outroprojeto.../database/query#" fazia o INSERT do ledger ir
  *    para OUTRO projeto. Agora `PROJETO` só aceita "loja"/"sandbox"
  *    (`resolverRef`, lookup fechado + `Object.hasOwn` + regex

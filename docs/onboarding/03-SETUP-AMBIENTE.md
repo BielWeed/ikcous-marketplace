@@ -390,13 +390,15 @@ Replique à mão.
 
 ### Antes das regras: quais projetos existem, e qual é qual
 
-A org `vtwznprwuptaquiysenb` tem **dois** projetos. Confirme com
-`supabase projects list` antes de confiar nesta tabela — ela envelhece.
+Não são mais dois projetos na mesma org: a loja mudou de org em 28/09/2026.
+Confirme com `supabase projects list` antes de confiar nesta tabela — ela
+envelhece.
 
-| Ref | Nome | Região | O que é |
-| --- | --- | --- | --- |
-| `cafkrminfnokvgjqtkle` | BielWeed's Project | West US (Oregon) | **A loja no ar.** É o que está em `VITE_SUPABASE_URL` e na `DATABASE_URL` do `.env`. |
-| `lofznuxcvezrhxsgjqyg` | ikcous-mkt-priemira-cliente | South America (São Paulo) | **Sandbox do MCP.** Apesar do nome, não é loja de cliente nenhum. |
+| Ref | Nome | Região | Org | O que é |
+| --- | --- | --- | --- | --- |
+| `dekxabvqdsuukijblazl` | ikcous-loja | South America (São Paulo) | IKCOUS | **A loja no ar.** É o que está em `VITE_SUPABASE_URL` e na `DATABASE_URL` do `.env`. |
+| `lofznuxcvezrhxsgjqyg` | ikcous-mkt-priemira-cliente | South America (São Paulo) | `vtwznprwuptaquiysenb` (org antiga) | **Sandbox do MCP.** Apesar do nome, não é loja de cliente nenhum. |
+| `cafkrminfnokvgjqtkle` | BielWeed's Project | West US (Oregon) | `vtwznprwuptaquiysenb` (org antiga) | **Pausado desde 28/09/2026**, por fatura em aberto. Não volta — só aparece como histórico. |
 
 Existiu um terceiro, `jvgyjlbjhbfrncwbytls` (`ikcous-marketplace-br`), **excluído em 05/08/2026**.
 Se você encontrar esse ref em documento, script ou comentário, é resíduo — ver #85.
@@ -417,11 +419,6 @@ minuto (02:14 UTC), espelhando o ambiente de produção.
 
 Esses três arquivos estão no `.gitignore` — cada um já guardou credencial. Se o seu não existir,
 peça o modelo; não copie de produção.
-
-> **Armadilha:** `.agents_inactive/mcp_config.json` aponta para **produção**
-> (`dekxabvqdsuukijblazl`). Se alguém reativar aquelas skills copiando o config de volta, o MCP
-> passa a falar com a loja no ar — e ferramenta de IA escrevendo em produção não avisa antes.
-> Ao reativar qualquer coisa de `.agents_inactive/`, **conferir o `project_ref` primeiro.**
 
 O que o sandbox **não** é: não é o staging do INFRA-270 (#131). Aquele cartão precisa de um projeto
 cujo schema seja reprodutível a partir do repositório, e o schema deste nunca foi conferido contra
@@ -617,11 +614,18 @@ justifica, e não antes.
 
 ## 9. Backup e ponto de restauração
 
-Medido em 05/08/2026 com `supabase backups list --project-ref cafkrminfnokvgjqtkle`
-(`BANCO-040`, #40). Rode o comando em vez de confiar nesta seção — ela envelhece
-como qualquer outra.
+**O projeto novo (`dekxabvqdsuukijblazl`) está no plano Free desde 28/09/2026:
+sem backup automático, sem PITR.** O único ponto de restauração é o dump
+manual do procedimento abaixo, feito antes de CADA migration.
 
-| pergunta | resposta medida |
+A tabela seguinte é a medição de 05/08/2026 no projeto ANTIGO
+(`cafkrminfnokvgjqtkle`, pausado, não volta) — registro histórico daquele
+projeto, não vale para o atual.
+
+Medido com `supabase backups list --project-ref cafkrminfnokvgjqtkle`
+(`BANCO-040`, #40).
+
+| pergunta | resposta medida (projeto antigo) |
 | --- | --- |
 | Existe backup automático? | **Sim.** `walg_enabled: true` |
 | Frequência | **Diária**, por volta de 11:37 UTC (≈08:37 em Brasília) |
@@ -665,20 +669,13 @@ compraria por US$ 1.200 ao ano.
 
 ### O procedimento — obrigatório antes de qualquer migration
 
-Quatro passos. Nenhum custa dinheiro.
+O plano Free não tem backup automático — não existe "backup de hoje" para
+conferir. O `pg_dump` do passo 3 é o ÚNICO ponto de restauração, e por isso
+roda antes de CADA migration, não só da primeira de uma série.
 
-**1. Confirme que o backup de HOJE já saiu.** Não confie no horário: os backups
-variam ~8 minutos e um dia pode atrasar.
+Três passos. Nenhum custa dinheiro.
 
-```bash
-npx supabase backups list --project-ref dekxabvqdsuukijblazl
-```
-
-Olhe o `inserted_at` mais recente. **Se não for de hoje, pare e espere.** Rodar
-migration antes do backup do dia é o que transforma 25 minutos de exposição em
-23 horas.
-
-**2. Fotografe as policies.**
+**1. Fotografe as policies.**
 
 ```bash
 node scripts/db-snapshot-politicas.cjs
@@ -691,16 +688,16 @@ policies vivas**. O snapshot grava as 71 como `CREATE POLICY` executável, entã
 policy apagada por engano se recria por diff — **sem restaurar nada**, sem
 perder pedido nenhum.
 
-**3. Ensaie numa cópia antes de tocar produção.** O projeto
+**2. Ensaie numa cópia antes de tocar produção.** O projeto
 `lofznuxcvezrhxsgjqyg` já existe e já tem as três edge functions publicadas.
 Usá-lo como banco de ensaio não cria custo novo. É a `INFRA-270` (#131).
 
-**4. `pg_dump` completo antes da PRIMEIRA migration da série.** Com Docker no ar
-— ver a armadilha abaixo.
+**3. `pg_dump` completo antes de CADA migration.** Com Docker no ar — ver a
+armadilha abaixo.
 
-Os quatro somados cobrem o risco real. O que o PITR daria a mais é reverter erro
-percebido **tarde** — e para isso o backup de 7 dias já serve, com granularidade
-pior.
+Sem backup automático por trás, estes três passos são o que cobre o risco
+real — pular o dump de qualquer migration deixa a loja sem ponto de
+restauração nenhum até o próximo.
 
 ### Onde o snapshot vai parar
 

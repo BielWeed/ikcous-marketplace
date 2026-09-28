@@ -27,12 +27,12 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    supabase functions deploy send-push
    ```
 
-   **O comando pergunta em qual projeto, e vem com o cursor no errado.** Desde
-   05/08/2026 a org tem **dois** projetos — o `jvgyjlbjhbfrncwbytls` foi
-   excluído (#85). O que hospeda a loja é o `dekxabvqdsuukijblazl`, o mesmo que
-   está em `VITE_SUPABASE_URL`; o outro é o `lofznuxcvezrhxsgjqyg`
-   (`ikcous-mkt-priemira-cliente`), que aparece **antes** dele na lista. Dar
-   Enter direto publica no lugar errado sem erro nenhum. Para pular a escolha:
+   **O comando pergunta em qual projeto, e o cursor pode não estar no certo —
+   confira antes de confirmar.** O `jvgyjlbjhbfrncwbytls` foi excluído em
+   05/08/2026 (#85). O que hospeda a loja é o `dekxabvqdsuukijblazl` (org
+   IKCOUS), o mesmo que está em `VITE_SUPABASE_URL`; o `lofznuxcvezrhxsgjqyg`
+   é outro projeto, na org antiga — não é a loja. Dar Enter direto pode
+   publicar no lugar errado sem erro nenhum. Para pular a escolha:
    `--project-ref dekxabvqdsuukijblazl`.
 
    Desde 17/09/2026 dá para publicar sem CLI na máquina: o workflow
@@ -90,10 +90,11 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    ter sido criado nos últimos 15 minutos. O pior caso de um id vazado é
    duplicar o aviso de um pedido que acabou de entrar.
 
-   **O que está publicado hoje** — medido em 11/08/2026, depois da
+   **O que estava publicado em 11/08/2026** — no projeto ANTIGO
+   (`cafkrminfnokvgjqtkle`, pausado, não volta), medido depois da
    despublicação da `send-order-whatsapp`, com
-   `supabase functions list --project-ref dekxabvqdsuukijblazl`. Esta tabela
-   envelhece; rode o comando em vez de confiar nela:
+   `supabase functions list --project-ref cafkrminfnokvgjqtkle`. Esta tabela é
+   histórico daquele projeto:
 
    | Função | Versão | Atualizada em (UTC) |
    | --- | --- | --- |
@@ -107,8 +108,14 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
 
    São sete — as quatro antigas mais as três do checkout então publicadas (a
    folha da §5.3 tem cinco desde 15/09/2026; esta tabela é a foto de
-   agosto/2026). A `send-order-whatsapp`, despublicada em 11/08/2026, não
-   aparece mais.
+   agosto/2026, do projeto antigo). A `send-order-whatsapp`, despublicada em
+   11/08/2026, não aparece mais.
+
+   **No projeto novo (`dekxabvqdsuukijblazl`), as onze functions foram
+   publicadas em 28/09/2026 às 06:05 UTC** — a numeração de versão recomeçou
+   ali (hoje na v5, por causa de republicações) e a tabela acima não vale para
+   ele. Rode `supabase functions list --project-ref dekxabvqdsuukijblazl` para
+   ver o estado atual.
 
    Ressalvas desta tabela, cada uma com sua própria data:
 

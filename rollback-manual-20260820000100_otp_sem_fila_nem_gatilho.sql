@@ -14,7 +14,8 @@
 --    incidente.
 --
 -- O corpo de handle_new_otp_verification e' copia literal do baseline
--- 20260806000000_baseline_do_schema_vivo.sql, linhas 2907-2942.
+-- 20260806000000_baseline_do_schema_vivo.sql, linhas 2907-2942, exceto o ref
+-- do projeto, trocado para dekxabvqdsuukijblazl em 28/09/2026.
 
 CREATE OR REPLACE FUNCTION public.handle_new_otp_verification() RETURNS "trigger"
     LANGUAGE plpgsql SECURITY DEFINER
