@@ -29,11 +29,14 @@ import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
 import type { ProdutoEncontradoNaBusca } from "@/components/admin/pdv/CupomDaVenda";
 import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
 import { LeitorDeCodigo } from "@/components/admin/pdv/LeitorDeCodigo";
+import { PixDoBalcao } from "@/components/admin/pdv/PixDoBalcao";
 import { ReciboDaVenda } from "@/components/admin/pdv/ReciboDaVenda";
 import { branding } from "@/config/branding";
+import { pagamentoOnlineLigado } from "@/config/configuracaoDaLoja";
 import { useStore } from "@/contexts/StoreContext";
 import {
   chaveDoItemDoCupom,
+  totalDaVenda,
   useVendaPresencial,
 } from "@/hooks/useVendaPresencial";
 import type {
@@ -44,6 +47,11 @@ import type {
   RespostaDoCodigo,
 } from "@/hooks/useVendaPresencial";
 import type { Leitura } from "@/lib/leitor/decodificador";
+import type {
+  AcaoDoPixDoBalcao,
+  LinhaDoPixDoBalcao,
+  RespostaDoPixDoBalcao,
+} from "@/lib/pix-do-balcao";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { ScanBarcode } from "lucide-react";
@@ -77,7 +85,8 @@ export function AdminPdvView({
   const camadaAberta =
     estado.etapa === "escolha_de_variacao" ||
     estado.etapa === "cliente" ||
-    estado.etapa === "fechamento";
+    estado.etapa === "fechamento" ||
+    estado.etapa === "pix";
 
   // Padrão MEDIDO do commit d10d635 (AdminBannersView.tsx:1230-1275),
   // adaptado de "um diálogo" para "uma das três camadas do balcão".
@@ -145,6 +154,12 @@ export function AdminPdvView({
         efetuouFechamentoRef.current = true;
         if (etapaDaCamada === "escolha_de_variacao") {
           despachar({ tipo: "variacao_cancelada" });
+        } else if (etapaDaCamada === "pix") {
+          // O PIX aberto é uma venda JÁ gravada, com estoque reservado: o
+          // Voltar não pode largá-la com o QR pagável. A saída é o botão
+          // "Cancelar este PIX" (cancela no Mercado Pago antes).
+          efetuouFechamentoRef.current = false;
+          toast.info("Para sair, cancele o PIX na tela ou espere o pagamento.");
         } else {
           despachar({ tipo: "etapa_pedida", etapa: "cupom" });
         }
@@ -471,6 +486,145 @@ export function AdminPdvView({
     }
   }
 
+  // ==========================================================================
+  // PIX COM QR (frente A, 28/09/2026). A venda nasce À ESPERA do PIX em
+  // `iniciar_venda_presencial_pix` (migration 20261184000000) com a chave
+  // PRÓPRIA do PIX; a edge `cobrar-pix-no-balcao` cria/reconsulta/cancela a
+  // cobrança; quem confirma é o caminho de sempre (webhook, reconciliação ou
+  // "Conferir agora" → `confirmar_pagamento`).
+  // ==========================================================================
+  const pixQrDisponivel = pagamentoOnlineLigado();
+
+  async function aoGerarPix(): Promise<void> {
+    // A chave nasce ANTES da chamada e vai para o rascunho: se a resposta se
+    // perder, o retry usa a MESMA chave e recebe o MESMO pedido.
+    const chave = estado.pix?.chave ?? globalThis.crypto.randomUUID();
+    despachar({ tipo: "pix_preparado", chave });
+    const { data, error } = await supabase.rpc(
+      "iniciar_venda_presencial_pix" as any,
+      {
+        p_itens: estado.itens.map((item) => ({
+          product_id: item.productId,
+          variant_id: item.variantId,
+          quantity: item.quantidade,
+        })),
+        p_idempotency_key: chave,
+        p_cliente_user_id:
+          estado.cliente.tipo === "cadastrado" ? estado.cliente.userId : null,
+        p_cliente_nome:
+          estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
+        p_cliente_whatsapp:
+          estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
+        p_desconto: estado.desconto,
+        p_observacao: estado.desconto > 0 ? estado.motivoDoDesconto : null,
+      } as any,
+    );
+    if (error) throw error;
+    const resposta = data as unknown as RespostaDoFechamento;
+    despachar({ tipo: "pix_aberto", orderId: resposta.order.id });
+  }
+
+  const orderIdDoPix = estado.pix?.orderId ?? null;
+
+  async function cobrarPix(
+    acao: AcaoDoPixDoBalcao,
+  ): Promise<RespostaDoPixDoBalcao> {
+    const { data, error } = await (supabase as any).functions.invoke(
+      "cobrar-pix-no-balcao",
+      { body: { acao, orderId: orderIdDoPix } },
+    );
+    if (error) {
+      // Contrato do supabase-js v2: em não-2xx o corpo vem em
+      // `error.context` (um Response) — a frase da edge mora lá.
+      let mensagem = "Não consegui falar com o pagamento agora. Tente de novo.";
+      try {
+        const corpo = await (error as any).context?.json?.();
+        if (typeof corpo?.error === "string") mensagem = corpo.error;
+      } catch {
+        // corpo ilegível: fica a frase genérica.
+      }
+      throw new Error(mensagem);
+    }
+    return data as RespostaDoPixDoBalcao;
+  }
+
+  async function consultarPix(): Promise<LinhaDoPixDoBalcao | null> {
+    if (!orderIdDoPix) return null;
+    const { data, error } = await supabase
+      .from("marketplace_orders")
+      .select("payment_status, status, expires_at")
+      .eq("id", orderIdDoPix)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as LinhaDoPixDoBalcao | null) ?? null;
+  }
+
+  // Pago: o recibo sai do BANCO (a linha e os itens gravados), nunca da tela
+  // — depois de um F5 a tela só tem o rascunho.
+  async function aoPixPago(): Promise<void> {
+    if (!orderIdDoPix) return;
+    const [{ data: linha }, { data: itens }] = await Promise.all([
+      supabase
+        .from("marketplace_orders")
+        .select(
+          "id, created_at, total, subtotal, discount, payment_method, user_id, customer_name, customer_data",
+        )
+        .eq("id", orderIdDoPix)
+        .maybeSingle(),
+      supabase
+        .from("marketplace_order_items")
+        .select("product_id, variant_id, quantity, price, product_name")
+        .eq("order_id", orderIdDoPix),
+    ]);
+    const pedido = (linha as unknown as LinhaDoPedidoDoBalcao | null) ?? null;
+    const recibo: ReciboDaVendaRegistrada = {
+      orderId: orderIdDoPix,
+      numero: orderIdDoPix.slice(-6).toUpperCase(),
+      criadoEm: pedido?.created_at ?? new Date().toISOString(),
+      total: Number(pedido?.total ?? totalDaVenda(estado)),
+      subtotal: Number(pedido?.subtotal ?? subtotal),
+      desconto: Number(pedido?.discount ?? estado.desconto),
+      pagamento: "pix_qr",
+      cliente: pedido ? clienteDoRecibo(pedido) : estado.cliente,
+      itens:
+        itens && itens.length > 0
+          ? montarItensDoRecibo(itens as unknown as ItemGravadoNoPedido[])
+          : estado.itens,
+      jaExistia: false,
+    };
+    despachar({ tipo: "venda_registrada", recibo });
+    toast.success("PIX recebido! Venda concluída.");
+    // Comprovante por e-mail só DEPOIS de pago (a edge reserva o envio uma
+    // vez só — se o webhook já mandou, esta chamada não repete).
+    void (supabase.functions as any)
+      .invoke("send-order-confirmation", { body: { orderId: orderIdDoPix } })
+      .catch((err: unknown) => {
+        console.warn("send-order-confirmation: comprovante não saiu", err);
+      });
+  }
+
+  // Aviso de caixa fechado no dinheiro (achado D8): lido quando o fechamento
+  // abre. Falha de leitura (Financeiro não publicado, rede) = sem aviso —
+  // nunca um palpite.
+  const [caixaAberto, setCaixaAberto] = useState<boolean | null>(null);
+  const fechamentoAberto = estado.etapa === "fechamento";
+  useEffect(() => {
+    if (!fechamentoAberto) return;
+    let vivo = true;
+    void (async () => {
+      try {
+        const { data, error } = await supabase.rpc("fin_caixa_atual" as any);
+        if (!vivo) return;
+        setCaixaAberto(error ? null : data !== null);
+      } catch {
+        if (vivo) setCaixaAberto(null);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [fechamentoAberto]);
+
   return (
     // pb-admin lg:pb-12 — o MESMO respiro das outras telas do admin: sem ele,
     // no navegador do celular o "Registrar venda" (último elemento da última
@@ -503,7 +657,7 @@ export function AdminPdvView({
         </button>
       )}
 
-      {estado.etapa !== "recibo" && (
+      {estado.etapa !== "recibo" && estado.etapa !== "pix" && (
         <CupomDaVenda
           estado={estado}
           despachar={despachar}
@@ -527,6 +681,22 @@ export function AdminPdvView({
           despachar={despachar}
           aoRegistrarVenda={aoRegistrarVenda}
           limparCupom={limparCupom}
+          pixQrDisponivel={pixQrDisponivel}
+          aoGerarPix={aoGerarPix}
+          caixaAberto={caixaAberto}
+        />
+      )}
+
+      {estado.etapa === "pix" && orderIdDoPix && (
+        <PixDoBalcao
+          key={orderIdDoPix}
+          numero={orderIdDoPix.slice(-6).toUpperCase()}
+          total={totalDaVenda(estado)}
+          cobrar={cobrarPix}
+          consultar={consultarPix}
+          aoPago={() => void aoPixPago()}
+          aoEncerrado={() => despachar({ tipo: "pix_encerrado" })}
+          aoDescartarCupom={limparCupom}
         />
       )}
 

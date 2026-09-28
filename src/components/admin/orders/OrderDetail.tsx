@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
@@ -20,7 +21,7 @@ import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
-import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
+import type { Order, OrderStatus, PaymentStatus } from "@/types";
 import {
   Check,
   CheckCircle2,
@@ -118,12 +119,9 @@ const statusConfigByKey = new Map(Object.entries(statusConfig));
 // "online" existe desde a Fase 2 (CHECKOUT-010): pedido cobrado no site
 // via Mercado Pago, não confundir com dinheiro na entrega — quem lança o
 // caixa a partir daqui não pode ler "Dinheiro Espécie" e cobrar de novo.
-const getPaymentMethodLabel = (method: PaymentMethod) => {
-  if (method === "pix") return "PIX";
-  if (method === "card") return "Cartão de crédito";
-  if (method === "online") return "Pagamento Online";
-  return "Dinheiro Espécie";
-};
+// Achado D4 (28/09): "Cartão de crédito" para a maquininha e "Dinheiro
+// Espécie" para forma desconhecida — agora o rótulo único, com canal.
+const getPaymentMethodLabel = (order: Order) => rotuloDaFormaDoPedido(order);
 
 // T3 (lote B, 12/09) — a frase-situação do dinheiro no cabeçalho da seção
 // Pagamento (emprestada da direção "Dinheiro primeiro"): a primeira dúvida
@@ -177,18 +175,21 @@ function fraseSituacaoDoPagamento(order: Order): string {
       ? `Recebido na entrega · R$ ${valor}`
       : `Falta receber na entrega · R$ ${valor}`;
   }
-  // Cobrança pelo site, sem atenção pendente.
+  // Cobrança pelo app — no site, ou o PIX com QR do balcão (28/09): mesmo
+  // gateway, outro lugar; a frase diz onde.
+  const onde =
+    order.canal === "presencial" ? "no balcão (PIX com QR)" : "no site";
   if (order.paymentStatus === "pago") {
-    return `Pago no site · R$ ${valor}`;
+    return `Pago ${onde} · R$ ${valor}`;
   }
   if (order.paymentStatus === "aguardando") {
-    return `Aguardando pagamento no site · R$ ${valor}`;
+    return `Aguardando pagamento ${onde} · R$ ${valor}`;
   }
   if (order.paymentStatus === "recusado") {
-    return `Pagamento recusado no site · R$ ${valor}`;
+    return `Pagamento recusado ${onde} · R$ ${valor}`;
   }
   if (order.paymentStatus === "expirado") {
-    return `Pagamento expirado no site · R$ ${valor}`;
+    return `Pagamento expirado ${onde} · R$ ${valor}`;
   }
   // `null` com cobrança online não existe na prática (a cobrança nasce
   // "aguardando"); se aparecer, o rótulo do selo é a frase — sem inventar.
@@ -305,7 +306,7 @@ function OrderHeader({ order }: Readonly<OrderHeaderProps>) {
         />
       </div>
       <p className="text-[11px] font-medium text-zinc-500">
-        Feito em {data} às {hora} · {getPaymentMethodLabel(order.paymentMethod)}
+        Feito em {data} às {hora} · {getPaymentMethodLabel(order)}
       </p>
     </header>
   );
@@ -798,7 +799,7 @@ function OrderFinanceCard({
                 />
               </div>
               <p className="mt-1 truncate text-xs font-bold uppercase tracking-tight text-white">
-                {getPaymentMethodLabel(order.paymentMethod)}
+                {getPaymentMethodLabel(order)}
               </p>
             </div>
           </div>

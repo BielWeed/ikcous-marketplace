@@ -54,7 +54,11 @@ async function um(cliente, sql, params = []) {
 const num = (v) => Math.round(Number(v) * 100) / 100;
 
 async function estoque(cliente) {
-  const p = await um(cliente, "SELECT estoque FROM public.produtos WHERE id = $1", [P_SIMPLES]);
+  const p = await um(
+    cliente,
+    "SELECT estoque FROM public.produtos WHERE id = $1",
+    [P_SIMPLES],
+  );
   const v = await um(
     cliente,
     "SELECT stock_increment FROM public.product_variants WHERE id = $1",
@@ -155,7 +159,10 @@ PROVAS.push({
 
     await logar(cliente, U_CLIENTE);
     await assert.rejects(
-      () => iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 1 }], { chave: CHAVE(9) }),
+      () =>
+        iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 1 }], {
+          chave: CHAVE(9),
+        }),
       /Acesso negado/,
       "cliente comum não abre PIX de balcão",
     );
@@ -167,12 +174,19 @@ PROVAS.push({
       "sem chave não há retry seguro",
     );
 
-    await cliente.query("UPDATE public.store_config SET pagamento_online = false WHERE id = 1");
+    await cliente.query(
+      "UPDATE public.store_config SET pagamento_online = false WHERE id = 1",
+    );
     await assert.rejects(
-      () => iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 1 }], { chave: CHAVE(9) }),
+      () =>
+        iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 1 }], {
+          chave: CHAVE(9),
+        }),
       /PIX pelo app está desligado/,
     );
-    await cliente.query("UPDATE public.store_config SET pagamento_online = true WHERE id = 1");
+    await cliente.query(
+      "UPDATE public.store_config SET pagamento_online = true WHERE id = 1",
+    );
 
     await assert.rejects(
       () =>
@@ -183,7 +197,11 @@ PROVAS.push({
         }),
       /Um PIX precisa de valor maior que zero/,
     );
-    assert.deepEqual(await estoque(cliente), { simples: 10, pp: 5 }, "recusa não mexe em estoque");
+    assert.deepEqual(
+      await estoque(cliente),
+      { simples: 10, pp: 5 },
+      "recusa não mexe em estoque",
+    );
   },
 });
 
@@ -197,7 +215,12 @@ PROVAS.push({
         { product_id: P_SIMPLES, variant_id: null, quantity: 2 },
         { product_id: P_COM_VARIACAO, variant_id: V_PP, quantity: 1 },
       ],
-      { chave: CHAVE(1), desconto: 0.5, observacao: "arredondamento", clienteUserId: U_CLIENTE },
+      {
+        chave: CHAVE(1),
+        desconto: 0.5,
+        observacao: "arredondamento",
+        clienteUserId: U_CLIENTE,
+      },
     );
     assert.equal(venda.ja_existia, false);
     const o = venda.order;
@@ -209,16 +232,31 @@ PROVAS.push({
     assert.equal(o.metodo_online, "pix");
     assert.equal(o.vendedor_id, U_ADMIN);
     assert.equal(o.user_id, U_CLIENTE);
-    assert.equal(o.pagamento_recebido_em, null, "nenhum dinheiro recebido ainda");
+    assert.equal(
+      o.pagamento_recebido_em,
+      null,
+      "nenhum dinheiro recebido ainda",
+    );
     assert.equal(o.gateway_payment_id, null, "a cobrança é da edge");
     assert.equal(num(o.subtotal), 57.5, "2 × 25,00 + 7,50 do banco");
     assert.equal(num(o.total), 57, "subtotal - desconto");
     const minutos = (new Date(o.expires_at).getTime() - Date.now()) / 60000;
-    assert.ok(minutos > 28 && minutos <= 30.5, `reserva de 30 min (veio ${minutos})`);
+    assert.ok(
+      minutos > 28 && minutos <= 30.5,
+      `reserva de 30 min (veio ${minutos})`,
+    );
     assert.equal(venda.items.length, 2);
-    assert.deepEqual(await estoque(cliente), { simples: 8, pp: 4 }, "estoque reservado (XOR)");
+    assert.deepEqual(
+      await estoque(cliente),
+      { simples: 8, pp: 4 },
+      "estoque reservado (XOR)",
+    );
     assert.deepEqual(await historico(cliente, o.id), [
-      { old_status: null, new_status: "pending", notes: "Venda no balcão — aguardando o PIX" },
+      {
+        old_status: null,
+        new_status: "pending",
+        notes: "Venda no balcão — aguardando o PIX",
+      },
     ]);
     const pagamentos = await um(
       cliente,
@@ -226,8 +264,16 @@ PROVAS.push({
       [o.id],
     );
     assert.equal(pagamentos.n, 0, "payment_history é do recebimento manual");
-    assert.deepEqual(await movimentosDoPedido(cliente, o.id), [], "aguardando não entra no Financeiro");
-    assert.deepEqual(await vendasDoCrm(cliente, o.id), [], "aguardando não é venda no CRM");
+    assert.deepEqual(
+      await movimentosDoPedido(cliente, o.id),
+      [],
+      "aguardando não entra no Financeiro",
+    );
+    assert.deepEqual(
+      await vendasDoCrm(cliente, o.id),
+      [],
+      "aguardando não é venda no CRM",
+    );
   },
 });
 
@@ -235,16 +281,27 @@ PROVAS.push({
   nome: "(c) idempotência: mesma chave = mesmo pedido; chave de dinheiro ou de outro balconista = 23505",
   corpo: async (cliente) => {
     await logar(cliente, U_ADMIN);
-    const repetida = await iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 5 }], {
-      chave: CHAVE(1),
-    });
+    const repetida = await iniciar(
+      cliente,
+      [{ product_id: P_SIMPLES, quantity: 5 }],
+      {
+        chave: CHAVE(1),
+      },
+    );
     assert.equal(repetida.ja_existia, true);
     assert.equal(repetida.order.id, estado.pedido1);
-    assert.deepEqual(await estoque(cliente), { simples: 8, pp: 4 }, "sem segunda baixa");
+    assert.deepEqual(
+      await estoque(cliente),
+      { simples: 8, pp: 4 },
+      "sem segunda baixa",
+    );
 
     await logar(cliente, U_ADMIN_2);
     await assert.rejects(
-      () => iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 1 }], { chave: CHAVE(1) }),
+      () =>
+        iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 1 }], {
+          chave: CHAVE(1),
+        }),
       (e) => e.code === "23505",
       "outro balconista não recebe o PIX alheio",
     );
@@ -256,7 +313,10 @@ PROVAS.push({
     );
     assert.deepEqual(await estoque(cliente), { simples: 7, pp: 4 });
     await assert.rejects(
-      () => iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 1 }], { chave: CHAVE(2) }),
+      () =>
+        iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 1 }], {
+          chave: CHAVE(2),
+        }),
       (e) => e.code === "23505",
       "a chave de uma venda em dinheiro não devolve a venda em dinheiro como PIX",
     );
@@ -281,7 +341,11 @@ PROVAS.push({
     assert.equal(o.status, "delivered", "o cliente levou a mercadoria");
     assert.equal(o.payment_status, "pago");
     assert.ok(o.paid_at instanceof Date);
-    assert.deepEqual(await estoque(cliente), { simples: 7, pp: 4 }, "estoque não se mexe no pagamento");
+    assert.deepEqual(
+      await estoque(cliente),
+      { simples: 7, pp: 4 },
+      "estoque não se mexe no pagamento",
+    );
     const h = await historico(cliente, id);
     assert.deepEqual(h[h.length - 1], {
       old_status: "pending",
@@ -302,7 +366,11 @@ PROVAS.push({
     assert.equal(crm[0].canal, "presencial");
 
     assert.equal(await confirmar(cliente, id, "ORDTST-BALCAO-1"), "ja_pago");
-    assert.equal((await historico(cliente, id)).length, h.length, "sem histórico duplicado");
+    assert.equal(
+      (await historico(cliente, id)).length,
+      h.length,
+      "sem histórico duplicado",
+    );
   },
 });
 
@@ -310,9 +378,13 @@ PROVAS.push({
   nome: "(e) expira sem pagar → estoque de volta; pagamento tardio = pago_apos_expirar, nunca entregue",
   corpo: async (cliente) => {
     await logar(cliente, U_ADMIN);
-    const venda = await iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 3 }], {
-      chave: CHAVE(3),
-    });
+    const venda = await iniciar(
+      cliente,
+      [{ product_id: P_SIMPLES, quantity: 3 }],
+      {
+        chave: CHAVE(3),
+      },
+    );
     const id = venda.order.id;
     assert.deepEqual(await estoque(cliente), { simples: 4, pp: 4 });
     await cliente.query(
@@ -320,13 +392,31 @@ PROVAS.push({
       [id],
     );
     await cliente.query("SELECT public.expirar_pedidos_vencidos()");
-    let o = await um(cliente, "SELECT status, payment_status FROM public.marketplace_orders WHERE id = $1", [id]);
+    let o = await um(
+      cliente,
+      "SELECT status, payment_status FROM public.marketplace_orders WHERE id = $1",
+      [id],
+    );
     assert.deepEqual(o, { status: "cancelled", payment_status: "expirado" });
-    assert.deepEqual(await estoque(cliente), { simples: 7, pp: 4 }, "a reserva voltou");
+    assert.deepEqual(
+      await estoque(cliente),
+      { simples: 7, pp: 4 },
+      "a reserva voltou",
+    );
 
-    assert.equal(await confirmar(cliente, id, "ORDTST-BALCAO-3"), "pago_apos_expirar");
-    o = await um(cliente, "SELECT status, payment_status FROM public.marketplace_orders WHERE id = $1", [id]);
-    assert.deepEqual(o, { status: "cancelled", payment_status: "pago_apos_expirar" });
+    assert.equal(
+      await confirmar(cliente, id, "ORDTST-BALCAO-3"),
+      "pago_apos_expirar",
+    );
+    o = await um(
+      cliente,
+      "SELECT status, payment_status FROM public.marketplace_orders WHERE id = $1",
+      [id],
+    );
+    assert.deepEqual(o, {
+      status: "cancelled",
+      payment_status: "pago_apos_expirar",
+    });
     assert.ok(
       !(await historico(cliente, id)).some((l) => l.new_status === "delivered"),
       "pago depois de expirar é caso de atenção, não de entrega",
@@ -338,9 +428,13 @@ PROVAS.push({
   nome: "(f) cancelado pela loja antes de pagar → estoque de volta; pagamento tardio fica cancelado",
   corpo: async (cliente) => {
     await logar(cliente, U_ADMIN);
-    const venda = await iniciar(cliente, [{ product_id: P_SIMPLES, quantity: 1 }], {
-      chave: CHAVE(4),
-    });
+    const venda = await iniciar(
+      cliente,
+      [{ product_id: P_SIMPLES, quantity: 1 }],
+      {
+        chave: CHAVE(4),
+      },
+    );
     const id = venda.order.id;
     assert.deepEqual(await estoque(cliente), { simples: 6, pp: 4 });
     await cliente.query(
@@ -352,8 +446,15 @@ PROVAS.push({
       [id],
     );
     assert.deepEqual(await estoque(cliente), { simples: 7, pp: 4 });
-    assert.equal(await confirmar(cliente, id, "ORDTST-BALCAO-4"), "pago_apos_expirar");
-    const o = await um(cliente, "SELECT status FROM public.marketplace_orders WHERE id = $1", [id]);
+    assert.equal(
+      await confirmar(cliente, id, "ORDTST-BALCAO-4"),
+      "pago_apos_expirar",
+    );
+    const o = await um(
+      cliente,
+      "SELECT status FROM public.marketplace_orders WHERE id = $1",
+      [id],
+    );
     assert.equal(o.status, "cancelled");
   },
 });
@@ -370,10 +471,16 @@ PROVAS.push({
       [ORDER_SITE, U_CLIENTE],
     );
     assert.equal(await confirmar(cliente, ORDER_SITE, "ORDTST-SITE-1"), "pago");
-    const o = await um(cliente, "SELECT status FROM public.marketplace_orders WHERE id = $1", [
-      ORDER_SITE,
-    ]);
-    assert.equal(o.status, "pending", "pedido do site pago segue para separação, não 'entregue'");
+    const o = await um(
+      cliente,
+      "SELECT status FROM public.marketplace_orders WHERE id = $1",
+      [ORDER_SITE],
+    );
+    assert.equal(
+      o.status,
+      "pending",
+      "pedido do site pago segue para separação, não 'entregue'",
+    );
   },
 });
 
@@ -396,14 +503,22 @@ async function main() {
         console.error(`  FALHOU ${nome}`);
         console.error(`    ${erro.message}`);
         linhas.push(`- ❌ ${nome}\n  - \`${erro.message}\``);
-        anexarAoSummary("Prova viva do PIX do balcão (rpc-ci)", linhas.join("\n"));
-        falhar("FALHOU", "Uma regra do PIX do balcão foi quebrada — ver acima qual.");
+        anexarAoSummary(
+          "Prova viva do PIX do balcão (rpc-ci)",
+          linhas.join("\n"),
+        );
+        falhar(
+          "FALHOU",
+          "Uma regra do PIX do balcão foi quebrada — ver acima qual.",
+        );
       }
     }
   } finally {
     await cliente.end().catch(() => {});
   }
-  console.log(`\n[pix-do-balcao] ${PROVAS.length}/${PROVAS.length} provas passaram.`);
+  console.log(
+    `\n[pix-do-balcao] ${PROVAS.length}/${PROVAS.length} provas passaram.`,
+  );
   anexarAoSummary(
     "Prova viva do PIX do balcão (rpc-ci)",
     `${linhas.join("\n")}\n\n**${PROVAS.length}/${PROVAS.length} provas** contra as migrations aplicadas do zero.`,

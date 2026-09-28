@@ -171,6 +171,9 @@ export interface Order {
   discount: number;
   total: number;
   paymentMethod: PaymentMethod;
+  /** Qual forma pelo app (`metodo_online`: pix | credito | debito) quando
+   * `paymentMethod === "online"`; `null`/ausente fora disso. */
+  metodoOnline?: string | null;
   status: OrderStatus;
   /**
    * Estado da cobrança online (webhook do Mercado Pago). Os 64 pedidos

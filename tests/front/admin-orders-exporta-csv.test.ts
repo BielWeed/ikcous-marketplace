@@ -110,7 +110,7 @@ describe("pedidosParaCsv", () => {
     // ";Site" no fim: o fixture `pedido()` não declara `canal`, e pedido
     // sem canal é tratado como online (lote C4 — C4.1/C4.3).
     expect(csv).toBe(
-      `\uFEFF${CABECALHO}\r\n#ABC123;08/09/2026 09:07;João Silva;11987654321;Novo Pedido;PIX Instantâneo;Aguardando pagamento;1234,50;São Paulo;SP;;1234,50;0,00;0,00;Site`,
+      `\uFEFF${CABECALHO}\r\n#ABC123;08/09/2026 09:07;João Silva;11987654321;Novo Pedido;PIX na entrega;Aguardando pagamento;1234,50;São Paulo;SP;;1234,50;0,00;0,00;Site`,
     );
   });
 
@@ -168,7 +168,26 @@ describe("pedidosParaCsv", () => {
           paymentMethod: "online",
         }),
       ]),
-    ).toContain(";Ana;;Novo Pedido;Outro;Sem cobrança online;1234,50;;");
+    ).toContain(
+      ";Ana;;Novo Pedido;Pagamento pelo app;Sem cobrança online;1234,50;;",
+    );
+  });
+
+  // Achado D4 (28/09): a planilha usa o MESMO rótulo da ficha, com canal.
+  it.each([
+    [{ paymentMethod: "card", canal: "presencial" }, "Cartão na maquininha"],
+    [{ paymentMethod: "pix", canal: "presencial" }, "PIX na chave da loja"],
+    [
+      { paymentMethod: "online", metodoOnline: "pix", canal: "presencial" },
+      "PIX com QR no balcão",
+    ],
+    [
+      { paymentMethod: "online", metodoOnline: "credito" },
+      "Cartão de crédito pelo app",
+    ],
+    [{ paymentMethod: "cash" }, "Dinheiro"],
+  ])("forma %o vira '%s'", (extra, rotulo) => {
+    expect(pedidosParaCsv([pedido(extra as any)])).toContain(`;${rotulo};`);
   });
 
   it.each([

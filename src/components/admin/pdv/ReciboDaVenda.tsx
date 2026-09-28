@@ -13,6 +13,7 @@ import type {
   ClienteDaVenda,
   ReciboDaVendaRegistrada,
 } from "@/hooks/useVendaPresencial";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 import {
@@ -72,7 +73,8 @@ function construirOrderParaImpressao(recibo: ReciboDaVendaRegistrada): Order {
     shipping: 0,
     discount: recibo.desconto,
     total: recibo.total,
-    paymentMethod: recibo.pagamento,
+    paymentMethod: recibo.pagamento === "pix_qr" ? "online" : recibo.pagamento,
+    metodoOnline: recibo.pagamento === "pix_qr" ? "pix" : null,
     status: "delivered",
     createdAt: recibo.criadoEm,
     updatedAt: recibo.criadoEm,
@@ -81,14 +83,16 @@ function construirOrderParaImpressao(recibo: ReciboDaVendaRegistrada): Order {
   };
 }
 
-const ROTULO_DO_PAGAMENTO: Record<
-  ReciboDaVendaRegistrada["pagamento"],
-  string
-> = {
-  cash: "Dinheiro",
-  pix: "PIX na hora",
-  card: "Cartão na maquininha",
-};
+/** O MESMO rótulo da ficha do pedido e da planilha (achado D4, 28/09). */
+function rotuloDoPagamento(
+  pagamento: ReciboDaVendaRegistrada["pagamento"],
+): string {
+  return rotuloDaFormaDoPedido({
+    paymentMethod: pagamento === "pix_qr" ? "online" : pagamento,
+    metodoOnline: pagamento === "pix_qr" ? "pix" : null,
+    canal: "presencial",
+  });
+}
 
 export function ReciboDaVenda({
   recibo,
@@ -169,7 +173,7 @@ export function ReciboDaVenda({
         </div>
         <div className="flex justify-between text-zinc-500">
           <span>Pagamento</span>
-          <span>{ROTULO_DO_PAGAMENTO[recibo.pagamento]}</span>
+          <span>{rotuloDoPagamento(recibo.pagamento)}</span>
         </div>
       </div>
 

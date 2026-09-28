@@ -84,7 +84,9 @@ Deno.test("assinatura: chave de idempotencia OBRIGATORIA em 2o lugar, SECURITY D
   );
   assertStringIncludes(
     corpoRpcN,
-    norm(`IF p_idempotency_key IS NULL THEN RAISE EXCEPTION USING ERRCODE='22023'`),
+    norm(
+      `IF p_idempotency_key IS NULL THEN RAISE EXCEPTION USING ERRCODE='22023'`,
+    ),
   );
 });
 
@@ -147,14 +149,22 @@ Deno.test("idempotencia casa por canal + vendedor + forma 'online', ANTES da che
     ),
   );
   assertEquals(
-    (corpoRpcN.match(/v_metodo_existente IS DISTINCT FROM 'online'/g) || []).length,
+    (corpoRpcN.match(/v_metodo_existente IS DISTINCT FROM 'online'/g) || [])
+      .length,
     2,
     "a guarda de forma vale na leitura inicial E na corrida",
   );
-  const posIdem = corpoRpc.indexOf("WHERE o.idempotency_key = p_idempotency_key");
-  const posLigado = corpoRpc.indexOf("public.forma_de_pagamento_aceita('online')");
+  const posIdem = corpoRpc.indexOf(
+    "WHERE o.idempotency_key = p_idempotency_key",
+  );
+  const posLigado = corpoRpc.indexOf(
+    "public.forma_de_pagamento_aceita('online')",
+  );
   assert(posIdem !== -1 && posLigado !== -1);
-  assert(posIdem < posLigado, "retry de venda que já nasceu não pode ser barrado pelo interruptor");
+  assert(
+    posIdem < posLigado,
+    "retry de venda que já nasceu não pode ser barrado pelo interruptor",
+  );
 });
 
 Deno.test("total zero nao vira PIX e desconto maior que a venda e' recusado", () => {
@@ -167,14 +177,17 @@ Deno.test("total zero nao vira PIX e desconto maior que a venda e' recusado", ()
   assertStringIncludes(corpoRpcN, norm("IF v_desconto > v_subtotal THEN"));
   assertStringIncludes(
     corpoRpcN,
-    norm("IF v_desconto > 0 AND NULLIF(btrim(COALESCE(p_observacao,'')),'') IS NULL THEN"),
+    norm(
+      "IF v_desconto > 0 AND NULLIF(btrim(COALESCE(p_observacao,'')),'') IS NULL THEN",
+    ),
   );
 });
 
 Deno.test("preco do banco com trava e reserva de estoque XOR guardada por ROW_COUNT", () => {
   assertEquals((corpoRpcN.match(/FOR NO KEY UPDATE/g) || []).length, 2);
   assertEquals(
-    (corpoRpcN.match(/UPDATE public\.(product_variants|produtos) SET/g) || []).length,
+    (corpoRpcN.match(/UPDATE public\.(product_variants|produtos) SET/g) || [])
+      .length,
     2,
   );
   assertStringIncludes(corpoRpcN, norm("AND stock_increment >= v_quantity"));
@@ -204,7 +217,9 @@ Deno.test("so' o historico do PEDIDO nasce — payment_history e' do recebimento
 Deno.test("grants: EXECUTE so' para authenticated; funcao do gatilho sem EXECUTE para ninguem", () => {
   assertStringIncludes(
     migrationN,
-    norm(`REVOKE ALL ON FUNCTION ${ASSINATURA} FROM PUBLIC, anon, authenticated, service_role;`),
+    norm(
+      `REVOKE ALL ON FUNCTION ${ASSINATURA} FROM PUBLIC, anon, authenticated, service_role;`,
+    ),
   );
   assertStringIncludes(
     migrationN,
