@@ -15,9 +15,21 @@ VERIFICADO**. Confira tudo antes de usar.
   opera é a loja logada).
 - Botão "Já pagou? Conferir agora" (B7) entra, com a mesma regra da reconciliação.
 - PIX abandonado fica como pedido "Cancelado" do balcão (rastro).
-- Em aberto, esperando o dono (não construir sem resposta): "Anular venda do balcão" (D2),
-  passo "Conferi" no PIX manual/maquininha (B14), crédito × débito com parcelas, e se a chave PIX e
-  a maquininha da loja são do Mercado Pago (D12).
+
+Respostas do dono (28/09):
+- **Conta de destino (D12): depende de cada lojista** — o app é vendido por assinatura e cada loja
+  tem a sua forma. Então a conta para onde vai o PIX manual (na chave da loja) e a maquininha tem de
+  ser **configurável por loja** (ex.: no Financeiro › Contas, "PIX na chave da loja cai em: [conta]"
+  e "Maquininha cai em: [conta]", escolhendo entre as contas ativas; padrão = "Conta bancária", o
+  comportamento de hoje). O PIX com QR (Mercado Pago) continua na conta Mercado Pago.
+- **"Anular venda do balcão": sim, só no mesmo dia e com motivo obrigatório** (devolve o estoque,
+  acerta Financeiro e caixa; exige migration e aplicação pelo dono).
+- **Crédito × débito × parcelas: depois.** Agora só o rótulo "Cartão na maquininha".
+- **Passo "Conferi o pagamento no app do banco": sim**, obrigatório no PIX manual e na maquininha
+  antes de registrar (B14).
+
+Migrations desta frente: numeração **reservada 20261184000000 a 20261186000000** (a faixa
+20261187–20261194 é da frente B, cupons).
 
 ## 1. Como funciona hoje
 

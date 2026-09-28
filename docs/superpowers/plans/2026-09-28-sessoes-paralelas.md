@@ -108,7 +108,9 @@ container, grade), o dono de cada arquivo e as tarefas. Regras fixas:
 - Prova obrigatória: o harness visual da `proxima/base` (ver o plano) com diff pixel a pixel = 0 em
   360/375/390/414 contra o baseline, em todas as telas da sua frente; prints desktop em
   1024/1280/1440/1920 no PR.
-- Frentes: D1 casca (cabeçalho, navegação, rodapé, container); D2 Início + card de produto;
-  D3 página do produto; D4 busca/categoria + Favoritos; D5 carrinho + checkout + sucesso do pedido;
-  D6 perfil + configurações da conta + endereço; D7 detalhe do pedido/devolução + notificações +
-  sobre a loja; D8 login/cadastro. O plano pode ajustar essa divisão — vale o que estiver nele.
+- Frentes (valem as do plano, seção A "Mapa de dono"): D1 = F1 casca (o resto da F1 depois da
+  Onda 0); D2 = F2 vitrine (Início + card); D3 = F3 produto; D4 = F4 busca e Favoritos; D5 = F5
+  carrinho e Meus pedidos; D6 = F6 checkout e sucesso (RISCO; o cupom é da frente B); D7 = F7
+  minha conta; D8 = F8 pedido, notificações, sobre a loja e login.
+- Harness visual e contrato (Onda 0) ficam na `proxima/base`; se não estiverem lá, pare e avise no
+  PR em vez de improvisar.
