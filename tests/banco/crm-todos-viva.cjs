@@ -44,15 +44,30 @@
  *         mesma prova e mesmo validador exigente de M10 (a mensagem tem de
  *         citar a função certa nos 2 papéis, anon e authenticated).
  *   N2b — (re-revisão de risco) as DUAS checagens de staff (achado 8) têm de
- *         ser INDEPENDENTEMENTE necessárias — fixtures onde profiles.role e
- *         auth.raw_app_meta_data.role MENTEM um em relação ao outro (forçado
- *         via UPDATE depois do INSERT, porque o gatilho
- *         tr_sync_profile_role_to_auth resincroniza os dois a cada INSERT
- *         em profiles). Cada checagem sozinha tem de pegar o caso que só ela
- *         enxerga.
+ *         ser INDEPENDENTEMENTE necessárias do lado de crm__nunca_comprou —
+ *         fixtures (SEM pedido nenhum, condição para ficar elegível a
+ *         nunca_comprou) onde profiles.role e auth.raw_app_meta_data.role
+ *         MENTEM um em relação ao outro (forçado via UPDATE depois do
+ *         INSERT, porque o gatilho tr_sync_profile_role_to_auth
+ *         resincroniza os dois a cada INSERT em profiles). Cada checagem
+ *         sozinha tem de pegar o caso que só ela enxerga. NÃO dar pedido a
+ *         estas duas identidades — isso as tiraria de nunca_comprou por um
+ *         motivo ALHEIO ao papel (NOT EXISTS de pedido) e esvaziaria a prova
+ *         (achado da conferência final: uma rodada anterior fez esse
+ *         engano).
  *   N2c — WhatsApp de nunca_comprou sai só em dígitos mesmo quando o perfil
  *         guarda o número formatado (não só "não duplica" — o valor de
  *         SAÍDA é conferido dígito a dígito).
+ *   N4b — a mesma normalização sem-55 de N4, agora do lado da fusão
+ *         conta+balcão (achado 7) de crm__pedidos_nao_pagos — nenhum pedido
+ *         pago em nenhum dos dois lados.
+ *   M09p — o mapa dos PAGOS (wa_da_conta_paga) tem prioridade sobre o mapa
+ *          de QUALQUER pedido (wa_de_qualquer_pedido) quando os dois
+ *          resolvem o mesmo WhatsApp para contas DIFERENTES.
+ *   M20p/M20m — as MESMAS duas checagens de staff de N2b, agora do lado de
+ *          crm__pedidos_nao_pagos (WHERE independente) — identidades
+ *          PRÓPRIAS, com pedido não pago (U_STAFF_PEDIDO_SO_NO_JWT/
+ *          U_STAFF_PEDIDO_SO_NO_PROFILE), sem reaproveitar as duas de N2b.
  *
  * USO: node tests/banco/crm-todos-viva.cjs
  */
@@ -78,9 +93,25 @@ const U_FUSAO_CONTA = "64444444-4444-4444-4444-000000000007";
 const U_PERFIL_WA_DE_COMPRADOR_BALCAO = "64444444-4444-4444-4444-000000000008";
 const U_RESERVA_VENCIDA = "64444444-4444-4444-4444-000000000009";
 const U_CONTA_COM_BALCAO_PAGO = "64444444-4444-4444-4444-000000000013";
+// N2b: SEM pedido nenhum — só assim ficam elegíveis para nunca_comprou
+// (NOT EXISTS de pedido), condição necessária para provar as duas
+// checagens de staff (achado 8) do LADO de crm__nunca_comprou. Dar pedido
+// a estes dois (como uma rodada anterior fez, por engano) tira a
+// elegibilidade por um motivo ALHEIO ao papel — a prova de N2b passaria
+// "de graça" mesmo com só uma das duas checagens presente.
 const U_STAFF_SO_NO_JWT = "64444444-4444-4444-4444-000000000014";
 const U_STAFF_SO_NO_PROFILE = "64444444-4444-4444-4444-000000000015";
 const U_NUNCA_COMPROU_WA_COM_DDI = "64444444-4444-4444-4444-000000000016";
+const U_FUSAO_DDI_MISTO = "64444444-4444-4444-4444-000000000017";
+const U_PRIORIDADE_PAGO = "64444444-4444-4444-4444-000000000018";
+const U_PRIORIDADE_RECENTE = "64444444-4444-4444-4444-000000000019";
+// M20p/M20m (re-revisão de risco, conferência final): identidades PRÓPRIAS
+// (papéis contraditórios E com pedido não pago) para provar que as duas
+// checagens de staff também protegem crm__pedidos_nao_pagos — sem
+// reaproveitar U_STAFF_SO_NO_JWT/U_STAFF_SO_NO_PROFILE, que o N2b precisa
+// SEM pedido nenhum (ver comentário acima).
+const U_STAFF_PEDIDO_SO_NO_JWT = "64444444-4444-4444-4444-000000000020";
+const U_STAFF_PEDIDO_SO_NO_PROFILE = "64444444-4444-4444-4444-000000000021";
 const WA_FUSAO = "5534988880007";
 const WA_COMPRADOR_BALCAO = "5534988880008";
 const WA_BALCAO_PAGO = "5534988880013";
@@ -90,6 +121,16 @@ const WA_NUNCA_COMPROU_CRU = "(34) 99999-1234";
 // MESMA chave de comparação (34999990012), mesmo com 11 vs. 13 dígitos.
 const WA_PERFIL_SEM_DDI = "(34) 99999-0012";
 const WA_BALCAO_COM_DDI = "+55 34 99999-0012";
+// N4b: a MESMA normalização sem-55, agora dentro da FUSÃO conta+balcão de
+// crm__pedidos_nao_pagos (achado 7) — nenhum dos dois pedidos é pago; sem a
+// N4b, o app (sem DDI) e o balcão (com DDI) virariam DUAS pessoas mesmo
+// sendo o mesmo número.
+const WA_FUSAO_SEM_DDI = "34988880017";
+const WA_FUSAO_COM_DDI = "5534988880017";
+// M09p: prova que o mapa dos PAGOS (wa_da_conta_paga) tem prioridade sobre
+// o mapa de QUALQUER pedido (wa_de_qualquer_pedido) quando os dois
+// resolvem o mesmo WhatsApp para contas DIFERENTES.
+const WA_PRIORIDADE = "5534988880018";
 
 async function logar(cliente, userId) {
   await cliente.query("SELECT set_config('app.rpc.user_id', $1, false)", [
@@ -207,7 +248,15 @@ PROVAS.push({
          -- mente numa fonte e diz a verdade na outra.
          ($14, 'staffsonojwt@crmtodos.teste', '{"role":"admin"}'::jsonb),
          ($15, 'staffsonoprofile@crmtodos.teste', '{}'::jsonb),
-         ($16, 'nuncacomprouddi@crmtodos.teste', '{}'::jsonb)
+         ($16, 'nuncacomprouddi@crmtodos.teste', '{}'::jsonb),
+         ($17, 'fusaoddimisto@crmtodos.teste', '{}'::jsonb),
+         ($18, 'prioridadepago@crmtodos.teste', '{}'::jsonb),
+         ($19, 'prioridaderecente@crmtodos.teste', '{}'::jsonb),
+         -- M20p/M20m: identidades PRÓPRIAS (com pedido não pago) — mesma
+         -- régua de mentira contraditória do N2b acima, mas sem reaproveitar
+         -- as duas de lá (que precisam ficar sem pedido nenhum).
+         ($20, 'staffpedidosonojwt@crmtodos.teste', '{"role":"admin"}'::jsonb),
+         ($21, 'staffpedidosonoprofile@crmtodos.teste', '{}'::jsonb)
        ON CONFLICT (id) DO NOTHING`,
       [
         U_ADMIN,
@@ -226,6 +275,11 @@ PROVAS.push({
         U_STAFF_SO_NO_JWT,
         U_STAFF_SO_NO_PROFILE,
         U_NUNCA_COMPROU_WA_COM_DDI,
+        U_FUSAO_DDI_MISTO,
+        U_PRIORIDADE_PAGO,
+        U_PRIORIDADE_RECENTE,
+        U_STAFF_PEDIDO_SO_NO_JWT,
+        U_STAFF_PEDIDO_SO_NO_PROFILE,
       ],
     );
     // profiles: handle_new_user não roda aqui (sem trigger em auth.users
@@ -258,7 +312,16 @@ PROVAS.push({
          -- N4 (re-revisão de risco): WhatsApp SEM o "55" — a venda de balcão
          -- paga do MESMO número (mas COM "55") não pode deixar de ser
          -- reconhecida como a mesma pessoa.
-         ($16, 'Cliente Nunca Comprou Com DDI', 'customer', $17)
+         ($16, 'Cliente Nunca Comprou Com DDI', 'customer', $17),
+         -- N4b: perfil com o número SEM "55" — o pedido dele (abaixo) tem de
+         -- fundir com o pedido de balcão que carrega o MESMO número COM "55".
+         ($18, 'Cliente Fusão DDI Misto', 'customer', NULL),
+         ($19, 'Cliente Prioridade Pago', 'customer', NULL),
+         ($20, 'Cliente Prioridade Recente', 'customer', NULL),
+         -- M20p/M20m: mesma régua contraditória do N2b, identidades próprias
+         -- (estas ganham pedido não pago mais abaixo).
+         ($21, 'Staff Pedido Só No JWT', 'customer', NULL),
+         ($22, 'Staff Pedido Só No Profile', 'admin', NULL)
        ON CONFLICT (id) DO UPDATE SET full_name = EXCLUDED.full_name, role = EXCLUDED.role, whatsapp = EXCLUDED.whatsapp`,
       [
         U_ADMIN,
@@ -278,6 +341,11 @@ PROVAS.push({
         U_STAFF_SO_NO_PROFILE,
         U_NUNCA_COMPROU_WA_COM_DDI,
         WA_PERFIL_SEM_DDI,
+        U_FUSAO_DDI_MISTO,
+        U_PRIORIDADE_PAGO,
+        U_PRIORIDADE_RECENTE,
+        U_STAFF_PEDIDO_SO_NO_JWT,
+        U_STAFF_PEDIDO_SO_NO_PROFILE,
       ],
     );
     // N2b: o INSERT em profiles acima dispara o gatilho
@@ -293,6 +361,17 @@ PROVAS.push({
     await cliente.query(
       `UPDATE auth.users SET raw_app_meta_data = '{}'::jsonb WHERE id = $1`,
       [U_STAFF_SO_NO_PROFILE],
+    );
+    // M20p/M20m: mesmo problema do gatilho, para as 2 identidades PRÓPRIAS
+    // (com pedido) que provam a dupla checagem do lado de
+    // crm__pedidos_nao_pagos.
+    await cliente.query(
+      `UPDATE auth.users SET raw_app_meta_data = '{"role":"admin"}'::jsonb WHERE id = $1`,
+      [U_STAFF_PEDIDO_SO_NO_JWT],
+    );
+    await cliente.query(
+      `UPDATE auth.users SET raw_app_meta_data = '{}'::jsonb WHERE id = $1`,
+      [U_STAFF_PEDIDO_SO_NO_PROFILE],
     );
 
     // Comprador: 1 pedido pago recente → RFM 'novos'.
@@ -394,10 +473,17 @@ PROVAS.push({
     // M06: comprador de balcão PAGO só por WhatsApp (sem conta) — vira
     // 'wa:...' em crm__vendas. Depois, um PERFIL com o MESMO WhatsApp
     // (normalizado) não pode aparecer em nunca_comprou (é a mesma pessoa).
+    // Achado incidental (não faz parte de N1-N4/M20/border-solid, achado à
+    // parte enquanto verificava esta rodada): `diasAtras: 10` sentava
+    // exatamente na borda da janela de 10 dias que a prova de crm_visao usa
+    // (`current_date - 10`) — `fin__dia()` converte para o dia CALENDÁRIO em
+    // America/Sao_Paulo, e `current_date` da sessão é UTC; a virada do dia
+    // (27→28/09) empurrou esse pedido para FORA da janela por causa do fuso,
+    // não por nada que este trabalho mudou. `diasAtras: 8` dá margem real.
     await pedido(cliente, {
       whatsapp: WA_COMPRADOR_BALCAO,
       total: 45,
-      diasAtras: 10,
+      diasAtras: 8,
       status: "delivered",
       canal: "presencial",
       pagamento: "cash",
@@ -463,6 +549,88 @@ PROVAS.push({
       canal: "presencial",
       pagamento: "cash",
       paymentStatus: "recebido_na_entrega",
+    });
+
+    // M20p/M20m (re-revisão de risco, conferência final): identidades
+    // PRÓPRIAS (papéis contraditórios E com pedido não pago) — NÃO
+    // reaproveita U_STAFF_SO_NO_JWT/U_STAFF_SO_NO_PROFILE, que o N2b precisa
+    // SEM pedido nenhum (ver comentário da constante). Provam que as MESMAS
+    // duas checagens de staff (achado 8) TAMBÉM protegem
+    // crm__pedidos_nao_pagos, que tem o próprio WHERE independente.
+    await pedido(cliente, {
+      userId: U_STAFF_PEDIDO_SO_NO_JWT,
+      total: 40,
+      diasAtras: 2,
+      status: "pending",
+      paymentStatus: "aguardando",
+    });
+    await pedido(cliente, {
+      userId: U_STAFF_PEDIDO_SO_NO_PROFILE,
+      total: 50,
+      diasAtras: 2,
+      status: "pending",
+      paymentStatus: "aguardando",
+    });
+
+    // N4b (re-revisão de risco): a MESMA normalização sem-55, agora dentro
+    // da fusão conta+balcão (achado 7) — nenhum pedido pago em nenhum dos
+    // dois lados. App SEM DDI + balcão COM DDI, mesmo número: tem de fundir
+    // numa pessoa só, não virar duas.
+    await pedido(cliente, {
+      userId: U_FUSAO_DDI_MISTO,
+      whatsapp: WA_FUSAO_SEM_DDI,
+      total: 22,
+      diasAtras: 3,
+      status: "pending",
+      paymentStatus: "aguardando",
+      canal: "online",
+    });
+    await pedido(cliente, {
+      whatsapp: WA_FUSAO_COM_DDI,
+      total: 18,
+      diasAtras: 2,
+      status: "pending",
+      paymentStatus: "aguardando",
+      canal: "presencial",
+      pagamento: "cash",
+    });
+
+    // M09p (re-revisão de risco): o mapa dos PAGOS tem de ganhar do mapa de
+    // QUALQUER pedido quando os dois resolvem o MESMO WhatsApp para contas
+    // DIFERENTES. U_PRIORIDADE_PAGO paga (mais antigo) — vira a âncora do
+    // mapa pago. U_PRIORIDADE_RECENTE pede sem pagar DEPOIS (mais recente,
+    // mesmo WhatsApp) — se o mapa de "qualquer pedido" tivesse prioridade,
+    // um pedido de balcão órfão com esse WhatsApp fundiria com
+    // U_PRIORIDADE_RECENTE (o mais recente), inflando o `pedidos` dele para
+    // 2. Com a prioridade certa, o órfão funde com U_PRIORIDADE_PAGO — cujo
+    // grupo inteiro some de pediu_nao_pagou (achado N1, já tem pedido pago)
+    // — e U_PRIORIDADE_RECENTE fica sozinho, com `pedidos = 1`.
+    await pedido(cliente, {
+      userId: U_PRIORIDADE_PAGO,
+      whatsapp: WA_PRIORIDADE,
+      total: 20,
+      diasAtras: 5,
+      status: "delivered",
+      paymentStatus: "pago",
+      canal: "online",
+    });
+    await pedido(cliente, {
+      userId: U_PRIORIDADE_RECENTE,
+      whatsapp: WA_PRIORIDADE,
+      total: 60,
+      diasAtras: 1,
+      status: "pending",
+      paymentStatus: "aguardando",
+      canal: "online",
+    });
+    await pedido(cliente, {
+      whatsapp: WA_PRIORIDADE,
+      total: 15,
+      diasAtras: 2,
+      status: "pending",
+      paymentStatus: "aguardando",
+      canal: "presencial",
+      pagamento: "cash",
     });
 
     await logar(cliente, U_ADMIN);
@@ -673,6 +841,59 @@ PROVAS.push({
       "N4: a pessoa continua aparecendo como compradora, pela chave (com DDI, em dígitos) da venda paga",
     );
 
+    // --- M20p/M20m: staff com pedido não pago também não aparece em pediu_nao_pagou ---
+    // Identidades PRÓPRIAS (não as do N2b, que precisam ficar sem pedido
+    // nenhum para provar o lado de crm__nunca_comprou).
+    assert.equal(
+      porChave.has(U_STAFF_PEDIDO_SO_NO_JWT),
+      false,
+      "M20m: profiles diz 'customer' mas o JWT diz 'admin' — mesmo com pedido não pago, não pode virar pediu_nao_pagou",
+    );
+    assert.equal(
+      porChave.has(U_STAFF_PEDIDO_SO_NO_PROFILE),
+      false,
+      "M20p: profiles diz 'admin' mas o JWT não tem role — mesmo com pedido não pago, não pode virar pediu_nao_pagou",
+    );
+
+    // --- N4b: fusão conta+balcão (achado 7) com DDI misto vira 1 pessoa só ---
+    const fusaoDdiMisto = porChave.get(U_FUSAO_DDI_MISTO);
+    assert.ok(
+      fusaoDdiMisto,
+      "N4b: identidade fundida (conta sem DDI + balcão com DDI) aparece",
+    );
+    assert.equal(
+      num(fusaoDdiMisto.pedidos),
+      2,
+      "N4b: os DOIS pedidos (app sem DDI + balcão com DDI, mesmo número) contam para a MESMA pessoa",
+    );
+    assert.equal(
+      porChave.has(`wa:${WA_FUSAO_COM_DDI.replace(/\D/g, "")}`),
+      false,
+      "N4b: não pode sobrar um SEGUNDO registro pela chave wa: com DDI — teria duplicado a pessoa",
+    );
+
+    // --- M09p: o mapa dos PAGOS ganha do mapa de QUALQUER pedido ---
+    // U_PRIORIDADE_PAGO aparece na lista (é comprador, grupo 0) — o que não
+    // pode acontecer é ele (ou o pedido órfão fundido a ele) vazar para
+    // pediu_nao_pagou.
+    const prioridadePago = porChave.get(U_PRIORIDADE_PAGO);
+    assert.ok(prioridadePago, "quem pagou aparece na lista, como comprador");
+    assert.notEqual(
+      prioridadePago.segmento,
+      "pediu_nao_pagou",
+      "M09p: quem pagou (âncora do mapa pago) não pode cair em pediu_nao_pagou",
+    );
+    const prioridadeRecente = porChave.get(U_PRIORIDADE_RECENTE);
+    assert.ok(
+      prioridadeRecente,
+      "M09p: quem pediu sem pagar (mais recente, mesmo WhatsApp de quem pagou) aparece sozinho",
+    );
+    assert.equal(
+      num(prioridadeRecente.pedidos),
+      1,
+      "M09p: o pedido de balcão órfão (mesmo WhatsApp) tem de fundir com quem PAGOU, não com quem só pediu mais recente — senão este 'pedidos' seria 2",
+    );
+
     // --- ordem: compradores (grupo 0) → pediu_nao_pagou (grupo 1) → nunca_comprou (grupo 2) ---
     const segmentosNaOrdem = lista.clientes.map((c) => c.segmento);
     const primeiraPediu = segmentosNaOrdem.indexOf("pediu_nao_pagou");
@@ -749,17 +970,20 @@ PROVAS.push({
     );
     assert.ok(segmentos.pediu_nao_pagou, "segmento pediu_nao_pagou presente");
     // receita do segmento = soma do valor_em_aberto de TODOS ali: 80 do
-    // U_NAO_PAGOU + 88 (55+33) do U_FUSAO_CONTA — cancelado/estornado/
-    // reserva vencida somam 0 cada (achado 2).
-    assert.equal(num(segmentos.pediu_nao_pagou.receita), 168);
+    // U_NAO_PAGOU + 88 (55+33) do U_FUSAO_CONTA (cancelado/estornado/
+    // reserva vencida somam 0 cada, achado 2) + 40 (22+18) da fusão DDI
+    // mista (N4b) + 60 de U_PRIORIDADE_RECENTE (M09p) — U_PRIORIDADE_PAGO e
+    // o órfão fundido a ele saem inteiros (já é comprador, achado N1); staff
+    // com pedido (M20p/M20m) nunca entra aqui.
+    assert.equal(num(segmentos.pediu_nao_pagou.receita), 268);
     assert.ok(segmentos.nunca_comprou, "segmento nunca_comprou presente");
     assert.equal(num(segmentos.nunca_comprou.receita), 0);
-    // kpis continuam só com dinheiro reconhecido: os 5 pedidos PAGOS no
+    // kpis continuam só com dinheiro reconhecido: os 6 pedidos PAGOS no
     // período de 10 dias — comprador (150), venda de balcão do achado 6
     // (45), a venda de balcão sem WhatsApp do M14 (25), o balcão pago da
-    // fixture N1 (60) e o balcão pago com DDI da fixture N4 (33) — nenhum a
-    // mais.
-    assert.equal(num(visao.kpis.receita), 313);
+    // fixture N1 (60), o balcão pago com DDI da fixture N4 (33) e o pedido
+    // pago de U_PRIORIDADE_PAGO (20, M09p) — nenhum a mais.
+    assert.equal(num(visao.kpis.receita), 333);
   },
 });
 

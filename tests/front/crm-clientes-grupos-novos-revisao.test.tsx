@@ -392,3 +392,165 @@ describe("linha do cliente: célula de dinheiro (mutante 'voltar a formatarMoeda
     expect(celulaReceita?.classList.contains("text-white")).toBe(false);
   });
 });
+
+describe("ações da linha (WhatsApp/Ver cliente) entre lg e xl: alvo de toque, ícone de ficha e title (ressalvas R1/R2 da re-revisão de front)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => raiz.unmount());
+    hospedeiro.remove();
+  });
+
+  it("R1: os dois botões só-ícone (lg-xl) têm lg:min-w-11 — alvo de toque quadrado, não 36/38×44", async () => {
+    h.lista = {
+      total: 1,
+      clientes: [
+        montarCliente({
+          nome: "Marcos Andrade",
+          userId: "user-1",
+          whatsapp: "34988887777",
+        }),
+      ],
+    };
+    const { ClientesDoCrm } = await import(
+      "@/components/admin/crm/ClientesDoCrm"
+    );
+    await act(async () => {
+      raiz.render(
+        <ClientesDoCrm
+          segmentos={[]}
+          carregandoSegmentos={false}
+          segmento={null}
+          aoMudarSegmento={() => {}}
+          active
+          onNavigate={() => {}}
+          sinalDeAtualizacao={0}
+        />,
+      );
+    });
+    const linha = linhaDoCliente(hospedeiro, "Marcos Andrade");
+    const whatsappBtn = linha.querySelector("a");
+    const verClienteBtn = linha.querySelector("button");
+    expect(whatsappBtn?.className).toContain("lg:min-w-11");
+    expect(verClienteBtn?.className).toContain("lg:min-w-11");
+  });
+
+  it("R2: 'Ver cliente' usa um ícone de ficha (UserRound) entre lg e xl, não o chevron sozinho", async () => {
+    h.lista = {
+      total: 1,
+      clientes: [
+        montarCliente({
+          nome: "Marcos Andrade",
+          userId: "user-1",
+          whatsapp: "34988887777",
+        }),
+      ],
+    };
+    const { ClientesDoCrm } = await import(
+      "@/components/admin/crm/ClientesDoCrm"
+    );
+    await act(async () => {
+      raiz.render(
+        <ClientesDoCrm
+          segmentos={[]}
+          carregandoSegmentos={false}
+          segmento={null}
+          aoMudarSegmento={() => {}}
+          active
+          onNavigate={() => {}}
+          sinalDeAtualizacao={0}
+        />,
+      );
+    });
+    const linha = linhaDoCliente(hospedeiro, "Marcos Andrade");
+    const verClienteBtn = linha.querySelector("button");
+    const icones = Array.from(verClienteBtn?.querySelectorAll("svg") ?? []);
+    // Ícone de ficha: visível SÓ entre lg e xl (some fora dessa faixa).
+    const ficha = icones.find(
+      (svg) =>
+        svg.classList.contains("lg:inline") &&
+        svg.classList.contains("xl:hidden"),
+    );
+    // Chevron: o inverso — escondido só entre lg e xl.
+    const chevron = icones.find(
+      (svg) =>
+        svg.classList.contains("lg:hidden") &&
+        svg.classList.contains("xl:inline"),
+    );
+    expect(ficha).not.toBeUndefined();
+    expect(chevron).not.toBeUndefined();
+  });
+
+  it("R2: os dois botões só-ícone têm title (mouse/leitor não confiam só no ícone)", async () => {
+    h.lista = {
+      total: 1,
+      clientes: [
+        montarCliente({
+          nome: "Marcos Andrade",
+          userId: "user-1",
+          whatsapp: "34988887777",
+        }),
+      ],
+    };
+    const { ClientesDoCrm } = await import(
+      "@/components/admin/crm/ClientesDoCrm"
+    );
+    await act(async () => {
+      raiz.render(
+        <ClientesDoCrm
+          segmentos={[]}
+          carregandoSegmentos={false}
+          segmento={null}
+          aoMudarSegmento={() => {}}
+          active
+          onNavigate={() => {}}
+          sinalDeAtualizacao={0}
+        />,
+      );
+    });
+    const linha = linhaDoCliente(hospedeiro, "Marcos Andrade");
+    const whatsappBtn = linha.querySelector("a");
+    const verClienteBtn = linha.querySelector("button");
+    expect(whatsappBtn?.getAttribute("title")).toBeTruthy();
+    expect(verClienteBtn?.getAttribute("title")).toBeTruthy();
+  });
+
+  it("R2: 'Ver cliente' tem borda visível (não border-white/10, quase invisível)", async () => {
+    h.lista = {
+      total: 1,
+      clientes: [
+        montarCliente({
+          nome: "Marcos Andrade",
+          userId: "user-1",
+          whatsapp: "34988887777",
+        }),
+      ],
+    };
+    const { ClientesDoCrm } = await import(
+      "@/components/admin/crm/ClientesDoCrm"
+    );
+    await act(async () => {
+      raiz.render(
+        <ClientesDoCrm
+          segmentos={[]}
+          carregandoSegmentos={false}
+          segmento={null}
+          aoMudarSegmento={() => {}}
+          active
+          onNavigate={() => {}}
+          sinalDeAtualizacao={0}
+        />,
+      );
+    });
+    const linha = linhaDoCliente(hospedeiro, "Marcos Andrade");
+    const verClienteBtn = linha.querySelector("button");
+    expect(verClienteBtn?.className).not.toContain("border-white/10");
+  });
+});
