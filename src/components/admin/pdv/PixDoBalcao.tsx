@@ -283,9 +283,10 @@ export function PixDoBalcao({
     <div className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
       <p className="text-xs text-zinc-400">
         Sem resposta do Mercado Pago. Você pode deixar este PIX vencer e atender
-        o próximo cliente: se ninguém pagar, a reserva do estoque volta sozinha;
-        se o cliente ainda pagar, a venda aparece em Pedidos. Não cobre esta
-        mesma venda de outro jeito sem conferir.
+        o próximo cliente: se ninguém pagar, a reserva do estoque volta sozinha.
+        Se o cliente ainda pagar este QR, a venda aparece em Pedidos como
+        ENTREGUE e paga — confira lá e entregue a mercadoria ou devolva o
+        dinheiro. Não cobre esta mesma venda de outro jeito sem conferir.
       </p>
       <Button
         type="button"
