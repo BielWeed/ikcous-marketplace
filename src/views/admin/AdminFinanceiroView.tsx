@@ -358,6 +358,7 @@ export function AdminFinanceiroView({
                   intervalo={intervalo}
                   hoje={hoje}
                   versao={versao}
+                  contas={listaDeContas}
                   irParaAba={setAba}
                   verPrevistos={(lado) => {
                     setLadoDosPrevistos(lado);

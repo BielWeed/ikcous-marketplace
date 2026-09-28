@@ -1148,17 +1148,32 @@ export interface PontoDoFluxo {
   readonly entradas: number;
   readonly saidas: number;
   readonly resultado: number;
-  readonly saldo: number;
+  /**
+   * `null` = dia ANTES do marco do saldo inicial (ver `marcoDoSaldoInicial`):
+   * a reconstrução não é válida aí, então não existe número a mostrar — nunca
+   * `0` nem um valor inventado.
+   */
+  readonly saldo: number | null;
 }
 
 /**
  * Série diária completa do intervalo (dia sem movimento vale zero), com o
  * saldo ao fim de cada dia reconstruído a partir do saldo de hoje.
+ *
+ * A reconstrução "hoje − Σ deltas depois" só é válida a partir de `marco`
+ * (achado do coordenador): `fin__saldos` (migration 20261177000000, função
+ * `fin__saldos`, ~linha 445) só soma movimento de uma conta com
+ * `m.data >= c.saldo_inicial_em` — o "saldo de hoje" usado como âncora aqui
+ * NUNCA incluiu o que aconteceu antes do `saldo_inicial_em` de cada conta.
+ * Sem `marco` (ou com ele antes do início do intervalo), o dia mais antigo
+ * do intervalo já é ≥ marco e nada muda — mesmo cálculo de sempre. Dias
+ * `< marco` recebem `saldo: null`.
  */
 export function serieDoFluxoDeCaixa(
   serie: readonly DiaDaSerie[],
   intervalo: IntervaloDeDatas,
   saldoAtual: number,
+  marco: DataIso | null = null,
 ): PontoDoFluxo[] {
   const porDia = new Map<DataIso, DiaDaSerie>();
   for (const dia of serie) porDia.set(dia.dia, dia);
@@ -1184,30 +1199,32 @@ export function serieDoFluxoDeCaixa(
       entradas: d?.entradas ?? 0,
       saidas: d?.saidas ?? 0,
       resultado: deltas.at(i) ?? 0,
-      saldo: saldos.at(i) ?? 0,
+      saldo: marco !== null && dia < marco ? null : (saldos.at(i) ?? 0),
     };
   });
 }
 
 /**
- * O saldo reconstruído (`serieDoFluxoDeCaixa`) parte do saldo de HOJE e volta
- * no tempo subtraindo o resultado de cada dia — matematicamente correto, mas
- * sem saber o saldo REAL de 30 dias atrás. Quando o saldo de hoje é
- * exatamente zero (achado do coordenador: sinal de que a conta nunca teve um
- * saldo inicial informado — `fin_contas.saldo_inicial` nasce 0 — e não que a
- * loja realmente zerou a conta hoje) e essa reconstrução cruza para
- * negativo, o número não é o saldo que a conta teve naquele dia: é só "hoje
- * menos o que já se sabe que entrou/saiu depois". Mostrar isso sem contexto
- * é dinheiro inventado. `fin_resumo` não devolve `saldo_inicial`/
- * `saldo_inicial_em` por conta — dá para confirmar a causa com certeza só
- * mudando a RPC; esta é a heurística possível só com o que o front já tem.
+ * O marco a partir do qual a reconstrução do saldo (`serieDoFluxoDeCaixa`)
+ * vale: a MAIOR `saldoInicialEm` entre as contas ATIVAS — lado seguro, porque
+ * é só a partir dela que TODAS as contas ativas já contam movimento em
+ * `fin__saldos`. Conta inativa não entra (não soma no `saldo_total` que
+ * ancora a reconstrução — ver `fin_resumo`, `WHERE ativa`). `null` sem
+ * nenhuma conta ativa com `saldoInicialEm` conhecido (lista vazia, ainda
+ * carregando ou erro ao buscar contas): aí `serieDoFluxoDeCaixa` não corta
+ * nada, o comportamento é o de sempre.
  */
-export function precisaExplicarSaldoRelativo(
-  pontos: readonly PontoDoFluxo[],
-): boolean {
-  const hoje = pontos.at(-1);
-  if (!hoje || paraCentavos(hoje.saldo) !== 0) return false;
-  return pontos.some((p) => paraCentavos(p.saldo) < 0);
+export function marcoDoSaldoInicial(
+  contas: readonly Pick<ContaFinanceira, "ativa" | "saldoInicialEm">[],
+): DataIso | null {
+  let maior: DataIso | null = null;
+  for (const conta of contas) {
+    if (!conta.ativa || !conta.saldoInicialEm) continue;
+    if (maior === null || conta.saldoInicialEm > maior) {
+      maior = conta.saldoInicialEm;
+    }
+  }
+  return maior;
 }
 
 // ---------------------------------------------------------------------------

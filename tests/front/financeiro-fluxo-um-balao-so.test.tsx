@@ -19,6 +19,14 @@
 // `offsetWidth/Height` estabilizados — jsdom não faz layout) e prova as duas
 // coisas juntas: só UM balão aparece, e ele escreve "−R$ 187,40" (sinal
 // tipográfico U+2212), não "R$ 187,40".
+//
+// Ajuste pedido pelo coordenador depois da 1ª revisão: aquele −R$ 187,40
+// nunca foi um saldo real — é a reconstrução "hoje − Σ depois" andando para
+// trás de um marco que `fin__saldos` respeita e o front não respeitava (o
+// saldo de uma conta só conta movimento com `data >= saldo_inicial_em`,
+// migration 20261177000000, função `fin__saldos`). `serieDoFluxoDeCaixa`
+// agora marca dias antes desse marco com `saldo: null`; o teste abaixo prova
+// que o balão, nesse caso, mostra "—" em vez de inventar um número.
 import { FluxoDeCaixaGrafico } from "@/components/admin/financeiro/FluxoDeCaixaGrafico";
 import type { PontoDoFluxo } from "@/lib/financeiro";
 import { act } from "react";
@@ -136,7 +144,12 @@ function tooltips(tela: HTMLElement) {
 describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", () => {
   it("antes de tocar, nenhum balão aparece", () => {
     const tela = montar(
-      <FluxoDeCaixaGrafico pontos={PONTOS} carregando={false} ativo={true} />,
+      <FluxoDeCaixaGrafico
+        pontos={PONTOS}
+        carregando={false}
+        ativo={true}
+        marco={null}
+      />,
     );
     act(() => {
       vi.advanceTimersByTime(300);
@@ -146,7 +159,12 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
 
   it("ao tocar no gráfico, aparece SÓ UM balão — e ele escreve o saldo negativo com o sinal −", () => {
     const tela = montar(
-      <FluxoDeCaixaGrafico pontos={PONTOS} carregando={false} ativo={true} />,
+      <FluxoDeCaixaGrafico
+        pontos={PONTOS}
+        carregando={false}
+        ativo={true}
+        marco={null}
+      />,
     );
     act(() => {
       vi.advanceTimersByTime(300);
@@ -185,5 +203,49 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
     // não o hífen comum nem "R$ 187,40" sem sinal nenhum.
     expect(texto).toContain("−R$ 187,40");
     expect(texto).not.toMatch(/(?<!−)R\$ 187,40/);
+  });
+
+  it("num dia ANTES do marco (saldo: null), o balão mostra “—” e nunca inventa o −R$ 187,40", () => {
+    const antesDoMarco: readonly PontoDoFluxo[] = [
+      { dia: "2026-08-29", entradas: 0, saidas: 0, resultado: 0, saldo: null },
+      {
+        dia: "2026-08-30",
+        entradas: 187.4,
+        saidas: 0,
+        resultado: 187.4,
+        saldo: 0,
+      },
+    ];
+    const tela = montar(
+      <FluxoDeCaixaGrafico
+        pontos={antesDoMarco}
+        carregando={false}
+        ativo={true}
+        marco="2026-08-30"
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    const graficoDeBaixo =
+      tela.querySelectorAll<HTMLElement>(".recharts-wrapper")[1];
+    act(() => {
+      graficoDeBaixo.dispatchEvent(
+        new MouseEvent("mousemove", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 90,
+          clientY: 100,
+        }),
+      );
+    });
+
+    const balões = tooltips(tela);
+    expect(balões).toHaveLength(1);
+    const texto = (balões[0]?.textContent ?? "").replace(/\s/g, " ");
+    expect(texto).toContain("Sábado, 29 de agosto");
+    expect(texto).toContain("—");
+    expect(texto).not.toContain("187,40");
   });
 });

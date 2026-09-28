@@ -16,6 +16,7 @@ import {
   formularioInicialDoLancamento,
   hojeEmSaoPaulo,
   intervaloDoPeriodo,
+  marcoDoSaldoInicial,
   mensagemDeErroFinanceiro,
   mesesDoIntervalo,
   ordenarPorVencimento,
@@ -27,7 +28,6 @@ import {
   parseResumo,
   parseValorBR,
   percentualDaReceita,
-  precisaExplicarSaldoRelativo,
   saldoCorrenteRetroativo,
   serieDoFluxoDeCaixa,
   situacaoDoVencimento,
@@ -426,37 +426,90 @@ describe("extrato por dia e saldo corrente", () => {
   });
 
   // Achado do coordenador (print do Financeiro, cartão "Fluxo de caixa —
-  // últimos 30 dias"): saldo de hoje 0 + uma entrada de R$187,40 em 18/09 →
-  // reconstruído para trás, os dias antes de 18/09 aparecem em −187,40, que
-  // não é o saldo real da conta (a loja nunca informou o saldo inicial). A
-  // tela só sabe explicar isso quando bate a heurística: hoje EXATAMENTE
-  // zero e algum dia reconstruído negativo.
-  it("precisaExplicarSaldoRelativo: só quando o saldo de hoje é zero E a reconstrução cruza para negativo", () => {
-    const comSaldoHojeZero = serieDoFluxoDeCaixa(
+  // últimos 30 dias"): a reconstrução "hoje − Σ depois" só vale a partir de
+  // quando `fin__saldos` de fato começa a contar movimento de cada conta —
+  // `m.data >= c.saldo_inicial_em` (migration 20261177000000, ~linha 445).
+  // Antes desse MARCO (o maior `saldoInicialEm` entre as contas ativas: é
+  // aí que TODAS as contas já contam movimento), o "saldo de hoje" usado
+  // como âncora nunca somou aquele dinheiro — reconstruir para trás inventa
+  // um número que a conta nunca teve. `serieDoFluxoDeCaixa` marca esses dias
+  // com `saldo: null` em vez de calcular um valor.
+  it("serieDoFluxoDeCaixa: marco no meio da janela — antes dele o saldo é null, a partir dele é o número reconstruído", () => {
+    const serie = serieDoFluxoDeCaixa(
       [{ dia: "2026-09-18", entradas: 187.4, saidas: 0 }],
-      { inicio: "2026-08-30", fim: "2026-09-27" },
+      { inicio: "2026-08-29", fim: "2026-09-27" },
+      0,
+      "2026-09-20",
+    );
+    const antesDoMarco = serie.filter((p) => p.dia < "2026-09-20");
+    const doMarcoEmDiante = serie.filter((p) => p.dia >= "2026-09-20");
+    expect(antesDoMarco.length).toBeGreaterThan(0);
+    expect(antesDoMarco.every((p) => p.saldo === null)).toBe(true);
+    expect(doMarcoEmDiante.every((p) => p.saldo === 0)).toBe(true);
+  });
+
+  it("serieDoFluxoDeCaixa: marco antes do início da janela — nenhum dia fica null (a janela inteira já tinha saldo rastreado)", () => {
+    const serie = serieDoFluxoDeCaixa(
+      [{ dia: "2026-09-18", entradas: 187.4, saidas: 0 }],
+      { inicio: "2026-08-29", fim: "2026-09-27" },
+      0,
+      "2026-08-01",
+    );
+    expect(serie.every((p) => p.saldo !== null)).toBe(true);
+    expect(serie.find((p) => p.dia === "2026-08-29")?.saldo).toBe(-187.4);
+  });
+
+  it("serieDoFluxoDeCaixa: marco depois de hoje (depois do fim da janela) — a janela inteira fica sem saldo conhecido", () => {
+    const serie = serieDoFluxoDeCaixa(
+      [{ dia: "2026-09-18", entradas: 187.4, saidas: 0 }],
+      { inicio: "2026-08-29", fim: "2026-09-27" },
+      0,
+      "2026-10-05",
+    );
+    expect(serie.every((p) => p.saldo === null)).toBe(true);
+  });
+
+  it("serieDoFluxoDeCaixa: sem marco (omitido ou null) mantém o comportamento de antes — nenhum saldo null", () => {
+    const serie = serieDoFluxoDeCaixa(
+      [{ dia: "2026-09-18", entradas: 187.4, saidas: 0 }],
+      { inicio: "2026-08-29", fim: "2026-09-27" },
       0,
     );
-    expect(precisaExplicarSaldoRelativo(comSaldoHojeZero)).toBe(true);
-
-    // Mesma reconstrução, mas o saldo de hoje é positivo de verdade (não é
-    // 0): mesmo cruzando negativo antes, a conta claramente tem saldo
-    // rastreado — não é o caso de saldo inicial nunca informado.
-    const comSaldoHojePositivo = serieDoFluxoDeCaixa(
+    expect(serie.every((p) => p.saldo !== null)).toBe(true);
+    const comMarcoNulo = serieDoFluxoDeCaixa(
       [{ dia: "2026-09-18", entradas: 187.4, saidas: 0 }],
-      { inicio: "2026-08-30", fim: "2026-09-27" },
-      50,
-    );
-    expect(precisaExplicarSaldoRelativo(comSaldoHojePositivo)).toBe(false);
-
-    // Saldo de hoje zero, mas a reconstrução nunca fica negativa: nada para
-    // explicar.
-    const semNegativo = serieDoFluxoDeCaixa(
-      [{ dia: "2026-09-18", entradas: 0, saidas: 0 }],
-      { inicio: "2026-09-17", fim: "2026-09-18" },
+      { inicio: "2026-08-29", fim: "2026-09-27" },
       0,
+      null,
     );
-    expect(precisaExplicarSaldoRelativo(semNegativo)).toBe(false);
+    expect(comMarcoNulo.every((p) => p.saldo !== null)).toBe(true);
+  });
+
+  it("marcoDoSaldoInicial: a MAIOR saldoInicialEm entre as contas ATIVAS; conta inativa não conta; sem conta com data é null", () => {
+    expect(
+      marcoDoSaldoInicial([
+        { ativa: true, saldoInicialEm: "2026-09-01" },
+        { ativa: true, saldoInicialEm: "2026-09-20" },
+        { ativa: true, saldoInicialEm: "2026-09-15" },
+      ]),
+    ).toBe("2026-09-20");
+
+    // A conta inativa tem a data mais recente, mas é ignorada — o marco
+    // vem só das contas que ainda contam para o saldo de hoje.
+    expect(
+      marcoDoSaldoInicial([
+        { ativa: true, saldoInicialEm: "2026-09-01" },
+        { ativa: false, saldoInicialEm: "2026-12-31" },
+      ]),
+    ).toBe("2026-09-01");
+
+    expect(marcoDoSaldoInicial([])).toBeNull();
+    expect(
+      marcoDoSaldoInicial([{ ativa: false, saldoInicialEm: "2026-09-01" }]),
+    ).toBeNull();
+    expect(
+      marcoDoSaldoInicial([{ ativa: true, saldoInicialEm: null }]),
+    ).toBeNull();
   });
 });
 

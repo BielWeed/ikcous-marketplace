@@ -16,6 +16,7 @@ import {
   formatarDataHora,
   formatarHora,
   formatarPercentual,
+  marcoDoSaldoInicial,
   rotuloDaForma,
   rotuloDoTipoDeConta,
   serieDoFluxoDeCaixa,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/financeiro";
 import { cn } from "@/lib/utils";
 import type {
+  ContaFinanceira,
   DataIso,
   IntervaloDeDatas,
   ResumoFinanceiro,
@@ -246,6 +248,7 @@ export function AbaVisao({
   intervalo,
   hoje,
   versao,
+  contas,
   irParaAba,
   verPrevistos,
 }: {
@@ -253,6 +256,7 @@ export function AbaVisao({
   readonly intervalo: IntervaloDeDatas | null;
   readonly hoje: DataIso;
   readonly versao: number;
+  readonly contas: readonly ContaFinanceira[];
   readonly irParaAba: (aba: AbaDoFinanceiro) => void;
   readonly verPrevistos: (lado: LadoDosPrevistos) => void;
 }) {
@@ -263,6 +267,13 @@ export function AbaVisao({
   const resumo30 = useResumoFinanceiro(janela, ativo && !mesmaJanela, versao);
   const fonteDoGrafico = mesmaJanela ? resumo : resumo30;
 
+  // Sem contas carregadas ainda (erro na 1ª busca, ou lista vazia) o marco
+  // fica `null` — `serieDoFluxoDeCaixa` não corta nada, o comportamento é o
+  // de sempre. `contas` guarda o último resultado bom mesmo depois de um
+  // erro de recarga (useConsultaFinanceira), então uma falha passageira não
+  // apaga o marco que já se sabia.
+  const marco = useMemo(() => marcoDoSaldoInicial(contas), [contas]);
+
   const pontos = useMemo(
     () =>
       fonteDoGrafico.dados
@@ -270,9 +281,10 @@ export function AbaVisao({
             fonteDoGrafico.dados.serie,
             janela,
             fonteDoGrafico.dados.saldoTotal,
+            marco,
           )
         : [],
-    [fonteDoGrafico.dados, janela],
+    [fonteDoGrafico.dados, janela, marco],
   );
 
   if (resumo.erro && !resumo.dados) {
@@ -437,6 +449,7 @@ export function AbaVisao({
             pontos={pontos}
             carregando={fonteDoGrafico.carregando}
             ativo={ativo}
+            marco={marco}
           />
         )}
       </CartaoSecao>

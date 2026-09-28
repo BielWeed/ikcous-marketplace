@@ -21,8 +21,8 @@ import {
   formatarBRLCompacto,
   formatarDataCurta,
   formatarDiaPorExtenso,
-  precisaExplicarSaldoRelativo,
 } from "@/lib/financeiro";
+import type { DataIso } from "@/types/financeiro";
 import { Dinheiro, useValoresEstaoOcultos } from "./partes";
 
 // Cores por FUNÇÃO (não por série arbitrária): entrada verde, saída
@@ -89,20 +89,30 @@ function ConteudoDoTooltip({
           />
           Saldo ao fim do dia
         </span>
-        <span
-          className={`font-bold tabular-nums ${ponto.saldo < 0 ? "text-red-300" : "text-white"}`}
-        >
-          {/* Achado do Gabriel: aqui era `formatarBRL`, que devolve sempre o
-              valor ABSOLUTO (certo para entradas/saídas, que nunca são
-              negativas) — o saldo apagava o sinal de "−" mesmo desenhado
-              abaixo de zero no gráfico. `formatarBRLComSinal` só quando
-              negativo: nunca um "+" na frente de saldo positivo. */}
-          {ocultos
-            ? "R$ ••••"
-            : ponto.saldo < 0
-              ? formatarBRLComSinal(ponto.saldo)
-              : formatarBRL(ponto.saldo)}
-        </span>
+        {ponto.saldo === null ? (
+          // Achado do coordenador: dia ANTES do marco do saldo inicial — a
+          // reconstrução "hoje − Σ depois" não é válida aí (fin__saldos só
+          // conta movimento com `data >= saldo_inicial_em`). Nunca inventar
+          // um número; "—" é a resposta honesta.
+          <span className="text-right font-bold text-zinc-500">
+            — <span className="font-normal">antes do saldo inicial</span>
+          </span>
+        ) : (
+          <span
+            className={`font-bold tabular-nums ${ponto.saldo < 0 ? "text-red-300" : "text-white"}`}
+          >
+            {/* Achado do Gabriel: aqui era `formatarBRL`, que devolve sempre
+                o valor ABSOLUTO (certo para entradas/saídas, que nunca são
+                negativas) — o saldo apagava o sinal de "−" mesmo desenhado
+                abaixo de zero no gráfico. `formatarBRLComSinal` só quando
+                negativo: nunca um "+" na frente de saldo positivo. */}
+            {ocultos
+              ? "R$ ••••"
+              : ponto.saldo < 0
+                ? formatarBRLComSinal(ponto.saldo)
+                : formatarBRL(ponto.saldo)}
+          </span>
+        )}
       </p>
     </div>
   );
@@ -122,15 +132,32 @@ function ConteudoDoTooltip({
  * `activeDot` da linha do saldo não acende — depende de o recharts achar um
  * `Tooltip` entre os filhos) só com `content={() => null}`: o cursor
  * tracejado continua sincronizado nos dois, mas o balão nasce uma vez só.
+ *
+ * `pontos[i].saldo` pode ser `null` (dia antes do marco do saldo inicial —
+ * ver `marcoDoSaldoInicial`/`serieDoFluxoDeCaixa` em src/lib/financeiro.ts):
+ * a linha do saldo não é desenhada aí, o balão mostra "—" em vez de um
+ * número, e a nota abaixo do gráfico explica a partir de quando o saldo
+ * existe.
  */
 export function FluxoDeCaixaGrafico({
   pontos,
   carregando,
   ativo,
+  marco,
 }: {
   readonly pontos: readonly PontoDoFluxo[];
   readonly carregando: boolean;
   readonly ativo: boolean;
+  /**
+   * Maior `saldoInicialEm` entre as contas ativas (`marcoDoSaldoInicial`,
+   * src/lib/financeiro.ts) — dias de `pontos` antes dele já chegam com
+   * `saldo: null`; este valor só serve para a NOTA escrever a data por
+   * extenso (inclusive quando o marco cai fora da janela e nenhum ponto
+   * "conhece" a data). `null` = sem marco (contas ainda carregando, erro na
+   * 1ª busca, ou nenhuma conta ativa com saldo inicial informado) — a tela
+   * não teve motivo para cortar nada, comportamento de sempre.
+   */
+  readonly marco: DataIso | null;
 }) {
   const ocultos = useValoresEstaoOcultos();
   // O ResponsiveContainer mede a largura na montagem; esperar a transição
@@ -257,6 +284,13 @@ export function FluxoDeCaixaGrafico({
                   strokeWidth={2}
                   fill="url(#fin-saldo)"
                   dot={false}
+                  // Dia antes do marco do saldo inicial chega com `saldo:
+                  // null` (achado do coordenador) — `connectNulls={false}`
+                  // (explícito, já é o padrão do recharts) deixa a linha
+                  // NASCER a partir do marco, em vez de "inventar" um trecho
+                  // ligando o último dia sem saldo conhecido ao primeiro com
+                  // saldo de verdade.
+                  connectNulls={false}
                   activeDot={{
                     r: 4,
                     fill: COR_SALDO,
@@ -335,11 +369,11 @@ export function FluxoDeCaixaGrafico({
       ) : (
         <Skeleton className="h-[280px] w-full rounded-2xl bg-white/5" />
       )}
-      {precisaExplicarSaldoRelativo(pontos) ? (
+      {marco && pontos.some((p) => p.saldo === null) ? (
         <p className="text-[11px] text-zinc-400">
-          Saldo inicial das contas não informado — os valores de saldo antes do
-          primeiro lançamento são uma extrapolação a partir do saldo de hoje,
-          não o saldo real que a conta tinha naquele dia.
+          O saldo só aparece a partir de {formatarDataCurta(marco)}, data do
+          saldo inicial das contas. Para ver antes disso, ajuste o saldo inicial
+          em Contas e categorias.
         </p>
       ) : null}
 
@@ -378,7 +412,11 @@ export function FluxoDeCaixaGrafico({
                     <Dinheiro valor={p.saidas} sentido={-1} />
                   </td>
                   <td className="p-2 text-right text-white">
-                    <Dinheiro valor={p.saldo} />
+                    {p.saldo === null ? (
+                      <span className="text-zinc-500">—</span>
+                    ) : (
+                      <Dinheiro valor={p.saldo} />
+                    )}
                   </td>
                 </tr>
               ))}
