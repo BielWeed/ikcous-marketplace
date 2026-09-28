@@ -7,6 +7,7 @@
 // Este arquivo NÃO chama Supabase.
 
 import { OrderReceipt } from "@/components/admin/orders/OrderReceipt";
+import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import { Button } from "@/components/ui/button";
 import type {
   AcaoDaVenda,
@@ -32,6 +33,9 @@ export interface PropsDoReciboDaVenda {
    * apaga o rascunho (o reducer sozinho não faz nenhuma das duas). */
   readonly limparCupom: () => void;
   readonly storeName?: string;
+  /** `anular_venda_presencial` (migration 20261185000000). Sem ela, o botão
+   * não aparece. PIX com QR nunca oferece: volta pelo estorno do app. */
+  readonly aoAnular?: (motivo: string) => Promise<void>;
 }
 
 function reais(valor: number): string {
@@ -98,6 +102,7 @@ export function ReciboDaVenda({
   recibo,
   limparCupom,
   storeName,
+  aoAnular,
 }: PropsDoReciboDaVenda): ReactElement {
   const whatsapp = whatsappDoCliente(recibo.cliente);
   const linkWhatsapp = linkWhatsappDoCliente(whatsapp);
@@ -207,6 +212,14 @@ export function ReciboDaVenda({
           Nova venda
         </Button>
       </div>
+
+      {aoAnular && recibo.pagamento !== "pix_qr" && (
+        <AnularVendaDoBalcao
+          total={recibo.total}
+          formaEmDinheiro={recibo.pagamento === "cash"}
+          aoAnular={aoAnular}
+        />
+      )}
 
       {/* `OrderReceipt` é `hidden ... print:block` (contexto, fato 14): não
           aparece aqui na tela, só quando o botão "Imprimir" chama

@@ -706,6 +706,20 @@ export function AdminPdvView({
           despachar={despachar}
           limparCupom={limparCupom}
           storeName={storeName}
+          aoAnular={async (motivo) => {
+            const orderId = estado.recibo?.orderId;
+            if (!orderId) return;
+            const { error } = await supabase.rpc(
+              "anular_venda_presencial" as any,
+              { p_order_id: orderId, p_motivo: motivo } as any,
+            );
+            if ((error as { code?: string } | null)?.code === "PGRST202") {
+              throw new Error(
+                "A anulação ainda não está liberada neste servidor. Avise quem cuida do app.",
+              );
+            }
+            if (error) throw error;
+          }}
         />
       )}
     </div>

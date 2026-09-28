@@ -21,6 +21,9 @@
  *   (f) cancelado pela loja antes de pagar → estoque de volta; pagamento
  *       tardio vira pago_apos_expirar, cancelado.
  *   (g) o gatilho não alcança pedido do SITE.
+ *   (h) anular venda do balcão (migration 20261185000000): só admin, motivo,
+ *       mesmo dia, nunca PIX com QR; estoque de volta uma vez; Financeiro e
+ *       caixa voltam ao que eram.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/pix-do-balcao-viva.cjs
  */
@@ -480,6 +483,137 @@ PROVAS.push({
       o.status,
       "pending",
       "pedido do site pago segue para separação, não 'entregue'",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(h) anular venda do balcão (20261185000000): mesmo dia, motivo, estoque de volta, Financeiro e caixa zerados",
+  corpo: async (cliente) => {
+    const CAIXA = "f1000000-0000-4000-8000-000000000001";
+    await cliente.query(
+      `INSERT INTO public.fin_caixa_sessoes (id, conta_id, valor_abertura, aberto_em, aberto_por)
+       VALUES ('6eeeeeee-0000-4000-8000-000000000001', $1, 100, now() - interval '1 minute', $2)
+       ON CONFLICT DO NOTHING`,
+      [CAIXA, U_ADMIN],
+    );
+    const esperado = async () =>
+      num(
+        (
+          await um(
+            cliente,
+            "SELECT public.fin__caixa_calculo('6eeeeeee-0000-4000-8000-000000000001') AS r",
+          )
+        ).r.esperado,
+      );
+    const antes = await esperado();
+
+    await logar(cliente, U_ADMIN);
+    const venda = (
+      await um(
+        cliente,
+        `SELECT public.registrar_venda_presencial($1::jsonb, 'cash', NULL, NULL, NULL, 0, NULL, $2::uuid) AS r`,
+        [JSON.stringify([{ product_id: P_SIMPLES, quantity: 2 }]), CHAVE(5)],
+      )
+    ).r;
+    const id = venda.order.id;
+    const estoqueDepoisDaVenda = (await estoque(cliente)).simples;
+    assert.equal(
+      await esperado(),
+      antes + 50,
+      "a venda em dinheiro entra no caixa",
+    );
+
+    await assert.rejects(
+      () =>
+        cliente.query("SELECT public.anular_venda_presencial($1, '  ')", [id]),
+      /Informe o motivo/,
+    );
+    await logar(cliente, U_CLIENTE);
+    await assert.rejects(
+      () =>
+        cliente.query("SELECT public.anular_venda_presencial($1, 'x')", [id]),
+      /Acesso negado/,
+    );
+    await logar(cliente, U_ADMIN);
+    // PIX com QR pago (prova (d)) nunca se anula por aqui.
+    await assert.rejects(
+      () =>
+        cliente.query("SELECT public.anular_venda_presencial($1, 'engano')", [
+          estado.pedido1,
+        ]),
+      /estorno do Mercado Pago/,
+    );
+
+    const r = (
+      await um(
+        cliente,
+        "SELECT public.anular_venda_presencial($1, 'cliente desistiu') AS r",
+        [id],
+      )
+    ).r;
+    assert.equal(r.ja_anulada, false);
+    assert.equal(
+      (await estoque(cliente)).simples,
+      estoqueDepoisDaVenda + 2,
+      "estoque de volta",
+    );
+    const o = await um(
+      cliente,
+      "SELECT status, payment_status FROM public.marketplace_orders WHERE id = $1",
+      [id],
+    );
+    assert.deepEqual(o, { status: "cancelled", payment_status: "estornado" });
+    const h = await historico(cliente, id);
+    assert.equal(
+      h[h.length - 1].notes,
+      "Venda do balcão anulada: cliente desistiu",
+    );
+
+    const mov = await movimentosDoPedido(cliente, id);
+    const saldo = mov.reduce(
+      (soma, m) => soma + (m.tipo === "entrada" ? num(m.valor) : -num(m.valor)),
+      0,
+    );
+    assert.equal(saldo, 0, "Financeiro: entrada e estorno do mesmo valor");
+    assert.equal(
+      await esperado(),
+      antes,
+      "caixa: a venda anulada não fica esperada na gaveta",
+    );
+
+    const de_novo = (
+      await um(
+        cliente,
+        "SELECT public.anular_venda_presencial($1, 'de novo') AS r",
+        [id],
+      )
+    ).r;
+    assert.equal(de_novo.ja_anulada, true);
+    assert.equal(
+      (await estoque(cliente)).simples,
+      estoqueDepoisDaVenda + 2,
+      "sem estoque em dobro",
+    );
+
+    // Venda de ONTEM não se anula.
+    const ontem = (
+      await um(
+        cliente,
+        `SELECT public.registrar_venda_presencial($1::jsonb, 'card', NULL, NULL, NULL, 0, NULL, $2::uuid) AS r`,
+        [JSON.stringify([{ product_id: P_SIMPLES, quantity: 1 }]), CHAVE(6)],
+      )
+    ).r.order.id;
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET pagamento_recebido_em = now() - interval '2 days' WHERE id = $1",
+      [ontem],
+    );
+    await assert.rejects(
+      () =>
+        cliente.query("SELECT public.anular_venda_presencial($1, 'engano')", [
+          ontem,
+        ]),
+      /mesmo dia/,
     );
   },
 });

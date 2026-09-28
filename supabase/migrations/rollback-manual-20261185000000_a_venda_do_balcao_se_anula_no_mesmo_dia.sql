@@ -1,0 +1,22 @@
+-- ============================================================================
+-- ROLLBACK MANUAL da 20261185000000 — a venda do balcão se anula no mesmo dia
+-- ============================================================================
+--
+-- O QUE DESFAZ: só a criação de `public.anular_venda_presencial`. A função é
+-- NOVA; desfazer é derrubar.
+--
+-- O QUE NÃO TOCA: as vendas JÁ anuladas continuam cancelled/estornado, com o
+-- estoque devolvido e os históricos — são fatos, não configuração. Nenhum dado
+-- é lido, escrito ou apagado aqui.
+--
+-- EFEITO COLATERAL: o botão "Anular venda" do painel passa a receber
+-- 42883/PGRST202 e mostra que a anulação não está liberada.
+--
+-- IDEMPOTÊNCIA: `DROP FUNCTION IF EXISTS` com a assinatura completa. Sem
+-- BEGIN/COMMIT (regra da casa).
+--
+-- VERIFICAÇÃO: SELECT count(*) FROM pg_proc WHERE proname = 'anular_venda_presencial';
+--   -- esperado: 0.
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS public.anular_venda_presencial(uuid, text);

@@ -304,6 +304,10 @@ describe("PIX com QR na tela Vender", () => {
     expect(container.textContent).toContain("Compra na loja");
     expect(container.textContent).toContain("PIX com QR no balcão");
     expect(
+      botao(container, "Anular venda"),
+      "PIX com QR volta pelo estorno do Mercado Pago, não pela anulação",
+    ).toBeUndefined();
+    expect(
       invokeMock.mock.calls.some(([n]) => n === "send-order-confirmation"),
     ).toBe(true);
   });
@@ -346,5 +350,34 @@ describe("PIX com QR na tela Vender", () => {
     ) as HTMLInputElement;
     await act(async () => caixa.click());
     expect(botao(container, "Registrar venda")?.disabled).toBe(false);
+  });
+  it("anular no recibo: pede motivo, chama a RPC e diz quanto devolver; PIX com QR não oferece", async () => {
+    await montarAteOFechamento();
+    await clicar(botao(container, "Dinheiro"));
+    await clicar(botao(container, "Registrar venda"));
+    await avancar(10);
+    await clicar(botao(container, "Anular venda"));
+    const confirmar = botao(container, "Confirmar anulação");
+    expect(confirmar?.disabled).toBe(true);
+    const campo = container.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      setter?.call(campo, "cliente desistiu");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await clicar(botao(container, "Confirmar anulação"));
+    await avancar(10);
+    const chamada = rpcMock.mock.calls.find(
+      ([n]) => n === "anular_venda_presencial",
+    );
+    expect(chamada?.[1]).toEqual({
+      p_order_id: "pedido-dinheiro",
+      p_motivo: "cliente desistiu",
+    });
+    expect(container.textContent).toContain("Venda anulada");
+    expect(container.textContent).toContain("Devolva R$ 39,90 ao cliente.");
   });
 });

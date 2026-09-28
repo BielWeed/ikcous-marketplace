@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -194,6 +195,18 @@ function fraseSituacaoDoPagamento(order: Order): string {
   // `null` com cobrança online não existe na prática (a cobrança nasce
   // "aguardando"); se aparecer, o rótulo do selo é a frase — sem inventar.
   return `${rotuloDoSelo} · R$ ${valor}`;
+}
+
+/** Venda do balcão recebida na hora, HOJE — onde "Anular venda" aparece. */
+function podeAnularVendaDoBalcao(order: Order): boolean {
+  if (order.canal !== "presencial") return false;
+  if (order.status !== "delivered") return false;
+  if (order.paymentStatus !== "recebido_na_entrega") return false;
+  if (!["cash", "pix", "card"].includes(order.paymentMethod)) return false;
+  if (!order.pagamentoRecebidoEm) return false;
+  const dia = (d: Date) =>
+    d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  return dia(new Date(order.pagamentoRecebidoEm)) === dia(new Date());
 }
 
 interface OrderDetailProps {
@@ -1603,6 +1616,28 @@ export const OrderDetail = memo(function OrderDetail({
             entrega não tem estorno pelo app, e a tela nem oferece. Na
             comanda, a devolução mora logo abaixo da seção Pagamento, que
             é de quem ela trata. */}
+        {/* Anular venda do balcão (frente A, 28/09 — resposta do dono: só
+            no mesmo dia, com motivo). A regra de verdade é da RPC
+            `anular_venda_presencial`; aqui só se esconde o botão onde ele
+            não faria sentido. */}
+        {podeAnularVendaDoBalcao(order) && (
+          <AnularVendaDoBalcao
+            total={order.total}
+            formaEmDinheiro={order.paymentMethod === "cash"}
+            aoAnular={async (motivo) => {
+              const { error } = await supabase.rpc(
+                "anular_venda_presencial" as any,
+                { p_order_id: order.id, p_motivo: motivo } as any,
+              );
+              if ((error as { code?: string } | null)?.code === "PGRST202") {
+                throw new Error(
+                  "A anulação ainda não está liberada neste servidor. Avise quem cuida do app.",
+                );
+              }
+              if (error) throw error;
+            }}
+          />
+        )}
         {order.paymentMethod === "online" &&
           (order.paymentStatus === "pago" ||
             order.paymentStatus === "pago_apos_expirar" ||
