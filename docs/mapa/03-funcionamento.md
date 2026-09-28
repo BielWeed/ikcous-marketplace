@@ -69,7 +69,8 @@ linkrastreio. Sem axios — tudo `fetch`.
 
 RLS em toda tabela de dado de usuário · SECURITY DEFINER com `search_path =
 public` explícito · regenerar tipos quando o schema muda · **nunca `supabase db
-push`** (ADR 0002) · migration sem `BEGIN`/`COMMIT` · backup diário sem PITR ·
+push`** (ADR 0002) · migration sem `BEGIN`/`COMMIT` · sem backup automático (plano Free): `pg_dump` com dados antes de
+cada migration ·
 nunca `--no-verify` no commit.
 
 ## Arquiteturas agênticas da Galeria ZCode (18/09/2026)

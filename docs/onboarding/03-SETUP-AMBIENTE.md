@@ -652,6 +652,10 @@ zero e cobre quase o mesmo risco.
 
 ### A consequência real — e por que ela é menor do que parece
 
+> **Histórico (projeto antigo, com backup diário).** Esta seção e a anterior valiam
+> para o `cafkrminfnokvgjqtkle`. No projeto novo (plano Free, desde 28/09/2026) não há
+> backup automático: a janela de perda é o tempo desde o último dump do passo 3 abaixo.
+
 A frase "sem PITR você perde até 24 h de pedidos" está certa no pior caso e
 **errada na prática**, porque a janela de perda não é fixa em 24 h: ela é *o
 tempo decorrido desde o último backup*. E esse tempo você escolhe.
@@ -692,8 +696,22 @@ perder pedido nenhum.
 `lofznuxcvezrhxsgjqyg` já existe e já tem as três edge functions publicadas.
 Usá-lo como banco de ensaio não cria custo novo. É a `INFRA-270` (#131).
 
-**3. `pg_dump` completo antes de CADA migration.** Com Docker no ar — ver a
-armadilha abaixo.
+**3. `pg_dump` COM DADOS antes de CADA migration.** Direto pelo session pooler, com o
+`pg_dump` 17 instalado junto do `psql` (no Windows, `C:\Program Files\PostgreSQL\17\bin\`).
+Não use o `supabase db dump` para isto: o padrão dele não leva dados (e omite triggers,
+armadilha 2 abaixo).
+
+`$PGURL` é a URI do **session pooler** do projeto (painel → Connect → Session pooler: host
+`aws-0-sa-east-1.pooler.supabase.com`, porta 5432, usuário `postgres.dekxabvqdsuukijblazl`,
+`sslmode=require`), com a senha do banco, só no seu terminal.
+
+```bash
+pg_dump "$PGURL" --schema=public --schema=auth --no-owner --no-privileges -Fc -f antes-<migration>.dump
+pg_restore -l antes-<migration>.dump | grep -c "TABLE DATA"   # tem que ser > 0
+```
+
+A segunda linha é a conferência: arquivo sem `TABLE DATA` não é ponto de restauração.
+A senha nunca vai para o chat nem para o repositório.
 
 Sem backup automático por trás, estes três passos são o que cobre o risco
 real — pular o dump de qualquer migration deixa a loja sem ponto de
@@ -747,15 +765,22 @@ assim que a omissão apareceu: o dump "funcionou", e os números não bateram.
 
 ### Restauração
 
-Restaurar é pelo **painel do Supabase**, e só o dono da org (o Gabriel) tem
-acesso. O `supabase backups restore` existe no CLI mas serve ao PITR, que está
-desligado — com backup diário, o caminho é a interface.
+No plano Free não há restauração pelo painel. Restaurar é voltar o dump do passo 3,
+e só o dono (o Gabriel) tem a senha do banco:
+
+```bash
+pg_restore --clean --if-exists --no-owner --no-privileges --schema=public \
+  -d "$PGURL" antes-<migration>.dump
+```
+
+`auth` só volta se a migration tiver mexido nele, e com cuidado: é schema gerenciado
+pelo Supabase.
 
 **Quanto tempo leva uma restauração continua não medido, e vai continuar.**
 Medir exigiria restaurar produção de verdade. É um desconhecido **aceito**: a
 mitigação foi desenhada justamente para não depender de restauração — o
-snapshot de policies resolve o caso provável sem restaurar nada, e o passo 1 do
-procedimento limita o caso improvável a minutos.
+snapshot de policies resolve o caso provável sem restaurar nada, e o dump do passo 3
+limita a perda do caso improvável ao que entrou entre o dump e a restauração.
 
 ---
 

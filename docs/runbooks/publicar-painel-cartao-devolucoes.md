@@ -151,8 +151,9 @@ antes de abrir o estorno automático do cancelamento. As functions novas continu
   escolher em *Run workflow*, e esse branch tem de estar exatamente nesse SHA.
 - [ ] **Anote o alvo do rollback das functions**: o commit do último run verde do
   `publicar-functions.yml` na aba Actions. Na falta dele, use a base do PR.
-- [ ] **Confira o backup.** O backup é diário e não há PITR. Olhe a hora do último backup em
-  Supabase → Database → Backups.
+- [ ] **Faça o dump com dados.** Plano Free desde 28/09/2026: não há backup automático nem PITR.
+  O `pg_dump` do [§9 do setup](../onboarding/03-SETUP-AMBIENTE.md) antes de CADA migration, e
+  confira que ele tem `TABLE DATA`.
 - [ ] **Escolha um horário de pouco movimento** e faça os passos 1 e 2 na mesma sessão.
 - [ ] **Rode no SQL Editor do projeto da loja** e confira os valores esperados. É uma consulta
   só, porque o SQL Editor mostra apenas o último resultado:

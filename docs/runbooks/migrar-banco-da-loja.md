@@ -489,7 +489,7 @@ três nascem de novo, no projeto NOVO:
 
 | Nome (`vault.create_secret`) | Onde é lido | Valor |
 | --- | --- | --- |
-| `otp_trigger_secret` | Trigger `handle_new_otp_verification` (banco) chama a edge function `send-otp-email` | Uma string aleatória nova, qualquer uma — só precisa **bater** com o segredo `OTP_TRIGGER_SECRET` que a função `send-otp-email` confere no próprio ambiente (parte f). Gere uma vez, use nos dois lugares. |
+| `otp_trigger_secret` | **Não é mais usado.** O trigger `handle_new_otp_verification` foi apagado pela `20260820000100` e a `send-otp-email` não lê `OTP_TRIGGER_SECRET` (`send-otp-email/index.ts:18-21`). Só o `rollback-manual-20260820000100_*.sql` o usaria. Na migração de 28/09/2026 ele não foi recriado. | — |
 | `reconciliacao_url` | Job `reconciliar-pagamentos` (`net.http_post`) | `https://dekxabvqdsuukijblazl.supabase.co/functions/v1/reconciliar-pagamentos` — **SUPOSIÇÃO de formato**: a migration não grava a URL (nasce fora, por `vault.create_secret` direto), então não tenho como confirmar se o projeto antigo usava esta forma (`/functions/v1/<nome>`) ou a legada (`https://<ref>.functions.supabase.co/<nome>`) — as duas funcionam hoje; use a primeira, que é a que a Supabase documenta como atual. |
 | `reconciliacao_secret` | Job `reconciliar-pagamentos` manda como header `x-reconciliacao-secret`; a função confere contra `RECONCILIACAO_SECRET` do próprio ambiente | Mesma regra do `otp_trigger_secret`: uma string aleatória nova, igual nos dois lados (Vault + segredo da função, parte f). |
 
