@@ -463,7 +463,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-admin-bg pb-admin lg:pb-12 text-white duration-200 animate-in fade-in selection:bg-admin-gold/30"
+      className="pb-admin h-auto bg-admin-bg text-white duration-200 animate-in fade-in selection:bg-admin-gold/30 lg:pb-12"
     >
       {/* Header Elite */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">

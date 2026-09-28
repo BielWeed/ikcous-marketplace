@@ -241,9 +241,10 @@ describe("StoreContext — realtime com config IDÊNTICA não re-renderiza a cas
       ...LINHA_DA_LOJA,
       home_sections: secoes.map((s) => {
         const obj = s as Record<string, unknown>;
-        return Object.fromEntries(
-          Object.entries(obj).reverse(),
-        ) as Record<string, unknown>;
+        return Object.fromEntries(Object.entries(obj).reverse()) as Record<
+          string,
+          unknown
+        >;
       }),
     };
   }
@@ -286,9 +287,7 @@ describe("StoreContext — realtime com config IDÊNTICA não re-renderiza a cas
 
     await act(async () => {
       dispararSync(
-        ecoComVitrines(
-          VITRINES_SALVAS.map((s) => ({ ...s, maxItems: 9 })),
-        ),
+        ecoComVitrines(VITRINES_SALVAS.map((s) => ({ ...s, maxItems: 9 }))),
       );
     });
 

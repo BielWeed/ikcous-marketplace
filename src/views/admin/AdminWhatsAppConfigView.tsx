@@ -206,16 +206,14 @@ const convertHTMLToPlainText = (html: string) => {
   const doc = parser.parseFromString(html, "text/html");
 
   const spans = doc.querySelectorAll("span[data-tag]");
-  for (let i = 0; i < spans.length; i++) {
-    const span = spans[i];
+  for (const span of spans) {
     const tag = span.getAttribute("data-tag");
     const textNode = doc.createTextNode(`[${tag}]`);
     span.parentNode?.replaceChild(textNode, span);
   }
 
   const brs = doc.querySelectorAll("br");
-  for (let i = 0; i < brs.length; i++) {
-    const br = brs[i];
+  for (const br of brs) {
     const textNode = doc.createTextNode("\n");
     br.parentNode?.replaceChild(textNode, br);
   }
@@ -245,7 +243,9 @@ const getProcessedPreviewText = (
 
   let processed = text;
   for (const [key, value] of Object.entries(replacements)) {
+    // eslint-disable-next-line security/detect-non-literal-regexp -- `key` vem do conjunto literal fechado de `replacements` (sem metacaracteres de regex)
     const regexSquare = new RegExp(`\\[${key}\\]`, "gi");
+    // eslint-disable-next-line security/detect-non-literal-regexp -- idem: chave literal do conjunto fechado de `replacements`
     const regexCurly = new RegExp(`\\{${key}\\}`, "gi");
     processed = processed
       .replace(regexSquare, value)
@@ -630,7 +630,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
           return (
             <span
               key={index}
-              className="text-[#53bdeb] underline hover:text-[#53bdeb]/80 cursor-pointer break-all"
+              className="cursor-pointer break-all text-[#53bdeb] underline hover:text-[#53bdeb]/80"
             >
               {part}
             </span>
@@ -814,7 +814,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
   );
 
   return (
-    <div className="relative min-h-screen bg-[#09090b] pb-admin lg:pb-12 font-sans text-zinc-400">
+    <div className="pb-admin relative min-h-screen bg-[#09090b] font-sans text-zinc-400 lg:pb-12">
       {/* Elite Header */}
       <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
@@ -988,51 +988,51 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
               {/* Chat window mockup ampliado — ocupa a tela de verdade */}
               <div className="relative mx-auto flex h-[420px] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0b141a] shadow-2xl transition-all duration-300">
                 {/* WhatsApp Custom Header */}
-                <div className="flex items-center justify-between bg-[#1f2c34] px-3.5 py-2 border-b border-[#222e35]/50 z-10 shrink-0">
+                <div className="z-10 flex shrink-0 items-center justify-between border-b border-[#222e35]/50 bg-[#1f2c34] px-3.5 py-2">
                   <div className="flex items-center gap-2.5">
                     {/* Store avatar mockup */}
-                    <div className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-admin-gold/15 border border-admin-gold/30 text-[9px] font-black text-admin-gold">
+                    <div className="relative flex size-8 shrink-0 items-center justify-center rounded-full border border-admin-gold/30 bg-admin-gold/15 text-[9px] font-black text-admin-gold">
                       IK
                       <span className="absolute bottom-0 right-0 size-2 rounded-full border border-[#1f2c34] bg-[#25d366]" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[11px] font-bold text-[#e9edef] truncate">
+                      <p className="truncate text-[11px] font-bold text-[#e9edef]">
                         Cliente (Você)
                       </p>
-                      <p className="text-[8px] text-[#8696a0] leading-none">
+                      <p className="text-[8px] leading-none text-[#8696a0]">
                         online
                       </p>
                     </div>
                   </div>
                   {/* Header Icons */}
                   <div className="flex items-center gap-3.5 text-[#aebac1]">
-                    <Video className="size-4 cursor-pointer hover:text-white transition-colors" />
-                    <Phone className="size-3.5 cursor-pointer hover:text-white transition-colors" />
+                    <Video className="size-4 cursor-pointer transition-colors hover:text-white" />
+                    <Phone className="size-3.5 cursor-pointer transition-colors hover:text-white" />
                     <div className="h-4 w-px bg-white/5" />
-                    <MoreVertical className="size-4 cursor-pointer hover:text-white transition-colors" />
+                    <MoreVertical className="size-4 cursor-pointer transition-colors hover:text-white" />
                   </div>
                 </div>
 
                 {/* Chat message body with wallpaper pattern */}
-                <div className="relative flex-1 p-3 overflow-y-auto flex flex-col">
+                <div className="relative flex flex-1 flex-col overflow-y-auto p-3">
                   {/* Doodle pattern overlay */}
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#25d366_1.2px,transparent_1.2px)] opacity-[0.03] [background-size:14px_14px]" />
 
                   {/* Sent message bubble wrapper */}
-                  <div className="relative z-10 w-full max-w-[85%] self-end flex items-start justify-end gap-1 mt-auto">
+                  <div className="relative z-10 mt-auto flex w-full max-w-[85%] items-start justify-end gap-1 self-end">
                     {/* Sent message bubble */}
-                    <div className="relative max-w-full min-w-0 rounded-xl rounded-tr-none bg-[#005c4b] px-3 py-2 text-[#e9edef] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]">
+                    <div className="relative min-w-0 max-w-full rounded-xl rounded-tr-none bg-[#005c4b] px-3 py-2 text-[#e9edef] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]">
                       {/* WhatsApp bubble tail SVG */}
-                      <div className="absolute -right-[7px] top-0 text-[#005c4b] fill-current">
+                      <div className="absolute right-[-7px] top-0 fill-current text-[#005c4b]">
                         <svg width="8" height="13" viewBox="0 0 8 13">
                           <path d="M5.188 0H0v11.193l6.467-6.467C7.523 3.668 7.02 0 5.188 0z" />
                         </svg>
                       </div>
 
                       {/* OpenGraph Preview Link Card - Exibido de forma fiel ao compartilhamento de produto */}
-                      <div className="w-full min-w-0 overflow-hidden rounded-lg bg-[#013c32] mb-1.5 border border-[#004d40] flex flex-col shadow-sm">
+                      <div className="mb-1.5 flex w-full min-w-0 flex-col overflow-hidden rounded-lg border border-[#004d40] bg-[#013c32] shadow-sm">
                         {/* Image and title block */}
-                        <div className="flex gap-2.5 p-2 bg-black/10 w-full min-w-0">
+                        <div className="flex w-full min-w-0 gap-2.5 bg-black/10 p-2">
                           {/* Product photo real/premium */}
                           <div className="relative flex size-14 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-zinc-900 shadow-inner">
                             <img
@@ -1045,11 +1045,11 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                               className="size-full object-cover"
                             />
                           </div>
-                          <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5">
-                            <p className="text-[10px] font-bold text-[#e9edef] truncate">
+                          <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
+                            <p className="truncate text-[10px] font-bold text-[#e9edef]">
                               {sampleProduct.name}
                             </p>
-                            <p className="text-[8px] text-[#8696a0] line-clamp-2 leading-relaxed">
+                            <p className="line-clamp-2 text-[8px] leading-relaxed text-[#8696a0]">
                               {sampleProduct.description ||
                                 "Excelente qualidade, preço justo e entrega rápida. Confira os detalhes em nossa loja!"}
                             </p>
@@ -1057,7 +1057,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                         </div>
 
                         {/* Domain footer block */}
-                        <div className="flex items-center justify-between px-2.5 py-1 bg-black/20 border-t border-[#004d40]">
+                        <div className="flex items-center justify-between border-t border-[#004d40] bg-black/20 px-2.5 py-1">
                           <span className="text-[8px] font-medium text-[#8696a0]">
                             {window.location.host}
                           </span>
@@ -1073,9 +1073,9 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                       {/* Time and checkmarks */}
                       <div className="mt-1 flex items-center justify-end gap-1 text-[7.5px] text-[#8696a0]/80">
                         <span>12:00</span>
-                        <span className="flex text-[#53bdeb] font-bold">
+                        <span className="flex font-bold text-[#53bdeb]">
                           <Check className="size-2.5 text-[#53bdeb]" />
-                          <Check className="size-2.5 -ml-1 text-[#53bdeb]" />
+                          <Check className="-ml-1 size-2.5 text-[#53bdeb]" />
                         </span>
                       </div>
                     </div>
@@ -1092,7 +1092,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 Texto da mensagem
               </Label>
               <div className="relative">
-                <div className="pointer-events-none absolute left-3.5 top-3.5 z-15">
+                <div className="z-15 pointer-events-none absolute left-3.5 top-3.5">
                   <Share2 className="size-3.5 text-zinc-500" />
                 </div>
 
@@ -1185,7 +1185,6 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                     o clique sintético do MESMO toque que abriu a folha (o
                     "click" atrasado do touchend cai nesta MESMA coordenada,
                     que já é o véu recém-montado). */}
-                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -1200,7 +1199,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                     }
                     fecharFolhaDePresets();
                   }}
-                  className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
+                  className="absolute inset-0 cursor-pointer bg-black/70 backdrop-blur-sm"
                 />
 
                 {/* Bottom Sheet Container -- diálogo acessível: foco entra
@@ -1259,7 +1258,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                           <Sparkles className="size-4 text-purple-400" />
                           Modelos prontos de mensagem
                         </h3>
-                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                        <p className="mt-0.5 text-[10px] text-zinc-500">
                           Selecione um dos 30 modelos prontos de
                           compartilhamento de produto.
                         </p>
@@ -1267,7 +1266,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-4 mt-2">
+                  <div className="mt-2 flex flex-col gap-4">
                     {/* Search Bar */}
                     <div className="relative">
                       <input
@@ -1277,13 +1276,13 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                         placeholder="Pesquisar por modelo, tom ou palavra-chave..."
                         value={presetSearch}
                         onChange={(e) => setPresetSearch(e.target.value)}
-                        className="h-10 w-full rounded-xl border border-white/10 bg-black/40 px-4 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:border-purple-500/50 outline-none"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/40 px-4 text-xs font-bold text-white outline-none transition-all placeholder:text-zinc-700 focus:border-purple-500/50 focus:bg-black/60"
                         autoComplete="off"
                       />
                     </div>
 
                     {/* Presets List Scrollable */}
-                    <div className="overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh]">
+                    <div className="grid max-h-[50vh] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
                       {filteredPresets.length > 0 ? (
                         filteredPresets.map((preset) => (
                           <button
@@ -1293,9 +1292,9 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                               applyPreset(preset.text);
                               setIsPresetsOpen(false);
                             }}
-                            className="flex flex-col items-start gap-1.5 rounded-xl border border-white/5 bg-zinc-950/60 p-3.5 text-left transition-all hover:border-purple-500/30 hover:bg-purple-950/5 active:scale-[0.98] group"
+                            className="group flex flex-col items-start gap-1.5 rounded-xl border border-white/5 bg-zinc-950/60 p-3.5 text-left transition-all hover:border-purple-500/30 hover:bg-purple-950/5 active:scale-[0.98]"
                           >
-                            <div className="flex items-center justify-between w-full">
+                            <div className="flex w-full items-center justify-between">
                               <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 group-hover:text-purple-300">
                                 {preset.name}
                               </span>
@@ -1303,17 +1302,17 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                                 Aplicar
                               </span>
                             </div>
-                            <p className="text-[9px] leading-relaxed text-zinc-400 line-clamp-3 bg-black/30 p-2 rounded-lg border border-white/5 w-full font-mono font-medium">
+                            <p className="line-clamp-3 w-full rounded-lg border border-white/5 bg-black/30 p-2 font-mono text-[9px] font-medium leading-relaxed text-zinc-400">
                               {preset.text}
                             </p>
-                            <span className="text-[8px] text-zinc-500 italic mt-0.5">
+                            <span className="mt-0.5 text-[8px] italic text-zinc-500">
                               {preset.description}
                             </span>
                           </button>
                         ))
                       ) : (
-                        <div className="col-span-full py-8 text-center flex flex-col items-center justify-center gap-2">
-                          <p className="text-xs text-zinc-600 font-bold uppercase tracking-wider">
+                        <div className="col-span-full flex flex-col items-center justify-center gap-2 py-8 text-center">
+                          <p className="text-xs font-bold uppercase tracking-wider text-zinc-600">
                             Nenhum modelo encontrado
                           </p>
                           <p className="text-[10px] text-zinc-700">

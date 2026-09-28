@@ -559,21 +559,19 @@ export function useBanners(adminMode = false) {
       const overIndex = newBanners.findIndex((b) => b.id === overBannerId);
 
       if (activeIndex !== -1 && overIndex !== -1) {
-        const activeB = { ...newBanners[activeIndex] };
-        const overB = { ...newBanners[overIndex] };
+        const activeB = { ...newBanners.at(activeIndex)! };
+        const overB = { ...newBanners.at(overIndex)! };
 
         // Swap the 'order' values
         const tempOrder = activeB.order;
         activeB.order = overB.order;
         overB.order = tempOrder;
 
-        newBanners[activeIndex] = overB;
-        newBanners[overIndex] = activeB;
+        newBanners.splice(activeIndex, 1, overB);
+        newBanners.splice(overIndex, 1, activeB);
 
-        // Sort by order
+        // Sort by order (cópia já com o swap aplicado acima)
         const cachedBanners = [...newBanners];
-        cachedBanners[activeIndex] = overB;
-        cachedBanners[overIndex] = activeB;
         cachedBanners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
         applyLocalBanners(cachedBanners);
