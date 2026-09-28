@@ -4,13 +4,13 @@ import {
   GAVETA_NO_COMPUTADOR,
   TITULO_DE_PAGINA_NO_COMPUTADOR,
 } from "@/components/desktop/medidas";
-import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,

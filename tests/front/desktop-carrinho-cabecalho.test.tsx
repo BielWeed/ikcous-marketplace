@@ -175,11 +175,12 @@ describe("F5 — layout de computador preserva as classes do celular", () => {
         handleClearCart={vi.fn()}
       />,
     );
+    const foto = host.querySelector("img")!.parentElement;
     conferir(
-      host.querySelector("img")!.parentElement,
+      foto,
       "relative size-20 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100/50 bg-zinc-50 xs:size-24 xs:rounded-2xl",
-      "lg:size-24",
     );
+    expect(foto?.classList.contains("lg:size-24")).toBe(false);
     const conteudo =
       host.querySelector("h2")!.parentElement!.parentElement!.parentElement!
         .parentElement;
