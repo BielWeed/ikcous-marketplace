@@ -998,10 +998,15 @@ const AppContent = () => {
         return;
       }
 
-      // Trocar apenas a ficha selecionada não é uma navegação de página. Além
-      // de evitar uma View Transition desnecessária, o caminho direto preserva
-      // o back override que a própria tela registrou para fechar a ficha.
-      if (!isDifferentView) {
+      // Devoluções é lista + ficha na MESMA tela: trocar só a ficha (`?id=`)
+      // não é navegação de página. Sem View Transition — o callback dela roda
+      // depois de a tela já ter registrado o Voltar da ficha nova e o
+      // `setBackOverride(null)` do caminho abaixo o apagaria — e sem zerar o
+      // override. Só esta tela: nas demais que trocam apenas o id (produto →
+      // produto, com a foto do card indo para a foto principal) o caminho
+      // abaixo continua valendo.
+      if (!isDifferentView && targetView === "admin-devolucoes") {
+        latestTargetViewRef.current = { view: targetView, id };
         setSelectedProductId(id || null);
         const path = id ? `/${targetView}?id=${id}` : `/${targetView}`;
         const currentPathAndSearch =
