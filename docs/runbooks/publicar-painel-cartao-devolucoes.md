@@ -67,7 +67,8 @@ Correspondência com os passos deste runbook:
   rodar a migration, se o preflight dela (`DO $preflight_20261180$`) vai passar (mesmos hashes,
   mesma checagem de `metodo_online`/`devolucoes`) — ver o parágrafo próprio abaixo.
 - **Backup** (checklist do §0) — `consulta = backups`: imprime a hora do último backup, o
-  status, se o PITR está ligado e o total — nada que pareça segredo.
+  status, se o PITR está ligado e o total. No plano Free (desde 28/09/2026) ela devolve
+  "(nenhum)": o ponto de restauração passa a ser o `pg_dump` com dados do §0, não esta consulta.
 
 O `consulta = 3a-cpf-no-endereco` também está na lista: é a contagem de pedidos com CPF gravado
 dentro de `customer_data.address` (janela 23/09–26/09/2026) que decide se uma limpeza é

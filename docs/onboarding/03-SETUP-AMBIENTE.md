@@ -496,7 +496,8 @@ Leia o resultado do `SELECT`. Só se ele for exatamente o esperado você repete 
 (`pg_get_functiondef` em `scripts/db-apply.cjs:97`, coletado pelo laço em `:145-152`) — e só isso,
 **não é backup de dado**. Antes de `UPDATE`/`DELETE` em massa, tire o snapshot você mesmo com
 `CREATE TABLE bkp_produtos_20260730 AS SELECT * FROM produtos WHERE <o recorte que vai mudar>` — isso
-é DDL, cai na regra 5: avise antes. Sem escrever nada, use o painel Supabase → Database → Backups.
+é DDL, cai na regra 5: avise antes. Sem escrever nada, o ponto de restauração é o `pg_dump` com dados
+do §9 (plano Free: o painel não tem backup automático).
 
 Para migration, o `db-apply.cjs` faz o equivalente do ritual acima e salva o rollback de função:
 
@@ -705,13 +706,18 @@ armadilha 2 abaixo).
 `aws-0-sa-east-1.pooler.supabase.com`, porta 5432, usuário `postgres.dekxabvqdsuukijblazl`,
 `sslmode=require`), com a senha do banco, só no seu terminal.
 
-```bash
-pg_dump "$PGURL" --schema=public --schema=auth --no-owner --no-privileges -Fc -f antes-<migration>.dump
-pg_restore -l antes-<migration>.dump | grep -c "TABLE DATA"   # tem que ser > 0
+No PowerShell (a senha fica só no seu terminal, nunca no chat nem no repositório):
+
+```powershell
+$bin = "C:\Program Files\PostgreSQL\17\bin"
+& "$bin\pg_dump.exe" $PGURL --schema=public --schema=auth -Fc -f antes-<migration>.dump
+& "$bin\pg_restore.exe" -f NUL antes-<migration>.dump; "arquivo inteiro: $($LASTEXITCODE -eq 0)"
+(& "$bin\pg_restore.exe" -l antes-<migration>.dump | Select-String "TABLE DATA").Count
 ```
 
-A segunda linha é a conferência: arquivo sem `TABLE DATA` não é ponto de restauração.
-A senha nunca vai para o chat nem para o repositório.
+Duas conferências: a segunda linha lê o arquivo inteiro (dump cortado dá erro), e a
+terceira tem de ser maior que zero (sem `TABLE DATA`, o dump é só estrutura e não serve
+para voltar dado nenhum).
 
 Sem backup automático por trás, estes três passos são o que cobre o risco
 real — pular o dump de qualquer migration deixa a loja sem ponto de
@@ -753,7 +759,8 @@ Entre os 9 que sumiriam estão `tr_prevent_role_change`,
 privilégio**. Um baseline gerado por ali derrubaria as três sem avisar, e o dump
 não reclama de nada.
 
-**Use `pg_dump` direto, dentro do container:**
+**Para gerar BASELINE de schema** (não é backup — o backup é o passo 3 do procedimento),
+use `pg_dump` direto, dentro do container:
 
 ```bash
 docker run --rm -e PGURL public.ecr.aws/supabase/postgres:17.6.1.143 \
@@ -765,16 +772,29 @@ assim que a omissão apareceu: o dump "funcionou", e os números não bateram.
 
 ### Restauração
 
-No plano Free não há restauração pelo painel. Restaurar é voltar o dump do passo 3,
-e só o dono (o Gabriel) tem a senha do banco:
+No plano Free não há restauração pelo painel, e só o dono (o Gabriel) tem a senha do
+banco. **Nunca restaure com `pg_restore --clean`**: ele apaga e recria as tabelas, views e
+funções de `public`, que nascem com os privilégios padrão do Supabase. Isso reabre para
+o `anon` o que as migrations fecharam com `REVOKE` (a margem em `produtos.custo`, a escrita
+em `vw_produtos_public`, `confirmar_pagamento`), tira tabelas da publication do Realtime e
+termina com erros em `is_admin()`. Provado num Postgres de teste em 28/09/2026.
 
-```bash
-pg_restore --clean --if-exists --no-owner --no-privileges --schema=public \
-  -d "$PGURL" antes-<migration>.dump
+O caminho depende do que quebrou:
+
+- **Estrutura** (função, policy, trigger, grant): o rollback da própria migration, que vem
+  no PR dela, mais o snapshot de policies do passo 1. Não se restaura dump para isso.
+- **Dados** (linhas estragadas por uma migration): tire do dump **só os dados** da tabela
+  afetada, confira o arquivo e aplique numa transação, sem tocar em estrutura nem grant:
+
+```powershell
+& "$bin\pg_restore.exe" --data-only --table=<tabela> -f dados-<tabela>.sql antes-<migration>.dump
 ```
 
-`auth` só volta se a migration tiver mexido nele, e com cuidado: é schema gerenciado
-pelo Supabase.
+  O arquivo é só `COPY` para a tabela original. Como reinserir depende da tabela: chave
+  primária colide com as linhas que ficaram, e gatilhos (estoque, financeiro, histórico)
+  disparam em `INSERT`/`DELETE`. Por isso, faça sempre dentro de `BEGIN`, confira as
+  contagens antes do `COMMIT` e **com revisão de outra pessoa**, nunca sozinho. Restauração
+  do banco inteiro é incidente.
 
 **Quanto tempo leva uma restauração continua não medido, e vai continuar.**
 Medir exigiria restaurar produção de verdade. É um desconhecido **aceito**: a
