@@ -36,9 +36,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // vezes ele ABRIU (virou de fechado para aberto), que é o que "aparece uma vez"
 // mede. `telaReal` escolhe, por teste, entre a AdminDevolucoesView de verdade e
 // o dublê de contrato (mais abaixo); `respostas` alimenta as RPCs da tela real.
+// `voltarDaTelaRegistrado` diz se a tela real tem, agora, um Voltar registrado
+// no App (a ponte que o alimenta mora no mock da AdminDevolucoesView).
 const prova = vi.hoisted(() => {
   const estado = {
     camadaFechadaPeloOverride: 0,
+    voltarDaTelaRegistrado: false,
     dialogoAberto: 0,
     dialogoAberturas: 0,
     dialogoEstavaAberto: false,
@@ -197,6 +200,37 @@ vi.mock("@/views/admin/AdminDevolucoesView", async (importarOriginal) => {
       typeof import("@/views/admin/AdminDevolucoesView")
     >();
   type Propriedades = React.ComponentProps<typeof original.AdminDevolucoesView>;
+  type RegistrarVoltar = (fn: (() => void) | null) => void;
+  // Ponte da tela REAL com o App: registra o que a tela pede ao Voltar
+  // (`voltarDaTelaRegistrado`) e conta cada vez que o App roda o que ela
+  // registrou (`camadaFechadaPeloOverride`). É o que separa "fechou pelo
+  // Voltar da tela" de "o `?id=` sumiu da URL e o syncWithUrl fechou sozinho".
+  // A identidade tem de ser ESTÁVEL (a tela re-registra quando ela muda, e um
+  // laço de render com o App é o que se ganha): o cache por setter do App —
+  // que é estável — garante isso sem hook.
+  const pontes = new WeakMap<RegistrarVoltar, RegistrarVoltar>();
+  function pontearVoltar(repassar: RegistrarVoltar | undefined) {
+    if (!repassar) return undefined;
+    let ponte = pontes.get(repassar);
+    if (!ponte) {
+      ponte = (fn) => {
+        prova.voltarDaTelaRegistrado = fn !== null;
+        if (fn === null) {
+          repassar(null);
+          return;
+        }
+        // A tela registra `() => voltar` (atualizador do useState do App, que
+        // guarda o retorno). Embrulha o `voltar` para contar quando o App o roda.
+        const voltar = (fn as unknown as () => () => void)();
+        repassar(() => () => {
+          prova.camadaFechadaPeloOverride += 1;
+          voltar();
+        });
+      };
+      pontes.set(repassar, ponte);
+    }
+    return ponte;
+  }
   function DubleDeContrato({
     onNavigate,
     selectedDevolucaoId,
@@ -248,7 +282,10 @@ vi.mock("@/views/admin/AdminDevolucoesView", async (importarOriginal) => {
   return {
     AdminDevolucoesView: (props: Propriedades) =>
       prova.telaReal ? (
-        <original.AdminDevolucoesView {...props} />
+        <original.AdminDevolucoesView
+          {...props}
+          onSetBackOverride={pontearVoltar(props.onSetBackOverride)}
+        />
       ) : (
         <DubleDeContrato {...props} />
       ),
@@ -337,35 +374,76 @@ vi.mock("@/components/ui/custom/LocalErrorBoundary", () => ({
 // Dublê do AlertDialog que CONTA as renderizações abertas: o App abre o
 // diálogo de "alterações não salvas" com `open={!!pendingNavigation}` —
 // `dialogoAberto > 0` é a prova de que o gate de dirty capturou o popstate.
+// Também renderiza "Permanecer" (Cancel) e "Descartar e Sair" (Action) como
+// botões de verdade, e SÓ enquanto aberto (como o Radix, cujo conteúdo não
+// existe fechado): é o que deixa o teste clicar neles e provar que o diálogo
+// fechou. O `onOpenChange(false)` chega aos botões pelo contexto — Provider e
+// Consumer são elementos, o dublê não tem hook (uma versão com hooks subiu a
+// catraca do eslint com `react-hooks/immutability`).
 vi.mock("@/components/ui/alert-dialog", async () => {
   const React = await import("react");
+  type MudarAberto = (aberto: boolean) => void;
+  const ContextoDoDialogo = React.createContext<MudarAberto>(() => {});
   function AlertDialog({
     children,
     open,
+    onOpenChange,
   }: {
     readonly children?: unknown;
     readonly open?: boolean;
+    readonly onOpenChange?: MudarAberto;
   }) {
     if (open) {
       prova.dialogoAberto += 1;
       if (!prova.dialogoEstavaAberto) prova.dialogoAberturas += 1;
     }
     prova.dialogoEstavaAberto = !!open;
+    if (!open) return null;
+    // `createElement` de propósito: com JSX no retorno o lint de React passa a
+    // tratar isto como componente e reprova o `prova.*` contado acima
+    // (`react-hooks/immutability`) — o teste precisa desse contador de render.
     return React.createElement(
-      React.Fragment,
-      null,
+      ContextoDoDialogo.Provider,
+      { value: onOpenChange ?? (() => {}) },
       children as React.ReactNode,
     );
   }
+  // No Radix, Cancel e Action rodam o `onClick` do chamador e depois fecham o
+  // diálogo (`onOpenChange(false)`).
+  function BotaoDoDialogo({
+    children,
+    onClick,
+  }: {
+    readonly children?: unknown;
+    readonly onClick?: () => void;
+  }) {
+    return (
+      <ContextoDoDialogo.Consumer>
+        {(mudarAberto) => (
+          <button
+            type="button"
+            onClick={() => {
+              onClick?.();
+              mudarAberto(false);
+            }}
+          >
+            {children as React.ReactNode}
+          </button>
+        )}
+      </ContextoDoDialogo.Consumer>
+    );
+  }
+  const passaFilhos = ({ children }: { readonly children?: unknown }) => (
+    <>{children as React.ReactNode}</>
+  );
   const nada = () => null;
   return {
     AlertDialog,
-    AlertDialogAction: nada,
-    AlertDialogCancel: nada,
-    AlertDialogContent: ({ children }: { readonly children?: unknown }) =>
-      React.createElement(React.Fragment, null, children as React.ReactNode),
+    AlertDialogAction: BotaoDoDialogo,
+    AlertDialogCancel: BotaoDoDialogo,
+    AlertDialogContent: passaFilhos,
     AlertDialogDescription: nada,
-    AlertDialogFooter: nada,
+    AlertDialogFooter: passaFilhos,
     AlertDialogHeader: nada,
     AlertDialogTitle: nada,
   };
@@ -602,6 +680,7 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
 
   beforeEach(() => {
     prova.camadaFechadaPeloOverride = 0;
+    prova.voltarDaTelaRegistrado = false;
     prova.dialogoAberto = 0;
     prova.dialogoAberturas = 0;
     prova.dialogoEstavaAberto = false;
@@ -816,6 +895,32 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
       });
       await assentar(20);
     };
+    // A tela REAL com a devolução d-1 aberta pela lista e o formulário de
+    // concluir SUJO ("Nova, sem uso" marcado). Devolve o `confirm` da tela:
+    // por padrão o lojista responde "Cancelar"; `lojistaConfirma` é para o
+    // teste que precisa passar pelo aviso do reembolso.
+    const abrirFichaSuja = async ({ lojistaConfirma = false } = {}) => {
+      prova.telaReal = true;
+      const confirmar = vi.fn(() => lojistaConfirma);
+      vi.stubGlobal("confirm", confirmar);
+      globalThis.history.replaceState(
+        { view: "admin-devolucoes" },
+        "",
+        "/admin-devolucoes",
+      );
+      await montar(
+        () => container?.querySelector('[data-devolucao="d-1"]') != null,
+      );
+      await clicarEm(container?.querySelector('[data-devolucao="d-1"]'));
+      await esperarAte(() => ficha() !== null);
+      expect(rota()).toBe("/admin-devolucoes?id=d-1");
+      await clicarEm(botaoComTexto("Concluir"));
+      await clicarEm(botaoComTexto("Nova, sem uso"));
+      expect(botaoComTexto("Nova, sem uso")?.getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      return confirmar;
+    };
 
     it("com a ficha SUJA, o Voltar não fecha a ficha: o diálogo do App abre uma vez e o que foi escolhido fica", async () => {
       prova.telaReal = true;
@@ -869,13 +974,108 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
       );
       await clicarEm(container?.querySelector('[data-devolucao="d-1"]'));
       await esperarAte(() => ficha() !== null);
+      expect(prova.voltarDaTelaRegistrado).toBe(true);
 
       await voltar();
 
       expect(ficha()).toBeNull();
       expect(rota()).toBe("/admin-devolucoes");
+      // Quem fechou foi o Voltar que a tela registrou. Sozinho, o `?id=` que
+      // sumiu da URL já fecharia a ficha (syncWithUrl) — sem esta contagem o
+      // teste passaria mesmo se a tela nunca registrasse o Voltar.
+      expect(prova.camadaFechadaPeloOverride).toBe(1);
       expect(prova.dialogoAberturas).toBe(0);
       expect(confirmar).not.toHaveBeenCalled();
+    });
+
+    it("com a ficha SUJA, Permanecer mantém a ficha, a URL e a escolha — e o próximo Voltar pergunta de novo", async () => {
+      const confirmar = await abrirFichaSuja();
+
+      await voltar();
+      expect(prova.dialogoAberturas).toBe(1);
+      expect(botaoComTexto("Permanecer")).toBeDefined();
+
+      await clicarEm(botaoComTexto("Permanecer"));
+
+      // O diálogo fechou e nada saiu do lugar: ficha, `?id=` e o "Nova, sem
+      // uso" que o lojista marcou.
+      expect(botaoComTexto("Permanecer")).toBeUndefined();
+      expect(ficha()).not.toBeNull();
+      expect(rota()).toBe("/admin-devolucoes?id=d-1");
+      expect(botaoComTexto("Nova, sem uso")?.getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+
+      // A ficha segue suja: o Voltar seguinte é outra tentativa de sair.
+      await voltar();
+
+      expect(prova.dialogoAberturas).toBe(2);
+      expect(botaoComTexto("Permanecer")).toBeDefined();
+      expect(ficha()).not.toBeNull();
+      expect(rota()).toBe("/admin-devolucoes?id=d-1");
+      expect(confirmar).not.toHaveBeenCalled();
+    });
+
+    it("com a ficha SUJA, Descartar e Sair fecha a ficha e volta para a lista sem outro aviso", async () => {
+      const confirmar = await abrirFichaSuja();
+
+      await voltar();
+      expect(prova.dialogoAberturas).toBe(1);
+
+      await clicarEm(botaoComTexto("Descartar e Sair"));
+
+      expect(ficha()).toBeNull();
+      expect(rota()).toBe("/admin-devolucoes");
+      // Diálogo fechado, e ele só abriu aquela vez: nem o `confirm` da tela
+      // nem um segundo diálogo do App perguntam de novo.
+      expect(botaoComTexto("Descartar e Sair")).toBeUndefined();
+      expect(prova.dialogoEstavaAberto).toBe(false);
+      expect(prova.dialogoAberturas).toBe(1);
+      expect(confirmar).not.toHaveBeenCalled();
+    });
+
+    it("depois de salvar, a ficha deixa de estar suja: o Voltar volta a ser o da tela e fecha a ficha sem diálogo", async () => {
+      const confirmar = await abrirFichaSuja({ lojistaConfirma: true });
+
+      // Suja: a tela larga o Voltar e deixa a pergunta com o App.
+      expect(prova.voltarDaTelaRegistrado).toBe(false);
+
+      // O lojista conclui: a RPC responde e a releitura traz a ficha já
+      // concluída — as ações remontam (a chave leva o status) e o formulário
+      // sujo some.
+      prova.respostas.set("admin_devolucao_concluir", {
+        id: "d-1",
+        status: "concluida",
+        resolucao: "reembolso",
+        valor_reembolso: 219.8,
+        refund_id: null,
+        reembolso_manual: true,
+        reestocados: 2,
+      });
+      prova.respostas.set("devolucao_detalhe", {
+        ...DETALHE,
+        status: "concluida",
+        resolucao_final: "reembolso",
+        valor_reembolso: 219.8,
+        reembolso_manual: true,
+        concluida_em: "2026-09-28T10:00:00Z",
+      });
+      await clicarEm(botaoComTexto("Concluir devolução"));
+      await esperarAte(() => botaoComTexto("Nova, sem uso") === undefined);
+
+      // Limpa de novo: o Voltar da ficha volta a estar registrado.
+      expect(ficha()).not.toBeNull();
+      expect(prova.voltarDaTelaRegistrado).toBe(true);
+      // A única pergunta até aqui foi a do reembolso, no clique de concluir.
+      expect(confirmar).toHaveBeenCalledTimes(1);
+
+      await voltar();
+
+      expect(ficha()).toBeNull();
+      expect(rota()).toBe("/admin-devolucoes");
+      expect(prova.camadaFechadaPeloOverride).toBe(1);
+      expect(prova.dialogoAberturas).toBe(0);
+      expect(confirmar).toHaveBeenCalledTimes(1);
     });
 
     it("trocar de produto pela vitrine segue pela View Transition: o ramo da ficha não vale fora das Devoluções", async () => {
