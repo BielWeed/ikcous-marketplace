@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import type { Category } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
@@ -37,7 +38,12 @@ export const CategoryFilter = memo(function CategoryFilter({
       // grade do catálogo quando as categorias chegavam.
       <div role="status" className="flex w-full items-center">
         <span className="sr-only">Carregando categorias</span>
-        <div className="scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5">
+        <div
+          className={cn(
+            "scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5",
+            "lg:flex-wrap lg:overflow-visible",
+          )}
+        >
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
@@ -51,7 +57,12 @@ export const CategoryFilter = memo(function CategoryFilter({
 
   return (
     <div className="flex w-full items-center">
-      <div className="scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5">
+      <div
+        className={cn(
+          "scrollbar-hide flex w-full gap-2 overflow-x-auto px-1 py-0.5",
+          "lg:flex-wrap lg:overflow-visible",
+        )}
+      >
         {allCategories.map((category) => {
           const isActive = selectedCategory === category.name;
           return (
