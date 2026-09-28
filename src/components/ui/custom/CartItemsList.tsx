@@ -61,12 +61,7 @@ const CartItemCard = memo(function CartItemCard({
             "opacity-50",
         )}
       >
-        <div
-          className={cn(
-            "relative size-20 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100/50 bg-zinc-50 xs:size-24 xs:rounded-2xl",
-            "lg:size-24",
-          )}
-        >
+        <div className="relative size-20 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100/50 bg-zinc-50 xs:size-24 xs:rounded-2xl">
           <img
             src={
               item.product.images?.[0] ||
