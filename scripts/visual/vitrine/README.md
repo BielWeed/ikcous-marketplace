@@ -173,3 +173,20 @@ harness sem esconder nada que o dono pediu.
 - **`user-profile`** (perfil público de OUTRO usuário/avaliador) não está
   coberto: não foi pedido explicitamente e exige RPCs adicionais
   (`public_profiles` + duas RPCs) fora do escopo desta rodada.
+
+## Limitações conhecidas (28/09/2026)
+
+Duas rodadas seguidas do MESMO commit ainda divergem em 49 de 176 prints. Até isso ser
+zerado, trate diferença nestas telas como ruído do harness, não como mudança no celular,
+e confira a olho:
+
+- **`sobre-loja`**: anti-aliasing do selo "Localização aproximada" perto do mapa
+  bloqueado (iframe sem rede).
+- **`login-cadastro`, `busca-vazia`, `folha-adicionar-carrinho`, `inicio`**: o laço que
+  mede a altura da página remede depois de redimensionar a janela e se realimenta em telas
+  com `min-height: 100%` (a altura do PNG pode mudar). Correção em estudo: uma medida só,
+  sempre na janela neutra.
+- **`favoritos-vazio`** ("Mais Amados da Loja"): corrida entre os produtos do IndexedDB
+  (pintados primeiro) e os da rede.
+
+Nas demais telas o diff do celular tem de ser 0.
