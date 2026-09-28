@@ -134,7 +134,18 @@ if (auth.site_url !== SITE || faltam.length > 0) {
   console.log("\nAuth: site_url e redirects já estavam certos.");
 }
 
-// 5. Conferência.
+// 5. Chave que cifra as chaves do Mercado Pago do lojista. A antiga ficou no projeto
+// pausado; com uma nova, o lojista recadastra as chaves no painel e o PIX volta.
+// Se um dia a antiga aparecer, basta gravá-la por cima ANTES do recadastro.
+const antes = new Set((await api("GET", `/projects/${REF}/secrets`)).map((s) => s.name));
+if (!antes.has("MP_CHAVES_ENCRYPTION_KEY")) {
+  await api("POST", `/projects/${REF}/secrets`, [
+    { name: "MP_CHAVES_ENCRYPTION_KEY", value: randomBytes(32).toString("base64") },
+  ]);
+  console.log("\nFunction: MP_CHAVES_ENCRYPTION_KEY nova gravada (o lojista precisa recadastrar as chaves do MP).");
+}
+
+// 6. Conferência.
 const funcoes = await api("GET", `/projects/${REF}/functions`);
 mostrar(
   "Edge functions no projeto novo",
