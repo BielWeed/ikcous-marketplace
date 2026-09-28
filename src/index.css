@@ -1336,3 +1336,22 @@ body.admin-modal-open .active-scroll-container {
     display: none !important;
   }
 }
+
+/* Onda 0 do app-cliente-desktop (F1.5, contrato C3): variáveis da casca do
+   COMPUTADOR (>=1024px). Nada aqui muda o celular -- os valores de base
+   (--header-height: 52px, os calc() de --customer-pb/--customer-pb-summary
+   e o "top" fixo do toast, todos acima neste arquivo) seguem intocados.
+   Este bloco fica por ÚLTIMO no arquivo de propósito: precisa vir depois da
+   regra de base do toast (linha ~1283) para vencer o empate de
+   especificidade em >=1024px. */
+@media (min-width: 1024px) {
+  :root {
+    --header-height: 72px;
+    --customer-pb: 64px;
+    --customer-pb-summary: 64px;
+  }
+
+  [data-sonner-toaster][data-position^="top"] {
+    top: calc(var(--safe-area-top, 0px) + var(--header-height) + 12px) !important;
+  }
+}
