@@ -11,7 +11,10 @@ import fs from "node:fs";
 const PROIBIDOS = new Set(["dekxabvqdsuukijblazl", "gnjsrucsmjkajijrakzr", "cafkrminfnokvgjqtkle"]);
 const PASTA = "/tmp/super/supabase/migrations";
 const { lojas } = JSON.parse(fs.readFileSync("scripts/incidente/lojas-novas.json", "utf8"));
-const arquivos = fs.readdirSync(PASTA).filter((n) => /^\d{14}_.+\.sql$/.test(n)).sort();
+// 13 OU 14 dígitos, como o CI (scripts/ci/banco/util.cjs): o par do estorno
+// (2026110000000_*, 2026110000100_*) tem 13 e cria a order_refunds.
+const arquivos = fs.readdirSync(PASTA).filter((n) => /^\d{13,14}_.+\.sql$/.test(n)).sort();
+const versaoDe = (n) => n.split("_")[0];
 console.log(`Migrations da versão em produção: ${arquivos.length} (última ${arquivos.at(-1)})`);
 
 async function api(token, metodo, caminho, corpo) {
@@ -48,7 +51,7 @@ for (const loja of lojas) {
     CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations
       (version text PRIMARY KEY, statements text[], name text)`);
   const noLedger = new Set((await sql("SELECT version FROM supabase_migrations.schema_migrations")).map((x) => x.version));
-  const pendentes = arquivos.filter((n) => !noLedger.has(n.slice(0, 14)));
+  const pendentes = arquivos.filter((n) => !noLedger.has(versaoDe(n)));
   console.log(`${projeto.id}: ${noLedger.size} no ledger, ${pendentes.length} pendentes`);
   let feitas = 0;
   for (const nome of pendentes) {
@@ -61,8 +64,8 @@ for (const loja of lojas) {
       falhou = true;
       break;
     }
-    const versao = nome.slice(0, 14);
-    const rotulo = nome.slice(15, -4).replaceAll("'", "''");
+    const versao = versaoDe(nome);
+    const rotulo = nome.slice(versao.length + 1, -4).replaceAll("'", "''");
     await sql(`INSERT INTO supabase_migrations.schema_migrations (version, name)
                VALUES ('${versao}', '${rotulo}') ON CONFLICT (version) DO NOTHING`);
     feitas++;
