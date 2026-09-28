@@ -1,0 +1,23 @@
+# Temporário (28/09/2026): inscrição de push num Chrome real nas lojas novas
+# (nada vai para o banco; a inscrição é desfeita).
+name: Operação — push no Chrome das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-push-chrome.mjs
+      - .github/workflows/operacao-lojas-push-chrome.yml
+permissions:
+  contents: read
+jobs:
+  chrome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: npm install --prefix /tmp/pw --no-save --no-audit --no-fund playwright@1
+      - run: google-chrome --version
+      - run: xvfb-run -a node scripts/incidente/lojas-push-chrome.mjs
