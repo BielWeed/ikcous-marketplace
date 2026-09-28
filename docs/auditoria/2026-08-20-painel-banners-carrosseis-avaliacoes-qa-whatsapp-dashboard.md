@@ -298,7 +298,7 @@ O modal "Central de Inteligência & KPIs" descreve como "Principais Indicadores 
 **Capital Alocado**, **Lucro Potencial**, **Faturamento** e **Ticket Médio**
 ([AdminDashboardView.tsx:367-415](../../src/views/admin/AdminDashboardView.tsx)). Os cartões que a tela
 realmente tem são **Volume Total**, **Total de Pedidos**, **Ticket Médio** e **Clientes Únicos**
-([KpiSummaryCards.tsx:30-63](../../src/components/admin/dashboard/KpiSummaryCards.tsx)). "Capital
+(`KpiSummaryCards.tsx:30-63`, removido em 28/09/2026). "Capital
 Alocado" e "Lucro Potencial" existem, mas na tela de **Produtos**
 (`AdminProductsView.tsx:312`, `:320`). Só um dos quatro nomes bate.
 
