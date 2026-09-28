@@ -1,0 +1,39 @@
+-- ============================================================================
+-- ROLLBACK MANUAL da 20261184000000 — o PIX do balcão abre na hora
+-- ============================================================================
+--
+-- O QUE ESTE ARQUIVO DESFAZ: o gatilho `tr_venda_do_balcao_paga_e_entregue`,
+-- a função dele e `public.iniciar_venda_presencial_pix`. As duas funções são
+-- NOVAS — não substituíram corpo nenhum —, então desfazer é derrubar.
+--
+-- O QUE ELE NÃO TOCA, DE PROPÓSITO:
+--   - `registrar_venda_presencial`, `confirmar_pagamento`,
+--     `expirar_pedidos_vencidos` e as funções `fin_*`: a ida não encostou
+--     nelas.
+--   - OS PEDIDOS JÁ CRIADOS. Um PIX do balcão é um pedido 'online' comum
+--     (canal presencial): se estiver 'aguardando', a expiração devolve o
+--     estoque e o webhook confirma o pagamento como sempre — só que, sem o
+--     gatilho, um PIX pago depois do rollback fica 'pending' e precisa ser
+--     marcado como entregue à mão no painel (Pedidos → Entregue). Nenhum dado
+--     é lido, escrito ou apagado aqui.
+--
+-- EFEITO COLATERAL ESPERADO: a tela Vender, se já estiver no ar, recebe
+-- 42883/PGRST202 ao tocar "Gerar PIX" e mostra que o PIX com QR não está
+-- liberado; dinheiro, PIX na chave e maquininha seguem funcionando.
+--
+-- IDEMPOTÊNCIA: `DROP ... IF EXISTS` — rodar duas vezes dá o mesmo estado.
+-- Assinatura completa no DROP FUNCTION (evita derrubar sobrecarga errada).
+--
+-- COMO APLICAR: pelo workflow `aplicar-migrations.yml` (ou `psql -1`). Sem
+-- `BEGIN`/`COMMIT` de nível superior neste arquivo (regra da casa).
+--
+-- VERIFICAÇÃO pós-rollback:
+--   SELECT count(*) FROM pg_trigger WHERE tgname = 'tr_venda_do_balcao_paga_e_entregue';
+--   -- esperado: 0.
+--   SELECT count(*) FROM pg_proc WHERE proname IN ('iniciar_venda_presencial_pix', 'venda_do_balcao_paga_e_entregue');
+--   -- esperado: 0.
+-- ============================================================================
+
+DROP TRIGGER IF EXISTS tr_venda_do_balcao_paga_e_entregue ON public.marketplace_orders;
+DROP FUNCTION IF EXISTS public.venda_do_balcao_paga_e_entregue();
+DROP FUNCTION IF EXISTS public.iniciar_venda_presencial_pix(jsonb, uuid, uuid, text, text, numeric, text);
