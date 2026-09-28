@@ -2407,8 +2407,11 @@ const AppContent = () => {
     }
   };
 
+  // Modo foco: sem rodapé no computador. O login (`auth`, e `login`, alias da
+  // mesma AuthView) entra porque é passagem do checkout e do endereço.
   const rodape =
-    computador && !["checkout", "address-form"].includes(currentView) ? (
+    computador &&
+    !["checkout", "address-form", "auth", "login"].includes(currentView) ? (
       <React.Suspense fallback={null}>
         <RodapeDaLoja onNavigate={handleNavigate} />
       </React.Suspense>

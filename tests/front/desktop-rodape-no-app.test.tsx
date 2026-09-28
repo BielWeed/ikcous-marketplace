@@ -316,6 +316,9 @@ vi.mock("@/views/customer/CheckoutView", () => ({
 vi.mock("@/views/customer/AddressFormView", () => ({
   AddressFormView: () => <div data-testid="endereco" />,
 }));
+vi.mock("@/views/shared/AuthView", () => ({
+  AuthView: () => <div data-testid="login" />,
+}));
 
 describe("F1.15 rodapé dentro da rolagem da cliente", () => {
   // @ts-expect-error flag interna do React para act.
@@ -387,6 +390,17 @@ describe("F1.15 rodapé dentro da rolagem da cliente", () => {
     await abrir(rota, tela);
     expect(host.querySelector("footer")).toBeNull();
   });
+  // O login é passagem do checkout e do endereço para quem está deslogada
+  // (`address-form` é redirecionada para `/auth`; o checkout leva a `auth` nos
+  // botões "Entrar ou criar conta"), então segue o mesmo modo foco. `/login` é
+  // o alias da mesma AuthView. Aqui a cliente fica DESLOGADA, de propósito.
+  it.each([["/auth"], ["/login"]])(
+    "modo foco %s não monta rodapé",
+    async (rota) => {
+      await abrir(rota, "login");
+      expect(host.querySelector("footer")).toBeNull();
+    },
+  );
   it("celular não monta rodapé", async () => {
     await abrir("/", "home", false);
     expect(host.querySelector("footer")).toBeNull();

@@ -149,7 +149,7 @@ O que o código mostra:
 
 **Rodapé (≥1024, novo, `<footer>`):**
 - Fundo `zinc-950`, texto `zinc-400` (7,6:1), títulos brancos.
-- Aparece depois do conteúdo de toda tela da cliente, **menos checkout e endereço** (modo foco).
+- Aparece depois do conteúdo de toda tela da cliente, **menos checkout, endereço e login** (modo foco). O login (`auth`, e `login`, alias da mesma tela, com cadastro e recuperação de senha dentro dela) entra desde 28/09: é passagem do checkout e do endereço para quem está deslogada. O login do painel (`admin-login`) não entra.
 - Container, quatro colunas. **Cada bloco só existe com dado.**
   1. Marca: logo ou inicial, nome (`nomeDaLoja`), cidade/UF.
   2. "Navegue": Início, Favoritos, Carrinho, Meus pedidos.
